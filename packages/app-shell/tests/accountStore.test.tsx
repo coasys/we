@@ -109,6 +109,39 @@ describe('listing', () => {
 });
 
 describe('switching and creating always end in applySelection', () => {
+  it('names the target account from the click, so the screen can show it immediately', async () => {
+    // The switch tears the renderer down and rebuilds it. Without this the boot screen would show
+    // the account being left behind, then blank, then the new one — three states for one act.
+    const { host } = stubHost(TWO, {
+      async select() {
+        // Still mid-switch at this point.
+        expect(store.switchingTo()?.name).toBe('Test Net');
+      },
+    });
+    accountHost = host;
+    const store = mount();
+    await vi.waitFor(() => expect(store.accounts()).toHaveLength(2));
+
+    expect(store.switchingTo()).toBeNull();
+    await store.switchAccount('/cfg/agents/test-net');
+  });
+
+  it('clears the target when the switch fails, so the screen returns to the form', async () => {
+    const { host } = stubHost(TWO, {
+      async select() {
+        throw new Error('No such account');
+      },
+    });
+    accountHost = host;
+    const store = mount();
+    await vi.waitFor(() => expect(store.accounts()).toHaveLength(2));
+
+    await store.switchAccount('/cfg/agents/test-net');
+
+    expect(store.switchingTo()).toBeNull();
+    expect(store.error()).toBe('No such account');
+  });
+
   it('selects, then applies — in that order', async () => {
     const { host, calls } = stubHost(TWO);
     accountHost = host;

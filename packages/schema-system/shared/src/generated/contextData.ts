@@ -2020,6 +2020,7 @@ export const contextData: ContextData = {
         accounts: { type: 'array', properties: ['id', 'name', 'avatar', 'active', 'sharedWithLauncher'] },
         activeAccount: { type: 'object', properties: ['id', 'name', 'avatar', 'active', 'sharedWithLauncher'] },
         pendingRemoval: { type: 'object', properties: ['id', 'name', 'avatar', 'active', 'sharedWithLauncher'] },
+        switchingTo: { type: 'object', properties: ['id', 'name', 'avatar', 'active', 'sharedWithLauncher'] },
         hasOtherAccounts: { type: 'boolean' },
         busy: { type: 'boolean' },
         error: { type: 'string' },

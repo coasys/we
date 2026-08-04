@@ -117,6 +117,41 @@ function accountSwitcher({ allowCreate }: { allowCreate: boolean }): SchemaNode 
   };
 }
 
+/**
+ * The waiting state: an account badge with a spinner where its password field will be.
+ *
+ * Used for *both* halves of a switch, deliberately identical. Switching kills the executor,
+ * respawns it and reloads the window, so the renderer is destroyed halfway through and the new one
+ * has no memory of having been asked to switch. Rather than persisting that across the reload,
+ * both sides render this — so the reload becomes invisible instead of a second loading step with
+ * different words and a badge popping in.
+ *
+ * "Starting", not "Signing in": no password has been entered on either path.
+ */
+function startingState(account: string): SchemaNode {
+  return {
+    type: 'Column',
+    props: { mt: '200', gap: '400', ax: 'center' },
+    children: [
+      {
+        type: '$if',
+        props: {
+          condition: { $store: account },
+          then: accountBadge({ $store: `${account}.name` }),
+        },
+      },
+      {
+        type: 'Row',
+        props: { gap: '300', ay: 'center' },
+        children: [
+          { type: 'we-spinner', props: { size: 'sm' } },
+          { type: 'we-text', props: { color: 'neutral-600' }, children: ['Starting...'] },
+        ],
+      },
+    ],
+  };
+}
+
 /** Shared error line for account operations — one slot, wherever the failure happened. */
 const accountError: SchemaNode = {
   type: '$if',
@@ -324,38 +359,7 @@ export const bootScreen: SchemaNode = {
           type: '$if',
           props: {
             condition: { $eq: [{ $store: 'sessionStore.bootState' }, 'initialising'] },
-            // The account badge, then a spinner where the password field will be. The badge is
-            // the same node the sign-in form leads with, so switching accounts no longer blanks
-            // the screen and redraws it — the identity stays put and only the form beneath it
-            // swaps in. AccountStore reads from the host, which needs no executor, so the badge is
-            // available before anything has connected.
-            //
-            // "Starting", not "Signing in": nobody has signed in at this point, on either the cold
-            // boot or the post-switch path — there has been no password and no button. What is
-            // actually happening is the executor coming up and a connection being made to it, and
-            // the badge above already answers *which account*, so this line only has to explain
-            // the wait.
-            then: {
-              type: 'Column',
-              props: { mt: '200', gap: '400', ax: 'center' },
-              children: [
-                {
-                  type: '$if',
-                  props: {
-                    condition: { $store: 'accountStore.activeAccount' },
-                    then: accountBadge({ $store: 'accountStore.activeAccount.name' }),
-                  },
-                },
-                {
-                  type: 'Row',
-                  props: { gap: '300', ay: 'center' },
-                  children: [
-                    { type: 'we-spinner', props: { size: 'sm' } },
-                    { type: 'we-text', props: { color: 'neutral-600' }, children: ['Starting...'] },
-                  ],
-                },
-              ],
-            },
+            then: startingState('accountStore.activeAccount'),
           },
         },
         // Sign-in state — unlock, switch account, or create one. The three are modes of one
@@ -379,26 +383,37 @@ export const bootScreen: SchemaNode = {
               },
               children: [
                 // Switching runs entirely before the reload — kill the executor, respawn it
-                // against the other directory, wait for GraphQL — and that is several seconds
-                // during which the old form would otherwise sit there looking merely unresponsive.
+                // against the other directory, wait for GraphQL — several seconds during which the
+                // old form would otherwise sit there looking merely unresponsive. Rendering the
+                // *target's* badge here, with the same node the post-reload state uses, makes the
+                // whole switch one continuous screen: the identity swaps on the click and nothing
+                // moves again until the password field arrives.
                 {
                   type: '$if',
                   props: {
-                    condition: { $store: 'accountStore.busy' },
-                    then: {
-                      type: 'Row',
-                      props: { gap: '300', ay: 'center' },
-                      children: [
-                        { type: 'we-spinner', props: { size: 'sm' } },
-                        { type: 'we-text', props: { color: 'neutral-600' }, children: ['Switching account...'] },
-                      ],
-                    },
+                    condition: { $store: 'accountStore.switchingTo' },
+                    then: startingState('accountStore.switchingTo'),
                     else: {
                       type: '$if',
                       props: {
-                        condition: { $eq: [{ $local: 'mode' }, 'create'] },
-                        then: createAccountConfirm,
-                        else: unlockForm,
+                        // Busy without a target is a create — there is no account to name yet.
+                        condition: { $store: 'accountStore.busy' },
+                        then: {
+                          type: 'Row',
+                          props: { mt: '200', gap: '300', ay: 'center' },
+                          children: [
+                            { type: 'we-spinner', props: { size: 'sm' } },
+                            { type: 'we-text', props: { color: 'neutral-600' }, children: ['Creating account...'] },
+                          ],
+                        },
+                        else: {
+                          type: '$if',
+                          props: {
+                            condition: { $eq: [{ $local: 'mode' }, 'create'] },
+                            then: createAccountConfirm,
+                            else: unlockForm,
+                          },
+                        },
                       },
                     },
                   },

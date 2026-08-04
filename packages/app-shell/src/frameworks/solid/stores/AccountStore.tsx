@@ -40,6 +40,15 @@ export interface AccountStore {
   hasOtherAccounts: Accessor<boolean>;
   /** True while a mutation is in flight — note that a successful one ends in a relaunch. */
   busy: Accessor<boolean>;
+  /**
+   * The account being switched to, from the click until the process goes away. Null when idle,
+   * and null during a *create* — there is no target account to name yet.
+   *
+   * Exists so the boot screen can show the target's badge immediately rather than the account
+   * being left behind. Switching tears the renderer down and rebuilds it, so without this the
+   * screen shows the old identity, then blanks, then shows the new one.
+   */
+  switchingTo: Accessor<Account | null>;
   error: Accessor<string>;
 
   refresh: () => Promise<void>;
@@ -82,6 +91,7 @@ export function AccountStoreProvider(props: ParentProps) {
   const [busy, setBusy] = createSignal(false);
   const [error, setError] = createSignal('');
   const [pendingRemovalId, setPendingRemovalId] = createSignal<string | null>(null);
+  const [switchingToId, setSwitchingToId] = createSignal<string | null>(null);
 
   const host = () => platform.accounts;
   const canManageAccounts = createMemo(() => !!host());
@@ -89,6 +99,7 @@ export function AccountStoreProvider(props: ParentProps) {
   // Derived from the list rather than stored, so a request cannot outlive the account it names —
   // a refresh that drops it (removed in another window, say) closes the dialog by itself.
   const pendingRemoval = createMemo(() => accounts().find((a) => a.id === pendingRemovalId()) ?? null);
+  const switchingTo = createMemo(() => accounts().find((a) => a.id === switchingToId()) ?? null);
   const hasOtherAccounts = createMemo(() => accounts().length > 1);
 
   async function refresh(): Promise<void> {
@@ -156,7 +167,12 @@ export function AccountStoreProvider(props: ParentProps) {
 
   async function switchAccount(id: string): Promise<void> {
     if (id === activeAccount()?.id) return;
+    // Set before the await so the boot screen swaps to the target's badge on the click rather
+    // than a beat later.
+    setSwitchingToId(id);
     await mutateAndRestart(() => host()!.select(id));
+    // Only reached when the switch failed — on success the process is already gone.
+    setSwitchingToId(null);
   }
 
   function requestRemoval(id: string): void {
@@ -205,6 +221,7 @@ export function AccountStoreProvider(props: ParentProps) {
     activeAccount,
     hasOtherAccounts,
     busy,
+    switchingTo,
     error,
     pendingRemoval,
     refresh,

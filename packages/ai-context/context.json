@@ -5338,6 +5338,10 @@
           "type": "object",
           "properties": ["id", "name", "avatar", "active", "sharedWithLauncher"]
         },
+        "switchingTo": {
+          "type": "object",
+          "properties": ["id", "name", "avatar", "active", "sharedWithLauncher"]
+        },
         "hasOtherAccounts": {
           "type": "boolean"
         },
