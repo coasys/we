@@ -384,8 +384,12 @@ export const bootScreen: SchemaNode = {
                   props: {
                     condition: { $eq: [{ $local: 'mode' }, 'accounts'] },
                     then: accountPicker,
+                    // A block-level `$if` NODE, not a `{ $if: … }` prop token: the renderer hands
+                    // `then`/`else` straight to renderNode, so a token here has no `type` and
+                    // renders nothing at all.
                     else: {
-                      $if: {
+                      type: '$if',
+                      props: {
                         condition: { $eq: [{ $local: 'mode' }, 'create'] },
                         then: createAccountForm,
                         else: unlockForm,
@@ -433,8 +437,10 @@ export const bootScreen: SchemaNode = {
                   props: {
                     condition: { $eq: [{ $local: 'mode' }, 'accounts'] },
                     then: accountPicker,
+                    // Block-level `$if` NODE — see the note on the sign-in state above.
                     else: {
-                      $if: {
+                      type: '$if',
+                      props: {
                         condition: { $eq: [{ $local: 'mode' }, 'create'] },
                         then: createAccountForm,
                         else: {

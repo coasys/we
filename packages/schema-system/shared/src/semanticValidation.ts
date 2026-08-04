@@ -426,20 +426,59 @@ function walkOperatorNode(
 
   if (type === '$if') {
     checkTokenValue(props.condition, `${path}.props.condition`, ctx, state, errors);
-    if (props.then && typeof props.then === 'object' && !isTokenObject(props.then)) {
-      walkNode(props.then, `${path}.props.then`, ctx, state, errors);
-    } else if (props.then) {
-      checkTokenValue(props.then, `${path}.props.then`, ctx, state, errors);
-    }
-    if (props.else && typeof props.else === 'object' && !isTokenObject(props.else)) {
-      walkNode(props.else, `${path}.props.else`, ctx, state, errors);
-    } else if (props.else) {
-      checkTokenValue(props.else, `${path}.props.else`, ctx, state, errors);
-    }
+    checkBranchSlot(props.then, `${path}.props.then`, ctx, state, errors);
+    checkBranchSlot(props.else, `${path}.props.else`, ctx, state, errors);
   }
 
   // Walk children of operator nodes
   walkChildren(n, path, ctx, state, errors);
+}
+
+/**
+ * A `then`/`else` slot on a **block-level** `$if` node must hold a schema node.
+ *
+ * The renderer passes these straight to `renderNode`, so an operator token — `{ $if: … }`,
+ * `{ $store: … }` — has no `type` and renders nothing at all. Silently, and only at runtime.
+ *
+ * The mistake is easy because both spellings are real and look interchangeable: `{ $if: … }` is
+ * the prop-level operator, legal in any prop value, while `{ type: '$if', props: { … } }` is the
+ * node. Nesting one conditional inside another's `else` is exactly where an author reaches for the
+ * wrong one — and this validator used to accept it, which is how a token in that slot blanked WE's
+ * entire sign-in screen with every check passing.
+ */
+function checkBranchSlot(
+  value: unknown,
+  path: string,
+  ctx: ValidationContext,
+  state: WalkState,
+  errors: ValidationError[],
+): void {
+  if (value === undefined || value === null) return;
+
+  // Strings are legal — a text child.
+  if (typeof value !== 'object') return;
+
+  // A node stays a node whatever `$`-prefixed siblings it carries: `$localState` and `$queries`
+  // live alongside `type`, so "has a $ key" alone does not make something a token.
+  const record = value as Record<string, unknown>;
+  const isNode = 'type' in record || 'children' in record;
+
+  if (!isNode && isTokenObject(value)) {
+    const keys = Object.keys(value).filter((k) => k.startsWith('$'));
+    const asNode = keys.includes('$if')
+      ? ` Write it as a node: { type: "$if", props: { … } }.`
+      : ` This slot renders a node, so a "${keys[0]}" token here renders nothing.`;
+    errors.push({
+      path,
+      message: `Operator token "${keys[0]}" used where a schema node is required.${asNode}`,
+      severity: 'error',
+    });
+    // Still walk the token's internals so store/action typos inside it are reported too.
+    checkTokenValue(value, path, ctx, state, errors);
+    return;
+  }
+
+  walkNode(value, path, ctx, state, errors);
 }
 
 function updateLocalScope(n: Record<string, unknown>, state: WalkState): WalkState {
@@ -808,7 +847,13 @@ function checkLocalRef(
     return;
   }
 
-  if (!state.localScope.has(fieldName)) {
+  // Dot paths read into an object-typed field (`{ $local: 'location.city' }`), so only the root
+  // segment is a declaration. Checking the whole string rejected a documented read — it went
+  // unnoticed because the subtrees using it were never walked: a branch node carrying $localState
+  // was misread as an operator token, and everything beneath it skipped.
+  const rootField = fieldName.split('.')[0];
+
+  if (!state.localScope.has(rootField)) {
     const declared = [...state.localScope].join(', ');
     errors.push({
       path,

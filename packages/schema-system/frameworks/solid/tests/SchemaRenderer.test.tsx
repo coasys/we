@@ -240,3 +240,63 @@ describe('SchemaRenderer', () => {
     expect(clickSpy).toHaveBeenCalledOnce();
   });
 });
+
+// --- $if then/else must be NODES, not prop tokens ---
+//
+// The distinction is easy to get wrong because both spellings exist and both validate: `{ $if: … }`
+// is the prop-level operator (legal in a `variant`, a `type`, an `error`), while `{ type: '$if' }`
+// is the block-level node. ConditionalRenderer hands `then`/`else` straight to renderNode, so a
+// prop token in those slots has no `type` and renders nothing — silently, and only at runtime.
+// This shipped in the boot screen and blanked the entire sign-in form.
+describe('$if branch slots', () => {
+  const registry: ComponentRegistry = { 'we-text': (props: any) => <span>{props.children}</span> };
+
+  it('renders a nested $if NODE in the else slot', () => {
+    const node: SchemaNode = {
+      type: '$if',
+      props: {
+        condition: false,
+        then: { type: 'we-text', children: ['outer-then'] },
+        else: {
+          type: '$if',
+          props: {
+            condition: false,
+            then: { type: 'we-text', children: ['inner-then'] },
+            else: { type: 'we-text', children: ['inner-else'] },
+          },
+        },
+      },
+    };
+    const { container } = renderSchema(node, { registry });
+    expect(container.textContent).toBe('inner-else');
+  });
+
+  it('renders a nested $if NODE in the then slot', () => {
+    const node: SchemaNode = {
+      type: '$if',
+      props: {
+        condition: true,
+        then: {
+          type: '$if',
+          props: { condition: true, then: { type: 'we-text', children: ['deep'] } },
+        },
+      },
+    };
+    const { container } = renderSchema(node, { registry });
+    expect(container.textContent).toBe('deep');
+  });
+
+  it('renders nothing for a prop-level token in a branch slot — the trap', () => {
+    const node: SchemaNode = {
+      type: '$if',
+      props: {
+        condition: false,
+        then: { type: 'we-text', children: ['then'] },
+        // Wrong spelling: an operator token where a node belongs.
+        else: { $if: { condition: true, then: { type: 'we-text', children: ['never-rendered'] } } },
+      },
+    };
+    const { container } = renderSchema(node, { registry });
+    expect(container.textContent).toBe('');
+  });
+});
