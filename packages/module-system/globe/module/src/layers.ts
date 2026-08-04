@@ -43,4 +43,3 @@ export const layerFactoryRegistry: Record<string, LayerFactory<any>> = {
   proceduralStarsLayer,
   solarSystemLayer,
 };
-
