@@ -430,7 +430,9 @@ export const bootScreen: SchemaNode = {
                     { rule: 'match', field: 'password', message: 'Passwords do not match' },
                   ],
                 },
+                // One per field rather than one shared: each eye reveals only the input it sits in.
                 showPassword: { type: 'boolean', initial: false },
+                showConfirm: { type: 'boolean', initial: false },
                 mode: { type: 'string', initial: 'unlock' },
               },
               children: [
@@ -457,124 +459,160 @@ export const bootScreen: SchemaNode = {
                                 {
                                   type: 'we-text',
                                   props: { variant: 'heading-sm', fontWeight: 'regular' },
-                                  children: ['Set up your account'],
+                                  children: ['Create account'],
                                 },
                               ],
                             },
-                            // Name
+                            // Form
                             {
-                              type: 'we-form-field',
-                              props: { label: 'Account name', error: { $error: 'accountName' } },
+                              type: 'Column',
+                              props: { gap: '400' },
                               children: [
+                                // Name
                                 {
-                                  type: 'we-input',
-                                  props: {
-                                    height: '36px',
-                                    width: '300px',
-                                    value: { $local: 'accountName' },
-                                    onInput: { $setLocal: 'accountName', from: '$event.detail' },
-                                    onBlur: { $touch: 'accountName' },
-                                  },
-                                },
-                              ],
-                            },
-                            // Password + confirm
-                            {
-                              type: 'we-form-field',
-                              props: { label: 'Password', error: { $error: 'password' } },
-                              children: [
-                                {
-                                  type: 'Row',
-                                  props: { gap: '300' },
+                                  type: 'we-form-field',
+                                  props: { label: 'Account name', error: { $error: 'accountName' } },
                                   children: [
                                     {
                                       type: 'we-input',
                                       props: {
-                                        height: '36px',
-                                        width: '256px',
-                                        value: { $local: 'password' },
-                                        onInput: { $setLocal: 'password', from: '$event.detail' },
-                                        onBlur: { $touch: 'password' },
-                                        type: {
-                                          $if: {
-                                            condition: { $local: 'showPassword' },
-                                            then: 'text',
-                                            else: 'password',
-                                          },
-                                        },
+                                        placeholder: 'Account name...',
+                                        value: { $local: 'accountName' },
+                                        onInput: { $setLocal: 'accountName', from: '$event.detail' },
+                                        onBlur: { $touch: 'accountName' },
                                       },
                                     },
+                                  ],
+                                },
+                                // Password + confirm
+                                {
+                                  type: 'we-form-field',
+                                  props: { label: 'Password', error: { $error: 'password' } },
+                                  children: [
                                     {
-                                      type: 'we-button',
-                                      props: {
-                                        bg: 'primary-500',
-                                        height: '36px',
-                                        onClick: { $toggleLocal: 'showPassword' },
-                                      },
+                                      type: 'Row',
+                                      props: { gap: '300' },
                                       children: [
                                         {
-                                          type: 'we-icon',
+                                          type: 'we-input',
                                           props: {
-                                            name: {
+                                            width: '100%',
+                                            placeholder: 'Password...',
+                                            value: { $local: 'password' },
+                                            onInput: { $setLocal: 'password', from: '$event.detail' },
+                                            onBlur: { $touch: 'password' },
+                                            type: {
                                               $if: {
                                                 condition: { $local: 'showPassword' },
-                                                then: 'eye',
-                                                else: 'eye-slash',
+                                                then: 'text',
+                                                else: 'password',
                                               },
                                             },
-                                            color: 'neutral-0',
                                           },
+                                        },
+                                        {
+                                          type: 'we-button',
+                                          props: {
+                                            bg: 'primary-500',
+                                            onClick: { $toggleLocal: 'showPassword' },
+                                          },
+                                          children: [
+                                            {
+                                              type: 'we-icon',
+                                              props: {
+                                                name: {
+                                                  $if: {
+                                                    condition: { $local: 'showPassword' },
+                                                    then: 'eye',
+                                                    else: 'eye-slash',
+                                                  },
+                                                },
+                                                color: 'neutral-0',
+                                              },
+                                            },
+                                          ],
                                         },
                                       ],
                                     },
                                   ],
                                 },
-                              ],
-                            },
-                            {
-                              type: 'we-form-field',
-                              props: {
-                                error: {
-                                  $if: {
-                                    condition: { $error: 'confirm' },
-                                    then: { $error: 'confirm' },
-                                    else: { $store: 'sessionStore.createAgentError' },
-                                  },
-                                },
-                              },
-                              children: [
                                 {
-                                  type: 'we-input',
+                                  type: 'we-form-field',
                                   props: {
-                                    height: '36px',
-                                    width: '300px',
-                                    placeholder: 'Confirm password...',
-                                    value: { $local: 'confirm' },
-                                    onInput: { $setLocal: 'confirm', from: '$event.detail' },
-                                    onBlur: { $touch: 'confirm' },
-                                    type: {
+                                    label: 'Confirm password',
+                                    error: {
                                       $if: {
-                                        condition: { $local: 'showPassword' },
-                                        then: 'text',
-                                        else: 'password',
+                                        condition: { $error: 'confirm' },
+                                        then: { $error: 'confirm' },
+                                        else: { $store: 'sessionStore.createAgentError' },
                                       },
                                     },
                                   },
+                                  children: [
+                                    {
+                                      type: 'Row',
+                                      props: { gap: '300' },
+                                      children: [
+                                        {
+                                          type: 'we-input',
+                                          props: {
+                                            width: '100%',
+                                            placeholder: 'Confirm password...',
+                                            value: { $local: 'confirm' },
+                                            onInput: { $setLocal: 'confirm', from: '$event.detail' },
+                                            onBlur: { $touch: 'confirm' },
+                                            type: {
+                                              $if: {
+                                                condition: { $local: 'showConfirm' },
+                                                then: 'text',
+                                                else: 'password',
+                                              },
+                                            },
+                                          },
+                                        },
+                                        // Its own state, not the one above. A control sitting
+                                        // inside this field that silently revealed the field above
+                                        // it would be lying about its scope — and revealing only
+                                        // the field you are actively fixing exposes less.
+                                        {
+                                          type: 'we-button',
+                                          props: {
+                                            bg: 'primary-500',
+                                            onClick: { $toggleLocal: 'showConfirm' },
+                                          },
+                                          children: [
+                                            {
+                                              type: 'we-icon',
+                                              props: {
+                                                name: {
+                                                  $if: {
+                                                    condition: { $local: 'showConfirm' },
+                                                    then: 'eye',
+                                                    else: 'eye-slash',
+                                                  },
+                                                },
+                                                color: 'neutral-0',
+                                              },
+                                            },
+                                          ],
+                                        },
+                                      ],
+                                    },
+                                  ],
+                                },
+                                // The one thing that is not obvious: there is no reset. Every other app
+                                // has taught the user that a forgotten password is recoverable by email.
+                                {
+                                  type: 'we-text',
+                                  props: { variant: 'footnote', color: 'neutral-500', textAlign: 'center' },
+                                  children: ["If you lose this password, the account can't be recovered."],
                                 },
                               ],
-                            },
-                            // The one thing that is not obvious: there is no reset. Every other app
-                            // has taught the user that a forgotten password is recoverable by email.
-                            {
-                              type: 'we-text',
-                              props: { variant: 'footnote', color: 'neutral-500', textAlign: 'center' },
-                              children: ["If you lose this password, the account can't be recovered."],
                             },
                             {
                               type: 'we-button',
                               props: {
                                 mt: '200',
-                                height: '36px',
                                 text: 'Create account',
                                 color: 'neutral-0',
                                 bg: 'primary-500',
