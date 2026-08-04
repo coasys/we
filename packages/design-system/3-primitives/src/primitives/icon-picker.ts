@@ -1,4 +1,3 @@
-import { icons as _phosphorIcons } from '@phosphor-icons/core';
 import type { DesignSystemProps } from '@we/design-types';
 import { css, html, nothing } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
@@ -7,7 +6,25 @@ import { DesignSystemElement } from '../shared/design-system-element';
 import sharedStyles from '../shared/styles';
 import type { ComponentSize } from '../types';
 
-const PHOSPHOR_ICON_NAMES: readonly string[] = _phosphorIcons.map((i) => i.name);
+/**
+ * The icon catalogue arrives when the picker is first opened.
+ *
+ * `@phosphor-icons/core` is ~300 KB of metadata for the full set, and it is needed only to list and
+ * filter names in this one panel — `we-icon` renders from the CDN and never reads it. Loading it at
+ * import time put that on every page that so much as includes the design system.
+ *
+ * Module-level, so the second picker to open pays nothing.
+ */
+let PHOSPHOR_ICON_NAMES: readonly string[] = [];
+let phosphorLoad: Promise<readonly string[]> | undefined;
+
+function loadPhosphorNames(): Promise<readonly string[]> {
+  phosphorLoad ??= import('@phosphor-icons/core').then(({ icons }) => {
+    PHOSPHOR_ICON_NAMES = icons.map((i) => i.name);
+    return PHOSPHOR_ICON_NAMES;
+  });
+  return phosphorLoad;
+}
 
 // Detect whether a string looks like a Phosphor icon name (kebab-case, ASCII only)
 function isPhosphorName(v: string): boolean {
@@ -371,6 +388,9 @@ export default class IconPicker extends DesignSystemElement {
     if (this.disabled) return;
     this._open = !this._open;
     if (this._open) {
+      // Names may not be here yet; re-render once they are. The panel renders its emoji tab and an
+      // empty icon grid in the meantime rather than blocking the open.
+      if (!PHOSPHOR_ICON_NAMES.length) void loadPhosphorNames().then(() => this.requestUpdate());
       // Auto-select correct tab for current value
       if (this.value && !isPhosphorName(this.value)) {
         this._tab = 'emoji';
