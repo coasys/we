@@ -78,6 +78,21 @@ function main() {
     } else {
       success('ad4m.repoPath defined');
     }
+
+    // Always report the effective path. Pointing it away from the default is a data migration,
+    // not a preference — an existing agent does not follow, and a desktop build would come up
+    // empty with no error. Cheaper to notice here than after losing a day's spaces.
+    const dataPath = seed.ad4m.dataPath || '~/.ad4m';
+    if (!seed.ad4m.dataPath) {
+      success('ad4m.dataPath not set - defaulting to ~/.ad4m (shared with the ADAM launcher)');
+    } else if (dataPath === '~/.ad4m') {
+      success('ad4m.dataPath is ~/.ad4m (shared with the ADAM launcher)');
+    } else {
+      warn(
+        `ad4m.dataPath is ${dataPath}, not the default ~/.ad4m — desktop builds will use a ` +
+          `separate agent store. An agent already in ~/.ad4m will NOT be visible there.`,
+      );
+    }
   }
 
   if (!seed.apps || !Array.isArray(seed.apps)) {

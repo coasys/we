@@ -3,11 +3,48 @@ mod commands;
 mod app_server;
 mod generated;
 
+// Declared by path rather than through `generated/mod.rs`: that module is only emitted on the
+// generator's embedded-apps path, while this file is emitted on both and is always read here.
+#[path = "generated/seed_runtime.rs"]
+mod seed_runtime;
+
 use app_state::AppState;
 use rust_executor::utils::find_port;
 use rust_executor::Ad4mConfig;
+use std::path::PathBuf;
 use tauri::Manager;
 use uuid::Uuid;
+
+/// Where the executor keeps its data: the agent's keys, datasets and settings.
+///
+/// Precedence is env → seed → `~/.ad4m`. The env var is the ad-hoc override — testing the
+/// first-run flow means starting against an empty directory, and doing that by moving the real
+/// `~/.ad4m` aside risks the agent you actually use. The seed value is the deployment default,
+/// baked in at build time by `scripts/generate-seed-config.cjs`.
+///
+/// The default is the launcher's own directory, so out of the box WE desktop, Flux and ADAM share
+/// one agent. Changing it is a data migration rather than a preference — see `SeedConfig.ad4m`.
+fn resolve_ad4m_data_path() -> PathBuf {
+    let home = dirs::home_dir().expect("Failed to get home directory");
+
+    let configured = std::env::var("WE_AD4M_DATA_PATH")
+        .ok()
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| seed_runtime::AD4M_DATA_PATH.to_string());
+
+    expand_home(&configured, &home)
+}
+
+/// Expands a leading `~`. Only leading — `~` elsewhere in a path is a literal character.
+fn expand_home(path: &str, home: &std::path::Path) -> PathBuf {
+    if path == "~" {
+        return home.to_path_buf();
+    }
+    match path.strip_prefix("~/") {
+        Some(rest) => home.join(rest),
+        None => PathBuf::from(path),
+    }
+}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -18,10 +55,9 @@ pub fn run() {
     // Generate a credential token
     let req_credential = Uuid::new_v4().to_string();
     
-    // Get the users ad4m directory (~/.ad4m) to access existing agent data
-    let app_data_path = dirs::home_dir()
-        .expect("Failed to get home directory")
-        .join(".ad4m");
+    // Where the executor keeps its data — seed-configured, env-overridable.
+    let app_data_path = resolve_ad4m_data_path();
+    println!("AD4M data path: {}", app_data_path.display());
     
     std::fs::create_dir_all(&app_data_path)
         .expect("Failed to create app data directory");

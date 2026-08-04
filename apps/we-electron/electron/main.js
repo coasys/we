@@ -2,7 +2,7 @@ import { execSync, spawn } from 'child_process';
 import { app, BrowserWindow, desktopCapturer, ipcMain } from 'electron';
 import contextMenu from 'electron-context-menu';
 import express from 'express';
-import { existsSync, readdirSync, rmSync } from 'fs';
+import { existsSync, readdirSync, readFileSync, rmSync } from 'fs';
 import http from 'http';
 import net from 'net';
 import { homedir } from 'os';
@@ -28,6 +28,40 @@ let mainWindow;
 let ad4mPort = null;
 let ad4mToken = null;
 let executorProcess = null;
+
+/**
+ * Where the executor keeps its data: the agent's keys, datasets and settings.
+ *
+ * Precedence is env → seed → `~/.ad4m`. The env var is the ad-hoc override — testing the
+ * first-run flow means starting against an empty directory, and doing that by moving the real
+ * `~/.ad4m` aside risks the agent you actually use. The seed value is the deployment default,
+ * generated into `seed-runtime.json` at build time because the main process needs it before any
+ * window exists.
+ *
+ * The default is the launcher's own directory, so out of the box WE desktop, Flux and ADAM share
+ * one agent. Changing it is a data migration rather than a preference — see `SeedConfig.ad4m`.
+ */
+function resolveAd4mDataPath() {
+  const fromEnv = process.env.WE_AD4M_DATA_PATH;
+  if (fromEnv) return expandHome(fromEnv);
+
+  try {
+    const runtime = JSON.parse(readFileSync(join(__dirname, 'seed-runtime.json'), 'utf8'));
+    if (runtime.ad4mDataPath) return expandHome(runtime.ad4mDataPath);
+  } catch {
+    // Generated file missing or unreadable — fall through. Refusing to start over a config file
+    // would be a worse failure than quietly using the location every install already uses.
+  }
+
+  return join(homedir(), '.ad4m');
+}
+
+/** Expands a leading `~`. Only leading — `~` elsewhere in a path is a literal character. */
+function expandHome(p) {
+  if (p === '~') return homedir();
+  if (p.startsWith('~/')) return join(homedir(), p.slice(2));
+  return p;
+}
 
 // Find a free port in the given range
 function findFreePort(startPort, endPort) {
@@ -99,7 +133,7 @@ async function startExecutor() {
     ad4mToken = uuidv4();
 
     // Get AD4M data directory
-    const ad4mDataPath = join(homedir(), '.ad4m');
+    const ad4mDataPath = resolveAd4mDataPath();
 
     // Kill any surviving ad4m-executor from a previous detached run (survives Ctrl+C).
     // Must happen BEFORE the lair socket / LOCK cleanups so the old process releases

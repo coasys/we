@@ -14,7 +14,7 @@
     "call"
   ],
   "ad4m": {
-    "dataPath": "~/.we-native-app",
+    "dataPath": "~/.ad4m",
     "executorPath": "../ad4m/target/release/ad4m-executor",
     "repoPath": "../ad4m"
   },
