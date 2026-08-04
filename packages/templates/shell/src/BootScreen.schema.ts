@@ -41,14 +41,26 @@ function linkButton(text: string, icon: string, onClick: SchemaProp): SchemaNode
   };
 }
 
+/** The switch-account escape hatch. Renders nothing when there is nowhere else to go. */
+const switchAccountLink: SchemaNode = {
+  type: '$if',
+  props: {
+    condition: { $store: 'accountStore.hasOtherAccounts' },
+    then: linkButton('Switch account', 'users', { $setLocal: 'mode', value: 'accounts' }),
+  },
+};
+
 /**
- * Switch-account and create-account, shown wherever a user could otherwise be stranded.
+ * Secondary actions under a form.
  *
- * That includes the setup screen. A freshly created account boots into an empty directory and
- * lands there — without a way back, creating an account by mistake traps you on a setup form for
- * an account you did not want, with the one you were using a restart away and no route to it.
+ * `create` is false on the setup screen: offering "create new account" beside the form that *is*
+ * creating one is incoherent, and on a genuine first run there are no accounts for the phrasing to
+ * even make sense against. Switch stays there, because that is the escape hatch that matters — a
+ * freshly created account boots into an empty directory and lands on setup, and without a way back
+ * an accidental create traps you on a form for an account you did not want. It gates itself on
+ * there being somewhere to go, so first run shows nothing at all.
  */
-function accountActions(showSwitch: boolean): SchemaNode {
+function accountActions({ create }: { create: boolean }): SchemaNode {
   return {
     type: '$if',
     props: {
@@ -57,18 +69,8 @@ function accountActions(showSwitch: boolean): SchemaNode {
         type: 'Row',
         props: { gap: '200', ay: 'center', mt: '300' },
         children: [
-          ...(showSwitch
-            ? [
-                {
-                  type: '$if',
-                  props: {
-                    condition: { $store: 'accountStore.hasOtherAccounts' },
-                    then: linkButton('Switch account', 'users', { $setLocal: 'mode', value: 'accounts' }),
-                  },
-                } as SchemaNode,
-              ]
-            : []),
-          linkButton('Create new account', 'user-plus', { $setLocal: 'mode', value: 'create' }),
+          switchAccountLink,
+          ...(create ? [linkButton('Create new account', 'user-plus', { $setLocal: 'mode', value: 'create' })] : []),
         ],
       },
     },
@@ -310,7 +312,7 @@ const unlockForm: SchemaNode = {
         ],
       },
     },
-    accountActions(true),
+    accountActions({ create: true }),
   ],
 };
 
@@ -416,10 +418,9 @@ export const bootScreen: SchemaNode = {
                 password: {
                   type: 'string',
                   initial: '',
-                  validate: [
-                    { rule: 'required', message: 'Password is required' },
-                    { rule: 'minLength', value: 10, message: 'Use at least 10 characters' },
-                  ],
+                  // Deliberately only "required": no length or composition rules. Adding them
+                  // later is easy; having them now blocks testing with throwaway passwords.
+                  validate: [{ rule: 'required', message: 'Password is required' }],
                 },
                 confirm: {
                   type: 'string',
@@ -567,7 +568,7 @@ export const bootScreen: SchemaNode = {
                             {
                               type: 'we-text',
                               props: { variant: 'footnote', color: 'neutral-500', textAlign: 'center' },
-                              children: ["At least 10 characters. If you lose it, this account can't be recovered."],
+                              children: ["If you lose this password, the account can't be recovered."],
                             },
                             {
                               type: 'we-button',
@@ -602,7 +603,7 @@ export const bootScreen: SchemaNode = {
                                 ],
                               },
                             },
-                            accountActions(true),
+                            accountActions({ create: false }),
                           ],
                         },
                       },
