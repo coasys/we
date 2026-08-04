@@ -41,10 +41,6 @@ import {
   Timeline,
   ToastContainer,
 } from '@we/components/solid';
-import { DesignToolbar } from '@we/editor';
-import { RightPanelContainer } from '@we/editor';
-import { TemplateCard } from '@we/editor';
-import { AiPanel } from '@we/editor/ai';
 import type { ComponentRegistry } from '@we/schema-solid';
 import { CollapsibleSidebar, GraphWidget, mockGraphData, SpaceSidebarWidget } from '@we/widgets/solid';
 import { lazy } from 'solid-js';
@@ -61,6 +57,18 @@ import { lazy } from 'solid-js';
  * gives every chunk the same `solid-js`, so the single-instance guarantee the module system relies
  * on is untouched.
  */
+/**
+ * The editing surface, and the code editor inside it.
+ *
+ * CodeMirror, Prism and the editor's own components are only reachable once a template is being
+ * edited — a mode most sessions never enter — so they are fetched when the editor chrome first
+ * renders rather than before anything does.
+ */
+const DesignToolbar = lazy(() => import('@we/editor').then((m) => ({ default: m.DesignToolbar })));
+const RightPanelContainer = lazy(() => import('@we/editor').then((m) => ({ default: m.RightPanelContainer })));
+const TemplateCard = lazy(() => import('@we/editor').then((m) => ({ default: m.TemplateCard })));
+const AiPanel = lazy(() => import('@we/editor/ai').then((m) => ({ default: m.AiPanel })));
+
 /** Same reasoning as the globe: one decorative component, and `three` behind it. */
 const WeCubeOnDemand = lazy(() => import('../components/3d/WeCube'));
 
