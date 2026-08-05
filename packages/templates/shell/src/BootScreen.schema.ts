@@ -128,7 +128,7 @@ function accountSwitcher({ allowCreate }: { allowCreate: boolean }): SchemaNode 
       condition: { $store: 'accountStore.canManageAccounts' },
       then: {
         type: 'Column',
-        props: { position: 'absolute', bottom: '400', left: '400', zIndex: 1 },
+        props: { position: 'absolute', bottom: '300', left: '300', zIndex: 1 },
         children: [
           // Failures from switching or creating surface here, beside the controls that cause them
           // — there is nowhere else on this screen that account errors belong.
