@@ -439,24 +439,24 @@ export const bootScreen: SchemaNode = {
                   children: [
                     {
                       type: 'Column',
-                      props: { gap: '400', ax: 'center' },
+                      props: { gap: '700', ax: 'center' },
                       children: [
                         {
                           type: 'Row',
                           props: { gap: '300', ay: 'center' },
                           children: [
-                            { type: 'we-icon', props: { name: 'user-plus', color: 'primary-600' } },
+                            { type: 'we-icon', props: { name: 'user-plus', size: 'lg', gradient: 'primary' } }, // color: 'primary-600'
                             {
                               type: 'we-text',
-                              props: { variant: 'heading-sm', fontWeight: 'regular' },
-                              children: ['Create account'],
+                              props: { variant: 'heading-md', fontWeight: 'regular' },
+                              children: ['New account'],
                             },
                           ],
                         },
                         // Form
                         {
                           type: 'Column',
-                          props: { gap: '400' },
+                          props: { gap: '400', minWidth: '300px' },
                           children: [
                             // Picture — optional, and held until an agent exists to upload to.
                             {
@@ -466,8 +466,10 @@ export const bootScreen: SchemaNode = {
                                 alt: 'Profile picture',
                                 aspect: 1,
                                 placeholderIcon: 'user',
-                                width: '96px',
-                                height: '96px',
+                                width: '120px',
+                                height: '120px',
+                                r: 'full',
+                                alignSelf: 'center',
                                 onImageChange: { $action: 'profileStore.setPendingAvatar', args: ['$arg'] },
                               },
                             },
@@ -475,7 +477,7 @@ export const bootScreen: SchemaNode = {
                             // identity, one thing to type.
                             {
                               type: 'we-form-field',
-                              props: { label: 'Your name', error: { $error: 'name' } },
+                              props: { label: 'Name', error: { $error: 'name' } },
                               children: [
                                 {
                                   type: 'we-input',
@@ -537,13 +539,13 @@ export const bootScreen: SchemaNode = {
                                 },
                               ],
                             },
-                            // The one thing that is not obvious: there is no reset. Every other app
-                            // has taught the user that a forgotten password is recoverable by email.
-                            {
-                              type: 'we-text',
-                              props: { variant: 'footnote', color: 'neutral-500', textAlign: 'center' },
-                              children: ["If you lose this password, the account can't be recovered."],
-                            },
+                            // // The one thing that is not obvious: there is no reset. Every other app
+                            // // has taught the user that a forgotten password is recoverable by email.
+                            // {
+                            //   type: 'we-text',
+                            //   props: { variant: 'footnote', color: 'neutral-500', textAlign: 'center' },
+                            //   children: ["If you lose this password, the account can't be recovered."],
+                            // },
                           ],
                         },
                         {
