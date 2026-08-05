@@ -21,6 +21,7 @@ import { Accessor, createContext, createEffect, createSignal, ParentProps, useCo
 
 import { useBackend, usePlatform } from '../providers/PlatformProvider';
 import { startAppBridge } from '../services/appBridge';
+import { useShellStore } from './ShellStore';
 
 /**
  * Where boot has got to.
@@ -98,6 +99,9 @@ export interface SessionStore {
 const SessionContext = createContext<SessionStore>();
 
 export function SessionStoreProvider(props: ParentProps) {
+  // Legal because this provider sits *inside* ShellStoreProvider. Used only for the boot handoff:
+  // when the session becomes usable, the shell opens the surface it rests on.
+  const shellStore = useShellStore();
   const platform = usePlatform();
   const backend = useBackend();
 
@@ -277,6 +281,7 @@ export function SessionStoreProvider(props: ParentProps) {
   }
 
   function finishSetup(): void {
+    shellStore.showHome();
     settingUp = false;
     setBootState('ready');
   }
@@ -326,7 +331,11 @@ export function SessionStoreProvider(props: ParentProps) {
     logout,
 
     refreshMe,
-    markReady: () => setBootState(settingUp ? 'finishing' : 'ready'),
+    markReady: () => {
+      const next = settingUp ? 'finishing' : 'ready';
+      setBootState(next);
+      if (next === 'ready') shellStore.showHome();
+    },
     onSessionUnlocked,
   };
 

@@ -73,16 +73,33 @@ const accountError: SchemaNode = {
  * so both put the wordmark in the same place. The boot screen leaves by cross-fading, and matching
  * position means the logo holds still through it. Keep the two in step if either moves.
  *
- * Inert, unlike the sidebar's copy: that one opens the About page, which is not somewhere to send
- * anyone from a screen they have not signed in on yet.
+ * Opens the About page, exactly as the sidebar's copy does — so the mark means one thing in both
+ * places. Worth having here because this screen asks someone to create an account before anything
+ * has told them what they are creating it in.
+ *
+ * `bare` so it stays a mark rather than becoming a button; the hover is the only thing that admits
+ * it is clickable at all. That is thin on its own, which is why the welcome copy carries a labelled
+ * link as well — an unlabelled logo is discoverable by people who already suspect it does
+ * something, and they are not the ones who need it.
  */
 const logoCorner: SchemaNode = {
   type: 'Column',
   props: { position: 'absolute', top: '0', left: '0', width: '80px', height: '80px', ax: 'center', ay: 'center' },
   children: [
     {
-      type: 'we-image',
-      props: { src: '/we-text.svg', alt: 'WE', width: '38px', height: '38px', gradient: 'primary' },
+      type: 'we-button',
+      props: {
+        variant: 'bare',
+        title: 'About WE',
+        hoverProps: { opacity: 0.7 },
+        onClick: { $action: 'shellStore.openShellView', args: ['landing-page'] },
+      },
+      children: [
+        {
+          type: 'we-image',
+          props: { src: '/we-text.svg', alt: 'WE', width: '38px', height: '38px', gradient: 'primary' },
+        },
+      ],
     },
   ],
 };
@@ -205,6 +222,18 @@ const welcomeHeading: SchemaNode = {
       type: 'we-text',
       props: { color: 'neutral-600', textAlign: 'center' },
       children: ['Create an account to get started. It lives on this device, and so does everything in it.'],
+    },
+    // Labelled, and in the reader's line of sight. The mark in the corner opens the same page, but
+    // an unlabelled logo is only discoverable by someone who already suspects it does something —
+    // which is not the person asking "what is WE?" for the first time.
+    {
+      type: 'we-button',
+      props: {
+        variant: 'bare',
+        color: 'primary-600',
+        onClick: { $action: 'shellStore.openShellView', args: ['landing-page'] },
+      },
+      children: [{ type: 'we-text', props: { textDecoration: 'underline' }, children: ['What is WE?'] }],
     },
   ],
 };
