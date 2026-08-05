@@ -32,14 +32,14 @@ import type { OperatorToken, SchemaNode, SchemaProp } from '@we/schema-shared';
 function accountBadge(account: string): SchemaNode {
   return {
     type: 'Column',
-    props: { gap: '300', ax: 'center' },
+    props: { gap: '400', ax: 'center' },
     children: [
       {
         type: 'we-avatar',
         props: {
           image: { $store: `${account}.avatar` },
           initials: { $store: `${account}.name` },
-          size: '100px',
+          size: '120px',
           bg: 'primary-100',
         },
       },
@@ -185,7 +185,7 @@ function accountSwitcher({ allowCreate }: { allowCreate: boolean }): SchemaNode 
 function startingState(account: string): SchemaNode {
   return {
     type: 'Column',
-    props: { gap: '400', ax: 'center' },
+    props: { gap: '600', ax: 'center' },
     children: [
       // Gated on `canManageAccounts` — known synchronously from the platform adapter — rather than
       // on the account itself, which arrives over IPC a few frames later. Gating on the account
@@ -213,7 +213,7 @@ function startingState(account: string): SchemaNode {
 /** The unlock form: the account you are signing in to, and the password for it. */
 const unlockForm: SchemaNode = {
   type: 'Column',
-  props: { gap: '400', ax: 'center' },
+  props: { gap: '600', ax: 'center' },
   children: [
     // The account chip when the host knows about accounts; the generic heading otherwise, so web
     // is not left with an unexplained lock icon.
@@ -445,7 +445,7 @@ export const bootScreen: SchemaNode = {
                           type: 'Row',
                           props: { gap: '300', ay: 'center' },
                           children: [
-                            { type: 'we-icon', props: { name: 'user-plus', size: 'lg', gradient: 'primary' } }, // color: 'primary-600'
+                            { type: 'we-icon', props: { name: 'user-plus', color: 'primary-700' } }, // color: 'primary-600'
                             {
                               type: 'we-text',
                               props: { variant: 'heading-md', fontWeight: 'regular' },
@@ -485,7 +485,6 @@ export const bootScreen: SchemaNode = {
                                     placeholder: 'Name...',
                                     value: { $local: 'name' },
                                     onInput: { $setLocal: 'name', from: '$event.detail' },
-                                    onBlur: { $touch: 'name' },
                                   },
                                 },
                               ],
@@ -504,7 +503,6 @@ export const bootScreen: SchemaNode = {
                                     placeholder: 'Password...',
                                     value: { $local: 'password' },
                                     onInput: { $setLocal: 'password', from: '$event.detail' },
-                                    onBlur: { $touch: 'password' },
                                   },
                                 },
                               ],
@@ -534,7 +532,6 @@ export const bootScreen: SchemaNode = {
                                     placeholder: 'Confirm password...',
                                     value: { $local: 'confirm' },
                                     onInput: { $setLocal: 'confirm', from: '$event.detail' },
-                                    onBlur: { $touch: 'confirm' },
                                   },
                                 },
                               ],
@@ -552,22 +549,29 @@ export const bootScreen: SchemaNode = {
                           type: 'we-button',
                           props: {
                             text: 'Create account',
-                            color: 'neutral-0',
-                            bg: 'primary-500',
-                            // A hard gate, paired with the per-field onBlur touches above: this
-                            // form is filled in sequence and its rules are worth answering as
-                            // each field is left, so the errors are already reachable without a
-                            // submit-time $touch. A { $touch: '$all' } here would be dead — the
-                            // button cannot be clicked in the state that would reveal anything.
-                            disabled: { $not: { $formValid: '$scope' } },
+                            // Clickable whatever the fields say, because the click is what asks the
+                            // question. Answering on blur meant leaving a field you had not filled
+                            // in yet was treated as a mistake; a hard gate instead would leave a
+                            // grey button and no way to learn that the two passwords differ. So the
+                            // click touches every field and the errors arrive together, once, in
+                            // response to the attempt. `loading` disables it while the request is
+                            // in flight — we-button blocks the click on either flag.
                             loading: { $store: 'sessionStore.createAgentLoading' },
                             // One action rather than a chain: the ordering is load-bearing
                             // (the profile cannot be published until the agent exists) and the
                             // failure handling differs per step. See completeAccountSetup.
-                            onClick: {
-                              $action: 'profileStore.completeAccountSetup',
-                              args: [{ $local: 'name' }, { $local: 'password' }],
-                            },
+                            onClick: [
+                              { $touch: '$all' },
+                              {
+                                $if: {
+                                  condition: { $formValid: '$scope' },
+                                  then: {
+                                    $action: 'profileStore.completeAccountSetup',
+                                    args: [{ $local: 'name' }, { $local: 'password' }],
+                                  },
+                                },
+                              },
+                            ],
                           },
                         },
                       ],
