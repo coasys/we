@@ -120,6 +120,24 @@ describe('migrating out of the pre-container layout', () => {
     expect(migrated.resolveActivePath()).toBe(target);
   });
 
+  it('does not run again when the container is wiped for a clean slate', () => {
+    // The container going away is the supported way to start fresh. Keying "already migrated" on
+    // the new registry existing meant wiping it left the old file to repopulate the next boot with
+    // the accounts that had just been deleted.
+    mkdirSync(configDir, { recursive: true });
+    writeFileSync(
+      join(configDir, 'we-accounts.json'),
+      JSON.stringify({ accounts: [{ name: 'Ghost', path: defaultPath }], selectedPath: defaultPath }),
+      'utf8',
+    );
+    createAccountRegistry({ configDir, defaultPath });
+
+    rmSync(defaultPath, { recursive: true, force: true });
+    mkdirSync(defaultPath, { recursive: true }); /* as `init` scaffolds it on the next boot */
+
+    expect(createAccountRegistry({ configDir, defaultPath }).list()[0].name).toBe('Main');
+  });
+
   it('runs once, and leaves an already-migrated registry alone', () => {
     mkdirSync(configDir, { recursive: true });
     writeFileSync(

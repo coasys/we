@@ -205,6 +205,20 @@ export function createAccountRegistry({ configDir, defaultPath, defaultName = 'M
       accounts: legacy.accounts.map((a) => ({ ...a, path: rewrite(a.path) })),
       selectedPath: legacy.selectedPath ? rewrite(legacy.selectedPath) : null,
     });
+
+    // Retire the old file, or this runs again every time the container goes away — and the
+    // container going away is the supported way to start fresh. Keying "already migrated" on the
+    // new registry existing was wrong for exactly the case the container exists to serve: wiping
+    // it deletes that registry while leaving this one, so the next boot repopulated the fresh
+    // container with the accounts that had just been deleted.
+    //
+    // Renamed rather than deleted: it is the only record of a layout we no longer write, and it
+    // costs a few KB to keep.
+    try {
+      renameSync(legacyRegistry, `${legacyRegistry}.migrated`);
+    } catch (e) {
+      console.warn('[accounts] Migrated, but could not retire the old registry:', e.message);
+    }
     console.log(`[accounts] Migrated ${legacy.accounts.length} account(s) into ${managedRoot}`);
   }
 

@@ -233,6 +233,17 @@ impl AccountRegistry {
                 .collect(),
             selected_path: rewrite(&legacy.selected_path),
         });
+        // Retire the old file, or this runs again every time the container goes away — and the
+        // container going away is the supported way to start fresh. Keying "already migrated" on
+        // the new registry existing was wrong for exactly the case the container exists to serve:
+        // wiping it deletes that registry while leaving this one, so the next boot repopulated the
+        // fresh container with the accounts that had just been deleted.
+        //
+        // Renamed rather than deleted: it is the only record of a layout we no longer write.
+        let retired = self.legacy_registry().with_extension("json.migrated");
+        if let Err(e) = fs::rename(self.legacy_registry(), retired) {
+            eprintln!("[accounts] Migrated, but could not retire the old registry: {e}");
+        }
         println!("[accounts] Migrated {count} account(s) into {}", managed.display());
     }
 
@@ -694,6 +705,38 @@ mod tests {
 
         assert!(!PathBuf::from(&created.id).exists());
         assert_eq!(registry.list().len(), 1);
+        fs::remove_dir_all(root).ok();
+    }
+
+    #[test]
+    fn migration_does_not_run_again_when_the_container_is_wiped() {
+        // The container going away is the supported way to start fresh. Keying "already migrated"
+        // on the new registry existing meant wiping it left the old file to repopulate the next
+        // boot with the accounts that had just been deleted.
+        let (root, default_path, _) = temp_registry();
+        let config_dir = root.join("config");
+        fs::create_dir_all(&config_dir).unwrap();
+        fs::write(
+            config_dir.join("we-accounts.json"),
+            serde_json::to_string(&RegistryState {
+                accounts: vec![AccountEntry {
+                    name: "Ghost".to_string(),
+                    path: default_path.clone(),
+                    avatar: None,
+                    provisional: false,
+                }],
+                selected_path: default_path.clone(),
+            })
+            .unwrap(),
+        )
+        .unwrap();
+        AccountRegistry::new(config_dir.clone(), default_path.clone());
+
+        fs::remove_dir_all(&default_path).unwrap();
+        fs::create_dir_all(&default_path).unwrap(); // as `init` scaffolds it on the next boot
+
+        let after = AccountRegistry::new(config_dir, default_path);
+        assert_eq!(after.list()[0].name, "Main");
         fs::remove_dir_all(root).ok();
     }
 
