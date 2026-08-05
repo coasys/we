@@ -255,18 +255,14 @@ function startingState(account: string): SchemaNode {
   return {
     type: '$if',
     props: {
-      // Nothing set up here — there is no account to name, so name none.
-      condition: { $store: 'accountStore.isFirstRun' },
-      then: welcomeHeading,
-      else: {
-        type: '$if',
-        props: {
-          // Not answered yet. Wordless rather than optimistic; see `neutralWait`.
-          condition: { $store: 'accountStore.accountsLoaded' },
-          then: knownAccountState(account),
-          else: neutralWait,
-        },
+      // Only an account that exists gets named. A first run has none to name — the welcome above
+      // is already saying the right thing — and before the host answers, anything said is a guess.
+      // Both cases are the same wordless wait.
+      condition: {
+        $and: [{ $store: 'accountStore.accountsLoaded' }, { $not: { $store: 'accountStore.isFirstRun' } }],
       },
+      then: knownAccountState(account),
+      else: neutralWait,
     },
   };
 }
@@ -428,8 +424,30 @@ export const bootScreen: SchemaNode = {
         logoCorner,
         {
           type: 'Column',
-          props: { width: '100%', ax: 'center', ay: 'start' },
+          // The gap only ever applies on a first run, where the hoisted welcome and the form are
+          // both present. Every other state renders exactly one of these branches, and a `$if` that
+          // renders nothing contributes no flex item. Matched to the form's own internal spacing so
+          // the heading sits the same distance above it either way.
+          props: { width: '100%', ax: 'center', ay: 'start', gap: '700' },
           children: [
+            // Above the boot-state branches, not inside one. `initialising` and `createAgent` are
+            // siblings, so anything rendered within them is torn down and rebuilt at the boundary —
+            // which is what made the welcome appear, sit there, and then be replaced by a second
+            // copy of itself once the form arrived. Rendered here it simply stays put while the
+            // form materialises underneath it: one screen filling in, rather than two screens
+            // swapping. Same reason the corner switcher is rendered at the root.
+            {
+              type: '$if',
+              props: {
+                condition: {
+                  $and: [
+                    { $store: 'accountStore.isFirstRun' },
+                    { $in: [{ $store: 'sessionStore.bootState' }, ['initialising', 'createAgent']] },
+                  ],
+                },
+                then: welcomeHeading,
+              },
+            },
             // Initialising state
             {
               type: '$if',
@@ -531,29 +549,29 @@ export const bootScreen: SchemaNode = {
                       type: 'Column',
                       props: { gap: '700', ax: 'center' },
                       children: [
+                        // Absent on a first run: the welcome hoisted above the boot-state branches
+                        // is already the heading for this form, and it says the same thing without
+                        // being torn down and rebuilt when the state changes underneath it. What is
+                        // left here is the case it is actually for — adding an account to a machine
+                        // that already has one, where "New account" answers a real question rather
+                        // than "new compared to what?".
                         {
-                          type: 'Row',
-                          props: { gap: '300', ay: 'center' },
-                          children: [
-                            { type: 'we-icon', props: { name: 'user-plus', color: 'primary-700' } }, // color: 'primary-600'
-                            {
-                              type: 'we-text',
-                              props: { variant: 'heading-md', fontWeight: 'regular' },
-                              // The same form, introduced differently. On a machine where nothing
-                              // has been set up, "New account" answers a question nobody asked —
-                              // new compared to what? Once there is an account to compare against,
-                              // it is exactly the right word.
+                          type: '$if',
+                          props: {
+                            condition: { $not: { $store: 'accountStore.isFirstRun' } },
+                            then: {
+                              type: 'Row',
+                              props: { gap: '300', ay: 'center' },
                               children: [
+                                { type: 'we-icon', props: { name: 'user-plus', color: 'primary-700' } },
                                 {
-                                  $if: {
-                                    condition: { $store: 'accountStore.isFirstRun' },
-                                    then: 'Welcome to WE',
-                                    else: 'New account',
-                                  },
+                                  type: 'we-text',
+                                  props: { variant: 'heading-md', fontWeight: 'regular' },
+                                  children: ['New account'],
                                 },
                               ],
                             },
-                          ],
+                          },
                         },
                         // Form
                         {
