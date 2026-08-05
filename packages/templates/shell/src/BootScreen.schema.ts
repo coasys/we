@@ -39,7 +39,7 @@ function accountBadge(account: string): SchemaNode {
         props: {
           image: { $store: `${account}.avatar` },
           initials: { $store: `${account}.name` },
-          size: 'xxl',
+          size: '100px',
           bg: 'primary-100',
         },
       },
@@ -90,12 +90,12 @@ function accountSwitcher({ allowCreate }: { allowCreate: boolean }): SchemaNode 
     // Not disabled while a switch is in flight. It faded out and came back at full opacity in the
     // next document, which is its own flicker — and clicking another account mid-switch is a
     // reasonable thing to want, which the store handles by simply switching again.
-    props: { variant: 'ghost', width: '100%', ax: 'start', onClick },
+    props: { variant: 'bare', ax: 'start', p: '300', hoverProps: { bg: 'neutral-100' }, onClick },
     children: [
       {
         type: 'Row',
-        props: { gap: '250', ay: 'center' },
-        children: [avatar, { type: 'we-text', props: { variant: 'label', truncate: true }, children: [label] }],
+        props: { gap: '200', ay: 'center' },
+        children: [avatar, { type: 'we-text', props: { fontSize: '300', truncate: true }, children: [label] }],
       },
     ],
   });
@@ -106,7 +106,7 @@ function accountSwitcher({ allowCreate }: { allowCreate: boolean }): SchemaNode 
       condition: { $store: 'accountStore.canManageAccounts' },
       then: {
         type: 'Column',
-        props: { position: 'absolute', bottom: '400', left: '400', gap: '100', maxWidth: '240px', zIndex: 1 },
+        props: { position: 'absolute', bottom: '400', left: '400', gap: '300', maxWidth: '240px', zIndex: 1 },
         children: [
           // Failures from switching or creating surface here, beside the controls that cause them
           // — there is nowhere else on this screen that account errors belong.
@@ -123,7 +123,7 @@ function accountSwitcher({ allowCreate }: { allowCreate: boolean }): SchemaNode 
                 '$account.name',
                 {
                   type: 'we-avatar',
-                  props: { image: '$account.avatar', initials: '$account.name', size: 'sm', bg: 'primary-100' },
+                  props: { image: '$account.avatar', initials: '$account.name', size: 'lg', bg: 'primary-200' },
                 },
                 { $action: 'accountStore.switchAccount', args: ['$account.id'] },
               ),
@@ -136,7 +136,7 @@ function accountSwitcher({ allowCreate }: { allowCreate: boolean }): SchemaNode 
                 // this same corner.
                 tile(
                   'New account',
-                  { type: 'we-avatar', props: { icon: 'plus', size: 'sm', bg: 'neutral-100' } },
+                  { type: 'we-avatar', props: { icon: 'plus', size: 'lg', bg: 'neutral-100' } },
                   { $action: 'accountStore.createAccount' },
                 ),
               ]
@@ -178,7 +178,7 @@ function startingState(account: string): SchemaNode {
       },
       {
         type: 'Row',
-        props: { gap: '300', ay: 'center' },
+        props: { gap: '300', ay: 'center', height: '40px' },
         children: [
           { type: 'we-spinner', props: { size: 'sm' } },
           { type: 'we-text', props: { color: 'neutral-600' }, children: ['Loading account...'] },

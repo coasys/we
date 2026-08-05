@@ -164,20 +164,29 @@ const CSS_STYLES = css`
     pointer-events: none;
   }
 
-  /* Square buttons are sized purely by component height — suppress all cascade padding */
+  /* Square buttons are sized purely by component height — nothing from the padding cascade above
+     applies. Still var()-first, for the same reason 'bare' is: see below. */
   :host([square]) [part='base'] {
-    padding: 0;
+    padding: var(--we-button-padding, 0);
   }
 
-  /* The three things 'bare' has to unset that are not DS props, so the variant map cannot carry
-     them: padding is CSS-cascaded (see above); white-space: nowrap inherits down into the wrapped
-     content, which is wrong for a wrapper whose child does its own wrapping/truncation; and
-     overflow: hidden exists to clip the gradient overlay, which 'bare' never has. */
+  /* Two of the things 'bare' has to unset are not DS props, so the variant map cannot carry them:
+     white-space: nowrap inherits down into the wrapped content, which is wrong for a wrapper whose
+     child does its own wrapping/truncation; and overflow: hidden exists to clip the gradient
+     overlay, which 'bare' never has.
+
+     Padding is a third case and not one of those. It is a DS prop — it just cannot ride in the
+     variant map either, because button sets nativePadding and owns padding here in CSS. Declaring
+     a flat 0 (which is what this was) outranks the cascade above at (0,3,0) vs (0,1,0) and does
+     not read the var at all, so every p/px/py on a bare button computed correctly, landed on the
+     host, and was then never consulted. Reading the var with 0 as the fallback keeps the default
+     identical — the instance var is only set for an explicitly passed padding prop — while
+     letting an explicit one through. */
   :host([variant='bare']) {
     white-space: normal;
   }
   :host([variant='bare']) [part='base'] {
-    padding: 0;
+    padding: var(--we-button-padding, 0);
     overflow: visible;
   }
 `;
