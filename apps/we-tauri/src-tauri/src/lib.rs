@@ -116,7 +116,9 @@ pub fn run() {
             let config = Ad4mConfig {
                 admin_credential: Some(req_credential.clone()),
                 app_data_path: Some(app_data_path.to_str().unwrap().to_string()),
-                gql_port: Some(graphql_port),
+                // `port` is the executor's GraphQL/REST port — the same one the electron host
+                // passes as `--port`. It was `gql_port` in an older Ad4mConfig.
+                port: Some(graphql_port),
                 run_dapp_server: Some(false), // Disabled - we serve the app ourselves
                 connect_holochain: Some(true),
                 ..Default::default()

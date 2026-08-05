@@ -25,3 +25,22 @@ warp = "0.3"
 ad4m-executor = { path = "{{AD4M_EXECUTOR_PATH}}" }
 uuid = { version = "0.8", features = ["v4"] }
 dirs = "5"
+
+# Must mirror ad4m's workspace-root `[patch.crates-io]`.
+#
+# Holochain 0.7.0-dev.16 needs kitsune2 code that was never published, so ad4m redirects the whole
+# family to a git rev. `[patch]` only applies from the workspace root being built, and this crate is
+# its own workspace — so without these lines cargo silently resolved the crates.io releases instead.
+# They carry the same version strings but different content, which is why the failure surfaced as a
+# missing struct field (`CoreBootstrapConfig::auth_material_base64`) rather than a version conflict.
+# Keep the rev in step with ad4m's.
+[patch.crates-io]
+kitsune2 = { git = "https://github.com/holochain/kitsune2.git", rev = "320a4d9e622c5f1a6f22d29c8beeb0cb5c333cc3" }
+kitsune2_api = { git = "https://github.com/holochain/kitsune2.git", rev = "320a4d9e622c5f1a6f22d29c8beeb0cb5c333cc3" }
+kitsune2_bootstrap_client = { git = "https://github.com/holochain/kitsune2.git", rev = "320a4d9e622c5f1a6f22d29c8beeb0cb5c333cc3" }
+kitsune2_bootstrap_srv = { git = "https://github.com/holochain/kitsune2.git", rev = "320a4d9e622c5f1a6f22d29c8beeb0cb5c333cc3" }
+kitsune2_core = { git = "https://github.com/holochain/kitsune2.git", rev = "320a4d9e622c5f1a6f22d29c8beeb0cb5c333cc3" }
+kitsune2_dht = { git = "https://github.com/holochain/kitsune2.git", rev = "320a4d9e622c5f1a6f22d29c8beeb0cb5c333cc3" }
+kitsune2_gossip = { git = "https://github.com/holochain/kitsune2.git", rev = "320a4d9e622c5f1a6f22d29c8beeb0cb5c333cc3" }
+kitsune2_transport_iroh = { git = "https://github.com/holochain/kitsune2.git", rev = "320a4d9e622c5f1a6f22d29c8beeb0cb5c333cc3" }
+kitsune2_transport_tx5 = { git = "https://github.com/holochain/kitsune2.git", rev = "320a4d9e622c5f1a6f22d29c8beeb0cb5c333cc3" }

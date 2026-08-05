@@ -1,0 +1,13 @@
+# Must match ad4m's `rust-toolchain.toml`.
+#
+# This crate depends on `ad4m-executor` by path, so it compiles that whole tree — including
+# Holochain and iroh — and those have MSRVs above the default toolchain. Without this file the
+# crate built with whatever rustc happened to be default (1.88 here), which resolved a *different*
+# dependency graph to the one ad4m resolves, and that graph did not compile: a kitsune2 stack mixed
+# across 0.4.0-dev.1 and 0.4.1, and pre-release crypto crates (ed25519, pkcs8, signature) upgraded
+# to their finals while their pre-release consumers still expected the release candidates.
+#
+# Pinning the toolchain is what makes `Cargo.lock` reproducible here, so keep the two channels in
+# step: if ad4m moves, this moves with it.
+[toolchain]
+channel = "1.92"
