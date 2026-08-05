@@ -92,6 +92,20 @@ export interface AccountStore {
   activeAccount: Accessor<Account | undefined>;
   /** True when there is somewhere else to switch to. */
   hasOtherAccounts: Accessor<boolean>;
+  /**
+   * The host has answered, so the two "no accounts set up" states can be told apart: not asked yet,
+   * and asked with nothing there. Without it the boot screen reads an empty list as a first run and
+   * flashes a welcome at a returning user for the frame before their accounts arrive.
+   */
+  accountsLoaded: Accessor<boolean>;
+  /**
+   * Nothing has ever been set up on this machine.
+   *
+   * Not "no accounts": on a genuine first run the seed default has already been scaffolded by the
+   * time anything asks, so there is exactly one account and it is called Main. What distinguishes a
+   * first run is that no account anywhere holds an identity yet.
+   */
+  isFirstRun: Accessor<boolean>;
   /** True while a mutation is in flight — note that a successful one ends in a relaunch. */
   busy: Accessor<boolean>;
   /**
@@ -152,11 +166,15 @@ export function AccountStoreProvider(props: ParentProps) {
   // the boot screen would fall through to a state that infers "no target, so this is a create".
   const [switchingTo, setSwitchingTo] = createSignal<Account | null>(null);
   const [creating, setCreating] = createSignal(false);
+  const [accountsLoaded, setAccountsLoaded] = createSignal(false);
   // Read once, synchronously, at construction — before the first paint.
 
   const host = () => platform.accounts;
   const canManageAccounts = createMemo(() => !!host());
   const activeAccount = createMemo(() => accounts().find((a) => a.active));
+  // Every account is a bare directory — nobody has finished setup here yet. Guarded on the host
+  // having answered, so this is never true merely because the list has not arrived.
+  const isFirstRun = createMemo(() => accountsLoaded() && !accounts().some((a) => a.hasAgent));
   // Derived from the list rather than stored, so a request cannot outlive the account it names —
   // a refresh that drops it (removed in another window, say) closes the dialog by itself.
   const pendingRemoval = createMemo(() => accounts().find((a) => a.id === pendingRemovalId()) ?? null);
@@ -168,6 +186,7 @@ export function AccountStoreProvider(props: ParentProps) {
     try {
       const loaded = await accountHost.list();
       setAccounts(loaded);
+      setAccountsLoaded(true);
       // Keep the cache current, so the next boot draws immediately — including after a profile
       // edit, which changes the name and picture this holds.
       writeCachedAccounts(loaded);
@@ -323,6 +342,8 @@ export function AccountStoreProvider(props: ParentProps) {
     accounts,
     activeAccount,
     hasOtherAccounts,
+    accountsLoaded,
+    isFirstRun,
     busy,
     switchingTo,
     creating,

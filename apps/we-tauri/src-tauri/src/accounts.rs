@@ -92,6 +92,8 @@ pub struct Account {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub avatar: Option<String>,
     pub active: bool,
+    /// An identity has been created in this account. See `has_agent`.
+    pub has_agent: bool,
     /// The ADAM launcher keeps its own registry inside this account. See `holds_launcher_state`.
     pub shared_with_launcher: bool,
 }
@@ -353,6 +355,7 @@ impl AccountRegistry {
                 });
                 Account {
                     id: path.to_string_lossy().to_string(),
+                    has_agent: has_agent(&path),
                     shared_with_launcher: holds_launcher_state(&path),
                     name,
                     avatar: meta.and_then(|m| m.avatar.clone()),
@@ -404,6 +407,8 @@ impl AccountRegistry {
             name,
             avatar: None,
             active: true,
+            // Just created: a directory and nothing else. The setup screen makes the identity.
+            has_agent: false,
             shared_with_launcher: false,
         })
     }
@@ -563,6 +568,16 @@ pub fn looks_like_ad4m_data(path: &Path) -> bool {
 /// `~/.ad4m`, which is also one of its agents. Deleting that directory therefore erases the
 /// launcher's record of all its *other* agents too. That is the launcher's design rather than
 /// something fixable from here, but it is a consequence nobody would predict, so removal names it.
+/// Whether an identity has been created in this account.
+///
+/// The executor's own marker: `is_initialized()` is this file existing, so the boot screen's answer
+/// cannot disagree with the one the session reports once it is running. Knowing it *before* the
+/// executor starts is what lets a first run be told apart from a returning user — otherwise the
+/// screen has to guess, and guesses badly, naming an account nobody made.
+pub fn has_agent(path: &Path) -> bool {
+    path.join("ad4m").join("agent.json").exists()
+}
+
 pub fn holds_launcher_state(path: &Path) -> bool {
     path.join("launcher-state.json").exists()
 }

@@ -40,6 +40,18 @@ export interface Account {
   /** The account this app instance is currently running against. */
   active: boolean;
   /**
+   * An identity has been created in this account.
+   *
+   * False for a directory that has been scaffolded but never set up — which every account is
+   * between being created and finishing setup, and which the whole machine is on a genuine first
+   * run. The host answers it from disk, so the boot screen knows which of those it is without
+   * waiting for an executor to start.
+   *
+   * The marker is the executor's own: `is_initialized()` is `<data>/ad4m/agent.json` existing, so
+   * this cannot disagree with what the session will report a few seconds later.
+   */
+  hasAgent: boolean;
+  /**
    * The ADAM launcher keeps its own registry — its list of every agent it knows about — inside
    * this account's directory. Deleting it therefore also erases the launcher's record of its
    * other agents, which is a consequence worth naming in a confirmation.

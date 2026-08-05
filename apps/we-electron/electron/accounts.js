@@ -111,6 +111,18 @@ export function looksLikeAd4mData(path) {
  * record of all its *other* agents too. That is the launcher's design, not something WE can fix
  * from here, but it is a consequence nobody would predict, so removal names it.
  */
+/**
+ * Whether an identity has been created in this account.
+ *
+ * The executor's own marker: `is_initialized()` is this file existing, so the boot screen's answer
+ * cannot disagree with the one the session reports once it is running. Knowing it *before* the
+ * executor starts is what lets a first run be told apart from a returning user — otherwise the
+ * screen has to guess, and guesses badly, naming an account nobody made.
+ */
+export function hasAgent(path) {
+  return existsSync(join(path, 'ad4m', 'agent.json'));
+}
+
 export function holdsLauncherState(path) {
   return existsSync(join(path, 'launcher-state.json'));
 }
@@ -303,6 +315,7 @@ export function createAccountRegistry({ configDir, defaultPath, defaultName = 'M
           name: meta.name ?? (path === defaultPath ? defaultName : basename(path)),
           ...(meta.avatar ? { avatar: meta.avatar } : {}),
           active: path === activePath,
+          hasAgent: hasAgent(path),
           sharedWithLauncher: holdsLauncherState(path),
         };
       });

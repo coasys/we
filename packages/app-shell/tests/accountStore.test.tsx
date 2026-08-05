@@ -41,7 +41,7 @@ function stubHost(accounts: Account[], overrides: Partial<AccountHost> = {}) {
     },
     async create() {
       calls.push('create');
-      return { id: '/cfg/agents/new-account', name: 'New account', active: true };
+      return { id: '/cfg/agents/new-account', name: 'New account', active: true, hasAgent: true };
     },
     async setDisplay(id, display) {
       calls.push(`display:${id}:${display.name ?? ''}:${display.avatar ?? ''}`);
@@ -61,8 +61,8 @@ function stubHost(accounts: Account[], overrides: Partial<AccountHost> = {}) {
 }
 
 const TWO: Account[] = [
-  { id: '/home/x/.ad4m', name: 'Main', active: true },
-  { id: '/cfg/agents/test-net', name: 'Test Net', active: false },
+  { id: '/home/x/.ad4m', name: 'Main', active: true, hasAgent: true },
+  { id: '/cfg/agents/test-net', name: 'Test Net', active: false, hasAgent: true },
 ];
 
 beforeEach(() => {
@@ -86,6 +86,36 @@ describe('when the host cannot manage accounts (web)', () => {
     await store.switchAccount('/somewhere');
     await store.removeAccount('/somewhere');
     expect(store.error()).toBe('');
+  });
+});
+
+describe('telling a first run apart from a returning user', () => {
+  it('is not a first run merely because the host has not answered yet', () => {
+    // Otherwise the welcome flashes at a returning user for the frame before their accounts land.
+    accountHost = stubHost([]).host;
+    expect(mount().isFirstRun()).toBe(false);
+  });
+
+  it('is a first run when the one scaffolded account holds no identity', async () => {
+    // Not "no accounts": by the time anything asks, the seed default has been scaffolded and is
+    // called Main. What marks a first run is that nothing anywhere has been set up.
+    accountHost = stubHost([{ id: '/home/x/.ad4m', name: 'Main', active: true, hasAgent: false }]).host;
+    const store = mount();
+
+    await vi.waitFor(() => expect(store.accountsLoaded()).toBe(true));
+    expect(store.isFirstRun()).toBe(true);
+  });
+
+  it('is not a first run once any account holds an identity', async () => {
+    accountHost = stubHost([
+      { id: '/home/x/.ad4m', name: 'Main', active: true, hasAgent: true },
+      { id: '/home/x/.ad4m/we-accounts/new', name: 'New account', active: false, hasAgent: false },
+    ]).host;
+    const store = mount();
+
+    await vi.waitFor(() => expect(store.accountsLoaded()).toBe(true));
+    // A half-finished second account does not make the machine new again.
+    expect(store.isFirstRun()).toBe(false);
   });
 });
 
@@ -280,7 +310,7 @@ describe('switching and creating always end in applySelection', () => {
     const seen: unknown[] = [];
     host.create = async () => {
       seen.push(store.creating(), store.switchingTo());
-      return { id: '/cfg/agents/new-account', name: 'New account', active: true };
+      return { id: '/cfg/agents/new-account', name: 'New account', active: true, hasAgent: true };
     };
 
     await store.createAccount();
@@ -437,7 +467,7 @@ describe('creating goes straight through', () => {
     const seen: boolean[] = [];
     host.create = async () => {
       seen.push(store.creating());
-      return { id: '/cfg/agents/new-account', name: 'New account', active: true };
+      return { id: '/cfg/agents/new-account', name: 'New account', active: true, hasAgent: true };
     };
 
     await store.createAccount();

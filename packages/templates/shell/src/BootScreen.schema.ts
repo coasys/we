@@ -182,7 +182,68 @@ function accountSwitcher({ allowCreate }: { allowCreate: boolean }): SchemaNode 
  * "Starting", which sounds like it is talking about the app rather than the thing being waited on.
  * The badge above already says *which* account, so this only has to explain the wait.
  */
+/**
+ * The first thing a new install shows, in place of an account badge.
+ *
+ * A machine where nothing has been set up has no account to name, but the seed default has already
+ * been scaffolded by the time anything asks — so the honest-looking screen ("Main", "Loading
+ * account…") was naming an account nobody made and waiting on an identity that does not exist.
+ * `accountStore.isFirstRun` asks the host, which answers from disk without an executor.
+ *
+ * One line of orientation under the heading, and it is about *where the account lives* rather than
+ * what to do next. That is the question a local-first app raises and a cloud one does not, and it
+ * is what makes someone comfortable typing a password into something they met ten seconds ago. The
+ * form below explains the rest better than prose could: a name, a picture and a password *is* what
+ * an account is here.
+ */
+const welcomeHeading: SchemaNode = {
+  type: 'Column',
+  props: { gap: '300', ax: 'center', maxWidth: '420px' },
+  children: [
+    { type: 'we-text', props: { variant: 'heading-md', fontWeight: 'regular' }, children: ['Welcome to WE'] },
+    {
+      type: 'we-text',
+      props: { color: 'neutral-600', textAlign: 'center' },
+      children: ['Create an account to get started. It lives on this device, and so does everything in it.'],
+    },
+  ],
+};
+
+/**
+ * The neutral wait, before the host has said which kind of machine this is.
+ *
+ * Deliberately wordless. Until `accountsLoaded` the screen cannot tell a first run from a returning
+ * user, and every label it could show is a guess — which is what produced a flash of the wrong
+ * account name on a freshly wiped machine. It is one IPC, so this is brief.
+ */
+const neutralWait: SchemaNode = {
+  type: 'Row',
+  props: { gap: '300', ay: 'center', height: '40px' },
+  children: [{ type: 'we-spinner', props: { size: 'sm' } }],
+};
+
 function startingState(account: string): SchemaNode {
+  return {
+    type: '$if',
+    props: {
+      // Nothing set up here — there is no account to name, so name none.
+      condition: { $store: 'accountStore.isFirstRun' },
+      then: welcomeHeading,
+      else: {
+        type: '$if',
+        props: {
+          // Not answered yet. Wordless rather than optimistic; see `neutralWait`.
+          condition: { $store: 'accountStore.accountsLoaded' },
+          then: knownAccountState(account),
+          else: neutralWait,
+        },
+      },
+    },
+  };
+}
+
+/** The returning-user wait: whose account this is, and that it is being opened. */
+function knownAccountState(account: string): SchemaNode {
   return {
     type: 'Column',
     props: { gap: '600', ax: 'center' },
@@ -449,7 +510,19 @@ export const bootScreen: SchemaNode = {
                             {
                               type: 'we-text',
                               props: { variant: 'heading-md', fontWeight: 'regular' },
-                              children: ['New account'],
+                              // The same form, introduced differently. On a machine where nothing
+                              // has been set up, "New account" answers a question nobody asked —
+                              // new compared to what? Once there is an account to compare against,
+                              // it is exactly the right word.
+                              children: [
+                                {
+                                  $if: {
+                                    condition: { $store: 'accountStore.isFirstRun' },
+                                    then: 'Welcome to WE',
+                                    else: 'New account',
+                                  },
+                                },
+                              ],
                             },
                           ],
                         },
