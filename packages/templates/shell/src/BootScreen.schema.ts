@@ -66,6 +66,28 @@ const accountError: SchemaNode = {
 };
 
 /**
+ * The WE mark in the top-left corner.
+ *
+ * Deliberately the same geometry as the sidebar's header slot (`Sidebar.schema.ts`) — an 80x80 box
+ * holding the mark at 38px — because the sidebar is fixed at the origin with no padding of its own,
+ * so both put the wordmark in the same place. The boot screen leaves by cross-fading, and matching
+ * position means the logo holds still through it. Keep the two in step if either moves.
+ *
+ * Inert, unlike the sidebar's copy: that one opens the About page, which is not somewhere to send
+ * anyone from a screen they have not signed in on yet.
+ */
+const logoCorner: SchemaNode = {
+  type: 'Column',
+  props: { position: 'absolute', top: '0', left: '0', width: '80px', height: '80px', ax: 'center', ay: 'center' },
+  children: [
+    {
+      type: 'we-image',
+      props: { src: '/we-text.svg', alt: 'WE', width: '38px', height: '38px', gradient: 'primary' },
+    },
+  ],
+};
+
+/**
  * The other accounts, pinned to the bottom-left corner.
  *
  * The Windows shape: the account being signed in to owns the centre of the screen and the others
@@ -90,7 +112,7 @@ function accountSwitcher({ allowCreate }: { allowCreate: boolean }): SchemaNode 
     // Not disabled while a switch is in flight. It faded out and came back at full opacity in the
     // next document, which is its own flicker — and clicking another account mid-switch is a
     // reasonable thing to want, which the store handles by simply switching again.
-    props: { variant: 'bare', ax: 'start', p: '300', hoverProps: { bg: 'neutral-100' }, onClick },
+    props: { variant: 'bare', ax: 'start', p: '300', hoverProps: { bg: 'neutral-25' }, onClick },
     children: [
       {
         type: 'Row',
@@ -106,7 +128,7 @@ function accountSwitcher({ allowCreate }: { allowCreate: boolean }): SchemaNode 
       condition: { $store: 'accountStore.canManageAccounts' },
       then: {
         type: 'Column',
-        props: { position: 'absolute', bottom: '400', left: '400', gap: '300', maxWidth: '240px', zIndex: 1 },
+        props: { position: 'absolute', bottom: '400', left: '400', zIndex: 1 },
         children: [
           // Failures from switching or creating surface here, beside the controls that cause them
           // — there is nowhere else on this screen that account errors belong.
@@ -304,18 +326,16 @@ export const bootScreen: SchemaNode = {
         zIndex: 9999,
       },
       children: [
-        // WE Logo
-        {
-          type: 'we-image',
-          props: {
-            src: '/we-text.svg',
-            alt: 'WE Logo',
-            width: '150px',
-            height: '75px',
-            gradient: 'primary',
-            mb: '600',
-          },
-        },
+        // The logo, in the corner rather than over the centre — so the one thing in the middle of
+        // the screen is whoever is signing in, which is how every OS login screen is composed.
+        //
+        // The geometry is copied from the sidebar's header slot, not chosen: an 80x80 box at the
+        // origin holding the mark at 38px. The sidebar is fixed at left/top 0 with no padding of
+        // its own, so both land the wordmark centred on (40, 40). Since the boot screen leaves by
+        // cross-fading, an identical position means the logo appears to stay put while the app
+        // assembles around it — rather than jumping to the corner and shrinking 4x mid-fade, which
+        // is what a centred 150px logo did. Any other size here reintroduces that jump.
+        logoCorner,
         {
           type: 'Column',
           props: { width: '100%', ax: 'center', ay: 'start' },
