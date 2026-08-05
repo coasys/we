@@ -5,7 +5,7 @@
  * both are the kind that only bite once: a name that escapes its parent directory, and removal
  * erasing data another app owns.
  */
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'fs';
+import { existsSync, mkdirSync, mkdtempSync, renameSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -50,10 +50,87 @@ describe('seeding', () => {
     expect(registry.resolveActivePath()).toBe(defaultPath);
   });
 
-  it('falls back when the selection points at an account no longer listed', () => {
+  it('falls back when the selected directory has been renamed away', () => {
     const created = registry.create();
-    registry.remove(defaultPath); /* not selected, so allowed */
     expect(registry.resolveActivePath()).toBe(created.id);
+
+    renameSync(created.id, `${created.id}-old`);
+
+    // Previously the selection was only checked against the *list*, so a path that no longer
+    // existed was still handed to the executor, which scaffolded it back — undoing the rename.
+    expect(registry.resolveActivePath()).toBe(defaultPath);
+  });
+
+  it('a renamed-away container is a complete reset, and renaming back restores it', () => {
+    registry.setDisplay(defaultPath, { name: 'Personal', avatar: 'data:image/png;base64,AAAA' });
+    const created = registry.create();
+    registry.setDisplay(created.id, { name: 'Work' });
+
+    renameSync(defaultPath, `${defaultPath}-old`);
+
+    // The whole world went with it: accounts and the metadata describing them.
+    const fresh = createAccountRegistry({ configDir, defaultPath });
+    expect(fresh.list()).toHaveLength(0);
+    expect(fresh.resolveActivePath()).toBe(defaultPath);
+
+    renameSync(`${defaultPath}-old`, defaultPath);
+
+    // ...and came back whole, names included. Metadata for an absent path is deliberately kept
+    // rather than pruned, which is what makes this a backup rather than a one-way delete.
+    const restored = createAccountRegistry({ configDir, defaultPath });
+    expect(
+      restored
+        .list()
+        .map((a) => a.name)
+        .sort(),
+    ).toEqual(['Personal', 'Work']);
+  });
+});
+
+describe('migrating out of the pre-container layout', () => {
+  it('moves the directories in and rewrites the registry', () => {
+    // Accounts used to live in the app's own config directory, with the registry beside them —
+    // so a machine upgrading has real accounts sitting outside the container.
+    const legacyAgents = join(configDir, 'agents', 'work');
+    seedAd4mData(legacyAgents);
+    mkdirSync(configDir, { recursive: true });
+    writeFileSync(
+      join(configDir, 'we-accounts.json'),
+      JSON.stringify({
+        accounts: [
+          { name: 'Main', path: defaultPath },
+          { name: 'Work', path: legacyAgents, avatar: 'data:image/png;base64,AAAA' },
+        ],
+        selectedPath: legacyAgents,
+      }),
+      'utf8',
+    );
+
+    const migrated = createAccountRegistry({ configDir, defaultPath });
+
+    // The directory moved rather than being registered where it lay: leaving it outside would
+    // quietly break the promise that moving the container takes everything.
+    const target = join(defaultPath, 'we-accounts', 'work');
+    expect(existsSync(target)).toBe(true);
+    expect(existsSync(legacyAgents)).toBe(false);
+
+    // Names, pictures and the selection all survive the move.
+    const work = migrated.list().find((a) => a.id === target);
+    expect(work).toMatchObject({ name: 'Work', avatar: 'data:image/png;base64,AAAA', active: true });
+    expect(migrated.resolveActivePath()).toBe(target);
+  });
+
+  it('runs once, and leaves an already-migrated registry alone', () => {
+    mkdirSync(configDir, { recursive: true });
+    writeFileSync(
+      join(configDir, 'we-accounts.json'),
+      JSON.stringify({ accounts: [{ name: 'Stale', path: defaultPath }], selectedPath: defaultPath }),
+      'utf8',
+    );
+
+    createAccountRegistry({ configDir, defaultPath }).setDisplay(defaultPath, { name: 'Renamed' });
+    // The legacy file still exists; a second migration would overwrite the rename with 'Stale'.
+    expect(createAccountRegistry({ configDir, defaultPath }).list()[0].name).toBe('Renamed');
   });
 });
 
@@ -68,9 +145,8 @@ describe('creating', () => {
     expect(registry.resolveActivePath()).toBe(account.id);
   });
 
-  it('keeps created accounts inside the managed root', () => {
-    const managed = join(configDir, 'agents');
-    expect(registry.create().id.startsWith(managed)).toBe(true);
+  it('keeps created accounts inside the container, so one move takes everything', () => {
+    expect(registry.create().id.startsWith(join(defaultPath, 'we-accounts'))).toBe(true);
   });
 
   it('distinguishes repeated creations, in both name and directory', () => {
@@ -159,34 +235,59 @@ describe('removing', () => {
     expect(existsSync(created.id)).toBe(false);
   });
 
-  it('erases an account another app created too — provenance is not the guard', () => {
-    // `~/.ad4m` is not "Flux's account", it is the user's account that Flux also uses, and WE is
-    // as much an AD4M client as the launcher is.
+  it('erases a nested account and its data — provenance is not the guard', () => {
     seedAd4mData(defaultPath);
     const created = registry.create();
-    expect(registry.resolveActivePath()).toBe(created.id);
+    seedAd4mData(created.id);
+    registry.select(defaultPath);
 
-    registry.remove(defaultPath);
+    registry.remove(created.id);
 
-    expect(registry.list().map((a) => a.id)).toEqual([created.id]);
-    expect(existsSync(defaultPath)).toBe(false);
+    expect(registry.list().map((a) => a.id)).toEqual([defaultPath]);
+    expect(existsSync(created.id)).toBe(false);
   });
 
-  it('forgets, but does not delete, a path holding no AD4M data', () => {
-    // The registry holds arbitrary paths. A mistyped seed dataPath or a corrupted registry must
-    // not turn "remove account" into a recursive delete of something unrelated. defaultPath has
-    // no AD4M markers here — it stands in for whatever a bad path might point at.
-    writeFileSync(join(defaultPath, 'important.txt'), 'keep me', 'utf8');
-
+  it('refuses the container account while it holds the others', () => {
+    seedAd4mData(defaultPath);
     const created = registry.create();
     registry.select(created.id);
 
-    registry.remove(defaultPath);
+    // Its directory *contains* the others, so `rm -rf` on it would take the account being used.
+    // The way to clear this one is to move the directory aside — the same gesture that backs
+    // everything up, which is why this is refused rather than handled.
+    expect(() => registry.remove(defaultPath)).toThrow(/other accounts first/);
+    expect(existsSync(defaultPath)).toBe(true);
+  });
 
-    // Dropped from the list...
-    expect(registry.list().map((a) => a.id)).toEqual([created.id]);
-    // ...but nothing on disk was touched.
-    expect(existsSync(join(defaultPath, 'important.txt'))).toBe(true);
+  it('forgets, but does not delete, an outside path holding no AD4M data', () => {
+    // The registry holds arbitrary paths. A mistyped seed dataPath or a corrupted registry must
+    // not turn "remove account" into a recursive delete of something unrelated.
+    const outside = join(root, 'not-an-account');
+    mkdirSync(outside, { recursive: true });
+    writeFileSync(join(outside, 'important.txt'), 'keep me', 'utf8');
+    mkdirSync(join(defaultPath, 'we-accounts'), { recursive: true });
+    writeFileSync(
+      join(defaultPath, 'we-accounts', 'registry.json'),
+      JSON.stringify({ accounts: [{ name: 'Bad path', path: outside }], selectedPath: defaultPath }),
+      'utf8',
+    );
+
+    registry.remove(outside);
+
+    expect(registry.list().map((a) => a.id)).toEqual([defaultPath]);
+    expect(existsSync(join(outside, 'important.txt'))).toBe(true);
+  });
+
+  it('deletes an abandoned account inside the container, which has no markers yet', () => {
+    // The shape check is for paths we did not create. Applying it here would skip the delete,
+    // leave the directory on disk, and the scan would put the account straight back in the list.
+    const created = registry.create();
+    registry.select(defaultPath);
+
+    registry.remove(created.id);
+
+    expect(existsSync(created.id)).toBe(false);
+    expect(registry.list().map((a) => a.id)).toEqual([defaultPath]);
   });
 
   it('reports which account holds the launcher registry, so removal can warn about it', () => {

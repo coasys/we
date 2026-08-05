@@ -6,11 +6,32 @@
  * password the user has not been asked for yet. They are asked once, after the restart, on the
  * same page whether this is a genuine first run or an account being added.
  *
- * ## Where the registry lives, and why not where the launcher puts it
+ * ## One container, so a rename is a complete backup
  *
- * The ADAM launcher keeps its equivalent at `~/.ad4m/launcher-state.json` — inside the default
- * agent's own data directory. That means clearing that agent destroys the list of every *other*
- * agent along with it. This one lives in the app's config directory, which no agent owns.
+ * Everything lives inside the default data directory: the accounts WE creates at
+ * `<data>/we-accounts/<slug>/`, and the registry beside them at `<data>/we-accounts/registry.json`.
+ * That directory is `~/.ad4m` unless the seed says otherwise.
+ *
+ * The point is that `mv ~/.ad4m ~/.ad4m-old` is a complete, reversible reset — every account and
+ * all of their metadata leave together, the next boot scaffolds a fresh one, and renaming back
+ * restores names, pictures and selection exactly. Accounts scattered across a second location, or
+ * a registry in the app's own config directory, both break that: half the state moves and half
+ * stays. It also means every host — electron dev, the packaged app, tauri — reads one list, where
+ * before each had a private one and none of them agreed.
+ *
+ * The launcher's `launcher-state.json` sits in the same directory and is criticised below for it.
+ * The difference is what the coupling costs: there, deleting one *agent* silently destroys the
+ * record of every other, which is loss you did not ask for. Here the container is the unit you
+ * move on purpose, and nothing survives it by design.
+ *
+ * ## The filesystem is the source of truth
+ *
+ * An account exists because its directory exists — `list()` scans, and the registry only decorates
+ * what the scan finds. A registry that decided existence drifted from the disk in both directions:
+ * a directory renamed away stayed in the switcher, and `resolveActivePath` would hand it to the
+ * executor, which scaffolded it back. Metadata for a path that is currently absent is kept, not
+ * pruned: that is exactly what makes renaming back restore an account rather than resurrect a
+ * nameless one.
  *
  * ## Deleting checks shape, not provenance
  *
@@ -21,12 +42,17 @@
  * holds arbitrary paths; a mistyped seed `dataPath` or a corrupted registry would otherwise turn
  * "remove account" into `rm -rf` on whatever that string happens to say. The markers are the ones
  * `init` writes, the same ones the executor's own startup keys on.
+ *
+ * The container account is refused outright while it holds nested ones, because deleting it means
+ * `rm -rf` on the directory they live inside — including, potentially, the account being used.
  */
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'fs';
 import { homedir } from 'os';
-import { join } from 'path';
+import { basename, join } from 'path';
 
-const REGISTRY_FILE = 'we-accounts.json';
+/** Holds both the accounts WE creates and the registry, inside the default data directory. */
+const CONTAINER_DIR = 'we-accounts';
+const REGISTRY_FILE = 'registry.json';
 
 /** Ceiling on a cached profile picture, in data-URI characters. ~192 KB, far above an 80px PNG. */
 const MAX_AVATAR_CHARS = 200_000;
@@ -90,26 +116,110 @@ export function holdsLauncherState(path) {
 }
 
 export function createAccountRegistry({ configDir, defaultPath, defaultName = 'Main' }) {
-  const registryPath = join(configDir, REGISTRY_FILE);
-  /** Where accounts WE create are put. Not a deletion guard — see the file header. */
-  const managedRoot = join(configDir, 'agents');
+  /** Accounts WE creates, and the registry, both inside the container. */
+  const managedRoot = join(defaultPath, CONTAINER_DIR);
+  const registryPath = join(managedRoot, REGISTRY_FILE);
+  /** Where accounts used to live, before they moved into the container. Migrated on first read. */
+  const legacyRoot = join(configDir, 'agents');
+  const legacyRegistry = join(configDir, 'we-accounts.json');
 
   function read() {
     try {
       const parsed = JSON.parse(readFileSync(registryPath, 'utf8'));
-      if (Array.isArray(parsed.accounts) && parsed.accounts.length) return parsed;
+      if (Array.isArray(parsed.accounts)) return parsed;
     } catch {
-      // Missing or corrupt — fall through and re-seed rather than refusing to start. Losing the
-      // list of accounts is recoverable (the directories are still there to re-add); refusing to
-      // open the app is not.
+      // Missing or corrupt — fall through to an empty registry rather than refusing to start.
+      // Losing metadata costs names and pictures; the accounts themselves are directories and the
+      // scan still finds them. Refusing to open the app would be the worse failure.
     }
-    return { accounts: [{ name: defaultName, path: defaultPath }], selectedPath: defaultPath };
+    return { accounts: [], selectedPath: null };
   }
 
   function write(state) {
-    mkdirSync(configDir, { recursive: true });
+    mkdirSync(managedRoot, { recursive: true });
     writeFileSync(registryPath, JSON.stringify(state, null, 2), 'utf8');
   }
+
+  /**
+   * Every account directory that exists right now.
+   *
+   * The container's own children, plus the container itself (the default account, which has to
+   * live at the data path the launcher and Flux expect rather than one level down), plus any
+   * registry path pointing outside — an account adopted from elsewhere. Filtered by existence,
+   * which is the whole mechanism: a directory renamed away simply stops being listed.
+   */
+  function scan(state) {
+    const paths = [];
+    if (existsSync(defaultPath)) paths.push(defaultPath);
+
+    try {
+      for (const entry of readdirSync(managedRoot, { withFileTypes: true })) {
+        if (entry.isDirectory()) paths.push(join(managedRoot, entry.name));
+      }
+    } catch {
+      // No container yet — nothing has been created beyond the default account.
+    }
+
+    for (const account of state.accounts) {
+      if (!paths.includes(account.path) && existsSync(account.path)) paths.push(account.path);
+    }
+    return paths;
+  }
+
+  /**
+   * Move accounts out of the pre-container layout, once.
+   *
+   * Their directories move rather than being re-registered in place: the point of the container is
+   * that one `mv` takes everything, which a path left behind in the app's config directory would
+   * quietly break. Registry paths are rewritten to match.
+   */
+  function migrateLegacyLayout() {
+    if (existsSync(registryPath) || !existsSync(legacyRegistry)) return;
+
+    let legacy;
+    try {
+      legacy = JSON.parse(readFileSync(legacyRegistry, 'utf8'));
+    } catch {
+      return;
+    }
+    if (!Array.isArray(legacy.accounts)) return;
+
+    mkdirSync(managedRoot, { recursive: true });
+    const moved = new Map();
+    for (const account of legacy.accounts) {
+      if (!account.path?.startsWith(legacyRoot + '/')) continue;
+      const target = join(managedRoot, account.path.slice(legacyRoot.length + 1));
+      if (!existsSync(account.path) || existsSync(target)) continue;
+      try {
+        renameSync(account.path, target);
+        moved.set(account.path, target);
+      } catch (e) {
+        // Across filesystems rename fails; leave it registered where it is rather than copying
+        // gigabytes of Holochain state. The scan still finds it via its registry path.
+        console.warn('[accounts] Could not move an account into the container:', e.message);
+      }
+    }
+
+    const rewrite = (p) => moved.get(p) ?? p;
+    write({
+      accounts: legacy.accounts.map((a) => ({ ...a, path: rewrite(a.path) })),
+      selectedPath: legacy.selectedPath ? rewrite(legacy.selectedPath) : null,
+    });
+    console.log(`[accounts] Migrated ${legacy.accounts.length} account(s) into ${managedRoot}`);
+  }
+
+  /** The accounts stored inside the container, which the default account's directory holds. */
+  function nestedAccounts() {
+    try {
+      return readdirSync(managedRoot, { withFileTypes: true })
+        .filter((e) => e.isDirectory())
+        .map((e) => join(managedRoot, e.name));
+    } catch {
+      return [];
+    }
+  }
+
+  migrateLegacyLayout();
 
   return {
     /**
@@ -129,7 +239,7 @@ export function createAccountRegistry({ configDir, defaultPath, defaultName = 'M
 
       for (const account of abandoned) {
         // Same shape check as remove(): a registry entry is a path, not proof of what is there.
-        if (!account.path.startsWith(managedRoot) || !existsSync(account.path)) continue;
+        if (!account.path.startsWith(managedRoot + '/') || !existsSync(account.path)) continue;
         try {
           rmSync(account.path, { recursive: true, force: true });
         } catch (e) {
@@ -146,24 +256,42 @@ export function createAccountRegistry({ configDir, defaultPath, defaultName = 'M
      */
     resolveActivePath() {
       const state = read();
-      const selected = state.accounts.find((a) => a.path === state.selectedPath);
-      if (selected) return selected.path;
+      const present = scan(state);
+      if (state.selectedPath && present.includes(state.selectedPath)) return state.selectedPath;
 
-      const fallback = state.accounts[0];
-      write({ ...state, selectedPath: fallback.path });
-      return fallback.path;
+      // The selection is gone — renamed away, or deleted from under us. Fall back to any account
+      // that is really there, and to the seed default when none is, which the caller then
+      // scaffolds into a fresh first run. Selecting a path that does not exist is what previously
+      // made `init` recreate a directory the user had deliberately moved aside.
+      const fallback = present[0] ?? defaultPath;
+      // Only persisted when it names an account that is really there. Writing the registry creates
+      // the container directory, so recording a fallback to a `defaultPath` that does not exist
+      // would recreate the very directory the user had just moved aside — and merely *listing*
+      // accounts would undo their reset. Returning it unwritten is enough: the caller scaffolds it
+      // deliberately, and the selection is recorded the next time one is actually made.
+      if (present.includes(fallback) && state.selectedPath !== fallback) {
+        write({ ...state, selectedPath: fallback });
+      }
+      return fallback;
     },
 
     list() {
       const state = read();
       const activePath = this.resolveActivePath();
-      return state.accounts.map((a) => ({
-        id: a.path,
-        name: a.name,
-        ...(a.avatar ? { avatar: a.avatar } : {}),
-        active: a.path === activePath,
-        sharedWithLauncher: holdsLauncherState(a.path),
-      }));
+      const byPath = new Map(state.accounts.map((a) => [a.path, a]));
+
+      return scan(state).map((path) => {
+        // No entry means a directory nobody has named yet — the default account on a first run,
+        // or one restored by renaming a backup back into place before its metadata caught up.
+        const meta = byPath.get(path) ?? {};
+        return {
+          id: path,
+          name: meta.name ?? (path === defaultPath ? defaultName : basename(path)),
+          ...(meta.avatar ? { avatar: meta.avatar } : {}),
+          active: path === activePath,
+          sharedWithLauncher: holdsLauncherState(path),
+        };
+      });
     },
 
     /**
@@ -180,12 +308,19 @@ export function createAccountRegistry({ configDir, defaultPath, defaultName = 'M
         state.accounts.map((a) => a.name),
       );
 
-      const takenSlugs = state.accounts
-        .filter((a) => a.path.startsWith(managedRoot))
-        .map((a) => a.path.slice(managedRoot.length + 1));
+      // Slugs are taken from what is on disk, not from the registry: a directory left behind by an
+      // account whose metadata is gone would otherwise be silently adopted by the next create.
+      let takenSlugs = [];
+      try {
+        takenSlugs = readdirSync(managedRoot, { withFileTypes: true })
+          .filter((e) => e.isDirectory())
+          .map((e) => e.name);
+      } catch {
+        // No container yet — nothing is taken.
+      }
       const path = join(managedRoot, slugify(name, takenSlugs));
 
-      if (state.accounts.some((a) => a.path === path)) throw new Error('That account already exists');
+      if (existsSync(path)) throw new Error('That account already exists');
 
       mkdirSync(path, { recursive: true });
       // Provisional until setup finishes. An account whose setup is abandoned — switched away
@@ -204,7 +339,10 @@ export function createAccountRegistry({ configDir, defaultPath, defaultName = 'M
      */
     setDisplay(id, { name, avatar } = {}) {
       const state = read();
-      if (!state.accounts.some((a) => a.path === id)) throw new Error('No such account');
+      if (!scan(state).includes(id)) throw new Error('No such account');
+      // The scan can surface an account the registry has no entry for — the default one on a first
+      // run, most often. Naming it is what creates the entry.
+      if (!state.accounts.some((a) => a.path === id)) state.accounts = [...state.accounts, { path: id, name: '' }];
 
       const trimmed = typeof name === 'string' ? name.trim() : undefined;
       if (name !== undefined && !trimmed) throw new Error('An account name is required');
@@ -232,20 +370,36 @@ export function createAccountRegistry({ configDir, defaultPath, defaultName = 'M
 
     select(id) {
       const state = read();
-      if (!state.accounts.some((a) => a.path === id)) throw new Error('No such account');
+      if (!scan(state).includes(id)) throw new Error('No such account');
       write({ ...state, selectedPath: id });
     },
 
     remove(id) {
       const state = read();
-      if (state.selectedPath === id) throw new Error('Cannot remove the account you are signed in to');
-      if (!state.accounts.some((a) => a.path === id)) throw new Error('No such account');
+      if (this.resolveActivePath() === id) throw new Error('Cannot remove the account you are signed in to');
+      if (!scan(state).includes(id)) throw new Error('No such account');
+
+      // The default account's directory *contains* every other account, so deleting it would take
+      // them all — including, if one of them is selected, the account being used. Refused rather
+      // than handled: the way to clear this account is to move the directory aside, which is the
+      // same gesture that backs everything up.
+      if (id === defaultPath && nestedAccounts().length) {
+        throw new Error('Remove the other accounts first — they are stored inside this one');
+      }
 
       write({ ...state, accounts: state.accounts.filter((a) => a.path !== id) });
 
-      // Erase the data — for any account, whoever created it — but only once the directory has
-      // been confirmed to hold an agent. See the file header.
-      if (!looksLikeAd4mData(id)) {
+      // Erase the data — for any account, whoever created it — but for paths *outside* the
+      // container only once the directory has been confirmed to hold an agent. See the file
+      // header: a registry entry is a path, and a path is not proof of what is there.
+      //
+      // Inside the container the check would do harm rather than good. We created those
+      // directories, so provenance is not in question, and an account abandoned before setup has
+      // no AD4M markers yet — skipping the delete would leave the directory on disk, where the
+      // scan finds it again and puts it straight back in the list. The user would click remove
+      // and watch nothing happen.
+      const isOurs = id.startsWith(managedRoot + '/');
+      if (!isOurs && !looksLikeAd4mData(id)) {
         console.warn('[accounts] Account forgotten; its path holds no AD4M data, so nothing deleted:', id);
         return;
       }

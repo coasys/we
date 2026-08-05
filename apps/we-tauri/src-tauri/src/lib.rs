@@ -25,9 +25,11 @@ fn seed_data_path(home: &std::path::Path) -> PathBuf {
     expand_home(seed_runtime::AD4M_DATA_PATH, home)
 }
 
-/// This app's own configuration directory — the account registry, and the directories of accounts
-/// it created. Not inside any agent's data, so clearing an agent cannot destroy the list of the
-/// others (which is exactly what the ADAM launcher's layout does).
+/// This app's own configuration directory.
+///
+/// No longer where accounts or the registry live — both moved into the data path's container, so
+/// that one `mv` resets everything and every host reads the same list. All that is left here is
+/// the pre-container layout, which `AccountRegistry` migrates out of on first run.
 fn config_dir() -> PathBuf {
     dirs::config_dir()
         .expect("Failed to get config directory")
@@ -73,12 +75,19 @@ pub fn run() {
     std::fs::create_dir_all(&app_data_path)
         .expect("Failed to create app data directory");
 
-    // Initialize AD4M. Scaffolds the directory when it has never been used — which is now a
-    // reachable state, since a newly created account starts as an empty directory.
-    rust_executor::init::init(
-        Some(app_data_path.to_str().unwrap().to_string()),
-        None, // No bootstrap seed override — the account uses mainnet.
-    ).expect("Failed to initialize AD4M");
+    // Scaffold the directory only when the executor has never run against it, matching the
+    // electron host's `ensureDataPathInitialised`. `init` is idempotent apart from one branch: an
+    // account whose `last-seen-version` predates the executor's `OLDEST_VERSION` has its state
+    // cleaned. Calling it unconditionally meant an old enough account was silently wiped on the
+    // boot that opened it — where electron would not have made the call at all.
+    if !app_data_path.join("mainnet_seed.seed").exists() {
+        println!("Data path not initialised, scaffolding: {}", app_data_path.display());
+        rust_executor::init::init(
+            Some(app_data_path.to_str().unwrap().to_string()),
+            None, // No bootstrap seed override — the account uses mainnet.
+        )
+        .expect("Failed to initialize AD4M");
+    }
 
     let state = AppState {
         graphql_port,
