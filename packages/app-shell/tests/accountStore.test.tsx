@@ -67,6 +67,7 @@ const TWO: Account[] = [
 
 beforeEach(() => {
   accountHost = undefined;
+  sessionStorage.clear();
   localStorage.clear();
 });
 
@@ -89,13 +90,13 @@ describe('when the host cannot manage accounts (web)', () => {
 });
 
 describe('the cache — what the screen can draw before IPC answers', () => {
-  const cached = () => JSON.parse(localStorage.getItem('we:accounts') ?? '[]');
+  const cached = () => JSON.parse(sessionStorage.getItem('we:accounts') ?? '[]');
 
   it('seeds the list synchronously, so the whole screen paints on the first frame', () => {
     // The corner switcher reads `accounts` and the badge reads `activeAccount`. Both were empty
     // until the host answered, several frames after first paint — which is why the corner
     // disappeared and came back on every switch.
-    localStorage.setItem('we:accounts', JSON.stringify(TWO));
+    sessionStorage.setItem('we:accounts', JSON.stringify(TWO));
     const { host } = stubHost(TWO);
     accountHost = host;
 
@@ -106,6 +107,20 @@ describe('the cache — what the screen can draw before IPC answers', () => {
     expect(store.hasOtherAccounts()).toBe(true);
   });
 
+  it('does not outlive the app, so a wiped machine cannot draw a deleted account', () => {
+    // The cache used to live in localStorage, which survives app restarts. After deleting the
+    // data directories for a clean slate, the first paint still named a deleted account — the
+    // cache is in the host's browser profile and nothing on disk touches it.
+    localStorage.setItem('we:accounts', JSON.stringify(TWO));
+    accountHost = stubHost([]).host;
+
+    const store = mount();
+
+    expect(store.accounts()).toEqual([]);
+    // ...and the stale key is cleared, so an existing install stops carrying one.
+    expect(localStorage.getItem('we:accounts')).toBeNull();
+  });
+
   it('starts empty with no cache, rather than throwing', () => {
     const { host } = stubHost(TWO);
     accountHost = host;
@@ -114,7 +129,7 @@ describe('the cache — what the screen can draw before IPC answers', () => {
   });
 
   it('ignores a corrupt cache', () => {
-    localStorage.setItem('we:accounts', 'not json');
+    sessionStorage.setItem('we:accounts', 'not json');
     const { host } = stubHost(TWO);
     accountHost = host;
     expect(mount().accounts()).toEqual([]);

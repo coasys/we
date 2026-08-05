@@ -38,8 +38,18 @@ import {
  * why the corner switcher vanished and came back on every switch while the centre badge did not:
  * the badge already read a cache, and the corner did not.
  *
- * `localStorage` because it is synchronous, and because it works on both desktop hosts — Tauri's
- * `invoke` is async-only, so a sync-IPC version would leave one host still popping.
+ * `sessionStorage`, not `localStorage`, because its lifetime is exactly the job: it survives the
+ * navigation an account switch performs, and dies with the app. `localStorage` outlived the data it
+ * described — after deleting the data directories for a clean slate, the first paint still named a
+ * deleted account, because the cache lives in the host's browser profile and nothing on disk
+ * touches it. A cache that can name something that no longer exists is worse than no cache.
+ *
+ * Storage rather than sync IPC because it works on both desktop hosts — Tauri's `invoke` is
+ * async-only, so a sync-IPC version would leave one host still popping.
+ *
+ * The trade is that Tauri's `applySelection` restarts the whole process rather than navigating, so
+ * the corner pops there on a switch. That is where it was before this cache existed, and it is
+ * hidden inside a full app relaunch anyway.
  *
  * Staleness is bounded to a few frames: the real list replaces this as soon as it lands.
  */
@@ -47,7 +57,11 @@ const CACHE_KEY = 'we:accounts';
 
 function readCachedAccounts(): Account[] {
   try {
-    const raw = localStorage.getItem(CACHE_KEY);
+    // Drop the key this used to be kept under, so an existing install stops carrying a cache that
+    // survives app restarts — the one that could name a deleted account.
+    localStorage.removeItem(CACHE_KEY);
+
+    const raw = sessionStorage.getItem(CACHE_KEY);
     if (!raw) return [];
     const parsed = JSON.parse(raw);
     return Array.isArray(parsed) ? parsed.filter((a) => a?.id && a?.name) : [];
@@ -59,7 +73,7 @@ function readCachedAccounts(): Account[] {
 
 function writeCachedAccounts(accounts: Account[]): void {
   try {
-    localStorage.setItem(CACHE_KEY, JSON.stringify(accounts));
+    sessionStorage.setItem(CACHE_KEY, JSON.stringify(accounts));
   } catch {
     // Best effort. A stale or missing cache costs a frame of empty screen, nothing more.
   }
