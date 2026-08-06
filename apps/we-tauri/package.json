@@ -12,7 +12,7 @@
     "build": "we-build",
     "serve": "vite preview",
     "tauri": "tauri",
-    "tauri:dev": "tauri dev -- --release",
+    "tauri:dev": "concurrently \"pnpm dev\" \"wait-on http://localhost:1420 && tauri dev -- --release\"",
     "tauri:build": "tauri build"
   },
   "dependencies": {
@@ -31,8 +31,10 @@
     "@tauri-apps/cli": "2.7.0",
     "@types/three": "^0.176.0",
     "@we/cli": "workspace:*",
+    "concurrently": "^9.1.2",
     "typescript": "^5.7.2",
     "vite": "^6.0.0",
-    "vite-plugin-solid": "^2.11.6"
+    "vite-plugin-solid": "^2.11.6",
+    "wait-on": "^8.0.1"
   }
 }

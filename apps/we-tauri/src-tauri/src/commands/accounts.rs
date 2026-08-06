@@ -52,6 +52,16 @@ pub fn remove_account(id: String, state: State<'_, AppState>) -> Result<(), Stri
 /// called a second time against fresh global state.
 #[tauri::command]
 pub fn apply_account_selection(app_handle: tauri::AppHandle) {
+    // The executor is configured with one data path at startup and holds it for its lifetime, and
+    // here it runs *in* this process — so switching accounts means replacing the process. Electron
+    // can respawn a child executor and merely reload its window; this host cannot.
+    //
+    // A note for anyone debugging this in `pnpm tauri:dev`: restarting exits the binary, and if the
+    // vite server is owned by `tauri dev` as a `beforeDevCommand`, the CLI treats that exit as the
+    // app closing and shuts the server down with it. The relaunched binary then loads a devUrl that
+    // no longer exists and shows "Connection refused" on a white screen. The dev script therefore
+    // runs vite alongside rather than under the CLI. Packaged builds serve the bundled frontend and
+    // were never affected.
     app_handle.restart();
 }
 
