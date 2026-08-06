@@ -252,14 +252,9 @@ function accountSwitcher(): SchemaNode {
           {
             type: '$each',
             props: {
-              // Everyone but the account already signed in to — that one is the badge in the centre —
-              // and only accounts somebody has actually set up.
-              //
-              // An account with no identity is not a destination: switching to it lands straight
-              // back on the setup form. It became visible here because switching moves the active
-              // flag optimistically, so abandoning a half-made account turned it into one of the
-              // "others" for the moment before the restart — and it then vanished again when
-              // `pruneAbandoned` deleted it, taking a row out of the list as it went.
+              // Everyone but the account signed in to — that one is the badge in the centre — and
+              // only accounts somebody has set up. One with no identity is not a destination:
+              // switching to it lands straight back on the setup form.
               items: {
                 $filter: { items: { $store: 'accountStore.accounts' }, where: { active: false, hasAgent: true } },
               },
@@ -279,12 +274,9 @@ function accountSwitcher(): SchemaNode {
           {
             type: '$if',
             props: {
-              // Not while the active account is still being set up: it would offer the very action
-              // already under way. This replaced an `allowCreate` flag passed per boot state, which
-              // said the same thing less well — the flag could not notice that clicking another
-              // account had already moved on from the setup form, so the tile stayed hidden until
-              // the restart and the corner visibly shrank in the meantime. Reading the account
-              // instead, it appears the moment the switch is chosen.
+              // Not while the active account is still being set up: it would offer the action
+              // already under way. Reading the account rather than the boot state means it appears
+              // the moment a switch is chosen, before the restart.
               condition: { $store: 'accountStore.activeAccount.hasAgent' },
               // Straight through, no confirmation. The step it replaced restated the button it was
               // reached from and asked again, and the action is undone in one click from this same
@@ -457,12 +449,6 @@ const unlockForm: SchemaNode = {
     {
       type: 'we-form-field',
       props: {
-        // One message, because there is only one thing that can be wrong. A password cannot be
-        // judged locally — it is right or wrong only once the executor has tried it — so this
-        // field carries no validation rules and the slot holds the executor's answer alone.
-        // It deliberately says nothing about an empty field: the greyed-out button beside a
-        // visibly empty input already explains itself, and an error there would be scolding
-        // someone for a field they simply have not typed into yet.
         error: {
           $if: {
             condition: { $store: 'sessionStore.passwordError' },
@@ -827,13 +813,6 @@ export const bootScreen: SchemaNode = {
                                 },
                               ],
                             },
-                            // // The one thing that is not obvious: there is no reset. Every other app
-                            // // has taught the user that a forgotten password is recoverable by email.
-                            // {
-                            //   type: 'we-text',
-                            //   props: { variant: 'footnote', color: 'neutral-500', textAlign: 'center' },
-                            //   children: ["If you lose this password, the account can't be recovered."],
-                            // },
                           ],
                         },
                         {
@@ -841,13 +820,9 @@ export const bootScreen: SchemaNode = {
                           props: {
                             text: 'Create account',
                             mt: '300',
-                            // Clickable whatever the fields say, because the click is what asks the
-                            // question. Answering on blur meant leaving a field you had not filled
-                            // in yet was treated as a mistake; a hard gate instead would leave a
-                            // grey button and no way to learn that the two passwords differ. So the
-                            // click touches every field and the errors arrive together, once, in
-                            // response to the attempt. `loading` disables it while the request is
-                            // in flight — we-button blocks the click on either flag.
+                            // Clickable whatever the fields say: the click is what asks the
+                            // question, so it touches every field and the errors arrive together.
+                            // Disabled only while the request is in flight.
                             loading: { $store: 'sessionStore.createAgentLoading' },
                             // One action rather than a chain: the ordering is load-bearing
                             // (the profile cannot be published until the agent exists) and the
