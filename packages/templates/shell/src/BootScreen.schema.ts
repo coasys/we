@@ -15,19 +15,81 @@ import type { OperatorToken, SchemaNode, SchemaProp } from '@we/schema-shared';
  * Account controls are gated on `accountStore.canManageAccounts`, which is false on web: a browser
  * tab has no directories to keep accounts in, and ad4m-connect already owns which executor it
  * talks to. The unlock form is identical either way, so web loses the switcher and nothing else.
+ *
+ * Two rules govern most of what follows, and both have been rediscovered the hard way more than
+ * once:
+ *
+ * 1. Anything that should survive a change of boot state must be rendered *above* the boot-state
+ *    branches. They are sibling `$if`s, so a node inside one is torn down and rebuilt at every
+ *    boundary — which reads as a flicker even when the content either side is identical.
+ *
+ * 2. Ask the account, not the host. `accountStore.activeAccount` is seeded from a session cache on
+ *    the first frame, so anything keyed on it draws immediately after a reload or a switch.
+ *    `accountsLoaded` waits for IPC and belongs only to `isFirstRun`, where a stale cache must
+ *    never be allowed to trigger a welcome.
  */
+
+/**
+ * The boot background: the logo's own hue sweep, centred and made pale.
+ *
+ * The same `primary-hue ± 25` sweep as `--we-gradient-primary` (the mark, the gradient buttons),
+ * turned radial — so the screen and the logo are lit by one idea rather than two.
+ *
+ * Lightness is what differs, and must: at 500 the sweep is a saturated mid-tone, right for a 38px
+ * mark and unreadable behind a form. Built from the hue and saturation custom properties, so a
+ * theme that moves the primary hue moves this with it.
+ *
+ * `circle` rather than the default ellipse, so it does not stretch with the window's aspect.
+ */
+export const hueSweepBackground = [
+  'radial-gradient(circle at 50% 50%,',
+  // Neutral at both ends, colour in between — so the sweep is a ring rather than a wash. The
+  // content sits in the clear core, and the hue travels through a band that never passes under it.
+  'var(--we-color-neutral-0) 0%,',
+  // The sweep is squeezed into the middle of the radius rather than spanning it. Two stops can
+  // travel the hue or land on a colour, not both; four buy a clean start and a clean finish.
+  'hsl(calc(var(--we-color-primary-hue) + 25) var(--we-color-saturation) var(--we-color-lightness-100)) 40%,',
+  'hsl(calc(var(--we-color-primary-hue) - 25) var(--we-color-saturation) var(--we-color-lightness-100)) 60%,',
+  // Named rather than `transparent`. Identical here, since `bg` beneath is the same token — but it
+  // says what it means and does not depend on what happens to be painted under it.
+  'var(--we-color-neutral-0) 80%)',
+].join(' ');
+
+/**
+ * One large soft field. `at` is the knob — the rest rarely needs touching.
+ *
+ * Falls off to `transparent`, not `neutral-0`: these overlap, and an opaque neutral edge would
+ * paint white over whatever is beneath, turning soft overlaps into hard crescents.
+ */
+const blob = (at: string, size: string, hueOffset: string) =>
+  [
+    `radial-gradient(${size} at ${at},`,
+    `hsl(calc(var(--we-color-primary-hue) ${hueOffset}) var(--we-color-saturation) var(--we-color-lightness-200)) 0%,`,
+    'transparent 70%)',
+  ].join(' ');
+
+/**
+ * The alternative to `hueSweepBackground`: a few large fields placed by hand rather than one
+ * concentric sweep.
+ *
+ * Larger than they look like they need to be: a field smaller than the frame reads as a spot with
+ * its own edge, and the gaps between spots become the shape you see. Each takes a different point
+ * in the logo's hue range, so moving one relocates a colour rather than introducing one.
+ */
+export const blobBackground = [
+  blob('24% 26%', '65% 60%', '+ 25'),
+  blob('80% 34%', '60% 55%', '- 25'),
+  blob('52% 88%', '70% 60%', '+ 0'),
+].join(', ');
 
 /**
  * The signed-in-as chip, the way an OS sign-in screen leads.
  *
  * Takes a store *path* rather than a name, so the picture and the name always come from the same
- * account. They were bound separately before — the name from the argument, the picture hardcoded to
- * `activeAccount` — so switching showed the target's name above the previous account's face until
- * the reload caught up.
+ * account — bound separately, a switch showed the target's name above the previous account's face.
  *
- * Shows the cached picture when there is one, falling back to initials. The cache exists because
- * this screen renders while the agent is *locked*: the real picture lives inside the encrypted
- * store and cannot be read until after the password.
+ * Falls back to initials. The cached picture exists because this screen renders while the agent is
+ * *locked*: the real one lives inside the encrypted store.
  */
 function accountBadge(account: string): SchemaNode {
   return {
@@ -73,27 +135,15 @@ const accountError: SchemaNode = {
  * so both put the wordmark in the same place. The boot screen leaves by cross-fading, and matching
  * position means the logo holds still through it. Keep the two in step if either moves.
  *
- * Inert. It briefly opened the About page, matching the sidebar's copy, and that turned out to
- * confuse more than it helped: a mark that does something on one screen and nothing on the next
- * reads as broken rather than as restraint. The About page is reachable from inside the app, which
- * is where someone who wants it will look.
- *
- * Absent only while the first-run splash is up, which puts the mark in the middle instead. It comes
- * back with the form, where there is something for it to sit beside.
+ * Inert by choice: the About page is reachable from inside the app, and a mark that acts on one
+ * screen and not the next reads as broken rather than as restraint.
  */
 const logoCorner: SchemaNode = {
   type: '$if',
   props: {
-    // Hidden for the splash only, not for the whole of a first run — the splash owns the centre of
-    // the screen at that moment, and two copies of the same mark is one too many. Once the form
-    // arrives the corner is free and the mark belongs there, in the position it also occupies in
-    // the sidebar.
-    //
-    // Keyed on knowing *an* account rather than on the host having answered. `activeAccount` is
-    // populated from the session cache on the first frame, so a reload or a switch draws the mark
-    // immediately; waiting for the round trip flashed it off and back on every time. It is still
-    // absent on a genuine first run, where there is nothing cached — which is exactly when the
-    // splash wants the centre to itself.
+    // Hidden only while the splash is up, which puts the mark in the centre — two copies is one too
+    // many. `activeAccount` is also absent on a genuine first run, before anything is cached, which
+    // is exactly when the splash wants the centre to itself.
     condition: {
       $and: [
         { $store: 'accountStore.activeAccount' },
@@ -123,15 +173,9 @@ const logoCorner: SchemaNode = {
 /**
  * The whole screen on a first run, while the executor starts.
  *
- * Nothing but the mark, a word and a spinner. There is no account to name, nobody to greet by
- * name, and nowhere else to go — so every other piece of chrome is answering a question that has
- * not been asked. The corner switcher in particular used to appear here offering "New account",
- * then vanish when the form arrived, which is an offer and a retraction for the one action the
- * next screen is entirely about.
- *
- * The mark is centred rather than in its corner because this is the one moment the app has nothing
- * else to say. It returns to the corner with the form, which is when there is something to sit
- * beside it.
+ * Nothing but the mark, a word and a spinner: there is no account to name and nowhere else to go,
+ * so any other chrome would be answering a question nobody asked. The mark takes the centre because
+ * this is the one moment the app has nothing else to say, and returns to its corner with the form.
  */
 const firstRunSplash: SchemaNode = {
   type: 'Column',
@@ -174,9 +218,8 @@ const firstRunSplash: SchemaNode = {
 function accountSwitcher(): SchemaNode {
   const tile = (label: string | SchemaNode | OperatorToken, avatar: SchemaNode, onClick: SchemaProp): SchemaNode => ({
     type: 'we-button',
-    // Not disabled while a switch is in flight. It faded out and came back at full opacity in the
-    // next document, which is its own flicker — and clicking another account mid-switch is a
-    // reasonable thing to want, which the store handles by simply switching again.
+    // Deliberately not disabled mid-switch: the fade out and back is its own flicker, and switching
+    // again is a reasonable thing to want. The store handles it.
     props: { variant: 'bare', ax: 'start', p: '300', hoverProps: { bg: 'neutral-25' }, onClick },
     children: [
       {
@@ -190,14 +233,8 @@ function accountSwitcher(): SchemaNode {
   return {
     type: '$if',
     props: {
-      // Never on a first run. There is nowhere else to go, and the create tile offered exactly the
-      // action the next screen is about — so it appeared and then withdrew as the form arrived.
-      // Gated here rather than at the two call sites so neither can forget it.
-      //
-      // `activeAccount` rather than `accountsLoaded`, for the same reason as the mark above: it is
-      // seeded from the session cache, so the corner is populated on the first frame of a reload or
-      // a switch instead of blinking out and back while the host answers. Absent on a first run,
-      // where nothing is cached and there is nothing to list anyway.
+      // Never on a first run — there is nowhere else to go. Gated here rather than at the call
+      // sites so neither can forget it.
       condition: {
         $and: [
           { $store: 'accountStore.canManageAccounts' },
@@ -266,44 +303,17 @@ function accountSwitcher(): SchemaNode {
 }
 
 /**
- * The waiting state: an account badge with a spinner where its password field will be.
+ * The heading a first run opens with, in place of an account badge.
  *
- * Used for *both* halves of a switch, deliberately identical. Switching kills the executor,
- * respawns it and reloads the window, so the renderer is destroyed halfway through and the new one
- * has no memory of having been asked to switch. Rather than persisting that across the reload,
- * both sides render this — so the reload becomes invisible instead of a second loading step with
- * different words and a badge popping in.
- *
- * "Loading account", not "Signing in": no password has been entered on either path, and not
- * "Starting", which sounds like it is talking about the app rather than the thing being waited on.
- * The badge above already says *which* account, so this only has to explain the wait.
- */
-/**
- * The first thing a new install shows, in place of an account badge.
- *
- * A machine where nothing has been set up has no account to name, but the seed default has already
- * been scaffolded by the time anything asks — so the honest-looking screen ("Main", "Loading
- * account…") was naming an account nobody made and waiting on an identity that does not exist.
- * `accountStore.isFirstRun` asks the host, which answers from disk without an executor.
- *
- * One line of orientation under the heading, and it is about *where the account lives* rather than
- * what to do next. That is the question a local-first app raises and a cloud one does not, and it
- * is what makes someone comfortable typing a password into something they met ten seconds ago. The
- * form below explains the rest better than prose could: a name, a picture and a password *is* what
- * an account is here.
+ * The line of orientation is about *where the account lives* rather than what to do next — the
+ * question a local-first app raises and a cloud one does not, and what makes someone comfortable
+ * typing a password into something they met ten seconds ago. The form below says the rest: a name,
+ * a picture and a password *is* what an account is here.
  */
 const welcomeHeading: SchemaNode = {
   type: 'Column',
   props: { gap: '300', ax: 'center', maxWidth: '420px' },
   children: [
-    // The cube is a lazy import — three.js is a separate 560K chunk, fetched only once one of
-    // these actually renders. So the box around it is not decoration: it reserves the space at a
-    // fixed size, and the heading below does not jump downward when the chunk lands.
-    // {
-    //   type: 'Column',
-    //   props: { width: '300px', height: '300px', ax: 'center', ay: 'center' },
-    //   children: [{ type: 'WeCube', props: { width: '300px', height: '300px' } }],
-    // },
     { type: 'we-text', props: { variant: 'heading-lg', color: 'primary-700' }, children: ['Welcome'] },
     {
       type: 'we-text',
@@ -323,9 +333,8 @@ const welcomeHeading: SchemaNode = {
 /**
  * The neutral wait, before the host has said which kind of machine this is.
  *
- * Deliberately wordless. Until `accountsLoaded` the screen cannot tell a first run from a returning
- * user, and every label it could show is a guess — which is what produced a flash of the wrong
- * account name on a freshly wiped machine. It is one IPC, so this is brief.
+ * Deliberately wordless: until the host answers, the screen cannot tell a first run from a
+ * returning user, and every label it could show is a guess. Only reached with nothing cached.
  */
 const neutralWait: SchemaNode = {
   type: 'Row',
@@ -336,10 +345,9 @@ const neutralWait: SchemaNode = {
 /**
  * The wait while an account is being made, on either side of the restart that makes it.
  *
- * Deliberately nameless. After the restart the new account exists but holds no identity — its name
- * is the placeholder the host assigned and its picture is nothing at all — so the badge showed
- * "New account" over blank initials, which is a placeholder dressed as a person. The same words
- * before and after mean the restart is not a change of subject.
+ * Deliberately nameless: a new account holds no identity, so its name is the host's placeholder and
+ * it has no picture — a badge there is a placeholder dressed as a person. The same words on both
+ * sides of the restart mean it is not a change of subject.
  */
 const creatingAccountState: SchemaNode = {
   type: 'Row',
@@ -354,28 +362,17 @@ function startingState(account: string): SchemaNode {
   return {
     type: '$if',
     props: {
-      // Asked of the account, not of `accountsLoaded`, and that ordering is the whole point. The
-      // session cache exists so this badge can draw on the first frame after a reload or a switch —
-      // it even carries the target already marked active. Gating on the host having answered threw
-      // that away and put a wordless spinner in front of every switch, which is the one thing the
-      // cache was added to prevent.
+      // Rule 2 at the top of this file: the cache answers this on the first frame, and it carries
+      // the switch target already marked active.
       condition: { $store: 'accountStore.activeAccount.hasAgent' },
       then: knownAccountState(account),
       else: {
         type: '$if',
         props: {
-          // This one genuinely has to wait for the host: `isFirstRun` is false until it answers,
-          // and a stale cache must never be able to trigger a welcome.
           condition: { $store: 'accountStore.isFirstRun' },
-          // Shown as soon as the host confirms this is a first run, not held back. Deferring it
-          // until the wait looked long enough left a blank screen for the second the executor
-          // takes, which reads as nothing happening rather than as restraint.
-          //
-          // Faded rather than snapped in because the wordless spinner is already on screen by
-          // then: this arrives around it instead of replacing it. Relies on the condition being
-          // false at mount — `ConditionalRenderer` captures `startVisible` at creation and skips
-          // the transition entirely when it is already true, and `isFirstRun` is false until the
-          // host answers.
+          // Fades in around the wordless spinner rather than replacing it. This only animates
+          // because the condition is false at mount: `ConditionalRenderer` captures `startVisible`
+          // at creation and skips the transition entirely when it is already true.
           enterTransition: { type: 'fade', duration: 300 },
           then: firstRunSplash,
           else: {
@@ -396,7 +393,13 @@ function startingState(account: string): SchemaNode {
   };
 }
 
-/** The returning-user wait: whose account this is, and that it is being opened. */
+/**
+ * The returning-user wait: whose account this is, and that it is being opened.
+ *
+ * "Loading account", not "Signing in" — no password has been entered on either path — and not
+ * "Starting", which sounds like it means the app. The badge says which account; this says why the
+ * wait. Rendered on both sides of a switch, which is what makes the reload invisible.
+ */
 function knownAccountState(account: string): SchemaNode {
   return {
     type: 'Column',
@@ -524,84 +527,15 @@ const unlockForm: SchemaNode = {
 };
 
 /**
- * The boot background: the logo's own hue sweep, centred and made pale.
- *
- * `--we-gradient-primary` — the mark in the corner, the gradient buttons — runs from
- * `primary-hue - 25` to `primary-hue + 25` at lightness 500. This is the same sweep turned radial,
- * so the screen and the logo are lit by one idea rather than two.
- *
- * Lightness is the part that differs, and has to. At 500 the sweep is a saturated mid-tone: correct
- * for a 38px mark, unreadable behind a form. Running 50 to 200 keeps the centre near white, where
- * the heading and inputs are, and lets the colour arrive toward the edges — so the hue shift is
- * visible exactly where there is no text over it.
- *
- * `circle`, not the default ellipse, so it stays a true circle rather than stretching with the
- * window's aspect. `farthest-corner` extent by default, so it covers the frame and nothing falls
- * back to bare background.
- *
- * Built from the hue and saturation custom properties rather than fixed colours, so a theme that
- * moves the primary hue moves this with it — the same way it already moves the logo.
- */
-export const hueSweepBackground = [
-  'radial-gradient(circle at 50% 50%,',
-  // Neutral at both ends, colour in between — so the sweep is a ring rather than a wash. The
-  // content sits in the clear core, and the hue travels through a band that never passes under it.
-  'var(--we-color-neutral-0) 0%,',
-  // The sweep is squeezed into the middle of the radius rather than spanning it. Two stops can
-  // travel the hue or land on a colour, not both; four buy a clean start and a clean finish.
-  'hsl(calc(var(--we-color-primary-hue) + 25) var(--we-color-saturation) var(--we-color-lightness-100)) 40%,',
-  'hsl(calc(var(--we-color-primary-hue) - 25) var(--we-color-saturation) var(--we-color-lightness-100)) 60%,',
-  // Named rather than `transparent`. Identical here, since `bg` beneath is the same token — but it
-  // says what it means and does not depend on what happens to be painted under it.
-  'var(--we-color-neutral-0) 80%)',
-].join(' ');
-
-/**
- * One large soft field. `at` is the knob — the rest rarely needs touching.
- *
- * Falls off to `transparent`, not to `neutral-0`. These are meant to overlap, and an opaque
- * neutral edge would paint white over whichever field is beneath it, turning soft overlaps into
- * hard crescents. Transparent lets them composite, and `bg` supplies the base underneath.
- */
-const blob = (at: string, size: string, hueOffset: string) =>
-  [
-    `radial-gradient(${size} at ${at},`,
-    `hsl(calc(var(--we-color-primary-hue) ${hueOffset}) var(--we-color-saturation) var(--we-color-lightness-200)) 0%,`,
-    'transparent 70%)',
-  ].join(' ');
-
-/**
- * The alternative to `hueSweepBackground`: a few large fields placed by hand rather than one
- * concentric sweep.
- *
- * Deliberately larger than they look like they need to be — a field smaller than the frame reads
- * as a spot with its own edge, and the gaps between spots become the shape you actually see. At
- * these sizes they overlap across most of the screen and merge.
- *
- * Each takes a different point in the logo's own hue range (+25, 0, -25), so moving one changes
- * where a colour sits rather than introducing a new one.
- */
-export const blobBackground = [
-  blob('24% 26%', '65% 60%', '+ 25'),
-  blob('80% 34%', '60% 55%', '- 25'),
-  blob('52% 88%', '70% 60%', '+ 0'),
-].join(', ');
-
-/**
  * From clicking "Create account" until the app appears.
  *
- * One state, though it spans two phases internally: `createAgent` generates the keys, then the
- * name and picture are published. That seam is where the agent starts existing — it is not
- * something the person who clicked has any reason to care about, and showing it as two screens
- * (a spinner in the button, then a full-screen message) made one act look like two.
+ * One state, though it spans two phases: `createAgent` generates the keys, then the name and
+ * picture are published. That seam is where the agent starts existing, which is meaningful to the
+ * code and meaningless to whoever clicked.
  *
- * The condition covers the span without a gap. `createAgentLoading` goes false in a `finally`, by
- * which point `bootState` is already `finishing`; on failure both go false with the state back on
- * `createAgent`, so the form returns carrying its error.
- *
- * Above the boot-state branches for the usual reason: `createAgent` and `finishing` are siblings,
- * so anything rendered inside one is torn down at the boundary — which is exactly the seam being
- * removed.
+ * The condition covers the span without a gap — `createAgentLoading` goes false in a `finally`, by
+ * which point `bootState` is already `finishing`. On failure both go false with the state back on
+ * `createAgent`, so the form returns carrying its error. Hoisted per rule 1.
  */
 const settingUpState: SchemaNode = {
   type: '$if',
@@ -627,15 +561,12 @@ const settingUpState: SchemaNode = {
  * A switch in progress, whichever screen it was started from.
  *
  * Switching runs entirely before the reload — kill the executor, respawn it against the other
- * directory, wait for GraphQL — several seconds during which whatever was on screen would otherwise
- * sit there looking merely unresponsive. That was handled inside the sign-in branch only, so
- * leaving a half-made account left the setup form up for the whole restart before anything
- * acknowledged the click.
+ * directory, wait for GraphQL — several seconds during which the screen would otherwise look
+ * unresponsive.
  *
- * Hoisted above the boot-state branches because a switch is not a boot state: it can begin from
- * sign-in or from setup, and it should look identical either way. `startingState` reads the active
- * account, which moved to the target on the click, so the badge is the one being switched *to* —
- * and the same node renders on the far side of the restart, making the whole thing one screen.
+ * Hoisted per rule 1, and for a second reason: a switch is not a boot state. It can begin from
+ * sign-in or from setup and should look identical either way. `startingState` reads the active
+ * account, which moved to the target on the click, so the badge is the one being switched *to*.
  */
 const switchingState: SchemaNode = {
   type: '$if',
