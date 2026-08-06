@@ -17,8 +17,23 @@
  * no path to give it. The launcher's own publish form asks the user to type the path, and its
  * buttons are wired to the install handler, so it has never published anything.
  */
-import { type Ad4mClient, type Apps, capSentence, ExceptionType } from '@coasys/ad4m';
-import type { AuthorizedApp, RuntimeAdminPort } from '@we/backend-shared';
+import {
+  type Ad4mClient,
+  type AIModel,
+  type Apps,
+  capSentence,
+  ExceptionType,
+  type ModelInput,
+  type ModelType,
+} from '@coasys/ad4m';
+import type {
+  AiModel,
+  AiModelDraft,
+  AiModelKind,
+  AiModelSource,
+  AuthorizedApp,
+  RuntimeAdminPort,
+} from '@we/backend-shared';
 
 /**
  * The languages the executor installs for itself and cannot run without.
@@ -35,6 +50,134 @@ const SYSTEM_LANGUAGES = [
   'perspective-language',
   'direct-message-language',
 ];
+
+/**
+ * The model names AD4M's local runner knows how to fetch and run.
+ *
+ * Carried here rather than asked for, because the executor exposes no list of them: the launcher's
+ * dropdowns are the only place they are written down. Nothing breaks if this drifts behind a new
+ * executor build — a name AD4M added is simply missing from the picker, and the Hugging Face source
+ * still reaches it — so it is a convenience list, not a contract.
+ */
+const PRESETS: Record<AiModelKind, string[]> = {
+  llm: [
+    'deephermes-3-llama-3-8b-Q4',
+    'deephermes-3-llama-3-8b-Q6',
+    'deephermes-3-llama-3-8b-Q8',
+    'Qwen2.5.1-Coder-7B-Instruct',
+    'deepseek_r1_distill_qwen_1_5b',
+    'deepseek_r1_distill_qwen_7b',
+    'deepseek_r1_distill_qwen_14b',
+    'deepseek_r1_distill_llama_8b',
+    'mistral_7b',
+    'mistral_7b_instruct',
+    'mistral_7b_instruct_2',
+    'solar_10_7b',
+    'solar_10_7b_instruct',
+    'llama_7b',
+    'llama_7b_chat',
+    'llama_7b_code',
+    'llama_8b',
+    'llama_8b_chat',
+    'llama_3_1_8b_chat',
+    'llama_13b',
+    'llama_13b_chat',
+    'llama_13b_code',
+    'llama_34b_code',
+    'llama_70b',
+  ],
+  embedding: ['bert'],
+  transcription: [
+    'whisper_tiny',
+    'whisper_tiny_quantized',
+    'whisper_tiny_en',
+    'whisper_tiny_en_quantized',
+    'whisper_base',
+    'whisper_base_en',
+    'whisper_small',
+    'whisper_small_en',
+    'whisper_medium',
+    'whisper_medium_en',
+    'whisper_medium_en_quantized_distil',
+    'whisper_large',
+    'whisper_large_v2',
+    'whisper_distil_medium_en',
+    'whisper_distil_large_v2',
+    'whisper_distil_large_v3',
+    'whisper_distil_large_v3_quantized',
+    'whisper_large_v3_turbo_quantized',
+  ],
+};
+
+const KIND_TO_AD4M: Record<AiModelKind, ModelType> = {
+  llm: 'LLM',
+  embedding: 'EMBEDDING',
+  transcription: 'TRANSCRIPTION',
+};
+
+function toKind(modelType: ModelType): AiModelKind {
+  if (modelType === 'EMBEDDING') return 'embedding';
+  if (modelType === 'TRANSCRIPTION') return 'transcription';
+  return 'llm';
+}
+
+/**
+ * AD4M's model record, read as a source.
+ *
+ * The distinctions are implicit in the record: an `api` block means a remote endpoint, a `local`
+ * block with a `huggingfaceRepo` means a repo to fetch, and a `local` block without one means
+ * either a preset name or a path — which the executor itself tells apart the same way, by whether
+ * the name matches a build it knows. Reading it once here is what lets the form ask a single
+ * question instead of inferring the answer from which fields are populated.
+ */
+function toSource(model: AIModel): AiModelSource {
+  if (model.api) {
+    return { kind: 'api', baseUrl: model.api.baseUrl, apiKey: model.api.apiKey, model: model.api.model };
+  }
+  const local = model.local;
+  if (!local) return { kind: 'preset', name: '' };
+  const tokenizer = local.tokenizerSource
+    ? {
+        repo: local.tokenizerSource.repo,
+        revision: local.tokenizerSource.revision,
+        fileName: local.tokenizerSource.fileName,
+      }
+    : undefined;
+  if (local.huggingfaceRepo) {
+    return {
+      kind: 'huggingface',
+      repo: local.huggingfaceRepo,
+      revision: local.revision || 'main',
+      fileName: local.fileName,
+      tokenizer,
+    };
+  }
+  const isPreset = Object.values(PRESETS).some((names) => names.includes(local.fileName));
+  return isPreset ? { kind: 'preset', name: local.fileName } : { kind: 'file', fileName: local.fileName, tokenizer };
+}
+
+function toModelInput(draft: AiModelDraft): ModelInput {
+  const input = { name: draft.name, modelType: KIND_TO_AD4M[draft.kind] } as ModelInput;
+  const source = draft.source;
+  if (source.kind === 'api') {
+    input.api = { baseUrl: source.baseUrl, apiKey: source.apiKey, model: source.model, apiType: 'OPEN_AI' };
+  } else if (source.kind === 'huggingface') {
+    input.local = {
+      fileName: source.fileName,
+      huggingfaceRepo: source.repo,
+      revision: source.revision || 'main',
+      tokenizerSource: source.tokenizer?.fileName ? source.tokenizer : undefined,
+    };
+  } else if (source.kind === 'file') {
+    input.local = {
+      fileName: source.fileName,
+      tokenizerSource: source.tokenizer?.fileName ? source.tokenizer : undefined,
+    };
+  } else {
+    input.local = { fileName: source.name };
+  }
+  return input;
+}
 
 /** AD4M's `Apps` record, flattened into the contract's shape with capabilities pre-rendered. */
 function toAuthorizedApp(app: Apps): AuthorizedApp {
@@ -55,6 +198,86 @@ export function createAd4mRuntimeAdmin(backendClient: unknown): RuntimeAdminPort
   const client = backendClient as Ad4mClient;
 
   return {
+    // ── AI models ─────────────────────────────────────────────────────────────
+    /**
+     * Defaults are read per kind rather than carried on the record. AD4M keeps one default per
+     * model type and `getModels` does not say which, so the launcher asked for the LLM default only
+     * and no other kind could ever show as default. Three calls answer it for all of them.
+     */
+    async aiModels() {
+      const models = await client.ai.getModels();
+      const defaults = await Promise.all(
+        (Object.values(KIND_TO_AD4M) as ModelType[]).map((type) =>
+          // A kind with no default set is not an error — it resolves to no id.
+          client.ai.getDefaultModel(type).catch(() => undefined),
+        ),
+      );
+      const defaultIds = new Set(defaults.filter(Boolean).map((model) => model!.id));
+      return models.map((model) => ({
+        id: model.id,
+        name: model.name,
+        kind: toKind(model.modelType),
+        source: toSource(model),
+        isDefault: defaultIds.has(model.id),
+      })) satisfies AiModel[];
+    },
+
+    async aiModelPresets(kind) {
+      return PRESETS[kind] ?? [];
+    },
+
+    /**
+     * A first model of its kind becomes that kind's default. Otherwise it is added and does
+     * nothing, which reads to the user as the button having failed — the launcher does the same for
+     * LLMs and leaves the other kinds unset.
+     */
+    async addAiModel(draft) {
+      const id = await client.ai.addModel(toModelInput(draft));
+      const type = KIND_TO_AD4M[draft.kind];
+      const existing = await client.ai.getDefaultModel(type).catch(() => undefined);
+      if (!existing) await client.ai.setDefaultModel(type, id);
+    },
+
+    async updateAiModel(id, draft) {
+      await client.ai.updateModel(id, toModelInput(draft));
+    },
+
+    async removeAiModel(id) {
+      await client.ai.removeModel(id);
+    },
+
+    /** Takes only an id: the model already knows its kind, so asking the caller to repeat it
+     * invites the two disagreeing. */
+    async setDefaultAiModel(id) {
+      const model = (await client.ai.getModels()).find((m) => m.id === id);
+      if (!model) throw new Error('That model is no longer installed');
+      await client.ai.setDefaultModel(model.modelType, id);
+    },
+
+    async aiModelStatus(id) {
+      const status = await client.ai.modelLoadingStatus(id);
+      return {
+        downloaded: status.downloaded,
+        loaded: status.loaded,
+        progress: status.progress ?? 0,
+        status: status.status ?? '',
+      };
+    },
+
+    async aiTasks() {
+      const tasks = await client.ai.tasks();
+      return tasks.map((task) => ({
+        id: task.taskId,
+        name: task.name,
+        modelId: task.modelId,
+        systemPrompt: task.systemPrompt,
+      }));
+    },
+
+    async removeAiTask(id) {
+      await client.ai.removeTask(id);
+    },
+
     // ── Languages ─────────────────────────────────────────────────────────────
     async languages() {
       const handles = await client.languages.all();

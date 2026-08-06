@@ -116,4 +116,16 @@ export type {
   ProfileDirectoryPort,
   SchemaPort,
 } from './backendPorts';
-export type { AuthorizedApp, ConsentRequest, InstalledLanguage, RuntimeAdminPort } from './runtimeAdmin';
+export type {
+  AiModel,
+  AiModelDraft,
+  AiModelKind,
+  AiModelSource,
+  AiModelStatus,
+  AiTask,
+  AuthorizedApp,
+  ConsentRequest,
+  InstalledLanguage,
+  RuntimeAdminPort,
+  TokenizerSource,
+} from './runtimeAdmin';

@@ -1373,6 +1373,12 @@ RuntimeStore:
   - canManageNetwork: boolean — gate the peer-network section on this
   - canManageApps: boolean — gate the authorized-apps section on this
   - canManageLanguages: boolean — gate the languages section on this
+  - canManageAi: boolean — gate the AI section on this
+  - aiModels: AiModelView[] — installed models, each carrying its display strings (kindLabel, sourceLabel, detail, statusText, ready) alongside id/name/kind/source/isDefault. Empty until loadAiModels() runs
+  - aiTasks: AiTask[] — named prompts apps registered against a model (id, name, modelId, systemPrompt)
+  - aiForm: AiModelForm | null — the model form while it is open, null when closed. One flat field per input; read with runtimeStore.aiForm.<field>
+  - aiPresetOptions: { label, value }[] — model names the backend can fetch itself, for the open form kind
+  - aiFormComplete: boolean — the open form has every field its chosen source needs
   - languages: InstalledLanguage[] — language plugins installed in this backend (address, name, system). Empty until loadLanguages() runs
   - trustedAgents: string[] — trusted peer ids. Empty until loadTrustedAgents() runs
   - authorizedApps: AuthorizedApp[] — external apps holding credentials (id, name, description, url, iconUrl, capabilities, revoked). Empty until loadAuthorizedApps() runs
@@ -1383,6 +1389,16 @@ RuntimeStore:
   - pendingConsent: ConsentRequest | null — a request awaiting the user's decision (kind: 'capability' | 'trust', title, message, app, peerId)
   - consentSecret: string — a code an approval returned, to be relayed to the asking app
 - Actions:
+  - loadAiModels(): fetches the installed AI models and their load status
+  - loadAiTasks(): fetches the prompts apps registered against a model
+  - newAiModel(): opens the model form empty, for a new model
+  - editAiModel(id: string): opens the model form on an existing model
+  - setAiFormField(field: string, value: string | boolean): sets one field of the open model form. Takes the field name so one action serves every input
+  - closeAiForm(): closes the model form, discarding it
+  - saveAiModel(): saves the open form — adds or updates depending on whether it has an id
+  - removeAiModel(id: string): deletes a model
+  - setDefaultAiModel(id: string): makes this the model apps get when they ask for its kind
+  - removeAiTask(id: string): deletes a registered prompt
   - loadLanguages(): fetches the installed languages
   - installLanguage(address: string): installs a language by content address, then reloads the list
   - removeLanguage(address: string): removes an installed language. Refuses the backend own system languages

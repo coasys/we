@@ -5406,6 +5406,56 @@
         "canManageLanguages": {
           "type": "boolean"
         },
+        "canManageAi": {
+          "type": "boolean"
+        },
+        "aiModels": {
+          "type": "array",
+          "properties": [
+            "id",
+            "name",
+            "kind",
+            "source",
+            "isDefault",
+            "kindLabel",
+            "sourceLabel",
+            "detail",
+            "statusText",
+            "ready"
+          ]
+        },
+        "aiTasks": {
+          "type": "array",
+          "properties": ["id", "name", "modelId", "systemPrompt"]
+        },
+        "aiForm": {
+          "type": "object",
+          "properties": [
+            "id",
+            "name",
+            "kind",
+            "sourceKind",
+            "presetName",
+            "apiBaseUrl",
+            "apiKey",
+            "apiModel",
+            "hfRepo",
+            "hfRevision",
+            "hfFileName",
+            "filePath",
+            "useTokenizer",
+            "tokenizerRepo",
+            "tokenizerRevision",
+            "tokenizerFileName"
+          ]
+        },
+        "aiPresetOptions": {
+          "type": "array",
+          "properties": ["label", "value"]
+        },
+        "aiFormComplete": {
+          "type": "boolean"
+        },
         "languages": {
           "type": "array",
           "properties": ["address", "name", "system"]
@@ -5438,6 +5488,16 @@
         }
       },
       "actions": [
+        "loadAiModels",
+        "loadAiTasks",
+        "newAiModel",
+        "editAiModel",
+        "setAiFormField",
+        "closeAiForm",
+        "saveAiModel",
+        "removeAiModel",
+        "setDefaultAiModel",
+        "removeAiTask",
         "loadLanguages",
         "installLanguage",
         "removeLanguage",

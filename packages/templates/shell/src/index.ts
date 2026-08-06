@@ -13,6 +13,7 @@ export { landingPageTemplate } from './about';
 export { marketplaceTemplate } from './marketplace';
 export { MODULE_RAIL_WIDTH, moduleRail } from './ModuleRail.schema';
 export { profileTemplate } from './Profile.schema';
+export { aiSection } from './AiSettings.schema';
 export { languagesLocalState, languagesSection } from './LanguageSettings.schema';
 export { connectedApps, networkLocalState, peerNetwork, runtimeError, trustedAgents } from './RuntimeSettings.schema';
 export { settingsTemplate } from './Settings.schema';

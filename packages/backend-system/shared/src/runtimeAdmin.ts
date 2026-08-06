@@ -64,7 +64,79 @@ export interface InstalledLanguage {
   system: boolean;
 }
 
+/** What a model is for. The backend picks a default per kind, and apps ask by kind. */
+export type AiModelKind = 'llm' | 'embedding' | 'transcription';
+
+/**
+ * Where a model's weights come from — the one thing that genuinely differs between models.
+ *
+ * A tagged union rather than the backend's shape (an optional `api` object beside an optional
+ * `local` one, where `local` means three different things depending on which of its fields are
+ * set). Which fields a form must show follows from `kind` here; with the original shape it follows
+ * from inspecting which fields happen to be populated, which is how the launcher's edit form ends
+ * up guessing.
+ */
+export type AiModelSource =
+  /** An OpenAI-compatible endpoint. */
+  | { kind: 'api'; baseUrl: string; apiKey: string; model: string }
+  /** A build the backend knows by name and fetches itself — see `aiModelPresets`. */
+  | { kind: 'preset'; name: string }
+  | { kind: 'huggingface'; repo: string; revision: string; fileName: string; tokenizer?: TokenizerSource }
+  /** A file already on the machine running the backend. */
+  | { kind: 'file'; fileName: string; tokenizer?: TokenizerSource };
+
+/** An explicit tokenizer, for the local sources whose weights do not carry one. */
+export interface TokenizerSource {
+  repo: string;
+  revision: string;
+  fileName: string;
+}
+
+export interface AiModel {
+  id: string;
+  name: string;
+  kind: AiModelKind;
+  source: AiModelSource;
+  /** True for the model the backend uses when an app asks for this kind without naming one. */
+  isDefault: boolean;
+}
+
+/** What `AiModel` needs to be created or edited — everything but the identity the backend assigns. */
+export type AiModelDraft = Omit<AiModel, 'id' | 'isDefault'>;
+
+/** Progress for a model the backend has to fetch before it can answer anything. */
+export interface AiModelStatus {
+  downloaded: boolean;
+  loaded: boolean;
+  /** Percentage, 0–100. */
+  progress: number;
+  /** The backend's own wording, displayed verbatim. */
+  status: string;
+}
+
+/** A named prompt an app registered against a model. */
+export interface AiTask {
+  id: string;
+  name: string;
+  modelId: string;
+  systemPrompt: string;
+}
+
 export interface RuntimeAdminPort {
+  // ── AI models ───────────────────────────────────────────────────────────────
+  aiModels?(): Promise<AiModel[]>;
+  /** Model names this backend can fetch on its own, for the kind asked about. */
+  aiModelPresets?(kind: AiModelKind): Promise<string[]>;
+  addAiModel?(draft: AiModelDraft): Promise<void>;
+  updateAiModel?(id: string, draft: AiModelDraft): Promise<void>;
+  removeAiModel?(id: string): Promise<void>;
+  /** Make this the model apps get when they ask for its kind. */
+  setDefaultAiModel?(id: string): Promise<void>;
+  /** Download/load progress. Only meaningful for models the backend hosts itself. */
+  aiModelStatus?(id: string): Promise<AiModelStatus>;
+  aiTasks?(): Promise<AiTask[]>;
+  removeAiTask?(id: string): Promise<void>;
+
   // ── Languages ───────────────────────────────────────────────────────────────
   languages?(): Promise<InstalledLanguage[]>;
   /** Install by content address. The backend fetches the bundle itself. */

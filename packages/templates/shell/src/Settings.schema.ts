@@ -7,6 +7,7 @@
 import type { SchemaNode, TemplateSchema } from '@we/schema-shared';
 
 import { accountSettings } from './AccountSettings.schema.ts';
+import { aiSection } from './AiSettings.schema.ts';
 import { createSpaceModal } from './CreateSpaceModal.ts';
 import { languagesLocalState, languagesSection } from './LanguageSettings.schema.ts';
 import {
@@ -803,6 +804,7 @@ export const settingsTemplate: TemplateSchema = {
       ]),
     },
     { path: '/modules', ...page([modulesSection]) },
+    { path: '/ai', ...page([runtimeError, aiSection]) },
     {
       path: '/languages',
       $localState: languagesLocalState,
@@ -837,6 +839,13 @@ export const settingsTemplate: TemplateSchema = {
                 navItem('Modules', 'squares-four', '/modules'),
                 // The rest are feature-detected: a backend that administers nothing has nothing to
                 // show, so the entry goes rather than leading to an empty page.
+                {
+                  type: '$if',
+                  props: {
+                    condition: { $store: 'runtimeStore.canManageAi' },
+                    then: navItem('AI', 'sparkle', '/ai'),
+                  },
+                },
                 {
                   type: '$if',
                   props: {

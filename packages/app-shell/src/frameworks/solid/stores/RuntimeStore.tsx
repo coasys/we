@@ -20,9 +20,25 @@
  * `canManageTrust` and friends false and the settings template renders nothing for that section.
  * The in-memory backend supplies no runtime port at all, which is the case that keeps this honest.
  */
+import {
+  type AiModelForm,
+  type AiModelView,
+  describeModel,
+  draftFrom,
+  EMPTY_FORM,
+  formComplete,
+  toDraft,
+} from '@solid/stores/aiModelDraft';
 import { useSessionStore } from '@solid/stores/SessionStore';
 import { useShellStore } from '@solid/stores/ShellStore';
-import type { AuthorizedApp, ConsentRequest, InstalledLanguage } from '@we/backend-shared';
+import type {
+  AiModelKind,
+  AiModelStatus,
+  AiTask,
+  AuthorizedApp,
+  ConsentRequest,
+  InstalledLanguage,
+} from '@we/backend-shared';
 import {
   type Accessor,
   createContext,
@@ -42,8 +58,19 @@ export interface RuntimeStore {
   canManageNetwork: Accessor<boolean>;
   canManageApps: Accessor<boolean>;
   canManageLanguages: Accessor<boolean>;
+  canManageAi: Accessor<boolean>;
 
   // ── State ────────────────────────────────────────────────────────────────────
+  /** Installed models, each carrying the strings its row displays. Empty until loadAiModels(). */
+  aiModels: Accessor<AiModelView[]>;
+  /** Named prompts apps registered against a model. */
+  aiTasks: Accessor<AiTask[]>;
+  /** The model form, or null when it is closed. Schemas render the modal on this. */
+  aiForm: Accessor<AiModelForm | null>;
+  /** Model names the backend can fetch itself, for the kind the open form is on. */
+  aiPresetOptions: Accessor<{ label: string; value: string }[]>;
+  /** True when the open form has every field its chosen source needs. */
+  aiFormComplete: Accessor<boolean>;
   languages: Accessor<InstalledLanguage[]>;
   trustedAgents: Accessor<string[]>;
   authorizedApps: Accessor<AuthorizedApp[]>;
@@ -60,6 +87,19 @@ export interface RuntimeStore {
   consentSecret: Accessor<string>;
 
   // ── Actions ──────────────────────────────────────────────────────────────────
+  loadAiModels: () => Promise<void>;
+  loadAiTasks: () => Promise<void>;
+  /** Open the form empty, for a new model. */
+  newAiModel: () => void;
+  /** Open the form on an existing model. */
+  editAiModel: (id: string) => void;
+  /** Set one form field. Takes the field name so one action serves every input. */
+  setAiFormField: (field: string, value: string | boolean) => void;
+  closeAiForm: () => void;
+  saveAiModel: () => Promise<void>;
+  removeAiModel: (id: string) => Promise<void>;
+  setDefaultAiModel: (id: string) => Promise<void>;
+  removeAiTask: (id: string) => Promise<void>;
   loadLanguages: () => Promise<void>;
   installLanguage: (address: string) => Promise<void>;
   removeLanguage: (address: string) => Promise<void>;
@@ -84,6 +124,10 @@ export function RuntimeStoreProvider(props: ParentProps) {
   const session = useSessionStore();
   const shell = useShellStore();
 
+  const [aiModels, setAiModels] = createSignal<AiModelView[]>([]);
+  const [aiTasks, setAiTasks] = createSignal<AiTask[]>([]);
+  const [aiForm, setAiForm] = createSignal<AiModelForm | null>(null);
+  const [aiPresets, setAiPresets] = createSignal<Record<string, string[]>>({});
   const [languages, setLanguages] = createSignal<InstalledLanguage[]>([]);
   const [trustedAgents, setTrustedAgents] = createSignal<string[]>([]);
   const [authorizedApps, setAuthorizedApps] = createSignal<AuthorizedApp[]>([]);
@@ -105,6 +149,18 @@ export function RuntimeStoreProvider(props: ParentProps) {
   const canManageNetwork = createMemo(() => !!runtime()?.networkMetrics);
   const canManageApps = createMemo(() => !!runtime()?.authorizedApps);
   const canManageLanguages = createMemo(() => !!runtime()?.languages);
+  const canManageAi = createMemo(() => !!runtime()?.aiModels);
+
+  const aiPresetOptions = createMemo(() => {
+    const kind = aiForm()?.kind;
+    if (!kind) return [];
+    return (aiPresets()[kind] ?? []).map((name) => ({ label: name, value: name }));
+  });
+
+  const aiFormComplete = createMemo(() => {
+    const form = aiForm();
+    return !!form && formComplete(form);
+  });
 
   /**
    * Every action runs through here: one loading flag, one error slot, and a guarantee that a
@@ -157,6 +213,29 @@ export function RuntimeStoreProvider(props: ParentProps) {
     if (canManageTrust()) void loadTrustedAgents();
     if (canManageApps()) void loadAuthorizedApps();
     if (canManageLanguages()) void loadLanguages();
+    if (canManageAi()) {
+      void loadAiModels();
+      void loadAiTasks();
+    }
+  });
+
+  // Presets are per kind and the form's kind can change while it is open, so this follows the form
+  // rather than being fetched once. Each kind is fetched at most once and cached.
+  createEffect(() => {
+    const kind = aiForm()?.kind;
+    if (kind) void loadAiPresets(kind);
+  });
+
+  // A model the backend hosts has to be downloaded before it answers anything, and that takes long
+  // enough that a static "Checking…" would be the whole experience. The interval exists only while
+  // something is actually pending and the page showing it is open.
+  createEffect(() => {
+    if (shell.activeShellView() !== 'settings') return;
+    if (!canManageAi()) return;
+    if (aiModels().every((model) => model.ready || model.source.kind === 'api')) return;
+
+    const timer = setInterval(() => void refreshAiStatuses(), 2000);
+    onCleanup(() => clearInterval(timer));
   });
 
   function dropHead() {
@@ -185,6 +264,104 @@ export function RuntimeStoreProvider(props: ParentProps) {
     // prompt up because the backend has no way to say "no" would trap them on the modal.
     if (port?.deny) await run(() => port.deny?.(request));
     dropHead();
+  }
+
+  // ── AI models ────────────────────────────────────────────────────────────────
+
+  async function loadAiModels(): Promise<void> {
+    const models = await run(() => runtime()?.aiModels?.());
+    if (!models.ok || !models.value) return;
+    // Statuses arrive separately and asynchronously; describe with what is known now, and let the
+    // poll below fill them in. Rendering the list only once every status has landed would hide the
+    // download progress that is the whole reason a status exists.
+    setAiModels(models.value.map((model) => describeModel(model)));
+    void refreshAiStatuses();
+  }
+
+  /**
+   * Re-reads download/load progress for the models that are still working on it.
+   *
+   * Deliberately outside `run`: this fires on a timer, and routing it through the shared loading
+   * flag would strobe every spinner on the page and wipe any error the user is reading. A failed
+   * status read is also not worth reporting — the model row already says what it knows.
+   */
+  async function refreshAiStatuses(): Promise<void> {
+    const port = runtime();
+    if (!port?.aiModelStatus) return;
+
+    const pending = aiModels().filter((model) => model.source.kind !== 'api' && !model.ready);
+    if (!pending.length) return;
+
+    const statuses = await Promise.all(
+      pending.map(async (model) => {
+        try {
+          return [model.id, await port.aiModelStatus?.(model.id)] as const;
+        } catch {
+          // A model the backend does not recognise yet — it stays on 'Checking…'.
+          return [model.id, undefined] as const;
+        }
+      }),
+    );
+    const byId = new Map(statuses);
+    setAiModels((models) =>
+      models.map((model) => {
+        const status = byId.get(model.id) as AiModelStatus | undefined;
+        return status ? describeModel(model, status) : model;
+      }),
+    );
+  }
+
+  async function loadAiTasks(): Promise<void> {
+    const tasks = await run(() => runtime()?.aiTasks?.());
+    if (tasks.ok && tasks.value) setAiTasks(tasks.value);
+  }
+
+  async function loadAiPresets(kind: AiModelKind): Promise<void> {
+    if (aiPresets()[kind]) return;
+    const names = await run(() => runtime()?.aiModelPresets?.(kind));
+    if (names.ok && names.value) setAiPresets((cache) => ({ ...cache, [kind]: names.value as string[] }));
+  }
+
+  function newAiModel(): void {
+    setAiForm({ ...EMPTY_FORM });
+  }
+
+  function editAiModel(id: string): void {
+    const model = aiModels().find((candidate) => candidate.id === id);
+    if (model) setAiForm(draftFrom(model));
+  }
+
+  function setAiFormField(field: string, value: string | boolean): void {
+    setAiForm((form) => (form ? { ...form, [field]: value } : form));
+  }
+
+  function closeAiForm(): void {
+    setAiForm(null);
+  }
+
+  async function saveAiModel(): Promise<void> {
+    const form = aiForm();
+    if (!form || !formComplete(form)) return;
+    const draft = toDraft(form);
+    const saved = await run(() =>
+      form.id ? runtime()?.updateAiModel?.(form.id, draft) : runtime()?.addAiModel?.(draft),
+    );
+    // The form stays open on failure, holding what was typed — the error slot above it says why.
+    if (!saved.ok) return;
+    setAiForm(null);
+    await loadAiModels();
+  }
+
+  async function removeAiModel(id: string): Promise<void> {
+    if ((await run(() => runtime()?.removeAiModel?.(id))).ok) await loadAiModels();
+  }
+
+  async function setDefaultAiModel(id: string): Promise<void> {
+    if ((await run(() => runtime()?.setDefaultAiModel?.(id))).ok) await loadAiModels();
+  }
+
+  async function removeAiTask(id: string): Promise<void> {
+    if ((await run(() => runtime()?.removeAiTask?.(id))).ok) await loadAiTasks();
   }
 
   // ── Settings ─────────────────────────────────────────────────────────────────
@@ -266,7 +443,13 @@ export function RuntimeStoreProvider(props: ParentProps) {
     canManageNetwork,
     canManageApps,
     canManageLanguages,
+    canManageAi,
 
+    aiModels,
+    aiTasks,
+    aiForm,
+    aiPresetOptions,
+    aiFormComplete,
     languages,
     trustedAgents,
     authorizedApps,
@@ -277,6 +460,16 @@ export function RuntimeStoreProvider(props: ParentProps) {
     pendingConsent,
     consentSecret,
 
+    loadAiModels,
+    loadAiTasks,
+    newAiModel,
+    editAiModel,
+    setAiFormField,
+    closeAiForm,
+    saveAiModel,
+    removeAiModel,
+    setDefaultAiModel,
+    removeAiTask,
     loadLanguages,
     installLanguage,
     removeLanguage,

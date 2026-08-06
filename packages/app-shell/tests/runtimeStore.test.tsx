@@ -11,7 +11,7 @@
  * (`backendPorts`), so driving that directly is both the smaller harness and the more direct test.
  */
 import { render } from '@solidjs/testing-library';
-import type { BackendPorts, ConsentRequest, RuntimeAdminPort } from '@we/backend-shared';
+import type { AiModel, BackendPorts, ConsentRequest, RuntimeAdminPort } from '@we/backend-shared';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 let ports: Partial<BackendPorts> | null = null;
@@ -144,6 +144,139 @@ describe('degrading when the backend administers nothing', () => {
     expect(store.canManageNetwork()).toBe(false);
     expect(store.canManageApps()).toBe(false);
     expect(store.canManageLanguages()).toBe(false);
+  });
+});
+
+describe('AI models', () => {
+  const gpt: AiModel = {
+    id: 'm1',
+    name: 'GPT',
+    kind: 'llm',
+    isDefault: true,
+    source: { kind: 'api', baseUrl: 'https://api.openai.com/v1', apiKey: 'sk-x', model: 'gpt-4o' },
+  };
+  const local: AiModel = {
+    id: 'm2',
+    name: 'Llama',
+    kind: 'llm',
+    isDefault: false,
+    source: { kind: 'preset', name: 'llama_8b' },
+  };
+
+  /** A runtime port with the AI members, recording what it was asked. */
+  function aiPort(overrides: Partial<RuntimeAdminPort> = {}) {
+    const calls: string[] = [];
+    const port: RuntimeAdminPort = {
+      async aiModels() {
+        calls.push('aiModels');
+        return [gpt, local];
+      },
+      async aiModelPresets() {
+        calls.push('presets');
+        return ['llama_8b', 'mistral_7b'];
+      },
+      async addAiModel(draft) {
+        calls.push(`add:${draft.name}`);
+      },
+      async updateAiModel(id, draft) {
+        calls.push(`update:${id}:${draft.name}`);
+      },
+      async aiModelStatus() {
+        calls.push('status');
+        return { downloaded: false, loaded: false, progress: 30, status: 'fetching' };
+      },
+      ...overrides,
+    };
+    return { port, calls };
+  }
+
+  it('polls status only for models the backend hosts', async () => {
+    const { port, calls } = aiPort();
+    ports = { runtime: port };
+    const store = mount();
+
+    await store.loadAiModels();
+    await vi.waitFor(() => expect(store.aiModels().find((m) => m.id === 'm2')?.statusText).toBe('Downloading 30%'));
+
+    // One status call, for the local model. The remote one has nothing to download, and asking
+    // about it would be a round trip whose answer is already known.
+    expect(calls.filter((c) => c === 'status')).toEqual(['status']);
+    expect(store.aiModels().find((m) => m.id === 'm1')?.statusText).toBe('');
+  });
+
+  it('saves a new model as an add, and an edited one as an update', async () => {
+    const { port, calls } = aiPort();
+    ports = { runtime: port };
+    const store = mount();
+    await store.loadAiModels();
+
+    store.newAiModel();
+    store.setAiFormField('name', 'Fresh');
+    store.setAiFormField('presetName', 'mistral_7b');
+    await store.saveAiModel();
+
+    store.editAiModel('m2');
+    store.setAiFormField('name', 'Renamed');
+    await store.saveAiModel();
+
+    expect(calls.filter((c) => c.startsWith('add') || c.startsWith('update'))).toEqual([
+      'add:Fresh',
+      'update:m2:Renamed',
+    ]);
+  });
+
+  it('refuses to save a form that is missing what its source needs', async () => {
+    const { port, calls } = aiPort();
+    ports = { runtime: port };
+    const store = mount();
+
+    store.newAiModel();
+    store.setAiFormField('name', 'Nameless source');
+    // Source is 'preset' by default and no preset has been chosen.
+    expect(store.aiFormComplete()).toBe(false);
+    await store.saveAiModel();
+
+    expect(calls.filter((c) => c.startsWith('add'))).toEqual([]);
+    expect(store.aiForm()).not.toBeNull();
+  });
+
+  it('keeps the form open when the save fails, so the typing is not lost', async () => {
+    const { port } = aiPort({
+      async addAiModel() {
+        throw new Error('model type not supported');
+      },
+    });
+    ports = { runtime: port };
+    const store = mount();
+
+    store.newAiModel();
+    store.setAiFormField('name', 'Fresh');
+    store.setAiFormField('presetName', 'llama_8b');
+    await store.saveAiModel();
+
+    expect(store.aiForm()?.name).toBe('Fresh');
+    expect(store.error()).toBe('model type not supported');
+  });
+
+  it('offers presets for the kind the form is on, and refetches when it changes', async () => {
+    const asked: string[] = [];
+    const { port } = aiPort({
+      async aiModelPresets(kind) {
+        asked.push(kind);
+        return kind === 'llm' ? ['llama_8b'] : ['whisper_small'];
+      },
+    });
+    ports = { runtime: port };
+    const store = mount();
+
+    store.newAiModel();
+    await vi.waitFor(() => expect(store.aiPresetOptions()).toEqual([{ label: 'llama_8b', value: 'llama_8b' }]));
+
+    store.setAiFormField('kind', 'transcription');
+    await vi.waitFor(() =>
+      expect(store.aiPresetOptions()).toEqual([{ label: 'whisper_small', value: 'whisper_small' }]),
+    );
+    expect(asked).toEqual(['llm', 'transcription']);
   });
 });
 
