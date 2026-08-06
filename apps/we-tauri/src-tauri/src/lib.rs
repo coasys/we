@@ -70,6 +70,9 @@ pub fn run() {
     // Clear out any account whose setup was abandoned last session before choosing one.
     registry.prune_abandoned();
     let app_data_path = resolve_ad4m_data_path(&registry, &home);
+    // Read before the builder takes ownership of the state — the executor is configured once, in
+    // the setup hook below, and nothing it is given can be changed after that.
+    let executor_settings = registry.executor_settings();
     println!("AD4M data path: {}", app_data_path.display());
 
     std::fs::create_dir_all(&app_data_path)
@@ -107,7 +110,10 @@ pub fn run() {
             commands::accounts::set_account_display,
             commands::accounts::select_account,
             commands::accounts::remove_account,
-            commands::accounts::apply_account_selection
+            commands::accounts::apply_account_selection,
+            commands::accounts::get_executor_settings,
+            commands::accounts::set_executor_settings,
+            commands::accounts::restart_executor
         ])
         .setup(move |app| {
             // Start embedded app HTTP servers (in production only)
@@ -130,6 +136,11 @@ pub fn run() {
                 port: Some(graphql_port),
                 run_dapp_server: Some(false), // Disabled - we serve the app ourselves
                 connect_holochain: Some(true),
+                // Off unless asked for: MCP opens a port that serves this agent's data to anything
+                // local that speaks the protocol. Read here because the executor takes its
+                // configuration once, at startup.
+                enable_mcp: Some(executor_settings.mcp_enabled),
+                mcp_port: Some(executor_settings.mcp_port),
                 ..Default::default()
             };
             

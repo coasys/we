@@ -3,7 +3,7 @@
 //! Every mutation is registry-only; nothing takes effect until `restart_app` relaunches, because
 //! the executor is configured with one data path at startup and holds it for its lifetime.
 
-use crate::accounts::{Account, AccountRegistry};
+use crate::accounts::{Account, AccountRegistry, ExecutorSettings, ExecutorSettingsUpdate};
 use crate::app_state::AppState;
 use tauri::State;
 
@@ -62,6 +62,29 @@ pub fn apply_account_selection(app_handle: tauri::AppHandle) {
     // no longer exists and shows "Connection refused" on a white screen. The dev script therefore
     // runs vite alongside rather than under the CLI. Packaged builds serve the bundled frontend and
     // were never affected.
+    app_handle.restart();
+}
+
+/// Settings the executor reads at startup — see `ExecutorSettings`.
+#[tauri::command]
+pub fn get_executor_settings(state: State<'_, AppState>) -> ExecutorSettings {
+    registry(&state).executor_settings()
+}
+
+#[tauri::command]
+pub fn set_executor_settings(
+    settings: ExecutorSettingsUpdate,
+    state: State<'_, AppState>,
+) -> Result<ExecutorSettings, String> {
+    registry(&state).set_executor_settings(settings)
+}
+
+/// Start the executor over so written settings take effect.
+///
+/// A full relaunch, for the same reason `apply_account_selection` is one: the executor runs in this
+/// process and its shutdown ends in `std::process::exit`.
+#[tauri::command]
+pub fn restart_executor(app_handle: tauri::AppHandle) {
     app_handle.restart();
 }
 

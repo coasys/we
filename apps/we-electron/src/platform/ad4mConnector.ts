@@ -17,6 +17,12 @@ declare global {
       selectAccount: (id: string) => Promise<void>;
       removeAccount: (id: string) => Promise<void>;
       applyAccountSelection: () => Promise<void>;
+      getExecutorSettings: () => Promise<{ mcpEnabled: boolean; mcpPort: number }>;
+      setExecutorSettings: (settings: {
+        mcpEnabled?: boolean;
+        mcpPort?: number;
+      }) => Promise<{ mcpEnabled: boolean; mcpPort: number }>;
+      restartExecutor: () => Promise<void>;
     };
   }
 }

@@ -5409,6 +5409,18 @@
         "canManageAi": {
           "type": "boolean"
         },
+        "canConfigureExecutor": {
+          "type": "boolean"
+        },
+        "mcpEnabled": {
+          "type": "boolean"
+        },
+        "mcpPort": {
+          "type": "number"
+        },
+        "executorRestartPending": {
+          "type": "boolean"
+        },
         "aiModels": {
           "type": "array",
           "properties": [
@@ -5488,6 +5500,9 @@
         }
       },
       "actions": [
+        "setMcpEnabled",
+        "setMcpPort",
+        "restartExecutor",
         "loadAiModels",
         "loadAiTasks",
         "newAiModel",

@@ -2051,6 +2051,10 @@ export const contextData: ContextData = {
         canManageApps: { type: 'boolean' },
         canManageLanguages: { type: 'boolean' },
         canManageAi: { type: 'boolean' },
+        canConfigureExecutor: { type: 'boolean' },
+        mcpEnabled: { type: 'boolean' },
+        mcpPort: { type: 'number' },
+        executorRestartPending: { type: 'boolean' },
         aiModels: {
           type: 'array',
           properties: [
@@ -2104,6 +2108,9 @@ export const contextData: ContextData = {
         consentSecret: { type: 'string' },
       },
       actions: [
+        'setMcpEnabled',
+        'setMcpPort',
+        'restartExecutor',
         'loadAiModels',
         'loadAiTasks',
         'newAiModel',

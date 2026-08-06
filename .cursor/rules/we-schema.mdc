@@ -1374,6 +1374,10 @@ RuntimeStore:
   - canManageApps: boolean — gate the authorized-apps section on this
   - canManageLanguages: boolean — gate the languages section on this
   - canManageAi: boolean — gate the AI section on this
+  - canConfigureExecutor: boolean — this host starts the backend, so how it starts it can be changed. False on web
+  - mcpEnabled: boolean — whether the backend serves MCP on its next start
+  - mcpPort: number — the port MCP is served on
+  - executorRestartPending: boolean — settings were changed that the running backend has not picked up
   - aiModels: AiModelView[] — installed models, each carrying its display strings (kindLabel, sourceLabel, detail, statusText, ready) alongside id/name/kind/source/isDefault. Empty until loadAiModels() runs
   - aiTasks: AiTask[] — named prompts apps registered against a model (id, name, modelId, systemPrompt)
   - aiForm: AiModelForm | null — the model form while it is open, null when closed. One flat field per input; read with runtimeStore.aiForm.<field>
@@ -1389,6 +1393,9 @@ RuntimeStore:
   - pendingConsent: ConsentRequest | null — a request awaiting the user's decision (kind: 'capability' | 'trust', title, message, app, peerId)
   - consentSecret: string — a code an approval returned, to be relayed to the asking app
 - Actions:
+  - setMcpEnabled(enabled: boolean): turns MCP on or off for the backend next start
+  - setMcpPort(port: number): sets the MCP port. The host refuses one outside 1024-65535
+  - restartExecutor(): starts the backend over so written settings take effect. Does not return
   - loadAiModels(): fetches the installed AI models and their load status
   - loadAiTasks(): fetches the prompts apps registered against a model
   - newAiModel(): opens the model form empty, for a new model

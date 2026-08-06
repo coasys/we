@@ -11,6 +11,7 @@
  * (`backendPorts`), so driving that directly is both the smaller harness and the more direct test.
  */
 import { render } from '@solidjs/testing-library';
+import type { ExecutorHost } from '@we/app-shell/shared';
 import type { AiModel, BackendPorts, ConsentRequest, RuntimeAdminPort } from '@we/backend-shared';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -25,6 +26,14 @@ vi.mock('../src/frameworks/solid/stores/SessionStore', () => ({
 let activeShellView: string | null = null;
 vi.mock('../src/frameworks/solid/stores/ShellStore', () => ({
   useShellStore: () => ({ activeShellView: () => activeShellView }),
+}));
+
+// Faked for the same reason as the stores above, and for one more: importing the real provider
+// pulls the whole app-shell provider graph (down to the block editor) into a test about a settings
+// page. Only `executor` is read here.
+let executorHost: ExecutorHost | undefined;
+vi.mock('../src/frameworks/solid/providers/PlatformProvider', () => ({
+  usePlatform: () => ({ executor: executorHost }),
 }));
 
 import {
@@ -108,6 +117,85 @@ const trustRequest: ConsentRequest = {
 beforeEach(() => {
   ports = null;
   activeShellView = null;
+  executorHost = undefined;
+});
+
+describe('how the backend is started', () => {
+  /** An executor host that records what it was told, the way a real one persists it. */
+  function stubExecutor(overrides: Partial<ExecutorHost> = {}) {
+    let stored = { mcpEnabled: false, mcpPort: 3001 };
+    const calls: string[] = [];
+    const host: ExecutorHost = {
+      async getSettings() {
+        return stored;
+      },
+      async setSettings(update) {
+        calls.push(`set:${JSON.stringify(update)}`);
+        stored = { ...stored, ...update };
+        return stored;
+      },
+      async restart() {
+        calls.push('restart');
+      },
+      ...overrides,
+    };
+    return { host, calls };
+  }
+
+  it('reports the capability as absent on a host that does not start the backend', () => {
+    ports = {};
+    const store = mount();
+
+    expect(store.canConfigureExecutor()).toBe(false);
+  });
+
+  it('asks for a restart once a setting is changed, and stops asking after one', async () => {
+    const { host, calls } = stubExecutor();
+    executorHost = host;
+    ports = {};
+    const store = mount();
+
+    expect(store.executorRestartPending()).toBe(false);
+
+    await store.setMcpEnabled(true);
+
+    // The switch reflects the saved value immediately; the notice is what says it is not live yet.
+    expect(store.mcpEnabled()).toBe(true);
+    expect(store.executorRestartPending()).toBe(true);
+
+    await store.restartExecutor();
+    expect(calls).toEqual(['set:{"mcpEnabled":true}', 'restart']);
+    expect(store.executorRestartPending()).toBe(false);
+  });
+
+  it('leaves the setting alone when the host refuses it', async () => {
+    const { host } = stubExecutor({
+      async setSettings() {
+        throw new Error('Choose a port between 1024 and 65535');
+      },
+    });
+    executorHost = host;
+    ports = {};
+    const store = mount();
+
+    await store.setMcpPort(80);
+
+    expect(store.mcpPort()).toBe(3001);
+    expect(store.error()).toBe('Choose a port between 1024 and 65535');
+    // Nothing was written, so nothing is waiting on a restart.
+    expect(store.executorRestartPending()).toBe(false);
+  });
+
+  it('reads the current settings when the settings page opens', async () => {
+    const { host } = stubExecutor({ getSettings: async () => ({ mcpEnabled: true, mcpPort: 4321 }) });
+    executorHost = host;
+    activeShellView = 'settings';
+    ports = {};
+    const store = mount();
+
+    await vi.waitFor(() => expect(store.mcpPort()).toBe(4321));
+    expect(store.mcpEnabled()).toBe(true);
+  });
 });
 
 describe('degrading when the backend administers nothing', () => {

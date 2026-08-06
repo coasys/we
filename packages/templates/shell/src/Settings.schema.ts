@@ -12,6 +12,7 @@ import { createSpaceModal } from './CreateSpaceModal.ts';
 import { languagesLocalState, languagesSection } from './LanguageSettings.schema.ts';
 import {
   connectedApps,
+  mcpServer,
   networkLocalState,
   peerNetwork,
   runtimeError,
@@ -815,7 +816,7 @@ export const settingsTemplate: TemplateSchema = {
       $localState: networkLocalState,
       ...page([runtimeError, trustedAgents, peerNetwork]),
     },
-    { path: '/connections', ...page([runtimeError, connectedApps]) },
+    { path: '/connections', ...page([runtimeError, connectedApps, mcpServer]) },
     // Anything else lands on Account rather than an empty frame.
     { path: '*', ...page([accountSection]) },
   ],
@@ -863,7 +864,9 @@ export const settingsTemplate: TemplateSchema = {
                 {
                   type: '$if',
                   props: {
-                    condition: { $store: 'runtimeStore.canManageApps' },
+                    condition: {
+                      $or: [{ $store: 'runtimeStore.canManageApps' }, { $store: 'runtimeStore.canConfigureExecutor' }],
+                    },
                     then: navItem('Connections', 'plugs', '/connections'),
                   },
                 },

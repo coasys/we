@@ -233,6 +233,101 @@ export const trustedAgents: SchemaNode = {
   },
 };
 
+/**
+ * The Model Context Protocol server, which this host starts the backend with or without.
+ *
+ * On the Connections page rather than Network: what it connects is local AI tooling to this agent's
+ * data, which is the same kind of thing as an app holding a credential — not peer networking.
+ *
+ * Every control here is a setting for the *next* start, so the restart notice is part of the
+ * section rather than a toast: a switch that appears to do nothing is worse than one that says
+ * what it is waiting for.
+ */
+export const mcpServer: SchemaNode = {
+  type: '$if',
+  props: {
+    condition: { $store: 'runtimeStore.canConfigureExecutor' },
+    then: {
+      type: 'Column',
+      props: { gap: '300' },
+      children: [
+        {
+          type: 'Row',
+          props: { gap: '200', ay: 'center' },
+          children: [
+            { type: 'we-icon', props: { name: 'plugs-connected', color: 'neutral-600' } },
+            { type: 'we-text', props: { fontWeight: 'semibold' }, children: ['AI tool access (MCP)'] },
+          ],
+        },
+        {
+          type: 'we-text',
+          props: { variant: 'footnote', color: 'neutral-500' },
+          children: [
+            'Lets AI tools on this machine — editors, agents, desktop assistants — read and write your data through the Model Context Protocol. Off unless you turn it on.',
+          ],
+        },
+        {
+          type: 'Row',
+          props: { gap: '300', ay: 'center', wrap: true },
+          children: [
+            {
+              type: 'we-switch',
+              props: {
+                checked: { $store: 'runtimeStore.mcpEnabled' },
+                onChange: { $action: 'runtimeStore.setMcpEnabled', args: ['$event.detail'] },
+              },
+            },
+            { type: 'we-text', props: { variant: 'label' }, children: ['Serve MCP'] },
+            {
+              type: 'we-text',
+              props: { variant: 'footnote', color: 'neutral-500', ml: '300' },
+              children: ['Port'],
+            },
+            {
+              type: 'we-number-input',
+              props: {
+                width: '120px',
+                size: 'sm',
+                min: 1024,
+                max: 65535,
+                step: 1,
+                value: { $store: 'runtimeStore.mcpPort' },
+                onChange: { $action: 'runtimeStore.setMcpPort', args: ['$event.detail'] },
+              },
+            },
+          ],
+        },
+        {
+          type: '$if',
+          props: {
+            condition: { $store: 'runtimeStore.executorRestartPending' },
+            then: {
+              type: 'Row',
+              props: { gap: '300', ay: 'center', ax: 'between', bg: 'neutral-100', r: '300', px: '300', py: '200' },
+              children: [
+                {
+                  type: 'we-text',
+                  props: { variant: 'footnote' },
+                  children: ['Saved. It takes effect when the data layer restarts.'],
+                },
+                {
+                  type: 'we-button',
+                  props: {
+                    text: 'Restart now',
+                    size: 'sm',
+                    variant: 'secondary',
+                    onClick: { $action: 'runtimeStore.restartExecutor' },
+                  },
+                },
+              ],
+            },
+          },
+        },
+      ],
+    },
+  },
+};
+
 /** Diagnostics and out-of-band peer exchange for the networking layer. */
 export const peerNetwork: SchemaNode = {
   type: '$if',

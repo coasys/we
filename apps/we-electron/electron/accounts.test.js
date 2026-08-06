@@ -379,6 +379,39 @@ describe('pruneAbandoned', () => {
   });
 });
 
+describe('executor settings', () => {
+  it('defaults to MCP off, on the launcher port', () => {
+    // Opt-in by design: MCP opens a port that serves this agent's data to anything local that
+    // speaks the protocol.
+    expect(registry.executorSettings()).toEqual({ mcpEnabled: false, mcpPort: 3001 });
+  });
+
+  it('survives registry writes made for unrelated reasons', () => {
+    seedAd4mData(defaultPath);
+    registry.setExecutorSettings({ mcpEnabled: true, mcpPort: 4321 });
+
+    registry.select(defaultPath);
+    registry.setDisplay(defaultPath, { name: 'Renamed' });
+
+    // Both hosts rewrite this file when an account changes. A rewrite that dropped the executor
+    // block would turn MCP off at the next launch with nothing having asked for that.
+    expect(registry.executorSettings()).toEqual({ mcpEnabled: true, mcpPort: 4321 });
+  });
+
+  it('applies one field without clearing the other', () => {
+    registry.setExecutorSettings({ mcpEnabled: true });
+    registry.setExecutorSettings({ mcpPort: 5000 });
+    expect(registry.executorSettings()).toEqual({ mcpEnabled: true, mcpPort: 5000 });
+  });
+
+  it('refuses a port the executor could not bind', () => {
+    // Refused here rather than at startup: an unusable port written now would fail at the next
+    // launch, a restart away from the field that caused it.
+    expect(() => registry.setExecutorSettings({ mcpPort: 80 })).toThrow();
+    expect(registry.executorSettings().mcpPort).toBe(3001);
+  });
+});
+
 describe('slugify', () => {
   it('makes a safe directory name', () => {
     expect(slugify('Test Net')).toBe('test-net');

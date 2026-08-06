@@ -20,6 +20,7 @@
  * `canManageTrust` and friends false and the settings template renders nothing for that section.
  * The in-memory backend supplies no runtime port at all, which is the case that keeps this honest.
  */
+import { usePlatform } from '@solid/providers/PlatformProvider';
 import {
   type AiModelForm,
   type AiModelView,
@@ -59,6 +60,11 @@ export interface RuntimeStore {
   canManageApps: Accessor<boolean>;
   canManageLanguages: Accessor<boolean>;
   canManageAi: Accessor<boolean>;
+  /**
+   * This host starts the backend, so how it starts it can be changed. False on web, where the app
+   * connects to an executor someone else started.
+   */
+  canConfigureExecutor: Accessor<boolean>;
 
   // ── State ────────────────────────────────────────────────────────────────────
   /** Installed models, each carrying the strings its row displays. Empty until loadAiModels(). */
@@ -81,6 +87,11 @@ export interface RuntimeStore {
   loading: Accessor<boolean>;
   /** Last runtime error, for display. Cleared at the start of each call. */
   error: Accessor<string>;
+  /** Whether the backend serves MCP on its next start, and on which port. */
+  mcpEnabled: Accessor<boolean>;
+  mcpPort: Accessor<number>;
+  /** Settings have been changed that the running backend has not picked up. */
+  executorRestartPending: Accessor<boolean>;
   /** The consent request awaiting a decision, if any. Schemas render a modal on this. */
   pendingConsent: Accessor<ConsentRequest | null>;
   /** A secret returned by an approval that must be relayed to the asker by hand. */
@@ -113,6 +124,10 @@ export interface RuntimeStore {
   restartNetwork: () => Promise<void>;
   loadPeerInfos: () => Promise<void>;
   addPeerInfos: (infos: string) => Promise<void>;
+  setMcpEnabled: (enabled: boolean) => Promise<void>;
+  setMcpPort: (port: number) => Promise<void>;
+  /** Start the backend over so the written settings take effect. Does not return. */
+  restartExecutor: () => Promise<void>;
   approveConsent: () => Promise<void>;
   denyConsent: () => Promise<void>;
   dismissConsentSecret: () => void;
@@ -123,6 +138,7 @@ const RuntimeContext = createContext<RuntimeStore>();
 export function RuntimeStoreProvider(props: ParentProps) {
   const session = useSessionStore();
   const shell = useShellStore();
+  const platform = usePlatform();
 
   const [aiModels, setAiModels] = createSignal<AiModelView[]>([]);
   const [aiTasks, setAiTasks] = createSignal<AiTask[]>([]);
@@ -136,6 +152,9 @@ export function RuntimeStoreProvider(props: ParentProps) {
   const [loading, setLoading] = createSignal(false);
   const [error, setError] = createSignal('');
   const [consentSecret, setConsentSecret] = createSignal('');
+  const [mcpEnabled, setMcpEnabledSignal] = createSignal(false);
+  const [mcpPort, setMcpPortSignal] = createSignal(3001);
+  const [executorRestartPending, setExecutorRestartPending] = createSignal(false);
 
   // A queue, not a single slot: two apps can ask at once, and dropping the second would leave it
   // hanging exactly the way having no listener at all does. The template renders the head.
@@ -150,6 +169,9 @@ export function RuntimeStoreProvider(props: ParentProps) {
   const canManageApps = createMemo(() => !!runtime()?.authorizedApps);
   const canManageLanguages = createMemo(() => !!runtime()?.languages);
   const canManageAi = createMemo(() => !!runtime()?.aiModels);
+
+  const executorHost = () => platform.executor;
+  const canConfigureExecutor = createMemo(() => !!executorHost());
 
   const aiPresetOptions = createMemo(() => {
     const kind = aiForm()?.kind;
@@ -217,6 +239,7 @@ export function RuntimeStoreProvider(props: ParentProps) {
       void loadAiModels();
       void loadAiTasks();
     }
+    if (canConfigureExecutor()) void loadExecutorSettings();
   });
 
   // Presets are per kind and the form's kind can change while it is open, so this follows the form
@@ -264,6 +287,50 @@ export function RuntimeStoreProvider(props: ParentProps) {
     // prompt up because the backend has no way to say "no" would trap them on the modal.
     if (port?.deny) await run(() => port.deny?.(request));
     dropHead();
+  }
+
+  // ── How the backend is started ───────────────────────────────────────────────
+  // Not a runtime call: these are arguments the executor read once, at startup, so changing one is
+  // always "write it down, then start over". `executorRestartPending` is what turns that from a
+  // setting that silently does nothing into one that says what it is waiting for.
+
+  async function loadExecutorSettings(): Promise<void> {
+    const host = executorHost();
+    if (!host) return;
+    try {
+      const settings = await host.getSettings();
+      setMcpEnabledSignal(settings.mcpEnabled);
+      setMcpPortSignal(settings.mcpPort);
+    } catch (err) {
+      console.error('RuntimeStore: could not read the executor settings', err);
+    }
+  }
+
+  async function writeExecutorSettings(update: { mcpEnabled?: boolean; mcpPort?: number }): Promise<void> {
+    const host = executorHost();
+    if (!host) return;
+    const applied = await run(() => host.setSettings(update));
+    if (!applied.ok || !applied.value) return;
+    setMcpEnabledSignal(applied.value.mcpEnabled);
+    setMcpPortSignal(applied.value.mcpPort);
+    setExecutorRestartPending(true);
+  }
+
+  async function setMcpEnabled(enabled: boolean): Promise<void> {
+    await writeExecutorSettings({ mcpEnabled: enabled });
+  }
+
+  async function setMcpPort(port: number): Promise<void> {
+    // The field reports whatever was typed, including nothing at all; the host is the one that
+    // decides what is a usable port, and its refusal lands in the shared error slot.
+    await writeExecutorSettings({ mcpPort: Number(port) });
+  }
+
+  async function restartExecutor(): Promise<void> {
+    const host = executorHost();
+    if (!host) return;
+    setExecutorRestartPending(false);
+    await host.restart();
   }
 
   // ── AI models ────────────────────────────────────────────────────────────────
@@ -444,7 +511,11 @@ export function RuntimeStoreProvider(props: ParentProps) {
     canManageApps,
     canManageLanguages,
     canManageAi,
+    canConfigureExecutor,
 
+    mcpEnabled,
+    mcpPort,
+    executorRestartPending,
     aiModels,
     aiTasks,
     aiForm,
@@ -483,6 +554,9 @@ export function RuntimeStoreProvider(props: ParentProps) {
     restartNetwork,
     loadPeerInfos,
     addPeerInfos,
+    setMcpEnabled,
+    setMcpPort,
+    restartExecutor,
     approveConsent,
     denyConsent,
     dismissConsentSecret: () => setConsentSecret(''),

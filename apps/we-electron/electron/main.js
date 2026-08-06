@@ -232,6 +232,10 @@ async function startExecutor() {
 
     ensureDataPathInitialised(executorPath, ad4mDataPath);
 
+    // Settings the executor reads once, at startup. Off unless asked for: MCP opens a port that
+    // serves this agent's data to anything local that speaks the protocol.
+    const executorSettings = accounts.executorSettings();
+
     // Start the executor process
     executorProcess = spawn(
       executorPath,
@@ -247,6 +251,9 @@ async function startExecutor() {
         'false', // We don't need the built-in dapp server
         '--connect-holochain',
         'true', // Enable holochain connection
+        ...(executorSettings.mcpEnabled
+          ? ['--enable-mcp', 'true', '--mcp-port', executorSettings.mcpPort.toString()]
+          : []),
       ],
       {
         detached: true, // Create a new process group so we can kill the entire tree
@@ -427,7 +434,21 @@ ipcMain.handle('accounts-remove', (_event, id) => accounts.remove(id));
  * Tauri cannot do this: it runs the executor in-process, and the executor's own graceful shutdown
  * ends in `std::process::exit`, so stopping it takes the app with it. That host still relaunches.
  */
-ipcMain.handle('accounts-apply', async () => {
+ipcMain.handle('accounts-apply', () => restartExecutorAndReload());
+
+ipcMain.handle('executor-settings-get', () => accounts.executorSettings());
+ipcMain.handle('executor-settings-set', (_event, settings) => accounts.setExecutorSettings(settings));
+/**
+ * Restart the executor so changed settings take effect.
+ *
+ * The same act as applying an account selection — the executor reads its arguments once, at
+ * startup, whether what changed is the data path or an MCP port. Sharing the implementation is not
+ * a shortcut: two functions that both mean "start the executor over" would drift, and the second
+ * one to be written would be the one that forgets to repaint the window.
+ */
+ipcMain.handle('executor-restart', () => restartExecutorAndReload());
+
+async function restartExecutorAndReload() {
   switchingAccount = true;
   try {
     killExecutor();
@@ -479,7 +500,7 @@ ipcMain.handle('accounts-apply', async () => {
   // anything the static middleware cannot match falls through to a catch-all; that is the shape of
   // the NotFoundError seen when creating an account from a built app.
   mainWindow.loadURL(appUrl());
-});
+}
 
 ipcMain.handle('get-desktop-sources', async () => {
   const sources = await desktopCapturer.getSources({

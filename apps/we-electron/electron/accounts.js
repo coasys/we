@@ -127,6 +127,9 @@ export function holdsLauncherState(path) {
   return existsSync(join(path, 'launcher-state.json'));
 }
 
+/** The launcher's default, so an agent used by both is reachable on the same port. */
+const DEFAULT_MCP_PORT = 3001;
+
 export function createAccountRegistry({ configDir, defaultPath, defaultName = 'Main' }) {
   /** Accounts WE creates, and the registry, both inside the container. */
   const managedRoot = join(defaultPath, CONTAINER_DIR);
@@ -403,6 +406,35 @@ export function createAccountRegistry({ configDir, defaultPath, defaultName = 'M
           return next;
         }),
       });
+    },
+
+    /**
+     * Settings that describe how the *executor* is started, rather than which account it runs as.
+     *
+     * They live in the account registry because that is the one file this host owns and reads
+     * before spawning anything — and because they are, like the selected account, arguments to a
+     * process that has not started yet. Defaults match the launcher's, so an agent moved between
+     * the two behaves the same.
+     */
+    executorSettings() {
+      const stored = read().executor ?? {};
+      return { mcpEnabled: stored.mcpEnabled === true, mcpPort: Number(stored.mcpPort) || DEFAULT_MCP_PORT };
+    },
+
+    setExecutorSettings({ mcpEnabled, mcpPort } = {}) {
+      const current = this.executorSettings();
+      const port = Number(mcpPort);
+      // A port outside the usable range would be written, then refused by the executor at the next
+      // start — which is a restart later, and nowhere near the field that caused it.
+      if (mcpPort !== undefined && (!Number.isInteger(port) || port < 1024 || port > 65535)) {
+        throw new Error('Choose a port between 1024 and 65535');
+      }
+      const next = {
+        mcpEnabled: mcpEnabled === undefined ? current.mcpEnabled : mcpEnabled === true,
+        mcpPort: mcpPort === undefined ? current.mcpPort : port,
+      };
+      write({ ...read(), executor: next });
+      return next;
     },
 
     select(id) {

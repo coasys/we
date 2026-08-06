@@ -15,4 +15,9 @@ contextBridge.exposeInMainWorld('electron', {
   selectAccount: (id) => ipcRenderer.invoke('accounts-select', id),
   removeAccount: (id) => ipcRenderer.invoke('accounts-remove', id),
   applyAccountSelection: () => ipcRenderer.invoke('accounts-apply'),
+
+  // How the executor itself is started. Applied on its next start, which `restartExecutor` causes.
+  getExecutorSettings: () => ipcRenderer.invoke('executor-settings-get'),
+  setExecutorSettings: (settings) => ipcRenderer.invoke('executor-settings-set', settings),
+  restartExecutor: () => ipcRenderer.invoke('executor-restart'),
 });
