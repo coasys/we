@@ -138,7 +138,12 @@ export function createAccountRegistry({ configDir, defaultPath, defaultName = 'M
   function read() {
     try {
       const parsed = JSON.parse(readFileSync(registryPath, 'utf8'));
-      if (Array.isArray(parsed.accounts)) return parsed;
+      // `selected_path` is read as well as `selectedPath` because the tauri host wrote the
+      // snake_case spelling for a while, and this file is shared. Without it the selection silently
+      // resets to whichever account happens to be first on any machine that ran that build.
+      if (Array.isArray(parsed.accounts)) {
+        return { ...parsed, selectedPath: parsed.selectedPath ?? parsed.selected_path ?? null };
+      }
     } catch {
       // Missing or corrupt — fall through to an empty registry rather than refusing to start.
       // Losing metadata costs names and pictures; the accounts themselves are directories and the

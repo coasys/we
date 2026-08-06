@@ -98,10 +98,21 @@ pub struct Account {
     pub shared_with_launcher: bool,
 }
 
+// The registry file is shared with the electron host, which writes camelCase — so this has to as
+// well, or each host reads the other's file as malformed and silently rewrites it in its own
+// dialect. That is not a cosmetic difference: a failed parse falls back to an empty registry, and
+// the rewrite then drops every name and cached picture the other host had stored.
+//
+// `selectedPath` is optional because the shared shape allows null: the TypeScript side writes one
+// when there is no selection yet, and `PathBuf` cannot hold that. The alias reads files this host
+// wrote before it agreed with the other one.
 #[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
 struct RegistryState {
+    #[serde(default)]
     accounts: Vec<AccountEntry>,
-    selected_path: PathBuf,
+    #[serde(default, alias = "selected_path")]
+    selected_path: Option<PathBuf>,
 }
 
 pub struct AccountRegistry {
@@ -233,7 +244,7 @@ impl AccountRegistry {
                     ..a.clone()
                 })
                 .collect(),
-            selected_path: rewrite(&legacy.selected_path),
+            selected_path: legacy.selected_path.as_ref().map(rewrite),
         });
         // Retire the old file, or this runs again every time the container goes away — and the
         // container going away is the supported way to start fresh. Keying "already migrated" on
@@ -258,7 +269,7 @@ impl AccountRegistry {
             .and_then(|data| serde_json::from_str::<RegistryState>(&data).ok())
             .unwrap_or_else(|| RegistryState {
                 accounts: Vec::new(),
-                selected_path: self.default_path.clone(),
+                selected_path: None,
             })
     }
 
@@ -275,8 +286,8 @@ impl AccountRegistry {
     pub fn resolve_active_path(&self) -> PathBuf {
         let state = self.read();
         let present = self.scan(&state);
-        if present.contains(&state.selected_path) {
-            return state.selected_path;
+        if let Some(selected) = state.selected_path.clone().filter(|p| present.contains(p)) {
+            return selected;
         }
 
         // The selection is gone — renamed away, or deleted from under us. Fall back to an account
@@ -289,10 +300,10 @@ impl AccountRegistry {
         // creates the container directory, so recording a fallback to a `default_path` that does
         // not exist would recreate the very directory just moved aside — and merely *listing*
         // accounts would undo the reset.
-        if present.contains(&fallback) && state.selected_path != fallback {
+        if present.contains(&fallback) && state.selected_path.as_ref() != Some(&fallback) {
             let _ = self.write(&RegistryState {
                 accounts: state.accounts,
-                selected_path: fallback.clone(),
+                selected_path: Some(fallback.clone()),
             });
         }
         fallback
@@ -399,7 +410,7 @@ impl AccountRegistry {
             // switcher forever looking real.
             provisional: true,
         });
-        state.selected_path = path.clone();
+        state.selected_path = Some(path.clone());
         self.write(&state)?;
 
         Ok(Account {
@@ -476,7 +487,7 @@ impl AccountRegistry {
         if !self.scan(&state).contains(&target) {
             return Err("No such account".to_string());
         }
-        state.selected_path = target;
+        state.selected_path = Some(target);
         self.write(&state)
     }
 
@@ -747,7 +758,7 @@ mod tests {
                     avatar: None,
                     provisional: false,
                 }],
-                selected_path: default_path.clone(),
+                selected_path: Some(default_path.clone()),
             })
             .unwrap(),
         )
@@ -759,6 +770,60 @@ mod tests {
 
         let after = AccountRegistry::new(config_dir, default_path);
         assert_eq!(after.list()[0].name, "Main");
+        fs::remove_dir_all(root).ok();
+    }
+
+    #[test]
+    fn reads_the_registry_the_electron_host_writes() {
+        // The two hosts share one file. This host used to expect `selected_path` while the other
+        // wrote `selectedPath`, so each read the other's file as malformed, fell back to an empty
+        // registry, and rewrote it in its own dialect — dropping every name and cached picture the
+        // other had stored. The account showed as "Main" with no image while signing in still
+        // worked, because the data path resolves independently.
+        let (root, default_path, _) = temp_registry();
+        let container = default_path.join("we-accounts");
+        fs::create_dir_all(&container).unwrap();
+        fs::write(
+            container.join("registry.json"),
+            format!(
+                r#"{{"accounts":[{{"name":"Jamess","path":"{}","avatar":"data:image/png;base64,AAAA"}}],"selectedPath":"{}"}}"#,
+                default_path.display(),
+                default_path.display()
+            ),
+        )
+        .unwrap();
+
+        let registry = AccountRegistry::new(root.join("config"), default_path.clone());
+        let listed = registry.list();
+
+        assert_eq!(listed[0].name, "Jamess", "name written by the other host was not read");
+        assert!(listed[0].avatar.is_some(), "cached picture was not read");
+        assert_eq!(registry.resolve_active_path(), default_path);
+        fs::remove_dir_all(root).ok();
+    }
+
+    #[test]
+    fn writes_the_registry_the_electron_host_can_read() {
+        let (root, default_path, registry) = temp_registry();
+        registry.set_display(&default_path.to_string_lossy(), Some("Jamess"), None).unwrap();
+
+        let written = fs::read_to_string(default_path.join("we-accounts").join("registry.json")).unwrap();
+        assert!(written.contains("selectedPath"), "wrote a key the other host does not read: {written}");
+        assert!(!written.contains("selected_path"));
+        fs::remove_dir_all(root).ok();
+    }
+
+    #[test]
+    fn tolerates_a_null_selection() {
+        // The shared shape allows it — the other host writes null when nothing is selected yet, and
+        // a bare PathBuf cannot hold that.
+        let (root, default_path, _) = temp_registry();
+        let container = default_path.join("we-accounts");
+        fs::create_dir_all(&container).unwrap();
+        fs::write(container.join("registry.json"), r#"{"accounts":[],"selectedPath":null}"#).unwrap();
+
+        let registry = AccountRegistry::new(root.join("config"), default_path.clone());
+        assert_eq!(registry.resolve_active_path(), default_path);
         fs::remove_dir_all(root).ok();
     }
 
@@ -777,7 +842,7 @@ mod tests {
                     avatar: None,
                     provisional: false,
                 }],
-                selected_path: legacy.clone(),
+                selected_path: Some(legacy.clone()),
             })
             .unwrap(),
         )

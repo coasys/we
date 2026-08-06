@@ -87,6 +87,23 @@ describe('seeding', () => {
   });
 });
 
+describe('sharing the registry file with the other host', () => {
+  it('reads the snake_case selection the tauri host used to write', () => {
+    // One file, two hosts. Tauri wrote `selected_path` for a while; read as `selectedPath` only,
+    // the selection silently resets to whichever account is first.
+    const other = join(defaultPath, 'we-accounts', 'other');
+    seedAd4mData(other);
+    mkdirSync(join(defaultPath, 'we-accounts'), { recursive: true });
+    writeFileSync(
+      join(defaultPath, 'we-accounts', 'registry.json'),
+      JSON.stringify({ accounts: [{ name: 'Other', path: other }], selected_path: other }),
+      'utf8',
+    );
+
+    expect(createAccountRegistry({ configDir, defaultPath }).resolveActivePath()).toBe(other);
+  });
+});
+
 describe('migrating out of the pre-container layout', () => {
   it('moves the directories in and rewrites the registry', () => {
     // Accounts used to live in the app's own config directory, with the registry beside them —
