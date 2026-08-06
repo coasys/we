@@ -58,7 +58,6 @@ describe('slotRegistry — faithful generalisation of shellRegistry', () => {
     slotRegistry.register({ id: 'call', anchor: 'dock-bottom', node: { type: 'Column' } });
     expect(slotRegistry.ordered().map((e) => e.id)).toEqual([
       'core:bootScreen',
-      'core:aboutOverlay',
       'core:consentPrompt',
       'core:consentSecret',
       'core:removeAccount',

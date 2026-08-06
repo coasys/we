@@ -73,32 +73,78 @@ const accountError: SchemaNode = {
  * so both put the wordmark in the same place. The boot screen leaves by cross-fading, and matching
  * position means the logo holds still through it. Keep the two in step if either moves.
  *
- * Opens the About page, exactly as the sidebar's copy does — so the mark means one thing in both
- * places. Worth having here because this screen asks someone to create an account before anything
- * has told them what they are creating it in.
+ * Inert. It briefly opened the About page, matching the sidebar's copy, and that turned out to
+ * confuse more than it helped: a mark that does something on one screen and nothing on the next
+ * reads as broken rather than as restraint. The About page is reachable from inside the app, which
+ * is where someone who wants it will look.
  *
- * `bare` so it stays a mark rather than becoming a button; the hover is the only thing that admits
- * it is clickable at all. That is thin on its own, which is why the welcome copy carries a labelled
- * link as well — an unlabelled logo is discoverable by people who already suspect it does
- * something, and they are not the ones who need it.
+ * Absent only while the first-run splash is up, which puts the mark in the middle instead. It comes
+ * back with the form, where there is something for it to sit beside.
  */
 const logoCorner: SchemaNode = {
-  type: 'Column',
-  props: { position: 'absolute', top: '0', left: '0', width: '80px', height: '80px', ax: 'center', ay: 'center' },
-  children: [
-    {
-      type: 'we-button',
-      props: {
-        variant: 'bare',
-        title: 'About WE',
-        hoverProps: { opacity: 0.7 },
-        onClick: { $action: 'shellStore.openShellView', args: ['landing-page'] },
-      },
+  type: '$if',
+  props: {
+    // Hidden for the splash only, not for the whole of a first run — the splash owns the centre of
+    // the screen at that moment, and two copies of the same mark is one too many. Once the form
+    // arrives the corner is free and the mark belongs there, in the position it also occupies in
+    // the sidebar.
+    //
+    // `accountsLoaded` is in the condition because `isFirstRun` reads false until the host answers.
+    // Without it the mark would appear and then be taken away again on a fresh machine; appearing
+    // a frame late is the lesser of the two.
+    condition: {
+      $and: [
+        { $store: 'accountStore.accountsLoaded' },
+        {
+          $not: {
+            $and: [
+              { $store: 'accountStore.isFirstRun' },
+              { $eq: [{ $store: 'sessionStore.bootState' }, 'initialising'] },
+            ],
+          },
+        },
+      ],
+    },
+    then: {
+      type: 'Column',
+      props: { position: 'absolute', top: '0', left: '0', width: '80px', height: '80px', ax: 'center', ay: 'center' },
       children: [
         {
           type: 'we-image',
           props: { src: '/we-text.svg', alt: 'WE', width: '38px', height: '38px', gradient: 'primary' },
         },
+      ],
+    },
+  },
+};
+
+/**
+ * The whole screen on a first run, while the executor starts.
+ *
+ * Nothing but the mark, a word and a spinner. There is no account to name, nobody to greet by
+ * name, and nowhere else to go — so every other piece of chrome is answering a question that has
+ * not been asked. The corner switcher in particular used to appear here offering "New account",
+ * then vanish when the form arrived, which is an offer and a retraction for the one action the
+ * next screen is entirely about.
+ *
+ * The mark is centred rather than in its corner because this is the one moment the app has nothing
+ * else to say. It returns to the corner with the form, which is when there is something to sit
+ * beside it.
+ */
+const firstRunSplash: SchemaNode = {
+  type: 'Column',
+  props: { gap: '600', ax: 'center' },
+  children: [
+    {
+      type: 'we-image',
+      props: { src: '/we-text.svg', alt: 'WE', width: '150px', height: '75px', gradient: 'primary' },
+    },
+    {
+      type: 'Row',
+      props: { gap: '300', ay: 'center', height: '40px' },
+      children: [
+        { type: 'we-spinner', props: { size: 'sm' } },
+        { type: 'we-text', props: { fontSize: '400', color: 'neutral-600' }, children: ['Loading...'] },
       ],
     },
   ],
@@ -142,7 +188,16 @@ function accountSwitcher({ allowCreate }: { allowCreate: boolean }): SchemaNode 
   return {
     type: '$if',
     props: {
-      condition: { $store: 'accountStore.canManageAccounts' },
+      // Never on a first run. There is nowhere else to go, and the create tile offered exactly the
+      // action the next screen is about — so it appeared and then withdrew as the form arrived.
+      // Gated here rather than at the two call sites so neither can forget it.
+      condition: {
+        $and: [
+          { $store: 'accountStore.canManageAccounts' },
+          { $store: 'accountStore.accountsLoaded' },
+          { $not: { $store: 'accountStore.isFirstRun' } },
+        ],
+      },
       then: {
         type: 'Column',
         props: { position: 'absolute', bottom: '300', left: '300', zIndex: 1 },
@@ -217,23 +272,26 @@ const welcomeHeading: SchemaNode = {
   type: 'Column',
   props: { gap: '300', ax: 'center', maxWidth: '420px' },
   children: [
-    { type: 'we-text', props: { variant: 'heading-md', fontWeight: 'regular' }, children: ['Welcome to WE'] },
+    // The cube is a lazy import — three.js is a separate 560K chunk, fetched only once one of
+    // these actually renders. So the box around it is not decoration: it reserves the space at a
+    // fixed size, and the heading below does not jump downward when the chunk lands.
+    // {
+    //   type: 'Column',
+    //   props: { width: '300px', height: '300px', ax: 'center', ay: 'center' },
+    //   children: [{ type: 'WeCube', props: { width: '300px', height: '300px' } }],
+    // },
+    { type: 'we-text', props: { variant: 'heading-lg', color: 'primary-700' }, children: ['Welcome'] },
+    {
+      type: 'we-text',
+      props: { fontSize: '500', color: 'neutral-600', textAlign: 'center' },
+      children: ['Create an account to get started.'],
+    },
     {
       type: 'we-text',
       props: { color: 'neutral-600', textAlign: 'center' },
-      children: ['Create an account to get started. It lives on this device, and so does everything in it.'],
-    },
-    // Labelled, and in the reader's line of sight. The mark in the corner opens the same page, but
-    // an unlabelled logo is only discoverable by someone who already suspects it does something —
-    // which is not the person asking "what is WE?" for the first time.
-    {
-      type: 'we-button',
-      props: {
-        variant: 'bare',
-        color: 'primary-600',
-        onClick: { $action: 'shellStore.openShellView', args: ['landing-page'] },
-      },
-      children: [{ type: 'we-text', props: { textDecoration: 'underline' }, children: ['What is WE?'] }],
+      children: [
+        'All your data lives on this device. Only content added to shared spaces is synced with their members.',
+      ],
     },
   ],
 };
@@ -255,14 +313,31 @@ function startingState(account: string): SchemaNode {
   return {
     type: '$if',
     props: {
-      // Only an account that exists gets named. A first run has none to name — the welcome above
-      // is already saying the right thing — and before the host answers, anything said is a guess.
-      // Both cases are the same wordless wait.
+      // Only an account that exists gets named, and only once the host has said so.
       condition: {
         $and: [{ $store: 'accountStore.accountsLoaded' }, { $not: { $store: 'accountStore.isFirstRun' } }],
       },
       then: knownAccountState(account),
-      else: neutralWait,
+      else: {
+        type: '$if',
+        props: {
+          condition: { $store: 'accountStore.isFirstRun' },
+          // Shown as soon as the host confirms this is a first run, not held back. Deferring it
+          // until the wait looked long enough left a blank screen for the second the executor
+          // takes, which reads as nothing happening rather than as restraint.
+          //
+          // Faded rather than snapped in because the wordless spinner is already on screen by
+          // then: this arrives around it instead of replacing it. Relies on the condition being
+          // false at mount — `ConditionalRenderer` captures `startVisible` at creation and skips
+          // the transition entirely when it is already true, and `isFirstRun` is false until the
+          // host answers.
+          enterTransition: { type: 'fade', duration: 300 },
+          then: firstRunSplash,
+          // Still waiting on the host. Wordless, because until it answers every label is a guess —
+          // which is what produced a flash of a deleted account's name on a wiped machine.
+          else: neutralWait,
+        },
+      },
     },
   };
 }
@@ -394,6 +469,70 @@ const unlockForm: SchemaNode = {
   ],
 };
 
+/**
+ * The boot background: the logo's own hue sweep, centred and made pale.
+ *
+ * `--we-gradient-primary` — the mark in the corner, the gradient buttons — runs from
+ * `primary-hue - 25` to `primary-hue + 25` at lightness 500. This is the same sweep turned radial,
+ * so the screen and the logo are lit by one idea rather than two.
+ *
+ * Lightness is the part that differs, and has to. At 500 the sweep is a saturated mid-tone: correct
+ * for a 38px mark, unreadable behind a form. Running 50 to 200 keeps the centre near white, where
+ * the heading and inputs are, and lets the colour arrive toward the edges — so the hue shift is
+ * visible exactly where there is no text over it.
+ *
+ * `circle`, not the default ellipse, so it stays a true circle rather than stretching with the
+ * window's aspect. `farthest-corner` extent by default, so it covers the frame and nothing falls
+ * back to bare background.
+ *
+ * Built from the hue and saturation custom properties rather than fixed colours, so a theme that
+ * moves the primary hue moves this with it — the same way it already moves the logo.
+ */
+export const hueSweepBackground = [
+  'radial-gradient(circle at 50% 50%,',
+  // Neutral at both ends, colour in between — so the sweep is a ring rather than a wash. The
+  // content sits in the clear core, and the hue travels through a band that never passes under it.
+  'var(--we-color-neutral-0) 0%,',
+  // The sweep is squeezed into the middle of the radius rather than spanning it. Two stops can
+  // travel the hue or land on a colour, not both; four buy a clean start and a clean finish.
+  'hsl(calc(var(--we-color-primary-hue) + 25) var(--we-color-saturation) var(--we-color-lightness-100)) 40%,',
+  'hsl(calc(var(--we-color-primary-hue) - 25) var(--we-color-saturation) var(--we-color-lightness-100)) 60%,',
+  // Named rather than `transparent`. Identical here, since `bg` beneath is the same token — but it
+  // says what it means and does not depend on what happens to be painted under it.
+  'var(--we-color-neutral-0) 80%)',
+].join(' ');
+
+/**
+ * One large soft field. `at` is the knob — the rest rarely needs touching.
+ *
+ * Falls off to `transparent`, not to `neutral-0`. These are meant to overlap, and an opaque
+ * neutral edge would paint white over whichever field is beneath it, turning soft overlaps into
+ * hard crescents. Transparent lets them composite, and `bg` supplies the base underneath.
+ */
+const blob = (at: string, size: string, hueOffset: string) =>
+  [
+    `radial-gradient(${size} at ${at},`,
+    `hsl(calc(var(--we-color-primary-hue) ${hueOffset}) var(--we-color-saturation) var(--we-color-lightness-200)) 0%,`,
+    'transparent 70%)',
+  ].join(' ');
+
+/**
+ * The alternative to `hueSweepBackground`: a few large fields placed by hand rather than one
+ * concentric sweep.
+ *
+ * Deliberately larger than they look like they need to be — a field smaller than the frame reads
+ * as a spot with its own edge, and the gaps between spots become the shape you actually see. At
+ * these sizes they overlap across most of the screen and merge.
+ *
+ * Each takes a different point in the logo's own hue range (+25, 0, -25), so moving one changes
+ * where a colour sits rather than introducing a new one.
+ */
+export const blobBackground = [
+  blob('24% 26%', '65% 60%', '+ 25'),
+  blob('80% 34%', '60% 55%', '- 25'),
+  blob('52% 88%', '70% 60%', '+ 0'),
+].join(', ');
+
 export const bootScreen: SchemaNode = {
   type: '$if',
   props: {
@@ -407,7 +546,31 @@ export const bootScreen: SchemaNode = {
         ax: 'center',
         ay: 'center',
         gap: '400',
+        // Colour beneath, mesh above — `bg` emits the `background` shorthand and is assigned
+        // before `background-image`, so the two compose rather than one erasing the other.
         bg: 'neutral-0',
+        // A mesh gradient: several soft radial fields, all curves and falloff, no edges. That is
+        // the reason for it over a linear gradient, whose one straight axis reads as a graphic
+        // device rather than as light.
+        //
+        // Shades in the 200-300 band, not the 50-100 the word "subtle" first suggested. The scale
+        // is lightness: neutral-0 is 100%, primary-100 is 90%. A field peaking ten percent darker
+        // than its background, then falling off to transparent across half the screen, is
+        // invisible — most of its area is far weaker than its peak.
+        //
+        // Colours are tokens, so this follows the active theme instead of pinning the boot screen
+        // to one palette. Deliberately static: nothing honours `prefers-reduced-motion` yet, and
+        // this is the first screen a new user sees.
+        bgImage: blobBackground,
+        // Fades the background alone — the DS prop exists precisely because `opacity` here would
+        // take the heading, the form and everything else down with it.
+        //
+        // It renders through a `::before` overlay at `z-index: -1`, which paints above this
+        // element's own background and below every in-flow child, so the content stays crisp. The
+        // wash it layers on is `bgImageTint`, defaulting to this element's own `bg` — neutral-0,
+        // which is what the sweep already resolves to at both ends, so it thins toward the same
+        // colour rather than toward grey.
+        bgImageOpacity: 0.2,
         position: 'absolute',
         zIndex: 9999,
       },
@@ -428,7 +591,7 @@ export const bootScreen: SchemaNode = {
           // both present. Every other state renders exactly one of these branches, and a `$if` that
           // renders nothing contributes no flex item. Matched to the form's own internal spacing so
           // the heading sits the same distance above it either way.
-          props: { width: '100%', ax: 'center', ay: 'start', gap: '700' },
+          props: { width: '100%', ax: 'center', ay: 'start', gap: '800' },
           children: [
             // Above the boot-state branches, not inside one. `initialising` and `createAgent` are
             // siblings, so anything rendered within them is torn down and rebuilt at the boundary —
@@ -442,9 +605,12 @@ export const bootScreen: SchemaNode = {
                 condition: {
                   $and: [
                     { $store: 'accountStore.isFirstRun' },
-                    { $in: [{ $store: 'sessionStore.bootState' }, ['initialising', 'createAgent']] },
+                    { $eq: [{ $store: 'sessionStore.bootState' }, 'createAgent'] },
                   ],
                 },
+                // Matched to the form's own fade below, so the heading and the fields it belongs to
+                // arrive as one thing rather than in sequence.
+                enterTransition: { type: 'fade', duration: 300 },
                 then: welcomeHeading,
               },
             },
@@ -515,9 +681,10 @@ export const bootScreen: SchemaNode = {
               type: '$if',
               props: {
                 condition: { $eq: [{ $store: 'sessionStore.bootState' }, 'createAgent'] },
+                enterTransition: { type: 'fade', duration: 300 },
                 then: {
                   type: 'Column',
-                  props: { gap: '400', ax: 'center', maxWidth: '380px' },
+                  props: { gap: '700', ax: 'center', width: '100%', maxWidth: '300px' },
                   $localState: {
                     name: {
                       type: 'string',
@@ -547,7 +714,7 @@ export const bootScreen: SchemaNode = {
                   children: [
                     {
                       type: 'Column',
-                      props: { gap: '700', ax: 'center' },
+                      props: { gap: '700', ax: 'center', width: '100%' },
                       children: [
                         // Absent on a first run: the welcome hoisted above the boot-state branches
                         // is already the heading for this form, and it says the same thing without
@@ -576,7 +743,7 @@ export const bootScreen: SchemaNode = {
                         // Form
                         {
                           type: 'Column',
-                          props: { gap: '400', minWidth: '300px' },
+                          props: { gap: '400', width: '100%' },
                           children: [
                             // Picture — optional, and held until an agent exists to upload to.
                             {
@@ -586,10 +753,14 @@ export const bootScreen: SchemaNode = {
                                 alt: 'Profile picture',
                                 aspect: 1,
                                 placeholderIcon: 'user',
+                                uploadLabel: 'Add image',
+                                editLabel: 'Change image',
+                                fontSize: '200',
                                 width: '120px',
                                 height: '120px',
                                 r: 'full',
                                 alignSelf: 'center',
+                                // mb: '100',
                                 onImageChange: { $action: 'profileStore.setPendingAvatar', args: ['$arg'] },
                               },
                             },
@@ -669,6 +840,7 @@ export const bootScreen: SchemaNode = {
                           type: 'we-button',
                           props: {
                             text: 'Create account',
+                            mt: '300',
                             // Clickable whatever the fields say, because the click is what asks the
                             // question. Answering on blur meant leaving a field you had not filled
                             // in yet was treated as a mistake; a hard gate instead would leave a

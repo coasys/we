@@ -6,7 +6,6 @@
  * a deployment white-labels the boot screen by replacing a node, not by forking the shell, and the
  * schema system stays honest because WE's own UI is its heaviest consumer.
  */
-export { aboutOverlay } from './AboutOverlay.schema';
 export { accountSettings, removeAccountModal } from './AccountSettings.schema';
 export { bootScreen } from './BootScreen.schema';
 export { consentPrompt, consentSecret } from './ConsentPrompt.schema';
