@@ -508,6 +508,33 @@ export function resolveBgImageUrl(raw: string): string {
 }
 
 /**
+ * Whether a bgImage value is a CSS gradient rather than an image reference.
+ *
+ * `background-image` accepts both in CSS, and a mesh — several radial gradients layered into one
+ * value — is the only way to express a soft, organic background without an asset. Tested against
+ * the start of the value because a mesh is comma-separated gradients, not just one.
+ */
+const GRADIENT_VALUE = /^\s*(repeating-)?(linear|radial|conic)-gradient\(/i;
+
+export function isGradientValue(raw: string): boolean {
+  return GRADIENT_VALUE.test(raw);
+}
+
+/**
+ * A bgImage value as a CSS `<image>` — a gradient verbatim, anything else wrapped as a URL.
+ *
+ * Gradients deliberately bypass `resolveBgImageUrl`: it strips *all* whitespace, which is right for
+ * a URL and destroys a gradient (`radial-gradient(55% 45% at 18% 22%` becomes unparseable). Their
+ * whitespace is collapsed rather than removed, since these values can also land in a custom
+ * property, where a literal newline inside a quoted string invalidates the declaration — a gradient
+ * has no quoted strings, but collapsing costs nothing and removes the class of problem.
+ */
+export function bgImageLayer(raw: string): string {
+  if (isGradientValue(raw)) return raw.trim().replace(/\s+/g, ' ');
+  return `url("${resolveBgImageUrl(raw)}")`;
+}
+
+/**
  * Computes the composite `background-image` value for the bg-image overlay mechanism
  * (see dsInterop.ts's [data-we-bg-image]::before / helpers.ts's :host([bgimage])::before).
  * A single custom property carries either a plain image reference, or — when
@@ -519,13 +546,14 @@ export function computeBgImageComposite(
   props: Pick<DesignSystemProps, 'bgImage' | 'bgImageOpacity' | 'bgImageTint' | 'bg'>,
 ): string | undefined {
   if (!props.bgImage) return undefined;
-  const url = `url("${resolveBgImageUrl(props.bgImage)}")`;
-  if (props.bgImageOpacity === undefined || props.bgImageOpacity >= 1) return url;
+  const image = bgImageLayer(props.bgImage);
+  if (props.bgImageOpacity === undefined || props.bgImageOpacity >= 1) return image;
   const tintSrc = props.bgImageTint ?? props.bg ?? 'neutral-0';
   const tint = tokenVar('color', tintSrc, tintSrc);
   const pct = Math.round((1 - props.bgImageOpacity) * 100);
   const wash = `color-mix(in srgb, ${tint} ${pct}%, transparent)`;
-  return `linear-gradient(${wash}, ${wash}), ${url}`;
+  // Layers cleanly over a gradient too: the wash simply becomes the first of several.
+  return `linear-gradient(${wash}, ${wash}), ${image}`;
 }
 
 // Map flex axes based on direction
@@ -567,7 +595,6 @@ export function buildLayoutStyles(props: LayoutStyleProps, direction: 'row' | 'c
     display: props.display || 'flex',
     'flex-direction': props.reverse ? `${direction}-reverse` : direction,
     'flex-wrap': props.wrap ? 'wrap' : 'nowrap',
-    ...props.styles, // Allow custom overrides
   };
 
   // Colors & backgrounds
@@ -602,7 +629,7 @@ export function buildLayoutStyles(props: LayoutStyleProps, direction: 'row' | 'c
       // context concerns from the pseudo-element overlay. Still resolved through
       // resolveBgImageUrl (data URI -> short object URL) — a large base64 payload
       // bloats every style recompute even as a plain inline style, not just as a var().
-      style['background-image'] = `url("${resolveBgImageUrl(props.bgImage)}")`;
+      style['background-image'] = bgImageLayer(props.bgImage);
       style['background-size'] = props.bgFit ?? 'cover';
       style['background-position'] = props.bgPosition ?? 'center';
       style['background-repeat'] = 'no-repeat';
@@ -688,7 +715,12 @@ export function buildLayoutStyles(props: LayoutStyleProps, direction: 'row' | 'c
   const radius = getRadiusValues(props);
   if (radius !== '0 0 0 0') style['border-radius'] = radius;
 
-  return style;
+  // Last, so it genuinely overrides. Spread at the top it was beaten by every DS prop assigned
+  // afterwards — `bg` especially, which emits the `background` shorthand and so silently erased a
+  // `background-image` set here. The comment said "allow custom overrides" and the position said
+  // the opposite; this is the escape hatch, and an escape hatch that loses is worse than none,
+  // because the failure is invisible.
+  return { ...style, ...props.styles };
 }
 
 /**

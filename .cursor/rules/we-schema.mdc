@@ -849,7 +849,7 @@ when `relative` is enabled.
 - DropdownMenu — Flexible dropdown menu for actions, toggles, and grouped items. Use for context menus, settings panels, layer controls, and command palettes.
   Props: class?: string, styles?: Record<string, string | number>, placement?: Placement, triggerLabel?: string, triggerIcon?: string, items: SolidDropdownMenuEntry[]
 - EditableImage (DesignSystemElement)
-  Props: src?: string, alt?: string, fit?: "fill" | "cover" | "contain" | "none" | "scale-down", placeholderIcon?: string, onImageChange?: ((file: File) => void), class?: string, aspect?: number, maxSize?: number
+  Props: src?: string, alt?: string, fit?: "fill" | "cover" | "contain" | "none" | "scale-down", placeholderIcon?: string, onImageChange?: ((file: File) => void), onImageRemove?: (() => void), uploadLabel?: string, editLabel?: string, class?: string, aspect?: number, maxSize?: number
 - FlipCard
   Props: front?: JSX.Element, back?: JSX.Element, width?: string, height?: string, flipOnHover?: boolean, flipDuration?: string, wobbleOnHover?: boolean, wobbleDegree?: number, class?: string, styles?: Record<string, string | number>
 - Grid (DesignSystemElement)
@@ -948,7 +948,7 @@ we-divider, we-icon, we-menu-group, we-popover, we-spinner, we-tooltip
 | Prop | Type | Description |
 |------|------|-------------|
 | bg | ColorValue | Background color (token) |
-| bgImage | string | Background image URL — sets background-image, defaults background-size to cover, background-position to center, background-repeat to no-repeat |
+| bgImage | string | Background image — a URL, or a CSS gradient (linear-, radial- or conic-gradient, including several comma-separated for a mesh). Sets background-image, defaults background-size to cover, background-position to center, background-repeat to no-repeat. Composes with bg, which paints beneath it |
 | bgFit | "cover" \| "contain" | Background image sizing (default: "cover") — only meaningful with bgImage |
 | bgPosition | string | Background image position (default: "center", e.g. "top", "50% 20%") — only meaningful with bgImage |
 | bgImageOpacity | number | Fades bgImage only (0–1), independent of the element's own content/opacity — only meaningful with bgImage |
@@ -1026,7 +1026,7 @@ Variants set size and weight only — color is always inherited or set explicitl
 
 | Prop | Type | Description |
 |------|------|-------------|
-| styles | Record\<string, string \| number\> | Inline CSS applied directly to the component's own element (raw CSS values allowed). For Column, Row, Grid — use this when you need CSS the DS props don't cover. **Do not confuse with node-level styles** (see Schema Structure) which applies to a wrapper div, not the component. |
+| styles | Record\<string, string \| number\> | Inline CSS applied directly to the component's own element (raw CSS values allowed). For Column, Row, Grid — use this when you need CSS the DS props don't cover. Applied last, so it genuinely overrides a DS prop setting the same property. **Do not confuse with node-level styles** (see Schema Structure) which applies to a wrapper div, not the component. |
 | onClick | ActionToken | Event handler (see dynamic logic) |
 
 ---

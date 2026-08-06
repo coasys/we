@@ -12,6 +12,21 @@ type ConditionalRendererProps = {
   renderNode: (node?: SchemaNode, nodeContext?: Record<string, unknown>) => RendererOutput;
 };
 
+/**
+ * Sizing the wrapper mirrors from its content, as DS prop → CSS property.
+ *
+ * Only sizing: padding, margin and the rest belong to the content's own box and would double up if
+ * the wrapper took them too.
+ */
+const SIZE_PROPS: Array<[string, string]> = [
+  ['width', 'width'],
+  ['minWidth', 'min-width'],
+  ['maxWidth', 'max-width'],
+  ['height', 'height'],
+  ['minHeight', 'min-height'],
+  ['maxHeight', 'max-height'],
+];
+
 export function ConditionalRenderer({ node, stores, context, renderNode }: ConditionalRendererProps): RendererOutput {
   const enterTransition = node.props?.enterTransition as TransitionConfig | undefined;
   const exitTransition = node.props?.exitTransition as TransitionConfig | undefined;
@@ -147,7 +162,22 @@ export function ConditionalRenderer({ node, stores, context, renderNode }: Condi
       if (hasZIndex) style['z-index'] = String(contentProps['z-index'] || contentProps.zIndex);
       style.width = '100%';
       style.height = '100%';
-      return style;
+    }
+
+    // Adopt whatever size the content asked for. The wrapper exists only to carry opacity and
+    // transform, and is supposed to be invisible to layout — but it is a real box, so without this
+    // it silently becomes the parent that percentages resolve against. A child asking for
+    // `width: 100%` then resolves against a box that is itself sized by that child, which CSS
+    // settles as shrink-to-fit: the element renders at its intrinsic width and its `maxWidth` never
+    // binds, because nothing ever asks for more.
+    //
+    // Copying `maxWidth` alongside `width` is what keeps alignment intact. The wrapper ends up the
+    // same size the content would have been, so the parent's `align-items` lands on a box of the
+    // right width — rather than centring a full-width wrapper and leaving the content against its
+    // left edge. Applied after the positioned defaults above so an explicit size wins over them.
+    for (const [prop, cssProp] of SIZE_PROPS) {
+      const declared = contentProps[prop];
+      if (declared !== undefined && declared !== null) style[cssProp] = String(declared);
     }
 
     return style;

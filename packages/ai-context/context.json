@@ -3129,6 +3129,21 @@
           "optional": true
         },
         {
+          "name": "onImageRemove",
+          "type": "(() => void)",
+          "optional": true
+        },
+        {
+          "name": "uploadLabel",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "editLabel",
+          "type": "string",
+          "optional": true
+        },
+        {
           "name": "class",
           "type": "string",
           "optional": true

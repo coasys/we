@@ -300,3 +300,61 @@ describe('$if branch slots', () => {
     expect(container.textContent).toBe('');
   });
 });
+
+describe('$if with a transition — the wrapper must not change layout', () => {
+  const registry: ComponentRegistry = { Box: (props: any) => <div data-testid="box">{props.children}</div> };
+
+  it('adopts the size the content declared, so percentages resolve against the real parent', () => {
+    // The wrapper carries opacity and transform and is meant to be invisible to layout. Without
+    // this it becomes the box a percentage resolves against — and since it shrink-wraps its
+    // content, `width: 100%` resolves against something sized by the very element asking, which
+    // CSS settles as shrink-to-fit. The element renders at its intrinsic width and `maxWidth`
+    // never binds, because nothing ever asks for more.
+    const node: SchemaNode = {
+      type: '$if',
+      props: {
+        condition: true,
+        enterTransition: { type: 'fade', duration: 300 },
+        then: { type: 'Box', props: { width: '100%', maxWidth: '380px' } },
+      },
+    };
+    const { container } = renderSchema(node, { registry });
+
+    const wrapper = container.querySelector('div');
+    expect(wrapper?.style.width).toBe('100%');
+    // maxWidth travels with it — that is what keeps the parent's alignment landing on a box of the
+    // right size, rather than centring a full-width wrapper with the content against its left edge.
+    expect(wrapper?.style.maxWidth).toBe('380px');
+  });
+
+  it('leaves the wrapper unsized when the content declared no size', () => {
+    // Content that shrink-wraps today must keep doing so, or anything a parent was centring
+    // would start stretching.
+    const node: SchemaNode = {
+      type: '$if',
+      props: { condition: true, enterTransition: { type: 'fade' }, then: { type: 'Box' } },
+    };
+    const { container } = renderSchema(node, { registry });
+
+    const wrapper = container.querySelector('div');
+    expect(wrapper?.style.width).toBe('');
+    expect(wrapper?.style.maxWidth).toBe('');
+  });
+
+  it('lets an explicit size win over the positioned default', () => {
+    // Positioned content gets width/height 100%; a declared size is more specific than that.
+    const node: SchemaNode = {
+      type: '$if',
+      props: {
+        condition: true,
+        enterTransition: { type: 'fade' },
+        then: { type: 'Box', props: { position: 'absolute', width: '380px' } },
+      },
+    };
+    const { container } = renderSchema(node, { registry });
+
+    const wrapper = container.querySelector('div');
+    expect(wrapper?.style.width).toBe('380px');
+    expect(wrapper?.style.height).toBe('100%');
+  });
+});

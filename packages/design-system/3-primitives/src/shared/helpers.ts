@@ -5,6 +5,7 @@ import {
   BASE_LAYOUT_SPECS as BASE_LAYOUT,
   BASE_TYPOGRAPHY_SPECS as BASE_TYPOGRAPHY,
   BASE_VISUAL_SPECS as BASE_VISUAL,
+  bgImageLayer,
   computeBgImageComposite,
   focusSelector,
   getMarginValues,
@@ -19,7 +20,6 @@ import {
   paddingKeys,
   parseBorder,
   radiusKeys,
-  resolveBgImageUrl,
   resolveFontFamily,
   resolveFontWeight,
   resolveLineHeight,
@@ -282,20 +282,17 @@ function updateCustomVars(
   // unfaded (common) case bypasses that entirely and sets a plain background-image
   // directly on [part='base'] instead — no pseudo-element, no custom-property
   // indirection, same as before bgImageOpacity existed. Both paths resolve the URL
-  // through resolveBgImageUrl (data URI -> short-lived object URL): a large base64
+  // through bgImageLayer, which routes a URL via resolveBgImageUrl (data URI -> short-lived
+  // object URL) and passes a gradient through verbatim: a large base64
   // payload embedded as a CSS custom property value hits a real, empirically-confirmed
-  // length ceiling in Chromium (silently dropped, no error) — resolveBgImageUrl keeps
+  // length ceiling in Chromium (silently dropped, no error) — bgImageLayer keeps
   // the actual CSS value fixed-length regardless of the source image's size.
   // Not state-varied (no {state}-bg-image-* writes) — swapping the image itself on
   // hover/active/focus is out of scope, unlike the rest of this fn.
   if (!state) {
     const isFaded = isBgImageFaded(props);
     setProperty(el, `${prefix}bg-image-composite`, isFaded ? computeBgImageComposite(props) : undefined);
-    setProperty(
-      el,
-      `${prefix}bg-image`,
-      props.bgImage && !isFaded ? `url("${resolveBgImageUrl(props.bgImage)}")` : undefined,
-    );
+    setProperty(el, `${prefix}bg-image`, props.bgImage && !isFaded ? bgImageLayer(props.bgImage) : undefined);
     setProperty(el, `${prefix}bg-image-fit`, props.bgImage ? (props.bgFit ?? 'cover') : undefined);
     setProperty(el, `${prefix}bg-image-position`, props.bgImage ? (props.bgPosition ?? 'center') : undefined);
   }
