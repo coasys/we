@@ -79,10 +79,22 @@ export function ProfileStoreProvider(props: ParentProps) {
    * because it is written later still, which is why this looked like "the name does not save but
    * the image does".
    */
+  /**
+   * Ordering between a local write and an in-flight fetch, as a counter rather than a clock.
+   *
+   * These were `Date.now()`, compared with `>`. On a first run the unlock handler fires
+   * `fetchProfile` for an agent whose profile has not been published yet, and setup writes the name
+   * as soon as that handler returns — the same millisecond. Equal timestamps fail a strict `>`, so
+   * the empty response was not dropped and it overwrote the name. The name only appeared after a
+   * reload, when the fetch finally read something real.
+   *
+   * A counter has no resolution to lose: any write between a fetch starting and finishing moves it.
+   */
+  let writeSequence = 0;
   const lastLocalWrite = new Map<string, number>();
 
   function markLocallyWritten(did: string): void {
-    lastLocalWrite.set(did, Date.now());
+    lastLocalWrite.set(did, ++writeSequence);
   }
 
   const ownProfile = createMemo(() => {
@@ -107,7 +119,7 @@ export function ProfileStoreProvider(props: ParentProps) {
     const profilePort = session.backendPorts()?.profiles;
     if (!profilePort) return;
 
-    const startedAt = Date.now();
+    const startedAt = writeSequence;
     const promise = profilePort
       .get(cleanedDid)
       .then((summary) => {
