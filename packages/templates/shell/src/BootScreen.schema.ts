@@ -589,61 +589,29 @@ export const bootScreen: SchemaNode = {
         ax: 'center',
         ay: 'center',
         gap: '400',
-        // Colour beneath, mesh above — `bg` emits the `background` shorthand and is assigned
-        // before `background-image`, so the two compose rather than one erasing the other.
+        // Colour beneath, fields above: `bg` emits the `background` shorthand but is assigned
+        // before `background-image`, so the two compose. Swap `blobBackground` for
+        // `hueSweepBackground` for the concentric version.
         bg: 'neutral-0',
-        // A mesh gradient: several soft radial fields, all curves and falloff, no edges. That is
-        // the reason for it over a linear gradient, whose one straight axis reads as a graphic
-        // device rather than as light.
-        //
-        // Shades in the 200-300 band, not the 50-100 the word "subtle" first suggested. The scale
-        // is lightness: neutral-0 is 100%, primary-100 is 90%. A field peaking ten percent darker
-        // than its background, then falling off to transparent across half the screen, is
-        // invisible — most of its area is far weaker than its peak.
-        //
-        // Colours are tokens, so this follows the active theme instead of pinning the boot screen
-        // to one palette. Deliberately static: nothing honours `prefers-reduced-motion` yet, and
-        // this is the first screen a new user sees.
         bgImage: blobBackground,
-        // Fades the background alone — the DS prop exists precisely because `opacity` here would
-        // take the heading, the form and everything else down with it.
-        //
-        // It renders through a `::before` overlay at `z-index: -1`, which paints above this
-        // element's own background and below every in-flow child, so the content stays crisp. The
-        // wash it layers on is `bgImageTint`, defaulting to this element's own `bg` — neutral-0,
-        // which is what the sweep already resolves to at both ends, so it thins toward the same
-        // colour rather than toward grey.
+        // Not `opacity`, which would take the heading and the form down with the background.
         bgImageOpacity: 0.2,
         position: 'absolute',
         zIndex: 9999,
       },
       children: [
-        // The logo, in the corner rather than over the centre — so the one thing in the middle of
-        // the screen is whoever is signing in, which is how every OS login screen is composed.
-        //
-        // The geometry is copied from the sidebar's header slot, not chosen: an 80x80 box at the
-        // origin holding the mark at 38px. The sidebar is fixed at left/top 0 with no padding of
-        // its own, so both land the wordmark centred on (40, 40). Since the boot screen leaves by
-        // cross-fading, an identical position means the logo appears to stay put while the app
-        // assembles around it — rather than jumping to the corner and shrinking 4x mid-fade, which
-        // is what a centred 150px logo did. Any other size here reintroduces that jump.
+        // Cornered rather than centred, so the middle of the screen is whoever is signing in.
         logoCorner,
         {
           type: 'Column',
-          // The gap only ever applies on a first run, where the hoisted welcome and the form are
-          // both present. Every other state renders exactly one of these branches, and a `$if` that
-          // renders nothing contributes no flex item. Matched to the form's own internal spacing so
-          // the heading sits the same distance above it either way.
+          // The gap only bites on a first run, where the welcome and the form are both present:
+          // every other state renders one branch, and a `$if` rendering nothing is not a flex item.
           props: { width: '100%', ax: 'center', ay: 'start', gap: '800' },
           children: [
             switchingState,
             settingUpState,
-            // Above the boot-state branches, not inside one. `initialising` and `createAgent` are
-            // siblings, so anything rendered within them is torn down and rebuilt at the boundary —
-            // which is what made the welcome appear, sit there, and then be replaced by a second
-            // copy of itself once the form arrived. Rendered here it simply stays put while the
-            // form materialises underneath it: one screen filling in, rather than two screens
-            // swapping. Same reason the corner switcher is rendered at the root.
+            // Hoisted per rule 1: it must survive `initialising` becoming `createAgent`, so the
+            // form materialises underneath it rather than replacing it with a second copy.
             {
               type: '$if',
               props: {
@@ -661,7 +629,6 @@ export const bootScreen: SchemaNode = {
                 then: welcomeHeading,
               },
             },
-            // Initialising state
             {
               type: '$if',
               props: {
@@ -669,9 +636,8 @@ export const bootScreen: SchemaNode = {
                 then: startingState('accountStore.activeAccount'),
               },
             },
-            // Sign-in state — unlock, switch account, or create one. The three are modes of one
-            // screen rather than separate boot states because they share the same question ("who is
-            // using this app") and only one of them involves the session at all.
+            // Sign-in: unlock, switch, or create. Modes of one screen rather than separate boot
+            // states, because they answer one question and only unlocking touches the session.
             {
               type: '$if',
               props: {
@@ -684,9 +650,8 @@ export const bootScreen: SchemaNode = {
                 then: {
                   type: 'Column',
                   props: { gap: '400', ax: 'center' },
-                  // No validation rules: signing in is not a form to be checked, it is a lock to
-                  // be tried. The setup screen below does declare rules, because a name and a
-                  // confirmation field genuinely can be judged before anything is submitted.
+                  // No validation rules: signing in is a lock to try, not a form to check. The
+                  // setup screen below has them, because a name and a confirmation can be judged.
                   $localState: {
                     password: { type: 'string', initial: '' },
                   },
@@ -703,10 +668,9 @@ export const bootScreen: SchemaNode = {
                 },
               },
             },
-            // Setup state — this account has no identity yet. Reached on a genuine first run and on
-            // the first boot into a newly created account, and it looks the same either way: name,
-            // then password. The name is committed by renaming the account (seeded as "Main" on first
-            // run, provisional on a created one), which is why it chains through accountStore.
+            // Setup — this account has no identity yet. Reached on a first run and on the first
+            // boot into a created account, and identical either way: name, then password. The name
+            // commits by renaming the account, which is why it chains through accountStore.
             {
               type: '$if',
               props: {
