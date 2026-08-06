@@ -456,7 +456,13 @@ impl AccountRegistry {
                     account.provisional = false;
                 }
                 if let Some(new_avatar) = cached_avatar {
-                    account.avatar = Some(new_avatar.to_string());
+                    // Empty means the picture was removed, not that one was set to nothing. Stored
+                    // as None so the entry stops carrying a value the switcher would try to render.
+                    account.avatar = if new_avatar.is_empty() {
+                        None
+                    } else {
+                        Some(new_avatar.to_string())
+                    };
                 }
             }
         }

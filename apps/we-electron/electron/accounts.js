@@ -104,14 +104,6 @@ export function looksLikeAd4mData(path) {
 }
 
 /**
- * Whether the ADAM launcher keeps its own registry inside this account.
- *
- * The launcher stores `launcher-state.json` — its list of every agent it knows about — inside
- * `~/.ad4m`, which is also one of its agents. So deleting that directory erases the launcher's
- * record of all its *other* agents too. That is the launcher's design, not something WE can fix
- * from here, but it is a consequence nobody would predict, so removal names it.
- */
-/**
  * Whether an identity has been created in this account.
  *
  * The executor's own marker: `is_initialized()` is this file existing, so the boot screen's answer
@@ -123,6 +115,14 @@ export function hasAgent(path) {
   return existsSync(join(path, 'ad4m', 'agent.json'));
 }
 
+/**
+ * Whether the ADAM launcher keeps its own registry inside this account.
+ *
+ * The launcher stores `launcher-state.json` — its list of every agent it knows about — inside
+ * `~/.ad4m`, which is also one of its agents. So deleting that directory erases the launcher's
+ * record of all its *other* agents too. That is the launcher's design, not something WE can fix
+ * from here, but it is a consequence nobody would predict, so removal names it.
+ */
 export function holdsLauncherState(path) {
   return existsSync(join(path, 'launcher-state.json'));
 }
@@ -387,6 +387,9 @@ export function createAccountRegistry({ configDir, defaultPath, defaultName = 'M
         accounts: state.accounts.map((a) => {
           if (a.path !== id) return a;
           const next = { ...a, ...(trimmed ? { name: trimmed } : {}), ...(withinCap ? { avatar } : {}) };
+          // An empty avatar means the picture was removed, not that one was set to nothing — drop
+          // the key so the entry stops carrying a value the switcher would try to render.
+          if (next.avatar === '') delete next.avatar;
           // A name arriving is setup completing: it is written once the agent exists, so the
           // account stops being provisional and survives the next prune.
           if (trimmed) delete next.provisional;

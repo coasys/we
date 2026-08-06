@@ -47,6 +47,8 @@ export interface ProfileStore {
     fields: Partial<Pick<AgentProfileSummary, 'firstName' | 'lastName' | 'handle' | 'bio'>>,
   ) => Promise<void>;
   updateProfileImage: (field: 'avatar' | 'coverImage', imageFile: File) => Promise<void>;
+  /** Remove a profile image, leaving the field empty rather than replacing it. */
+  clearProfileImage: (field: 'avatar' | 'coverImage') => Promise<void>;
   updateOwnLocation: (update: {
     latitude?: number;
     longitude?: number;
@@ -159,6 +161,33 @@ export function ProfileStoreProvider(props: ParentProps) {
     // Mirror the picture onto the account so the locked sign-in screen stays current. Avatar only
     // — a cover image is not what identifies someone in a list.
     if (field === 'avatar') void accounts.syncDisplay({ avatar: dataUri });
+  }
+
+  /**
+   * Remove a profile image.
+   *
+   * Publishing an empty value is what clears it: the adapter removes the existing links for that
+   * predicate whenever the key is present, and only adds one back when there is a value. So this
+   * is the same call as setting one, minus the upload.
+   */
+  async function clearProfileImage(field: 'avatar' | 'coverImage'): Promise<void> {
+    const myDid = session.me()?.did;
+    const profilePort = session.backendPorts()?.profiles;
+    if (!myDid || !profilePort) return;
+
+    markLocallyWritten(myDid);
+    setProfiles((prev) => {
+      const existing = prev.find((a) => a.did === myDid);
+      if (!existing) return prev;
+      return [...prev.filter((a) => a.did !== myDid), { ...existing, [field]: undefined }];
+    });
+
+    const publishKey = field === 'avatar' ? 'avatarExpressionUrl' : 'coverImageExpressionUrl';
+    await profilePort.publish({ [publishKey]: '' } as PublishProfileFields);
+
+    // The sign-in screen caches the avatar so a locked session has something to show; clearing the
+    // profile has to clear that too, or the old face outlives the profile it came from.
+    if (field === 'avatar') void accounts.syncDisplay({ avatar: '' });
   }
 
   /**
@@ -289,6 +318,7 @@ export function ProfileStoreProvider(props: ParentProps) {
     fetchProfile,
     updateOwnProfile,
     updateProfileImage,
+    clearProfileImage,
     updateOwnLocation,
   };
 

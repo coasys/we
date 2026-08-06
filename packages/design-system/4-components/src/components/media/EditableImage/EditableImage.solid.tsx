@@ -20,7 +20,19 @@ const DEFAULTS: Partial<EditableImageProps> = {
 
 const editableImageKeys = [...designSystemKeys, 'children'] as const;
 const editableImageStyleKeys = editableImageKeys.filter((key) => key !== 'children');
-const componentKeys = ['src', 'alt', 'fit', 'placeholderIcon', 'onImageChange', 'class', 'aspect', 'maxSize'] as const;
+const componentKeys = [
+  'src',
+  'alt',
+  'fit',
+  'placeholderIcon',
+  'onImageChange',
+  'onImageRemove',
+  'uploadLabel',
+  'editLabel',
+  'class',
+  'aspect',
+  'maxSize',
+] as const;
 
 /** @superclass DesignSystemElement */
 export function EditableImage(allProps: EditableImageProps) {
@@ -30,9 +42,12 @@ export function EditableImage(allProps: EditableImageProps) {
     componentKeys as unknown as (keyof EditableImageProps)[],
   );
   const [modalOpen, setModalOpen] = createSignal(false);
-  const [step, setStep] = createSignal<'upload' | 'crop'>('upload');
   const [rawUrl, setRawUrl] = createSignal<string | null>(null);
   const [pendingFile, setPendingFile] = createSignal<File | null>(null);
+  const [dragging, setDragging] = createSignal(false);
+
+  /** What the hover overlay says, and what its icon promises. */
+  const label = () => (props.src ? (props.editLabel ?? 'Edit image') : (props.uploadLabel ?? 'Upload image'));
 
   // Derive a sensible modal width from the crop aspect ratio so wide images
   // get enough horizontal space to show a usable crop zone.
@@ -45,6 +60,7 @@ export function EditableImage(allProps: EditableImageProps) {
 
   // Imperative handle to ImageCrop — set once the crop component reports ready
   let cropRef: ImageCropRef | undefined;
+  let fileInput: HTMLInputElement | undefined;
 
   const baseStyle = createMemo(() => {
     const usedProps = filterProps(dsProps, editableImageStyleKeys);
@@ -55,12 +71,32 @@ export function EditableImage(allProps: EditableImageProps) {
   const hasStateProps = () => dsProps.hoverProps || dsProps.activeProps || dsProps.focusProps;
   const { style, attrs } = useStateProps(baseStyle, dsProps as EditableImageProps, 'column');
 
-  function openModal() {
-    setStep('upload');
-    setRawUrl(null);
-    setPendingFile(null);
+  /**
+   * Straight to the OS file picker. Clicking used to open a modal whose only content was a
+   * dropzone, so reaching the filesystem took two clicks — and the dropzone was unreachable by
+   * dragging, since you had to click to make it exist. The click is a user gesture, so calling
+   * .click() on the input inside it is permitted.
+   */
+  function pickFile() {
+    fileInput?.click();
+  }
+
+  /** A file has arrived, from the picker or a drop. Skip the upload step; go and crop it. */
+  function acceptFile(file: File | null | undefined) {
+    if (!file || !file.type.startsWith('image/')) return;
+    const old = rawUrl();
+    if (old) URL.revokeObjectURL(old);
     cropRef = undefined;
+    setPendingFile(file);
+    setRawUrl(URL.createObjectURL(file));
     setModalOpen(true);
+  }
+
+  function handleInputChange(e: Event) {
+    const input = e.currentTarget as HTMLInputElement;
+    acceptFile(input.files?.[0]);
+    // Cleared so choosing the same file twice in a row still fires a change event.
+    input.value = '';
   }
 
   function closeModal() {
@@ -72,23 +108,9 @@ export function EditableImage(allProps: EditableImageProps) {
     cropRef = undefined;
   }
 
-  function handleFileChange(e: Event) {
-    const file = (e as CustomEvent).detail as File | null;
-    if (!file || !file.type.startsWith('image/')) return;
-    const old = rawUrl();
-    if (old) URL.revokeObjectURL(old);
-    setPendingFile(file);
-    setRawUrl(URL.createObjectURL(file));
-    setStep('crop');
-  }
-
+  /** Back to the picker without leaving the crop step — the modal restages on the new file. */
   function changePhoto() {
-    const url = rawUrl();
-    if (url) URL.revokeObjectURL(url);
-    setRawUrl(null);
-    setPendingFile(null);
-    cropRef = undefined;
-    setStep('upload');
+    pickFile();
   }
 
   async function confirm() {
@@ -101,16 +123,57 @@ export function EditableImage(allProps: EditableImageProps) {
     }
   }
 
+  function removeImage(e: MouseEvent) {
+    // Without this the click reaches the tile beneath and opens the picker on the way out.
+    e.stopPropagation();
+    props.onImageRemove?.();
+  }
+
   return (
     <>
-      {/* Image display with hover overlay */}
+      {/*
+        role/tabIndex/keydown rather than wrapping this in a `we-button`. The button sizes to its
+        content and its [part=base] is `all: unset`, so making it a fixed-height container for an
+        inset overlay means fighting its layout model. The semantics a real button would bring are
+        restored explicitly instead — before this the tile was a bare div and could not be reached
+        by keyboard at all.
+      */}
       <div
-        class={`editable-image ${props.class || ''}`}
+        class={`editable-image ${dragging() ? 'editable-image--dragging' : ''} ${props.class || ''}`}
         style={hasStateProps() ? style() : baseStyle()}
-        onClick={openModal}
+        role="button"
+        tabIndex={0}
+        aria-label={label()}
+        onClick={pickFile}
+        onKeyDown={(e) => {
+          if (e.key !== 'Enter' && e.key !== ' ') return;
+          // Space would otherwise scroll the page out from under the dialog about to open.
+          e.preventDefault();
+          pickFile();
+        }}
+        onDragOver={(e) => {
+          e.preventDefault();
+          setDragging(true);
+        }}
+        onDragLeave={() => setDragging(false)}
+        onDrop={(e) => {
+          e.preventDefault();
+          setDragging(false);
+          acceptFile(e.dataTransfer?.files?.[0]);
+        }}
         {...getBgImageAttrs(dsProps)}
         {...(hasStateProps() ? attrs : {})}
       >
+        <input
+          ref={fileInput}
+          type="file"
+          accept="image/*"
+          onChange={handleInputChange}
+          style={{ display: 'none' }}
+          aria-hidden="true"
+          tabIndex={-1}
+        />
+
         <Show
           when={props.src}
           fallback={
@@ -129,49 +192,65 @@ export function EditableImage(allProps: EditableImageProps) {
 
         {/* Hover overlay */}
         <Column class="editable-image__overlay" ax="center" ay="center" p="300" gap="200" position="absolute">
-          <we-icon name="pencil" size="24px" color="#fff" />
-          <we-text fontSize="300" color="#fff">
-            Edit Image
+          {/* A pencil over an empty tile promises editing something that does not exist yet. */}
+          <we-icon name={props.src ? 'pencil' : 'upload-simple'} size="24px" color="#fff" />
+          {/*
+            No `fontSize` here on purpose. Unset, the custom property resolves to `inherit` for an
+            inherited property, so the label takes its size from this component's own `fontSize` DS
+            prop — a small tile can shrink the label without the component growing an API for it.
+
+            `textAlign` because the label wraps on a narrow tile, and a wrapped line was left-
+            aligned inside a centred box, which reads as a misalignment rather than as wrapping.
+          */}
+          <we-text color="#fff" textAlign="center">
+            {label()}
           </we-text>
         </Column>
+
+        {/*
+          A sibling of the tile, not a child of anything clickable — a button inside a button is
+          invalid and breaks tab order. Only offered when the caller can actually honour it.
+        */}
+        <Show when={props.src && props.onImageRemove}>
+          <we-button
+            class="editable-image__remove"
+            variant="secondary"
+            size="sm"
+            square
+            position="absolute"
+            top="200"
+            right="200"
+            zIndex={1}
+            title="Remove image"
+            aria-label="Remove image"
+            onClick={removeImage}
+          >
+            <we-icon name="x" />
+          </we-button>
+        </Show>
       </div>
 
-      {/* Modal */}
+      {/* Crop — the only step left in the modal. */}
       <Show when={modalOpen()}>
         <we-modal close={closeModal}>
-          <Show
-            when={step() === 'crop'}
-            fallback={
-              /* ── Step 1: Upload ── */
-              <>
-                <we-text variant="heading-md">{props.src ? 'Change Image' : 'Upload Image'}</we-text>
-                <we-file-upload accept="image/*" on:change={handleFileChange}>
-                  <we-icon name="upload-simple" size="32px" />
-                  <span>Drop an image here or click to browse</span>
-                </we-file-upload>
-              </>
-            }
-          >
-            {/* ── Step 2: Crop ── */}
-            <Column minWidth={modalMinWidth()} ax="center" gap="500">
-              <we-text variant="heading-md">Crop Image</we-text>
-              <ImageCrop
-                src={rawUrl()!}
-                fileName={pendingFile()?.name}
-                aspect={props.aspect}
-                maxSize={props.maxSize}
-                onReady={(ref) => {
-                  cropRef = ref;
-                }}
-              />
-              <Row ax="end" gap="200">
-                <we-button variant="secondary" onClick={changePhoto}>
-                  Change photo
-                </we-button>
-                <we-button onClick={confirm}>Save</we-button>
-              </Row>
-            </Column>
-          </Show>
+          <Column minWidth={modalMinWidth()} ax="center" gap="500">
+            <we-text variant="heading-md">Crop image</we-text>
+            <ImageCrop
+              src={rawUrl()!}
+              fileName={pendingFile()?.name}
+              aspect={props.aspect}
+              maxSize={props.maxSize}
+              onReady={(ref) => {
+                cropRef = ref;
+              }}
+            />
+            <Row ax="end" gap="200">
+              <we-button variant="secondary" onClick={changePhoto}>
+                Change photo
+              </we-button>
+              <we-button onClick={confirm}>Save</we-button>
+            </Row>
+          </Column>
         </we-modal>
       </Show>
     </>

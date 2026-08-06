@@ -254,7 +254,11 @@ export function AccountStoreProvider(props: ParentProps) {
 
     const name = display.name?.trim();
     const changedName = name && name !== active.name ? name : undefined;
-    const changedAvatar = display.avatar && display.avatar !== active.avatar ? display.avatar : undefined;
+    // Presence, not truthiness. An empty string is a *clear* — removing a profile picture has to
+    // reach the sign-in screen's cached copy, or the old face outlives the profile it came from.
+    // Truthiness made that call a silent no-op.
+    const changedAvatar =
+      display.avatar !== undefined && display.avatar !== (active.avatar ?? '') ? display.avatar : undefined;
     if (!changedName && !changedAvatar) return;
 
     try {

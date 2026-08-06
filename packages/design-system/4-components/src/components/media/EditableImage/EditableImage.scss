@@ -2,9 +2,35 @@
   inset: 0;
   background: rgba(0, 0, 0, 0.5);
   opacity: 0;
-  transition: opacity 0.5s ease;
+  // The token rather than a hardcoded duration, so this follows the theme's animationSpeed like
+  // every other transition. It was 0.5s, slow enough on a hover to read as lag.
+  transition: opacity var(--we-transition-300, 250ms) ease;
 }
 
-.editable-image:hover .editable-image__overlay {
+// :focus-visible as well as :hover — the tile is keyboard-reachable now, and a focused control
+// that shows no sign of being focused may as well not be reachable.
+.editable-image:hover .editable-image__overlay,
+.editable-image:focus-visible .editable-image__overlay,
+.editable-image--dragging .editable-image__overlay {
   opacity: 1 !important;
+}
+
+.editable-image__remove {
+  opacity: 0;
+  transition: opacity var(--we-transition-300, 250ms) ease;
+}
+
+// Also on its own focus, not only the tile's: tabbing from the tile lands here, and the parent
+// is no longer :focus-visible by then.
+.editable-image:hover .editable-image__remove,
+.editable-image:focus-visible .editable-image__remove,
+.editable-image__remove:focus-visible {
+  opacity: 1;
+}
+
+// Out of the way while a file is being dragged over. The overlay is already saying what will
+// happen, and a delete button under the cursor at that moment invites the wrong outcome.
+.editable-image--dragging .editable-image__remove {
+  opacity: 0;
+  pointer-events: none;
 }

@@ -16,7 +16,10 @@ export const profileTemplate: TemplateSchema = {
         height: '200px',
         aspect: 4 / 1,
         placeholderIcon: 'panorama',
+        uploadLabel: 'Upload cover image',
+        editLabel: 'Change cover image',
         onImageChange: { $action: 'profileStore.updateProfileImage', args: ['coverImage', '$arg'] },
+        onImageRemove: { $action: 'profileStore.clearProfileImage', args: ['coverImage'] },
       },
     },
 
@@ -37,7 +40,11 @@ export const profileTemplate: TemplateSchema = {
             r: '300',
             ring: '0 0 0 3px var(--we-color-neutral-500)',
             placeholderIcon: 'user',
+            uploadLabel: 'Add photo',
+            editLabel: 'Change photo',
+            fontSize: '200',
             onImageChange: { $action: 'profileStore.updateProfileImage', args: ['avatar', '$arg'] },
+            onImageRemove: { $action: 'profileStore.clearProfileImage', args: ['avatar'] },
           },
         },
 
