@@ -1,7 +1,9 @@
 import type { SchemaNode } from '@we/schema-shared';
 
+import { emptyNote, section } from './settingsSection.ts';
+
 /**
- * RuntimeSettings — the backend process's own settings, as a section of the settings page.
+ * RuntimeSettings — the backend process's own settings, as sections of the settings pages.
  *
  * These are the screens the ADAM launcher owns. On web the launcher is a separate app the user can
  * open; on the desktop hosts, which bundle the executor, there is no launcher and these settings
@@ -13,44 +15,10 @@ import type { SchemaNode } from '@we/schema-shared';
  * trust perfectly well, and a future backend might expose apps but not networking — a platform
  * check gets both of those wrong.
  *
- * Kept in its own file, and appended rather than woven in, so a deployment that would rather not
- * show users the guts of their data layer removes one node.
+ * Exported piece by piece rather than as one block: the network sections and the connected-apps
+ * section now live on different pages, and a deployment that would rather not show users the guts
+ * of their data layer drops a route.
  */
-
-/** A labelled block with a heading and a refresh control — the shape every subsection shares. */
-function section(title: string, icon: string, refresh: string, children: SchemaNode[]): SchemaNode {
-  return {
-    type: 'Column',
-    props: { gap: '300' },
-    children: [
-      {
-        type: 'Row',
-        props: { gap: '300', ay: 'center', ax: 'between' },
-        children: [
-          {
-            type: 'Row',
-            props: { gap: '200', ay: 'center' },
-            children: [
-              { type: 'we-icon', props: { name: icon, color: 'neutral-600' } },
-              { type: 'we-text', props: { fontWeight: 'semibold' }, children: [title] },
-            ],
-          },
-          {
-            type: 'we-button',
-            props: {
-              variant: 'ghost',
-              size: 'sm',
-              onClick: { $action: refresh },
-              loading: { $store: 'runtimeStore.loading' },
-            },
-            children: [{ type: 'we-icon', props: { name: 'arrows-clockwise' } }],
-          },
-        ],
-      },
-      ...children,
-    ],
-  };
-}
 
 /**
  * One shared error slot. Every runtime action routes through it, so a failure is visible wherever
@@ -171,11 +139,7 @@ export const connectedApps: SchemaNode = {
               },
             ],
           },
-          else: {
-            type: 'we-text',
-            props: { variant: 'footnote', color: 'neutral-500', italic: true },
-            children: ['No apps have been granted access to your agent.'],
-          },
+          else: emptyNote('No apps have been granted access to your agent.'),
         },
       },
     ]),
@@ -232,11 +196,7 @@ export const trustedAgents: SchemaNode = {
               },
             ],
           },
-          else: {
-            type: 'we-text',
-            props: { variant: 'footnote', color: 'neutral-500', italic: true },
-            children: ['No agents are explicitly trusted yet.'],
-          },
+          else: emptyNote('No agents are explicitly trusted yet.'),
         },
       },
       {

@@ -11,9 +11,30 @@
  * configuration. Those are Tauri commands in the launcher because they manipulate the host's
  * filesystem and process, and no amount of GraphQL reaches them — they need a host capability
  * (see `RuntimeHost` in the follow-up), not a port over the client.
+ *
+ * Publishing a language is left out for a nearer reason: `languages.publish` takes a path to a
+ * bundle *on the executor's filesystem*, and a file picker in a browser context yields a File with
+ * no path to give it. The launcher's own publish form asks the user to type the path, and its
+ * buttons are wired to the install handler, so it has never published anything.
  */
 import { type Ad4mClient, type Apps, capSentence, ExceptionType } from '@coasys/ad4m';
 import type { AuthorizedApp, RuntimeAdminPort } from '@we/backend-shared';
+
+/**
+ * The languages the executor installs for itself and cannot run without.
+ *
+ * Hardcoded because AD4M does not report it: `languages.all()` returns the infrastructure and the
+ * user's installs in one undifferentiated list. The launcher carried the same five names for the
+ * same reason. The cost of it drifting is a removable badge on a language that should not be
+ * removable, so `removeLanguage` refuses on this list rather than trusting the UI to hide a button.
+ */
+const SYSTEM_LANGUAGES = [
+  'languages',
+  'agent-expression-store',
+  'neighbourhood-store',
+  'perspective-language',
+  'direct-message-language',
+];
 
 /** AD4M's `Apps` record, flattened into the contract's shape with capabilities pre-rendered. */
 function toAuthorizedApp(app: Apps): AuthorizedApp {
@@ -34,6 +55,33 @@ export function createAd4mRuntimeAdmin(backendClient: unknown): RuntimeAdminPort
   const client = backendClient as Ad4mClient;
 
   return {
+    // ── Languages ─────────────────────────────────────────────────────────────
+    async languages() {
+      const handles = await client.languages.all();
+      return handles.map((handle) => ({
+        address: handle.address,
+        name: handle.name,
+        system: SYSTEM_LANGUAGES.includes(handle.name),
+      }));
+    },
+
+    /**
+     * `byAddress` is the install: asking for a language the node does not have makes it fetch and
+     * install the bundle, and the handle it returns is the installed one. It reads like a getter,
+     * which is exactly why it is wrapped here rather than called from the store.
+     */
+    async installLanguage(address) {
+      await client.languages.byAddress(address);
+    },
+
+    async removeLanguage(address) {
+      const handle = (await client.languages.all()).find((l) => l.address === address);
+      if (handle && SYSTEM_LANGUAGES.includes(handle.name)) {
+        throw new Error(`${handle.name} is part of the running node and cannot be removed`);
+      }
+      await client.languages.remove(address);
+    },
+
     // ── Trust ─────────────────────────────────────────────────────────────────
     async trustedAgents() {
       return client.runtime.getTrustedAgents();

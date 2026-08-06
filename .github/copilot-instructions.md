@@ -1372,6 +1372,8 @@ RuntimeStore:
   - canManageTrust: boolean — gate the trusted-agents section on this
   - canManageNetwork: boolean — gate the peer-network section on this
   - canManageApps: boolean — gate the authorized-apps section on this
+  - canManageLanguages: boolean — gate the languages section on this
+  - languages: InstalledLanguage[] — language plugins installed in this backend (address, name, system). Empty until loadLanguages() runs
   - trustedAgents: string[] — trusted peer ids. Empty until loadTrustedAgents() runs
   - authorizedApps: AuthorizedApp[] — external apps holding credentials (id, name, description, url, iconUrl, capabilities, revoked). Empty until loadAuthorizedApps() runs
   - networkMetrics: string — backend diagnostic blob, displayed verbatim. Empty until requested
@@ -1381,6 +1383,9 @@ RuntimeStore:
   - pendingConsent: ConsentRequest | null — a request awaiting the user's decision (kind: 'capability' | 'trust', title, message, app, peerId)
   - consentSecret: string — a code an approval returned, to be relayed to the asking app
 - Actions:
+  - loadLanguages(): fetches the installed languages
+  - installLanguage(address: string): installs a language by content address, then reloads the list
+  - removeLanguage(address: string): removes an installed language. Refuses the backend own system languages
   - loadTrustedAgents(): fetches the trusted-agent list
   - trustAgent(id: string): trusts a peer, then reloads the list
   - untrustAgent(id: string): untrusts a peer, then reloads the list

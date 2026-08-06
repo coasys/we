@@ -2049,6 +2049,8 @@ export const contextData: ContextData = {
         canManageTrust: { type: 'boolean' },
         canManageNetwork: { type: 'boolean' },
         canManageApps: { type: 'boolean' },
+        canManageLanguages: { type: 'boolean' },
+        languages: { type: 'array', properties: ['address', 'name', 'system'] },
         trustedAgents: { type: 'array' },
         authorizedApps: {
           type: 'array',
@@ -2062,6 +2064,9 @@ export const contextData: ContextData = {
         consentSecret: { type: 'string' },
       },
       actions: [
+        'loadLanguages',
+        'installLanguage',
+        'removeLanguage',
         'loadTrustedAgents',
         'trustAgent',
         'untrustAgent',

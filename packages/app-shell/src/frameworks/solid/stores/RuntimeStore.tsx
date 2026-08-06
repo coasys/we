@@ -22,7 +22,7 @@
  */
 import { useSessionStore } from '@solid/stores/SessionStore';
 import { useShellStore } from '@solid/stores/ShellStore';
-import type { AuthorizedApp, ConsentRequest } from '@we/backend-shared';
+import type { AuthorizedApp, ConsentRequest, InstalledLanguage } from '@we/backend-shared';
 import {
   type Accessor,
   createContext,
@@ -41,8 +41,10 @@ export interface RuntimeStore {
   canManageTrust: Accessor<boolean>;
   canManageNetwork: Accessor<boolean>;
   canManageApps: Accessor<boolean>;
+  canManageLanguages: Accessor<boolean>;
 
   // ── State ────────────────────────────────────────────────────────────────────
+  languages: Accessor<InstalledLanguage[]>;
   trustedAgents: Accessor<string[]>;
   authorizedApps: Accessor<AuthorizedApp[]>;
   /** Backend diagnostic blob, displayed verbatim. Empty until requested. */
@@ -58,6 +60,9 @@ export interface RuntimeStore {
   consentSecret: Accessor<string>;
 
   // ── Actions ──────────────────────────────────────────────────────────────────
+  loadLanguages: () => Promise<void>;
+  installLanguage: (address: string) => Promise<void>;
+  removeLanguage: (address: string) => Promise<void>;
   loadTrustedAgents: () => Promise<void>;
   trustAgent: (id: string) => Promise<void>;
   untrustAgent: (id: string) => Promise<void>;
@@ -79,6 +84,7 @@ export function RuntimeStoreProvider(props: ParentProps) {
   const session = useSessionStore();
   const shell = useShellStore();
 
+  const [languages, setLanguages] = createSignal<InstalledLanguage[]>([]);
   const [trustedAgents, setTrustedAgents] = createSignal<string[]>([]);
   const [authorizedApps, setAuthorizedApps] = createSignal<AuthorizedApp[]>([]);
   const [networkMetrics, setNetworkMetrics] = createSignal('');
@@ -98,21 +104,30 @@ export function RuntimeStoreProvider(props: ParentProps) {
   const canManageTrust = createMemo(() => !!runtime()?.trustedAgents);
   const canManageNetwork = createMemo(() => !!runtime()?.networkMetrics);
   const canManageApps = createMemo(() => !!runtime()?.authorizedApps);
+  const canManageLanguages = createMemo(() => !!runtime()?.languages);
 
   /**
    * Every action runs through here: one loading flag, one error slot, and a guarantee that a
    * rejected runtime call surfaces as text on the settings page rather than an unhandled rejection
    * in a console nobody has open.
+   *
+   * Reports success separately from the value, rather than folding failure into `undefined`. Half
+   * the port's members return void, so `undefined` cannot distinguish "it worked" from "it threw" —
+   * and the mutations below reload their list afterwards, which starts a second `run` and clears
+   * the error slot. Read that way, a failed mutation always erased its own message before anyone
+   * could see it: the user got a control that silently did nothing.
    */
-  async function run<T>(fn: () => Promise<T> | undefined): Promise<T | undefined> {
+  type RunResult<T> = { ok: true; value: T | undefined } | { ok: false };
+
+  async function run<T>(fn: () => Promise<T> | undefined): Promise<RunResult<T>> {
     setLoading(true);
     setError('');
     try {
-      return await fn();
+      return { ok: true, value: await fn() };
     } catch (err) {
       console.error('RuntimeStore: runtime call failed', err);
       setError(err instanceof Error ? err.message : String(err));
-      return undefined;
+      return { ok: false };
     } finally {
       setLoading(false);
     }
@@ -141,6 +156,7 @@ export function RuntimeStoreProvider(props: ParentProps) {
     if (shell.activeShellView() !== 'settings') return;
     if (canManageTrust()) void loadTrustedAgents();
     if (canManageApps()) void loadAuthorizedApps();
+    if (canManageLanguages()) void loadLanguages();
   });
 
   function dropHead() {
@@ -152,7 +168,8 @@ export function RuntimeStoreProvider(props: ParentProps) {
     const port = runtime();
     if (!request || !port?.approve) return;
 
-    const secret = await run(() => port.approve?.(request));
+    const approval = await run(() => port.approve?.(request));
+    const secret = approval.ok ? approval.value : undefined;
     dropHead();
     // Capability approvals return a code the user reads out to the asking app. Trust approvals
     // return nothing, and must not leave a stale code on screen from a previous approval.
@@ -172,41 +189,52 @@ export function RuntimeStoreProvider(props: ParentProps) {
 
   // ── Settings ─────────────────────────────────────────────────────────────────
 
+  async function loadLanguages(): Promise<void> {
+    const installed = await run(() => runtime()?.languages?.());
+    if (installed.ok && installed.value) setLanguages(installed.value);
+  }
+
+  async function installLanguage(address: string): Promise<void> {
+    const trimmed = address.trim();
+    if (!trimmed) return;
+    if ((await run(() => runtime()?.installLanguage?.(trimmed))).ok) await loadLanguages();
+  }
+
+  async function removeLanguage(address: string): Promise<void> {
+    if ((await run(() => runtime()?.removeLanguage?.(address))).ok) await loadLanguages();
+  }
+
   async function loadTrustedAgents(): Promise<void> {
     const agents = await run(() => runtime()?.trustedAgents?.());
-    if (agents) setTrustedAgents(agents);
+    if (agents.ok && agents.value) setTrustedAgents(agents.value);
   }
 
   async function trustAgent(id: string): Promise<void> {
     const trimmed = id.trim();
     if (!trimmed) return;
-    await run(() => runtime()?.trustAgent?.(trimmed));
-    await loadTrustedAgents();
+    if ((await run(() => runtime()?.trustAgent?.(trimmed))).ok) await loadTrustedAgents();
   }
 
   async function untrustAgent(id: string): Promise<void> {
-    await run(() => runtime()?.untrustAgent?.(id));
-    await loadTrustedAgents();
+    if ((await run(() => runtime()?.untrustAgent?.(id))).ok) await loadTrustedAgents();
   }
 
   async function loadAuthorizedApps(): Promise<void> {
     const apps = await run(() => runtime()?.authorizedApps?.());
-    if (apps) setAuthorizedApps(apps);
+    if (apps.ok && apps.value) setAuthorizedApps(apps.value);
   }
 
   async function revokeApp(id: string): Promise<void> {
-    await run(() => runtime()?.revokeApp?.(id));
-    await loadAuthorizedApps();
+    if ((await run(() => runtime()?.revokeApp?.(id))).ok) await loadAuthorizedApps();
   }
 
   async function removeApp(id: string): Promise<void> {
-    await run(() => runtime()?.removeApp?.(id));
-    await loadAuthorizedApps();
+    if ((await run(() => runtime()?.removeApp?.(id))).ok) await loadAuthorizedApps();
   }
 
   async function loadNetworkMetrics(): Promise<void> {
     const metrics = await run(() => runtime()?.networkMetrics?.());
-    if (metrics !== undefined) setNetworkMetrics(metrics);
+    if (metrics.ok && metrics.value !== undefined) setNetworkMetrics(metrics.value);
   }
 
   async function restartNetwork(): Promise<void> {
@@ -215,7 +243,7 @@ export function RuntimeStoreProvider(props: ParentProps) {
 
   async function loadPeerInfos(): Promise<void> {
     const infos = await run(() => runtime()?.peerInfos?.());
-    if (infos) setPeerInfos(infos);
+    if (infos.ok && infos.value) setPeerInfos(infos.value);
   }
 
   /**
@@ -229,8 +257,7 @@ export function RuntimeStoreProvider(props: ParentProps) {
       setError('Could not read any peer info from that text');
       return;
     }
-    await run(() => runtime()?.addPeerInfos?.(parsed));
-    await loadPeerInfos();
+    if ((await run(() => runtime()?.addPeerInfos?.(parsed))).ok) await loadPeerInfos();
   }
 
   const store: RuntimeStore = {
@@ -238,7 +265,9 @@ export function RuntimeStoreProvider(props: ParentProps) {
     canManageTrust,
     canManageNetwork,
     canManageApps,
+    canManageLanguages,
 
+    languages,
     trustedAgents,
     authorizedApps,
     networkMetrics,
@@ -248,6 +277,9 @@ export function RuntimeStoreProvider(props: ParentProps) {
     pendingConsent,
     consentSecret,
 
+    loadLanguages,
+    installLanguage,
+    removeLanguage,
     loadTrustedAgents,
     trustAgent,
     untrustAgent,

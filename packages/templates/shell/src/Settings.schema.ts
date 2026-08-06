@@ -8,6 +8,7 @@ import type { SchemaNode, TemplateSchema } from '@we/schema-shared';
 
 import { accountSettings } from './AccountSettings.schema.ts';
 import { createSpaceModal } from './CreateSpaceModal.ts';
+import { languagesLocalState, languagesSection } from './LanguageSettings.schema.ts';
 import {
   connectedApps,
   networkLocalState,
@@ -803,6 +804,11 @@ export const settingsTemplate: TemplateSchema = {
     },
     { path: '/modules', ...page([modulesSection]) },
     {
+      path: '/languages',
+      $localState: languagesLocalState,
+      ...page([runtimeError, languagesSection]),
+    },
+    {
       path: '/network',
       $localState: networkLocalState,
       ...page([runtimeError, trustedAgents, peerNetwork]),
@@ -829,8 +835,15 @@ export const settingsTemplate: TemplateSchema = {
                 navItem('Appearance', 'palette', '/appearance'),
                 navItem('Spaces & data', 'stack', '/spaces'),
                 navItem('Modules', 'squares-four', '/modules'),
-                // Both feature-detected: a backend that administers nothing has nothing to show, so
-                // the entry goes rather than leading to an empty page.
+                // The rest are feature-detected: a backend that administers nothing has nothing to
+                // show, so the entry goes rather than leading to an empty page.
+                {
+                  type: '$if',
+                  props: {
+                    condition: { $store: 'runtimeStore.canManageLanguages' },
+                    then: navItem('Languages', 'code', '/languages'),
+                  },
+                },
                 {
                   type: '$if',
                   props: {

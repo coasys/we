@@ -5403,6 +5403,13 @@
         "canManageApps": {
           "type": "boolean"
         },
+        "canManageLanguages": {
+          "type": "boolean"
+        },
+        "languages": {
+          "type": "array",
+          "properties": ["address", "name", "system"]
+        },
         "trustedAgents": {
           "type": "array"
         },
@@ -5431,6 +5438,9 @@
         }
       },
       "actions": [
+        "loadLanguages",
+        "installLanguage",
+        "removeLanguage",
         "loadTrustedAgents",
         "trustAgent",
         "untrustAgent",

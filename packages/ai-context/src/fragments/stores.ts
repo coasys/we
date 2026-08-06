@@ -53,6 +53,8 @@ export const storeEntries: StoreEntry[] = [
       canManageTrust: { type: 'boolean' },
       canManageNetwork: { type: 'boolean' },
       canManageApps: { type: 'boolean' },
+      canManageLanguages: { type: 'boolean' },
+      languages: { type: 'array', properties: ['address', 'name', 'system'] },
       trustedAgents: { type: 'array' },
       authorizedApps: {
         type: 'array',
@@ -66,6 +68,9 @@ export const storeEntries: StoreEntry[] = [
       consentSecret: { type: 'string' },
     },
     actions: [
+      'loadLanguages',
+      'installLanguage',
+      'removeLanguage',
       'loadTrustedAgents',
       'trustAgent',
       'untrustAgent',
@@ -384,6 +389,9 @@ function generateStoresText(entries: StoreEntry[]): string {
         canManageTrust: 'boolean — gate the trusted-agents section on this',
         canManageNetwork: 'boolean — gate the peer-network section on this',
         canManageApps: 'boolean — gate the authorized-apps section on this',
+        canManageLanguages: 'boolean — gate the languages section on this',
+        languages:
+          'InstalledLanguage[] — language plugins installed in this backend (address, name, system). Empty until loadLanguages() runs',
         trustedAgents: 'string[] — trusted peer ids. Empty until loadTrustedAgents() runs',
         authorizedApps:
           'AuthorizedApp[] — external apps holding credentials (id, name, description, url, iconUrl, capabilities, revoked). Empty until loadAuthorizedApps() runs',
@@ -396,6 +404,9 @@ function generateStoresText(entries: StoreEntry[]): string {
         consentSecret: 'string — a code an approval returned, to be relayed to the asking app',
       },
       actions: {
+        loadLanguages: '(): fetches the installed languages',
+        installLanguage: '(address: string): installs a language by content address, then reloads the list',
+        removeLanguage: '(address: string): removes an installed language. Refuses the backend own system languages',
         loadTrustedAgents: '(): fetches the trusted-agent list',
         trustAgent: '(id: string): trusts a peer, then reloads the list',
         untrustAgent: '(id: string): untrusts a peer, then reloads the list',

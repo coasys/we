@@ -49,7 +49,28 @@ export interface ConsentRequest {
   payload: string;
 }
 
+/**
+ * A language plugin installed in this backend.
+ *
+ * "Language" is AD4M's word for the adapter that stores and retrieves a kind of expression — what
+ * makes an image URL resolvable, or a neighbourhood's links syncable. They are addressed by content
+ * hash, which is why installing one is a matter of pasting an address rather than picking a package.
+ */
+export interface InstalledLanguage {
+  /** Content address — the identifier install and remove take. */
+  address: string;
+  name: string;
+  /** Part of the backend's own machinery. Removing one breaks the running node, so the UI won't. */
+  system: boolean;
+}
+
 export interface RuntimeAdminPort {
+  // ── Languages ───────────────────────────────────────────────────────────────
+  languages?(): Promise<InstalledLanguage[]>;
+  /** Install by content address. The backend fetches the bundle itself. */
+  installLanguage?(address: string): Promise<void>;
+  removeLanguage?(address: string): Promise<void>;
+
   // ── Trust ───────────────────────────────────────────────────────────────────
   trustedAgents?(): Promise<string[]>;
   trustAgent?(id: string): Promise<void>;

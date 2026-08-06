@@ -67,6 +67,10 @@ function stubRuntime(overrides: Partial<RuntimeAdminPort> = {}) {
       calls.push('authorizedApps');
       return [];
     },
+    async languages() {
+      calls.push('languages');
+      return [];
+    },
     onConsentRequest(handler) {
       emit = handler;
       return () => {
@@ -115,6 +119,7 @@ describe('degrading when the backend administers nothing', () => {
     expect(store.canManageTrust()).toBe(false);
     expect(store.canManageNetwork()).toBe(false);
     expect(store.canManageApps()).toBe(false);
+    expect(store.canManageLanguages()).toBe(false);
   });
 
   it('actions no-op instead of throwing, so a mis-gated template cannot crash the page', async () => {
@@ -138,6 +143,75 @@ describe('degrading when the backend administers nothing', () => {
     expect(store.canManageTrust()).toBe(true);
     expect(store.canManageNetwork()).toBe(false);
     expect(store.canManageApps()).toBe(false);
+    expect(store.canManageLanguages()).toBe(false);
+  });
+});
+
+describe('languages', () => {
+  it('reloads the list after installing, so the new language appears without a manual refresh', async () => {
+    let installed = false;
+    const calls: string[] = [];
+    ports = {
+      runtime: {
+        async languages() {
+          calls.push('languages');
+          return installed ? [{ address: 'Qm-new', name: 'note-language', system: false }] : [];
+        },
+        async installLanguage(address) {
+          calls.push(`install:${address}`);
+          installed = true;
+        },
+      },
+    };
+    const store = mount();
+
+    await store.installLanguage('Qm-new');
+
+    expect(calls).toEqual(['install:Qm-new', 'languages']);
+    expect(store.languages()).toEqual([{ address: 'Qm-new', name: 'note-language', system: false }]);
+  });
+
+  it('trims the pasted address, and ignores a blank one rather than sending it', async () => {
+    const calls: string[] = [];
+    ports = {
+      runtime: {
+        async languages() {
+          return [];
+        },
+        async installLanguage(address) {
+          calls.push(`install:${address}`);
+        },
+      },
+    };
+    const store = mount();
+
+    // Addresses get here by copy-paste, which routinely brings whitespace with it.
+    await store.installLanguage('  Qm-padded  ');
+    await store.installLanguage('   ');
+
+    expect(calls).toEqual(['install:Qm-padded']);
+  });
+
+  it('surfaces a refused removal as text — the backend guards system languages, not the UI', async () => {
+    ports = {
+      runtime: {
+        async languages() {
+          return [{ address: 'Qm-sys', name: 'languages', system: true }];
+        },
+        async removeLanguage() {
+          throw new Error('languages is part of the running node and cannot be removed');
+        },
+      },
+    };
+    const store = mount();
+    await store.loadLanguages();
+
+    await store.removeLanguage('Qm-sys');
+
+    // The message survives: a failed mutation used to reload its list straight afterwards, and the
+    // reload cleared the error slot before anything rendered it.
+    expect(store.error()).toBe('languages is part of the running node and cannot be removed');
+    expect(store.languages()).toEqual([{ address: 'Qm-sys', name: 'languages', system: true }]);
   });
 });
 
@@ -159,6 +233,23 @@ describe('trust settings', () => {
     const store = mount();
 
     await store.trustAgent('   ');
+    expect(calls).toEqual([]);
+  });
+
+  it('keeps a failed mutation on screen instead of reloading over its own error', async () => {
+    const { port, calls } = stubRuntime({
+      trustAgent: async () => {
+        throw new Error('not a valid DID');
+      },
+    });
+    ports = { runtime: port };
+    const store = mount();
+
+    await store.trustAgent('nonsense');
+
+    expect(store.error()).toBe('not a valid DID');
+    // No reload after a failed mutation — the list cannot have changed, and the reload would clear
+    // the error slot before the user saw it.
     expect(calls).toEqual([]);
   });
 
@@ -288,7 +379,7 @@ describe('loading on demand', () => {
     const store = mount();
 
     await vi.waitFor(() => expect(store.trustedAgents()).toEqual(['did:peer:one']));
-    expect([...calls].sort()).toEqual(['authorizedApps', 'trustedAgents']);
+    expect([...calls].sort()).toEqual(['authorizedApps', 'languages', 'trustedAgents']);
   });
 
   it('asks for nothing the backend cannot answer', async () => {

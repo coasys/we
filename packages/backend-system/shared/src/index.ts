@@ -116,4 +116,4 @@ export type {
   ProfileDirectoryPort,
   SchemaPort,
 } from './backendPorts';
-export type { AuthorizedApp, ConsentRequest, RuntimeAdminPort } from './runtimeAdmin';
+export type { AuthorizedApp, ConsentRequest, InstalledLanguage, RuntimeAdminPort } from './runtimeAdmin';
