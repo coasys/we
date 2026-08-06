@@ -225,14 +225,24 @@ function accountSwitcher({ allowCreate }: { allowCreate: boolean }): SchemaNode 
           },
           ...(allowCreate
             ? [
-                // Straight through, no confirmation. The step it replaced restated the button it
-                // was reached from and asked again, and the action is undone in one click from
-                // this same corner.
-                tile(
-                  'New account',
-                  { type: 'we-avatar', props: { icon: 'plus', size: 'lg', bg: 'neutral-100' } },
-                  { $action: 'accountStore.createAccount' },
-                ),
+                {
+                  type: '$if',
+                  props: {
+                    // Not while the active account is still being set up. It would offer the very
+                    // action already under way, then withdraw the offer the moment the setup form
+                    // arrived — the same appear-and-vanish this tile does on a first run, which is
+                    // why that case is handled at the top of this function.
+                    condition: { $store: 'accountStore.activeAccount.hasAgent' },
+                    // Straight through, no confirmation. The step it replaced restated the button
+                    // it was reached from and asked again, and the action is undone in one click
+                    // from this same corner.
+                    then: tile(
+                      'New account',
+                      { type: 'we-avatar', props: { icon: 'plus', size: 'lg', bg: 'neutral-100' } },
+                      { $action: 'accountStore.createAccount' },
+                    ),
+                  },
+                },
               ]
             : []),
         ],
@@ -309,6 +319,23 @@ const neutralWait: SchemaNode = {
   children: [{ type: 'we-spinner', props: { size: 'sm' } }],
 };
 
+/**
+ * The wait while an account is being made, on either side of the restart that makes it.
+ *
+ * Deliberately nameless. After the restart the new account exists but holds no identity — its name
+ * is the placeholder the host assigned and its picture is nothing at all — so the badge showed
+ * "New account" over blank initials, which is a placeholder dressed as a person. The same words
+ * before and after mean the restart is not a change of subject.
+ */
+const creatingAccountState: SchemaNode = {
+  type: 'Row',
+  props: { gap: '300', ay: 'center' },
+  children: [
+    { type: 'we-spinner', props: { size: 'sm' } },
+    { type: 'we-text', props: { color: 'neutral-600' }, children: ['Creating account...'] },
+  ],
+};
+
 function startingState(account: string): SchemaNode {
   return {
     type: '$if',
@@ -317,7 +344,16 @@ function startingState(account: string): SchemaNode {
       condition: {
         $and: [{ $store: 'accountStore.accountsLoaded' }, { $not: { $store: 'accountStore.isFirstRun' } }],
       },
-      then: knownAccountState(account),
+      then: {
+        type: '$if',
+        props: {
+          // Naming an account only makes sense once there is somebody in it. A freshly created one
+          // carries a provisional name and no picture until setup finishes.
+          condition: { $store: 'accountStore.activeAccount.hasAgent' },
+          then: knownAccountState(account),
+          else: creatingAccountState,
+        },
+      },
       else: {
         type: '$if',
         props: {
@@ -694,14 +730,7 @@ export const bootScreen: SchemaNode = {
                           type: '$if',
                           props: {
                             condition: { $store: 'accountStore.creating' },
-                            then: {
-                              type: 'Row',
-                              props: { gap: '300', ay: 'center' },
-                              children: [
-                                { type: 'we-spinner', props: { size: 'sm' } },
-                                { type: 'we-text', props: { color: 'neutral-600' }, children: ['Creating account...'] },
-                              ],
-                            },
+                            then: creatingAccountState,
                             else: unlockForm,
                           },
                         },
