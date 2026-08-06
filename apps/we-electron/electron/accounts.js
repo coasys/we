@@ -374,9 +374,11 @@ export function createAccountRegistry({ configDir, defaultPath, defaultName = 'M
       const trimmed = typeof name === 'string' ? name.trim() : undefined;
       if (name !== undefined && !trimmed) throw new Error('An account name is required');
 
-      // Guard the registry against an oversized image. compressImageToFileData already caps the
-      // longest edge at 80px, so this should never fire — but a JSON file the app cannot start
-      // without is the wrong place to find out that an assumption changed upstream.
+      // Guard the registry against an oversized image, and it does fire: the shell is expected to
+      // send a copy resized to a fixed longest edge, but for a long time it sent one merely scaled
+      // to a proportion of the original — no bound at all — so a large enough photo was silently
+      // dropped here and the sign-in screen fell back to initials while the profile showed it fine.
+      // Kept as a guard rather than raised: this file is read at every boot.
       const withinCap = typeof avatar === 'string' && avatar.length <= MAX_AVATAR_CHARS;
       if (avatar !== undefined && !withinCap) {
         console.warn('[accounts] Profile picture too large to cache; falling back to initials');

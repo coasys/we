@@ -8,7 +8,7 @@
  */
 import { type AgentProfileSummary, isProfileEmpty, type PublishProfileFields } from '@we/backend-shared';
 import { toastService } from '@we/components/solid';
-import { compressImageToFileData, dataURIToFileData } from '@we/models';
+import { compressImageToFileData, dataURIToFileData, shrinkDataUri } from '@we/models';
 import { Accessor, createContext, createMemo, createSignal, ParentProps, useContext } from 'solid-js';
 
 import { useAccountStore } from './AccountStore';
@@ -160,7 +160,7 @@ export function ProfileStoreProvider(props: ParentProps) {
 
     // Mirror the picture onto the account so the locked sign-in screen stays current. Avatar only
     // — a cover image is not what identifies someone in a list.
-    if (field === 'avatar') void accounts.syncDisplay({ avatar: dataUri });
+    if (field === 'avatar') void cacheAvatarOnAccount(dataUri);
   }
 
   /**
@@ -289,6 +289,31 @@ export function ProfileStoreProvider(props: ParentProps) {
     }
   }
 
+  /**
+   * Longest edge of the copy cached on the account, in px.
+   *
+   * The registry is a JSON file read at every boot and caps a cached picture at ~200k characters,
+   * so this copy has to be small in absolute terms. `compressImageToFileData` only scales to a
+   * *proportion* of the original, which is no bound at all — a large enough photo sailed past the
+   * cap, the host dropped it with a warning, and the sign-in screen fell back to initials while the
+   * profile page showed the picture perfectly. Comfortably over the 120px the badge renders at.
+   */
+  const ACCOUNT_AVATAR_PX = 192;
+
+  /**
+   * Mirror the avatar onto the account, at a size the registry will actually keep.
+   *
+   * Never throws: this is a side effect of publishing a profile, and a sign-in label is not worth
+   * failing the write it followed.
+   */
+  async function cacheAvatarOnAccount(dataUri: string): Promise<void> {
+    try {
+      await accounts.syncDisplay({ avatar: await shrinkDataUri(dataUri, ACCOUNT_AVATAR_PX) });
+    } catch (err) {
+      console.error('ProfileStore: could not cache the avatar on the account', err);
+    }
+  }
+
   /** Upload an already-compressed data URI and publish it as the avatar. */
   async function publishAvatarDataUri(dataUri: string): Promise<void> {
     const myDid = session.me()?.did;
@@ -306,7 +331,7 @@ export function ProfileStoreProvider(props: ParentProps) {
     });
 
     await profilePort.publish({ avatarExpressionUrl: expressionUrl } as PublishProfileFields);
-    void accounts.syncDisplay({ avatar: dataUri });
+    void cacheAvatarOnAccount(dataUri);
   }
 
   const store: ProfileStore = {

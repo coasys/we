@@ -74,6 +74,7 @@ export {
   blobToDataURL,
   resizeImage,
   compressImageToFileData,
+  shrinkDataUri,
   dataURIToFileData,
   readFileAsFileData,
 } from './utils/imageHelpers';

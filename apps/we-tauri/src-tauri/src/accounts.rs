@@ -440,9 +440,10 @@ impl AccountRegistry {
             });
         }
 
-        // Guard the registry against an oversized image. The shell caps the longest edge at 80px
-        // before this is ever called, so it should never fire — but a JSON file the app cannot
-        // start without is the wrong place to discover that an assumption changed upstream.
+        // Guard the registry against an oversized image, and it does fire: the shell is expected to
+        // send a copy resized to a fixed longest edge, but for a long time it sent one merely
+        // scaled to a proportion of the original — no bound at all — so a large enough photo was
+        // silently dropped here. Kept as a guard rather than raised: this file is read at boot.
         let cached_avatar = avatar.filter(|a| a.len() <= MAX_AVATAR_CHARS);
         if avatar.is_some() && cached_avatar.is_none() {
             eprintln!("[accounts] Profile picture too large to cache; falling back to initials");

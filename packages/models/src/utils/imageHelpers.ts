@@ -22,7 +22,16 @@ export function blobToDataURL(blob: Blob): Promise<string> {
   });
 }
 
-export function resizeImage(file: Blob, percentage: number, maxSize = 80): Promise<Blob> {
+/**
+ * Scale a bitmap down, either to a proportion of its size or to a longest-edge ceiling.
+ *
+ * `maxSize` defaults to no ceiling. It used to default to 80 with an inverted guard — the clamp
+ * only ran when the image was *already* under 80px, so every real photo fell through to plain
+ * percentage scaling and the ceiling never applied to anything. Correcting the guard without
+ * changing that default would have shrunk every image block in every post to 80px, so the default
+ * now says what the code actually did.
+ */
+export function resizeImage(file: Blob, percentage: number, maxSize = Infinity): Promise<Blob> {
   const reader = new FileReader();
   const image = new Image();
   const canvas = document.createElement('canvas');
@@ -30,16 +39,12 @@ export function resizeImage(file: Blob, percentage: number, maxSize = 80): Promi
   const resize = () => {
     let { width, height } = image;
 
-    if (width <= maxSize || height <= maxSize) {
-      if (width > height) {
-        if (width > maxSize) {
-          height *= maxSize / width;
-          width = maxSize;
-        }
-      } else if (height > maxSize) {
-        width *= maxSize / height;
-        height = maxSize;
-      }
+    const longest = Math.max(width, height);
+    if (longest > maxSize) {
+      // A ceiling was asked for and the image exceeds it: scale the longest edge onto it.
+      const scale = maxSize / longest;
+      width *= scale;
+      height *= scale;
     } else {
       height = height * percentage;
       width = width * percentage;
@@ -100,9 +105,26 @@ export function asFileField(data: FileData): string {
  * FILE_STORAGE_LANGUAGE. The compression percentage (0.6) and output format
  * (image/png) match the convention used across all image uploads in the app.
  */
-export async function compressImageToFileData(file: File, name: string): Promise<FileData> {
-  const blob = await resizeImage(file, 0.6);
+export async function compressImageToFileData(file: File, name: string, maxSize?: number): Promise<FileData> {
+  const blob = await resizeImage(file, 0.6, maxSize);
   return { data_base64: await blobToDataURL(blob), name, file_type: 'image/png' };
+}
+
+/**
+ * Re-encode an existing image at a longest-edge ceiling.
+ *
+ * For copies that have to stay small in absolute terms rather than relative to the original — the
+ * account registry's cached avatar, which is read from a JSON file at every boot and is capped, so
+ * a percentage of an arbitrarily large photo is not a bound at all.
+ *
+ * Takes a data URI because that is what the caller already has: the picture has been compressed and
+ * published by then, and the original File is long gone.
+ */
+export async function shrinkDataUri(dataUri: string, maxSize: number): Promise<string> {
+  const blob = await (await fetch(dataUri)).blob();
+  // Percentage 1: already inside the ceiling means leave it alone, not shrink it again.
+  const resized = await resizeImage(blob, 1, maxSize);
+  return `data:image/png;base64,${await blobToDataURL(resized)}`;
 }
 
 /**
