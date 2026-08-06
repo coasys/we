@@ -215,8 +215,17 @@ function accountSwitcher({ allowCreate }: { allowCreate: boolean }): SchemaNode 
           {
             type: '$each',
             props: {
-              // Everyone but the account already signed in to — that one is the badge in the centre.
-              items: { $filter: { items: { $store: 'accountStore.accounts' }, where: { active: false } } },
+              // Everyone but the account already signed in to — that one is the badge in the centre —
+              // and only accounts somebody has actually set up.
+              //
+              // An account with no identity is not a destination: switching to it lands straight
+              // back on the setup form. It became visible here because switching moves the active
+              // flag optimistically, so abandoning a half-made account turned it into one of the
+              // "others" for the moment before the restart — and it then vanished again when
+              // `pruneAbandoned` deleted it, taking a row out of the list as it went.
+              items: {
+                $filter: { items: { $store: 'accountStore.accounts' }, where: { active: false, hasAgent: true } },
+              },
               as: 'account',
             },
             children: [
