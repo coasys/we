@@ -43,7 +43,7 @@ const styles = css`
     border-bottom: 1px solid var(--we-color-neutral-500);
     width: 4px;
     height: 4px;
-    transition: all var(--we-transition-300) ease;
+    transition: all var(--we-transition-300, 250ms) ease;
     transform: rotate(-45deg) translateX(-50%);
     transform-origin: center;
   }

@@ -23,6 +23,7 @@ import { createFileExpression, getProfile, publishProfileToPublicPerspective } f
 import { createAd4mAgentSession, createAd4mDatasetLifecycle } from './lifecycleAdapter';
 import { compileManifest } from './manifestCompiler';
 import { buildModelClasses, buildModelManifest, getForeignShacl } from './perspectiveHelpers';
+import { createAd4mRuntimeAdmin } from './runtimeAdminAdapter';
 import {
   deduplicateSpaceSdna,
   ensureModelRegistered,
@@ -88,6 +89,7 @@ export function createAd4mBackendPorts(backendClient: unknown, ctx: BackendPorts
     lifecycle: createAd4mDatasetLifecycle(backendClient),
     schemas: createAd4mSchemaPort(backendClient),
     profiles: createAd4mProfileDirectory(backendClient),
+    runtime: createAd4mRuntimeAdmin(backendClient),
     ephemeral,
     dataBindings: (deps: DataBindingDeps) =>
       createAd4mDataBindings({

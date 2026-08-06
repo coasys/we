@@ -38,7 +38,7 @@ const styles = css`
     position: absolute;
     overflow-y: auto;
     box-shadow: var(--we-theme-shadow, var(--we-shadow-lg, 0 10px 40px rgba(0, 0, 0, 0.15)));
-    transition: transform 0.25s ease;
+    transition: transform var(--we-transition-300, 250ms) ease;
   }
 
   [part='close-button-wrapper'] {

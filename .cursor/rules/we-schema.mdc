@@ -499,7 +499,7 @@ Read tokens:
 { "$formValid": "$scope" } — true if ALL validated fields in the current $localState scope pass.
 
 Action tokens:
-{ "$touch": "fieldName" } — marks a single field as touched (use in onBlur).
+{ "$touch": "fieldName" } — marks a single field as touched (in onBlur; opt-in, see below).
 { "$touch": "$all" } — marks all fields in scope as touched (use before submit guard).
 { "$resetLocal": "$scope" } — resets all fields to initial values and clears touched state.
 
@@ -508,9 +508,12 @@ Handler arrays (compose multiple actions on one event):
 Array entries execute sequentially. Non-function entries (e.g. $if with false condition) are skipped.
 Prefer onSuccess over a bare $setLocal before the $action — the bare form closes the modal immediately (losing the loading spinner); onSuccess waits for the Promise to resolve.
 
-Typical form pattern:
+Typical form pattern — validate on submit:
 {
-  "$localState": { "name": { "type": "string", "initial": "", "validate": [{ "rule": "required" }] } },
+  "$localState": {
+    "name": { "type": "string", "initial": "", "validate": [{ "rule": "required" }] },
+    "submitting": { "type": "boolean", "initial": false }
+  },
   "children": [
     {
       "type": "we-form-field",
@@ -519,15 +522,15 @@ Typical form pattern:
         "type": "we-input",
         "props": {
           "value": { "$local": "name" },
-          "onInput": { "$setLocal": "name", "from": "$event.detail" },
-          "onBlur": { "$touch": "name" }
+          "onInput": { "$setLocal": "name", "from": "$event.detail" }
         }
       }]
     },
     {
       "type": "we-button",
       "props": {
-        "disabled": { "$not": { "$formValid": "$scope" } },
+        "loading": { "$local": "submitting" },
+        "disabled": { "$local": "submitting" },
         "onClick": [
           { "$touch": "$all" },
           { "$if": { "condition": { "$formValid": "$scope" }, "then": { "$action": "store.save", "args": [{ "$local": "name" }], "onSuccess": [{ "$setLocal": "submitDone", "value": true }] } } }
@@ -537,6 +540,30 @@ Typical form pattern:
     }
   ]
 }
+
+The submit button is disabled only while the request is in flight — NOT on { "$not": { "$formValid": "$scope" } }.
+Those two are mutually exclusive. A button disabled while the form is invalid can never be clicked in the one
+state where { "$touch": "$all" } would reveal something, so the guard chain becomes dead code and blur is left
+as the user's only feedback path. Choose one shape:
+  - Validate on submit (above). The button is always clickable and the errors appear on the click that was
+    refused, which is where the user asked the question.
+  - Hard gate: "disabled": { "$not": { "$formValid": "$scope" } }, and then drop { "$touch": "$all" } as dead
+    and wire "onBlur": { "$touch": "fieldName" } per field — otherwise no error is ever reachable.
+
+"onBlur": { "$touch": "fieldName" } is an opt-in, not boilerplate. It earns its place on long multi-field forms
+where a field is worth judging the moment it is left — a "match" rule on a confirm-password field, say. On a
+short form it fires an error at someone who merely clicked through a field they had not filled in yet.
+
+No validation, just a precondition (sign-in, search, any single-field submit):
+When nothing about the value is locally judgeable — a password is only wrong once the backend says so — skip the
+validation machinery and gate on the value itself:
+{
+  "$localState": { "password": { "type": "string", "initial": "" } },
+  ...
+  "disabled": { "$not": { "$local": "password" } }
+}
+A "required" rule here would exist only to drive "disabled", and its message is then one stray { "$touch": … }
+away from telling the user "Password is required" about a field they simply have not typed into yet.
 
 ## Block-level Dynamic Structures
 
@@ -632,7 +659,7 @@ Most @we/primitives also accept Design System Props (see next section for detail
   Props: variant: 'neutral' | 'primary' | 'success' | 'warning' | 'danger' = 'neutral', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md'
 - we-blockquote (DesignSystemElement)
 - we-button (DesignSystemElement)
-  Props: variant: 'primary' | 'secondary' | 'ghost' | 'danger' | 'outline' = 'primary', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md', text?: string | undefined, href?: string | undefined, disabled: boolean = false, loading: boolean = false, gradient: boolean = false, square: boolean = false
+  Props: variant: 'primary' | 'secondary' | 'ghost' | 'danger' | 'outline' | 'bare' = 'primary', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md', text?: string | undefined, href?: string | undefined, disabled: boolean = false, loading: boolean = false, gradient: boolean = false, square: boolean = false
 - we-checkbox (DesignSystemElement)
   Props: checked: boolean = false, disabled: boolean = false, name: string = '', value: string = '', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md'
 - we-code (DesignSystemElement)
@@ -664,7 +691,7 @@ fragment; it is sanitized before rendering so XSS payloads are stripped.
 - we-image (LayoutVisualElement)
   Props: src: string | File = '', alt: string = '', fit: '' | 'cover' | 'contain' | 'fill' | 'none' | 'scale-down' = '', loading: 'eager' | 'lazy' = 'eager', gradient: string = '', objectPosition: string = ''
 - we-input (DesignSystemElement)
-  Props: value: string = '', max: string = '', min: string = '', maxlength: unknown = Infinity, minlength: number = 0, pattern: string = '', name: string = '', step: string = '', placeholder: string = '', autocomplete: string = '', autofocus: boolean = false, disabled: boolean = false, required: boolean = false, readonly: boolean = false, type: string = 'text', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md'
+  Props: value: string = '', max: string = '', min: string = '', maxlength: unknown = Infinity, minlength: number = 0, pattern: string = '', name: string = '', step: string = '', placeholder: string = '', autocomplete: string = '', autofocus: boolean = false, disabled: boolean = false, required: boolean = false, readonly: boolean = false, type: string = 'text', revealable: boolean = false, size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md'
 - we-link (DesignSystemElement)
   Props: href: string = '', target: string = '', rel: string = '', download: string = '', disabled: boolean = false
 - we-location-picker (DesignSystemElement)
@@ -822,7 +849,7 @@ when `relative` is enabled.
 - DropdownMenu — Flexible dropdown menu for actions, toggles, and grouped items. Use for context menus, settings panels, layer controls, and command palettes.
   Props: class?: string, styles?: Record<string, string | number>, placement?: Placement, triggerLabel?: string, triggerIcon?: string, items: SolidDropdownMenuEntry[]
 - EditableImage (DesignSystemElement)
-  Props: src?: string, alt?: string, fit?: "fill" | "cover" | "contain" | "none" | "scale-down", placeholderIcon?: string, onImageChange?: ((file: File) => void), class?: string, aspect?: number, maxSize?: number
+  Props: src?: string, alt?: string, fit?: "fill" | "cover" | "contain" | "none" | "scale-down", placeholderIcon?: string, onImageChange?: ((file: File) => void), onImageRemove?: (() => void), uploadLabel?: string, editLabel?: string, class?: string, aspect?: number, maxSize?: number
 - FlipCard
   Props: front?: JSX.Element, back?: JSX.Element, width?: string, height?: string, flipOnHover?: boolean, flipDuration?: string, wobbleOnHover?: boolean, wobbleDegree?: number, class?: string, styles?: Record<string, string | number>
 - Grid (DesignSystemElement)
@@ -899,10 +926,10 @@ we-divider, we-icon, we-menu-group, we-popover, we-spinner, we-tooltip
 | maxWidth | string | Maximum width |
 | maxHeight | string | Maximum height |
 | position | "relative" \| "absolute" \| "fixed" \| "sticky" | CSS position |
-| top | string | Top offset |
-| right | string | Right offset |
-| bottom | string | Bottom offset |
-| left | string | Left offset |
+| top | SpaceValue | Top offset — space token or CSS length |
+| right | SpaceValue | Right offset — space token or CSS length |
+| bottom | SpaceValue | Bottom offset — space token or CSS length |
+| left | SpaceValue | Left offset — space token or CSS length |
 | zIndex | number | Stack order |
 | display | "flex" \| "block" \| "inline" \| "inline-block" \| "grid" \| "inline-flex" | Display mode |
 | flex | string | Flex shorthand (e.g. "1", "0 0 auto", "none") — controls grow/shrink/basis |
@@ -921,7 +948,7 @@ we-divider, we-icon, we-menu-group, we-popover, we-spinner, we-tooltip
 | Prop | Type | Description |
 |------|------|-------------|
 | bg | ColorValue | Background color (token) |
-| bgImage | string | Background image URL — sets background-image, defaults background-size to cover, background-position to center, background-repeat to no-repeat |
+| bgImage | string | Background image — a URL, or a CSS gradient (linear-, radial- or conic-gradient, including several comma-separated for a mesh). Sets background-image, defaults background-size to cover, background-position to center, background-repeat to no-repeat. Composes with bg, which paints beneath it |
 | bgFit | "cover" \| "contain" | Background image sizing (default: "cover") — only meaningful with bgImage |
 | bgPosition | string | Background image position (default: "center", e.g. "top", "50% 20%") — only meaningful with bgImage |
 | bgImageOpacity | number | Fades bgImage only (0–1), independent of the element's own content/opacity — only meaningful with bgImage |
@@ -992,14 +1019,14 @@ Variants set size and weight only — color is always inherited or set explicitl
 |------|------|-------------|
 | hoverProps | Partial\<DesignSystemProps\> | Styles on :hover |
 | activeProps | Partial\<DesignSystemProps\> | Styles on :active |
-| focusProps | Partial\<DesignSystemProps\> | Styles on :focus |
+| focusProps | Partial\<DesignSystemProps\> | Styles on keyboard focus (:focus-visible) — deliberately not applied on mouse click. `we-button` and `we-input` already carry a default focus ring; only set this to override it |
 | disabledProps | Partial\<DesignSystemProps\> | Styles when disabled |
 
 ### Additional
 
 | Prop | Type | Description |
 |------|------|-------------|
-| styles | Record\<string, string \| number\> | Inline CSS applied directly to the component's own element (raw CSS values allowed). For Column, Row, Grid — use this when you need CSS the DS props don't cover. **Do not confuse with node-level styles** (see Schema Structure) which applies to a wrapper div, not the component. |
+| styles | Record\<string, string \| number\> | Inline CSS applied directly to the component's own element (raw CSS values allowed). For Column, Row, Grid — use this when you need CSS the DS props don't cover. Applied last, so it genuinely overrides a DS prop setting the same property. **Do not confuse with node-level styles** (see Schema Structure) which applies to a wrapper div, not the component. |
 | onClick | ActionToken | Event handler (see dynamic logic) |
 
 ---
@@ -1305,12 +1332,68 @@ SessionStore:
 - State:
   - client: the backend client handle | undefined
   - me: Agent | undefined — the authenticated identity; prefer the $me token in schemas
-  - bootState: string — 'initialising' | 'login' | 'createAgent' | 'ready' | 'error'
+  - bootState: string — 'initialising' | 'login' | 'createAgent' | 'finishing' | 'ready' | 'error'
   - passwordError: boolean — true after a failed unlock attempt
   - loginLoading: boolean
+  - createAgentError: string — the backend message from a failed agent creation, or empty
+  - createAgentLoading: boolean
 - Actions:
   - login(password: string): unlocks the agent and loads user data
+  - createAgent(password: string): creates the agent, loads user data, and lands on the 'finishing' boot state (not 'ready')
+  - clearPasswordError(): clears the failed-unlock flag. Chain it after the password field's $setLocal — the verdict was on the submitted password, so editing that password retracts it and a stale "Incorrect password" should not sit over the correction
+  - finishSetup(): leaves 'finishing' for the running app — sets bootState to 'ready'
   - logout(): locks the agent and returns to the login screen
+
+AccountStore:
+- State:
+  - canManageAccounts: boolean — the host can manage local accounts (false on web). Gate every account control on this
+  - accounts: Account[] — local accounts (id, name, active). id is the data directory
+  - activeAccount: Account | undefined — the account this app instance is running against. Correct at first paint: the list is seeded from a synchronous cache
+  - pendingRemoval: Account | null — the account a removal was requested for, awaiting confirmation
+  - switchingTo: Account | null — the account being switched to, from the click until the process goes away
+  - creating: boolean — true from the moment a create is requested until the process goes away
+  - hasOtherAccounts: boolean — true when there is somewhere else to switch to
+  - busy: boolean — a mutation is in flight; a successful one ends in a relaunch
+  - error: string — the last account error, for display
+- Actions:
+  - refresh(): re-reads the account list from the host
+  - createAccount(): creates an account under a provisional name and switches into it — the setup screen names it. Does not return on success
+  - syncDisplay({ name?, avatar? }): mirrors the profile onto the running account, so the locked sign-in screen has a name and picture. Never throws
+  - switchAccount(id: string): switches to another account. Does not return on success
+  - removeAccount(id: string): deletes an account and its data. Refuses the active one
+  - requestRemoval(id: string): opens the removal confirmation for that account
+  - cancelRemoval(): closes the removal confirmation without deleting
+  - confirmRemoval(): deletes the account awaiting confirmation
+  - clearError(): clears the error slot
+
+RuntimeStore:
+- State:
+  - canAdminister: boolean — this backend exposes runtime administration at all
+  - canManageTrust: boolean — gate the trusted-agents section on this
+  - canManageNetwork: boolean — gate the peer-network section on this
+  - canManageApps: boolean — gate the authorized-apps section on this
+  - trustedAgents: string[] — trusted peer ids. Empty until loadTrustedAgents() runs
+  - authorizedApps: AuthorizedApp[] — external apps holding credentials (id, name, description, url, iconUrl, capabilities, revoked). Empty until loadAuthorizedApps() runs
+  - networkMetrics: string — backend diagnostic blob, displayed verbatim. Empty until requested
+  - peerInfos: string[] — this node peer-discovery records, for out-of-band exchange
+  - loading: boolean — true while any runtime call is in flight
+  - error: string — the last runtime error, for display
+  - pendingConsent: ConsentRequest | null — a request awaiting the user's decision (kind: 'capability' | 'trust', title, message, app, peerId)
+  - consentSecret: string — a code an approval returned, to be relayed to the asking app
+- Actions:
+  - loadTrustedAgents(): fetches the trusted-agent list
+  - trustAgent(id: string): trusts a peer, then reloads the list
+  - untrustAgent(id: string): untrusts a peer, then reloads the list
+  - loadAuthorizedApps(): fetches apps holding credentials against this agent
+  - revokeApp(id: string): invalidates an app's tokens, keeping the grant listed
+  - removeApp(id: string): forgets the grant entirely
+  - loadNetworkMetrics(): fetches the diagnostic blob
+  - restartNetwork(): restarts the peer-networking layer
+  - loadPeerInfos(): fetches this node peer-discovery records
+  - addPeerInfos(text: string): adds pasted peer records (JSON array or one per line)
+  - approveConsent(): grants the pending request
+  - denyConsent(): declines the pending request
+  - dismissConsentSecret(): clears the confirmation code display
 
 DatasetStore:
 - State:
@@ -1336,6 +1419,7 @@ DatasetStore:
 
 ProfileStore:
 - State:
+  - pendingAvatar: unknown
   - profiles: AgentProfileSummary[] — cache of all fetched profiles (did, firstName, lastName, handle, bio, avatar, coverImage, location)
   - ownProfile: AgentProfileSummary | undefined — reactive accessor for the current user's own profile (derived from the cache)
 - Actions:
@@ -1343,6 +1427,8 @@ ProfileStore:
   - updateOwnProfile(fields: { firstName?, lastName?, handle?, bio? }): updates own profile text fields and publishes to the public dataset
   - updateProfileImage(field: "avatar" | "coverImage", imageFile: File): uploads the image and publishes its expression URL to the public dataset
   - updateOwnLocation(update: { latitude?, longitude?, city?, country?, countryCode? }): merges the location update into the cache and publishes to the public dataset
+  - setPendingAvatar(file: File): holds a picture chosen before an agent exists; uploaded by completeAccountSetup
+  - completeAccountSetup(name: string, password: string): the whole of first-run setup — creates the agent, then publishes the name and picture, then lets the app appear
 
 RouteStore:
 - State:
@@ -1655,8 +1741,7 @@ Local state (form with validation):
         "type": "we-input",
         "props": {
           "value": { "$local": "name" },
-          "onInput": { "$setLocal": "name", "from": "$event.detail" },
-          "onBlur": { "$touch": "name" }
+          "onInput": { "$setLocal": "name", "from": "$event.detail" }
         }
       }]
     },
@@ -1665,7 +1750,7 @@ Local state (form with validation):
       "props": {
         "text": "Submit",
         "loading": { "$local": "loading" },
-        "disabled": { "$not": { "$formValid": "$scope" } },
+        "disabled": { "$local": "loading" },
         "onClick": [
           { "$touch": "$all" },
           { "$if": { "condition": { "$formValid": "$scope" }, "then": { "$action": "myStore.submit", "args": [{ "$local": "name" }] } } }
@@ -1674,6 +1759,9 @@ Local state (form with validation):
     }
   ]
 }
+The button is disabled only while the submit is in flight. Disabling it on { "$not": { "$formValid": "$scope" } }
+instead contradicts the { "$touch": "$all" } beneath it — the button is unclickable in exactly the state that
+guard exists to report. See the "Typical form pattern" section for the full rationale and the two valid shapes.
 
 Repeating lists with $each:
 ALWAYS use $each for lists of similar items — never duplicate the same node structure.
@@ -1917,7 +2005,7 @@ Nested routing example:
 - Each item in a children array must be either a valid schema node object or a string.
 - Use design tokens for spacing, color, radius, etc. (do not use raw CSS except in styles).
 - Use the styles prop for custom inline CSS (e.g., { "width": "100px" }).
-- Use hoverProps for hover state overrides, activeProps for pressed state, focusProps for focus state. Supported on @we/primitives (we-text, we-button, etc.) and layout components (Column, Row).
+- Use hoverProps for hover state overrides, activeProps for pressed state, focusProps for keyboard-focus state. Supported on @we/primitives (we-text, we-button, etc.) and layout components (Column, Row). focusProps fires on `:focus-visible` (keyboard), not on mouse click. Do not add a focus ring by hand — `we-button` and `we-input` already have one, themeable via the `ringColor` theme key.
 - Use dynamic logic tokens ($store, $if, $action, etc.) for reactivity and conditional behavior.
 - Nest components using children or slots as needed.
 - For routes, use the routes array with path and child nodes.
@@ -1928,6 +2016,7 @@ Nested routing example:
 - For icon-only buttons, nest a `we-icon` child inside `we-button` rather than using a `text` prop with a Unicode character. **Omit the `size` prop on `we-icon` when nesting inside sized primitives** (`we-button`, `we-input`, `we-badge`, `we-textarea`) — these components auto-size nested icons via `--we-context-icon-size` (xs→12px, sm→16px, md→24px, lg→32px, xl→40px). Only set an explicit icon `size` if you need to override the automatic sizing. Example: `{ type: 'we-button', props: { variant: 'ghost', size: 'sm' }, children: [{ type: 'we-icon', props: { name: 'x' } }] }`.
 - NEVER pass a bare number like "16" as a size or dimension prop — it is not valid CSS. Always check the component's declared prop type: if it's a string union, use one of the listed values; if it accepts arbitrary strings, include a CSS unit (e.g. "16px", "2rem").
 - For interactive list items and selectable options, use `we-button` with variant switching (e.g., `secondary` when selected, `ghost` when not) instead of manually styling `Row` with cursor, bg, and onClick. Buttons provide hover, focus, and active states for free.
+- To make a block of content clickable **without any button appearance**, use `we-button` with `variant: 'bare'` — never a `Column`/`Row` with an `onClick`. `bare` is the appearance-free variant: no background, no hover, no padding, no radius, inherited colour — but still a real `<button>`, so it keeps keyboard activation, the `disabled` prop, and the accessibility role that a clickable `Column` silently loses. Do not use `ghost` for this: ghost's hover background is deliberate, and it paints a rectangle over content that supplies its own affordance. Example: `{ type: 'we-button', props: { variant: 'bare', disabled: { $store: 'someStore.busy' }, onClick }, children: [{ type: 'Column', props: { gap: '150', ax: 'center' }, children: [...] }] }`.
 - For card-like layouts, compose from `Column` with DS props (bg, r, border, p, gap). This gives full control over spacing and appearance.
 - When rendering lists of similar items (posts, cards, users, etc.), ALWAYS use `$each` with a single template child — never duplicate the same node structure multiple times. Use literal arrays in `items` for static data, or `$store`/`$query` for dynamic data.
 

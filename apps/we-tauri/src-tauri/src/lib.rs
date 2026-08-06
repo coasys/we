@@ -1,13 +1,56 @@
+mod accounts;
 mod app_state;
 mod commands;
 mod app_server;
 mod generated;
 
+// Declared by path rather than through `generated/mod.rs`: that module is only emitted on the
+// generator's embedded-apps path, while this file is emitted on both and is always read here.
+#[path = "generated/seed_runtime.rs"]
+mod seed_runtime;
+
+use accounts::{expand_home, AccountRegistry};
 use app_state::AppState;
 use rust_executor::utils::find_port;
 use rust_executor::Ad4mConfig;
+use std::path::PathBuf;
 use tauri::Manager;
 use uuid::Uuid;
+
+/// The seed's data path — the deployment default, and the account the registry seeds itself with.
+///
+/// Baked in at build time by `scripts/generate-seed-config.cjs`. Defaults to the launcher's own
+/// directory, so out of the box WE desktop, Flux and ADAM share one agent. See `SeedConfig.ad4m`.
+fn seed_data_path(home: &std::path::Path) -> PathBuf {
+    expand_home(seed_runtime::AD4M_DATA_PATH, home)
+}
+
+/// This app's own configuration directory.
+///
+/// No longer where accounts or the registry live — both moved into the data path's container, so
+/// that one `mv` resets everything and every host reads the same list. All that is left here is
+/// the pre-container layout, which `AccountRegistry` migrates out of on first run.
+fn config_dir() -> PathBuf {
+    dirs::config_dir()
+        .expect("Failed to get config directory")
+        .join("we")
+}
+
+/// Where the executor keeps its data this launch.
+///
+/// Precedence is env → the selected account → the seed default (via the registry, which seeds
+/// itself from it). The env var wins outright and bypasses the registry: it is the ad-hoc override
+/// for testing a first run against a throwaway directory, and having that quietly register itself
+/// as a permanent account would be a surprise.
+fn resolve_ad4m_data_path(registry: &AccountRegistry, home: &std::path::Path) -> PathBuf {
+    if let Some(from_env) = std::env::var("WE_AD4M_DATA_PATH")
+        .ok()
+        .filter(|value| !value.is_empty())
+    {
+        return expand_home(&from_env, home);
+    }
+    registry.resolve_active_path()
+}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -18,23 +61,39 @@ pub fn run() {
     // Generate a credential token
     let req_credential = Uuid::new_v4().to_string();
     
-    // Get the users ad4m directory (~/.ad4m) to access existing agent data
-    let app_data_path = dirs::home_dir()
-        .expect("Failed to get home directory")
-        .join(".ad4m");
-    
+    let home = dirs::home_dir().expect("Failed to get home directory");
+    let config_dir = config_dir();
+    let default_data_path = seed_data_path(&home);
+
+    // Where the executor keeps its data — the selected account, env-overridable.
+    let registry = AccountRegistry::new(config_dir.clone(), default_data_path.clone());
+    // Clear out any account whose setup was abandoned last session before choosing one.
+    registry.prune_abandoned();
+    let app_data_path = resolve_ad4m_data_path(&registry, &home);
+    println!("AD4M data path: {}", app_data_path.display());
+
     std::fs::create_dir_all(&app_data_path)
         .expect("Failed to create app data directory");
-    
-    // Initialize AD4M
-    rust_executor::init::init(
-        Some(app_data_path.to_str().unwrap().to_string()),
-        None, // No bootstrap path needed - languages are in ~/.ad4m
-    ).expect("Failed to initialize AD4M");
-    
+
+    // Scaffold the directory only when the executor has never run against it, matching the
+    // electron host's `ensureDataPathInitialised`. `init` is idempotent apart from one branch: an
+    // account whose `last-seen-version` predates the executor's `OLDEST_VERSION` has its state
+    // cleaned. Calling it unconditionally meant an old enough account was silently wiped on the
+    // boot that opened it — where electron would not have made the call at all.
+    if !app_data_path.join("mainnet_seed.seed").exists() {
+        println!("Data path not initialised, scaffolding: {}", app_data_path.display());
+        rust_executor::init::init(
+            Some(app_data_path.to_str().unwrap().to_string()),
+            None, // No bootstrap seed override — the account uses mainnet.
+        )
+        .expect("Failed to initialize AD4M");
+    }
+
     let state = AppState {
         graphql_port,
         req_credential: req_credential.clone(),
+        config_dir,
+        default_data_path,
     };
 
     tauri::Builder::default()
@@ -42,7 +101,13 @@ pub fn run() {
         .manage(state)
         .invoke_handler(tauri::generate_handler![
             commands::state::get_port,
-            commands::state::request_credential
+            commands::state::request_credential,
+            commands::accounts::list_accounts,
+            commands::accounts::create_account,
+            commands::accounts::set_account_display,
+            commands::accounts::select_account,
+            commands::accounts::remove_account,
+            commands::accounts::apply_account_selection
         ])
         .setup(move |app| {
             // Start embedded app HTTP servers (in production only)
@@ -60,7 +125,9 @@ pub fn run() {
             let config = Ad4mConfig {
                 admin_credential: Some(req_credential.clone()),
                 app_data_path: Some(app_data_path.to_str().unwrap().to_string()),
-                gql_port: Some(graphql_port),
+                // `port` is the executor's GraphQL/REST port — the same one the electron host
+                // passes as `--port`. It was `gql_port` in an older Ad4mConfig.
+                port: Some(graphql_port),
                 run_dapp_server: Some(false), // Disabled - we serve the app ourselves
                 connect_holochain: Some(true),
                 ..Default::default()

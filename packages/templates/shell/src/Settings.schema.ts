@@ -6,7 +6,9 @@
 
 import type { TemplateSchema } from '@we/schema-shared';
 
+import { accountSettings } from './AccountSettings.schema.ts';
 import { createSpaceModal } from './CreateSpaceModal.ts';
+import { runtimeSettings } from './RuntimeSettings.schema.ts';
 
 export const settingsTemplate: TemplateSchema = {
   meta: { name: 'Settings', description: 'Account settings', icon: 'gear' },
@@ -35,7 +37,8 @@ export const settingsTemplate: TemplateSchema = {
           type: 'Column',
           props: { gap: '300' },
           children: [
-            { type: 'we-text', props: { fontWeight: 'semibold' }, children: ['Agent'] },
+            // "Account" to match the sign-in screen; the DID row below carries the protocol term.
+            { type: 'we-text', props: { fontWeight: 'semibold' }, children: ['Account'] },
             {
               type: 'Card',
               props: { bg: 'neutral-100' },
@@ -58,6 +61,7 @@ export const settingsTemplate: TemplateSchema = {
                 },
               ],
             },
+            accountSettings,
           ],
         },
 
@@ -752,6 +756,10 @@ export const settingsTemplate: TemplateSchema = {
           type: '$if',
           props: { condition: { $local: 'createSpaceModalOpen' }, then: createSpaceModal },
         },
+
+        // Last, and self-gating: a backend that administers nothing renders nothing here, so the
+        // section's absence costs the page no layout. See RuntimeSettings.schema.ts.
+        runtimeSettings,
       ],
     },
   ],

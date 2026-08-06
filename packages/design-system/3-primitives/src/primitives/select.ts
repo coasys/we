@@ -47,7 +47,7 @@ const styles = css`
     border: 1px solid var(--we-color-neutral-300);
     border-radius: var(--we-theme-input-radius, var(--we-radius-400));
     background: var(--we-color-neutral-0);
-    transition: border-color 0.15s ease;
+    transition: border-color var(--we-transition-200, 150ms) ease;
   }
 
   [part='input-wrapper']:focus-within {
@@ -112,7 +112,7 @@ const styles = css`
     padding: var(--we-space-200) var(--we-space-300);
     cursor: pointer;
     white-space: nowrap;
-    transition: background 0.1s ease;
+    transition: background var(--we-transition-200, 150ms) ease;
   }
 
   [part='option']:hover,

@@ -64,6 +64,29 @@ export interface WeSeedFile {
 
   /** AD4M-specific configuration */
   ad4m?: {
+    /**
+     * Where the bundled executor keeps its data — the agent's keys, datasets and settings.
+     * `~` expands to the home directory. Read at build time by each desktop host's
+     * `generate-seed-config.cjs`; overridden at run time by `WE_AD4M_DATA_PATH`.
+     *
+     * Defaults to `~/.ad4m`, which is also the launcher's location — so out of the box WE
+     * desktop, Flux and the ADAM launcher share one agent. Pointing this elsewhere gives WE its
+     * own isolated agent, and is a **data migration, not a preference**: an existing agent does
+     * not follow the path, so a running install would come up empty with no error and no obvious
+     * way back. Change it deliberately, on a fresh install or after moving the directory yourself.
+     */
+    dataPath?: string;
+    /**
+     * The `ad4m-executor` binary the desktop hosts bundle, relative to the workspace root (or
+     * absolute). Required — `setup-workspace` and `validate-seed` both fail without it.
+     */
+    executorPath?: string;
+    /**
+     * The ad4m repo checkout, relative to the workspace root (or absolute). Feeds the Tauri
+     * `Cargo.toml` path dependencies, which is why its absence is only a warning: Electron
+     * spawns the prebuilt binary and never needs the source.
+     */
+    repoPath?: string;
     /** AI agent configuration */
     ai?: {
       /** Enable AI features */

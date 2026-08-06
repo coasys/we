@@ -13,6 +13,107 @@ export interface AppConfig {
 }
 
 /**
+ * One local account: a directory holding one agent's keys and data.
+ *
+ * Internally an account is the *container* and an agent is the identity (a DID) inside it — they
+ * are not the same thing, since an account exists before any agent has been created in it, which
+ * is exactly the state first-run setup passes through.
+ *
+ * **The UI never exposes that split.** To a user, an account is the thing they sign in to, full
+ * stop; making them hold "create an account, then set up its agent" is two words for one act.
+ * User-facing copy says "account" throughout, and "agent" is reserved for AD4M protocol objects
+ * that genuinely are agents rather than accounts — a peer's DID in the trusted-agents list.
+ */
+export interface Account {
+  /** The data directory. Stable, and unique by construction — no separate id to keep in sync. */
+  id: string;
+  name: string;
+  /**
+   * A cached copy of the profile picture, as a small data URI.
+   *
+   * Cached rather than read live because the sign-in screen renders while the agent is *locked*,
+   * and the real profile lives inside the encrypted store. Operating systems solve the same
+   * problem the same way — macOS keeps your account picture outside the encrypted volume so the
+   * login window can draw it. Absent until a profile picture has been set.
+   */
+  avatar?: string;
+  /** The account this app instance is currently running against. */
+  active: boolean;
+  /**
+   * An identity has been created in this account.
+   *
+   * False for a directory that has been scaffolded but never set up — which every account is
+   * between being created and finishing setup, and which the whole machine is on a genuine first
+   * run. The host answers it from disk, so the boot screen knows which of those it is without
+   * waiting for an executor to start.
+   *
+   * The marker is the executor's own: `is_initialized()` is `<data>/ad4m/agent.json` existing, so
+   * this cannot disagree with what the session will report a few seconds later.
+   */
+  hasAgent: boolean;
+  /**
+   * The ADAM launcher keeps its own registry — its list of every agent it knows about — inside
+   * this account's directory. Deleting it therefore also erases the launcher's record of its
+   * other agents, which is a consequence worth naming in a confirmation.
+   */
+  sharedWithLauncher?: boolean;
+}
+
+/**
+ * Switching which account the app runs as.
+ *
+ * A host capability, not a backend one: it manipulates directories on disk and restarts the
+ * backend. No amount of talking to a running executor achieves it, because the executor is
+ * configured with one data path at startup and holds it for its lifetime — which is why every
+ * mutation here ends with the caller invoking {@link applySelection}.
+ *
+ * Optional on {@link PlatformAdapter}. The web host omits it: a browser tab has no filesystem to
+ * keep accounts in and nothing to restart, and `ad4m-connect` already owns which executor it
+ * talks to.
+ */
+export interface AccountHost {
+  list(): Promise<Account[]>;
+  /**
+   * Register a new account and make it active. Creates the directory but no agent — the agent is
+   * created on the next boot, by the setup screen, in the same empty directory a genuine first run
+   * would see. Caller calls {@link applySelection} to get there.
+   *
+   * Takes no name: the setup screen asks for one *afterwards*, so that first run and
+   * adding an account reach the same single page rather than collecting the name in two different
+   * places. The host assigns a provisional name until then.
+   */
+  create(): Promise<Account>;
+  /**
+   * Set what an account is shown as: its name, its picture, or both.
+   *
+   * The account's identity is the *profile's* identity — same DID, same person — so this is how
+   * the profile is mirrored out to where a locked sign-in screen can reach it. Written at setup,
+   * and again whenever the profile is edited later, so the two never drift.
+   */
+  setDisplay(id: string, display: { name?: string; avatar?: string }): Promise<void>;
+  select(id: string): Promise<void>;
+  /**
+   * Delete an account and its data. Refuses the active one — you cannot pull the directory out
+   * from under the running executor.
+   *
+   * Any AD4M account, whichever app created it: `~/.ad4m` is not "Flux's account", it is the
+   * user's account that Flux also uses. The host's own guard is on *shape*, not provenance — it
+   * confirms the directory actually holds an agent before erasing anything, because a registry
+   * entry is a path and a path is not proof that AD4M data is there.
+   */
+  remove(id: string): Promise<void>;
+  /**
+   * Make the selected account take effect.
+   *
+   * Deliberately named for the intent, not the mechanism: Electron respawns the executor and
+   * reloads the window, Tauri relaunches the app. Both are correct for their host, and a caller
+   * that knew which would be reaching past the contract. Does not return — the JS context this
+   * was called from is gone either way.
+   */
+  applySelection(): Promise<void>;
+}
+
+/**
  * Where the host is running, and what that implies for locating things.
  *
  * Deliberately knows nothing about the data layer — obtaining a client is `BackendConnector`'s job
@@ -38,4 +139,10 @@ export interface PlatformAdapter {
 
   // Platform identifier
   platform: 'web' | 'electron' | 'tauri';
+
+  /**
+   * Local account management, when the host can offer it. Absent on web — the boot screen
+   * feature-detects and simply shows no account controls.
+   */
+  accounts?: AccountHost;
 }

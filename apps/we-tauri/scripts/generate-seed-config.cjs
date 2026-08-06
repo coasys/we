@@ -25,6 +25,40 @@ const CARGO_TOML_TEMPLATE = path.join(__dirname, '../src-tauri/Cargo.toml.templa
 const CARGO_TOML_OUTPUT = path.join(__dirname, '../src-tauri/Cargo.toml');
 const PORT_MAP_FILE = path.join(OUTPUT_DIR, 'seed-port-map.json');
 const PORT_MAP_FILE_WEB = path.join(SRC_GENERATED_DIR, 'seed-port-map.json');
+const RUNTIME_RS_FILE = path.join(OUTPUT_DIR, 'seed_runtime.rs');
+
+/** Where the executor keeps its data when the seed says nothing. Also the launcher's location. */
+const DEFAULT_AD4M_DATA_PATH = '~/.ad4m';
+
+/**
+ * Emit the runtime settings lib.rs needs before the app starts.
+ *
+ * Written on both paths through main() — native mode and the apps path — because lib.rs always
+ * reads it. It is declared straight from lib.rs with `#[path]` rather than through
+ * `generated/mod.rs`, which only exists on the apps path.
+ */
+function writeRuntimeConfig(seed) {
+  const dataPath = seed.ad4m?.dataPath || DEFAULT_AD4M_DATA_PATH;
+
+  if (!fs.existsSync(OUTPUT_DIR)) {
+    fs.mkdirSync(OUTPUT_DIR, { recursive: true });
+  }
+
+  // JSON.stringify gives a correctly escaped Rust string literal for any path we accept.
+  fs.writeFileSync(
+    RUNTIME_RS_FILE,
+    `// Auto-generated from we-seed.json by scripts/generate-seed-config.cjs
+// Do not edit manually - changes will be overwritten!
+
+/// Where the executor keeps its data, as written in the seed. \`~\` is expanded at run time,
+/// and \`WE_AD4M_DATA_PATH\` overrides this entirely. See \`resolve_ad4m_data_path\` in lib.rs.
+pub const AD4M_DATA_PATH: &str = ${JSON.stringify(dataPath)};
+`,
+    'utf8',
+  );
+  console.log(`✅ Runtime settings written to: ${path.relative(process.cwd(), RUNTIME_RS_FILE)}`);
+  console.log(`   AD4M data path: ${dataPath}`);
+}
 
 function main() {
   console.log('🔧 Generating Tauri seed configuration...\n');
@@ -77,6 +111,8 @@ function main() {
     // Create empty config files so build doesn't fail
     fs.writeFileSync(PORT_MAP_FILE, JSON.stringify({}, null, 2));
     fs.writeFileSync(PORT_MAP_FILE_WEB, JSON.stringify({}, null, 2));
+
+    writeRuntimeConfig(seed);
 
     // Format generated files with Prettier to avoid noisy git diffs
     formatGeneratedFiles([PORT_MAP_FILE, PORT_MAP_FILE_WEB]);
@@ -173,6 +209,8 @@ pub use seed_servers::setup_seed_servers;
 `;
   fs.writeFileSync(MOD_RS_FILE, modRsContent, 'utf8');
   console.log(`✅ Module file written to: ${path.relative(process.cwd(), MOD_RS_FILE)}`);
+
+  writeRuntimeConfig(seed);
 
   // Generate Cargo.toml from template with AD4M paths
   if (fs.existsSync(CARGO_TOML_TEMPLATE)) {

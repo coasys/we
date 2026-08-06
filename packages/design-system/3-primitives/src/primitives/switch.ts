@@ -38,7 +38,7 @@ const styles = css`
     position: relative;
     border-radius: var(--we-radius-pill);
     background: var(--we-color-neutral-300);
-    transition: background 0.15s ease;
+    transition: background var(--we-transition-200, 150ms) ease;
     flex-shrink: 0;
   }
 
@@ -52,7 +52,7 @@ const styles = css`
     left: 2px;
     border-radius: var(--we-radius-full);
     background: white;
-    transition: transform 0.15s ease;
+    transition: transform var(--we-transition-200, 150ms) ease;
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
   }
 
@@ -80,7 +80,7 @@ const styles = css`
 
   [part='off-label'],
   [part='on-label'] {
-    transition: opacity 0.15s ease;
+    transition: opacity var(--we-transition-200, 150ms) ease;
     cursor: pointer;
     user-select: none;
     font-size: var(--we-font-size-200);

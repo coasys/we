@@ -58,6 +58,7 @@ vi.mock('../src/frameworks/solid/stores/ThemeStore', () => ({
 
 // ── Harness ───────────────────────────────────────────────────────────────────
 import { BootController } from '../src/frameworks/solid/providers/BootController';
+import { AccountStoreProvider } from '../src/frameworks/solid/stores/AccountStore';
 import { type DatasetStore, DatasetStoreProvider, useDatasetStore } from '../src/frameworks/solid/stores/DatasetStore';
 import { ProfileStoreProvider } from '../src/frameworks/solid/stores/ProfileStore';
 import { type SessionStore, SessionStoreProvider, useSessionStore } from '../src/frameworks/solid/stores/SessionStore';
@@ -83,16 +84,20 @@ function mountShell(): Stores {
   }
   render(() => (
     <ShellStoreProvider>
-      <SessionStoreProvider>
-        <DatasetStoreProvider>
-          <ProfileStoreProvider>
-            <SpaceStoreProvider>
-              <BootController />
-              <Capture />
-            </SpaceStoreProvider>
-          </ProfileStoreProvider>
-        </DatasetStoreProvider>
-      </SessionStoreProvider>
+      {/* The mocked platform supplies no `accounts`, so this mounts in its web-degraded form —
+          which is what the profile write-through has to tolerate. */}
+      <AccountStoreProvider>
+        <SessionStoreProvider>
+          <DatasetStoreProvider>
+            <ProfileStoreProvider>
+              <SpaceStoreProvider>
+                <BootController />
+                <Capture />
+              </SpaceStoreProvider>
+            </ProfileStoreProvider>
+          </DatasetStoreProvider>
+        </SessionStoreProvider>
+      </AccountStoreProvider>
     </ShellStoreProvider>
   ));
   return out;
@@ -138,6 +143,73 @@ describe('boot', () => {
     const stores = mountShell();
     await vi.waitFor(() => expect(stores.session.bootState()).toBe('createAgent'));
   });
+});
+
+describe('first run', () => {
+  // The flow that is otherwise only testable by deleting your agent and restarting the app.
+
+  beforeEach(() => {
+    agentOptions = { id: 'did:test:newcomer', hasAgent: false };
+  });
+
+  it('creates an agent, loads the session, and lands on finishing rather than ready', async () => {
+    const stores = mountShell();
+    await vi.waitFor(() => expect(stores.session.bootState()).toBe('createAgent'));
+
+    await stores.session.createAgent('a-strong-passphrase');
+
+    // 'finishing', not ready: the boot screen holds while the profile is published.
+    await vi.waitFor(() => expect(stores.session.bootState()).toBe('finishing'));
+    // ...but the session is fully loaded behind it — same post-unlock load as login.
+    expect(stores.session.me()?.did).toBe('did:test:newcomer');
+    const names = (await lifecycle.list()).map((d) => d.name).sort();
+    expect(names).toEqual(['we-root', 'we-test']);
+  }, 10000);
+
+  it('finishing setup reaches ready, and the app is usable from there', async () => {
+    const stores = mountShell();
+    await vi.waitFor(() => expect(stores.session.bootState()).toBe('createAgent'));
+
+    await stores.session.createAgent('a-strong-passphrase');
+    await vi.waitFor(() => expect(stores.session.bootState()).toBe('finishing'));
+
+    stores.session.finishSetup();
+    expect(stores.session.bootState()).toBe('ready');
+
+    // A space created by a newly onboarded agent is written like any other.
+    await stores.spaces.createSpace('First Space', 'x', 'personal', 'hidden');
+    expect(stores.spaces.mySpaces().map((s) => s.name)).toEqual(['First Space']);
+  }, 10000);
+
+  it('reports a failed creation and stays put, so the screen can be retried', async () => {
+    // An agent already exists — the backend refuses, as the executor does.
+    agentOptions = { hasAgent: true, unlocked: false, password: 'existing' };
+    const stores = mountShell();
+    await vi.waitFor(() => expect(stores.session.bootState()).toBe('login'));
+
+    await stores.session.createAgent('another-passphrase');
+
+    expect(stores.session.createAgentError()).toBe('an agent already exists');
+    expect(stores.session.createAgentLoading()).toBe(false);
+    expect(stores.session.bootState()).toBe('login');
+  });
+
+  it('the passphrase chosen at creation is the one that unlocks later', async () => {
+    const stores = mountShell();
+    await vi.waitFor(() => expect(stores.session.bootState()).toBe('createAgent'));
+
+    await stores.session.createAgent('chosen-at-creation');
+    await vi.waitFor(() => expect(stores.session.bootState()).toBe('finishing'));
+    stores.session.finishSetup();
+
+    // logout() locks with the password createAgent captured — a wrong one would throw and
+    // leave the agent unlocked, so reaching 'login' proves the capture.
+    await stores.session.logout();
+    expect(stores.session.bootState()).toBe('login');
+
+    await stores.session.login('chosen-at-creation');
+    await ready(stores);
+  }, 10000);
 });
 
 describe('dataset lifecycle through the real stores', () => {

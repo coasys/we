@@ -743,3 +743,98 @@ describe('severity', () => {
     expect(result.errors[0].severity).toBe('warning');
   });
 });
+
+describe('$if branch slots', () => {
+  // The renderer hands `then`/`else` straight to renderNode, so only a node renders. Both
+  // spellings of a conditional look interchangeable — `{ $if: … }` is the prop-level operator,
+  // `{ type: '$if', props: … }` is the node — and the wrong one in a branch slot renders nothing
+  // at all, silently and only at runtime. It shipped in WE's boot screen and blanked the sign-in
+  // form with every check passing.
+
+  it('rejects an operator token where a node belongs', () => {
+    const schema = {
+      type: '$if',
+      props: {
+        condition: true,
+        then: { type: 'we-text', children: ['yes'] },
+        else: { $if: { condition: true, then: { type: 'we-text', children: ['no'] } } },
+      },
+    };
+    const result = validateSemantic(schema, ctx());
+    expect(result.valid).toBe(false);
+    expect(result.errors[0].message).toContain('Operator token "$if" used where a schema node is required');
+    expect(result.errors[0].path).toBe('.props.else');
+  });
+
+  it('accepts a properly nested $if node', () => {
+    const schema = {
+      type: '$if',
+      props: {
+        condition: true,
+        then: { type: 'we-text', children: ['yes'] },
+        else: {
+          type: '$if',
+          props: { condition: false, then: { type: 'we-text', children: ['no'] } },
+        },
+      },
+    };
+    expect(validateSemantic(schema, ctx()).valid).toBe(true);
+  });
+
+  it('accepts a node that merely carries $localState alongside its type', () => {
+    // "Has a $-prefixed key" does not make something a token: $localState and $queries are
+    // siblings of `type`. Treating them as tokens skipped the whole subtree beneath them.
+    const schema = {
+      type: '$if',
+      props: {
+        condition: true,
+        then: {
+          type: 'Column',
+          $localState: { open: { type: 'boolean', initial: false } },
+          children: [{ type: 'we-text', children: ['hi'] }],
+        },
+      },
+    };
+    expect(validateSemantic(schema, ctx()).valid).toBe(true);
+  });
+
+  it('still reports errors inside a branch subtree', () => {
+    // The point of walking it: a typo under a $localState-carrying branch used to be invisible.
+    const schema = {
+      type: '$if',
+      props: {
+        condition: true,
+        then: {
+          type: 'Column',
+          $localState: { open: { type: 'boolean', initial: false } },
+          children: [{ type: 'we-nonexistent' }],
+        },
+      },
+    };
+    const result = validateSemantic(schema, ctx());
+    expect(result.valid).toBe(false);
+    expect(result.errors.some((e) => e.message.includes('Unknown component "we-nonexistent"'))).toBe(true);
+  });
+});
+
+describe('$local dot paths', () => {
+  it('accepts a read into an object-typed field', () => {
+    // Documented: `{ $local: 'name.nested.path' }` reads into an object-typed local. Only the
+    // root segment is a declaration.
+    const schema = {
+      type: 'Column',
+      $localState: { location: { type: 'object', initial: null } },
+      children: [{ type: 'we-text', props: { text: { $local: 'location.city' } } }],
+    };
+    expect(validateSemantic(schema, ctx()).valid).toBe(true);
+  });
+
+  it('still rejects an undeclared root', () => {
+    const schema = {
+      type: 'Column',
+      $localState: { location: { type: 'object', initial: null } },
+      children: [{ type: 'we-text', props: { text: { $local: 'somewhereElse.city' } } }],
+    };
+    expect(validateSemantic(schema, ctx()).valid).toBe(false);
+  });
+});

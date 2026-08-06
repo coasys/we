@@ -58,18 +58,20 @@ const styles = css`
     border-radius: 50%;
     animation: lds-ring 1.2s cubic-bezier(0.5, 0, 0.5, 1) infinite;
     border-color: var(--we-spinner-color) transparent transparent transparent;
+    /* Phase, not zero. See --we-spinner-phase below. */
+    animation-delay: var(--we-spinner-phase, 0ms);
   }
 
   .lds-ring div:nth-child(1) {
-    animation-delay: -0.45s;
+    animation-delay: calc(var(--we-spinner-phase, 0ms) - 0.45s);
   }
 
   .lds-ring div:nth-child(2) {
-    animation-delay: -0.3s;
+    animation-delay: calc(var(--we-spinner-phase, 0ms) - 0.3s);
   }
 
   .lds-ring div:nth-child(3) {
-    animation-delay: -0.15s;
+    animation-delay: calc(var(--we-spinner-phase, 0ms) - 0.15s);
   }
 
   @keyframes lds-ring {
@@ -110,8 +112,24 @@ export default class Spinner extends LayoutElement {
     }
   }
 
+  /**
+   * Where in the 1.2s cycle this spinner starts, as a negative delay.
+   *
+   * Locked to the wall clock rather than to mount time, so every spinner is at the same point in
+   * the cycle at the same moment — including one in a document that did not exist a second ago.
+   * Switching accounts reloads the window, and a fresh spinner starting from zero next to the
+   * remembered image of one that had been mid-rotation reads as a jump. `Date.now()` is continuous
+   * across that reload, so this one picks up exactly where the last would have been, and the gap
+   * looks like the spinner was briefly hidden rather than restarted.
+   *
+   * A side effect worth having: two spinners mounted seconds apart now turn in step.
+   */
+  private get _phase(): string {
+    return `${-(Date.now() % 1200)}ms`;
+  }
+
   render() {
-    const inline = this.styles || {};
+    const inline = { '--we-spinner-phase': this._phase, ...(this.styles || {}) };
     return html`<div class="lds-ring" style=${styleMap(inline)}>
       <div></div>
       <div></div>

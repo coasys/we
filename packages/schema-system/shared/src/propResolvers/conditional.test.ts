@@ -77,6 +77,70 @@ describe('$if prop resolution — re-reads the schema', () => {
   });
 });
 
+describe('$if with an array branch — dispatches every entry', () => {
+  // A branch that is an array of actions is dispatched by wrapArrayBranch. A nested $if
+  // resolves to a reactive accessor *wrapping* its action, so the wrapper has to unwrap
+  // before calling — otherwise the accessor is called, hands back the inner action, and
+  // the action itself is never invoked. That is the submit-guard shape
+  // ([{ $touch: '$all' }, { $if: { condition: { $formValid: '$scope' }, … } }]) failing silently.
+  const hitStore = (calls: string[]) => ({ s: { hit: (v: string) => calls.push(v) } });
+
+  it('fires a nested $if inside the branch', () => {
+    const calls: string[] = [];
+    const token = {
+      $if: {
+        condition: true,
+        then: [
+          { $action: 's.hit', args: ['first'] },
+          { $if: { condition: true, then: { $action: 's.hit', args: ['guarded'] } } },
+        ],
+      },
+    };
+    const dispatch = accessor(resolveProp(token, hitStore(calls), {}, rerunMemo))() as () => void;
+
+    dispatch();
+    expect(calls).toEqual(['first', 'guarded']);
+  });
+
+  it('skips a nested $if whose condition is false, without dropping its siblings', () => {
+    const calls: string[] = [];
+    const token = {
+      $if: {
+        condition: true,
+        then: [
+          { $action: 's.hit', args: ['first'] },
+          { $if: { condition: false, then: { $action: 's.hit', args: ['guarded'] } } },
+          { $action: 's.hit', args: ['last'] },
+        ],
+      },
+    };
+    const dispatch = accessor(resolveProp(token, hitStore(calls), {}, rerunMemo))() as () => void;
+
+    dispatch();
+    expect(calls).toEqual(['first', 'last']);
+  });
+
+  it('fires a nested $if inside an $arg-conditioned branch', () => {
+    const calls: string[] = [];
+    const token = {
+      $if: {
+        condition: { $eq: ['$arg.key', 'Enter'] },
+        then: [
+          { $action: 's.hit', args: ['first'] },
+          { $if: { condition: true, then: { $action: 's.hit', args: ['guarded'] } } },
+        ],
+      },
+    };
+    const handler = resolveProp(token, hitStore(calls), {}, rerunMemo) as (arg: unknown) => void;
+
+    handler({ key: 'Enter' });
+    expect(calls).toEqual(['first', 'guarded']);
+
+    handler({ key: 'Escape' });
+    expect(calls).toEqual(['first', 'guarded']);
+  });
+});
+
 describe('$if with $arg — evaluated per call', () => {
   it('reads the branch at call time', () => {
     const calls: string[] = [];

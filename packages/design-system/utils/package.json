@@ -6,7 +6,8 @@
   "type": "module",
   "scripts": {
     "build:steps": "tsup",
-    "build": "we-build"
+    "build": "we-build",
+    "test": "vitest run"
   },
   "types": "dist/index.d.ts",
   "exports": {
@@ -36,7 +37,8 @@
     "@we/tokens": "workspace:*",
     "esbuild-plugin-solid": "^0.6.0",
     "solid-js": "^1.9.5",
-    "tsup": "^8.5.1"
+    "tsup": "^8.5.1",
+    "vitest": "^4.1.10"
   },
   "publishConfig": {
     "access": "public"

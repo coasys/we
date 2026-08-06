@@ -37,10 +37,10 @@ we-divider, we-icon, we-menu-group, we-popover, we-spinner, we-tooltip
 | maxWidth | string | Maximum width |
 | maxHeight | string | Maximum height |
 | position | "relative" \\| "absolute" \\| "fixed" \\| "sticky" | CSS position |
-| top | string | Top offset |
-| right | string | Right offset |
-| bottom | string | Bottom offset |
-| left | string | Left offset |
+| top | SpaceValue | Top offset — space token or CSS length |
+| right | SpaceValue | Right offset — space token or CSS length |
+| bottom | SpaceValue | Bottom offset — space token or CSS length |
+| left | SpaceValue | Left offset — space token or CSS length |
 | zIndex | number | Stack order |
 | display | "flex" \\| "block" \\| "inline" \\| "inline-block" \\| "grid" \\| "inline-flex" | Display mode |
 | flex | string | Flex shorthand (e.g. "1", "0 0 auto", "none") — controls grow/shrink/basis |
@@ -59,7 +59,7 @@ we-divider, we-icon, we-menu-group, we-popover, we-spinner, we-tooltip
 | Prop | Type | Description |
 |------|------|-------------|
 | bg | ColorValue | Background color (token) |
-| bgImage | string | Background image URL — sets background-image, defaults background-size to cover, background-position to center, background-repeat to no-repeat |
+| bgImage | string | Background image — a URL, or a CSS gradient (linear-, radial- or conic-gradient, including several comma-separated for a mesh). Sets background-image, defaults background-size to cover, background-position to center, background-repeat to no-repeat. Composes with bg, which paints beneath it |
 | bgFit | "cover" \\| "contain" | Background image sizing (default: "cover") — only meaningful with bgImage |
 | bgPosition | string | Background image position (default: "center", e.g. "top", "50% 20%") — only meaningful with bgImage |
 | bgImageOpacity | number | Fades bgImage only (0–1), independent of the element's own content/opacity — only meaningful with bgImage |
@@ -130,13 +130,13 @@ Variants set size and weight only — color is always inherited or set explicitl
 |------|------|-------------|
 | hoverProps | Partial\\<DesignSystemProps\\> | Styles on :hover |
 | activeProps | Partial\\<DesignSystemProps\\> | Styles on :active |
-| focusProps | Partial\\<DesignSystemProps\\> | Styles on :focus |
+| focusProps | Partial\\<DesignSystemProps\\> | Styles on keyboard focus (:focus-visible) — deliberately not applied on mouse click. \`we-button\` and \`we-input\` already carry a default focus ring; only set this to override it |
 | disabledProps | Partial\\<DesignSystemProps\\> | Styles when disabled |
 
 ### Additional
 
 | Prop | Type | Description |
 |------|------|-------------|
-| styles | Record\\<string, string \\| number\\> | Inline CSS applied directly to the component's own element (raw CSS values allowed). For Column, Row, Grid — use this when you need CSS the DS props don't cover. **Do not confuse with node-level styles** (see Schema Structure) which applies to a wrapper div, not the component. |
+| styles | Record\\<string, string \\| number\\> | Inline CSS applied directly to the component's own element (raw CSS values allowed). For Column, Row, Grid — use this when you need CSS the DS props don't cover. Applied last, so it genuinely overrides a DS prop setting the same property. **Do not confuse with node-level styles** (see Schema Structure) which applies to a wrapper div, not the component. |
 | onClick | ActionToken | Event handler (see dynamic logic) |
 `;

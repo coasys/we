@@ -1,4 +1,4 @@
-import type { AppConfig, PlatformAdapter } from '@we/app-shell/shared';
+import type { Account, AccountHost, AppConfig, PlatformAdapter } from '@we/app-shell/shared';
 
 // Import auto-generated port mapping
 import portMap from '../../electron/seed-port-map.json';
@@ -6,6 +6,20 @@ import portMap from '../../electron/seed-port-map.json';
 // Cache isDevelopment value
 // Use Vite's built-in DEV flag - true in dev server, false in production build
 const isDevelopmentCache: boolean = import.meta.env.DEV;
+
+/**
+ * The registry lives in the main process — it has to, because the data path is needed to spawn the
+ * executor before any renderer exists. This is the IPC surface over it.
+ */
+const accounts: AccountHost = {
+  list: () => window.electron.listAccounts(),
+  create: () => window.electron.createAccount() as Promise<Account>,
+  setDisplay: (id: string, display: { name?: string; avatar?: string }) =>
+    window.electron.setAccountDisplay(id, display),
+  select: (id: string) => window.electron.selectAccount(id),
+  remove: (id: string) => window.electron.removeAccount(id),
+  applySelection: () => window.electron.applyAccountSelection(),
+};
 
 export const electronPlatform: PlatformAdapter = {
   resolveAppUrl(app: AppConfig, isDevelopment: boolean): string {
@@ -33,4 +47,5 @@ export const electronPlatform: PlatformAdapter = {
     return isDevelopmentCache;
   },
   platform: 'electron' as const,
+  accounts,
 };

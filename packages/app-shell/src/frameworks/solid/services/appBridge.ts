@@ -21,8 +21,15 @@ export interface AppBridgeDeps {
   token: () => string | undefined;
   /** Explicit executor base URL (remote connections); falls back to localhost:port when absent. */
   serverUrl: () => string | undefined;
-  /** 'ready' once the agent is unlocked — gates the desktop credential send (see effect below). */
-  bootState: () => string;
+  /**
+   * Whether the agent is unlocked — gates the desktop credential send (see effect below).
+   *
+   * Deliberately *not* the boot state: what the gate protects against is handing credentials to an
+   * embedded app while the executor would answer "Agent is locked", and unlocked-ness is only
+   * incidentally the same thing as "boot finished". Naming the real condition means a new boot
+   * state (onboarding, say) can't silently start withholding credentials.
+   */
+  agentUnlocked: () => boolean;
 }
 
 /**
@@ -244,7 +251,7 @@ export function startAppBridge(deps: AppBridgeDeps) {
 
       const port = deps.port();
       const token = deps.token();
-      const agentReady = !deps.isDesktop || deps.bootState() === 'ready';
+      const agentReady = !deps.isDesktop || deps.agentUnlocked();
       if (port !== undefined && token !== undefined && agentReady) {
         // Credentials available and agent is unlocked — respond immediately
         sendConfigToIframes();
@@ -267,19 +274,19 @@ export function startAppBridge(deps: AppBridgeDeps) {
   // the rest of the boot chain, which would add unnecessary delay against the ACK-cleared but
   // still-finite wait in ad4m-connect.
   //
-  // Desktop: port+token are set early (before backend.connect()) from stored credentials, while
-  // the agent may still be locked waiting for the user's password. Sending AD4M_CONFIG here
-  // would cause ad4m-connect's checkAuth() to fail with "Agent is locked". We must wait until
-  // bootState === 'ready' (set after login() completes) so the agent is unlocked first.
+  // Desktop: port+token are set early (before the session is usable) from stored credentials,
+  // while the agent may still be locked waiting for the user's password. Sending AD4M_CONFIG here
+  // would cause ad4m-connect's checkAuth() to fail with "Agent is locked". We must wait until the
+  // agent is unlocked first.
   createEffect(() => {
     const port = deps.port();
     const token = deps.token();
-    // Always read bootState() before any early returns so SolidJS tracks it as a dependency.
-    // Without this, when pendingConfigRequest is false on the first run, bootState() would
+    // Always read agentUnlocked() before any early returns so SolidJS tracks it as a dependency.
+    // Without this, when pendingConfigRequest is false on the first run, agentUnlocked() would
     // never be accessed and the effect would not re-run when the agent unlocks.
-    const state = deps.bootState();
+    const unlocked = deps.agentUnlocked();
     if (!pendingConfigRequest || port === undefined || token === undefined) return;
-    if (deps.isDesktop && state !== 'ready') return;
+    if (deps.isDesktop && !unlocked) return;
     pendingConfigRequest = false;
     sendConfigToIframes();
   });

@@ -13,6 +13,14 @@ const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   r: '400',
   ax: 'center',
   ay: 'center',
+  // Every variant gets the same keyboard focus ring, including 'bare' — which needs it most,
+  // since it is the one variant with no resting appearance to mark it as interactive. It lives
+  // in DEFAULT_PROPS rather than per-variant for exactly that reason: a focus indicator is not
+  // an emphasis level, and a variant that could opt out of it would be a variant that fails
+  // WCAG 2.4.7. Ring colour follows --we-ring-color (the themeable `ringColor` key) rather than
+  // a fixed token, matching we-input, so a theme restyles both together and we-form-field's
+  // danger-state override reaches buttons nested inside it.
+  focusProps: { ring: '0 0 0 2px var(--we-ring-color)' },
   disabledProps: { cursor: 'default', opacity: 0.5 },
 };
 
@@ -48,6 +56,18 @@ const VARIANT_DEFAULTS: Record<ButtonVariant, Partial<DesignSystemProps>> = {
     hoverProps: { bg: 'neutral-100', color: 'neutral-900', border: '1px solid var(--we-color-neutral-500)' },
     activeProps: { bg: 'neutral-200', color: 'neutral-900', border: '1px solid var(--we-color-neutral-500)' },
   },
+  // The appearance-free member of the scale: button semantics, no chrome. For wrapping arbitrary
+  // content in a real <button> — the styling then lives on the wrapped Column/Card, which is
+  // already DS-driven, instead of on a hand-rolled div with cursor + onClick.
+  //
+  // No hoverProps/activeProps is the point, not an omission: ghost's hover background is ghost's
+  // whole job, and reusing it for a content wrapper paints a rectangle over content that supplies
+  // its own affordance. `color` is deliberately absent too — an unset custom property resolves to
+  // `inherit` for inherited properties (see the PropSpec contract in @we/design-utils), so leaving
+  // it out inherits, whereas a literal 'inherit' would pointlessly enter the colour-token resolver.
+  // `height` and `r` neutralize the size and component defaults; padding, white-space and overflow
+  // are not DS props, so they are unset by the :host([variant='bare']) rules below.
+  bare: { bg: 'transparent', height: 'auto', r: '0' },
 };
 
 const SIZE_DEFAULTS: Record<ComponentSize, Partial<DesignSystemProps>> = {
@@ -119,7 +139,13 @@ const CSS_STYLES = css`
     border-radius: inherit;
     background: var(--we-button-gradient, none);
     opacity: 1;
-    transition: opacity var(--we-button-transition, 0.2s);
+    /* No component-scoped override var here. --we-button-transition was consumed at this one
+       site and set nowhere, and it sat in the --we-<component>-<prop> namespace, which the cascade
+       reserves for an explicit DS prop on the instance — there is no transition prop for it to
+       carry. Its only effect was a hardcoded fallback that opted every button out of the theme's
+       animationSpeed setting. Per-component motion overrides are not something the theme layer
+       has: animationSpeed is global, and every other theme key is global or group-level. */
+    transition: opacity var(--we-transition-200, 150ms);
     pointer-events: none;
   }
 
@@ -138,9 +164,30 @@ const CSS_STYLES = css`
     pointer-events: none;
   }
 
-  /* Square buttons are sized purely by component height — suppress all cascade padding */
+  /* Square buttons are sized purely by component height — nothing from the padding cascade above
+     applies. Still var()-first, for the same reason 'bare' is: see below. */
   :host([square]) [part='base'] {
-    padding: 0;
+    padding: var(--we-button-padding, 0);
+  }
+
+  /* Two of the things 'bare' has to unset are not DS props, so the variant map cannot carry them:
+     white-space: nowrap inherits down into the wrapped content, which is wrong for a wrapper whose
+     child does its own wrapping/truncation; and overflow: hidden exists to clip the gradient
+     overlay, which 'bare' never has.
+
+     Padding is a third case and not one of those. It is a DS prop — it just cannot ride in the
+     variant map either, because button sets nativePadding and owns padding here in CSS. Declaring
+     a flat 0 (which is what this was) outranks the cascade above at (0,3,0) vs (0,1,0) and does
+     not read the var at all, so every p/px/py on a bare button computed correctly, landed on the
+     host, and was then never consulted. Reading the var with 0 as the fallback keeps the default
+     identical — the instance var is only set for an explicitly passed padding prop — while
+     letting an explicit one through. */
+  :host([variant='bare']) {
+    white-space: normal;
+  }
+  :host([variant='bare']) [part='base'] {
+    padding: var(--we-button-padding, 0);
+    overflow: visible;
   }
 `;
 

@@ -1,6 +1,21 @@
-import type { AppConfig, PlatformAdapter } from '@we/app-shell/shared';
+import { invoke } from '@tauri-apps/api/core';
+import type { Account, AccountHost, AppConfig, PlatformAdapter } from '@we/app-shell/shared';
 
 import portMap from '../generated/seed-port-map.json';
+
+/**
+ * The registry lives on the Rust side — it has to, because the data path is needed to configure
+ * the executor before any window exists. This is the command surface over it.
+ */
+const accounts: AccountHost = {
+  list: () => invoke<Account[]>('list_accounts'),
+  create: () => invoke<Account>('create_account'),
+  setDisplay: (id: string, display: { name?: string; avatar?: string }) =>
+    invoke<void>('set_account_display', { id, display }),
+  select: (id: string) => invoke<void>('select_account', { id }),
+  remove: (id: string) => invoke<void>('remove_account', { id }),
+  applySelection: () => invoke<void>('apply_account_selection'),
+};
 
 export const tauriPlatform: PlatformAdapter = {
   resolveAppUrl(app: AppConfig, isDevelopment: boolean): string {
@@ -27,4 +42,5 @@ export const tauriPlatform: PlatformAdapter = {
     return import.meta.env.DEV;
   },
   platform: 'tauri' as const,
+  accounts,
 };

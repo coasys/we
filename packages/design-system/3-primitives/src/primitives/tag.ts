@@ -46,7 +46,7 @@ const styles = css`
     width: 16px;
     height: 16px;
     opacity: 0.6;
-    transition: opacity 0.15s ease;
+    transition: opacity var(--we-transition-200, 150ms) ease;
   }
 
   [part='dismiss']:hover {

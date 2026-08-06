@@ -13,6 +13,8 @@ import type {
   DatasetRef,
 } from '@we/backend-shared';
 
+import { ensureFileStorageLanguage } from './agentHelpers';
+
 const SCHEME = 'neighbourhood://';
 
 function toRef(p: PerspectiveProxy): DatasetRef {
@@ -137,14 +139,46 @@ export function createAd4mDatasetLifecycle(backendClient: unknown): DatasetLifec
 
 export function createAd4mAgentSession(backendClient: unknown): AgentSessionPort {
   const client = backendClient as Ad4mClient;
+
+  /**
+   * The file-storage language is installed lazily, on the first unlocked session — see
+   * `ensureFileStorageLanguage`. Best-effort: a failure here (no peers yet, network still
+   * settling) must not block login, and the next unlocked session retries, so the flag is only
+   * latched on success.
+   */
+  let fileStorageReady = false;
+  async function ensureFileStorage(): Promise<void> {
+    if (fileStorageReady) return;
+    try {
+      await ensureFileStorageLanguage(client);
+      fileStorageReady = true;
+    } catch (error) {
+      console.warn('AD4M: could not install the file-storage language', error);
+    }
+  }
+
   return {
     async status() {
       const status = await client.agent.status();
+      // Covers the boot path where the executor was left running and the agent is already
+      // unlocked — neither generate() nor unlock() is called in that case.
+      if (status.isUnlocked) void ensureFileStorage();
       return { hasAgent: !!status.did, unlocked: !!status.isUnlocked };
+    },
+
+    /**
+     * `agent.generate` returns an already-unlocked status, so there is no unlock step after it —
+     * the executor holds the freshly derived keys in memory. Holochain is started as part of the
+     * same call, matching what `unlock(password, true)` does on the returning-agent path.
+     */
+    async generate(password) {
+      await client.agent.generate(password);
+      await ensureFileStorage();
     },
 
     async unlock(password) {
       await client.agent.unlock(password, true);
+      await ensureFileStorage();
     },
 
     async lock(password) {

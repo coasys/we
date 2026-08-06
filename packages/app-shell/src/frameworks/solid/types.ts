@@ -1,10 +1,12 @@
 import type {
+  AccountStore,
   AppStore,
   DatasetStore,
   EditorStore,
   PresenceStore,
   ProfileStore,
   RouteStore,
+  RuntimeStore,
   SessionStore,
   ShellStore,
   SpaceStore,
@@ -50,6 +52,8 @@ export interface Stores extends RendererStores {
   // `RendererStores` despite extending it.
   [key: string]: unknown;
   sessionStore: SessionStore;
+  accountStore: AccountStore;
+  runtimeStore: RuntimeStore;
   datasetStore: DatasetStore;
   profileStore: ProfileStore;
   editorStore: EditorStore;

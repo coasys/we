@@ -51,7 +51,7 @@ const styles = css`
     width: 32px;
     flex-shrink: 0;
     opacity: 0.6;
-    transition: opacity 0.15s ease;
+    transition: opacity var(--we-transition-200, 150ms) ease;
     user-select: none;
   }
 

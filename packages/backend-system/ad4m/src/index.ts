@@ -46,4 +46,5 @@ export {
   manifestToEntries,
 } from './manifestCompiler';
 export { createAd4mAgentSession, createAd4mDatasetLifecycle } from './lifecycleAdapter';
+export { createAd4mRuntimeAdmin } from './runtimeAdminAdapter';
 export { createAd4mBackendPorts, createAd4mProfileDirectory, createAd4mSchemaPort } from './backendPortsAdapter';

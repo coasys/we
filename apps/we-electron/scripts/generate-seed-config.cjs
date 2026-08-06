@@ -7,6 +7,7 @@
  * 1. Port mappings for production Express servers
  * 2. extraResources configuration for package.json
  * 3. Express server setup code for main.js
+ * 4. Runtime settings the main process needs before any window exists (the executor's data path)
  *
  * This ensures a single source of truth (the seed file) for all platform configurations.
  */
@@ -21,6 +22,10 @@ const SEED_FILE = path.join(WORKSPACE_ROOT, 'we-seed.json');
 const OUTPUT_DIR = path.join(__dirname, '../electron');
 const PORT_MAP_FILE = path.join(OUTPUT_DIR, 'seed-port-map.json');
 const EXTRA_RESOURCES_FILE = path.join(OUTPUT_DIR, 'seed-extra-resources.json');
+const RUNTIME_FILE = path.join(OUTPUT_DIR, 'seed-runtime.json');
+
+/** Where the executor keeps its data when the seed says nothing. Also the launcher's location. */
+const DEFAULT_AD4M_DATA_PATH = '~/.ad4m';
 
 function main() {
   console.log('🔧 Generating Electron seed configuration...\n');
@@ -127,6 +132,13 @@ function main() {
   fs.writeFileSync(EXTRA_RESOURCES_FILE, JSON.stringify(allExtraResources, null, 2), 'utf8');
   console.log(`✅ extraResources written to: ${path.relative(process.cwd(), EXTRA_RESOURCES_FILE)}`);
 
+  // Write runtime settings. Separate from the port map because the main process needs these
+  // before any window (or renderer, or seed loader) exists — it starts the executor first.
+  const runtime = { ad4mDataPath: seed.ad4m?.dataPath || DEFAULT_AD4M_DATA_PATH };
+  fs.writeFileSync(RUNTIME_FILE, JSON.stringify(runtime, null, 2), 'utf8');
+  console.log(`✅ Runtime settings written to: ${path.relative(process.cwd(), RUNTIME_FILE)}`);
+  console.log(`   AD4M data path: ${runtime.ad4mDataPath}`);
+
   // Generate Express server setup code (only if there are apps)
   const serverSetupCode = hasApps ? generateServerSetupCode(seed.apps, portMap) : generateEmptyServerSetupCode();
   const SERVER_SETUP_FILE = path.join(OUTPUT_DIR, 'seed-servers.js');
@@ -135,7 +147,7 @@ function main() {
   console.log(`✅ Server setup code written to: ${path.relative(process.cwd(), SERVER_SETUP_FILE)}`);
 
   // Format generated files with Prettier to avoid noisy git diffs
-  formatGeneratedFiles([PORT_MAP_FILE, EXTRA_RESOURCES_FILE, SERVER_SETUP_FILE]);
+  formatGeneratedFiles([PORT_MAP_FILE, EXTRA_RESOURCES_FILE, RUNTIME_FILE, SERVER_SETUP_FILE]);
 
   console.log('\n✨ Seed configuration generated successfully!');
   console.log('\n📝 Next steps:');

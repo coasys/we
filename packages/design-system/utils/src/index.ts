@@ -162,6 +162,10 @@ function isRawCSSValue(value: string): boolean {
   // multi-value shorthands (number followed by space, e.g. "0 0 2px 2px ..."),
   // and CSS keywords (transparent, currentColor, inherit, initial, unset, revert, auto, none).
   if (/^(transparent|currentcolor|inherit|initial|unset|revert|auto|none)$/i.test(value)) return true;
+  // Math functions are raw CSS too. Without this they fall through to the token branch and come
+  // back as `var(--we-space-calc(100% - 8px))` — a variable name built out of an expression,
+  // which resolves to nothing. Applies to every token-resolved prop, not just offsets.
+  if (/^(calc|min|max|clamp|env)\(/i.test(value)) return true;
   return /^-?(var\(|#|rgba?|hsla?|\d+(\.\d+)?(px|rem|em|%|vh|vw|vmin|vmax|ch|ex|\s))/.test(value);
 }
 
@@ -424,6 +428,35 @@ export function joinStateDeclsCSS(statePrefix: string, defaultPrefix: string, sp
 }
 
 /**
+ * Selector list for the `focus` element state, shared by both state-CSS generators — the Lit
+ * adopted stylesheet (@we/primitives shared/helpers.ts) and the Solid DS-interop stylesheet
+ * (@we/app-shell frameworks/solid/dsInterop.ts) — so `focusProps` cannot come to mean two
+ * different things on the two component families.
+ *
+ * Two arms, because the DS has two shapes of focusable element and no single pseudo-class
+ * covers both:
+ *
+ *   - `:focus-visible` — the element itself holds focus AND the browser judged a ring
+ *     warranted (keyboard navigation, not a mouse click). This is the button/link case. It is
+ *     why this is not `:focus` or `:focus-within`: those match on click too, which would leave
+ *     a focus ring stuck on every button the user clicks — the exact problem `:focus-visible`
+ *     was introduced to solve.
+ *
+ *   - `:has(:focus-visible)` — the element is a wrapper around the real control, as with
+ *     we-input's [part='base'] around its inner <input>. A wrapper can never match
+ *     `:focus-visible` itself, so without this arm every text field would silently lose its
+ *     focus ring. Text-entry fields always match `:focus-visible` while focused (browsers
+ *     exempt them from the keyboard-only heuristic), so this preserves the previous
+ *     `:focus-within` behaviour for inputs exactly rather than making it mouse-dependent.
+ *
+ * `suffix` is appended to each arm rather than the list, since a trailing `:not(…)` guard has
+ * to bind to both selectors to take effect.
+ */
+export function focusSelector(target: string, suffix = ''): string {
+  return `${target}:focus-visible${suffix}, ${target}:has(:focus-visible)${suffix}`;
+}
+
+/**
  * Whether bgImage should render via the ::before overlay + custom-property indirection
  * (true) or a plain background-image directly on the host (false). Shared by both
  * renderers' bgImage handling and the Solid getBgImageAttrs gate — single source of
@@ -475,6 +508,33 @@ export function resolveBgImageUrl(raw: string): string {
 }
 
 /**
+ * Whether a bgImage value is a CSS gradient rather than an image reference.
+ *
+ * `background-image` accepts both in CSS, and a mesh — several radial gradients layered into one
+ * value — is the only way to express a soft, organic background without an asset. Tested against
+ * the start of the value because a mesh is comma-separated gradients, not just one.
+ */
+const GRADIENT_VALUE = /^\s*(repeating-)?(linear|radial|conic)-gradient\(/i;
+
+export function isGradientValue(raw: string): boolean {
+  return GRADIENT_VALUE.test(raw);
+}
+
+/**
+ * A bgImage value as a CSS `<image>` — a gradient verbatim, anything else wrapped as a URL.
+ *
+ * Gradients deliberately bypass `resolveBgImageUrl`: it strips *all* whitespace, which is right for
+ * a URL and destroys a gradient (`radial-gradient(55% 45% at 18% 22%` becomes unparseable). Their
+ * whitespace is collapsed rather than removed, since these values can also land in a custom
+ * property, where a literal newline inside a quoted string invalidates the declaration — a gradient
+ * has no quoted strings, but collapsing costs nothing and removes the class of problem.
+ */
+export function bgImageLayer(raw: string): string {
+  if (isGradientValue(raw)) return raw.trim().replace(/\s+/g, ' ');
+  return `url("${resolveBgImageUrl(raw)}")`;
+}
+
+/**
  * Computes the composite `background-image` value for the bg-image overlay mechanism
  * (see dsInterop.ts's [data-we-bg-image]::before / helpers.ts's :host([bgimage])::before).
  * A single custom property carries either a plain image reference, or — when
@@ -486,13 +546,14 @@ export function computeBgImageComposite(
   props: Pick<DesignSystemProps, 'bgImage' | 'bgImageOpacity' | 'bgImageTint' | 'bg'>,
 ): string | undefined {
   if (!props.bgImage) return undefined;
-  const url = `url("${resolveBgImageUrl(props.bgImage)}")`;
-  if (props.bgImageOpacity === undefined || props.bgImageOpacity >= 1) return url;
+  const image = bgImageLayer(props.bgImage);
+  if (props.bgImageOpacity === undefined || props.bgImageOpacity >= 1) return image;
   const tintSrc = props.bgImageTint ?? props.bg ?? 'neutral-0';
   const tint = tokenVar('color', tintSrc, tintSrc);
   const pct = Math.round((1 - props.bgImageOpacity) * 100);
   const wash = `color-mix(in srgb, ${tint} ${pct}%, transparent)`;
-  return `linear-gradient(${wash}, ${wash}), ${url}`;
+  // Layers cleanly over a gradient too: the wash simply becomes the first of several.
+  return `linear-gradient(${wash}, ${wash}), ${image}`;
 }
 
 // Map flex axes based on direction
@@ -534,7 +595,6 @@ export function buildLayoutStyles(props: LayoutStyleProps, direction: 'row' | 'c
     display: props.display || 'flex',
     'flex-direction': props.reverse ? `${direction}-reverse` : direction,
     'flex-wrap': props.wrap ? 'wrap' : 'nowrap',
-    ...props.styles, // Allow custom overrides
   };
 
   // Colors & backgrounds
@@ -569,7 +629,7 @@ export function buildLayoutStyles(props: LayoutStyleProps, direction: 'row' | 'c
       // context concerns from the pseudo-element overlay. Still resolved through
       // resolveBgImageUrl (data URI -> short object URL) — a large base64 payload
       // bloats every style recompute even as a plain inline style, not just as a var().
-      style['background-image'] = `url("${resolveBgImageUrl(props.bgImage)}")`;
+      style['background-image'] = bgImageLayer(props.bgImage);
       style['background-size'] = props.bgFit ?? 'cover';
       style['background-position'] = props.bgPosition ?? 'center';
       style['background-repeat'] = 'no-repeat';
@@ -633,10 +693,15 @@ export function buildLayoutStyles(props: LayoutStyleProps, direction: 'row' | 'c
   if (props.scrollbarGutter) style['scrollbar-gutter'] = props.scrollbarGutter;
   if (props.zIndex !== undefined) style['z-index'] = zIndexVar(props.zIndex);
   if (props.position) style.position = props.position;
-  if (props.top) style.top = props.top;
-  if (props.right) style.right = props.right;
-  if (props.bottom) style.bottom = props.bottom;
-  if (props.left) style.left = props.left;
+  // Offsets resolve space tokens, like margin and padding do. They were raw passthrough, which
+  // made `bottom: '400'` emit an unitless `bottom: 400` — invalid, silently dropped by the
+  // browser, and indistinguishable from a typo at author time since the prop is typed `string`.
+  // tokenVar discriminates by shape, so '400' becomes var(--we-space-400) while '400px', '50%',
+  // 'calc(...)' and '-8px' still pass through untouched.
+  if (props.top) style.top = tokenVar('space', props.top);
+  if (props.right) style.right = tokenVar('space', props.right);
+  if (props.bottom) style.bottom = tokenVar('space', props.bottom);
+  if (props.left) style.left = tokenVar('space', props.left);
 
   // Margin
   const margin = getMarginValues(props);
@@ -650,7 +715,12 @@ export function buildLayoutStyles(props: LayoutStyleProps, direction: 'row' | 'c
   const radius = getRadiusValues(props);
   if (radius !== '0 0 0 0') style['border-radius'] = radius;
 
-  return style;
+  // Last, so it genuinely overrides. Spread at the top it was beaten by every DS prop assigned
+  // afterwards — `bg` especially, which emits the `background` shorthand and so silently erased a
+  // `background-image` set here. The comment said "allow custom overrides" and the position said
+  // the opposite; this is the escape hatch, and an escape hatch that loses is worse than none,
+  // because the failure is invisible.
+  return { ...style, ...props.styles };
 }
 
 /**

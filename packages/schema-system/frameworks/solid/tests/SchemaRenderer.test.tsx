@@ -240,3 +240,121 @@ describe('SchemaRenderer', () => {
     expect(clickSpy).toHaveBeenCalledOnce();
   });
 });
+
+// --- $if then/else must be NODES, not prop tokens ---
+//
+// The distinction is easy to get wrong because both spellings exist and both validate: `{ $if: … }`
+// is the prop-level operator (legal in a `variant`, a `type`, an `error`), while `{ type: '$if' }`
+// is the block-level node. ConditionalRenderer hands `then`/`else` straight to renderNode, so a
+// prop token in those slots has no `type` and renders nothing — silently, and only at runtime.
+// This shipped in the boot screen and blanked the entire sign-in form.
+describe('$if branch slots', () => {
+  const registry: ComponentRegistry = { 'we-text': (props: any) => <span>{props.children}</span> };
+
+  it('renders a nested $if NODE in the else slot', () => {
+    const node: SchemaNode = {
+      type: '$if',
+      props: {
+        condition: false,
+        then: { type: 'we-text', children: ['outer-then'] },
+        else: {
+          type: '$if',
+          props: {
+            condition: false,
+            then: { type: 'we-text', children: ['inner-then'] },
+            else: { type: 'we-text', children: ['inner-else'] },
+          },
+        },
+      },
+    };
+    const { container } = renderSchema(node, { registry });
+    expect(container.textContent).toBe('inner-else');
+  });
+
+  it('renders a nested $if NODE in the then slot', () => {
+    const node: SchemaNode = {
+      type: '$if',
+      props: {
+        condition: true,
+        then: {
+          type: '$if',
+          props: { condition: true, then: { type: 'we-text', children: ['deep'] } },
+        },
+      },
+    };
+    const { container } = renderSchema(node, { registry });
+    expect(container.textContent).toBe('deep');
+  });
+
+  it('renders nothing for a prop-level token in a branch slot — the trap', () => {
+    const node: SchemaNode = {
+      type: '$if',
+      props: {
+        condition: false,
+        then: { type: 'we-text', children: ['then'] },
+        // Wrong spelling: an operator token where a node belongs.
+        else: { $if: { condition: true, then: { type: 'we-text', children: ['never-rendered'] } } },
+      },
+    };
+    const { container } = renderSchema(node, { registry });
+    expect(container.textContent).toBe('');
+  });
+});
+
+describe('$if with a transition — the wrapper must not change layout', () => {
+  const registry: ComponentRegistry = { Box: (props: any) => <div data-testid="box">{props.children}</div> };
+
+  it('adopts the size the content declared, so percentages resolve against the real parent', () => {
+    // The wrapper carries opacity and transform and is meant to be invisible to layout. Without
+    // this it becomes the box a percentage resolves against — and since it shrink-wraps its
+    // content, `width: 100%` resolves against something sized by the very element asking, which
+    // CSS settles as shrink-to-fit. The element renders at its intrinsic width and `maxWidth`
+    // never binds, because nothing ever asks for more.
+    const node: SchemaNode = {
+      type: '$if',
+      props: {
+        condition: true,
+        enterTransition: { type: 'fade', duration: 300 },
+        then: { type: 'Box', props: { width: '100%', maxWidth: '380px' } },
+      },
+    };
+    const { container } = renderSchema(node, { registry });
+
+    const wrapper = container.querySelector('div');
+    expect(wrapper?.style.width).toBe('100%');
+    // maxWidth travels with it — that is what keeps the parent's alignment landing on a box of the
+    // right size, rather than centring a full-width wrapper with the content against its left edge.
+    expect(wrapper?.style.maxWidth).toBe('380px');
+  });
+
+  it('leaves the wrapper unsized when the content declared no size', () => {
+    // Content that shrink-wraps today must keep doing so, or anything a parent was centring
+    // would start stretching.
+    const node: SchemaNode = {
+      type: '$if',
+      props: { condition: true, enterTransition: { type: 'fade' }, then: { type: 'Box' } },
+    };
+    const { container } = renderSchema(node, { registry });
+
+    const wrapper = container.querySelector('div');
+    expect(wrapper?.style.width).toBe('');
+    expect(wrapper?.style.maxWidth).toBe('');
+  });
+
+  it('lets an explicit size win over the positioned default', () => {
+    // Positioned content gets width/height 100%; a declared size is more specific than that.
+    const node: SchemaNode = {
+      type: '$if',
+      props: {
+        condition: true,
+        enterTransition: { type: 'fade' },
+        then: { type: 'Box', props: { position: 'absolute', width: '380px' } },
+      },
+    };
+    const { container } = renderSchema(node, { registry });
+
+    const wrapper = container.querySelector('div');
+    expect(wrapper?.style.width).toBe('380px');
+    expect(wrapper?.style.height).toBe('100%');
+  });
+});

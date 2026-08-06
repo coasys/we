@@ -8,7 +8,9 @@ import type { ComponentSize } from '@we/tokens';
 const allowedTextTags = ['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'small', 'b', 'i', 'span', 'label', 'div'] as const;
 
 export type TextTag = (typeof allowedTextTags)[number];
-export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'outline';
+// 'bare' is the appearance-free member of the scale (elsewhere called "unstyled") — button
+// semantics with no chrome of its own, for wrapping arbitrary content in a real <button>.
+export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'outline' | 'bare';
 export type MenuItemVariant = 'default' | 'danger';
 export type IconSize = '' | ComponentSize | (string & {}); // '' = inherit from parent context, semantic sizes, or raw CSS values
 export type IconWeight = 'thin' | 'light' | 'regular' | 'bold' | 'fill' | 'duotone';

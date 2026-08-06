@@ -14,6 +14,7 @@ import type { AgentSessionPort, DatasetLifecyclePort } from './lifecycle';
 import type { ModelManifest } from './manifest';
 import type { ModelManifestEntry } from './manifestEntry';
 import type { AgentProfileSummary, PublishProfileFields } from './profileTypes';
+import type { RuntimeAdminPort } from './runtimeAdmin';
 
 /**
  * Schema management on a dataset: installing the host's entity schemas, checking what a dataset
@@ -102,4 +103,9 @@ export interface BackendPorts {
   /** Build the renderer's data bindings over host-supplied accessors. */
   dataBindings(deps: DataBindingDeps): RendererDataBindings;
   interop?: BackendInterop;
+  /**
+   * Backend-process administration — trust, peer network, authorized apps, consent. Optional and
+   * feature-detected member by member; see {@link RuntimeAdminPort}.
+   */
+  runtime?: RuntimeAdminPort;
 }

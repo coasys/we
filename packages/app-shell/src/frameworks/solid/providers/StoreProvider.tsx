@@ -1,10 +1,12 @@
 import {
+  AccountStoreProvider,
   AppStoreProvider,
   DatasetStoreProvider,
   EditorStoreProvider,
   PresenceStoreProvider,
   ProfileStoreProvider,
   RouteStoreProvider,
+  RuntimeStoreProvider,
   SessionStoreProvider,
   ShellStoreProvider,
   SpaceStoreProvider,
@@ -20,37 +22,46 @@ export default function StoreProvider(props: ParentProps) {
   return (
     <RouteStoreProvider>
       <ShellStoreProvider>
-        {/* Session → Dataset → Profile is the dependency spine: everything below reads them. */}
-        <SessionStoreProvider>
-          <DatasetStoreProvider>
-            <ProfileStoreProvider>
-              <ThemeStoreProvider>
-                <TemplateStoreProvider>
-                  <EditorStoreProvider>
-                    <AppStoreProvider>
-                      <SpaceStoreProvider>
-                        {/* BootController composes the post-unlock load across the stores above —
-                          it must mount beneath them all. Renders nothing. */}
-                        <BootController />
-                        {/* Innermost: presence follows the current dataset and the route, so it needs
-                          the session/dataset stores and RouteStore above it. App-lifetime, not
-                          view-lifetime — it must outlive navigation rather than being torn down
-                          with a view. */}
-                        {/* Innermost of all: the editor's host port is built from every store above
-                          it, so it must sit below them all. It provides only a context — nothing
-                          renders here — so a deployment that ships no editing surface pays a
-                          context and nothing else. */}
-                        <PresenceStoreProvider>
-                          <EditorHostAdapter>{props.children}</EditorHostAdapter>
-                        </PresenceStoreProvider>
-                      </SpaceStoreProvider>
-                    </AppStoreProvider>
-                  </EditorStoreProvider>
-                </TemplateStoreProvider>
-              </ThemeStoreProvider>
-            </ProfileStoreProvider>
-          </DatasetStoreProvider>
-        </SessionStoreProvider>
+        {/* Above Session, and outside it: accounts are directories on disk, readable with no
+            executor running. The boot screen needs them while the session is still locked. */}
+        <AccountStoreProvider>
+          {/* Session → Dataset → Profile is the dependency spine: everything below reads them. */}
+          <SessionStoreProvider>
+            {/* Directly beneath Session: it reads only the port bundle, and its consent subscription
+              must be live before anything below it can mount an embedded app that asks for
+              credentials. */}
+            <RuntimeStoreProvider>
+              <DatasetStoreProvider>
+                <ProfileStoreProvider>
+                  <ThemeStoreProvider>
+                    <TemplateStoreProvider>
+                      <EditorStoreProvider>
+                        <AppStoreProvider>
+                          <SpaceStoreProvider>
+                            {/* BootController composes the post-unlock load across the stores above —
+                            it must mount beneath them all. Renders nothing. */}
+                            <BootController />
+                            {/* Innermost: presence follows the current dataset and the route, so it needs
+                            the session/dataset stores and RouteStore above it. App-lifetime, not
+                            view-lifetime — it must outlive navigation rather than being torn down
+                            with a view. */}
+                            {/* Innermost of all: the editor's host port is built from every store above
+                            it, so it must sit below them all. It provides only a context — nothing
+                            renders here — so a deployment that ships no editing surface pays a
+                            context and nothing else. */}
+                            <PresenceStoreProvider>
+                              <EditorHostAdapter>{props.children}</EditorHostAdapter>
+                            </PresenceStoreProvider>
+                          </SpaceStoreProvider>
+                        </AppStoreProvider>
+                      </EditorStoreProvider>
+                    </TemplateStoreProvider>
+                  </ThemeStoreProvider>
+                </ProfileStoreProvider>
+              </DatasetStoreProvider>
+            </RuntimeStoreProvider>
+          </SessionStoreProvider>
+        </AccountStoreProvider>
       </ShellStoreProvider>
     </RouteStoreProvider>
   );

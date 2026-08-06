@@ -18,6 +18,19 @@ body,
   color: var(--we-color-neutral-1000);
 }
 
+// Before the app has mounted anything, paint what the boot screen is about to paint.
+//
+// The document background is neutral-50 — a shade lighter than the boot screen's neutral-0 — and
+// it is what fills the window between a reload and Solid's first render. On an account switch
+// that gap is long enough to see, so it read as the screen flashing a lighter colour. The window
+// background is set to the same token from the main process, so the whole chain
+// (window → empty document → boot screen) is one colour now.
+//
+// `:empty` stops applying the moment Solid renders into it, so this costs the running app nothing.
+#root:empty {
+  background-color: var(--we-color-neutral-0);
+}
+
 // Global scrollbar styling — uses design-system tokens, themed via CSS variables
 // Webkit properties (Chrome, Edge, Safari, Electron)
 ::-webkit-scrollbar {

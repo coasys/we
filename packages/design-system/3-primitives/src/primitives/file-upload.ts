@@ -23,8 +23,8 @@ const DEFAULT_PROPS: Partial<DesignSystemProps> = {
 const styles = css`
   [part='base'] {
     transition:
-      border-color 0.15s ease,
-      background 0.15s ease;
+      border-color var(--we-transition-200, 150ms) ease,
+      background var(--we-transition-200, 150ms) ease;
     min-height: 120px;
   }
 
@@ -60,7 +60,7 @@ const styles = css`
     cursor: pointer;
     margin-left: auto;
     opacity: 0.5;
-    transition: opacity 0.15s ease;
+    transition: opacity var(--we-transition-200, 150ms) ease;
   }
 
   [part='remove']:hover {

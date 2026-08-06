@@ -16,8 +16,70 @@ export const storeEntries: StoreEntry[] = [
       bootState: { type: 'string' },
       passwordError: { type: 'boolean' },
       loginLoading: { type: 'boolean' },
+      createAgentError: { type: 'string' },
+      createAgentLoading: { type: 'boolean' },
     },
-    actions: ['login', 'logout'],
+    actions: ['login', 'createAgent', 'clearPasswordError', 'finishSetup', 'logout'],
+  },
+  {
+    name: 'accountStore',
+    state: {
+      canManageAccounts: { type: 'boolean' },
+      accounts: { type: 'array', properties: ['id', 'name', 'avatar', 'active', 'sharedWithLauncher'] },
+      activeAccount: { type: 'object', properties: ['id', 'name', 'avatar', 'active', 'sharedWithLauncher'] },
+      pendingRemoval: { type: 'object', properties: ['id', 'name', 'avatar', 'active', 'sharedWithLauncher'] },
+      switchingTo: { type: 'object', properties: ['id', 'name', 'avatar', 'active', 'sharedWithLauncher'] },
+      creating: { type: 'boolean' },
+      hasOtherAccounts: { type: 'boolean' },
+      busy: { type: 'boolean' },
+      error: { type: 'string' },
+    },
+    actions: [
+      'refresh',
+      'createAccount',
+      'syncDisplay',
+      'switchAccount',
+      'removeAccount',
+      'requestRemoval',
+      'cancelRemoval',
+      'confirmRemoval',
+      'clearError',
+    ],
+  },
+  {
+    name: 'runtimeStore',
+    state: {
+      canAdminister: { type: 'boolean' },
+      canManageTrust: { type: 'boolean' },
+      canManageNetwork: { type: 'boolean' },
+      canManageApps: { type: 'boolean' },
+      trustedAgents: { type: 'array' },
+      authorizedApps: {
+        type: 'array',
+        properties: ['id', 'name', 'description', 'url', 'iconUrl', 'capabilities', 'revoked'],
+      },
+      networkMetrics: { type: 'string' },
+      peerInfos: { type: 'array' },
+      loading: { type: 'boolean' },
+      error: { type: 'string' },
+      pendingConsent: { type: 'object', properties: ['kind', 'title', 'message', 'app', 'peerId'] },
+      consentSecret: { type: 'string' },
+    },
+    actions: [
+      'loadTrustedAgents',
+      'trustAgent',
+      'untrustAgent',
+      'loadAuthorizedApps',
+      'revokeApp',
+      'removeApp',
+      'loadNetworkMetrics',
+      'restartNetwork',
+      'loadPeerInfos',
+      'addPeerInfos',
+      'approveConsent',
+      'denyConsent',
+      'dismissConsentSecret',
+    ],
   },
   {
     name: 'datasetStore',
@@ -42,6 +104,7 @@ export const storeEntries: StoreEntry[] = [
   {
     name: 'profileStore',
     state: {
+      pendingAvatar: { type: 'string' },
       profiles: {
         type: 'array',
         properties: ['did', 'firstName', 'lastName', 'handle', 'bio', 'avatar', 'coverImage', 'location'],
@@ -51,7 +114,14 @@ export const storeEntries: StoreEntry[] = [
         properties: ['did', 'firstName', 'lastName', 'handle', 'bio', 'avatar', 'coverImage', 'location'],
       },
     },
-    actions: ['fetchProfile', 'updateOwnProfile', 'updateProfileImage', 'updateOwnLocation'],
+    actions: [
+      'fetchProfile',
+      'updateOwnProfile',
+      'updateProfileImage',
+      'updateOwnLocation',
+      'setPendingAvatar',
+      'completeAccountSetup',
+    ],
   },
   {
     name: 'routeStore',
@@ -264,13 +334,81 @@ function generateStoresText(entries: StoreEntry[]): string {
       state: {
         client: 'the backend client handle | undefined',
         me: 'Agent | undefined — the authenticated identity; prefer the $me token in schemas',
-        bootState: "string — 'initialising' | 'login' | 'createAgent' | 'ready' | 'error'",
+        bootState: "string — 'initialising' | 'login' | 'createAgent' | 'finishing' | 'ready' | 'error'",
         passwordError: 'boolean — true after a failed unlock attempt',
         loginLoading: 'boolean',
+        createAgentError: 'string — the backend message from a failed agent creation, or empty',
+        createAgentLoading: 'boolean',
       },
       actions: {
         login: '(password: string): unlocks the agent and loads user data',
+        createAgent:
+          "(password: string): creates the agent, loads user data, and lands on the 'finishing' boot state (not 'ready')",
+        clearPasswordError:
+          '(): clears the failed-unlock flag. Chain it after the password field\'s $setLocal — the verdict was on the submitted password, so editing that password retracts it and a stale "Incorrect password" should not sit over the correction',
+        finishSetup: "(): leaves 'finishing' for the running app — sets bootState to 'ready'",
         logout: '(): locks the agent and returns to the login screen',
+      },
+    },
+    accountStore: {
+      state: {
+        canManageAccounts:
+          'boolean — the host can manage local accounts (false on web). Gate every account control on this',
+        accounts: 'Account[] — local accounts (id, name, active). id is the data directory',
+        activeAccount:
+          'Account | undefined — the account this app instance is running against. Correct at first paint: the list is seeded from a synchronous cache',
+        hasOtherAccounts: 'boolean — true when there is somewhere else to switch to',
+        busy: 'boolean — a mutation is in flight; a successful one ends in a relaunch',
+        error: 'string — the last account error, for display',
+        pendingRemoval: 'Account | null — the account a removal was requested for, awaiting confirmation',
+        switchingTo: 'Account | null — the account being switched to, from the click until the process goes away',
+        creating: 'boolean — true from the moment a create is requested until the process goes away',
+      },
+      actions: {
+        refresh: '(): re-reads the account list from the host',
+        createAccount:
+          '(): creates an account under a provisional name and switches into it — the setup screen names it. Does not return on success',
+        syncDisplay:
+          '({ name?, avatar? }): mirrors the profile onto the running account, so the locked sign-in screen has a name and picture. Never throws',
+        switchAccount: '(id: string): switches to another account. Does not return on success',
+        removeAccount: '(id: string): deletes an account and its data. Refuses the active one',
+        requestRemoval: '(id: string): opens the removal confirmation for that account',
+        cancelRemoval: '(): closes the removal confirmation without deleting',
+        confirmRemoval: '(): deletes the account awaiting confirmation',
+        clearError: '(): clears the error slot',
+      },
+    },
+    runtimeStore: {
+      state: {
+        canAdminister: 'boolean — this backend exposes runtime administration at all',
+        canManageTrust: 'boolean — gate the trusted-agents section on this',
+        canManageNetwork: 'boolean — gate the peer-network section on this',
+        canManageApps: 'boolean — gate the authorized-apps section on this',
+        trustedAgents: 'string[] — trusted peer ids. Empty until loadTrustedAgents() runs',
+        authorizedApps:
+          'AuthorizedApp[] — external apps holding credentials (id, name, description, url, iconUrl, capabilities, revoked). Empty until loadAuthorizedApps() runs',
+        networkMetrics: 'string — backend diagnostic blob, displayed verbatim. Empty until requested',
+        peerInfos: 'string[] — this node peer-discovery records, for out-of-band exchange',
+        loading: 'boolean — true while any runtime call is in flight',
+        error: 'string — the last runtime error, for display',
+        pendingConsent:
+          "ConsentRequest | null — a request awaiting the user's decision (kind: 'capability' | 'trust', title, message, app, peerId)",
+        consentSecret: 'string — a code an approval returned, to be relayed to the asking app',
+      },
+      actions: {
+        loadTrustedAgents: '(): fetches the trusted-agent list',
+        trustAgent: '(id: string): trusts a peer, then reloads the list',
+        untrustAgent: '(id: string): untrusts a peer, then reloads the list',
+        loadAuthorizedApps: '(): fetches apps holding credentials against this agent',
+        revokeApp: "(id: string): invalidates an app's tokens, keeping the grant listed",
+        removeApp: '(id: string): forgets the grant entirely',
+        loadNetworkMetrics: '(): fetches the diagnostic blob',
+        restartNetwork: '(): restarts the peer-networking layer',
+        loadPeerInfos: '(): fetches this node peer-discovery records',
+        addPeerInfos: '(text: string): adds pasted peer records (JSON array or one per line)',
+        approveConsent: '(): grants the pending request',
+        denyConsent: '(): declines the pending request',
+        dismissConsentSecret: '(): clears the confirmation code display',
       },
     },
     datasetStore: {
@@ -309,6 +447,10 @@ function generateStoresText(entries: StoreEntry[]): string {
           "AgentProfileSummary | undefined — reactive accessor for the current user's own profile (derived from the cache)",
       },
       actions: {
+        setPendingAvatar:
+          '(file: File): holds a picture chosen before an agent exists; uploaded by completeAccountSetup',
+        completeAccountSetup:
+          '(name: string, password: string): the whole of first-run setup — creates the agent, then publishes the name and picture, then lets the app appear',
         fetchProfile: "(did: string): fetches and caches an agent's profile from their public dataset",
         updateOwnProfile:
           '(fields: { firstName?, lastName?, handle?, bio? }): updates own profile text fields and publishes to the public dataset',

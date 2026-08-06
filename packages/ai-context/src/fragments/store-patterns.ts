@@ -175,8 +175,7 @@ Local state (form with validation):
         "type": "we-input",
         "props": {
           "value": { "$local": "name" },
-          "onInput": { "$setLocal": "name", "from": "$event.detail" },
-          "onBlur": { "$touch": "name" }
+          "onInput": { "$setLocal": "name", "from": "$event.detail" }
         }
       }]
     },
@@ -185,7 +184,7 @@ Local state (form with validation):
       "props": {
         "text": "Submit",
         "loading": { "$local": "loading" },
-        "disabled": { "$not": { "$formValid": "$scope" } },
+        "disabled": { "$local": "loading" },
         "onClick": [
           { "$touch": "$all" },
           { "$if": { "condition": { "$formValid": "$scope" }, "then": { "$action": "myStore.submit", "args": [{ "$local": "name" }] } } }
@@ -194,6 +193,9 @@ Local state (form with validation):
     }
   ]
 }
+The button is disabled only while the submit is in flight. Disabling it on { "$not": { "$formValid": "$scope" } }
+instead contradicts the { "$touch": "$all" } beneath it — the button is unclickable in exactly the state that
+guard exists to report. See the "Typical form pattern" section for the full rationale and the two valid shapes.
 
 Repeating lists with $each:
 ALWAYS use $each for lists of similar items — never duplicate the same node structure.

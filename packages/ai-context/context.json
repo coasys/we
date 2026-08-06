@@ -148,7 +148,7 @@
       "ownProps": [
         {
           "name": "variant",
-          "type": "'primary' | 'secondary' | 'ghost' | 'danger' | 'outline'",
+          "type": "'primary' | 'secondary' | 'ghost' | 'danger' | 'outline' | 'bare'",
           "optional": false,
           "default": "'primary'"
         },
@@ -682,6 +682,12 @@
           "type": "string",
           "optional": false,
           "default": "'text'"
+        },
+        {
+          "name": "revealable",
+          "type": "boolean",
+          "optional": false,
+          "default": "false"
         },
         {
           "name": "size",
@@ -3123,6 +3129,21 @@
           "optional": true
         },
         {
+          "name": "onImageRemove",
+          "type": "(() => void)",
+          "optional": true
+        },
+        {
+          "name": "uploadLabel",
+          "type": "string",
+          "optional": true
+        },
+        {
+          "name": "editLabel",
+          "type": "string",
+          "optional": true
+        },
+        {
           "name": "class",
           "type": "string",
           "optional": true
@@ -5310,9 +5331,120 @@
         },
         "loginLoading": {
           "type": "boolean"
+        },
+        "createAgentError": {
+          "type": "string"
+        },
+        "createAgentLoading": {
+          "type": "boolean"
         }
       },
-      "actions": ["login", "logout"]
+      "actions": ["login", "createAgent", "clearPasswordError", "finishSetup", "logout"]
+    },
+    {
+      "name": "accountStore",
+      "state": {
+        "canManageAccounts": {
+          "type": "boolean"
+        },
+        "accounts": {
+          "type": "array",
+          "properties": ["id", "name", "avatar", "active", "sharedWithLauncher"]
+        },
+        "activeAccount": {
+          "type": "object",
+          "properties": ["id", "name", "avatar", "active", "sharedWithLauncher"]
+        },
+        "pendingRemoval": {
+          "type": "object",
+          "properties": ["id", "name", "avatar", "active", "sharedWithLauncher"]
+        },
+        "switchingTo": {
+          "type": "object",
+          "properties": ["id", "name", "avatar", "active", "sharedWithLauncher"]
+        },
+        "creating": {
+          "type": "boolean"
+        },
+        "hasOtherAccounts": {
+          "type": "boolean"
+        },
+        "busy": {
+          "type": "boolean"
+        },
+        "error": {
+          "type": "string"
+        }
+      },
+      "actions": [
+        "refresh",
+        "createAccount",
+        "syncDisplay",
+        "switchAccount",
+        "removeAccount",
+        "requestRemoval",
+        "cancelRemoval",
+        "confirmRemoval",
+        "clearError"
+      ]
+    },
+    {
+      "name": "runtimeStore",
+      "state": {
+        "canAdminister": {
+          "type": "boolean"
+        },
+        "canManageTrust": {
+          "type": "boolean"
+        },
+        "canManageNetwork": {
+          "type": "boolean"
+        },
+        "canManageApps": {
+          "type": "boolean"
+        },
+        "trustedAgents": {
+          "type": "array"
+        },
+        "authorizedApps": {
+          "type": "array",
+          "properties": ["id", "name", "description", "url", "iconUrl", "capabilities", "revoked"]
+        },
+        "networkMetrics": {
+          "type": "string"
+        },
+        "peerInfos": {
+          "type": "array"
+        },
+        "loading": {
+          "type": "boolean"
+        },
+        "error": {
+          "type": "string"
+        },
+        "pendingConsent": {
+          "type": "object",
+          "properties": ["kind", "title", "message", "app", "peerId"]
+        },
+        "consentSecret": {
+          "type": "string"
+        }
+      },
+      "actions": [
+        "loadTrustedAgents",
+        "trustAgent",
+        "untrustAgent",
+        "loadAuthorizedApps",
+        "revokeApp",
+        "removeApp",
+        "loadNetworkMetrics",
+        "restartNetwork",
+        "loadPeerInfos",
+        "addPeerInfos",
+        "approveConsent",
+        "denyConsent",
+        "dismissConsentSecret"
+      ]
     },
     {
       "name": "datasetStore",
@@ -5371,6 +5503,9 @@
     {
       "name": "profileStore",
       "state": {
+        "pendingAvatar": {
+          "type": "string"
+        },
         "profiles": {
           "type": "array",
           "properties": ["did", "firstName", "lastName", "handle", "bio", "avatar", "coverImage", "location"]
@@ -5380,7 +5515,14 @@
           "properties": ["did", "firstName", "lastName", "handle", "bio", "avatar", "coverImage", "location"]
         }
       },
-      "actions": ["fetchProfile", "updateOwnProfile", "updateProfileImage", "updateOwnLocation"]
+      "actions": [
+        "fetchProfile",
+        "updateOwnProfile",
+        "updateProfileImage",
+        "updateOwnLocation",
+        "setPendingAvatar",
+        "completeAccountSetup"
+      ]
     },
     {
       "name": "routeStore",
