@@ -89,12 +89,14 @@ const logoCorner: SchemaNode = {
     // arrives the corner is free and the mark belongs there, in the position it also occupies in
     // the sidebar.
     //
-    // `accountsLoaded` is in the condition because `isFirstRun` reads false until the host answers.
-    // Without it the mark would appear and then be taken away again on a fresh machine; appearing
-    // a frame late is the lesser of the two.
+    // Keyed on knowing *an* account rather than on the host having answered. `activeAccount` is
+    // populated from the session cache on the first frame, so a reload or a switch draws the mark
+    // immediately; waiting for the round trip flashed it off and back on every time. It is still
+    // absent on a genuine first run, where there is nothing cached — which is exactly when the
+    // splash wants the centre to itself.
     condition: {
       $and: [
-        { $store: 'accountStore.accountsLoaded' },
+        { $store: 'accountStore.activeAccount' },
         {
           $not: {
             $and: [
@@ -191,10 +193,15 @@ function accountSwitcher({ allowCreate }: { allowCreate: boolean }): SchemaNode 
       // Never on a first run. There is nowhere else to go, and the create tile offered exactly the
       // action the next screen is about — so it appeared and then withdrew as the form arrived.
       // Gated here rather than at the two call sites so neither can forget it.
+      //
+      // `activeAccount` rather than `accountsLoaded`, for the same reason as the mark above: it is
+      // seeded from the session cache, so the corner is populated on the first frame of a reload or
+      // a switch instead of blinking out and back while the host answers. Absent on a first run,
+      // where nothing is cached and there is nothing to list anyway.
       condition: {
         $and: [
           { $store: 'accountStore.canManageAccounts' },
-          { $store: 'accountStore.accountsLoaded' },
+          { $store: 'accountStore.activeAccount' },
           { $not: { $store: 'accountStore.isFirstRun' } },
         ],
       },
