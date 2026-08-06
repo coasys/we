@@ -47,9 +47,12 @@ import {
  * Storage rather than sync IPC because it works on both desktop hosts — Tauri's `invoke` is
  * async-only, so a sync-IPC version would leave one host still popping.
  *
- * The trade is that Tauri's `applySelection` restarts the whole process rather than navigating, so
- * the corner pops there on a switch. That is where it was before this cache existed, and it is
- * hidden inside a full app relaunch anyway.
+ * The trade is that Tauri's `applySelection` calls `app_handle.restart()` — the process goes, and
+ * session storage with it — so on that host a switch still starts from nothing: the wordless wait,
+ * then the badge. Electron navigates with `loadURL`, keeps the storage, and draws the badge on the
+ * first frame. That is where Tauri was before this cache existed, and it is hidden inside a full
+ * app relaunch anyway; making it match would mean persisting across restarts, which is exactly the
+ * lifetime that let a deleted account keep its name.
  *
  * Staleness is bounded to a few frames: the real list replaces this as soon as it lands.
  */

@@ -340,23 +340,18 @@ function startingState(account: string): SchemaNode {
   return {
     type: '$if',
     props: {
-      // Only an account that exists gets named, and only once the host has said so.
-      condition: {
-        $and: [{ $store: 'accountStore.accountsLoaded' }, { $not: { $store: 'accountStore.isFirstRun' } }],
-      },
-      then: {
-        type: '$if',
-        props: {
-          // Naming an account only makes sense once there is somebody in it. A freshly created one
-          // carries a provisional name and no picture until setup finishes.
-          condition: { $store: 'accountStore.activeAccount.hasAgent' },
-          then: knownAccountState(account),
-          else: creatingAccountState,
-        },
-      },
+      // Asked of the account, not of `accountsLoaded`, and that ordering is the whole point. The
+      // session cache exists so this badge can draw on the first frame after a reload or a switch —
+      // it even carries the target already marked active. Gating on the host having answered threw
+      // that away and put a wordless spinner in front of every switch, which is the one thing the
+      // cache was added to prevent.
+      condition: { $store: 'accountStore.activeAccount.hasAgent' },
+      then: knownAccountState(account),
       else: {
         type: '$if',
         props: {
+          // This one genuinely has to wait for the host: `isFirstRun` is false until it answers,
+          // and a stale cache must never be able to trigger a welcome.
           condition: { $store: 'accountStore.isFirstRun' },
           // Shown as soon as the host confirms this is a first run, not held back. Deferring it
           // until the wait looked long enough left a blank screen for the second the executor
@@ -369,9 +364,18 @@ function startingState(account: string): SchemaNode {
           // host answers.
           enterTransition: { type: 'fade', duration: 300 },
           then: firstRunSplash,
-          // Still waiting on the host. Wordless, because until it answers every label is a guess —
-          // which is what produced a flash of a deleted account's name on a wiped machine.
-          else: neutralWait,
+          else: {
+            type: '$if',
+            props: {
+              // An account we know about that holds no identity: being created, mid-restart.
+              condition: { $store: 'accountStore.activeAccount' },
+              then: creatingAccountState,
+              // Nothing known at all — a first-ever launch, or storage cleared. Wordless, because
+              // every label here would be a guess, which is what once flashed a deleted account's
+              // name on a wiped machine.
+              else: neutralWait,
+            },
+          },
         },
       },
     },
