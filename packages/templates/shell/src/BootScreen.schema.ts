@@ -163,15 +163,15 @@ const firstRunSplash: SchemaNode = {
  * Rows rather than columns: a name reads faster beside its picture than under it, and a stack of
  * rows in a corner grows downward without pushing anything else around.
  *
- * `allowCreate` is false on the setup screen — offering "new account" beside the form that is
- * itself creating one is incoherent. Switching away stays, because a freshly created account boots
- * into an empty directory and lands on setup; without a way back an accidental create traps you
- * there.
+ * The create tile is hidden while the active account is still being set up — offering "new account"
+ * beside the form that is itself creating one is incoherent. Switching away stays available, because
+ * a freshly created account boots into an empty directory and lands on setup; without a way back an
+ * accidental create traps you there.
  *
  * Rendered at the root, so it is anchored to the window rather than to whatever the centre column
  * happens to contain.
  */
-function accountSwitcher({ allowCreate }: { allowCreate: boolean }): SchemaNode {
+function accountSwitcher(): SchemaNode {
   const tile = (label: string | SchemaNode | OperatorToken, avatar: SchemaNode, onClick: SchemaProp): SchemaNode => ({
     type: 'we-button',
     // Not disabled while a switch is in flight. It faded out and came back at full opacity in the
@@ -239,28 +239,26 @@ function accountSwitcher({ allowCreate }: { allowCreate: boolean }): SchemaNode 
               ),
             ],
           },
-          ...(allowCreate
-            ? [
-                {
-                  type: '$if',
-                  props: {
-                    // Not while the active account is still being set up. It would offer the very
-                    // action already under way, then withdraw the offer the moment the setup form
-                    // arrived — the same appear-and-vanish this tile does on a first run, which is
-                    // why that case is handled at the top of this function.
-                    condition: { $store: 'accountStore.activeAccount.hasAgent' },
-                    // Straight through, no confirmation. The step it replaced restated the button
-                    // it was reached from and asked again, and the action is undone in one click
-                    // from this same corner.
-                    then: tile(
-                      'New account',
-                      { type: 'we-avatar', props: { icon: 'plus', size: 'lg', bg: 'neutral-100' } },
-                      { $action: 'accountStore.createAccount' },
-                    ),
-                  },
-                },
-              ]
-            : []),
+          {
+            type: '$if',
+            props: {
+              // Not while the active account is still being set up: it would offer the very action
+              // already under way. This replaced an `allowCreate` flag passed per boot state, which
+              // said the same thing less well — the flag could not notice that clicking another
+              // account had already moved on from the setup form, so the tile stayed hidden until
+              // the restart and the corner visibly shrank in the meantime. Reading the account
+              // instead, it appears the moment the switch is chosen.
+              condition: { $store: 'accountStore.activeAccount.hasAgent' },
+              // Straight through, no confirmation. The step it replaced restated the button it was
+              // reached from and asked again, and the action is undone in one click from this same
+              // corner.
+              then: tile(
+                'New account',
+                { type: 'we-avatar', props: { icon: 'plus', size: 'lg', bg: 'neutral-100' } },
+                { $action: 'accountStore.createAccount' },
+              ),
+            },
+          },
         ],
       },
     },
@@ -978,14 +976,14 @@ export const bootScreen: SchemaNode = {
                 // a switch it vanished and returned even though its data was there the whole
                 // time, which read as the data being late rather than the node being unmounted.
                 condition: { $in: [{ $store: 'sessionStore.bootState' }, ['initialising', 'login']] },
-                then: accountSwitcher({ allowCreate: true }),
+                then: accountSwitcher(),
               },
             },
             {
               type: '$if',
               props: {
                 condition: { $eq: [{ $store: 'sessionStore.bootState' }, 'createAgent'] },
-                then: accountSwitcher({ allowCreate: false }),
+                then: accountSwitcher(),
               },
             },
             // Finishing state — non-interactive. The agent exists and the session is loaded; the name
