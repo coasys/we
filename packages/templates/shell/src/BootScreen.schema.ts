@@ -533,6 +533,42 @@ export const blobBackground = [
   blob('52% 88%', '70% 60%', '+ 0'),
 ].join(', ');
 
+/**
+ * From clicking "Create account" until the app appears.
+ *
+ * One state, though it spans two phases internally: `createAgent` generates the keys, then the
+ * name and picture are published. That seam is where the agent starts existing — it is not
+ * something the person who clicked has any reason to care about, and showing it as two screens
+ * (a spinner in the button, then a full-screen message) made one act look like two.
+ *
+ * The condition covers the span without a gap. `createAgentLoading` goes false in a `finally`, by
+ * which point `bootState` is already `finishing`; on failure both go false with the state back on
+ * `createAgent`, so the form returns carrying its error.
+ *
+ * Above the boot-state branches for the usual reason: `createAgent` and `finishing` are siblings,
+ * so anything rendered inside one is torn down at the boundary — which is exactly the seam being
+ * removed.
+ */
+const settingUpState: SchemaNode = {
+  type: '$if',
+  props: {
+    condition: {
+      $or: [
+        { $store: 'sessionStore.createAgentLoading' },
+        { $eq: [{ $store: 'sessionStore.bootState' }, 'finishing'] },
+      ],
+    },
+    then: {
+      type: 'Row',
+      props: { gap: '300', ay: 'center' },
+      children: [
+        { type: 'we-spinner', props: { size: 'sm' } },
+        { type: 'we-text', children: ['Setting up your account...'] },
+      ],
+    },
+  },
+};
+
 export const bootScreen: SchemaNode = {
   type: '$if',
   props: {
@@ -593,6 +629,7 @@ export const bootScreen: SchemaNode = {
           // the heading sits the same distance above it either way.
           props: { width: '100%', ax: 'center', ay: 'start', gap: '800' },
           children: [
+            settingUpState,
             // Above the boot-state branches, not inside one. `initialising` and `createAgent` are
             // siblings, so anything rendered within them is torn down and rebuilt at the boundary —
             // which is what made the welcome appear, sit there, and then be replaced by a second
@@ -606,6 +643,7 @@ export const bootScreen: SchemaNode = {
                   $and: [
                     { $store: 'accountStore.isFirstRun' },
                     { $eq: [{ $store: 'sessionStore.bootState' }, 'createAgent'] },
+                    { $not: { $store: 'sessionStore.createAgentLoading' } },
                   ],
                 },
                 // Matched to the form's own fade below, so the heading and the fields it belongs to
@@ -680,7 +718,12 @@ export const bootScreen: SchemaNode = {
             {
               type: '$if',
               props: {
-                condition: { $eq: [{ $store: 'sessionStore.bootState' }, 'createAgent'] },
+                condition: {
+                  $and: [
+                    { $eq: [{ $store: 'sessionStore.bootState' }, 'createAgent'] },
+                    { $not: { $store: 'sessionStore.createAgentLoading' } },
+                  ],
+                },
                 enterTransition: { type: 'fade', duration: 300 },
                 then: {
                   type: 'Column',
@@ -899,20 +942,6 @@ export const bootScreen: SchemaNode = {
             // Finishing state — non-interactive. The agent exists and the session is loaded; the name
             // and picture collected on the setup screen are being published. Everything was asked for
             // already, so this is a progress indicator rather than a step.
-            {
-              type: '$if',
-              props: {
-                condition: { $eq: [{ $store: 'sessionStore.bootState' }, 'finishing'] },
-                then: {
-                  type: 'Row',
-                  props: { gap: '300', ay: 'center' },
-                  children: [
-                    { type: 'we-spinner', props: { size: 'sm' } },
-                    { type: 'we-text', children: ['Setting up your account...'] },
-                  ],
-                },
-              },
-            },
           ],
         },
       ],
