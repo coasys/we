@@ -623,6 +623,28 @@ const settingUpState: SchemaNode = {
   },
 };
 
+/**
+ * A switch in progress, whichever screen it was started from.
+ *
+ * Switching runs entirely before the reload — kill the executor, respawn it against the other
+ * directory, wait for GraphQL — several seconds during which whatever was on screen would otherwise
+ * sit there looking merely unresponsive. That was handled inside the sign-in branch only, so
+ * leaving a half-made account left the setup form up for the whole restart before anything
+ * acknowledged the click.
+ *
+ * Hoisted above the boot-state branches because a switch is not a boot state: it can begin from
+ * sign-in or from setup, and it should look identical either way. `startingState` reads the active
+ * account, which moved to the target on the click, so the badge is the one being switched *to* —
+ * and the same node renders on the far side of the restart, making the whole thing one screen.
+ */
+const switchingState: SchemaNode = {
+  type: '$if',
+  props: {
+    condition: { $store: 'accountStore.switchingTo' },
+    then: startingState('accountStore.activeAccount'),
+  },
+};
+
 export const bootScreen: SchemaNode = {
   type: '$if',
   props: {
@@ -683,6 +705,7 @@ export const bootScreen: SchemaNode = {
           // the heading sits the same distance above it either way.
           props: { width: '100%', ax: 'center', ay: 'start', gap: '800' },
           children: [
+            switchingState,
             settingUpState,
             // Above the boot-state branches, not inside one. `initialising` and `createAgent` are
             // siblings, so anything rendered within them is torn down and rebuilt at the boundary —
@@ -698,6 +721,7 @@ export const bootScreen: SchemaNode = {
                     { $store: 'accountStore.isFirstRun' },
                     { $eq: [{ $store: 'sessionStore.bootState' }, 'createAgent'] },
                     { $not: { $store: 'sessionStore.createAgentLoading' } },
+                    { $not: { $store: 'accountStore.switchingTo' } },
                   ],
                 },
                 // Matched to the form's own fade below, so the heading and the fields it belongs to
@@ -720,7 +744,12 @@ export const bootScreen: SchemaNode = {
             {
               type: '$if',
               props: {
-                condition: { $eq: [{ $store: 'sessionStore.bootState' }, 'login'] },
+                condition: {
+                  $and: [
+                    { $eq: [{ $store: 'sessionStore.bootState' }, 'login'] },
+                    { $not: { $store: 'accountStore.switchingTo' } },
+                  ],
+                },
                 then: {
                   type: 'Column',
                   props: { gap: '400', ax: 'center' },
@@ -731,27 +760,12 @@ export const bootScreen: SchemaNode = {
                     password: { type: 'string', initial: '' },
                   },
                   children: [
-                    // Switching runs entirely before the reload — kill the executor, respawn it
-                    // against the other directory, wait for GraphQL — several seconds during which the
-                    // old form would otherwise sit there looking merely unresponsive. Rendering the
-                    // *target's* badge here, with the same node the post-reload state uses, makes the
-                    // whole switch one continuous screen: the identity swaps on the click and nothing
-                    // moves again until the password field arrives.
                     {
                       type: '$if',
                       props: {
-                        condition: { $store: 'accountStore.switchingTo' },
-                        // The active flag moves on the click, so both sides of the restart read the same
-                        // accessor and the badge does not change identity when the document does.
-                        then: startingState('accountStore.activeAccount'),
-                        else: {
-                          type: '$if',
-                          props: {
-                            condition: { $store: 'accountStore.creating' },
-                            then: creatingAccountState,
-                            else: unlockForm,
-                          },
-                        },
+                        condition: { $store: 'accountStore.creating' },
+                        then: creatingAccountState,
+                        else: unlockForm,
                       },
                     },
                   ],
@@ -769,6 +783,7 @@ export const bootScreen: SchemaNode = {
                   $and: [
                     { $eq: [{ $store: 'sessionStore.bootState' }, 'createAgent'] },
                     { $not: { $store: 'sessionStore.createAgentLoading' } },
+                    { $not: { $store: 'accountStore.switchingTo' } },
                   ],
                 },
                 enterTransition: { type: 'fade', duration: 300 },
