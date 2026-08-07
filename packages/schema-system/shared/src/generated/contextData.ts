@@ -2021,12 +2021,23 @@ export const contextData: ContextData = {
       name: 'accountStore',
       state: {
         canManageAccounts: { type: 'boolean' },
-        accounts: { type: 'array', properties: ['id', 'name', 'avatar', 'active', 'sharedWithLauncher'] },
-        activeAccount: { type: 'object', properties: ['id', 'name', 'avatar', 'active', 'sharedWithLauncher'] },
-        pendingRemoval: { type: 'object', properties: ['id', 'name', 'avatar', 'active', 'sharedWithLauncher'] },
-        switchingTo: { type: 'object', properties: ['id', 'name', 'avatar', 'active', 'sharedWithLauncher'] },
+        accounts: { type: 'array', properties: ['id', 'name', 'avatar', 'active', 'hasAgent', 'sharedWithLauncher'] },
+        activeAccount: {
+          type: 'object',
+          properties: ['id', 'name', 'avatar', 'active', 'hasAgent', 'sharedWithLauncher'],
+        },
+        pendingRemoval: {
+          type: 'object',
+          properties: ['id', 'name', 'avatar', 'active', 'hasAgent', 'sharedWithLauncher'],
+        },
+        switchingTo: {
+          type: 'object',
+          properties: ['id', 'name', 'avatar', 'active', 'hasAgent', 'sharedWithLauncher'],
+        },
         creating: { type: 'boolean' },
         hasOtherAccounts: { type: 'boolean' },
+        accountsLoaded: { type: 'boolean' },
+        isFirstRun: { type: 'boolean' },
         busy: { type: 'boolean' },
         error: { type: 'string' },
       },

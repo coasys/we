@@ -25,12 +25,20 @@ export const storeEntries: StoreEntry[] = [
     name: 'accountStore',
     state: {
       canManageAccounts: { type: 'boolean' },
-      accounts: { type: 'array', properties: ['id', 'name', 'avatar', 'active', 'sharedWithLauncher'] },
-      activeAccount: { type: 'object', properties: ['id', 'name', 'avatar', 'active', 'sharedWithLauncher'] },
-      pendingRemoval: { type: 'object', properties: ['id', 'name', 'avatar', 'active', 'sharedWithLauncher'] },
-      switchingTo: { type: 'object', properties: ['id', 'name', 'avatar', 'active', 'sharedWithLauncher'] },
+      accounts: { type: 'array', properties: ['id', 'name', 'avatar', 'active', 'hasAgent', 'sharedWithLauncher'] },
+      activeAccount: {
+        type: 'object',
+        properties: ['id', 'name', 'avatar', 'active', 'hasAgent', 'sharedWithLauncher'],
+      },
+      pendingRemoval: {
+        type: 'object',
+        properties: ['id', 'name', 'avatar', 'active', 'hasAgent', 'sharedWithLauncher'],
+      },
+      switchingTo: { type: 'object', properties: ['id', 'name', 'avatar', 'active', 'hasAgent', 'sharedWithLauncher'] },
       creating: { type: 'boolean' },
       hasOtherAccounts: { type: 'boolean' },
+      accountsLoaded: { type: 'boolean' },
+      isFirstRun: { type: 'boolean' },
       busy: { type: 'boolean' },
       error: { type: 'string' },
     },
@@ -416,10 +424,15 @@ function generateStoresText(entries: StoreEntry[]): string {
       state: {
         canManageAccounts:
           'boolean — the host can manage local accounts (false on web). Gate every account control on this',
-        accounts: 'Account[] — local accounts (id, name, active). id is the data directory',
+        accounts:
+          'Account[] — local accounts (id, name, avatar, active, hasAgent, sharedWithLauncher). id is the data directory; hasAgent is false for one scaffolded but never set up',
         activeAccount:
           'Account | undefined — the account this app instance is running against. Correct at first paint: the list is seeded from a synchronous cache',
         hasOtherAccounts: 'boolean — true when there is somewhere else to switch to',
+        accountsLoaded:
+          'boolean — the host has answered. Without it an empty list reads as a first run and flashes a welcome at a returning user',
+        isFirstRun:
+          'boolean — nothing has ever been set up on this machine: the host has answered and no account holds an identity yet',
         busy: 'boolean — a mutation is in flight; a successful one ends in a relaunch',
         error: 'string — the last account error, for display',
         pendingRemoval: 'Account | null — the account a removal was requested for, awaiting confirmation',

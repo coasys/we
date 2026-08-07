@@ -1347,12 +1347,14 @@ SessionStore:
 AccountStore:
 - State:
   - canManageAccounts: boolean — the host can manage local accounts (false on web). Gate every account control on this
-  - accounts: Account[] — local accounts (id, name, active). id is the data directory
+  - accounts: Account[] — local accounts (id, name, avatar, active, hasAgent, sharedWithLauncher). id is the data directory; hasAgent is false for one scaffolded but never set up
   - activeAccount: Account | undefined — the account this app instance is running against. Correct at first paint: the list is seeded from a synchronous cache
   - pendingRemoval: Account | null — the account a removal was requested for, awaiting confirmation
   - switchingTo: Account | null — the account being switched to, from the click until the process goes away
   - creating: boolean — true from the moment a create is requested until the process goes away
   - hasOtherAccounts: boolean — true when there is somewhere else to switch to
+  - accountsLoaded: boolean — the host has answered. Without it an empty list reads as a first run and flashes a welcome at a returning user
+  - isFirstRun: boolean — nothing has ever been set up on this machine: the host has answered and no account holds an identity yet
   - busy: boolean — a mutation is in flight; a successful one ends in a relaunch
   - error: string — the last account error, for display
 - Actions:
