@@ -5326,6 +5326,9 @@
         "bootState": {
           "type": "string"
         },
+        "bootError": {
+          "type": "string"
+        },
         "passwordError": {
           "type": "boolean"
         },
@@ -5339,7 +5342,7 @@
           "type": "boolean"
         }
       },
-      "actions": ["login", "createAgent", "clearPasswordError", "finishSetup", "logout"]
+      "actions": ["login", "createAgent", "clearPasswordError", "finishSetup", "retryBoot", "logout"]
     },
     {
       "name": "accountStore",

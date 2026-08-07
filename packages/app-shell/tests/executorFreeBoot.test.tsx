@@ -21,6 +21,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 let lifecycle: InMemoryLifecycle;
 let agentOptions: InMemoryAgentOptions;
+/** Set to make the connector reject, standing in for a backend that cannot be reached. */
+let connectFailure: string | null = null;
 
 /** Set by the tests that need a host able to restart the backend; absent is the web shape. */
 let executorHost:
@@ -32,6 +34,7 @@ vi.mock('../src/frameworks/solid/providers/PlatformProvider', () => ({
   useBackend: () => ({
     // The real in-memory bundle — the same thing a backend-less host would supply.
     initialize: async (ctx: { selfId(): string | undefined }) => {
+      if (connectFailure) throw new Error(connectFailure);
       const ports = createInMemoryBackendPorts(ctx, { agent: agentOptions });
       lifecycle = ports.lifecycle;
       return { client: {}, ports };
@@ -113,6 +116,7 @@ const ready = (stores: Stores) => vi.waitFor(() => expect(stores.session.bootSta
 beforeEach(() => {
   agentOptions = { id: 'did:test:james', unlocked: true };
   executorHost = undefined;
+  connectFailure = null;
   navigate.mockClear();
 });
 
@@ -276,6 +280,26 @@ describe('first run', () => {
     await stores.session.login('secret');
     await ready(stores);
   }, 10000);
+});
+
+describe('a boot that cannot reach the backend', () => {
+  it('keeps why it failed, so the screen has something to say', async () => {
+    // 'error' is the one boot state with no form and no spinner behind it. Without the message the
+    // boot screen renders its background and nothing else, with no way forward but closing the app
+    // — which is what a web session whose connection failed used to get.
+    connectFailure = 'Could not connect to the executor';
+    const stores = mountShell();
+
+    await vi.waitFor(() => expect(stores.session.bootState()).toBe('error'));
+    expect(stores.session.bootError()).toBe('Could not connect to the executor');
+  });
+
+  it('reports nothing wrong on a boot that works', async () => {
+    const stores = mountShell();
+    await ready(stores);
+
+    expect(stores.session.bootError()).toBe('');
+  });
 });
 
 describe('dataset lifecycle through the real stores', () => {

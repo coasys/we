@@ -1333,6 +1333,7 @@ SessionStore:
   - client: the backend client handle | undefined
   - me: Agent | undefined — the authenticated identity; prefer the $me token in schemas
   - bootState: string — 'initialising' | 'login' | 'createAgent' | 'finishing' | 'ready' | 'error'
+  - bootError: string — why the boot failed, when bootState is 'error'. Empty otherwise
   - passwordError: boolean — true after a failed unlock attempt
   - loginLoading: boolean
   - createAgentError: string — the backend message from a failed agent creation, or empty
@@ -1342,6 +1343,7 @@ SessionStore:
   - createAgent(password: string): creates the agent, loads user data, and lands on the 'finishing' boot state (not 'ready')
   - clearPasswordError(): clears the failed-unlock flag. Chain it after the password field's $setLocal — the verdict was on the submitted password, so editing that password retracts it and a stale "Incorrect password" should not sit over the correction
   - finishSetup(): leaves 'finishing' for the running app — sets bootState to 'ready'
+  - retryBoot(): starts the whole boot again from the failure screen, by reloading. A failed boot can have got anywhere before it threw, so retrying in place would race the remains of the first attempt
   - logout(): locks the agent and returns to the login screen
 
 AccountStore:

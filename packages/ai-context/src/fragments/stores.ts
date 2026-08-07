@@ -14,12 +14,13 @@ export const storeEntries: StoreEntry[] = [
       client: { type: 'object' },
       me: { type: 'object', properties: ['did', 'perspective', 'directMessageLanguage'] },
       bootState: { type: 'string' },
+      bootError: { type: 'string' },
       passwordError: { type: 'boolean' },
       loginLoading: { type: 'boolean' },
       createAgentError: { type: 'string' },
       createAgentLoading: { type: 'boolean' },
     },
-    actions: ['login', 'createAgent', 'clearPasswordError', 'finishSetup', 'logout'],
+    actions: ['login', 'createAgent', 'clearPasswordError', 'finishSetup', 'retryBoot', 'logout'],
   },
   {
     name: 'accountStore',
@@ -405,6 +406,7 @@ function generateStoresText(entries: StoreEntry[]): string {
         client: 'the backend client handle | undefined',
         me: 'Agent | undefined — the authenticated identity; prefer the $me token in schemas',
         bootState: "string — 'initialising' | 'login' | 'createAgent' | 'finishing' | 'ready' | 'error'",
+        bootError: "string — why the boot failed, when bootState is 'error'. Empty otherwise",
         passwordError: 'boolean — true after a failed unlock attempt',
         loginLoading: 'boolean',
         createAgentError: 'string — the backend message from a failed agent creation, or empty',
@@ -416,6 +418,8 @@ function generateStoresText(entries: StoreEntry[]): string {
           "(password: string): creates the agent, loads user data, and lands on the 'finishing' boot state (not 'ready')",
         clearPasswordError:
           '(): clears the failed-unlock flag. Chain it after the password field\'s $setLocal — the verdict was on the submitted password, so editing that password retracts it and a stale "Incorrect password" should not sit over the correction',
+        retryBoot:
+          '(): starts the whole boot again from the failure screen, by reloading. A failed boot can have got anywhere before it threw, so retrying in place would race the remains of the first attempt',
         finishSetup: "(): leaves 'finishing' for the running app — sets bootState to 'ready'",
         logout: '(): locks the agent and returns to the login screen',
       },

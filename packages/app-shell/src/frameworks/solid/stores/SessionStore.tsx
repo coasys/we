@@ -39,6 +39,8 @@ export type SessionIdentity = AgentIdentity & { did?: string; perspective?: unkn
 export interface SessionStore {
   // State
   bootState: Accessor<BootState>;
+  /** Why the boot failed, when it did. Empty otherwise. */
+  bootError: Accessor<string>;
   passwordError: Accessor<boolean>;
   loginLoading: Accessor<boolean>;
   /** Set when `createAgent` failed; carries the backend's message for display. */
@@ -81,6 +83,15 @@ export interface SessionStore {
   /** Leave `finishing` for the running app, once the profile has been published (or failed to). */
   finishSetup: () => void;
   logout: () => Promise<void>;
+  /**
+   * Start the whole boot again, from the failure screen.
+   *
+   * A reload rather than a second `initialise()`: a failed boot can have got anywhere before it
+   * threw — a client set but no ports, a connect UI already mounted — and re-entering over that
+   * would produce a second attempt racing the remains of the first. Reloading is the one way to
+   * retry that is the same on every host and leaves nothing behind.
+   */
+  retryBoot: () => void;
 
   // Boot wiring (used by the boot controller, not by schemas)
   /** Re-fetch `me` from the backend. */
@@ -104,6 +115,7 @@ export function SessionStoreProvider(props: ParentProps) {
   let sessionPassword = '';
 
   const [bootState, setBootState] = createSignal<BootState>('initialising');
+  const [bootError, setBootError] = createSignal('');
   const [passwordError, setPasswordError] = createSignal(false);
   const [loginLoading, setLoginLoading] = createSignal(false);
   const [createAgentError, setCreateAgentError] = createSignal('');
@@ -213,6 +225,10 @@ export function SessionStoreProvider(props: ParentProps) {
       await runPostUnlockLoad();
     } catch (error) {
       console.error('SessionStore: initialise error', error);
+      // Kept, not just logged. This is the one failure with no screen behind it: every other boot
+      // state has a form or a spinner, and 'error' had neither — so a backend that could not be
+      // reached left the boot screen's background and nothing else, indefinitely.
+      setBootError(error instanceof Error ? error.message : String(error));
       setBootState('error');
     }
   }
@@ -333,6 +349,7 @@ export function SessionStoreProvider(props: ParentProps) {
 
   const store: SessionStore = {
     bootState,
+    bootError,
     passwordError,
     loginLoading,
     createAgentError,
@@ -352,6 +369,7 @@ export function SessionStoreProvider(props: ParentProps) {
     createAgent,
     clearPasswordError,
     finishSetup,
+    retryBoot: () => window.location.reload(),
     logout,
 
     refreshMe,

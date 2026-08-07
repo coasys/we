@@ -554,6 +554,60 @@ const switchingState: SchemaNode = {
   },
 };
 
+/**
+ * The one boot outcome with nothing behind it.
+ *
+ * Every other state is a form or a wait; `error` had neither, so a backend that could not be
+ * reached — a web session whose connection failed, an executor that did not come up — left the
+ * background painted and nothing on it, with no way forward but closing the app. The message is
+ * shown verbatim rather than translated: it comes from the layer that actually failed, and a
+ * friendlier sentence in front of it would only describe the guess.
+ */
+const bootFailure: SchemaNode = {
+  type: '$if',
+  props: {
+    condition: { $eq: [{ $store: 'sessionStore.bootState' }, 'error'] },
+    then: {
+      type: 'Column',
+      props: { gap: '400', ax: 'center', maxWidth: '420px' },
+      children: [
+        {
+          type: 'Row',
+          props: { gap: '300', ay: 'center' },
+          children: [
+            { type: 'we-icon', props: { name: 'warning', color: 'danger-500' } },
+            {
+              type: 'we-text',
+              props: { variant: 'heading-sm', fontWeight: 'regular' },
+              children: ['Could not reach your data'],
+            },
+          ],
+        },
+        {
+          type: 'we-text',
+          props: { color: 'neutral-600', textAlign: 'center' },
+          children: ['WE could not connect to the data layer that holds your account.'],
+        },
+        {
+          type: '$if',
+          props: {
+            condition: { $store: 'sessionStore.bootError' },
+            then: {
+              type: 'we-code',
+              props: { block: true, styles: { 'word-break': 'break-word' } },
+              children: [{ $store: 'sessionStore.bootError' }],
+            },
+          },
+        },
+        {
+          type: 'we-button',
+          props: { text: 'Try again', variant: 'primary', onClick: { $action: 'sessionStore.retryBoot' } },
+        },
+      ],
+    },
+  },
+};
+
 export const bootScreen: SchemaNode = {
   type: '$if',
   props: {
@@ -839,6 +893,7 @@ export const bootScreen: SchemaNode = {
                 },
               },
             },
+            bootFailure,
             // The other accounts, anchored to the window rather than to the centre column. Shown on
             // the states where a user might want a different account: signing in, and setting one
             // up. Not while loading or finishing, where the outcome is already decided.
@@ -880,7 +935,15 @@ export const bootScreen: SchemaNode = {
                     // identity.
                     condition: {
                       $and: [
-                        { $in: [{ $store: 'sessionStore.bootState' }, ['initialising', 'login', 'createAgent']] },
+                        {
+                          $in: [
+                            { $store: 'sessionStore.bootState' },
+                            // `error` included deliberately: if this account's data layer is what
+                            // failed, another account is the way out, and the list is read from
+                            // disk rather than from the backend that just refused to start.
+                            ['initialising', 'login', 'createAgent', 'error'],
+                          ],
+                        },
                         { $not: { $store: 'sessionStore.createAgentLoading' } },
                         // Never on a first run — there is nowhere else to go.
                         { $store: 'accountStore.canManageAccounts' },
