@@ -1,5 +1,5 @@
 import { execSync, spawn } from 'child_process';
-import { app, BrowserWindow, desktopCapturer, ipcMain } from 'electron';
+import { app, BrowserWindow, desktopCapturer, dialog, ipcMain } from 'electron';
 import contextMenu from 'electron-context-menu';
 import express from 'express';
 import { existsSync, readdirSync, readFileSync, rmSync } from 'fs';
@@ -99,6 +99,24 @@ function ensureDataPathInitialised(executorPath, dataPath) {
     // turn a recoverable state into an app that will not open at all.
     console.error('[main] Executor init failed — the executor may not start correctly:', e.message);
   }
+}
+
+/**
+ * The environment the executor is started with.
+ *
+ * Log levels reach it as `RUST_LOG`, which is the only lever there is: the executor's own logging
+ * setup reads that variable and, finding it set, leaves it alone. Written as overrides — anything
+ * not named keeps the executor's default, which is why this builds a string only from what the user
+ * actually chose.
+ *
+ * An inherited `RUST_LOG` always wins. Someone who exported one before launching is debugging
+ * something specific, and having a settings screen quietly override that would be the opposite of
+ * helpful.
+ */
+function executorEnv(logLevels) {
+  const overrides = Object.entries(logLevels ?? {});
+  if (!overrides.length || process.env.RUST_LOG) return process.env;
+  return { ...process.env, RUST_LOG: overrides.map(([crate, level]) => `${crate}=${level}`).join(',') };
 }
 
 // Find a free port in the given range
@@ -232,6 +250,10 @@ async function startExecutor() {
 
     ensureDataPathInitialised(executorPath, ad4mDataPath);
 
+    // Settings the executor reads once, at startup. Off unless asked for: MCP opens a port that
+    // serves this agent's data to anything local that speaks the protocol.
+    const executorSettings = accounts.executorSettings();
+
     // Start the executor process
     executorProcess = spawn(
       executorPath,
@@ -247,10 +269,14 @@ async function startExecutor() {
         'false', // We don't need the built-in dapp server
         '--connect-holochain',
         'true', // Enable holochain connection
+        ...(executorSettings.mcpEnabled
+          ? ['--enable-mcp', 'true', '--mcp-port', executorSettings.mcpPort.toString()]
+          : []),
       ],
       {
         detached: true, // Create a new process group so we can kill the entire tree
         stdio: ['ignore', 'pipe', 'pipe'], // Capture stdout/stderr instead of inherit
+        env: executorEnv(executorSettings.logLevels),
       },
     );
 
@@ -427,7 +453,38 @@ ipcMain.handle('accounts-remove', (_event, id) => accounts.remove(id));
  * Tauri cannot do this: it runs the executor in-process, and the executor's own graceful shutdown
  * ends in `std::process::exit`, so stopping it takes the app with it. That host still relaunches.
  */
-ipcMain.handle('accounts-apply', async () => {
+ipcMain.handle('accounts-apply', () => restartExecutorAndReload());
+
+ipcMain.handle('executor-settings-get', () => accounts.executorSettings());
+ipcMain.handle('executor-settings-set', (_event, settings) => accounts.setExecutorSettings(settings));
+/**
+ * Restart the executor so changed settings take effect.
+ *
+ * The same act as applying an account selection — the executor reads its arguments once, at
+ * startup, whether what changed is the data path or an MCP port. Sharing the implementation is not
+ * a shortcut: two functions that both mean "start the executor over" would drift, and the second
+ * one to be written would be the one that forgets to repaint the window.
+ */
+ipcMain.handle('executor-restart', () => restartExecutorAndReload());
+
+/**
+ * A path on this machine, for the backend to write to or read from.
+ *
+ * The executor's export and import take a path on its own filesystem, and it runs here — so this is
+ * the one place that can turn "somewhere to put it" into something it can use. A renderer file
+ * picker cannot: the File it yields carries no path.
+ */
+ipcMain.handle('executor-choose-file', async (_event, { save, defaultName } = {}) => {
+  const parent = mainWindow && !mainWindow.isDestroyed() ? mainWindow : undefined;
+  const options = { defaultPath: defaultName, filters: [{ name: 'JSON', extensions: ['json'] }] };
+  const result = save
+    ? await dialog.showSaveDialog(parent, options)
+    : await dialog.showOpenDialog(parent, { ...options, properties: ['openFile'] });
+  if (result.canceled) return null;
+  return save ? (result.filePath ?? null) : (result.filePaths[0] ?? null);
+});
+
+async function restartExecutorAndReload() {
   switchingAccount = true;
   try {
     killExecutor();
@@ -479,7 +536,7 @@ ipcMain.handle('accounts-apply', async () => {
   // anything the static middleware cannot match falls through to a catch-all; that is the shape of
   // the NotFoundError seen when creating an account from a built app.
   mainWindow.loadURL(appUrl());
-});
+}
 
 ipcMain.handle('get-desktop-sources', async () => {
   const sources = await desktopCapturer.getSources({

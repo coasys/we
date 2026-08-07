@@ -1,5 +1,12 @@
 import { invoke } from '@tauri-apps/api/core';
-import type { Account, AccountHost, AppConfig, PlatformAdapter } from '@we/app-shell/shared';
+import type {
+  Account,
+  AccountHost,
+  AppConfig,
+  ExecutorHost,
+  ExecutorSettings,
+  PlatformAdapter,
+} from '@we/app-shell/shared';
 
 import portMap from '../generated/seed-port-map.json';
 
@@ -15,6 +22,14 @@ const accounts: AccountHost = {
   select: (id: string) => invoke<void>('select_account', { id }),
   remove: (id: string) => invoke<void>('remove_account', { id }),
   applySelection: () => invoke<void>('apply_account_selection'),
+};
+
+/** The executor runs in this process, so restarting it means relaunching the app. */
+const executor: ExecutorHost = {
+  getSettings: () => invoke<ExecutorSettings>('get_executor_settings'),
+  setSettings: (settings: Partial<ExecutorSettings>) => invoke<ExecutorSettings>('set_executor_settings', { settings }),
+  restart: () => invoke<void>('restart_executor'),
+  chooseFile: (options) => invoke<string | null>('choose_file', options),
 };
 
 export const tauriPlatform: PlatformAdapter = {
@@ -43,4 +58,5 @@ export const tauriPlatform: PlatformAdapter = {
   },
   platform: 'tauri' as const,
   accounts,
+  executor,
 };

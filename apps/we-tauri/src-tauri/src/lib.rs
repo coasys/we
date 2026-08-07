@@ -70,6 +70,19 @@ pub fn run() {
     // Clear out any account whose setup was abandoned last session before choosing one.
     registry.prune_abandoned();
     let app_data_path = resolve_ad4m_data_path(&registry, &home);
+    // Read before the builder takes ownership of the state — the executor is configured once, in
+    // the setup hook below, and nothing it is given can be changed after that.
+    let executor_settings = registry.executor_settings();
+
+    // Log levels reach the executor as `RUST_LOG`, which its own logging setup reads and, finding
+    // set, leaves alone. Only the user's overrides go in — anything unnamed keeps the executor's
+    // default. An inherited `RUST_LOG` always wins: someone who exported one before launching is
+    // debugging something specific, and a settings screen quietly overriding that would be the
+    // opposite of helpful.
+    if !executor_settings.log_levels.is_empty() && std::env::var("RUST_LOG").is_err() {
+        let rust_log = rust_executor::logging::build_rust_log_from_config(&executor_settings.log_levels);
+        std::env::set_var("RUST_LOG", rust_log);
+    }
     println!("AD4M data path: {}", app_data_path.display());
 
     std::fs::create_dir_all(&app_data_path)
@@ -98,6 +111,7 @@ pub fn run() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
         .manage(state)
         .invoke_handler(tauri::generate_handler![
             commands::state::get_port,
@@ -107,7 +121,11 @@ pub fn run() {
             commands::accounts::set_account_display,
             commands::accounts::select_account,
             commands::accounts::remove_account,
-            commands::accounts::apply_account_selection
+            commands::accounts::apply_account_selection,
+            commands::accounts::get_executor_settings,
+            commands::accounts::set_executor_settings,
+            commands::accounts::restart_executor,
+            commands::accounts::choose_file
         ])
         .setup(move |app| {
             // Start embedded app HTTP servers (in production only)
@@ -130,6 +148,11 @@ pub fn run() {
                 port: Some(graphql_port),
                 run_dapp_server: Some(false), // Disabled - we serve the app ourselves
                 connect_holochain: Some(true),
+                // Off unless asked for: MCP opens a port that serves this agent's data to anything
+                // local that speaks the protocol. Read here because the executor takes its
+                // configuration once, at startup.
+                enable_mcp: Some(executor_settings.mcp_enabled),
+                mcp_port: Some(executor_settings.mcp_port),
                 ..Default::default()
             };
             

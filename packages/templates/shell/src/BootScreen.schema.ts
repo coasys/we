@@ -212,8 +212,10 @@ const firstRunSplash: SchemaNode = {
  * a freshly created account boots into an empty directory and lands on setup; without a way back an
  * accidental create traps you there.
  *
- * Rendered at the root, so it is anchored to the window rather than to whatever the centre column
- * happens to contain.
+ * Deliberately carries no positioning of its own, and no gate of its own: the caller anchors it to
+ * the corner and decides whether it is shown. Both belong outside because the caller fades it, and
+ * a transitioning `$if` renders its content inside a wrapper div — so anything this node did about
+ * position would be done relative to that wrapper rather than to the window. See `switcherCorner`.
  */
 function accountSwitcher(): SchemaNode {
   const tile = (label: string | SchemaNode | OperatorToken, avatar: SchemaNode, onClick: SchemaProp): SchemaNode => ({
@@ -231,66 +233,51 @@ function accountSwitcher(): SchemaNode {
   });
 
   return {
-    type: '$if',
-    props: {
-      // Never on a first run — there is nowhere else to go. Gated here rather than at the call
-      // sites so neither can forget it.
-      condition: {
-        $and: [
-          { $store: 'accountStore.canManageAccounts' },
-          { $store: 'accountStore.activeAccount' },
-          { $not: { $store: 'accountStore.isFirstRun' } },
-        ],
-      },
-      then: {
-        type: 'Column',
-        props: { position: 'absolute', bottom: '300', left: '300', zIndex: 1 },
+    type: 'Column',
+    children: [
+      // Failures from switching or creating surface here, beside the controls that cause them
+      // — there is nowhere else on this screen that account errors belong.
+      accountError,
+      {
+        type: '$each',
+        props: {
+          // Everyone but the account signed in to — that one is the badge in the centre — and
+          // only accounts somebody has set up. One with no identity is not a destination:
+          // switching to it lands straight back on the setup form.
+          items: {
+            $filter: { items: { $store: 'accountStore.accounts' }, where: { active: false, hasAgent: true } },
+          },
+          as: 'account',
+        },
         children: [
-          // Failures from switching or creating surface here, beside the controls that cause them
-          // — there is nowhere else on this screen that account errors belong.
-          accountError,
-          {
-            type: '$each',
-            props: {
-              // Everyone but the account signed in to — that one is the badge in the centre — and
-              // only accounts somebody has set up. One with no identity is not a destination:
-              // switching to it lands straight back on the setup form.
-              items: {
-                $filter: { items: { $store: 'accountStore.accounts' }, where: { active: false, hasAgent: true } },
-              },
-              as: 'account',
+          tile(
+            '$account.name',
+            {
+              type: 'we-avatar',
+              props: { image: '$account.avatar', initials: '$account.name', size: 'lg', bg: 'primary-200' },
             },
-            children: [
-              tile(
-                '$account.name',
-                {
-                  type: 'we-avatar',
-                  props: { image: '$account.avatar', initials: '$account.name', size: 'lg', bg: 'primary-200' },
-                },
-                { $action: 'accountStore.switchAccount', args: ['$account.id'] },
-              ),
-            ],
-          },
-          {
-            type: '$if',
-            props: {
-              // Not while the active account is still being set up: it would offer the action
-              // already under way. Reading the account rather than the boot state means it appears
-              // the moment a switch is chosen, before the restart.
-              condition: { $store: 'accountStore.activeAccount.hasAgent' },
-              // Straight through, no confirmation. The step it replaced restated the button it was
-              // reached from and asked again, and the action is undone in one click from this same
-              // corner.
-              then: tile(
-                'New account',
-                { type: 'we-avatar', props: { icon: 'plus', size: 'lg', bg: 'neutral-100' } },
-                { $action: 'accountStore.createAccount' },
-              ),
-            },
-          },
+            { $action: 'accountStore.switchAccount', args: ['$account.id'] },
+          ),
         ],
       },
-    },
+      {
+        type: '$if',
+        props: {
+          // Not while the active account is still being set up: it would offer the action
+          // already under way. Reading the account rather than the boot state means it appears
+          // the moment a switch is chosen, before the restart.
+          condition: { $store: 'accountStore.activeAccount.hasAgent' },
+          // Straight through, no confirmation. The step it replaced restated the button it was
+          // reached from and asked again, and the action is undone in one click from this same
+          // corner.
+          then: tile(
+            'New account',
+            { type: 'we-avatar', props: { icon: 'plus', size: 'lg', bg: 'neutral-100' } },
+            { $action: 'accountStore.createAccount' },
+          ),
+        },
+      },
+    ],
   };
 }
 
@@ -335,7 +322,12 @@ const neutralWait: SchemaNode = {
 };
 
 /**
- * The wait while an account is being made, on either side of the restart that makes it.
+ * The wait while room is being made for a new account, on either side of the restart.
+ *
+ * "Preparing", not "Creating": nothing about an identity exists yet. What is happening is an empty
+ * directory being scaffolded and the data layer being restarted against it — the account itself is
+ * created by the form this leads to, which is why claiming otherwise here read as the app having
+ * already done the thing it then asked you for.
  *
  * Deliberately nameless: a new account holds no identity, so its name is the host's placeholder and
  * it has no picture — a badge there is a placeholder dressed as a person. The same words on both
@@ -346,7 +338,7 @@ const creatingAccountState: SchemaNode = {
   props: { gap: '300', ay: 'center' },
   children: [
     { type: 'we-spinner', props: { size: 'sm' } },
-    { type: 'we-text', props: { color: 'neutral-600' }, children: ['Creating account...'] },
+    { type: 'we-text', props: { color: 'neutral-600' }, children: ['Preparing new account...'] },
   ],
 };
 
@@ -562,6 +554,60 @@ const switchingState: SchemaNode = {
   },
 };
 
+/**
+ * The one boot outcome with nothing behind it.
+ *
+ * Every other state is a form or a wait; `error` had neither, so a backend that could not be
+ * reached — a web session whose connection failed, an executor that did not come up — left the
+ * background painted and nothing on it, with no way forward but closing the app. The message is
+ * shown verbatim rather than translated: it comes from the layer that actually failed, and a
+ * friendlier sentence in front of it would only describe the guess.
+ */
+const bootFailure: SchemaNode = {
+  type: '$if',
+  props: {
+    condition: { $eq: [{ $store: 'sessionStore.bootState' }, 'error'] },
+    then: {
+      type: 'Column',
+      props: { gap: '400', ax: 'center', maxWidth: '420px' },
+      children: [
+        {
+          type: 'Row',
+          props: { gap: '300', ay: 'center' },
+          children: [
+            { type: 'we-icon', props: { name: 'warning', color: 'danger-500' } },
+            {
+              type: 'we-text',
+              props: { variant: 'heading-sm', fontWeight: 'regular' },
+              children: ['Could not reach your data'],
+            },
+          ],
+        },
+        {
+          type: 'we-text',
+          props: { color: 'neutral-600', textAlign: 'center' },
+          children: ['WE could not connect to the data layer that holds your account.'],
+        },
+        {
+          type: '$if',
+          props: {
+            condition: { $store: 'sessionStore.bootError' },
+            then: {
+              type: 'we-code',
+              props: { block: true, styles: { 'word-break': 'break-word' } },
+              children: [{ $store: 'sessionStore.bootError' }],
+            },
+          },
+        },
+        {
+          type: 'we-button',
+          props: { text: 'Try again', variant: 'primary', onClick: { $action: 'sessionStore.retryBoot' } },
+        },
+      ],
+    },
+  },
+};
+
 export const bootScreen: SchemaNode = {
   type: '$if',
   props: {
@@ -581,7 +627,7 @@ export const bootScreen: SchemaNode = {
         bg: 'neutral-0',
         bgImage: blobBackground,
         // Not `opacity`, which would take the heading and the form down with the background.
-        bgImageOpacity: 0.2,
+        bgImageOpacity: 0.3,
         position: 'absolute',
         zIndex: 9999,
       },
@@ -847,29 +893,74 @@ export const bootScreen: SchemaNode = {
                 },
               },
             },
+            bootFailure,
             // The other accounts, anchored to the window rather than to the centre column. Shown on
-            // the two states where a user might want a different account: signing in, and setting
-            // one up. Not while loading or finishing, where the outcome is already decided.
+            // the states where a user might want a different account: signing in, and setting one
+            // up. Not while loading or finishing, where the outcome is already decided.
             //
             // Create is offered on sign-in only — beside a setup form it would offer to start
             // over on the thing being started.
+            //
+            // The corner is this node, and the fade is the `$if` inside it. That split is what
+            // keeps both correct. A transitioning `$if` renders its content inside a wrapper div,
+            // and that wrapper copies `position` from the content but not the offsets that go with
+            // it — so anchoring inside the transition put the list a screen-height below the
+            // window, and not anchoring at all left the wrapper in the centre column's flow, where
+            // a zero-height flex item still contributes the column's 48px `gap` and the whole
+            // screen re-centred the moment the fade ended. Anchored here, out of flow, neither
+            // applies: the wrapper only ever lays out inside a box that is already in the corner.
             {
-              type: '$if',
-              props: {
-                // Including `initialising` is the whole point of rendering this at the root.
-                // Gated on `login` alone it was absent for the first phase of every boot — so on
-                // a switch it vanished and returned even though its data was there the whole
-                // time, which read as the data being late rather than the node being unmounted.
-                condition: { $in: [{ $store: 'sessionStore.bootState' }, ['initialising', 'login']] },
-                then: accountSwitcher(),
-              },
-            },
-            {
-              type: '$if',
-              props: {
-                condition: { $eq: [{ $store: 'sessionStore.bootState' }, 'createAgent'] },
-                then: accountSwitcher(),
-              },
+              type: 'Column',
+              props: { position: 'absolute', bottom: '300', left: '300', zIndex: 1 },
+              children: [
+                {
+                  type: '$if',
+                  props: {
+                    // One node across all three states rather than one per state, so that moving
+                    // between them is not an unmount and a remount of the same list — and so the
+                    // exit below describes the list leaving rather than a boot state changing.
+                    //
+                    // Including `initialising` is the whole point of rendering this at the root.
+                    // Gated on `login` alone it was absent for the first phase of every boot — so
+                    // on a switch it vanished and returned even though its data was there the whole
+                    // time, which read as the data being late rather than the node being unmounted.
+                    //
+                    // `createAgentLoading` closes it the moment the setup form is submitted, not
+                    // one state later: that flag turns on while the state is still `createAgent`
+                    // and only then becomes `finishing`, so gating on the state alone kept the list
+                    // up through the first half of "Setting up your account..." and dropped it
+                    // mid-message — two disappearances for one act. It is also a live escape hatch,
+                    // and switching accounts restarts the app: leaving it clickable while the agent
+                    // is being created and the profile published is offering to abandon a half-made
+                    // identity.
+                    condition: {
+                      $and: [
+                        {
+                          $in: [
+                            { $store: 'sessionStore.bootState' },
+                            // `error` included deliberately: if this account's data layer is what
+                            // failed, another account is the way out, and the list is read from
+                            // disk rather than from the backend that just refused to start.
+                            ['initialising', 'login', 'createAgent', 'error'],
+                          ],
+                        },
+                        { $not: { $store: 'sessionStore.createAgentLoading' } },
+                        // Never on a first run — there is nowhere else to go.
+                        { $store: 'accountStore.canManageAccounts' },
+                        { $store: 'accountStore.activeAccount' },
+                        { $not: { $store: 'accountStore.isFirstRun' } },
+                      ],
+                    },
+                    // Faded out rather than cut, because this leaves at the same moment the form it
+                    // sits beside does, and the form is replaced by a spinner rather than removed —
+                    // one thing dissolving beside another arriving reads as a single change. No
+                    // enter transition: on a switch it is meant to already be there, and fading it
+                    // in would reintroduce the "data arriving late" impression the gate avoids.
+                    exitTransition: { type: 'fade', duration: 300 },
+                    then: accountSwitcher(),
+                  },
+                },
+              ],
             },
             // Finishing state — non-interactive. The agent exists and the session is loaded; the name
             // and picture collected on the setup screen are being published. Everything was asked for

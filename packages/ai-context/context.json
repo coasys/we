@@ -5326,6 +5326,9 @@
         "bootState": {
           "type": "string"
         },
+        "bootError": {
+          "type": "string"
+        },
         "passwordError": {
           "type": "boolean"
         },
@@ -5339,7 +5342,7 @@
           "type": "boolean"
         }
       },
-      "actions": ["login", "createAgent", "clearPasswordError", "finishSetup", "logout"]
+      "actions": ["login", "createAgent", "clearPasswordError", "finishSetup", "retryBoot", "logout"]
     },
     {
       "name": "accountStore",
@@ -5349,24 +5352,30 @@
         },
         "accounts": {
           "type": "array",
-          "properties": ["id", "name", "avatar", "active", "sharedWithLauncher"]
+          "properties": ["id", "name", "avatar", "active", "hasAgent", "sharedWithLauncher"]
         },
         "activeAccount": {
           "type": "object",
-          "properties": ["id", "name", "avatar", "active", "sharedWithLauncher"]
+          "properties": ["id", "name", "avatar", "active", "hasAgent", "sharedWithLauncher"]
         },
         "pendingRemoval": {
           "type": "object",
-          "properties": ["id", "name", "avatar", "active", "sharedWithLauncher"]
+          "properties": ["id", "name", "avatar", "active", "hasAgent", "sharedWithLauncher"]
         },
         "switchingTo": {
           "type": "object",
-          "properties": ["id", "name", "avatar", "active", "sharedWithLauncher"]
+          "properties": ["id", "name", "avatar", "active", "hasAgent", "sharedWithLauncher"]
         },
         "creating": {
           "type": "boolean"
         },
         "hasOtherAccounts": {
+          "type": "boolean"
+        },
+        "accountsLoaded": {
+          "type": "boolean"
+        },
+        "isFirstRun": {
           "type": "boolean"
         },
         "busy": {
@@ -5403,6 +5412,85 @@
         "canManageApps": {
           "type": "boolean"
         },
+        "canManageLanguages": {
+          "type": "boolean"
+        },
+        "canManageAi": {
+          "type": "boolean"
+        },
+        "canConfigureExecutor": {
+          "type": "boolean"
+        },
+        "mcpEnabled": {
+          "type": "boolean"
+        },
+        "mcpPort": {
+          "type": "number"
+        },
+        "executorRestartPending": {
+          "type": "boolean"
+        },
+        "canBackUp": {
+          "type": "boolean"
+        },
+        "logLevels": {
+          "type": "array",
+          "properties": ["crate", "level"]
+        },
+        "backupStatus": {
+          "type": "string"
+        },
+        "aiModels": {
+          "type": "array",
+          "properties": [
+            "id",
+            "name",
+            "kind",
+            "source",
+            "isDefault",
+            "kindLabel",
+            "sourceLabel",
+            "detail",
+            "statusText",
+            "ready"
+          ]
+        },
+        "aiTasks": {
+          "type": "array",
+          "properties": ["id", "name", "modelId", "systemPrompt"]
+        },
+        "aiForm": {
+          "type": "object",
+          "properties": [
+            "id",
+            "name",
+            "kind",
+            "sourceKind",
+            "presetName",
+            "apiBaseUrl",
+            "apiKey",
+            "apiModel",
+            "hfRepo",
+            "hfRevision",
+            "hfFileName",
+            "filePath",
+            "useTokenizer",
+            "tokenizerRepo",
+            "tokenizerRevision",
+            "tokenizerFileName"
+          ]
+        },
+        "aiPresetOptions": {
+          "type": "array",
+          "properties": ["label", "value"]
+        },
+        "aiFormComplete": {
+          "type": "boolean"
+        },
+        "languages": {
+          "type": "array",
+          "properties": ["address", "name", "system"]
+        },
         "trustedAgents": {
           "type": "array"
         },
@@ -5431,6 +5519,26 @@
         }
       },
       "actions": [
+        "setMcpEnabled",
+        "setMcpPort",
+        "setLogLevel",
+        "removeLogLevel",
+        "exportDatabase",
+        "importDatabase",
+        "restartExecutor",
+        "loadAiModels",
+        "loadAiTasks",
+        "newAiModel",
+        "editAiModel",
+        "setAiFormField",
+        "closeAiForm",
+        "saveAiModel",
+        "removeAiModel",
+        "setDefaultAiModel",
+        "removeAiTask",
+        "loadLanguages",
+        "installLanguage",
+        "removeLanguage",
         "loadTrustedAgents",
         "trustAgent",
         "untrustAgent",

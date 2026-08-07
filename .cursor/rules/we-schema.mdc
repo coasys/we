@@ -1333,6 +1333,7 @@ SessionStore:
   - client: the backend client handle | undefined
   - me: Agent | undefined — the authenticated identity; prefer the $me token in schemas
   - bootState: string — 'initialising' | 'login' | 'createAgent' | 'finishing' | 'ready' | 'error'
+  - bootError: string — why the boot failed, when bootState is 'error'. Empty otherwise
   - passwordError: boolean — true after a failed unlock attempt
   - loginLoading: boolean
   - createAgentError: string — the backend message from a failed agent creation, or empty
@@ -1342,17 +1343,20 @@ SessionStore:
   - createAgent(password: string): creates the agent, loads user data, and lands on the 'finishing' boot state (not 'ready')
   - clearPasswordError(): clears the failed-unlock flag. Chain it after the password field's $setLocal — the verdict was on the submitted password, so editing that password retracts it and a stale "Incorrect password" should not sit over the correction
   - finishSetup(): leaves 'finishing' for the running app — sets bootState to 'ready'
+  - retryBoot(): starts the whole boot again from the failure screen, by reloading. A failed boot can have got anywhere before it threw, so retrying in place would race the remains of the first attempt
   - logout(): locks the agent and returns to the login screen
 
 AccountStore:
 - State:
   - canManageAccounts: boolean — the host can manage local accounts (false on web). Gate every account control on this
-  - accounts: Account[] — local accounts (id, name, active). id is the data directory
+  - accounts: Account[] — local accounts (id, name, avatar, active, hasAgent, sharedWithLauncher). id is the data directory; hasAgent is false for one scaffolded but never set up
   - activeAccount: Account | undefined — the account this app instance is running against. Correct at first paint: the list is seeded from a synchronous cache
   - pendingRemoval: Account | null — the account a removal was requested for, awaiting confirmation
   - switchingTo: Account | null — the account being switched to, from the click until the process goes away
   - creating: boolean — true from the moment a create is requested until the process goes away
   - hasOtherAccounts: boolean — true when there is somewhere else to switch to
+  - accountsLoaded: boolean — the host has answered. Without it an empty list reads as a first run and flashes a welcome at a returning user
+  - isFirstRun: boolean — nothing has ever been set up on this machine: the host has answered and no account holds an identity yet
   - busy: boolean — a mutation is in flight; a successful one ends in a relaunch
   - error: string — the last account error, for display
 - Actions:
@@ -1372,6 +1376,21 @@ RuntimeStore:
   - canManageTrust: boolean — gate the trusted-agents section on this
   - canManageNetwork: boolean — gate the peer-network section on this
   - canManageApps: boolean — gate the authorized-apps section on this
+  - canManageLanguages: boolean — gate the languages section on this
+  - canManageAi: boolean — gate the AI section on this
+  - canConfigureExecutor: boolean — this host starts the backend, so how it starts it can be changed. False on web
+  - mcpEnabled: boolean — whether the backend serves MCP on its next start
+  - mcpPort: number — the port MCP is served on
+  - executorRestartPending: boolean — settings were changed that the running backend has not picked up
+  - canBackUp: boolean — a database export/import can be offered: the backend writes the file and the host can name one. False on web
+  - logLevels: { crate, level }[] — per-crate log levels the user has set, sorted. Empty means the backend own defaults are in use
+  - backupStatus: string — what the last export or import did, for display. Empty until one runs
+  - aiModels: AiModelView[] — installed models, each carrying its display strings (kindLabel, sourceLabel, detail, statusText, ready) alongside id/name/kind/source/isDefault. Empty until loadAiModels() runs
+  - aiTasks: AiTask[] — named prompts apps registered against a model (id, name, modelId, systemPrompt)
+  - aiForm: AiModelForm | null — the model form while it is open, null when closed. One flat field per input; read with runtimeStore.aiForm.<field>
+  - aiPresetOptions: { label, value }[] — model names the backend can fetch itself, for the open form kind
+  - aiFormComplete: boolean — the open form has every field its chosen source needs
+  - languages: InstalledLanguage[] — language plugins installed in this backend (address, name, system). Empty until loadLanguages() runs
   - trustedAgents: string[] — trusted peer ids. Empty until loadTrustedAgents() runs
   - authorizedApps: AuthorizedApp[] — external apps holding credentials (id, name, description, url, iconUrl, capabilities, revoked). Empty until loadAuthorizedApps() runs
   - networkMetrics: string — backend diagnostic blob, displayed verbatim. Empty until requested
@@ -1381,6 +1400,26 @@ RuntimeStore:
   - pendingConsent: ConsentRequest | null — a request awaiting the user's decision (kind: 'capability' | 'trust', title, message, app, peerId)
   - consentSecret: string — a code an approval returned, to be relayed to the asking app
 - Actions:
+  - setMcpEnabled(enabled: boolean): turns MCP on or off for the backend next start
+  - setMcpPort(port: number): sets the MCP port. The host refuses one outside 1024-65535
+  - setLogLevel(crate: string, level: string): sets one crate log level — adds it when not already set, so there is no separate add. Levels: error, warn, info, debug, trace
+  - removeLogLevel(crate: string): drops an override, returning that crate to the backend default
+  - exportDatabase(): asks for a file, then has the backend write everything to it
+  - importDatabase(): asks for a file, then has the backend read it back in
+  - restartExecutor(): starts the backend over so written settings take effect. Does not return
+  - loadAiModels(): fetches the installed AI models and their load status
+  - loadAiTasks(): fetches the prompts apps registered against a model
+  - newAiModel(): opens the model form empty, for a new model
+  - editAiModel(id: string): opens the model form on an existing model
+  - setAiFormField(field: string, value: string | boolean): sets one field of the open model form. Takes the field name so one action serves every input
+  - closeAiForm(): closes the model form, discarding it
+  - saveAiModel(): saves the open form — adds or updates depending on whether it has an id
+  - removeAiModel(id: string): deletes a model
+  - setDefaultAiModel(id: string): makes this the model apps get when they ask for its kind
+  - removeAiTask(id: string): deletes a registered prompt
+  - loadLanguages(): fetches the installed languages
+  - installLanguage(address: string): installs a language by content address, then reloads the list
+  - removeLanguage(address: string): removes an installed language. Refuses the backend own system languages
   - loadTrustedAgents(): fetches the trusted-agent list
   - trustAgent(id: string): trusts a peer, then reloads the list
   - untrustAgent(id: string): untrusts a peer, then reloads the list

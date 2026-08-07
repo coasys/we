@@ -21,15 +21,25 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 let lifecycle: InMemoryLifecycle;
 let agentOptions: InMemoryAgentOptions;
+/** Set to make the connector reject, standing in for a backend that cannot be reached. */
+let connectFailure: string | null = null;
+/** Supplied by connectors whose session is the connection — the web host's, in practice. */
+let disconnect: (() => Promise<void>) | undefined;
+
+/** Set by the tests that need a host able to restart the backend; absent is the web shape. */
+let executorHost:
+  | { getSettings: () => Promise<unknown>; setSettings: () => Promise<unknown>; restart: () => Promise<void> }
+  | undefined;
 
 vi.mock('../src/frameworks/solid/providers/PlatformProvider', () => ({
-  usePlatform: () => ({ isDesktop: false, isDevelopment: true }),
+  usePlatform: () => ({ isDesktop: false, isDevelopment: true, executor: executorHost }),
   useBackend: () => ({
     // The real in-memory bundle — the same thing a backend-less host would supply.
     initialize: async (ctx: { selfId(): string | undefined }) => {
+      if (connectFailure) throw new Error(connectFailure);
       const ports = createInMemoryBackendPorts(ctx, { agent: agentOptions });
       lifecycle = ports.lifecycle;
-      return { client: {}, ports };
+      return { client: {}, ports, ...(disconnect ? { disconnect } : {}) };
     },
   }),
 }));
@@ -107,6 +117,9 @@ const ready = (stores: Stores) => vi.waitFor(() => expect(stores.session.bootSta
 
 beforeEach(() => {
   agentOptions = { id: 'did:test:james', unlocked: true };
+  executorHost = undefined;
+  connectFailure = null;
+  disconnect = undefined;
   navigate.mockClear();
 });
 
@@ -210,6 +223,122 @@ describe('first run', () => {
     await stores.session.login('chosen-at-creation');
     await ready(stores);
   }, 10000);
+
+  /**
+   * Logging out of a session this renderer did not unlock.
+   *
+   * Reloading the page during a session leaves the backend unlocked and takes the password with it
+   * — which is exactly the boot this suite's default `unlocked: true` describes. `lock` needs a
+   * password, and AD4M's re-encrypts the wallet's in-memory keys under whatever it is given, so
+   * sending a wrong one silently re-keys the running agent and the real password stops working
+   * until the executor restarts.
+   */
+  it('does not lock with a password it does not have, and restarts the backend instead', async () => {
+    // Already unlocked and never unlocked by this renderer — a reload mid-session.
+    agentOptions = { unlocked: true, password: 'the-real-one' };
+    let restarts = 0;
+    executorHost = {
+      getSettings: async () => ({ mcpEnabled: false, mcpPort: 3001, logLevels: {} }),
+      setSettings: async () => ({ mcpEnabled: false, mcpPort: 3001, logLevels: {} }),
+      restart: async () => {
+        restarts += 1;
+      },
+    };
+    const stores = mountShell();
+    await ready(stores);
+
+    // The in-memory agent refuses a wrong password on lock, so an attempt would land here. The
+    // real one accepts anything and re-keys itself with it, which is the bug being avoided.
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+    await stores.session.logout();
+    const lockFailures = logged.mock.calls.filter((args) => String(args[0]).includes('agent lock failed'));
+    logged.mockRestore();
+
+    expect(lockFailures).toEqual([]);
+    expect(restarts).toBe(1);
+    expect(stores.session.bootState()).toBe('login');
+  }, 10000);
+
+  it('ends the connection when that is what the session is, rather than showing a lock that is not there', async () => {
+    // A remote node reached over ad4m-connect: already unlocked, and never unlocked by a password
+    // this app holds. Returning to the sign-in form asked for a password against a keystore that is
+    // not there — refused every time, while reloading walked straight back in, because nothing
+    // about the session had actually ended.
+    agentOptions = { unlocked: true, password: 'not-ours' };
+    let disconnects = 0;
+    disconnect = async () => {
+      disconnects += 1;
+    };
+    let restarts = 0;
+    executorHost = {
+      getSettings: async () => ({ mcpEnabled: false, mcpPort: 3001, logLevels: {} }),
+      setSettings: async () => ({ mcpEnabled: false, mcpPort: 3001, logLevels: {} }),
+      restart: async () => {
+        restarts += 1;
+      },
+    };
+    const stores = mountShell();
+    await ready(stores);
+
+    // Stubbed both to keep jsdom quiet and because the reload is the other half of the act: the
+    // connect UI runs once per document, so a disconnected session that stayed on this one would
+    // have nothing to reconnect with.
+    const reload = vi.fn();
+    vi.spyOn(window, 'location', 'get').mockReturnValue({ ...window.location, reload } as Location);
+
+    await stores.session.logout();
+
+    expect(disconnects).toBe(1);
+    expect(reload).toHaveBeenCalled();
+    // Preferred over restarting even where a host could: forgetting the connection is what ends
+    // this session, and restarting someone else's node is not on offer.
+    expect(restarts).toBe(0);
+  }, 10000);
+
+  it('locks rather than restarting when it does hold the password', async () => {
+    agentOptions = { unlocked: false, password: 'secret' };
+    let restarts = 0;
+    executorHost = {
+      getSettings: async () => ({ mcpEnabled: false, mcpPort: 3001, logLevels: {} }),
+      setSettings: async () => ({ mcpEnabled: false, mcpPort: 3001, logLevels: {} }),
+      restart: async () => {
+        restarts += 1;
+      },
+    };
+    const stores = mountShell();
+    await vi.waitFor(() => expect(stores.session.bootState()).toBe('login'));
+
+    await stores.session.login('secret');
+    await ready(stores);
+    await stores.session.logout();
+
+    // The fast path: a restart here would cost seconds and reload the window for nothing.
+    expect(restarts).toBe(0);
+    expect(stores.session.bootState()).toBe('login');
+    // And the password still works, which is the whole point.
+    await stores.session.login('secret');
+    await ready(stores);
+  }, 10000);
+});
+
+describe('a boot that cannot reach the backend', () => {
+  it('keeps why it failed, so the screen has something to say', async () => {
+    // 'error' is the one boot state with no form and no spinner behind it. Without the message the
+    // boot screen renders its background and nothing else, with no way forward but closing the app
+    // — which is what a web session whose connection failed used to get.
+    connectFailure = 'Could not connect to the executor';
+    const stores = mountShell();
+
+    await vi.waitFor(() => expect(stores.session.bootState()).toBe('error'));
+    expect(stores.session.bootError()).toBe('Could not connect to the executor');
+  });
+
+  it('reports nothing wrong on a boot that works', async () => {
+    const stores = mountShell();
+    await ready(stores);
+
+    expect(stores.session.bootError()).toBe('');
+  });
 });
 
 describe('dataset lifecycle through the real stores', () => {

@@ -31,6 +31,20 @@ export interface BackendInitResult {
   client: unknown;
   ports: BackendPorts;
   connection?: BackendConnectionDetails;
+  /**
+   * End this app's connection to the backend, for backends where the session *is* the connection.
+   *
+   * Supplied by the connector rather than sitting on a port, because it is the connector that knows
+   * how the connection was obtained and holds whatever has to be forgotten — a stored token, a
+   * chosen host. The ports only ever see a connected client.
+   *
+   * Optional, and absent on the desktop hosts: they start the executor themselves, so ending a
+   * session there means locking the agent or restarting the backend, both of which the shell can
+   * already reach. It matters on web, where the agent may live on someone else's node and was never
+   * unlocked with a password this app holds — leaving "log out" with nothing to do but show a
+   * sign-in form for a lock that is not there.
+   */
+  disconnect?: () => Promise<void>;
 }
 
 export interface BackendConnector {

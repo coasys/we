@@ -341,6 +341,33 @@ describe('$if with a transition — the wrapper must not change layout', () => {
     expect(wrapper?.style.maxWidth).toBe('');
   });
 
+  it('takes position from the content, but not the offsets that place it', () => {
+    // Both halves matter, and together they say where a fading overlay has to be anchored.
+    //
+    // Without the position the wrapper is a normal-flow div holding an out-of-flow child: zero
+    // height, but still a flex item, so it contributes its parent's `gap` and the parent re-lays
+    // out the moment the transition ends and the wrapper unmounts.
+    //
+    // With it, the wrapper is absolutely positioned at its *static* position and sized 100% — the
+    // offsets stay on the content, where they now resolve against the wrapper rather than against
+    // whatever the author anchored to. Content that anchors to an edge therefore belongs inside a
+    // container that is already anchored, not inside the transition.
+    const node: SchemaNode = {
+      type: '$if',
+      props: {
+        condition: true,
+        exitTransition: { type: 'fade' },
+        then: { type: 'Box', props: { position: 'absolute', bottom: '12px', left: '12px' } },
+      },
+    };
+    const { container } = renderSchema(node, { registry });
+
+    const wrapper = container.querySelector('div');
+    expect(wrapper?.style.position).toBe('absolute');
+    expect(wrapper?.style.bottom).toBe('');
+    expect(wrapper?.style.left).toBe('');
+  });
+
   it('lets an explicit size win over the positioned default', () => {
     // Positioned content gets width/height 100%; a declared size is more specific than that.
     const node: SchemaNode = {

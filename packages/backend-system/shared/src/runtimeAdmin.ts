@@ -49,7 +49,111 @@ export interface ConsentRequest {
   payload: string;
 }
 
+/**
+ * A language plugin installed in this backend.
+ *
+ * "Language" is AD4M's word for the adapter that stores and retrieves a kind of expression — what
+ * makes an image URL resolvable, or a neighbourhood's links syncable. They are addressed by content
+ * hash, which is why installing one is a matter of pasting an address rather than picking a package.
+ */
+export interface InstalledLanguage {
+  /** Content address — the identifier install and remove take. */
+  address: string;
+  name: string;
+  /** Part of the backend's own machinery. Removing one breaks the running node, so the UI won't. */
+  system: boolean;
+}
+
+/** What a model is for. The backend picks a default per kind, and apps ask by kind. */
+export type AiModelKind = 'llm' | 'embedding' | 'transcription';
+
+/**
+ * Where a model's weights come from — the one thing that genuinely differs between models.
+ *
+ * A tagged union rather than the backend's shape (an optional `api` object beside an optional
+ * `local` one, where `local` means three different things depending on which of its fields are
+ * set). Which fields a form must show follows from `kind` here; with the original shape it follows
+ * from inspecting which fields happen to be populated, which is how the launcher's edit form ends
+ * up guessing.
+ */
+export type AiModelSource =
+  /** An OpenAI-compatible endpoint. */
+  | { kind: 'api'; baseUrl: string; apiKey: string; model: string }
+  /** A build the backend knows by name and fetches itself — see `aiModelPresets`. */
+  | { kind: 'preset'; name: string }
+  | { kind: 'huggingface'; repo: string; revision: string; fileName: string; tokenizer?: TokenizerSource }
+  /** A file already on the machine running the backend. */
+  | { kind: 'file'; fileName: string; tokenizer?: TokenizerSource };
+
+/** An explicit tokenizer, for the local sources whose weights do not carry one. */
+export interface TokenizerSource {
+  repo: string;
+  revision: string;
+  fileName: string;
+}
+
+export interface AiModel {
+  id: string;
+  name: string;
+  kind: AiModelKind;
+  source: AiModelSource;
+  /** True for the model the backend uses when an app asks for this kind without naming one. */
+  isDefault: boolean;
+}
+
+/** What `AiModel` needs to be created or edited — everything but the identity the backend assigns. */
+export type AiModelDraft = Omit<AiModel, 'id' | 'isDefault'>;
+
+/** Progress for a model the backend has to fetch before it can answer anything. */
+export interface AiModelStatus {
+  downloaded: boolean;
+  loaded: boolean;
+  /** Percentage, 0–100. */
+  progress: number;
+  /** The backend's own wording, displayed verbatim. */
+  status: string;
+}
+
+/** A named prompt an app registered against a model. */
+export interface AiTask {
+  id: string;
+  name: string;
+  modelId: string;
+  systemPrompt: string;
+}
+
 export interface RuntimeAdminPort {
+  // ── AI models ───────────────────────────────────────────────────────────────
+  aiModels?(): Promise<AiModel[]>;
+  /** Model names this backend can fetch on its own, for the kind asked about. */
+  aiModelPresets?(kind: AiModelKind): Promise<string[]>;
+  addAiModel?(draft: AiModelDraft): Promise<void>;
+  updateAiModel?(id: string, draft: AiModelDraft): Promise<void>;
+  removeAiModel?(id: string): Promise<void>;
+  /** Make this the model apps get when they ask for its kind. */
+  setDefaultAiModel?(id: string): Promise<void>;
+  /** Download/load progress. Only meaningful for models the backend hosts itself. */
+  aiModelStatus?(id: string): Promise<AiModelStatus>;
+  aiTasks?(): Promise<AiTask[]>;
+  removeAiTask?(id: string): Promise<void>;
+
+  // ── Languages ───────────────────────────────────────────────────────────────
+  languages?(): Promise<InstalledLanguage[]>;
+  /** Install by content address. The backend fetches the bundle itself. */
+  installLanguage?(address: string): Promise<void>;
+  removeLanguage?(address: string): Promise<void>;
+
+  // ── The whole store ─────────────────────────────────────────────────────────
+  /**
+   * Write everything this agent holds to a file on the backend's filesystem, and read it back.
+   *
+   * Paths, not bytes: the backend does the writing, so what it needs is somewhere to write. Getting
+   * one is the host's job (see `ExecutorHost.chooseFile`), which is why these are only reachable
+   * where the backend runs on the same machine as the app.
+   */
+  exportDatabase?(path: string): Promise<void>;
+  importDatabase?(path: string): Promise<void>;
+
   // ── Trust ───────────────────────────────────────────────────────────────────
   trustedAgents?(): Promise<string[]>;
   trustAgent?(id: string): Promise<void>;

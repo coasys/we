@@ -54,6 +54,7 @@
 //! account created in one is listed by the other.
 
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -113,6 +114,57 @@ struct RegistryState {
     accounts: Vec<AccountEntry>,
     #[serde(default, alias = "selected_path")]
     selected_path: Option<PathBuf>,
+    /// How the executor is started, as opposed to which account it runs as. Absent until set, and
+    /// preserved verbatim when the other host wrote it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    executor: Option<ExecutorSettings>,
+}
+
+/// The launcher's default port, so an agent used by both is reachable at the same place.
+const DEFAULT_MCP_PORT: u16 = 3001;
+
+/// Settings the executor reads once, at startup. Mirrors the electron host's shape exactly — the
+/// registry file is shared, and a field spelled differently here is a setting that silently
+/// reverts every time the other host writes the file.
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct ExecutorSettings {
+    #[serde(default)]
+    pub mcp_enabled: bool,
+    #[serde(default = "default_mcp_port")]
+    pub mcp_port: u16,
+    /// Per-crate log levels, as overrides. Anything unnamed keeps the executor's own default, so
+    /// storing the effective set would freeze today's defaults into every install that opened the
+    /// screen.
+    #[serde(default)]
+    pub log_levels: HashMap<String, String>,
+}
+
+/// The levels the executor's logger accepts. Anything else is refused rather than written, since
+/// its own parser drops what it does not recognise and the setting would look applied.
+const LOG_LEVELS: [&str; 5] = ["error", "warn", "info", "debug", "trace"];
+
+fn default_mcp_port() -> u16 {
+    DEFAULT_MCP_PORT
+}
+
+impl Default for ExecutorSettings {
+    fn default() -> Self {
+        ExecutorSettings {
+            mcp_enabled: false,
+            mcp_port: DEFAULT_MCP_PORT,
+            log_levels: HashMap::new(),
+        }
+    }
+}
+
+/// A partial update — either field may be absent, and an absent one keeps its current value.
+#[derive(Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct ExecutorSettingsUpdate {
+    pub mcp_enabled: Option<bool>,
+    pub mcp_port: Option<u16>,
+    pub log_levels: Option<HashMap<String, String>>,
 }
 
 pub struct AccountRegistry {
@@ -245,6 +297,7 @@ impl AccountRegistry {
                 })
                 .collect(),
             selected_path: legacy.selected_path.as_ref().map(rewrite),
+            executor: legacy.executor,
         });
         // Retire the old file, or this runs again every time the container goes away — and the
         // container going away is the supported way to start fresh. Keying "already migrated" on
@@ -270,6 +323,7 @@ impl AccountRegistry {
             .unwrap_or_else(|| RegistryState {
                 accounts: Vec::new(),
                 selected_path: None,
+                executor: None,
             })
     }
 
@@ -304,9 +358,50 @@ impl AccountRegistry {
             let _ = self.write(&RegistryState {
                 accounts: state.accounts,
                 selected_path: Some(fallback.clone()),
+                executor: state.executor,
             });
         }
         fallback
+    }
+
+    /// How the executor is started, as opposed to which account it runs as.
+    ///
+    /// Read before the executor is configured, which is why it lives in this file at all: it is
+    /// the one thing this host persists that has to be known before anything starts.
+    pub fn executor_settings(&self) -> ExecutorSettings {
+        self.read().executor.clone().unwrap_or_default()
+    }
+
+    /// Apply a partial update. An absent field keeps its current value.
+    pub fn set_executor_settings(&self, update: ExecutorSettingsUpdate) -> Result<ExecutorSettings, String> {
+        let state = self.read();
+        let current = state.executor.clone().unwrap_or_default();
+        let port = update.mcp_port.unwrap_or(current.mcp_port);
+        // Refused here rather than at startup: an unusable port written now would fail at the next
+        // launch, a restart away from the field that caused it.
+        if port < 1024 {
+            return Err("Choose a port between 1024 and 65535".to_string());
+        }
+        if let Some(levels) = &update.log_levels {
+            for (crate_name, level) in levels {
+                if !LOG_LEVELS.contains(&level.as_str()) {
+                    return Err(format!("\"{level}\" is not a log level"));
+                }
+                if crate_name.trim().is_empty() {
+                    return Err("A crate name is required".to_string());
+                }
+            }
+        }
+        let next = ExecutorSettings {
+            mcp_enabled: update.mcp_enabled.unwrap_or(current.mcp_enabled),
+            mcp_port: port,
+            log_levels: update.log_levels.unwrap_or(current.log_levels),
+        };
+        self.write(&RegistryState {
+            executor: Some(next.clone()),
+            ..state
+        })?;
+        Ok(next)
     }
 
     /// Drop accounts whose setup was never finished.
@@ -330,6 +425,7 @@ impl AccountRegistry {
         let _ = self.write(&RegistryState {
             accounts: kept,
             selected_path: state.selected_path,
+            executor: state.executor,
         });
 
         for account in &abandoned {
@@ -759,6 +855,7 @@ mod tests {
                     provisional: false,
                 }],
                 selected_path: Some(default_path.clone()),
+                executor: None,
             })
             .unwrap(),
         )
@@ -803,6 +900,71 @@ mod tests {
     }
 
     #[test]
+    fn executor_settings_survive_an_account_write() {
+        // Both hosts write this file for reasons that have nothing to do with these settings —
+        // selecting an account, pruning an abandoned one. A rewrite that dropped the executor block
+        // would turn MCP off at the next launch, with nothing on screen having asked for that.
+        let (root, default_path, registry) = temp_registry();
+        seed_ad4m_data(&default_path);
+
+        let saved = registry
+            .set_executor_settings(ExecutorSettingsUpdate {
+                mcp_enabled: Some(true),
+                mcp_port: Some(4321),
+                log_levels: Some(HashMap::from([("rust_executor".to_string(), "debug".to_string())])),
+            })
+            .unwrap();
+        assert!(saved.mcp_enabled);
+
+        registry.select(default_path.to_str().unwrap()).unwrap();
+        registry.prune_abandoned();
+
+        let after = registry.executor_settings();
+        assert!(after.mcp_enabled, "enabling MCP was lost by an unrelated registry write");
+        assert_eq!(after.mcp_port, 4321);
+        assert_eq!(after.log_levels.get("rust_executor").map(String::as_str), Some("debug"));
+        fs::remove_dir_all(root).ok();
+    }
+
+    #[test]
+    fn refuses_a_log_level_the_executor_would_drop() {
+        // Its own parser skips what it does not recognise, so a typo would look accepted here and
+        // silently do nothing there.
+        let (root, _, registry) = temp_registry();
+        assert!(registry
+            .set_executor_settings(ExecutorSettingsUpdate {
+                mcp_enabled: None,
+                mcp_port: None,
+                log_levels: Some(HashMap::from([("holochain".to_string(), "verbose".to_string())])),
+            })
+            .is_err());
+        assert!(registry.executor_settings().log_levels.is_empty());
+        fs::remove_dir_all(root).ok();
+    }
+
+    #[test]
+    fn executor_settings_default_to_off_on_the_launcher_port() {
+        let (root, _, registry) = temp_registry();
+        let settings = registry.executor_settings();
+        assert!(!settings.mcp_enabled, "MCP must be opt-in — it opens a local port");
+        assert_eq!(settings.mcp_port, 3001);
+        fs::remove_dir_all(root).ok();
+    }
+
+    #[test]
+    fn refuses_a_port_below_the_unprivileged_range() {
+        let (root, _, registry) = temp_registry();
+        assert!(registry
+            .set_executor_settings(ExecutorSettingsUpdate {
+                mcp_enabled: None,
+                mcp_port: Some(80),
+                log_levels: None,
+            })
+            .is_err());
+        fs::remove_dir_all(root).ok();
+    }
+
+    #[test]
     fn writes_the_registry_the_electron_host_can_read() {
         let (root, default_path, registry) = temp_registry();
         registry.set_display(&default_path.to_string_lossy(), Some("Jamess"), None).unwrap();
@@ -843,6 +1005,7 @@ mod tests {
                     provisional: false,
                 }],
                 selected_path: Some(legacy.clone()),
+                executor: None,
             })
             .unwrap(),
         )

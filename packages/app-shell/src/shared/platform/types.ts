@@ -114,6 +114,58 @@ export interface AccountHost {
 }
 
 /**
+ * How the host starts the backend, as opposed to what the running backend can be asked.
+ *
+ * These are arguments to a process that has not started yet, which is exactly why they cannot live
+ * on `RuntimeAdminPort`: a port over a client can only reach a backend that is already running with
+ * whatever it was given. Changing one is therefore always "write it down, then start over" — hence
+ * {@link ExecutorHost.restart} sitting beside the setters rather than being implied by them.
+ *
+ * Optional, and absent on web: a browser tab does not start the executor, it connects to one.
+ */
+export interface ExecutorSettings {
+  /**
+   * Serve the Model Context Protocol.
+   *
+   * With it on, local AI tools (editors, agents, desktop assistants) can reach this agent's data
+   * through a port on this machine. Off by default — it is an open door on localhost, and the value
+   * of it is specific enough that it should be asked for.
+   */
+  mcpEnabled: boolean;
+  mcpPort: number;
+  /**
+   * Per-crate log levels for the backend, as `{ crate: level }`.
+   *
+   * Overrides only. The backend has its own defaults and applies them to anything not named here,
+   * so storing the effective set would freeze today's defaults into every install that ever opened
+   * this screen. Levels are the usual five: error, warn, info, debug, trace.
+   */
+  logLevels: Record<string, string>;
+}
+
+export interface ExecutorHost {
+  getSettings(): Promise<ExecutorSettings>;
+  /** Written immediately; takes effect the next time the backend starts. */
+  setSettings(settings: Partial<ExecutorSettings>): Promise<ExecutorSettings>;
+  /**
+   * Start the backend over, so written settings take effect.
+   *
+   * Same caveat as {@link AccountHost.applySelection}: what this costs differs per host — Electron
+   * respawns a child process and reloads the window, Tauri relaunches the app — and a caller that
+   * knew which would be reaching past the contract.
+   */
+  restart(): Promise<void>;
+  /**
+   * Ask the user for a path on this machine. Resolves to null if they cancel.
+   *
+   * Here rather than on a port because a path is only meaningful to a backend running on the same
+   * machine — which is exactly what having this capability means. The backend's own export/import
+   * take a path on *its* filesystem, so a browser File, which carries no path, cannot serve them.
+   */
+  chooseFile?(options: { save: boolean; defaultName?: string }): Promise<string | null>;
+}
+
+/**
  * Where the host is running, and what that implies for locating things.
  *
  * Deliberately knows nothing about the data layer — obtaining a client is `BackendConnector`'s job
@@ -145,4 +197,10 @@ export interface PlatformAdapter {
    * feature-detects and simply shows no account controls.
    */
   accounts?: AccountHost;
+
+  /**
+   * Settings the host passes to the backend at startup. Absent on web, where the host does not
+   * start one — the settings page feature-detects and shows nothing.
+   */
+  executor?: ExecutorHost;
 }

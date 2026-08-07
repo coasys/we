@@ -23,7 +23,7 @@ import { createFileExpression, getProfile, publishProfileToPublicPerspective } f
 import { createAd4mAgentSession, createAd4mDatasetLifecycle } from './lifecycleAdapter';
 import { compileManifest } from './manifestCompiler';
 import { buildModelClasses, buildModelManifest, getForeignShacl } from './perspectiveHelpers';
-import { createAd4mRuntimeAdmin } from './runtimeAdminAdapter';
+import { type Ad4mRuntimeOptions, createAd4mRuntimeAdmin } from './runtimeAdminAdapter';
 import {
   deduplicateSpaceSdna,
   ensureModelRegistered,
@@ -74,7 +74,13 @@ export function createAd4mProfileDirectory(backendClient: unknown): ProfileDirec
   };
 }
 
-export function createAd4mBackendPorts(backendClient: unknown, ctx: BackendPortsContext): BackendPorts {
+export function createAd4mBackendPorts(
+  backendClient: unknown,
+  ctx: BackendPortsContext,
+  // Everything a host knows about the connection that the ports cannot see for themselves. Only
+  // runtime administration cares so far — see `Ad4mRuntimeOptions.administersNode`.
+  options: Ad4mRuntimeOptions = {},
+): BackendPorts {
   // Register the native model classes for name-based $query resolution. Previously a module-load
   // side effect in the shell; it belongs to the backend choice. Use .className (set by @Model)
   // rather than .name — bundlers mangle the native .name in production builds.
@@ -89,7 +95,7 @@ export function createAd4mBackendPorts(backendClient: unknown, ctx: BackendPorts
     lifecycle: createAd4mDatasetLifecycle(backendClient),
     schemas: createAd4mSchemaPort(backendClient),
     profiles: createAd4mProfileDirectory(backendClient),
-    runtime: createAd4mRuntimeAdmin(backendClient),
+    runtime: createAd4mRuntimeAdmin(backendClient, options),
     ephemeral,
     dataBindings: (deps: DataBindingDeps) =>
       createAd4mDataBindings({

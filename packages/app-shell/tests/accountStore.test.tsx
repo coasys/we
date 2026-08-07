@@ -318,6 +318,38 @@ describe('switching and creating always end in applySelection', () => {
     expect(seen).toEqual([true, null]);
   });
 
+  it('stays in the creating state after a successful create, so the sign-in form cannot return', async () => {
+    // Electron does not replace the process — it respawns the executor and navigates the same
+    // renderer, so `applySelection()` resolves while the outgoing document is still running. If
+    // this flag were cleared there, the boot screen would flip from the create spinner back to the
+    // sign-in form, drawn with the new account's placeholder name, for the frames before the reload
+    // landed. That was the flash; it appeared intermittently because it is a race with navigation.
+    const { host } = stubHost(TWO);
+    accountHost = host;
+    const store = mount();
+    await vi.waitFor(() => expect(store.accounts()).toHaveLength(2));
+
+    await store.createAccount();
+
+    expect(store.creating()).toBe(true);
+  });
+
+  it('leaves the creating state when the create fails, so the screen is usable again', async () => {
+    const { host } = stubHost(TWO, {
+      async create() {
+        throw new Error('Disk full');
+      },
+    });
+    accountHost = host;
+    const store = mount();
+    await vi.waitFor(() => expect(store.accounts()).toHaveLength(2));
+
+    await store.createAccount();
+
+    expect(store.creating()).toBe(false);
+    expect(store.error()).toBe('Disk full');
+  });
+
   it('clears the target when the switch fails, so the screen returns to the form', async () => {
     const { host } = stubHost(TWO, {
       async select() {
