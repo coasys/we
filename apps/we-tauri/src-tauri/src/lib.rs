@@ -73,6 +73,16 @@ pub fn run() {
     // Read before the builder takes ownership of the state — the executor is configured once, in
     // the setup hook below, and nothing it is given can be changed after that.
     let executor_settings = registry.executor_settings();
+
+    // Log levels reach the executor as `RUST_LOG`, which its own logging setup reads and, finding
+    // set, leaves alone. Only the user's overrides go in — anything unnamed keeps the executor's
+    // default. An inherited `RUST_LOG` always wins: someone who exported one before launching is
+    // debugging something specific, and a settings screen quietly overriding that would be the
+    // opposite of helpful.
+    if !executor_settings.log_levels.is_empty() && std::env::var("RUST_LOG").is_err() {
+        let rust_log = rust_executor::logging::build_rust_log_from_config(&executor_settings.log_levels);
+        std::env::set_var("RUST_LOG", rust_log);
+    }
     println!("AD4M data path: {}", app_data_path.display());
 
     std::fs::create_dir_all(&app_data_path)
@@ -101,6 +111,7 @@ pub fn run() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
         .manage(state)
         .invoke_handler(tauri::generate_handler![
             commands::state::get_port,
@@ -113,7 +124,8 @@ pub fn run() {
             commands::accounts::apply_account_selection,
             commands::accounts::get_executor_settings,
             commands::accounts::set_executor_settings,
-            commands::accounts::restart_executor
+            commands::accounts::restart_executor,
+            commands::accounts::choose_file
         ])
         .setup(move |app| {
             // Start embedded app HTTP servers (in production only)

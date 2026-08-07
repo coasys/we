@@ -2,6 +2,15 @@ import type { SchemaNode } from '@we/schema-shared';
 
 import { emptyNote, section } from './settingsSection.ts';
 
+/** The five the backend's logger accepts; anything else it silently drops. */
+const LOG_LEVEL_OPTIONS = [
+  { label: 'Error', value: 'error' },
+  { label: 'Warning', value: 'warn' },
+  { label: 'Info', value: 'info' },
+  { label: 'Debug', value: 'debug' },
+  { label: 'Trace', value: 'trace' },
+];
+
 /**
  * RuntimeSettings — the backend process's own settings, as sections of the settings pages.
  *
@@ -327,6 +336,214 @@ export const mcpServer: SchemaNode = {
     },
   },
 };
+
+/**
+ * Export and import of everything this agent holds.
+ *
+ * Gated on one flag covering both halves: the backend writes the file and the host is what can name
+ * one, and neither is any use alone. On web that means it is absent — the path would be on somebody
+ * else's filesystem, which is not a file the user could go and find.
+ *
+ * The status line is the whole feedback. An export writes somewhere the app cannot read back, and
+ * an import's effect is spread across data the user has to go and look at, so neither leaves a
+ * visible result of its own.
+ */
+export const backup: SchemaNode = {
+  type: '$if',
+  props: {
+    condition: { $store: 'runtimeStore.canBackUp' },
+    then: {
+      type: 'Column',
+      props: { gap: '300' },
+      children: [
+        {
+          type: 'Row',
+          props: { gap: '200', ay: 'center' },
+          children: [
+            { type: 'we-icon', props: { name: 'archive', color: 'neutral-600' } },
+            { type: 'we-text', props: { fontWeight: 'semibold' }, children: ['Backup'] },
+          ],
+        },
+        {
+          type: 'we-text',
+          props: { variant: 'footnote', color: 'neutral-500' },
+          children: [
+            'Write everything this account holds to a file, or read a file back in. The file is written by the data layer, on this machine.',
+          ],
+        },
+        {
+          type: 'Row',
+          props: { gap: '200', wrap: true },
+          children: [
+            {
+              type: 'we-button',
+              props: {
+                text: 'Export',
+                size: 'sm',
+                variant: 'secondary',
+                loading: { $store: 'runtimeStore.loading' },
+                onClick: { $action: 'runtimeStore.exportDatabase' },
+              },
+            },
+            {
+              type: 'we-button',
+              props: {
+                text: 'Import',
+                size: 'sm',
+                variant: 'ghost',
+                loading: { $store: 'runtimeStore.loading' },
+                onClick: { $action: 'runtimeStore.importDatabase' },
+              },
+            },
+          ],
+        },
+        {
+          type: '$if',
+          props: {
+            condition: { $store: 'runtimeStore.backupStatus' },
+            then: {
+              type: 'we-text',
+              props: { variant: 'footnote', color: 'neutral-500', styles: { 'word-break': 'break-all' } },
+              children: [{ $store: 'runtimeStore.backupStatus' }],
+            },
+          },
+        },
+      ],
+    },
+  },
+};
+
+/**
+ * Per-crate log levels for the backend.
+ *
+ * Overrides only — anything not listed keeps the backend's own default, which is why an empty list
+ * says so rather than showing a table of defaults nobody set. That also keeps the crate names out
+ * of WE: they belong to whatever the backend is built from, and hardcoding today's four here would
+ * make them look like a contract.
+ *
+ * A host setting, like MCP: the levels are read when the backend starts.
+ */
+export const logging: SchemaNode = {
+  type: '$if',
+  props: {
+    condition: { $store: 'runtimeStore.canConfigureExecutor' },
+    then: {
+      type: 'Column',
+      props: { gap: '300' },
+      children: [
+        {
+          type: 'Row',
+          props: { gap: '200', ay: 'center' },
+          children: [
+            { type: 'we-icon', props: { name: 'file-text', color: 'neutral-600' } },
+            { type: 'we-text', props: { fontWeight: 'semibold' }, children: ['Logging'] },
+          ],
+        },
+        {
+          type: 'we-text',
+          props: { variant: 'footnote', color: 'neutral-500' },
+          children: ['Raise the log level for part of the data layer when you need to see what it is doing.'],
+        },
+        {
+          type: '$if',
+          props: {
+            condition: { $count: { items: { $store: 'runtimeStore.logLevels' } } },
+            then: {
+              type: 'Column',
+              props: { gap: '200' },
+              children: [
+                {
+                  type: '$each',
+                  props: { items: { $store: 'runtimeStore.logLevels' }, as: 'entry' },
+                  children: [
+                    {
+                      type: 'Row',
+                      props: { gap: '200', ay: 'center', bg: 'neutral-100', r: '300', px: '300', py: '200' },
+                      children: [
+                        { type: 'we-code', props: { flex: '1' }, children: ['$entry.crate'] },
+                        {
+                          type: 'we-select',
+                          props: {
+                            width: '140px',
+                            size: 'sm',
+                            value: '$entry.level',
+                            options: LOG_LEVEL_OPTIONS,
+                            onChange: {
+                              $action: 'runtimeStore.setLogLevel',
+                              args: ['$entry.crate', '$event.detail'],
+                            },
+                          },
+                        },
+                        {
+                          type: 'we-button',
+                          props: {
+                            variant: 'ghost',
+                            size: 'sm',
+                            onClick: { $action: 'runtimeStore.removeLogLevel', args: ['$entry.crate'] },
+                          },
+                          children: [{ type: 'we-icon', props: { name: 'x' } }],
+                        },
+                      ],
+                    },
+                  ],
+                },
+              ],
+            },
+            else: emptyNote('The data layer is using its own default levels.'),
+          },
+        },
+        {
+          type: 'Row',
+          props: { gap: '200' },
+          children: [
+            {
+              type: 'we-input',
+              props: {
+                flex: '1',
+                size: 'sm',
+                // Named rather than offered as a list: the parts of a backend are its own business,
+                // and a picker here would go stale the moment one of them was renamed.
+                placeholder: 'Part of the data layer, e.g. rust_executor or holochain',
+                value: { $local: 'newLogCrate' },
+                onInput: { $setLocal: 'newLogCrate', from: '$event.detail' },
+              },
+            },
+            {
+              type: 'we-select',
+              props: {
+                width: '140px',
+                size: 'sm',
+                value: { $local: 'newLogLevel' },
+                options: LOG_LEVEL_OPTIONS,
+                onChange: { $setLocal: 'newLogLevel', from: '$event.detail' },
+              },
+            },
+            {
+              type: 'we-button',
+              props: {
+                text: 'Set',
+                size: 'sm',
+                variant: 'secondary',
+                disabled: { $not: { $local: 'newLogCrate' } },
+                onClick: {
+                  $action: 'runtimeStore.setLogLevel',
+                  args: [{ $local: 'newLogCrate' }, { $local: 'newLogLevel' }],
+                  onSuccess: [{ $setLocal: 'newLogCrate', value: '' }],
+                },
+              },
+            },
+          ],
+        },
+      ],
+    },
+  },
+};
+
+/** Local state for the row that adds one. Declared by the page that renders `logging`. */
+export const loggingLocalState = {
+  newLogCrate: { type: 'string', initial: '' },
+  newLogLevel: { type: 'string', initial: 'debug' },
+} as const;
 
 /** Diagnostics and out-of-band peer exchange for the networking layer. */
 export const peerNetwork: SchemaNode = {

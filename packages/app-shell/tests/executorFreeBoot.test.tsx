@@ -238,8 +238,8 @@ describe('first run', () => {
     agentOptions = { unlocked: true, password: 'the-real-one' };
     let restarts = 0;
     executorHost = {
-      getSettings: async () => ({ mcpEnabled: false, mcpPort: 3001 }),
-      setSettings: async () => ({ mcpEnabled: false, mcpPort: 3001 }),
+      getSettings: async () => ({ mcpEnabled: false, mcpPort: 3001, logLevels: {} }),
+      setSettings: async () => ({ mcpEnabled: false, mcpPort: 3001, logLevels: {} }),
       restart: async () => {
         restarts += 1;
       },
@@ -271,8 +271,8 @@ describe('first run', () => {
     };
     let restarts = 0;
     executorHost = {
-      getSettings: async () => ({ mcpEnabled: false, mcpPort: 3001 }),
-      setSettings: async () => ({ mcpEnabled: false, mcpPort: 3001 }),
+      getSettings: async () => ({ mcpEnabled: false, mcpPort: 3001, logLevels: {} }),
+      setSettings: async () => ({ mcpEnabled: false, mcpPort: 3001, logLevels: {} }),
       restart: async () => {
         restarts += 1;
       },
@@ -299,8 +299,8 @@ describe('first run', () => {
     agentOptions = { unlocked: false, password: 'secret' };
     let restarts = 0;
     executorHost = {
-      getSettings: async () => ({ mcpEnabled: false, mcpPort: 3001 }),
-      setSettings: async () => ({ mcpEnabled: false, mcpPort: 3001 }),
+      getSettings: async () => ({ mcpEnabled: false, mcpPort: 3001, logLevels: {} }),
+      setSettings: async () => ({ mcpEnabled: false, mcpPort: 3001, logLevels: {} }),
       restart: async () => {
         restarts += 1;
       },

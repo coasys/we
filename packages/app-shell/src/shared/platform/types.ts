@@ -133,6 +133,14 @@ export interface ExecutorSettings {
    */
   mcpEnabled: boolean;
   mcpPort: number;
+  /**
+   * Per-crate log levels for the backend, as `{ crate: level }`.
+   *
+   * Overrides only. The backend has its own defaults and applies them to anything not named here,
+   * so storing the effective set would freeze today's defaults into every install that ever opened
+   * this screen. Levels are the usual five: error, warn, info, debug, trace.
+   */
+  logLevels: Record<string, string>;
 }
 
 export interface ExecutorHost {
@@ -147,6 +155,14 @@ export interface ExecutorHost {
    * knew which would be reaching past the contract.
    */
   restart(): Promise<void>;
+  /**
+   * Ask the user for a path on this machine. Resolves to null if they cancel.
+   *
+   * Here rather than on a port because a path is only meaningful to a backend running on the same
+   * machine — which is exactly what having this capability means. The backend's own export/import
+   * take a path on *its* filesystem, so a browser File, which carries no path, cannot serve them.
+   */
+  chooseFile?(options: { save: boolean; defaultName?: string }): Promise<string | null>;
 }
 
 /**

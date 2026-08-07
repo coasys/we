@@ -54,6 +54,7 @@
 //! account created in one is listed by the other.
 
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -125,14 +126,23 @@ const DEFAULT_MCP_PORT: u16 = 3001;
 /// Settings the executor reads once, at startup. Mirrors the electron host's shape exactly — the
 /// registry file is shared, and a field spelled differently here is a setting that silently
 /// reverts every time the other host writes the file.
-#[derive(Serialize, Deserialize, Clone, Copy, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct ExecutorSettings {
     #[serde(default)]
     pub mcp_enabled: bool,
     #[serde(default = "default_mcp_port")]
     pub mcp_port: u16,
+    /// Per-crate log levels, as overrides. Anything unnamed keeps the executor's own default, so
+    /// storing the effective set would freeze today's defaults into every install that opened the
+    /// screen.
+    #[serde(default)]
+    pub log_levels: HashMap<String, String>,
 }
+
+/// The levels the executor's logger accepts. Anything else is refused rather than written, since
+/// its own parser drops what it does not recognise and the setting would look applied.
+const LOG_LEVELS: [&str; 5] = ["error", "warn", "info", "debug", "trace"];
 
 fn default_mcp_port() -> u16 {
     DEFAULT_MCP_PORT
@@ -143,6 +153,7 @@ impl Default for ExecutorSettings {
         ExecutorSettings {
             mcp_enabled: false,
             mcp_port: DEFAULT_MCP_PORT,
+            log_levels: HashMap::new(),
         }
     }
 }
@@ -153,6 +164,7 @@ impl Default for ExecutorSettings {
 pub struct ExecutorSettingsUpdate {
     pub mcp_enabled: Option<bool>,
     pub mcp_port: Option<u16>,
+    pub log_levels: Option<HashMap<String, String>>,
 }
 
 pub struct AccountRegistry {
@@ -357,25 +369,36 @@ impl AccountRegistry {
     /// Read before the executor is configured, which is why it lives in this file at all: it is
     /// the one thing this host persists that has to be known before anything starts.
     pub fn executor_settings(&self) -> ExecutorSettings {
-        self.read().executor.unwrap_or_default()
+        self.read().executor.clone().unwrap_or_default()
     }
 
     /// Apply a partial update. An absent field keeps its current value.
     pub fn set_executor_settings(&self, update: ExecutorSettingsUpdate) -> Result<ExecutorSettings, String> {
         let state = self.read();
-        let current = state.executor.unwrap_or_default();
+        let current = state.executor.clone().unwrap_or_default();
         let port = update.mcp_port.unwrap_or(current.mcp_port);
         // Refused here rather than at startup: an unusable port written now would fail at the next
         // launch, a restart away from the field that caused it.
         if port < 1024 {
             return Err("Choose a port between 1024 and 65535".to_string());
         }
+        if let Some(levels) = &update.log_levels {
+            for (crate_name, level) in levels {
+                if !LOG_LEVELS.contains(&level.as_str()) {
+                    return Err(format!("\"{level}\" is not a log level"));
+                }
+                if crate_name.trim().is_empty() {
+                    return Err("A crate name is required".to_string());
+                }
+            }
+        }
         let next = ExecutorSettings {
             mcp_enabled: update.mcp_enabled.unwrap_or(current.mcp_enabled),
             mcp_port: port,
+            log_levels: update.log_levels.unwrap_or(current.log_levels),
         };
         self.write(&RegistryState {
-            executor: Some(next),
+            executor: Some(next.clone()),
             ..state
         })?;
         Ok(next)
@@ -888,6 +911,7 @@ mod tests {
             .set_executor_settings(ExecutorSettingsUpdate {
                 mcp_enabled: Some(true),
                 mcp_port: Some(4321),
+                log_levels: Some(HashMap::from([("rust_executor".to_string(), "debug".to_string())])),
             })
             .unwrap();
         assert!(saved.mcp_enabled);
@@ -898,6 +922,23 @@ mod tests {
         let after = registry.executor_settings();
         assert!(after.mcp_enabled, "enabling MCP was lost by an unrelated registry write");
         assert_eq!(after.mcp_port, 4321);
+        assert_eq!(after.log_levels.get("rust_executor").map(String::as_str), Some("debug"));
+        fs::remove_dir_all(root).ok();
+    }
+
+    #[test]
+    fn refuses_a_log_level_the_executor_would_drop() {
+        // Its own parser skips what it does not recognise, so a typo would look accepted here and
+        // silently do nothing there.
+        let (root, _, registry) = temp_registry();
+        assert!(registry
+            .set_executor_settings(ExecutorSettingsUpdate {
+                mcp_enabled: None,
+                mcp_port: None,
+                log_levels: Some(HashMap::from([("holochain".to_string(), "verbose".to_string())])),
+            })
+            .is_err());
+        assert!(registry.executor_settings().log_levels.is_empty());
         fs::remove_dir_all(root).ok();
     }
 
@@ -917,6 +958,7 @@ mod tests {
             .set_executor_settings(ExecutorSettingsUpdate {
                 mcp_enabled: None,
                 mcp_port: Some(80),
+                log_levels: None,
             })
             .is_err());
         fs::remove_dir_all(root).ok();

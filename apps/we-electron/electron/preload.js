@@ -20,4 +20,5 @@ contextBridge.exposeInMainWorld('electron', {
   getExecutorSettings: () => ipcRenderer.invoke('executor-settings-get'),
   setExecutorSettings: (settings) => ipcRenderer.invoke('executor-settings-set', settings),
   restartExecutor: () => ipcRenderer.invoke('executor-restart'),
+  chooseFile: (options) => ipcRenderer.invoke('executor-choose-file', options),
 });

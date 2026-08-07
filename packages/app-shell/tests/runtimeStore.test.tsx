@@ -11,7 +11,7 @@
  * (`backendPorts`), so driving that directly is both the smaller harness and the more direct test.
  */
 import { render } from '@solidjs/testing-library';
-import type { ExecutorHost } from '@we/app-shell/shared';
+import type { ExecutorHost, ExecutorSettings } from '@we/app-shell/shared';
 import type { AiModel, BackendPorts, ConsentRequest, RuntimeAdminPort } from '@we/backend-shared';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -123,7 +123,7 @@ beforeEach(() => {
 describe('how the backend is started', () => {
   /** An executor host that records what it was told, the way a real one persists it. */
   function stubExecutor(overrides: Partial<ExecutorHost> = {}) {
-    let stored = { mcpEnabled: false, mcpPort: 3001 };
+    let stored: ExecutorSettings = { mcpEnabled: false, mcpPort: 3001, logLevels: {} };
     const calls: string[] = [];
     const host: ExecutorHost = {
       async getSettings() {
@@ -187,7 +187,9 @@ describe('how the backend is started', () => {
   });
 
   it('reads the current settings when the settings page opens', async () => {
-    const { host } = stubExecutor({ getSettings: async () => ({ mcpEnabled: true, mcpPort: 4321 }) });
+    const { host } = stubExecutor({
+      getSettings: async () => ({ mcpEnabled: true, mcpPort: 4321, logLevels: { holochain: 'debug' } }),
+    });
     executorHost = host;
     activeShellView = 'settings';
     ports = {};
@@ -195,6 +197,67 @@ describe('how the backend is started', () => {
 
     await vi.waitFor(() => expect(store.mcpPort()).toBe(4321));
     expect(store.mcpEnabled()).toBe(true);
+    expect(store.logLevels()).toEqual([{ crate: 'holochain', level: 'debug' }]);
+  });
+
+  it('adds and edits a log level through one action, and drops an override on removal', async () => {
+    const { host } = stubExecutor();
+    executorHost = host;
+    ports = {};
+    const store = mount();
+
+    await store.setLogLevel('rust_executor', 'debug');
+    await store.setLogLevel('holochain', 'trace');
+    // Setting one that exists is an edit; there is no separate "add", because to the stored map
+    // they are the same write.
+    await store.setLogLevel('rust_executor', 'trace');
+
+    expect(store.logLevels()).toEqual([
+      { crate: 'holochain', level: 'trace' },
+      { crate: 'rust_executor', level: 'trace' },
+    ]);
+
+    await store.removeLogLevel('holochain');
+    // Removed, not set to a default: the backend applies its own to anything unnamed.
+    expect(store.logLevels()).toEqual([{ crate: 'rust_executor', level: 'trace' }]);
+  });
+
+  it('offers a backup only when both halves are there', () => {
+    const { host } = stubExecutor();
+
+    // The host can name a file, but the backend cannot write one.
+    executorHost = { ...host, chooseFile: async () => '/tmp/x.json' };
+    ports = { runtime: {} };
+    expect(mount().canBackUp()).toBe(false);
+
+    // ...and the reverse: a backend that exports, on a host with no way to name a file. Which is
+    // web — where the path would be on somebody else's filesystem anyway.
+    executorHost = host;
+    ports = { runtime: { exportDatabase: async () => {} } };
+    expect(mount().canBackUp()).toBe(false);
+
+    executorHost = { ...host, chooseFile: async () => '/tmp/x.json' };
+    ports = { runtime: { exportDatabase: async () => {} } };
+    expect(mount().canBackUp()).toBe(true);
+  });
+
+  it('does nothing when the file dialog is cancelled', async () => {
+    const { host } = stubExecutor({ chooseFile: async () => null });
+    executorHost = host;
+    let exports = 0;
+    ports = {
+      runtime: {
+        exportDatabase: async () => {
+          exports += 1;
+        },
+      },
+    };
+    const store = mount();
+
+    await store.exportDatabase();
+
+    expect(exports).toBe(0);
+    expect(store.backupStatus()).toBe('');
   });
 });
 

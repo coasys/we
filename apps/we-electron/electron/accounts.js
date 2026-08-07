@@ -130,6 +130,9 @@ export function holdsLauncherState(path) {
 /** The launcher's default, so an agent used by both is reachable on the same port. */
 const DEFAULT_MCP_PORT = 3001;
 
+/** The levels the executor's logger accepts. Anything else is refused rather than written. */
+const LOG_LEVELS = ['error', 'warn', 'info', 'debug', 'trace'];
+
 export function createAccountRegistry({ configDir, defaultPath, defaultName = 'Main' }) {
   /** Accounts WE creates, and the registry, both inside the container. */
   const managedRoot = join(defaultPath, CONTAINER_DIR);
@@ -421,10 +424,17 @@ export function createAccountRegistry({ configDir, defaultPath, defaultName = 'M
      */
     executorSettings() {
       const stored = read().executor ?? {};
-      return { mcpEnabled: stored.mcpEnabled === true, mcpPort: Number(stored.mcpPort) || DEFAULT_MCP_PORT };
+      return {
+        mcpEnabled: stored.mcpEnabled === true,
+        mcpPort: Number(stored.mcpPort) || DEFAULT_MCP_PORT,
+        // Overrides only — the executor applies its own defaults to everything unnamed. Storing the
+        // effective set instead would freeze today's defaults into every install that opened the
+        // screen, and they would never move again.
+        logLevels: { ...(stored.logLevels ?? {}) },
+      };
     },
 
-    setExecutorSettings({ mcpEnabled, mcpPort } = {}) {
+    setExecutorSettings({ mcpEnabled, mcpPort, logLevels } = {}) {
       const current = this.executorSettings();
       const port = Number(mcpPort);
       // A port outside the usable range would be written, then refused by the executor at the next
@@ -432,9 +442,18 @@ export function createAccountRegistry({ configDir, defaultPath, defaultName = 'M
       if (mcpPort !== undefined && (!Number.isInteger(port) || port < 1024 || port > 65535)) {
         throw new Error('Choose a port between 1024 and 65535');
       }
+      if (logLevels !== undefined) {
+        for (const [crate, level] of Object.entries(logLevels)) {
+          // An unknown level is dropped by the executor's own parser, so a typo would look accepted
+          // here and silently do nothing there.
+          if (!LOG_LEVELS.includes(level)) throw new Error(`"${level}" is not a log level`);
+          if (!crate.trim()) throw new Error('A crate name is required');
+        }
+      }
       const next = {
         mcpEnabled: mcpEnabled === undefined ? current.mcpEnabled : mcpEnabled === true,
         mcpPort: mcpPort === undefined ? current.mcpPort : port,
+        logLevels: logLevels === undefined ? current.logLevels : logLevels,
       };
       write({ ...read(), executor: next });
       return next;

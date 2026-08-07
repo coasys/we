@@ -411,6 +411,15 @@ export function createAd4mRuntimeAdmin(backendClient: unknown, options: Ad4mRunt
       await client.ai.removeTask(id);
     },
 
+    // ── The whole store ───────────────────────────────────────────────────────
+    async exportDatabase(path) {
+      await client.runtime.exportDb(path);
+    },
+
+    async importDatabase(path) {
+      await client.runtime.importDb(path);
+    },
+
     // ── Languages ─────────────────────────────────────────────────────────────
     async languages() {
       const handles = await client.languages.all();

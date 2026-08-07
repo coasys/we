@@ -68,6 +68,9 @@ export const storeEntries: StoreEntry[] = [
       mcpEnabled: { type: 'boolean' },
       mcpPort: { type: 'number' },
       executorRestartPending: { type: 'boolean' },
+      canBackUp: { type: 'boolean' },
+      logLevels: { type: 'array', properties: ['crate', 'level'] },
+      backupStatus: { type: 'string' },
       aiModels: {
         type: 'array',
         properties: [
@@ -123,6 +126,10 @@ export const storeEntries: StoreEntry[] = [
     actions: [
       'setMcpEnabled',
       'setMcpPort',
+      'setLogLevel',
+      'removeLogLevel',
+      'exportDatabase',
+      'importDatabase',
       'restartExecutor',
       'loadAiModels',
       'loadAiTasks',
@@ -470,6 +477,11 @@ function generateStoresText(entries: StoreEntry[]): string {
         mcpEnabled: 'boolean — whether the backend serves MCP on its next start',
         mcpPort: 'number — the port MCP is served on',
         executorRestartPending: 'boolean — settings were changed that the running backend has not picked up',
+        canBackUp:
+          'boolean — a database export/import can be offered: the backend writes the file and the host can name one. False on web',
+        logLevels:
+          '{ crate, level }[] — per-crate log levels the user has set, sorted. Empty means the backend own defaults are in use',
+        backupStatus: 'string — what the last export or import did, for display. Empty until one runs',
         aiModels:
           'AiModelView[] — installed models, each carrying its display strings (kindLabel, sourceLabel, detail, statusText, ready) alongside id/name/kind/source/isDefault. Empty until loadAiModels() runs',
         aiTasks: 'AiTask[] — named prompts apps registered against a model (id, name, modelId, systemPrompt)',
@@ -493,6 +505,11 @@ function generateStoresText(entries: StoreEntry[]): string {
       actions: {
         setMcpEnabled: '(enabled: boolean): turns MCP on or off for the backend next start',
         setMcpPort: '(port: number): sets the MCP port. The host refuses one outside 1024-65535',
+        setLogLevel:
+          '(crate: string, level: string): sets one crate log level — adds it when not already set, so there is no separate add. Levels: error, warn, info, debug, trace',
+        removeLogLevel: '(crate: string): drops an override, returning that crate to the backend default',
+        exportDatabase: '(): asks for a file, then has the backend write everything to it',
+        importDatabase: '(): asks for a file, then has the backend read it back in',
         restartExecutor: '(): starts the backend over so written settings take effect. Does not return',
         loadAiModels: '(): fetches the installed AI models and their load status',
         loadAiTasks: '(): fetches the prompts apps registered against a model',

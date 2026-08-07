@@ -143,6 +143,17 @@ export interface RuntimeAdminPort {
   installLanguage?(address: string): Promise<void>;
   removeLanguage?(address: string): Promise<void>;
 
+  // ── The whole store ─────────────────────────────────────────────────────────
+  /**
+   * Write everything this agent holds to a file on the backend's filesystem, and read it back.
+   *
+   * Paths, not bytes: the backend does the writing, so what it needs is somewhere to write. Getting
+   * one is the host's job (see `ExecutorHost.chooseFile`), which is why these are only reachable
+   * where the backend runs on the same machine as the app.
+   */
+  exportDatabase?(path: string): Promise<void>;
+  importDatabase?(path: string): Promise<void>;
+
   // ── Trust ───────────────────────────────────────────────────────────────────
   trustedAgents?(): Promise<string[]>;
   trustAgent?(id: string): Promise<void>;

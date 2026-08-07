@@ -1,4 +1,4 @@
-import type { BackendConnector, BackendInitResult } from '@we/app-shell/shared';
+import type { Account, BackendConnector, BackendInitResult, ExecutorSettings } from '@we/app-shell/shared';
 import { createAd4mBackendPorts } from '@we/backend-ad4m';
 
 import { buildAd4mClientWithApollo } from '../utils/apolloClient';
@@ -11,18 +11,18 @@ declare global {
       getToken: () => Promise<string>;
       getIsDevelopment: () => Promise<boolean>;
       getDesktopSources: () => Promise<unknown[]>;
-      listAccounts: () => Promise<Array<{ id: string; name: string; avatar?: string; active: boolean }>>;
-      createAccount: () => Promise<{ id: string; name: string; active: boolean }>;
+      // The contract's own type rather than a hand-copied shape: the copy had drifted, and was
+      // missing the `hasAgent` the boot screen reads to tell setup from sign-in.
+      listAccounts: () => Promise<Account[]>;
+      createAccount: () => Promise<Account>;
       setAccountDisplay: (id: string, display: { name?: string; avatar?: string }) => Promise<void>;
       selectAccount: (id: string) => Promise<void>;
       removeAccount: (id: string) => Promise<void>;
       applyAccountSelection: () => Promise<void>;
-      getExecutorSettings: () => Promise<{ mcpEnabled: boolean; mcpPort: number }>;
-      setExecutorSettings: (settings: {
-        mcpEnabled?: boolean;
-        mcpPort?: number;
-      }) => Promise<{ mcpEnabled: boolean; mcpPort: number }>;
+      getExecutorSettings: () => Promise<ExecutorSettings>;
+      setExecutorSettings: (settings: Partial<ExecutorSettings>) => Promise<ExecutorSettings>;
       restartExecutor: () => Promise<void>;
+      chooseFile: (options: { save: boolean; defaultName?: string }) => Promise<string | null>;
     };
   }
 }

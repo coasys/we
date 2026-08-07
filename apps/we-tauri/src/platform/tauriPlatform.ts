@@ -29,6 +29,7 @@ const executor: ExecutorHost = {
   getSettings: () => invoke<ExecutorSettings>('get_executor_settings'),
   setSettings: (settings: Partial<ExecutorSettings>) => invoke<ExecutorSettings>('set_executor_settings', { settings }),
   restart: () => invoke<void>('restart_executor'),
+  chooseFile: (options) => invoke<string | null>('choose_file', options),
 };
 
 export const tauriPlatform: PlatformAdapter = {

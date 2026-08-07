@@ -1,11 +1,4 @@
-import type {
-  Account,
-  AccountHost,
-  AppConfig,
-  ExecutorHost,
-  ExecutorSettings,
-  PlatformAdapter,
-} from '@we/app-shell/shared';
+import type { AccountHost, AppConfig, ExecutorHost, ExecutorSettings, PlatformAdapter } from '@we/app-shell/shared';
 
 // Import auto-generated port mapping
 import portMap from '../../electron/seed-port-map.json';
@@ -20,7 +13,7 @@ const isDevelopmentCache: boolean = import.meta.env.DEV;
  */
 const accounts: AccountHost = {
   list: () => window.electron.listAccounts(),
-  create: () => window.electron.createAccount() as Promise<Account>,
+  create: () => window.electron.createAccount(),
   setDisplay: (id: string, display: { name?: string; avatar?: string }) =>
     window.electron.setAccountDisplay(id, display),
   select: (id: string) => window.electron.selectAccount(id),
@@ -33,6 +26,7 @@ const executor: ExecutorHost = {
   getSettings: () => window.electron.getExecutorSettings(),
   setSettings: (settings: Partial<ExecutorSettings>) => window.electron.setExecutorSettings(settings),
   restart: () => window.electron.restartExecutor(),
+  chooseFile: (options) => window.electron.chooseFile(options),
 };
 
 export const electronPlatform: PlatformAdapter = {

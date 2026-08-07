@@ -383,7 +383,7 @@ describe('executor settings', () => {
   it('defaults to MCP off, on the launcher port', () => {
     // Opt-in by design: MCP opens a port that serves this agent's data to anything local that
     // speaks the protocol.
-    expect(registry.executorSettings()).toEqual({ mcpEnabled: false, mcpPort: 3001 });
+    expect(registry.executorSettings()).toEqual({ mcpEnabled: false, mcpPort: 3001, logLevels: {} });
   });
 
   it('survives registry writes made for unrelated reasons', () => {
@@ -395,13 +395,24 @@ describe('executor settings', () => {
 
     // Both hosts rewrite this file when an account changes. A rewrite that dropped the executor
     // block would turn MCP off at the next launch with nothing having asked for that.
-    expect(registry.executorSettings()).toEqual({ mcpEnabled: true, mcpPort: 4321 });
+    expect(registry.executorSettings()).toEqual({ mcpEnabled: true, mcpPort: 4321, logLevels: {} });
   });
 
   it('applies one field without clearing the other', () => {
     registry.setExecutorSettings({ mcpEnabled: true });
     registry.setExecutorSettings({ mcpPort: 5000 });
-    expect(registry.executorSettings()).toEqual({ mcpEnabled: true, mcpPort: 5000 });
+    expect(registry.executorSettings()).toEqual({ mcpEnabled: true, mcpPort: 5000, logLevels: {} });
+  });
+
+  it('keeps log levels as overrides, and refuses one the executor would drop', () => {
+    // Overrides only: anything unnamed keeps the executor's own default, so storing the effective
+    // set would freeze today's defaults into every install that opened the screen.
+    registry.setExecutorSettings({ logLevels: { rust_executor: 'debug' } });
+    expect(registry.executorSettings().logLevels).toEqual({ rust_executor: 'debug' });
+
+    // A typo would look accepted here and silently do nothing in the executor's own parser.
+    expect(() => registry.setExecutorSettings({ logLevels: { holochain: 'verbose' } })).toThrow();
+    expect(registry.executorSettings().logLevels).toEqual({ rust_executor: 'debug' });
   });
 
   it('refuses a port the executor could not bind', () => {

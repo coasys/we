@@ -2067,6 +2067,9 @@ export const contextData: ContextData = {
         mcpEnabled: { type: 'boolean' },
         mcpPort: { type: 'number' },
         executorRestartPending: { type: 'boolean' },
+        canBackUp: { type: 'boolean' },
+        logLevels: { type: 'array', properties: ['crate', 'level'] },
+        backupStatus: { type: 'string' },
         aiModels: {
           type: 'array',
           properties: [
@@ -2122,6 +2125,10 @@ export const contextData: ContextData = {
       actions: [
         'setMcpEnabled',
         'setMcpPort',
+        'setLogLevel',
+        'removeLogLevel',
+        'exportDatabase',
+        'importDatabase',
         'restartExecutor',
         'loadAiModels',
         'loadAiTasks',

@@ -11,7 +11,10 @@ import { aiSection } from './AiSettings.schema.ts';
 import { createSpaceModal } from './CreateSpaceModal.ts';
 import { languagesLocalState, languagesSection } from './LanguageSettings.schema.ts';
 import {
+  backup,
   connectedApps,
+  logging,
+  loggingLocalState,
   mcpServer,
   networkLocalState,
   peerNetwork,
@@ -801,6 +804,9 @@ export const settingsTemplate: TemplateSchema = {
         sharedSpacesSection,
         personalSpacesSection,
         createSpaceButton,
+        // Below the spaces themselves: it is about all of this data at once, and it is the one
+        // control here that writes a file rather than changing what is on screen.
+        backup,
         createSpaceModalMount,
       ]),
     },
@@ -813,8 +819,10 @@ export const settingsTemplate: TemplateSchema = {
     },
     {
       path: '/network',
-      $localState: networkLocalState,
-      ...page([runtimeError, trustedAgents, peerNetwork]),
+      // Logging sits here rather than on a page of its own: this is where someone goes when the
+      // data layer is misbehaving, which is the same moment they want more of it in the log.
+      $localState: { ...networkLocalState, ...loggingLocalState },
+      ...page([runtimeError, trustedAgents, peerNetwork, logging]),
     },
     { path: '/connections', ...page([runtimeError, connectedApps, mcpServer]) },
     // Anything else lands on Account rather than an empty frame.
@@ -857,7 +865,14 @@ export const settingsTemplate: TemplateSchema = {
                 {
                   type: '$if',
                   props: {
-                    condition: { $store: 'runtimeStore.canManageNetwork' },
+                    condition: {
+                      $or: [
+                        { $store: 'runtimeStore.canManageNetwork' },
+                        // Logging is a host setting, so this page has something to show even where
+                        // the backend administers no networking.
+                        { $store: 'runtimeStore.canConfigureExecutor' },
+                      ],
+                    },
                     then: navItem('Network', 'globe', '/network'),
                   },
                 },

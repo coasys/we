@@ -79,6 +79,42 @@ pub fn set_executor_settings(
     registry(&state).set_executor_settings(settings)
 }
 
+/// A path on this machine, for the backend to write to or read from.
+///
+/// The executor's export and import take a path on its own filesystem, and it runs in this process
+/// — so this is the one place that can turn "somewhere to put it" into something it can use. Kept
+/// on the Rust side rather than exposed through the dialog plugin's JS bridge, which would mean
+/// granting the renderer a capability it has no other use for.
+#[tauri::command]
+pub async fn choose_file(
+    save: bool,
+    default_name: Option<String>,
+    app_handle: tauri::AppHandle,
+) -> Result<Option<String>, String> {
+    use tauri_plugin_dialog::DialogExt;
+
+    let mut builder = app_handle.dialog().file().add_filter("JSON", &["json"]);
+    if let Some(name) = default_name {
+        builder = builder.set_file_name(name);
+    }
+
+    // The blocking variants must not run on the main thread; a command already runs off it, but
+    // saying so here keeps that true if this ever moves.
+    let picked = tauri::async_runtime::spawn_blocking(move || {
+        if save {
+            builder.blocking_save_file()
+        } else {
+            builder.blocking_pick_file()
+        }
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+
+    // A path outside the local filesystem cannot be handed to the executor, and on desktop there is
+    // no such thing — `into_path` fails only for the mobile content-URI case.
+    Ok(picked.and_then(|p| p.into_path().ok()).map(|p| p.to_string_lossy().to_string()))
+}
+
 /// Start the executor over so written settings take effect.
 ///
 /// A full relaunch, for the same reason `apply_account_selection` is one: the executor runs in this

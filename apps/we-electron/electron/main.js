@@ -1,5 +1,5 @@
 import { execSync, spawn } from 'child_process';
-import { app, BrowserWindow, desktopCapturer, ipcMain } from 'electron';
+import { app, BrowserWindow, desktopCapturer, dialog, ipcMain } from 'electron';
 import contextMenu from 'electron-context-menu';
 import express from 'express';
 import { existsSync, readdirSync, readFileSync, rmSync } from 'fs';
@@ -99,6 +99,24 @@ function ensureDataPathInitialised(executorPath, dataPath) {
     // turn a recoverable state into an app that will not open at all.
     console.error('[main] Executor init failed — the executor may not start correctly:', e.message);
   }
+}
+
+/**
+ * The environment the executor is started with.
+ *
+ * Log levels reach it as `RUST_LOG`, which is the only lever there is: the executor's own logging
+ * setup reads that variable and, finding it set, leaves it alone. Written as overrides — anything
+ * not named keeps the executor's default, which is why this builds a string only from what the user
+ * actually chose.
+ *
+ * An inherited `RUST_LOG` always wins. Someone who exported one before launching is debugging
+ * something specific, and having a settings screen quietly override that would be the opposite of
+ * helpful.
+ */
+function executorEnv(logLevels) {
+  const overrides = Object.entries(logLevels ?? {});
+  if (!overrides.length || process.env.RUST_LOG) return process.env;
+  return { ...process.env, RUST_LOG: overrides.map(([crate, level]) => `${crate}=${level}`).join(',') };
 }
 
 // Find a free port in the given range
@@ -258,6 +276,7 @@ async function startExecutor() {
       {
         detached: true, // Create a new process group so we can kill the entire tree
         stdio: ['ignore', 'pipe', 'pipe'], // Capture stdout/stderr instead of inherit
+        env: executorEnv(executorSettings.logLevels),
       },
     );
 
@@ -447,6 +466,23 @@ ipcMain.handle('executor-settings-set', (_event, settings) => accounts.setExecut
  * one to be written would be the one that forgets to repaint the window.
  */
 ipcMain.handle('executor-restart', () => restartExecutorAndReload());
+
+/**
+ * A path on this machine, for the backend to write to or read from.
+ *
+ * The executor's export and import take a path on its own filesystem, and it runs here — so this is
+ * the one place that can turn "somewhere to put it" into something it can use. A renderer file
+ * picker cannot: the File it yields carries no path.
+ */
+ipcMain.handle('executor-choose-file', async (_event, { save, defaultName } = {}) => {
+  const parent = mainWindow && !mainWindow.isDestroyed() ? mainWindow : undefined;
+  const options = { defaultPath: defaultName, filters: [{ name: 'JSON', extensions: ['json'] }] };
+  const result = save
+    ? await dialog.showSaveDialog(parent, options)
+    : await dialog.showOpenDialog(parent, { ...options, properties: ['openFile'] });
+  if (result.canceled) return null;
+  return save ? (result.filePath ?? null) : (result.filePaths[0] ?? null);
+});
 
 async function restartExecutorAndReload() {
   switchingAccount = true;

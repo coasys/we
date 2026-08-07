@@ -20,6 +20,7 @@
  * `canManageTrust` and friends false and the settings template renders nothing for that section.
  * The in-memory backend supplies no runtime port at all, which is the case that keeps this honest.
  */
+import type { ExecutorSettings } from '@shared/platform/types';
 import { usePlatform } from '@solid/providers/PlatformProvider';
 import {
   type AiModelForm,
@@ -87,6 +88,12 @@ export interface RuntimeStore {
   loading: Accessor<boolean>;
   /** Last runtime error, for display. Cleared at the start of each call. */
   error: Accessor<string>;
+  /** True when a database export/import can be offered: the backend does it, the host names the file. */
+  canBackUp: Accessor<boolean>;
+  /** Per-crate log levels the user has set, as rows. Empty means the backend's own defaults. */
+  logLevels: Accessor<{ crate: string; level: string }[]>;
+  /** What the last export or import did, for display. Empty until one runs. */
+  backupStatus: Accessor<string>;
   /** Whether the backend serves MCP on its next start, and on which port. */
   mcpEnabled: Accessor<boolean>;
   mcpPort: Accessor<number>;
@@ -125,6 +132,14 @@ export interface RuntimeStore {
   loadPeerInfos: () => Promise<void>;
   addPeerInfos: (infos: string) => Promise<void>;
   setMcpEnabled: (enabled: boolean) => Promise<void>;
+  /** Set one crate's level. Adds it when it is not already set — one action for both. */
+  setLogLevel: (crate: string, level: string) => Promise<void>;
+  /** Drop an override, returning that crate to the backend's default. */
+  removeLogLevel: (crate: string) => Promise<void>;
+  /** Ask for a file, then have the backend write everything to it. */
+  exportDatabase: () => Promise<void>;
+  /** Ask for a file, then have the backend read it back in. */
+  importDatabase: () => Promise<void>;
   setMcpPort: (port: number) => Promise<void>;
   /** Start the backend over so the written settings take effect. Does not return. */
   restartExecutor: () => Promise<void>;
@@ -155,6 +170,8 @@ export function RuntimeStoreProvider(props: ParentProps) {
   const [mcpEnabled, setMcpEnabledSignal] = createSignal(false);
   const [mcpPort, setMcpPortSignal] = createSignal(3001);
   const [executorRestartPending, setExecutorRestartPending] = createSignal(false);
+  const [logLevelMap, setLogLevelMap] = createSignal<Record<string, string>>({});
+  const [backupStatus, setBackupStatus] = createSignal('');
 
   // A queue, not a single slot: two apps can ask at once, and dropping the second would leave it
   // hanging exactly the way having no listener at all does. The template renders the head.
@@ -172,6 +189,16 @@ export function RuntimeStoreProvider(props: ParentProps) {
 
   const executorHost = () => platform.executor;
   const canConfigureExecutor = createMemo(() => !!executorHost());
+  // Both halves are needed: the backend writes the file, the host is what can name one. Neither is
+  // any use alone, which is why this is one flag rather than two.
+  const canBackUp = createMemo(() => !!runtime()?.exportDatabase && !!executorHost()?.chooseFile);
+
+  // Sorted, so adding an override does not reorder the rows under the cursor.
+  const logLevels = createMemo(() =>
+    Object.entries(logLevelMap())
+      .map(([crate, level]) => ({ crate, level }))
+      .sort((a, b) => a.crate.localeCompare(b.crate)),
+  );
 
   const aiPresetOptions = createMemo(() => {
     const kind = aiForm()?.kind;
@@ -301,19 +328,59 @@ export function RuntimeStoreProvider(props: ParentProps) {
       const settings = await host.getSettings();
       setMcpEnabledSignal(settings.mcpEnabled);
       setMcpPortSignal(settings.mcpPort);
+      setLogLevelMap(settings.logLevels ?? {});
     } catch (err) {
       console.error('RuntimeStore: could not read the executor settings', err);
     }
   }
 
-  async function writeExecutorSettings(update: { mcpEnabled?: boolean; mcpPort?: number }): Promise<void> {
+  async function writeExecutorSettings(update: Partial<ExecutorSettings>): Promise<void> {
     const host = executorHost();
     if (!host) return;
     const applied = await run(() => host.setSettings(update));
     if (!applied.ok || !applied.value) return;
     setMcpEnabledSignal(applied.value.mcpEnabled);
     setMcpPortSignal(applied.value.mcpPort);
+    setLogLevelMap(applied.value.logLevels ?? {});
     setExecutorRestartPending(true);
+  }
+
+  async function setLogLevel(crate: string, level: string): Promise<void> {
+    const trimmed = crate.trim();
+    if (!trimmed) return;
+    await writeExecutorSettings({ logLevels: { ...logLevelMap(), [trimmed]: level } });
+  }
+
+  async function removeLogLevel(crate: string): Promise<void> {
+    const next = { ...logLevelMap() };
+    delete next[crate];
+    await writeExecutorSettings({ logLevels: next });
+  }
+
+  /**
+   * Export and import both come down to naming a file and handing the path over.
+   *
+   * The status line is the whole feedback: an export writes somewhere the app cannot then read, and
+   * an import's effect is spread across data the user has to go and look at, so neither has a
+   * visible result of its own.
+   */
+  async function exportDatabase(): Promise<void> {
+    const path = await run(() => executorHost()?.chooseFile?.({ save: true, defaultName: 'we-backup.json' }));
+    if (!path.ok || !path.value) return;
+    setBackupStatus('Exporting…');
+    const done = await run(() => runtime()?.exportDatabase?.(path.value as string));
+    setBackupStatus(done.ok ? `Exported to ${path.value}` : '');
+  }
+
+  async function importDatabase(): Promise<void> {
+    const path = await run(() => executorHost()?.chooseFile?.({ save: false }));
+    if (!path.ok || !path.value) return;
+    setBackupStatus('Importing…');
+    const done = await run(() => runtime()?.importDatabase?.(path.value as string));
+    // Restart rather than reload: what was imported reaches the app through the backend, and the
+    // backend read it into a process that has been running since before the file existed.
+    setBackupStatus(done.ok ? 'Imported. Restart the data layer to see it.' : '');
+    if (done.ok) setExecutorRestartPending(true);
   }
 
   async function setMcpEnabled(enabled: boolean): Promise<void> {
@@ -513,6 +580,9 @@ export function RuntimeStoreProvider(props: ParentProps) {
     canManageAi,
     canConfigureExecutor,
 
+    canBackUp,
+    logLevels,
+    backupStatus,
     mcpEnabled,
     mcpPort,
     executorRestartPending,
@@ -556,6 +626,10 @@ export function RuntimeStoreProvider(props: ParentProps) {
     addPeerInfos,
     setMcpEnabled,
     setMcpPort,
+    setLogLevel,
+    removeLogLevel,
+    exportDatabase,
+    importDatabase,
     restartExecutor,
     approveConsent,
     denyConsent,
