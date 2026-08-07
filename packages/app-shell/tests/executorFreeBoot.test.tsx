@@ -23,6 +23,8 @@ let lifecycle: InMemoryLifecycle;
 let agentOptions: InMemoryAgentOptions;
 /** Set to make the connector reject, standing in for a backend that cannot be reached. */
 let connectFailure: string | null = null;
+/** Supplied by connectors whose session is the connection — the web host's, in practice. */
+let disconnect: (() => Promise<void>) | undefined;
 
 /** Set by the tests that need a host able to restart the backend; absent is the web shape. */
 let executorHost:
@@ -37,7 +39,7 @@ vi.mock('../src/frameworks/solid/providers/PlatformProvider', () => ({
       if (connectFailure) throw new Error(connectFailure);
       const ports = createInMemoryBackendPorts(ctx, { agent: agentOptions });
       lifecycle = ports.lifecycle;
-      return { client: {}, ports };
+      return { client: {}, ports, ...(disconnect ? { disconnect } : {}) };
     },
   }),
 }));
@@ -117,6 +119,7 @@ beforeEach(() => {
   agentOptions = { id: 'did:test:james', unlocked: true };
   executorHost = undefined;
   connectFailure = null;
+  disconnect = undefined;
   navigate.mockClear();
 });
 
@@ -254,6 +257,42 @@ describe('first run', () => {
     expect(lockFailures).toEqual([]);
     expect(restarts).toBe(1);
     expect(stores.session.bootState()).toBe('login');
+  }, 10000);
+
+  it('ends the connection when that is what the session is, rather than showing a lock that is not there', async () => {
+    // A remote node reached over ad4m-connect: already unlocked, and never unlocked by a password
+    // this app holds. Returning to the sign-in form asked for a password against a keystore that is
+    // not there — refused every time, while reloading walked straight back in, because nothing
+    // about the session had actually ended.
+    agentOptions = { unlocked: true, password: 'not-ours' };
+    let disconnects = 0;
+    disconnect = async () => {
+      disconnects += 1;
+    };
+    let restarts = 0;
+    executorHost = {
+      getSettings: async () => ({ mcpEnabled: false, mcpPort: 3001 }),
+      setSettings: async () => ({ mcpEnabled: false, mcpPort: 3001 }),
+      restart: async () => {
+        restarts += 1;
+      },
+    };
+    const stores = mountShell();
+    await ready(stores);
+
+    // Stubbed both to keep jsdom quiet and because the reload is the other half of the act: the
+    // connect UI runs once per document, so a disconnected session that stayed on this one would
+    // have nothing to reconnect with.
+    const reload = vi.fn();
+    vi.spyOn(window, 'location', 'get').mockReturnValue({ ...window.location, reload } as Location);
+
+    await stores.session.logout();
+
+    expect(disconnects).toBe(1);
+    expect(reload).toHaveBeenCalled();
+    // Preferred over restarting even where a host could: forgetting the connection is what ends
+    // this session, and restarting someone else's node is not on offer.
+    expect(restarts).toBe(0);
   }, 10000);
 
   it('locks rather than restarting when it does hold the password', async () => {

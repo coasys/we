@@ -132,6 +132,8 @@ export function SessionStoreProvider(props: ParentProps) {
   const [serverUrl, setServerUrl] = createSignal<string | undefined>(undefined);
 
   const [backendPorts, setBackendPorts] = createSignal<BackendPorts | null>(null);
+  // Supplied by connectors whose session is the connection rather than an unlocked keystore.
+  let disconnectBackend: (() => Promise<void>) | null = null;
 
   // EphemeralPort is a function (dataset → scope | null), so this stable delegate can exist
   // before the connector's ports do — pre-connect it reports the capability as absent, which is
@@ -192,7 +194,8 @@ export function SessionStoreProvider(props: ParentProps) {
       // The connector owns the entire connection choreography (spawn/attach, auth, credential
       // acquisition, settling delays) — the shell receives a ready backend and runs the session
       // state machine over it.
-      const { client: c, ports, connection } = await backend.initialize({ selfId: () => me()?.did });
+      const { client: c, ports, connection, disconnect } = await backend.initialize({ selfId: () => me()?.did });
+      disconnectBackend = disconnect ?? null;
       setClient(c);
       setBackendPorts(ports);
       const session = ports.agentSession;
@@ -313,10 +316,11 @@ export function SessionStoreProvider(props: ParentProps) {
    * (The keystore on disk is saved under the true passphrase first, which is why restarting the app
    * recovers it, and why nothing is lost.)
    *
-   * So when the password is not in hand, the session is ended the only other honest way: the host
-   * restarts the backend, which locks it by construction. A host that cannot (web connects to an
-   * executor it did not start) returns to the sign-in screen with the backend still unlocked —
-   * which is what it did before, and is now at least visible in the log rather than silent.
+   * So when the password is not in hand, the session ends whichever other way this backend offers:
+   * the connector can end the connection (web, where the agent may be on someone else's node and
+   * the session *is* the connection), or the host can restart the backend it started, which locks
+   * it by construction. With neither, this returns to the sign-in screen with the backend still
+   * unlocked — now at least visible in the log rather than silent.
    */
   async function logout(): Promise<void> {
     const session = agentSession();
@@ -328,15 +332,23 @@ export function SessionStoreProvider(props: ParentProps) {
     try {
       if (sessionPassword) {
         await session.lock(sessionPassword);
+      } else if (disconnectBackend) {
+        // The session is the connection: no lock to close, so end the connection and start over.
+        // Returning to the sign-in form instead asks for a password against a keystore that is not
+        // there — it is refused, and reloading walks straight back in, because nothing about the
+        // session actually ended.
+        await disconnectBackend();
+        window.location.reload();
+        return;
       } else if (platform.executor) {
         await platform.executor.restart();
       } else {
         console.warn(
-          'SessionStore: logging out without the session password and with no way to restart the backend — the agent stays unlocked',
+          'SessionStore: logging out without the session password and with no way to end the session — the agent stays unlocked',
         );
       }
     } catch (err) {
-      console.error('SessionStore: agent lock failed during logout', err);
+      console.error('SessionStore: could not end the session cleanly', err);
     } finally {
       setMe(undefined);
       sessionPassword = '';

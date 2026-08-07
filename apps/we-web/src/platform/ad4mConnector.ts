@@ -31,6 +31,11 @@ export const ad4mConnector: BackendConnector = {
     return {
       client,
       ports: createAd4mBackendPorts(client, ctx),
+      // What "log out" means here. The agent may be on a node this app does not run and was never
+      // unlocked with a password it holds, so there is no lock to close — ending the session means
+      // forgetting the token and the chosen host, which is what `core.disconnect` does. The shell
+      // reloads afterwards, which brings the connect UI back.
+      disconnect: () => core.disconnect(),
       // Use baseUrl (not url) so wss:// remote-host URLs are normalized to https:// before
       // being forwarded in AD4M_CONFIG — the embedded app's startsWith('http') guard would
       // otherwise reject raw wss:// URLs and fall back to localhost.
