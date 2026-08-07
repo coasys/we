@@ -362,7 +362,10 @@ export function createAccountRegistry({ configDir, defaultPath, defaultName = 'M
       // from, or the app closed at the password screen — has a directory and a placeholder name
       // and no identity in it, and would otherwise sit in the switcher forever looking real.
       write({ accounts: [...state.accounts, { name, path, provisional: true }], selectedPath: path });
-      return { id: path, name, active: true };
+      // `hasAgent: false` by construction — the directory was just made and the setup screen is
+      // what puts an identity in it. Stated rather than left out because the shell caches this
+      // object as an `Account`, and the tauri host returns the full shape from its `create`.
+      return { id: path, name, active: true, hasAgent: false };
     },
 
     /**

@@ -245,9 +245,19 @@ export function AccountStoreProvider(props: ParentProps) {
         writeCachedAccounts(optimistic);
       },
     );
-    // Only reached when it failed — on success the process is already gone.
-    setCreating(false);
-    if (!ok) await refresh();
+
+    // Cleared only on failure, exactly as `switchAccount` clears its target only on failure.
+    //
+    // "On success the process is already gone" is true on Tauri, which relaunches, and false on
+    // Electron, which respawns the executor and navigates the same renderer. `applySelection()`
+    // resolves there when the navigation is *issued*, so the outgoing document gets one more
+    // microtask — and clearing this in it flipped the boot screen from the create spinner back to
+    // the sign-in form, drawn with the new account's placeholder name, for the frames before the
+    // reload landed. Intermittent, because it depends on the IPC reply beating the navigation.
+    if (!ok) {
+      setCreating(false);
+      await refresh();
+    }
   }
 
   async function syncDisplay(display: { name?: string; avatar?: string }): Promise<void> {
