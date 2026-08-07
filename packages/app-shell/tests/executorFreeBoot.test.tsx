@@ -22,8 +22,13 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 let lifecycle: InMemoryLifecycle;
 let agentOptions: InMemoryAgentOptions;
 
+/** Set by the tests that need a host able to restart the backend; absent is the web shape. */
+let executorHost:
+  | { getSettings: () => Promise<unknown>; setSettings: () => Promise<unknown>; restart: () => Promise<void> }
+  | undefined;
+
 vi.mock('../src/frameworks/solid/providers/PlatformProvider', () => ({
-  usePlatform: () => ({ isDesktop: false, isDevelopment: true }),
+  usePlatform: () => ({ isDesktop: false, isDevelopment: true, executor: executorHost }),
   useBackend: () => ({
     // The real in-memory bundle — the same thing a backend-less host would supply.
     initialize: async (ctx: { selfId(): string | undefined }) => {
@@ -107,6 +112,7 @@ const ready = (stores: Stores) => vi.waitFor(() => expect(stores.session.bootSta
 
 beforeEach(() => {
   agentOptions = { id: 'did:test:james', unlocked: true };
+  executorHost = undefined;
   navigate.mockClear();
 });
 
@@ -208,6 +214,66 @@ describe('first run', () => {
     expect(stores.session.bootState()).toBe('login');
 
     await stores.session.login('chosen-at-creation');
+    await ready(stores);
+  }, 10000);
+
+  /**
+   * Logging out of a session this renderer did not unlock.
+   *
+   * Reloading the page during a session leaves the backend unlocked and takes the password with it
+   * — which is exactly the boot this suite's default `unlocked: true` describes. `lock` needs a
+   * password, and AD4M's re-encrypts the wallet's in-memory keys under whatever it is given, so
+   * sending a wrong one silently re-keys the running agent and the real password stops working
+   * until the executor restarts.
+   */
+  it('does not lock with a password it does not have, and restarts the backend instead', async () => {
+    // Already unlocked and never unlocked by this renderer — a reload mid-session.
+    agentOptions = { unlocked: true, password: 'the-real-one' };
+    let restarts = 0;
+    executorHost = {
+      getSettings: async () => ({ mcpEnabled: false, mcpPort: 3001 }),
+      setSettings: async () => ({ mcpEnabled: false, mcpPort: 3001 }),
+      restart: async () => {
+        restarts += 1;
+      },
+    };
+    const stores = mountShell();
+    await ready(stores);
+
+    // The in-memory agent refuses a wrong password on lock, so an attempt would land here. The
+    // real one accepts anything and re-keys itself with it, which is the bug being avoided.
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+    await stores.session.logout();
+    const lockFailures = logged.mock.calls.filter((args) => String(args[0]).includes('agent lock failed'));
+    logged.mockRestore();
+
+    expect(lockFailures).toEqual([]);
+    expect(restarts).toBe(1);
+    expect(stores.session.bootState()).toBe('login');
+  }, 10000);
+
+  it('locks rather than restarting when it does hold the password', async () => {
+    agentOptions = { unlocked: false, password: 'secret' };
+    let restarts = 0;
+    executorHost = {
+      getSettings: async () => ({ mcpEnabled: false, mcpPort: 3001 }),
+      setSettings: async () => ({ mcpEnabled: false, mcpPort: 3001 }),
+      restart: async () => {
+        restarts += 1;
+      },
+    };
+    const stores = mountShell();
+    await vi.waitFor(() => expect(stores.session.bootState()).toBe('login'));
+
+    await stores.session.login('secret');
+    await ready(stores);
+    await stores.session.logout();
+
+    // The fast path: a restart here would cost seconds and reload the window for nothing.
+    expect(restarts).toBe(0);
+    expect(stores.session.bootState()).toBe('login');
+    // And the password still works, which is the whole point.
+    await stores.session.login('secret');
     await ready(stores);
   }, 10000);
 });

@@ -281,6 +281,27 @@ export function SessionStoreProvider(props: ParentProps) {
     setBootState('ready');
   }
 
+  /**
+   * End the session, by locking the agent when that is possible and by restarting the backend when
+   * it is not.
+   *
+   * `lock` takes the password, and this renderer only has it when *it* was the one that unlocked
+   * the agent. Reloading the page during a session loses it while leaving the backend unlocked —
+   * which is why the reloaded app walks straight in without asking — and there is then no password
+   * to hand back.
+   *
+   * Sending anything else is not a harmless failed attempt: AD4M's `lock` re-encrypts the wallet's
+   * in-memory keys under whatever it is given, so a wrong password silently re-keys the running
+   * agent, and the real password then fails to decrypt it (`aead::Error`) until the executor is
+   * restarted. Logging out after a reload made the account unopenable for the rest of the session.
+   * (The keystore on disk is saved under the true passphrase first, which is why restarting the app
+   * recovers it, and why nothing is lost.)
+   *
+   * So when the password is not in hand, the session is ended the only other honest way: the host
+   * restarts the backend, which locks it by construction. A host that cannot (web connects to an
+   * executor it did not start) returns to the sign-in screen with the backend still unlocked —
+   * which is what it did before, and is now at least visible in the log rather than silent.
+   */
   async function logout(): Promise<void> {
     const session = agentSession();
     if (!session) {
@@ -289,7 +310,15 @@ export function SessionStoreProvider(props: ParentProps) {
     }
 
     try {
-      await session.lock(sessionPassword);
+      if (sessionPassword) {
+        await session.lock(sessionPassword);
+      } else if (platform.executor) {
+        await platform.executor.restart();
+      } else {
+        console.warn(
+          'SessionStore: logging out without the session password and with no way to restart the backend — the agent stays unlocked',
+        );
+      }
     } catch (err) {
       console.error('SessionStore: agent lock failed during logout', err);
     } finally {
