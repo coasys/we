@@ -194,10 +194,143 @@ function toAuthorizedApp(app: Apps): AuthorizedApp {
   };
 }
 
-export function createAd4mRuntimeAdmin(backendClient: unknown): RuntimeAdminPort {
-  const client = backendClient as Ad4mClient;
+export interface Ad4mRuntimeOptions {
+  /**
+   * Whether this connection operates the node it reached. Defaults to true.
+   *
+   * False for a guest on somebody else's executor — a hosted node, or any multi-user one, which is
+   * the normal web case. Almost everything here is then not merely likely to fail but wrong to
+   * offer: trust, peer networking and installed languages are the *node's*, and "restart
+   * networking" on a machine shared with other people is the clearest example of a button that
+   * should not exist rather than one that returns an error.
+   *
+   * Declared by the connector, which is what knows how the connection was obtained, rather than
+   * discovered by probing each call — a capability error is what a wrongly-offered control returns,
+   * not a good way to find out whether to offer it.
+   */
+  administersNode?: boolean;
+}
 
-  return {
+export function createAd4mRuntimeAdmin(backendClient: unknown, options: Ad4mRuntimeOptions = {}): RuntimeAdminPort {
+  const client = backendClient as Ad4mClient;
+  const administersNode = options.administersNode ?? true;
+
+  /**
+   * What belongs to the agent rather than to the node, and so survives being a guest.
+   *
+   * Authorized apps are this agent's own grants — `agent.getApps()` answers for whoever is
+   * authenticated — and consent requests are raised at this session. Both are as meaningful on a
+   * node run by somebody else as on one of your own.
+   */
+  const agentScoped: RuntimeAdminPort = {
+    // ── External apps ─────────────────────────────────────────────────────────
+    /**
+     * AD4M returns one record per issued token, so an app that reconnected several times appears
+     * several times. Collapsing by URL matches how a user thinks about it — "Flux has access", not
+     * "Flux has four tokens" — and `revoke`/`remove` below re-expand it, acting on every token the
+     * app holds rather than one arbitrary grant.
+     */
+    async authorizedApps() {
+      const apps = await client.agent.getApps();
+      const byUrl = new Map<string, AuthorizedApp>();
+      for (const app of apps) {
+        const mapped = toAuthorizedApp(app);
+        const existing = byUrl.get(mapped.url);
+        // A grant counts as live if any of its tokens is unrevoked.
+        if (existing) existing.revoked = existing.revoked && mapped.revoked;
+        else byUrl.set(mapped.url, mapped);
+      }
+      return [...byUrl.values()];
+    },
+
+    async revokeApp(id) {
+      for (const requestId of await tokensSharingApp(client, id)) {
+        await client.agent.revokeToken(requestId);
+      }
+    },
+
+    async removeApp(id) {
+      for (const requestId of await tokensSharingApp(client, id)) {
+        await client.agent.removeApp(requestId);
+      }
+    },
+
+    // ── Consent ───────────────────────────────────────────────────────────────
+    /**
+     * One executor subscription, demultiplexed into the contract's two request kinds. AD4M raises
+     * these as `exception` events carrying the request in `addon` — a JSON blob for capability
+     * requests, a bare DID for trust — which the shell relays back untouched on approve/deny.
+     *
+     * `addExceptionCallback` has no documented unsubscribe, so the returned function flips a local
+     * flag instead: after it runs, later events are dropped rather than delivered to a handler the
+     * caller has discarded.
+     */
+    onConsentRequest(handler) {
+      let live = true;
+
+      client.runtime.addExceptionCallback((info) => {
+        if (!live) return null;
+
+        if (info.type === ExceptionType.CapabilityRequested && info.addon) {
+          try {
+            const auth = JSON.parse(info.addon).auth;
+            handler({
+              kind: 'capability',
+              title: info.title,
+              message: info.message,
+              app: {
+                name: auth.appName,
+                description: auth.appDesc,
+                url: auth.appUrl,
+                iconUrl: auth.appIconPath,
+                capabilities: (auth.capabilities ?? []).map((cap: unknown) =>
+                  capSentence(cap as Parameters<typeof capSentence>[0]),
+                ),
+              },
+              payload: info.addon,
+            });
+          } catch (err) {
+            // A malformed request must not take down the subscription — every later consent
+            // prompt would be lost with it, silently.
+            console.error('ad4m runtime: could not read a capability request', err);
+          }
+        }
+
+        if (info.type === ExceptionType.AgentIsUntrusted && info.addon) {
+          handler({
+            kind: 'trust',
+            title: info.title,
+            message: info.message,
+            peerId: info.addon,
+            payload: info.addon,
+          });
+        }
+
+        return null;
+      });
+
+      return () => {
+        live = false;
+      };
+    },
+
+    async approve(request) {
+      if (request.kind === 'capability') return client.agent.permitCapability(request.payload);
+      await client.runtime.addTrustedAgents([request.payload]);
+    },
+
+    async deny(request) {
+      // Capability requests need no negative acknowledgement — the asker times out, which is the
+      // same outcome as the launcher's dialog being dismissed. Declining to trust a peer is
+      // likewise the absence of an entry, not an entry saying "no".
+      if (request.kind === 'trust') await client.runtime.deleteTrustedAgents([request.payload]);
+    },
+  };
+
+  if (!administersNode) return agentScoped;
+
+  /** Everything that administers the node itself, and so is only offered to whoever operates it. */
+  const nodeScoped: RuntimeAdminPort = {
     // ── AI models ─────────────────────────────────────────────────────────────
     /**
      * Defaults are read per kind rather than carried on the record. AD4M keeps one default per
@@ -334,110 +467,9 @@ export function createAd4mRuntimeAdmin(backendClient: unknown): RuntimeAdminPort
     async addPeerInfos(infos) {
       await client.runtime.hcAddAgentInfos(infos);
     },
-
-    // ── External apps ─────────────────────────────────────────────────────────
-    /**
-     * AD4M returns one record per issued token, so an app that reconnected several times appears
-     * several times. Collapsing by URL matches how a user thinks about it — "Flux has access", not
-     * "Flux has four tokens" — and `revoke`/`remove` below re-expand it, acting on every token the
-     * app holds rather than one arbitrary grant.
-     */
-    async authorizedApps() {
-      const apps = await client.agent.getApps();
-      const byUrl = new Map<string, AuthorizedApp>();
-      for (const app of apps) {
-        const mapped = toAuthorizedApp(app);
-        const existing = byUrl.get(mapped.url);
-        // A grant counts as live if any of its tokens is unrevoked.
-        if (existing) existing.revoked = existing.revoked && mapped.revoked;
-        else byUrl.set(mapped.url, mapped);
-      }
-      return [...byUrl.values()];
-    },
-
-    async revokeApp(id) {
-      for (const requestId of await tokensSharingApp(client, id)) {
-        await client.agent.revokeToken(requestId);
-      }
-    },
-
-    async removeApp(id) {
-      for (const requestId of await tokensSharingApp(client, id)) {
-        await client.agent.removeApp(requestId);
-      }
-    },
-
-    // ── Consent ───────────────────────────────────────────────────────────────
-    /**
-     * One executor subscription, demultiplexed into the contract's two request kinds. AD4M raises
-     * these as `exception` events carrying the request in `addon` — a JSON blob for capability
-     * requests, a bare DID for trust — which the shell relays back untouched on approve/deny.
-     *
-     * `addExceptionCallback` has no documented unsubscribe, so the returned function flips a local
-     * flag instead: after it runs, later events are dropped rather than delivered to a handler the
-     * caller has discarded.
-     */
-    onConsentRequest(handler) {
-      let live = true;
-
-      client.runtime.addExceptionCallback((info) => {
-        if (!live) return null;
-
-        if (info.type === ExceptionType.CapabilityRequested && info.addon) {
-          try {
-            const auth = JSON.parse(info.addon).auth;
-            handler({
-              kind: 'capability',
-              title: info.title,
-              message: info.message,
-              app: {
-                name: auth.appName,
-                description: auth.appDesc,
-                url: auth.appUrl,
-                iconUrl: auth.appIconPath,
-                capabilities: (auth.capabilities ?? []).map((cap: unknown) =>
-                  capSentence(cap as Parameters<typeof capSentence>[0]),
-                ),
-              },
-              payload: info.addon,
-            });
-          } catch (err) {
-            // A malformed request must not take down the subscription — every later consent
-            // prompt would be lost with it, silently.
-            console.error('ad4m runtime: could not read a capability request', err);
-          }
-        }
-
-        if (info.type === ExceptionType.AgentIsUntrusted && info.addon) {
-          handler({
-            kind: 'trust',
-            title: info.title,
-            message: info.message,
-            peerId: info.addon,
-            payload: info.addon,
-          });
-        }
-
-        return null;
-      });
-
-      return () => {
-        live = false;
-      };
-    },
-
-    async approve(request) {
-      if (request.kind === 'capability') return client.agent.permitCapability(request.payload);
-      await client.runtime.addTrustedAgents([request.payload]);
-    },
-
-    async deny(request) {
-      // Capability requests need no negative acknowledgement — the asker times out, which is the
-      // same outcome as the launcher's dialog being dismissed. Declining to trust a peer is
-      // likewise the absence of an entry, not an entry saying "no".
-      if (request.kind === 'trust') await client.runtime.deleteTrustedAgents([request.payload]);
-    },
   };
+
+  return { ...agentScoped, ...nodeScoped };
 }
 
 /** Every token id belonging to the same app URL as `id`. See `authorizedApps` for why. */

@@ -28,9 +28,18 @@ export const ad4mConnector: BackendConnector = {
     // this is where a web boot waits.
     const client = await connecting;
 
+    // Whether this connection operates the node it reached, which decides how much of the settings
+    // page exists. A host chosen from the connect UI is somebody else's by definition; a multi-user
+    // executor is one where this agent is a user rather than the operator. Either way, trust, peer
+    // networking, languages and AI models belong to whoever runs the node, and offering them here
+    // produces controls that fail — "restart networking" on a shared machine most of all.
+    //
+    // Short-circuits, so the extra round trip only happens for a connection that might be local.
+    const administersNode = !core.connectedHost && !(await core.isMultiUser());
+
     return {
       client,
-      ports: createAd4mBackendPorts(client, ctx),
+      ports: createAd4mBackendPorts(client, ctx, { administersNode }),
       // What "log out" means here. The agent may be on a node this app does not run and was never
       // unlocked with a password it holds, so there is no lock to close — ending the session means
       // forgetting the token and the chosen host, which is what `core.disconnect` does. The shell
