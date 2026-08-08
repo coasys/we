@@ -5889,6 +5889,12 @@
         "installedModules": {
           "type": "array"
         },
+        "requiredModules": {
+          "type": "array"
+        },
+        "missingModules": {
+          "type": "array"
+        },
         "activeModules": {
           "type": "array"
         },

@@ -37,6 +37,7 @@ import {
   useContext,
 } from 'solid-js';
 
+import { useAppStore } from './AppStore';
 import { type AppDataset, useDatasetStore } from './DatasetStore';
 import { useProfileStore } from './ProfileStore';
 import { useRouteStore } from './RouteStore';
@@ -127,9 +128,10 @@ function moduleSettingsFrom(raw: string | undefined, installed: Set<string>, mut
   const on = new Set(resolveEnabledModules(raw));
   return moduleRegistry
     .all()
-    // Capability-only modules are left out: a space does not run one, a template uses one, so a
-    // per-space switch for it would have nothing to do. See `moduleSurface`.
-    .filter(({ definition }) => moduleSurface(definition) !== 'capability')
+    // Chrome only. A contribution is gated where it renders, and chrome is the only surface that
+    // renders inside a space — an app switcher is shell-level, and a capability is mounted by
+    // whatever template asks for it. Neither is a community's decision. See `moduleSurface`.
+    .filter(({ definition }) => moduleSurface(definition) === 'chrome')
     .map(({ definition }) => {
       const enabled = on.has(definition.id);
       const isInstalled = installed.has(definition.id);
@@ -223,6 +225,10 @@ export interface SpaceStore {
   themeOverrideOptions: Accessor<{ label: string; value: string }[]>;
   /** Feature modules this *agent* wants available anywhere. Personal; see AgentSettings.installedModules. */
   installedModules: Accessor<string[]>;
+  /** Module ids the template on screen mounts components from — derived from the schema, not declared. */
+  requiredModules: Accessor<string[]>;
+  /** Of those, the ones this agent has not installed. Empty in the ordinary case. */
+  missingModules: Accessor<string[]>;
   /** What actually renders here for this agent: registered ∩ installed ∩ enabled, less personal mutes. */
   activeModules: Accessor<string[]>;
   /** Every registered module and whether this agent wants it available anywhere — the global list. */
@@ -306,6 +312,7 @@ export function SpaceStoreProvider(props: ParentProps) {
   const profileStore = useProfileStore();
   const routeStore = useRouteStore();
   const templateStore = useTemplateStore();
+  const appStore = useAppStore();
   const themeStore = useThemeStore();
   const shellStore = useShellStore();
 
@@ -1040,6 +1047,11 @@ export function SpaceStoreProvider(props: ParentProps) {
     return enabledModules().filter((id) => installed.has(id) && !muted.has(id));
   });
 
+  // AppStore mounts above this one, so it is handed the set rather than reaching for it — the same
+  // arrangement as `templateStore.provideSpaceLookup`. The *installed* set, not the active one: an
+  // app switcher renders in the shell, so it is gated at the agent layer. See `moduleSurface`.
+  appStore.provideInstalledModules(installedModules);
+
   /**
    * The agent layer as a settings list — every registered module and whether this agent wants it.
    *
@@ -1118,7 +1130,37 @@ export function SpaceStoreProvider(props: ParentProps) {
     }
   }
 
+  /**
+   * Modules the template currently on screen needs in order to render.
+   *
+   * Derived from the components the schema actually mounts, so it is right without any template
+   * author declaring anything — see `moduleRegistry.requiredBy`.
+   */
+  const requiredModules = createMemo<string[]>(() => moduleRegistry.requiredBy(templateStore.currentTemplate));
+
+  /**
+   * Modules this template needs that the agent has not installed.
+   *
+   * The state that had no name before: a template mounting a component no installed module provides
+   * renders nothing where that component should be, with nothing to say why. Naming it is what makes
+   * a "you need this module" prompt possible.
+   */
+  const missingModules = createMemo<string[]>(() => {
+    const installed = installedSet();
+    return requiredModules().filter((id) => !installed.has(id));
+  });
+
+  /** Turn a module on or off for this agent everywhere. See `AgentSettings.installedModules`. */
   async function setModuleInstalled(moduleId: string, installed: boolean): Promise<void> {
+    // Refused rather than warned: uninstalling a module the visible template mounts takes the
+    // component out from under it, and the route stops rendering with nothing to explain why. This
+    // guard is what makes a capability module safe to offer a switch for at all.
+    if (!installed && requiredModules().includes(moduleId)) {
+      const name = moduleRegistry.get(moduleId)?.definition.name ?? moduleId;
+      const template = templateStore.currentTemplate.meta?.name ?? 'current';
+      toastService.error(`${name} can't be turned off — the ${template} template uses it`);
+      return;
+    }
     const next = new Set(installedModules());
     if (installed) next.add(moduleId);
     else next.delete(moduleId);
@@ -1492,6 +1534,8 @@ export function SpaceStoreProvider(props: ParentProps) {
     orderedSidebarItems,
     enabledModules,
     installedModules,
+    requiredModules,
+    missingModules,
     activeModules,
     templateOverrideOptions,
     themeOverrideOptions,

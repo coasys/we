@@ -2332,6 +2332,8 @@ export const contextData: ContextData = {
         signalTypesBySlug: { type: 'object' },
         enabledModules: { type: 'array' },
         installedModules: { type: 'array' },
+        requiredModules: { type: 'array' },
+        missingModules: { type: 'array' },
         activeModules: { type: 'array' },
         templateOverrideOptions: { type: 'array', properties: ['label', 'value'] },
         themeOverrideOptions: { type: 'array', properties: ['label', 'value'] },

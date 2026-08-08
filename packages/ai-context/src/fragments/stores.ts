@@ -331,6 +331,8 @@ export const storeEntries: StoreEntry[] = [
       installedModules: {
         type: 'array',
       },
+      requiredModules: { type: 'array' },
+      missingModules: { type: 'array' },
       activeModules: {
         type: 'array',
       },
@@ -736,10 +738,14 @@ function generateStoresText(entries: StoreEntry[]): string {
         templateOverrideOptions:
           '{ label, value }[] — options for the per-space template override picker: "Use the space\u2019s default" (space-default), "Use my default" (agent-default), then every template. Each of the first two names what it resolves to. Pre-built because a schema can $map a store array into options but cannot prepend one, and without those entries overriding would be one-way',
         themeOverrideOptions: '{ label, value }[] — the same, for themes',
+        requiredModules:
+          'string[] — module ids the template on screen mounts components from, derived by walking the schema rather than read from meta.components (which no template fills in). What makes uninstalling a capability module refusable',
+        missingModules:
+          'string[] — of those, the ones this agent has not installed. Non-empty means the template is mounting a component nothing provides, so part of the page silently renders nothing. Empty in the ordinary case',
         activeModules:
           'string[] — what actually renders here for this agent: registered \u2229 installed \u2229 enabled, less the modules muted in this space. Module chrome and the launcher rail gate on this; enabledModules alone is not sufficient',
         moduleInstallSettings:
-          "{ id, name, description, icon, installed, surface, switchable }[] — every registered module paired with whether this agent wants it anywhere. The global Settings → Modules list. `surface` is 'chrome' | 'app' | 'capability', derived from what the module contributes; a capability module supplies components to templates and has `switchable: false`, so it is listed without a control. Its per-space counterpart is `modules` on each spaceList row, which carries enabled/installed/visible/active together and omits capability modules entirely",
+          "{ id, name, description, icon, installed, surface, switchable }[] — every registered module and whether this agent wants it anywhere. The global Settings → Modules list, and the only place an 'app' or 'capability' module is decided about: a contribution is gated at the layer where it renders, and only 'chrome' renders inside a space. `surface` is derived from what the module contributes. Its per-space counterpart is `modules` on each spaceList row, which carries enabled/installed/visible/active together and lists chrome modules only",
         moduleLaunchers:
           '{ id, icon, label, active }[] — launchers for the modules enabled here and available in this space; what the host module rail renders. Pair with { $action: "spaceStore.launchModule", args: ["$mod.id"] }',
       },

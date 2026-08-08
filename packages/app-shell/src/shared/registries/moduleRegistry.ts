@@ -32,19 +32,37 @@ import {
   modulePredicateViolations,
   type ModuleStoreDeps,
 } from '@we/module-shared';
-import type { SchemaNode } from '@we/schema-shared';
+import { collectComponentTypes, type SchemaNode } from '@we/schema-shared';
 
 import { slotRegistry } from './slotRegistry';
 
 /**
- * What a module puts in front of the user, and therefore what turning it off could mean.
+ * What a module puts in front of the user — which decides *where* it can be turned off.
  *
- * - `chrome` — a launcher or slot nodes. Turning it off hides that chrome. Notes, call.
- * - `app` — an embedded application. Turning it off withdraws the app. Flux.
- * - `capability` — components or schema fragments and nothing else. A *template* decides whether
- *   these are used, so there is nothing for a per-space switch to hide: the globe module supplies
- *   `CesiumGlobe` to whichever template asks for it, and the honest effect of "off" would be to
- *   break that template's route, which is not a thing a settings toggle should do.
+ * The rule is that a contribution is gated at the layer where it renders:
+ *
+ * | surface      | contributes        | renders                        | agent | space |
+ * |--------------|--------------------|--------------------------------|-------|-------|
+ * | `chrome`     | launcher, slots    | inside a space                 | yes   | yes   |
+ * | `app`        | an embed           | in the shell                   | yes   | no    |
+ * | `capability` | components only    | wherever a template mounts it  | yes   | no    |
+ *
+ * Chrome is the only surface a community decides about, because it is the only one that appears
+ * inside their space.
+ *
+ * An **app** sits in the shell's switcher beside Spaces rather than within one, and its iframe
+ * deliberately outlives navigation. Gating it per space would make an entry come and go as the
+ * agent moved between spaces that have nothing to do with it, and would tear down a live session as
+ * a side effect of walking into a space.
+ *
+ * A **capability** is mounted by whichever template asks for it — the globe module supplies
+ * `CesiumGlobe`, and the honest effect of a space switching that "off" would be to break the
+ * template's route. Uninstalling one at the agent layer is offered, but guarded: see
+ * {@link moduleRegistry.requiredBy}.
+ *
+ * Both cases come out the same way: **the template decides**, which is a mechanism that already
+ * exists. A community that does not want the globe view or the Flux route uses a template without
+ * it.
  */
 export type ModuleSurface = 'chrome' | 'app' | 'capability';
 
@@ -210,6 +228,38 @@ export const moduleRegistry = {
 
   has(id: string): boolean {
     return modules.has(id);
+  },
+
+  /**
+   * Which module supplies each contributed component, by component name.
+   *
+   * The lookup behind {@link moduleRegistry.requiredBy}: a template names components, not modules,
+   * so the only way to know a template depends on the globe module is to know that module is where
+   * `CesiumGlobe` comes from.
+   */
+  componentProviders(): Map<string, string> {
+    const providers = new Map<string, string>();
+    for (const { definition } of modules.values()) {
+      for (const name of Object.keys(definition.components ?? {})) providers.set(name, definition.id);
+    }
+    return providers;
+  },
+
+  /**
+   * The modules a schema needs in order to render — derived from the components it actually mounts.
+   *
+   * This is what makes a capability module safe to switch off: without it, uninstalling the globe
+   * takes `CesiumGlobe` out from under whatever template mounts it and the route simply stops
+   * rendering, with nothing to say why. With it, the choice can be refused and the reason named.
+   */
+  requiredBy(schema: SchemaNode): string[] {
+    const providers = this.componentProviders();
+    const required = new Set<string>();
+    for (const name of collectComponentTypes(schema)) {
+      const moduleId = providers.get(name);
+      if (moduleId) required.add(moduleId);
+    }
+    return [...required];
   },
 
   all(): RegisteredModule[] {
