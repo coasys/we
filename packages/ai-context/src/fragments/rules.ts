@@ -56,6 +56,7 @@ WRONG icon names (Heroicons/Material — do NOT use):
 - All schemas must be valid JSON with property names and string values in double quotes.
 - The meta property at the root is required: { "meta": { "name": "...", "description": "...", "icon": "..." } }
 - Always set \`bg: 'neutral-50'\` on root-level schema nodes (templates, pages). This ensures proper background in all themes — without it, dark mode renders white backgrounds.
+- Size a template root with \`minHeight\`, never \`height\`. \`height: '100%'\` makes the root exactly as tall as the viewport, so a route with more content than that overflows the *box* — and the root's background stops at the fold while the content keeps scrolling. \`minHeight: '100%'\` fills the viewport when a route is short and grows when it is long, which is what a page background needs. The same applies to \`'100vh'\`.
 
 Most @we/primitives inherit all Design System Props documented above (layout, visual, flex, typography, state).
 Some layout-only primitives (we-avatar, we-icon, we-image, we-spinner, etc.) only accept Layout props — see the Design System Props section for the full list.

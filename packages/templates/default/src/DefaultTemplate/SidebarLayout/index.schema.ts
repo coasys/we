@@ -16,7 +16,10 @@ export const sidebarLayout: TemplateSchema = {
     icon: 'layout',
   },
   type: 'Row',
-  props: { height: '100vh' },
+  // `minHeight` rather than `height`: a fixed viewport height clips the box at the fold, so a long
+  // route scrolls past whatever this node paints. The scroll container behind it carries the space
+  // theme's background, so nothing shows through either way — but the template's own is right too.
+  props: { minHeight: '100vh' },
   children: [{ type: '$routes' }],
   routes: [
     homeRoute,

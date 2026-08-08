@@ -195,7 +195,21 @@ export function TemplateLayout(props: ParentProps & { stores: Stores }) {
         height="100vh"
         transition={panelResizing() ? 'none' : 'right 300ms ease'}
       >
-        {/* Main template content */}
+        {/*
+          Main template content, and the scoped space theme.
+
+          These are one element on purpose. The theme used to live on a `display: contents` div
+          inside this one, which declares the space's CSS vars but generates no box — so it could
+          never paint, and the scroll container had no background at all. Everything the template's
+          own content did not cover fell through to the canvas, which `html, body, #root` paints
+          from documentElement's tokens: the *shell* theme. Scrolling past a template that sized
+          itself to the viewport showed exactly that.
+
+          A scrolling element's background covers its whole scrollable overflow area rather than
+          just the visible box, so painting here — from vars declared here — means no template can
+          leak the shell's background however it handles its own height. Overlays are siblings, so
+          they correctly stay on the shell theme.
+        */}
         <Column
           display="block"
           position="absolute"
@@ -208,21 +222,18 @@ export function TemplateLayout(props: ParentProps & { stores: Stores }) {
           pointerEvents={stores.appStore.activeAppId() ? 'none' : 'auto'}
           overflow="auto"
           scrollbarGutter="stable"
+          bg="neutral-50"
+          data-we-theme={spaceThemeName()}
+          styles={spaceThemeStyle()}
         >
-          {/* Scoped space theme wrapper — display:contents keeps layout unaffected.
-                Parametric overrides are applied as inline CSS vars; component-level CSS
-                (theme.css) is injected into we-scoped-theme-css by ThemeStore and
-                self-scopes via [data-we-theme='X'] attribute selectors. */}
-          <div style={{ display: 'contents', ...spaceThemeStyle() }} data-we-theme={spaceThemeName()}>
-            <Show when={stores.templateStore.currentTemplate.id || 'empty'} keyed>
-              <RenderSchema
-                node={stores.templateStore.currentTemplate}
-                stores={stores}
-                registry={registry}
-                children={props.children}
-              />
-            </Show>
-          </div>
+          <Show when={stores.templateStore.currentTemplate.id || 'empty'} keyed>
+            <RenderSchema
+              node={stores.templateStore.currentTemplate}
+              stores={stores}
+              registry={registry}
+              children={props.children}
+            />
+          </Show>
         </Column>
 
         {/* Code / visual editor overlay — sits above template (z:5), below shell (z:11).
