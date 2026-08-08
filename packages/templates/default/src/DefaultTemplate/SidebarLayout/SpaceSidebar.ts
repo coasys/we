@@ -51,12 +51,20 @@ export const spaceSidebar: SchemaNode = {
       children: [
         {
           type: 'we-text',
-          props: { textAlign: 'center' },
+          props: {
+            textAlign: 'center',
+            loading: { $not: { $store: 'spaceStore.currentSpace' } },
+          },
           children: [{ $store: 'spaceStore.currentSpace.name' }],
         },
         {
           type: 'we-text',
-          props: { variant: 'body', textAlign: 'center', mb: '400' },
+          props: {
+            variant: 'body',
+            textAlign: 'center',
+            mb: '400',
+            loading: { $not: { $store: 'spaceStore.currentSpace' } },
+          },
           children: [{ $store: 'spaceStore.currentSpace.description' }],
         },
       ],

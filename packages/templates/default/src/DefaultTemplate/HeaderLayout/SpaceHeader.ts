@@ -52,28 +52,24 @@ export const spaceHeader: SchemaNode = {
                   props: { p: '400', gap: '300', maxWidth: '700px' },
                   children: [
                     /*
-                      Both of these wait on `currentSpace` rather than reading through it.
+                      `loading` rather than a placeholder beside the text: the element sizes its own
+                      placeholder from the line it would occupy, so nothing here has to know the
+                      height of a heading — a number no template can derive and which drifts the
+                      moment a theme changes its type scale.
 
-                      `we-text` is `display: block`, and an empty block has no line box — so while
-                      the space was still arriving the name occupied nothing and then snapped to a
-                      full heading line. The description was worse than a jump: its condition tests
-                      `description`, which is falsy while unloaded, so it asserted "No
-                      description..." about a space it had not seen yet.
-
-                      A skeleton holds the same space and says why it is empty, and the absence of
-                      a description is only claimed once there is a space to claim it about.
+                      The description still waits on the space rather than reading through it. Its
+                      inner condition tests `description`, which is falsy while unloaded, so without
+                      the outer test it asserted "No description..." about a space it had not seen.
                     */
                     {
-                      type: '$if',
+                      type: 'we-text',
                       props: {
-                        condition: { $store: 'spaceStore.currentSpace' },
-                        then: {
-                          type: 'we-text',
-                          props: { variant: 'heading-md', color: 'neutral-1000' },
-                          children: [{ $store: 'spaceStore.currentSpace.name' }],
-                        },
-                        else: { type: 'we-skeleton', props: { width: '220px', height: '1.4em' } },
+                        variant: 'heading-md',
+                        color: 'neutral-1000',
+                        loading: { $not: { $store: 'spaceStore.currentSpace' } },
+                        loadingWidth: '220px',
                       },
+                      children: [{ $store: 'spaceStore.currentSpace.name' }],
                     },
                     {
                       type: '$if',
@@ -95,7 +91,7 @@ export const spaceHeader: SchemaNode = {
                             },
                           },
                         },
-                        else: { type: 'we-skeleton', props: { width: '320px', height: '1.2em' } },
+                        else: { type: 'we-text', props: { loading: true, loadingWidth: '320px' } },
                       },
                     },
                     {

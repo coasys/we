@@ -750,7 +750,7 @@ listener for `we-reorder` never fires and the drop silently does nothing.
 - we-tag (DesignSystemElement)
   Props: variant: 'neutral' | 'primary' | 'success' | 'warning' | 'danger' = 'neutral', dismissible: boolean = false
 - we-text (DesignSystemElement)
-  Props: text?: string | undefined, variant: '' | 'body' | 'label' | 'footnote' | 'subheading' | 'ingress' | 'heading-sm' | 'heading-md' | 'heading-lg' | 'heading-xl' = '', tag: 'p' | 'span' | 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'h6' | 'small' | 'b' | 'i' | 'label' | 'div' = 'span', inline: boolean = false, uppercase: boolean = false, italic: boolean = false, truncate: boolean = false, gradient: string = ''
+  Props: text?: string | undefined, variant: '' | 'body' | 'label' | 'footnote' | 'subheading' | 'ingress' | 'heading-sm' | 'heading-md' | 'heading-lg' | 'heading-xl' = '', tag: 'p' | 'span' | 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'h6' | 'small' | 'b' | 'i' | 'label' | 'div' = 'span', inline: boolean = false, uppercase: boolean = false, italic: boolean = false, truncate: boolean = false, gradient: string = '', loading: boolean = false, loadingWidth: string = '100%'
 - we-textarea (DesignSystemElement)
   Props: value: string = '', name: string = '', placeholder: string = '', rows: number = 3, maxlength: unknown = Infinity, minlength: number = 0, disabled: boolean = false, required: boolean = false, readonly: boolean = false, resize: 'none' | 'vertical' | 'horizontal' | 'both' = 'vertical', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md'
 - we-timestamp (DesignSystemElement) — Displays a formatted or relative timestamp that self-updates each minute
@@ -2125,6 +2125,9 @@ WRONG icon names (Heroicons/Material — do NOT use):
 - All schemas must be valid JSON with property names and string values in double quotes.
 - The meta property at the root is required: { "meta": { "name": "...", "description": "...", "icon": "..." } }
 - Always set `bg: 'neutral-50'` on root-level schema nodes (templates, pages). This ensures proper background in all themes — without it, dark mode renders white backgrounds.
+- Use `we-text`'s `loading` prop for text bound to data that has not arrived — never a hand-authored `$if` + `we-skeleton` beside it. A separate placeholder needs a height nobody can derive from the schema, and any value you measure drifts the moment a theme changes `fontScale` or the type scale. `we-text` sizes its own placeholder from the line it would occupy, so it stays right. Set `loadingWidth` (default `'100%'`) for the one thing the element cannot infer: how wide the absent text would have been.
+- An empty `we-text` already reserves one line, so text that simply arrives late does not shift the layout even without `loading`. Only `inline` text still collapses, which is correct for a run inside a sentence.
+- Distinguish "not loaded yet" from "loaded and empty" when the difference is visible. A condition like `{ $store: 'spaceStore.currentSpace.description' }` is falsy in both cases, so an `else` branch saying "No description" asserts it about a space that has not arrived. Test the container first (`currentSpace`), then its field.
 - Size a template root with `minHeight`, never `height`. `height: '100%'` makes the root exactly as tall as the viewport, so a route with more content than that overflows the *box* — and the root's background stops at the fold while the content keeps scrolling. `minHeight: '100%'` fills the viewport when a route is short and grows when it is long, which is what a page background needs. The same applies to `'100vh'`.
 
 Most @we/primitives inherit all Design System Props documented above (layout, visual, flex, typography, state).

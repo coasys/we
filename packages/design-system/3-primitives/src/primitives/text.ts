@@ -47,6 +47,27 @@ const styles = css`
     --we-text-display: inline;
   }
 
+  /*
+    Hold one line even with nothing in it.
+
+    An empty block has no line box, so text bound to data that has not arrived occupied no height
+    and then snapped to a full line once it did — every async name, label and description shifting
+    its layout on load. Reserving the line makes that the element's own problem rather than
+    something each template has to anticipate with a hand-measured placeholder.
+
+    1lh is exactly the line box this text will occupy, so it stays right when a theme changes
+    fontScale or the line-height tokens — which a pixel value cannot. The em fallback is for
+    engines without lh support; it is approximate, and only ever used where the better answer is
+    unavailable.
+
+    Not applied when inline: min-height does nothing on a non-replaced inline box, and an inline
+    run genuinely should collapse when it has nothing to say.
+  */
+  :host(:not([inline])) [part='base'] {
+    min-height: 1.5em;
+    min-height: 1lh;
+  }
+
   :host([tag='p']) {
     --we-text-margin: 0 0 1em 0;
   }
@@ -95,6 +116,23 @@ export default class Text extends DesignSystemElement {
   @property({ type: Boolean, reflect: true }) italic = false;
   @property({ type: Boolean, reflect: true }) truncate = false;
   @property({ type: String, reflect: true }) gradient = '';
+  /**
+   * Show a placeholder at this text's own size instead of its content.
+   *
+   * Here rather than in each template because the size of absent text is only knowable by the
+   * element that would have rendered it — a hand-authored placeholder beside the text has to be
+   * given a height nobody can derive from the schema, and which drifts the moment a theme changes
+   * its type scale.
+   */
+  @property({ type: Boolean, reflect: true }) loading = false;
+  /**
+   * How wide the placeholder is. Defaults to filling the available width.
+   *
+   * The one thing the element genuinely cannot infer: the width of text it has never seen. Left to
+   * the author, and independent of the loaded state, so constraining the placeholder does not also
+   * constrain the text it stands in for.
+   */
+  @property({ type: String }) loadingWidth = '100%';
   @property({ type: Object }) styles?: Record<string, string | number | undefined>;
 
   override updated(changedProperties: Map<string, unknown>) {
@@ -118,6 +156,12 @@ export default class Text extends DesignSystemElement {
   render() {
     const inline = this.styles || {};
     const renderFn = tagTemplates[this.tag] ?? tagTemplates['span'];
-    return renderFn(this.text ?? html`<slot></slot>`, inline);
+    // The real `we-skeleton` rather than a shimmer of our own, so a placeholder standing in for
+    // text is the same object as one standing in for anything else. Sized to `1lh` — the line this
+    // text occupies — so it holds precisely the room the content will take.
+    const content = this.loading
+      ? html`<we-skeleton width=${this.loadingWidth} height="1lh" style="display:block"></we-skeleton>`
+      : (this.text ?? html`<slot></slot>`);
+    return renderFn(content, inline);
   }
 }

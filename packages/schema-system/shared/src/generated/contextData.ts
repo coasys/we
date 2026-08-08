@@ -574,6 +574,8 @@ export const contextData: ContextData = {
         { name: 'italic', type: 'boolean', optional: false, default: 'false' },
         { name: 'truncate', type: 'boolean', optional: false, default: 'false' },
         { name: 'gradient', type: 'string', optional: false, default: "''" },
+        { name: 'loading', type: 'boolean', optional: false, default: 'false' },
+        { name: 'loadingWidth', type: 'string', optional: false, default: "'100%'" },
       ],
     },
     {

@@ -28,7 +28,12 @@ export const aboutRoute: RouteSchema = {
                 { type: 'we-text', props: { color: 'neutral-700' }, children: ['Name'] },
                 {
                   type: 'we-text',
-                  props: { variant: 'heading-md', color: 'neutral-1000' },
+                  props: {
+                    variant: 'heading-md',
+                    color: 'neutral-1000',
+                    loading: { $not: { $store: 'spaceStore.currentSpace' } },
+                    loadingWidth: '220px',
+                  },
                   children: [{ $store: 'spaceStore.currentSpace.name' }],
                 },
               ],
@@ -40,16 +45,26 @@ export const aboutRoute: RouteSchema = {
               props: { gap: '100' },
               children: [
                 { type: 'we-text', props: { color: 'neutral-700' }, children: ['Description'] },
+                // Waits on the space rather than reading through it: the inner condition tests
+                // `description`, which is falsy while unloaded, so on its own it claimed "No
+                // description..." about a space it had not seen yet.
                 {
                   type: '$if',
                   props: {
-                    condition: { $store: 'spaceStore.currentSpace.description' },
-                    then: { type: 'we-text', children: [{ $store: 'spaceStore.currentSpace.description' }] },
-                    else: {
-                      type: 'we-text',
-                      props: { italic: true },
-                      children: ['No description...'],
+                    condition: { $store: 'spaceStore.currentSpace' },
+                    then: {
+                      type: '$if',
+                      props: {
+                        condition: { $store: 'spaceStore.currentSpace.description' },
+                        then: { type: 'we-text', children: [{ $store: 'spaceStore.currentSpace.description' }] },
+                        else: {
+                          type: 'we-text',
+                          props: { italic: true },
+                          children: ['No description...'],
+                        },
+                      },
                     },
+                    else: { type: 'we-text', props: { loading: true, loadingWidth: '320px' } },
                   },
                 },
               ],
