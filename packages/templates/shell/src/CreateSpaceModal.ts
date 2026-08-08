@@ -1,7 +1,9 @@
+import type { SchemaNode } from '@we/schema-shared';
+
 export const createSpaceModal = {
   type: 'we-modal',
   props: {
-    close: { $setLocal: 'createSpaceModalOpen', value: false },
+    close: { $action: 'shellStore.setCreateSpaceOpen', args: [false] },
     maxWidth: '560px',
     width: '100%',
   },
@@ -343,7 +345,7 @@ export const createSpaceModal = {
           props: {
             variant: 'ghost',
             text: 'Cancel',
-            onClick: { $setLocal: 'createSpaceModalOpen', value: false },
+            onClick: { $action: 'shellStore.setCreateSpaceOpen', args: [false] },
           },
         },
         {
@@ -370,7 +372,7 @@ export const createSpaceModal = {
                       { $local: 'coverImage' },
                       { $local: 'location' },
                     ],
-                    onSuccess: [{ $setLocal: 'createSpaceModalOpen', value: false }],
+                    onSuccess: [{ $action: 'shellStore.setCreateSpaceOpen', args: [false] }],
                     onFinally: [{ $setLocal: 'submitting', value: false }],
                   },
                   else: { $setLocal: 'submitting', value: false },
@@ -382,4 +384,13 @@ export const createSpaceModal = {
       ],
     },
   ],
+};
+
+/**
+ * The modal, gated on the shell flag — registered as chrome so it exists once, wherever it is
+ * opened from. See `shellStore.createSpaceOpen`.
+ */
+export const createSpaceModalMount: SchemaNode = {
+  type: '$if',
+  props: { condition: { $store: 'shellStore.createSpaceOpen' }, then: createSpaceModal },
 };

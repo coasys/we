@@ -8,7 +8,6 @@ import type { SchemaNode, TemplateSchema } from '@we/schema-shared';
 
 import { accountSettings } from './AccountSettings.schema.ts';
 import { aiSection } from './AiSettings.schema.ts';
-import { createSpaceModal } from './CreateSpaceModal.ts';
 import { advancedDatasetsSection } from './spaces/AdvancedDatasets.ts';
 import { spaceSettingsPage } from './spaces/SpaceSettings.ts';
 import { spacesListSection } from './spaces/SpacesList.ts';
@@ -522,13 +521,61 @@ const createSpaceButton: SchemaNode = {
     text: 'Create New Space',
     variant: 'primary',
     height: '40px',
-    onClick: { $setLocal: 'createSpaceModalOpen', value: true },
+    onClick: { $action: 'shellStore.setCreateSpaceOpen', args: [true] },
   },
 };
 
-const createSpaceModalMount: SchemaNode = {
-  type: '$if',
-  props: { condition: { $local: 'createSpaceModalOpen' }, then: createSpaceModal },
+/**
+ * Join a space someone sent you.
+ *
+ * On the web a share link is a URL the browser can open, and the space gate takes it from there.
+ * Nothing else has an address bar, so a desktop build needs somewhere to put the thing you were
+ * sent — this is that place. `joinSpace` accepts a full URL, a `neighbourhood://` URI or a bare
+ * id, so whichever form the link arrived in is the form that works.
+ */
+const joinSpaceByLink: SchemaNode = {
+  type: 'Column',
+  props: { gap: '200' },
+  $localState: { joinLink: { type: 'string', initial: '' }, joining: { type: 'boolean', initial: false } },
+  children: [
+    { type: 'we-text', props: { variant: 'label' }, children: ['Join with a link'] },
+    {
+      type: 'Row',
+      props: { gap: '200', ay: 'center', wrap: true },
+      children: [
+        {
+          type: 'we-input',
+          props: {
+            flex: '1',
+            value: { $local: 'joinLink' },
+            placeholder: 'Paste a space link or neighbourhood:// address',
+            disabled: { $local: 'joining' },
+            onInput: { $setLocal: 'joinLink', from: '$event.detail' },
+          },
+        },
+        {
+          type: 'we-button',
+          props: {
+            variant: 'secondary',
+            // Gated on having typed something rather than on validation: whether an address
+            // resolves is only knowable by trying it, so the button asks rather than predicts.
+            disabled: { $or: [{ $not: { $local: 'joinLink' } }, { $local: 'joining' }] },
+            loading: { $local: 'joining' },
+            onClick: [
+              { $setLocal: 'joining', value: true },
+              {
+                $action: 'spaceStore.joinSpace',
+                args: [{ $local: 'joinLink' }],
+                onSuccess: [{ $setLocal: 'joinLink', value: '' }],
+                onFinally: [{ $setLocal: 'joining', value: false }],
+              },
+            ],
+          },
+          children: ['Join'],
+        },
+      ],
+    },
+  ],
 };
 
 /**
@@ -587,15 +634,14 @@ export const settingsTemplate: TemplateSchema = {
     { path: '/appearance', ...page([templatesSection, themeScopeSection, themesSection]) },
     {
       path: '/spaces',
-      $localState: { createSpaceModalOpen: { type: 'boolean', initial: false } },
       ...page([
         spacesListSection,
         createSpaceButton,
+        joinSpaceByLink,
         // Below the spaces themselves: it is about all of this data at once, and it is the one
         // control here that writes a file rather than changing what is on screen.
         backup,
         advancedDatasetsSection,
-        createSpaceModalMount,
       ]),
     },
     // Settings for one space, keyed by the row that was clicked rather than by where the agent is

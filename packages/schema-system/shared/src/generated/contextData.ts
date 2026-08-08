@@ -2294,6 +2294,7 @@ export const contextData: ContextData = {
             'isWeSpace',
             'canAdminister',
             'modules',
+            'shareLink',
             'defaultTemplateId',
             'defaultThemeId',
             'templateOverride',
@@ -2351,6 +2352,7 @@ export const contextData: ContextData = {
         'upsertSignal',
         'navigateToSpace',
         'canAdministerSpace',
+        'copyShareLink',
         'setModuleEnabled',
         'setModuleInstalled',
         'setModuleMuted',
@@ -2407,8 +2409,8 @@ export const contextData: ContextData = {
     },
     {
       name: 'shellStore',
-      state: { activeShellView: { type: 'string' } },
-      actions: ['openShellView', 'closeShellView', 'scrollToId'],
+      state: { activeShellView: { type: 'string' }, createSpaceOpen: { type: 'boolean' } },
+      actions: ['openShellView', 'closeShellView', 'setCreateSpaceOpen', 'scrollToId'],
     },
     {
       name: 'appStore',

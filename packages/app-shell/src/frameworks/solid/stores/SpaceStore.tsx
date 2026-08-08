@@ -8,6 +8,7 @@ import {
 } from '@shared/spaceSync';
 import { deriveSlug } from '@shared/utils';
 import type { AgentProfileSummary } from '@we/backend-shared';
+import { toastService } from '@we/components/solid';
 import { createBlocks, deleteBlocks, reconcileBlocks } from '@we/block-shared';
 import {
   AGENT_DEFAULT,
@@ -81,6 +82,15 @@ export interface SpaceListEntry {
   /** This agent's override: FOLLOW_SPACE, AGENT_DEFAULT, or a concrete id. Private to this agent. */
   templateOverride: string;
   themeOverride: string;
+  /**
+   * A link that gets someone else into this space, or `''` when there is nothing to share.
+   *
+   * Empty for a personal space: it has no global id, so no link could reach it. On the web this is
+   * an ordinary URL someone can click; anywhere else it is the `neighbourhood://` URI, because a
+   * desktop build has no origin worth putting in front of a path and no address bar to paste one
+   * into. Both are accepted by `joinSpace`, so whichever a recipient has, it works.
+   */
+  shareLink: string;
 }
 
 /**
@@ -247,6 +257,8 @@ export interface SpaceStore {
   navigateToSpace: (spaceId: string, view?: string) => Promise<void>;
   /** Whether this agent may change what every member of that space sees. */
   canAdministerSpace: (uuid: string) => boolean;
+  /** Copy a space's share link to the clipboard. No-op for a space that has none. */
+  copyShareLink: (uuid: string) => Promise<void>;
   getSubgroupMessages: (subgroupId: string) => Promise<FluxSubgroupMessage[]>;
   removeSpaceFromGlobal: (spaceUuid: string) => Promise<void>;
   updateSpaceInCache: (dataset: AppDataset, updates: Partial<Space>) => void;
@@ -344,6 +356,18 @@ export function SpaceStoreProvider(props: ParentProps) {
   const themeOverrideFor = (spaceUuid: string | undefined): string =>
     preferenceFor(spaceUuid)?.themeId || FOLLOW_SPACE;
 
+  /**
+   * The link that reaches a space from outside — see {@link SpaceListEntry.shareLink}.
+   *
+   * Built from the dataset's own `sharedId`/`sharedUri` rather than from `Space.url`, so it is right
+   * for a joined-but-foreign dataset too, and needs no Space record to exist.
+   */
+  const shareLinkFor = (ds: AppDataset): string => {
+    if (!ds.sharedId) return '';
+    const onWeb = typeof window !== 'undefined' && window.location.protocol.startsWith('http');
+    return onWeb ? `${window.location.origin}/space/${ds.sharedId}` : (ds.sharedUri ?? ds.sharedId);
+  };
+
   /** The Space model behind a dataset id, for resolving what an override falls back to. */
   const spaceForUuid = (uuid: string): Space | undefined => {
     const ds = datasetStore.datasets().find((d) => d.id === uuid);
@@ -413,6 +437,7 @@ export function SpaceStoreProvider(props: ParentProps) {
         defaultThemeId: space?.defaultThemeId ?? '',
         templateOverride: templateOverrideFor(ds.id),
         themeOverride: themeOverrideFor(ds.id),
+        shareLink: shareLinkFor(ds),
       };
     }),
   );
@@ -1032,6 +1057,25 @@ export function SpaceStoreProvider(props: ParentProps) {
   });
 
   /** Turn a module on or off for this agent everywhere. See `AgentSettings.installedModules`. */
+  /**
+   * Put a space's share link on the clipboard.
+   *
+   * Here rather than in a schema because clipboard access is a browser API, and because the failure
+   * is worth reporting: a denied clipboard permission is silent otherwise, and the user would be
+   * left pasting whatever they had before.
+   */
+  async function copyShareLink(uuid: string): Promise<void> {
+    const link = spaceList().find((s) => s.uuid === uuid)?.shareLink;
+    if (!link) return;
+    try {
+      await navigator.clipboard.writeText(link);
+      toastService.success('Link copied');
+    } catch (error) {
+      console.error('SpaceStore: could not copy share link', error);
+      toastService.error('Could not copy the link');
+    }
+  }
+
   async function setModuleInstalled(moduleId: string, installed: boolean): Promise<void> {
     const next = new Set(installedModules());
     if (installed) next.add(moduleId);
@@ -1404,6 +1448,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     upsertSignal,
     navigateToSpace,
     canAdministerSpace,
+    copyShareLink,
     getSubgroupMessages,
     removeSpaceFromGlobal,
     updateSpaceInCache,

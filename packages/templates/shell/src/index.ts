@@ -26,4 +26,4 @@ export {
 export { settingsTemplate } from './Settings.schema';
 export { sidebar } from './Sidebar.schema';
 export { templateEditor } from './TemplateEditor.schema';
-export { createSpaceModal } from './CreateSpaceModal.ts';
+export { createSpaceModal, createSpaceModalMount } from './CreateSpaceModal.ts';

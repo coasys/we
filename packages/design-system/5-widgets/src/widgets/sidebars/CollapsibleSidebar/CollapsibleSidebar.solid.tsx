@@ -203,6 +203,9 @@ export function CollapsibleSidebar(props: SolidCollapsibleSidebarProps) {
 
     return (
       <div class="we-collapsible-sidebar__group">
+        {/* Header row — the header itself, plus any group action beside it. A row rather than one
+            element because the collapsible header is a button, and the action cannot nest inside it. */}
+        <div style={{ display: 'flex', 'align-items': 'center' }}>
         {/* Group header — we-button for collapsible (theme-aware), plain div for static */}
         <Show
           when={group.collapsible !== false}
@@ -256,6 +259,28 @@ export function CollapsibleSidebar(props: SolidCollapsibleSidebarProps) {
             />
           </we-button>
         </Show>
+        <Show when={group.action && isExpanded()}>
+          {/* `stopPropagation` is belt-and-braces — it is a sibling, so nothing would bubble to the
+              header anyway, but the two sit close enough that a future refactor might nest them. */}
+          <we-tooltip title={group.action!.label} placement="right">
+            <we-button
+              variant="ghost"
+              size="sm"
+              square
+              onClick={(e: MouseEvent) => {
+                e.stopPropagation();
+                group.action!.onClick();
+              }}
+              style={{
+                opacity: isExpanded() ? 1 : 0,
+                transition: `opacity ${transitionDuration()}ms ease-in-out`,
+              }}
+            >
+              <we-icon name={group.action!.icon} size="xs" color="neutral-400" />
+            </we-button>
+          </we-tooltip>
+        </Show>
+        </div>
 
         {/* Group items */}
         <div

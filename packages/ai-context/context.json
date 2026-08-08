@@ -5825,6 +5825,7 @@
             "isWeSpace",
             "canAdminister",
             "modules",
+            "shareLink",
             "defaultTemplateId",
             "defaultThemeId",
             "templateOverride",
@@ -5918,6 +5919,7 @@
         "upsertSignal",
         "navigateToSpace",
         "canAdministerSpace",
+        "copyShareLink",
         "setModuleEnabled",
         "setModuleInstalled",
         "setModuleMuted",
@@ -6025,9 +6027,12 @@
       "state": {
         "activeShellView": {
           "type": "string"
+        },
+        "createSpaceOpen": {
+          "type": "boolean"
         }
       },
-      "actions": ["openShellView", "closeShellView", "scrollToId"]
+      "actions": ["openShellView", "closeShellView", "setCreateSpaceOpen", "scrollToId"]
     },
     {
       "name": "appStore",

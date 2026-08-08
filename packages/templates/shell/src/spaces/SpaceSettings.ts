@@ -198,6 +198,69 @@ const moduleStatus: SchemaNode = {
 };
 
 /**
+ * The link that gets someone else in here.
+ *
+ * Only for a shared space — a personal one has no global id, so `shareLink` is empty and there is
+ * nothing a link could reach. Shown rather than hidden behind the copy button, because a link is
+ * something people also read out, screenshot, or paste somewhere the clipboard cannot follow.
+ */
+const shareSection: SchemaNode = {
+  type: '$if',
+  props: {
+    condition: '$space.shareLink',
+    then: {
+      type: 'Column',
+      props: { gap: '300', p: '400', bg: 'neutral-0', r: '300', border: '1px solid neutral-200' },
+      children: [
+        {
+          type: 'Column',
+          props: { gap: '100' },
+          children: [
+            { type: 'we-text', props: { variant: 'label' }, children: ['Invite'] },
+            {
+              type: 'we-text',
+              props: { variant: 'footnote', color: 'neutral-400' },
+              children: ['Anyone with this link can open the space and choose to join it.'],
+            },
+          ],
+        },
+        {
+          type: 'Row',
+          props: { gap: '200', ay: 'center', wrap: true },
+          children: [
+            {
+              type: 'we-text',
+              props: {
+                variant: 'footnote',
+                flex: '1',
+                truncate: true,
+                p: '200',
+                bg: 'neutral-50',
+                r: '200',
+                styles: { 'word-break': 'break-all' },
+              },
+              children: ['$space.shareLink'],
+            },
+            {
+              type: 'we-button',
+              props: {
+                variant: 'secondary',
+                size: 'sm',
+                onClick: { $action: 'spaceStore.copyShareLink', args: ['$space.uuid'] },
+              },
+              children: [
+                { type: 'we-icon', props: { name: 'copy' } },
+                { type: 'we-text', props: { variant: 'label' }, children: ['Copy'] },
+              ],
+            },
+          ],
+        },
+      ],
+    },
+  },
+};
+
+/**
  * This agent's own template and theme for this space, overriding what the community set.
  *
  * Offered to everyone, not just whoever administers the space — this changes nothing another member
@@ -386,7 +449,7 @@ export const spaceSettingsPage: SchemaNode = {
           type: '$if',
           props: {
             condition: '$space.isWeSpace',
-            then: { type: 'Column', props: { gap: '400' }, children: [personalAppearanceSection, communitySection, modulesSection] },
+            then: { type: 'Column', props: { gap: '400' }, children: [shareSection, personalAppearanceSection, communitySection, modulesSection] },
             else: notAWeSpaceNotice,
           },
         },
