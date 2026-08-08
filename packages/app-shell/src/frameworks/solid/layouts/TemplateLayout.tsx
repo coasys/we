@@ -156,7 +156,23 @@ export function TemplateLayout(props: ParentProps & { stores: Stores }) {
     if (!td) return {};
     const overrides = td.overrides ? JSON.parse(td.overrides) : {};
     if (isValidThemeKey(td.id) && !overrides.themeName) overrides.themeName = td.id;
-    return themeToStyle(overrides);
+    return {
+      ...themeToStyle(overrides),
+      /**
+       * Re-resolve the inherited text colour against this wrapper's own tokens.
+       *
+       * The global stylesheet sets `color: var(--we-color-neutral-1000)` on `html, body, #root`.
+       * A custom property is substituted where the declaration lives, so that resolves against
+       * documentElement — the *personal* theme in scoped mode — and then inherits down as a
+       * finished colour. Re-declaring the token on this wrapper does not re-run that substitution,
+       * so a light space under a dark personal theme rendered light surfaces with white text on
+       * anything that did not set its own colour.
+       *
+       * `background-color` needs no equivalent: it does not inherit, so the wrapper's own surfaces
+       * paint from the tokens it declares.
+       */
+      color: 'var(--we-color-neutral-1000)',
+    };
   });
 
   const spaceThemeName = createMemo(() => {
