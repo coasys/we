@@ -52,14 +52,17 @@ const modules = new Map<string, RegisteredModule>();
  * `slotRegistry` is a plain `Map` that would have to become reactive. And it composes: the module's
  * own visibility conditions still apply underneath, so a module never has to know it is being gated.
  *
- * `spaceStore.enabledModules` resolves to the seed's module list when a space has not decided, which
- * is what keeps existing spaces rendering the chrome they already had. See `Space.enabledModules`.
+ * Gated on `activeModules` — the three layers intersected, less this agent's mutes — rather than on
+ * the space's decision alone. The space saying yes is necessary but not sufficient: a module the
+ * agent has not installed, or has muted here, must not render either. Each layer falls back to the
+ * registered set when undecided, which is what keeps existing spaces and existing agents rendering
+ * the chrome they already had. See `Space.enabledModules` and `AgentSettings.installedModules`.
  */
 function gateOnSpace(moduleId: string, node: SchemaNode): SchemaNode {
   return {
     type: '$if',
     props: {
-      condition: { $in: [moduleId, { $store: 'spaceStore.enabledModules' }] },
+      condition: { $in: [moduleId, { $store: 'spaceStore.activeModules' }] },
       then: node,
     },
   };

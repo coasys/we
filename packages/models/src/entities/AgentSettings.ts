@@ -36,6 +36,23 @@ export class AgentSettings extends Ad4mModel {
   @Property({ through: 'we://use_space_template' })
   useSpaceTemplate: boolean = true;
 
+  /**
+   * Which feature modules this agent wants available to them, anywhere, as a JSON array of ids.
+   *
+   * The middle of three layers. The deployment's seed says what is shipped; this says what I want
+   * from it; `Space.enabledModules` says what a community runs. A module renders only where all
+   * three agree — so turning one off here mutes it for me in every space, without touching what
+   * anyone else sees.
+   *
+   * **Empty means "not decided", not "none"** — the same rule as `Space.enabledModules`, and for the
+   * same reason: an agent who has never opened the setting must keep everything they had.
+   *
+   * Mine, so it lives in the root dataset rather than in any space. Writing it into a shared space
+   * would broadcast which modules I have turned off to every other member.
+   */
+  @Property({ through: 'we://installed_modules' })
+  installedModules: string = '';
+
   @HasMany(() => Template, { through: 'we://installed_template' })
   installedTemplates: Template[] = [];
 

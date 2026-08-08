@@ -20,6 +20,7 @@ import {
   Signal,
   SignalType,
   Space,
+  SpaceModulePreference,
 } from '@we/models';
 import {
   Accessor,
@@ -96,16 +97,31 @@ function resolveEnabledModules(raw: string | undefined): string[] {
   return moduleRegistry.all().map((entry) => entry.definition.id);
 }
 
-/** Every registered module paired with whether that space has it on — the shape a settings list renders. */
-function moduleSettingsFrom(raw: string | undefined): ModuleSetting[] {
+/**
+ * Every registered module, with each layer's answer for one space — the shape a settings list renders.
+ *
+ * All three answers travel together because the settings page has to explain *why* a module is not
+ * showing. "Enabled by the community but not installed by you" and "installed but the community has
+ * it off" are different situations with different remedies, and a single boolean cannot tell them
+ * apart — it would leave a toggle that is on next to a module that is not there.
+ */
+function moduleSettingsFrom(raw: string | undefined, installed: Set<string>, muted: Set<string>): ModuleSetting[] {
   const on = new Set(resolveEnabledModules(raw));
-  return moduleRegistry.all().map(({ definition }) => ({
-    id: definition.id,
-    name: definition.name,
-    description: definition.description ?? '',
-    icon: definition.icon ?? 'puzzle-piece',
-    enabled: on.has(definition.id),
-  }));
+  return moduleRegistry.all().map(({ definition }) => {
+    const enabled = on.has(definition.id);
+    const isInstalled = installed.has(definition.id);
+    const isMuted = muted.has(definition.id);
+    return {
+      id: definition.id,
+      name: definition.name,
+      description: definition.description ?? '',
+      icon: definition.icon ?? 'puzzle-piece',
+      enabled,
+      installed: isInstalled,
+      muted: isMuted,
+      active: enabled && isInstalled && !isMuted,
+    };
+  });
 }
 
 export interface ModuleSetting {
@@ -113,7 +129,14 @@ export interface ModuleSetting {
   name: string;
   description: string;
   icon: string;
+  /** The community's decision for this space — shared with every member. */
   enabled: boolean;
+  /** This agent's decision, everywhere. */
+  installed: boolean;
+  /** This agent's decision, here. Private. */
+  muted: boolean;
+  /** All of the above agreeing — whether it actually renders here for this agent. */
+  active: boolean;
 }
 
 export interface SpaceMetaUpdate {
@@ -160,11 +183,16 @@ export interface SpaceStore {
    * for prefilling the "Initialize as WE space" gate. Null once the dataset is a WE space,
    * or if no recognized foreign model is found. */
   foreignSpacePrefill: Accessor<{ name: string; description: string; avatar: string | null } | null>;
-  /** Feature modules turned on for this space. Falls back to everything the seed activated when the
-   *  space has never decided, so spaces that predate the setting keep the chrome they had. */
+  /** Feature modules this *space* has turned on — the community's decision, shared with every
+   *  member. Falls back to everything the seed activated when the space has never decided, so
+   *  spaces that predate the setting keep the chrome they had. */
   enabledModules: Accessor<string[]>;
-  /** Registered modules paired with whether this space has them on — the settings list. */
-  moduleSettings: Accessor<ModuleSetting[]>;
+  /** Feature modules this *agent* wants available anywhere. Personal; see AgentSettings.installedModules. */
+  installedModules: Accessor<string[]>;
+  /** What actually renders here for this agent: registered ∩ installed ∩ enabled, less personal mutes. */
+  activeModules: Accessor<string[]>;
+  /** Every registered module and whether this agent wants it available anywhere — the global list. */
+  moduleInstallSettings: Accessor<{ id: string; name: string; description: string; icon: string; installed: boolean }[]>;
   /** Launchers for the modules enabled here — what the module rail renders. */
   moduleLaunchers: Accessor<{ id: string; icon: string; label: string; active: boolean }[]>;
 
@@ -192,6 +220,10 @@ export interface SpaceStore {
   setSpaceDefaultTemplate: (templateId: string, spaceUuid?: string) => Promise<void>;
   setSpaceDefaultTheme: (themeId: string, spaceUuid?: string) => Promise<void>;
   setModuleEnabled: (moduleId: string, enabled: boolean, spaceUuid?: string) => Promise<void>;
+  /** Turn a module on or off for this agent everywhere. */
+  setModuleInstalled: (moduleId: string, installed: boolean) => Promise<void>;
+  /** Mute or unmute a module for this agent in one space. Private to this agent. */
+  setModuleMuted: (moduleId: string, muted: boolean, spaceUuid?: string) => Promise<void>;
   launchModule: (moduleId: string) => void;
   createSignalType: (config: Partial<SignalType>) => Promise<void>;
   upsertSignal: (nodeId: string, signalTypeId: string, value: number) => Promise<void>;
@@ -255,6 +287,35 @@ export function SpaceStoreProvider(props: ParentProps) {
   }
 
   /**
+   * The middle layer: which modules this agent wants available to them at all, anywhere.
+   *
+   * Read from the root dataset, so it is personal — turning one off here changes nothing another
+   * member sees. Unset means "not decided" and falls back to everything registered, so an agent who
+   * never opens the setting keeps what they had.
+   */
+  const installedModules = createMemo<string[]>(() =>
+    resolveEnabledModules(datasetStore.agentSettings()?.installedModules),
+  );
+
+  /** This agent's muted modules for a given space, from the root dataset. */
+  const [modulePreferences, setModulePreferences] = createSignal<SpaceModulePreference[]>([]);
+
+  const mutedModulesFor = (spaceUuid: string | undefined): string[] => {
+    if (!spaceUuid) return [];
+    const pref = modulePreferences().find((p) => p.spaceUuid === spaceUuid);
+    if (!pref?.mutedModules) return [];
+    try {
+      const parsed = JSON.parse(pref.mutedModules);
+      return Array.isArray(parsed) ? parsed.filter((id): id is string => typeof id === 'string') : [];
+    } catch {
+      return [];
+    }
+  };
+
+  /** `installedModules` as a set — the shape both the list and the intersection want. */
+  const installedSet = createMemo(() => new Set(installedModules()));
+
+  /**
    * The spaces list: one row per joined dataset the agent can act on.
    *
    * Ordered by `orderedDatasets`, which already applies the user's sidebar order and drops the
@@ -273,7 +334,7 @@ export function SpaceStoreProvider(props: ParentProps) {
         kind: !space ? 'foreign' : space.url ? 'shared' : 'personal',
         isWeSpace: Boolean(space),
         canAdminister: space ? canAdministerSpace(space.uuid) : false,
-        modules: space ? moduleSettingsFrom(space.enabledModules) : [],
+        modules: space ? moduleSettingsFrom(space.enabledModules, installedSet(), new Set(mutedModulesFor(ds.id))) : [],
       };
     }),
   );
@@ -821,7 +882,40 @@ export function SpaceStoreProvider(props: ParentProps) {
    */
   const enabledModules = createMemo<string[]>(() => resolveEnabledModules(currentSpace()?.enabledModules));
 
-  const moduleSettings = createMemo(() => moduleSettingsFrom(currentSpace()?.enabledModules));
+
+
+  /**
+   * What actually renders here, for this agent: the three layers intersected, minus personal mutes.
+   *
+   * Registered ∩ installed ∩ enabled, less muted. The layers answer different questions and none
+   * substitutes for another — the deployment says what exists, I say what I want anywhere, the
+   * community says what it runs, and I say what I want *here*. A module has to survive all four.
+   *
+   * This is what the chrome gate and the launcher rail read. `enabledModules` stays the community's
+   * decision alone, because that is what the space settings edit and what other members share.
+   */
+  const activeModules = createMemo<string[]>(() => {
+    const installed = installedSet();
+    const muted = new Set(mutedModulesFor(datasetStore.currentDataset()?.id));
+    return enabledModules().filter((id) => installed.has(id) && !muted.has(id));
+  });
+
+  /**
+   * The agent layer as a settings list — every registered module and whether this agent wants it.
+   *
+   * Space-independent by design: this is the page you reach without being in a space, and the
+   * decision it edits applies everywhere. Its per-space counterpart travels on each spaces-list row.
+   */
+  const moduleInstallSettings = createMemo(() => {
+    const installed = installedSet();
+    return moduleRegistry.all().map(({ definition }) => ({
+      id: definition.id,
+      name: definition.name,
+      description: definition.description ?? '',
+      icon: definition.icon ?? 'puzzle-piece',
+      installed: installed.has(definition.id),
+    }));
+  });
 
   /**
    * What the module rail renders: one entry per enabled module that declares a launcher.
@@ -837,8 +931,58 @@ export function SpaceStoreProvider(props: ParentProps) {
     return typeof value === 'function' ? Boolean((value as () => unknown)()) : Boolean(value);
   };
 
+  // Personal per-space module choices live in the root dataset, so they load with it rather than
+  // with any space — and stay readable for every space at once, which the settings list needs.
+  createEffect(() => {
+    const root = datasetStore.rootDataset();
+    if (!root) {
+      setModulePreferences([]);
+      return;
+    }
+    void SpaceModulePreference.findAll(root.handle)
+      .then(setModulePreferences)
+      .catch(() => setModulePreferences([]));
+  });
+
+  /** Turn a module on or off for this agent everywhere. See `AgentSettings.installedModules`. */
+  async function setModuleInstalled(moduleId: string, installed: boolean): Promise<void> {
+    const next = new Set(installedModules());
+    if (installed) next.add(moduleId);
+    else next.delete(moduleId);
+    // Writes the resolved list, so the first toggle pins whatever was on by fallback — the same
+    // reason `setModuleEnabled` does, and the same consequence: a module added to the seed later
+    // will not silently appear for an agent who has already decided.
+    await datasetStore.updateAgentSettings({ installedModules: JSON.stringify([...next]) });
+  }
+
+  /**
+   * Mute or unmute a module for this agent in one space.
+   *
+   * Written to the root dataset, never to the space — muting is mine, and putting it in the shared
+   * perspective would tell every other member what I have turned off.
+   */
+  async function setModuleMuted(moduleId: string, muted: boolean, spaceUuid?: string): Promise<void> {
+    const root = datasetStore.rootDataset();
+    const uuid = spaceUuid ?? datasetStore.currentDataset()?.id;
+    if (!root || !uuid) return;
+
+    const next = new Set(mutedModulesFor(uuid));
+    if (muted) next.add(moduleId);
+    else next.delete(moduleId);
+    const mutedModules = JSON.stringify([...next]);
+
+    try {
+      const existing = modulePreferences().find((p) => p.spaceUuid === uuid);
+      if (existing) await SpaceModulePreference.update(root.handle, existing.id, { mutedModules });
+      else await SpaceModulePreference.create(root.handle, { spaceUuid: uuid, mutedModules });
+      setModulePreferences(await SpaceModulePreference.findAll(root.handle));
+    } catch (error) {
+      console.error('SpaceStore: could not persist muted modules', error);
+    }
+  }
+
   const moduleLaunchers = createMemo(() => {
-    const on = new Set(enabledModules());
+    const on = new Set(activeModules());
     return moduleRegistry
       .all()
       .filter(({ definition }) => definition.launcher && on.has(definition.id))
@@ -1091,7 +1235,9 @@ export function SpaceStoreProvider(props: ParentProps) {
     creatingSpace,
     orderedSidebarItems,
     enabledModules,
-    moduleSettings,
+    installedModules,
+    activeModules,
+    moduleInstallSettings,
     moduleLaunchers,
     foreignSpacePrefill,
 
@@ -1108,6 +1254,8 @@ export function SpaceStoreProvider(props: ParentProps) {
     setSpaceDefaultTemplate,
     setSpaceDefaultTheme,
     setModuleEnabled,
+    setModuleInstalled,
+    setModuleMuted,
     launchModule,
     createSignalType,
     upsertSignal,

@@ -384,78 +384,71 @@ const themesSection: SchemaNode = {
 };
 
 const modulesSection: SchemaNode = {
-  type: '$if',
-  props: {
-    condition: { $store: 'datasetStore.currentDataset' },
-    then: {
-      type: 'Column',
-      props: { gap: '300' },
+  type: 'Column',
+  props: { gap: '300' },
+  children: [
+    {
+      type: 'Row',
+      props: { gap: '200', ay: 'center' },
+      children: [
+        { type: 'we-icon', props: { name: 'puzzle-piece', size: '20px' } },
+        { type: 'we-text', props: { variant: 'heading-sm' }, children: ['Modules'] },
+      ],
+    },
+    {
+      type: 'we-text',
+      props: { variant: 'footnote', color: 'neutral-400' },
+      children: [
+        'Which feature modules you want available to you. This is your own choice and applies in every space — a community still decides which of them it runs, in that space\u2019s settings.',
+      ],
+    },
+    {
+      type: '$each',
+      props: { items: { $store: 'spaceStore.moduleInstallSettings' }, as: 'mod' },
       children: [
         {
           type: 'Row',
-          props: { gap: '200', ay: 'center' },
-          children: [
-            { type: 'we-icon', props: { name: 'puzzle-piece', size: '20px' } },
-            { type: 'we-text', props: { variant: 'heading-sm' }, children: ['Modules'] },
-          ],
-        },
-        {
-          type: 'we-text',
-          props: { variant: 'footnote', color: 'neutral-400' },
-          children: ['Feature modules available in this space.'],
-        },
-        {
-          type: '$each',
-          props: { items: { $store: 'spaceStore.moduleSettings' }, as: 'mod' },
+          props: {
+            ay: 'center',
+            ax: 'between',
+            gap: '300',
+            p: '300',
+            bg: 'neutral-0',
+            r: '300',
+            border: '1px solid neutral-200',
+          },
           children: [
             {
               type: 'Row',
-              props: {
-                ay: 'center',
-                ax: 'between',
-                gap: '300',
-                p: '300',
-                bg: 'neutral-0',
-                r: '300',
-                border: '1px solid neutral-200',
-              },
+              props: { gap: '300', ay: 'center' },
               children: [
+                { type: 'we-icon', props: { name: '$mod.icon', size: '20px' } },
                 {
-                  type: 'Row',
-                  props: { gap: '300', ay: 'center' },
+                  type: 'Column',
+                  props: { gap: '100' },
                   children: [
-                    { type: 'we-icon', props: { name: '$mod.icon', size: '20px' } },
+                    { type: 'we-text', props: { variant: 'label' }, children: ['$mod.name'] },
                     {
-                      type: 'Column',
-                      props: { gap: '100' },
-                      children: [
-                        { type: 'we-text', props: { variant: 'label' }, children: ['$mod.name'] },
-                        {
-                          type: 'we-text',
-                          props: { variant: 'footnote', color: 'neutral-400' },
-                          children: ['$mod.description'],
-                        },
-                      ],
+                      type: 'we-text',
+                      props: { variant: 'footnote', color: 'neutral-400' },
+                      children: ['$mod.description'],
                     },
                   ],
                 },
-                {
-                  type: 'we-switch',
-                  props: {
-                    checked: '$mod.enabled',
-                    onChange: {
-                      $action: 'spaceStore.setModuleEnabled',
-                      args: ['$mod.id', '$event.detail'],
-                    },
-                  },
-                },
               ],
+            },
+            {
+              type: 'we-switch',
+              props: {
+                checked: '$mod.installed',
+                onChange: { $action: 'spaceStore.setModuleInstalled', args: ['$mod.id', '$event.detail'] },
+              },
             },
           ],
         },
       ],
     },
-  },
+  ],
 };
 
 const createSpaceButton: SchemaNode = {

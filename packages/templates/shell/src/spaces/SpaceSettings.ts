@@ -166,6 +166,37 @@ const communitySection: SchemaNode = {
   },
 };
 
+/**
+ * Why a module is not showing, when a toggle alone would not say.
+ *
+ * Three layers decide this, and they fail differently: a module the community runs but you have not
+ * installed needs a visit to global settings; one you installed but the community has off needs
+ * someone who administers the space. Without naming which, the page shows an "on" switch beside a
+ * module that is not there and offers no way to find out why.
+ */
+const moduleStatus: SchemaNode = {
+  type: '$if',
+  props: {
+    condition: { $and: ['$mod.enabled', { $not: '$mod.installed' }] },
+    then: {
+      type: 'we-text',
+      props: { variant: 'footnote', color: 'warning-600' },
+      children: ['Run here, but not installed for you — turn it on in Settings → Modules.'],
+    },
+    else: {
+      type: '$if',
+      props: {
+        condition: { $and: ['$mod.installed', { $not: '$mod.enabled' }] },
+        then: {
+          type: 'we-text',
+          props: { variant: 'footnote', color: 'neutral-400' },
+          children: ['Not run in this space.'],
+        },
+      },
+    },
+  },
+};
+
 const moduleRow: SchemaNode = {
   type: 'Row',
   props: { ay: 'center', ax: 'between', gap: '300', py: '200' },
@@ -185,17 +216,57 @@ const moduleRow: SchemaNode = {
               props: { variant: 'footnote', color: 'neutral-400' },
               children: ['$mod.description'],
             },
+            moduleStatus,
           ],
         },
       ],
     },
     {
-      type: 'we-switch',
-      props: {
-        checked: '$mod.enabled',
-        disabled: { $not: '$space.canAdminister' },
-        onChange: { $action: 'spaceStore.setModuleEnabled', args: ['$mod.id', '$event.detail', '$space.uuid'] },
-      },
+      type: 'Row',
+      props: { gap: '400', ay: 'center' },
+      children: [
+        // Personal: mute it here without touching what anyone else sees. Phrased as "show for me"
+        // rather than "mute" so both switches read the same way round — on means visible.
+        {
+          type: 'Column',
+          props: { gap: '100', ax: 'center' },
+          children: [
+            { type: 'we-text', props: { variant: 'footnote', color: 'neutral-400' }, children: ['For me'] },
+            {
+              type: 'we-switch',
+              props: {
+                size: 'sm',
+                checked: { $not: '$mod.muted' },
+                // The switch reports whether it is now *shown*; muted is the opposite.
+                onChange: {
+                  $action: 'spaceStore.setModuleMuted',
+                  args: ['$mod.id', { $not: '$event.detail' }, '$space.uuid'],
+                },
+              },
+            },
+          ],
+        },
+        // Community: only offered to whoever may administer the space.
+        {
+          type: 'Column',
+          props: { gap: '100', ax: 'center' },
+          children: [
+            { type: 'we-text', props: { variant: 'footnote', color: 'neutral-400' }, children: ['For everyone'] },
+            {
+              type: 'we-switch',
+              props: {
+                size: 'sm',
+                checked: '$mod.enabled',
+                disabled: { $not: '$space.canAdminister' },
+                onChange: {
+                  $action: 'spaceStore.setModuleEnabled',
+                  args: ['$mod.id', '$event.detail', '$space.uuid'],
+                },
+              },
+            },
+          ],
+        },
+      ],
     },
   ],
 };
@@ -216,8 +287,8 @@ const modulesSection: SchemaNode = {
             {
               $if: {
                 condition: '$space.canAdminister',
-                then: 'Which feature modules this space runs, for everyone in it.',
-                else: 'Which feature modules this space runs. Only someone who administers it can change these.',
+                then: 'What this space runs, and what you want to see of it. Only the right-hand switch affects other members.',
+                else: 'What this space runs, and what you want to see of it. Changing what everyone sees needs someone who administers the space.',
               },
             },
           ],

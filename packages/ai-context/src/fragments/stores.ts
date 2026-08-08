@@ -272,7 +272,7 @@ export const storeEntries: StoreEntry[] = [
       sharedSpaces: { type: 'array', model: 'Space' },
       spaceList: {
         type: 'array',
-        properties: ['uuid', 'name', 'description', 'avatar', 'kind', 'isWeSpace', 'canAdminister'],
+        properties: ['uuid', 'name', 'description', 'avatar', 'kind', 'isWeSpace', 'canAdminister', 'modules'],
       },
       creatingSpace: { type: 'boolean' },
       orderedSidebarItems: { type: 'array', properties: ['uuid', 'name', 'avatar', 'spaceId'] },
@@ -306,9 +306,15 @@ export const storeEntries: StoreEntry[] = [
       enabledModules: {
         type: 'array',
       },
-      moduleSettings: {
+      installedModules: {
         type: 'array',
-        properties: ['id', 'name', 'description', 'icon', 'enabled'],
+      },
+      activeModules: {
+        type: 'array',
+      },
+      moduleInstallSettings: {
+        type: 'array',
+        properties: ['id', 'name', 'description', 'icon', 'installed'],
       },
       moduleLaunchers: {
         type: 'array',
@@ -332,6 +338,8 @@ export const storeEntries: StoreEntry[] = [
       'navigateToSpace',
       'canAdministerSpace',
       'setModuleEnabled',
+      'setModuleInstalled',
+      'setModuleMuted',
       'launchModule',
     ],
   },
@@ -680,9 +688,13 @@ function generateStoresText(entries: StoreEntry[]): string {
         signalTypesBySlug:
           'Record<slug, SignalType> — computed map; access via { $store: "spaceStore.signalTypesBySlug.<slug>" }; use .id for the UUID',
         enabledModules:
-          'string[] — ids of the feature modules this space has turned on. An unset value means "not decided", not "none": it falls back to every registered module, so spaces predating the setting keep the chrome they had',
-        moduleSettings:
-          '{ id, name, description, icon, enabled }[] — every registered module paired with whether this space has it on; the shape the settings list renders',
+          'string[] — ids of the feature modules THIS SPACE has turned on: the community\u2019s decision, shared with every member. An unset value means "not decided", not "none": it falls back to every registered module, so spaces predating the setting keep the chrome they had',
+        installedModules:
+          'string[] — ids of the feature modules THIS AGENT wants available anywhere. Personal, held in the root dataset; unset means "not decided" and falls back to every registered module',
+        activeModules:
+          'string[] — what actually renders here for this agent: registered \u2229 installed \u2229 enabled, less the modules muted in this space. Module chrome and the launcher rail gate on this; enabledModules alone is not sufficient',
+        moduleInstallSettings:
+          '{ id, name, description, icon, installed }[] — every registered module paired with whether this agent wants it anywhere. The global Settings → Modules list. Its per-space counterpart is `modules` on each spaceList row, which carries enabled/installed/muted/active together',
         moduleLaunchers:
           '{ id, icon, label, active }[] — launchers for the modules enabled here and available in this space; what the host module rail renders. Pair with { $action: "spaceStore.launchModule", args: ["$mod.id"] }',
       },
@@ -713,6 +725,10 @@ function generateStoresText(entries: StoreEntry[]): string {
         setSpaceDefaultTheme: '(themeId: string, spaceUuid?): sets the theme members see when they enter that space',
         canAdministerSpace:
           '(uuid: string): whether this agent may change what every member of that space sees — true for a personal space, and for a shared one they authored. A UI affordance for deciding whether to offer the controls, NOT enforcement: a shared space is a neighbourhood every member can write to. Ask by name rather than comparing author to $me.did, so the answer can grow (multiple admins, roles) without every template changing',
+        setModuleInstalled:
+          '(moduleId: string, installed: boolean): turns a module on or off for this agent in every space. Personal — writes AgentSettings.installedModules in the root dataset, so no other member sees it',
+        setModuleMuted:
+          '(moduleId: string, muted: boolean, spaceUuid?): hides a module for this agent in one space, without changing what the community runs. Private: written to the root dataset, never to the space, so muting is not broadcast to other members',
         setModuleEnabled:
           '(moduleId: string, enabled: boolean, spaceUuid?): turns a feature module on or off for a space; writes the resolved list, so the first toggle also pins whatever was on by fallback. Omit spaceUuid for the space on screen',
         launchModule:

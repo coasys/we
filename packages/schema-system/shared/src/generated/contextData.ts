@@ -1458,6 +1458,7 @@ export const contextData: ContextData = {
           required: false,
           default: 'true',
         },
+        { name: 'installedModules', type: 'string', predicate: 'we://installed_modules', required: false },
       ],
       relations: [
         { name: 'installedTemplates', kind: 'HasMany', predicate: 'we://installed_template', target: 'Template' },
@@ -1701,6 +1702,16 @@ export const contextData: ContextData = {
         { name: 'enabledModules', type: 'string', predicate: 'we://enabled_modules', required: false },
       ],
       relations: [{ name: 'location', kind: 'HasOne', predicate: 'we://location' }],
+    },
+    {
+      name: 'SpaceModulePreference',
+      className: 'SpaceModulePreference',
+      extends: 'WeNode',
+      fields: [
+        { name: 'spaceUuid', type: 'string', predicate: 'we://space_uuid', required: false },
+        { name: 'mutedModules', type: 'string', predicate: 'we://muted_modules', required: false },
+      ],
+      relations: [],
     },
     {
       name: 'SpaceTemplatePreference',
@@ -2265,7 +2276,7 @@ export const contextData: ContextData = {
         sharedSpaces: { type: 'array', model: 'Space' },
         spaceList: {
           type: 'array',
-          properties: ['uuid', 'name', 'description', 'avatar', 'kind', 'isWeSpace', 'canAdminister'],
+          properties: ['uuid', 'name', 'description', 'avatar', 'kind', 'isWeSpace', 'canAdminister', 'modules'],
         },
         creatingSpace: { type: 'boolean' },
         orderedSidebarItems: { type: 'array', properties: ['uuid', 'name', 'avatar', 'spaceId'] },
@@ -2295,7 +2306,9 @@ export const contextData: ContextData = {
         },
         signalTypesBySlug: { type: 'object' },
         enabledModules: { type: 'array' },
-        moduleSettings: { type: 'array', properties: ['id', 'name', 'description', 'icon', 'enabled'] },
+        installedModules: { type: 'array' },
+        activeModules: { type: 'array' },
+        moduleInstallSettings: { type: 'array', properties: ['id', 'name', 'description', 'icon', 'installed'] },
         moduleLaunchers: { type: 'array', properties: ['id', 'icon', 'label', 'active'] },
       },
       actions: [
@@ -2315,6 +2328,8 @@ export const contextData: ContextData = {
         'navigateToSpace',
         'canAdministerSpace',
         'setModuleEnabled',
+        'setModuleInstalled',
+        'setModuleMuted',
         'launchModule',
       ],
     },

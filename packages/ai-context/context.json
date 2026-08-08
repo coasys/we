@@ -3940,6 +3940,12 @@
           "predicate": "we://use_space_template",
           "required": false,
           "default": "true"
+        },
+        {
+          "name": "installedModules",
+          "type": "string",
+          "predicate": "we://installed_modules",
+          "required": false
         }
       ],
       "relations": [
@@ -4675,6 +4681,26 @@
           "predicate": "we://location"
         }
       ]
+    },
+    {
+      "name": "SpaceModulePreference",
+      "className": "SpaceModulePreference",
+      "extends": "WeNode",
+      "fields": [
+        {
+          "name": "spaceUuid",
+          "type": "string",
+          "predicate": "we://space_uuid",
+          "required": false
+        },
+        {
+          "name": "mutedModules",
+          "type": "string",
+          "predicate": "we://muted_modules",
+          "required": false
+        }
+      ],
+      "relations": []
     },
     {
       "name": "SpaceTemplatePreference",
@@ -5758,7 +5784,7 @@
         },
         "spaceList": {
           "type": "array",
-          "properties": ["uuid", "name", "description", "avatar", "kind", "isWeSpace", "canAdminister"]
+          "properties": ["uuid", "name", "description", "avatar", "kind", "isWeSpace", "canAdminister", "modules"]
         },
         "creatingSpace": {
           "type": "boolean"
@@ -5808,9 +5834,15 @@
         "enabledModules": {
           "type": "array"
         },
-        "moduleSettings": {
+        "installedModules": {
+          "type": "array"
+        },
+        "activeModules": {
+          "type": "array"
+        },
+        "moduleInstallSettings": {
           "type": "array",
-          "properties": ["id", "name", "description", "icon", "enabled"]
+          "properties": ["id", "name", "description", "icon", "installed"]
         },
         "moduleLaunchers": {
           "type": "array",
@@ -5834,6 +5866,8 @@
         "navigateToSpace",
         "canAdministerSpace",
         "setModuleEnabled",
+        "setModuleInstalled",
+        "setModuleMuted",
         "launchModule"
       ]
     },
