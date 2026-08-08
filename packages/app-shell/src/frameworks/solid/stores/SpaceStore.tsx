@@ -64,6 +64,56 @@ export interface SpaceListEntry {
   isWeSpace: boolean;
   /** Whether this agent may change what everyone here sees. See {@link SpaceStore.canAdministerSpace}. */
   canAdminister: boolean;
+  /**
+   * This space's module settings, carried on the row rather than fetched per space.
+   *
+   * `$store` resolves a literal path, so a settings page rendered for one row of a list cannot ask
+   * for `moduleSettingsFor(<that row's uuid>)` — the same constraint that made `launchModule` take
+   * an id. Precomputing puts the answer where the row's context already reaches it.
+   */
+  modules: ModuleSetting[];
+}
+
+/**
+ * Which modules a space has on, from its stored value.
+ *
+ * An unset field means "not decided", never "none" — see `Space.enabledModules`. Falling back to the
+ * registered set is what stops this being a silent regression that strips every existing space of
+ * its chrome. A malformed value is a corrupt setting, not a decision to disable everything.
+ *
+ * A plain function over the stored string rather than a memo over the current space, because the
+ * settings page answers this for spaces the agent is not standing in.
+ */
+function resolveEnabledModules(raw: string | undefined): string[] {
+  if (raw) {
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed.filter((id): id is string => typeof id === 'string');
+    } catch {
+      console.warn('space.enabledModules is not valid JSON; falling back to the registered set');
+    }
+  }
+  return moduleRegistry.all().map((entry) => entry.definition.id);
+}
+
+/** Every registered module paired with whether that space has it on — the shape a settings list renders. */
+function moduleSettingsFrom(raw: string | undefined): ModuleSetting[] {
+  const on = new Set(resolveEnabledModules(raw));
+  return moduleRegistry.all().map(({ definition }) => ({
+    id: definition.id,
+    name: definition.name,
+    description: definition.description ?? '',
+    icon: definition.icon ?? 'puzzle-piece',
+    enabled: on.has(definition.id),
+  }));
+}
+
+export interface ModuleSetting {
+  id: string;
+  name: string;
+  description: string;
+  icon: string;
+  enabled: boolean;
 }
 
 export interface SpaceMetaUpdate {
@@ -114,7 +164,7 @@ export interface SpaceStore {
    *  space has never decided, so spaces that predate the setting keep the chrome they had. */
   enabledModules: Accessor<string[]>;
   /** Registered modules paired with whether this space has them on — the settings list. */
-  moduleSettings: Accessor<{ id: string; name: string; description: string; icon: string; enabled: boolean }[]>;
+  moduleSettings: Accessor<ModuleSetting[]>;
   /** Launchers for the modules enabled here — what the module rail renders. */
   moduleLaunchers: Accessor<{ id: string; icon: string; label: string; active: boolean }[]>;
 
@@ -136,11 +186,12 @@ export interface SpaceStore {
   createPost: (json: unknown) => Promise<void>;
   updatePost: (postId: string, json: unknown) => Promise<void>;
   deletePost: (postId: string) => Promise<void>;
-  updateSpaceImage: (field: 'avatar' | 'coverImage', imageFile: File) => Promise<void>;
-  updateSpaceMeta: (updates: SpaceMetaUpdate) => Promise<void>;
-  setSpaceDefaultTemplate: (templateId: string) => Promise<void>;
-  setSpaceDefaultTheme: (themeId: string) => Promise<void>;
-  setModuleEnabled: (moduleId: string, enabled: boolean) => Promise<void>;
+  /** Every space-scoped write takes an optional target uuid; omitted means the space on screen. */
+  updateSpaceImage: (field: 'avatar' | 'coverImage', imageFile: File, spaceUuid?: string) => Promise<void>;
+  updateSpaceMeta: (updates: SpaceMetaUpdate, spaceUuid?: string) => Promise<void>;
+  setSpaceDefaultTemplate: (templateId: string, spaceUuid?: string) => Promise<void>;
+  setSpaceDefaultTheme: (themeId: string, spaceUuid?: string) => Promise<void>;
+  setModuleEnabled: (moduleId: string, enabled: boolean, spaceUuid?: string) => Promise<void>;
   launchModule: (moduleId: string) => void;
   createSignalType: (config: Partial<SignalType>) => Promise<void>;
   upsertSignal: (nodeId: string, signalTypeId: string, value: number) => Promise<void>;
@@ -222,6 +273,7 @@ export function SpaceStoreProvider(props: ParentProps) {
         kind: !space ? 'foreign' : space.url ? 'shared' : 'personal',
         isWeSpace: Boolean(space),
         canAdminister: space ? canAdministerSpace(space.uuid) : false,
+        modules: space ? moduleSettingsFrom(space.enabledModules) : [],
       };
     }),
   );
@@ -605,13 +657,34 @@ export function SpaceStoreProvider(props: ParentProps) {
     });
   }
 
-  async function updateSpaceImage(field: 'avatar' | 'coverImage', imageFile: File): Promise<void> {
-    const ds = datasetStore.currentDataset();
+  /**
+   * The dataset a space-scoped write targets: a named space, or the one being viewed.
+   *
+   * Space settings are reached from the spaces list, so the space being configured is usually not
+   * the one you are standing in — navigating to it would close the settings overlay
+   * (`navigateToSpace` calls `closeShellView`), which is the whole reason the list carries the
+   * settings entry point rather than a "current space" page doing it.
+   *
+   * Omitting the argument keeps the previous meaning, so in-space callers are unchanged.
+   */
+  function targetDataset(spaceUuid?: string): AppDataset | null {
+    if (!spaceUuid) return datasetStore.currentDataset();
+    return datasetStore.datasets().find((d) => d.id === spaceUuid) ?? null;
+  }
+
+  /** Whether a write is aimed at the space currently on screen — live UI switches only apply then. */
+  const isCurrent = (ds: AppDataset) => datasetStore.currentDataset()?.id === ds.id;
+
+  async function updateSpaceImage(field: 'avatar' | 'coverImage', imageFile: File, spaceUuid?: string): Promise<void> {
+    const ds = targetDataset(spaceUuid);
     if (!ds) return;
     const fileData = await compressImageToFileData(imageFile, field === 'avatar' ? 'space-image' : 'space-cover');
     const [spaceModel] = await Space.findAll(ds.handle, { where: spaceSelfWhere(ds) });
     if (!spaceModel) return;
     await Space.update(ds.handle, spaceModel.id, { [field]: fileData });
+    // Only the current space has a live subscription refreshing it; every other row in the spaces
+    // list is served from this cache, so without it the change would not appear until a reload.
+    updateSpaceInCache(ds, { [field]: fileData } as never);
     if (spaceModel.discovery === 'listed') {
       const globalDs = datasetStore.globalDataset();
       if (globalDs) {
@@ -623,8 +696,8 @@ export function SpaceStoreProvider(props: ParentProps) {
     }
   }
 
-  async function updateSpaceMeta(updates: SpaceMetaUpdate): Promise<void> {
-    const ds = datasetStore.currentDataset();
+  async function updateSpaceMeta(updates: SpaceMetaUpdate, spaceUuid?: string): Promise<void> {
+    const ds = targetDataset(spaceUuid);
     if (!ds) return;
     const currentDataset = ds.handle;
 
@@ -640,6 +713,9 @@ export function SpaceStoreProvider(props: ParentProps) {
     if (updates.description !== undefined) spaceModel.description = updates.description;
     if (updates.discovery !== undefined) spaceModel.discovery = updates.discovery;
     await spaceModel.save();
+    // See updateSpaceImage — only the current space is refreshed by a live subscription.
+    const { location: _location, ...scalars } = updates;
+    updateSpaceInCache(ds, scalars as never);
 
     if (updates.location !== undefined) {
       if (updates.location === null) {
@@ -743,30 +819,9 @@ export function SpaceStoreProvider(props: ParentProps) {
    * the registered set is what stops this shipping as a silent regression that strips every existing
    * space of its chrome.
    */
-  const enabledModules = createMemo<string[]>(() => {
-    const raw = currentSpace()?.enabledModules;
-    if (raw) {
-      try {
-        const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed)) return parsed.filter((id): id is string => typeof id === 'string');
-      } catch {
-        // A malformed value is a corrupt setting, not a decision to disable everything.
-        console.warn('space.enabledModules is not valid JSON; falling back to the registered set');
-      }
-    }
-    return moduleRegistry.all().map((entry) => entry.definition.id);
-  });
+  const enabledModules = createMemo<string[]>(() => resolveEnabledModules(currentSpace()?.enabledModules));
 
-  const moduleSettings = createMemo(() => {
-    const on = new Set(enabledModules());
-    return moduleRegistry.all().map(({ definition }) => ({
-      id: definition.id,
-      name: definition.name,
-      description: definition.description ?? '',
-      icon: definition.icon ?? 'puzzle-piece',
-      enabled: on.has(definition.id),
-    }));
-  });
+  const moduleSettings = createMemo(() => moduleSettingsFrom(currentSpace()?.enabledModules));
 
   /**
    * What the module rail renders: one entry per enabled module that declares a launcher.
@@ -816,11 +871,13 @@ export function SpaceStoreProvider(props: ParentProps) {
     else console.warn(`module "${moduleId}" declares launcher action "${action}" but its store has no such method`);
   }
 
-  async function setModuleEnabled(moduleId: string, enabled: boolean) {
-    const ds = datasetStore.currentDataset();
-    const space = currentSpace();
+  async function setModuleEnabled(moduleId: string, enabled: boolean, spaceUuid?: string) {
+    const ds = targetDataset(spaceUuid);
+    // Read the space from the cache rather than `currentSpace`, so this answers for a space being
+    // configured from the spaces list as readily as for the one on screen.
+    const space = ds ? mySpaces().find((s) => isSpaceSelf(s, ds)) : undefined;
     if (!ds || !space) return;
-    const next = new Set(enabledModules());
+    const next = new Set(resolveEnabledModules(space.enabledModules));
     if (enabled) next.add(moduleId);
     else next.delete(moduleId);
     // Writes the resolved list, not a diff — so the first toggle also pins everything that was on by
@@ -833,6 +890,8 @@ export function SpaceStoreProvider(props: ParentProps) {
       console.error('SpaceStore: could not persist enabledModules', error);
       return;
     }
+    updateSpaceInCache(ds, { enabledModules: enabledModulesJson } as never);
+    if (!isCurrent(ds)) return;
     // Republished as a *new* instance rather than the one just written through. `currentSpace` is a
     // plain signal, so Solid dedupes on `===` — handing back the same object (which is what mutating
     // it in place and re-setting it amounts to) notifies nothing, and the module rail would keep
@@ -897,22 +956,26 @@ export function SpaceStoreProvider(props: ParentProps) {
     }
   });
 
-  async function setSpaceDefaultTemplate(templateId: string): Promise<void> {
-    setSpaceDefaultTemplateId(templateId);
-    const template = templateStore.allTemplates().find((t) => t.id === templateId);
-    if (template) templateStore.replaceTemplate(template);
-    const ds = datasetStore.currentDataset();
+  async function setSpaceDefaultTemplate(templateId: string, spaceUuid?: string): Promise<void> {
+    const ds = targetDataset(spaceUuid);
     if (!ds) return;
+    // Switching what is on screen is only right when the space being configured is the one on
+    // screen. Setting another space's default from the spaces list must not repaint the app.
+    if (isCurrent(ds)) {
+      setSpaceDefaultTemplateId(templateId);
+      const template = templateStore.allTemplates().find((t) => t.id === templateId);
+      if (template) templateStore.replaceTemplate(template);
+    }
     // Keep mySpaces cache in sync so template pre-loading uses the fresh defaultTemplateId
     updateSpaceInCache(ds, { defaultTemplateId: templateId } as never);
     const [space] = await Space.findAll(ds.handle, { where: spaceSelfWhere(ds) });
     if (space) await Space.update(ds.handle, space.id, { defaultTemplateId: templateId });
   }
 
-  async function setSpaceDefaultTheme(themeId: string): Promise<void> {
-    setSpaceDefaultThemeId(themeId);
-    const ds = datasetStore.currentDataset();
+  async function setSpaceDefaultTheme(themeId: string, spaceUuid?: string): Promise<void> {
+    const ds = targetDataset(spaceUuid);
     if (!ds) return;
+    if (isCurrent(ds)) setSpaceDefaultThemeId(themeId);
     updateSpaceInCache(ds, { defaultThemeId: themeId } as never);
     const [space] = await Space.findAll(ds.handle, { where: spaceSelfWhere(ds) });
     if (space) await Space.update(ds.handle, space.id, { defaultThemeId: themeId });

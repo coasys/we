@@ -324,6 +324,9 @@ export const storeEntries: StoreEntry[] = [
       'updatePost',
       'deletePost',
       'updateSpaceImage',
+      'updateSpaceMeta',
+      'setSpaceDefaultTemplate',
+      'setSpaceDefaultTheme',
       'createSignalType',
       'upsertSignal',
       'navigateToSpace',
@@ -696,17 +699,22 @@ function generateStoresText(entries: StoreEntry[]): string {
           '(postId: string, editorState: unknown): reconciles an edited post against its existing blocks — updates/reuses blocks whose id survived the edit, creates new ones, deletes ones no longer present',
         deletePost: '(postId: string): permanently deletes a post and all of its contained blocks (recursive, atomic)',
         updateSpaceImage:
-          '(field: "avatar" | "coverImage", imageFile: File): uploads and sets the space avatar or cover image',
+          '(field: "avatar" | "coverImage", imageFile: File, spaceUuid?): uploads and sets the space avatar or cover image',
         createSignalType:
           '(config: Partial<SignalType>): creates a new signal type in the community; slug auto-derived from name if blank',
         upsertSignal:
           '(nodeId: string, signalTypeId: string, value: number): adds or updates a signal on a node; value=0 deletes it',
         navigateToSpace:
           '(spaceId: string, view?: string): navigates to a space — accepts a perspective UUID or a neighbourhood CID (sharedUrl without the neighbourhood:// prefix); pre-loads space templates before switching so the template and data arrive together',
+        updateSpaceMeta:
+          '(updates: { name?, description?, discovery?, location? }, spaceUuid?): updates the space everyone sees. Omit spaceUuid to target the space on screen; pass one to configure a space from the spaces list without navigating to it',
+        setSpaceDefaultTemplate:
+          '(templateId: string, spaceUuid?): sets the template members see when they enter that space. Only repaints the app when the target is the space currently on screen',
+        setSpaceDefaultTheme: '(themeId: string, spaceUuid?): sets the theme members see when they enter that space',
         canAdministerSpace:
           '(uuid: string): whether this agent may change what every member of that space sees — true for a personal space, and for a shared one they authored. A UI affordance for deciding whether to offer the controls, NOT enforcement: a shared space is a neighbourhood every member can write to. Ask by name rather than comparing author to $me.did, so the answer can grow (multiple admins, roles) without every template changing',
         setModuleEnabled:
-          '(moduleId: string, enabled: boolean): turns a feature module on or off for the current space; writes the resolved list, so the first toggle also pins whatever was on by fallback',
+          '(moduleId: string, enabled: boolean, spaceUuid?): turns a feature module on or off for a space; writes the resolved list, so the first toggle also pins whatever was on by fallback. Omit spaceUuid for the space on screen',
         launchModule:
           "(moduleId: string): invokes that module's declared launcher action. Takes an id rather than a path because $action resolves a literal string, so a rail iterating over modules cannot build modules.<id>.<method> itself",
       },

@@ -10,6 +10,7 @@ import { accountSettings } from './AccountSettings.schema.ts';
 import { aiSection } from './AiSettings.schema.ts';
 import { createSpaceModal } from './CreateSpaceModal.ts';
 import { advancedDatasetsSection } from './spaces/AdvancedDatasets.ts';
+import { spaceSettingsPage } from './spaces/SpaceSettings.ts';
 import { spacesListSection } from './spaces/SpacesList.ts';
 import { languagesLocalState, languagesSection } from './LanguageSettings.schema.ts';
 import {
@@ -479,12 +480,17 @@ const createSpaceModalMount: SchemaNode = {
  * and it brings hover, focus and keyboard activation without hand-rolling any of them.
  */
 function navItem(label: string, icon: string, path: string): SchemaNode {
+  // Matched on the first path segment, not the whole path, so a page with sub-routes keeps its nav
+  // entry lit — `/spaces/<uuid>` is still Spaces & data. Exact equality left the nav with nothing
+  // selected there, which reads as having navigated out of settings altogether.
+  const selected =
+    path === '/'
+      ? { $eq: [{ $store: 'routeStore.currentPath' }, '/'] }
+      : { $eq: [{ $store: 'routeStore.segments.0' }, path.slice(1)] };
   return {
     type: 'we-button',
     props: {
-      variant: {
-        $if: { condition: { $eq: [{ $store: 'routeStore.currentPath' }, path] }, then: 'secondary', else: 'ghost' },
-      },
+      variant: { $if: { condition: selected, then: 'secondary', else: 'ghost' } },
       width: '100%',
       ax: 'start',
       onClick: { $action: 'routeStore.navigate', args: [path] },
@@ -534,6 +540,9 @@ export const settingsTemplate: TemplateSchema = {
         createSpaceModalMount,
       ]),
     },
+    // Settings for one space, keyed by the row that was clicked rather than by where the agent is
+    // standing — see `spaceSettingsPage`.
+    { path: '/spaces/:uuid', ...page([spaceSettingsPage]) },
     { path: '/modules', ...page([modulesSection]) },
     { path: '/ai', ...page([runtimeError, aiSection]) },
     {
