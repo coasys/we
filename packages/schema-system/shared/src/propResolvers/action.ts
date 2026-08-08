@@ -25,21 +25,34 @@ export function resolveRelativePath(rawPath: string, baseDepth: number, pathname
   return finalPath.replace(/\/{2,}/g, '/');
 }
 
-// Helper function to process $arg tokens with access to callback arguments.
-// Recurses into nested objects and arrays so $arg tokens work at any depth.
+// Helper function to process $arg / $event tokens with access to callback arguments.
+// Recurses into nested objects and arrays so the tokens work at any depth.
 function processArgTokens(resolvedArgs: unknown[], callArgs: unknown[]): unknown[] {
   return resolvedArgs.map((arg) => processArgValue(arg, callArgs));
 }
 
+/**
+ * `$arg` and `$event` both mean "the first callback argument", exactly as they already do in
+ * `extractFromPath` (the `$setLocal` path).
+ *
+ * `$event` was previously understood here only when the handler was an *array* — that path rebuilds
+ * the context with `event` at call time, so `resolveProp` resolved it before this ran. A lone
+ * `{ $action, args }` resolves once at render time instead, where `$event` matches no context key
+ * and an unresolved `$`-string is returned verbatim (see the dispatcher's final `return value`). So
+ * the store method was handed the *string* `'$event.detail'` — truthy, silently, with no error
+ * anywhere. `spaceStore.setModuleEnabled(id, '$event.detail')` is what that looks like from the
+ * outside: a module toggle that can only ever switch a module on.
+ */
 function processArgValue(arg: unknown, callArgs: unknown[]): unknown {
-  if (typeof arg === 'string' && arg.startsWith('$arg')) {
-    // Handle $arg without property - return the entire first argument
-    if (arg === '$arg') {
+  if (typeof arg === 'string' && (arg.startsWith('$arg') || arg.startsWith('$event'))) {
+    // Handle $arg / $event without property - return the entire first argument
+    if (arg === '$arg' || arg === '$event') {
       return callArgs[0];
     }
-    // Handle $arg.property.path syntax to extract nested properties
-    if (arg.startsWith('$arg.')) {
-      const path = arg.slice(5).split('.');
+    // Handle $arg.property.path / $event.property.path syntax to extract nested properties
+    const prefix = arg.startsWith('$arg.') ? '$arg.' : arg.startsWith('$event.') ? '$event.' : undefined;
+    if (prefix) {
+      const path = arg.slice(prefix.length).split('.');
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       let result: any = callArgs[0]; // Get first callback argument
       for (const prop of path) result = result?.[prop];

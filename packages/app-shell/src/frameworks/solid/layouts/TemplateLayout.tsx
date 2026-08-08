@@ -156,7 +156,23 @@ export function TemplateLayout(props: ParentProps & { stores: Stores }) {
     if (!td) return {};
     const overrides = td.overrides ? JSON.parse(td.overrides) : {};
     if (isValidThemeKey(td.id) && !overrides.themeName) overrides.themeName = td.id;
-    return themeToStyle(overrides);
+    return {
+      ...themeToStyle(overrides),
+      /**
+       * Re-resolve the inherited text colour against this wrapper's own tokens.
+       *
+       * The global stylesheet sets `color: var(--we-color-neutral-1000)` on `html, body, #root`.
+       * A custom property is substituted where the declaration lives, so that resolves against
+       * documentElement — the *personal* theme in scoped mode — and then inherits down as a
+       * finished colour. Re-declaring the token on this wrapper does not re-run that substitution,
+       * so a light space under a dark personal theme rendered light surfaces with white text on
+       * anything that did not set its own colour.
+       *
+       * `background-color` needs no equivalent: it does not inherit, so the wrapper's own surfaces
+       * paint from the tokens it declares.
+       */
+      color: 'var(--we-color-neutral-1000)',
+    };
   });
 
   const spaceThemeName = createMemo(() => {
@@ -179,7 +195,21 @@ export function TemplateLayout(props: ParentProps & { stores: Stores }) {
         height="100vh"
         transition={panelResizing() ? 'none' : 'right 300ms ease'}
       >
-        {/* Main template content */}
+        {/*
+          Main template content, and the scoped space theme.
+
+          These are one element on purpose. The theme used to live on a `display: contents` div
+          inside this one, which declares the space's CSS vars but generates no box — so it could
+          never paint, and the scroll container had no background at all. Everything the template's
+          own content did not cover fell through to the canvas, which `html, body, #root` paints
+          from documentElement's tokens: the *shell* theme. Scrolling past a template that sized
+          itself to the viewport showed exactly that.
+
+          A scrolling element's background covers its whole scrollable overflow area rather than
+          just the visible box, so painting here — from vars declared here — means no template can
+          leak the shell's background however it handles its own height. Overlays are siblings, so
+          they correctly stay on the shell theme.
+        */}
         <Column
           display="block"
           position="absolute"
@@ -192,21 +222,18 @@ export function TemplateLayout(props: ParentProps & { stores: Stores }) {
           pointerEvents={stores.appStore.activeAppId() ? 'none' : 'auto'}
           overflow="auto"
           scrollbarGutter="stable"
+          bg="neutral-50"
+          data-we-theme={spaceThemeName()}
+          styles={spaceThemeStyle()}
         >
-          {/* Scoped space theme wrapper — display:contents keeps layout unaffected.
-                Parametric overrides are applied as inline CSS vars; component-level CSS
-                (theme.css) is injected into we-scoped-theme-css by ThemeStore and
-                self-scopes via [data-we-theme='X'] attribute selectors. */}
-          <div style={{ display: 'contents', ...spaceThemeStyle() }} data-we-theme={spaceThemeName()}>
-            <Show when={stores.templateStore.currentTemplate.id || 'empty'} keyed>
-              <RenderSchema
-                node={stores.templateStore.currentTemplate}
-                stores={stores}
-                registry={registry}
-                children={props.children}
-              />
-            </Show>
-          </div>
+          <Show when={stores.templateStore.currentTemplate.id || 'empty'} keyed>
+            <RenderSchema
+              node={stores.templateStore.currentTemplate}
+              stores={stores}
+              registry={registry}
+              children={props.children}
+            />
+          </Show>
         </Column>
 
         {/* Code / visual editor overlay — sits above template (z:5), below shell (z:11).

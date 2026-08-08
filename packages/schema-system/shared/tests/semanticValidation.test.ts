@@ -347,6 +347,34 @@ describe('unknown action', () => {
   });
 });
 
+describe('$event/$arg inside $action args', () => {
+  const nested = (args: unknown[]) =>
+    validateSemantic({ type: 'we-button', props: { onClick: { $action: 'routeStore.navigate', args } } }, ctx())
+      .errors.filter((e) => e.severity === 'error' && e.message.includes('nested inside an operator'));
+
+  it('errors when an event ref is wrapped in an operator', () => {
+    // The bug this exists for: args resolve once at render time, so `$not` evaluates before any
+    // event exists, against an unresolved `'$event.detail'` string — which is truthy. The argument
+    // is a constant `false`, and a switch bound to it only ever sends one value. Nothing throws.
+    expect(nested(['notes', { $not: '$event.detail' }])).toHaveLength(1);
+  });
+
+  it('errors however deeply the ref is buried', () => {
+    expect(nested([{ $if: { condition: '$event.detail', then: 'a', else: 'b' } }])).toHaveLength(1);
+    expect(nested([{ $concat: ['x', { $not: '$arg.value' }] }])).toHaveLength(1);
+  });
+
+  it('allows a bare event ref, which is the form that reaches call time', () => {
+    expect(nested(['notes', '$event.detail'])).toHaveLength(0);
+    expect(nested(['$arg'])).toHaveLength(0);
+    expect(nested(['$arg.detail.value'])).toHaveLength(0);
+  });
+
+  it('leaves operators alone when no event ref is involved', () => {
+    expect(nested([{ $not: { $store: 'sessionStore.me' } }])).toHaveLength(0);
+  });
+});
+
 describe('unknown model', () => {
   it('errors for $query.model with unknown model name', () => {
     const result = validateSemantic({ type: 'we-button', props: { data: { $query: { entity: 'Taks' } } } }, ctx());
@@ -366,11 +394,37 @@ describe('unknown model', () => {
 });
 
 describe('$local scope', () => {
+  const meta = { name: 'T', description: '', icon: 'gear' };
+
   it('errors for $local with no $localState in scope', () => {
-    const result = validateSemantic({ type: 'we-button', props: { text: { $local: 'name' } } }, ctx());
+    const result = validateSemantic({ meta, type: 'we-button', props: { text: { $local: 'name' } } }, ctx());
     expect(
       result.errors.some((e) => e.severity === 'error' && e.message.includes('no $localState is declared in scope')),
     ).toBe(true);
+  });
+
+  it('stays silent for a fragment, whose scope belongs to whatever page composes it', () => {
+    // `meta` is what makes a schema self-contained. A bare node is a piece of something else, and
+    // `$localState` is scoped to the node declaring it — so a section reading state its host page
+    // owns is correct, and judging it standalone reports an error about working code. The shell's
+    // language settings section was flagged three times for reading a field the `/languages` route
+    // declares. The check still runs in full against that route, where the answer is knowable.
+    const result = validateSemantic({ type: 'we-button', props: { text: { $local: 'name' } } }, ctx());
+    expect(result.errors.some((e) => e.message.includes('no $localState is declared in scope'))).toBe(false);
+  });
+
+  it('still catches an undeclared field in a fragment that declares some state', () => {
+    // Only the "nothing in scope" case is unknowable standalone. Once a fragment declares its own
+    // state, a reference outside it is wrong no matter what composes it.
+    const result = validateSemantic(
+      {
+        type: 'Column',
+        $localState: { name: { type: 'string', initial: '' } },
+        children: [{ type: 'we-button', props: { text: { $local: 'other' } } }],
+      },
+      ctx(),
+    );
+    expect(result.errors.some((e) => e.severity === 'error' && e.message.includes('only declares'))).toBe(true);
   });
 
   it('errors for $local referencing undeclared field', () => {

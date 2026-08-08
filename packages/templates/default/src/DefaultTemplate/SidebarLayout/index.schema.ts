@@ -16,7 +16,10 @@ export const sidebarLayout: TemplateSchema = {
     icon: 'layout',
   },
   type: 'Row',
-  props: { height: '100vh' },
+  // `minHeight` rather than `height`: a fixed viewport height clips the box at the fold, so a long
+  // route scrolls past whatever this node paints. The scroll container behind it carries the space
+  // theme's background, so nothing shows through either way — but the template's own is right too.
+  props: { minHeight: '100vh' },
   children: [{ type: '$routes' }],
   routes: [
     homeRoute,
@@ -39,7 +42,15 @@ export const sidebarLayout: TemplateSchema = {
                 else: initializeSpaceGate,
               },
             },
-            else: spaceGate,
+            // Not `else: spaceGate` directly. `currentDataset` is also null for the first frames
+            // of a refresh — the dataset list is still arriving, and the switch to the matching one
+            // is itself async — so asking outright flashed "Join this Space" at someone already
+            // inside. `routeSpaceUnjoined` is false until that is a settled fact, and nothing
+            // renders in the meantime rather than a guess.
+            else: {
+              type: '$if',
+              props: { condition: { $store: 'spaceStore.routeSpaceUnjoined' }, then: spaceGate },
+            },
           },
         },
       ],

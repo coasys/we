@@ -12,7 +12,16 @@ import {
 } from '@we/models';
 import type { ThemeOverrides } from '@we/schema-shared';
 import { themeToStyle } from '@we/schema-shared';
-import { Accessor, createContext, createEffect, createSignal, ParentProps, untrack, useContext } from 'solid-js';
+import {
+  Accessor,
+  createContext,
+  createEffect,
+  createMemo,
+  createSignal,
+  ParentProps,
+  untrack,
+  useContext,
+} from 'solid-js';
 
 import { useDatasetStore } from './DatasetStore';
 import { useSessionStore } from './SessionStore';
@@ -52,16 +61,27 @@ export interface ThemeStore {
   setCurrentTheme: (themeId: string) => void;
   setDefaultTheme: (themeId: string) => void;
   toggleThemeInstalled: (themeId: string) => Promise<void>;
-  /** Controls whether the active space theme applies to the whole app or only to the template content area. */
+  /** What actually applies: the session preview if one is active, else the agent's preference. */
   themeScope: Accessor<'global' | 'scoped'>;
-  /** Toggle between global and scoped theme application. */
-  toggleThemeScope: () => void;
-  /** The active space theme data when in scoped mode (null in global mode or when no space theme is active). */
-  spaceThemeData: Accessor<ThemeData | null>;
+  /** The agent's persisted choice, which a preview temporarily masks. */
+  themeScopePreference: Accessor<'global' | 'scoped'>;
+  /** The same preference as a boolean, for a switch to bind to. */
+  themeScopeGlobal: Accessor<boolean>;
+  /** True while a session preview is masking the preference — worth saying so in the UI. */
+  themeScopePreviewing: Accessor<boolean>;
+  /** Preview a scope for this editing session without changing the preference; null drops it. */
+  previewThemeScope: (scope: 'global' | 'scoped' | null) => void;
   /**
-   * The theme that should be rendered by the scoped template wrapper.
-   * Scoped mode: returns editingTheme() (if editing) or spaceThemeData().
-   * Global mode: returns null (template inherits from documentElement).
+   * Persist the agent's choice, as the boolean a switch emits. Drops any active preview.
+   *
+   * A boolean rather than the union because a schema cannot map one to the other: `$if` in an
+   * action's args is resolved at render time, where the event does not exist yet, so it would
+   * silently pass whichever branch it evaluated once.
+   */
+  setThemeScopeGlobal: (global: boolean) => Promise<void>;
+  /**
+   * The theme the scoped template wrapper renders — the theme being edited if there is one, else the
+   * space's. Null in global mode, where the template inherits documentElement.
    */
   activeTemplateTheme: Accessor<ThemeData | null>;
   /** Apply a theme temporarily (space default) without persisting to AgentSettings. */
@@ -168,11 +188,6 @@ function applyThemeToDOM(theme: ThemeData) {
   injectCssString('we-custom-theme-css', theme.css ?? '');
 }
 
-function clearCustomThemeCSS() {
-  document.documentElement.style.cssText = '';
-  injectCssString('we-custom-theme-css', '');
-}
-
 const OVERRIDE_CSS_VARS: Partial<Record<keyof ThemeOverrides, string>> = {
   // Color — only independent inputs, not derived tokens (ringColor derives from primary)
   primaryHue: '--we-color-primary-hue',
@@ -250,12 +265,27 @@ export function ThemeStoreProvider(props: ParentProps) {
   const [visibleThemeIds, setVisibleThemeIds] = createSignal<Set<string>>(new Set());
   const [spaceThemes, setSpaceThemes] = createSignal<ThemeData[]>([]);
   const [currentThemeId, setCurrentThemeId] = createSignal<string>(getInitialThemeId());
-  // Whether the active space theme applies globally or only to the template content area.
-  const [themeScope, setThemeScope] = createSignal<'global' | 'scoped'>('global');
+  /**
+   * Whether a space's theme covers the whole window, or only the space's own content.
+   *
+   * Three values, one derived from the other two:
+   *
+   * - `themeScopePreference` — the agent's persisted choice (`AgentSettings.themeScope`).
+   * - `themeScopeOverride` — a session-only preview, set by the theme editor's toolbar. The globe
+   *   there is a "show me" control used while authoring, and persisting a transient look would
+   *   silently rewrite a preference the author would only notice days later, on a settings page
+   *   that had quietly changed appearance. Cleared when editing ends.
+   * - `themeScope` — what actually applies: the override if one is active, else the preference.
+   *
+   * Everything downstream reads the derived value, so the toolbar, the settings page and the
+   * clearing of an override all take the same path rather than each doing their own DOM work.
+   */
+  const themeScopePreference = createMemo<'global' | 'scoped'>(() =>
+    datasetStore.agentSettings()?.themeScope === 'global' ? 'global' : 'scoped',
+  );
+  const [themeScopeOverride, setThemeScopeOverride] = createSignal<'global' | 'scoped' | null>(null);
+  const themeScope = createMemo<'global' | 'scoped'>(() => themeScopeOverride() ?? themeScopePreference());
   // Space theme data for the template content area — only populated in scoped mode.
-  const [spaceThemeData, setSpaceThemeData] = createSignal<ThemeData | null>(null);
-  // Space theme requested before loadSpaceThemes completes — held here until it can be applied.
-  const [pendingSpaceThemeId, setPendingSpaceThemeId] = createSignal<string | null>(null);
   const [editingTheme, setEditingTheme] = createSignal<EditingTheme | null>(null);
 
   // ── History (delegated to the unified EditorStore history) ──
@@ -367,21 +397,6 @@ export function ThemeStoreProvider(props: ParentProps) {
     else setSpaceThemes([]);
   });
 
-  // Once spaceThemes finish loading, flush any pending space theme that replaceTheme
-  // couldn't apply yet (race: SpaceStore fires before loadSpaceThemes completes).
-  createEffect(() => {
-    const themes = spaceThemes();
-    const pending = pendingSpaceThemeId();
-    if (!pending) return;
-    const match = themes.find((t) => t.id === pending);
-    if (match) {
-      setPendingSpaceThemeId(null);
-      setCurrentThemeId(pending);
-      if (themeScope() === 'global') applyThemeToDOM(match);
-      else setSpaceThemeData(match);
-    }
-  });
-
   // Apply the agent's default theme when AgentSettings first loads or when the user
   // explicitly changes their default theme. Guard against re-firing on unrelated
   // settings changes (e.g. currentTemplateId updates from template switches), which
@@ -394,14 +409,9 @@ export function ThemeStoreProvider(props: ParentProps) {
     // agentSettings can update (e.g. when a theme save triggers AD4M subscriptions)
     // and blindly resetting currentThemeId to defaultThemeId would exit editing mode.
     if (untrack(() => editingTheme())) return;
-    const id = prefs.defaultThemeId;
-    if (id === lastAppliedDefaultThemeId) return;
-    lastAppliedDefaultThemeId = id;
-    setCurrentThemeId(id);
-    // Use untrack so spaceThemes reloading between spaces doesn't re-trigger this effect
-    const theme =
-      untrack(() => allThemes().find((t) => t.id === id)) ?? registryToThemeData(isValidThemeKey(id) ? id : 'light');
-    applyThemeToDOM(theme);
+    if (prefs.defaultThemeId === lastAppliedDefaultThemeId) return;
+    lastAppliedDefaultThemeId = prefs.defaultThemeId;
+    setCurrentThemeId(prefs.defaultThemeId);
   });
 
   // Keep localStorage in sync with the agent's default theme so the bootscreen
@@ -412,18 +422,39 @@ export function ThemeStoreProvider(props: ParentProps) {
     localStorage.setItem(THEME_KEY, prefs.defaultThemeId);
   });
 
-  // In global scope, keep documentElement in sync with the editing preview.
-  // This replaces per-function applyThemeToDOM calls in updateEditingOverrides/Css/undo/redo.
-  createEffect(() => {
-    const editing = editingTheme();
-    if (!editing || themeScope() === 'scoped') return;
-    applyThemeToDOM(editing);
-  });
+  /**
+   * The agent's own theme — what the shell wears in scoped mode, and what a space falls back to.
+   *
+   * Prefers `AgentSettings` over `localStorage` so it is reactive; localStorage is the boot answer,
+   * before AD4M has loaded, and an effect above keeps the two in step.
+   */
+  const personalTheme = createMemo<ThemeData>(() =>
+    resolveThemeData(datasetStore.agentSettings()?.defaultThemeId || getInitialThemeId()),
+  );
 
-  // The theme that the scoped template wrapper should render.
-  // Returns null in global mode (template inherits from documentElement).
-  const activeTemplateTheme: Accessor<ThemeData | null> = () =>
-    themeScope() === 'scoped' ? (editingTheme() ?? spaceThemeData()) : null;
+  /**
+   * Where the theme actually gets applied — two derived answers and one effect each, replacing
+   * fourteen imperative `applyThemeToDOM` calls spread across six functions and three effects.
+   *
+   * Deriving is what fixes the flicker. The scope transition used to write a signal (which the
+   * wrapper renders on Solid's next flush) *and* documentElement (immediately), so for one frame the
+   * whole window wore the personal theme before the wrapper caught up — the theme visibly went
+   * forward, back, and forward again. Both surfaces now read the same signals, so they change in
+   * the same flush and there is no intermediate state to paint.
+   *
+   * It also removes the class of bug where two of those writers disagreed about what should be on
+   * screen: there is one answer now, and it is computed rather than remembered.
+   */
+  const documentTheme = createMemo<ThemeData>(() =>
+    themeScope() === 'scoped' ? personalTheme() : (editingTheme() ?? currentTheme()),
+  );
+
+  /** What the scoped wrapper renders. Null in global mode — the template inherits documentElement. */
+  const activeTemplateTheme = createMemo<ThemeData | null>(() =>
+    themeScope() === 'scoped' ? (editingTheme() ?? currentTheme()) : null,
+  );
+
+  createEffect(() => applyThemeToDOM(documentTheme()));
 
   // In scoped mode, inject the space/editing theme's component-level CSS into a separate
   // style tag so [data-we-theme='X'] selectors match inside the scoped wrapper div.
@@ -470,40 +501,29 @@ export function ThemeStoreProvider(props: ParentProps) {
 
   function setCurrentTheme(themeId: string) {
     setCurrentThemeId(themeId);
-    const theme = resolveThemeData(themeId);
-    if (themeScope() === 'scoped') {
-      setSpaceThemeData(theme);
-    } else {
-      applyThemeToDOM(theme);
-    }
   }
 
-  function toggleThemeScope() {
-    const next = themeScope() === 'global' ? 'scoped' : 'global';
-    const td = spaceThemeData();
-    const cur = currentTheme();
-    if (next === 'scoped') {
-      // global → scoped: personal theme goes on documentElement; the scoped wrapper owns the display.
-      // When editing, the reactive DOM-sync effect switches off (themeScope=scoped) and the
-      // scoped wrapper picks up editingTheme() directly, so editing preview stays visible.
-      setSpaceThemeData(td ?? cur);
-      const personalId =
-        localStorage.getItem(THEME_KEY) ?? datasetStore.agentSettings()?.defaultThemeId ?? getInitialThemeId();
-      applyThemeToDOM(resolveThemeData(personalId));
-    } else {
-      // scoped → global: clear the scoped wrapper. Non-editing: apply the space theme to
-      // documentElement explicitly. Editing: the reactive DOM-sync effect fires when themeScope
-      // changes to 'global' and applies editingTheme() to documentElement automatically.
-      if (!editingTheme()) applyThemeToDOM(td ?? cur);
-      setSpaceThemeData(null);
-    }
-    setThemeScope(next);
+  /**
+   * Preview a scope for this editing session without changing the agent's preference.
+   *
+   * `null` drops the preview and returns to whatever the preference says.
+   */
+  function previewThemeScope(scope: 'global' | 'scoped' | null) {
+    setThemeScopeOverride(scope);
+  }
+
+  const themeScopeGlobal = createMemo(() => themeScopePreference() === 'global');
+  const themeScopePreviewing = createMemo(() => themeScopeOverride() !== null);
+
+  /** Persist the agent's choice. Any active preview is dropped, since it would mask the new value. */
+  async function setThemeScopeGlobal(global: boolean) {
+    setThemeScopeOverride(null);
+    await datasetStore.updateAgentSettings({ themeScope: global ? 'global' : 'scoped' });
   }
 
   function setDefaultTheme(themeId: string) {
     localStorage.setItem(THEME_KEY, themeId);
     setCurrentThemeId(themeId);
-    applyThemeToDOM(resolveThemeData(themeId));
     datasetStore.updateAgentSettings({ defaultThemeId: themeId });
   }
 
@@ -524,35 +544,26 @@ export function ThemeStoreProvider(props: ParentProps) {
     }
   }
 
+  /**
+   * Point the display at a space's theme.
+   *
+   * No longer parks an id that has not loaded yet: `currentTheme` resolves against `allThemes()`, so
+   * when the space's themes arrive the memo recomputes and both surfaces follow. Until then it falls
+   * back to the agent's own theme rather than a light default, so a slow load reads as "not themed
+   * yet" instead of flashing white.
+   */
   function replaceTheme(themeId: string) {
-    const theme = untrack(() => allThemes().find((t) => t.id === themeId));
-    if (theme) {
-      setPendingSpaceThemeId(null);
-      setCurrentThemeId(themeId);
-      // Don't overwrite the editing preview — the reactive editingTheme effect owns the DOM while editing.
-      if (untrack(() => editingTheme())) return;
-      if (untrack(() => themeScope()) === 'global') applyThemeToDOM(theme);
-      else setSpaceThemeData(theme);
-    } else {
-      // spaceThemes not loaded yet — park the ID. The createEffect above will
-      // apply it (and commit currentThemeId) once the space themes arrive.
-      setPendingSpaceThemeId(themeId);
-    }
+    // Don't disturb an editing preview — it outranks the space theme on both surfaces.
+    if (untrack(() => editingTheme())) return;
+    setCurrentThemeId(themeId);
   }
 
   function restorePersonalTheme() {
-    setPendingSpaceThemeId(null);
-    setSpaceThemeData(null);
-    const id = localStorage.getItem(THEME_KEY) ?? datasetStore.agentSettings()?.defaultThemeId ?? getInitialThemeId();
-    setCurrentThemeId(id);
-    // In global mode the space theme was on documentElement — restore the personal theme.
-    // In scoped mode documentElement was never changed by the space theme, so no DOM rewrite needed.
-    if (themeScope() === 'global') applyThemeToDOM(resolveThemeData(id));
+    setCurrentThemeId(datasetStore.agentSettings()?.defaultThemeId || getInitialThemeId());
   }
 
   function clearSpaceTheme() {
-    setPendingSpaceThemeId(null);
-    setSpaceThemeData(null);
+    restorePersonalTheme();
   }
 
   function startEditing(themeId?: string) {
@@ -563,13 +574,11 @@ export function ThemeStoreProvider(props: ParentProps) {
     let initialOverrides: ThemeOverrides;
     if (themeScope() === 'scoped') {
       // documentElement has the personal theme in scoped mode, not the space theme being edited.
-      // Temporarily apply the editing base so populateMissingOverrides reads the right computed values,
-      // then restore the personal theme before the browser gets a chance to paint.
+      // Temporarily apply the editing base so populateMissingOverrides reads the right computed
+      // values. Nothing restores it here: `setEditingTheme` below moves `documentTheme`, and its
+      // effect rewrites documentElement before the browser paints.
       applyThemeToDOM(base);
       initialOverrides = populateMissingOverrides(storedOverrides);
-      const personalId =
-        localStorage.getItem(THEME_KEY) ?? datasetStore.agentSettings()?.defaultThemeId ?? getInitialThemeId();
-      applyThemeToDOM(resolveThemeData(personalId));
     } else {
       initialOverrides = populateMissingOverrides(storedOverrides);
     }
@@ -700,6 +709,10 @@ export function ThemeStoreProvider(props: ParentProps) {
 
   function cancelEditing() {
     clearHistory();
+    // The toolbar's scope toggle is a preview for the duration of an editing session — see
+    // `themeScopeOverride`. Dropped first, so the DOM restore below reads the agent's real
+    // preference rather than whatever was being previewed.
+    setThemeScopeOverride(null);
     const editing = editingTheme();
 
     // Optimistically flush the editing state into the theme signals before clearing
@@ -708,30 +721,16 @@ export function ThemeStoreProvider(props: ParentProps) {
     if (editing) {
       if (spaceThemes().some((t) => t.id === editing.id)) {
         setSpaceThemes((prev) => prev.map((t) => (t.id === editing.id ? editing : t)));
-        if (themeScope() === 'scoped') setSpaceThemeData(editing);
       } else if (installedThemes().some((t) => t.id === editing.id)) {
         setInstalledThemes((prev) => prev.map((t) => (t.id === editing.id ? editing : t)));
       }
     }
 
+    // Clearing `editingTheme` moves `documentTheme` and `activeTemplateTheme` back to the saved
+    // theme, and their effects rewrite both surfaces. The optimistic flush above is what makes that
+    // land on the right data while the async save is still in flight.
     setEditingTheme(null);
     sessionStorage.removeItem(EDITING_THEME_KEY);
-    if (themeScope() === 'scoped') {
-      // documentElement holds the personal theme in scoped mode; reaffirm it to flush
-      // any stale inline CSS vars from a prior global-mode editing session.
-      const personalId =
-        localStorage.getItem(THEME_KEY) ?? datasetStore.agentSettings()?.defaultThemeId ?? getInitialThemeId();
-      applyThemeToDOM(resolveThemeData(personalId));
-    } else {
-      // In global mode restore the actual current theme to documentElement.
-      // currentTheme() now resolves correctly thanks to the optimistic update above.
-      const theme = currentTheme();
-      if (theme.origin !== 'built-in') applyThemeToDOM(theme);
-      else {
-        clearCustomThemeCSS();
-        document.documentElement.setAttribute('data-we-theme', isValidThemeKey(theme.id) ? theme.id : 'light');
-      }
-    }
   }
 
   async function saveEditingTheme(): Promise<ThemeData | null> {
@@ -1083,8 +1082,11 @@ export function ThemeStoreProvider(props: ParentProps) {
     currentTheme,
     defaultThemeId,
     themeScope,
-    toggleThemeScope,
-    spaceThemeData,
+    themeScopePreference,
+    themeScopeGlobal,
+    themeScopePreviewing,
+    previewThemeScope,
+    setThemeScopeGlobal,
     activeTemplateTheme,
     themeManagementList,
     editingTheme,

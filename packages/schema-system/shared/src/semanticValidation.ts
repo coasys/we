@@ -333,6 +333,15 @@ interface WalkState {
    *  actually reads routes arrays from. Child nodes that are not route entries must never own
    *  a routes array; if they do, nothing will render (the router never sees it). */
   isRouteEligible: boolean;
+  /**
+   * This schema is a fragment (a bare `SchemaNode` export), not a self-contained template.
+   *
+   * A fragment is by definition a piece of something else, and `$localState` is scoped to the node
+   * that declares it — so a section composed into a page legitimately reads state that page owns.
+   * Judging it standalone reports an error about correct code: the shell's language settings section
+   * was flagged three times for reading `newLanguageAddress`, which the `/languages` route declares.
+   */
+  isFragment: boolean;
 }
 
 function walkNode(
@@ -617,6 +626,7 @@ function checkTokenValue(
   // $action token
   if ('$action' in obj && typeof obj.$action === 'string') {
     checkActionRef(obj.$action, `${path}.$action`, ctx, errors);
+    if (Array.isArray(obj.args)) checkActionArgs(obj.args, `${path}.args`, errors);
   }
 
   // $query token — the entity is checked against the manifest's known models.
@@ -787,6 +797,50 @@ function checkStoreRef(ref: string, path: string, ctx: ValidationContext, errors
   }
 }
 
+/**
+ * An `$event`/`$arg` reference buried inside an operator object in `$action` args can never resolve.
+ *
+ * Args are resolved once at render time, and only a *bare* `'$event.detail'` string survives that
+ * pass to be substituted at call time. Wrap one in `$not`, `$if`, `$concat` — anything — and the
+ * operator evaluates immediately, against a context with no event in it, where the reference is
+ * just an unresolved `$`-string. That string is truthy, so the argument silently becomes a
+ * constant: `{ $not: '$event.detail' }` is always `false`, and a switch bound to it only ever
+ * sends one value.
+ *
+ * Nothing errors at runtime — the store is handed a plausible argument — so this is only findable
+ * by noticing a control that does not work. Twice now, hence a rule. Pass the raw value and let the
+ * store do the mapping, or take what the event emits directly.
+ */
+function checkActionArgs(args: unknown[], path: string, errors: ValidationError[]): void {
+  const isEventRef = (v: unknown): v is string =>
+    typeof v === 'string' && (v === '$event' || v === '$arg' || v.startsWith('$event.') || v.startsWith('$arg.'));
+
+  const walk = (value: unknown, at: string, insideOperator: boolean): void => {
+    if (isEventRef(value)) {
+      if (insideOperator) {
+        errors.push({
+          path: at,
+          message:
+            `"${value}" is nested inside an operator, where it is evaluated before the event exists ` +
+            `and resolves to a constant. Pass it as a bare argument and map the value in the store.`,
+          severity: 'error',
+        });
+      }
+      return;
+    }
+    if (Array.isArray(value)) {
+      value.forEach((v, i) => walk(v, `${at}[${i}]`, insideOperator));
+      return;
+    }
+    if (value && typeof value === 'object') {
+      const isOperator = Object.keys(value).some((k) => k.startsWith('$'));
+      for (const [k, v] of Object.entries(value)) walk(v, `${at}.${k}`, insideOperator || isOperator);
+    }
+  };
+
+  args.forEach((arg, i) => walk(arg, `${path}[${i}]`, false));
+}
+
 function checkActionRef(ref: string, path: string, ctx: ValidationContext, errors: ValidationError[]): void {
   const dotIdx = ref.indexOf('.');
   if (dotIdx === -1) return; // malformed, structural validation handles this
@@ -839,6 +893,9 @@ function checkLocalRef(
   if (fieldName === '$all' || fieldName === '$scope') return;
 
   if (state.localScope === null) {
+    // A fragment's scope is supplied by whatever page composes it, which is not in view here. The
+    // check still runs in full against that page, where the answer is knowable.
+    if (state.isFragment) return;
     errors.push({
       path,
       message: `$${tokenType} references "${fieldName}" but no $localState is declared in scope`,
@@ -1050,7 +1107,14 @@ export function validateSemantic(schema: unknown, context: ValidationContext): V
   }
 
   const errors: ValidationError[] = [];
-  const state: WalkState = { localScope: null, hasRoutesAncestor: false, isRouteEligible: true };
+  // `meta` is what makes a schema a template — a self-contained thing that must declare everything
+  // it reads. Anything else is a fragment; see `WalkState.isFragment`.
+  const state: WalkState = {
+    localScope: null,
+    hasRoutesAncestor: false,
+    isRouteEligible: true,
+    isFragment: !meta,
+  };
 
   walkNode(schema, '', context, state, errors);
 

@@ -18,7 +18,9 @@ export const headerLayout: TemplateSchema = {
     icon: 'layout',
   },
   type: 'Column',
-  props: { bg: 'neutral-50', height: '100%' },
+  // `minHeight` rather than `height`: fills the viewport when a route is short, and grows with a
+  // long one. A fixed 100% clips the box at the fold, so this node's own background stops there.
+  props: { bg: 'neutral-50', minHeight: '100%' },
   children: [{ type: '$routes' }],
   routes: [
     homeRoute,
@@ -56,7 +58,15 @@ export const headerLayout: TemplateSchema = {
                 else: initializeSpaceGate,
               },
             },
-            else: spaceGate,
+            // Not `else: spaceGate` directly. `currentDataset` is also null for the first frames
+            // of a refresh — the dataset list is still arriving, and the switch to the matching one
+            // is itself async — so asking outright flashed "Join this Space" at someone already
+            // inside. `routeSpaceUnjoined` is false until that is a settled fact, and nothing
+            // renders in the meantime rather than a guess.
+            else: {
+              type: '$if',
+              props: { condition: { $store: 'spaceStore.routeSpaceUnjoined' }, then: spaceGate },
+            },
           },
         },
       ],

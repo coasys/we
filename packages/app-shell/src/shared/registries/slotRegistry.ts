@@ -31,6 +31,7 @@ import {
   bootScreen,
   consentPrompt,
   consentSecret,
+  createSpaceModalMount,
   moduleRail,
   removeAccountModal,
   sidebar,
@@ -112,6 +113,9 @@ export function registerCoreSlots(): void {
   // Chrome rather than part of the settings page: it is a modal over whatever is behind it, and
   // the settings page is itself an overlay.
   slotRegistry.register({ id: 'core:removeAccount', anchor: 'overlay', node: removeAccountModal, order: 3 });
+  // Chrome for the same reason, plus one of its own: it is opened from two places — the settings
+  // page and the sidebar's spaces group — so it cannot belong to either. See `shellStore.createSpaceOpen`.
+  slotRegistry.register({ id: 'core:createSpace', anchor: 'overlay', node: createSpaceModalMount, order: 4 });
   slotRegistry.register({ id: 'core:sidebar', anchor: 'dock-left', node: sidebar, order: 0 });
   slotRegistry.register({ id: 'core:templateEditor', anchor: 'dock-right', node: templateEditor, order: 0 });
   // The one place feature modules are opened from. Core rather than a module contribution, because

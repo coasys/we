@@ -79,6 +79,14 @@ export const sidebar: SchemaNode = {
             label: 'Spaces',
             reorderable: true,
             onReorder: { $action: 'datasetStore.reorderDatasets' },
+            // Creating a space used to mean going to Settings first, which is a long way round for
+            // the thing this group is a list of. The modal is shell chrome, so opening it from here
+            // and from Settings reaches the same one.
+            action: {
+              icon: 'plus',
+              label: 'Create a space',
+              onClick: { $action: 'shellStore.setCreateSpaceOpen', args: [true] },
+            },
             items: {
               $map: {
                 items: { $store: 'spaceStore.orderedSidebarItems' },

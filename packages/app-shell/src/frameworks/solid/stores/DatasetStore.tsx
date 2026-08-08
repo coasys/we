@@ -48,6 +48,14 @@ export interface DatasetStore {
   /** True once the current dataset is confirmed to have WE's `Space` schema installed. */
   isWeSpace: Accessor<boolean>;
   joinedSpaceCids: Accessor<string[]>;
+  /**
+   * The backend has answered with the dataset list.
+   *
+   * Without it an empty list is indistinguishable from "not fetched yet", and a gate that asks
+   * "have I joined this space?" reads the boot frame as "no" — flashing a join prompt at someone
+   * already inside. The same reason `accountStore.accountsLoaded` exists.
+   */
+  datasetsLoaded: Accessor<boolean>;
   systemDatasetUuids: Accessor<string[]>;
   rootDataset: Accessor<AppDataset | null>;
   testDataset: Accessor<AppDataset | null>;
@@ -95,6 +103,7 @@ export function DatasetStoreProvider(props: ParentProps) {
   const session = useSessionStore();
 
   const [datasets, setDatasets] = createSignal<AppDataset[]>([]);
+  const [datasetsLoaded, setDatasetsLoaded] = createSignal(false);
   const [currentDataset, setCurrentDataset] = createSignal<AppDataset | null>(null);
   const [currentDatasetModels, setCurrentDatasetModels] = createSignal<ModelManifestEntry[]>([]);
   const [isWeSpace, setIsWeSpace] = createSignal<boolean>(false);
@@ -262,6 +271,11 @@ export function DatasetStoreProvider(props: ParentProps) {
       }
     } catch (error) {
       console.error('DatasetStore: loadDatasets error', error);
+    } finally {
+      // Set even on failure: the question has been asked and answered, badly. Leaving it false
+      // would hold every gate in "still resolving" for the rest of the session, which is a worse
+      // failure than showing what we know.
+      setDatasetsLoaded(true);
     }
   }
 
@@ -392,6 +406,14 @@ export function DatasetStoreProvider(props: ParentProps) {
         // install on every switch; the port diffs before writing, so this is a read in the
         // common case.
         await schemas.installModules(handle, moduleRegistry.moduleSchemas(schemas));
+        // The same skip has a second cost: a *property* added to one of WE's own models reaches
+        // newly created spaces only, and writes to it are silently dropped in every space that
+        // predates it. Refresh brings those shapes up to date; it also diffs before writing.
+        const refreshed = await schemas.refreshSpace(handle).catch((err) => {
+          console.error('DatasetStore: space schema refresh failed', err);
+          return [] as string[];
+        });
+        if (refreshed.length) console.info(`DatasetStore: refreshed space schemas — ${refreshed.join(', ')}`);
       }
 
       // SDNA is installed — switch immediately so WE templates render. WE model classes
@@ -457,6 +479,7 @@ export function DatasetStoreProvider(props: ParentProps) {
     currentDatasetModels,
     isWeSpace,
     joinedSpaceCids,
+    datasetsLoaded,
     systemDatasetUuids,
     rootDataset,
     testDataset,

@@ -54,6 +54,12 @@
     padding: var(--sidebar-padding);
     gap: var(--sidebar-gap);
     overflow-y: auto;
+    // Setting only `overflow-y` leaves `overflow-x` computing to `auto` rather than `visible`, so
+    // anything momentarily wider than the sidebar — content mid-way through the hover expansion,
+    // say — grows a horizontal scrollbar, and that scrollbar takes height from the bottom and
+    // shifts everything up. A sidebar has no business scrolling sideways: labels ellipsis, icons
+    // are fixed width.
+    overflow-x: hidden;
   }
 
   // Footer section - only needs gap and display for footerItems layout
@@ -130,6 +136,9 @@
   &__group-header--static {
     display: flex;
     align-items: center;
+    // Shares its row with an optional group action, the same as the collapsible header.
+    flex: 1;
+    min-width: 0;
     gap: var(--we-space-200);
     padding: var(--we-space-200) var(--we-space-300);
     cursor: default;

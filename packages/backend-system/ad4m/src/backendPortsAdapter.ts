@@ -31,6 +31,7 @@ import {
   installRootSdna,
   installSpaceSdna,
   isModelRegistered,
+  refreshSpaceSdna,
   ROOT_MODELS,
   SPACE_MODELS,
 } from './sdnaModels';
@@ -46,6 +47,7 @@ export function createAd4mSchemaPort(backendClient: unknown): SchemaPort {
     installRoot: (dataset) => installRootSdna(proxy(dataset)),
     installSpace: (dataset, moduleSchemas) => installSpaceSdna(proxy(dataset), moduleSchemas),
     installModules: (dataset, moduleSchemas) => installModuleSdna(proxy(dataset), moduleSchemas),
+    refreshSpace: (dataset) => refreshSpaceSdna(proxy(dataset)),
     ensure: (dataset, schema) => ensureModelRegistered(proxy(dataset), schema as never),
     hasCoreSchema: (dataset) => isModelRegistered(proxy(dataset), Space as never),
     hasAnySchema: async (dataset) => (await proxy(dataset).getShaclNames()).length > 0,

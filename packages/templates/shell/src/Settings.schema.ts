@@ -8,7 +8,9 @@ import type { SchemaNode, TemplateSchema } from '@we/schema-shared';
 
 import { accountSettings } from './AccountSettings.schema.ts';
 import { aiSection } from './AiSettings.schema.ts';
-import { createSpaceModal } from './CreateSpaceModal.ts';
+import { advancedDatasetsSection } from './spaces/AdvancedDatasets.ts';
+import { spaceSettingsPage } from './spaces/SpaceSettings.ts';
+import { spacesListSection } from './spaces/SpacesList.ts';
 import { languagesLocalState, languagesSection } from './LanguageSettings.schema.ts';
 import {
   backup,
@@ -230,6 +232,71 @@ const templatesSection: SchemaNode = {
   ],
 };
 
+/**
+ * Whether a space's theme covers the whole window, or only the space's own content.
+ *
+ * Off by default, and phrased as something you opt into, because the two failure modes are not
+ * symmetric: a dark or low-contrast community theme taking over the whole window makes this very
+ * page hard to read, and this is the page you would come to to undo it. The other way round, a
+ * space merely feels less immersive.
+ *
+ * The theme editor's toolbar can flip this for the length of an editing session without writing it
+ * here — it is a preview there, and says so.
+ */
+const themeScopeSection: SchemaNode = {
+  type: 'Column',
+  props: { gap: '300' },
+  children: [
+    { type: 'we-text', props: { fontWeight: 'semibold' }, children: ['Space themes'] },
+    {
+      type: 'Row',
+      props: {
+        ay: 'center',
+        ax: 'between',
+        gap: '300',
+        p: '300',
+        bg: 'neutral-0',
+        r: '300',
+        border: '1px solid neutral-200',
+      },
+      children: [
+        {
+          type: 'Column',
+          props: { gap: '100', flex: '1' },
+          children: [
+            { type: 'we-text', props: { variant: 'label' }, children: ['Let spaces theme the whole window'] },
+            {
+              type: 'we-text',
+              props: { variant: 'footnote', color: 'neutral-400' },
+              children: [
+                'Off, a space themes its own content and the shell keeps your theme. On, entering a space restyles everything, including these settings.',
+              ],
+            },
+            {
+              type: '$if',
+              props: {
+                condition: { $store: 'themeStore.themeScopePreviewing' },
+                then: {
+                  type: 'we-text',
+                  props: { variant: 'footnote', color: 'warning-600' },
+                  children: ['A theme you are editing is previewing a different scope right now.'],
+                },
+              },
+            },
+          ],
+        },
+        {
+          type: 'we-switch',
+          props: {
+            checked: { $store: 'themeStore.themeScopeGlobal' },
+            onChange: { $action: 'themeStore.setThemeScopeGlobal', args: ['$event.detail'] },
+          },
+        },
+      ],
+    },
+  ],
+};
+
 const themesSection: SchemaNode = {
   type: 'Column',
   props: { gap: '300' },
@@ -380,7 +447,7 @@ const themesSection: SchemaNode = {
   ],
 };
 
-const perspectivesSection: SchemaNode = {
+const modulesSection: SchemaNode = {
   type: 'Column',
   props: { gap: '300' },
   children: [
@@ -388,346 +455,76 @@ const perspectivesSection: SchemaNode = {
       type: 'Row',
       props: { gap: '200', ay: 'center' },
       children: [
-        { type: 'we-icon', props: { name: 'intersect-three', size: '20px' } },
-        {
-          type: 'we-text',
-          props: { fontWeight: 'semibold' },
-          children: ['All Perspectives'],
-        },
+        { type: 'we-icon', props: { name: 'puzzle-piece', size: '20px' } },
+        { type: 'we-text', props: { variant: 'heading-sm' }, children: ['Modules'] },
       ],
     },
     {
-      type: '$if',
-      props: {
-        condition: { $store: 'datasetStore.datasets.length' },
-        then: {
-          type: 'Column',
-          props: { gap: '300' },
-          children: [
-            {
-              type: '$each',
-              props: { items: { $store: 'datasetStore.datasets' }, as: 'dataset' },
-              children: [
-                {
-                  type: 'Card',
-                  props: {
-                    ax: 'start',
-                    bg: 'neutral-50',
-                    border: '1px solid neutral-200',
-                  },
-                  $localState: {
-                    sdnaCleanupResult: { type: 'string', initial: '' },
-                  },
-                  children: [
-                    {
-                      type: 'Row',
-                      props: { gap: '200', ay: 'center' },
-                      children: [
-                        {
-                          type: 'we-icon',
-                          props: {
-                            name: {
-                              $if: { condition: '$dataset.sharedUri', then: 'globe', else: 'folder' },
-                            },
-                            size: '16px',
-                          },
-                        },
-                        {
-                          type: 'we-text',
-                          props: { variant: 'body', fontWeight: 'medium' },
-                          children: ['$dataset.name'],
-                        },
-                      ],
-                    },
-                    {
-                      type: 'we-text',
-                      props: { variant: 'body' },
-                      children: [{ $concat: ['ID: ', '$dataset.id'] }],
-                    },
-                    {
-                      type: 'we-text',
-                      props: { variant: 'body' },
-                      children: [{ $concat: ['URL: ', '$dataset.sharedUri'] }],
-                    },
-                    {
-                      type: 'Row',
-                      props: { gap: '200', ay: 'center' },
-                      children: [
-                        {
-                          type: 'we-button',
-                          props: {
-                            variant: 'secondary',
-                            size: 'sm',
-                            onClick: {
-                              $action: 'datasetStore.cleanupSpaceSdna',
-                              args: ['$dataset.id'],
-                              onSuccess: [{ $setLocal: 'sdnaCleanupResult', from: '$result' }],
-                            },
-                          },
-                          children: [
-                            { type: 'we-icon', props: { name: 'broom' } },
-                            {
-                              type: 'we-text',
-                              props: { variant: 'label' },
-                              children: ['Clean up duplicate schema'],
-                            },
-                          ],
-                        },
-                        {
-                          type: 'we-button',
-                          props: {
-                            variant: 'danger',
-                            size: 'sm',
-                            onClick: { $action: 'spaceStore.removeSpace', args: ['$dataset.id'] },
-                          },
-                          children: [
-                            { type: 'we-icon', props: { name: 'trash', size: '16px' } },
-                            {
-                              type: 'we-text',
-                              props: { variant: 'label' },
-                              children: ['Delete'],
-                            },
-                          ],
-                        },
-                      ],
-                    },
-                    {
-                      type: '$if',
-                      props: {
-                        condition: { $local: 'sdnaCleanupResult' },
-                        then: {
-                          type: 'we-text',
-                          props: { variant: 'footnote', color: 'neutral-400' },
-                          children: [{ $local: 'sdnaCleanupResult' }],
-                        },
-                      },
-                    },
-                  ],
-                },
-              ],
-            },
-          ],
-        },
-        else: {
-          type: 'we-text',
-          props: { variant: 'label', italic: true },
-          children: ['No perspectives yet'],
-        },
-      },
+      type: 'we-text',
+      props: { variant: 'footnote', color: 'neutral-400' },
+      children: [
+        'Which feature modules you want available to you. This is your own choice and applies in every space \u2014 a community still decides which of them it runs, in that space\u2019s settings. Some modules only supply pieces a template uses, and are listed here without a switch.',
+      ],
     },
-  ],
-};
-
-const modulesSection: SchemaNode = {
-  type: '$if',
-  props: {
-    condition: { $store: 'datasetStore.currentDataset' },
-    then: {
-      type: 'Column',
-      props: { gap: '300' },
+    {
+      type: '$each',
+      props: { items: { $store: 'spaceStore.moduleInstallSettings' }, as: 'mod' },
       children: [
         {
           type: 'Row',
-          props: { gap: '200', ay: 'center' },
-          children: [
-            { type: 'we-icon', props: { name: 'puzzle-piece', size: '20px' } },
-            { type: 'we-text', props: { variant: 'heading-sm' }, children: ['Modules'] },
-          ],
-        },
-        {
-          type: 'we-text',
-          props: { variant: 'footnote', color: 'neutral-400' },
-          children: ['Feature modules available in this space.'],
-        },
-        {
-          type: '$each',
-          props: { items: { $store: 'spaceStore.moduleSettings' }, as: 'mod' },
+          props: {
+            ay: 'center',
+            ax: 'between',
+            gap: '300',
+            p: '300',
+            bg: 'neutral-0',
+            r: '300',
+            border: '1px solid neutral-200',
+          },
           children: [
             {
               type: 'Row',
-              props: {
-                ay: 'center',
-                ax: 'between',
-                gap: '300',
-                p: '300',
-                bg: 'neutral-0',
-                r: '300',
-                border: '1px solid neutral-200',
-              },
+              props: { gap: '300', ay: 'center' },
               children: [
+                { type: 'we-icon', props: { name: '$mod.icon', size: '20px' } },
                 {
-                  type: 'Row',
-                  props: { gap: '300', ay: 'center' },
+                  type: 'Column',
+                  props: { gap: '100' },
                   children: [
-                    { type: 'we-icon', props: { name: '$mod.icon', size: '20px' } },
+                    { type: 'we-text', props: { variant: 'label' }, children: ['$mod.name'] },
                     {
-                      type: 'Column',
-                      props: { gap: '100' },
-                      children: [
-                        { type: 'we-text', props: { variant: 'label' }, children: ['$mod.name'] },
-                        {
-                          type: 'we-text',
-                          props: { variant: 'footnote', color: 'neutral-400' },
-                          children: ['$mod.description'],
-                        },
-                      ],
+                      type: 'we-text',
+                      props: { variant: 'footnote', color: 'neutral-400' },
+                      children: ['$mod.description'],
                     },
                   ],
                 },
-                {
+              ],
+            },
+            // A capability module gets a note instead of a switch — see `moduleSurface`. It has no
+            // chrome of its own, so "off" could only mean withdrawing a component from whatever
+            // template uses it, which is not something to offer before templates can declare that.
+            {
+              type: '$if',
+              props: {
+                condition: '$mod.switchable',
+                then: {
                   type: 'we-switch',
                   props: {
-                    checked: '$mod.enabled',
-                    onChange: {
-                      $action: 'spaceStore.setModuleEnabled',
-                      args: ['$mod.id', '$event.detail'],
-                    },
+                    checked: '$mod.installed',
+                    onChange: { $action: 'spaceStore.setModuleInstalled', args: ['$mod.id', '$event.detail'] },
                   },
                 },
-              ],
+                else: {
+                  type: 'we-text',
+                  props: { variant: 'footnote', color: 'neutral-400' },
+                  children: ['Used by templates'],
+                },
+              },
             },
           ],
         },
       ],
-    },
-  },
-};
-
-const sharedSpacesSection: SchemaNode = {
-  type: 'Column',
-  props: { gap: '300' },
-  children: [
-    {
-      type: 'Row',
-      props: { gap: '200', ay: 'center' },
-      children: [
-        { type: 'we-icon', props: { name: 'globe', size: '20px' } },
-        { type: 'we-text', props: { variant: 'heading-sm' }, children: ['Shared Spaces'] },
-      ],
-    },
-    {
-      type: '$if',
-      props: {
-        condition: { $store: 'spaceStore.sharedSpaces.length' },
-        then: {
-          type: 'Row',
-          props: { gap: '300', wrap: true },
-          children: [
-            {
-              type: '$each',
-              props: { items: { $store: 'spaceStore.sharedSpaces' }, as: 'space' },
-              children: [
-                {
-                  type: 'Card',
-                  props: {
-                    bg: 'neutral-50',
-                    width: '200px',
-                    cursor: 'pointer',
-                    onClick: { $action: 'spaceStore.navigateToSpace', args: ['$space.uuid'] },
-                  },
-                  children: [
-                    {
-                      type: 'Row',
-                      props: { gap: '200', ay: 'center' },
-                      children: [
-                        { type: 'we-icon', props: { name: 'globe', size: '16px' } },
-                        {
-                          type: 'we-text',
-                          props: { variant: 'body', fontWeight: 'medium' },
-                          children: ['$space.name'],
-                        },
-                      ],
-                    },
-                    {
-                      type: 'we-text',
-                      props: { variant: 'label' },
-                      children: ['$space.description'],
-                    },
-                  ],
-                },
-              ],
-            },
-          ],
-        },
-        else: {
-          type: 'we-text',
-          props: { variant: 'label', italic: true },
-          children: ['No shared spaces yet'],
-        },
-      },
-    },
-  ],
-};
-
-const personalSpacesSection: SchemaNode = {
-  type: 'Column',
-  props: { gap: '300' },
-  children: [
-    {
-      type: 'Row',
-      props: { gap: '200', ay: 'center' },
-      children: [
-        { type: 'we-icon', props: { name: 'folder', size: '20px' } },
-        {
-          type: 'we-text',
-          props: { variant: 'heading-sm' },
-          children: ['Personal Spaces'],
-        },
-      ],
-    },
-    {
-      type: '$if',
-      props: {
-        condition: { $store: 'spaceStore.personalSpaces.length' },
-        then: {
-          type: 'Row',
-          props: { gap: '300', wrap: true },
-          children: [
-            {
-              type: '$each',
-              props: { items: { $store: 'spaceStore.personalSpaces' }, as: 'space' },
-              children: [
-                {
-                  type: 'Card',
-                  props: {
-                    bg: 'neutral-50',
-                    width: '200px',
-                    cursor: 'pointer',
-                    onClick: {
-                      $action: 'spaceStore.navigateToSpace',
-                      args: [{ $if: { condition: '$space.url', then: '$space.url', else: '$space.uuid' } }],
-                    },
-                  },
-                  children: [
-                    {
-                      type: 'Row',
-                      props: { gap: '200', ay: 'center' },
-                      children: [
-                        { type: 'we-icon', props: { name: 'folder', size: '16px' } },
-                        {
-                          type: 'we-text',
-                          props: { variant: 'body', fontWeight: 'medium' },
-                          children: ['$space.name'],
-                        },
-                      ],
-                    },
-                    {
-                      type: 'we-text',
-                      props: { variant: 'label' },
-                      children: ['$space.description'],
-                    },
-                  ],
-                },
-              ],
-            },
-          ],
-        },
-        else: {
-          type: 'we-text',
-          props: { variant: 'label', italic: true },
-          children: ['No personal spaces yet'],
-        },
-      },
     },
   ],
 };
@@ -738,13 +535,61 @@ const createSpaceButton: SchemaNode = {
     text: 'Create New Space',
     variant: 'primary',
     height: '40px',
-    onClick: { $setLocal: 'createSpaceModalOpen', value: true },
+    onClick: { $action: 'shellStore.setCreateSpaceOpen', args: [true] },
   },
 };
 
-const createSpaceModalMount: SchemaNode = {
-  type: '$if',
-  props: { condition: { $local: 'createSpaceModalOpen' }, then: createSpaceModal },
+/**
+ * Join a space someone sent you.
+ *
+ * On the web a share link is a URL the browser can open, and the space gate takes it from there.
+ * Nothing else has an address bar, so a desktop build needs somewhere to put the thing you were
+ * sent — this is that place. `joinSpace` accepts a full URL, a `neighbourhood://` URI or a bare
+ * id, so whichever form the link arrived in is the form that works.
+ */
+const joinSpaceByLink: SchemaNode = {
+  type: 'Column',
+  props: { gap: '200' },
+  $localState: { joinLink: { type: 'string', initial: '' }, joining: { type: 'boolean', initial: false } },
+  children: [
+    { type: 'we-text', props: { variant: 'label' }, children: ['Join with a link'] },
+    {
+      type: 'Row',
+      props: { gap: '200', ay: 'center', wrap: true },
+      children: [
+        {
+          type: 'we-input',
+          props: {
+            flex: '1',
+            value: { $local: 'joinLink' },
+            placeholder: 'Paste a space link or neighbourhood:// address',
+            disabled: { $local: 'joining' },
+            onInput: { $setLocal: 'joinLink', from: '$event.detail' },
+          },
+        },
+        {
+          type: 'we-button',
+          props: {
+            variant: 'secondary',
+            // Gated on having typed something rather than on validation: whether an address
+            // resolves is only knowable by trying it, so the button asks rather than predicts.
+            disabled: { $or: [{ $not: { $local: 'joinLink' } }, { $local: 'joining' }] },
+            loading: { $local: 'joining' },
+            onClick: [
+              { $setLocal: 'joining', value: true },
+              {
+                $action: 'spaceStore.joinSpace',
+                args: [{ $local: 'joinLink' }],
+                onSuccess: [{ $setLocal: 'joinLink', value: '' }],
+                onFinally: [{ $setLocal: 'joining', value: false }],
+              },
+            ],
+          },
+          children: ['Join'],
+        },
+      ],
+    },
+  ],
 };
 
 /**
@@ -754,12 +599,17 @@ const createSpaceModalMount: SchemaNode = {
  * and it brings hover, focus and keyboard activation without hand-rolling any of them.
  */
 function navItem(label: string, icon: string, path: string): SchemaNode {
+  // Matched on the first path segment, not the whole path, so a page with sub-routes keeps its nav
+  // entry lit — `/spaces/<uuid>` is still Spaces & data. Exact equality left the nav with nothing
+  // selected there, which reads as having navigated out of settings altogether.
+  const selected =
+    path === '/'
+      ? { $eq: [{ $store: 'routeStore.currentPath' }, '/'] }
+      : { $eq: [{ $store: 'routeStore.segments.0' }, path.slice(1)] };
   return {
     type: 'we-button',
     props: {
-      variant: {
-        $if: { condition: { $eq: [{ $store: 'routeStore.currentPath' }, path] }, then: 'secondary', else: 'ghost' },
-      },
+      variant: { $if: { condition: selected, then: 'secondary', else: 'ghost' } },
       width: '100%',
       ax: 'start',
       onClick: { $action: 'routeStore.navigate', args: [path] },
@@ -795,21 +645,22 @@ export const settingsTemplate: TemplateSchema = {
   // render time, whatever the schema tree looks like, and state declared here would never reach it.
   routes: [
     { path: '/', ...page([accountSection]) },
-    { path: '/appearance', ...page([templatesSection, themesSection]) },
+    { path: '/appearance', ...page([templatesSection, themeScopeSection, themesSection]) },
     {
       path: '/spaces',
-      $localState: { createSpaceModalOpen: { type: 'boolean', initial: false } },
       ...page([
-        perspectivesSection,
-        sharedSpacesSection,
-        personalSpacesSection,
+        spacesListSection,
         createSpaceButton,
+        joinSpaceByLink,
         // Below the spaces themselves: it is about all of this data at once, and it is the one
         // control here that writes a file rather than changing what is on screen.
         backup,
-        createSpaceModalMount,
+        advancedDatasetsSection,
       ]),
     },
+    // Settings for one space, keyed by the row that was clicked rather than by where the agent is
+    // standing — see `spaceSettingsPage`.
+    { path: '/spaces/:uuid', ...page([spaceSettingsPage]) },
     { path: '/modules', ...page([modulesSection]) },
     { path: '/ai', ...page([runtimeError, aiSection]) },
     {

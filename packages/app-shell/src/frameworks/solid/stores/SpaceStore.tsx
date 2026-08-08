@@ -1,4 +1,4 @@
-import { moduleRegistry, moduleStores } from '@shared/registries/moduleRegistry';
+import { type ModuleSurface, moduleRegistry, moduleStores, moduleSurface } from '@shared/registries/moduleRegistry';
 import {
   isSpaceSelf,
   type LocationData,
@@ -8,18 +8,22 @@ import {
 } from '@shared/spaceSync';
 import { deriveSlug } from '@shared/utils';
 import type { AgentProfileSummary } from '@we/backend-shared';
+import { toastService } from '@we/components/solid';
 import { createBlocks, deleteBlocks, reconcileBlocks } from '@we/block-shared';
 import {
+  AGENT_DEFAULT,
   CollectionBlock,
   compressImageToFileData,
   type DatasetProxy,
   dataURIToFileData,
   type FileData,
+  FOLLOW_SPACE,
   getModelForPerspective,
   LocationBlock,
   Signal,
   SignalType,
   Space,
+  SpacePreference,
 } from '@we/models';
 import {
   Accessor,
@@ -33,6 +37,7 @@ import {
   useContext,
 } from 'solid-js';
 
+import { useAppStore } from './AppStore';
 import { type AppDataset, useDatasetStore } from './DatasetStore';
 import { useProfileStore } from './ProfileStore';
 import { useRouteStore } from './RouteStore';
@@ -40,6 +45,124 @@ import { useSessionStore } from './SessionStore';
 import { useShellStore } from './ShellStore';
 import { useTemplateStore } from './TemplateStore';
 import { useThemeStore } from './ThemeStore';
+
+/**
+ * One row of the spaces list — every joined dataset the agent can act on, space or not.
+ *
+ * Built over datasets rather than over `mySpaces` because a dataset that is *not* yet a WE space
+ * still belongs in the list: a community synced in from another app is a thing you have joined and
+ * can act on (by initializing it), and the only place it was previously visible was a raw id in the
+ * diagnostics list. A space you cannot see is a space you cannot leave.
+ *
+ * `kind` replaces what used to be three separate sections. Shared and personal differ by exactly one
+ * field on the same model, which is a badge, not a heading — and splitting them gave the page two
+ * "none yet" empty states for what is one list.
+ */
+export interface SpaceListEntry {
+  /** The dataset id — stable whether or not a Space record exists, so it keys navigation and settings. */
+  uuid: string;
+  name: string;
+  description: string;
+  avatar: string;
+  kind: 'shared' | 'personal' | 'foreign';
+  /** False for a joined dataset with no WE Space record — the "initialize" state. */
+  isWeSpace: boolean;
+  /** Whether this agent may change what everyone here sees. See {@link SpaceStore.canAdministerSpace}. */
+  canAdminister: boolean;
+  /**
+   * This space's module settings, carried on the row rather than fetched per space.
+   *
+   * `$store` resolves a literal path, so a settings page rendered for one row of a list cannot ask
+   * for `moduleSettingsFor(<that row's uuid>)` — the same constraint that made `launchModule` take
+   * an id. Precomputing puts the answer where the row's context already reaches it.
+   */
+  modules: ModuleSetting[];
+  /** What the community set, so a picker can label the "follow the space" option with it. */
+  defaultTemplateId: string;
+  defaultThemeId: string;
+  /** This agent's override: FOLLOW_SPACE, AGENT_DEFAULT, or a concrete id. Private to this agent. */
+  templateOverride: string;
+  themeOverride: string;
+  /**
+   * A link that gets someone else into this space, or `''` when there is nothing to share.
+   *
+   * Empty for a personal space: it has no global id, so no link could reach it. On the web this is
+   * an ordinary URL someone can click; anywhere else it is the `neighbourhood://` URI, because a
+   * desktop build has no origin worth putting in front of a path and no address bar to paste one
+   * into. Both are accepted by `joinSpace`, so whichever a recipient has, it works.
+   */
+  shareLink: string;
+}
+
+/**
+ * Which modules a space has on, from its stored value.
+ *
+ * An unset field means "not decided", never "none" — see `Space.enabledModules`. Falling back to the
+ * registered set is what stops this being a silent regression that strips every existing space of
+ * its chrome. A malformed value is a corrupt setting, not a decision to disable everything.
+ *
+ * A plain function over the stored string rather than a memo over the current space, because the
+ * settings page answers this for spaces the agent is not standing in.
+ */
+function resolveEnabledModules(raw: string | undefined): string[] {
+  if (raw) {
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed.filter((id): id is string => typeof id === 'string');
+    } catch {
+      console.warn('space.enabledModules is not valid JSON; falling back to the registered set');
+    }
+  }
+  return moduleRegistry.all().map((entry) => entry.definition.id);
+}
+
+/**
+ * Every registered module, with each layer's answer for one space — the shape a settings list renders.
+ *
+ * All three answers travel together because the settings page has to explain *why* a module is not
+ * showing. "Enabled by the community but not installed by you" and "installed but the community has
+ * it off" are different situations with different remedies, and a single boolean cannot tell them
+ * apart — it would leave a toggle that is on next to a module that is not there.
+ */
+function moduleSettingsFrom(raw: string | undefined, installed: Set<string>, muted: Set<string>): ModuleSetting[] {
+  const on = new Set(resolveEnabledModules(raw));
+  return moduleRegistry
+    .all()
+    // Chrome only. A contribution is gated where it renders, and chrome is the only surface that
+    // renders inside a space — an app switcher is shell-level, and a capability is mounted by
+    // whatever template asks for it. Neither is a community's decision. See `moduleSurface`.
+    .filter(({ definition }) => moduleSurface(definition) === 'chrome')
+    .map(({ definition }) => {
+      const enabled = on.has(definition.id);
+      const isInstalled = installed.has(definition.id);
+      const isMuted = muted.has(definition.id);
+      return {
+        id: definition.id,
+        name: definition.name,
+        description: definition.description ?? '',
+        icon: definition.icon ?? 'puzzle-piece',
+        enabled,
+        installed: isInstalled,
+        visible: !isMuted,
+        active: enabled && isInstalled && !isMuted,
+      };
+    });
+}
+
+export interface ModuleSetting {
+  id: string;
+  name: string;
+  description: string;
+  icon: string;
+  /** The community's decision for this space — shared with every member. */
+  enabled: boolean;
+  /** This agent's decision, everywhere. */
+  installed: boolean;
+  /** This agent's decision, here. Private. Positively phrased so a switch binds to it directly. */
+  visible: boolean;
+  /** All of the above agreeing — whether it actually renders here for this agent. */
+  active: boolean;
+}
 
 export interface SpaceMetaUpdate {
   name?: string;
@@ -73,6 +196,15 @@ export interface SpaceStore {
   mySpaces: Accessor<Space[]>;
   personalSpaces: Accessor<Space[]>;
   sharedSpaces: Accessor<Space[]>;
+  /** Every joined dataset the agent can act on, space or not — the spaces list. See {@link SpaceListEntry}. */
+  spaceList: Accessor<SpaceListEntry[]>;
+  /**
+   * The route points at a space the agent has not joined — settled, not merely unresolved.
+   *
+   * What a join gate should read. `currentDataset` being null is also true for the first frames of
+   * a refresh, so gating on that flashes "Join this Space" at someone already inside.
+   */
+  routeSpaceUnjoined: Accessor<boolean>;
   creatingSpace: Accessor<boolean>;
   /** Sidebar entries in user-defined order — datasets decorated with Space name/avatar when
    * available, plus a virtual pre-join entry for the configured global space. */
@@ -83,11 +215,40 @@ export interface SpaceStore {
    * for prefilling the "Initialize as WE space" gate. Null once the dataset is a WE space,
    * or if no recognized foreign model is found. */
   foreignSpacePrefill: Accessor<{ name: string; description: string; avatar: string | null } | null>;
-  /** Feature modules turned on for this space. Falls back to everything the seed activated when the
-   *  space has never decided, so spaces that predate the setting keep the chrome they had. */
+  /** Feature modules this *space* has turned on — the community's decision, shared with every
+   *  member. Falls back to everything the seed activated when the space has never decided, so
+   *  spaces that predate the setting keep the chrome they had. */
   enabledModules: Accessor<string[]>;
-  /** Registered modules paired with whether this space has them on — the settings list. */
-  moduleSettings: Accessor<{ id: string; name: string; description: string; icon: string; enabled: boolean }[]>;
+  /** Options for the per-space template override picker, including a "follow the space" entry. */
+  templateOverrideOptions: Accessor<{ label: string; value: string }[]>;
+  /** Options for the per-space theme override picker, including a "follow the space" entry. */
+  themeOverrideOptions: Accessor<{ label: string; value: string }[]>;
+  /** Feature modules this *agent* wants available anywhere. Personal; see AgentSettings.installedModules. */
+  installedModules: Accessor<string[]>;
+  /** Module ids the template on screen mounts components from — derived from the schema, not declared. */
+  requiredModules: Accessor<string[]>;
+  /** Of those, the ones this agent has not installed. Empty in the ordinary case. */
+  missingModules: Accessor<string[]>;
+  /** What actually renders here for this agent: registered ∩ installed ∩ enabled, less personal mutes. */
+  activeModules: Accessor<string[]>;
+  /** Every registered module and whether this agent wants it available anywhere — the global list. */
+  /**
+   * Every registered module and whether this agent wants it available anywhere — the global list.
+   *
+   * Includes capability-only modules, flagged `switchable: false`: they are part of what the agent
+   * has, but not yet something to decide about. See `moduleSurface`.
+   */
+  moduleInstallSettings: Accessor<
+    {
+      id: string;
+      name: string;
+      description: string;
+      icon: string;
+      installed: boolean;
+      surface: ModuleSurface;
+      switchable: boolean;
+    }[]
+  >;
   /** Launchers for the modules enabled here — what the module rail renders. */
   moduleLaunchers: Accessor<{ id: string; icon: string; label: string; active: boolean }[]>;
 
@@ -101,7 +262,8 @@ export interface SpaceStore {
     coverImageFile?: File,
     location?: LocationData | null,
   ) => Promise<void>;
-  joinSpace: (id: string) => Promise<void>;
+  /** Join a shared dataset. `focus` defaults to true; pass false to join without navigating to it. */
+  joinSpace: (id: string, focus?: boolean) => Promise<void>;
   initializeAsWeSpace: (name: string, description: string, avatarValue?: File | string | null) => Promise<Space>;
   /** Remove a space: clears its global-discovery listing (when authored by this agent) and
    * removes the backing dataset. */
@@ -109,15 +271,28 @@ export interface SpaceStore {
   createPost: (json: unknown) => Promise<void>;
   updatePost: (postId: string, json: unknown) => Promise<void>;
   deletePost: (postId: string) => Promise<void>;
-  updateSpaceImage: (field: 'avatar' | 'coverImage', imageFile: File) => Promise<void>;
-  updateSpaceMeta: (updates: SpaceMetaUpdate) => Promise<void>;
-  setSpaceDefaultTemplate: (templateId: string) => Promise<void>;
-  setSpaceDefaultTheme: (themeId: string) => Promise<void>;
-  setModuleEnabled: (moduleId: string, enabled: boolean) => Promise<void>;
+  /** Every space-scoped write takes an optional target uuid; omitted means the space on screen. */
+  updateSpaceImage: (field: 'avatar' | 'coverImage', imageFile: File, spaceUuid?: string) => Promise<void>;
+  updateSpaceMeta: (updates: SpaceMetaUpdate, spaceUuid?: string) => Promise<void>;
+  setSpaceDefaultTemplate: (templateId: string, spaceUuid?: string) => Promise<void>;
+  setSpaceDefaultTheme: (themeId: string, spaceUuid?: string) => Promise<void>;
+  setModuleEnabled: (moduleId: string, enabled: boolean, spaceUuid?: string) => Promise<void>;
+  /** Turn a module on or off for this agent everywhere. */
+  setModuleInstalled: (moduleId: string, installed: boolean) => Promise<void>;
+  /** Show or hide a module for this agent in one space. Private to this agent. */
+  setModuleVisible: (moduleId: string, visible: boolean, spaceUuid?: string) => Promise<void>;
+  /** Override the template this agent sees in one space; FOLLOW_SPACE follows its default. Private. */
+  setSpaceTemplateOverride: (templateId: string, spaceUuid?: string) => Promise<void>;
+  /** Override the theme this agent sees in one space; FOLLOW_SPACE follows its default. Private. */
+  setSpaceThemeOverride: (themeId: string, spaceUuid?: string) => Promise<void>;
   launchModule: (moduleId: string) => void;
   createSignalType: (config: Partial<SignalType>) => Promise<void>;
   upsertSignal: (nodeId: string, signalTypeId: string, value: number) => Promise<void>;
   navigateToSpace: (spaceId: string, view?: string) => Promise<void>;
+  /** Whether this agent may change what every member of that space sees. */
+  canAdministerSpace: (uuid: string) => boolean;
+  /** Copy a space's share link to the clipboard. No-op for a space that has none. */
+  copyShareLink: (uuid: string) => Promise<void>;
   getSubgroupMessages: (subgroupId: string) => Promise<FluxSubgroupMessage[]>;
   removeSpaceFromGlobal: (spaceUuid: string) => Promise<void>;
   updateSpaceInCache: (dataset: AppDataset, updates: Partial<Space>) => void;
@@ -137,6 +312,7 @@ export function SpaceStoreProvider(props: ParentProps) {
   const profileStore = useProfileStore();
   const routeStore = useRouteStore();
   const templateStore = useTemplateStore();
+  const appStore = useAppStore();
   const themeStore = useThemeStore();
   const shellStore = useShellStore();
 
@@ -151,6 +327,155 @@ export function SpaceStoreProvider(props: ParentProps) {
   // it implements sharing (a neighbourhood, a published branch, an `is_public` row).
   const personalSpaces = createMemo(() => mySpaces().filter((s) => !s.url));
   const sharedSpaces = createMemo(() => mySpaces().filter((s) => !!s.url));
+
+  /**
+   * Whether this agent may change what every member of a space sees.
+   *
+   * **A UI affordance, not enforcement.** A shared space is a neighbourhood every member can write
+   * links to; nothing stops another member's client writing `we://name`. This decides whether to
+   * *offer* the controls, which is worth doing — an owner should see what is theirs to manage — but
+   * it must never be described to the user as protection.
+   *
+   * A predicate rather than an inline `author === me` in each template, because creator-only is
+   * today's answer and not the last one: multiple admins, roles, or an SDNA-level constraint all
+   * change what "may administer" means. Templates asking the question by name keep working; templates
+   * that had compared two DIDs would all need editing.
+   */
+  function canAdministerSpace(uuid: string): boolean {
+    const space = mySpaces().find((s) => s.uuid === uuid);
+    if (!space) return false;
+    // A personal space has no one else to answer to.
+    if (!space.url) return true;
+    const me = session.me()?.did;
+    return Boolean(me && space.author === me);
+  }
+
+  /**
+   * The middle layer: which modules this agent wants available to them at all, anywhere.
+   *
+   * Read from the root dataset, so it is personal — turning one off here changes nothing another
+   * member sees. Unset means "not decided" and falls back to everything registered, so an agent who
+   * never opens the setting keeps what they had.
+   */
+  const installedModules = createMemo<string[]>(() =>
+    resolveEnabledModules(datasetStore.agentSettings()?.installedModules),
+  );
+
+  /** This agent's personal choices per space, from the root dataset. See `SpacePreference`. */
+  const [spacePreferences, setSpacePreferences] = createSignal<SpacePreference[]>([]);
+
+  const preferenceFor = (spaceUuid: string | undefined): SpacePreference | undefined =>
+    spaceUuid ? spacePreferences().find((p) => p.spaceUuid === spaceUuid) : undefined;
+
+  const mutedModulesFor = (spaceUuid: string | undefined): string[] => {
+    const raw = preferenceFor(spaceUuid)?.mutedModules;
+    if (!raw) return [];
+    try {
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed.filter((id): id is string => typeof id === 'string') : [];
+    } catch {
+      return [];
+    }
+  };
+
+  /**
+   * This agent's template/theme override for a space, normalised to one of the three values a
+   * picker offers.
+   *
+   * Anything falsy becomes {@link FOLLOW_SPACE} here rather than at each call site: a record written
+   * before these fields existed has no value, and the picker still needs a matching option to select
+   * — bound to `''`, it would show blank and could never be set back.
+   */
+  const templateOverrideFor = (spaceUuid: string | undefined): string =>
+    preferenceFor(spaceUuid)?.templateId || FOLLOW_SPACE;
+  const themeOverrideFor = (spaceUuid: string | undefined): string =>
+    preferenceFor(spaceUuid)?.themeId || FOLLOW_SPACE;
+
+  /**
+   * The link that reaches a space from outside — see {@link SpaceListEntry.shareLink}.
+   *
+   * Built from the dataset's own `sharedId`/`sharedUri` rather than from `Space.url`, so it is right
+   * for a joined-but-foreign dataset too, and needs no Space record to exist.
+   */
+  const shareLinkFor = (ds: AppDataset): string => {
+    if (!ds.sharedId) return '';
+    const onWeb = typeof window !== 'undefined' && window.location.protocol.startsWith('http');
+    return onWeb ? `${window.location.origin}/space/${ds.sharedId}` : (ds.sharedUri ?? ds.sharedId);
+  };
+
+  /** The Space model behind a dataset id, for resolving what an override falls back to. */
+  const spaceForUuid = (uuid: string): Space | undefined => {
+    const ds = datasetStore.datasets().find((d) => d.id === uuid);
+    return ds ? mySpaces().find((s) => isSpaceSelf(s, ds)) : undefined;
+  };
+
+  /**
+   * Option lists for the per-space override pickers, with "follow the space" as a real entry.
+   *
+   * Built here rather than in the schema because the leading entry cannot be expressed there — the
+   * schema can `$map` a store array into options, but has no way to prepend one. And it has to
+   * exist: without it, overriding is one-way, since a picker offering only concrete templates gives
+   * someone no way back to the space's own choice.
+   *
+   * `createMemo` runs its body immediately, so everything these read must already be declared above
+   * them — a `const` referenced from an eagerly-run memo is a TDZ crash at provider construction,
+   * not a lazy failure later.
+   */
+
+  /** Name the thing an option resolves to, so "the space's default" is not a guess. */
+  const withResolved = (label: string, name: string | undefined) => (name ? `${label} (${name})` : label);
+
+  const templateOverrideOptions = createMemo(() => {
+    const byId = (id: string) => templateStore.allTemplates().find((t) => t.id === id)?.meta?.name;
+    const spaceDefault = spaceForUuid(datasetStore.currentDataset()?.id ?? '')?.defaultTemplateId;
+    return [
+      { label: withResolved("Use the space's default", byId(spaceDefault ?? '')), value: FOLLOW_SPACE },
+      { label: withResolved('Use my default', byId(templateStore.defaultTemplateId())), value: AGENT_DEFAULT },
+      ...templateStore.allTemplates().map((t) => ({ label: t.meta?.name || t.id || '', value: t.id || '' })),
+    ];
+  });
+
+  const themeOverrideOptions = createMemo(() => {
+    const byId = (id: string) => themeStore.allThemes().find((t) => t.id === id)?.name;
+    const spaceDefault = spaceForUuid(datasetStore.currentDataset()?.id ?? '')?.defaultThemeId;
+    return [
+      { label: withResolved("Use the space's default", byId(spaceDefault ?? '')), value: FOLLOW_SPACE },
+      { label: withResolved('Use my default', byId(themeStore.defaultThemeId())), value: AGENT_DEFAULT },
+      ...themeStore.allThemes().map((t) => ({ label: t.name || t.id, value: t.id })),
+    ];
+  });
+
+  /** `installedModules` as a set — the shape both the list and the intersection want. */
+  const installedSet = createMemo(() => new Set(installedModules()));
+
+  /**
+   * The spaces list: one row per joined dataset the agent can act on.
+   *
+   * Ordered by `orderedDatasets`, which already applies the user's sidebar order and drops the
+   * system datasets — those belong in the advanced section, where the subject is datasets rather
+   * than spaces.
+   */
+  const spaceList = createMemo<SpaceListEntry[]>(() =>
+    datasetStore.orderedDatasets().map((ds) => {
+      const space = mySpaces().find((s) => isSpaceSelf(s, ds));
+      return {
+        uuid: ds.id,
+        // A foreign dataset has no Space record to name it, so the dataset's own name stands in.
+        name: space?.name || ds.name,
+        description: space?.description ?? '',
+        avatar: space?.avatar ?? '',
+        kind: !space ? 'foreign' : space.url ? 'shared' : 'personal',
+        isWeSpace: Boolean(space),
+        canAdminister: space ? canAdministerSpace(space.uuid) : false,
+        modules: space ? moduleSettingsFrom(space.enabledModules, installedSet(), new Set(mutedModulesFor(ds.id))) : [],
+        defaultTemplateId: space?.defaultTemplateId ?? '',
+        defaultThemeId: space?.defaultThemeId ?? '',
+        templateOverride: templateOverrideFor(ds.id),
+        themeOverride: themeOverrideFor(ds.id),
+        shareLink: shareLinkFor(ds),
+      };
+    }),
+  );
 
   // TemplateStore mounts above this store and cannot read it directly — hand it the space lookup
   // it needs to resolve a space's default template (see TemplateStore.provideSpaceLookup).
@@ -372,7 +697,16 @@ export function SpaceStoreProvider(props: ParentProps) {
     return spaceModel;
   }
 
-  async function joinSpace(id: string): Promise<void> {
+  /**
+   * Join a shared dataset, and by default go to it.
+   *
+   * `focus: false` joins without moving — for a caller that only needs the dataset present, not
+   * open. The marketplace is that case: its routes name `datasetStore.marketplaceDataset` directly,
+   * so it reads fine from wherever you are, and focusing dragged you out of the space you were in
+   * while still looking like an overlay above it. Every shell overlay stays a layer over the space
+   * underneath; that property is what lets one host space-scoped things at all.
+   */
+  async function joinSpace(id: string, focus: boolean = true): Promise<void> {
     const lifecycle = session.lifecycle();
     if (!lifecycle?.join) return;
     if (!id || typeof id !== 'string') {
@@ -383,7 +717,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     // If already joined locally (by local id, shared id, or full URI), just focus the dataset.
     const existing = datasetStore.datasets().find((d) => d.id === id || d.sharedId === id || d.sharedUri === id);
     if (existing) {
-      await datasetStore.switchDataset(existing.id);
+      if (focus) await datasetStore.switchDataset(existing.id);
       return;
     }
 
@@ -413,7 +747,7 @@ export function SpaceStoreProvider(props: ParentProps) {
         setMySpaces((prev) => [...prev, joinedSpaceModel]);
       }
 
-      await datasetStore.switchDataset(joinedRef.id);
+      if (focus) await datasetStore.switchDataset(joinedRef.id);
       console.log('SpaceStore: joined space', joinedRef.id);
     } catch (error) {
       console.error('SpaceStore: joinSpace error', error);
@@ -531,13 +865,34 @@ export function SpaceStoreProvider(props: ParentProps) {
     });
   }
 
-  async function updateSpaceImage(field: 'avatar' | 'coverImage', imageFile: File): Promise<void> {
-    const ds = datasetStore.currentDataset();
+  /**
+   * The dataset a space-scoped write targets: a named space, or the one being viewed.
+   *
+   * Space settings are reached from the spaces list, so the space being configured is usually not
+   * the one you are standing in — navigating to it would close the settings overlay
+   * (`navigateToSpace` calls `closeShellView`), which is the whole reason the list carries the
+   * settings entry point rather than a "current space" page doing it.
+   *
+   * Omitting the argument keeps the previous meaning, so in-space callers are unchanged.
+   */
+  function targetDataset(spaceUuid?: string): AppDataset | null {
+    if (!spaceUuid) return datasetStore.currentDataset();
+    return datasetStore.datasets().find((d) => d.id === spaceUuid) ?? null;
+  }
+
+  /** Whether a write is aimed at the space currently on screen — live UI switches only apply then. */
+  const isCurrent = (ds: AppDataset) => datasetStore.currentDataset()?.id === ds.id;
+
+  async function updateSpaceImage(field: 'avatar' | 'coverImage', imageFile: File, spaceUuid?: string): Promise<void> {
+    const ds = targetDataset(spaceUuid);
     if (!ds) return;
     const fileData = await compressImageToFileData(imageFile, field === 'avatar' ? 'space-image' : 'space-cover');
     const [spaceModel] = await Space.findAll(ds.handle, { where: spaceSelfWhere(ds) });
     if (!spaceModel) return;
     await Space.update(ds.handle, spaceModel.id, { [field]: fileData });
+    // Only the current space has a live subscription refreshing it; every other row in the spaces
+    // list is served from this cache, so without it the change would not appear until a reload.
+    updateSpaceInCache(ds, { [field]: fileData } as never);
     if (spaceModel.discovery === 'listed') {
       const globalDs = datasetStore.globalDataset();
       if (globalDs) {
@@ -549,8 +904,8 @@ export function SpaceStoreProvider(props: ParentProps) {
     }
   }
 
-  async function updateSpaceMeta(updates: SpaceMetaUpdate): Promise<void> {
-    const ds = datasetStore.currentDataset();
+  async function updateSpaceMeta(updates: SpaceMetaUpdate, spaceUuid?: string): Promise<void> {
+    const ds = targetDataset(spaceUuid);
     if (!ds) return;
     const currentDataset = ds.handle;
 
@@ -566,6 +921,9 @@ export function SpaceStoreProvider(props: ParentProps) {
     if (updates.description !== undefined) spaceModel.description = updates.description;
     if (updates.discovery !== undefined) spaceModel.discovery = updates.discovery;
     await spaceModel.save();
+    // See updateSpaceImage — only the current space is refreshed by a live subscription.
+    const { location: _location, ...scalars } = updates;
+    updateSpaceInCache(ds, scalars as never);
 
     if (updates.location !== undefined) {
       if (updates.location === null) {
@@ -669,29 +1027,60 @@ export function SpaceStoreProvider(props: ParentProps) {
    * the registered set is what stops this shipping as a silent regression that strips every existing
    * space of its chrome.
    */
-  const enabledModules = createMemo<string[]>(() => {
-    const raw = currentSpace()?.enabledModules;
-    if (raw) {
-      try {
-        const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed)) return parsed.filter((id): id is string => typeof id === 'string');
-      } catch {
-        // A malformed value is a corrupt setting, not a decision to disable everything.
-        console.warn('space.enabledModules is not valid JSON; falling back to the registered set');
-      }
-    }
-    return moduleRegistry.all().map((entry) => entry.definition.id);
+  const enabledModules = createMemo<string[]>(() => resolveEnabledModules(currentSpace()?.enabledModules));
+
+
+
+  /**
+   * What actually renders here, for this agent: the three layers intersected, minus personal mutes.
+   *
+   * Registered ∩ installed ∩ enabled, less muted. The layers answer different questions and none
+   * substitutes for another — the deployment says what exists, I say what I want anywhere, the
+   * community says what it runs, and I say what I want *here*. A module has to survive all four.
+   *
+   * This is what the chrome gate and the launcher rail read. `enabledModules` stays the community's
+   * decision alone, because that is what the space settings edit and what other members share.
+   */
+  const activeModules = createMemo<string[]>(() => {
+    const installed = installedSet();
+    const muted = new Set(mutedModulesFor(datasetStore.currentDataset()?.id));
+    return enabledModules().filter((id) => installed.has(id) && !muted.has(id));
   });
 
-  const moduleSettings = createMemo(() => {
-    const on = new Set(enabledModules());
-    return moduleRegistry.all().map(({ definition }) => ({
-      id: definition.id,
-      name: definition.name,
-      description: definition.description ?? '',
-      icon: definition.icon ?? 'puzzle-piece',
-      enabled: on.has(definition.id),
-    }));
+  // AppStore mounts above this one, so it is handed the set rather than reaching for it — the same
+  // arrangement as `templateStore.provideSpaceLookup`. The *installed* set, not the active one: an
+  // app switcher renders in the shell, so it is gated at the agent layer. See `moduleSurface`.
+  appStore.provideInstalledModules(installedModules);
+
+  /**
+   * The agent layer as a settings list — every registered module and whether this agent wants it.
+   *
+   * Space-independent by design: this is the page you reach without being in a space, and the
+   * decision it edits applies everywhere. Its per-space counterpart travels on each spaces-list row.
+   */
+  const moduleInstallSettings = createMemo(() => {
+    const installed = installedSet();
+    return moduleRegistry.all().map(({ definition }) => {
+      const surface = moduleSurface(definition);
+      return {
+        id: definition.id,
+        name: definition.name,
+        description: definition.description ?? '',
+        icon: definition.icon ?? 'puzzle-piece',
+        installed: installed.has(definition.id),
+        surface,
+        /**
+         * A capability module is listed but not switchable.
+         *
+         * Uninstalling one would take a component out from under whatever template uses it — the
+         * globe route would simply stop rendering, with nothing to explain why. What would make it
+         * safe is templates declaring which modules they need, so the choice could be refused or
+         * warned about. Until that exists, showing the module without a switch is the honest
+         * position: it is part of what you have, and not yet something to decide about.
+         */
+        switchable: surface !== 'capability',
+      };
+    });
   });
 
   /**
@@ -708,8 +1097,165 @@ export function SpaceStoreProvider(props: ParentProps) {
     return typeof value === 'function' ? Boolean((value as () => unknown)()) : Boolean(value);
   };
 
+  // Personal per-space choices live in the root dataset, so they load with it rather than with any
+  // space — and stay readable for every space at once, which the settings list needs.
+  createEffect(() => {
+    const root = datasetStore.rootDataset();
+    if (!root) {
+      setSpacePreferences([]);
+      return;
+    }
+    void SpacePreference.findAll(root.handle)
+      .then(setSpacePreferences)
+      .catch(() => setSpacePreferences([]));
+  });
+
+  /** Turn a module on or off for this agent everywhere. See `AgentSettings.installedModules`. */
+  /**
+   * Put a space's share link on the clipboard.
+   *
+   * Here rather than in a schema because clipboard access is a browser API, and because the failure
+   * is worth reporting: a denied clipboard permission is silent otherwise, and the user would be
+   * left pasting whatever they had before.
+   */
+  async function copyShareLink(uuid: string): Promise<void> {
+    const link = spaceList().find((s) => s.uuid === uuid)?.shareLink;
+    if (!link) return;
+    try {
+      await navigator.clipboard.writeText(link);
+      toastService.success('Link copied');
+    } catch (error) {
+      console.error('SpaceStore: could not copy share link', error);
+      toastService.error('Could not copy the link');
+    }
+  }
+
+  /**
+   * Modules the template currently on screen needs in order to render.
+   *
+   * Derived from the components the schema actually mounts, so it is right without any template
+   * author declaring anything — see `moduleRegistry.requiredBy`.
+   */
+  const requiredModules = createMemo<string[]>(() => moduleRegistry.requiredBy(templateStore.currentTemplate));
+
+  /**
+   * Modules this template needs that the agent has not installed.
+   *
+   * The state that had no name before: a template mounting a component no installed module provides
+   * renders nothing where that component should be, with nothing to say why. Naming it is what makes
+   * a "you need this module" prompt possible.
+   */
+  const missingModules = createMemo<string[]>(() => {
+    const installed = installedSet();
+    return requiredModules().filter((id) => !installed.has(id));
+  });
+
+  /** Turn a module on or off for this agent everywhere. See `AgentSettings.installedModules`. */
+  async function setModuleInstalled(moduleId: string, installed: boolean): Promise<void> {
+    // Refused rather than warned: uninstalling a module the visible template mounts takes the
+    // component out from under it, and the route stops rendering with nothing to explain why. This
+    // guard is what makes a capability module safe to offer a switch for at all.
+    if (!installed && requiredModules().includes(moduleId)) {
+      const name = moduleRegistry.get(moduleId)?.definition.name ?? moduleId;
+      const template = templateStore.currentTemplate.meta?.name ?? 'current';
+      toastService.error(`${name} can't be turned off — the ${template} template uses it`);
+      return;
+    }
+    const next = new Set(installedModules());
+    if (installed) next.add(moduleId);
+    else next.delete(moduleId);
+    // Writes the resolved list, so the first toggle pins whatever was on by fallback — the same
+    // reason `setModuleEnabled` does, and the same consequence: a module added to the seed later
+    // will not silently appear for an agent who has already decided.
+    await datasetStore.updateAgentSettings({ installedModules: JSON.stringify([...next]) });
+  }
+
+  /**
+   * Write one agent-private choice about one space, creating the record if it is the first.
+   *
+   * Always the root dataset, never the space — these are mine, and putting them in the shared
+   * perspective would tell every other member which modules I muted and which theme I use.
+   */
+  async function updateSpacePreference(uuid: string, updates: Partial<SpacePreference>): Promise<void> {
+    const root = datasetStore.rootDataset();
+    if (!root) return;
+    try {
+      const existing = preferenceFor(uuid);
+      if (existing) await SpacePreference.update(root.handle, existing.id, updates);
+      else await SpacePreference.create(root.handle, { spaceUuid: uuid, ...updates });
+      setSpacePreferences(await SpacePreference.findAll(root.handle));
+    } catch (error) {
+      console.error('SpaceStore: could not persist space preference', error);
+    }
+  }
+
+  /**
+   * Show or hide a module for this agent in one space.
+   *
+   * Phrased as *visible* rather than *muted* so it takes what a switch emits directly. Inverting in
+   * a schema is not available: `{ $not: '$event.detail' }` inside `$action` args is an operator
+   * object, so it is evaluated at render time — before any event exists — and the unresolved
+   * `'$event.detail'` string is truthy, making the argument a constant `false`. Only bare
+   * `$event`/`$arg` strings survive to call time. Storage stays a list of exclusions; the
+   * inversion happens here, where it can be seen.
+   */
+  async function setModuleVisible(moduleId: string, visible: boolean, spaceUuid?: string): Promise<void> {
+    const uuid = spaceUuid ?? datasetStore.currentDataset()?.id;
+    if (!uuid) return;
+    const next = new Set(mutedModulesFor(uuid));
+    if (visible) next.delete(moduleId);
+    else next.add(moduleId);
+    await updateSpacePreference(uuid, { mutedModules: JSON.stringify([...next]) } as Partial<SpacePreference>);
+  }
+
+  /**
+   * Turn a stored override into the id that actually applies.
+   *
+   * `''` defers to the community's choice; {@link AGENT_DEFAULT} defers to this agent's global one,
+   * read live so it tracks a later change rather than freezing today's answer.
+   */
+  const resolveTemplateFor = (uuid: string): string => {
+    const override = templateOverrideFor(uuid);
+    if (override === AGENT_DEFAULT) return templateStore.defaultTemplateId();
+    if (override === FOLLOW_SPACE) return spaceForUuid(uuid)?.defaultTemplateId || '';
+    return override;
+  };
+
+  const resolveThemeFor = (uuid: string): string => {
+    const override = themeOverrideFor(uuid);
+    if (override === AGENT_DEFAULT) return themeStore.defaultThemeId();
+    if (override === FOLLOW_SPACE) return spaceForUuid(uuid)?.defaultThemeId || '';
+    return override;
+  };
+
+  /**
+   * Override the template this agent sees in one space. {@link FOLLOW_SPACE} returns to its default.
+   *
+   * Applied immediately when the space is the one on screen, so the choice is visible where it was
+   * made; otherwise it takes effect next time that space is opened.
+   */
+  async function setSpaceTemplateOverride(templateId: string, spaceUuid?: string): Promise<void> {
+    const uuid = spaceUuid ?? datasetStore.currentDataset()?.id;
+    if (!uuid) return;
+    await updateSpacePreference(uuid, { templateId } as Partial<SpacePreference>);
+    if (datasetStore.currentDataset()?.id !== uuid) return;
+    const template = templateStore.allTemplates().find((t) => t.id === resolveTemplateFor(uuid));
+    if (template) templateStore.replaceTemplate(template);
+  }
+
+  /** Override the theme this agent sees in one space. {@link FOLLOW_SPACE} returns to its default. */
+  async function setSpaceThemeOverride(themeId: string, spaceUuid?: string): Promise<void> {
+    const uuid = spaceUuid ?? datasetStore.currentDataset()?.id;
+    if (!uuid) return;
+    await updateSpacePreference(uuid, { themeId } as Partial<SpacePreference>);
+    if (datasetStore.currentDataset()?.id !== uuid) return;
+    const effective = resolveThemeFor(uuid);
+    if (effective) themeStore.replaceTheme(effective);
+    else themeStore.clearSpaceTheme();
+  }
+
   const moduleLaunchers = createMemo(() => {
-    const on = new Set(enabledModules());
+    const on = new Set(activeModules());
     return moduleRegistry
       .all()
       .filter(({ definition }) => definition.launcher && on.has(definition.id))
@@ -742,33 +1288,39 @@ export function SpaceStoreProvider(props: ParentProps) {
     else console.warn(`module "${moduleId}" declares launcher action "${action}" but its store has no such method`);
   }
 
-  async function setModuleEnabled(moduleId: string, enabled: boolean) {
-    const space = currentSpace();
-    if (!space) return;
-    const next = new Set(enabledModules());
+  async function setModuleEnabled(moduleId: string, enabled: boolean, spaceUuid?: string) {
+    const ds = targetDataset(spaceUuid);
+    // Read the space from the cache rather than `currentSpace`, so this answers for a space being
+    // configured from the spaces list as readily as for the one on screen.
+    const space = ds ? mySpaces().find((s) => isSpaceSelf(s, ds)) : undefined;
+    if (!ds || !space) return;
+    const next = new Set(resolveEnabledModules(space.enabledModules));
     if (enabled) next.add(moduleId);
     else next.delete(moduleId);
     // Writes the resolved list, not a diff — so the first toggle also pins everything that was on by
     // fallback, and a module added to the seed later doesn't silently appear in a space that had
     // already made a decision.
-    space.enabledModules = JSON.stringify([...next]);
+    const enabledModulesJson = JSON.stringify([...next]);
     try {
-      await space.save();
-      setCurrentSpace(space);
+      await Space.update(ds.handle, space.id, { enabledModules: enabledModulesJson });
     } catch (error) {
-      // A space created before this field existed has the old SHACL shape stored in its dataset,
-      // and `we://enabled_modules` is not in it. Shapes are only installed when a class is absent
-      // entirely (`hasSubjectClassLink`), so adding a property to an existing model does not
-      // re-register — there is no shape-migration path yet.
-      //
-      // Reported rather than swallowed, and harmless either way: `enabledModules` falls back to the
-      // registered set, so such a space keeps exactly the chrome it has today.
-      console.warn(
-        `could not persist enabledModules for this space — it predates the field and its stored ` +
-          `SHACL shape has no "we://enabled_modules" property`,
-        error,
-      );
+      console.error('SpaceStore: could not persist enabledModules', error);
+      return;
     }
+    updateSpaceInCache(ds, { enabledModules: enabledModulesJson } as never);
+    if (!isCurrent(ds)) return;
+    // Republished as a *new* instance rather than the one just written through. `currentSpace` is a
+    // plain signal, so Solid dedupes on `===` — handing back the same object (which is what mutating
+    // it in place and re-setting it amounts to) notifies nothing, and the module rail would keep
+    // rendering the previous set until something else happened to refetch the space. Same clone
+    // idiom as `updateSpaceInCache`.
+    setCurrentSpace((prev) =>
+      prev
+        ? (Object.assign(Object.create(Object.getPrototypeOf(prev)), prev, {
+            enabledModules: enabledModulesJson,
+          }) as Space)
+        : prev,
+    );
   }
 
   // Subscribe to current space data reactively whenever the dataset changes.
@@ -804,7 +1356,10 @@ export function SpaceStoreProvider(props: ParentProps) {
   // Only restore when there's genuinely no current dataset — not during the transient null
   // window while switching between spaces (currentSpace loads async after the dataset changes).
   createEffect(() => {
-    const themeId = spaceDefaultThemeId();
+    // This agent's own choice for this space wins over the community's default — that is what an
+    // override is for. `''` means they have not overridden it, so the space's default stands.
+    const current = datasetStore.currentDataset()?.id;
+    const themeId = current ? resolveThemeFor(current) : spaceDefaultThemeId();
     // Explicitly track space identity: navigating to a different space must always
     // re-apply that space's default theme, even when the new space's default happens
     // to equal the previous one. Without this, spaceDefaultThemeId wouldn't change
@@ -821,22 +1376,26 @@ export function SpaceStoreProvider(props: ParentProps) {
     }
   });
 
-  async function setSpaceDefaultTemplate(templateId: string): Promise<void> {
-    setSpaceDefaultTemplateId(templateId);
-    const template = templateStore.allTemplates().find((t) => t.id === templateId);
-    if (template) templateStore.replaceTemplate(template);
-    const ds = datasetStore.currentDataset();
+  async function setSpaceDefaultTemplate(templateId: string, spaceUuid?: string): Promise<void> {
+    const ds = targetDataset(spaceUuid);
     if (!ds) return;
+    // Switching what is on screen is only right when the space being configured is the one on
+    // screen. Setting another space's default from the spaces list must not repaint the app.
+    if (isCurrent(ds)) {
+      setSpaceDefaultTemplateId(templateId);
+      const template = templateStore.allTemplates().find((t) => t.id === templateId);
+      if (template) templateStore.replaceTemplate(template);
+    }
     // Keep mySpaces cache in sync so template pre-loading uses the fresh defaultTemplateId
     updateSpaceInCache(ds, { defaultTemplateId: templateId } as never);
     const [space] = await Space.findAll(ds.handle, { where: spaceSelfWhere(ds) });
     if (space) await Space.update(ds.handle, space.id, { defaultTemplateId: templateId });
   }
 
-  async function setSpaceDefaultTheme(themeId: string): Promise<void> {
-    setSpaceDefaultThemeId(themeId);
-    const ds = datasetStore.currentDataset();
+  async function setSpaceDefaultTheme(themeId: string, spaceUuid?: string): Promise<void> {
+    const ds = targetDataset(spaceUuid);
     if (!ds) return;
+    if (isCurrent(ds)) setSpaceDefaultThemeId(themeId);
     updateSpaceInCache(ds, { defaultThemeId: themeId } as never);
     const [space] = await Space.findAll(ds.handle, { where: spaceSelfWhere(ds) });
     if (space) await Space.update(ds.handle, space.id, { defaultThemeId: themeId });
@@ -871,6 +1430,27 @@ export function SpaceStoreProvider(props: ParentProps) {
     return memberDids()
       .map((did) => cached.find((a) => a.did === did))
       .filter((a): a is AgentProfileSummary => a != null);
+  });
+
+  /**
+   * The space this route points at is one the agent has not joined — as a settled fact, not a
+   * momentary absence.
+   *
+   * A join gate cannot key off `currentDataset` being null, because that is also true for the first
+   * frames of a refresh: the dataset list is still arriving, and then the switch to the matching
+   * dataset is itself async. Someone reloading a space they are already in got "Join this Space"
+   * flashed at them in the gap.
+   *
+   * So this is false while the answer is unknown, and a gate reading it renders nothing until there
+   * is something true to say. Both halves matter — the list having arrived, and no dataset in it
+   * matching the route — because a matching dataset that has not been switched to yet is also not
+   * grounds for asking someone to join.
+   */
+  const routeSpaceUnjoined = createMemo<boolean>(() => {
+    const segs = routeStore.segments();
+    if (segs[0] !== 'space' || !segs[1]) return false;
+    if (!datasetStore.datasetsLoaded()) return false;
+    return !datasetStore.datasets().some((d) => d.id === segs[1] || d.sharedId === segs[1]);
   });
 
   // Resolve the route segment to a local dataset whenever the route changes.
@@ -948,10 +1528,18 @@ export function SpaceStoreProvider(props: ParentProps) {
     mySpaces,
     personalSpaces,
     sharedSpaces,
+    spaceList,
+    routeSpaceUnjoined,
     creatingSpace,
     orderedSidebarItems,
     enabledModules,
-    moduleSettings,
+    installedModules,
+    requiredModules,
+    missingModules,
+    activeModules,
+    templateOverrideOptions,
+    themeOverrideOptions,
+    moduleInstallSettings,
     moduleLaunchers,
     foreignSpacePrefill,
 
@@ -968,10 +1556,16 @@ export function SpaceStoreProvider(props: ParentProps) {
     setSpaceDefaultTemplate,
     setSpaceDefaultTheme,
     setModuleEnabled,
+    setModuleInstalled,
+    setModuleVisible,
+    setSpaceTemplateOverride,
+    setSpaceThemeOverride,
     launchModule,
     createSignalType,
     upsertSignal,
     navigateToSpace,
+    canAdministerSpace,
+    copyShareLink,
     getSubgroupMessages,
     removeSpaceFromGlobal,
     updateSpaceInCache,

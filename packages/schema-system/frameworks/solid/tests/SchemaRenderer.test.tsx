@@ -198,6 +198,42 @@ describe('SchemaRenderer', () => {
     expect(input.value).toBe('My Space');
   });
 
+  it('seeds $localState from a $-prefixed context string, as every other position accepts', () => {
+    // Only object tokens were resolved, so a form seeded from a `$each` item rendered the string
+    // `$space.name` in its input — no error, and the field looked filled in. This is the shape a
+    // per-space settings page needs: the space comes from the loop, not from a store path.
+    const InputComp = (props: any) => <input data-testid="input" value={props.value} />;
+    const registry: ComponentRegistry = { InputComp };
+    const stores = { spaceStore: { spaceList: () => [{ uuid: 'abc', name: 'My Space' }] } };
+    const node: SchemaNode = {
+      type: '$each',
+      props: { items: { $store: 'spaceStore.spaceList' }, as: 'space' },
+      children: [
+        {
+          type: 'div',
+          $localState: { editName: { type: 'string', initial: '$space.name' as any } },
+          children: [{ type: 'InputComp', props: { value: { $local: 'editName' } } }],
+        },
+      ],
+    };
+    const { container } = renderSchema(node, { registry, stores });
+    const input = container.querySelector('[data-testid="input"]') as HTMLInputElement;
+    expect(input.value).toBe('My Space');
+  });
+
+  it('leaves a literal starting with $ alone when it matches no context key', () => {
+    const InputComp = (props: any) => <input data-testid="input" value={props.value} />;
+    const registry: ComponentRegistry = { InputComp };
+    const node: SchemaNode = {
+      type: 'div',
+      $localState: { price: { type: 'string', initial: '$5.00' as any } },
+      children: [{ type: 'InputComp', props: { value: { $local: 'price' } } }],
+    };
+    const { container } = renderSchema(node, { registry, stores: {} });
+    const input = container.querySelector('[data-testid="input"]') as HTMLInputElement;
+    expect(input.value).toBe('$5.00');
+  });
+
   it('resets $localState signal when the $store expression source changes reactively', async () => {
     const { createSignal } = await import('solid-js');
     const InputComp = (props: any) => <input data-testid="input" value={props.value} />;

@@ -1,5 +1,5 @@
 import { Ad4mModel, type LinkExpression, LinkQuery, Literal, PerspectiveProxy } from '@coasys/ad4m';
-import { getModelTargetClass } from '@we/models';
+import { getModelPredicates, getModelTargetClass } from '@we/models';
 import {
   AgentSettings,
   AudioBlock,
@@ -18,6 +18,7 @@ import {
   Signal,
   SignalType,
   Space,
+  SpacePreference,
   SpaceTemplatePreference,
   TagBlock,
   TaskBlock,
@@ -37,6 +38,7 @@ export const ROOT_MODELS = [
   AgentSettings,
   ChatMessage,
   ChatSession,
+  SpacePreference,
   SpaceTemplatePreference,
   Template,
   Theme,
@@ -65,6 +67,65 @@ async function hasSubjectClassLink(p: PerspectiveProxy, targetClass: string | un
 }
 
 /**
+ * Every property predicate each stored shape actually declares, keyed by target class.
+ *
+ * One SPARQL query for the whole perspective rather than `getClassShape()` per model: this runs on
+ * every switch into a space, over ~20 models, and `getClassShape` costs two round trips each — the
+ * same round-trip-count problem `hasSubjectClassLink` exists to avoid, at 40x.
+ *
+ * Walks the `targetClass -[ad4m://shape]-> shape -[sh://property]-> prop -[sh://path]-> predicate`
+ * chain, which `parse_shacl_to_links` writes in the same call as the `rdf://type -> SubjectClass`
+ * marker `hasSubjectClassLink` reads.
+ */
+async function storedShapePredicates(p: PerspectiveProxy): Promise<Map<string, Set<string>>> {
+  const byClass = new Map<string, Set<string>>();
+  const rows = await p.querySparql(
+    `SELECT ?targetClass ?path WHERE {
+      ?targetClass <rdf://type> <ad4m://SubjectClass> .
+      ?targetClass <ad4m://shape> ?shapeUri .
+      ?shapeUri <sh://property> ?propShape .
+      ?propShape <sh://path> ?path .
+    }`,
+  );
+  if (!Array.isArray(rows)) return byClass;
+  for (const row of rows as { targetClass?: string; path?: string }[]) {
+    if (!row.targetClass || !row.path) continue;
+    const paths = byClass.get(row.targetClass) ?? new Set<string>();
+    paths.add(row.path);
+    byClass.set(row.targetClass, paths);
+  }
+  return byClass;
+}
+
+/**
+ * Whether a perspective's stored shape for a model predates a property the model now declares.
+ *
+ * Adding a property to an existing model used to be a silent one-way break: shapes are only written
+ * for a class that is absent *entirely*, so every space created before the property existed kept the
+ * old shape, and writes to the new field were dropped by a perspective that looked perfectly healthy.
+ * `Space.enabledModules` shipped straight into that hole — a community could toggle a module and
+ * nothing would persist.
+ *
+ * The executor already handles the write half: `add_sdna` purges the prior SHACL graph and rewrites
+ * it whenever a SubjectClass is registered *with* a shape (`remove_subject_class_shacl_links`), so
+ * re-registering is a genuine refresh rather than a second competing copy. Only the guard here stood
+ * in the way.
+ *
+ * **A shape with no stored properties is treated as fresh, not stale.** On a freshly-joined
+ * neighbourhood the shape triples can replicate after the SubjectClass marker (the lag
+ * `hasSubjectClassLink` documents), and reading that gap as "missing every property" would rewrite
+ * every shape in the space on the strength of data that simply had not arrived. A genuinely stale
+ * shape always carries its old properties, so it is still caught.
+ */
+function shapeIsStale(model: typeof Ad4mModel, stored: Map<string, Set<string>>): boolean {
+  const targetClass = getModelTargetClass(model);
+  if (!targetClass) return false;
+  const storedPaths = stored.get(targetClass);
+  if (!storedPaths?.size) return false;
+  return getModelPredicates(model).some((predicate) => !storedPaths.has(predicate));
+}
+
+/**
  * `Ad4mModel.registerAll`'s own dedup guard is a JS-process-local cache, not a check
  * against the perspective's actual state — a fresh `PerspectiveProxy` (new app boot,
  * new tab, another peer) starts with that cache empty and will write a full duplicate
@@ -73,18 +134,67 @@ async function hasSubjectClassLink(p: PerspectiveProxy, targetClass: string | un
  * its doc comment) makes registration genuinely idempotent regardless of how many times,
  * or by how many independent processes/peers, it's called on the same perspective, and
  * regardless of `getAllShacl()`'s own replication lag on a not-yet-fully-synced perspective.
+ *
+ * A model already present is re-registered when its stored shape is out of date — see
+ * {@link shapeIsStale}. Without that, adding a property to a model reaches new spaces only.
  */
 async function ensureModelsRegistered(p: PerspectiveProxy, models: readonly (typeof Ad4mModel)[]): Promise<void> {
-  const present = await Promise.all(models.map((m) => hasSubjectClassLink(p, getModelTargetClass(m))));
+  const [present, stored] = await Promise.all([
+    Promise.all(models.map((m) => hasSubjectClassLink(p, getModelTargetClass(m)))),
+    storedShapePredicates(p).catch(() => new Map<string, Set<string>>()),
+  ]);
   const missing = models.filter((_, i) => !present[i]);
-  if (missing.length > 0) {
-    await Ad4mModel.registerAll(p, [...missing]);
-    // registerAll resolves before the written SDNA is actually queryable — settle before callers
-    // run reactive queries against the fresh shapes. This wait is a property of THIS backend's
-    // write path (the shell used to carry five copies of it as a "HACK" sleep); living here, it
-    // also runs only when something was actually written.
-    await new Promise((resolve) => setTimeout(resolve, 500));
+  const stale = models.filter((m, i) => present[i] && shapeIsStale(m, stored));
+  await registerModels(p, missing, stale);
+}
+
+/**
+ * Shapes already refreshed in this process, keyed `<perspective uuid>::<target class>`.
+ *
+ * A backstop against churn, not an optimisation. The staleness diff compares the predicates this
+ * build declares against the ones stored, and both are written from the same JSON — so a refreshed
+ * shape compares equal immediately afterwards and this would run once regardless. But a refresh sits
+ * on the space-switch path and it *writes*, on a neighbourhood that syncs to every peer. If the two
+ * sides ever stop lining up exactly, the cost of being wrong should be one redundant write per shape
+ * per app run, not one per switch, forever, for everybody.
+ */
+const refreshedThisSession = new Set<string>();
+
+/**
+ * Write shapes for `missing` (absent entirely) and `stale` (present in an older form).
+ *
+ * Returns the target classes actually refreshed — which excludes any already refreshed this session.
+ */
+async function registerModels(
+  p: PerspectiveProxy,
+  missing: readonly (typeof Ad4mModel)[],
+  stale: readonly (typeof Ad4mModel)[],
+): Promise<string[]> {
+  const refreshKey = (m: typeof Ad4mModel) => `${p.uuid}::${getModelTargetClass(m)}`;
+  const toRefresh = stale.filter((m) => !refreshedThisSession.has(refreshKey(m)));
+  const toWrite = [...missing, ...toRefresh];
+  if (toWrite.length === 0) return [];
+
+  const refreshed = toRefresh.map((m) => getModelTargetClass(m)).filter((c): c is string => Boolean(c));
+  if (toRefresh.length > 0) {
+    console.info(
+      `refreshing out-of-date SDNA shapes (${refreshed.join(', ')}) — ` +
+        `the stored shape predates a property the model now declares`,
+    );
+    // `registerAll` skips any class this *process* already registered on this proxy, and a refresh
+    // is always such a case: the class is present, so something registered it. The diff against the
+    // perspective — not that cache — is the authority on what needs writing.
+    p.clearEnsuredSubjectClasses();
+    for (const m of toRefresh) refreshedThisSession.add(refreshKey(m));
   }
+
+  await Ad4mModel.registerAll(p, toWrite);
+  // registerAll resolves before the written SDNA is actually queryable — settle before callers
+  // run reactive queries against the fresh shapes. This wait is a property of THIS backend's
+  // write path (the shell used to carry five copies of it as a "HACK" sleep); living here, it
+  // also runs only when something was actually written.
+  await new Promise((resolve) => setTimeout(resolve, 500));
+  return refreshed;
 }
 
 /**
@@ -185,6 +295,27 @@ export async function installSpaceSdna(p: PerspectiveProxy, moduleModels: readon
  */
 export async function installModuleSdna(p: PerspectiveProxy, moduleModels: readonly unknown[] = []): Promise<void> {
   if (moduleModels.length) await ensureModelsRegistered(p, moduleModels as (typeof Ad4mModel)[]);
+}
+
+/**
+ * Bring an existing WE space's stored core shapes up to date with the models this build declares.
+ *
+ * Needed because `installSpaceSdna` deliberately does not run on a space that already has WE's SDNA
+ * — that skip is what stops a foreign dataset being silently converted into a WE space. The cost is
+ * that a property added to an existing model reaches newly created spaces only, and writes to it are
+ * dropped everywhere else; `Space.enabledModules` is the case that surfaced it, where a community
+ * could toggle a module and nothing persisted.
+ *
+ * Deliberately narrower than calling `installSpaceSdna` here instead: this is one SPARQL query in
+ * the common case, against ~20 `hasSubjectClassLink` round trips per space switch. Only shapes that
+ * are genuinely out of date are written — see {@link shapeIsStale}, including why a shape with no
+ * stored properties is left alone.
+ *
+ * Returns the target classes it refreshed, for logging.
+ */
+export async function refreshSpaceSdna(p: PerspectiveProxy): Promise<string[]> {
+  const stored = await storedShapePredicates(p).catch(() => new Map<string, Set<string>>());
+  return registerModels(p, [], SPACE_MODELS.filter((m) => shapeIsStale(m, stored)));
 }
 
 /**

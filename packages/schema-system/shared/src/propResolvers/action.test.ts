@@ -48,6 +48,38 @@ describe('$action path resolution', () => {
     expect(add).toHaveBeenCalledWith('hello', 'urgent');
   });
 
+  it('extracts callback-argument paths via $arg', () => {
+    const set = vi.fn();
+    const handler = resolve({ $action: 'store.set', args: ['notes', '$arg.detail'] }, { store: { set } });
+
+    (handler as (e: unknown) => void)({ detail: false });
+    expect(set).toHaveBeenCalledWith('notes', false);
+  });
+
+  it('extracts callback-argument paths via $event, the same as $arg', () => {
+    // A lone `{ $action, args }` resolves once at render time, where `$event` matches no context key
+    // — and an unresolved `$`-string is returned verbatim. So this used to hand the store the
+    // *string* `'$event.detail'`: truthy, silent, no error. `setModuleEnabled(id, '$event.detail')`
+    // is what that looked like from the outside — a toggle that could only switch a module on.
+    const set = vi.fn();
+    const handler = resolve({ $action: 'store.set', args: ['notes', '$event.detail'] }, { store: { set } });
+
+    (handler as (e: unknown) => void)({ detail: false });
+    expect(set).toHaveBeenCalledWith('notes', false);
+  });
+
+  it('passes the whole callback argument for a bare $event or $arg', () => {
+    const set = vi.fn();
+    const event = { detail: 42 };
+    const viaEvent = resolve({ $action: 'store.set', args: ['$event'] }, { store: { set } });
+    const viaArg = resolve({ $action: 'store.set', args: ['$arg'] }, { store: { set } });
+
+    (viaEvent as (e: unknown) => void)(event);
+    (viaArg as (e: unknown) => void)(event);
+    expect(set).toHaveBeenNthCalledWith(1, event);
+    expect(set).toHaveBeenNthCalledWith(2, event);
+  });
+
   it('warns naming the full path when the owner is missing', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     resolve({ $action: 'modules.absent.toggle' }, { modules: {} });

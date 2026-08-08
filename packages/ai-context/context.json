@@ -1487,6 +1487,18 @@
           "type": "string",
           "optional": false,
           "default": "''"
+        },
+        {
+          "name": "loading",
+          "type": "boolean",
+          "optional": false,
+          "default": "false"
+        },
+        {
+          "name": "loadingWidth",
+          "type": "string",
+          "optional": false,
+          "default": "'100%'"
         }
       ]
     },
@@ -3940,6 +3952,18 @@
           "predicate": "we://use_space_template",
           "required": false,
           "default": "true"
+        },
+        {
+          "name": "themeScope",
+          "type": "string",
+          "predicate": "we://theme_scope",
+          "required": false
+        },
+        {
+          "name": "installedModules",
+          "type": "string",
+          "predicate": "we://installed_modules",
+          "required": false
         }
       ],
       "relations": [
@@ -4675,6 +4699,38 @@
           "predicate": "we://location"
         }
       ]
+    },
+    {
+      "name": "SpacePreference",
+      "className": "SpacePreference",
+      "extends": "WeNode",
+      "fields": [
+        {
+          "name": "spaceUuid",
+          "type": "string",
+          "predicate": "we://space_uuid",
+          "required": false
+        },
+        {
+          "name": "mutedModules",
+          "type": "string",
+          "predicate": "we://muted_modules",
+          "required": false
+        },
+        {
+          "name": "templateId",
+          "type": "string",
+          "predicate": "we://template_id",
+          "required": false
+        },
+        {
+          "name": "themeId",
+          "type": "string",
+          "predicate": "we://theme_id",
+          "required": false
+        }
+      ],
+      "relations": []
     },
     {
       "name": "SpaceTemplatePreference",
@@ -5559,15 +5615,15 @@
       "state": {
         "datasets": {
           "type": "array",
-          "properties": ["uuid", "name", "sharedUrl", "neighbourhood"]
+          "properties": ["id", "name", "sharedUri", "sharedId", "handle"]
         },
         "orderedDatasets": {
           "type": "array",
-          "properties": ["uuid", "name", "sharedUrl"]
+          "properties": ["id", "name", "sharedUri", "sharedId", "handle"]
         },
         "currentDataset": {
           "type": "object",
-          "properties": ["uuid", "name", "sharedUrl"]
+          "properties": ["id", "name", "sharedUri", "sharedId", "handle"]
         },
         "currentDatasetCid": {
           "type": "string"
@@ -5581,20 +5637,23 @@
         "joinedSpaceCids": {
           "type": "array"
         },
+        "datasetsLoaded": {
+          "type": "boolean"
+        },
         "systemDatasetUuids": {
           "type": "array"
         },
         "rootDataset": {
           "type": "object",
-          "properties": ["uuid", "name"]
+          "properties": ["id", "name", "sharedUri", "sharedId", "handle"]
         },
         "globalDataset": {
           "type": "object",
-          "properties": ["uuid", "name", "sharedUrl"]
+          "properties": ["id", "name", "sharedUri", "sharedId", "handle"]
         },
         "marketplaceDataset": {
           "type": "object",
-          "properties": ["uuid", "name", "sharedUrl"]
+          "properties": ["id", "name", "sharedUri", "sharedId", "handle"]
         },
         "globalSpaceConfigured": {
           "type": "boolean"
@@ -5627,6 +5686,7 @@
         "fetchProfile",
         "updateOwnProfile",
         "updateProfileImage",
+        "clearProfileImage",
         "updateOwnLocation",
         "setPendingAvatar",
         "completeAccountSetup"
@@ -5673,6 +5733,18 @@
         "defaultThemeId": {
           "type": "string"
         },
+        "themeScope": {
+          "type": "string"
+        },
+        "themeScopePreference": {
+          "type": "string"
+        },
+        "themeScopeGlobal": {
+          "type": "boolean"
+        },
+        "themeScopePreviewing": {
+          "type": "boolean"
+        },
         "themeManagementList": {
           "type": "array",
           "properties": ["id", "name", "icon", "isBuiltIn", "isInstalled", "isDefault"]
@@ -5681,6 +5753,8 @@
       "actions": [
         "setCurrentTheme",
         "setDefaultTheme",
+        "setThemeScopeGlobal",
+        "previewThemeScope",
         "toggleThemeInstalled",
         "installFromMarketplace",
         "uninstallTheme",
@@ -5755,6 +5829,27 @@
           "type": "array",
           "model": "Space"
         },
+        "routeSpaceUnjoined": {
+          "type": "boolean"
+        },
+        "spaceList": {
+          "type": "array",
+          "properties": [
+            "uuid",
+            "name",
+            "description",
+            "avatar",
+            "kind",
+            "isWeSpace",
+            "canAdminister",
+            "modules",
+            "shareLink",
+            "defaultTemplateId",
+            "defaultThemeId",
+            "templateOverride",
+            "themeOverride"
+          ]
+        },
         "creatingSpace": {
           "type": "boolean"
         },
@@ -5803,9 +5898,29 @@
         "enabledModules": {
           "type": "array"
         },
-        "moduleSettings": {
+        "installedModules": {
+          "type": "array"
+        },
+        "requiredModules": {
+          "type": "array"
+        },
+        "missingModules": {
+          "type": "array"
+        },
+        "activeModules": {
+          "type": "array"
+        },
+        "templateOverrideOptions": {
           "type": "array",
-          "properties": ["id", "name", "description", "icon", "enabled"]
+          "properties": ["label", "value"]
+        },
+        "themeOverrideOptions": {
+          "type": "array",
+          "properties": ["label", "value"]
+        },
+        "moduleInstallSettings": {
+          "type": "array",
+          "properties": ["id", "name", "description", "icon", "installed"]
         },
         "moduleLaunchers": {
           "type": "array",
@@ -5821,10 +5936,19 @@
         "updatePost",
         "deletePost",
         "updateSpaceImage",
+        "updateSpaceMeta",
+        "setSpaceDefaultTemplate",
+        "setSpaceDefaultTheme",
         "createSignalType",
         "upsertSignal",
         "navigateToSpace",
+        "canAdministerSpace",
+        "copyShareLink",
         "setModuleEnabled",
+        "setModuleInstalled",
+        "setModuleVisible",
+        "setSpaceTemplateOverride",
+        "setSpaceThemeOverride",
         "launchModule"
       ]
     },
@@ -5927,9 +6051,12 @@
       "state": {
         "activeShellView": {
           "type": "string"
+        },
+        "createSpaceOpen": {
+          "type": "boolean"
         }
       },
-      "actions": ["openShellView", "closeShellView", "scrollToId"]
+      "actions": ["openShellView", "closeShellView", "setCreateSpaceOpen", "scrollToId"]
     },
     {
       "name": "appStore",

@@ -87,7 +87,10 @@ export interface ThemePort {
   updateEditingMeta: (fields: { name?: string; icon?: string }) => void;
   saveEditingTheme: () => Promise<EditorTheme | null>;
   themeScope: () => 'global' | 'scoped';
-  toggleThemeScope: () => void;
+  /** The agent's persisted choice, which a preview temporarily masks. */
+  themeScopePreference: () => 'global' | 'scoped';
+  /** Preview a scope for this editing session only; null returns to the preference. */
+  previewThemeScope: (scope: 'global' | 'scoped' | null) => void;
   publishToSpace: (perspectiveUuid: string, spaceName: string) => Promise<boolean>;
   publishToMarketplace: (options: PublishOptions) => Promise<unknown>;
 }

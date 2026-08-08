@@ -386,12 +386,28 @@ export function DesignToolbar() {
 
             <we-divider orientation="vertical" color="neutral-200" height="28px" />
 
-            {/* Globe/globe-x — toggles whether the space theme applies globally or only to the template */}
+            {/*
+              Globe/globe-x — previews the theme globally or scoped to the template.
+
+              A preview, not a preference: authoring a theme means flipping this to see how it
+              reads either way, and persisting that would silently rewrite a setting the author
+              notices days later on a settings page that has quietly changed appearance. It lasts
+              the editing session, and the tooltip names the setting it is masking so the revert is
+              expected rather than mysterious.
+            */}
             <we-tooltip
-              title={themeStore.themeScope() === 'global' ? 'Apply theme to space only' : 'Apply theme globally'}
+              title={
+                themeStore.themeScope() === 'global'
+                  ? `Preview scoped to the space · your setting is ${themeStore.themeScopePreference() === 'global' ? 'Global' : 'Space only'}`
+                  : `Preview globally · your setting is ${themeStore.themeScopePreference() === 'global' ? 'Global' : 'Space only'}`
+              }
               placement="bottom"
             >
-              <we-button variant="ghost" square onClick={() => themeStore.toggleThemeScope()}>
+              <we-button
+                variant="ghost"
+                square
+                onClick={() => themeStore.previewThemeScope(themeStore.themeScope() === 'global' ? 'scoped' : 'global')}
+              >
                 <we-icon name={themeStore.themeScope() === 'global' ? 'globe' : 'globe-x'} />
               </we-button>
             </we-tooltip>

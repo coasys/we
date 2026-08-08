@@ -146,7 +146,8 @@ export const twitterTemplate: TemplateSchema = {
     icon: 'x-logo',
   },
   type: 'Row',
-  props: { bg: 'neutral-0', ax: 'center', width: '100%', height: '100%' },
+  // See the note on the default template's root — `minHeight` fills *and* grows.
+  props: { bg: 'neutral-0', ax: 'center', width: '100%', minHeight: '100%' },
   children: [
     {
       type: 'Row',

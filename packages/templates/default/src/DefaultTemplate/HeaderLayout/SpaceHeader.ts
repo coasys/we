@@ -51,30 +51,58 @@ export const spaceHeader: SchemaNode = {
                   type: 'Column',
                   props: { p: '400', gap: '300', maxWidth: '700px' },
                   children: [
+                    /*
+                      `loading` rather than a placeholder beside the text: the element sizes its own
+                      placeholder from the line it would occupy, so nothing here has to know the
+                      height of a heading — a number no template can derive and which drifts the
+                      moment a theme changes its type scale.
+
+                      The description still waits on the space rather than reading through it. Its
+                      inner condition tests `description`, which is falsy while unloaded, so without
+                      the outer test it asserted "No description..." about a space it had not seen.
+                    */
                     {
                       type: 'we-text',
-                      props: { variant: 'heading-md', color: 'neutral-1000' },
+                      props: {
+                        variant: 'heading-md',
+                        color: 'neutral-1000',
+                        loading: { $not: { $store: 'spaceStore.currentSpace' } },
+                        loadingWidth: '220px',
+                      },
                       children: [{ $store: 'spaceStore.currentSpace.name' }],
                     },
                     {
                       type: '$if',
                       props: {
-                        condition: { $store: 'spaceStore.currentSpace.description' },
+                        condition: { $store: 'spaceStore.currentSpace' },
                         then: {
-                          type: 'we-text',
-                          props: { truncate: true },
-                          children: [{ $store: 'spaceStore.currentSpace.description' }],
+                          type: '$if',
+                          props: {
+                            condition: { $store: 'spaceStore.currentSpace.description' },
+                            then: {
+                              type: 'we-text',
+                              props: { truncate: true },
+                              children: [{ $store: 'spaceStore.currentSpace.description' }],
+                            },
+                            else: {
+                              type: 'we-text',
+                              props: { italic: true },
+                              children: ['No description...'],
+                            },
+                          },
                         },
-                        else: {
-                          type: 'we-text',
-                          props: { italic: true },
-                          children: ['No description...'],
-                        },
+                        else: { type: 'we-text', props: { loading: true, loadingWidth: '320px' } },
                       },
                     },
                     {
                       type: 'Row',
-                      props: { gap: '400', ay: 'center', mt: '200' },
+                      // `AvatarStack` is a flex container over its avatars, so with none it has no
+                      // children and no height. Members resolve on their own path, later than the
+                      // space itself, so this collapsed and then pushed the header down a second
+                      // time. A fixed floor is right here rather than a workaround: the row holds
+                      // fixed-size avatars, so its height depends on neither the count nor on any
+                      // font metric.
+                      props: { gap: '400', ay: 'center', mt: '200', minHeight: '32px' },
                       children: [
                         {
                           type: 'AvatarStack',

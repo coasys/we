@@ -203,15 +203,53 @@ export function CollapsibleSidebar(props: SolidCollapsibleSidebarProps) {
 
     return (
       <div class="we-collapsible-sidebar__group">
-        {/* Group header — we-button for collapsible (theme-aware), plain div for static */}
-        <Show
-          when={group.collapsible !== false}
-          fallback={
-            <div
-              class="we-collapsible-sidebar__group-header--static"
-              style={{ opacity: isExpanded() ? 1 : 0, transition: `opacity ${transitionDuration()}ms ease-in-out` }}
+        {/* Header row — the header itself, plus any group action beside it. A row rather than one
+            element because the collapsible header is a button, and the action cannot nest inside it. */}
+        <div style={{ display: 'flex', 'align-items': 'center', 'min-width': 0 }}>
+          {/* Group header — we-button for collapsible (theme-aware), plain div for static */}
+          <Show
+            when={group.collapsible !== false}
+            fallback={
+              <div
+                class="we-collapsible-sidebar__group-header--static"
+                style={{ opacity: isExpanded() ? 1 : 0, transition: `opacity ${transitionDuration()}ms ease-in-out` }}
+              >
+                <we-text
+                  class="we-collapsible-sidebar__group-label"
+                  fontSize="200"
+                  fontWeight="600"
+                  color="neutral-500"
+                >
+                  {group.label}
+                </we-text>
+                <Show when={group.badge}>
+                  <we-badge class="we-collapsible-sidebar__group-badge" size="sm" bg="neutral-200" color="neutral-600">
+                    {group.badge}
+                  </we-badge>
+                </Show>
+              </div>
+            }
+          >
+            <we-button
+              variant="ghost"
+              flex="1"
+              minWidth="0"
+              height="auto"
+              py="200"
+              px="300"
+              gap="200"
+              ax="start"
+              ay="center"
+              direction={side() === 'left' ? 'row' : 'row-reverse'}
+              onClick={() => toggleGroup(getGroup())}
+              disabled={group.disabled}
+              style={{
+                opacity: isExpanded() ? 1 : 0,
+                transition: `opacity ${transitionDuration()}ms ease-in-out`,
+                pointerEvents: isExpanded() ? 'auto' : 'none',
+              }}
             >
-              <we-text class="we-collapsible-sidebar__group-label" fontSize="200" fontWeight="600" color="neutral-500">
+              <we-text class="we-collapsible-sidebar__group-label" fontSize="200" fontWeight="600" color="neutral-400">
                 {group.label}
               </we-text>
               <Show when={group.badge}>
@@ -219,43 +257,36 @@ export function CollapsibleSidebar(props: SolidCollapsibleSidebarProps) {
                   {group.badge}
                 </we-badge>
               </Show>
-            </div>
-          }
-        >
-          <we-button
-            variant="ghost"
-            width="100%"
-            height="auto"
-            py="200"
-            px="300"
-            gap="200"
-            ax="start"
-            ay="center"
-            direction={side() === 'left' ? 'row' : 'row-reverse'}
-            onClick={() => toggleGroup(getGroup())}
-            disabled={group.disabled}
-            style={{
-              opacity: isExpanded() ? 1 : 0,
-              transition: `opacity ${transitionDuration()}ms ease-in-out`,
-              pointerEvents: isExpanded() ? 'auto' : 'none',
-            }}
-          >
-            <we-text class="we-collapsible-sidebar__group-label" fontSize="200" fontWeight="600" color="neutral-400">
-              {group.label}
-            </we-text>
-            <Show when={group.badge}>
-              <we-badge class="we-collapsible-sidebar__group-badge" size="sm" bg="neutral-200" color="neutral-600">
-                {group.badge}
-              </we-badge>
-            </Show>
-            <we-icon
-              class="we-collapsible-sidebar__group-icon"
-              name={collapsed() ? 'caret-right' : 'caret-down'}
-              size="xs"
-              color="neutral-400"
-            />
-          </we-button>
-        </Show>
+              <we-icon
+                class="we-collapsible-sidebar__group-icon"
+                name={collapsed() ? 'caret-right' : 'caret-down'}
+                size="xs"
+                color="neutral-400"
+              />
+            </we-button>
+          </Show>
+          <Show when={group.action && isExpanded()}>
+            {/* `stopPropagation` is belt-and-braces — it is a sibling, so nothing would bubble to the
+              header anyway, but the two sit close enough that a future refactor might nest them. */}
+            <we-tooltip title={group.action!.label} placement="right">
+              <we-button
+                variant="ghost"
+                size="sm"
+                square
+                onClick={(e: MouseEvent) => {
+                  e.stopPropagation();
+                  group.action!.onClick();
+                }}
+                style={{
+                  opacity: isExpanded() ? 1 : 0,
+                  transition: `opacity ${transitionDuration()}ms ease-in-out`,
+                }}
+              >
+                <we-icon name={group.action!.icon} size="xs" color="neutral-400" />
+              </we-button>
+            </we-tooltip>
+          </Show>
+        </div>
 
         {/* Group items */}
         <div

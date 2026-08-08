@@ -162,17 +162,21 @@ export const storeEntries: StoreEntry[] = [
   {
     name: 'datasetStore',
     state: {
-      datasets: { type: 'array', properties: ['uuid', 'name', 'sharedUrl', 'neighbourhood'] },
-      orderedDatasets: { type: 'array', properties: ['uuid', 'name', 'sharedUrl'] },
-      currentDataset: { type: 'object', properties: ['uuid', 'name', 'sharedUrl'] },
+      // `DatasetRef`'s actual fields. These were previously listed as uuid/sharedUrl/neighbourhood,
+      // none of which exist — so a schema reading them got undefined, and the validator confirmed
+      // the wrong name while rejecting the right one.
+      datasets: { type: 'array', properties: ['id', 'name', 'sharedUri', 'sharedId', 'handle'] },
+      orderedDatasets: { type: 'array', properties: ['id', 'name', 'sharedUri', 'sharedId', 'handle'] },
+      currentDataset: { type: 'object', properties: ['id', 'name', 'sharedUri', 'sharedId', 'handle'] },
       currentDatasetCid: { type: 'string' },
       currentDatasetModels: { type: 'array' },
       isWeSpace: { type: 'boolean' },
       joinedSpaceCids: { type: 'array' },
+      datasetsLoaded: { type: 'boolean' },
       systemDatasetUuids: { type: 'array' },
-      rootDataset: { type: 'object', properties: ['uuid', 'name'] },
-      globalDataset: { type: 'object', properties: ['uuid', 'name', 'sharedUrl'] },
-      marketplaceDataset: { type: 'object', properties: ['uuid', 'name', 'sharedUrl'] },
+      rootDataset: { type: 'object', properties: ['id', 'name', 'sharedUri', 'sharedId', 'handle'] },
+      globalDataset: { type: 'object', properties: ['id', 'name', 'sharedUri', 'sharedId', 'handle'] },
+      marketplaceDataset: { type: 'object', properties: ['id', 'name', 'sharedUri', 'sharedId', 'handle'] },
       globalSpaceConfigured: { type: 'boolean' },
       marketplaceConfigured: { type: 'boolean' },
       marketplaceJoined: { type: 'boolean' },
@@ -196,6 +200,7 @@ export const storeEntries: StoreEntry[] = [
       'fetchProfile',
       'updateOwnProfile',
       'updateProfileImage',
+      'clearProfileImage',
       'updateOwnLocation',
       'setPendingAvatar',
       'completeAccountSetup',
@@ -219,6 +224,10 @@ export const storeEntries: StoreEntry[] = [
       currentThemeId: { type: 'string' },
       currentTheme: { type: 'object', properties: ['id', 'name', 'icon', 'origin'] },
       defaultThemeId: { type: 'string' },
+      themeScope: { type: 'string' },
+      themeScopePreference: { type: 'string' },
+      themeScopeGlobal: { type: 'boolean' },
+      themeScopePreviewing: { type: 'boolean' },
       themeManagementList: {
         type: 'array',
         properties: ['id', 'name', 'icon', 'isBuiltIn', 'isInstalled', 'isDefault'],
@@ -227,6 +236,8 @@ export const storeEntries: StoreEntry[] = [
     actions: [
       'setCurrentTheme',
       'setDefaultTheme',
+      'setThemeScopeGlobal',
+      'previewThemeScope',
       'toggleThemeInstalled',
       'installFromMarketplace',
       'uninstallTheme',
@@ -266,6 +277,25 @@ export const storeEntries: StoreEntry[] = [
       mySpaces: { type: 'array', model: 'Space' },
       personalSpaces: { type: 'array', model: 'Space' },
       sharedSpaces: { type: 'array', model: 'Space' },
+      routeSpaceUnjoined: { type: 'boolean' },
+      spaceList: {
+        type: 'array',
+        properties: [
+          'uuid',
+          'name',
+          'description',
+          'avatar',
+          'kind',
+          'isWeSpace',
+          'canAdminister',
+          'modules',
+          'shareLink',
+          'defaultTemplateId',
+          'defaultThemeId',
+          'templateOverride',
+          'themeOverride',
+        ],
+      },
       creatingSpace: { type: 'boolean' },
       orderedSidebarItems: { type: 'array', properties: ['uuid', 'name', 'avatar', 'spaceId'] },
       memberDids: { type: 'array', properties: ['did'] },
@@ -298,9 +328,19 @@ export const storeEntries: StoreEntry[] = [
       enabledModules: {
         type: 'array',
       },
-      moduleSettings: {
+      installedModules: {
         type: 'array',
-        properties: ['id', 'name', 'description', 'icon', 'enabled'],
+      },
+      requiredModules: { type: 'array' },
+      missingModules: { type: 'array' },
+      activeModules: {
+        type: 'array',
+      },
+      templateOverrideOptions: { type: 'array', properties: ['label', 'value'] },
+      themeOverrideOptions: { type: 'array', properties: ['label', 'value'] },
+      moduleInstallSettings: {
+        type: 'array',
+        properties: ['id', 'name', 'description', 'icon', 'installed'],
       },
       moduleLaunchers: {
         type: 'array',
@@ -316,10 +356,19 @@ export const storeEntries: StoreEntry[] = [
       'updatePost',
       'deletePost',
       'updateSpaceImage',
+      'updateSpaceMeta',
+      'setSpaceDefaultTemplate',
+      'setSpaceDefaultTheme',
       'createSignalType',
       'upsertSignal',
       'navigateToSpace',
+      'canAdministerSpace',
+      'copyShareLink',
       'setModuleEnabled',
+      'setModuleInstalled',
+      'setModuleVisible',
+      'setSpaceTemplateOverride',
+      'setSpaceThemeOverride',
       'launchModule',
     ],
   },
@@ -373,8 +422,9 @@ export const storeEntries: StoreEntry[] = [
     name: 'shellStore',
     state: {
       activeShellView: { type: 'string' },
+      createSpaceOpen: { type: 'boolean' },
     },
-    actions: ['openShellView', 'closeShellView', 'scrollToId'],
+    actions: ['openShellView', 'closeShellView', 'setCreateSpaceOpen', 'scrollToId'],
   },
   {
     name: 'appStore',
@@ -551,6 +601,8 @@ function generateStoresText(entries: StoreEntry[]): string {
         isWeSpace:
           "boolean — true once the current dataset is confirmed to have WE's Space SDNA installed (false for a joined-but-foreign dataset, e.g. one synced in from Flux)",
         joinedSpaceCids: 'string[] — CIDs of every joined shared dataset',
+        datasetsLoaded:
+          'boolean — the backend has answered with the dataset list. An empty list is otherwise indistinguishable from "not fetched yet", so anything asking "have I joined this?" reads the boot frame as "no". The same reason accountStore.accountsLoaded exists',
         systemDatasetUuids: 'string[] — uuids of the we-root/we-test system datasets',
         rootDataset: "dataset handle | null — the agent's personal root dataset (we-root models live here)",
         globalDataset: 'dataset handle | null — the seed-configured global discovery space, once joined',
@@ -585,6 +637,7 @@ function generateStoresText(entries: StoreEntry[]): string {
           '(fields: { firstName?, lastName?, handle?, bio? }): updates own profile text fields and publishes to the public dataset',
         updateProfileImage:
           '(field: "avatar" | "coverImage", imageFile: File): uploads the image and publishes its expression URL to the public dataset',
+        clearProfileImage: '(field: "avatar" | "coverImage"): removes that image from the published profile',
         updateOwnLocation:
           '(update: { latitude?, longitude?, city?, country?, countryCode? }): merges the location update into the cache and publishes to the public dataset',
       },
@@ -613,8 +666,18 @@ function generateStoresText(entries: StoreEntry[]): string {
       },
       actions: {
         setCurrentTheme: '(themeId: string): sets and persists the active theme',
+        themeScope:
+          "'global' | 'scoped' — what actually applies right now: the theme editor's session preview if one is active, else the agent's preference",
+        themeScopePreference: "'global' | 'scoped' — the agent's persisted choice",
+        themeScopeGlobal: 'boolean — the preference as a boolean, for a switch to bind to',
+        themeScopePreviewing:
+          'boolean — a theme being edited is previewing a different scope, so the preference is temporarily masked. Worth saying so beside the setting',
         setDefaultTheme:
           '(themeId: string): sets the preferred default theme (persists to AgentSettings.defaultThemeId)',
+        setThemeScopeGlobal:
+          "(global: boolean): persists whether a space's theme covers the whole window (true) or only the space's own content (false, the default). Takes a boolean because a switch emits one and a schema cannot map it to a string — `$if` in an action's args resolves at render time, before the event exists",
+        previewThemeScope:
+          "(scope: 'global' | 'scoped' | null): previews a scope for the current theme-editing session without writing the preference; null drops the preview. Cleared when editing ends",
         toggleThemeInstalled:
           '(themeId: string): toggles a custom theme visible/hidden in pickers; does not delete the theme',
         installFromMarketplace: '(marketplaceThemeId: string): installs a marketplace theme into installedThemes',
@@ -650,6 +713,10 @@ function generateStoresText(entries: StoreEntry[]): string {
         mySpaces: 'array of Space objects — every space the agent holds, across all joined datasets',
         personalSpaces: 'array of Space objects (local/personal spaces; all Space fields)',
         sharedSpaces: 'array of Space objects (shared/neighbourhood spaces; all Space fields)',
+        routeSpaceUnjoined:
+          'boolean — the current route points at a space this agent has not joined, as a settled fact. What a join gate should read: `currentDataset` being null is also true for the first frames of a refresh, so gating on that flashes a join prompt at someone already inside. False while the answer is still unknown',
+        spaceList:
+          "{ uuid, name, description, avatar, kind: 'shared' | 'personal' | 'foreign', isWeSpace, canAdminister }[] — one row per joined dataset the agent can act on, ordered like the sidebar and excluding the system datasets. Includes datasets that are not WE spaces (kind 'foreign', isWeSpace false), which are waiting to be initialized. `uuid` is the dataset id, so it keys navigation and settings whether or not a Space record exists",
         creatingSpace: 'boolean (true while a new space is being created)',
         orderedSidebarItems:
           'array of sidebar items in user-defined order (uuid, name, avatar, spaceId) — personal + shared spaces merged',
@@ -665,16 +732,28 @@ function generateStoresText(entries: StoreEntry[]): string {
         signalTypesBySlug:
           'Record<slug, SignalType> — computed map; access via { $store: "spaceStore.signalTypesBySlug.<slug>" }; use .id for the UUID',
         enabledModules:
-          'string[] — ids of the feature modules this space has turned on. An unset value means "not decided", not "none": it falls back to every registered module, so spaces predating the setting keep the chrome they had',
-        moduleSettings:
-          '{ id, name, description, icon, enabled }[] — every registered module paired with whether this space has it on; the shape the settings list renders',
+          'string[] — ids of the feature modules THIS SPACE has turned on: the community\u2019s decision, shared with every member. An unset value means "not decided", not "none": it falls back to every registered module, so spaces predating the setting keep the chrome they had',
+        installedModules:
+          'string[] — ids of the feature modules THIS AGENT wants available anywhere. Personal, held in the root dataset; unset means "not decided" and falls back to every registered module',
+        templateOverrideOptions:
+          '{ label, value }[] — options for the per-space template override picker: "Use the space\u2019s default" (space-default), "Use my default" (agent-default), then every template. Each of the first two names what it resolves to. Pre-built because a schema can $map a store array into options but cannot prepend one, and without those entries overriding would be one-way',
+        themeOverrideOptions: '{ label, value }[] — the same, for themes',
+        requiredModules:
+          'string[] — module ids the template on screen mounts components from, derived by walking the schema rather than read from meta.components (which no template fills in). What makes uninstalling a capability module refusable',
+        missingModules:
+          'string[] — of those, the ones this agent has not installed. Non-empty means the template is mounting a component nothing provides, so part of the page silently renders nothing. Empty in the ordinary case',
+        activeModules:
+          'string[] — what actually renders here for this agent: registered \u2229 installed \u2229 enabled, less the modules muted in this space. Module chrome and the launcher rail gate on this; enabledModules alone is not sufficient',
+        moduleInstallSettings:
+          "{ id, name, description, icon, installed, surface, switchable }[] — every registered module and whether this agent wants it anywhere. The global Settings → Modules list, and the only place an 'app' or 'capability' module is decided about: a contribution is gated at the layer where it renders, and only 'chrome' renders inside a space. `surface` is derived from what the module contributes. Its per-space counterpart is `modules` on each spaceList row, which carries enabled/installed/visible/active together and lists chrome modules only",
         moduleLaunchers:
           '{ id, icon, label, active }[] — launchers for the modules enabled here and available in this space; what the host module rail renders. Pair with { $action: "spaceStore.launchModule", args: ["$mod.id"] }',
       },
       actions: {
         createSpace:
           "(name, description, access: 'personal' | 'shared', discovery: 'hidden' | 'listed', avatarFile?, coverImageFile?, location?): creates a new space with full setup",
-        joinSpace: '(id: string): joins a shared space by neighbourhood URL, CID, or focuses it if already joined',
+        joinSpace:
+          '(id: string, focus = true): joins a shared space by neighbourhood URL or CID, or focuses it if already joined. Pass focus: false to join without navigating there — for a caller that needs the dataset present rather than open, which is how the marketplace reads its own dataset without moving you out of the space you are in',
         initializeAsWeSpace:
           "(name: string, description: string, avatarValue?: File | string | null): installs WE's Space SDNA into the current, already-joined, foreign-native dataset (e.g. one synced in from Flux) and creates a Space entity in place — access is always 'shared' since the dataset is already a published neighbourhood",
         removeSpace:
@@ -684,15 +763,32 @@ function generateStoresText(entries: StoreEntry[]): string {
           '(postId: string, editorState: unknown): reconciles an edited post against its existing blocks — updates/reuses blocks whose id survived the edit, creates new ones, deletes ones no longer present',
         deletePost: '(postId: string): permanently deletes a post and all of its contained blocks (recursive, atomic)',
         updateSpaceImage:
-          '(field: "avatar" | "coverImage", imageFile: File): uploads and sets the space avatar or cover image',
+          '(field: "avatar" | "coverImage", imageFile: File, spaceUuid?): uploads and sets the space avatar or cover image',
         createSignalType:
           '(config: Partial<SignalType>): creates a new signal type in the community; slug auto-derived from name if blank',
         upsertSignal:
           '(nodeId: string, signalTypeId: string, value: number): adds or updates a signal on a node; value=0 deletes it',
         navigateToSpace:
           '(spaceId: string, view?: string): navigates to a space — accepts a perspective UUID or a neighbourhood CID (sharedUrl without the neighbourhood:// prefix); pre-loads space templates before switching so the template and data arrive together',
+        updateSpaceMeta:
+          '(updates: { name?, description?, discovery?, location? }, spaceUuid?): updates the space everyone sees. Omit spaceUuid to target the space on screen; pass one to configure a space from the spaces list without navigating to it',
+        setSpaceDefaultTemplate:
+          '(templateId: string, spaceUuid?): sets the template members see when they enter that space. Only repaints the app when the target is the space currently on screen',
+        setSpaceDefaultTheme: '(themeId: string, spaceUuid?): sets the theme members see when they enter that space',
+        copyShareLink:
+          "(uuid: string): copies that space's share link to the clipboard, with a toast either way. No-op for a personal space, which has no global id and so no shareable link — read `spaceList[].shareLink` to decide whether to offer the control at all",
+        canAdministerSpace:
+          '(uuid: string): whether this agent may change what every member of that space sees — true for a personal space, and for a shared one they authored. A UI affordance for deciding whether to offer the controls, NOT enforcement: a shared space is a neighbourhood every member can write to. Ask by name rather than comparing author to $me.did, so the answer can grow (multiple admins, roles) without every template changing',
+        setModuleInstalled:
+          '(moduleId: string, installed: boolean): turns a module on or off for this agent in every space. Personal — writes AgentSettings.installedModules in the root dataset, so no other member sees it',
+        setModuleVisible:
+          '(moduleId: string, visible: boolean, spaceUuid?): shows or hides a module for this agent in one space, without changing what the community runs. Private: written to the root dataset, never to the space. Phrased positively so a switch can pass `$event.detail` bare \u2014 wrapping it in an operator such as `$not` would evaluate at render time and send a constant',
+        setSpaceTemplateOverride:
+          "(templateId: string, spaceUuid?): sets the template THIS AGENT sees in one space, overriding the community's default. Three values: 'space-default' follows the space, 'agent-default' follows your own global default (tracking later changes to it), or a concrete template id pins that one. Private, and applied immediately when that space is the one on screen. Note the sentinels are named values, not '' — the ORM skips empty strings on update, so '' cannot clear a property",
+        setSpaceThemeOverride:
+          "(themeId: string, spaceUuid?): sets the theme THIS AGENT sees in one space. Same three values as setSpaceTemplateOverride. Private",
         setModuleEnabled:
-          '(moduleId: string, enabled: boolean): turns a feature module on or off for the current space; writes the resolved list, so the first toggle also pins whatever was on by fallback',
+          '(moduleId: string, enabled: boolean, spaceUuid?): turns a feature module on or off for a space; writes the resolved list, so the first toggle also pins whatever was on by fallback. Omit spaceUuid for the space on screen',
         launchModule:
           "(moduleId: string): invokes that module's declared launcher action. Takes an id rather than a path because $action resolves a literal string, so a rail iterating over modules cannot build modules.<id>.<method> itself",
       },
@@ -717,7 +813,10 @@ function generateStoresText(entries: StoreEntry[]): string {
           "string | null — id of the currently open shell overlay ('profile' | 'settings' | 'schema-tests' | 'landing-page'), or null",
       },
       actions: {
-        openShellView: '(id: string): opens a shell overlay by id',
+        openShellView:
+          '(id: string, path?: string): opens a shell overlay by id, optionally at a route inside it — the overlay keeps its own memory router, so this never touches the browser URL',
+        setCreateSpaceOpen:
+          '(open: boolean): opens or closes the create-space modal. Shell state rather than a page\u2019s $localState because more than one place opens it — the settings page and the sidebar\u2019s spaces group — and a page-scoped flag could only be set from inside that page',
         closeShellView: '(): closes the currently open shell overlay',
         scrollToId: '(id: string): smooth-scrolls the element with that DOM id into view',
       },

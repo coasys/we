@@ -78,6 +78,7 @@ export {
   patchByPath,
   validatePatches,
   ensureSections,
+  collectComponentTypes,
   ensureNodeIds,
   stripNodeIds,
   findNodeById,

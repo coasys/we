@@ -42,6 +42,20 @@ export interface SidebarGroup extends SidebarItemBase {
   reorderable?: boolean;
   /** Called when the user completes a drag — receives new ordered array of item IDs. */
   onReorder?: (ids: string[]) => void;
+  /**
+   * An action offered beside the group's label — a `+` that adds to the group, typically.
+   *
+   * Rendered as a sibling of the header, not inside it: the collapsible header is itself a button,
+   * and a button nested in a button is invalid markup that would also toggle the group on the way
+   * past. Hidden while the sidebar is collapsed, where there is no label for it to sit beside and
+   * it would read as just another item.
+   */
+  action?: {
+    icon: string;
+    /** Tooltip and accessible name — the button is icon-only. */
+    label: string;
+    onClick: () => void;
+  };
 }
 
 /**

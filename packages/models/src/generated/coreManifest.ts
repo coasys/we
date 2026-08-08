@@ -8,1276 +8,1326 @@
 import type { ModelManifest } from '@we/backend-shared';
 
 export const CORE_MANIFEST: ModelManifest = {
-  version: '1',
-  entities: {
-    AgentSettings: {
-      properties: {
-        currentTemplateId: {
-          type: 'string',
-          predicate: 'we://current_template',
-          default: 'default',
+  "version": "1",
+  "entities": {
+    "AgentSettings": {
+      "properties": {
+        "currentTemplateId": {
+          "type": "string",
+          "predicate": "we://current_template",
+          "default": "default"
         },
-        defaultTemplateId: {
-          type: 'string',
-          predicate: 'we://default_template',
-          default: 'default',
+        "defaultTemplateId": {
+          "type": "string",
+          "predicate": "we://default_template",
+          "default": "default"
         },
-        currentThemeId: {
-          type: 'string',
-          predicate: 'we://current_theme',
-          default: 'default',
+        "currentThemeId": {
+          "type": "string",
+          "predicate": "we://current_theme",
+          "default": "default"
         },
-        defaultThemeId: {
-          type: 'string',
-          predicate: 'we://default_theme',
-          default: 'default',
+        "defaultThemeId": {
+          "type": "string",
+          "predicate": "we://default_theme",
+          "default": "default"
         },
-        claudeApiKey: {
-          type: 'string',
-          predicate: 'we://claude_api_key',
-          default: '',
+        "claudeApiKey": {
+          "type": "string",
+          "predicate": "we://claude_api_key",
+          "default": ""
         },
-        datasetOrder: {
-          type: 'string',
-          predicate: 'we://dataset_order',
-          default: '',
+        "datasetOrder": {
+          "type": "string",
+          "predicate": "we://dataset_order",
+          "default": ""
         },
-        globalSpaceJoined: {
-          type: 'boolean',
-          predicate: 'we://global_space_joined',
-          default: false,
+        "globalSpaceJoined": {
+          "type": "boolean",
+          "predicate": "we://global_space_joined",
+          "default": false
         },
-        globalSpaceUrl: {
-          type: 'string',
-          predicate: 'we://global_space_url',
-          default: '',
+        "globalSpaceUrl": {
+          "type": "string",
+          "predicate": "we://global_space_url",
+          "default": ""
         },
-        useSpaceTemplate: {
-          type: 'boolean',
-          predicate: 'we://use_space_template',
-          default: true,
+        "useSpaceTemplate": {
+          "type": "boolean",
+          "predicate": "we://use_space_template",
+          "default": true
         },
+        "themeScope": {
+          "type": "string",
+          "predicate": "we://theme_scope",
+          "default": ""
+        },
+        "installedModules": {
+          "type": "string",
+          "predicate": "we://installed_modules",
+          "default": ""
+        }
       },
-      relations: {
-        installedTemplates: {
-          target: 'Template',
-          cardinality: 'many',
-          predicate: 'we://installed_template',
+      "relations": {
+        "installedTemplates": {
+          "target": "Template",
+          "cardinality": "many",
+          "predicate": "we://installed_template"
         },
-        installedThemes: {
-          target: 'Theme',
-          cardinality: 'many',
-          predicate: 'we://installed_theme',
+        "installedThemes": {
+          "target": "Theme",
+          "cardinality": "many",
+          "predicate": "we://installed_theme"
         },
-        spaceTemplatePreferences: {
-          target: 'SpaceTemplatePreference',
-          cardinality: 'many',
-          predicate: 'we://space_template_preference',
-        },
+        "spaceTemplatePreferences": {
+          "target": "SpaceTemplatePreference",
+          "cardinality": "many",
+          "predicate": "we://space_template_preference"
+        }
       },
-      flag: {
-        predicate: 'we://flag',
-        value: 'we://root',
-      },
+      "flag": {
+        "predicate": "we://flag",
+        "value": "we://root"
+      }
     },
-    AudioBlock: {
-      properties: {
-        title: {
-          type: 'string',
-          predicate: 'we://title',
-          required: true,
-          default: '',
+    "AudioBlock": {
+      "properties": {
+        "title": {
+          "type": "string",
+          "predicate": "we://title",
+          "required": true,
+          "default": ""
         },
-        artist: {
-          type: 'string',
-          predicate: 'we://artist',
-          default: '',
+        "artist": {
+          "type": "string",
+          "predicate": "we://artist",
+          "default": ""
         },
-        audioUrl: {
-          type: 'string',
-          predicate: 'we://audio_url',
-          required: true,
-          format: 'file',
-          readAs: 'dataUri',
-          default: '',
+        "audioUrl": {
+          "type": "string",
+          "predicate": "we://audio_url",
+          "required": true,
+          "format": "file",
+          "readAs": "dataUri",
+          "default": ""
         },
-        duration: {
-          type: 'number',
-          predicate: 'we://duration',
-          default: 0,
+        "duration": {
+          "type": "number",
+          "predicate": "we://duration",
+          "default": 0
         },
-        albumArt: {
-          type: 'string',
-          predicate: 'we://album_art',
-          default: '',
+        "albumArt": {
+          "type": "string",
+          "predicate": "we://album_art",
+          "default": ""
         },
-        version: {
-          type: 'number',
-          predicate: 'we://version',
-          default: 0,
-        },
+        "version": {
+          "type": "number",
+          "predicate": "we://version",
+          "default": 0
+        }
       },
-      relations: {
-        comments: {
-          target: '',
-          cardinality: 'many',
-          predicate: 'we://comment',
+      "relations": {
+        "comments": {
+          "target": "",
+          "cardinality": "many",
+          "predicate": "we://comment"
         },
-        signals: {
-          target: 'Signal',
-          cardinality: 'many',
-          predicate: 'we://signal',
-        },
+        "signals": {
+          "target": "Signal",
+          "cardinality": "many",
+          "predicate": "we://signal"
+        }
       },
-      flag: {
-        predicate: 'we://flag',
-        value: 'we://audio_block',
-      },
+      "flag": {
+        "predicate": "we://flag",
+        "value": "we://audio_block"
+      }
     },
-    CalloutBlock: {
-      properties: {
-        text: {
-          type: 'string',
-          predicate: 'we://text',
-          default: '',
+    "CalloutBlock": {
+      "properties": {
+        "text": {
+          "type": "string",
+          "predicate": "we://text",
+          "default": ""
         },
-        variant: {
-          type: 'string',
-          predicate: 'we://variant',
-          default: 'info',
+        "variant": {
+          "type": "string",
+          "predicate": "we://variant",
+          "default": "info"
         },
-        icon: {
-          type: 'string',
-          predicate: 'we://icon',
-          default: '',
+        "icon": {
+          "type": "string",
+          "predicate": "we://icon",
+          "default": ""
         },
-        version: {
-          type: 'number',
-          predicate: 'we://version',
-          default: 0,
-        },
+        "version": {
+          "type": "number",
+          "predicate": "we://version",
+          "default": 0
+        }
       },
-      relations: {
-        comments: {
-          target: '',
-          cardinality: 'many',
-          predicate: 'we://comment',
+      "relations": {
+        "comments": {
+          "target": "",
+          "cardinality": "many",
+          "predicate": "we://comment"
         },
-        signals: {
-          target: 'Signal',
-          cardinality: 'many',
-          predicate: 'we://signal',
-        },
+        "signals": {
+          "target": "Signal",
+          "cardinality": "many",
+          "predicate": "we://signal"
+        }
       },
-      flag: {
-        predicate: 'we://flag',
-        value: 'we://callout_block',
-      },
+      "flag": {
+        "predicate": "we://flag",
+        "value": "we://callout_block"
+      }
     },
-    ChatMessage: {
-      properties: {
-        role: {
-          type: 'string',
-          predicate: 'we://role',
-          default: '',
+    "ChatMessage": {
+      "properties": {
+        "role": {
+          "type": "string",
+          "predicate": "we://role",
+          "default": ""
         },
-        content: {
-          type: 'string',
-          predicate: 'we://content',
-          default: '',
-        },
+        "content": {
+          "type": "string",
+          "predicate": "we://content",
+          "default": ""
+        }
       },
-      relations: {
-        comments: {
-          target: '',
-          cardinality: 'many',
-          predicate: 'we://comment',
+      "relations": {
+        "comments": {
+          "target": "",
+          "cardinality": "many",
+          "predicate": "we://comment"
         },
-        signals: {
-          target: 'Signal',
-          cardinality: 'many',
-          predicate: 'we://signal',
-        },
+        "signals": {
+          "target": "Signal",
+          "cardinality": "many",
+          "predicate": "we://signal"
+        }
       },
-      flag: {
-        predicate: 'we://flag',
-        value: 'we://chat_message',
-      },
+      "flag": {
+        "predicate": "we://flag",
+        "value": "we://chat_message"
+      }
     },
-    ChatSession: {
-      properties: {
-        name: {
-          type: 'string',
-          predicate: 'we://name',
-          default: '',
+    "ChatSession": {
+      "properties": {
+        "name": {
+          "type": "string",
+          "predicate": "we://name",
+          "default": ""
         },
-        templateId: {
-          type: 'string',
-          predicate: 'we://template_id',
-          default: '',
-        },
+        "templateId": {
+          "type": "string",
+          "predicate": "we://template_id",
+          "default": ""
+        }
       },
-      relations: {
-        comments: {
-          target: '',
-          cardinality: 'many',
-          predicate: 'we://comment',
+      "relations": {
+        "comments": {
+          "target": "",
+          "cardinality": "many",
+          "predicate": "we://comment"
         },
-        signals: {
-          target: 'Signal',
-          cardinality: 'many',
-          predicate: 'we://signal',
+        "signals": {
+          "target": "Signal",
+          "cardinality": "many",
+          "predicate": "we://signal"
         },
-        messages: {
-          target: 'ChatMessage',
-          cardinality: 'many',
-          predicate: 'we://chat_message',
-        },
+        "messages": {
+          "target": "ChatMessage",
+          "cardinality": "many",
+          "predicate": "we://chat_message"
+        }
       },
-      flag: {
-        predicate: 'we://flag',
-        value: 'we://chat_session',
-      },
+      "flag": {
+        "predicate": "we://flag",
+        "value": "we://chat_session"
+      }
     },
-    CodeBlock: {
-      properties: {
-        code: {
-          type: 'string',
-          predicate: 'we://code',
-          required: true,
-          default: '',
+    "CodeBlock": {
+      "properties": {
+        "code": {
+          "type": "string",
+          "predicate": "we://code",
+          "required": true,
+          "default": ""
         },
-        language: {
-          type: 'string',
-          predicate: 'we://language',
-          default: '',
+        "language": {
+          "type": "string",
+          "predicate": "we://language",
+          "default": ""
         },
-        title: {
-          type: 'string',
-          predicate: 'we://title',
-          default: '',
+        "title": {
+          "type": "string",
+          "predicate": "we://title",
+          "default": ""
         },
-        version: {
-          type: 'number',
-          predicate: 'we://version',
-          default: 0,
-        },
+        "version": {
+          "type": "number",
+          "predicate": "we://version",
+          "default": 0
+        }
       },
-      relations: {
-        comments: {
-          target: '',
-          cardinality: 'many',
-          predicate: 'we://comment',
+      "relations": {
+        "comments": {
+          "target": "",
+          "cardinality": "many",
+          "predicate": "we://comment"
         },
-        signals: {
-          target: 'Signal',
-          cardinality: 'many',
-          predicate: 'we://signal',
-        },
+        "signals": {
+          "target": "Signal",
+          "cardinality": "many",
+          "predicate": "we://signal"
+        }
       },
-      flag: {
-        predicate: 'we://flag',
-        value: 'we://code_block',
-      },
+      "flag": {
+        "predicate": "we://flag",
+        "value": "we://code_block"
+      }
     },
-    CollectionBlock: {
-      properties: {
-        editorState: {
-          type: 'string',
-          predicate: 'we://editor_state',
-          format: 'file',
-          default: null,
+    "CollectionBlock": {
+      "properties": {
+        "editorState": {
+          "type": "string",
+          "predicate": "we://editor_state",
+          "format": "file",
+          "default": null
         },
-        type: {
-          type: 'string',
-          predicate: 'we://type',
-          default: '',
+        "type": {
+          "type": "string",
+          "predicate": "we://type",
+          "default": ""
         },
-        display: {
-          type: 'string',
-          predicate: 'we://display',
-          default: '',
+        "display": {
+          "type": "string",
+          "predicate": "we://display",
+          "default": ""
         },
-        direction: {
-          type: 'string',
-          predicate: 'we://direction',
-          default: '',
+        "direction": {
+          "type": "string",
+          "predicate": "we://direction",
+          "default": ""
         },
-        format: {
-          type: 'string',
-          predicate: 'we://format',
-          default: '',
+        "format": {
+          "type": "string",
+          "predicate": "we://format",
+          "default": ""
         },
-        indent: {
-          type: 'number',
-          predicate: 'we://indent',
-          default: 0,
+        "indent": {
+          "type": "number",
+          "predicate": "we://indent",
+          "default": 0
         },
-        columns: {
-          type: 'number',
-          predicate: 'we://columns',
-          default: 0,
+        "columns": {
+          "type": "number",
+          "predicate": "we://columns",
+          "default": 0
         },
-        gap: {
-          type: 'string',
-          predicate: 'we://gap',
-          default: '',
+        "gap": {
+          "type": "string",
+          "predicate": "we://gap",
+          "default": ""
         },
-        version: {
-          type: 'number',
-          predicate: 'we://version',
-          default: 0,
+        "version": {
+          "type": "number",
+          "predicate": "we://version",
+          "default": 0
         },
-        textContent: {
-          type: 'string',
-          predicate: 'we://text_content',
-          default: '',
-        },
+        "textContent": {
+          "type": "string",
+          "predicate": "we://text_content",
+          "default": ""
+        }
       },
-      relations: {
-        comments: {
-          target: '',
-          cardinality: 'many',
-          predicate: 'we://comment',
+      "relations": {
+        "comments": {
+          "target": "",
+          "cardinality": "many",
+          "predicate": "we://comment"
         },
-        signals: {
-          target: 'Signal',
-          cardinality: 'many',
-          predicate: 'we://signal',
+        "signals": {
+          "target": "Signal",
+          "cardinality": "many",
+          "predicate": "we://signal"
         },
-        children: {
-          target: '',
-          cardinality: 'many',
-          predicate: 'we://children',
-        },
+        "children": {
+          "target": "",
+          "cardinality": "many",
+          "predicate": "we://children"
+        }
       },
-      flag: {
-        predicate: 'we://flag',
-        value: 'we://collection_block',
-      },
+      "flag": {
+        "predicate": "we://flag",
+        "value": "we://collection_block"
+      }
     },
-    DividerBlock: {
-      properties: {
-        style: {
-          type: 'string',
-          predicate: 'we://style',
-          default: 'solid',
+    "DividerBlock": {
+      "properties": {
+        "style": {
+          "type": "string",
+          "predicate": "we://style",
+          "default": "solid"
         },
-        version: {
-          type: 'number',
-          predicate: 'we://version',
-          default: 0,
-        },
+        "version": {
+          "type": "number",
+          "predicate": "we://version",
+          "default": 0
+        }
       },
-      relations: {
-        comments: {
-          target: '',
-          cardinality: 'many',
-          predicate: 'we://comment',
+      "relations": {
+        "comments": {
+          "target": "",
+          "cardinality": "many",
+          "predicate": "we://comment"
         },
-        signals: {
-          target: 'Signal',
-          cardinality: 'many',
-          predicate: 'we://signal',
-        },
+        "signals": {
+          "target": "Signal",
+          "cardinality": "many",
+          "predicate": "we://signal"
+        }
       },
-      flag: {
-        predicate: 'we://flag',
-        value: 'we://divider_block',
-      },
+      "flag": {
+        "predicate": "we://flag",
+        "value": "we://divider_block"
+      }
     },
-    EmbedBlock: {
-      properties: {
-        url: {
-          type: 'string',
-          predicate: 'we://url',
-          default: '',
+    "EmbedBlock": {
+      "properties": {
+        "url": {
+          "type": "string",
+          "predicate": "we://url",
+          "default": ""
         },
-        target: {
-          type: 'string',
-          predicate: 'we://target',
-          default: '',
+        "target": {
+          "type": "string",
+          "predicate": "we://target",
+          "default": ""
         },
-        targetType: {
-          type: 'string',
-          predicate: 'we://target_type',
-          default: '',
+        "targetType": {
+          "type": "string",
+          "predicate": "we://target_type",
+          "default": ""
         },
-        displayMode: {
-          type: 'string',
-          predicate: 'we://display_mode',
-          default: 'card',
+        "displayMode": {
+          "type": "string",
+          "predicate": "we://display_mode",
+          "default": "card"
         },
-        version: {
-          type: 'number',
-          predicate: 'we://version',
-          default: 0,
-        },
+        "version": {
+          "type": "number",
+          "predicate": "we://version",
+          "default": 0
+        }
       },
-      relations: {
-        comments: {
-          target: '',
-          cardinality: 'many',
-          predicate: 'we://comment',
+      "relations": {
+        "comments": {
+          "target": "",
+          "cardinality": "many",
+          "predicate": "we://comment"
         },
-        signals: {
-          target: 'Signal',
-          cardinality: 'many',
-          predicate: 'we://signal',
-        },
+        "signals": {
+          "target": "Signal",
+          "cardinality": "many",
+          "predicate": "we://signal"
+        }
       },
-      flag: {
-        predicate: 'we://flag',
-        value: 'we://embed_block',
-      },
+      "flag": {
+        "predicate": "we://flag",
+        "value": "we://embed_block"
+      }
     },
-    EventBlock: {
-      properties: {
-        title: {
-          type: 'string',
-          predicate: 'we://title',
-          required: true,
-          default: '',
+    "EventBlock": {
+      "properties": {
+        "title": {
+          "type": "string",
+          "predicate": "we://title",
+          "required": true,
+          "default": ""
         },
-        description: {
-          type: 'string',
-          predicate: 'we://description',
-          default: '',
+        "description": {
+          "type": "string",
+          "predicate": "we://description",
+          "default": ""
         },
-        startDate: {
-          type: 'string',
-          predicate: 'we://start_date',
-          required: true,
-          default: '',
+        "startDate": {
+          "type": "string",
+          "predicate": "we://start_date",
+          "required": true,
+          "default": ""
         },
-        endDate: {
-          type: 'string',
-          predicate: 'we://end_date',
-          default: '',
+        "endDate": {
+          "type": "string",
+          "predicate": "we://end_date",
+          "default": ""
         },
-        location: {
-          type: 'string',
-          predicate: 'we://location',
-          default: '',
+        "location": {
+          "type": "string",
+          "predicate": "we://location",
+          "default": ""
         },
-        allDay: {
-          type: 'boolean',
-          predicate: 'we://all_day',
-          default: false,
+        "allDay": {
+          "type": "boolean",
+          "predicate": "we://all_day",
+          "default": false
         },
-        version: {
-          type: 'number',
-          predicate: 'we://version',
-          default: 0,
-        },
+        "version": {
+          "type": "number",
+          "predicate": "we://version",
+          "default": 0
+        }
       },
-      relations: {
-        comments: {
-          target: '',
-          cardinality: 'many',
-          predicate: 'we://comment',
+      "relations": {
+        "comments": {
+          "target": "",
+          "cardinality": "many",
+          "predicate": "we://comment"
         },
-        signals: {
-          target: 'Signal',
-          cardinality: 'many',
-          predicate: 'we://signal',
-        },
+        "signals": {
+          "target": "Signal",
+          "cardinality": "many",
+          "predicate": "we://signal"
+        }
       },
-      flag: {
-        predicate: 'we://flag',
-        value: 'we://event_block',
-      },
+      "flag": {
+        "predicate": "we://flag",
+        "value": "we://event_block"
+      }
     },
-    FileBlock: {
-      properties: {
-        title: {
-          type: 'string',
-          predicate: 'we://title',
-          default: '',
+    "FileBlock": {
+      "properties": {
+        "title": {
+          "type": "string",
+          "predicate": "we://title",
+          "default": ""
         },
-        name: {
-          type: 'string',
-          predicate: 'we://name',
-          required: true,
-          default: '',
+        "name": {
+          "type": "string",
+          "predicate": "we://name",
+          "required": true,
+          "default": ""
         },
-        url: {
-          type: 'string',
-          predicate: 'we://url',
-          required: true,
-          format: 'file',
-          readAs: 'dataUri',
-          default: '',
+        "url": {
+          "type": "string",
+          "predicate": "we://url",
+          "required": true,
+          "format": "file",
+          "readAs": "dataUri",
+          "default": ""
         },
-        mimeType: {
-          type: 'string',
-          predicate: 'we://mime_type',
-          default: '',
+        "mimeType": {
+          "type": "string",
+          "predicate": "we://mime_type",
+          "default": ""
         },
-        size: {
-          type: 'number',
-          predicate: 'we://size',
-          default: 0,
+        "size": {
+          "type": "number",
+          "predicate": "we://size",
+          "default": 0
         },
-        version: {
-          type: 'number',
-          predicate: 'we://version',
-          default: 0,
-        },
+        "version": {
+          "type": "number",
+          "predicate": "we://version",
+          "default": 0
+        }
       },
-      relations: {
-        comments: {
-          target: '',
-          cardinality: 'many',
-          predicate: 'we://comment',
+      "relations": {
+        "comments": {
+          "target": "",
+          "cardinality": "many",
+          "predicate": "we://comment"
         },
-        signals: {
-          target: 'Signal',
-          cardinality: 'many',
-          predicate: 'we://signal',
-        },
+        "signals": {
+          "target": "Signal",
+          "cardinality": "many",
+          "predicate": "we://signal"
+        }
       },
-      flag: {
-        predicate: 'we://flag',
-        value: 'we://file_block',
-      },
+      "flag": {
+        "predicate": "we://flag",
+        "value": "we://file_block"
+      }
     },
-    ImageBlock: {
-      properties: {
-        src: {
-          type: 'string',
-          predicate: 'we://src',
-          required: true,
-          format: 'file',
-          readAs: 'dataUri',
-          default: '',
+    "ImageBlock": {
+      "properties": {
+        "src": {
+          "type": "string",
+          "predicate": "we://src",
+          "required": true,
+          "format": "file",
+          "readAs": "dataUri",
+          "default": ""
         },
-        altText: {
-          type: 'string',
-          predicate: 'we://altText',
-          default: '',
+        "altText": {
+          "type": "string",
+          "predicate": "we://altText",
+          "default": ""
         },
-        width: {
-          type: 'number',
-          predicate: 'we://width',
-          default: 0,
+        "width": {
+          "type": "number",
+          "predicate": "we://width",
+          "default": 0
         },
-        height: {
-          type: 'number',
-          predicate: 'we://height',
-          default: 0,
+        "height": {
+          "type": "number",
+          "predicate": "we://height",
+          "default": 0
         },
-        version: {
-          type: 'number',
-          predicate: 'we://version',
-          default: 0,
-        },
+        "version": {
+          "type": "number",
+          "predicate": "we://version",
+          "default": 0
+        }
       },
-      relations: {
-        comments: {
-          target: '',
-          cardinality: 'many',
-          predicate: 'we://comment',
+      "relations": {
+        "comments": {
+          "target": "",
+          "cardinality": "many",
+          "predicate": "we://comment"
         },
-        signals: {
-          target: 'Signal',
-          cardinality: 'many',
-          predicate: 'we://signal',
-        },
+        "signals": {
+          "target": "Signal",
+          "cardinality": "many",
+          "predicate": "we://signal"
+        }
       },
-      flag: {
-        predicate: 'we://flag',
-        value: 'we://image_block',
-      },
+      "flag": {
+        "predicate": "we://flag",
+        "value": "we://image_block"
+      }
     },
-    LinkBlock: {
-      properties: {
-        url: {
-          type: 'string',
-          predicate: 'we://url',
-          required: true,
-          default: '',
+    "LinkBlock": {
+      "properties": {
+        "url": {
+          "type": "string",
+          "predicate": "we://url",
+          "required": true,
+          "default": ""
         },
-        title: {
-          type: 'string',
-          predicate: 'we://title',
-          default: '',
+        "title": {
+          "type": "string",
+          "predicate": "we://title",
+          "default": ""
         },
-        description: {
-          type: 'string',
-          predicate: 'we://description',
-          default: '',
+        "description": {
+          "type": "string",
+          "predicate": "we://description",
+          "default": ""
         },
-        thumbnail: {
-          type: 'string',
-          predicate: 'we://thumbnail',
-          default: '',
+        "thumbnail": {
+          "type": "string",
+          "predicate": "we://thumbnail",
+          "default": ""
         },
-        version: {
-          type: 'number',
-          predicate: 'we://version',
-          default: 0,
-        },
+        "version": {
+          "type": "number",
+          "predicate": "we://version",
+          "default": 0
+        }
       },
-      relations: {
-        comments: {
-          target: '',
-          cardinality: 'many',
-          predicate: 'we://comment',
+      "relations": {
+        "comments": {
+          "target": "",
+          "cardinality": "many",
+          "predicate": "we://comment"
         },
-        signals: {
-          target: 'Signal',
-          cardinality: 'many',
-          predicate: 'we://signal',
-        },
+        "signals": {
+          "target": "Signal",
+          "cardinality": "many",
+          "predicate": "we://signal"
+        }
       },
-      flag: {
-        predicate: 'we://flag',
-        value: 'we://link_block',
-      },
+      "flag": {
+        "predicate": "we://flag",
+        "value": "we://link_block"
+      }
     },
-    LocationBlock: {
-      properties: {
-        name: {
-          type: 'string',
-          predicate: 'we://name',
-          default: '',
+    "LocationBlock": {
+      "properties": {
+        "name": {
+          "type": "string",
+          "predicate": "we://name",
+          "default": ""
         },
-        latitude: {
-          type: 'number',
-          predicate: 'we://latitude',
-          required: true,
-          default: 0,
+        "latitude": {
+          "type": "number",
+          "predicate": "we://latitude",
+          "required": true,
+          "default": 0
         },
-        longitude: {
-          type: 'number',
-          predicate: 'we://longitude',
-          required: true,
-          default: 0,
+        "longitude": {
+          "type": "number",
+          "predicate": "we://longitude",
+          "required": true,
+          "default": 0
         },
-        address: {
-          type: 'string',
-          predicate: 'we://address',
-          default: '',
+        "address": {
+          "type": "string",
+          "predicate": "we://address",
+          "default": ""
         },
-        city: {
-          type: 'string',
-          predicate: 'we://city',
+        "city": {
+          "type": "string",
+          "predicate": "we://city"
         },
-        countryCode: {
-          type: 'string',
-          predicate: 'we://country_code',
+        "countryCode": {
+          "type": "string",
+          "predicate": "we://country_code"
         },
-        country: {
-          type: 'string',
-          predicate: 'we://country',
+        "country": {
+          "type": "string",
+          "predicate": "we://country"
         },
-        version: {
-          type: 'number',
-          predicate: 'we://version',
-          default: 0,
-        },
+        "version": {
+          "type": "number",
+          "predicate": "we://version",
+          "default": 0
+        }
       },
-      relations: {
-        comments: {
-          target: '',
-          cardinality: 'many',
-          predicate: 'we://comment',
+      "relations": {
+        "comments": {
+          "target": "",
+          "cardinality": "many",
+          "predicate": "we://comment"
         },
-        signals: {
-          target: 'Signal',
-          cardinality: 'many',
-          predicate: 'we://signal',
-        },
+        "signals": {
+          "target": "Signal",
+          "cardinality": "many",
+          "predicate": "we://signal"
+        }
       },
-      flag: {
-        predicate: 'we://flag',
-        value: 'we://location_block',
-      },
+      "flag": {
+        "predicate": "we://flag",
+        "value": "we://location_block"
+      }
     },
-    Signal: {
-      properties: {
-        signalTypeId: {
-          type: 'string',
-          predicate: 'we://signal_type_id',
-          default: '',
+    "Signal": {
+      "properties": {
+        "signalTypeId": {
+          "type": "string",
+          "predicate": "we://signal_type_id",
+          "default": ""
         },
-        value: {
-          type: 'number',
-          predicate: 'we://value',
-          default: 0,
-        },
+        "value": {
+          "type": "number",
+          "predicate": "we://value",
+          "default": 0
+        }
       },
-      relations: {},
-      flag: {
-        predicate: 'we://flag',
-        value: 'we://signal',
-      },
+      "relations": {},
+      "flag": {
+        "predicate": "we://flag",
+        "value": "we://signal"
+      }
     },
-    SignalType: {
-      properties: {
-        name: {
-          type: 'string',
-          predicate: 'we://name',
-          default: '',
+    "SignalType": {
+      "properties": {
+        "name": {
+          "type": "string",
+          "predicate": "we://name",
+          "default": ""
         },
-        slug: {
-          type: 'string',
-          predicate: 'we://slug',
-          default: '',
+        "slug": {
+          "type": "string",
+          "predicate": "we://slug",
+          "default": ""
         },
-        description: {
-          type: 'string',
-          predicate: 'we://description',
-          default: '',
+        "description": {
+          "type": "string",
+          "predicate": "we://description",
+          "default": ""
         },
-        icon: {
-          type: 'string',
-          predicate: 'we://icon',
-          default: '',
+        "icon": {
+          "type": "string",
+          "predicate": "we://icon",
+          "default": ""
         },
-        iconSecondary: {
-          type: 'string',
-          predicate: 'we://icon_secondary',
-          default: '',
+        "iconSecondary": {
+          "type": "string",
+          "predicate": "we://icon_secondary",
+          "default": ""
         },
-        step: {
-          type: 'number',
-          predicate: 'we://step',
-          default: 1,
+        "step": {
+          "type": "number",
+          "predicate": "we://step",
+          "default": 1
         },
-        rangeMin: {
-          type: 'number',
-          predicate: 'we://range_min',
-          default: 0,
+        "rangeMin": {
+          "type": "number",
+          "predicate": "we://range_min",
+          "default": 0
         },
-        rangeMax: {
-          type: 'number',
-          predicate: 'we://range_max',
-          default: 1,
+        "rangeMax": {
+          "type": "number",
+          "predicate": "we://range_max",
+          "default": 1
         },
-        mode: {
-          type: 'string',
-          predicate: 'we://mode',
-          default: 'toggle',
+        "mode": {
+          "type": "string",
+          "predicate": "we://mode",
+          "default": "toggle"
         },
-        aggregate: {
-          type: 'string',
-          predicate: 'we://aggregate',
-          default: 'count',
+        "aggregate": {
+          "type": "string",
+          "predicate": "we://aggregate",
+          "default": "count"
         },
-        semantic: {
-          type: 'string',
-          predicate: 'we://semantic',
-          default: 'custom',
+        "semantic": {
+          "type": "string",
+          "predicate": "we://semantic",
+          "default": "custom"
         },
-        allowChange: {
-          type: 'boolean',
-          predicate: 'we://allow_change',
-          default: true,
+        "allowChange": {
+          "type": "boolean",
+          "predicate": "we://allow_change",
+          "default": true
         },
-        valueType: {
-          type: 'string',
-          predicate: 'we://signal_value_type',
-          default: 'numeric',
+        "valueType": {
+          "type": "string",
+          "predicate": "we://signal_value_type",
+          "default": "numeric"
         },
-        schemaVersion: {
-          type: 'number',
-          predicate: 'we://schema_version',
-          default: 1,
-        },
+        "schemaVersion": {
+          "type": "number",
+          "predicate": "we://schema_version",
+          "default": 1
+        }
       },
-      relations: {
-        comments: {
-          target: '',
-          cardinality: 'many',
-          predicate: 'we://comment',
+      "relations": {
+        "comments": {
+          "target": "",
+          "cardinality": "many",
+          "predicate": "we://comment"
         },
-        signals: {
-          target: 'Signal',
-          cardinality: 'many',
-          predicate: 'we://signal',
-        },
+        "signals": {
+          "target": "Signal",
+          "cardinality": "many",
+          "predicate": "we://signal"
+        }
       },
-      flag: {
-        predicate: 'we://flag',
-        value: 'we://signal_type',
-      },
+      "flag": {
+        "predicate": "we://flag",
+        "value": "we://signal_type"
+      }
     },
-    Space: {
-      properties: {
-        uuid: {
-          type: 'string',
-          predicate: 'we://uuid',
-          default: '',
+    "Space": {
+      "properties": {
+        "uuid": {
+          "type": "string",
+          "predicate": "we://uuid",
+          "default": ""
         },
-        url: {
-          type: 'string',
-          predicate: 'we://url',
+        "url": {
+          "type": "string",
+          "predicate": "we://url"
         },
-        name: {
-          type: 'string',
-          predicate: 'we://name',
-          required: true,
-          default: '',
+        "name": {
+          "type": "string",
+          "predicate": "we://name",
+          "required": true,
+          "default": ""
         },
-        description: {
-          type: 'string',
-          predicate: 'we://description',
-          required: true,
-          default: '',
+        "description": {
+          "type": "string",
+          "predicate": "we://description",
+          "required": true,
+          "default": ""
         },
-        discovery: {
-          type: 'string',
-          predicate: 'we://discovery',
-          default: 'hidden',
+        "discovery": {
+          "type": "string",
+          "predicate": "we://discovery",
+          "default": "hidden"
         },
-        avatar: {
-          type: 'string',
-          predicate: 'we://image',
-          format: 'file',
-          readAs: 'dataUri',
+        "avatar": {
+          "type": "string",
+          "predicate": "we://image",
+          "format": "file",
+          "readAs": "dataUri"
         },
-        coverImage: {
-          type: 'string',
-          predicate: 'we://thumbnail',
-          format: 'file',
-          readAs: 'dataUri',
+        "coverImage": {
+          "type": "string",
+          "predicate": "we://thumbnail",
+          "format": "file",
+          "readAs": "dataUri"
         },
-        defaultTemplateId: {
-          type: 'string',
-          predicate: 'we://default_template_id',
-          default: '',
+        "defaultTemplateId": {
+          "type": "string",
+          "predicate": "we://default_template_id",
+          "default": ""
         },
-        defaultThemeId: {
-          type: 'string',
-          predicate: 'we://default_theme_id',
-          default: '',
+        "defaultThemeId": {
+          "type": "string",
+          "predicate": "we://default_theme_id",
+          "default": ""
         },
-        enabledModules: {
-          type: 'string',
-          predicate: 'we://enabled_modules',
-          default: '',
-        },
+        "enabledModules": {
+          "type": "string",
+          "predicate": "we://enabled_modules",
+          "default": ""
+        }
       },
-      relations: {
-        location: {
-          target: 'LocationBlock',
-          cardinality: 'one',
-          predicate: 'we://location',
+      "relations": {
+        "location": {
+          "target": "LocationBlock",
+          "cardinality": "one",
+          "predicate": "we://location"
         },
-        comments: {
-          target: '',
-          cardinality: 'many',
-          predicate: 'we://comment',
+        "comments": {
+          "target": "",
+          "cardinality": "many",
+          "predicate": "we://comment"
         },
-        signals: {
-          target: 'Signal',
-          cardinality: 'many',
-          predicate: 'we://signal',
-        },
+        "signals": {
+          "target": "Signal",
+          "cardinality": "many",
+          "predicate": "we://signal"
+        }
       },
-      flag: {
-        predicate: 'we://flag',
-        value: 'we://space',
-      },
+      "flag": {
+        "predicate": "we://flag",
+        "value": "we://space"
+      }
     },
-    SpaceTemplatePreference: {
-      properties: {
-        spaceUrl: {
-          type: 'string',
-          predicate: 'we://space_url',
-          default: '',
+    "SpacePreference": {
+      "properties": {
+        "spaceUuid": {
+          "type": "string",
+          "predicate": "we://space_uuid",
+          "default": ""
         },
-        preference: {
-          type: 'string',
-          predicate: 'we://preference',
-          default: '',
+        "mutedModules": {
+          "type": "string",
+          "predicate": "we://muted_modules",
+          "default": ""
         },
+        "templateId": {
+          "type": "string",
+          "predicate": "we://template_id",
+          "default": ""
+        },
+        "themeId": {
+          "type": "string",
+          "predicate": "we://theme_id",
+          "default": ""
+        }
       },
-      relations: {
-        comments: {
-          target: '',
-          cardinality: 'many',
-          predicate: 'we://comment',
+      "relations": {
+        "comments": {
+          "target": "",
+          "cardinality": "many",
+          "predicate": "we://comment"
         },
-        signals: {
-          target: 'Signal',
-          cardinality: 'many',
-          predicate: 'we://signal',
-        },
+        "signals": {
+          "target": "Signal",
+          "cardinality": "many",
+          "predicate": "we://signal"
+        }
       },
-      flag: {
-        predicate: 'we://flag',
-        value: 'we://space_template_preference',
-      },
+      "flag": {
+        "predicate": "we://flag",
+        "value": "we://space_preference"
+      }
     },
-    TagBlock: {
-      properties: {
-        name: {
-          type: 'string',
-          predicate: 'we://name',
-          required: true,
-          default: '',
+    "SpaceTemplatePreference": {
+      "properties": {
+        "spaceUrl": {
+          "type": "string",
+          "predicate": "we://space_url",
+          "default": ""
         },
-        color: {
-          type: 'string',
-          predicate: 'we://color',
-          default: '',
-        },
-        version: {
-          type: 'number',
-          predicate: 'we://version',
-          default: 0,
-        },
+        "preference": {
+          "type": "string",
+          "predicate": "we://preference",
+          "default": ""
+        }
       },
-      relations: {
-        comments: {
-          target: '',
-          cardinality: 'many',
-          predicate: 'we://comment',
+      "relations": {
+        "comments": {
+          "target": "",
+          "cardinality": "many",
+          "predicate": "we://comment"
         },
-        signals: {
-          target: 'Signal',
-          cardinality: 'many',
-          predicate: 'we://signal',
-        },
+        "signals": {
+          "target": "Signal",
+          "cardinality": "many",
+          "predicate": "we://signal"
+        }
       },
-      flag: {
-        predicate: 'we://flag',
-        value: 'we://tag_block',
-      },
+      "flag": {
+        "predicate": "we://flag",
+        "value": "we://space_template_preference"
+      }
     },
-    TaskBlock: {
-      properties: {
-        title: {
-          type: 'string',
-          predicate: 'we://title',
-          required: true,
-          default: '',
+    "TagBlock": {
+      "properties": {
+        "name": {
+          "type": "string",
+          "predicate": "we://name",
+          "required": true,
+          "default": ""
         },
-        description: {
-          type: 'string',
-          predicate: 'we://description',
-          default: '',
+        "color": {
+          "type": "string",
+          "predicate": "we://color",
+          "default": ""
         },
-        status: {
-          type: 'string',
-          predicate: 'we://status',
-          default: 'todo',
-        },
-        priority: {
-          type: 'string',
-          predicate: 'we://priority',
-          default: 'medium',
-        },
-        dueDate: {
-          type: 'string',
-          predicate: 'we://due_date',
-          default: '',
-        },
-        assignee: {
-          type: 'string',
-          predicate: 'we://assignee',
-          default: '',
-        },
-        version: {
-          type: 'number',
-          predicate: 'we://version',
-          default: 0,
-        },
+        "version": {
+          "type": "number",
+          "predicate": "we://version",
+          "default": 0
+        }
       },
-      relations: {
-        comments: {
-          target: '',
-          cardinality: 'many',
-          predicate: 'we://comment',
+      "relations": {
+        "comments": {
+          "target": "",
+          "cardinality": "many",
+          "predicate": "we://comment"
         },
-        signals: {
-          target: 'Signal',
-          cardinality: 'many',
-          predicate: 'we://signal',
-        },
+        "signals": {
+          "target": "Signal",
+          "cardinality": "many",
+          "predicate": "we://signal"
+        }
       },
-      flag: {
-        predicate: 'we://flag',
-        value: 'we://task_block',
-      },
+      "flag": {
+        "predicate": "we://flag",
+        "value": "we://tag_block"
+      }
     },
-    Template: {
-      properties: {
-        name: {
-          type: 'string',
-          predicate: 'we://name',
-          default: '',
+    "TaskBlock": {
+      "properties": {
+        "title": {
+          "type": "string",
+          "predicate": "we://title",
+          "required": true,
+          "default": ""
         },
-        description: {
-          type: 'string',
-          predicate: 'we://description',
-          default: '',
+        "description": {
+          "type": "string",
+          "predicate": "we://description",
+          "default": ""
         },
-        icon: {
-          type: 'string',
-          predicate: 'we://icon',
-          default: '',
+        "status": {
+          "type": "string",
+          "predicate": "we://status",
+          "default": "todo"
         },
-        origin: {
-          type: 'string',
-          predicate: 'we://origin',
-          default: '',
+        "priority": {
+          "type": "string",
+          "predicate": "we://priority",
+          "default": "medium"
         },
-        version: {
-          type: 'number',
-          predicate: 'we://version',
-          default: 1,
+        "dueDate": {
+          "type": "string",
+          "predicate": "we://due_date",
+          "default": ""
         },
-        slug: {
-          type: 'string',
-          predicate: 'we://slug',
-          default: '',
+        "assignee": {
+          "type": "string",
+          "predicate": "we://assignee",
+          "default": ""
         },
-        schema: {
-          type: 'string',
-          predicate: 'we://template_schema',
-          format: 'file',
-          default: null,
-        },
-        themeId: {
-          type: 'string',
-          predicate: 'we://theme_id',
-          default: '',
-        },
+        "version": {
+          "type": "number",
+          "predicate": "we://version",
+          "default": 0
+        }
       },
-      relations: {
-        comments: {
-          target: '',
-          cardinality: 'many',
-          predicate: 'we://comment',
+      "relations": {
+        "comments": {
+          "target": "",
+          "cardinality": "many",
+          "predicate": "we://comment"
         },
-        signals: {
-          target: 'Signal',
-          cardinality: 'many',
-          predicate: 'we://signal',
-        },
-        screenshots: {
-          target: 'ImageBlock',
-          cardinality: 'many',
-          predicate: 'we://screenshot',
-        },
+        "signals": {
+          "target": "Signal",
+          "cardinality": "many",
+          "predicate": "we://signal"
+        }
       },
-      flag: {
-        predicate: 'we://flag',
-        value: 'we://template',
-      },
+      "flag": {
+        "predicate": "we://flag",
+        "value": "we://task_block"
+      }
     },
-    TextBlock: {
-      properties: {
-        type: {
-          type: 'string',
-          predicate: 'we://type',
-          default: '',
+    "Template": {
+      "properties": {
+        "name": {
+          "type": "string",
+          "predicate": "we://name",
+          "default": ""
         },
-        direction: {
-          type: 'string',
-          predicate: 'we://direction',
-          default: '',
+        "description": {
+          "type": "string",
+          "predicate": "we://description",
+          "default": ""
         },
-        format: {
-          type: 'string',
-          predicate: 'we://format',
-          default: '',
+        "icon": {
+          "type": "string",
+          "predicate": "we://icon",
+          "default": ""
         },
-        indent: {
-          type: 'number',
-          predicate: 'we://indent',
-          default: 0,
+        "origin": {
+          "type": "string",
+          "predicate": "we://origin",
+          "default": ""
         },
-        textFormat: {
-          type: 'number',
-          predicate: 'we://textFormat',
-          default: 0,
+        "version": {
+          "type": "number",
+          "predicate": "we://version",
+          "default": 1
         },
-        textStyle: {
-          type: 'string',
-          predicate: 'we://textStyle',
-          default: '',
+        "slug": {
+          "type": "string",
+          "predicate": "we://slug",
+          "default": ""
         },
-        listType: {
-          type: 'string',
-          predicate: 'we://listType',
-          default: '',
+        "schema": {
+          "type": "string",
+          "predicate": "we://template_schema",
+          "format": "file",
+          "default": null
         },
-        start: {
-          type: 'number',
-          predicate: 'we://start',
-          default: 0,
-        },
-        tag: {
-          type: 'string',
-          predicate: 'we://tag',
-          default: '',
-        },
-        text: {
-          type: 'string',
-          predicate: 'we://text',
-          default: '',
-        },
-        version: {
-          type: 'number',
-          predicate: 'we://version',
-          default: 0,
-        },
+        "themeId": {
+          "type": "string",
+          "predicate": "we://theme_id",
+          "default": ""
+        }
       },
-      relations: {
-        comments: {
-          target: '',
-          cardinality: 'many',
-          predicate: 'we://comment',
+      "relations": {
+        "comments": {
+          "target": "",
+          "cardinality": "many",
+          "predicate": "we://comment"
         },
-        signals: {
-          target: 'Signal',
-          cardinality: 'many',
-          predicate: 'we://signal',
+        "signals": {
+          "target": "Signal",
+          "cardinality": "many",
+          "predicate": "we://signal"
         },
+        "screenshots": {
+          "target": "ImageBlock",
+          "cardinality": "many",
+          "predicate": "we://screenshot"
+        }
       },
-      flag: {
-        predicate: 'we://flag',
-        value: 'we://text_block',
-      },
+      "flag": {
+        "predicate": "we://flag",
+        "value": "we://template"
+      }
     },
-    Theme: {
-      properties: {
-        name: {
-          type: 'string',
-          predicate: 'we://name',
-          default: '',
+    "TextBlock": {
+      "properties": {
+        "type": {
+          "type": "string",
+          "predicate": "we://type",
+          "default": ""
         },
-        description: {
-          type: 'string',
-          predicate: 'we://description',
-          default: '',
+        "direction": {
+          "type": "string",
+          "predicate": "we://direction",
+          "default": ""
         },
-        icon: {
-          type: 'string',
-          predicate: 'we://icon',
-          default: '',
+        "format": {
+          "type": "string",
+          "predicate": "we://format",
+          "default": ""
         },
-        origin: {
-          type: 'string',
-          predicate: 'we://origin',
-          default: '',
+        "indent": {
+          "type": "number",
+          "predicate": "we://indent",
+          "default": 0
         },
-        slug: {
-          type: 'string',
-          predicate: 'we://slug',
-          default: '',
+        "textFormat": {
+          "type": "number",
+          "predicate": "we://textFormat",
+          "default": 0
         },
-        version: {
-          type: 'number',
-          predicate: 'we://version',
-          default: 1,
+        "textStyle": {
+          "type": "string",
+          "predicate": "we://textStyle",
+          "default": ""
         },
-        css: {
-          type: 'string',
-          predicate: 'we://stylesheet',
-          format: 'file',
-          default: null,
+        "listType": {
+          "type": "string",
+          "predicate": "we://listType",
+          "default": ""
         },
-        overrides: {
-          type: 'string',
-          predicate: 'we://token_overrides',
-          format: 'file',
-          default: null,
+        "start": {
+          "type": "number",
+          "predicate": "we://start",
+          "default": 0
         },
+        "tag": {
+          "type": "string",
+          "predicate": "we://tag",
+          "default": ""
+        },
+        "text": {
+          "type": "string",
+          "predicate": "we://text",
+          "default": ""
+        },
+        "version": {
+          "type": "number",
+          "predicate": "we://version",
+          "default": 0
+        }
       },
-      relations: {
-        comments: {
-          target: '',
-          cardinality: 'many',
-          predicate: 'we://comment',
+      "relations": {
+        "comments": {
+          "target": "",
+          "cardinality": "many",
+          "predicate": "we://comment"
         },
-        signals: {
-          target: 'Signal',
-          cardinality: 'many',
-          predicate: 'we://signal',
-        },
-        screenshots: {
-          target: 'ImageBlock',
-          cardinality: 'many',
-          predicate: 'we://screenshot',
-        },
+        "signals": {
+          "target": "Signal",
+          "cardinality": "many",
+          "predicate": "we://signal"
+        }
       },
-      flag: {
-        predicate: 'we://flag',
-        value: 'we://theme',
-      },
+      "flag": {
+        "predicate": "we://flag",
+        "value": "we://text_block"
+      }
     },
-    VideoBlock: {
-      properties: {
-        title: {
-          type: 'string',
-          predicate: 'we://title',
-          default: '',
+    "Theme": {
+      "properties": {
+        "name": {
+          "type": "string",
+          "predicate": "we://name",
+          "default": ""
         },
-        url: {
-          type: 'string',
-          predicate: 'we://url',
-          required: true,
-          default: '',
+        "description": {
+          "type": "string",
+          "predicate": "we://description",
+          "default": ""
         },
-        duration: {
-          type: 'number',
-          predicate: 'we://duration',
-          default: 0,
+        "icon": {
+          "type": "string",
+          "predicate": "we://icon",
+          "default": ""
         },
-        thumbnail: {
-          type: 'string',
-          predicate: 'we://thumbnail',
-          default: '',
+        "origin": {
+          "type": "string",
+          "predicate": "we://origin",
+          "default": ""
         },
-        provider: {
-          type: 'string',
-          predicate: 'we://provider',
-          default: '',
+        "slug": {
+          "type": "string",
+          "predicate": "we://slug",
+          "default": ""
         },
-        version: {
-          type: 'number',
-          predicate: 'we://version',
-          default: 0,
+        "version": {
+          "type": "number",
+          "predicate": "we://version",
+          "default": 1
         },
+        "css": {
+          "type": "string",
+          "predicate": "we://stylesheet",
+          "format": "file",
+          "default": null
+        },
+        "overrides": {
+          "type": "string",
+          "predicate": "we://token_overrides",
+          "format": "file",
+          "default": null
+        }
       },
-      relations: {
-        comments: {
-          target: '',
-          cardinality: 'many',
-          predicate: 'we://comment',
+      "relations": {
+        "comments": {
+          "target": "",
+          "cardinality": "many",
+          "predicate": "we://comment"
         },
-        signals: {
-          target: 'Signal',
-          cardinality: 'many',
-          predicate: 'we://signal',
+        "signals": {
+          "target": "Signal",
+          "cardinality": "many",
+          "predicate": "we://signal"
         },
+        "screenshots": {
+          "target": "ImageBlock",
+          "cardinality": "many",
+          "predicate": "we://screenshot"
+        }
       },
-      flag: {
-        predicate: 'we://flag',
-        value: 'we://video_block',
-      },
+      "flag": {
+        "predicate": "we://flag",
+        "value": "we://theme"
+      }
     },
-    WeNode: {
-      properties: {},
-      relations: {
-        comments: {
-          target: '',
-          cardinality: 'many',
-          predicate: 'we://comment',
+    "VideoBlock": {
+      "properties": {
+        "title": {
+          "type": "string",
+          "predicate": "we://title",
+          "default": ""
         },
-        signals: {
-          target: 'Signal',
-          cardinality: 'many',
-          predicate: 'we://signal',
+        "url": {
+          "type": "string",
+          "predicate": "we://url",
+          "required": true,
+          "default": ""
         },
+        "duration": {
+          "type": "number",
+          "predicate": "we://duration",
+          "default": 0
+        },
+        "thumbnail": {
+          "type": "string",
+          "predicate": "we://thumbnail",
+          "default": ""
+        },
+        "provider": {
+          "type": "string",
+          "predicate": "we://provider",
+          "default": ""
+        },
+        "version": {
+          "type": "number",
+          "predicate": "we://version",
+          "default": 0
+        }
       },
-      abstract: true,
+      "relations": {
+        "comments": {
+          "target": "",
+          "cardinality": "many",
+          "predicate": "we://comment"
+        },
+        "signals": {
+          "target": "Signal",
+          "cardinality": "many",
+          "predicate": "we://signal"
+        }
+      },
+      "flag": {
+        "predicate": "we://flag",
+        "value": "we://video_block"
+      }
     },
-  },
+    "WeNode": {
+      "properties": {},
+      "relations": {
+        "comments": {
+          "target": "",
+          "cardinality": "many",
+          "predicate": "we://comment"
+        },
+        "signals": {
+          "target": "Signal",
+          "cardinality": "many",
+          "predicate": "we://signal"
+        }
+      },
+      "abstract": true
+    }
+  }
 } as ModelManifest;
