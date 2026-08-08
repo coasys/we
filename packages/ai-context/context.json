@@ -5559,15 +5559,15 @@
       "state": {
         "datasets": {
           "type": "array",
-          "properties": ["uuid", "name", "sharedUrl", "neighbourhood"]
+          "properties": ["id", "name", "sharedUri", "sharedId", "handle"]
         },
         "orderedDatasets": {
           "type": "array",
-          "properties": ["uuid", "name", "sharedUrl"]
+          "properties": ["id", "name", "sharedUri", "sharedId", "handle"]
         },
         "currentDataset": {
           "type": "object",
-          "properties": ["uuid", "name", "sharedUrl"]
+          "properties": ["id", "name", "sharedUri", "sharedId", "handle"]
         },
         "currentDatasetCid": {
           "type": "string"
@@ -5586,15 +5586,15 @@
         },
         "rootDataset": {
           "type": "object",
-          "properties": ["uuid", "name"]
+          "properties": ["id", "name", "sharedUri", "sharedId", "handle"]
         },
         "globalDataset": {
           "type": "object",
-          "properties": ["uuid", "name", "sharedUrl"]
+          "properties": ["id", "name", "sharedUri", "sharedId", "handle"]
         },
         "marketplaceDataset": {
           "type": "object",
-          "properties": ["uuid", "name", "sharedUrl"]
+          "properties": ["id", "name", "sharedUri", "sharedId", "handle"]
         },
         "globalSpaceConfigured": {
           "type": "boolean"
@@ -5755,6 +5755,10 @@
           "type": "array",
           "model": "Space"
         },
+        "spaceList": {
+          "type": "array",
+          "properties": ["uuid", "name", "description", "avatar", "kind", "isWeSpace", "canAdminister"]
+        },
         "creatingSpace": {
           "type": "boolean"
         },
@@ -5824,6 +5828,7 @@
         "createSignalType",
         "upsertSignal",
         "navigateToSpace",
+        "canAdministerSpace",
         "setModuleEnabled",
         "launchModule"
       ]

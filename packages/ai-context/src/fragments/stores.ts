@@ -162,17 +162,20 @@ export const storeEntries: StoreEntry[] = [
   {
     name: 'datasetStore',
     state: {
-      datasets: { type: 'array', properties: ['uuid', 'name', 'sharedUrl', 'neighbourhood'] },
-      orderedDatasets: { type: 'array', properties: ['uuid', 'name', 'sharedUrl'] },
-      currentDataset: { type: 'object', properties: ['uuid', 'name', 'sharedUrl'] },
+      // `DatasetRef`'s actual fields. These were previously listed as uuid/sharedUrl/neighbourhood,
+      // none of which exist — so a schema reading them got undefined, and the validator confirmed
+      // the wrong name while rejecting the right one.
+      datasets: { type: 'array', properties: ['id', 'name', 'sharedUri', 'sharedId', 'handle'] },
+      orderedDatasets: { type: 'array', properties: ['id', 'name', 'sharedUri', 'sharedId', 'handle'] },
+      currentDataset: { type: 'object', properties: ['id', 'name', 'sharedUri', 'sharedId', 'handle'] },
       currentDatasetCid: { type: 'string' },
       currentDatasetModels: { type: 'array' },
       isWeSpace: { type: 'boolean' },
       joinedSpaceCids: { type: 'array' },
       systemDatasetUuids: { type: 'array' },
-      rootDataset: { type: 'object', properties: ['uuid', 'name'] },
-      globalDataset: { type: 'object', properties: ['uuid', 'name', 'sharedUrl'] },
-      marketplaceDataset: { type: 'object', properties: ['uuid', 'name', 'sharedUrl'] },
+      rootDataset: { type: 'object', properties: ['id', 'name', 'sharedUri', 'sharedId', 'handle'] },
+      globalDataset: { type: 'object', properties: ['id', 'name', 'sharedUri', 'sharedId', 'handle'] },
+      marketplaceDataset: { type: 'object', properties: ['id', 'name', 'sharedUri', 'sharedId', 'handle'] },
       globalSpaceConfigured: { type: 'boolean' },
       marketplaceConfigured: { type: 'boolean' },
       marketplaceJoined: { type: 'boolean' },
@@ -266,6 +269,10 @@ export const storeEntries: StoreEntry[] = [
       mySpaces: { type: 'array', model: 'Space' },
       personalSpaces: { type: 'array', model: 'Space' },
       sharedSpaces: { type: 'array', model: 'Space' },
+      spaceList: {
+        type: 'array',
+        properties: ['uuid', 'name', 'description', 'avatar', 'kind', 'isWeSpace', 'canAdminister'],
+      },
       creatingSpace: { type: 'boolean' },
       orderedSidebarItems: { type: 'array', properties: ['uuid', 'name', 'avatar', 'spaceId'] },
       memberDids: { type: 'array', properties: ['did'] },
@@ -319,6 +326,7 @@ export const storeEntries: StoreEntry[] = [
       'createSignalType',
       'upsertSignal',
       'navigateToSpace',
+      'canAdministerSpace',
       'setModuleEnabled',
       'launchModule',
     ],
@@ -650,6 +658,8 @@ function generateStoresText(entries: StoreEntry[]): string {
         mySpaces: 'array of Space objects — every space the agent holds, across all joined datasets',
         personalSpaces: 'array of Space objects (local/personal spaces; all Space fields)',
         sharedSpaces: 'array of Space objects (shared/neighbourhood spaces; all Space fields)',
+        spaceList:
+          "{ uuid, name, description, avatar, kind: 'shared' | 'personal' | 'foreign', isWeSpace, canAdminister }[] — one row per joined dataset the agent can act on, ordered like the sidebar and excluding the system datasets. Includes datasets that are not WE spaces (kind 'foreign', isWeSpace false), which are waiting to be initialized. `uuid` is the dataset id, so it keys navigation and settings whether or not a Space record exists",
         creatingSpace: 'boolean (true while a new space is being created)',
         orderedSidebarItems:
           'array of sidebar items in user-defined order (uuid, name, avatar, spaceId) — personal + shared spaces merged',
@@ -691,6 +701,8 @@ function generateStoresText(entries: StoreEntry[]): string {
           '(nodeId: string, signalTypeId: string, value: number): adds or updates a signal on a node; value=0 deletes it',
         navigateToSpace:
           '(spaceId: string, view?: string): navigates to a space — accepts a perspective UUID or a neighbourhood CID (sharedUrl without the neighbourhood:// prefix); pre-loads space templates before switching so the template and data arrive together',
+        canAdministerSpace:
+          '(uuid: string): whether this agent may change what every member of that space sees — true for a personal space, and for a shared one they authored. A UI affordance for deciding whether to offer the controls, NOT enforcement: a shared space is a neighbourhood every member can write to. Ask by name rather than comparing author to $me.did, so the answer can grow (multiple admins, roles) without every template changing',
         setModuleEnabled:
           '(moduleId: string, enabled: boolean): turns a feature module on or off for the current space; writes the resolved list, so the first toggle also pins whatever was on by fallback',
         launchModule:

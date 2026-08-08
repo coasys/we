@@ -9,6 +9,8 @@ import type { SchemaNode, TemplateSchema } from '@we/schema-shared';
 import { accountSettings } from './AccountSettings.schema.ts';
 import { aiSection } from './AiSettings.schema.ts';
 import { createSpaceModal } from './CreateSpaceModal.ts';
+import { advancedDatasetsSection } from './spaces/AdvancedDatasets.ts';
+import { spacesListSection } from './spaces/SpacesList.ts';
 import { languagesLocalState, languagesSection } from './LanguageSettings.schema.ts';
 import {
   backup,
@@ -380,144 +382,6 @@ const themesSection: SchemaNode = {
   ],
 };
 
-const perspectivesSection: SchemaNode = {
-  type: 'Column',
-  props: { gap: '300' },
-  children: [
-    {
-      type: 'Row',
-      props: { gap: '200', ay: 'center' },
-      children: [
-        { type: 'we-icon', props: { name: 'intersect-three', size: '20px' } },
-        {
-          type: 'we-text',
-          props: { fontWeight: 'semibold' },
-          children: ['All Perspectives'],
-        },
-      ],
-    },
-    {
-      type: '$if',
-      props: {
-        condition: { $store: 'datasetStore.datasets.length' },
-        then: {
-          type: 'Column',
-          props: { gap: '300' },
-          children: [
-            {
-              type: '$each',
-              props: { items: { $store: 'datasetStore.datasets' }, as: 'dataset' },
-              children: [
-                {
-                  type: 'Card',
-                  props: {
-                    ax: 'start',
-                    bg: 'neutral-50',
-                    border: '1px solid neutral-200',
-                  },
-                  $localState: {
-                    sdnaCleanupResult: { type: 'string', initial: '' },
-                  },
-                  children: [
-                    {
-                      type: 'Row',
-                      props: { gap: '200', ay: 'center' },
-                      children: [
-                        {
-                          type: 'we-icon',
-                          props: {
-                            name: {
-                              $if: { condition: '$dataset.sharedUri', then: 'globe', else: 'folder' },
-                            },
-                            size: '16px',
-                          },
-                        },
-                        {
-                          type: 'we-text',
-                          props: { variant: 'body', fontWeight: 'medium' },
-                          children: ['$dataset.name'],
-                        },
-                      ],
-                    },
-                    {
-                      type: 'we-text',
-                      props: { variant: 'body' },
-                      children: [{ $concat: ['ID: ', '$dataset.id'] }],
-                    },
-                    {
-                      type: 'we-text',
-                      props: { variant: 'body' },
-                      children: [{ $concat: ['URL: ', '$dataset.sharedUri'] }],
-                    },
-                    {
-                      type: 'Row',
-                      props: { gap: '200', ay: 'center' },
-                      children: [
-                        {
-                          type: 'we-button',
-                          props: {
-                            variant: 'secondary',
-                            size: 'sm',
-                            onClick: {
-                              $action: 'datasetStore.cleanupSpaceSdna',
-                              args: ['$dataset.id'],
-                              onSuccess: [{ $setLocal: 'sdnaCleanupResult', from: '$result' }],
-                            },
-                          },
-                          children: [
-                            { type: 'we-icon', props: { name: 'broom' } },
-                            {
-                              type: 'we-text',
-                              props: { variant: 'label' },
-                              children: ['Clean up duplicate schema'],
-                            },
-                          ],
-                        },
-                        {
-                          type: 'we-button',
-                          props: {
-                            variant: 'danger',
-                            size: 'sm',
-                            onClick: { $action: 'spaceStore.removeSpace', args: ['$dataset.id'] },
-                          },
-                          children: [
-                            { type: 'we-icon', props: { name: 'trash', size: '16px' } },
-                            {
-                              type: 'we-text',
-                              props: { variant: 'label' },
-                              children: ['Delete'],
-                            },
-                          ],
-                        },
-                      ],
-                    },
-                    {
-                      type: '$if',
-                      props: {
-                        condition: { $local: 'sdnaCleanupResult' },
-                        then: {
-                          type: 'we-text',
-                          props: { variant: 'footnote', color: 'neutral-400' },
-                          children: [{ $local: 'sdnaCleanupResult' }],
-                        },
-                      },
-                    },
-                  ],
-                },
-              ],
-            },
-          ],
-        },
-        else: {
-          type: 'we-text',
-          props: { variant: 'label', italic: true },
-          children: ['No perspectives yet'],
-        },
-      },
-    },
-  ],
-};
-
 const modulesSection: SchemaNode = {
   type: '$if',
   props: {
@@ -593,145 +457,6 @@ const modulesSection: SchemaNode = {
   },
 };
 
-const sharedSpacesSection: SchemaNode = {
-  type: 'Column',
-  props: { gap: '300' },
-  children: [
-    {
-      type: 'Row',
-      props: { gap: '200', ay: 'center' },
-      children: [
-        { type: 'we-icon', props: { name: 'globe', size: '20px' } },
-        { type: 'we-text', props: { variant: 'heading-sm' }, children: ['Shared Spaces'] },
-      ],
-    },
-    {
-      type: '$if',
-      props: {
-        condition: { $store: 'spaceStore.sharedSpaces.length' },
-        then: {
-          type: 'Row',
-          props: { gap: '300', wrap: true },
-          children: [
-            {
-              type: '$each',
-              props: { items: { $store: 'spaceStore.sharedSpaces' }, as: 'space' },
-              children: [
-                {
-                  type: 'Card',
-                  props: {
-                    bg: 'neutral-50',
-                    width: '200px',
-                    cursor: 'pointer',
-                    onClick: { $action: 'spaceStore.navigateToSpace', args: ['$space.uuid'] },
-                  },
-                  children: [
-                    {
-                      type: 'Row',
-                      props: { gap: '200', ay: 'center' },
-                      children: [
-                        { type: 'we-icon', props: { name: 'globe', size: '16px' } },
-                        {
-                          type: 'we-text',
-                          props: { variant: 'body', fontWeight: 'medium' },
-                          children: ['$space.name'],
-                        },
-                      ],
-                    },
-                    {
-                      type: 'we-text',
-                      props: { variant: 'label' },
-                      children: ['$space.description'],
-                    },
-                  ],
-                },
-              ],
-            },
-          ],
-        },
-        else: {
-          type: 'we-text',
-          props: { variant: 'label', italic: true },
-          children: ['No shared spaces yet'],
-        },
-      },
-    },
-  ],
-};
-
-const personalSpacesSection: SchemaNode = {
-  type: 'Column',
-  props: { gap: '300' },
-  children: [
-    {
-      type: 'Row',
-      props: { gap: '200', ay: 'center' },
-      children: [
-        { type: 'we-icon', props: { name: 'folder', size: '20px' } },
-        {
-          type: 'we-text',
-          props: { variant: 'heading-sm' },
-          children: ['Personal Spaces'],
-        },
-      ],
-    },
-    {
-      type: '$if',
-      props: {
-        condition: { $store: 'spaceStore.personalSpaces.length' },
-        then: {
-          type: 'Row',
-          props: { gap: '300', wrap: true },
-          children: [
-            {
-              type: '$each',
-              props: { items: { $store: 'spaceStore.personalSpaces' }, as: 'space' },
-              children: [
-                {
-                  type: 'Card',
-                  props: {
-                    bg: 'neutral-50',
-                    width: '200px',
-                    cursor: 'pointer',
-                    onClick: {
-                      $action: 'spaceStore.navigateToSpace',
-                      args: [{ $if: { condition: '$space.url', then: '$space.url', else: '$space.uuid' } }],
-                    },
-                  },
-                  children: [
-                    {
-                      type: 'Row',
-                      props: { gap: '200', ay: 'center' },
-                      children: [
-                        { type: 'we-icon', props: { name: 'folder', size: '16px' } },
-                        {
-                          type: 'we-text',
-                          props: { variant: 'body', fontWeight: 'medium' },
-                          children: ['$space.name'],
-                        },
-                      ],
-                    },
-                    {
-                      type: 'we-text',
-                      props: { variant: 'label' },
-                      children: ['$space.description'],
-                    },
-                  ],
-                },
-              ],
-            },
-          ],
-        },
-        else: {
-          type: 'we-text',
-          props: { variant: 'label', italic: true },
-          children: ['No personal spaces yet'],
-        },
-      },
-    },
-  ],
-};
-
 const createSpaceButton: SchemaNode = {
   type: 'we-button',
   props: {
@@ -800,13 +525,12 @@ export const settingsTemplate: TemplateSchema = {
       path: '/spaces',
       $localState: { createSpaceModalOpen: { type: 'boolean', initial: false } },
       ...page([
-        perspectivesSection,
-        sharedSpacesSection,
-        personalSpacesSection,
+        spacesListSection,
         createSpaceButton,
         // Below the spaces themselves: it is about all of this data at once, and it is the one
         // control here that writes a file rather than changing what is on screen.
         backup,
+        advancedDatasetsSection,
         createSpaceModalMount,
       ]),
     },

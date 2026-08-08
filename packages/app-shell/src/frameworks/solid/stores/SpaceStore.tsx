@@ -41,6 +41,31 @@ import { useShellStore } from './ShellStore';
 import { useTemplateStore } from './TemplateStore';
 import { useThemeStore } from './ThemeStore';
 
+/**
+ * One row of the spaces list — every joined dataset the agent can act on, space or not.
+ *
+ * Built over datasets rather than over `mySpaces` because a dataset that is *not* yet a WE space
+ * still belongs in the list: a community synced in from another app is a thing you have joined and
+ * can act on (by initializing it), and the only place it was previously visible was a raw id in the
+ * diagnostics list. A space you cannot see is a space you cannot leave.
+ *
+ * `kind` replaces what used to be three separate sections. Shared and personal differ by exactly one
+ * field on the same model, which is a badge, not a heading — and splitting them gave the page two
+ * "none yet" empty states for what is one list.
+ */
+export interface SpaceListEntry {
+  /** The dataset id — stable whether or not a Space record exists, so it keys navigation and settings. */
+  uuid: string;
+  name: string;
+  description: string;
+  avatar: string;
+  kind: 'shared' | 'personal' | 'foreign';
+  /** False for a joined dataset with no WE Space record — the "initialize" state. */
+  isWeSpace: boolean;
+  /** Whether this agent may change what everyone here sees. See {@link SpaceStore.canAdministerSpace}. */
+  canAdminister: boolean;
+}
+
 export interface SpaceMetaUpdate {
   name?: string;
   description?: string;
@@ -73,6 +98,8 @@ export interface SpaceStore {
   mySpaces: Accessor<Space[]>;
   personalSpaces: Accessor<Space[]>;
   sharedSpaces: Accessor<Space[]>;
+  /** Every joined dataset the agent can act on, space or not — the spaces list. See {@link SpaceListEntry}. */
+  spaceList: Accessor<SpaceListEntry[]>;
   creatingSpace: Accessor<boolean>;
   /** Sidebar entries in user-defined order — datasets decorated with Space name/avatar when
    * available, plus a virtual pre-join entry for the configured global space. */
@@ -118,6 +145,8 @@ export interface SpaceStore {
   createSignalType: (config: Partial<SignalType>) => Promise<void>;
   upsertSignal: (nodeId: string, signalTypeId: string, value: number) => Promise<void>;
   navigateToSpace: (spaceId: string, view?: string) => Promise<void>;
+  /** Whether this agent may change what every member of that space sees. */
+  canAdministerSpace: (uuid: string) => boolean;
   getSubgroupMessages: (subgroupId: string) => Promise<FluxSubgroupMessage[]>;
   removeSpaceFromGlobal: (spaceUuid: string) => Promise<void>;
   updateSpaceInCache: (dataset: AppDataset, updates: Partial<Space>) => void;
@@ -151,6 +180,51 @@ export function SpaceStoreProvider(props: ParentProps) {
   // it implements sharing (a neighbourhood, a published branch, an `is_public` row).
   const personalSpaces = createMemo(() => mySpaces().filter((s) => !s.url));
   const sharedSpaces = createMemo(() => mySpaces().filter((s) => !!s.url));
+
+  /**
+   * Whether this agent may change what every member of a space sees.
+   *
+   * **A UI affordance, not enforcement.** A shared space is a neighbourhood every member can write
+   * links to; nothing stops another member's client writing `we://name`. This decides whether to
+   * *offer* the controls, which is worth doing — an owner should see what is theirs to manage — but
+   * it must never be described to the user as protection.
+   *
+   * A predicate rather than an inline `author === me` in each template, because creator-only is
+   * today's answer and not the last one: multiple admins, roles, or an SDNA-level constraint all
+   * change what "may administer" means. Templates asking the question by name keep working; templates
+   * that had compared two DIDs would all need editing.
+   */
+  function canAdministerSpace(uuid: string): boolean {
+    const space = mySpaces().find((s) => s.uuid === uuid);
+    if (!space) return false;
+    // A personal space has no one else to answer to.
+    if (!space.url) return true;
+    const me = session.me()?.did;
+    return Boolean(me && space.author === me);
+  }
+
+  /**
+   * The spaces list: one row per joined dataset the agent can act on.
+   *
+   * Ordered by `orderedDatasets`, which already applies the user's sidebar order and drops the
+   * system datasets — those belong in the advanced section, where the subject is datasets rather
+   * than spaces.
+   */
+  const spaceList = createMemo<SpaceListEntry[]>(() =>
+    datasetStore.orderedDatasets().map((ds) => {
+      const space = mySpaces().find((s) => isSpaceSelf(s, ds));
+      return {
+        uuid: ds.id,
+        // A foreign dataset has no Space record to name it, so the dataset's own name stands in.
+        name: space?.name || ds.name,
+        description: space?.description ?? '',
+        avatar: space?.avatar ?? '',
+        kind: !space ? 'foreign' : space.url ? 'shared' : 'personal',
+        isWeSpace: Boolean(space),
+        canAdminister: space ? canAdministerSpace(space.uuid) : false,
+      };
+    }),
+  );
 
   // TemplateStore mounts above this store and cannot read it directly — hand it the space lookup
   // it needs to resolve a space's default template (see TemplateStore.provideSpaceLookup).
@@ -950,6 +1024,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     mySpaces,
     personalSpaces,
     sharedSpaces,
+    spaceList,
     creatingSpace,
     orderedSidebarItems,
     enabledModules,
@@ -974,6 +1049,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     createSignalType,
     upsertSignal,
     navigateToSpace,
+    canAdministerSpace,
     getSubgroupMessages,
     removeSpaceFromGlobal,
     updateSpaceInCache,

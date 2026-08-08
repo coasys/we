@@ -1520,6 +1520,7 @@ SpaceStore:
   - mySpaces: array of Space objects — every space the agent holds, across all joined datasets
   - personalSpaces: array of Space objects (local/personal spaces; all Space fields)
   - sharedSpaces: array of Space objects (shared/neighbourhood spaces; all Space fields)
+  - spaceList: { uuid, name, description, avatar, kind: 'shared' | 'personal' | 'foreign', isWeSpace, canAdminister }[] — one row per joined dataset the agent can act on, ordered like the sidebar and excluding the system datasets. Includes datasets that are not WE spaces (kind 'foreign', isWeSpace false), which are waiting to be initialized. `uuid` is the dataset id, so it keys navigation and settings whether or not a Space record exists
   - creatingSpace: boolean (true while a new space is being created)
   - orderedSidebarItems: array of sidebar items in user-defined order (uuid, name, avatar, spaceId) — personal + shared spaces merged
   - memberDids: string[] — DIDs of all members in the current space (includes own DID)
@@ -1544,6 +1545,7 @@ SpaceStore:
   - createSignalType(config: Partial<SignalType>): creates a new signal type in the community; slug auto-derived from name if blank
   - upsertSignal(nodeId: string, signalTypeId: string, value: number): adds or updates a signal on a node; value=0 deletes it
   - navigateToSpace(spaceId: string, view?: string): navigates to a space — accepts a perspective UUID or a neighbourhood CID (sharedUrl without the neighbourhood:// prefix); pre-loads space templates before switching so the template and data arrive together
+  - canAdministerSpace(uuid: string): whether this agent may change what every member of that space sees — true for a personal space, and for a shared one they authored. A UI affordance for deciding whether to offer the controls, NOT enforcement: a shared space is a neighbourhood every member can write to. Ask by name rather than comparing author to $me.did, so the answer can grow (multiple admins, roles) without every template changing
   - setModuleEnabled(moduleId: string, enabled: boolean): turns a feature module on or off for the current space; writes the resolved list, so the first toggle also pins whatever was on by fallback
   - launchModule(moduleId: string): invokes that module's declared launcher action. Takes an id rather than a path because $action resolves a literal string, so a rail iterating over modules cannot build modules.<id>.<method> itself
 
