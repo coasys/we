@@ -347,6 +347,34 @@ describe('unknown action', () => {
   });
 });
 
+describe('$event/$arg inside $action args', () => {
+  const nested = (args: unknown[]) =>
+    validateSemantic({ type: 'we-button', props: { onClick: { $action: 'routeStore.navigate', args } } }, ctx())
+      .errors.filter((e) => e.severity === 'error' && e.message.includes('nested inside an operator'));
+
+  it('errors when an event ref is wrapped in an operator', () => {
+    // The bug this exists for: args resolve once at render time, so `$not` evaluates before any
+    // event exists, against an unresolved `'$event.detail'` string — which is truthy. The argument
+    // is a constant `false`, and a switch bound to it only ever sends one value. Nothing throws.
+    expect(nested(['notes', { $not: '$event.detail' }])).toHaveLength(1);
+  });
+
+  it('errors however deeply the ref is buried', () => {
+    expect(nested([{ $if: { condition: '$event.detail', then: 'a', else: 'b' } }])).toHaveLength(1);
+    expect(nested([{ $concat: ['x', { $not: '$arg.value' }] }])).toHaveLength(1);
+  });
+
+  it('allows a bare event ref, which is the form that reaches call time', () => {
+    expect(nested(['notes', '$event.detail'])).toHaveLength(0);
+    expect(nested(['$arg'])).toHaveLength(0);
+    expect(nested(['$arg.detail.value'])).toHaveLength(0);
+  });
+
+  it('leaves operators alone when no event ref is involved', () => {
+    expect(nested([{ $not: { $store: 'sessionStore.me' } }])).toHaveLength(0);
+  });
+});
+
 describe('unknown model', () => {
   it('errors for $query.model with unknown model name', () => {
     const result = validateSemantic({ type: 'we-button', props: { data: { $query: { entity: 'Taks' } } } }, ctx());

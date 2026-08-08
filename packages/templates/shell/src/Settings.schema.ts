@@ -463,7 +463,7 @@ const modulesSection: SchemaNode = {
       type: 'we-text',
       props: { variant: 'footnote', color: 'neutral-400' },
       children: [
-        'Which feature modules you want available to you. This is your own choice and applies in every space — a community still decides which of them it runs, in that space\u2019s settings.',
+        'Which feature modules you want available to you. This is your own choice and applies in every space \u2014 a community still decides which of them it runs, in that space\u2019s settings. Some modules only supply pieces a template uses, and are listed here without a switch.',
       ],
     },
     {
@@ -501,11 +501,25 @@ const modulesSection: SchemaNode = {
                 },
               ],
             },
+            // A capability module gets a note instead of a switch — see `moduleSurface`. It has no
+            // chrome of its own, so "off" could only mean withdrawing a component from whatever
+            // template uses it, which is not something to offer before templates can declare that.
             {
-              type: 'we-switch',
+              type: '$if',
               props: {
-                checked: '$mod.installed',
-                onChange: { $action: 'spaceStore.setModuleInstalled', args: ['$mod.id', '$event.detail'] },
+                condition: '$mod.switchable',
+                then: {
+                  type: 'we-switch',
+                  props: {
+                    checked: '$mod.installed',
+                    onChange: { $action: 'spaceStore.setModuleInstalled', args: ['$mod.id', '$event.detail'] },
+                  },
+                },
+                else: {
+                  type: 'we-text',
+                  props: { variant: 'footnote', color: 'neutral-400' },
+                  children: ['Used by templates'],
+                },
               },
             },
           ],

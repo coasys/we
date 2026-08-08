@@ -5928,7 +5928,7 @@
         "copyShareLink",
         "setModuleEnabled",
         "setModuleInstalled",
-        "setModuleMuted",
+        "setModuleVisible",
         "setSpaceTemplateOverride",
         "setSpaceThemeOverride",
         "launchModule"

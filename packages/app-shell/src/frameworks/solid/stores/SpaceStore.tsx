@@ -1,4 +1,4 @@
-import { moduleRegistry, moduleStores } from '@shared/registries/moduleRegistry';
+import { type ModuleSurface, moduleRegistry, moduleStores, moduleSurface } from '@shared/registries/moduleRegistry';
 import {
   isSpaceSelf,
   type LocationData,
@@ -125,21 +125,26 @@ function resolveEnabledModules(raw: string | undefined): string[] {
  */
 function moduleSettingsFrom(raw: string | undefined, installed: Set<string>, muted: Set<string>): ModuleSetting[] {
   const on = new Set(resolveEnabledModules(raw));
-  return moduleRegistry.all().map(({ definition }) => {
-    const enabled = on.has(definition.id);
-    const isInstalled = installed.has(definition.id);
-    const isMuted = muted.has(definition.id);
-    return {
-      id: definition.id,
-      name: definition.name,
-      description: definition.description ?? '',
-      icon: definition.icon ?? 'puzzle-piece',
-      enabled,
-      installed: isInstalled,
-      muted: isMuted,
-      active: enabled && isInstalled && !isMuted,
-    };
-  });
+  return moduleRegistry
+    .all()
+    // Capability-only modules are left out: a space does not run one, a template uses one, so a
+    // per-space switch for it would have nothing to do. See `moduleSurface`.
+    .filter(({ definition }) => moduleSurface(definition) !== 'capability')
+    .map(({ definition }) => {
+      const enabled = on.has(definition.id);
+      const isInstalled = installed.has(definition.id);
+      const isMuted = muted.has(definition.id);
+      return {
+        id: definition.id,
+        name: definition.name,
+        description: definition.description ?? '',
+        icon: definition.icon ?? 'puzzle-piece',
+        enabled,
+        installed: isInstalled,
+        visible: !isMuted,
+        active: enabled && isInstalled && !isMuted,
+      };
+    });
 }
 
 export interface ModuleSetting {
@@ -151,8 +156,8 @@ export interface ModuleSetting {
   enabled: boolean;
   /** This agent's decision, everywhere. */
   installed: boolean;
-  /** This agent's decision, here. Private. */
-  muted: boolean;
+  /** This agent's decision, here. Private. Positively phrased so a switch binds to it directly. */
+  visible: boolean;
   /** All of the above agreeing — whether it actually renders here for this agent. */
   active: boolean;
 }
@@ -221,7 +226,23 @@ export interface SpaceStore {
   /** What actually renders here for this agent: registered ∩ installed ∩ enabled, less personal mutes. */
   activeModules: Accessor<string[]>;
   /** Every registered module and whether this agent wants it available anywhere — the global list. */
-  moduleInstallSettings: Accessor<{ id: string; name: string; description: string; icon: string; installed: boolean }[]>;
+  /**
+   * Every registered module and whether this agent wants it available anywhere — the global list.
+   *
+   * Includes capability-only modules, flagged `switchable: false`: they are part of what the agent
+   * has, but not yet something to decide about. See `moduleSurface`.
+   */
+  moduleInstallSettings: Accessor<
+    {
+      id: string;
+      name: string;
+      description: string;
+      icon: string;
+      installed: boolean;
+      surface: ModuleSurface;
+      switchable: boolean;
+    }[]
+  >;
   /** Launchers for the modules enabled here — what the module rail renders. */
   moduleLaunchers: Accessor<{ id: string; icon: string; label: string; active: boolean }[]>;
 
@@ -252,8 +273,8 @@ export interface SpaceStore {
   setModuleEnabled: (moduleId: string, enabled: boolean, spaceUuid?: string) => Promise<void>;
   /** Turn a module on or off for this agent everywhere. */
   setModuleInstalled: (moduleId: string, installed: boolean) => Promise<void>;
-  /** Mute or unmute a module for this agent in one space. Private to this agent. */
-  setModuleMuted: (moduleId: string, muted: boolean, spaceUuid?: string) => Promise<void>;
+  /** Show or hide a module for this agent in one space. Private to this agent. */
+  setModuleVisible: (moduleId: string, visible: boolean, spaceUuid?: string) => Promise<void>;
   /** Override the template this agent sees in one space; FOLLOW_SPACE follows its default. Private. */
   setSpaceTemplateOverride: (templateId: string, spaceUuid?: string) => Promise<void>;
   /** Override the theme this agent sees in one space; FOLLOW_SPACE follows its default. Private. */
@@ -1027,13 +1048,27 @@ export function SpaceStoreProvider(props: ParentProps) {
    */
   const moduleInstallSettings = createMemo(() => {
     const installed = installedSet();
-    return moduleRegistry.all().map(({ definition }) => ({
-      id: definition.id,
-      name: definition.name,
-      description: definition.description ?? '',
-      icon: definition.icon ?? 'puzzle-piece',
-      installed: installed.has(definition.id),
-    }));
+    return moduleRegistry.all().map(({ definition }) => {
+      const surface = moduleSurface(definition);
+      return {
+        id: definition.id,
+        name: definition.name,
+        description: definition.description ?? '',
+        icon: definition.icon ?? 'puzzle-piece',
+        installed: installed.has(definition.id),
+        surface,
+        /**
+         * A capability module is listed but not switchable.
+         *
+         * Uninstalling one would take a component out from under whatever template uses it — the
+         * globe route would simply stop rendering, with nothing to explain why. What would make it
+         * safe is templates declaring which modules they need, so the choice could be refused or
+         * warned about. Until that exists, showing the module without a switch is the honest
+         * position: it is part of what you have, and not yet something to decide about.
+         */
+        switchable: surface !== 'capability',
+      };
+    });
   });
 
   /**
@@ -1112,13 +1147,22 @@ export function SpaceStoreProvider(props: ParentProps) {
     }
   }
 
-  /** Mute or unmute a module for this agent in one space. */
-  async function setModuleMuted(moduleId: string, muted: boolean, spaceUuid?: string): Promise<void> {
+  /**
+   * Show or hide a module for this agent in one space.
+   *
+   * Phrased as *visible* rather than *muted* so it takes what a switch emits directly. Inverting in
+   * a schema is not available: `{ $not: '$event.detail' }` inside `$action` args is an operator
+   * object, so it is evaluated at render time — before any event exists — and the unresolved
+   * `'$event.detail'` string is truthy, making the argument a constant `false`. Only bare
+   * `$event`/`$arg` strings survive to call time. Storage stays a list of exclusions; the
+   * inversion happens here, where it can be seen.
+   */
+  async function setModuleVisible(moduleId: string, visible: boolean, spaceUuid?: string): Promise<void> {
     const uuid = spaceUuid ?? datasetStore.currentDataset()?.id;
     if (!uuid) return;
     const next = new Set(mutedModulesFor(uuid));
-    if (muted) next.add(moduleId);
-    else next.delete(moduleId);
+    if (visible) next.delete(moduleId);
+    else next.add(moduleId);
     await updateSpacePreference(uuid, { mutedModules: JSON.stringify([...next]) } as Partial<SpacePreference>);
   }
 
@@ -1469,7 +1513,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     setSpaceDefaultTheme,
     setModuleEnabled,
     setModuleInstalled,
-    setModuleMuted,
+    setModuleVisible,
     setSpaceTemplateOverride,
     setSpaceThemeOverride,
     launchModule,

@@ -363,11 +363,15 @@ const moduleRow: SchemaNode = {
               type: 'we-switch',
               props: {
                 size: 'sm',
-                checked: { $not: '$mod.muted' },
-                // The switch reports whether it is now *shown*; muted is the opposite.
+                checked: '$mod.visible',
+                // Nothing to show while the module is not installed, so the control cannot do what
+                // it appears to. The note beside it says where to change that.
+                disabled: { $not: '$mod.installed' },
+                // A bare `$event.detail`, never wrapped: an operator object around it would be
+                // evaluated at render time, before the event exists. See `setModuleVisible`.
                 onChange: {
-                  $action: 'spaceStore.setModuleMuted',
-                  args: ['$mod.id', { $not: '$event.detail' }, '$space.uuid'],
+                  $action: 'spaceStore.setModuleVisible',
+                  args: ['$mod.id', '$event.detail', '$space.uuid'],
                 },
               },
             },

@@ -2357,7 +2357,7 @@ export const contextData: ContextData = {
         'copyShareLink',
         'setModuleEnabled',
         'setModuleInstalled',
-        'setModuleMuted',
+        'setModuleVisible',
         'setSpaceTemplateOverride',
         'setSpaceThemeOverride',
         'launchModule',

@@ -36,6 +36,28 @@ import type { SchemaNode } from '@we/schema-shared';
 
 import { slotRegistry } from './slotRegistry';
 
+/**
+ * What a module puts in front of the user, and therefore what turning it off could mean.
+ *
+ * - `chrome` — a launcher or slot nodes. Turning it off hides that chrome. Notes, call.
+ * - `app` — an embedded application. Turning it off withdraws the app. Flux.
+ * - `capability` — components or schema fragments and nothing else. A *template* decides whether
+ *   these are used, so there is nothing for a per-space switch to hide: the globe module supplies
+ *   `CesiumGlobe` to whichever template asks for it, and the honest effect of "off" would be to
+ *   break that template's route, which is not a thing a settings toggle should do.
+ */
+export type ModuleSurface = 'chrome' | 'app' | 'capability';
+
+/**
+ * Derived rather than declared, so a module author cannot get it wrong and a new kind of module
+ * needs no change here or in the settings pages — the answer follows from what it contributes.
+ */
+export function moduleSurface(definition: ModuleDefinition): ModuleSurface {
+  if (definition.embed) return 'app';
+  if (definition.launcher || definition.slots?.length) return 'chrome';
+  return 'capability';
+}
+
 export interface RegisteredModule {
   definition: ModuleDefinition;
   /** Instantiated lazily on registration, so a module can be declared before the host is ready. */

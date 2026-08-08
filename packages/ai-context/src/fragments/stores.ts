@@ -364,7 +364,7 @@ export const storeEntries: StoreEntry[] = [
       'copyShareLink',
       'setModuleEnabled',
       'setModuleInstalled',
-      'setModuleMuted',
+      'setModuleVisible',
       'setSpaceTemplateOverride',
       'setSpaceThemeOverride',
       'launchModule',
@@ -739,7 +739,7 @@ function generateStoresText(entries: StoreEntry[]): string {
         activeModules:
           'string[] — what actually renders here for this agent: registered \u2229 installed \u2229 enabled, less the modules muted in this space. Module chrome and the launcher rail gate on this; enabledModules alone is not sufficient',
         moduleInstallSettings:
-          '{ id, name, description, icon, installed }[] — every registered module paired with whether this agent wants it anywhere. The global Settings → Modules list. Its per-space counterpart is `modules` on each spaceList row, which carries enabled/installed/muted/active together',
+          "{ id, name, description, icon, installed, surface, switchable }[] — every registered module paired with whether this agent wants it anywhere. The global Settings → Modules list. `surface` is 'chrome' | 'app' | 'capability', derived from what the module contributes; a capability module supplies components to templates and has `switchable: false`, so it is listed without a control. Its per-space counterpart is `modules` on each spaceList row, which carries enabled/installed/visible/active together and omits capability modules entirely",
         moduleLaunchers:
           '{ id, icon, label, active }[] — launchers for the modules enabled here and available in this space; what the host module rail renders. Pair with { $action: "spaceStore.launchModule", args: ["$mod.id"] }',
       },
@@ -775,8 +775,8 @@ function generateStoresText(entries: StoreEntry[]): string {
           '(uuid: string): whether this agent may change what every member of that space sees — true for a personal space, and for a shared one they authored. A UI affordance for deciding whether to offer the controls, NOT enforcement: a shared space is a neighbourhood every member can write to. Ask by name rather than comparing author to $me.did, so the answer can grow (multiple admins, roles) without every template changing',
         setModuleInstalled:
           '(moduleId: string, installed: boolean): turns a module on or off for this agent in every space. Personal — writes AgentSettings.installedModules in the root dataset, so no other member sees it',
-        setModuleMuted:
-          '(moduleId: string, muted: boolean, spaceUuid?): hides a module for this agent in one space, without changing what the community runs. Private: written to the root dataset, never to the space, so muting is not broadcast to other members',
+        setModuleVisible:
+          '(moduleId: string, visible: boolean, spaceUuid?): shows or hides a module for this agent in one space, without changing what the community runs. Private: written to the root dataset, never to the space. Phrased positively so a switch can pass `$event.detail` bare \u2014 wrapping it in an operator such as `$not` would evaluate at render time and send a constant',
         setSpaceTemplateOverride:
           "(templateId: string, spaceUuid?): sets the template THIS AGENT sees in one space, overriding the community's default. Three values: 'space-default' follows the space, 'agent-default' follows your own global default (tracking later changes to it), or a concrete template id pins that one. Private, and applied immediately when that space is the one on screen. Note the sentinels are named values, not '' — the ORM skips empty strings on update, so '' cannot clear a property",
         setSpaceThemeOverride:
