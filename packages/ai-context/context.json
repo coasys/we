@@ -5625,6 +5625,9 @@
         "joinedSpaceCids": {
           "type": "array"
         },
+        "datasetsLoaded": {
+          "type": "boolean"
+        },
         "systemDatasetUuids": {
           "type": "array"
         },
@@ -5813,6 +5816,9 @@
         "sharedSpaces": {
           "type": "array",
           "model": "Space"
+        },
+        "routeSpaceUnjoined": {
+          "type": "boolean"
         },
         "spaceList": {
           "type": "array",

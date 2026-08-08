@@ -42,7 +42,15 @@ export const sidebarLayout: TemplateSchema = {
                 else: initializeSpaceGate,
               },
             },
-            else: spaceGate,
+            // Not `else: spaceGate` directly. `currentDataset` is also null for the first frames
+            // of a refresh — the dataset list is still arriving, and the switch to the matching one
+            // is itself async — so asking outright flashed "Join this Space" at someone already
+            // inside. `routeSpaceUnjoined` is false until that is a settled fact, and nothing
+            // renders in the meantime rather than a guess.
+            else: {
+              type: '$if',
+              props: { condition: { $store: 'spaceStore.routeSpaceUnjoined' }, then: spaceGate },
+            },
           },
         },
       ],

@@ -172,6 +172,7 @@ export const storeEntries: StoreEntry[] = [
       currentDatasetModels: { type: 'array' },
       isWeSpace: { type: 'boolean' },
       joinedSpaceCids: { type: 'array' },
+      datasetsLoaded: { type: 'boolean' },
       systemDatasetUuids: { type: 'array' },
       rootDataset: { type: 'object', properties: ['id', 'name', 'sharedUri', 'sharedId', 'handle'] },
       globalDataset: { type: 'object', properties: ['id', 'name', 'sharedUri', 'sharedId', 'handle'] },
@@ -276,6 +277,7 @@ export const storeEntries: StoreEntry[] = [
       mySpaces: { type: 'array', model: 'Space' },
       personalSpaces: { type: 'array', model: 'Space' },
       sharedSpaces: { type: 'array', model: 'Space' },
+      routeSpaceUnjoined: { type: 'boolean' },
       spaceList: {
         type: 'array',
         properties: [
@@ -597,6 +599,8 @@ function generateStoresText(entries: StoreEntry[]): string {
         isWeSpace:
           "boolean — true once the current dataset is confirmed to have WE's Space SDNA installed (false for a joined-but-foreign dataset, e.g. one synced in from Flux)",
         joinedSpaceCids: 'string[] — CIDs of every joined shared dataset',
+        datasetsLoaded:
+          'boolean — the backend has answered with the dataset list. An empty list is otherwise indistinguishable from "not fetched yet", so anything asking "have I joined this?" reads the boot frame as "no". The same reason accountStore.accountsLoaded exists',
         systemDatasetUuids: 'string[] — uuids of the we-root/we-test system datasets',
         rootDataset: "dataset handle | null — the agent's personal root dataset (we-root models live here)",
         globalDataset: 'dataset handle | null — the seed-configured global discovery space, once joined',
@@ -707,6 +711,8 @@ function generateStoresText(entries: StoreEntry[]): string {
         mySpaces: 'array of Space objects — every space the agent holds, across all joined datasets',
         personalSpaces: 'array of Space objects (local/personal spaces; all Space fields)',
         sharedSpaces: 'array of Space objects (shared/neighbourhood spaces; all Space fields)',
+        routeSpaceUnjoined:
+          'boolean — the current route points at a space this agent has not joined, as a settled fact. What a join gate should read: `currentDataset` being null is also true for the first frames of a refresh, so gating on that flashes a join prompt at someone already inside. False while the answer is still unknown',
         spaceList:
           "{ uuid, name, description, avatar, kind: 'shared' | 'personal' | 'foreign', isWeSpace, canAdminister }[] — one row per joined dataset the agent can act on, ordered like the sidebar and excluding the system datasets. Includes datasets that are not WE spaces (kind 'foreign', isWeSpace false), which are waiting to be initialized. `uuid` is the dataset id, so it keys navigation and settings whether or not a Space record exists",
         creatingSpace: 'boolean (true while a new space is being created)',

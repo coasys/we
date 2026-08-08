@@ -191,6 +191,13 @@ export interface SpaceStore {
   sharedSpaces: Accessor<Space[]>;
   /** Every joined dataset the agent can act on, space or not — the spaces list. See {@link SpaceListEntry}. */
   spaceList: Accessor<SpaceListEntry[]>;
+  /**
+   * The route points at a space the agent has not joined — settled, not merely unresolved.
+   *
+   * What a join gate should read. `currentDataset` being null is also true for the first frames of
+   * a refresh, so gating on that flashes "Join this Space" at someone already inside.
+   */
+  routeSpaceUnjoined: Accessor<boolean>;
   creatingSpace: Accessor<boolean>;
   /** Sidebar entries in user-defined order — datasets decorated with Space name/avatar when
    * available, plus a virtual pre-join entry for the configured global space. */
@@ -1339,6 +1346,27 @@ export function SpaceStoreProvider(props: ParentProps) {
       .filter((a): a is AgentProfileSummary => a != null);
   });
 
+  /**
+   * The space this route points at is one the agent has not joined — as a settled fact, not a
+   * momentary absence.
+   *
+   * A join gate cannot key off `currentDataset` being null, because that is also true for the first
+   * frames of a refresh: the dataset list is still arriving, and then the switch to the matching
+   * dataset is itself async. Someone reloading a space they are already in got "Join this Space"
+   * flashed at them in the gap.
+   *
+   * So this is false while the answer is unknown, and a gate reading it renders nothing until there
+   * is something true to say. Both halves matter — the list having arrived, and no dataset in it
+   * matching the route — because a matching dataset that has not been switched to yet is also not
+   * grounds for asking someone to join.
+   */
+  const routeSpaceUnjoined = createMemo<boolean>(() => {
+    const segs = routeStore.segments();
+    if (segs[0] !== 'space' || !segs[1]) return false;
+    if (!datasetStore.datasetsLoaded()) return false;
+    return !datasetStore.datasets().some((d) => d.id === segs[1] || d.sharedId === segs[1]);
+  });
+
   // Resolve the route segment to a local dataset whenever the route changes.
   // Handles deep links, page refresh, and browser back/forward navigation.
   // For intentional navigation via navigateToSpace, this becomes a no-op
@@ -1415,6 +1443,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     personalSpaces,
     sharedSpaces,
     spaceList,
+    routeSpaceUnjoined,
     creatingSpace,
     orderedSidebarItems,
     enabledModules,

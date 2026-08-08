@@ -2182,6 +2182,7 @@ export const contextData: ContextData = {
         currentDatasetModels: { type: 'array' },
         isWeSpace: { type: 'boolean' },
         joinedSpaceCids: { type: 'array' },
+        datasetsLoaded: { type: 'boolean' },
         systemDatasetUuids: { type: 'array' },
         rootDataset: { type: 'object', properties: ['id', 'name', 'sharedUri', 'sharedId', 'handle'] },
         globalDataset: { type: 'object', properties: ['id', 'name', 'sharedUri', 'sharedId', 'handle'] },
@@ -2283,6 +2284,7 @@ export const contextData: ContextData = {
         mySpaces: { type: 'array', model: 'Space' },
         personalSpaces: { type: 'array', model: 'Space' },
         sharedSpaces: { type: 'array', model: 'Space' },
+        routeSpaceUnjoined: { type: 'boolean' },
         spaceList: {
           type: 'array',
           properties: [
