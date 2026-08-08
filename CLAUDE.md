@@ -2265,7 +2265,21 @@ the validator directly from TypeScript source via `tsx`, so no build step is req
 pnpm --filter @we/schema-shared validate
 ```
 
-This validates all `.schema.ts` files under `packages/app-shell/src/shared/schemas/`.
+This validates every `.schema.ts` under `packages/app-shell/src/shared/schemas/`,
+`packages/templates/shell/src/` and `packages/templates/default/src/`. Route and section files
+that are not named `.schema.ts` are still covered, because the template that composes them is —
+the walk descends into whatever a validated schema imports.
+
+Two things it now catches that it used to miss, both worth knowing when adding a schema:
+
+- **Every export in a file is checked**, not just the first one found. A fragment file exporting
+  several sections used to be judged on whichever happened to be declared at the top.
+- **A schema that fails to import is an error**, not a skip. It used to print the failure and still
+  exit 0, so an unloadable schema looked identical to a clean one.
+
+Asset imports (`import cover from './cover.jpg'`) resolve to a stub, so a schema that references
+an image validates without a bundler. See `src/cli/assetHooks.mjs`.
+
 For per-file validation or other options, see the **Schema Validation** section above.
 
 ---

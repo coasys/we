@@ -1,11 +1,16 @@
 #!/usr/bin/env node
 import { existsSync } from 'node:fs';
 import { readdir, readFile, stat } from 'node:fs/promises';
+import { register } from 'node:module';
 import { relative, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 import { buildValidationContext, validateSemantic } from '../semanticValidation.js';
 import { validateStructure } from '../validators.js';
+
+// Validating a schema means importing it, which means resolving its asset imports — see assetHooks.
+// Registered before any schema is imported below; it chains ahead of tsx's own hooks.
+register('./assetHooks.mjs', import.meta.url);
 
 // ── ANSI codes ─────────────────────────────────────────────────────
 
@@ -68,7 +73,7 @@ async function walkDir(dir: string): Promise<string[]> {
  * clean because the one at the top happens to use no tokens, while `LanguageSettings.schema.ts`
  * reported on its first export and never reached its second.
  */
-async function importSchemas(filePath: string): Promise<{ name: string; schema: unknown }[]> {
+async function importSchemas(filePath: string): Promise<{ name: string; schema: unknown }[] | null> {
   try {
     const mod = (await import(pathToFileURL(filePath).href)) as Record<string, unknown>;
 
@@ -82,8 +87,11 @@ async function importSchemas(filePath: string): Promise<{ name: string; schema: 
     }
     return found;
   } catch (err) {
+    // `null`, not `[]` — a schema that cannot be loaded is unvalidated, and reporting that as
+    // nothing-to-see is how two of the default template's largest schemas went unchecked for as
+    // long as they did: the run printed "no issues found" and exited 0 while skipping them.
     console.error(`${red}✗${reset} ${relative(process.cwd(), filePath)}: import failed — ${(err as Error).message}`);
-    return [];
+    return null;
   }
 }
 
@@ -128,6 +136,11 @@ let filesWithIssues = 0;
 
 for (const filePath of files) {
   const schemas = await importSchemas(filePath);
+  if (schemas === null) {
+    totalErrors++;
+    filesWithIssues++;
+    continue;
+  }
   if (schemas.length === 0) continue;
 
   const relPath = relative(process.cwd(), filePath);
