@@ -58,6 +58,7 @@ module-system/
 ├── shared/            the module contract
 ├── notes/             simple module — one package
 ├── call/              simple module — one package
+├── transcribe/        simple module — one package
 └── globe/             a feature family:
     ├── module/        @we/module-globe       shell integration
     ├── protocol/      @we/globe-protocol     the extension contract (pure types)

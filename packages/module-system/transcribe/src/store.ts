@@ -27,14 +27,7 @@ const FLUSH_AFTER_MS = 3_000;
 /** The tag distinguishing transcript text from the text blocks that make up a post. */
 export const TRANSCRIPT_TAG = 'transcript';
 
-export type TranscribeStatus =
-  | 'idle'
-  | 'no-backend'
-  | 'no-model'
-  | 'no-audio'
-  | 'starting'
-  | 'listening'
-  | 'error';
+export type TranscribeStatus = 'idle' | 'no-backend' | 'no-model' | 'no-audio' | 'starting' | 'listening' | 'error';
 
 /**
  * Speech to text for the call this agent is in.

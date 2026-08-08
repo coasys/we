@@ -369,8 +369,10 @@ describe('unknown action', () => {
 
 describe('$event/$arg inside $action args', () => {
   const nested = (args: unknown[]) =>
-    validateSemantic({ type: 'we-button', props: { onClick: { $action: 'routeStore.navigate', args } } }, ctx())
-      .errors.filter((e) => e.severity === 'error' && e.message.includes('nested inside an operator'));
+    validateSemantic(
+      { type: 'we-button', props: { onClick: { $action: 'routeStore.navigate', args } } },
+      ctx(),
+    ).errors.filter((e) => e.severity === 'error' && e.message.includes('nested inside an operator'));
 
   it('errors when an event ref is wrapped in an operator', () => {
     // The bug this exists for: args resolve once at render time, so `$not` evaluates before any

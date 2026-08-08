@@ -14,6 +14,13 @@ Calling actions:
 { "$action": "storeName.method", "args": [...] }
 Example: { "$action": "routeStore.navigate", "args": ["/home"] }
 
+Feature-module stores:
+{ "$store": "modules.<moduleId>.<key>" } and { "$action": "modules.<moduleId>.<method>" }
+Each installed feature module publishes its store under its own id — modules.call.tiles,
+modules.notes.open, modules.transcribe.pending. Which ids exist depends on the deployment's seed,
+so these are not listed in the Stores section below and are never checked against a known-member
+list. A reference to a module that is not installed simply resolves to nothing.
+
 Iterating over store data:
 {
   "type": "$each",

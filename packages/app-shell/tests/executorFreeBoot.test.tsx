@@ -49,17 +49,25 @@ vi.mock('../src/frameworks/solid/stores/RouteStore', () => ({
   useRouteStore: () => ({ navigate, segments: () => [], currentPath: () => '/' }),
 }));
 
+// Stubbed rather than mounted: these two pull in the whole template and theme registries, and this
+// file is about the boot and dataset flow. The cost is that they must carry every member SpaceStore
+// reads — a missing one is a `not a function` at provider construction, which fails every test in
+// the file at once rather than the one that cares.
 vi.mock('../src/frameworks/solid/stores/TemplateStore', () => ({
   useTemplateStore: () => ({
     provideSpaceLookup: () => {},
     preloadSpaceTemplates: async () => {},
     allTemplates: () => [],
+    currentTemplate: () => undefined,
+    defaultTemplateId: () => 'default',
     replaceTemplate: () => {},
   }),
 }));
 
 vi.mock('../src/frameworks/solid/stores/ThemeStore', () => ({
   useThemeStore: () => ({
+    allThemes: () => [],
+    defaultThemeId: () => 'default',
     replaceTheme: () => {},
     restorePersonalTheme: () => {},
     clearSpaceTheme: () => {},
@@ -69,6 +77,7 @@ vi.mock('../src/frameworks/solid/stores/ThemeStore', () => ({
 // ── Harness ───────────────────────────────────────────────────────────────────
 import { BootController } from '../src/frameworks/solid/providers/BootController';
 import { AccountStoreProvider } from '../src/frameworks/solid/stores/AccountStore';
+import { AppStoreProvider } from '../src/frameworks/solid/stores/AppStore';
 import { type DatasetStore, DatasetStoreProvider, useDatasetStore } from '../src/frameworks/solid/stores/DatasetStore';
 import { ProfileStoreProvider } from '../src/frameworks/solid/stores/ProfileStore';
 import { type SessionStore, SessionStoreProvider, useSessionStore } from '../src/frameworks/solid/stores/SessionStore';
@@ -100,10 +109,14 @@ function mountShell(): Stores {
         <SessionStoreProvider>
           <DatasetStoreProvider>
             <ProfileStoreProvider>
-              <SpaceStoreProvider>
-                <BootController />
-                <Capture />
-              </SpaceStoreProvider>
+              {/* SpaceStore hands the installed-module set down to AppStore, so it must mount
+                  inside one — the same nesting the real StoreProvider uses. */}
+              <AppStoreProvider>
+                <SpaceStoreProvider>
+                  <BootController />
+                  <Capture />
+                </SpaceStoreProvider>
+              </AppStoreProvider>
             </ProfileStoreProvider>
           </DatasetStoreProvider>
         </SessionStoreProvider>
