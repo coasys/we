@@ -333,6 +333,15 @@ interface WalkState {
    *  actually reads routes arrays from. Child nodes that are not route entries must never own
    *  a routes array; if they do, nothing will render (the router never sees it). */
   isRouteEligible: boolean;
+  /**
+   * This schema is a fragment (a bare `SchemaNode` export), not a self-contained template.
+   *
+   * A fragment is by definition a piece of something else, and `$localState` is scoped to the node
+   * that declares it — so a section composed into a page legitimately reads state that page owns.
+   * Judging it standalone reports an error about correct code: the shell's language settings section
+   * was flagged three times for reading `newLanguageAddress`, which the `/languages` route declares.
+   */
+  isFragment: boolean;
 }
 
 function walkNode(
@@ -839,6 +848,9 @@ function checkLocalRef(
   if (fieldName === '$all' || fieldName === '$scope') return;
 
   if (state.localScope === null) {
+    // A fragment's scope is supplied by whatever page composes it, which is not in view here. The
+    // check still runs in full against that page, where the answer is knowable.
+    if (state.isFragment) return;
     errors.push({
       path,
       message: `$${tokenType} references "${fieldName}" but no $localState is declared in scope`,
@@ -1050,7 +1062,14 @@ export function validateSemantic(schema: unknown, context: ValidationContext): V
   }
 
   const errors: ValidationError[] = [];
-  const state: WalkState = { localScope: null, hasRoutesAncestor: false, isRouteEligible: true };
+  // `meta` is what makes a schema a template — a self-contained thing that must declare everything
+  // it reads. Anything else is a fragment; see `WalkState.isFragment`.
+  const state: WalkState = {
+    localScope: null,
+    hasRoutesAncestor: false,
+    isRouteEligible: true,
+    isFragment: !meta,
+  };
 
   walkNode(schema, '', context, state, errors);
 

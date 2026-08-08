@@ -366,11 +366,37 @@ describe('unknown model', () => {
 });
 
 describe('$local scope', () => {
+  const meta = { name: 'T', description: '', icon: 'gear' };
+
   it('errors for $local with no $localState in scope', () => {
-    const result = validateSemantic({ type: 'we-button', props: { text: { $local: 'name' } } }, ctx());
+    const result = validateSemantic({ meta, type: 'we-button', props: { text: { $local: 'name' } } }, ctx());
     expect(
       result.errors.some((e) => e.severity === 'error' && e.message.includes('no $localState is declared in scope')),
     ).toBe(true);
+  });
+
+  it('stays silent for a fragment, whose scope belongs to whatever page composes it', () => {
+    // `meta` is what makes a schema self-contained. A bare node is a piece of something else, and
+    // `$localState` is scoped to the node declaring it — so a section reading state its host page
+    // owns is correct, and judging it standalone reports an error about working code. The shell's
+    // language settings section was flagged three times for reading a field the `/languages` route
+    // declares. The check still runs in full against that route, where the answer is knowable.
+    const result = validateSemantic({ type: 'we-button', props: { text: { $local: 'name' } } }, ctx());
+    expect(result.errors.some((e) => e.message.includes('no $localState is declared in scope'))).toBe(false);
+  });
+
+  it('still catches an undeclared field in a fragment that declares some state', () => {
+    // Only the "nothing in scope" case is unknowable standalone. Once a fragment declares its own
+    // state, a reference outside it is wrong no matter what composes it.
+    const result = validateSemantic(
+      {
+        type: 'Column',
+        $localState: { name: { type: 'string', initial: '' } },
+        children: [{ type: 'we-button', props: { text: { $local: 'other' } } }],
+      },
+      ctx(),
+    );
+    expect(result.errors.some((e) => e.severity === 'error' && e.message.includes('only declares'))).toBe(true);
   });
 
   it('errors for $local referencing undeclared field', () => {

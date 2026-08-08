@@ -1465,6 +1465,7 @@ ProfileStore:
   - fetchProfile(did: string): fetches and caches an agent's profile from their public dataset
   - updateOwnProfile(fields: { firstName?, lastName?, handle?, bio? }): updates own profile text fields and publishes to the public dataset
   - updateProfileImage(field: "avatar" | "coverImage", imageFile: File): uploads the image and publishes its expression URL to the public dataset
+  - clearProfileImage(field: "avatar" | "coverImage"): removes that image from the published profile
   - updateOwnLocation(update: { latitude?, longitude?, city?, country?, countryCode? }): merges the location update into the cache and publishes to the public dataset
   - setPendingAvatar(file: File): holds a picture chosen before an agent exists; uploaded by completeAccountSetup
   - completeAccountSetup(name: string, password: string): the whole of first-run setup — creates the agent, then publishes the name and picture, then lets the app appear

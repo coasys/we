@@ -5627,6 +5627,7 @@
         "fetchProfile",
         "updateOwnProfile",
         "updateProfileImage",
+        "clearProfileImage",
         "updateOwnLocation",
         "setPendingAvatar",
         "completeAccountSetup"

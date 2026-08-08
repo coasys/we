@@ -2195,6 +2195,7 @@ export const contextData: ContextData = {
         'fetchProfile',
         'updateOwnProfile',
         'updateProfileImage',
+        'clearProfileImage',
         'updateOwnLocation',
         'setPendingAvatar',
         'completeAccountSetup',

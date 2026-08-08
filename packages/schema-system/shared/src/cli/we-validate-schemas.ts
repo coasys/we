@@ -60,23 +60,30 @@ async function walkDir(dir: string): Promise<string[]> {
 
 // ── Schema import ──────────────────────────────────────────────────
 
-async function importSchema(filePath: string): Promise<{ name: string; schema: unknown } | null> {
+/**
+ * Every exported schema in a file, not just the first one found.
+ *
+ * Taking only the first left most of a fragment file unchecked, and which fragment got checked was
+ * decided by declaration order: `RuntimeSettings.schema.ts` exports seven sections and validated
+ * clean because the one at the top happens to use no tokens, while `LanguageSettings.schema.ts`
+ * reported on its first export and never reached its second.
+ */
+async function importSchemas(filePath: string): Promise<{ name: string; schema: unknown }[]> {
   try {
     const mod = (await import(pathToFileURL(filePath).href)) as Record<string, unknown>;
 
-    // Find the first exported TemplateSchema or SchemaNode (named exports)
-    for (const [name, value] of Object.entries(mod)) {
-      if (name === 'default') continue;
-      if (typeof value === 'object' && value !== null && 'type' in value) {
-        return { name, schema: value };
-      }
-    }
+    const found = Object.entries(mod)
+      .filter(([name]) => name !== 'default')
+      .filter(([, value]) => typeof value === 'object' && value !== null && 'type' in value)
+      .map(([name, schema]) => ({ name, schema }));
 
-    console.warn(`${yellow}⚠${reset} ${relative(process.cwd(), filePath)}: no schema export found`);
-    return null;
+    if (found.length === 0) {
+      console.warn(`${yellow}⚠${reset} ${relative(process.cwd(), filePath)}: no schema export found`);
+    }
+    return found;
   } catch (err) {
     console.error(`${red}✗${reset} ${relative(process.cwd(), filePath)}: import failed — ${(err as Error).message}`);
-    return null;
+    return [];
   }
 }
 
@@ -120,44 +127,47 @@ let totalWarnings = 0;
 let filesWithIssues = 0;
 
 for (const filePath of files) {
-  const result = await importSchema(filePath);
-  if (!result) continue;
+  const schemas = await importSchemas(filePath);
+  if (schemas.length === 0) continue;
 
   const relPath = relative(process.cwd(), filePath);
+  let fileHasIssues = false;
 
-  // Run structural validation (auto-detects TemplateSchema vs SchemaNode)
-  const structural = validateStructure(result.schema);
+  for (const result of schemas) {
+    // Run structural validation (auto-detects TemplateSchema vs SchemaNode)
+    const structural = validateStructure(result.schema);
 
-  // Run semantic validation (even if structural fails, to show all issues)
-  const semantic = validateSemantic(result.schema, validationContext);
+    // Run semantic validation (even if structural fails, to show all issues)
+    const semantic = validateSemantic(result.schema, validationContext);
 
-  const allErrors = [...structural.errors, ...semantic.errors];
-  if (allErrors.length === 0) {
-    console.log(`${green}✓${reset} ${dim}${relPath}${reset}`);
-    continue;
+    const allErrors = [...structural.errors, ...semantic.errors];
+    if (allErrors.length === 0) continue;
+
+    fileHasIssues = true;
+
+    const errors = allErrors.filter((e) => e.severity === 'error');
+    const warnings = allErrors.filter((e) => e.severity === 'warning');
+    totalErrors += errors.length;
+    totalWarnings += warnings.length;
+
+    const counts = [
+      errors.length > 0 ? `${red}${errors.length} error${errors.length > 1 ? 's' : ''}${reset}` : '',
+      warnings.length > 0 ? `${yellow}${warnings.length} warning${warnings.length > 1 ? 's' : ''}${reset}` : '',
+    ]
+      .filter(Boolean)
+      .join(', ');
+
+    console.log(`\n${bold}${relPath}${reset} ${dim}(${result.name})${reset} — ${counts}`);
+
+    for (const err of allErrors) {
+      const icon = err.severity === 'error' ? `${red}✗${reset}` : `${yellow}⚠${reset}`;
+      const pathStr = err.path ? `${dim}${err.path}${reset} ` : '';
+      console.log(`  ${icon} ${pathStr}${err.message}`);
+    }
   }
 
-  filesWithIssues++;
-
-  const errors = allErrors.filter((e) => e.severity === 'error');
-  const warnings = allErrors.filter((e) => e.severity === 'warning');
-  totalErrors += errors.length;
-  totalWarnings += warnings.length;
-
-  const counts = [
-    errors.length > 0 ? `${red}${errors.length} error${errors.length > 1 ? 's' : ''}${reset}` : '',
-    warnings.length > 0 ? `${yellow}${warnings.length} warning${warnings.length > 1 ? 's' : ''}${reset}` : '',
-  ]
-    .filter(Boolean)
-    .join(', ');
-
-  console.log(`\n${bold}${relPath}${reset} ${dim}(${result.name})${reset} — ${counts}`);
-
-  for (const err of allErrors) {
-    const icon = err.severity === 'error' ? `${red}✗${reset}` : `${yellow}⚠${reset}`;
-    const pathStr = err.path ? `${dim}${err.path}${reset} ` : '';
-    console.log(`  ${icon} ${pathStr}${err.message}`);
-  }
+  if (fileHasIssues) filesWithIssues++;
+  else console.log(`${green}✓${reset} ${dim}${relPath}${reset} ${dim}(${schemas.length})${reset}`);
 }
 
 // Summary

@@ -199,6 +199,7 @@ export const storeEntries: StoreEntry[] = [
       'fetchProfile',
       'updateOwnProfile',
       'updateProfileImage',
+      'clearProfileImage',
       'updateOwnLocation',
       'setPendingAvatar',
       'completeAccountSetup',
@@ -593,6 +594,7 @@ function generateStoresText(entries: StoreEntry[]): string {
           '(fields: { firstName?, lastName?, handle?, bio? }): updates own profile text fields and publishes to the public dataset',
         updateProfileImage:
           '(field: "avatar" | "coverImage", imageFile: File): uploads the image and publishes its expression URL to the public dataset',
+        clearProfileImage: '(field: "avatar" | "coverImage"): removes that image from the published profile',
         updateOwnLocation:
           '(update: { latitude?, longitude?, city?, country?, countryCode? }): merges the location update into the cache and publishes to the public dataset',
       },
