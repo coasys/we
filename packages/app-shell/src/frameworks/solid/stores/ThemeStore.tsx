@@ -12,7 +12,16 @@ import {
 } from '@we/models';
 import type { ThemeOverrides } from '@we/schema-shared';
 import { themeToStyle } from '@we/schema-shared';
-import { Accessor, createContext, createEffect, createSignal, ParentProps, untrack, useContext } from 'solid-js';
+import {
+  Accessor,
+  createContext,
+  createEffect,
+  createMemo,
+  createSignal,
+  ParentProps,
+  untrack,
+  useContext,
+} from 'solid-js';
 
 import { useDatasetStore } from './DatasetStore';
 import { useSessionStore } from './SessionStore';
@@ -52,10 +61,24 @@ export interface ThemeStore {
   setCurrentTheme: (themeId: string) => void;
   setDefaultTheme: (themeId: string) => void;
   toggleThemeInstalled: (themeId: string) => Promise<void>;
-  /** Controls whether the active space theme applies to the whole app or only to the template content area. */
+  /** What actually applies: the session preview if one is active, else the agent's preference. */
   themeScope: Accessor<'global' | 'scoped'>;
-  /** Toggle between global and scoped theme application. */
-  toggleThemeScope: () => void;
+  /** The agent's persisted choice, which a preview temporarily masks. */
+  themeScopePreference: Accessor<'global' | 'scoped'>;
+  /** The same preference as a boolean, for a switch to bind to. */
+  themeScopeGlobal: Accessor<boolean>;
+  /** True while a session preview is masking the preference — worth saying so in the UI. */
+  themeScopePreviewing: Accessor<boolean>;
+  /** Preview a scope for this editing session without changing the preference; null drops it. */
+  previewThemeScope: (scope: 'global' | 'scoped' | null) => void;
+  /**
+   * Persist the agent's choice, as the boolean a switch emits. Drops any active preview.
+   *
+   * A boolean rather than the union because a schema cannot map one to the other: `$if` in an
+   * action's args is resolved at render time, where the event does not exist yet, so it would
+   * silently pass whichever branch it evaluated once.
+   */
+  setThemeScopeGlobal: (global: boolean) => Promise<void>;
   /** The active space theme data when in scoped mode (null in global mode or when no space theme is active). */
   spaceThemeData: Accessor<ThemeData | null>;
   /**
@@ -250,8 +273,26 @@ export function ThemeStoreProvider(props: ParentProps) {
   const [visibleThemeIds, setVisibleThemeIds] = createSignal<Set<string>>(new Set());
   const [spaceThemes, setSpaceThemes] = createSignal<ThemeData[]>([]);
   const [currentThemeId, setCurrentThemeId] = createSignal<string>(getInitialThemeId());
-  // Whether the active space theme applies globally or only to the template content area.
-  const [themeScope, setThemeScope] = createSignal<'global' | 'scoped'>('global');
+  /**
+   * Whether a space's theme covers the whole window, or only the space's own content.
+   *
+   * Three values, one derived from the other two:
+   *
+   * - `themeScopePreference` — the agent's persisted choice (`AgentSettings.themeScope`).
+   * - `themeScopeOverride` — a session-only preview, set by the theme editor's toolbar. The globe
+   *   there is a "show me" control used while authoring, and persisting a transient look would
+   *   silently rewrite a preference the author would only notice days later, on a settings page
+   *   that had quietly changed appearance. Cleared when editing ends.
+   * - `themeScope` — what actually applies: the override if one is active, else the preference.
+   *
+   * Everything downstream reads the derived value, so the toolbar, the settings page and the
+   * clearing of an override all take the same path rather than each doing their own DOM work.
+   */
+  const themeScopePreference = createMemo<'global' | 'scoped'>(() =>
+    datasetStore.agentSettings()?.themeScope === 'global' ? 'global' : 'scoped',
+  );
+  const [themeScopeOverride, setThemeScopeOverride] = createSignal<'global' | 'scoped' | null>(null);
+  const themeScope = createMemo<'global' | 'scoped'>(() => themeScopeOverride() ?? themeScopePreference());
   // Space theme data for the template content area — only populated in scoped mode.
   const [spaceThemeData, setSpaceThemeData] = createSignal<ThemeData | null>(null);
   // Space theme requested before loadSpaceThemes completes — held here until it can be applied.
@@ -478,8 +519,16 @@ export function ThemeStoreProvider(props: ParentProps) {
     }
   }
 
-  function toggleThemeScope() {
-    const next = themeScope() === 'global' ? 'scoped' : 'global';
+  /**
+   * Move the DOM between global and scoped display.
+   *
+   * Driven by a single effect on the derived scope, so the toolbar preview, the settings preference
+   * and the clearing of an override all reconcile through here. Previously this lived inside the
+   * toggle as two imperative branches; a third caller is the point at which that stops being
+   * cheaper than deriving it, and it is also why the scope could not be persisted before — nothing
+   * would have replayed the DOM work at boot.
+   */
+  function applyScopeTransition(next: 'global' | 'scoped') {
     const td = spaceThemeData();
     const cur = currentTheme();
     if (next === 'scoped') {
@@ -497,7 +546,33 @@ export function ThemeStoreProvider(props: ParentProps) {
       if (!editingTheme()) applyThemeToDOM(td ?? cur);
       setSpaceThemeData(null);
     }
-    setThemeScope(next);
+  }
+
+  // Only genuine changes transition. The first run establishes the baseline without touching the
+  // DOM — boot has already applied a theme, and re-running the transition over it would fight the
+  // effects that own documentElement in global mode.
+  createEffect<'global' | 'scoped' | undefined>((previous) => {
+    const next = themeScope();
+    if (previous !== undefined && previous !== next) applyScopeTransition(next);
+    return next;
+  }, undefined);
+
+  /**
+   * Preview a scope for this editing session without changing the agent's preference.
+   *
+   * `null` drops the preview and returns to whatever the preference says.
+   */
+  function previewThemeScope(scope: 'global' | 'scoped' | null) {
+    setThemeScopeOverride(scope);
+  }
+
+  const themeScopeGlobal = createMemo(() => themeScopePreference() === 'global');
+  const themeScopePreviewing = createMemo(() => themeScopeOverride() !== null);
+
+  /** Persist the agent's choice. Any active preview is dropped, since it would mask the new value. */
+  async function setThemeScopeGlobal(global: boolean) {
+    setThemeScopeOverride(null);
+    await datasetStore.updateAgentSettings({ themeScope: global ? 'global' : 'scoped' });
   }
 
   function setDefaultTheme(themeId: string) {
@@ -700,6 +775,10 @@ export function ThemeStoreProvider(props: ParentProps) {
 
   function cancelEditing() {
     clearHistory();
+    // The toolbar's scope toggle is a preview for the duration of an editing session — see
+    // `themeScopeOverride`. Dropped first, so the DOM restore below reads the agent's real
+    // preference rather than whatever was being previewed.
+    setThemeScopeOverride(null);
     const editing = editingTheme();
 
     // Optimistically flush the editing state into the theme signals before clearing
@@ -1083,7 +1162,11 @@ export function ThemeStoreProvider(props: ParentProps) {
     currentTheme,
     defaultThemeId,
     themeScope,
-    toggleThemeScope,
+    themeScopePreference,
+    themeScopeGlobal,
+    themeScopePreviewing,
+    previewThemeScope,
+    setThemeScopeGlobal,
     spaceThemeData,
     activeTemplateTheme,
     themeManagementList,

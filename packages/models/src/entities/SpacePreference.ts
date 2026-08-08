@@ -24,6 +24,19 @@ import { WeNode } from '../WeNode';
  * that `templateId` here subsumes — an empty override means "follow the space", so migrating it is a
  * later, separable step.
  */
+/**
+ * `templateId` / `themeId` value meaning "whatever my own default is", read live.
+ *
+ * Distinct from naming that default concretely: change the global default later and the spaces set
+ * to follow it move with you, while the ones pinned to a specific id stay put. It is also exactly
+ * what the retired `SpaceTemplatePreference.preference = 'user'` meant.
+ *
+ * Deliberately not `$`-prefixed. A `$`-string is a context reference to the schema dispatcher, and
+ * while this one only ever reaches the UI through a store rather than as a schema literal, leaving
+ * that trap for whoever writes the next picker is not worth the two characters.
+ */
+export const AGENT_DEFAULT = 'agent-default';
+
 @Model({ name: 'SpacePreference' })
 export class SpacePreference extends WeNode {
   @Flag({ through: 'we://flag', value: 'we://space_preference' })

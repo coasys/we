@@ -223,6 +223,10 @@ export const storeEntries: StoreEntry[] = [
       currentThemeId: { type: 'string' },
       currentTheme: { type: 'object', properties: ['id', 'name', 'icon', 'origin'] },
       defaultThemeId: { type: 'string' },
+      themeScope: { type: 'string' },
+      themeScopePreference: { type: 'string' },
+      themeScopeGlobal: { type: 'boolean' },
+      themeScopePreviewing: { type: 'boolean' },
       themeManagementList: {
         type: 'array',
         properties: ['id', 'name', 'icon', 'isBuiltIn', 'isInstalled', 'isDefault'],
@@ -231,6 +235,8 @@ export const storeEntries: StoreEntry[] = [
     actions: [
       'setCurrentTheme',
       'setDefaultTheme',
+      'setThemeScopeGlobal',
+      'previewThemeScope',
       'toggleThemeInstalled',
       'installFromMarketplace',
       'uninstallTheme',
@@ -651,8 +657,18 @@ function generateStoresText(entries: StoreEntry[]): string {
       },
       actions: {
         setCurrentTheme: '(themeId: string): sets and persists the active theme',
+        themeScope:
+          "'global' | 'scoped' — what actually applies right now: the theme editor's session preview if one is active, else the agent's preference",
+        themeScopePreference: "'global' | 'scoped' — the agent's persisted choice",
+        themeScopeGlobal: 'boolean — the preference as a boolean, for a switch to bind to',
+        themeScopePreviewing:
+          'boolean — a theme being edited is previewing a different scope, so the preference is temporarily masked. Worth saying so beside the setting',
         setDefaultTheme:
           '(themeId: string): sets the preferred default theme (persists to AgentSettings.defaultThemeId)',
+        setThemeScopeGlobal:
+          "(global: boolean): persists whether a space's theme covers the whole window (true) or only the space's own content (false, the default). Takes a boolean because a switch emits one and a schema cannot map it to a string — `$if` in an action's args resolves at render time, before the event exists",
+        previewThemeScope:
+          "(scope: 'global' | 'scoped' | null): previews a scope for the current theme-editing session without writing the preference; null drops the preview. Cleared when editing ends",
         toggleThemeInstalled:
           '(themeId: string): toggles a custom theme visible/hidden in pickers; does not delete the theme',
         installFromMarketplace: '(marketplaceThemeId: string): installs a marketplace theme into installedThemes',

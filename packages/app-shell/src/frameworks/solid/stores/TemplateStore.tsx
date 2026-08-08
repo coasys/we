@@ -4,6 +4,7 @@ import { deepClone } from '@shared/utils';
 import { toastService } from '@we/components/solid';
 import type { FileData } from '@we/models';
 import {
+  AGENT_DEFAULT,
   asFileField,
   compressImageToFileData,
   decodeFileAsJson,
@@ -375,6 +376,45 @@ export function TemplateStoreProvider(props: ParentProps) {
     }
   });
 
+  /**
+   * This agent's template override for a space, migrating the legacy record on the way past.
+   *
+   * `SpaceTemplatePreference` could say only whether to follow the space or follow your own default.
+   * `SpacePreference.templateId` says *which* template, and expresses both of those as values —
+   * `''` and `AGENT_DEFAULT` — so it strictly subsumes the older record. Rather than read two
+   * shapes forever, the first time a space is opened with a legacy record and no new one, the old
+   * answer is written across and the old record deleted.
+   *
+   * Migrating on read rather than in a boot sweep: it touches only spaces actually visited, needs no
+   * separate pass to fail halfway through, and a record that never gets read never mattered.
+   */
+  async function migrateAndReadTemplateOverride(
+    rootPerspective: Parameters<typeof SpacePreference.findAll>[0],
+    perspective: AppDataset,
+  ): Promise<string> {
+    const [preference] = await SpacePreference.findAll(rootPerspective, {
+      where: { spaceUuid: perspective.id },
+    }).catch(() => [] as SpacePreference[]);
+    if (preference) return preference.templateId ?? '';
+
+    const spaceUrl = perspective.sharedId || perspective.id;
+    const [legacy] = await SpaceTemplatePreference.findAll(rootPerspective, { where: { spaceUrl } }).catch(
+      () => [] as SpaceTemplatePreference[],
+    );
+    if (!legacy) return '';
+
+    const templateId = legacy.preference === 'user' ? AGENT_DEFAULT : '';
+    try {
+      await SpacePreference.create(rootPerspective, { spaceUuid: perspective.id, templateId });
+      await legacy.delete();
+    } catch (error) {
+      // A failed migration must not stop the space opening — the value is still known here, and the
+      // next visit will try again.
+      console.warn('TemplateStore: could not migrate SpaceTemplatePreference', error);
+    }
+    return templateId;
+  }
+
   async function applySpaceTemplate(perspective: AppDataset): Promise<void> {
     // preloadSpaceTemplates handles cache hit (sync restore) or miss (AD4M fetch)
     await preloadSpaceTemplates(perspective);
@@ -382,34 +422,17 @@ export function TemplateStoreProvider(props: ParentProps) {
     // Use mySpaces cache for defaultTemplateId — avoids a redundant Space.findOne round-trip
     const cachedSpace = resolveSpaceFromPerspective(perspective);
 
-    // Check per-space preferences stored in we-root. Read directly rather than through SpaceStore,
-    // which mounts below this one — the same reason `provideSpaceLookup` exists.
+    // Read per-space preferences from we-root directly rather than through SpaceStore, which mounts
+    // below this one — the same reason `provideSpaceLookup` exists.
     const rootPerspective = datasetStore.rootDataset()?.handle;
-    const spaceUrl = perspective.sharedId || perspective.id;
-    let perSpacePref: string | null = null;
-    let templateOverride = '';
-    if (rootPerspective) {
-      const [legacy, preference] = await Promise.all([
-        SpaceTemplatePreference.findAll(rootPerspective, { where: { spaceUrl } }).catch(
-          () => [] as SpaceTemplatePreference[],
-        ),
-        SpacePreference.findAll(rootPerspective, { where: { spaceUuid: perspective.id } }).catch(
-          () => [] as SpacePreference[],
-        ),
-      ]);
-      if (legacy.length > 0) perSpacePref = legacy[0].preference;
-      templateOverride = preference[0]?.templateId ?? '';
-    }
+    const templateOverride = rootPerspective ? await migrateAndReadTemplateOverride(rootPerspective, perspective) : '';
 
-    // An explicit override names *which* template this agent wants here, so it answers on its own —
-    // including when the space has set no default at all, which the community-default path below
-    // cannot act on. It also supersedes the older binary preference, which could only say whether to
-    // follow the space rather than what to follow instead.
+    // The override names *which* template this agent wants here, so it answers on its own —
+    // including when the space set no default at all, which the community-default path cannot act
+    // on. `AGENT_DEFAULT` means "whatever my default is", read live so it tracks a later change.
+    if (templateOverride === AGENT_DEFAULT) return;
     const spaceTemplateId = templateOverride || cachedSpace?.defaultTemplateId;
     if (!spaceTemplateId) return;
-
-    // Per-space "user" means they explicitly chose their own template for this space
-    if (!templateOverride && perSpacePref === 'user') return;
 
     const spaceTemplate =
       allTemplates().find((t) => t.id === spaceTemplateId && t._fromSpace) ||
@@ -421,9 +444,11 @@ export function TemplateStoreProvider(props: ParentProps) {
 
     replaceTemplate(spaceTemplate);
 
+    // Only worth saying when the agent prefers their own template generally and has expressed no
+    // choice for this space — an explicit override, either way, is not a surprise worth a toast.
     const settings = datasetStore.agentSettings();
-    if (settings && !settings.useSpaceTemplate && perSpacePref !== 'space') {
-      toastService.info(`Viewing with this space's template. Open Settings to use your own.`, 7000);
+    if (settings && !settings.useSpaceTemplate && !templateOverride) {
+      toastService.info(`Viewing with this space's template. Open its settings to use your own.`, 7000);
     }
   }
 

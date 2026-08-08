@@ -1458,6 +1458,7 @@ export const contextData: ContextData = {
           required: false,
           default: 'true',
         },
+        { name: 'themeScope', type: 'string', predicate: 'we://theme_scope', required: false },
         { name: 'installedModules', type: 'string', predicate: 'we://installed_modules', required: false },
       ],
       relations: [
@@ -2229,6 +2230,10 @@ export const contextData: ContextData = {
         currentThemeId: { type: 'string' },
         currentTheme: { type: 'object', properties: ['id', 'name', 'icon', 'origin'] },
         defaultThemeId: { type: 'string' },
+        themeScope: { type: 'string' },
+        themeScopePreference: { type: 'string' },
+        themeScopeGlobal: { type: 'boolean' },
+        themeScopePreviewing: { type: 'boolean' },
         themeManagementList: {
           type: 'array',
           properties: ['id', 'name', 'icon', 'isBuiltIn', 'isInstalled', 'isDefault'],
@@ -2237,6 +2242,8 @@ export const contextData: ContextData = {
       actions: [
         'setCurrentTheme',
         'setDefaultTheme',
+        'setThemeScopeGlobal',
+        'previewThemeScope',
         'toggleThemeInstalled',
         'installFromMarketplace',
         'uninstallTheme',

@@ -233,6 +233,71 @@ const templatesSection: SchemaNode = {
   ],
 };
 
+/**
+ * Whether a space's theme covers the whole window, or only the space's own content.
+ *
+ * Off by default, and phrased as something you opt into, because the two failure modes are not
+ * symmetric: a dark or low-contrast community theme taking over the whole window makes this very
+ * page hard to read, and this is the page you would come to to undo it. The other way round, a
+ * space merely feels less immersive.
+ *
+ * The theme editor's toolbar can flip this for the length of an editing session without writing it
+ * here — it is a preview there, and says so.
+ */
+const themeScopeSection: SchemaNode = {
+  type: 'Column',
+  props: { gap: '300' },
+  children: [
+    { type: 'we-text', props: { fontWeight: 'semibold' }, children: ['Space themes'] },
+    {
+      type: 'Row',
+      props: {
+        ay: 'center',
+        ax: 'between',
+        gap: '300',
+        p: '300',
+        bg: 'neutral-0',
+        r: '300',
+        border: '1px solid neutral-200',
+      },
+      children: [
+        {
+          type: 'Column',
+          props: { gap: '100', flex: '1' },
+          children: [
+            { type: 'we-text', props: { variant: 'label' }, children: ['Let spaces theme the whole window'] },
+            {
+              type: 'we-text',
+              props: { variant: 'footnote', color: 'neutral-400' },
+              children: [
+                'Off, a space themes its own content and the shell keeps your theme. On, entering a space restyles everything, including these settings.',
+              ],
+            },
+            {
+              type: '$if',
+              props: {
+                condition: { $store: 'themeStore.themeScopePreviewing' },
+                then: {
+                  type: 'we-text',
+                  props: { variant: 'footnote', color: 'warning-600' },
+                  children: ['A theme you are editing is previewing a different scope right now.'],
+                },
+              },
+            },
+          ],
+        },
+        {
+          type: 'we-switch',
+          props: {
+            checked: { $store: 'themeStore.themeScopeGlobal' },
+            onChange: { $action: 'themeStore.setThemeScopeGlobal', args: ['$event.detail'] },
+          },
+        },
+      ],
+    },
+  ],
+};
+
 const themesSection: SchemaNode = {
   type: 'Column',
   props: { gap: '300' },
@@ -519,7 +584,7 @@ export const settingsTemplate: TemplateSchema = {
   // render time, whatever the schema tree looks like, and state declared here would never reach it.
   routes: [
     { path: '/', ...page([accountSection]) },
-    { path: '/appearance', ...page([templatesSection, themesSection]) },
+    { path: '/appearance', ...page([templatesSection, themeScopeSection, themesSection]) },
     {
       path: '/spaces',
       $localState: { createSpaceModalOpen: { type: 'boolean', initial: false } },

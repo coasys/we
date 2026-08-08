@@ -3942,6 +3942,12 @@
           "default": "true"
         },
         {
+          "name": "themeScope",
+          "type": "string",
+          "predicate": "we://theme_scope",
+          "required": false
+        },
+        {
           "name": "installedModules",
           "type": "string",
           "predicate": "we://installed_modules",
@@ -5712,6 +5718,18 @@
         "defaultThemeId": {
           "type": "string"
         },
+        "themeScope": {
+          "type": "string"
+        },
+        "themeScopePreference": {
+          "type": "string"
+        },
+        "themeScopeGlobal": {
+          "type": "boolean"
+        },
+        "themeScopePreviewing": {
+          "type": "boolean"
+        },
         "themeManagementList": {
           "type": "array",
           "properties": ["id", "name", "icon", "isBuiltIn", "isInstalled", "isDefault"]
@@ -5720,6 +5738,8 @@
       "actions": [
         "setCurrentTheme",
         "setDefaultTheme",
+        "setThemeScopeGlobal",
+        "previewThemeScope",
         "toggleThemeInstalled",
         "installFromMarketplace",
         "uninstallTheme",

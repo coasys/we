@@ -10,6 +10,7 @@ import { deriveSlug } from '@shared/utils';
 import type { AgentProfileSummary } from '@we/backend-shared';
 import { createBlocks, deleteBlocks, reconcileBlocks } from '@we/block-shared';
 import {
+  AGENT_DEFAULT,
   CollectionBlock,
   compressImageToFileData,
   type DatasetProxy,
@@ -347,17 +348,29 @@ export function SpaceStoreProvider(props: ParentProps) {
    * exist: without it, overriding is one-way, since a picker offering only concrete templates gives
    * someone no way back to the space's own choice.
    */
-  const FOLLOW_SPACE = { label: "Use the space's default", value: '' };
 
-  const templateOverrideOptions = createMemo(() => [
-    FOLLOW_SPACE,
-    ...templateStore.allTemplates().map((t) => ({ label: t.meta?.name || t.id || '', value: t.id || '' })),
-  ]);
+  /** Name the thing an option resolves to, so "the space's default" is not a guess. */
+  const withResolved = (label: string, name: string | undefined) => (name ? `${label} (${name})` : label);
 
-  const themeOverrideOptions = createMemo(() => [
-    FOLLOW_SPACE,
-    ...themeStore.allThemes().map((t) => ({ label: t.name || t.id, value: t.id })),
-  ]);
+  const templateOverrideOptions = createMemo(() => {
+    const byId = (id: string) => templateStore.allTemplates().find((t) => t.id === id)?.meta?.name;
+    const spaceDefault = spaceForUuid(datasetStore.currentDataset()?.id ?? '')?.defaultTemplateId;
+    return [
+      { label: withResolved("Use the space's default", byId(spaceDefault ?? '')), value: '' },
+      { label: withResolved('Use my default', byId(templateStore.defaultTemplateId())), value: AGENT_DEFAULT },
+      ...templateStore.allTemplates().map((t) => ({ label: t.meta?.name || t.id || '', value: t.id || '' })),
+    ];
+  });
+
+  const themeOverrideOptions = createMemo(() => {
+    const byId = (id: string) => themeStore.allThemes().find((t) => t.id === id)?.name;
+    const spaceDefault = spaceForUuid(datasetStore.currentDataset()?.id ?? '')?.defaultThemeId;
+    return [
+      { label: withResolved("Use the space's default", byId(spaceDefault ?? '')), value: '' },
+      { label: withResolved('Use my default', byId(themeStore.defaultThemeId())), value: AGENT_DEFAULT },
+      ...themeStore.allThemes().map((t) => ({ label: t.name || t.id, value: t.id })),
+    ];
+  });
 
   /** The Space model behind a dataset id, for resolving what an override falls back to. */
   const spaceForUuid = (uuid: string): Space | undefined => {
@@ -1051,6 +1064,24 @@ export function SpaceStoreProvider(props: ParentProps) {
   }
 
   /**
+   * Turn a stored override into the id that actually applies.
+   *
+   * `''` defers to the community's choice; {@link AGENT_DEFAULT} defers to this agent's global one,
+   * read live so it tracks a later change rather than freezing today's answer.
+   */
+  const resolveTemplateFor = (uuid: string): string => {
+    const override = templateOverrideFor(uuid);
+    if (override === AGENT_DEFAULT) return templateStore.defaultTemplateId();
+    return override || spaceForUuid(uuid)?.defaultTemplateId || '';
+  };
+
+  const resolveThemeFor = (uuid: string): string => {
+    const override = themeOverrideFor(uuid);
+    if (override === AGENT_DEFAULT) return themeStore.defaultThemeId();
+    return override || spaceForUuid(uuid)?.defaultThemeId || '';
+  };
+
+  /**
    * Override the template this agent sees in one space. `''` returns to the space's default.
    *
    * Applied immediately when the space is the one on screen, so the choice is visible where it was
@@ -1061,8 +1092,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     if (!uuid) return;
     await updateSpacePreference(uuid, { templateId } as Partial<SpacePreference>);
     if (datasetStore.currentDataset()?.id !== uuid) return;
-    const effective = templateId || spaceForUuid(uuid)?.defaultTemplateId || '';
-    const template = templateStore.allTemplates().find((t) => t.id === effective);
+    const template = templateStore.allTemplates().find((t) => t.id === resolveTemplateFor(uuid));
     if (template) templateStore.replaceTemplate(template);
   }
 
@@ -1072,7 +1102,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     if (!uuid) return;
     await updateSpacePreference(uuid, { themeId } as Partial<SpacePreference>);
     if (datasetStore.currentDataset()?.id !== uuid) return;
-    const effective = themeId || spaceForUuid(uuid)?.defaultThemeId || '';
+    const effective = resolveThemeFor(uuid);
     if (effective) themeStore.replaceTheme(effective);
     else themeStore.clearSpaceTheme();
   }
@@ -1181,7 +1211,8 @@ export function SpaceStoreProvider(props: ParentProps) {
   createEffect(() => {
     // This agent's own choice for this space wins over the community's default — that is what an
     // override is for. `''` means they have not overridden it, so the space's default stands.
-    const themeId = themeOverrideFor(datasetStore.currentDataset()?.id) || spaceDefaultThemeId();
+    const current = datasetStore.currentDataset()?.id;
+    const themeId = current ? resolveThemeFor(current) : spaceDefaultThemeId();
     // Explicitly track space identity: navigating to a different space must always
     // re-apply that space's default theme, even when the new space's default happens
     // to equal the previous one. Without this, spaceDefaultThemeId wouldn't change

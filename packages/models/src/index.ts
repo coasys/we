@@ -26,6 +26,7 @@ export type SignalType = C.SignalType;
 export const SignalType = defineEntity('SignalType') as unknown as typeof C.SignalType;
 export type Space = C.Space;
 export const Space = defineEntity('Space') as unknown as typeof C.Space;
+export { AGENT_DEFAULT } from './entities';
 export type SpacePreference = C.SpacePreference;
 export const SpacePreference = defineEntity(
   'SpacePreference',
