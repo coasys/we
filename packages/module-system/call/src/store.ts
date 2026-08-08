@@ -315,6 +315,17 @@ export function createCallStore(deps: CallStoreDeps) {
     active: () => callId() !== null,
 
     /**
+     * The microphone this call is sending, for a module that wants to listen to it.
+     *
+     * Published via `audioSource` on the definition so the host can route it without the two modules
+     * knowing about each other. The live stream rather than a copy, deliberately: muting disables
+     * the track rather than removing it, so a listener receives silence and stops producing — which
+     * is what makes "mute the call" also mean "stop transcribing", with no coordination between the
+     * two and no way for them to disagree.
+     */
+    localAudio: () => (callId() ? (controller?.localStream() ?? null) : null),
+
+    /**
      * True where a call could actually be started.
      *
      * A personal space has no neighbourhood and therefore no transport, so there is nobody to call.

@@ -410,6 +410,10 @@ export const callModule = defineModule({
 
   schemas: { anchoredCallButton, startCallButton, tile },
 
+  // What the transcriber listens to. Declared rather than wired: this module knows it has a
+  // microphone open, and only the host knows who else might want to hear it.
+  audioSource: 'localAudio',
+
   // Drawn by the host's module rail. No `activeWhen`: this starts a call rather than toggling a
   // panel, and once you are in one the call bar is the thing that shows it — a highlighted rail tab
   // as well would be saying it twice.

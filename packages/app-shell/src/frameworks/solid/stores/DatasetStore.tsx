@@ -123,6 +123,16 @@ export function DatasetStoreProvider(props: ParentProps) {
     datasetUri: () => currentDataset()?.sharedUri ?? null,
     selfId: () => session.me()?.did ?? null,
     ephemeral: session.ephemeralPort,
+    // Read through `backendPorts()` on every call rather than captured: the backend connects after
+    // this store is constructed, and a backend that cannot transcribe simply never sets it.
+    transcription: {
+      models: async () => (await session.backendPorts()?.transcription?.models()) ?? [],
+      open: async (modelId, onText, tuning) => {
+        const port = session.backendPorts()?.transcription;
+        if (!port) throw new Error('transcription: this backend cannot transcribe');
+        return port.open(modelId, onText, tuning);
+      },
+    },
   });
 
   // Converts null → undefined so that when JSON-serialised into an ORM WHERE clause,

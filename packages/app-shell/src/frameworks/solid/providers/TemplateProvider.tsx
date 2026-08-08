@@ -1,5 +1,6 @@
 import { queryIRFlag } from '@shared/queryIRFlag';
 import { moduleStores } from '@shared/registries/moduleRegistry';
+import { provideModuleHostServices } from '@shared/registries/moduleHostServices';
 import { slotRegistry } from '@shared/registries/slotRegistry';
 import { componentRegistry as registry } from '@solid/registries/componentRegistry';
 import {
@@ -79,6 +80,16 @@ export default function TemplateProvider() {
       return Model.delete(p, id);
     },
   };
+
+  // The same capability schemas get as `model.create`, lent to module stores that must write
+  // without a click to hang a schema action on — a transcript appears because somebody spoke.
+  provideModuleHostServices({
+    createEntity: async (entity, fields) => {
+      if (!datasetStore.currentDataset()) return null;
+      const created = (await modelStore.create(entity, fields)) as { id?: string } | undefined;
+      return created?.id ?? null;
+    },
+  });
 
   const stores: Stores = {
     sessionStore,

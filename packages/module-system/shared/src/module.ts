@@ -21,7 +21,14 @@
  * just components that never update. A module with no framework imports cannot have that problem.
  * Fragments-first is what makes dynamic loading tractable later.
  */
-import type { Activity, DatasetHandle, EphemeralPort, ModelManifest, Peer } from '@we/backend-shared';
+import type {
+  Activity,
+  DatasetHandle,
+  EphemeralPort,
+  ModelManifest,
+  Peer,
+  TranscriptionPort,
+} from '@we/backend-shared';
 import type { SchemaNode } from '@we/schema-shared';
 
 /**
@@ -189,6 +196,18 @@ export interface ModuleDefinition {
   embed?: ModuleEmbed;
 
   /**
+   * The key on this module's store that returns the audio it is capturing, as `MediaStream | null`.
+   *
+   * Declared rather than wired, for the same reason `launcher` is: the call module knows it has a
+   * microphone open, and only the host knows who else might want to hear it. Module stores have no
+   * channel to each other by design, and opening one so a transcriber could reach into a call would
+   * be a worse answer than routing through the host.
+   *
+   * One producer is expected. If two ever declare it, the host takes the first and says so.
+   */
+  audioSource?: string;
+
+  /**
    * Reactive state, exposed to templates at `modules.<id>.<key>`.
    *
    * A factory rather than a value so the host controls lifetime, and so a module can be registered
@@ -265,6 +284,39 @@ export interface ModuleStoreDeps {
    * heartbeat, so those stay with the host.
    */
   presence?: ModulePresenceAccess;
+
+  /**
+   * Speech to text, for a module that listens. Absent when the backend cannot transcribe.
+   *
+   * A module must degrade rather than throw: no port means no transcription model is reachable, and
+   * saying so is more use than failing.
+   */
+  transcription?: TranscriptionPort;
+
+  /**
+   * Audio the host is currently capturing, or `null` when nothing is.
+   *
+   * The stream itself, deliberately, rather than a copy: a module that transcribes a call must hear
+   * exactly what the call is sending, so that muting the microphone stops the transcript too. A
+   * second `getUserMedia` would keep listening through a mute, which is the kind of surprise that
+   * makes a feature untrustworthy.
+   *
+   * Published by whichever module declares {@link ModuleDefinition.audioSource}; the host routes it
+   * so the two never reference each other.
+   */
+  audioInput?: () => MediaStream | null;
+
+  /**
+   * Write a record into the current dataset.
+   *
+   * The imperative twin of the `model.create` a schema already has. A module that creates data in
+   * response to a click does not need this — the schema action is better, and notes deliberately
+   * ships no CRUD wrapper because of it. This is for data that arrives without a click: a transcript
+   * appears because somebody spoke, and there is no event to hang a schema action on.
+   *
+   * Returns the new record's id, or `null` if there was nowhere to write it.
+   */
+  createEntity?: (entity: string, fields: Record<string, unknown>) => Promise<string | null>;
 }
 
 /** An application embedded in an iframe — see {@link ModuleDefinition.embed}. */
