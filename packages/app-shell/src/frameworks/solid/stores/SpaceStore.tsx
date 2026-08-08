@@ -340,6 +340,12 @@ export function SpaceStoreProvider(props: ParentProps) {
   const templateOverrideFor = (spaceUuid: string | undefined): string => preferenceFor(spaceUuid)?.templateId ?? '';
   const themeOverrideFor = (spaceUuid: string | undefined): string => preferenceFor(spaceUuid)?.themeId ?? '';
 
+  /** The Space model behind a dataset id, for resolving what an override falls back to. */
+  const spaceForUuid = (uuid: string): Space | undefined => {
+    const ds = datasetStore.datasets().find((d) => d.id === uuid);
+    return ds ? mySpaces().find((s) => isSpaceSelf(s, ds)) : undefined;
+  };
+
   /**
    * Option lists for the per-space override pickers, with "follow the space" as a real entry.
    *
@@ -347,6 +353,10 @@ export function SpaceStoreProvider(props: ParentProps) {
    * schema can `$map` a store array into options, but has no way to prepend one. And it has to
    * exist: without it, overriding is one-way, since a picker offering only concrete templates gives
    * someone no way back to the space's own choice.
+   *
+   * `createMemo` runs its body immediately, so everything these read must already be declared above
+   * them — a `const` referenced from an eagerly-run memo is a TDZ crash at provider construction,
+   * not a lazy failure later.
    */
 
   /** Name the thing an option resolves to, so "the space's default" is not a guess. */
@@ -371,12 +381,6 @@ export function SpaceStoreProvider(props: ParentProps) {
       ...themeStore.allThemes().map((t) => ({ label: t.name || t.id, value: t.id })),
     ];
   });
-
-  /** The Space model behind a dataset id, for resolving what an override falls back to. */
-  const spaceForUuid = (uuid: string): Space | undefined => {
-    const ds = datasetStore.datasets().find((d) => d.id === uuid);
-    return ds ? mySpaces().find((s) => isSpaceSelf(s, ds)) : undefined;
-  };
 
   /** `installedModules` as a set — the shape both the list and the intersection want. */
   const installedSet = createMemo(() => new Set(installedModules()));
