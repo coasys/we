@@ -725,7 +725,7 @@ function generateStoresText(entries: StoreEntry[]): string {
         installedModules:
           'string[] — ids of the feature modules THIS AGENT wants available anywhere. Personal, held in the root dataset; unset means "not decided" and falls back to every registered module',
         templateOverrideOptions:
-          '{ label, value }[] — options for the per-space template override picker, with a leading "Use the space\u2019s default" entry whose value is \'\'. Pre-built because a schema can $map a store array into options but cannot prepend one, and without that entry overriding is one-way',
+          '{ label, value }[] — options for the per-space template override picker: "Use the space\u2019s default" (space-default), "Use my default" (agent-default), then every template. Each of the first two names what it resolves to. Pre-built because a schema can $map a store array into options but cannot prepend one, and without those entries overriding would be one-way',
         themeOverrideOptions: '{ label, value }[] — the same, for themes',
         activeModules:
           'string[] — what actually renders here for this agent: registered \u2229 installed \u2229 enabled, less the modules muted in this space. Module chrome and the launcher rail gate on this; enabledModules alone is not sufficient',
@@ -767,9 +767,9 @@ function generateStoresText(entries: StoreEntry[]): string {
         setModuleMuted:
           '(moduleId: string, muted: boolean, spaceUuid?): hides a module for this agent in one space, without changing what the community runs. Private: written to the root dataset, never to the space, so muting is not broadcast to other members',
         setSpaceTemplateOverride:
-          "(templateId: string, spaceUuid?): sets the template THIS AGENT sees in one space, overriding the community's default. '' returns to following the space. Private, and applied immediately when that space is the one on screen",
+          "(templateId: string, spaceUuid?): sets the template THIS AGENT sees in one space, overriding the community's default. Three values: 'space-default' follows the space, 'agent-default' follows your own global default (tracking later changes to it), or a concrete template id pins that one. Private, and applied immediately when that space is the one on screen. Note the sentinels are named values, not '' — the ORM skips empty strings on update, so '' cannot clear a property",
         setSpaceThemeOverride:
-          "(themeId: string, spaceUuid?): sets the theme THIS AGENT sees in one space. '' returns to following the space. Private",
+          "(themeId: string, spaceUuid?): sets the theme THIS AGENT sees in one space. Same three values as setSpaceTemplateOverride. Private",
         setModuleEnabled:
           '(moduleId: string, enabled: boolean, spaceUuid?): turns a feature module on or off for a space; writes the resolved list, so the first toggle also pins whatever was on by fallback. Omit spaceUuid for the space on screen',
         launchModule:

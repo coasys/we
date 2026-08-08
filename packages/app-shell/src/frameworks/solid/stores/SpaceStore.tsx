@@ -16,6 +16,7 @@ import {
   type DatasetProxy,
   dataURIToFileData,
   type FileData,
+  FOLLOW_SPACE,
   getModelForPerspective,
   LocationBlock,
   Signal,
@@ -77,7 +78,7 @@ export interface SpaceListEntry {
   /** What the community set, so a picker can label the "follow the space" option with it. */
   defaultTemplateId: string;
   defaultThemeId: string;
-  /** This agent's override, or `''` for "follow the space". Private to this agent. */
+  /** This agent's override: FOLLOW_SPACE, AGENT_DEFAULT, or a concrete id. Private to this agent. */
   templateOverride: string;
   themeOverride: string;
 }
@@ -236,9 +237,9 @@ export interface SpaceStore {
   setModuleInstalled: (moduleId: string, installed: boolean) => Promise<void>;
   /** Mute or unmute a module for this agent in one space. Private to this agent. */
   setModuleMuted: (moduleId: string, muted: boolean, spaceUuid?: string) => Promise<void>;
-  /** Override the template this agent sees in one space; '' follows the space's default. Private. */
+  /** Override the template this agent sees in one space; FOLLOW_SPACE follows its default. Private. */
   setSpaceTemplateOverride: (templateId: string, spaceUuid?: string) => Promise<void>;
-  /** Override the theme this agent sees in one space; '' follows the space's default. Private. */
+  /** Override the theme this agent sees in one space; FOLLOW_SPACE follows its default. Private. */
   setSpaceThemeOverride: (themeId: string, spaceUuid?: string) => Promise<void>;
   launchModule: (moduleId: string) => void;
   createSignalType: (config: Partial<SignalType>) => Promise<void>;
@@ -331,14 +332,17 @@ export function SpaceStoreProvider(props: ParentProps) {
   };
 
   /**
-   * This agent's template/theme override for a space, or `''` meaning "follow the space".
+   * This agent's template/theme override for a space, normalised to one of the three values a
+   * picker offers.
    *
-   * Empty rather than null so a picker can bind it directly, with `''` as the "use the space's
-   * default" option — the absence of an override is a choice the UI has to be able to show, and to
-   * return to.
+   * Anything falsy becomes {@link FOLLOW_SPACE} here rather than at each call site: a record written
+   * before these fields existed has no value, and the picker still needs a matching option to select
+   * — bound to `''`, it would show blank and could never be set back.
    */
-  const templateOverrideFor = (spaceUuid: string | undefined): string => preferenceFor(spaceUuid)?.templateId ?? '';
-  const themeOverrideFor = (spaceUuid: string | undefined): string => preferenceFor(spaceUuid)?.themeId ?? '';
+  const templateOverrideFor = (spaceUuid: string | undefined): string =>
+    preferenceFor(spaceUuid)?.templateId || FOLLOW_SPACE;
+  const themeOverrideFor = (spaceUuid: string | undefined): string =>
+    preferenceFor(spaceUuid)?.themeId || FOLLOW_SPACE;
 
   /** The Space model behind a dataset id, for resolving what an override falls back to. */
   const spaceForUuid = (uuid: string): Space | undefined => {
@@ -366,7 +370,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     const byId = (id: string) => templateStore.allTemplates().find((t) => t.id === id)?.meta?.name;
     const spaceDefault = spaceForUuid(datasetStore.currentDataset()?.id ?? '')?.defaultTemplateId;
     return [
-      { label: withResolved("Use the space's default", byId(spaceDefault ?? '')), value: '' },
+      { label: withResolved("Use the space's default", byId(spaceDefault ?? '')), value: FOLLOW_SPACE },
       { label: withResolved('Use my default', byId(templateStore.defaultTemplateId())), value: AGENT_DEFAULT },
       ...templateStore.allTemplates().map((t) => ({ label: t.meta?.name || t.id || '', value: t.id || '' })),
     ];
@@ -376,7 +380,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     const byId = (id: string) => themeStore.allThemes().find((t) => t.id === id)?.name;
     const spaceDefault = spaceForUuid(datasetStore.currentDataset()?.id ?? '')?.defaultThemeId;
     return [
-      { label: withResolved("Use the space's default", byId(spaceDefault ?? '')), value: '' },
+      { label: withResolved("Use the space's default", byId(spaceDefault ?? '')), value: FOLLOW_SPACE },
       { label: withResolved('Use my default', byId(themeStore.defaultThemeId())), value: AGENT_DEFAULT },
       ...themeStore.allThemes().map((t) => ({ label: t.name || t.id, value: t.id })),
     ];
@@ -1076,17 +1080,19 @@ export function SpaceStoreProvider(props: ParentProps) {
   const resolveTemplateFor = (uuid: string): string => {
     const override = templateOverrideFor(uuid);
     if (override === AGENT_DEFAULT) return templateStore.defaultTemplateId();
-    return override || spaceForUuid(uuid)?.defaultTemplateId || '';
+    if (override === FOLLOW_SPACE) return spaceForUuid(uuid)?.defaultTemplateId || '';
+    return override;
   };
 
   const resolveThemeFor = (uuid: string): string => {
     const override = themeOverrideFor(uuid);
     if (override === AGENT_DEFAULT) return themeStore.defaultThemeId();
-    return override || spaceForUuid(uuid)?.defaultThemeId || '';
+    if (override === FOLLOW_SPACE) return spaceForUuid(uuid)?.defaultThemeId || '';
+    return override;
   };
 
   /**
-   * Override the template this agent sees in one space. `''` returns to the space's default.
+   * Override the template this agent sees in one space. {@link FOLLOW_SPACE} returns to its default.
    *
    * Applied immediately when the space is the one on screen, so the choice is visible where it was
    * made; otherwise it takes effect next time that space is opened.
@@ -1100,7 +1106,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     if (template) templateStore.replaceTemplate(template);
   }
 
-  /** Override the theme this agent sees in one space. `''` returns to the space's default. */
+  /** Override the theme this agent sees in one space. {@link FOLLOW_SPACE} returns to its default. */
   async function setSpaceThemeOverride(themeId: string, spaceUuid?: string): Promise<void> {
     const uuid = spaceUuid ?? datasetStore.currentDataset()?.id;
     if (!uuid) return;

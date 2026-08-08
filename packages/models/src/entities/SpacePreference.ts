@@ -37,6 +37,16 @@ import { WeNode } from '../WeNode';
  */
 export const AGENT_DEFAULT = 'agent-default';
 
+/**
+ * `templateId` / `themeId` value meaning "follow whatever the community set".
+ *
+ * A named value rather than the empty string, because **the ORM cannot store an empty string**:
+ * `Ad4mModel.innerUpdate` skips any property whose new value is `''`, so writing one leaves the old
+ * link in place. Clearing an override that way looks like it works and then silently reverts on the
+ * next read. Anything falsy — including a record written before this field existed — is read as this.
+ */
+export const FOLLOW_SPACE = 'space-default';
+
 @Model({ name: 'SpacePreference' })
 export class SpacePreference extends WeNode {
   @Flag({ through: 'we://flag', value: 'we://space_preference' })
@@ -58,14 +68,14 @@ export class SpacePreference extends WeNode {
   /**
    * The template this agent wants when they open this space, overriding the space's default.
    *
-   * Empty means "follow the space" — the default the community set. This is deliberately not a
-   * boolean "use my own": which template is a richer answer than whether, and it lets someone pick a
-   * third template that is neither the space's choice nor their global default.
+   * One of {@link FOLLOW_SPACE}, {@link AGENT_DEFAULT}, or a template id. Deliberately not a boolean
+   * "use my own": which template is a richer answer than whether, and it lets someone pick a third
+   * template that is neither the space's choice nor their global default.
    */
   @Property({ through: 'we://template_id' })
   templateId: string = '';
 
-  /** The theme this agent wants in this space. Empty means "follow the space". */
+  /** The theme this agent wants in this space. Same three-way value as `templateId`. */
   @Property({ through: 'we://theme_id' })
   themeId: string = '';
 }

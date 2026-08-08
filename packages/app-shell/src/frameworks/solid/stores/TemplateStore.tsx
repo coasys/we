@@ -8,6 +8,7 @@ import {
   asFileField,
   compressImageToFileData,
   decodeFileAsJson,
+  FOLLOW_SPACE,
   ImageBlock,
   SpacePreference,
   SpaceTemplatePreference,
@@ -395,15 +396,15 @@ export function TemplateStoreProvider(props: ParentProps) {
     const [preference] = await SpacePreference.findAll(rootPerspective, {
       where: { spaceUuid: perspective.id },
     }).catch(() => [] as SpacePreference[]);
-    if (preference) return preference.templateId ?? '';
+    if (preference) return preference.templateId || FOLLOW_SPACE;
 
     const spaceUrl = perspective.sharedId || perspective.id;
     const [legacy] = await SpaceTemplatePreference.findAll(rootPerspective, { where: { spaceUrl } }).catch(
       () => [] as SpaceTemplatePreference[],
     );
-    if (!legacy) return '';
+    if (!legacy) return FOLLOW_SPACE;
 
-    const templateId = legacy.preference === 'user' ? AGENT_DEFAULT : '';
+    const templateId = legacy.preference === 'user' ? AGENT_DEFAULT : FOLLOW_SPACE;
     try {
       await SpacePreference.create(rootPerspective, { spaceUuid: perspective.id, templateId });
       await legacy.delete();
@@ -425,13 +426,15 @@ export function TemplateStoreProvider(props: ParentProps) {
     // Read per-space preferences from we-root directly rather than through SpaceStore, which mounts
     // below this one — the same reason `provideSpaceLookup` exists.
     const rootPerspective = datasetStore.rootDataset()?.handle;
-    const templateOverride = rootPerspective ? await migrateAndReadTemplateOverride(rootPerspective, perspective) : '';
+    const templateOverride = rootPerspective
+      ? await migrateAndReadTemplateOverride(rootPerspective, perspective)
+      : FOLLOW_SPACE;
 
     // The override names *which* template this agent wants here, so it answers on its own —
     // including when the space set no default at all, which the community-default path cannot act
-    // on. `AGENT_DEFAULT` means "whatever my default is", read live so it tracks a later change.
+    // on. `AGENT_DEFAULT` means "whatever my default is", so leave whatever is already applied.
     if (templateOverride === AGENT_DEFAULT) return;
-    const spaceTemplateId = templateOverride || cachedSpace?.defaultTemplateId;
+    const spaceTemplateId = templateOverride === FOLLOW_SPACE ? cachedSpace?.defaultTemplateId : templateOverride;
     if (!spaceTemplateId) return;
 
     const spaceTemplate =
@@ -447,7 +450,7 @@ export function TemplateStoreProvider(props: ParentProps) {
     // Only worth saying when the agent prefers their own template generally and has expressed no
     // choice for this space — an explicit override, either way, is not a surprise worth a toast.
     const settings = datasetStore.agentSettings();
-    if (settings && !settings.useSpaceTemplate && !templateOverride) {
+    if (settings && !settings.useSpaceTemplate && templateOverride === FOLLOW_SPACE) {
       toastService.info(`Viewing with this space's template. Open its settings to use your own.`, 7000);
     }
   }
