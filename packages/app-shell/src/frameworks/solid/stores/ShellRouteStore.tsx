@@ -16,9 +16,10 @@
  *   // pass shellRouteStore as routeStore in shellStores bag
  */
 import { useLocation, useNavigate } from '@solidjs/router';
-import { createContext, createEffect, createMemo, createSignal, JSX, ParentProps, useContext } from 'solid-js';
+import { createContext, createEffect, createMemo, createSignal, JSX, onMount, ParentProps, useContext } from 'solid-js';
 
 import type { RouteStore } from './RouteStore';
+import { useShellStore } from './ShellStore';
 
 const ShellRouteContext = createContext<RouteStore>();
 
@@ -55,11 +56,20 @@ export function ShellRouteStoreProvider(props: ParentProps) {
  */
 export function ShellRouterRoot(props: ParentProps): JSX.Element {
   const store = useShellRouteStore();
+  const shell = useShellStore();
   const navigate = useNavigate();
   const location = useLocation();
 
   createEffect(() => store.setNavigateFunction(() => navigate));
   createEffect(() => store.setCurrentPath(location.pathname));
+
+  // A control outside the overlay can ask for a page inside it — see `ShellStore.openShellView`.
+  // Claimed here rather than by the opener because this is the first moment `navigate` exists, and
+  // taken rather than read so a later open with no path does not replay the last one.
+  onMount(() => {
+    const path = shell.takePendingPath();
+    if (path) navigate(path, { replace: true });
+  });
 
   return <>{props.children}</>;
 }

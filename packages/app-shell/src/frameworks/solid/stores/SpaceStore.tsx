@@ -206,7 +206,8 @@ export interface SpaceStore {
     coverImageFile?: File,
     location?: LocationData | null,
   ) => Promise<void>;
-  joinSpace: (id: string) => Promise<void>;
+  /** Join a shared dataset. `focus` defaults to true; pass false to join without navigating to it. */
+  joinSpace: (id: string, focus?: boolean) => Promise<void>;
   initializeAsWeSpace: (name: string, description: string, avatarValue?: File | string | null) => Promise<Space>;
   /** Remove a space: clears its global-discovery listing (when authored by this agent) and
    * removes the backing dataset. */
@@ -559,7 +560,16 @@ export function SpaceStoreProvider(props: ParentProps) {
     return spaceModel;
   }
 
-  async function joinSpace(id: string): Promise<void> {
+  /**
+   * Join a shared dataset, and by default go to it.
+   *
+   * `focus: false` joins without moving — for a caller that only needs the dataset present, not
+   * open. The marketplace is that case: its routes name `datasetStore.marketplaceDataset` directly,
+   * so it reads fine from wherever you are, and focusing dragged you out of the space you were in
+   * while still looking like an overlay above it. Every shell overlay stays a layer over the space
+   * underneath; that property is what lets one host space-scoped things at all.
+   */
+  async function joinSpace(id: string, focus: boolean = true): Promise<void> {
     const lifecycle = session.lifecycle();
     if (!lifecycle?.join) return;
     if (!id || typeof id !== 'string') {
@@ -570,7 +580,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     // If already joined locally (by local id, shared id, or full URI), just focus the dataset.
     const existing = datasetStore.datasets().find((d) => d.id === id || d.sharedId === id || d.sharedUri === id);
     if (existing) {
-      await datasetStore.switchDataset(existing.id);
+      if (focus) await datasetStore.switchDataset(existing.id);
       return;
     }
 
@@ -600,7 +610,7 @@ export function SpaceStoreProvider(props: ParentProps) {
         setMySpaces((prev) => [...prev, joinedSpaceModel]);
       }
 
-      await datasetStore.switchDataset(joinedRef.id);
+      if (focus) await datasetStore.switchDataset(joinedRef.id);
       console.log('SpaceStore: joined space', joinedRef.id);
     } catch (error) {
       console.error('SpaceStore: joinSpace error', error);

@@ -1544,7 +1544,7 @@ SpaceStore:
   - moduleLaunchers: { id, icon, label, active }[] — launchers for the modules enabled here and available in this space; what the host module rail renders. Pair with { $action: "spaceStore.launchModule", args: ["$mod.id"] }
 - Actions:
   - createSpace(name, description, access: 'personal' | 'shared', discovery: 'hidden' | 'listed', avatarFile?, coverImageFile?, location?): creates a new space with full setup
-  - joinSpace(id: string): joins a shared space by neighbourhood URL, CID, or focuses it if already joined
+  - joinSpace(id: string, focus = true): joins a shared space by neighbourhood URL or CID, or focuses it if already joined. Pass focus: false to join without navigating there — for a caller that needs the dataset present rather than open, which is how the marketplace reads its own dataset without moving you out of the space you are in
   - initializeAsWeSpace(name: string, description: string, avatarValue?: File | string | null): installs WE's Space SDNA into the current, already-joined, foreign-native dataset (e.g. one synced in from Flux) and creates a Space entity in place — access is always 'shared' since the dataset is already a published neighbourhood
   - removeSpace(uuid: string): removes a space — clears its global-discovery listing (when authored by this agent) and removes the backing dataset
   - createPost(editorState: unknown): creates a new post

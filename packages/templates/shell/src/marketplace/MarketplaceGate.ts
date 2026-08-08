@@ -43,8 +43,12 @@ const joinPrompt: SchemaNode = {
         onClick: [
           { $setLocal: 'joining', value: true },
           {
+            // `joinSpace` would focus the marketplace's dataset as part of joining, so exploring it
+            // silently moved you out of the space you were in — while still looking like an overlay
+            // over that space. The marketplace's own routes name `datasetStore.marketplaceDataset`
+            // explicitly, so it never needed to be the current one.
             $action: 'spaceStore.joinSpace',
-            args: [{ $store: 'datasetStore.marketplaceId' }],
+            args: [{ $store: 'datasetStore.marketplaceId' }, false],
             onFinally: [{ $setLocal: 'joining', value: false }],
           },
         ],
