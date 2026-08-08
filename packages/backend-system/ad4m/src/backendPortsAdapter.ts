@@ -36,6 +36,7 @@ import {
   SPACE_MODELS,
 } from './sdnaModels';
 import { getFluxSubgroupMessages } from './syncHelpers';
+import { createAd4mTranscriptionPort } from './transcriptionAdapter';
 
 const proxy = (dataset: DatasetHandle) => dataset as PerspectiveProxy;
 
@@ -98,6 +99,7 @@ export function createAd4mBackendPorts(
     schemas: createAd4mSchemaPort(backendClient),
     profiles: createAd4mProfileDirectory(backendClient),
     runtime: createAd4mRuntimeAdmin(backendClient, options),
+    transcription: createAd4mTranscriptionPort(backendClient),
     ephemeral,
     dataBindings: (deps: DataBindingDeps) =>
       createAd4mDataBindings({

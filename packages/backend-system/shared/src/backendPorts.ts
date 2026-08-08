@@ -15,6 +15,7 @@ import type { ModelManifest } from './manifest';
 import type { ModelManifestEntry } from './manifestEntry';
 import type { AgentProfileSummary, PublishProfileFields } from './profileTypes';
 import type { RuntimeAdminPort } from './runtimeAdmin';
+import type { TranscriptionPort } from './transcription';
 
 /**
  * Schema management on a dataset: installing the host's entity schemas, checking what a dataset
@@ -116,4 +117,9 @@ export interface BackendPorts {
    * feature-detected member by member; see {@link RuntimeAdminPort}.
    */
   runtime?: RuntimeAdminPort;
+  /**
+   * Speech to text. Optional: a backend with no transcription model, or none at all, simply omits it
+   * and anything that wanted to listen says so rather than failing silently.
+   */
+  transcription?: TranscriptionPort;
 }

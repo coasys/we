@@ -129,3 +129,9 @@ export type {
   RuntimeAdminPort,
   TokenizerSource,
 } from './runtimeAdmin';
+export type {
+  TranscriptionModel,
+  TranscriptionPort,
+  TranscriptionStream,
+  TranscriptionTuning,
+} from './transcription';
