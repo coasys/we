@@ -392,6 +392,14 @@ export function DatasetStoreProvider(props: ParentProps) {
         // install on every switch; the port diffs before writing, so this is a read in the
         // common case.
         await schemas.installModules(handle, moduleRegistry.moduleSchemas(schemas));
+        // The same skip has a second cost: a *property* added to one of WE's own models reaches
+        // newly created spaces only, and writes to it are silently dropped in every space that
+        // predates it. Refresh brings those shapes up to date; it also diffs before writing.
+        const refreshed = await schemas.refreshSpace(handle).catch((err) => {
+          console.error('DatasetStore: space schema refresh failed', err);
+          return [] as string[];
+        });
+        if (refreshed.length) console.info(`DatasetStore: refreshed space schemas — ${refreshed.join(', ')}`);
       }
 
       // SDNA is installed — switch immediately so WE templates render. WE model classes

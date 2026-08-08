@@ -32,6 +32,14 @@ export interface SchemaPort {
   installSpace(dataset: DatasetHandle, moduleSchemas: readonly unknown[]): Promise<void>;
   /** Install only the given module schemas (runs on every space switch — diffs before writing). */
   installModules(dataset: DatasetHandle, moduleSchemas: readonly unknown[]): Promise<void>;
+  /**
+   * Bring a dataset's already-installed space schemas up to date with the ones this build declares,
+   * for a dataset that `installSpace` deliberately skips because it is already a host space.
+   *
+   * Runs on every space switch, so it must diff before writing. Returns the schemas it updated, or
+   * an empty array — the common case — when everything stored was already current.
+   */
+  refreshSpace(dataset: DatasetHandle): Promise<string[]>;
   /** Ensure one schema payload is installed. Idempotent. */
   ensure(dataset: DatasetHandle, schema: unknown): Promise<void>;
   /** Whether the host's core space schema is installed (the "is this a WE space" check). */

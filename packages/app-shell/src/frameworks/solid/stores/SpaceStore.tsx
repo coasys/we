@@ -743,32 +743,34 @@ export function SpaceStoreProvider(props: ParentProps) {
   }
 
   async function setModuleEnabled(moduleId: string, enabled: boolean) {
+    const ds = datasetStore.currentDataset();
     const space = currentSpace();
-    if (!space) return;
+    if (!ds || !space) return;
     const next = new Set(enabledModules());
     if (enabled) next.add(moduleId);
     else next.delete(moduleId);
     // Writes the resolved list, not a diff — so the first toggle also pins everything that was on by
     // fallback, and a module added to the seed later doesn't silently appear in a space that had
     // already made a decision.
-    space.enabledModules = JSON.stringify([...next]);
+    const enabledModulesJson = JSON.stringify([...next]);
     try {
-      await space.save();
-      setCurrentSpace(space);
+      await Space.update(ds.handle, space.id, { enabledModules: enabledModulesJson });
     } catch (error) {
-      // A space created before this field existed has the old SHACL shape stored in its dataset,
-      // and `we://enabled_modules` is not in it. Shapes are only installed when a class is absent
-      // entirely (`hasSubjectClassLink`), so adding a property to an existing model does not
-      // re-register — there is no shape-migration path yet.
-      //
-      // Reported rather than swallowed, and harmless either way: `enabledModules` falls back to the
-      // registered set, so such a space keeps exactly the chrome it has today.
-      console.warn(
-        `could not persist enabledModules for this space — it predates the field and its stored ` +
-          `SHACL shape has no "we://enabled_modules" property`,
-        error,
-      );
+      console.error('SpaceStore: could not persist enabledModules', error);
+      return;
     }
+    // Republished as a *new* instance rather than the one just written through. `currentSpace` is a
+    // plain signal, so Solid dedupes on `===` — handing back the same object (which is what mutating
+    // it in place and re-setting it amounts to) notifies nothing, and the module rail would keep
+    // rendering the previous set until something else happened to refetch the space. Same clone
+    // idiom as `updateSpaceInCache`.
+    setCurrentSpace((prev) =>
+      prev
+        ? (Object.assign(Object.create(Object.getPrototypeOf(prev)), prev, {
+            enabledModules: enabledModulesJson,
+          }) as Space)
+        : prev,
+    );
   }
 
   // Subscribe to current space data reactively whenever the dataset changes.
