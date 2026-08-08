@@ -26,10 +26,10 @@ export type SignalType = C.SignalType;
 export const SignalType = defineEntity('SignalType') as unknown as typeof C.SignalType;
 export type Space = C.Space;
 export const Space = defineEntity('Space') as unknown as typeof C.Space;
-export type SpaceModulePreference = C.SpaceModulePreference;
-export const SpaceModulePreference = defineEntity(
-  'SpaceModulePreference',
-) as unknown as typeof C.SpaceModulePreference;
+export type SpacePreference = C.SpacePreference;
+export const SpacePreference = defineEntity(
+  'SpacePreference',
+) as unknown as typeof C.SpacePreference;
 export type SpaceTemplatePreference = C.SpaceTemplatePreference;
 export const SpaceTemplatePreference = defineEntity(
   'SpaceTemplatePreference',

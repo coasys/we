@@ -8,6 +8,7 @@ import {
   compressImageToFileData,
   decodeFileAsJson,
   ImageBlock,
+  SpacePreference,
   SpaceTemplatePreference,
   Template,
 } from '@we/models';
@@ -380,22 +381,35 @@ export function TemplateStoreProvider(props: ParentProps) {
 
     // Use mySpaces cache for defaultTemplateId — avoids a redundant Space.findOne round-trip
     const cachedSpace = resolveSpaceFromPerspective(perspective);
-    if (!cachedSpace?.defaultTemplateId) return;
-    const spaceTemplateId = cachedSpace.defaultTemplateId;
 
-    // Check per-space preference stored in we-root
+    // Check per-space preferences stored in we-root. Read directly rather than through SpaceStore,
+    // which mounts below this one — the same reason `provideSpaceLookup` exists.
     const rootPerspective = datasetStore.rootDataset()?.handle;
     const spaceUrl = perspective.sharedId || perspective.id;
     let perSpacePref: string | null = null;
+    let templateOverride = '';
     if (rootPerspective) {
-      const prefs = await SpaceTemplatePreference.findAll(rootPerspective, {
-        where: { spaceUrl },
-      }).catch(() => [] as SpaceTemplatePreference[]);
-      if (prefs.length > 0) perSpacePref = prefs[0].preference;
+      const [legacy, preference] = await Promise.all([
+        SpaceTemplatePreference.findAll(rootPerspective, { where: { spaceUrl } }).catch(
+          () => [] as SpaceTemplatePreference[],
+        ),
+        SpacePreference.findAll(rootPerspective, { where: { spaceUuid: perspective.id } }).catch(
+          () => [] as SpacePreference[],
+        ),
+      ]);
+      if (legacy.length > 0) perSpacePref = legacy[0].preference;
+      templateOverride = preference[0]?.templateId ?? '';
     }
 
+    // An explicit override names *which* template this agent wants here, so it answers on its own —
+    // including when the space has set no default at all, which the community-default path below
+    // cannot act on. It also supersedes the older binary preference, which could only say whether to
+    // follow the space rather than what to follow instead.
+    const spaceTemplateId = templateOverride || cachedSpace?.defaultTemplateId;
+    if (!spaceTemplateId) return;
+
     // Per-space "user" means they explicitly chose their own template for this space
-    if (perSpacePref === 'user') return;
+    if (!templateOverride && perSpacePref === 'user') return;
 
     const spaceTemplate =
       allTemplates().find((t) => t.id === spaceTemplateId && t._fromSpace) ||

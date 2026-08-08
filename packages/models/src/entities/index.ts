@@ -5,7 +5,7 @@ export { Signal } from './Signal';
 export { SignalType } from './SignalType';
 export type { SignalMode, SignalAggregate, SignalSemantic } from './SignalType';
 export { Space } from './Space';
-export { SpaceModulePreference } from './SpaceModulePreference';
+export { SpacePreference } from './SpacePreference';
 export { SpaceTemplatePreference } from './SpaceTemplatePreference';
 export { Template } from './Template';
 export { Theme } from './Theme';

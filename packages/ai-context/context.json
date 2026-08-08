@@ -4683,8 +4683,8 @@
       ]
     },
     {
-      "name": "SpaceModulePreference",
-      "className": "SpaceModulePreference",
+      "name": "SpacePreference",
+      "className": "SpacePreference",
       "extends": "WeNode",
       "fields": [
         {
@@ -4697,6 +4697,18 @@
           "name": "mutedModules",
           "type": "string",
           "predicate": "we://muted_modules",
+          "required": false
+        },
+        {
+          "name": "templateId",
+          "type": "string",
+          "predicate": "we://template_id",
+          "required": false
+        },
+        {
+          "name": "themeId",
+          "type": "string",
+          "predicate": "we://theme_id",
           "required": false
         }
       ],
@@ -5784,7 +5796,20 @@
         },
         "spaceList": {
           "type": "array",
-          "properties": ["uuid", "name", "description", "avatar", "kind", "isWeSpace", "canAdminister", "modules"]
+          "properties": [
+            "uuid",
+            "name",
+            "description",
+            "avatar",
+            "kind",
+            "isWeSpace",
+            "canAdminister",
+            "modules",
+            "defaultTemplateId",
+            "defaultThemeId",
+            "templateOverride",
+            "themeOverride"
+          ]
         },
         "creatingSpace": {
           "type": "boolean"
@@ -5840,6 +5865,14 @@
         "activeModules": {
           "type": "array"
         },
+        "templateOverrideOptions": {
+          "type": "array",
+          "properties": ["label", "value"]
+        },
+        "themeOverrideOptions": {
+          "type": "array",
+          "properties": ["label", "value"]
+        },
         "moduleInstallSettings": {
           "type": "array",
           "properties": ["id", "name", "description", "icon", "installed"]
@@ -5868,6 +5901,8 @@
         "setModuleEnabled",
         "setModuleInstalled",
         "setModuleMuted",
+        "setSpaceTemplateOverride",
+        "setSpaceThemeOverride",
         "launchModule"
       ]
     },

@@ -272,7 +272,20 @@ export const storeEntries: StoreEntry[] = [
       sharedSpaces: { type: 'array', model: 'Space' },
       spaceList: {
         type: 'array',
-        properties: ['uuid', 'name', 'description', 'avatar', 'kind', 'isWeSpace', 'canAdminister', 'modules'],
+        properties: [
+          'uuid',
+          'name',
+          'description',
+          'avatar',
+          'kind',
+          'isWeSpace',
+          'canAdminister',
+          'modules',
+          'defaultTemplateId',
+          'defaultThemeId',
+          'templateOverride',
+          'themeOverride',
+        ],
       },
       creatingSpace: { type: 'boolean' },
       orderedSidebarItems: { type: 'array', properties: ['uuid', 'name', 'avatar', 'spaceId'] },
@@ -312,6 +325,8 @@ export const storeEntries: StoreEntry[] = [
       activeModules: {
         type: 'array',
       },
+      templateOverrideOptions: { type: 'array', properties: ['label', 'value'] },
+      themeOverrideOptions: { type: 'array', properties: ['label', 'value'] },
       moduleInstallSettings: {
         type: 'array',
         properties: ['id', 'name', 'description', 'icon', 'installed'],
@@ -340,6 +355,8 @@ export const storeEntries: StoreEntry[] = [
       'setModuleEnabled',
       'setModuleInstalled',
       'setModuleMuted',
+      'setSpaceTemplateOverride',
+      'setSpaceThemeOverride',
       'launchModule',
     ],
   },
@@ -691,6 +708,9 @@ function generateStoresText(entries: StoreEntry[]): string {
           'string[] — ids of the feature modules THIS SPACE has turned on: the community\u2019s decision, shared with every member. An unset value means "not decided", not "none": it falls back to every registered module, so spaces predating the setting keep the chrome they had',
         installedModules:
           'string[] — ids of the feature modules THIS AGENT wants available anywhere. Personal, held in the root dataset; unset means "not decided" and falls back to every registered module',
+        templateOverrideOptions:
+          '{ label, value }[] — options for the per-space template override picker, with a leading "Use the space\u2019s default" entry whose value is \'\'. Pre-built because a schema can $map a store array into options but cannot prepend one, and without that entry overriding is one-way',
+        themeOverrideOptions: '{ label, value }[] — the same, for themes',
         activeModules:
           'string[] — what actually renders here for this agent: registered \u2229 installed \u2229 enabled, less the modules muted in this space. Module chrome and the launcher rail gate on this; enabledModules alone is not sufficient',
         moduleInstallSettings:
@@ -730,6 +750,10 @@ function generateStoresText(entries: StoreEntry[]): string {
           '(moduleId: string, installed: boolean): turns a module on or off for this agent in every space. Personal — writes AgentSettings.installedModules in the root dataset, so no other member sees it',
         setModuleMuted:
           '(moduleId: string, muted: boolean, spaceUuid?): hides a module for this agent in one space, without changing what the community runs. Private: written to the root dataset, never to the space, so muting is not broadcast to other members',
+        setSpaceTemplateOverride:
+          "(templateId: string, spaceUuid?): sets the template THIS AGENT sees in one space, overriding the community's default. '' returns to following the space. Private, and applied immediately when that space is the one on screen",
+        setSpaceThemeOverride:
+          "(themeId: string, spaceUuid?): sets the theme THIS AGENT sees in one space. '' returns to following the space. Private",
         setModuleEnabled:
           '(moduleId: string, enabled: boolean, spaceUuid?): turns a feature module on or off for a space; writes the resolved list, so the first toggle also pins whatever was on by fallback. Omit spaceUuid for the space on screen',
         launchModule:

@@ -20,7 +20,7 @@ import {
   Signal,
   SignalType,
   Space,
-  SpaceModulePreference,
+  SpacePreference,
 } from '@we/models';
 import {
   Accessor,
@@ -73,6 +73,12 @@ export interface SpaceListEntry {
    * an id. Precomputing puts the answer where the row's context already reaches it.
    */
   modules: ModuleSetting[];
+  /** What the community set, so a picker can label the "follow the space" option with it. */
+  defaultTemplateId: string;
+  defaultThemeId: string;
+  /** This agent's override, or `''` for "follow the space". Private to this agent. */
+  templateOverride: string;
+  themeOverride: string;
 }
 
 /**
@@ -187,6 +193,10 @@ export interface SpaceStore {
    *  member. Falls back to everything the seed activated when the space has never decided, so
    *  spaces that predate the setting keep the chrome they had. */
   enabledModules: Accessor<string[]>;
+  /** Options for the per-space template override picker, including a "follow the space" entry. */
+  templateOverrideOptions: Accessor<{ label: string; value: string }[]>;
+  /** Options for the per-space theme override picker, including a "follow the space" entry. */
+  themeOverrideOptions: Accessor<{ label: string; value: string }[]>;
   /** Feature modules this *agent* wants available anywhere. Personal; see AgentSettings.installedModules. */
   installedModules: Accessor<string[]>;
   /** What actually renders here for this agent: registered ∩ installed ∩ enabled, less personal mutes. */
@@ -225,6 +235,10 @@ export interface SpaceStore {
   setModuleInstalled: (moduleId: string, installed: boolean) => Promise<void>;
   /** Mute or unmute a module for this agent in one space. Private to this agent. */
   setModuleMuted: (moduleId: string, muted: boolean, spaceUuid?: string) => Promise<void>;
+  /** Override the template this agent sees in one space; '' follows the space's default. Private. */
+  setSpaceTemplateOverride: (templateId: string, spaceUuid?: string) => Promise<void>;
+  /** Override the theme this agent sees in one space; '' follows the space's default. Private. */
+  setSpaceThemeOverride: (themeId: string, spaceUuid?: string) => Promise<void>;
   launchModule: (moduleId: string) => void;
   createSignalType: (config: Partial<SignalType>) => Promise<void>;
   upsertSignal: (nodeId: string, signalTypeId: string, value: number) => Promise<void>;
@@ -298,19 +312,57 @@ export function SpaceStoreProvider(props: ParentProps) {
     resolveEnabledModules(datasetStore.agentSettings()?.installedModules),
   );
 
-  /** This agent's muted modules for a given space, from the root dataset. */
-  const [modulePreferences, setModulePreferences] = createSignal<SpaceModulePreference[]>([]);
+  /** This agent's personal choices per space, from the root dataset. See `SpacePreference`. */
+  const [spacePreferences, setSpacePreferences] = createSignal<SpacePreference[]>([]);
+
+  const preferenceFor = (spaceUuid: string | undefined): SpacePreference | undefined =>
+    spaceUuid ? spacePreferences().find((p) => p.spaceUuid === spaceUuid) : undefined;
 
   const mutedModulesFor = (spaceUuid: string | undefined): string[] => {
-    if (!spaceUuid) return [];
-    const pref = modulePreferences().find((p) => p.spaceUuid === spaceUuid);
-    if (!pref?.mutedModules) return [];
+    const raw = preferenceFor(spaceUuid)?.mutedModules;
+    if (!raw) return [];
     try {
-      const parsed = JSON.parse(pref.mutedModules);
+      const parsed = JSON.parse(raw);
       return Array.isArray(parsed) ? parsed.filter((id): id is string => typeof id === 'string') : [];
     } catch {
       return [];
     }
+  };
+
+  /**
+   * This agent's template/theme override for a space, or `''` meaning "follow the space".
+   *
+   * Empty rather than null so a picker can bind it directly, with `''` as the "use the space's
+   * default" option — the absence of an override is a choice the UI has to be able to show, and to
+   * return to.
+   */
+  const templateOverrideFor = (spaceUuid: string | undefined): string => preferenceFor(spaceUuid)?.templateId ?? '';
+  const themeOverrideFor = (spaceUuid: string | undefined): string => preferenceFor(spaceUuid)?.themeId ?? '';
+
+  /**
+   * Option lists for the per-space override pickers, with "follow the space" as a real entry.
+   *
+   * Built here rather than in the schema because the leading entry cannot be expressed there — the
+   * schema can `$map` a store array into options, but has no way to prepend one. And it has to
+   * exist: without it, overriding is one-way, since a picker offering only concrete templates gives
+   * someone no way back to the space's own choice.
+   */
+  const FOLLOW_SPACE = { label: "Use the space's default", value: '' };
+
+  const templateOverrideOptions = createMemo(() => [
+    FOLLOW_SPACE,
+    ...templateStore.allTemplates().map((t) => ({ label: t.meta?.name || t.id || '', value: t.id || '' })),
+  ]);
+
+  const themeOverrideOptions = createMemo(() => [
+    FOLLOW_SPACE,
+    ...themeStore.allThemes().map((t) => ({ label: t.name || t.id, value: t.id })),
+  ]);
+
+  /** The Space model behind a dataset id, for resolving what an override falls back to. */
+  const spaceForUuid = (uuid: string): Space | undefined => {
+    const ds = datasetStore.datasets().find((d) => d.id === uuid);
+    return ds ? mySpaces().find((s) => isSpaceSelf(s, ds)) : undefined;
   };
 
   /** `installedModules` as a set — the shape both the list and the intersection want. */
@@ -336,6 +388,10 @@ export function SpaceStoreProvider(props: ParentProps) {
         isWeSpace: Boolean(space),
         canAdminister: space ? canAdministerSpace(space.uuid) : false,
         modules: space ? moduleSettingsFrom(space.enabledModules, installedSet(), new Set(mutedModulesFor(ds.id))) : [],
+        defaultTemplateId: space?.defaultTemplateId ?? '',
+        defaultThemeId: space?.defaultThemeId ?? '',
+        templateOverride: templateOverrideFor(ds.id),
+        themeOverride: themeOverrideFor(ds.id),
       };
     }),
   );
@@ -941,17 +997,17 @@ export function SpaceStoreProvider(props: ParentProps) {
     return typeof value === 'function' ? Boolean((value as () => unknown)()) : Boolean(value);
   };
 
-  // Personal per-space module choices live in the root dataset, so they load with it rather than
-  // with any space — and stay readable for every space at once, which the settings list needs.
+  // Personal per-space choices live in the root dataset, so they load with it rather than with any
+  // space — and stay readable for every space at once, which the settings list needs.
   createEffect(() => {
     const root = datasetStore.rootDataset();
     if (!root) {
-      setModulePreferences([]);
+      setSpacePreferences([]);
       return;
     }
-    void SpaceModulePreference.findAll(root.handle)
-      .then(setModulePreferences)
-      .catch(() => setModulePreferences([]));
+    void SpacePreference.findAll(root.handle)
+      .then(setSpacePreferences)
+      .catch(() => setSpacePreferences([]));
   });
 
   /** Turn a module on or off for this agent everywhere. See `AgentSettings.installedModules`. */
@@ -966,29 +1022,59 @@ export function SpaceStoreProvider(props: ParentProps) {
   }
 
   /**
-   * Mute or unmute a module for this agent in one space.
+   * Write one agent-private choice about one space, creating the record if it is the first.
    *
-   * Written to the root dataset, never to the space — muting is mine, and putting it in the shared
-   * perspective would tell every other member what I have turned off.
+   * Always the root dataset, never the space — these are mine, and putting them in the shared
+   * perspective would tell every other member which modules I muted and which theme I use.
    */
-  async function setModuleMuted(moduleId: string, muted: boolean, spaceUuid?: string): Promise<void> {
+  async function updateSpacePreference(uuid: string, updates: Partial<SpacePreference>): Promise<void> {
     const root = datasetStore.rootDataset();
-    const uuid = spaceUuid ?? datasetStore.currentDataset()?.id;
-    if (!root || !uuid) return;
+    if (!root) return;
+    try {
+      const existing = preferenceFor(uuid);
+      if (existing) await SpacePreference.update(root.handle, existing.id, updates);
+      else await SpacePreference.create(root.handle, { spaceUuid: uuid, ...updates });
+      setSpacePreferences(await SpacePreference.findAll(root.handle));
+    } catch (error) {
+      console.error('SpaceStore: could not persist space preference', error);
+    }
+  }
 
+  /** Mute or unmute a module for this agent in one space. */
+  async function setModuleMuted(moduleId: string, muted: boolean, spaceUuid?: string): Promise<void> {
+    const uuid = spaceUuid ?? datasetStore.currentDataset()?.id;
+    if (!uuid) return;
     const next = new Set(mutedModulesFor(uuid));
     if (muted) next.add(moduleId);
     else next.delete(moduleId);
-    const mutedModules = JSON.stringify([...next]);
+    await updateSpacePreference(uuid, { mutedModules: JSON.stringify([...next]) } as Partial<SpacePreference>);
+  }
 
-    try {
-      const existing = modulePreferences().find((p) => p.spaceUuid === uuid);
-      if (existing) await SpaceModulePreference.update(root.handle, existing.id, { mutedModules });
-      else await SpaceModulePreference.create(root.handle, { spaceUuid: uuid, mutedModules });
-      setModulePreferences(await SpaceModulePreference.findAll(root.handle));
-    } catch (error) {
-      console.error('SpaceStore: could not persist muted modules', error);
-    }
+  /**
+   * Override the template this agent sees in one space. `''` returns to the space's default.
+   *
+   * Applied immediately when the space is the one on screen, so the choice is visible where it was
+   * made; otherwise it takes effect next time that space is opened.
+   */
+  async function setSpaceTemplateOverride(templateId: string, spaceUuid?: string): Promise<void> {
+    const uuid = spaceUuid ?? datasetStore.currentDataset()?.id;
+    if (!uuid) return;
+    await updateSpacePreference(uuid, { templateId } as Partial<SpacePreference>);
+    if (datasetStore.currentDataset()?.id !== uuid) return;
+    const effective = templateId || spaceForUuid(uuid)?.defaultTemplateId || '';
+    const template = templateStore.allTemplates().find((t) => t.id === effective);
+    if (template) templateStore.replaceTemplate(template);
+  }
+
+  /** Override the theme this agent sees in one space. `''` returns to the space's default. */
+  async function setSpaceThemeOverride(themeId: string, spaceUuid?: string): Promise<void> {
+    const uuid = spaceUuid ?? datasetStore.currentDataset()?.id;
+    if (!uuid) return;
+    await updateSpacePreference(uuid, { themeId } as Partial<SpacePreference>);
+    if (datasetStore.currentDataset()?.id !== uuid) return;
+    const effective = themeId || spaceForUuid(uuid)?.defaultThemeId || '';
+    if (effective) themeStore.replaceTheme(effective);
+    else themeStore.clearSpaceTheme();
   }
 
   const moduleLaunchers = createMemo(() => {
@@ -1093,7 +1179,9 @@ export function SpaceStoreProvider(props: ParentProps) {
   // Only restore when there's genuinely no current dataset — not during the transient null
   // window while switching between spaces (currentSpace loads async after the dataset changes).
   createEffect(() => {
-    const themeId = spaceDefaultThemeId();
+    // This agent's own choice for this space wins over the community's default — that is what an
+    // override is for. `''` means they have not overridden it, so the space's default stands.
+    const themeId = themeOverrideFor(datasetStore.currentDataset()?.id) || spaceDefaultThemeId();
     // Explicitly track space identity: navigating to a different space must always
     // re-apply that space's default theme, even when the new space's default happens
     // to equal the previous one. Without this, spaceDefaultThemeId wouldn't change
@@ -1247,6 +1335,8 @@ export function SpaceStoreProvider(props: ParentProps) {
     enabledModules,
     installedModules,
     activeModules,
+    templateOverrideOptions,
+    themeOverrideOptions,
     moduleInstallSettings,
     moduleLaunchers,
     foreignSpacePrefill,
@@ -1266,6 +1356,8 @@ export function SpaceStoreProvider(props: ParentProps) {
     setModuleEnabled,
     setModuleInstalled,
     setModuleMuted,
+    setSpaceTemplateOverride,
+    setSpaceThemeOverride,
     launchModule,
     createSignalType,
     upsertSignal,

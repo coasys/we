@@ -197,6 +197,70 @@ const moduleStatus: SchemaNode = {
   },
 };
 
+/**
+ * This agent's own template and theme for this space, overriding what the community set.
+ *
+ * Offered to everyone, not just whoever administers the space — this changes nothing another member
+ * sees. That asymmetry is the point of the section: the community's defaults are a starting position,
+ * not a constraint on how you personally read the place.
+ *
+ * `''` is a real option rather than an empty state, labelled "Use the space's default" — someone who
+ * has overridden needs a way back, and a picker with no such entry silently makes the override
+ * permanent.
+ */
+const personalAppearanceSection: SchemaNode = {
+  type: 'Column',
+  props: { gap: '300', p: '400', bg: 'neutral-0', r: '300', border: '1px solid neutral-200' },
+  children: [
+    {
+      type: 'Column',
+      props: { gap: '100' },
+      children: [
+        { type: 'we-text', props: { variant: 'label' }, children: ['Appearance, for you'] },
+        {
+          type: 'we-text',
+          props: { variant: 'footnote', color: 'neutral-400' },
+          children: ['How this space looks when you open it. Only you see these.'],
+        },
+      ],
+    },
+    {
+      type: 'we-form-field',
+      props: { label: 'Template' },
+      children: [
+        {
+          type: 'we-select',
+          props: {
+            value: '$space.templateOverride',
+            options: { $store: 'spaceStore.templateOverrideOptions' },
+            onChange: {
+              $action: 'spaceStore.setSpaceTemplateOverride',
+              args: ['$event.detail', '$space.uuid'],
+            },
+          },
+        },
+      ],
+    },
+    {
+      type: 'we-form-field',
+      props: { label: 'Theme' },
+      children: [
+        {
+          type: 'we-select',
+          props: {
+            value: '$space.themeOverride',
+            options: { $store: 'spaceStore.themeOverrideOptions' },
+            onChange: {
+              $action: 'spaceStore.setSpaceThemeOverride',
+              args: ['$event.detail', '$space.uuid'],
+            },
+          },
+        },
+      ],
+    },
+  ],
+};
+
 const moduleRow: SchemaNode = {
   type: 'Row',
   props: { ay: 'center', ax: 'between', gap: '300', py: '200' },
@@ -322,7 +386,7 @@ export const spaceSettingsPage: SchemaNode = {
           type: '$if',
           props: {
             condition: '$space.isWeSpace',
-            then: { type: 'Column', props: { gap: '400' }, children: [communitySection, modulesSection] },
+            then: { type: 'Column', props: { gap: '400' }, children: [personalAppearanceSection, communitySection, modulesSection] },
             else: notAWeSpaceNotice,
           },
         },

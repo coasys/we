@@ -415,20 +415,31 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
     const metaEntries: Record<string, LocalFieldMeta> = {};
     const scopeFields: string[] = [];
 
-    // Evaluate an `initial` value: if it's an expression token (object with $-prefixed keys),
-    // resolve it once against the current stores + parent context. Otherwise use it as a literal.
-    // Called both at mount and inside reset() so that reset re-reads the current store value.
+    // Evaluate an `initial` value: if it's an expression, resolve it once against the current
+    // stores + parent context. Otherwise use it as a literal. Called both at mount and inside
+    // reset() so that reset re-reads the current store value.
+    //
+    // Expression means either an object token (`{ $store: … }`) or a `$`-prefixed **string** — a
+    // context reference like `'$space.name'`, which every other position in a schema accepts. Only
+    // objects were resolved here, so a form seeded from a `$each` item silently rendered the string
+    // `$space.name` in its input: no error, and the field looked filled in.
+    //
+    // A `$`-string that matches no context key or store global comes back unchanged (the
+    // dispatcher's final pass-through), so a literal that merely starts with `$` is unaffected.
     const resolveInitial = (raw: unknown): unknown => {
-      if (raw !== null && typeof raw === 'object' && !Array.isArray(raw)) {
-        if (Object.keys(raw).some((k) => k.startsWith('$'))) {
-          const resolved = resolveProp(raw, stores, context);
-          if (typeof resolved === 'function' && REACTIVE_ACCESSOR in (resolved as object)) {
-            return (resolved as () => unknown)();
-          }
-          return resolved;
-        }
+      const isExpression =
+        (typeof raw === 'string' && raw.startsWith('$') && raw.length > 1) ||
+        (raw !== null &&
+          typeof raw === 'object' &&
+          !Array.isArray(raw) &&
+          Object.keys(raw).some((k) => k.startsWith('$')));
+      if (!isExpression) return raw;
+
+      const resolved = resolveProp(raw, stores, context);
+      if (typeof resolved === 'function' && REACTIVE_ACCESSOR in (resolved as object)) {
+        return (resolved as () => unknown)();
       }
-      return raw;
+      return resolved;
     };
 
     for (const [name, field] of Object.entries(node.$localState as Record<string, LocalStateField>)) {

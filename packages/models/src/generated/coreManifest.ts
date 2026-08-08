@@ -887,7 +887,7 @@ export const CORE_MANIFEST: ModelManifest = {
         "value": "we://space"
       }
     },
-    "SpaceModulePreference": {
+    "SpacePreference": {
       "properties": {
         "spaceUuid": {
           "type": "string",
@@ -897,6 +897,16 @@ export const CORE_MANIFEST: ModelManifest = {
         "mutedModules": {
           "type": "string",
           "predicate": "we://muted_modules",
+          "default": ""
+        },
+        "templateId": {
+          "type": "string",
+          "predicate": "we://template_id",
+          "default": ""
+        },
+        "themeId": {
+          "type": "string",
+          "predicate": "we://theme_id",
           "default": ""
         }
       },
@@ -914,7 +924,7 @@ export const CORE_MANIFEST: ModelManifest = {
       },
       "flag": {
         "predicate": "we://flag",
-        "value": "we://space_module_preference"
+        "value": "we://space_preference"
       }
     },
     "SpaceTemplatePreference": {
