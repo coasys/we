@@ -302,6 +302,26 @@ describe('unknown store', () => {
     const storeErrors = result.errors.filter((e) => e.message.includes('Unknown store'));
     expect(storeErrors).toHaveLength(0);
   });
+
+  // Which modules exist is a property of the deployment's seed, not of this build, so `modules` is a
+  // namespace with nothing to check members against. Without it a module's own fragments — the only
+  // schemas that *have* to reference their store this way — failed on their first token and could not
+  // be validated at all.
+  it('accepts the modules namespace, whatever the module id', () => {
+    const result = validateSemantic(
+      {
+        type: 'we-button',
+        props: {
+          text: { $store: 'modules.transcribe.pending' },
+          onClick: { $action: 'modules.somethingNobodyHasWrittenYet.toggle' },
+        },
+      },
+      ctx(),
+    );
+    expect(result.errors.filter((e) => e.message.includes('Unknown store'))).toHaveLength(0);
+    expect(result.errors.filter((e) => e.message.includes('Unknown member'))).toHaveLength(0);
+    expect(result.errors.filter((e) => e.message.includes('Unknown method'))).toHaveLength(0);
+  });
 });
 
 describe('unknown store member', () => {

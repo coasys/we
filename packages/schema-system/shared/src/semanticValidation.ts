@@ -300,6 +300,16 @@ export function buildValidationContext(data: ContextData): ValidationContext {
     storeMemberMeta.set(store.name, metaMap);
   }
 
+  // Feature-module stores, published by the host at `modules.<id>.<key>`.
+  //
+  // A namespace rather than a store, and deliberately given no `storeMembers` entry: which modules
+  // exist is a property of the running deployment's seed, not of this build, so there is no list to
+  // check a reference against and pretending otherwise would reject valid schemas. What it does buy
+  // is that a module's own fragments — which can only talk to their store this way — stop being
+  // unvalidatable. Before this they failed on the very first token, so no module fragment could be
+  // checked at all, and a typo in one surfaces only as a component that silently renders nothing.
+  storeNames.add('modules');
+
   // Models
   const modelNames = new Set<string>();
   for (const model of data.models) {

@@ -13,6 +13,7 @@ import { callModule } from '@we/module-call';
 import { createGlobeModule } from '@we/module-globe';
 import { notesModule } from '@we/module-notes';
 import type { ModuleDefinition, ModuleStoreDeps } from '@we/module-shared';
+import { transcribeModule } from '@we/module-transcribe';
 
 /**
  * Factories rather than definitions, because a module may need something from the host to describe
@@ -39,6 +40,9 @@ export const bundledModules: Record<string, BundledModuleFactory> = {
   // Nor does the call module, which is the more surprising of the two — live video needs `srcObject`
   // assigned imperatively, but that belongs to the `we-video` primitive, so the module stays data.
   call: () => callModule,
+  // Hears the call without either module referencing the other — the host routes the stream from
+  // whichever module declares `audioSource`. See `@we/module-transcribe`.
+  transcribe: () => transcribeModule,
 };
 
 export interface ModuleActivation {

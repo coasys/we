@@ -1,0 +1,70 @@
+/**
+ * The Transcribe feature module — speech to text for whatever the host is capturing.
+ *
+ * The fourth module, and the first that consumes another module's output. Notes proved a module can
+ * own durable entities; the globe proved one can carry a heavyweight framework component; the call
+ * module proved one can reach the ephemeral port. This one proves two modules can cooperate **without
+ * knowing about each other**.
+ *
+ * ## How it hears a call
+ *
+ * It does not import `@we/module-call`, and the call module does not import this. The call declares
+ * `audioSource: 'localAudio'`; the host reads that, and lends whatever it finds to every module store
+ * as `deps.audioInput`. Neither module has a reference to the other, so either can be uninstalled and
+ * the remaining one still works — this module simply reports that there is nothing to listen to.
+ *
+ * That indirection is also what satisfies the requirement that muting the call stops the transcript.
+ * The stream handed over is the call's *own* `MediaStream`, not a copy: mute disables the track, the
+ * track produces silence, and the VAD never fires. A module that opened its own `getUserMedia` would
+ * have gone on transcribing someone who believed they were muted.
+ *
+ * ## Fragments-only, again
+ *
+ * No `frameworks`, no `components`. The one piece of genuinely imperative machinery — an
+ * `AudioWorklet` doing voice-activity detection on the audio thread — lives in the store, which is
+ * plain TypeScript against `deps.signal`. Browser APIs are not framework coupling.
+ *
+ * ## What it is not yet
+ *
+ * Transcript blocks are written flat into the space, tagged and nothing more. No grouping into
+ * sessions, no speaker threading, no summary generation — deliberately, because the next step is an
+ * LLM pass that builds a knowledge map from this text, and it would rather re-segment raw utterances
+ * than unpick someone else's structure.
+ */
+import { defineModule, type ModuleStoreDeps } from '@we/module-shared';
+
+import { panel } from './Panel.schema';
+import { createTranscribeStore } from './store';
+
+export { panel } from './Panel.schema';
+export { createTranscribeStore, TRANSCRIPT_TAG, type TranscribeStatus } from './store';
+export { WORKLET_NAME, WORKLET_SOURCE } from './workletSource';
+
+export const transcribeModule = defineModule({
+  id: 'transcribe',
+  name: 'Transcription',
+  description: 'Turns what is said in a call into text blocks in the space.',
+  icon: 'waveform',
+
+  // `microphone` even though this module never calls `getUserMedia`: it listens to a live microphone,
+  // and the list exists to tell a user what a module can hear, not which API it called to hear it.
+  // `storage` because every utterance ends up as a durable record in their space.
+  capabilities: ['microphone', 'storage', 'slot:dock-right'],
+
+  // No `backends`: transcription goes through the port, so this runs on any backend that implements
+  // one — and degrades to a stated reason on any that does not. No `frameworks`: fragments only.
+
+  slots: [{ anchor: 'dock-right', node: panel, order: 90 }],
+
+  // `availableWhen` rather than an always-offered button: with no audio there is nothing to transcribe,
+  // and that is a property of the situation rather than a failure worth explaining after a click.
+  launcher: {
+    icon: 'waveform',
+    label: 'Transcribe',
+    action: 'toggle',
+    activeWhen: 'enabled',
+    availableWhen: 'available',
+  },
+
+  createStore: (deps: ModuleStoreDeps) => createTranscribeStore(deps),
+});
