@@ -430,6 +430,7 @@ export const contextData: ContextData = {
       superclass: 'LayoutElement',
       ownProps: [
         { name: 'orientation', type: "'vertical' | 'horizontal'", optional: false, default: "'vertical'" },
+        { name: 'align', type: "'start' | 'center' | 'end'", optional: false, default: "'center'" },
         { name: 'step', type: 'number', optional: false, default: '16' },
         { name: 'dragging', type: 'boolean', optional: false, default: 'false' },
       ],

@@ -572,30 +572,59 @@ export function createCallStore(deps: CallStoreDeps) {
      * A strip is the exception and flows the other way: a single row of fixed-width cells, so the
      * panel is as wide as the number of people in it rather than a band of empty chrome.
      */
-    stageStyle: (): Record<string, string> =>
-      placement() === 'float'
+    stageStyle: (): Record<string, string> => {
+      if (placement() === 'float') {
+        return {
+          display: 'grid',
+          'grid-auto-flow': 'column',
+          // 16:9 at the strip's own height. Fixed rather than derived, because deriving it needs
+          // the panel's measured height and the whole arrangement exists to avoid measuring.
+          'grid-auto-columns': '220px',
+          'grid-template-rows': '1fr',
+        };
+      }
+
+      const columns = stageColumns(tiles().length, focusedId() !== null, placement());
+      /**
+       * A side dock is constrained by its *width*, so its rows are sized from that and stack at the
+       * top.
+       *
+       * Sharing the height equally is right when height is the scarce dimension — a wide, short
+       * panel — and wrong when it is not. A 440×900 side dock gave one participant a 900px row to be
+       * centred in, so a 247px picture floated in the middle of the panel with a third of a screen
+       * of nothing above and below it. Deriving the row from the column width instead makes the
+       * tiles exactly as tall as they need to be, and `start` puts the empty space in one place
+       * rather than distributing it between them.
+       */
+      const vertical = placement() === 'left' || placement() === 'right';
+      return vertical
         ? {
             display: 'grid',
-            'grid-auto-flow': 'column',
-            // 16:9 at the strip's own height. Fixed rather than derived, because deriving it needs
-            // the panel's measured height and the whole arrangement exists to avoid measuring.
-            'grid-auto-columns': '220px',
-            'grid-template-rows': '1fr',
+            'grid-template-columns': `repeat(${columns}, 1fr)`,
+            'grid-auto-rows': 'min-content',
+            'align-content': 'start',
           }
         : {
             display: 'grid',
-            'grid-template-columns': `repeat(${stageColumns(tiles().length, focusedId() !== null, placement())}, 1fr)`,
+            'grid-template-columns': `repeat(${columns}, 1fr)`,
             'grid-auto-rows': '1fr',
-          },
+          };
+    },
 
     /**
-     * Each tile's placement in that grid, looked up by id the same way its volatile flags are.
+     * The picture box's own sizing, which differs by which dimension is the scarce one.
      *
-     * Computed on read rather than stored on the tile — for the reason the tile carries so little,
-     * and for one more besides. Placement depends on the *mode*, which changes without the roster
-     * changing, so a stored copy would have to be rebuilt from somewhere that has no business
-     * knowing about layout. Here it simply re-derives, and every signal it reads makes it reactive.
+     * Where rows divide a definite height, the box has to fit *within* its cell, and the only way to
+     * express that is to measure the cell — hence the container query. Where rows are sized from the
+     * column width, the width is already known and the aspect ratio derives the height directly,
+     * which is both simpler and the reason `container-type` must not be set in that case: size
+     * containment on a row whose height comes from its content collapses it to nothing.
      */
+    pictureStyle: (): Record<string, string> =>
+      placement() === 'left' || placement() === 'right'
+        ? { 'aspect-ratio': '16 / 9', width: '100%' }
+        : { 'aspect-ratio': '16 / 9', width: 'min(100%, calc(100cqh * 16 / 9))', margin: 'auto' },
+
     /**
      * Each participant's face, looked up by id exactly as their volatile flags are.
      *
@@ -625,7 +654,8 @@ export function createCallStore(deps: CallStoreDeps) {
        * middle. That band was where the name and the mute badge ended up: anchored to the bottom of
        * the cell, floating in empty space well below the picture they belonged to.
        */
-      const cell: Record<string, string | number> = { 'container-type': 'size' };
+      const vertical = placement() === 'left' || placement() === 'right';
+      const cell: Record<string, string | number> = vertical ? {} : { 'container-type': 'size' };
       return tiles().map((entry) => ({
         id: entry.id,
         style: !strip && entry.id === focus ? { ...cell, ...spotlight } : cell,

@@ -29,7 +29,7 @@ import { RenderSchema, VisualEditorProvider } from '@we/schema-solid';
 import { createEffect, createMemo, createSignal, onMount, Show } from 'solid-js';
 
 import { PersistentAppFrames } from '../layouts/PersistentAppFrames';
-import { computeEditorRightOffset, SHELL_SIDEBAR_WIDTH, TemplateLayout } from '../layouts/TemplateLayout';
+import { SHELL_SIDEBAR_WIDTH, TemplateLayout } from '../layouts/TemplateLayout';
 import { buildRoutes } from '../utils/buildRoutes';
 
 export default function TemplateProvider() {
@@ -53,16 +53,6 @@ export default function TemplateProvider() {
   onMount(() => {
     document.documentElement.style.setProperty('--we-sidebar-width', SHELL_SIDEBAR_WIDTH);
   });
-
-  /**
-   * Keep the dock system aware of the editor's rails.
-   *
-   * Wired here rather than read inside `ShellStore`, which would have to import the editor to ask —
-   * a dependency the shell store has no other reason to carry, and the wrong direction besides. The
-   * effect is one line and the ownership stays where it was: the editor knows how wide it is, the
-   * dock system knows what to do about it, and this is the only place that knows both exist.
-   */
-  createEffect(() => shellStore.setReservedEdges({ right: computeEditorRightOffset(stores) }));
 
   // Console store for debugging $action calls in schema
   const consoleStore = {

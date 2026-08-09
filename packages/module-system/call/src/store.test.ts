@@ -93,17 +93,42 @@ describe('placement', () => {
 });
 
 describe('tile packing', () => {
-  it('divides a definite box rather than growing to fit its content', () => {
+  it('divides a definite height when height is the scarce dimension', () => {
     // The invariant the whole layout exists for. A wrapping flex row derives its line height from
     // content and can only grow, so a declared stage height was a floor; grid tracks of `1fr` divide
     // what they are given and cannot overflow it.
     const store = makeStore();
-    store.setPlacement('right');
+    store.setPlacement('bottom');
 
     const style = store.stageStyle();
     expect(style.display).toBe('grid');
     expect(style['grid-auto-rows']).toBe('1fr');
     expect(style['grid-template-columns']).toBe('repeat(1, 1fr)');
+  });
+
+  it('sizes a side dock from its width and stacks the tiles at the top', () => {
+    // Sharing the height equally is right when height is scarce and wrong when it is not: a 440×900
+    // side dock gave one participant a 900px row to be centred in, so a 247px picture floated in the
+    // middle with a third of a screen of nothing above and below it.
+    const store = makeStore();
+    store.setPlacement('right');
+
+    const style = store.stageStyle();
+    expect(style['grid-auto-rows']).toBe('min-content');
+    expect(style['align-content']).toBe('start');
+  });
+
+  it('derives the picture from whichever dimension is scarce', () => {
+    // And never asks a content-sized row to measure itself: `container-type: size` on a row whose
+    // height comes from its content collapses it to nothing, which is why the two regimes cannot
+    // share one style.
+    const store = makeStore();
+
+    store.setPlacement('right');
+    expect(store.pictureStyle().width).toBe('100%');
+
+    store.setPlacement('bottom');
+    expect(store.pictureStyle().width).toContain('cqh');
   });
 
   it('flows a floating strip along one row so its width follows the headcount', () => {
@@ -116,18 +141,6 @@ describe('tile packing', () => {
 
   it('places nobody when nobody is in the call', () => {
     expect(makeStore().tileCells()).toEqual([]);
-  });
-
-  it('makes every cell measurable, so the picture inside can be the right shape', () => {
-    // Without this the picture cannot know how tall its cell is, so it fills the cell instead — and
-    // the name and badges anchored to its corner end up floating in the empty half of a box they
-    // only nominally shared with the video.
-    const store = makeStore();
-    store.setPlacement('right');
-
-    for (const cell of store.tileCells()) {
-      expect(cell.style['container-type']).toBe('size');
-    }
   });
 });
 

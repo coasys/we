@@ -175,7 +175,10 @@ export function RightPanelContainer() {
       // the editor is embedded in a panel. See `useEditorSurface`.
       position={surface.positioning === 'container' ? 'absolute' : 'fixed'}
       top="0"
-      right="0"
+      // Beside the content rather than the window, so a docked module panel slides the editor's
+      // rails inwards instead of opening underneath them. Inside a host's own container there is no
+      // dock to account for, and the variable is simply unset.
+      right="var(--we-dock-right, 0px)"
       height={surface.positioning === 'container' ? '100%' : '100vh'}
       zIndex={20}
       transform={containerTransform()}

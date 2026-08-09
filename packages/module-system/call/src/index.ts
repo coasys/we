@@ -148,21 +148,12 @@ const tile: SchemaNode = {
         ax: 'center',
         ay: 'center',
         /**
-         * The largest 16:9 box that fits the cell, centred.
+         * A 16:9 box, sized from whichever dimension is the scarce one — see `pictureStyle`.
          *
-         * `100cqh` is the cell's height, readable because the cell declares `container-type: size`.
-         * Width is therefore the smaller of "all of it" and "as much as this height allows at 16:9",
-         * and `aspect-ratio` derives the height back from that — which is the fit-a-ratio-box-in-a-
-         * container calculation that CSS cannot otherwise express for a non-replaced element.
-         *
-         * Where container queries are unavailable the width declaration is simply dropped and the
-         * box fills its cell, which is exactly the behaviour this replaces.
+         * Computed in the store rather than written here because it depends on the placement, and a
+         * side dock and a bottom dock are constrained by different axes.
          */
-        styles: {
-          'aspect-ratio': '16 / 9',
-          width: 'min(100%, calc(100cqh * 16 / 9))',
-          margin: 'auto',
-        },
+        styles: { $store: 'modules.call.pictureStyle' },
         // A ring on whoever has the stage, so clicking a tile has a visible result even in the moment
         // before the layout settles. On the picture rather than the cell, so it frames the video.
         border: {

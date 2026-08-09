@@ -1102,6 +1102,12 @@
           "default": "'vertical'"
         },
         {
+          "name": "align",
+          "type": "'start' | 'center' | 'end'",
+          "optional": false,
+          "default": "'center'"
+        },
+        {
           "name": "step",
           "type": "number",
           "optional": false,

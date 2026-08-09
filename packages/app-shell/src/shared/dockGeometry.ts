@@ -15,12 +15,19 @@ import type { DockEdge, DockSize } from '@we/module-shared';
 export const SIDEBAR_PX = 80;
 
 /**
- * What a panel on the right must clear so the module rail stays reachable while it is open.
+ * What a docked panel must leave for chrome that lives at the same edge. Nothing, now.
  *
- * The rail is 48px (`MODULE_RAIL_WIDTH`) plus a gap. Covering it would hide the way to close the
- * very panel that was covering it, which is the one state a docked panel must not be able to reach.
+ * It used to be the module rail's width, so panels opened *beside* the rail. That put the panel in
+ * the middle of the screen edge, with the rail outside it and the editor's own rails on top of it —
+ * three things claiming one edge and only one of them able to have it.
+ *
+ * The rail moves instead. Floating chrome positions itself against the *content* region rather than
+ * the window, reading `--we-dock-right` and friends, so opening a dock slides the rail and the
+ * editor inwards and the panel takes the edge it was always trying to occupy. Kept as a named zero
+ * because the concept is still real — a backend or platform that pins something to an edge would set
+ * it — and because deleting it would leave the arithmetic below looking arbitrary.
  */
-export const RAIL_PX = 56;
+export const RAIL_PX = 0;
 
 /** The gap between a floating or docked panel and the edges it sits against. */
 export const DOCK_GAP_PX = 8;
@@ -38,14 +45,6 @@ export const NARROW_VIEWPORT_PX = 900;
 export interface Viewport {
   width: number;
   height: number;
-  /**
-   * Chrome already occupying each edge that docks must keep clear of, beyond the shell's own.
-   *
-   * The sidebar and the module rail are constants and live below; this is for what comes and goes.
-   * The template and theme editors open rails and panels along the right edge, and a dock that
-   * ignored them opened on top of the controls being used to edit the thing it was covering.
-   */
-  reserved?: ContentInset;
 }
 
 export interface DockRequest {
@@ -106,18 +105,13 @@ const clamp = (value: number, min: number, max: number) => Math.max(min, Math.mi
 
 /** The region a dock may occupy: the window, less the chrome that is always there. */
 function contentRegion(viewport: Viewport) {
-  const reserved = viewport.reserved;
-  const left = SIDEBAR_PX + (reserved?.left ?? 0);
-  const right = RAIL_PX + (reserved?.right ?? 0);
-  const top = reserved?.top ?? 0;
-  const bottom = reserved?.bottom ?? 0;
   return {
-    left,
-    right,
-    top,
-    bottom,
-    width: Math.max(0, viewport.width - left - right),
-    height: Math.max(0, viewport.height - top - bottom),
+    left: SIDEBAR_PX,
+    right: RAIL_PX,
+    top: 0,
+    bottom: 0,
+    width: Math.max(0, viewport.width - SIDEBAR_PX - RAIL_PX),
+    height: viewport.height,
   };
 }
 

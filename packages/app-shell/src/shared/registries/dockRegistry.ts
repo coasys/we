@@ -143,6 +143,10 @@ function resizeHandle(id: string): SchemaNode {
         props: {
           // Vertical bar for a panel whose handle is on its left or right; horizontal otherwise.
           orientation: { $if: { condition: { $or: [on('left'), on('right')] }, then: 'vertical', else: 'horizontal' } },
+          // Flush with the panel's own border, so dragging thickens the line that is already there
+          // rather than revealing a second one a few pixels inside it.
+          align: { $if: { condition: { $or: [on('left'), on('top')] }, then: 'start', else: 'end' } },
+          styles: { '--we-resize-handle-thickness': '3px' },
           position: 'absolute',
           zIndex: 'sticky',
           // Pinned to the named side and stretched along the other axis, so one node serves all four

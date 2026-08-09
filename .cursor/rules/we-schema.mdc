@@ -750,7 +750,7 @@ There were two implementations of this before it existed and they diverged in wa
 the editor's is mouse-only, so it does not work on a touchscreen at all, and its rail is a plain
 div — not focusable, so there is no way to resize a panel from the keyboard. Pointer events and a
 `separator` role fix both once, for every consumer, in the layer where imperative DOM work belongs.
-  Props: orientation: 'vertical' | 'horizontal' = 'vertical', step: number = 16, dragging: boolean = false
+  Props: orientation: 'vertical' | 'horizontal' = 'vertical', align: 'start' | 'center' | 'end' = 'center', step: number = 16, dragging: boolean = false
 - we-scroll-area (DesignSystemElement)
   Props: maxHeight: string = '', maxWidth: string = ''
 - we-select (DesignSystemElement)

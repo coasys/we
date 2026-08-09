@@ -19,7 +19,16 @@ import {
 import { dockRegistry } from '@shared/registries/dockRegistry';
 import { moduleStores } from '@shared/registries/moduleRegistry';
 import type { DockEdge, DockSize } from '@we/module-shared';
-import { Accessor, createContext, createMemo, createSignal, onCleanup, ParentProps, useContext } from 'solid-js';
+import {
+  Accessor,
+  createContext,
+  createEffect,
+  createMemo,
+  createSignal,
+  onCleanup,
+  ParentProps,
+  useContext,
+} from 'solid-js';
 
 export interface ShellStore {
   /** Id of the currently open shell overlay, or null. */
@@ -62,13 +71,6 @@ export interface ShellStore {
   dockGeometry: Accessor<Record<string, DockGeometry>>;
   /** What the content viewport gives up to docked panels, in pixels per edge. */
   contentInset: Accessor<ContentInset>;
-  /**
-   * Tell the dock system about chrome it must keep clear of, beyond the shell's own furniture.
-   *
-   * Pushed in rather than read out, because the thing occupying the edge is the editor and this
-   * store has no business importing it. See `computeEditorRightOffset`.
-   */
-  setReservedEdges: (reserved: Partial<ContentInset>) => void;
   /** True while a dock is being dragged, so transitions can be suspended and the edge track the cursor. */
   dockResizing: Accessor<boolean>;
   /** Remember a dock's current thickness, so the drag that follows is measured from it. */
@@ -144,16 +146,29 @@ export function ShellStoreProvider(props: ParentProps) {
     })),
   );
 
-  const [reservedEdges, setReservedEdges] = createSignal<ContentInset>({ left: 0, right: 0, top: 0, bottom: 0 });
-
-  /** The window, less whatever else is already holding an edge. What every dock is measured against. */
-  const region = createMemo(() => ({ ...viewport(), reserved: reservedEdges() }));
-
   const dockGeometry = createMemo(() =>
-    Object.fromEntries(dockRequests().map((request) => [request.id, resolveDock(request, region())])),
+    Object.fromEntries(dockRequests().map((request) => [request.id, resolveDock(request, viewport())])),
   );
 
-  const inset = createMemo(() => contentInset(dockRequests(), region()));
+  const inset = createMemo(() => contentInset(dockRequests(), viewport()));
+
+  /**
+   * Publish the inset as CSS custom properties, so chrome can sit against the *content* rather than
+   * the window.
+   *
+   * Anything pinned to a screen edge has to move when a dock takes that edge, and the things that
+   * need to move — the module rail, the editor's rails, its floating toolbar — live in three
+   * different packages, two of which have no business importing this store. A custom property on the
+   * root is the one channel all of them already share; `--we-sidebar-width` is set the same way and
+   * for the same reason.
+   */
+  createEffect(() => {
+    if (typeof document === 'undefined') return;
+    const edges = inset();
+    for (const [edge, value] of Object.entries(edges)) {
+      document.documentElement.style.setProperty(`--we-dock-${edge}`, `${value}px`);
+    }
+  });
 
   const store: ShellStore = {
     activeShellView,
@@ -174,13 +189,12 @@ export function ShellStoreProvider(props: ParentProps) {
     },
     dockGeometry,
     contentInset: inset,
-    setReservedEdges: (next) => setReservedEdges((prev) => ({ ...prev, ...next })),
     dockResizing,
 
     beginDockResize: (id) => {
       const request = dockRequests().find((entry) => entry.id === id);
       if (!request?.edge) return;
-      resizeOrigin = dockThickness(request.edge, request.size, region(), request.resizedTo);
+      resizeOrigin = dockThickness(request.edge, request.size, viewport(), request.resizedTo);
       setDockResizing(true);
     },
 

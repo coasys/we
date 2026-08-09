@@ -15,8 +15,9 @@
  * ## Why the right edge
  *
  * It is the emptiest edge in WE's layout: the sidebar owns the left, the header owns the top, and the
- * call bar owns the bottom centre. Docked module panels open beside it (`right: 48px`), so the rail
- * stays reachable while a panel is open rather than being covered by it.
+ * call bar owns the bottom centre. A docked module panel takes that edge outright and slides the rail
+ * inwards by its width, so the rail stays reachable while a panel is open rather than being covered
+ * by it — and the panel is not stranded in the middle of the edge with chrome on both sides.
  *
  * ## Only inside a space
  *
@@ -73,7 +74,9 @@ export const moduleRail: SchemaNode = {
       type: 'Column',
       props: {
         position: 'fixed',
-        right: '0px',
+        // Against the content's edge rather than the window's, so a docked panel slides the rail
+        // inwards instead of opening on top of it — see `--we-dock-right` in ShellStore.
+        right: 'var(--we-dock-right, 0px)',
         top: '96px',
         width: MODULE_RAIL_WIDTH,
         gap: '100',

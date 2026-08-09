@@ -305,7 +305,8 @@ export function DesignToolbar() {
         ref={containerRef}
         position="absolute"
         top="10px"
-        right={rowRight()}
+        // Plus whatever a docked module panel is taking from the same edge — see `--we-dock-right`.
+        right={`calc(${rowRight()} + var(--we-dock-right, 0px))`}
         transition={panelResizing() ? 'none' : 'right 300ms ease'}
         pointerEvents="auto"
         ay="start"

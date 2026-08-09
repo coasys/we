@@ -21,12 +21,14 @@ const dock = (over: Partial<Parameters<typeof resolveDock>[0]> = {}) => ({
 });
 
 describe('resolveDock', () => {
-  it('spans its edge and clears the module rail', () => {
+  it('takes the edge outright, leaving nothing for chrome to sit in', () => {
     const geometry = resolveDock(dock(), desktop);
 
-    // Anchored right, not at the window edge: covering the rail would hide the way to close the
-    // panel that is covering it.
-    expect(geometry.right).toBe('56px');
+    // Flush to the window edge. Panels used to open *beside* the module rail, which left them
+    // stranded in the middle of the edge with the rail outside them and the editor's own rails on
+    // top — three things claiming one edge. Floating chrome positions itself against the content
+    // region instead, so opening a dock slides it inwards. See `RAIL_PX`.
+    expect(geometry.right).toBe('0px');
     expect(geometry.top).toBeDefined();
     expect(geometry.bottom).toBeDefined();
     expect(geometry.floating).toBe(false);

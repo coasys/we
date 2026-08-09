@@ -26,6 +26,19 @@ const CSS_STYLES = css`
     justify-content: center;
   }
 
+  /* Flush with one end of the hit area rather than centred in it. The hit area is deliberately wider
+     than anything visible, so a centred line floats a few pixels inside whatever edge it belongs to —
+     next to a panel that already has a border, that reads as a second line rather than as that one. */
+  :host([align='start']) [part='base'] {
+    align-items: flex-start;
+    justify-content: flex-start;
+  }
+
+  :host([align='end']) [part='base'] {
+    align-items: flex-end;
+    justify-content: flex-end;
+  }
+
   /*
      Nothing at rest, and that is the default rather than a special case.
 
@@ -43,13 +56,13 @@ const CSS_STYLES = css`
   }
 
   :host(:not([orientation='horizontal'])) [part='line'] {
-    width: 1px;
+    width: var(--we-resize-handle-thickness, 1px);
     height: 100%;
   }
 
   :host([orientation='horizontal']) [part='line'] {
     width: 100%;
-    height: 1px;
+    height: var(--we-resize-handle-thickness, 1px);
   }
 
   :host(:hover) [part='line'],
@@ -118,6 +131,17 @@ export default class ResizeHandle extends LayoutElement {
    * than either name being slightly ambiguous alone.
    */
   @property({ type: String, reflect: true }) orientation: 'vertical' | 'horizontal' = 'vertical';
+
+  /**
+   * Where the visible line sits within the hit area.
+   *
+   * The hit area has to be wider than the line — a 1px target is a target you miss — so the two are
+   * not the same box, and which end of it the line belongs at depends on what the handle is next to.
+   * Sitting against a panel's own border, `start` or `end` puts the line *on* that border so it
+   * reads as the border thickening; `center` is right for a handle between two panes with no border
+   * of their own.
+   */
+  @property({ type: String, reflect: true }) align: 'start' | 'center' | 'end' = 'center';
 
   /** Pixels moved per arrow-key press. */
   @property({ type: Number }) step = 16;
