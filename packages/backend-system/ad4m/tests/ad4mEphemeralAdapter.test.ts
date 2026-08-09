@@ -11,6 +11,15 @@ import { describe, expect, it, vi } from 'vitest';
 
 type Handler = (signal: unknown) => void;
 
+/**
+ * Let the microtask queue drain.
+ *
+ * A publish now awaits the signal-handler registration before it sends, so the send is several
+ * microtasks deep rather than one. Draining rather than counting ticks keeps the tests from
+ * depending on how many `await`s the implementation happens to have.
+ */
+const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
+
 /** A `PerspectiveProxy` stand-in exposing only what the adapter reaches for. */
 // `null` (not `undefined`) means unshared — passing undefined to a defaulted parameter would
 // silently take the default and build a shared perspective instead.
@@ -193,10 +202,92 @@ describe('createAd4mEphemeralPort', () => {
       const scope = createAd4mEphemeralPort(() => 'me')(env.perspective)!;
 
       scope.channel('presence').publish({ beat: 1 });
-      await Promise.resolve();
+      await flush();
 
       expect(env.sent[0]).toMatchObject({ predicate: 'we://ephemeral/presence', target: '*' });
       expect(JSON.parse(env.sent[0].source)).toEqual({ beat: 1 });
+    });
+  });
+
+  /**
+   * Both behaviours here are latency bugs, which is why neither was noticed for so long: nothing
+   * fails, nothing logs, and every message eventually arrives. They were found from the outside, as
+   * "starting a call takes a while to show up for the other agent".
+   */
+  describe('publish timing', () => {
+    it('waits for the signal handler before publishing anything', async () => {
+      // The presence handshake is one round trip: a joiner broadcasts `hello` and every peer answers
+      // at once. Publishing before the executor has registered our handler means those answers are
+      // delivered to nobody, and the joiner sits in an apparently empty space until each peer's next
+      // heartbeat.
+      const env = fakePerspective();
+      let registered = false;
+      env.neighbourhood.addSignalHandler.mockImplementationOnce(async (h: Handler) => {
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        env.handlers.push(h);
+        registered = true;
+      });
+
+      const scope = createAd4mEphemeralPort(() => 'me')(env.perspective)!;
+      scope.channel('presence').publish({ hello: true });
+
+      await flush();
+      expect(env.sent).toHaveLength(0);
+
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      await flush();
+      expect(registered).toBe(true);
+      expect(env.sent).toHaveLength(1);
+    });
+
+    it('holds a coalesced publish and sends it when the in-flight one lands', async () => {
+      // The difference between holding and dropping. "The next message carries the same state" is
+      // true of a heartbeat and false of the state change it has not started repeating yet — so a
+      // dropped `join a call` cost the other agent a full heartbeat interval of not knowing.
+      const env = fakePerspective();
+      let release: (() => void) | undefined;
+      env.neighbourhood.sendBroadcastU.mockImplementationOnce(async (payload) => {
+        await new Promise<void>((resolve) => (release = resolve));
+        env.sent.push(payload.links[0]);
+        return true;
+      });
+
+      const scope = createAd4mEphemeralPort(() => 'me')(env.perspective)!;
+      const channel = scope.channel('presence', { coalesce: true });
+
+      channel.publish({ beat: 1 });
+      await flush();
+
+      // Two state changes land while the first send is stuck. Only the newest is worth sending —
+      // that is what coalescing means — but *something* must be.
+      channel.publish({ joinedCall: true });
+      channel.publish({ leftCall: true });
+      expect(env.sent).toHaveLength(0);
+
+      release!();
+      await flush();
+
+      expect(env.sent.map((link) => JSON.parse(link.source))).toEqual([{ beat: 1 }, { leftCall: true }]);
+    });
+
+    it('keeps publishing after a send throws synchronously', async () => {
+      // A synchronous throw never reaches a `.finally`, so the in-flight flag would stay set and the
+      // channel would go silent for the rest of the session — the worst possible failure for the one
+      // option whose entire job is to gate on that flag.
+      const env = fakePerspective();
+      env.neighbourhood.sendBroadcastU.mockImplementationOnce(() => {
+        throw new Error('executor gone');
+      });
+
+      const scope = createAd4mEphemeralPort(() => 'me')(env.perspective)!;
+      const channel = scope.channel('presence', { coalesce: true });
+
+      channel.publish({ beat: 1 });
+      await flush();
+      channel.publish({ beat: 2 });
+      await flush();
+
+      expect(env.sent.map((link) => JSON.parse(link.source))).toEqual([{ beat: 2 }]);
     });
   });
 });

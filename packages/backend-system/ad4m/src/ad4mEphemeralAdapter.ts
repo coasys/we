@@ -111,7 +111,22 @@ export function createAd4mEphemeralPort(getMyDid: () => string | undefined): Eph
       listeners.forEach((cb) => cb(link.author as string, payload));
     };
 
-    void neighbourhood.addSignalHandler(handler);
+    /**
+     * Registration is a round trip to the executor, and nothing may be published before it lands.
+     *
+     * `addSignalHandler` returns a promise for a reason: it sets up a subscription on the executor,
+     * not a local callback. Fire-and-forget was a race with the presence handshake, and the losing
+     * side was always the same one — a joiner broadcasts `hello` the instant its scope exists, every
+     * peer answers within milliseconds, and any answer arriving before this resolves is delivered to
+     * nobody. The joiner then sees an empty space until each peer's next heartbeat, which is exactly
+     * the "wait a while for the members to appear" that made this worth finding.
+     *
+     * The rejection is swallowed rather than propagated: a failed registration means this agent
+     * cannot hear, which is bad, but refusing to publish as well would also stop it being heard.
+     */
+    const listening = neighbourhood.addSignalHandler(handler).catch((error: unknown) => {
+      console.warn('ephemeral: signal handler registration failed — inbound traffic will be missed', error);
+    });
 
     const scope: EphemeralScope = {
       capabilities: ad4mEphemeralCapabilities,
@@ -123,39 +138,63 @@ export function createAd4mEphemeralPort(getMyDid: () => string | undefined): Eph
         const predicate = PREDICATE_PREFIX + tag;
         let inFlight = false;
         let failures = 0;
+        /** The one message waiting for the in-flight send to finish. See `publish` below. */
+        let queued: { payload: unknown; to?: { agentId?: string } } | null = null;
+
+        async function dispatch(payload: unknown, to?: { agentId?: string }): Promise<void> {
+          // Set before the first await, or a burst all pass the coalesce check below and the
+          // backpressure this exists for never engages.
+          inFlight = true;
+          try {
+            await listening;
+            await neighbourhood.sendBroadcastU({
+              links: [{ source: JSON.stringify(payload), predicate, target: to?.agentId ?? TARGET_ALL }],
+            });
+            if (failures > 0) {
+              console.info(`ephemeral: "${tag}" recovered after ${failures} failed send(s)`);
+              failures = 0;
+            }
+          } catch (error: unknown) {
+            // A failed send is not worth escalating to the user — presence repairs itself on the
+            // next beat — but it must not be silent either. Log the first, then back off
+            // geometrically: an unreachable neighbourhood otherwise emits a warning every 5s and
+            // buries whatever the actual problem is.
+            //
+            // `try`/`catch` around the call itself, not `.catch` on the promise: a synchronous throw
+            // from `sendBroadcastU` would never reach a `.finally`, leaving `inFlight` stuck true and
+            // this channel silently muted for the rest of the session.
+            failures += 1;
+            if ((failures & (failures - 1)) === 0) {
+              console.warn(`ephemeral: send failed on "${tag}" (${failures} consecutive)`, error);
+            }
+          } finally {
+            inFlight = false;
+            const next = queued;
+            queued = null;
+            if (next) void dispatch(next.payload, next.to);
+          }
+        }
 
         const channel: EphemeralChannel = {
           publish(payload, to) {
             // Backpressure for idempotent traffic. When the executor is unhealthy `sendBroadcast`
             // hangs until a 30s RPC timeout, so a 5s heartbeat accumulates six stuck calls — piling
-            // load onto the thing that is already failing. Dropping a beat costs nothing here: the
-            // next one carries the same state.
-            if (options?.coalesce && inFlight) return;
-            inFlight = true;
-
-            neighbourhood
-              .sendBroadcastU({
-                links: [{ source: JSON.stringify(payload), predicate, target: to?.agentId ?? TARGET_ALL }],
-              })
-              .then(() => {
-                if (failures > 0) {
-                  console.info(`ephemeral: "${tag}" recovered after ${failures} failed send(s)`);
-                  failures = 0;
-                }
-              })
-              // A failed send is not worth escalating to the user — presence repairs itself on the
-              // next beat — but it must not be silent either. Log the first, then back off
-              // geometrically: an unreachable neighbourhood otherwise emits a warning every 5s and
-              // buries whatever the actual problem is.
-              .catch((error: unknown) => {
-                failures += 1;
-                if ((failures & (failures - 1)) === 0) {
-                  console.warn(`ephemeral: send failed on "${tag}" (${failures} consecutive)`, error);
-                }
-              })
-              .finally(() => {
-                inFlight = false;
-              });
+            // load onto the thing that is already failing.
+            //
+            // The message is **held and sent next**, not dropped, and that difference is the whole
+            // point. Coalescing is defined over last-write-wins traffic, where losing a message is
+            // supposed to cost nothing because the next one carries the same state — true of a
+            // heartbeat, false of the state *change* that heartbeat is about to start repeating.
+            // Joining a call, leaving one, and answering a peer's `hello` all go down this channel,
+            // and dropping one of those did not cost nothing: it cost a full heartbeat interval of
+            // the other agent not knowing, or longer if the next beat lost the race too. Holding the
+            // latest keeps exactly one send in flight and one waiting, so nothing piles up and
+            // nothing is lost.
+            if (options?.coalesce && inFlight) {
+              queued = { payload, to };
+              return;
+            }
+            void dispatch(payload, to);
           },
           onMessage(cb) {
             let listeners = subscribers.get(tag);

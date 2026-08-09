@@ -106,10 +106,24 @@ export function PresenceStoreProvider(props: ParentProps) {
 
   let source: PresenceSource | null = null;
 
-  // One coordinator for the app: only the focused tab publishes, but every tab subscribes so each
-  // one's UI stays live.
-  const tabs = createTabCoordinator();
-  onCleanup(() => tabs.dispose());
+  /**
+   * One coordinator per **agent**: only the focused tab publishes, but every tab subscribes so each
+   * one's UI stays live.
+   *
+   * Scoped to the DID rather than to the origin, which matters the moment two tabs are signed in as
+   * different agents — the ordinary way this gets developed and tested. Origin-wide, those two tabs
+   * contend for a single leadership that only one of them can hold, and the loser publishes nothing:
+   * one agent goes entirely silent, and because leadership follows window focus it is whichever
+   * agent you are not looking at. Peers then see stale state until you switch tabs, which reads like
+   * a slow network rather than like a tab fighting another tab.
+   */
+  const tabs = createMemo(() => {
+    const did = session.me()?.did;
+    if (!did) return null;
+    const coordinator = createTabCoordinator({ scope: did });
+    onCleanup(() => coordinator.dispose());
+    return coordinator;
+  });
 
   // Taken from the store rather than constructed here: one shared port for the whole app, so its
   // per-perspective scope refcounting actually works and the call module later joins the same scope
@@ -153,9 +167,12 @@ export function PresenceStoreProvider(props: ParentProps) {
     // in flight costs nothing — and on an unhealthy executor it is the difference between one
     // pending broadcast and six.
     const raw = scope.channel('presence', { coalesce: true });
+    const coordinator = tabs();
     const channel = {
       publish: (payload: unknown, to?: { agentId?: string }) => {
-        if (tabs.isLeader()) raw.publish(payload, to);
+        // No coordinator means no other tab can be holding this agent's leadership, so publishing is
+        // unconditional — the same answer `soleLeader` gives a single-window host.
+        if (!coordinator || coordinator.isLeader()) raw.publish(payload, to);
       },
       onMessage: raw.onMessage,
     };
@@ -172,10 +189,10 @@ export function PresenceStoreProvider(props: ParentProps) {
 
     // Publish as soon as this tab takes over, so leadership changing mid-session doesn't leave
     // peers waiting out a full interval for the new leader's first heartbeat.
-    const unsubLeader = tabs.onBecomeLeader(() => presence.update({}));
+    const unsubLeader = coordinator?.onBecomeLeader(() => presence.update({}));
 
     onCleanup(() => {
-      unsubLeader();
+      unsubLeader?.();
       presence.stop();
       scope.dispose();
     });

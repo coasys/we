@@ -9,6 +9,7 @@ import {
 
 const HEARTBEAT_INTERVAL = 5_000;
 const LEADER_TIMEOUT = 15_000;
+const CLAIM_TIMEOUT = 300;
 
 /**
  * An in-memory stand-in for `BroadcastChannel`, matching the one behaviour the coordinator depends
@@ -112,6 +113,18 @@ describe('createTabCoordinator', () => {
   });
 
   describe('a lone tab', () => {
+    it('leads within a round trip when it starts focused', () => {
+      // The one that mattered. Publishing is gated on leadership, so a tab that is not yet leader
+      // sends no heartbeat *and* no presence `hello` — it neither appears to its peers nor learns
+      // about them. Waiting out the crash timeout to discover it was alone meant opening the app
+      // showed an empty space for fifteen seconds, which is indistinguishable from a slow network.
+      const a = tab('a', true);
+      expect(a.coordinator.isLeader()).toBe(false);
+
+      vi.advanceTimersByTime(CLAIM_TIMEOUT);
+      expect(a.coordinator.isLeader()).toBe(true);
+    });
+
     it('takes leadership after the incumbent timeout when it starts unfocused', () => {
       const a = tab('a');
       expect(a.coordinator.isLeader()).toBe(false);
@@ -147,8 +160,9 @@ describe('createTabCoordinator', () => {
       expect(a.coordinator.isLeader()).toBe(false);
       expect(lost).toHaveBeenCalledOnce();
 
-      // 'a' yielded but 'b' does not lead until it takes over on timeout.
-      vi.advanceTimersByTime(LEADER_TIMEOUT);
+      // Handover is immediate, because 'a' announces the yield rather than just going quiet. It used
+      // to take LEADER_TIMEOUT — fifteen seconds in which neither tab published, so this agent's
+      // presence simply stopped every time the user looked at another window.
       expect(b.coordinator.isLeader()).toBe(true);
       expect(a.coordinator.isLeader()).toBe(false);
     });
@@ -335,6 +349,83 @@ describe('createTabCoordinator', () => {
 
       vi.advanceTimersByTime(LEADER_TIMEOUT);
       expect(gained).not.toHaveBeenCalled();
+    });
+  });
+
+  /**
+   * Leadership is contended per agent, not per origin.
+   *
+   * The default channel is exercised here rather than the injected one, because the scoping *is* the
+   * channel name — an injected bus would test the fake. Two agents on one machine is the ordinary
+   * development setup, and getting this wrong has no error and no log: the agent you are not looking
+   * at simply stops publishing, which reads as a slow network.
+   */
+  describe('scope', () => {
+    /** A `BroadcastChannel` that, like the real one, only reaches instances sharing its name. */
+    function stubBroadcastChannel() {
+      const byName = new Map<string, Set<{ deliver: (message: unknown) => void }>>();
+      class FakeBroadcastChannel {
+        private listeners = new Set<(event: { data: unknown }) => void>();
+        private peer = { deliver: (message: unknown) => this.listeners.forEach((cb) => cb({ data: message })) };
+        constructor(public name: string) {
+          if (!byName.has(name)) byName.set(name, new Set());
+          byName.get(name)!.add(this.peer);
+        }
+        postMessage(message: unknown) {
+          for (const other of byName.get(this.name) ?? []) if (other !== this.peer) other.deliver(message);
+        }
+        addEventListener(_type: string, cb: (event: { data: unknown }) => void) {
+          this.listeners.add(cb);
+        }
+        removeEventListener(_type: string, cb: (event: { data: unknown }) => void) {
+          this.listeners.delete(cb);
+        }
+        close() {
+          byName.get(this.name)?.delete(this.peer);
+        }
+      }
+      vi.stubGlobal('BroadcastChannel', FakeBroadcastChannel);
+      return { names: () => [...byName.keys()] };
+    }
+
+    afterEach(() => vi.unstubAllGlobals());
+
+    function scopedTab(id: string, scope: string) {
+      const focus = createFocus(true);
+      const coordinator = createTabCoordinator({ focus: focus.source, tabId: id, scope });
+      open.push(coordinator);
+      return coordinator;
+    }
+
+    it('lets two agents on one machine both publish', () => {
+      stubBroadcastChannel();
+
+      const alice = scopedTab('a', 'did:key:alice');
+      const bob = scopedTab('b', 'did:key:bob');
+      vi.advanceTimersByTime(CLAIM_TIMEOUT);
+
+      // Neither hears the other's claim, so neither steps down. Sharing an origin-wide channel, the
+      // loser of the id tie-break would go silent — and it is the tab you are not looking at.
+      expect(alice.isLeader()).toBe(true);
+      expect(bob.isLeader()).toBe(true);
+    });
+
+    it('still elects one leader among tabs holding the same agent', () => {
+      // The behaviour scoping must not cost: N tabs showing one agent still publish once.
+      stubBroadcastChannel();
+
+      const one = scopedTab('a', 'did:key:alice');
+      const two = scopedTab('b', 'did:key:alice');
+      vi.advanceTimersByTime(CLAIM_TIMEOUT + HEARTBEAT_INTERVAL);
+
+      expect([one.isLeader(), two.isLeader()].filter(Boolean)).toHaveLength(1);
+    });
+
+    it('names the channel after the scope', () => {
+      const bc = stubBroadcastChannel();
+      scopedTab('a', 'did:key:alice');
+
+      expect(bc.names()).toEqual(['we-tab-coordinator:did:key:alice']);
     });
   });
 

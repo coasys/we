@@ -100,16 +100,23 @@ export interface EphemeralChannel {
 
 export interface ChannelOptions {
   /**
-   * Drop a publish while a previous one is still in flight, rather than letting sends pile up.
+   * Hold a publish while a previous one is still in flight, and send the latest when it lands —
+   * rather than letting sends pile up.
    *
    * Correct only for **idempotent last-write-wins** traffic — presence, cursors, typing — where a
-   * dropped message costs nothing because the next one carries the same information. It is wrong for
-   * a handshake: an RTC offer dropped because the previous send is slow is simply lost.
+   * superseded message is genuinely worthless because the newer one it is waiting behind carries
+   * everything it did. It is wrong for a handshake: an RTC offer is not superseded by the next one.
    *
    * Earns its place from a real failure. On a struggling AD4M executor `sendBroadcast` hangs until a
    * 30s RPC timeout while presence heartbeats every 5s, so six stuck calls accumulate at steady
    * state, each adding load to the backend that is already the problem. Coalescing turns that into
-   * one in-flight send.
+   * one in-flight send and at most one waiting.
+   *
+   * **Hold, not drop** — and an implementation that drops is wrong even though the difference looks
+   * academic. "The next message carries the same state" is true of a heartbeat and false of the
+   * state *change* that the heartbeat has not started repeating yet: joining a call, leaving one,
+   * answering a peer's hello. Dropping those costs a full heartbeat interval of the other side not
+   * knowing, which is precisely the latency this option looks like it could not possibly cause.
    */
   coalesce?: boolean;
 }

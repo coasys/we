@@ -31,6 +31,18 @@ const CHANNEL_NAME = 'we-tab-coordinator';
 const HEARTBEAT_INTERVAL = 5_000;
 /** Long enough to survive a missed beat or two; short enough that a crashed leader is replaced fast. */
 const LEADER_TIMEOUT = 15_000;
+/**
+ * How long a claimant waits for an objection before concluding there is nobody to object.
+ *
+ * Two very different questions were being answered by one timeout, and the wrong answer was
+ * expensive. "Has the leader crashed?" must be slow — evicting a live leader over a missed beat
+ * would hand publishing to a background tab. "Is anyone else here at all?" is answered in a
+ * round trip on a same-process channel, and waiting `LEADER_TIMEOUT` for it meant a freshly opened
+ * tab published nothing for fifteen seconds: no heartbeat, and no `hello`, so it neither appeared to
+ * its peers nor learned about them. Entering a space looked like a slow network for as long as it
+ * took to give up and blame one.
+ */
+const CLAIM_TIMEOUT = 300;
 
 type Message =
   /** "I have focus and want to publish." */
@@ -63,6 +75,20 @@ export interface TabCoordinatorDeps {
   channel?: CoordinatorChannel | null;
   focus?: FocusSource;
   tabId?: string;
+  /**
+   * What leadership is contended *over*. Tabs coordinate only with tabs in the same scope.
+   *
+   * The agent's id, in practice, and it is not an optimisation. Leadership exists so that N tabs
+   * showing **the same agent** publish that agent's state once rather than N times. Two tabs signed
+   * in as *different* agents share none of that: electing one leader between them means the loser
+   * publishes nothing at all, so an entire agent goes silent — and because leadership follows window
+   * focus, it is whichever agent you are not currently looking at. That reads exactly like a slow
+   * network, which is how it went unnoticed: everything arrives, just not until you look away.
+   *
+   * Two agents on one machine is the ordinary way this gets developed and tested, so an origin-wide
+   * channel is wrong by default rather than in an edge case.
+   */
+  scope?: string;
 }
 
 export interface TabCoordinator {
@@ -90,9 +116,9 @@ function defaultTabId(): string {
   }
 }
 
-function defaultChannel(): CoordinatorChannel | null {
+function defaultChannel(scope?: string): CoordinatorChannel | null {
   if (typeof BroadcastChannel === 'undefined') return null;
-  const bc = new BroadcastChannel(CHANNEL_NAME);
+  const bc = new BroadcastChannel(scope ? `${CHANNEL_NAME}:${scope}` : CHANNEL_NAME);
   return {
     post: (message) => bc.postMessage(message),
     subscribe: (cb) => {
@@ -155,7 +181,7 @@ function isMessage(value: unknown): value is Message {
 }
 
 export function createTabCoordinator(deps: TabCoordinatorDeps = {}): TabCoordinator {
-  const channel = deps.channel !== undefined ? deps.channel : defaultChannel();
+  const channel = deps.channel !== undefined ? deps.channel : defaultChannel(deps.scope);
   const focus = deps.focus ?? defaultFocus();
   if (!channel || !focus) return soleLeader();
 
@@ -192,11 +218,17 @@ export function createTabCoordinator(deps: TabCoordinatorDeps = {}): TabCoordina
     lostLeadership.forEach((cb) => cb());
   }
 
-  /** Assume the leader is gone if it goes quiet for LEADER_TIMEOUT, and take over. */
-  function watchLeader(): void {
+  /**
+   * Take over if nothing is heard for `delay`.
+   *
+   * The delay is the question being asked. `LEADER_TIMEOUT` asks whether an incumbent has crashed;
+   * `CLAIM_TIMEOUT` asks whether an incumbent exists. Any inbound heartbeat resets it to the long
+   * one, so hearing from a live leader always restores the patient behaviour.
+   */
+  function watchLeader(delay: number = LEADER_TIMEOUT): void {
     if (disposed) return;
     if (timeoutTimer) clearTimeout(timeoutTimer);
-    timeoutTimer = setTimeout(becomeLeader, LEADER_TIMEOUT);
+    timeoutTimer = setTimeout(becomeLeader, delay);
   }
 
   function stopWatchingLeader(): void {
@@ -217,6 +249,11 @@ export function createTabCoordinator(deps: TabCoordinatorDeps = {}): TabCoordina
           if (pinned) post('pinned');
           else {
             stepDown();
+            // Say so. A silent step-down is indistinguishable from a leader that simply went quiet,
+            // so the claimant had to wait out the full crash timeout before daring to take over —
+            // fifteen seconds during which this agent published nothing at all. `resign` is the
+            // message that already means "take over now"; the yield just never sent it.
+            post('resign');
             watchLeader();
           }
         }
@@ -266,17 +303,26 @@ export function createTabCoordinator(deps: TabCoordinatorDeps = {}): TabCoordina
   });
 
   const unsubscribeFocus = focus.onFocusGained(() => {
-    if (!leader) post('claim');
+    if (leader) return;
+    post('claim');
+    // Short-fuse: an incumbent answers a claim immediately, either by resigning or by saying it is
+    // pinned. Silence therefore means there is nobody there, not that somebody is slow.
+    watchLeader(CLAIM_TIMEOUT);
   });
 
   const unsubscribeHide = focus.onHide(() => {
     if (leader) post('resign');
   });
 
-  // Claim on creation when this tab is the one being looked at; otherwise wait for the incumbent to
-  // go quiet.
-  if (focus.hasFocus()) post('claim');
-  watchLeader();
+  // Claim on creation when this tab is the one being looked at, and give the incumbent only a round
+  // trip to object. Unfocused, wait out the full timeout instead: a background tab has no business
+  // taking publishing away from a live leader it simply has not heard from yet.
+  if (focus.hasFocus()) {
+    post('claim');
+    watchLeader(CLAIM_TIMEOUT);
+  } else {
+    watchLeader();
+  }
 
   return {
     isLeader: () => leader,
@@ -285,7 +331,10 @@ export function createTabCoordinator(deps: TabCoordinatorDeps = {}): TabCoordina
       pinned = next;
       // Becoming pinned while not leader means this tab holds the thing that must not be interrupted
       // — claim so publishing follows it.
-      if (pinned && !leader) post('claim');
+      if (pinned && !leader) {
+        post('claim');
+        watchLeader(CLAIM_TIMEOUT);
+      }
     },
 
     onBecomeLeader(cb) {
