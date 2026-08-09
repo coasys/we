@@ -141,13 +141,21 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
       const models = await transcription.models();
       if (mine !== generation) return await unwind();
 
-      const model = models.find((m) => m.isDefault && m.ready) ?? models.find((m) => m.ready);
-      if (!model) {
+      // `no-model` means *there is no model*, and nothing else. It used to also fire when a model
+      // was installed but reported not-ready, which told the user to go and install the thing they
+      // had already installed.
+      if (models.length === 0) {
         // Distinguished from a silent failure on purpose: no model and nobody talking look identical
         // from here, and only one of them is something the user can act on.
         setStatus('no-model');
         return;
       }
+
+      // `ready` orders the choice; it never excludes. A model that reports not-ready is still the
+      // only model there is, the executor loads on demand, and if it genuinely cannot run then
+      // `open` fails and says why — which beats claiming nothing is installed.
+      const preferred = (candidates: typeof models) => candidates.find((m) => m.isDefault) ?? candidates[0];
+      const model = preferred(models.filter((m) => m.ready)) ?? preferred(models);
 
       newStream = await transcription.open(model.id, onText, TUNING);
       if (mine !== generation) return await unwind();

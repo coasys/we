@@ -40,8 +40,15 @@ export function createAd4mTranscriptionPort(backendClient: unknown): Transcripti
   async function isReady(modelId: string): Promise<boolean> {
     try {
       const status = await client.ai.modelLoadingStatus(modelId);
-      return Boolean(status?.loaded ?? status?.downloaded ?? true);
+      if (!status) return true;
+      // `downloaded`, not `loaded`. `loaded` is only ever set true by the executor's LLM spawn path;
+      // `load_transcriber_model` finishes with `("Loaded", downloaded: true, loaded: false)`, so a
+      // working Whisper model reports `loaded: false` forever. Reading it first marked every
+      // transcription model unready.
+      return Boolean(status.downloaded || status.loaded);
     } catch {
+      // No row yet — the executor raises ModelNotFound rather than returning an empty status, and an
+      // API-backed model has nothing to download so may never get one.
       return true;
     }
   }

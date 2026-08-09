@@ -113,15 +113,30 @@ export const panel: SchemaNode = {
           'warning',
           'No transcription model is installed. Add one and transcription will start on its own.',
           {
-            type: 'we-button',
+            // Offered only where the section exists. AI administration is node-scoped, so a guest on
+            // somebody else's executor — which includes every web session against a remote host —
+            // has no AI settings to open, and a button that opens Settings to nothing is worse than
+            // no button. The `else` says who can fix it instead.
+            type: '$if',
             props: {
-              size: 'sm',
-              variant: 'secondary',
-              // The point of naming the reason is that it can be acted on, so the panel goes there
-              // rather than describing where to look.
-              onClick: { $action: 'shellStore.openShellView', args: ['settings', '/ai'] },
+              condition: { $store: 'runtimeStore.canManageAi' },
+              then: {
+                type: 'we-button',
+                props: {
+                  size: 'sm',
+                  variant: 'secondary',
+                  // The point of naming the reason is that it can be acted on, so the panel goes
+                  // there rather than describing where to look.
+                  onClick: { $action: 'shellStore.openShellView', args: ['settings', '/ai'] },
+                },
+                children: ['Open AI settings'],
+              },
+              else: {
+                type: 'we-text',
+                props: { variant: 'footnote', color: 'neutral-400' },
+                children: ['Models are configured on the node this app is connected to.'],
+              },
             },
-            children: ['Open AI settings'],
           },
         ),
         {
