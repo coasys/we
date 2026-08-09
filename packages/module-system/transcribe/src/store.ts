@@ -27,7 +27,53 @@ const FLUSH_AFTER_MS = 3_000;
 /** The tag distinguishing transcript text from the text blocks that make up a post. */
 export const TRANSCRIPT_TAG = 'transcript';
 
+/**
+ * Flux's *effective* voice-activity thresholds, which are not the ones in its defaults file.
+ *
+ * `audio-processor.js` declares one set and `TranscriberWidget.vue` overwrites it over the port the
+ * moment it starts, so the shipped defaults are dead values that Flux never runs with. Porting the
+ * file faithfully therefore reproduced roughly double the real thresholds, and the symptom was
+ * having to speak up to be heard at all.
+ *
+ * Sent rather than baked into the worklet source so the two stay distinguishable: the source keeps
+ * the upstream defaults it was ported from, and this is the deliberate override — the same shape
+ * Flux uses, and the place to tune from.
+ */
+const VAD = {
+  /** 0.08 in the defaults. Onset is the one that decides whether normal speech registers at all. */
+  speechOnsetThreshold: 0.04,
+  /** 0.05 in the defaults. Too high and a sentence is cut at its quieter moments. */
+  silenceThreshold: 0.025,
+  /** 12 in the defaults — ~32ms of held speech rather than ~16ms. */
+  onsetHoldFrames: 6,
+  /** 8000 in the defaults. Largely academic either way, since pre-roll already fills the buffer. */
+  minUtteranceSamples: 2400,
+};
+
+/**
+ * How often the worklet reports the level it is measuring, in audio frames.
+ *
+ * ~64ms at 128 samples / 48 kHz. Fast enough to look live, slow enough that the meter is not posting
+ * a message every 2.7ms across a thread boundary for a bar a few pixels wide.
+ */
+const LEVEL_EVERY_FRAMES = 24;
+
+/**
+ * Meter scale: how much of the bar one unit of RMS fills.
+ *
+ * Speech RMS lives around 0.04–0.25, so a linear 0–1 bar would squeeze everything interesting into
+ * the leftmost few pixels and read as permanently empty. At ×400 the onset threshold sits at 16% and
+ * an ordinary voice fills most of the track.
+ */
+const METER_SCALE = 400;
+
+/** Clamped so a shout does not overflow the bar, and rounded so the width does not jitter. */
+const asPercent = (value: number) => `${Math.min(100, Math.round(value * METER_SCALE))}%`;
+
 export type TranscribeStatus = 'idle' | 'no-backend' | 'no-model' | 'no-audio' | 'starting' | 'listening' | 'error';
+
+/** What the worklet posts. Tagged, because it reports both what it heard and how loud things are. */
+type WorkletMessage = { kind: 'utterance'; audio: Float32Array } | { kind: 'level'; rms: number; speaking: boolean };
 
 /**
  * Speech to text for the call this agent is in.
@@ -53,12 +99,23 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
   const { signal, effect, audioInput, transcription, createEntity, dataset } = deps;
 
   const [status, setStatus] = signal<TranscribeStatus>('idle');
+  /** Whether we are recording. Independent of the panel — see the two toggles at the bottom. */
   const [enabled, setEnabled] = signal(false);
+  /** Whether the transcript panel is showing. Independent of recording, so a finished session can be read. */
+  const [open, setOpen] = signal(false);
   const [error, setError] = signal<string>('');
   /** What has been heard but not yet written — shown live, so the user can see it working. */
   const [pending, setPending] = signal<string>('');
   /** The most recent blocks written this session, newest first. Display only. */
   const [recent, setRecent] = signal<string[]>([]);
+  /**
+   * Microphone loudness as the VAD measures it, 0–1, and whether it currently counts as speech.
+   *
+   * The same RMS the onset decision is made on rather than a second measurement of the same signal,
+   * so a meter drawn from it cannot disagree with the thing it is explaining.
+   */
+  const [level, setLevel] = signal(0);
+  const [speaking, setSpeaking] = signal(false);
 
   let context: AudioContext | null = null;
   let node: AudioWorkletNode | null = null;
@@ -173,6 +230,9 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
       if (mine !== generation) return await unwind();
 
       const newNode = new AudioWorkletNode(newContext, WORKLET_NAME);
+      // The thresholds that actually run. See `VAD` — the worklet's own defaults are the ones Flux
+      // ships and does not use.
+      newNode.port.postMessage({ ...VAD, levelEveryFrames: LEVEL_EVERY_FRAMES });
       const newSource = newContext.createMediaStreamSource(audio);
       newSource.connect(newNode);
       // Not connected to the destination: this is a listener, and routing the microphone to the
@@ -181,8 +241,13 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
       // Closes over the local rather than the field, so an utterance in flight during a teardown
       // feeds the stream it was captured for instead of whatever happens to be current.
       const feedTo = newStream;
-      newNode.port.onmessage = (event: MessageEvent<Float32Array>) => {
-        void feedTo.feed(event.data);
+      newNode.port.onmessage = (event: MessageEvent<WorkletMessage>) => {
+        if (event.data.kind === 'level') {
+          setLevel(event.data.rms);
+          setSpeaking(event.data.speaking);
+          return;
+        }
+        void feedTo.feed(event.data.audio);
       };
 
       context = newContext;
@@ -223,6 +288,8 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
     source = null;
     context = null;
     stream = null;
+    setLevel(0);
+    setSpeaking(false);
 
     if (status() !== 'error') setStatus(resting);
   }
@@ -264,13 +331,45 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
     pending,
     recent,
     enabled,
-    /** True only while actually producing — what the launcher highlights on. */
+    open,
+    level,
+    speaking,
+    /**
+     * The level and the onset threshold as CSS widths, ready to bind.
+     *
+     * Scaled here rather than in the schema because the alternative was a `$multiply` operator
+     * existing for one caller — and the scale is a property of how loud speech is, which is knowledge
+     * this file already has and a template has no business carrying.
+     *
+     * The threshold is published rather than restated in the panel for the same reason the whole
+     * meter exists: a marker at a number that had drifted from the one the VAD compares against would
+     * be confidently wrong about exactly the thing someone consults it to understand.
+     */
+    levelPercent: () => asPercent(level()),
+    thresholdPercent: () => asPercent(VAD.speechOnsetThreshold),
+    /** True only while actually producing — what the call bar's record button highlights on. */
     listening: () => status() === 'listening',
-    /** There is audio to listen to. Without it, offering the control is offering nothing. */
+    /** There is audio to listen to. Without it, offering to record is offering nothing. */
     available: () => (audioInput?.() ?? null) !== null,
 
     // ── Actions ──────────────────────────────────────────────────────────────
-    toggle: () => setEnabled(!enabled()),
+    /**
+     * Start or stop recording.
+     *
+     * Separate from {@link togglePanel} because they are different questions — "capture this call"
+     * and "show me what was captured" — and fusing them meant the transcript vanished the moment you
+     * stopped recording, which is exactly when you want to read it.
+     *
+     * Turning it on opens the panel too, the once: starting something invisible and saying nothing
+     * about it is how a feature comes to look broken.
+     */
+    toggle: () => {
+      const next = !enabled();
+      setEnabled(next);
+      if (next) setOpen(true);
+    },
+    togglePanel: () => setOpen(!open()),
+    closePanel: () => setOpen(false),
     /** Write what has been heard so far without waiting for the buffer to fill. */
     flushNow: () => void flush(),
   };

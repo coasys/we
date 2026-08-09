@@ -26,7 +26,9 @@ const storeDeps = {
 };
 
 function reset() {
-  for (const entry of slotRegistry.ordered()) slotRegistry.remove(entry.id);
+  // `all()`, not `ordered()`: the latter is core anchors only, so contributions to module-declared
+  // anchors would survive between tests.
+  for (const entry of slotRegistry.all()) slotRegistry.remove(entry.id);
   for (const { definition } of moduleRegistry.all()) moduleRegistry.unregister(definition.id);
   registerCoreSlots();
 }
@@ -232,5 +234,98 @@ describe('moduleRegistry', () => {
     expect(result.problems[0]).toContain('other');
     expect(moduleRegistry.embeds()).toEqual([]);
     warn.mockRestore();
+  });
+});
+
+describe('module-declared anchors', () => {
+  const provider: ModuleDefinition = {
+    id: 'call',
+    name: 'Calls',
+    anchors: ['call-controls'],
+    slots: [
+      {
+        anchor: 'dock-bottom',
+        node: {
+          type: 'Row',
+          children: [{ type: 'we-button' }, { type: '$slot', props: { anchor: 'call-controls' } }],
+        },
+      },
+    ],
+  };
+
+  const contributor: ModuleDefinition = {
+    id: 'transcribe',
+    name: 'Transcription',
+    slots: [{ anchor: 'call-controls', node: { type: 'we-icon', props: { name: 'record' } } }],
+  };
+
+  /**
+   * The bar's own children, past the per-space gate the registry wraps every contribution in.
+   *
+   * Found by shape rather than by taking the first `$if`: core chrome is registered too and several
+   * pieces of it are `$if` nodes that come first in the order.
+   */
+  function barChildren(): { type?: string }[] {
+    const gated = slotRegistry
+      .nodes()
+      .find((n) => n.type === '$if' && (n.props as { then?: { type?: string } } | undefined)?.then?.type === 'Row');
+    const row = (gated?.props as { then?: { children?: unknown[] } } | undefined)?.then;
+    return (row?.children ?? []) as { type?: string }[];
+  }
+
+  it('splices a contribution into the marker, wherever the provider put it', () => {
+    moduleRegistry.register(provider, host, storeDeps);
+    moduleRegistry.register(contributor, host, storeDeps);
+
+    const children = barChildren();
+    expect(children).toHaveLength(2);
+    expect(children[0].type).toBe('we-button');
+    // Gated in turn — nesting inside another module's chrome does not exempt it from being switched
+    // off — so what lands is the `$if` wrapper, not the raw icon, and certainly not the marker.
+    expect(children[1].type).toBe('$if');
+  });
+
+  it('resolves the marker away when nothing is contributed', () => {
+    moduleRegistry.register(provider, host, storeDeps);
+
+    // Not an empty container: a gap in the row would be worse than the button being absent.
+    expect(barChildren().map((c) => c.type)).toEqual(['we-button']);
+  });
+
+  it('keeps a contribution out of the top level, so it cannot render loose', () => {
+    // Without the core-anchor filter an unknown anchor sorts to index -1 and renders first, ahead of
+    // the boot screen — a call button floating at the top of the app.
+    moduleRegistry.register(contributor, host, storeDeps);
+
+    expect(slotRegistry.ordered().some((e) => e.id.startsWith('transcribe'))).toBe(false);
+    expect(slotRegistry.nodesFor('call-controls')).toHaveLength(1);
+  });
+
+  it('reports a contribution to an anchor no module provides', () => {
+    // Silent otherwise: chrome aimed at a missing anchor renders nowhere, which looks exactly like a
+    // module that is switched off.
+    moduleRegistry.register(contributor, host, storeDeps);
+    expect(moduleRegistry.danglingAnchors()).toEqual(['call-controls']);
+
+    moduleRegistry.register(provider, host, storeDeps);
+    expect(moduleRegistry.danglingAnchors()).toEqual([]);
+  });
+
+  it('orders several contributions to one anchor deterministically', () => {
+    moduleRegistry.register(provider, host, storeDeps);
+    moduleRegistry.register(
+      {
+        id: 'reactions',
+        name: 'Reactions',
+        slots: [{ anchor: 'call-controls', node: { type: 'we-badge' }, order: 5 }],
+      },
+      host,
+      storeDeps,
+    );
+    moduleRegistry.register(contributor, host, storeDeps);
+
+    // By `order`, not by which module happened to register first.
+    expect(slotRegistry.nodesFor('call-controls')).toHaveLength(2);
+    expect(barChildren()).toHaveLength(3);
   });
 });

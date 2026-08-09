@@ -17,9 +17,11 @@ import { WORKLET_NAME, WORKLET_SOURCE } from './workletSource';
 const SAMPLE_RATE = 48_000;
 const FRAME = 128;
 
+type WorkletMessage = { kind: 'utterance'; audio: Float32Array } | { kind: 'level'; rms: number; speaking: boolean };
+
 interface Processor {
   process(inputs: Float32Array[][]): boolean;
-  port: { postMessage(data: Float32Array): void };
+  port: { postMessage(data: WorkletMessage): void };
 }
 
 /**
@@ -28,7 +30,13 @@ interface Processor {
  * `new Function` rather than an import: the point is to run the string exactly as the browser will,
  * so anything that would only work after bundling fails here too.
  */
-function instantiate(): { processor: Processor; emitted: Float32Array[]; name: string } {
+function instantiate(): {
+  processor: Processor;
+  /** Utterances only — the level stream is checked separately. */
+  emitted: Float32Array[];
+  messages: WorkletMessage[];
+  name: string;
+} {
   let name = '';
   let Processor: new () => Processor = null as never;
 
@@ -47,9 +55,13 @@ function instantiate(): { processor: Processor; emitted: Float32Array[]; name: s
   );
 
   const processor = new Processor();
+  const messages: WorkletMessage[] = [];
   const emitted: Float32Array[] = [];
-  processor.port.postMessage = (data) => emitted.push(data);
-  return { processor, emitted, name };
+  processor.port.postMessage = (data) => {
+    messages.push(data);
+    if (data.kind === 'utterance') emitted.push(data.audio);
+  };
+  return { processor, emitted, messages, name };
 }
 
 /** One 128-sample frame at the input rate. `at` is the running sample index, for a continuous tone. */
@@ -106,6 +118,52 @@ describe('transcription VAD worklet', () => {
     // overshoot by up to one downsampled frame. Splitting mid-frame would buy nothing.
     const ceiling = 480_000 + Math.ceil(FRAME / (SAMPLE_RATE / 16_000));
     for (const utterance of emitted) expect(utterance.length).toBeLessThanOrEqual(ceiling);
+  });
+
+  it('reports the level it is deciding on, throttled, whether or not anyone is speaking', () => {
+    const { processor, messages } = instantiate();
+
+    // Silence: no utterance, but the meter must still move — a bar that only came alive once speech
+    // was already detected could not help anyone work out why it was not being detected.
+    feed(processor, 100, silence);
+    const levels = messages.filter((m) => m.kind === 'level');
+
+    expect(levels.length).toBeGreaterThan(0);
+    // Throttled to one report per 24 frames, not one per frame.
+    expect(levels.length).toBeLessThan(100 / 4);
+    expect(levels.every((m) => m.kind === 'level' && m.speaking === false)).toBe(true);
+  });
+
+  it('reports a higher level, and speaking, once speech is under way', () => {
+    const { processor, messages } = instantiate();
+
+    feed(processor, 400, speech);
+    const levels = messages.filter((m) => m.kind === 'level') as { rms: number; speaking: boolean }[];
+    const last = levels[levels.length - 1];
+
+    // A 0.5-amplitude sine sits around 0.35 RMS, well past the 0.08 default onset threshold.
+    expect(last.rms).toBeGreaterThan(0.08);
+    expect(last.speaking).toBe(true);
+  });
+
+  it('takes threshold overrides from the main thread', () => {
+    // The store sends Flux's *effective* values, which are roughly half the defaults this file
+    // carries. Without this path the port would run at the numbers Flux ships and never uses, which
+    // is the bug that made ordinary speech go unheard.
+    const { processor } = instantiate();
+    (processor.port as unknown as { onmessage: (e: { data: unknown }) => void }).onmessage({
+      data: { speechOnsetThreshold: 0.9, onsetHoldFrames: 1 },
+    });
+
+    const collected: Float32Array[] = [];
+    processor.port.postMessage = (data) => {
+      if (data.kind === 'utterance') collected.push(data.audio);
+    };
+
+    // Loud enough for the default 0.08, nowhere near the 0.9 just set.
+    const at = feed(processor, 400, speech);
+    feed(processor, 250, silence, at);
+    expect(collected).toHaveLength(0);
   });
 
   it('flushes what it has when the microphone disappears mid-sentence', () => {

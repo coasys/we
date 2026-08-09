@@ -56,6 +56,16 @@ const CALL_BAR_TOP = '10px';
 const STAGE_TOP = '72px';
 
 /**
+ * The bar's extension point, for chrome that belongs *in a call* rather than at a screen edge.
+ *
+ * Exported so a contributing module names the same string this one renders, without either importing
+ * the other. That is the whole point: transcription's toggle belongs beside mute and camera, and the
+ * alternative — this module referencing `modules.transcribe.*` in its own schema — would leave a
+ * button wired to nothing the moment that module were uninstalled.
+ */
+export const CALL_CONTROLS_ANCHOR = 'call-controls';
+
+/**
  * A participant's volatile flag, looked up rather than read off the tile.
  *
  * The tile object carries only identity and stream, because `$each` renders through a
@@ -317,6 +327,13 @@ const bar: SchemaNode = {
           enabled: 'modules.call.media.screenShareEnabled',
           action: 'modules.call.toggleScreenShare',
         }),
+        {
+          // Where other modules put their call controls — see `anchors` below. The marker is replaced
+          // by whatever is contributed, or by nothing at all, so the bar has no gap when no module
+          // has joined it and this module never learns which ones did.
+          type: '$slot',
+          props: { anchor: CALL_CONTROLS_ANCHOR },
+        },
         { type: 'we-divider', props: { orientation: 'vertical', height: '20px' } },
         {
           type: 'we-button',
@@ -413,6 +430,10 @@ export const callModule = defineModule({
   // What the transcriber listens to. Declared rather than wired: this module knows it has a
   // microphone open, and only the host knows who else might want to hear it.
   audioSource: 'localAudio',
+
+  // Opens the control bar to other modules. Declared so the registry can report chrome aimed at an
+  // anchor nobody provides, which otherwise renders nowhere and looks like a module switched off.
+  anchors: [CALL_CONTROLS_ANCHOR],
 
   // Drawn by the host's module rail. No `activeWhen`: this starts a call rather than toggling a
   // panel, and once you are in one the call bar is the thing that shows it — a highlighted rail tab

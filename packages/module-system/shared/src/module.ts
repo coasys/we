@@ -32,10 +32,27 @@ import type {
 import type { SchemaNode } from '@we/schema-shared';
 
 /**
- * Where persistent chrome attaches. A small fixed set on purpose: too few and modules fight for
+ * Where the *host* lets chrome attach. A small fixed set on purpose: too few and modules fight for
  * position, too many and it becomes a layout system.
  */
-export type SlotAnchor = 'overlay' | 'dock-left' | 'dock-right' | 'dock-bottom' | 'banner';
+export type CoreSlotAnchor = 'overlay' | 'dock-left' | 'dock-right' | 'dock-bottom' | 'banner';
+
+/**
+ * Where chrome attaches — a host anchor, or one a module opened up with {@link ModuleDefinition.anchors}.
+ *
+ * The open half exists because the fixed set answers "where on screen" and some chrome needs to
+ * answer "inside what". A transcribe toggle belongs in the call's control bar, beside mute and
+ * camera, and no screen-edge anchor can express that — the bar moves, appears conditionally, and is
+ * owned by another module.
+ *
+ * The alternative was for the call module to name the transcribe module in its own bar, which is the
+ * coupling the whole contract exists to avoid: uninstall one and the other renders a button wired to
+ * nothing. With an anchor, neither module knows the other, and a third (reactions, recording) joins
+ * the same bar without either of them changing.
+ *
+ * `(string & {})` rather than `string` so editors still complete the core names.
+ */
+export type SlotAnchor = CoreSlotAnchor | (string & {});
 
 export interface SlotContribution {
   anchor: SlotAnchor;
@@ -133,6 +150,20 @@ export interface ModuleDefinition {
 
   /** Persistent chrome. Rendered by the host outside the router, so it survives navigation. */
   slots?: SlotContribution[];
+
+  /**
+   * Anchor names this module opens up for others to contribute to.
+   *
+   * Declared rather than implied by use, for the same reason a missing module is reported rather
+   * than skipped: a contribution to an anchor nobody provides renders nowhere, and a typo would
+   * otherwise be indistinguishable from a module that is simply switched off. The registry says so
+   * at registration instead.
+   *
+   * The module marks where they land with `{ type: '$slot', props: { anchor: '<name>' } }` inside its
+   * own chrome. Prefix them with the module id — `call-controls`, not `controls` — since the
+   * namespace is shared.
+   */
+  anchors?: string[];
 
   /**
    * How this module is opened, rendered by the host into one shared rail.

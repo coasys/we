@@ -34,7 +34,7 @@ A module that owns entities writes them under **`we://module/<your-id>/<property
 
 **Reuse the core vocabulary freely.** If your entity really has a name, `we://name` is the right
 predicate — shared vocabulary is the point, and generic UI that displays names then works on your
-entity for free. What you may not do is *mint* a new flat `we://<word>`: that namespace has one
+entity for free. What you may not do is _mint_ a new flat `we://<word>`: that namespace has one
 adjudicator (WE core), and a shared namespace with no adjudicator becomes a squatting machine the
 moment modules install from a marketplace. Under `we://module/<id>/` the adjudicator is module-id
 uniqueness, which the registry already enforces.

@@ -367,6 +367,28 @@ function walkNode(
   const type = n.type as string | undefined;
   if (!type || typeof type !== 'string') return;
 
+  /**
+   * `$slot` outlet — where a module lets other modules contribute chrome.
+   *
+   * Checked rather than waved through with the other `$` types because the failure is silent in a
+   * way none of theirs are: the host resolves the marker before the renderer ever sees it, so a
+   * missing or misspelled `anchor` renders nothing at all and is indistinguishable from an anchor
+   * nobody has contributed to. The registry reports the *other* half of this — a contribution aimed
+   * at an anchor no module provides — so between them a typo is caught from whichever side it was
+   * made on.
+   */
+  if (type === '$slot') {
+    const anchor = (n.props as { anchor?: unknown } | undefined)?.anchor;
+    if (typeof anchor !== 'string' || !anchor) {
+      errors.push({
+        path: `${path}.props.anchor`,
+        message: '{ type: "$slot" } needs a non-empty "anchor" string naming the anchor it renders',
+        severity: 'error',
+      });
+    }
+    return;
+  }
+
   // Skip operator nodes
   if (type.startsWith('$') && type !== '$routes') {
     // Still walk into operator internals

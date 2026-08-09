@@ -71,6 +71,7 @@ export function activateSeedModules(
       host: { backend: string; framework: string },
       storeDeps?: ModuleStoreDeps,
     ) => { registered: boolean; problems: string[] };
+    danglingAnchors?: () => string[];
   },
 ): ModuleActivation {
   const result: ModuleActivation = { activated: [], missing: [], refused: [] };
@@ -88,6 +89,13 @@ export function activateSeedModules(
 
   if (result.missing.length) {
     console.warn(`seed declares modules not present in this build: ${result.missing.join(', ')}`);
+  }
+
+  // Checked once the whole seed is in, not per module: contributing to an anchor whose provider has
+  // not registered yet is ordinary, since seed order is a list rather than a dependency graph.
+  const dangling = registry.danglingAnchors?.() ?? [];
+  if (dangling.length) {
+    console.warn(`chrome contributed to anchors no module provides: ${dangling.join(', ')}`);
   }
 
   return result;

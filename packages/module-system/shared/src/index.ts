@@ -26,6 +26,7 @@ export type {
   ModuleLauncher,
   ModulePresenceAccess,
   ModuleStoreDeps,
+  CoreSlotAnchor,
   SlotAnchor,
   SlotContribution,
 } from './module';

@@ -1,9 +1,16 @@
 {
   "name": "@we/module-call",
   "version": "0.1.0",
-  "description": "Call feature module \u2014 mesh WebRTC audio, video and screen share over the ephemeral port",
+  "description": "Call feature module — mesh WebRTC audio, video and screen share over the ephemeral port",
   "license": "MIT",
   "type": "module",
+  "scripts": {
+    "build:steps": "tsup",
+    "build": "we-build",
+    "dev": "tsup --watch",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
   "main": "./dist/index.js",
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -16,13 +23,6 @@
   "files": [
     "dist"
   ],
-  "scripts": {
-    "build:steps": "tsup",
-    "build": "we-build",
-    "dev": "tsup --watch",
-    "test": "vitest run",
-    "test:watch": "vitest"
-  },
   "dependencies": {},
   "peerDependencies": {
     "@we/schema-shared": "workspace:*",

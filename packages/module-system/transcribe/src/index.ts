@@ -33,9 +33,11 @@
  */
 import { defineModule, type ModuleStoreDeps } from '@we/module-shared';
 
+import { CALL_CONTROLS_ANCHOR, callControl } from './CallControl.schema';
 import { panel } from './Panel.schema';
 import { createTranscribeStore } from './store';
 
+export { CALL_CONTROLS_ANCHOR, callControl } from './CallControl.schema';
 export { panel } from './Panel.schema';
 export { createTranscribeStore, TRANSCRIPT_TAG, type TranscribeStatus } from './store';
 export { WORKLET_NAME, WORKLET_SOURCE } from './workletSource';
@@ -54,16 +56,24 @@ export const transcribeModule = defineModule({
   // No `backends`: transcription goes through the port, so this runs on any backend that implements
   // one — and degrades to a stated reason on any that does not. No `frameworks`: fragments only.
 
-  slots: [{ anchor: 'dock-right', node: panel, order: 90 }],
+  slots: [
+    { anchor: 'dock-right', node: panel, order: 90 },
+    // Into the call module's own bar. It declares the anchor; we never name the module.
+    { anchor: CALL_CONTROLS_ANCHOR, node: callControl, order: 10 },
+  ],
 
-  // `availableWhen` rather than an always-offered button: with no audio there is nothing to transcribe,
-  // and that is a property of the situation rather than a failure worth explaining after a click.
+  /**
+   * The rail opens the transcript; the call bar records into it.
+   *
+   * No `availableWhen` any more. The rail used to start recording, so offering it without audio was
+   * offering nothing — now it opens a panel that can explain why there is nothing to record, which is
+   * strictly more use than an absent button. Recording moved to where the microphone already is.
+   */
   launcher: {
     icon: 'waveform',
-    label: 'Transcribe',
-    action: 'toggle',
-    activeWhen: 'enabled',
-    availableWhen: 'available',
+    label: 'Transcript',
+    action: 'togglePanel',
+    activeWhen: 'open',
   },
 
   createStore: (deps: ModuleStoreDeps) => createTranscribeStore(deps),

@@ -20,12 +20,22 @@
  *
  * ## What it emits
  *
- * One `Float32Array` of 16 kHz mono PCM per utterance, posted on the port. Silence emits nothing,
- * which is what makes muting the call stop the transcript: a muted track is disabled rather than
- * removed, so it produces zeros, the RMS never crosses the onset threshold, and this never fires.
+ * Two kinds of tagged message on the port:
  *
- * Ported from Flux's `audio-processor.js`, whose thresholds are the product of real use and are kept
- * as they were.
+ * - `{ kind: 'utterance', audio }` — one span of speech, 16 kHz mono PCM. Silence emits none, which
+ *   is what makes muting the call stop the transcript: a muted track is disabled rather than removed,
+ *   so it produces zeros, the RMS never crosses the onset threshold, and this never fires.
+ * - `{ kind: 'level', rms, speaking }` — the loudness this processor is deciding on, throttled.
+ *
+ * The level exists so a meter can show *the number the decision is actually made on*. Flux runs a
+ * second `AnalyserNode` and a `requestAnimationFrame` loop to draw its bar, which measures the same
+ * signal a second time and can disagree with the VAD about it. This cannot.
+ *
+ * ## Thresholds
+ *
+ * Ported from Flux's `audio-processor.js` — including its defaults, which Flux itself overrides at
+ * startup. Kept as they are so this file stays a faithful copy of what it came from; the values that
+ * actually run are sent from the store, which is where the deviation is stated. See `VAD` there.
  */
 export const WORKLET_NAME = 'we-transcription-vad';
 
@@ -54,6 +64,9 @@ const DEFAULTS = {
 
 const TARGET_SAMPLE_RATE = 16000;
 
+// How many frames between level reports. Overridable, like the thresholds.
+const DEFAULT_LEVEL_EVERY_FRAMES = 24;
+
 class TranscriptionVad extends AudioWorkletProcessor {
   constructor() {
     super();
@@ -64,7 +77,13 @@ class TranscriptionVad extends AudioWorkletProcessor {
     this.state = 'silent';
     this.onsetFrames = 0;
     this.silenceFrames = 0;
-    this.port.onmessage = (event) => Object.assign(this.config, event.data || {});
+    this.levelFrames = 0;
+    this.levelEveryFrames = DEFAULT_LEVEL_EVERY_FRAMES;
+    this.port.onmessage = (event) => {
+      const cfg = event.data || {};
+      if (cfg.levelEveryFrames) this.levelEveryFrames = cfg.levelEveryFrames;
+      Object.assign(this.config, cfg);
+    };
   }
 
   // Box-average downsample. Cheap, and adequate for speech at this ratio.
@@ -95,7 +114,7 @@ class TranscriptionVad extends AudioWorkletProcessor {
   emit() {
     const enough = this.utterance.length >= this.config.minUtteranceSamples;
     if (enough && TranscriptionVad.rms(this.utterance) >= this.config.minUtteranceRms) {
-      this.port.postMessage(new Float32Array(this.utterance));
+      this.port.postMessage({ kind: 'utterance', audio: new Float32Array(this.utterance) });
     }
     this.utterance = [];
   }
@@ -117,6 +136,13 @@ class TranscriptionVad extends AudioWorkletProcessor {
     // Measured on the original-rate frame: downsampling averages away exactly the transients that
     // distinguish speech onset from room noise.
     const level = TranscriptionVad.rms(frame);
+
+    // Throttled, and reported whether or not anything is being captured — a meter that only moved
+    // once speech was already detected could not help anyone work out why it was not being detected.
+    if (++this.levelFrames >= this.levelEveryFrames) {
+      this.levelFrames = 0;
+      this.port.postMessage({ kind: 'level', rms: level, speaking: this.state === 'speaking' });
+    }
 
     for (let i = 0; i < downsampled.length; i++) this.preRoll.push(downsampled[i]);
     if (this.preRoll.length > this.config.preRollSamples) {

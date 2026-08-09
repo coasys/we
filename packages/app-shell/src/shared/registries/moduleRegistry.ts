@@ -204,6 +204,22 @@ export const moduleRegistry = {
     return { registered: true, problems: [] };
   },
 
+  /**
+   * Anchors contributed to that no registered module provides.
+   *
+   * Reported rather than thrown, and checked after the whole seed has registered rather than per
+   * module, because contributing to an anchor before its provider registers is ordinary — seed order
+   * is alphabetical, not a dependency graph.
+   *
+   * It exists because the failure is otherwise invisible: chrome aimed at a missing anchor renders
+   * nowhere, which looks exactly like a module that is simply switched off. The same reason
+   * `activateSeedModules` reports ids this build does not contain.
+   */
+  danglingAnchors(): string[] {
+    const provided = new Set([...modules.values()].flatMap(({ definition }) => definition.anchors ?? []));
+    return slotRegistry.contributedAnchors().filter((anchor) => !provided.has(anchor));
+  },
+
   unregister(id: string): void {
     const entry = modules.get(id);
     if (!entry) return;

@@ -12,10 +12,10 @@
  * Read-only throughout. Everything here belongs to whoever runs the node; the connect UI is where it
  * is chosen and changed, and this is the app reporting where it ended up.
  */
-import type { SchemaNode } from '@we/schema-shared';
+import type { SchemaNode, SchemaProp } from '@we/schema-shared';
 
 /** One label-and-value line, omitted when there is no value rather than shown as blank. */
-function detail(label: string, value: unknown): SchemaNode {
+function detail(label: string, value: SchemaProp): SchemaNode {
   return {
     type: '$if',
     props: {

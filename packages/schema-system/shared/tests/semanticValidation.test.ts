@@ -324,6 +324,33 @@ describe('unknown store', () => {
   });
 });
 
+describe('$slot outlet', () => {
+  it('accepts a named anchor', () => {
+    const result = validateSemantic({ type: '$slot', props: { anchor: 'call-controls' } }, ctx());
+    expect(result.errors.filter((e) => e.path.includes('anchor'))).toHaveLength(0);
+  });
+
+  // The host resolves the marker before the renderer sees it, so a missing anchor renders nothing and
+  // looks exactly like an anchor nobody contributed to. Nothing else would ever report it.
+  it.each([
+    ['no props at all', { type: '$slot' }],
+    ['no anchor', { type: '$slot', props: {} }],
+    ['an empty anchor', { type: '$slot', props: { anchor: '' } }],
+    ['a non-string anchor', { type: '$slot', props: { anchor: 42 } }],
+  ])('errors on %s', (_case, node) => {
+    const result = validateSemantic(node, ctx());
+    expect(result.errors.some((e) => e.severity === 'error' && e.message.includes('$slot'))).toBe(true);
+  });
+
+  it('is found nested inside other chrome, where a module actually puts it', () => {
+    const result = validateSemantic(
+      { type: 'Row', children: [{ type: 'we-button' }, { type: '$slot', props: {} }] },
+      ctx(),
+    );
+    expect(result.errors.some((e) => e.message.includes('$slot'))).toBe(true);
+  });
+});
+
 describe('unknown store member', () => {
   it('warns for unknown member path', () => {
     const result = validateSemantic(

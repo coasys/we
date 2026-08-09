@@ -488,4 +488,12 @@ query options (entity, params, include, dataset, subscribe) work identically to 
 Route outlet:
 { "type": "$routes" }
 Indicates where nested routes should render within a layout.
+
+Module slot outlet:
+{ "type": "$slot", "props": { "anchor": "call-controls" } }
+Renders whatever other feature modules have contributed to that anchor, in order. Only meaningful
+inside a module's own chrome: the module declares the anchor name in its \`anchors\` list and marks
+where contributions land with this. Resolves to nothing when no module has contributed — no empty
+container, no gap. Templates have no use for it; chrome is the host's and the modules', not a
+template's.
 `;
