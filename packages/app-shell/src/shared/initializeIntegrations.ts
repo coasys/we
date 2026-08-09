@@ -9,6 +9,7 @@
 import { defineModule, type ModuleStoreDeps, seedCapabilityToModule } from '@we/module-shared';
 
 import type { WeSeedFile } from '../types/seed';
+import { installConsoleTrace } from './installConsoleTrace';
 import { generateIframePermissions, validateSeedForLauncher } from './integrationComposer';
 import type { PlatformAdapter } from './platform/types';
 import { activateSeedModules } from './registries/bundledModules';
@@ -35,6 +36,10 @@ export function initializeIntegrations(
   seed: WeSeedFile,
   deps: IntegrationDeps = {},
 ): void {
+  // Before anything else registers: presence starts early, and a trace that misses the first
+  // handshake misses the part being complained about.
+  installConsoleTrace();
+
   try {
     provideSeed(seed);
 

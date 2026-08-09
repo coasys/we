@@ -65,6 +65,9 @@ export type {
   PresenceState,
 } from './presence';
 
+export { setTraceSink, trace, tracing } from './trace';
+export type { TraceSink } from './trace';
+
 export { modelManifestSchema, validateManifest, getEntity, getProperty, getRelation } from './manifest';
 export type {
   ModelManifest,

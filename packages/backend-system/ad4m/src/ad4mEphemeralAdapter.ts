@@ -29,6 +29,7 @@
  */
 import type { PerspectiveExpression, PerspectiveProxy } from '@coasys/ad4m';
 import type { EphemeralCapabilities, EphemeralChannel, EphemeralPort, EphemeralScope } from '@we/backend-shared';
+import { trace } from '@we/backend-shared';
 
 /** Namespaces this traffic so it can never be confused with another protocol's links. */
 const PREDICATE_PREFIX = 'we://ephemeral/';
@@ -91,13 +92,25 @@ export function createAd4mEphemeralPort(getMyDid: () => string | undefined): Eph
       const { source, predicate, target } = link.data ?? {};
       if (typeof predicate !== 'string' || !predicate.startsWith(PREDICATE_PREFIX)) return;
 
+      const tag = predicate.slice(PREDICATE_PREFIX.length);
+
       // unicast:emulated — the payload reached us either way; honour the addressing.
       const myDid = getMyDid();
-      if (target && target !== TARGET_ALL && target !== myDid) return;
+      if (target && target !== TARGET_ALL && target !== myDid) {
+        trace('ephemeral', 'recv:drop', { tag, from: link.author, reason: 'addressed-elsewhere' });
+        return;
+      }
       if (link.author === myDid) return;
 
-      const listeners = subscribers.get(predicate.slice(PREDICATE_PREFIX.length));
-      if (!listeners?.size) return;
+      const listeners = subscribers.get(tag);
+      if (!listeners?.size) {
+        // Worth seeing: the signal arrived and nothing was listening for it. Usually a scope torn
+        // down mid-flight, but it is also what a mis-tagged channel looks like.
+        trace('ephemeral', 'recv:drop', { tag, from: link.author, reason: 'no-listener' });
+        return;
+      }
+
+      trace('ephemeral', 'recv', { tag, from: link.author });
 
       let payload: unknown;
       try {
@@ -124,9 +137,14 @@ export function createAd4mEphemeralPort(getMyDid: () => string | undefined): Eph
      * The rejection is swallowed rather than propagated: a failed registration means this agent
      * cannot hear, which is bad, but refusing to publish as well would also stop it being heard.
      */
-    const listening = neighbourhood.addSignalHandler(handler).catch((error: unknown) => {
-      console.warn('ephemeral: signal handler registration failed — inbound traffic will be missed', error);
-    });
+    const subscribeStartedAt = Date.now();
+    const listening = neighbourhood
+      .addSignalHandler(handler)
+      .then(() => trace('ephemeral', 'subscribed', { ms: Date.now() - subscribeStartedAt }))
+      .catch((error: unknown) => {
+        trace('ephemeral', 'subscribe:fail', { ms: Date.now() - subscribeStartedAt, error: String(error) });
+        console.warn('ephemeral: signal handler registration failed — inbound traffic will be missed', error);
+      });
 
     const scope: EphemeralScope = {
       capabilities: ad4mEphemeralCapabilities,
@@ -145,11 +163,15 @@ export function createAd4mEphemeralPort(getMyDid: () => string | undefined): Eph
           // Set before the first await, or a burst all pass the coalesce check below and the
           // backpressure this exists for never engages.
           inFlight = true;
+          const startedAt = Date.now();
           try {
             await listening;
             await neighbourhood.sendBroadcastU({
               links: [{ source: JSON.stringify(payload), predicate, target: to?.agentId ?? TARGET_ALL }],
             });
+            // The number that settles "is it us or the transport": a send that acks in 20ms and a
+            // peer that never sees it is the network's problem, not ours.
+            trace('ephemeral', 'send:ok', { tag, ms: Date.now() - startedAt });
             if (failures > 0) {
               console.info(`ephemeral: "${tag}" recovered after ${failures} failed send(s)`);
               failures = 0;
@@ -164,6 +186,7 @@ export function createAd4mEphemeralPort(getMyDid: () => string | undefined): Eph
             // from `sendBroadcastU` would never reach a `.finally`, leaving `inFlight` stuck true and
             // this channel silently muted for the rest of the session.
             failures += 1;
+            trace('ephemeral', 'send:fail', { tag, ms: Date.now() - startedAt, failures, error: String(error) });
             if ((failures & (failures - 1)) === 0) {
               console.warn(`ephemeral: send failed on "${tag}" (${failures} consecutive)`, error);
             }
@@ -191,6 +214,7 @@ export function createAd4mEphemeralPort(getMyDid: () => string | undefined): Eph
             // latest keeps exactly one send in flight and one waiting, so nothing piles up and
             // nothing is lost.
             if (options?.coalesce && inFlight) {
+              trace('ephemeral', 'publish:queued', { tag });
               queued = { payload, to };
               return;
             }

@@ -48,6 +48,7 @@ import {
   peersInDataset,
   peerTone,
   sortByPresence,
+  trace,
 } from '@we/backend-shared';
 import {
   type Accessor,
@@ -172,7 +173,13 @@ export function PresenceStoreProvider(props: ParentProps) {
       publish: (payload: unknown, to?: { agentId?: string }) => {
         // No coordinator means no other tab can be holding this agent's leadership, so publishing is
         // unconditional — the same answer `soleLeader` gives a single-window host.
-        if (!coordinator || coordinator.isLeader()) raw.publish(payload, to);
+        if (!coordinator || coordinator.isLeader()) {
+          raw.publish(payload, to);
+          return;
+        }
+        // The one hop that can swallow a message with nothing else to show for it. Every other drop
+        // is somebody else's; this one is ours, so it says so.
+        trace('presence', 'publish:suppressed', { reason: 'not-tab-leader' });
       },
       onMessage: raw.onMessage,
     };

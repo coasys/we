@@ -24,6 +24,8 @@
  * entirely.
  */
 
+import { trace } from './trace';
+
 /** Where an agent is. Hierarchical so consumers can slice at whichever depth they render. */
 export interface Focus {
   /**
@@ -125,6 +127,26 @@ export const DEFAULT_THRESHOLDS: LivenessThresholds = {
 };
 
 export const DEFAULT_HEARTBEAT_INTERVAL = 5_000;
+
+/**
+ * How long to wait before each repeat of the join handshake, until somebody answers.
+ *
+ * Successive delays, not offsets from the start: `[1000, 3000]` means hello, wait a second, hello,
+ * wait three more, hello — attempts at 0s, 1s and 4s. Backing off rather than repeating at a fixed
+ * rate, because the first repeat covers a dropped packet and the later one covers a peer that had
+ * not finished connecting yet, which takes longer.
+ *
+ * The handshake is a single fire-and-forget broadcast over a best-effort transport, and one lost
+ * packet costs a full heartbeat interval of looking at an empty space — two lost packets, two
+ * intervals. That is the shape of the complaint that produced this: sometimes instant, sometimes ten
+ * seconds, no pattern, and both agents behaving differently on the same code because loss is
+ * independent per direction.
+ *
+ * Retrying is the standard answer for an unreliable datagram and costs almost nothing here: it stops
+ * the moment any peer is heard from, so the only session that sends all three is one that is
+ * genuinely alone — where nobody receives them anyway.
+ */
+export const HANDSHAKE_RETRIES = [1_000, 3_000];
 
 /** Trim a focus to the depth the agent has consented to publish. */
 export function applyFocusDepth(focus: Focus | undefined, depth: FocusDepth): Focus | undefined {
@@ -370,10 +392,42 @@ export function createHeartbeatPresence(channel: PresenceChannel, options: Heart
   let self: PresenceState | null = null;
   let unsubscribe: (() => void) | null = null;
   let timer: unknown = null;
+  let handshakeTimer: unknown = null;
   let running = false;
 
   function notify(): void {
-    options.onPeersChanged?.(derivePeers(states.values(), now(), thresholds));
+    const peers = derivePeers(states.values(), now(), thresholds);
+    trace('presence', 'peers', { count: peers.length });
+    options.onPeersChanged?.(peers);
+  }
+
+  /** Have we heard from anybody? `states` always holds our own entry, so one means nobody. */
+  const alone = () => states.size <= 1;
+
+  function cancelHandshake(): void {
+    if (handshakeTimer !== null) {
+      clearTimer(handshakeTimer);
+      handshakeTimer = null;
+    }
+  }
+
+  /**
+   * Say hello, and say it again if nobody answers.
+   *
+   * Each repeat is cancelled the instant any peer state arrives, so a healthy space sends exactly
+   * one. See {@link HANDSHAKE_RETRIES} for why a single broadcast is not enough on this transport.
+   */
+  function handshake(attempt = 0): void {
+    send('hello');
+    cancelHandshake();
+    const delay = HANDSHAKE_RETRIES[attempt];
+    if (delay === undefined) return;
+    handshakeTimer = setTimer(() => {
+      handshakeTimer = null;
+      if (!running || !alone()) return;
+      trace('presence', 'handshake:retry', { attempt: attempt + 1 });
+      handshake(attempt + 1);
+    }, delay);
   }
 
   function send(lifecycle?: 'hello' | 'bye'): void {
@@ -390,6 +444,7 @@ export function createHeartbeatPresence(channel: PresenceChannel, options: Heart
       const message: PresenceMessage = { v: 1, state: self };
       if (lifecycle === 'hello') message.hello = true;
       if (lifecycle === 'bye') message.bye = true;
+      trace('presence', 'send', { lifecycle: lifecycle ?? 'beat', activities: self.activities?.length ?? 0 });
       channel.publish(message);
     }
     notify();
@@ -412,8 +467,21 @@ export function createHeartbeatPresence(channel: PresenceChannel, options: Heart
   }
 
   function receive(from: string, payload: unknown): void {
-    if (!running || !isPresenceMessage(payload)) return;
-    if (self && from === self.agentId) return;
+    if (!running || !isPresenceMessage(payload)) {
+      trace('presence', 'recv:drop', { from, reason: running ? 'malformed' : 'stopped' });
+      return;
+    }
+    if (self && from === self.agentId) {
+      trace('presence', 'recv:drop', { from, reason: 'self' });
+      return;
+    }
+
+    trace('presence', 'recv', {
+      from,
+      hello: payload.hello ?? false,
+      bye: payload.bye ?? false,
+      activities: payload.state.activities?.length ?? 0,
+    });
 
     // A departure retracts the agent outright rather than leaving it to decay.
     if (payload.bye) {
@@ -426,6 +494,9 @@ export function createHeartbeatPresence(channel: PresenceChannel, options: Heart
     // another agent's slot. Where `authenticatedSender` is false this is still the best available
     // key, and the capability flag is what warns a consumer not to act on it.
     states.set(from, { ...payload.state, agentId: from, updatedAt: now() });
+
+    // Somebody is there, so stop repeating our own introduction.
+    cancelHandshake();
 
     // Answer a joiner immediately so they do not wait out a full interval. Not itself a hello, or
     // two peers would ping-pong forever.
@@ -447,7 +518,8 @@ export function createHeartbeatPresence(channel: PresenceChannel, options: Heart
       self = { ...state, updatedAt: now() };
       states.set(self.agentId, self);
       unsubscribe = channel.onMessage(receive);
-      send('hello');
+      trace('presence', 'start', { agentId: self.agentId });
+      handshake();
       schedule(interval);
     },
 
@@ -456,7 +528,8 @@ export function createHeartbeatPresence(channel: PresenceChannel, options: Heart
       // leadership callback before starting the source — the callback fires immediately if this tab
       // is already the leader, and `start`'s own handshake is the one that should go out.
       if (!self) return;
-      send('hello');
+      trace('presence', 'announce');
+      handshake();
       schedule(interval);
     },
 
@@ -500,6 +573,7 @@ export function createHeartbeatPresence(channel: PresenceChannel, options: Heart
       send('bye');
 
       running = false;
+      cancelHandshake();
       if (timer !== null) {
         clearTimer(timer);
         timer = null;

@@ -251,6 +251,41 @@ describe('createHeartbeatPresence', () => {
     expect(published).toEqual([{ v: 1, state: expect.objectContaining({ agentId: 'me' }), hello: true }]);
   });
 
+  it('repeats the handshake while nobody answers', () => {
+    // The transport is best-effort: `sendBroadcastU` acks the send, never the delivery, and two
+    // peers still discovering each other exchange nothing at all. One lost hello used to cost a full
+    // heartbeat interval of looking at an empty space, which is the intermittent, asymmetric,
+    // impossible-to-reproduce delay — loss is independent per direction.
+    const { published } = start();
+    expect(published).toHaveLength(1);
+
+    clock += 1_000;
+    vi.advanceTimersByTime(1_000);
+    expect(published).toHaveLength(2);
+
+    // Successive delays, so the second repeat is three seconds after the first, not after start.
+    clock += 3_000;
+    vi.advanceTimersByTime(3_000);
+    expect(published).toHaveLength(3);
+    expect(published.every((message) => (message as { hello?: true }).hello)).toBe(true);
+
+    // Bounded — it is a handshake, not a poll. Whatever else gets published from here is heartbeats.
+    clock += 30_000;
+    vi.advanceTimersByTime(30_000);
+    expect(published.filter((message) => (message as { hello?: true }).hello)).toHaveLength(3);
+  });
+
+  it('stops repeating the moment a peer is heard from', () => {
+    const { published, deliver } = start();
+    published.length = 0;
+
+    deliver('peer', { v: 1, state: state('peer') });
+    vi.advanceTimersByTime(5_000);
+
+    // The reply to a non-hello is a notify, not a send, so nothing here should be a handshake.
+    expect(published.filter((message) => (message as { hello?: true }).hello)).toHaveLength(0);
+  });
+
   it('re-runs the handshake on announce, for a host whose first one never left', () => {
     // A host may gate publishing — WE lets one tab per agent do the talking — and a `hello` sent
     // before that gate opens is gone with nothing to notice or retry it. The driver cannot tell, so
@@ -287,7 +322,10 @@ describe('createHeartbeatPresence', () => {
   });
 
   it('heartbeats on the interval', () => {
-    const { published } = start();
+    // Settled first: a lone agent repeats its handshake until somebody answers, and those repeats
+    // are publishes too. Hearing from a peer ends them, which is the state this test is about.
+    const { published, deliver } = start();
+    deliver('peer', { v: 1, state: state('peer') });
     published.length = 0;
 
     clock += 5_000;
@@ -300,7 +338,9 @@ describe('createHeartbeatPresence', () => {
   });
 
   it('does not double-send when a change already published inside the window', () => {
-    const { published, source } = start();
+    const { published, source, deliver } = start();
+    // As above: end the handshake repeats so the only publishes here are the ones under test.
+    deliver('peer', { v: 1, state: state('peer') });
     published.length = 0;
 
     clock += 4_000;
