@@ -262,17 +262,44 @@ describe('createHeartbeatPresence', () => {
     clock += 1_000;
     vi.advanceTimersByTime(1_000);
     expect(published).toHaveLength(2);
-
-    // Successive delays, so the second repeat is three seconds after the first, not after start.
-    clock += 3_000;
-    vi.advanceTimersByTime(3_000);
-    expect(published).toHaveLength(3);
     expect(published.every((message) => (message as { hello?: true }).hello)).toBe(true);
 
-    // Bounded — it is a handshake, not a poll. Whatever else gets published from here is heartbeats.
-    clock += 30_000;
-    vi.advanceTimersByTime(30_000);
-    expect(published.filter((message) => (message as { hello?: true }).hello)).toHaveLength(3);
+    // Bounded — one repeat, not a poll. The next solicitation is the ordinary heartbeat, which is
+    // the mechanism that covers the long tail.
+    clock += 3_000;
+    vi.advanceTimersByTime(3_000);
+    expect(published).toHaveLength(2);
+  });
+
+  it('keeps soliciting on the heartbeat while it has no peers', () => {
+    // Recovery, not startup. A remote executor's client backs its reconnect off to thirty seconds,
+    // and an agent that comes back with an empty peer map would otherwise wait passively for
+    // everyone else's next beat. A beat that asks costs exactly what a beat that announces costs.
+    const { published } = start();
+    // Past the one handshake repeat, so what is left is the heartbeat.
+    clock += 1_000;
+    vi.advanceTimersByTime(1_000);
+    published.length = 0;
+
+    // A full interval from the repeat, not from start: publishing pushes the next tick out, which is
+    // the adaptive scheduling that stops a state change and a beat landing on top of each other.
+    clock += 5_000;
+    vi.advanceTimersByTime(5_000);
+
+    expect(published).toHaveLength(1);
+    expect(published[0]).toHaveProperty('hello', true);
+  });
+
+  it('goes back to a plain beat once somebody is there', () => {
+    const { published, deliver } = start();
+    deliver('peer', { v: 1, state: state('peer') });
+    published.length = 0;
+
+    clock += 5_000;
+    vi.advanceTimersByTime(5_000);
+
+    expect(published).toHaveLength(1);
+    expect(published[0]).not.toHaveProperty('hello');
   });
 
   it('stops repeating the moment a peer is heard from', () => {

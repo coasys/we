@@ -131,22 +131,19 @@ export const DEFAULT_HEARTBEAT_INTERVAL = 5_000;
 /**
  * How long to wait before each repeat of the join handshake, until somebody answers.
  *
- * Successive delays, not offsets from the start: `[1000, 3000]` means hello, wait a second, hello,
- * wait three more, hello — attempts at 0s, 1s and 4s. Backing off rather than repeating at a fixed
- * rate, because the first repeat covers a dropped packet and the later one covers a peer that had
- * not finished connecting yet, which takes longer.
+ * Successive delays, so `[1000]` means one repeat a second after the first attempt.
  *
  * The handshake is a single fire-and-forget broadcast over a best-effort transport, and one lost
- * packet costs a full heartbeat interval of looking at an empty space — two lost packets, two
- * intervals. That is the shape of the complaint that produced this: sometimes instant, sometimes ten
- * seconds, no pattern, and both agents behaving differently on the same code because loss is
- * independent per direction.
+ * packet costs a full heartbeat interval of looking at an empty space. That is the shape of the
+ * complaint that produced this: sometimes instant, sometimes ten seconds, no pattern, and the two
+ * agents disagreeing about what happened because loss is independent per direction.
  *
- * Retrying is the standard answer for an unreliable datagram and costs almost nothing here: it stops
- * the moment any peer is heard from, so the only session that sends all three is one that is
- * genuinely alone — where nobody receives them anyway.
+ * Only one repeat, because it is not the only safety net: a heartbeat sent while this agent still
+ * has no peers is itself a `hello` (see `schedule`), so the second second is covered by the retry
+ * and every fifth second after that by the ordinary beat. Repeating harder in between would be
+ * three mechanisms covering one gap.
  */
-export const HANDSHAKE_RETRIES = [1_000, 3_000];
+export const HANDSHAKE_RETRIES = [1_000];
 
 /** Trim a focus to the depth the agent has consented to publish. */
 export function applyFocusDepth(focus: Focus | undefined, depth: FocusDepth): Focus | undefined {
@@ -460,7 +457,17 @@ export function createHeartbeatPresence(channel: PresenceChannel, options: Heart
       const sinceLast = now() - self.updatedAt;
       if (sinceLast < interval) schedule(interval - sinceLast);
       else {
-        send();
+        /**
+         * A beat sent while we know nobody is a `hello`, so it solicits rather than just announces.
+         *
+         * Same message, same rate — the only difference is that peers answer it. It matters because
+         * "no peers" is reached two ways: nobody is here, in which case nothing is listening and the
+         * flag costs nothing; or the transport dropped out from under us and took the peer map with
+         * it. The second is routine against a remote executor, whose client backs its reconnect off
+         * to thirty seconds — and coming back deaf, waiting passively for everyone else's next beat,
+         * is how a blip becomes the better part of a minute.
+         */
+        send(alone() ? 'hello' : undefined);
         schedule(interval);
       }
     }, delay);
