@@ -87,12 +87,17 @@ const faceOf = (field: string) => ({
 /**
  * Whether this tile is showing moving pictures rather than an avatar.
  *
- * Named once and used twice, because two places have to agree about it and disagreeing is invisible:
- * the tile would show a face in the middle *and* the same face again in the corner, or a screen
- * share with nothing to say whose it is. A tile with no stream yet is normal for the first second or
- * two of a join, and a peer with their camera off never gets one at all.
+ * Read from the store rather than assembled here, and that is the fix for the blank tile: this used
+ * to ask whether `$tile.stream` existed, and a peer's stream object exists from the moment they join
+ * the roster — empty, until tracks arrive. So every joining peer rendered a `<video>` over nothing
+ * and painted black for the whole negotiation. `hasPicture` asks whether there is a live video
+ * track, which is the question that was meant all along.
+ *
+ * Named once and used in three places, because they have to agree and disagreeing is invisible: the
+ * tile would show a face in the middle *and* again in the corner, or a screen share with nothing to
+ * say whose it is.
  */
-const hasVideo = { $and: ['$tile.stream', { $or: [stateOf('videoEnabled'), stateOf('isScreen')] }] };
+const hasVideo = stateOf('hasPicture');
 
 /** One participant's video, or their avatar when there is nothing to show. */
 const tile: SchemaNode = {

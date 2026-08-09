@@ -103,9 +103,16 @@ describe('call module — contributions', () => {
     // reasonably "simplifying" a `$find` back into a context ref.
     const tile = JSON.stringify(moduleRegistry.schemas()['call.tile'] ?? callModule.schemas?.tile);
 
-    for (const volatile of ['audioEnabled', 'videoEnabled', 'isScreen', 'connection']) {
+    // Never off `$tile`, for every volatile flag — the invariant that matters, and the one a
+    // well-meaning simplification breaks.
+    for (const volatile of ['audioEnabled', 'videoEnabled', 'isScreen', 'connection', 'hasPicture']) {
       expect(tile).not.toContain(`$tile.${volatile}`);
-      expect(tile).toContain(`"select":"${volatile}"`);
+    }
+    // Looked up for the ones the fragment reads. `videoEnabled` is deliberately absent: deciding
+    // whether there is a picture needs the live track as well as the sender's flag, so the store
+    // combines them into `hasPicture` and the fragment asks that one question instead.
+    for (const looked of ['audioEnabled', 'isScreen', 'connection', 'hasPicture']) {
+      expect(tile).toContain(`"select":"${looked}"`);
     }
     // Identity and stream stay on the tile: both genuinely require a remount when they change.
     expect(tile).toContain('$tile.stream');

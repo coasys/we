@@ -67,13 +67,24 @@ export interface CallTileState {
   /** This tile is the one the stage is giving most of its room to. */
   focused: boolean;
   /**
-   * No media has arrived yet, and waiting is the right thing to do.
+   * There is a picture to show right now: a live video track, *and* a sender who says it is on.
    *
-   * The distinction this exists to draw is between *nothing yet* and *nothing on purpose*, which
-   * looked identical: a peer still negotiating and a peer who has turned their camera off both
-   * rendered as a bare avatar, so a call that was working looked the same as one that was not. A
-   * muted camera is not this — a connected peer still delivers a stream, with the video track
-   * disabled — so an absent stream really does mean the connection is not up yet.
+   * What decides video-or-avatar, and it has to be this rather than "is there a stream" because the
+   * mesh creates a peer's `MediaStream` when the peer appears in the roster, not when media starts
+   * flowing. That object is non-null and empty for the whole negotiation, so a check for its
+   * existence renders a `<video>` over nothing and paints a black rectangle — the blank tile that
+   * outlasted two attempts to explain it, because every explanation assumed the stream was missing
+   * when it was present and empty.
+   *
+   * The roster half matters too: a muted camera keeps its track live and simply stops producing
+   * frames, so the track alone cannot tell "off" from "on but silent".
+   */
+  hasPicture: boolean;
+  /**
+   * A picture is expected and has not arrived — the honest "wait, this is working" state.
+   *
+   * Expected, not merely absent: a peer who has turned their camera off is not connecting, and
+   * spinning at them forever would be a lie about a state that is never going to change.
    */
   connecting: boolean;
   /** The connection gave up. Not something waiting will fix, so it must not read as progress. */
@@ -102,6 +113,19 @@ export type CallDockSize = 'sm' | 'md' | 'lg';
 export interface CallStoreDeps extends ModuleStoreDeps {
   /** Overridable for tests; defaults to the browser's WebRTC and media APIs. */
   createPeerConnection?: () => RTCPeerConnection;
+}
+
+/**
+ * Whether a stream is actually carrying a picture, rather than merely existing.
+ *
+ * The distinction the tiles turned on and nobody had drawn. `mesh.ts` builds a peer's `MediaStream`
+ * at the moment the peer joins the roster and adds tracks to it later, as `ontrack` fires — so the
+ * object is non-null and empty for the whole of negotiation, and on a slow transport that is many
+ * seconds. Truthiness of the stream answers "do I know about this person", never "is there anything
+ * to watch".
+ */
+function hasLiveVideo(stream: MediaStream | null): boolean {
+  return !!stream?.getVideoTracks().some((track) => track.readyState === 'live');
 }
 
 export function createCallStore(deps: CallStoreDeps) {
@@ -239,15 +263,18 @@ export function createCallStore(deps: CallStoreDeps) {
     if (me) {
       const state = controller?.state();
       const own = controller?.displayStream() ?? null;
+      const ownWantsPicture = (state?.videoEnabled ?? false) || (state?.screenShareEnabled ?? false);
+      const ownPicture = ownWantsPicture && hasLiveVideo(own);
       next.push(stabilise({ id: me, did: me, stream: own, isSelf: true }));
       states.push({
         id: me,
         isScreen: state?.screenShareEnabled ?? false,
         audioEnabled: state?.audioEnabled ?? false,
         videoEnabled: state?.videoEnabled ?? false,
+        hasPicture: ownPicture,
         // Your own tile waits on the device rather than on a peer: `join` announces before it calls
         // `getUserMedia`, so this covers the seconds a permission prompt is on screen.
-        connecting: !own,
+        connecting: ownWantsPicture && !ownPicture,
         failed: false,
       });
     }
@@ -255,15 +282,11 @@ export function createCallStore(deps: CallStoreDeps) {
     for (const { peer, activity } of activitiesOfType(presence?.peers() ?? [], 'call')) {
       if (activity.id !== id || peer.agentId === me) continue;
       const settings = activity.media;
-      next.push(
-        stabilise({
-          id: peer.agentId,
-          did: peer.agentId,
-          stream: remoteStreams.get(peer.agentId) ?? null,
-          isSelf: false,
-        }),
-      );
+      const stream = remoteStreams.get(peer.agentId) ?? null;
+      next.push(stabilise({ id: peer.agentId, did: peer.agentId, stream, isSelf: false }));
       const connection = peerStates.get(peer.agentId);
+      const wantsPicture = (settings?.videoEnabled ?? true) || (settings?.screenShareEnabled ?? false);
+      const picture = wantsPicture && hasLiveVideo(stream);
       states.push({
         id: peer.agentId,
         // Read from the roster, never inferred from the track — the sender is the only one who knows
@@ -272,11 +295,10 @@ export function createCallStore(deps: CallStoreDeps) {
         audioEnabled: settings?.audioEnabled ?? true,
         videoEnabled: settings?.videoEnabled ?? true,
         connection,
-        // An absent stream is the honest signal here. A peer who muted their camera is still
-        // connected and still delivering one, so this cannot be confused with a deliberate choice —
-        // and `peerStates` is empty until the first negotiation, which is exactly the window that
-        // used to show nothing at all.
-        connecting: !remoteStreams.get(peer.agentId) && connection !== 'failed',
+        hasPicture: picture,
+        // Expected and not yet arrived. Keyed on the track rather than on `peerStates`, which holds
+        // nothing until the first negotiation — exactly the window that showed nothing at all.
+        connecting: wantsPicture && !picture && connection !== 'failed',
         failed: connection === 'failed',
       });
     }
