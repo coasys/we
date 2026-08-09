@@ -13,11 +13,14 @@
  * Scopes are comma-separated; `*` or `all` enables everything. Lines look like:
  *
  * ```
- * we:trace  +0ms      presence start        {"agentId":"did:key:z6Mk…"}
- * we:trace  +2ms      presence send         {"lifecycle":"hello","activities":0}
- * we:trace  +181ms    ephemeral send:ok     {"tag":"presence","ms":179}
- * we:trace  +934ms    ephemeral recv        {"tag":"presence","from":"did:key:z6Mk…"}
+ * we:trace 14:22:09.481 +0ms     presence start      {"agentId":"did:key:z6Mk…"}
+ * we:trace 14:22:09.483 +2ms     presence send       {"lifecycle":"hello","activities":0}
+ * we:trace 14:22:09.664 +181ms   ephemeral send:ok   {"tag":"presence","ms":179}
+ * we:trace 14:22:10.598 +934ms   ephemeral recv      {"tag":"presence","from":"did:key:z6Mk…"}
  * ```
+ *
+ * Times are UTC, so two agents' logs line up directly — which is the point, since the finding that
+ * matters most (one side sent, the other never received) can only be established from both.
  *
  * ## Reading it
  *
@@ -86,9 +89,17 @@ export function installConsoleTrace(): boolean {
     const now = Date.now();
     const since = now - last;
     last = now;
-    // One line, fixed columns, detail as JSON: this gets read side by side with another machine's
-    // console, and wrapped multi-line objects make two logs impossible to line up by eye.
-    console.log(`we:trace  +${since}ms\t${scope} ${event}\t${detail ? JSON.stringify(detail) : ''}`.trimEnd());
+    // Wall clock *and* elapsed, because the two answer different questions and only one of them can
+    // be reconstructed from the other. Elapsed finds the gap within one agent's log; wall clock is
+    // the only way to line that gap up against what the other agent was doing at the same moment,
+    // which is the whole point of tracing a protocol with two ends. Both are needed: reading two
+    // logs side by side is how "it sent fine and the other side never heard it" gets established,
+    // and that is the finding that separates our bugs from the transport's.
+    //
+    // One line, fixed columns, detail as JSON — wrapped multi-line objects make two logs impossible
+    // to align by eye.
+    const at = new Date(now).toISOString().slice(11, 23);
+    console.log(`we:trace ${at} +${since}ms\t${scope} ${event}\t${detail ? JSON.stringify(detail) : ''}`.trimEnd());
   });
 
   console.info(
