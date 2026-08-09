@@ -37,6 +37,20 @@ const PREDICATE_PREFIX = 'we://ephemeral/';
 /** `target` value meaning "everyone" — see `unicast:emulated` above. */
 const TARGET_ALL = '*';
 
+/**
+ * A send this slow is a defect somewhere, and it must not take a trace to notice.
+ *
+ * Measured: the *first* `sendBroadcastU` after joining a neighbourhood has been seen to take
+ * eighteen seconds, on both peers, unblocking within a few hundred milliseconds of each other —
+ * which is the signature of the two conductors finally discovering one another rather than of a
+ * per-call cost. Later sends on the same channel take tens of milliseconds.
+ *
+ * Nothing above this layer can do anything about it, but everything above it looks broken while it
+ * happens: presence is silent, so peers appear absent and calls appear empty. Saying so once, out
+ * loud, is the difference between a known backend cost and a bug hunt.
+ */
+const SLOW_SEND_MS = 5_000;
+
 export const ad4mEphemeralCapabilities: EphemeralCapabilities = {
   fanout: true,
   // Real unicast exists upstream but `sendSignalU` is broken; we address over broadcast instead.
@@ -171,7 +185,14 @@ export function createAd4mEphemeralPort(getMyDid: () => string | undefined): Eph
             });
             // The number that settles "is it us or the transport": a send that acks in 20ms and a
             // peer that never sees it is the network's problem, not ours.
-            trace('ephemeral', 'send:ok', { tag, ms: Date.now() - startedAt });
+            const elapsed = Date.now() - startedAt;
+            trace('ephemeral', 'send:ok', { tag, ms: elapsed });
+            if (elapsed >= SLOW_SEND_MS) {
+              console.warn(
+                `ephemeral: "${tag}" broadcast took ${Math.round(elapsed / 1000)}s to be accepted. ` +
+                  `Nothing this agent publishes reaches anyone until it returns — peers will look absent for that long.`,
+              );
+            }
             if (failures > 0) {
               console.info(`ephemeral: "${tag}" recovered after ${failures} failed send(s)`);
               failures = 0;

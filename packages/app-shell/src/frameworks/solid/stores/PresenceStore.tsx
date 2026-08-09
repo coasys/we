@@ -58,6 +58,7 @@ import {
   createSignal,
   onCleanup,
   type ParentProps,
+  untrack,
   useContext,
 } from 'solid-js';
 
@@ -118,8 +119,19 @@ export function PresenceStoreProvider(props: ParentProps) {
    * agent you are not looking at. Peers then see stale state until you switch tabs, which reads like
    * a slow network rather than like a tab fighting another tab.
    */
+  /**
+   * The agent's id alone, as a memo, so downstream work re-runs when the *identity* changes rather
+   * than whenever the identity object is rewritten.
+   *
+   * `session.me()` is replaced as profile fields load, and a memo returning the same string does not
+   * propagate — which is what stops the coordinator being rebuilt, and with it the whole presence
+   * source, for no reason. Cheap to get wrong and visible in a trace as a `bye` moments after
+   * arriving.
+   */
+  const myDid = createMemo(() => session.me()?.did);
+
   const tabs = createMemo(() => {
-    const did = session.me()?.did;
+    const did = myDid();
     if (!did) return null;
     const coordinator = createTabCoordinator({ scope: did });
     onCleanup(() => coordinator.dispose());
@@ -147,8 +159,10 @@ export function PresenceStoreProvider(props: ParentProps) {
   // retaining its peers. Retention without subscription only preserves state that is already past its
   // TTL, and the join handshake repopulates in one round trip on return anyway.
   createEffect(() => {
+    // The complete list of things that justify tearing presence down and building it again. Anything
+    // else read below is untracked, deliberately — see `presence.start`.
     const datasetHandle = datasetStore.currentDataset()?.handle;
-    const did = session.me()?.did;
+    const did = myDid();
 
     source?.stop();
     source = null;
@@ -202,12 +216,27 @@ export function PresenceStoreProvider(props: ParentProps) {
      */
     const unsubLeader = coordinator?.onBecomeLeader(() => presence.announce());
 
-    presence.start({
-      agentId: did,
-      updatedAt: Date.now(),
-      availability: availability(),
-      focus: myFocus(),
-    });
+    /**
+     * Untracked, because these are the source's *initial* values, not its dependencies.
+     *
+     * Read normally, `myFocus()` makes this effect depend on the route — so every navigation stopped
+     * presence and started it again, which means broadcasting a `bye`, dropping the peer map,
+     * re-registering the executor subscription, and re-running the handshake. Entering a space
+     * changes the route, so the churn landed exactly where it hurt most: peers were told this agent
+     * had left, moments after it arrived, and the trace showed the `bye` sitting between two `start`
+     * lines a millisecond apart.
+     *
+     * Both values already have their own effects below, which is the right shape — publish a change,
+     * do not rebuild the publisher.
+     */
+    untrack(() =>
+      presence.start({
+        agentId: did,
+        updatedAt: Date.now(),
+        availability: availability(),
+        focus: myFocus(),
+      }),
+    );
 
     onCleanup(() => {
       unsubLeader?.();
