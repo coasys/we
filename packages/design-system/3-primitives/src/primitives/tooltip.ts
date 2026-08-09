@@ -8,7 +8,7 @@ import {
   shift,
 } from '@floating-ui/dom';
 import type { Placement } from '@we/design-types';
-import { css, html } from 'lit';
+import { css, html, type PropertyValues } from 'lit';
 import { customElement, property, query, state } from 'lit/decorators.js';
 
 import { LayoutElement } from '../shared/design-system-element';
@@ -113,7 +113,11 @@ export default class Tooltip extends LayoutElement {
     this.cleanup?.();
   }
 
-  updated(changed: Map<string, unknown>) {
+  // `super.updated` first — the design system writes its custom properties there, so an override
+  // that skips it silently disables every DS prop on this element. See the note in video.ts, which
+  // is where the consequences were finally noticed.
+  updated(changed: PropertyValues) {
+    super.updated(changed);
     if (changed.has('open')) {
       if (this.open) this.openTooltip();
       else this.closeTooltip();

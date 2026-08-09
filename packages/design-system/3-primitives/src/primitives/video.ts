@@ -138,8 +138,17 @@ export default class Video extends LayoutVisualElement {
    * Assign after render, not in `render()`. `srcObject` is a DOM property with no attribute form, so
    * lit-html cannot express it in the template — and the element only exists once the first render
    * has committed.
+   *
+   * `super.updated` first, and it is not a formality: the design system writes every one of its
+   * custom properties from the base class's `updated`, so an override that forgets it silently
+   * turns off `width`, `height`, `position` and the rest for this element alone. There is no error
+   * — the props are accepted, the vars are never written, and the `var()` references in the shadow
+   * stylesheet fall back to `auto`. This element sized itself from its stream's own pixel
+   * dimensions for exactly that reason, which read as "video is bigger than its tile" until `fit`
+   * took it out of flow and it became "video has no size at all".
    */
   protected updated(changed: PropertyValues) {
+    super.updated(changed);
     if (changed.has('stream') && this.videoEl) {
       this.videoEl.srcObject = this.stream ?? null;
     }
