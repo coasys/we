@@ -92,23 +92,24 @@ export interface CallTileState {
 }
 
 /**
- * How much of the screen the call is asking for.
+ * Where the call's video sits — one question, six answers.
  *
- * Four states rather than the `expanded` boolean this replaced, because a call is two different
- * things at different moments and one flag could only ever be right about one of them. `strip` is a
- * call you are *in* while working — glanceable, overlaying, taking no room. `dock` is a call you
- * are *watching* — a real panel that shrinks the app beside it, which is the only arrangement where
- * both are usable at once. `max` is a demo, and gives up on the app entirely for the duration.
+ * This replaced a four-state mode that one button cycled through, and the collapse is the point.
+ * That button was encoding three things at once — whether the video showed, where it was, and how
+ * big — so it could not have a clear icon, and reaching any given state took up to three clicks
+ * through states you did not want.
  *
- * The progression is deliberate and one button walks it: hidden → strip → dock → max → hidden.
+ * They are all *placements*, including the two that look like modes. `float` takes no room and
+ * overlays, `full` takes all of it; the four edges take some and give the rest back. So the whole
+ * arrangement is a radio choice, which is a thing people already know how to read — and visibility
+ * becomes an ordinary toggle beside it rather than a stop on a cycle.
+ *
+ * Size is deliberately absent: it is dragged, and the host owns it. See `dockGeometry`.
  */
-export type CallStageMode = 'hidden' | 'strip' | 'dock' | 'max';
+export type CallPlacement = 'float' | 'left' | 'right' | 'top' | 'bottom' | 'full';
 
-/** Which edge the docked stage occupies. A preference, and the only geometry the module states. */
+/** Which edge a docked stage occupies — the subset of {@link CallPlacement} that takes room. */
 export type CallDockEdge = 'left' | 'right' | 'top' | 'bottom';
-
-/** How much room the docked stage asks the host for. Resolved to pixels by the host, not here. */
-export type CallDockSize = 'sm' | 'md' | 'lg';
 
 export interface CallStoreDeps extends ModuleStoreDeps {
   /** Overridable for tests; defaults to the browser's WebRTC and media APIs. */
@@ -155,9 +156,8 @@ export function createCallStore(deps: CallStoreDeps) {
   const [callId, setCallId] = signal<string | null>(null);
   const [tiles, setTiles] = signal<CallTile[]>([]);
   const [tileStates, setTileStates] = signal<CallTileState[]>([]);
-  const [stageMode, setStageMode] = signal<CallStageMode>('hidden');
-  const [dockEdge, setDockEdge] = signal<CallDockEdge>('right');
-  const [dockSize, setDockSize] = signal<CallDockSize>('md');
+  const [visible, setVisible] = signal(false);
+  const [placement, setPlacement] = signal<CallPlacement>('right');
   /**
    * Whose video the stage is giving most of its room to, or `null` for an even grid.
    *
@@ -358,7 +358,7 @@ export function createCallStore(deps: CallStoreDeps) {
     peerStates = new Map();
     if (id) presence?.clearActivity('call', id);
     setCallId(null);
-    setStageMode('hidden');
+    setVisible(false);
     setFocusedId(null);
     focusIsManual = false;
     sharingPeers = new Set();
@@ -464,14 +464,6 @@ export function createCallStore(deps: CallStoreDeps) {
     if (!handle && callId()) teardown();
   });
 
-  /** The next mode the one expand button lands on. Wraps, so the same button also puts it away. */
-  const NEXT_MODE: Record<CallStageMode, CallStageMode> = {
-    hidden: 'strip',
-    strip: 'dock',
-    dock: 'max',
-    max: 'hidden',
-  };
-
   /**
    * How many columns the tiles pack into.
    *
@@ -484,20 +476,23 @@ export function createCallStore(deps: CallStoreDeps) {
    * exactly one row beneath, at any count. A tall narrow dock wants columns of one or two, because
    * three 16:9 tiles across a 440px panel are thumbnails. Anything wide gets the ordinary grid.
    */
-  function stageColumns(count: number, focused: boolean, mode: CallStageMode, edge: CallDockEdge): number {
+  function stageColumns(count: number, focused: boolean, where: CallPlacement): number {
     if (count <= 1) return 1;
     if (focused) return Math.min(count - 1, 4);
-    const vertical = mode === 'dock' && (edge === 'left' || edge === 'right');
+    const vertical = where === 'left' || where === 'right';
     if (vertical) return count <= 3 ? 1 : 2;
     return count <= 4 ? 2 : 3;
   }
+
+  /** The edge a placement occupies. `float` and `full` name one they do not use — see `dockEdge`. */
+  const edgeFor = (where: CallPlacement): CallDockEdge => (where === 'float' || where === 'full' ? 'bottom' : where);
 
   return {
     // ── State ────────────────────────────────────────────────────────────────
     callId,
     tiles,
     tileStates,
-    stageMode,
+    placement,
     focusedId,
     media,
     problem,
@@ -514,30 +509,37 @@ export function createCallStore(deps: CallStoreDeps) {
      * value has to stay non-null for the panel to exist at all, and keeping the user's preference
      * live through those modes is what makes cycling back to `dock` return it where they left it.
      */
-    dockEdge: () => (stageMode() === 'hidden' || !callId() ? null : dockEdge()),
-    dockSize: (): CallDockSize | 'full' =>
-      stageMode() === 'max' ? 'full' : stageMode() === 'strip' ? 'sm' : dockSize(),
-    /** Overlay rather than inset: a strip is too small to be worth shrinking the app for, a
-     *  maximised stage too large to leave anything of it. */
-    dockFloat: () => stageMode() === 'strip' || stageMode() === 'max',
+    dockEdge: () => (!visible() || !callId() ? null : edgeFor(placement())),
+    /**
+     * How much room to ask for — now only ever the two extremes, or "an ordinary panel".
+     *
+     * The three named sizes this used to choose between are gone: size is dragged, and the host
+     * stores what the user dragged it to. `md` is therefore an opening bid rather than a setting,
+     * which is why nothing here can change it any more.
+     */
+    dockSize: () => (placement() === 'full' ? 'full' : placement() === 'float' ? 'sm' : 'md'),
+    /** Overlay rather than inset: a float is too small to be worth shrinking the app for, a full
+     *  stage too large to leave anything of it. */
+    dockFloat: () => placement() === 'float' || placement() === 'full',
 
-    /** The edge picker's options, pre-built — a schema can `$each` an array but cannot author one. */
-    dockEdgeOptions: () => [
-      { id: 'left', icon: 'arrow-line-left', label: 'Dock left', active: dockEdge() === 'left' },
-      { id: 'right', icon: 'arrow-line-right', label: 'Dock right', active: dockEdge() === 'right' },
-      { id: 'top', icon: 'arrow-line-up', label: 'Dock top', active: dockEdge() === 'top' },
-      { id: 'bottom', icon: 'arrow-line-down', label: 'Dock bottom', active: dockEdge() === 'bottom' },
-    ],
-    dockSizeOptions: () => [
-      { id: 'sm', label: 'Small', active: dockSize() === 'sm' },
-      { id: 'md', label: 'Medium', active: dockSize() === 'md' },
-      { id: 'lg', label: 'Large', active: dockSize() === 'lg' },
+    /**
+     * The placement picker, pre-built — a fragment can iterate an array but cannot author one.
+     *
+     * One list containing what used to be two controls and a cycle. `float` and `full` sit in it as
+     * peers of the edges because that is what they are: places to put the video, differing only in
+     * how much room they take.
+     */
+    placementOptions: () => [
+      { id: 'float', icon: 'picture-in-picture', label: 'Floating', active: placement() === 'float' },
+      { id: 'left', icon: 'arrow-line-left', label: 'Dock left', active: placement() === 'left' },
+      { id: 'right', icon: 'arrow-line-right', label: 'Dock right', active: placement() === 'right' },
+      { id: 'top', icon: 'arrow-line-up', label: 'Dock top', active: placement() === 'top' },
+      { id: 'bottom', icon: 'arrow-line-down', label: 'Dock bottom', active: placement() === 'bottom' },
+      { id: 'full', icon: 'arrows-out', label: 'Full screen', active: placement() === 'full' },
     ],
 
-    /** True while the stage is showing anything at all — what the expand button's icon follows. */
-    stageOpen: () => stageMode() !== 'hidden',
-    /** True while the stage is a docked panel, so the size and edge controls only appear where they act. */
-    stageDocked: () => stageMode() === 'dock',
+    /** Whether the video is showing at all — what the participants button reflects. */
+    stageOpen: visible,
 
     // ── How the tiles pack ────────────────────────────────────────────────────
     /**
@@ -553,7 +555,7 @@ export function createCallStore(deps: CallStoreDeps) {
      * panel is as wide as the number of people in it rather than a band of empty chrome.
      */
     stageStyle: (): Record<string, string> =>
-      stageMode() === 'strip'
+      placement() === 'float'
         ? {
             display: 'grid',
             'grid-auto-flow': 'column',
@@ -564,7 +566,7 @@ export function createCallStore(deps: CallStoreDeps) {
           }
         : {
             display: 'grid',
-            'grid-template-columns': `repeat(${stageColumns(tiles().length, focusedId() !== null, stageMode(), dockEdge())}, 1fr)`,
+            'grid-template-columns': `repeat(${stageColumns(tiles().length, focusedId() !== null, placement())}, 1fr)`,
             'grid-auto-rows': '1fr',
           },
 
@@ -590,7 +592,7 @@ export function createCallStore(deps: CallStoreDeps) {
 
     tileCells: (): { id: string; style: Record<string, string | number> }[] => {
       const focus = focusedId();
-      const strip = stageMode() === 'strip';
+      const strip = placement() === 'float';
       // A focused tile spans the full width and two rows: the classic spotlight, in one declaration,
       // at any participant count. In a strip there is nothing to spotlight — every cell is already
       // the same size and there is only one row.
@@ -672,11 +674,20 @@ export function createCallStore(deps: CallStoreDeps) {
       if (media().screenShareEnabled) controller?.stopScreenShare();
       else void controller?.startScreenShare();
     },
-    /** Walk the stage one step bigger, and round to hidden. See {@link CallStageMode}. */
-    cycleStage: () => setStageMode(NEXT_MODE[stageMode()]),
-    closeStage: () => setStageMode('hidden'),
-    setDockEdge: (edge: CallDockEdge) => setDockEdge(edge),
-    setDockSize: (size: CallDockSize) => setDockSize(size),
+    /** Show the video, or put it away. The other half of what one button used to do alone. */
+    toggleStage: () => setVisible(!visible()),
+    closeStage: () => setVisible(false),
+
+    /**
+     * Put the video somewhere — and show it, if it was not showing.
+     *
+     * Choosing a place is an instruction to look at the thing, so making the user open it first and
+     * then place it would be asking twice for one decision.
+     */
+    setPlacement: (where: CallPlacement) => {
+      setPlacement(where);
+      if (!visible()) setVisible(true);
+    },
 
     /**
      * Give this participant the stage, or take it back if they already have it.

@@ -31,14 +31,7 @@ import { createCallStore } from './store';
 export { createCallMesh, type CallMesh, type SignallingChannel } from './mesh';
 export { createMediaController, type MediaController, type MediaState } from './media';
 export { anchoredCallId, CALL_PROTOCOL_VERSION, parseCallMessage, spaceCallId } from './protocol';
-export {
-  type CallDockEdge,
-  type CallDockSize,
-  type CallStageMode,
-  type CallTile,
-  type CallTileState,
-  createCallStore,
-} from './store';
+export { type CallDockEdge, type CallPlacement, type CallTile, type CallTileState, createCallStore } from './store';
 
 /**
  * Where the call's chrome sits.
@@ -104,8 +97,18 @@ const tile: SchemaNode = {
   type: 'Column',
   props: {
     position: 'relative',
-    // Low-numbered, so it stays a recessed surface under both themes — see the note on `stage`.
-    bg: 'neutral-100',
+    /**
+     * A surface only when there is no picture on it.
+     *
+     * With `fit: contain` the video is centred in the tile and the rest of the tile shows through,
+     * so a background here would frame every video in a grey box that grows as the cell gets further
+     * from 16:9. Transparent, the letterboxing is just the panel, and the picture reads as being the
+     * right size rather than as being surrounded.
+     *
+     * Low-numbered where it does paint, so it stays a recessed surface under both themes — see the
+     * note on `stage`.
+     */
+    bg: { $if: { condition: hasVideo, then: 'transparent', else: 'neutral-100' } },
     r: '400',
     overflow: 'hidden',
     ax: 'center',
@@ -176,14 +179,23 @@ const tile: SchemaNode = {
             right: '0',
             bottom: '0',
             left: '0',
-            // A desktop cropped to fill a camera-shaped tile is unreadable — `contain` letterboxes it
-            // instead. Driven by the roster, because only the sender knows which it is sending.
-            //
-            // Setting `fit` at all is what pins the video inside the tile: without it the element
-            // sizes itself from the stream's own pixel dimensions, so a 720p camera and a 1080p
-            // screen capture laid out at different sizes and both grew past the stage. See the
-            // primitive.
-            fit: { $if: { condition: stateOf('isScreen'), then: 'contain', else: 'cover' } },
+            /**
+             * Always `contain` — the whole picture, never a crop.
+             *
+             * Cameras used to get `cover`, which fills the tile and hides the overflow, and that is
+             * fine only while a tile is roughly the shape of the picture. A grid cell is whatever
+             * shape the panel is: one participant in a right-hand dock got a 440×900 cell, so
+             * covering it scaled a 16:9 face until it was 1600px wide and threw away 1160px of it.
+             * What was left was a vertical slice of somebody's nose.
+             *
+             * The cost is letterboxing when a cell is far from 16:9, which is visible but honest —
+             * and the tile paints no background of its own while a picture is showing, so the bars
+             * are the panel rather than a grey box around the video.
+             *
+             * Setting `fit` at all is also what pins the video inside the tile: without it the
+             * element sizes itself from the stream's own pixel dimensions. See the primitive.
+             */
+            fit: 'contain',
             /**
              * Your own camera, mirrored — everyone expects to raise the hand they raised.
              *
@@ -446,32 +458,37 @@ function mediaToggle(opts: { on: string; off: string; enabled: string; action: s
 }
 
 /**
- * Which edge the docked stage takes room from.
+ * Where the video goes — the one control that used to be three.
  *
- * A menu rather than four buttons in the bar: the choice is made once and then left alone, and four
- * permanent arrows would cost more space in the one piece of chrome that must stay small than the
- * setting is worth. Driven from `dockEdgeOptions` so the labels and the active mark live beside the
- * state they describe — a fragment can iterate an array but cannot author one.
+ * A menu rather than buttons in the bar, because the choice is made once and then left alone, and
+ * six permanent options would cost more room in the one piece of chrome that must stay small than
+ * the setting is worth. It absorbed the mode cycle and the three size buttons: floating and full
+ * screen are placements like any other, and size is dragged now rather than chosen.
+ *
+ * `triggerLabel` is set explicitly. Left off, `DropdownMenu` falls back to "Options" — the least
+ * informative word available for a menu that always has a subject, and the reason this one read as
+ * a mystery rather than as a place to put the video.
  */
 const placementMenu: SchemaNode = {
   type: 'DropdownMenu',
   props: {
     triggerIcon: 'layout',
+    triggerLabel: 'Position',
     placement: 'bottom',
     items: {
       $map: {
-        items: { $store: 'modules.call.dockEdgeOptions' },
+        items: { $store: 'modules.call.placementOptions' },
         // Toggles rather than actions, for the check mark: an action item has no way to show which
-        // edge is the current one, and a placement menu that cannot answer "where is it now?" is a
-        // menu you have to open twice. Toggles also leave the menu open, which is what you want
-        // while trying edges against the space behind them.
+        // placement is the current one, and a menu that cannot answer "where is it now?" is a menu
+        // you have to open twice. Toggles also leave it open, which is what you want while trying
+        // placements against the space behind them.
         select: {
           id: '$item.id',
           type: 'toggle',
           label: '$item.label',
           icon: '$item.icon',
           checked: '$item.active',
-          onToggle: { $action: 'modules.call.setDockEdge', args: ['$item.id'] },
+          onToggle: { $action: 'modules.call.setPlacement', args: ['$item.id'] },
         },
       },
     },
@@ -479,30 +496,36 @@ const placementMenu: SchemaNode = {
 };
 
 /**
- * How much room the docked stage asks for.
+ * Show the video, or put it away.
  *
- * Three named sizes rather than a drag handle. A handle is the better interaction and it is not
- * available yet: it needs a design-system primitive that reports a drag delta, and inventing one
- * inside a feature module would put framework code in the module with the strongest claim to having
- * none. Three presets answer the same question with the same store key, so the handle can be added
- * later without changing what it sets.
+ * The other half of what one button used to do alone, and the reason that button could not have a
+ * clear icon: it was cycling visibility, placement and size together, so a caret pointed in a
+ * direction that meant nothing once the panel was docked to the right.
+ *
+ * Reads as "N people — click to see them", and follows the same active-variant convention as the
+ * mute and camera toggles beside it, so the bar has one idea of what "on" looks like.
  */
-const sizeButtons: SchemaNode[] = ['sm', 'md', 'lg'].map((size, index) => ({
-  type: 'we-button',
+const participantsToggle: SchemaNode = {
+  type: 'we-tooltip',
   props: {
-    size: 'sm',
-    variant: {
-      $if: {
-        condition: { $eq: [{ $store: 'modules.call.dockSize' }, size] },
-        then: 'secondary',
-        else: 'ghost',
-      },
-    },
-    onClick: { $action: 'modules.call.setDockSize', args: [size] },
+    title: { $if: { condition: { $store: 'modules.call.stageOpen' }, then: 'Hide video', else: 'Show video' } },
+    placement: 'bottom',
   },
-  // Three steps of one glyph, so the row reads as a scale rather than as three unrelated controls.
-  children: [{ type: 'we-icon', props: { name: ['rows', 'square', 'squares-four'][index] } }],
-}));
+  children: [
+    {
+      type: 'we-button',
+      props: {
+        size: 'sm',
+        variant: { $if: { condition: { $store: 'modules.call.stageOpen' }, then: 'secondary', else: 'ghost' } },
+        onClick: { $action: 'modules.call.toggleStage' },
+      },
+      children: [
+        { type: 'we-icon', props: { name: 'users' } },
+        { type: 'we-number', props: { value: { $count: { items: { $store: 'modules.call.tiles' } } } } },
+      ],
+    },
+  ],
+};
 
 /** The bar, in its two states: a call is running and you are not in it, or you are. */
 const bar: SchemaNode = {
@@ -606,57 +629,8 @@ const bar: SchemaNode = {
           props: { anchor: CALL_CONTROLS_ANCHOR },
         },
         { type: 'we-divider', props: { orientation: 'vertical', height: '20px' } },
-        // Where the panel goes, and how much of the screen it may take. Only while it is docked,
-        // because those are the only two questions a floating strip or a maximised stage can be
-        // asked — one takes no room and the other takes all of it.
-        {
-          type: '$if',
-          props: {
-            condition: { $store: 'modules.call.stageDocked' },
-            then: {
-              type: 'Row',
-              props: { gap: '100', ay: 'center' },
-              children: [placementMenu, ...sizeButtons],
-            },
-          },
-        },
-        {
-          type: 'we-tooltip',
-          props: { title: 'Resize the call', placement: 'bottom' },
-          children: [
-            {
-              type: 'we-button',
-              props: { size: 'sm', variant: 'ghost', onClick: { $action: 'modules.call.cycleStage' } },
-              children: [
-                {
-                  type: 'we-icon',
-                  props: {
-                    // The icon names the step this button takes, not the state it is in — the four
-                    // stage modes are a progression, and an arrow that always pointed the same way
-                    // would be lying about three quarters of it.
-                    name: {
-                      $if: {
-                        condition: { $eq: [{ $store: 'modules.call.stageMode' }, 'hidden'] },
-                        then: 'caret-up',
-                        else: {
-                          $if: {
-                            condition: { $eq: [{ $store: 'modules.call.stageMode' }, 'max'] },
-                            then: 'x',
-                            else: 'arrows-out',
-                          },
-                        },
-                      },
-                    },
-                  },
-                },
-                {
-                  type: 'we-number',
-                  props: { value: { $count: { items: { $store: 'modules.call.tiles' } } } },
-                },
-              ],
-            },
-          ],
-        },
+        participantsToggle,
+        placementMenu,
         {
           type: 'we-button',
           props: { size: 'sm', variant: 'danger', onClick: { $action: 'modules.call.leave' } },

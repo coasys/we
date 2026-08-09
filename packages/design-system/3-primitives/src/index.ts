@@ -33,6 +33,7 @@ import './primitives/progress-bar';
 import './primitives/radio';
 import './primitives/scroll-area';
 import './primitives/select';
+import './primitives/resize-handle';
 import './primitives/skeleton';
 import './primitives/slider';
 import './primitives/sortable';

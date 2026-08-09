@@ -12,6 +12,8 @@ import {
   contentInset,
   type DockGeometry,
   type DockRequest,
+  dockThickness,
+  MIN_DOCK_PX,
   resolveDock,
 } from '@shared/dockGeometry';
 import { dockRegistry } from '@shared/registries/dockRegistry';
@@ -60,6 +62,13 @@ export interface ShellStore {
   dockGeometry: Accessor<Record<string, DockGeometry>>;
   /** What the content viewport gives up to docked panels, in pixels per edge. */
   contentInset: Accessor<ContentInset>;
+  /** True while a dock is being dragged, so transitions can be suspended and the edge track the cursor. */
+  dockResizing: Accessor<boolean>;
+  /** Remember a dock's current thickness, so the drag that follows is measured from it. */
+  beginDockResize: (id: string) => void;
+  /** Apply a drag, in pixels moved since `beginDockResize`. Signed in screen direction. */
+  resizeDock: (id: string, delta: number) => void;
+  endDockResize: () => void;
 }
 
 const ShellContext = createContext<ShellStore>();
@@ -112,12 +121,19 @@ export function ShellStoreProvider(props: ParentProps) {
     onCleanup(() => window.removeEventListener('resize', onResize));
   }
 
+  /** What the user has dragged each dock to, by dock id. Empty until somebody drags one. */
+  const [dockSizes, setDockSizes] = createSignal<Record<string, number>>({});
+  const [dockResizing, setDockResizing] = createSignal(false);
+  /** The thickness a drag started from, so every move is measured against one fixed origin. */
+  let resizeOrigin = 0;
+
   const dockRequests = createMemo<DockRequest[]>(() =>
     dockRegistry.ordered().map((entry) => ({
       id: entry.id,
       edge: (readModuleKey(entry.moduleId, entry.edge) as DockEdge) ?? null,
       size: (readModuleKey(entry.moduleId, entry.size) as DockSize) ?? 'md',
       float: Boolean(readModuleKey(entry.moduleId, entry.float)),
+      resizedTo: dockSizes()[entry.id],
     })),
   );
 
@@ -146,6 +162,31 @@ export function ShellStoreProvider(props: ParentProps) {
     },
     dockGeometry,
     contentInset: inset,
+    dockResizing,
+
+    beginDockResize: (id) => {
+      const request = dockRequests().find((entry) => entry.id === id);
+      if (!request?.edge) return;
+      resizeOrigin = dockThickness(request.edge, request.size, viewport(), request.resizedTo);
+      setDockResizing(true);
+    },
+
+    /**
+     * Turn a screen-space drag into a thickness.
+     *
+     * The sign lives here rather than in the handle because only the host knows which edge the panel
+     * is on, and the answer inverts between edges: a right-hand panel's handle is on its *left*, so
+     * dragging left — a negative delta — makes it wider. A handle that guessed would be wrong half
+     * the time, which is why it reports raw screen movement and nothing else.
+     */
+    resizeDock: (id, delta) => {
+      const request = dockRequests().find((entry) => entry.id === id);
+      if (!request?.edge) return;
+      const grows = request.edge === 'right' || request.edge === 'bottom' ? -1 : 1;
+      setDockSizes((prev) => ({ ...prev, [id]: Math.max(MIN_DOCK_PX, resizeOrigin + grows * delta) }));
+    },
+
+    endDockResize: () => setDockResizing(false),
   };
 
   return <ShellContext.Provider value={store}>{props.children}</ShellContext.Provider>;

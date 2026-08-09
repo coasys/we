@@ -37,58 +37,62 @@ interface PanelUnitProps {
  */
 function PanelUnit(props: PanelUnitProps) {
   // Controls whether the width transition is active. Disabled during drag to
-  // prevent the CSS animation fighting against live mousemove updates.
+  // prevent the CSS animation fighting against live pointer updates.
   const [resizing, setResizing] = createSignal(false);
-  let startX = 0;
   let startWidth = 0;
+  let openAtStart = false;
   let moved = false; // plain boolean — no reactive overhead needed
 
-  function onMouseDown(e: MouseEvent) {
-    e.preventDefault();
-    startX = e.clientX;
-    const openAtStart = props.isOpen(); // capture once — avoids reading a stale closure
+  /**
+   * The drag policy, which is the half `we-resize-handle` deliberately does not own.
+   *
+   * A rail is not just a resizer: a short press toggles the panel, a drag resizes it, and dragging
+   * leftwards from closed opens it on the way. The handle reports raw screen movement and nothing
+   * else, so all of that stays here — where the panel's minimum, its maximum, and what "closed"
+   * means are already known.
+   */
+  function onResizeStart() {
+    openAtStart = props.isOpen(); // capture once — avoids reading a stale closure
     // When closed, treat start width as 0 so the panel grows from the drag position
     // rather than jumping to the previously stored width.
     startWidth = openAtStart ? props.panelWidth() : 0;
     moved = false;
+  }
 
-    const onMove = (e: MouseEvent) => {
-      // positive delta = mouse moved left = panel grows wider
-      const delta = startX - e.clientX;
+  function onResize(event: CustomEvent<{ delta: number }>) {
+    // The handle reports screen direction; this rail sits to the *left* of its panel, so dragging
+    // left — a negative screen delta — is what makes the panel wider.
+    const delta = -event.detail.delta;
 
-      if (!moved) {
-        if (Math.abs(delta) < DRAG_THRESHOLD_PX) return; // not yet a drag
-        moved = true;
-        setResizing(true); // disable local panel transition — fires only once per drag
-        setPanelResizing(true); // disable canvas/toolbar transitions — fires only once per drag
-        // Drag left on a closed panel → open it before the first width update
-        if (!openAtStart && delta > 0) props.toggle();
-      }
+    if (!moved) {
+      if (Math.abs(delta) < DRAG_THRESHOLD_PX) return; // not yet a drag
+      moved = true;
+      setResizing(true); // disable local panel transition — fires only once per drag
+      setPanelResizing(true); // disable canvas/toolbar transitions — fires only once per drag
+      // Drag left on a closed panel → open it before the first width update
+      if (!openAtStart && delta > 0) props.toggle();
+    }
 
-      if (props.isOpen()) {
-        // When dragging from closed, skip the minimum so the panel tracks the cursor
-        // exactly from the start. The minimum is enforced on mouseup instead.
-        const min = openAtStart ? 240 : 1;
-        props.setPanelWidth(Math.max(min, Math.min(900, startWidth + delta)));
-      }
-    };
+    if (props.isOpen()) {
+      // When dragging from closed, skip the minimum so the panel tracks the cursor
+      // exactly from the start. The minimum is enforced on release instead.
+      const min = openAtStart ? 240 : 1;
+      props.setPanelWidth(Math.max(min, Math.min(900, startWidth + delta)));
+    }
+  }
 
-    const onUp = () => {
-      document.removeEventListener('mousemove', onMove);
-      document.removeEventListener('mouseup', onUp);
-      setResizing(false); // re-enable local transition for open/close animation
-      setPanelResizing(false); // re-enable canvas/toolbar transitions
-      if (!moved) {
-        props.toggle(); // short press = click → toggle
-      } else if (!openAtStart && props.isOpen() && props.panelWidth() < 240) {
-        // Released below minimum after drag-from-closed: snap to minimum.
-        // Transition is re-enabled above so this animates in smoothly.
-        props.setPanelWidth(240);
-      }
-    };
-
-    document.addEventListener('mousemove', onMove);
-    document.addEventListener('mouseup', onUp);
+  function onResizeEnd() {
+    setResizing(false); // re-enable local transition for open/close animation
+    setPanelResizing(false); // re-enable canvas/toolbar transitions
+    if (!moved) {
+      // A press that never moved is a click. The handle reports it as a zero-length drag, which is
+      // the same disambiguation this made for itself before — now without a raw mouse listener.
+      props.toggle();
+    } else if (!openAtStart && props.isOpen() && props.panelWidth() < 240) {
+      // Released below minimum after drag-from-closed: snap to minimum.
+      // Transition is re-enabled above so this animates in smoothly.
+      props.setPanelWidth(240);
+    }
   }
 
   return (
@@ -105,11 +109,27 @@ function PanelUnit(props: PanelUnitProps) {
           bg={props.isOpen() ? 'neutral-100' : 'neutral-50'}
           borderLeft={`1px solid ${tokenVar('color', 'neutral-200')}`}
           hoverProps={{ bg: 'neutral-100' }}
-          cursor="ew-resize"
           flexShrink="0"
-          onMouseDown={onMouseDown}
+          position="relative"
         >
           <we-icon name={props.icon} size="sm" color={props.isOpen() ? 'neutral-700' : 'neutral-400'} />
+          {/*
+            Laid over the whole rail rather than beside it, because the rail *is* the target: it
+            toggles on a press and resizes on a drag, and splitting those across two elements would
+            put a seam through the middle of one control. Its own divider is suppressed — the rail
+            already draws a border, and two lines a pixel apart is one line that looks wrong.
+          */}
+          <we-resize-handle
+            position="absolute"
+            top="0"
+            left="0"
+            width="100%"
+            height="100%"
+            styles={{ '--we-resize-handle-line': 'transparent', '--we-resize-handle-line-active': 'transparent' }}
+            on:resizestart={onResizeStart}
+            on:resize={onResize}
+            on:resizeend={onResizeEnd}
+          />
         </Column>
       </we-tooltip>
 

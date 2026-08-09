@@ -30,7 +30,13 @@ export function PersistentAppFrames(props: { stores: Stores }) {
       bottom={computeBottomOffset(stores)}
       left={computeLeftOffset(stores)}
       right={computeRightOffset(stores)}
-      transition={panelResizing() ? 'none' : 'top 300ms ease, right 300ms ease, bottom 300ms ease, left 300ms ease'}
+      // Suspended during either kind of drag, so the viewport edge tracks the cursor exactly rather
+      // than lagging a third of a second behind it.
+      transition={
+        panelResizing() || stores.shellStore.dockResizing()
+          ? 'none'
+          : 'top 300ms ease, right 300ms ease, bottom 300ms ease, left 300ms ease'
+      }
     >
       {/* opacity:0/1 creates an explicit GPU compositing layer (unlike visibility:hidden
            which does not). will-change:opacity pre-allocates that layer so the browser

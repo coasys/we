@@ -7,7 +7,7 @@
  */
 import { describe, expect, it } from 'vitest';
 
-import { contentInset, dockThickness, NARROW_VIEWPORT_PX, resolveDock } from '../src/shared/dockGeometry';
+import { contentInset, dockThickness, MIN_DOCK_PX, NARROW_VIEWPORT_PX, resolveDock } from '../src/shared/dockGeometry';
 
 const desktop = { width: 1600, height: 900 };
 const laptop = { width: NARROW_VIEWPORT_PX - 100, height: 700 };
@@ -63,6 +63,44 @@ describe('resolveDock', () => {
     // viewport is not two usable things.
     expect(resolveDock(dock(), laptop).floating).toBe(true);
     expect(contentInset([dock()], laptop)).toEqual({ left: 0, right: 0, top: 0, bottom: 0 });
+  });
+});
+
+describe('dragging', () => {
+  it('lets a dragged size beat the named one', () => {
+    // The module keeps saying what it wants — `md`, an opening bid — and the host keeps deciding
+    // what it gets, which now includes remembering that somebody moved it.
+    const geometry = resolveDock(dock({ resizedTo: 600 }), desktop);
+    expect(geometry.width).toBe('592px'); // less the gap it sits off the edge by
+    expect(contentInset([dock({ resizedTo: 600 })], desktop).right).toBe(600);
+  });
+
+  it('never lets a drag outgrow the window it was not dragged on', () => {
+    // A panel dragged wide on a monitor must not still be wider than a laptop screen when the same
+    // session moves to one.
+    const laptopWide = { width: 1280, height: 800 };
+    const thickness = dockThickness('right', 'md', laptopWide, 5_000);
+    expect(thickness).toBeLessThanOrEqual(1280);
+  });
+
+  it('refuses to shrink a panel into a sliver', () => {
+    expect(dockThickness('right', 'md', desktop, 10)).toBe(MIN_DOCK_PX);
+  });
+
+  it('puts the handle on the side facing the content it takes room from', () => {
+    // Which is also which way "wider" points, and the reason the sign lives in the host rather than
+    // in the handle: it inverts between edges.
+    expect(resolveDock(dock({ edge: 'right' }), desktop).handle).toBe('left');
+    expect(resolveDock(dock({ edge: 'left' }), desktop).handle).toBe('right');
+    expect(resolveDock(dock({ edge: 'bottom' }), desktop).handle).toBe('top');
+    expect(resolveDock(dock({ edge: 'top' }), desktop).handle).toBe('bottom');
+  });
+
+  it('offers no handle to a panel that takes no room', () => {
+    // Nothing to trade, so nothing to drag — and a divider on a floating strip would suggest
+    // otherwise.
+    expect(resolveDock(dock({ size: 'sm', float: true }), desktop).handle).toBeUndefined();
+    expect(resolveDock(dock({ size: 'full', float: true }), desktop).handle).toBeUndefined();
   });
 });
 

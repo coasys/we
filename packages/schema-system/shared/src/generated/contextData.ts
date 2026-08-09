@@ -423,6 +423,18 @@ export const contextData: ContextData = {
       ],
     },
     {
+      tagName: 'we-resize-handle',
+      className: 'ResizeHandle',
+      description:
+        "A drag target that reports how far it has moved, and nothing else.\n\n## Why it reports a delta rather than owning a size\n\nThe obvious design is a handle that resizes its neighbour. It is the wrong one, because \"what does\nthis drag mean\" is never the handle's business: the editor's panel rails grow *leftwards* from a\nwidth that starts at zero when the panel is closed, clamp at a minimum, and close the panel again\nbelow a threshold — while a docked call panel grows from whichever edge it is attached to. A\nhandle that owned the size could serve one of those and not the other.\n\nSo it emits `resizestart`, `resize` and `resizeend`, each carrying `delta`: pixels moved along its\naxis **since the drag began**, signed in screen direction (right and down positive). The consumer\ncaptures its own starting size and applies whatever sign and limits it has. Delta-from-start\nrather than incremental, because every consumer would otherwise have to accumulate, and one of\nthem would get it wrong after a dropped event.\n\n## Why a primitive rather than a hook\n\nThere were two implementations of this before it existed and they diverged in ways nobody chose:\nthe editor's is mouse-only, so it does not work on a touchscreen at all, and its rail is a plain\ndiv — not focusable, so there is no way to resize a panel from the keyboard. Pointer events and a\n`separator` role fix both once, for every consumer, in the layer where imperative DOM work belongs.",
+      superclass: 'LayoutElement',
+      ownProps: [
+        { name: 'orientation', type: "'vertical' | 'horizontal'", optional: false, default: "'vertical'" },
+        { name: 'step', type: 'number', optional: false, default: '16' },
+        { name: 'dragging', type: 'boolean', optional: false, default: 'false' },
+      ],
+    },
+    {
       tagName: 'we-scroll-area',
       className: 'ScrollArea',
       superclass: 'DesignSystemElement',

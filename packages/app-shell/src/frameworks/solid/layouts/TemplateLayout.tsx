@@ -222,7 +222,13 @@ export function TemplateLayout(props: ParentProps & { stores: Stores }) {
         bottom={bottomOffset()}
         left={leftOffset()}
         right={rightOffset()}
-        transition={panelResizing() ? 'none' : 'top 300ms ease, right 300ms ease, bottom 300ms ease, left 300ms ease'}
+        // Suspended during either kind of drag, so the viewport edge tracks the cursor exactly rather
+        // than lagging a third of a second behind it.
+        transition={
+          panelResizing() || stores.shellStore.dockResizing()
+            ? 'none'
+            : 'top 300ms ease, right 300ms ease, bottom 300ms ease, left 300ms ease'
+        }
       >
         {/*
           Main template content, and the scoped space theme.

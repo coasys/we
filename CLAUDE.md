@@ -728,6 +728,29 @@ Use DropdownMenu component for dropdown menus.
   Props: value: number = 0, max: number = 100, variant: 'neutral' | 'primary' | 'success' | 'warning' | 'danger' = 'primary', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md'
 - we-radio (DesignSystemElement)
   Props: checked: boolean = false, disabled: boolean = false, name: string = '', value: string = '', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md'
+- we-resize-handle (LayoutElement) — A drag target that reports how far it has moved, and nothing else.
+
+## Why it reports a delta rather than owning a size
+
+The obvious design is a handle that resizes its neighbour. It is the wrong one, because "what does
+this drag mean" is never the handle's business: the editor's panel rails grow *leftwards* from a
+width that starts at zero when the panel is closed, clamp at a minimum, and close the panel again
+below a threshold — while a docked call panel grows from whichever edge it is attached to. A
+handle that owned the size could serve one of those and not the other.
+
+So it emits `resizestart`, `resize` and `resizeend`, each carrying `delta`: pixels moved along its
+axis **since the drag began**, signed in screen direction (right and down positive). The consumer
+captures its own starting size and applies whatever sign and limits it has. Delta-from-start
+rather than incremental, because every consumer would otherwise have to accumulate, and one of
+them would get it wrong after a dropped event.
+
+## Why a primitive rather than a hook
+
+There were two implementations of this before it existed and they diverged in ways nobody chose:
+the editor's is mouse-only, so it does not work on a touchscreen at all, and its rail is a plain
+div — not focusable, so there is no way to resize a panel from the keyboard. Pointer events and a
+`separator` role fix both once, for every consumer, in the layer where imperative DOM work belongs.
+  Props: orientation: 'vertical' | 'horizontal' = 'vertical', step: number = 16, dragging: boolean = false
 - we-scroll-area (DesignSystemElement)
   Props: maxHeight: string = '', maxWidth: string = ''
 - we-select (DesignSystemElement)

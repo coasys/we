@@ -46,7 +46,17 @@ export interface DockRequest {
   size: DockSize;
   /** The module asked to overlay rather than inset. The host may force this on; never off. */
   float: boolean;
+  /**
+   * What the user dragged this dock to, in pixels, overriding the named size.
+   *
+   * The module keeps saying what it *wants* — `md`, an opening bid — and the host keeps deciding
+   * what it gets, which now includes remembering that somebody moved it. Absent until they do.
+   */
+  resizedTo?: number;
 }
+
+/** Nobody wants a panel too narrow to show anything; below this it is a sliver with a scrollbar. */
+export const MIN_DOCK_PX = 200;
 
 /**
  * A resolved dock box.
@@ -57,6 +67,14 @@ export interface DockRequest {
  */
 export interface DockGeometry {
   edge: DockEdge;
+  /**
+   * Which edge of the panel the resize handle sits on — the one facing the content it steals from.
+   *
+   * `undefined` while floating: a panel that takes no room has nothing to trade, so there is nothing
+   * to drag. Named as a *side of the panel* rather than a direction of travel, because that is what
+   * the frame needs in order to place it.
+   */
+  handle?: 'left' | 'right' | 'top' | 'bottom';
   top?: string;
   right?: string;
   bottom?: string;
@@ -96,9 +114,14 @@ function contentRegion(viewport: Viewport) {
  * are fixed, because the point of those is "a panel", and a panel that grew with the display would
  * just be a bigger panel showing the same thing.
  */
-export function dockThickness(edge: DockEdge, size: DockSize, viewport: Viewport): number {
+export function dockThickness(edge: DockEdge, size: DockSize, viewport: Viewport, resizedTo?: number): number {
   const region = contentRegion(viewport);
   const vertical = edge === 'left' || edge === 'right';
+  const available = vertical ? region.width : region.height;
+
+  // A drag beats a named size, but never the window: a panel dragged wide on a monitor must not
+  // still be wider than a laptop screen when the same session moves to one.
+  if (resizedTo !== undefined && size !== 'full') return clamp(resizedTo, Math.min(MIN_DOCK_PX, available), available);
 
   if (size === 'full') return vertical ? region.width : region.height;
   if (vertical) {
@@ -157,12 +180,13 @@ export function resolveDock(request: DockRequest, viewport: Viewport): DockGeome
     };
   }
 
-  const thickness = dockThickness(edge, request.size, viewport);
+  const thickness = dockThickness(edge, request.size, viewport, request.resizedTo);
   const common = { edge, floating: false };
 
   if (edge === 'right' || edge === 'left') {
     return {
       ...common,
+      handle: edge === 'right' ? 'left' : 'right',
       top: px(DOCK_GAP_PX),
       bottom: px(DOCK_GAP_PX),
       width: px(thickness - DOCK_GAP_PX),
@@ -172,6 +196,7 @@ export function resolveDock(request: DockRequest, viewport: Viewport): DockGeome
 
   return {
     ...common,
+    handle: edge === 'top' ? 'bottom' : 'top',
     left: px(region.left + DOCK_GAP_PX),
     right: px(region.right + DOCK_GAP_PX),
     height: px(thickness - DOCK_GAP_PX),
@@ -193,7 +218,7 @@ export function contentInset(requests: DockRequest[], viewport: Viewport): Conte
 
   for (const request of requests) {
     if (!request.edge || request.float || narrow) continue;
-    inset[request.edge] += dockThickness(request.edge, request.size, viewport);
+    inset[request.edge] += dockThickness(request.edge, request.size, viewport, request.resizedTo);
   }
   return inset;
 }

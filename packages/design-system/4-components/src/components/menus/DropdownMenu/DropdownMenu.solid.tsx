@@ -197,7 +197,13 @@ export function DropdownMenu(props: SolidDropdownMenuProps) {
         <Show when={props.triggerIcon}>
           <we-icon name={props.triggerIcon!} />
         </Show>
-        {props.triggerLabel || 'Options'}
+        {/*
+          `??` rather than `||`, so an explicit empty label means "icon only" instead of falling back
+          to the default. It could not be suppressed before: any icon-only trigger silently read
+          "Options", which is the least informative word available for a menu that always has a
+          subject — and callers had no way to say otherwise.
+        */}
+        {props.triggerLabel ?? 'Options'}
       </we-button>
 
       <we-menu slot="content">

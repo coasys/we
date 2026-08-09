@@ -113,7 +113,53 @@ export function dockFrame(entry: DockEntry, node: SchemaNode): SchemaNode {
           overflow: 'hidden',
           zIndex: 'sticky',
         },
-        children: [node],
+        children: [resizeHandle(entry.id), node],
+      },
+    },
+  };
+}
+
+/**
+ * The edge of a docked panel you can drag.
+ *
+ * Rendered by the host rather than by the module, for the same reason placement is: a module cannot
+ * see the sidebar, the rail, or the window, so it cannot say what a sensible size would be — and
+ * three preset buttons in a module's own chrome were what stood in for this. Putting it here means
+ * every docked panel gets dragging, and the ones that come later get it without asking.
+ *
+ * Absent while floating: `handle` is undefined for a panel that takes no room, and a `$if` on it is
+ * what keeps a strip from sprouting a divider it could not act on.
+ */
+function resizeHandle(id: string): SchemaNode {
+  const geo = (field: string) => ({ $store: dockGeometryPath(id, field) });
+  const on = (side: string) => ({ $eq: [geo('handle'), side] });
+
+  return {
+    type: '$if',
+    props: {
+      condition: geo('handle'),
+      then: {
+        type: 'we-resize-handle',
+        props: {
+          // Vertical bar for a panel whose handle is on its left or right; horizontal otherwise.
+          orientation: { $if: { condition: { $or: [on('left'), on('right')] }, then: 'vertical', else: 'horizontal' } },
+          position: 'absolute',
+          zIndex: 'sticky',
+          // Pinned to the named side and stretched along the other axis, so one node serves all four
+          // edges rather than four nodes each knowing about one.
+          top: { $if: { condition: on('bottom'), then: 'auto', else: '0' } },
+          bottom: { $if: { condition: on('top'), then: 'auto', else: '0' } },
+          left: { $if: { condition: on('right'), then: 'auto', else: '0' } },
+          right: { $if: { condition: on('left'), then: 'auto', else: '0' } },
+          width: { $if: { condition: { $or: [on('left'), on('right')] }, then: '8px', else: 'auto' } },
+          height: { $if: { condition: { $or: [on('top'), on('bottom')] }, then: '8px', else: 'auto' } },
+          // `onXxx`, not `on:xxx`: the schema renderer recognises an event prop by a capital after
+          // "on", and Solid lowercases the rest to the event name — so these bind `resizestart`,
+          // `resize` and `resizeend`. The `on:` form is for hand-written TSX and is inert here.
+          onResizestart: { $action: 'shellStore.beginDockResize', args: [id] },
+          onResize: { $action: 'shellStore.resizeDock', args: [id, '$arg.detail.delta'] },
+          onResizeend: { $action: 'shellStore.endDockResize' },
+        },
       },
     },
   };
