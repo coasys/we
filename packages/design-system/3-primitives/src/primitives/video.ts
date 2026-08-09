@@ -51,6 +51,22 @@ const CSS_STYLES = css`
     overflow: hidden;
   }
 
+  /* The wrapper takes its height from the host by stretching, not by a percentage.
+     The design system gives [part='base'] height: 100%, which is correct until some ancestor's
+     height turns out to be indefinite — and then the percentage computes to auto while still being
+     specified, so flex's own stretch does not step in to save it. A wrapper of zero height around
+     an out-of-flow video is an invisible video. Stretch has no such failure mode: it takes whatever
+     the host's box is, definite or not. Specificity (0,3,0) beats the DS rule's (0,1,0), so sheet
+     order does not matter. */
+  :host([fit='contain']) [part='base'],
+  :host([fit='cover']) [part='base'],
+  :host([fit='fill']) [part='base'],
+  :host([fit='none']) [part='base'],
+  :host([fit='scale-down']) [part='base'] {
+    height: auto;
+    align-self: stretch;
+  }
+
   :host([fit='contain']) video,
   :host([fit='cover']) video,
   :host([fit='fill']) video,

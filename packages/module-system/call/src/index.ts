@@ -139,8 +139,24 @@ const tile: SchemaNode = {
             // Never hear yourself. The self tile plays the same microphone the mesh is sending, and
             // unmuted it is an immediate feedback loop.
             muted: '$tile.isSelf',
-            width: '100%',
-            height: '100%',
+            /**
+             * Pinned to the tile's four edges rather than sized `100%` × `100%`.
+             *
+             * Not a stylistic preference — a percentage height only resolves against a parent whose
+             * own height is definite, and every "definite" in a chain of stretched flex and grid
+             * items is a browser judgement call rather than a guarantee. When one of them decides
+             * otherwise the percentage becomes `auto`, and an element whose only child is out of
+             * flow is then zero pixels tall: an invisible video rather than an oversized one. An
+             * absolutely positioned box with all four offsets set has a used size that comes from
+             * the containing block directly, so there is no chain left to fail.
+             *
+             * The tile is `position: relative`, which is what makes it the containing block.
+             */
+            position: 'absolute',
+            top: '0',
+            right: '0',
+            bottom: '0',
+            left: '0',
             // A desktop cropped to fill a camera-shaped tile is unreadable — `contain` letterboxes it
             // instead. Driven by the roster, because only the sender knows which it is sending.
             //
