@@ -8,9 +8,7 @@ import type { SchemaNode, TemplateSchema } from '@we/schema-shared';
 
 import { accountSettings } from './AccountSettings.schema.ts';
 import { aiSection } from './AiSettings.schema.ts';
-import { advancedDatasetsSection } from './spaces/AdvancedDatasets.ts';
-import { spaceSettingsPage } from './spaces/SpaceSettings.ts';
-import { spacesListSection } from './spaces/SpacesList.ts';
+import { hostSection } from './HostSettings.schema.ts';
 import { languagesLocalState, languagesSection } from './LanguageSettings.schema.ts';
 import {
   backup,
@@ -23,6 +21,9 @@ import {
   runtimeError,
   trustedAgents,
 } from './RuntimeSettings.schema.ts';
+import { advancedDatasetsSection } from './spaces/AdvancedDatasets.ts';
+import { spaceSettingsPage } from './spaces/SpaceSettings.ts';
+import { spacesListSection } from './spaces/SpacesList.ts';
 
 const pageHeader: SchemaNode = {
   type: 'Row',
@@ -675,7 +676,7 @@ export const settingsTemplate: TemplateSchema = {
       $localState: { ...networkLocalState, ...loggingLocalState },
       ...page([runtimeError, trustedAgents, peerNetwork, logging]),
     },
-    { path: '/connections', ...page([runtimeError, connectedApps, mcpServer]) },
+    { path: '/connections', ...page([runtimeError, hostSection, connectedApps, mcpServer]) },
     // Anything else lands on Account rather than an empty frame.
     { path: '*', ...page([accountSection]) },
   ],
@@ -730,8 +731,16 @@ export const settingsTemplate: TemplateSchema = {
                 {
                   type: '$if',
                   props: {
+                    // `sessionStore.host` carries this page on web: authorized apps are node-scoped
+                    // and the executor is not ours to configure there, so without it the one place
+                    // that says which node holds your data would be unreachable on exactly the
+                    // hosts where that question matters.
                     condition: {
-                      $or: [{ $store: 'runtimeStore.canManageApps' }, { $store: 'runtimeStore.canConfigureExecutor' }],
+                      $or: [
+                        { $store: 'sessionStore.host' },
+                        { $store: 'runtimeStore.canManageApps' },
+                        { $store: 'runtimeStore.canConfigureExecutor' },
+                      ],
                     },
                     then: navItem('Connections', 'plugs', '/connections'),
                   },

@@ -19,6 +19,7 @@ import type {
 } from '@we/backend-shared';
 import { Accessor, createContext, createEffect, createSignal, ParentProps, useContext } from 'solid-js';
 
+import type { BackendAccountInfo, BackendHostInfo } from '../../../shared/backend/types';
 import { useBackend, usePlatform } from '../providers/PlatformProvider';
 import { startAppBridge } from '../services/appBridge';
 
@@ -58,6 +59,16 @@ export interface SessionStore {
   port: Accessor<number | undefined>;
   token: Accessor<string | undefined>;
   serverUrl: Accessor<string | undefined>;
+  /**
+   * The node this session runs against, when it is somebody's hosting rather than this machine.
+   *
+   * Undefined on the desktop hosts and on a local executor — there is no "connected to" to report.
+   * Its presence is therefore also the answer to "am I on someone else's node", which is what the
+   * settings page gates the whole Host section on.
+   */
+  host: Accessor<BackendHostInfo | undefined>;
+  /** This agent's account with that node — credits, email — when it keeps one. */
+  hostAccount: Accessor<BackendAccountInfo | undefined>;
   isDevelopment: Accessor<boolean>;
   /**
    * The ephemeral transport, as a single shared instance. One port for the whole app because it
@@ -130,6 +141,8 @@ export function SessionStoreProvider(props: ParentProps) {
   const [port, setPort] = createSignal<number | undefined>(undefined);
   const [token, setToken] = createSignal<string | undefined>(undefined);
   const [serverUrl, setServerUrl] = createSignal<string | undefined>(undefined);
+  const [host, setHost] = createSignal<BackendHostInfo | undefined>(undefined);
+  const [hostAccount, setHostAccount] = createSignal<BackendAccountInfo | undefined>(undefined);
 
   const [backendPorts, setBackendPorts] = createSignal<BackendPorts | null>(null);
   // Supplied by connectors whose session is the connection rather than an unlocked keystore.
@@ -194,8 +207,17 @@ export function SessionStoreProvider(props: ParentProps) {
       // The connector owns the entire connection choreography (spawn/attach, auth, credential
       // acquisition, settling delays) — the shell receives a ready backend and runs the session
       // state machine over it.
-      const { client: c, ports, connection, disconnect } = await backend.initialize({ selfId: () => me()?.did });
+      const {
+        client: c,
+        ports,
+        connection,
+        disconnect,
+        host: hostInfo,
+        account,
+      } = await backend.initialize({ selfId: () => me()?.did });
       disconnectBackend = disconnect ?? null;
+      setHost(hostInfo);
+      setHostAccount(account);
       setClient(c);
       setBackendPorts(ports);
       const session = ports.agentSession;
@@ -374,6 +396,8 @@ export function SessionStoreProvider(props: ParentProps) {
     port,
     token,
     serverUrl,
+    host,
+    hostAccount,
     isDevelopment: () => platform.isDevelopment,
     ephemeralPort,
 

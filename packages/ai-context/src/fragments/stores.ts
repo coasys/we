@@ -19,6 +19,11 @@ export const storeEntries: StoreEntry[] = [
       loginLoading: { type: 'boolean' },
       createAgentError: { type: 'string' },
       createAgentLoading: { type: 'boolean' },
+      host: {
+        type: 'object',
+        properties: ['id', 'name', 'description', 'imageUrl', 'location', 'url', 'computeSpecs', 'aiModels', 'rates'],
+      },
+      hostAccount: { type: 'object', properties: ['email', 'remainingCredits', 'walletAddress', 'freeAccess'] },
     },
     actions: ['login', 'createAgent', 'clearPasswordError', 'finishSetup', 'retryBoot', 'logout'],
   },
@@ -64,6 +69,7 @@ export const storeEntries: StoreEntry[] = [
       canManageApps: { type: 'boolean' },
       canManageLanguages: { type: 'boolean' },
       canManageAi: { type: 'boolean' },
+      canConfigureAi: { type: 'boolean' },
       canConfigureExecutor: { type: 'boolean' },
       mcpEnabled: { type: 'boolean' },
       mcpPort: { type: 'number' },
@@ -468,6 +474,9 @@ function generateStoresText(entries: StoreEntry[]): string {
         loginLoading: 'boolean',
         createAgentError: 'string — the backend message from a failed agent creation, or empty',
         createAgentLoading: 'boolean',
+        host: 'BackendHostInfo | undefined — the node this session runs against when it is somebody\'s hosting rather than this machine (id, name, description, imageUrl, location, url, computeSpecs, aiModels, rates). Undefined on desktop and on a local executor, so its presence is also the answer to "am I a guest here?" — gate any "connected to" UI on it. `aiModels` comes from the host directory and needs no capability, so it answers "can this node transcribe?" even where the executor refuses to list its models',
+        hostAccount:
+          'BackendAccountInfo | undefined — this agent\'s account with that node (email, remainingCredits, walletAddress, freeAccess). Check freeAccess before showing a balance: on a free node the credit figure means nothing and "0" reads as an account that has run dry',
       },
       actions: {
         login: '(password: string): unlocks the agent and loads user data',
@@ -522,6 +531,8 @@ function generateStoresText(entries: StoreEntry[]): string {
         canManageApps: 'boolean — gate the authorized-apps section on this',
         canManageLanguages: 'boolean — gate the languages section on this',
         canManageAi: 'boolean — gate the AI section on this',
+        canConfigureAi:
+          "boolean — the models can be changed, not just listed. False for a guest on somebody else's node, where AD4M grants AI READ but refuses UPDATE/DELETE. Gate add/edit/remove/set-default controls on this and the section itself on canManageAi",
         canConfigureExecutor:
           'boolean — this host starts the backend, so how it starts it can be changed. False on web',
         mcpEnabled: 'boolean — whether the backend serves MCP on its next start',

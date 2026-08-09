@@ -61,6 +61,8 @@ export interface RuntimeStore {
   canManageApps: Accessor<boolean>;
   canManageLanguages: Accessor<boolean>;
   canManageAi: Accessor<boolean>;
+  /** The AI models can be changed, not just listed. False for a guest on somebody else's node. */
+  canConfigureAi: Accessor<boolean>;
   /**
    * This host starts the backend, so how it starts it can be changed. False on web, where the app
    * connects to an executor someone else started.
@@ -186,6 +188,14 @@ export function RuntimeStoreProvider(props: ParentProps) {
   const canManageApps = createMemo(() => !!runtime()?.authorizedApps);
   const canManageLanguages = createMemo(() => !!runtime()?.languages);
   const canManageAi = createMemo(() => !!runtime()?.aiModels);
+  /**
+   * Whether the models can be *changed*, not merely listed.
+   *
+   * Split from `canManageAi` because a guest on a hosted node is granted `AI READ` and refused
+   * `UPDATE`/`DELETE` — AD4M's own boundary, not ours. Read and write used to be one flag, so the
+   * whole section vanished on a node that was perfectly happy to answer what models it runs.
+   */
+  const canConfigureAi = createMemo(() => !!runtime()?.addAiModel);
 
   const executorHost = () => platform.executor;
   const canConfigureExecutor = createMemo(() => !!executorHost());
@@ -578,6 +588,7 @@ export function RuntimeStoreProvider(props: ParentProps) {
     canManageApps,
     canManageLanguages,
     canManageAi,
+    canConfigureAi,
     canConfigureExecutor,
 
     canBackUp,

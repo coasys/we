@@ -5396,6 +5396,24 @@
         },
         "createAgentLoading": {
           "type": "boolean"
+        },
+        "host": {
+          "type": "object",
+          "properties": [
+            "id",
+            "name",
+            "description",
+            "imageUrl",
+            "location",
+            "url",
+            "computeSpecs",
+            "aiModels",
+            "rates"
+          ]
+        },
+        "hostAccount": {
+          "type": "object",
+          "properties": ["email", "remainingCredits", "walletAddress", "freeAccess"]
         }
       },
       "actions": ["login", "createAgent", "clearPasswordError", "finishSetup", "retryBoot", "logout"]
@@ -5472,6 +5490,9 @@
           "type": "boolean"
         },
         "canManageAi": {
+          "type": "boolean"
+        },
+        "canConfigureAi": {
           "type": "boolean"
         },
         "canConfigureExecutor": {

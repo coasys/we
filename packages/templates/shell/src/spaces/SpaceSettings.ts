@@ -48,7 +48,13 @@ const header: SchemaNode = {
                 {
                   $if: {
                     condition: '$space.isWeSpace',
-                    then: { $if: { condition: { $eq: ['$space.kind', 'shared'] }, then: 'Shared space', else: 'Personal space' } },
+                    then: {
+                      $if: {
+                        condition: { $eq: ['$space.kind', 'shared'] },
+                        then: 'Shared space',
+                        else: 'Personal space',
+                      },
+                    },
                     else: 'Joined dataset — not yet a WE space',
                   },
                 },
@@ -60,7 +66,11 @@ const header: SchemaNode = {
     },
     {
       type: 'we-button',
-      props: { variant: 'secondary', size: 'sm', onClick: { $action: 'spaceStore.navigateToSpace', args: ['$space.uuid'] } },
+      props: {
+        variant: 'secondary',
+        size: 'sm',
+        onClick: { $action: 'spaceStore.navigateToSpace', args: ['$space.uuid'] },
+      },
       children: [
         { type: 'we-text', props: { variant: 'label' }, children: ['Open'] },
         { type: 'we-icon', props: { name: 'arrow-right' } },
@@ -81,9 +91,7 @@ const notAWeSpaceNotice: SchemaNode = {
     {
       type: 'we-text',
       props: { variant: 'footnote', color: 'neutral-400' },
-      children: [
-        'This dataset was synced in from another app and has no WE space in it. Open it to initialize one.',
-      ],
+      children: ['This dataset was synced in from another app and has no WE space in it. Open it to initialize one.'],
     },
   ],
 };
@@ -138,7 +146,10 @@ const communitySection: SchemaNode = {
               type: 'we-input',
               props: {
                 value: { $local: 'editName' },
-                onInput: [{ $setLocal: 'editName', from: '$event.detail' }, { $setLocal: 'metaDirty', value: true }],
+                onInput: [
+                  { $setLocal: 'editName', from: '$event.detail' },
+                  { $setLocal: 'metaDirty', value: true },
+                ],
                 onBlur: saveMetaOnBlur,
               },
             },
@@ -453,7 +464,11 @@ export const spaceSettingsPage: SchemaNode = {
           type: '$if',
           props: {
             condition: '$space.isWeSpace',
-            then: { type: 'Column', props: { gap: '400' }, children: [shareSection, personalAppearanceSection, communitySection, modulesSection] },
+            then: {
+              type: 'Column',
+              props: { gap: '400' },
+              children: [shareSection, personalAppearanceSection, communitySection, modulesSection],
+            },
             else: notAWeSpaceNotice,
           },
         },
