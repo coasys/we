@@ -47,6 +47,15 @@ const CLAIM_TIMEOUT = 300;
 type Message =
   /** "I have focus and want to publish." */
   | { type: 'claim'; tabId: string }
+  /**
+   * "Is anyone leading?" — a claim's polite cousin, for a tab that must not displace an incumbent.
+   *
+   * An unfocused tab has no business taking publishing away from the tab the user is looking at, but
+   * it does need to know whether that tab exists. Without a way to ask, the only answer available
+   * was silence over `LEADER_TIMEOUT` — so a lone unfocused tab published nothing for fifteen
+   * seconds, which is most of a page load spent invisible to every peer.
+   */
+  | { type: 'probe'; tabId: string }
   /** The current leader refusing to yield because it is pinned. */
   | { type: 'pinned'; tabId: string }
   | { type: 'heartbeat'; tabId: string }
@@ -275,6 +284,13 @@ export function createTabCoordinator(deps: TabCoordinatorDeps = {}): TabCoordina
         }
         break;
 
+      case 'probe':
+        // Answer without yielding. A heartbeat is exactly the right reply: the prober's own handler
+        // for it resets the short fuse back to the full crash timeout, so an incumbent's existence
+        // is all that needs to be communicated.
+        if (leader) post('heartbeat');
+        break;
+
       case 'heartbeat':
         if (leader) {
           // Split brain. Deterministic tie-break, NOT "whoever hears the other steps down" — that is
@@ -304,25 +320,25 @@ export function createTabCoordinator(deps: TabCoordinatorDeps = {}): TabCoordina
 
   const unsubscribeFocus = focus.onFocusGained(() => {
     if (leader) return;
-    post('claim');
-    // Short-fuse: an incumbent answers a claim immediately, either by resigning or by saying it is
-    // pinned. Silence therefore means there is nobody there, not that somebody is slow.
+    // Arm the short fuse *before* asking. A reply can land synchronously — an in-process channel
+    // delivers during `post` — and arming afterwards would overwrite the long timeout that reply
+    // just set, so a tab that had been told "somebody is here" would take over anyway 300ms later.
     watchLeader(CLAIM_TIMEOUT);
+    post('claim');
   });
 
   const unsubscribeHide = focus.onHide(() => {
     if (leader) post('resign');
   });
 
-  // Claim on creation when this tab is the one being looked at, and give the incumbent only a round
-  // trip to object. Unfocused, wait out the full timeout instead: a background tab has no business
-  // taking publishing away from a live leader it simply has not heard from yet.
-  if (focus.hasFocus()) {
-    post('claim');
-    watchLeader(CLAIM_TIMEOUT);
-  } else {
-    watchLeader();
-  }
+  // Ask on creation, either way — the difference is only whether an incumbent has to yield.
+  //
+  // A focused tab claims, and a leader steps aside for it. An unfocused tab probes, and a leader
+  // answers without moving. Both then wait one round trip rather than a crash timeout, because both
+  // are asking the same cheap question: is there anybody here? Only the answer "no" is slow to reach
+  // by silence, and it is the answer a lone tab always gets.
+  watchLeader(CLAIM_TIMEOUT);
+  post(focus.hasFocus() ? 'claim' : 'probe');
 
   return {
     isLeader: () => leader,
@@ -332,8 +348,8 @@ export function createTabCoordinator(deps: TabCoordinatorDeps = {}): TabCoordina
       // Becoming pinned while not leader means this tab holds the thing that must not be interrupted
       // — claim so publishing follows it.
       if (pinned && !leader) {
-        post('claim');
         watchLeader(CLAIM_TIMEOUT);
+        post('claim');
       }
     },
 

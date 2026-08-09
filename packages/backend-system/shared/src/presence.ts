@@ -294,6 +294,19 @@ export interface HeartbeatOptions {
 export interface PresenceSource {
   /** Begin publishing and listening. Sends the join handshake. */
   start(state: PresenceState): void;
+  /**
+   * Re-run the join handshake: publish with `hello` so every peer answers at once.
+   *
+   * `start` already does this, and that is enough only when the transport was able to carry it. A
+   * host may gate publishing — WE lets one tab per agent do the talking — and a `hello` sent before
+   * that gate opens is simply gone. Nothing retries it, because the driver has no idea it was
+   * dropped: it looks like an ordinary send, and the space it is joining looks empty until every
+   * peer's next heartbeat happens to arrive.
+   *
+   * So the host calls this when it becomes the one that publishes. Idempotent — an extra handshake
+   * costs one round trip of answers and cannot leave anything inconsistent.
+   */
+  announce(): void;
   /** Merge a patch into this agent's state and publish immediately. */
   update(patch: Partial<Omit<PresenceState, 'agentId' | 'updatedAt'>>): void;
   /** Add or replace an activity, matched on `type` plus `id` when present. */
@@ -434,6 +447,15 @@ export function createHeartbeatPresence(channel: PresenceChannel, options: Heart
       self = { ...state, updatedAt: now() };
       states.set(self.agentId, self);
       unsubscribe = channel.onMessage(receive);
+      send('hello');
+      schedule(interval);
+    },
+
+    announce() {
+      // No `self` means `start` has not run, which is the ordinary case when a host registers its
+      // leadership callback before starting the source — the callback fires immediately if this tab
+      // is already the leader, and `start`'s own handshake is the one that should go out.
+      if (!self) return;
       send('hello');
       schedule(interval);
     },

@@ -251,6 +251,30 @@ describe('createHeartbeatPresence', () => {
     expect(published).toEqual([{ v: 1, state: expect.objectContaining({ agentId: 'me' }), hello: true }]);
   });
 
+  it('re-runs the handshake on announce, for a host whose first one never left', () => {
+    // A host may gate publishing — WE lets one tab per agent do the talking — and a `hello` sent
+    // before that gate opens is gone with nothing to notice or retry it. The driver cannot tell, so
+    // the host says when it starts publishing and the handshake runs again. A plain heartbeat would
+    // not do: peers answer a `hello`, not a state.
+    const { published, source } = start();
+    published.length = 0;
+
+    source.announce();
+
+    expect(published).toEqual([{ v: 1, state: expect.objectContaining({ agentId: 'me' }), hello: true }]);
+  });
+
+  it('ignores announce before start, so a host may register its callback first', () => {
+    // `onBecomeLeader` fires immediately when the tab already leads, which happens before `start`.
+    // That firing must do nothing and leave the handshake to `start` itself.
+    const fake = createFakeChannel();
+    const source = createHeartbeatPresence(fake.channel, { now });
+
+    source.announce();
+
+    expect(fake.published).toEqual([]);
+  });
+
   it('answers a peer hello immediately, without itself saying hello', () => {
     const { deliver, published, source } = start();
     published.length = 0;

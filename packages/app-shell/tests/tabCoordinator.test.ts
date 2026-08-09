@@ -125,12 +125,29 @@ describe('createTabCoordinator', () => {
       expect(a.coordinator.isLeader()).toBe(true);
     });
 
-    it('takes leadership after the incumbent timeout when it starts unfocused', () => {
+    it('leads within a round trip when it starts unfocused too', () => {
+      // Unfocused is not a reason to stay silent — only a reason not to displace anyone. A tab that
+      // is alone is alone whether or not the user happens to be looking at it, and the fifteen
+      // seconds it used to spend finding that out were fifteen seconds of publishing nothing.
       const a = tab('a');
       expect(a.coordinator.isLeader()).toBe(false);
 
-      vi.advanceTimersByTime(LEADER_TIMEOUT);
+      vi.advanceTimersByTime(CLAIM_TIMEOUT);
       expect(a.coordinator.isLeader()).toBe(true);
+    });
+
+    it('defers to a live leader without displacing it', () => {
+      // The distinction the probe exists for: an unfocused tab asks, an incumbent answers, and the
+      // asker goes back to the patient timeout rather than taking over.
+      const a = tab('a', true);
+      vi.advanceTimersByTime(CLAIM_TIMEOUT);
+      expect(a.coordinator.isLeader()).toBe(true);
+
+      const b = tab('b');
+      vi.advanceTimersByTime(CLAIM_TIMEOUT);
+
+      expect(a.coordinator.isLeader()).toBe(true);
+      expect(b.coordinator.isLeader()).toBe(false);
     });
 
     it('fires onBecomeLeader immediately when already leading', () => {

@@ -180,16 +180,27 @@ export function PresenceStoreProvider(props: ParentProps) {
 
     source = presence;
     setAvailable(true);
+
+    /**
+     * Registered *before* `start`, and the order is the point.
+     *
+     * `onBecomeLeader` fires immediately when this tab already leads, and at that moment there is no
+     * presence state yet — so `announce` no-ops and `start`'s own handshake below is the one that
+     * goes out. Every later firing is a real transition, and gets a full handshake rather than a
+     * plain heartbeat: this tab was not publishing until now, so its `hello` never left, and peers
+     * answer a `hello` rather than a state.
+     *
+     * That is the whole of "entering a space takes ten seconds". The handshake was being sent into a
+     * closed gate, and nothing downstream could tell.
+     */
+    const unsubLeader = coordinator?.onBecomeLeader(() => presence.announce());
+
     presence.start({
       agentId: did,
       updatedAt: Date.now(),
       availability: availability(),
       focus: myFocus(),
     });
-
-    // Publish as soon as this tab takes over, so leadership changing mid-session doesn't leave
-    // peers waiting out a full interval for the new leader's first heartbeat.
-    const unsubLeader = coordinator?.onBecomeLeader(() => presence.update({}));
 
     onCleanup(() => {
       unsubLeader?.();
