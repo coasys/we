@@ -145,6 +145,24 @@ export const DEFAULT_HEARTBEAT_INTERVAL = 5_000;
  */
 export const HANDSHAKE_RETRIES = [1_000];
 
+/**
+ * How long after a state change to send it a second time.
+ *
+ * The transport acks the send and never the delivery, so any single message can vanish. For a
+ * heartbeat that costs nothing — the next one carries the same state, and it is five seconds away at
+ * worst. For a *change* it costs the whole interval, during which every peer confidently displays
+ * the opposite of what is true: a muted microphone still showing as live is the visible case, and it
+ * looks like lag rather than like loss.
+ *
+ * One repeat, not a stream of them. It cuts the exposure to a lost change from one heartbeat to a
+ * fraction of a second, at the price of one extra message per mute — and mutes are rare, while
+ * heartbeats are not, which is exactly why this is worth doing here and nowhere else.
+ *
+ * Long enough that the repeat is not lost to the same momentary outage as the original, short enough
+ * that nobody reads it as lag.
+ */
+export const STATE_CHANGE_ECHO = 700;
+
 /** Trim a focus to the depth the agent has consented to publish. */
 export function applyFocusDepth(focus: Focus | undefined, depth: FocusDepth): Focus | undefined {
   if (!focus || depth === 'off') return undefined;
@@ -390,6 +408,7 @@ export function createHeartbeatPresence(channel: PresenceChannel, options: Heart
   let unsubscribe: (() => void) | null = null;
   let timer: unknown = null;
   let handshakeTimer: unknown = null;
+  let echoTimer: unknown = null;
   let running = false;
 
   function notify(): void {
@@ -406,6 +425,26 @@ export function createHeartbeatPresence(channel: PresenceChannel, options: Heart
       clearTimer(handshakeTimer);
       handshakeTimer = null;
     }
+  }
+
+  /**
+   * Publish a state change, and publish it once more shortly after in case the first is lost.
+   *
+   * At most one repeat is ever pending: a second change replaces the first's, which is the same
+   * last-write-wins rule the transport's coalescing follows, and stops a run of quick toggles from
+   * queueing a repeat each. See {@link STATE_CHANGE_ECHO}.
+   */
+  function publishChange(): void {
+    send();
+    schedule(interval);
+    if (echoTimer !== null) clearTimer(echoTimer);
+    echoTimer = setTimer(() => {
+      echoTimer = null;
+      if (!running) return;
+      trace('presence', 'change:echo');
+      send();
+      schedule(interval);
+    }, STATE_CHANGE_ECHO);
   }
 
   /**
@@ -543,8 +582,7 @@ export function createHeartbeatPresence(channel: PresenceChannel, options: Heart
     update(patch) {
       if (!self) return;
       self = { ...self, ...patch };
-      send();
-      schedule(interval);
+      publishChange();
     },
 
     setActivity(activity) {
@@ -554,8 +592,8 @@ export function createHeartbeatPresence(channel: PresenceChannel, options: Heart
         (a) => a.type !== activity.type || ('id' in a ? a.id : undefined) !== id,
       );
       self = { ...self, activities: [...rest, activity] };
-      send();
-      schedule(interval);
+      trace('presence', 'activity:set', { type: activity.type, activities: self.activities?.length ?? 0 });
+      publishChange();
     },
 
     clearActivity(type, id) {
@@ -564,8 +602,8 @@ export function createHeartbeatPresence(channel: PresenceChannel, options: Heart
         (a) => a.type !== type || (id !== undefined && ('id' in a ? a.id : undefined) !== id),
       );
       self = { ...self, activities };
-      send();
-      schedule(interval);
+      trace('presence', 'activity:clear', { type, activities: activities.length });
+      publishChange();
     },
 
     peers() {
@@ -581,6 +619,10 @@ export function createHeartbeatPresence(channel: PresenceChannel, options: Heart
 
       running = false;
       cancelHandshake();
+      if (echoTimer !== null) {
+        clearTimer(echoTimer);
+        echoTimer = null;
+      }
       if (timer !== null) {
         clearTimer(timer);
         timer = null;

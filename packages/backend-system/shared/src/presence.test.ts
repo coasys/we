@@ -313,6 +313,44 @@ describe('createHeartbeatPresence', () => {
     expect(published.filter((message) => (message as { hello?: true }).hello)).toHaveLength(0);
   });
 
+  it('sends a state change twice, because losing one costs a whole interval', () => {
+    // A lost heartbeat costs nothing — the next carries the same state. A lost *change* leaves every
+    // peer displaying the opposite of what is true until the next beat: a muted microphone still
+    // showing as live, which reads as lag rather than as loss.
+    const { published, source, deliver } = start();
+    deliver('peer', { v: 1, state: state('peer') });
+    published.length = 0;
+
+    source.setActivity({ type: 'call', id: 'call-1' });
+    expect(published).toHaveLength(1);
+
+    clock += 700;
+    vi.advanceTimersByTime(700);
+    expect(published).toHaveLength(2);
+
+    // One repeat, not a stream of them.
+    clock += 5_000;
+    vi.advanceTimersByTime(5_000);
+    expect(published).toHaveLength(3); // the ordinary beat, on schedule from the repeat
+  });
+
+  it('keeps only one pending repeat when changes come in quick succession', () => {
+    // Toggling twice must not queue two repeats — last-write-wins, the same rule the transport's
+    // coalescing follows.
+    const { published, source, deliver } = start();
+    deliver('peer', { v: 1, state: state('peer') });
+    published.length = 0;
+
+    source.setActivity({ type: 'call', id: 'call-1' });
+    clock += 100;
+    source.clearActivity('call', 'call-1');
+    expect(published).toHaveLength(2); // the two changes themselves
+
+    clock += 700;
+    vi.advanceTimersByTime(700);
+    expect(published).toHaveLength(3); // one repeat, not two
+  });
+
   it('re-runs the handshake on announce, for a host whose first one never left', () => {
     // A host may gate publishing — WE lets one tab per agent do the talking — and a `hello` sent
     // before that gate opens is gone with nothing to notice or retry it. The driver cannot tell, so
@@ -374,14 +412,20 @@ describe('createHeartbeatPresence', () => {
     source.update({ focus: { datasetUri: SPACE, path: '/docs' } });
     expect(published).toHaveLength(1); // the change itself
 
-    // The tick that was due at 5s must wait out a full interval from the change, not fire at once.
-    clock += 1_000;
-    vi.advanceTimersByTime(1_000);
-    expect(published).toHaveLength(1);
-
-    clock += 4_000;
-    vi.advanceTimersByTime(4_000);
+    // Its repeat, in case the first was lost — a separate mechanism, see STATE_CHANGE_ECHO.
+    clock += 700;
+    vi.advanceTimersByTime(700);
     expect(published).toHaveLength(2);
+
+    // The tick that was due at 5s must wait out a full interval from the last publish, not fire at
+    // once — which is the behaviour this test is actually about.
+    clock += 300;
+    vi.advanceTimersByTime(300);
+    expect(published).toHaveLength(2);
+
+    clock += 5_000;
+    vi.advanceTimersByTime(5_000);
+    expect(published).toHaveLength(3);
   });
 
   it('stops publishing entirely when invisible, rather than filtering on receipt', () => {
