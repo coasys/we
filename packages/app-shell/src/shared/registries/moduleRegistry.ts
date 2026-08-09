@@ -34,6 +34,7 @@ import {
 } from '@we/module-shared';
 import { collectComponentTypes, type SchemaNode } from '@we/schema-shared';
 
+import { dockFrame, dockRegistry } from './dockRegistry';
 import { slotRegistry } from './slotRegistry';
 
 /**
@@ -72,7 +73,7 @@ export type ModuleSurface = 'chrome' | 'app' | 'capability';
  */
 export function moduleSurface(definition: ModuleDefinition): ModuleSurface {
   if (definition.embed) return 'app';
-  if (definition.launcher || definition.slots?.length) return 'chrome';
+  if (definition.launcher || definition.slots?.length || definition.docks?.length) return 'chrome';
   return 'capability';
 }
 
@@ -201,6 +202,22 @@ export const moduleRegistry = {
       });
     }
 
+    // Docks are registered twice on purpose, to two registries that answer different questions.
+    // `dockRegistry` holds the contribution so the shell can resolve its geometry and subtract it
+    // from the content viewport; `slotRegistry` renders the resulting frame, because once the host
+    // has wrapped it in a positioned box it is ordinary shell chrome and needs no second render
+    // path. The `dock:` id prefix keeps the two namespaces from colliding.
+    for (const [index, dock] of (definition.docks ?? []).entries()) {
+      const id = `${definition.id}:${index}`;
+      dockRegistry.register({ ...dock, id, moduleId: definition.id });
+      slotRegistry.register({
+        anchor: 'dock-right',
+        order: dock.order,
+        id: `dock:${id}`,
+        node: gateOnSpace(definition.id, dockFrame({ ...dock, id, moduleId: definition.id }, dock.node)),
+      });
+    }
+
     return { registered: true, problems: [] };
   },
 
@@ -224,6 +241,10 @@ export const moduleRegistry = {
     const entry = modules.get(id);
     if (!entry) return;
     for (const index of (entry.definition.slots ?? []).keys()) slotRegistry.remove(`${id}:${index}`);
+    for (const index of (entry.definition.docks ?? []).keys()) {
+      dockRegistry.remove(`${id}:${index}`);
+      slotRegistry.remove(`dock:${id}:${index}`);
+    }
     for (const model of (entry.definition.models ?? []) as ModelClass[]) {
       unregisterModel((model as unknown as { className: string }).className);
     }

@@ -7,7 +7,17 @@
  * which is the *overlay-scoped* memory router mounted inside the overlay; this store is
  * app-level, because the controls that open an overlay render outside it.
  */
-import { Accessor, createContext, createSignal, ParentProps, useContext } from 'solid-js';
+import {
+  type ContentInset,
+  contentInset,
+  type DockGeometry,
+  type DockRequest,
+  resolveDock,
+} from '@shared/dockGeometry';
+import { dockRegistry } from '@shared/registries/dockRegistry';
+import { moduleStores } from '@shared/registries/moduleRegistry';
+import type { DockEdge, DockSize } from '@we/module-shared';
+import { Accessor, createContext, createMemo, createSignal, onCleanup, ParentProps, useContext } from 'solid-js';
 
 export interface ShellStore {
   /** Id of the currently open shell overlay, or null. */
@@ -40,6 +50,16 @@ export interface ShellStore {
   setCreateSpaceOpen: (open: boolean) => void;
   /** Smooth-scroll the element with the given DOM id into view. */
   scrollToId: (id: string) => void;
+  /**
+   * Every registered dock's resolved box, keyed by dock id.
+   *
+   * Read from schema through `dockGeometryPath` — the frame a dock is wrapped in binds each of its
+   * geometric props to a path into this object, so a panel changing edge or size rewrites props on
+   * a container that stays mounted rather than rebuilding it.
+   */
+  dockGeometry: Accessor<Record<string, DockGeometry>>;
+  /** What the content viewport gives up to docked panels, in pixels per edge. */
+  contentInset: Accessor<ContentInset>;
 }
 
 const ShellContext = createContext<ShellStore>();
@@ -59,10 +79,53 @@ function initialShellView(): string | null {
   return window.location.pathname === '/' ? 'landing-page' : null;
 }
 
+/**
+ * Read one of a dock's declared store keys off the contributing module's store.
+ *
+ * A module publishes accessors, so the value has to be *called* — and reading it inside a memo is
+ * what makes dock geometry track a panel opening, moving or resizing with no subscription wiring
+ * between the module and the shell. A module that has not registered, or that names a key it does
+ * not have, resolves to undefined and falls back, because a dock whose module is absent must render
+ * nothing rather than throw at boot.
+ */
+function readModuleKey(moduleId: string, key: string | undefined): unknown {
+  if (!key) return undefined;
+  const store = moduleStores[moduleId] as Record<string, unknown> | undefined;
+  const value = store?.[key];
+  return typeof value === 'function' ? (value as () => unknown)() : value;
+}
+
 export function ShellStoreProvider(props: ParentProps) {
   const [activeShellView, setActiveShellView] = createSignal<string | null>(initialShellView());
   const [pendingPath, setPendingPath] = createSignal<string | null>(null);
   const [createSpaceOpen, setCreateSpaceOpen] = createSignal(false);
+
+  // Docks are sized against the window, so the window is state. Tracked here rather than in each
+  // module because the whole point of the arrangement is that a module never does viewport maths.
+  const [viewport, setViewport] = createSignal({
+    width: typeof window === 'undefined' ? 1440 : window.innerWidth,
+    height: typeof window === 'undefined' ? 900 : window.innerHeight,
+  });
+  if (typeof window !== 'undefined') {
+    const onResize = () => setViewport({ width: window.innerWidth, height: window.innerHeight });
+    window.addEventListener('resize', onResize);
+    onCleanup(() => window.removeEventListener('resize', onResize));
+  }
+
+  const dockRequests = createMemo<DockRequest[]>(() =>
+    dockRegistry.ordered().map((entry) => ({
+      id: entry.id,
+      edge: (readModuleKey(entry.moduleId, entry.edge) as DockEdge) ?? null,
+      size: (readModuleKey(entry.moduleId, entry.size) as DockSize) ?? 'md',
+      float: Boolean(readModuleKey(entry.moduleId, entry.float)),
+    })),
+  );
+
+  const dockGeometry = createMemo(() =>
+    Object.fromEntries(dockRequests().map((request) => [request.id, resolveDock(request, viewport())])),
+  );
+
+  const inset = createMemo(() => contentInset(dockRequests(), viewport()));
 
   const store: ShellStore = {
     activeShellView,
@@ -81,6 +144,8 @@ export function ShellStoreProvider(props: ParentProps) {
     scrollToId: (id: string) => {
       document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     },
+    dockGeometry,
+    contentInset: inset,
   };
 
   return <ShellContext.Provider value={store}>{props.children}</ShellContext.Provider>;

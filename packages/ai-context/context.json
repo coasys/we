@@ -1741,6 +1741,12 @@
           "default": "'metadata'"
         },
         {
+          "name": "fit",
+          "type": "'' | 'cover' | 'contain' | 'fill' | 'none' | 'scale-down'",
+          "optional": false,
+          "default": "''"
+        },
+        {
           "name": "autoplay",
           "type": "boolean",
           "optional": false,

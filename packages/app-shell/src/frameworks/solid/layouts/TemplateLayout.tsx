@@ -57,7 +57,7 @@ export const SHELL_SIDEBAR_WIDTH = '80px';
 // persistent app iframes (rendered outside the template Router) line up with the
 // same viewport the template content occupies.
 export function computeRightOffset(stores: Stores): string {
-  let offset = 0;
+  let offset = stores.shellStore.contentInset().right;
   if (stores.editorStore.isEditingTheme()) {
     offset += THEME_RAIL_WIDTH;
     if (stores.editorStore.themePanelOpen()) offset += stores.editorStore.themePanelWidth();
@@ -72,6 +72,30 @@ export function computeRightOffset(stores: Stores): string {
     }
   }
   return offset ? `${offset}px` : '0px';
+}
+
+/**
+ * The other three edges, from docked module panels alone.
+ *
+ * Separate from `computeRightOffset` because that one is also the editor's, and the editor only
+ * ever grows from the right. Kept as CSS strings for the same reason: these feed DS props, and an
+ * offset of zero should read as `'0px'` rather than as an omitted prop that inherits something.
+ *
+ * The left offset composes with the shell sidebar rather than replacing it — a left dock opens
+ * *beside* the sidebar, not over it, so its width adds to the sidebar's.
+ */
+export function computeLeftOffset(stores: Stores): string {
+  const dock = stores.shellStore.contentInset().left;
+  const sidebar = `var(--we-sidebar-width, ${SHELL_SIDEBAR_WIDTH})`;
+  return dock ? `calc(${sidebar} + ${dock}px)` : sidebar;
+}
+
+export function computeTopOffset(stores: Stores): string {
+  return `${stores.shellStore.contentInset().top}px`;
+}
+
+export function computeBottomOffset(stores: Stores): string {
+  return `${stores.shellStore.contentInset().bottom}px`;
 }
 
 // Shell view registry — maps activeShellView id → schema + optional extra stores.
@@ -183,17 +207,22 @@ export function TemplateLayout(props: ParentProps & { stores: Stores }) {
   });
 
   const rightOffset = () => computeRightOffset(stores);
+  const leftOffset = () => computeLeftOffset(stores);
+  const topOffset = () => computeTopOffset(stores);
+  const bottomOffset = () => computeBottomOffset(stores);
 
   return (
     <>
-      {/* Content viewport — offset from shell sidebar and AI panel */}
+      {/* Content viewport — offset from the shell sidebar, the editor panels, and any docked module.
+          Sized by its four offsets rather than by `height: 100vh`, so a dock on the top or bottom
+          edge takes room from it the same way one on the left or right does. */}
       <Column
         position="fixed"
-        top="0"
-        left={`var(--we-sidebar-width, ${SHELL_SIDEBAR_WIDTH})`}
+        top={topOffset()}
+        bottom={bottomOffset()}
+        left={leftOffset()}
         right={rightOffset()}
-        height="100vh"
-        transition={panelResizing() ? 'none' : 'right 300ms ease'}
+        transition={panelResizing() ? 'none' : 'top 300ms ease, right 300ms ease, bottom 300ms ease, left 300ms ease'}
       >
         {/*
           Main template content, and the scoped space theme.

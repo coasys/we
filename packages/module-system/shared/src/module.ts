@@ -67,6 +67,79 @@ export interface SlotContribution {
 }
 
 /**
+ * Which edge a dock occupies, or `null` for "not docked right now".
+ *
+ * The null is what makes this one store key rather than two: a dock's visibility and its position
+ * are the same question, and splitting them lets them disagree.
+ */
+export type DockEdge = 'left' | 'right' | 'top' | 'bottom' | null;
+
+/**
+ * How much room a dock asks for, named rather than measured.
+ *
+ * A module knows how much of the screen its panel *deserves*; only the host knows how much there
+ * is. A module publishing pixels would have to read the viewport, which is the host's business —
+ * and on a narrow window those pixels would be wrong in a way the module could not detect. Four
+ * names, resolved by the host against the current viewport and the edge being docked to.
+ */
+export type DockSize = 'sm' | 'md' | 'lg' | 'full';
+
+/**
+ * A panel that takes room from the app rather than covering it.
+ *
+ * The distinction that earns a second kind of contribution alongside {@link SlotContribution}: a
+ * slot is chrome that *overlays* — it positions itself, and whatever is beneath carries on
+ * underneath. A dock **insets**: the host shrinks the content viewport by the dock's size, so
+ * nothing is hidden and the two can be used at once.
+ *
+ * Which one a piece of chrome wants is not a property of the module, it is a property of the
+ * moment. A call's control bar overlays, because you glance at it; a call's video stage docks,
+ * because you watch it while reading the space. So a module contributes both, and moves its own
+ * state between them.
+ *
+ * ### Why the geometry is the host's
+ *
+ * A docked module used to position itself with `position: fixed` and a hardcoded offset for the
+ * module rail — which meant every module re-derived geometry it cannot see, and none of them could
+ * inset the content because the content viewport is not theirs to resize. Here the module says
+ * *which edge* and *how big*, and the host owns where that lands, what it has to clear, what the
+ * viewport becomes, and what happens when the window is too narrow to give anything up.
+ */
+export interface DockContribution {
+  /**
+   * A key on this module's own store returning {@link DockEdge}.
+   *
+   * A store key rather than a value because a dock moves: the edge is a user preference, and the
+   * same key returning `null` is how the module says the dock is closed. Named like
+   * {@link ModuleLauncher.action} is, and for the same reason — the host reads it, and a module
+   * cannot build a `$store` path to itself.
+   */
+  edge: string;
+  /** A key on this module's store returning {@link DockSize}. Omit for `'md'`. */
+  size?: string;
+  /**
+   * A key on this module's store returning `true` while the dock should **overlay** rather than
+   * inset — the same panel, not taking room.
+   *
+   * Both ends of the size range want this, for opposite reasons. A compact strip is glanceable
+   * chrome and shrinking the app for it would be absurd; a maximised panel is the whole point of
+   * the moment, and insetting it to full size would leave a content viewport of zero width, which
+   * is not a layout any template survives.
+   *
+   * It exists as a flag rather than two contributions because it must be the *same* container:
+   * moving a panel between two nodes remounts its subtree, and a subtree containing live video
+   * loses its streams when that happens. One box that changes shape, never two boxes.
+   *
+   * The host also forces this on when the window is too narrow to give anything up.
+   */
+  float?: string;
+  /** The panel itself. A `SchemaNode`, so a deployment can restyle or white-label it. */
+  node: SchemaNode;
+  /** Ties break on module id, exactly as {@link SlotContribution.order} does. */
+  order?: number;
+}
+
+/**
  * What a module asks to be allowed to do.
  *
  * **Declared, not enforced** — nothing today prevents a module calling `getUserMedia` without saying
@@ -150,6 +223,15 @@ export interface ModuleDefinition {
 
   /** Persistent chrome. Rendered by the host outside the router, so it survives navigation. */
   slots?: SlotContribution[];
+
+  /**
+   * Panels that take room from the app rather than covering it. See {@link DockContribution}.
+   *
+   * Separate from `slots` because the host does something different with them: a slot is spliced
+   * into the shell and positions itself, a dock is given a box and its size is subtracted from the
+   * content viewport.
+   */
+  docks?: DockContribution[];
 
   /**
    * Anchor names this module opens up for others to contribute to.

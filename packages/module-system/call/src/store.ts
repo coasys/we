@@ -62,7 +62,28 @@ export interface CallTileState {
   videoEnabled: boolean;
   /** `undefined` for the self tile, which has no connection to itself. */
   connection?: RTCPeerConnectionState;
+  /** This tile is the one the stage is giving most of its room to. */
+  focused: boolean;
 }
+
+/**
+ * How much of the screen the call is asking for.
+ *
+ * Four states rather than the `expanded` boolean this replaced, because a call is two different
+ * things at different moments and one flag could only ever be right about one of them. `strip` is a
+ * call you are *in* while working — glanceable, overlaying, taking no room. `dock` is a call you
+ * are *watching* — a real panel that shrinks the app beside it, which is the only arrangement where
+ * both are usable at once. `max` is a demo, and gives up on the app entirely for the duration.
+ *
+ * The progression is deliberate and one button walks it: hidden → strip → dock → max → hidden.
+ */
+export type CallStageMode = 'hidden' | 'strip' | 'dock' | 'max';
+
+/** Which edge the docked stage occupies. A preference, and the only geometry the module states. */
+export type CallDockEdge = 'left' | 'right' | 'top' | 'bottom';
+
+/** How much room the docked stage asks the host for. Resolved to pixels by the host, not here. */
+export type CallDockSize = 'sm' | 'md' | 'lg';
 
 export interface CallStoreDeps extends ModuleStoreDeps {
   /** Overridable for tests; defaults to the browser's WebRTC and media APIs. */
@@ -75,7 +96,28 @@ export function createCallStore(deps: CallStoreDeps) {
   const [callId, setCallId] = signal<string | null>(null);
   const [tiles, setTiles] = signal<CallTile[]>([]);
   const [tileStates, setTileStates] = signal<CallTileState[]>([]);
-  const [expanded, setExpanded] = signal(false);
+  const [stageMode, setStageMode] = signal<CallStageMode>('hidden');
+  const [dockEdge, setDockEdge] = signal<CallDockEdge>('right');
+  const [dockSize, setDockSize] = signal<CallDockSize>('md');
+  /**
+   * Whose video the stage is giving most of its room to, or `null` for an even grid.
+   *
+   * A signal of its own rather than a field on {@link CallTile}, for the reason the tile cache
+   * exists at all: `$each` renders through a reference-keyed `<For>`, so writing focus onto a tile
+   * object would remount that row and drop its `srcObject`. Clicking a participant to focus them
+   * would have blanked the participant you clicked — the mute bug again, with a worse trigger.
+   */
+  const [focusedId, setFocusedId] = signal<string | null>(null);
+  /**
+   * Whether the *user* chose the current focus, as opposed to a screen share claiming it.
+   *
+   * Without this, auto-focus and the user fight: someone starts sharing, you focus a person
+   * instead, and the next roster heartbeat drags you back. A screen share is a strong hint about
+   * what matters, but only until somebody says otherwise.
+   */
+  let focusIsManual = false;
+  /** The peers already sharing, so a share that has been running for ten minutes cannot re-claim focus. */
+  let sharingPeers = new Set<string>();
   const [media, setMedia] = signal<MediaSettings>({
     audioEnabled: true,
     videoEnabled: true,
@@ -157,7 +199,7 @@ export function createCallStore(deps: CallStoreDeps) {
     }
 
     const next: CallTile[] = [];
-    const states: CallTileState[] = [];
+    const states: Omit<CallTileState, 'focused'>[] = [];
 
     if (me) {
       const state = controller?.state();
@@ -196,8 +238,37 @@ export function createCallStore(deps: CallStoreDeps) {
     const present = new Set(next.map((tile) => tile.id));
     for (const key of [...tileCache.keys()]) if (!present.has(key)) tileCache.delete(key);
 
+    const focus = reconcileFocus(states, present);
+
     setTiles(next);
-    setTileStates(states);
+    setTileStates(states.map((state) => ({ ...state, focused: state.id === focus })));
+  }
+
+  /**
+   * Decide what the stage should be showing, from what changed rather than from what is true.
+   *
+   * "Somebody is sharing" is the wrong question — it is true for the whole ten minutes of a demo,
+   * so answering it would re-take focus from the user on every heartbeat. The question is *who
+   * started sharing since last time*, which is why the set of sharers is remembered here rather than
+   * recomputed. Somebody else's screen appearing is the one event worth overriding a default for;
+   * your own is not, because you know what you just did and you are usually looking elsewhere.
+   */
+  function reconcileFocus(states: Omit<CallTileState, 'focused'>[], present: Set<string>): string | null {
+    const me = selfId?.() ?? null;
+    const sharing = new Set(states.filter((state) => state.isScreen).map((state) => state.id));
+    const started = [...sharing].find((peerId) => !sharingPeers.has(peerId) && peerId !== me);
+    sharingPeers = sharing;
+
+    let focus = focusedId();
+    // A focused participant who left takes the focus with them, back to an even grid.
+    if (focus && !present.has(focus)) {
+      focus = null;
+      focusIsManual = false;
+    }
+    if (started && !focusIsManual) focus = started;
+
+    if (focus !== focusedId()) setFocusedId(focus);
+    return focus;
   }
 
   /** Republish the call activity so peers see mute/camera/screen changes. */
@@ -218,7 +289,10 @@ export function createCallStore(deps: CallStoreDeps) {
     peerStates = new Map();
     if (id) presence?.clearActivity('call', id);
     setCallId(null);
-    setExpanded(false);
+    setStageMode('hidden');
+    setFocusedId(null);
+    focusIsManual = false;
+    sharingPeers = new Set();
     setTiles([]);
   }
 
@@ -321,14 +395,130 @@ export function createCallStore(deps: CallStoreDeps) {
     if (!handle && callId()) teardown();
   });
 
+  /** The next mode the one expand button lands on. Wraps, so the same button also puts it away. */
+  const NEXT_MODE: Record<CallStageMode, CallStageMode> = {
+    hidden: 'strip',
+    strip: 'dock',
+    dock: 'max',
+    max: 'hidden',
+  };
+
+  /**
+   * How many columns the tiles pack into.
+   *
+   * The only number the layout needs, because every other dimension is `1fr` of a box whose size the
+   * host has already decided. That is what makes "one participant never scrolls" a property of the
+   * arrangement rather than something to test for: rows divide the stage, they never exceed it.
+   *
+   * Three cases, in order of how strongly they determine the answer. A focus wins outright — one
+   * fewer column than there are people puts the focused tile across the top and everyone else in
+   * exactly one row beneath, at any count. A tall narrow dock wants columns of one or two, because
+   * three 16:9 tiles across a 440px panel are thumbnails. Anything wide gets the ordinary grid.
+   */
+  function stageColumns(count: number, focused: boolean, mode: CallStageMode, edge: CallDockEdge): number {
+    if (count <= 1) return 1;
+    if (focused) return Math.min(count - 1, 4);
+    const vertical = mode === 'dock' && (edge === 'left' || edge === 'right');
+    if (vertical) return count <= 3 ? 1 : 2;
+    return count <= 4 ? 2 : 3;
+  }
+
   return {
     // ── State ────────────────────────────────────────────────────────────────
     callId,
     tiles,
     tileStates,
-    expanded,
+    stageMode,
+    focusedId,
     media,
     problem,
+
+    // ── What the host reads to place the stage ────────────────────────────────
+    /**
+     * Which edge the stage occupies, or `null` when there is nothing to place.
+     *
+     * The module's entire statement about geometry. It does not know the sidebar's width, the module
+     * rail's, or the size of the window — the host owns all of that, which is what lets the same
+     * declaration inset on a monitor and overlay on a laptop with nothing here changing.
+     *
+     * `strip` and `max` still name an edge even though neither uses it, because both float: the
+     * value has to stay non-null for the panel to exist at all, and keeping the user's preference
+     * live through those modes is what makes cycling back to `dock` return it where they left it.
+     */
+    dockEdge: () => (stageMode() === 'hidden' || !callId() ? null : dockEdge()),
+    dockSize: (): CallDockSize | 'full' =>
+      stageMode() === 'max' ? 'full' : stageMode() === 'strip' ? 'sm' : dockSize(),
+    /** Overlay rather than inset: a strip is too small to be worth shrinking the app for, a
+     *  maximised stage too large to leave anything of it. */
+    dockFloat: () => stageMode() === 'strip' || stageMode() === 'max',
+
+    /** The edge picker's options, pre-built — a schema can `$each` an array but cannot author one. */
+    dockEdgeOptions: () => [
+      { id: 'left', icon: 'arrow-line-left', label: 'Dock left', active: dockEdge() === 'left' },
+      { id: 'right', icon: 'arrow-line-right', label: 'Dock right', active: dockEdge() === 'right' },
+      { id: 'top', icon: 'arrow-line-up', label: 'Dock top', active: dockEdge() === 'top' },
+      { id: 'bottom', icon: 'arrow-line-down', label: 'Dock bottom', active: dockEdge() === 'bottom' },
+    ],
+    dockSizeOptions: () => [
+      { id: 'sm', label: 'Small', active: dockSize() === 'sm' },
+      { id: 'md', label: 'Medium', active: dockSize() === 'md' },
+      { id: 'lg', label: 'Large', active: dockSize() === 'lg' },
+    ],
+
+    /** True while the stage is showing anything at all — what the expand button's icon follows. */
+    stageOpen: () => stageMode() !== 'hidden',
+    /** True while the stage is a docked panel, so the size and edge controls only appear where they act. */
+    stageDocked: () => stageMode() === 'dock',
+
+    // ── How the tiles pack ────────────────────────────────────────────────────
+    /**
+     * The tile container's own CSS, computed rather than expressed as nested `$if` in the fragment.
+     *
+     * Grid, not wrapping flex. A wrapping flex container derives its line height from its content
+     * and `align-content` can only *grow* a line — so a declared stage height was a floor rather
+     * than a ceiling, and one oversized child pushed the whole stage past it into a scrollbar. Grid
+     * tracks of `1fr` divide a definite box instead, which cannot overflow however many people join
+     * or whatever resolution they send.
+     *
+     * A strip is the exception and flows the other way: a single row of fixed-width cells, so the
+     * panel is as wide as the number of people in it rather than a band of empty chrome.
+     */
+    stageStyle: (): Record<string, string> =>
+      stageMode() === 'strip'
+        ? {
+            display: 'grid',
+            'grid-auto-flow': 'column',
+            // 16:9 at the strip's own height. Fixed rather than derived, because deriving it needs
+            // the panel's measured height and the whole arrangement exists to avoid measuring.
+            'grid-auto-columns': '220px',
+            'grid-template-rows': '1fr',
+          }
+        : {
+            display: 'grid',
+            'grid-template-columns': `repeat(${stageColumns(tiles().length, focusedId() !== null, stageMode(), dockEdge())}, 1fr)`,
+            'grid-auto-rows': '1fr',
+          },
+
+    /**
+     * Each tile's placement in that grid, looked up by id the same way its volatile flags are.
+     *
+     * Computed on read rather than stored on the tile — for the reason the tile carries so little,
+     * and for one more besides. Placement depends on the *mode*, which changes without the roster
+     * changing, so a stored copy would have to be rebuilt from somewhere that has no business
+     * knowing about layout. Here it simply re-derives, and every signal it reads makes it reactive.
+     */
+    tileCells: (): { id: string; style: Record<string, string | number> }[] => {
+      const focus = focusedId();
+      const strip = stageMode() === 'strip';
+      // A focused tile spans the full width and two rows: the classic spotlight, in one declaration,
+      // at any participant count. In a strip there is nothing to spotlight — every cell is already
+      // the same size and there is only one row.
+      const spotlight: Record<string, string | number> = { 'grid-column': '1 / -1', 'grid-row': 'span 2', order: -1 };
+      return tiles().map((entry) => ({
+        id: entry.id,
+        style: !strip && entry.id === focus ? spotlight : {},
+      }));
+    },
     /** True when this agent is in a call — the call bar's visibility condition. */
     active: () => callId() !== null,
 
@@ -390,8 +580,27 @@ export function createCallStore(deps: CallStoreDeps) {
       if (media().screenShareEnabled) controller?.stopScreenShare();
       else void controller?.startScreenShare();
     },
-    toggleStage: () => setExpanded(!expanded()),
-    closeStage: () => setExpanded(false),
+    /** Walk the stage one step bigger, and round to hidden. See {@link CallStageMode}. */
+    cycleStage: () => setStageMode(NEXT_MODE[stageMode()]),
+    closeStage: () => setStageMode('hidden'),
+    setDockEdge: (edge: CallDockEdge) => setDockEdge(edge),
+    setDockSize: (size: CallDockSize) => setDockSize(size),
+
+    /**
+     * Give this participant the stage, or take it back if they already have it.
+     *
+     * Marks the focus as the user's, which is what stops a running screen share from reclaiming it
+     * on the next heartbeat. Clearing focus counts as a choice too — "show me everyone" is an
+     * instruction, not an absence of one.
+     */
+    focusTile: (id: string) => {
+      const next = focusedId() === id ? null : id;
+      focusIsManual = true;
+      setFocusedId(next);
+      // The states array carries `focused`, so the change has to reach it for the layout to move.
+      rebuildTiles();
+    },
+
     dismissProblem: () => setProblem(null),
   };
 }

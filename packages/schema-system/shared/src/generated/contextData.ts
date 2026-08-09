@@ -647,6 +647,12 @@ export const contextData: ContextData = {
         { name: 'poster', type: 'string | undefined', optional: true },
         { name: 'controls', type: 'boolean', optional: false, default: 'false' },
         { name: 'preload', type: "'none' | 'metadata' | 'auto'", optional: false, default: "'metadata'" },
+        {
+          name: 'fit',
+          type: "'' | 'cover' | 'contain' | 'fill' | 'none' | 'scale-down'",
+          optional: false,
+          default: "''",
+        },
         { name: 'autoplay', type: 'boolean', optional: false, default: 'false' },
         { name: 'loop', type: 'boolean', optional: false, default: 'false' },
         { name: 'muted', type: 'boolean', optional: false, default: 'false' },

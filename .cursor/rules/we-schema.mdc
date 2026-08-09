@@ -767,7 +767,7 @@ when `relative` is enabled.
 - we-tooltip (LayoutElement)
   Props: open: boolean = false, title: string = '', placement: 'top' | 'bottom' | 'left' | 'right' | 'top-start' | 'top-end' | 'bottom-start' | 'bottom-end' | 'left-start' | 'left-end' | 'right-start' | 'right-end' = 'top', tooltipEl: HTMLElement, triggerEl: HTMLElement, arrowEl: HTMLElement
 - we-video (LayoutVisualElement)
-  Props: src: string = '', poster?: string | undefined, controls: boolean = false, preload: 'none' | 'metadata' | 'auto' = 'metadata', autoplay: boolean = false, loop: boolean = false, muted: boolean = false, playsinline: boolean = false, stream?: MediaStream | null | undefined
+  Props: src: string = '', poster?: string | undefined, controls: boolean = false, preload: 'none' | 'metadata' | 'auto' = 'metadata', fit: '' | 'cover' | 'contain' | 'fill' | 'none' | 'scale-down' = '', autoplay: boolean = false, loop: boolean = false, muted: boolean = false, playsinline: boolean = false, stream?: MediaStream | null | undefined
 
 @we/components:
 - AudioDisplay

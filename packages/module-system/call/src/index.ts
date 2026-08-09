@@ -31,29 +31,29 @@ import { createCallStore } from './store';
 export { createCallMesh, type CallMesh, type SignallingChannel } from './mesh';
 export { createMediaController, type MediaController, type MediaState } from './media';
 export { anchoredCallId, CALL_PROTOCOL_VERSION, parseCallMessage, spaceCallId } from './protocol';
-export { createCallStore, type CallTile } from './store';
+export {
+  type CallDockEdge,
+  type CallDockSize,
+  type CallStageMode,
+  type CallTile,
+  type CallTileState,
+  createCallStore,
+} from './store';
 
 /**
  * Where the call's chrome sits.
  *
- * Both at the top, controls above video. That is not where this started: the bar was docked at the
+ * At the top, where your eyes already are. That is not where this started: the bar was docked at the
  * bottom and only *appeared* at the top because `bottom: '400'` is not a CSS length, so the offset was
  * dropped and `position: fixed` fell back to the static position. The accident read better than the
- * design, so it is now the design — a call you are in should be visible where your eyes already are,
- * not competing with whatever the space puts along the bottom.
+ * design, so it is now the design — a call you are in should be visible where you are looking, not
+ * competing with whatever the space puts along the bottom.
  *
- * Named rather than inlined because the stage's offset is *derived* from the bar's: the two must stay
- * stacked, and a bare `128px` in one file and `72px` in another is a relationship nothing records.
+ * The stage no longer derives an offset from this. It used to: a second constant here restated the
+ * bar's height so the two would stack, which is a relationship nothing enforced. The stage is a
+ * *dock* now, and where a dock lands is the host's business — see `docks` at the bottom of this file.
  */
 const CALL_BAR_TOP = '10px';
-/**
- * Bar top + bar height + a gap, so the stage sits tucked directly under the controls.
- *
- * The bar is 50px tall: a 32px `sm` button, plus `py: '200'` (8px) top and bottom, plus its 1px
- * borders. 10 + 50 + 12 = 72. Written out because the two constants have to move together, and the
- * next person to nudge the bar needs to know what the second number is made of.
- */
-const STAGE_TOP = '72px';
 
 /**
  * The bar's extension point, for chrome that belongs *in a call* rather than at a screen edge.
@@ -88,14 +88,40 @@ const tile: SchemaNode = {
     bg: 'neutral-100',
     r: '400',
     overflow: 'hidden',
-    // Grow to share the row, and stretch to the stage's full height rather than being capped at a
-    // fixed one — a hardcoded height was what made the video small regardless of available space.
-    flex: '1 1 280px',
-    minWidth: '220px',
-    minHeight: '160px',
-    alignSelf: 'stretch',
     ax: 'center',
     ay: 'center',
+    /**
+     * The tile takes the cell it is given and never asks for more.
+     *
+     * `minWidth`/`minHeight: 0` are the load-bearing pair, not the sizes. A grid item's automatic
+     * minimum size is `auto` — large enough for its content — so a tile holding anything with an
+     * intrinsic size pushes its own track wider than the track was meant to be, and the grid
+     * overflows a stage that had a perfectly definite height. Zeroing it makes the cell authoritative
+     * and the content fit inside, which is the whole invariant here: one participant can never
+     * produce a scrollbar.
+     */
+    minWidth: '0',
+    minHeight: '0',
+    /**
+     * Focus is a *layout* change, and it is expressed per-item rather than by moving the tile.
+     *
+     * Looked up by id like the volatile flags above, because the placement depends on the stage's
+     * mode as well as on who is focused — see `tileCells` in the store, which is also where the
+     * spanning is explained.
+     *
+     * Per-item and never by reparenting, deliberately: promoting the focused tile into a separate
+     * "spotlight" node would move it to a different DOM parent, Solid's `<For>` recreates rather
+     * than moves across parents, and the `<video>` would lose its stream on every click. One
+     * container, one `$each`, only CSS changes.
+     */
+    styles: {
+      $find: { items: { $store: 'modules.call.tileCells' }, where: { id: '$tile.id' }, select: 'style' },
+    },
+    // A ring on whoever has the stage, so clicking a tile has a visible result even in the moment
+    // before the layout settles.
+    border: {
+      $if: { condition: stateOf('focused'), then: '2px solid primary-500', else: '2px solid transparent' },
+    },
   },
   children: [
     {
@@ -117,7 +143,25 @@ const tile: SchemaNode = {
             height: '100%',
             // A desktop cropped to fill a camera-shaped tile is unreadable — `contain` letterboxes it
             // instead. Driven by the roster, because only the sender knows which it is sending.
+            //
+            // Setting `fit` at all is what pins the video inside the tile: without it the element
+            // sizes itself from the stream's own pixel dimensions, so a 720p camera and a 1080p
+            // screen capture laid out at different sizes and both grew past the stage. See the
+            // primitive.
             fit: { $if: { condition: stateOf('isScreen'), then: 'contain', else: 'cover' } },
+            /**
+             * Your own camera, mirrored — everyone expects to raise the hand they raised.
+             *
+             * Only the camera. A mirrored screen share is unreadable text, and `isScreen` is exactly
+             * the flag that tells the two apart.
+             */
+            transform: {
+              $if: {
+                condition: { $and: ['$tile.isSelf', { $not: stateOf('isScreen') }] },
+                then: 'scaleX(-1)',
+                else: 'none',
+              },
+            },
           },
         },
         else: {
@@ -127,6 +171,26 @@ const tile: SchemaNode = {
           type: 'we-avatar',
           props: { image: '$tile.avatar', hash: '$tile.did', initials: '$tile.name', size: 'lg' },
         },
+      },
+    },
+    /**
+     * Click anyone to give them the stage; click them again to go back to an even grid.
+     *
+     * A `bare` button covering the tile rather than an `onClick` on the tile itself: bare is the
+     * appearance-free variant, so it adds nothing visually while keeping the keyboard activation and
+     * the button role that a clickable `Column` silently loses. It sits under the badges in DOM
+     * order so those stay readable, and above the video so the whole picture is the target.
+     */
+    {
+      type: 'we-button',
+      props: {
+        variant: 'bare',
+        position: 'absolute',
+        top: '0',
+        left: '0',
+        width: '100%',
+        height: '100%',
+        onClick: { $action: 'modules.call.focusTile', args: ['$tile.id'] },
       },
     },
     {
@@ -173,15 +237,19 @@ const tile: SchemaNode = {
 };
 
 /**
- * The expanded stage — every participant, directly under the controls.
+ * The stage — every participant, in the box the host has given the dock.
  *
- * A `Row` that wraps, not a `Grid`. `Grid`'s `minChildWidth` compiles to
- * `repeat(auto-fill, minmax(…, 1fr))`, and `auto-fill` keeps empty tracks — so a one-person call drew
- * a small tile on the left and a wide band of nothing to its right. Wrapping flex items grow to fill
- * the row instead, at every participant count, and `ay: stretch` lets them take the stage's full
- * height rather than a hardcoded one.
+ * It positions nothing. That is the change: this used to be a `position: fixed` overlay carrying
+ * `right: '72px'`, a hardcoded copy of the module rail's width that nothing kept in step, and a
+ * `38vh` height that turned out to be a floor rather than a ceiling. Where the panel sits, how big
+ * it is, and whether it insets the app or floats over it are all the host's now — this module only
+ * says which edge and how much, through the store keys named in `docks` below.
  *
- * Colours are theme-relative, and that matters more than it looks. Dark themes invert the neutral
+ * `overflow: hidden`, not `auto`, and that is a statement rather than a detail: the grid divides a
+ * definite box, so content that does not fit is a bug to be seen rather than a scrollbar to be
+ * lived with. One participant can never produce one.
+ *
+ * Colours stay theme-relative, and that matters more than it looks. Dark themes invert the neutral
  * scale (`multiplier: -1`), so `neutral-1000` is black in the light theme and near-white in the dark
  * one — which is exactly how this shipped as a white stage. There is no "always dark" neutral; a
  * surface that must follow the theme has to use the same low-numbered tokens as the rest of the app.
@@ -189,29 +257,18 @@ const tile: SchemaNode = {
 const stage: SchemaNode = {
   type: '$if',
   props: {
-    condition: { $and: [{ $store: 'modules.call.active' }, { $store: 'modules.call.expanded' }] },
+    condition: { $store: 'modules.call.active' },
     then: {
-      type: 'Row',
+      type: 'Column',
       props: {
-        position: 'fixed',
-        // Directly under the control bar — see CALL_BAR_TOP.
-        top: STAGE_TOP,
-        left: '16px',
-        // Clears the module rail on the right edge, which is 48px wide plus a margin.
-        right: '72px',
-        height: '38vh',
-        wrap: true,
-        gap: '300',
+        width: '100%',
+        height: '100%',
         p: '300',
-        ax: 'center',
-        // Stretch, so a tile fills the stage's height instead of sitting at a fixed size in the middle.
-        ay: 'stretch',
-        bg: 'neutral-0',
-        border: '1px solid neutral-200',
-        r: '500',
-        shadow: 'xl',
-        overflow: 'auto',
-        zIndex: 'sticky',
+        gap: '300',
+        overflow: 'hidden',
+        // Grid template and track sizing — see `stageStyle` in the store, which is also where the
+        // choice of grid over wrapping flex is argued.
+        styles: { $store: 'modules.call.stageStyle' },
       },
       children: [{ type: '$each', props: { items: { $store: 'modules.call.tiles' }, as: 'tile' }, children: [tile] }],
     },
@@ -235,6 +292,65 @@ function mediaToggle(opts: { on: string; off: string; enabled: string; action: s
     ],
   };
 }
+
+/**
+ * Which edge the docked stage takes room from.
+ *
+ * A menu rather than four buttons in the bar: the choice is made once and then left alone, and four
+ * permanent arrows would cost more space in the one piece of chrome that must stay small than the
+ * setting is worth. Driven from `dockEdgeOptions` so the labels and the active mark live beside the
+ * state they describe — a fragment can iterate an array but cannot author one.
+ */
+const placementMenu: SchemaNode = {
+  type: 'DropdownMenu',
+  props: {
+    triggerIcon: 'layout',
+    placement: 'bottom',
+    items: {
+      $map: {
+        items: { $store: 'modules.call.dockEdgeOptions' },
+        // Toggles rather than actions, for the check mark: an action item has no way to show which
+        // edge is the current one, and a placement menu that cannot answer "where is it now?" is a
+        // menu you have to open twice. Toggles also leave the menu open, which is what you want
+        // while trying edges against the space behind them.
+        select: {
+          id: '$item.id',
+          type: 'toggle',
+          label: '$item.label',
+          icon: '$item.icon',
+          checked: '$item.active',
+          onToggle: { $action: 'modules.call.setDockEdge', args: ['$item.id'] },
+        },
+      },
+    },
+  },
+};
+
+/**
+ * How much room the docked stage asks for.
+ *
+ * Three named sizes rather than a drag handle. A handle is the better interaction and it is not
+ * available yet: it needs a design-system primitive that reports a drag delta, and inventing one
+ * inside a feature module would put framework code in the module with the strongest claim to having
+ * none. Three presets answer the same question with the same store key, so the handle can be added
+ * later without changing what it sets.
+ */
+const sizeButtons: SchemaNode[] = ['sm', 'md', 'lg'].map((size, index) => ({
+  type: 'we-button',
+  props: {
+    size: 'sm',
+    variant: {
+      $if: {
+        condition: { $eq: [{ $store: 'modules.call.dockSize' }, size] },
+        then: 'secondary',
+        else: 'ghost',
+      },
+    },
+    onClick: { $action: 'modules.call.setDockSize', args: [size] },
+  },
+  // Three steps of one glyph, so the row reads as a scale rather than as three unrelated controls.
+  children: [{ type: 'we-icon', props: { name: ['rows', 'square', 'squares-four'][index] } }],
+}));
 
 /** The bar, in its two states: a call is running and you are not in it, or you are. */
 const bar: SchemaNode = {
@@ -335,19 +451,54 @@ const bar: SchemaNode = {
           props: { anchor: CALL_CONTROLS_ANCHOR },
         },
         { type: 'we-divider', props: { orientation: 'vertical', height: '20px' } },
+        // Where the panel goes, and how much of the screen it may take. Only while it is docked,
+        // because those are the only two questions a floating strip or a maximised stage can be
+        // asked — one takes no room and the other takes all of it.
         {
-          type: 'we-button',
-          props: { size: 'sm', variant: 'ghost', onClick: { $action: 'modules.call.toggleStage' } },
+          type: '$if',
+          props: {
+            condition: { $store: 'modules.call.stageDocked' },
+            then: {
+              type: 'Row',
+              props: { gap: '100', ay: 'center' },
+              children: [placementMenu, ...sizeButtons],
+            },
+          },
+        },
+        {
+          type: 'we-tooltip',
+          props: { title: 'Resize the call', placement: 'bottom' },
           children: [
             {
-              type: 'we-icon',
-              props: {
-                name: { $if: { condition: { $store: 'modules.call.expanded' }, then: 'caret-down', else: 'caret-up' } },
-              },
-            },
-            {
-              type: 'we-number',
-              props: { value: { $count: { items: { $store: 'modules.call.tiles' } } } },
+              type: 'we-button',
+              props: { size: 'sm', variant: 'ghost', onClick: { $action: 'modules.call.cycleStage' } },
+              children: [
+                {
+                  type: 'we-icon',
+                  props: {
+                    // The icon names the step this button takes, not the state it is in — the four
+                    // stage modes are a progression, and an arrow that always pointed the same way
+                    // would be lying about three quarters of it.
+                    name: {
+                      $if: {
+                        condition: { $eq: [{ $store: 'modules.call.stageMode' }, 'hidden'] },
+                        then: 'caret-up',
+                        else: {
+                          $if: {
+                            condition: { $eq: [{ $store: 'modules.call.stageMode' }, 'max'] },
+                            then: 'x',
+                            else: 'arrows-out',
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+                {
+                  type: 'we-number',
+                  props: { value: { $count: { items: { $store: 'modules.call.tiles' } } } },
+                },
+              ],
             },
           ],
         },
@@ -442,9 +593,23 @@ export const callModule = defineModule({
 
   slots: [
     { anchor: 'dock-bottom', node: bar, order: 100 },
-    { anchor: 'dock-bottom', node: stage, order: 90 },
     { anchor: 'dock-bottom', node: problem, order: 80 },
   ],
+
+  /**
+   * The stage, as a panel the host places rather than chrome that places itself.
+   *
+   * The distinction the bar above makes clear by contrast. Both are call chrome; only one of them
+   * should take room. You glance at the bar while doing something else, so it overlays — shrinking
+   * the app for a row of buttons would be absurd. You *watch* the stage, usually while reading the
+   * space beside it, and a panel that covers what you are reading is a panel you keep closing.
+   *
+   * Three store keys and no geometry. The module cannot see the sidebar's width, the module rail's,
+   * or the size of the window, and the previous version's `right: '72px'` was a copy of one of
+   * those that nothing kept in step. Saying "the right edge, medium" and letting the host answer is
+   * what makes the same declaration inset on a monitor and float on a laptop.
+   */
+  docks: [{ edge: 'dockEdge', size: 'dockSize', float: 'dockFloat', node: stage }],
 
   createStore: (deps: ModuleStoreDeps) => createCallStore(deps),
 });

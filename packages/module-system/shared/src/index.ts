@@ -19,6 +19,9 @@ export {
   seedCapabilityToModule,
 } from './module';
 export type {
+  DockContribution,
+  DockEdge,
+  DockSize,
   ModuleCapability,
   ModuleCompatibility,
   ModuleDefinition,

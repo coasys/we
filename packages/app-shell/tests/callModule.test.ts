@@ -10,6 +10,7 @@ import { callModule } from '@we/module-call';
 import { checkModuleCompatibility } from '@we/module-shared';
 import { beforeEach, describe, expect, it } from 'vitest';
 
+import { dockRegistry } from '../src/shared/registries/dockRegistry';
 import { moduleRegistry, moduleStores } from '../src/shared/registries/moduleRegistry';
 import { registerCoreSlots, slotRegistry } from '../src/shared/registries/slotRegistry';
 
@@ -110,6 +111,34 @@ describe('call module — contributions', () => {
     expect(tile).toContain('$tile.stream');
   });
 
+  it('contributes the stage as a dock rather than as chrome that places itself', () => {
+    // The bar overlays and the stage insets, and that difference is the whole reason `docks` exists
+    // alongside `slots`. Asserted because the previous stage was a `position: fixed` overlay carrying
+    // `right: '72px'` — a hardcoded copy of the module rail's width that nothing kept in step.
+    moduleRegistry.register(callModule, host, storeDeps);
+
+    expect(callModule.docks).toHaveLength(1);
+    expect(dockRegistry.get('call:0')?.moduleId).toBe('call');
+    // The frame the host wraps it in is ordinary chrome once built, so it renders through the slot
+    // registry under its own namespace.
+    expect(slotRegistry.get('dock:call:0')).toBeDefined();
+  });
+
+  it('names dock state keys its own store actually has', () => {
+    // Same class of bug as the launcher action above, and invisible in the same way: these are
+    // strings the host reads off the store, so a rename would silently produce a panel that never
+    // appears rather than an error anyone could trace.
+    moduleRegistry.register(callModule, host, storeDeps);
+    const store = moduleStores.call as Record<string, unknown>;
+    const dock = callModule.docks![0];
+
+    for (const key of [dock.edge, dock.size, dock.float]) {
+      expect(typeof store[key!]).toBe('function');
+    }
+    // Closed until asked for: a call you have just joined must not shrink the app on its own.
+    expect((store[dock.edge] as () => unknown)()).toBeNull();
+  });
+
   it('exposes a launcher a template can place on any node', () => {
     moduleRegistry.register(callModule, host, storeDeps);
     // Anchored calls need a per-node trigger, and only a template knows what a node is.
@@ -168,5 +197,9 @@ describe('per-space module gate', () => {
     expect(slotRegistry.get('call:0')).toBeUndefined();
     expect(slotRegistry.get('call:1')).toBeUndefined();
     expect(slotRegistry.get('call:2')).toBeUndefined();
+    // Docks too, from both registries. A dock left in `dockRegistry` after its module withdrew would
+    // keep contributing an inset — the app would stay shrunk around a panel that no longer exists.
+    expect(slotRegistry.get('dock:call:0')).toBeUndefined();
+    expect(dockRegistry.get('call:0')).toBeUndefined();
   });
 });
