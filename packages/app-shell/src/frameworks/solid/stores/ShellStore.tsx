@@ -146,9 +146,27 @@ export function ShellStoreProvider(props: ParentProps) {
     })),
   );
 
-  const dockGeometry = createMemo(() =>
-    Object.fromEntries(dockRequests().map((request) => [request.id, resolveDock(request, viewport())])),
-  );
+  /**
+   * Every dock's box, with each one pushed past whatever is already holding its edge.
+   *
+   * Resolved as a list rather than one at a time, because a dock's position depends on its
+   * neighbours: two panels on the right are a column of panels, not two panels in the same place.
+   * The order is `dockRegistry.ordered()`, so it is the declared `order` then the module id — stable,
+   * and never "whichever module registered first".
+   */
+  const dockGeometry = createMemo(() => {
+    const taken: Record<string, number> = { left: 0, right: 0, top: 0, bottom: 0 };
+    const resolved: Record<string, DockGeometry> = {};
+    for (const request of dockRequests()) {
+      const preceding = request.edge ? taken[request.edge] : 0;
+      resolved[request.id] = resolveDock(request, viewport(), preceding);
+      // Only a docked panel displaces the next one; a floating one is over the top of everything.
+      if (request.edge && !resolved[request.id].floating) {
+        taken[request.edge] += dockThickness(request.edge, request.size, viewport(), request.resizedTo);
+      }
+    }
+    return resolved;
+  });
 
   const inset = createMemo(() => contentInset(dockRequests(), viewport()));
 

@@ -158,6 +158,15 @@ export type ModuleCapability =
   | `network:${string}`
   | `slot:${SlotAnchor}`
   /**
+   * Contributes a panel that takes room from the app rather than drawing over it.
+   *
+   * A stronger claim than `slot:*` and worth saying separately: a slot draws on top of what you were
+   * doing, a dock makes the rest of the app smaller. No edge in the name — which edge is the user's
+   * choice at runtime, so naming one here would be a declaration that goes stale the first time they
+   * move it.
+   */
+  | 'dock'
+  /**
    * Access to a slice of the agent's data layer, for a module that reaches it directly rather than
    * through the ports — in practice an embedded application, which talks to the host's agent itself.
    *

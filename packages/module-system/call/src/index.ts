@@ -749,7 +749,7 @@ export const callModule = defineModule({
 
   // Displayed at install, never scored. These three are the whole reason a user should think twice
   // before installing a call module from a stranger.
-  capabilities: ['microphone', 'camera', 'screen-share', 'slot:dock-bottom'],
+  capabilities: ['microphone', 'camera', 'screen-share', 'slot:dock-bottom', 'dock'],
 
   // No `backends`: signalling goes through the ephemeral port, so this runs on anything that
   // implements one. No `frameworks`: every piece of UI here is a fragment.

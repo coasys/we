@@ -51,16 +51,25 @@ export const transcribeModule = defineModule({
   // `microphone` even though this module never calls `getUserMedia`: it listens to a live microphone,
   // and the list exists to tell a user what a module can hear, not which API it called to hear it.
   // `storage` because every utterance ends up as a durable record in their space.
-  capabilities: ['microphone', 'storage', 'slot:dock-right'],
+  capabilities: ['microphone', 'storage', 'dock'],
 
   // No `backends`: transcription goes through the port, so this runs on any backend that implements
   // one — and degrades to a stated reason on any that does not. No `frameworks`: fragments only.
 
   slots: [
-    { anchor: 'dock-right', node: panel, order: 90 },
     // Into the call module's own bar. It declares the anchor; we never name the module.
     { anchor: CALL_CONTROLS_ANCHOR, node: callControl, order: 10 },
   ],
+
+  /**
+   * A panel that makes room rather than covering. See `DockContribution`.
+   *
+   * `dockEdge` returns null while closed, which is how the host knows there is nothing to place —
+   * one key answering both "where" and "whether", so the two can never disagree. `order` puts this
+   * outside a notes panel sharing the edge, which is only a tiebreak: the host stacks whatever is
+   * there rather than letting two panels land in the same box.
+   */
+  docks: [{ edge: 'dockEdge', size: 'dockSize', float: 'dockFloat', node: panel, order: 90 }],
 
   /**
    * The rail opens the transcript; the call bar records into it.

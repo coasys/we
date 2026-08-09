@@ -159,17 +159,17 @@ export const panel: SchemaNode = {
     then: {
       type: 'Column',
       props: {
-        position: 'fixed',
-        top: '0px',
-        // Beside the module rail, not under it — the rail has to stay reachable while a panel is open.
-        right: '48px',
-        width: '320px',
+        /**
+         * Fills the box the host gave it. It used to position itself — `fixed`, `right: 48px`, a
+         * hardcoded copy of the module rail's width — which meant it overlaid the space rather than
+         * making room in it, sat on top of the editor's controls, and stayed put when a docked call
+         * panel took the edge out from under it. All three are the host's job; see `docks` below.
+         */
+        width: '100%',
         height: '100%',
-        bg: 'neutral-0',
-        borderLeft: '1px solid neutral-200',
         p: '400',
         gap: '400',
-        zIndex: 'sticky',
+        overflow: 'hidden',
       },
       children: [
         {

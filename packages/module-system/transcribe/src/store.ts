@@ -332,6 +332,17 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
     recent,
     enabled,
     open,
+
+    /**
+     * Where the host should put this panel — see `docks` in the module definition.
+     *
+     * `right` because that is the edge the module rail is on and where this has always opened; `md`
+     * is an opening bid the user overrides by dragging. Never floating: a transcript you read
+     * alongside the space is the case docking exists for.
+     */
+    dockEdge: () => (open() ? 'right' : null),
+    dockSize: () => 'md',
+    dockFloat: () => false,
     level,
     speaking,
     /**

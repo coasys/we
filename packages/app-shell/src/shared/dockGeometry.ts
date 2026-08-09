@@ -164,8 +164,12 @@ export function dockThickness(edge: DockEdge, size: DockSize, viewport: Viewport
  * - **Floating and anything else** — covering the content region entirely. This is the maximised
  *   case, and insetting it would leave a content viewport of zero width.
  * - **Docked** — flush against its edge, spanning it, insetting by its thickness.
+ *
+ * `precedingPx` is how much of this edge earlier docks have already taken. `contentInset` has always
+ * summed panels sharing an edge; without the same offset here they all resolved to the same box and
+ * sat on top of one another, which nothing noticed while only one module had a dock.
  */
-export function resolveDock(request: DockRequest, viewport: Viewport): DockGeometry {
+export function resolveDock(request: DockRequest, viewport: Viewport, precedingPx = 0): DockGeometry {
   const { edge } = request;
   if (!edge) return { edge: null, floating: true };
 
@@ -208,7 +212,7 @@ export function resolveDock(request: DockRequest, viewport: Viewport): DockGeome
       top: px(region.top),
       bottom: px(region.bottom),
       width: px(thickness),
-      ...(edge === 'right' ? { right: px(region.right) } : { left: px(region.left) }),
+      ...(edge === 'right' ? { right: px(region.right + precedingPx) } : { left: px(region.left + precedingPx) }),
     };
   }
 
@@ -218,7 +222,7 @@ export function resolveDock(request: DockRequest, viewport: Viewport): DockGeome
     left: px(region.left),
     right: px(region.right),
     height: px(thickness),
-    ...(edge === 'top' ? { top: px(region.top) } : { bottom: px(region.bottom) }),
+    ...(edge === 'top' ? { top: px(region.top + precedingPx) } : { bottom: px(region.bottom + precedingPx) }),
   };
 }
 

@@ -61,17 +61,17 @@ const panel: SchemaNode = {
     then: {
       type: 'Column',
       props: {
-        position: 'fixed',
-        top: '0px',
-        // Beside the module rail, not under it — the rail has to stay reachable while a panel is open.
-        right: '48px',
-        width: '320px',
+        /**
+         * Fills the box the host gave it. It used to position itself — `fixed`, `right: 48px`, a
+         * hardcoded copy of the module rail's width — which meant it overlaid the space rather than
+         * making room in it, sat on top of the editor's controls, and stayed put when a docked call
+         * panel took the edge out from under it. All three are the host's job; see `docks` below.
+         */
+        width: '100%',
         height: '100%',
-        bg: 'neutral-0',
-        borderLeft: '1px solid neutral-200',
         p: '400',
         gap: '400',
-        zIndex: 'sticky',
+        overflow: 'hidden',
       },
       children: [
         {
@@ -170,13 +170,20 @@ export const notesModule = defineModule({
 
   // Displayed at install, never scored. "Store data in your spaces" and "add a panel to your screen"
   // are the two things a user is actually agreeing to.
-  capabilities: ['storage', 'slot:dock-right'],
+  capabilities: ['storage', 'dock'],
 
   // No `frameworks` — every piece of UI here is a fragment, so this module is framework-agnostic.
 
   entities: { manifest: NOTE_MANIFEST },
   schemas: { toggleButton },
-  slots: [{ anchor: 'dock-right', node: panel, order: 100 }],
+
+  /**
+   * A panel that makes room rather than covering. See `DockContribution`.
+   *
+   * `dockEdge` returns null while closed, which is how the host knows there is nothing to place —
+   * one key answering both "where" and "whether", so the two can never disagree.
+   */
+  docks: [{ edge: 'dockEdge', size: 'dockSize', float: 'dockFloat', node: panel }],
 
   // Drawn by the host's module rail rather than by this module, so every module is opened the same
   // way. `activeWhen` is what makes the rail tab highlight while the panel is open.
@@ -186,6 +193,17 @@ export const notesModule = defineModule({
     const [open, setOpen] = signal(false);
     return {
       open,
+      /**
+       * Where the host should put this panel — see `docks` above.
+       *
+       * `right` because that is the edge the module rail is on and where this has always opened;
+       * `md` is an opening bid the user overrides by dragging. Never floating: a panel you read
+       * alongside the space is the case docking exists for.
+       */
+      dockEdge: () => (open() ? 'right' : null),
+      dockSize: () => 'md',
+      dockFloat: () => false,
+
       toggle: () => setOpen(!open()),
       close: () => setOpen(false),
     };
