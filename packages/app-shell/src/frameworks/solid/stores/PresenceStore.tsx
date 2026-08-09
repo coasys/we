@@ -102,6 +102,17 @@ export function PresenceStoreProvider(props: ParentProps) {
   const routeStore = useRouteStore();
 
   const [rawPeers, setRawPeers] = createSignal<Peer[]>([]);
+  /**
+   * What this tab is participating in, by `type:id`.
+   *
+   * Tracked here rather than read back off the source because it decides something the source knows
+   * nothing about: whether this tab may be muted. Publishing is restricted to one tab per agent, and
+   * leadership follows window focus — so a tab holding a call would stop publishing the moment you
+   * looked at another window, and its call would vanish from every peer's roster while it was still
+   * running. `setPinned` exists for exactly that and had never been called.
+   */
+  const [myActivities, setMyActivities] = createSignal<string[]>([]);
+  const activityKey = (type: string, id?: string) => `${type}:${id ?? ''}`;
   const [focusDepth, setFocusDepth] = createSignal<FocusDepth>('route');
   const [availability, setAvailabilitySignal] = createSignal<'available' | 'busy' | 'away' | 'invisible'>('available');
   const [available, setAvailable] = createSignal(false);
@@ -167,6 +178,7 @@ export function PresenceStoreProvider(props: ParentProps) {
     source?.stop();
     source = null;
     setRawPeers([]);
+    setMyActivities([]);
     setAvailable(false);
 
     if (!datasetHandle || !did) return;
@@ -295,11 +307,31 @@ export function PresenceStoreProvider(props: ParentProps) {
   // Lend feature modules the activity slice of presence. Narrowed deliberately: a module has a
   // legitimate need to say "I am in this call" and to read who else is, but no business setting
   // another agent's availability or driving the heartbeat. See moduleHostServices.ts.
+  function setActivity(activity: Activity): void {
+    const key = activityKey(activity.type, 'id' in activity ? (activity.id as string) : undefined);
+    setMyActivities((prev) => (prev.includes(key) ? prev : [...prev, key]));
+    source?.setActivity(activity);
+  }
+
+  function clearActivity(type: string, id?: string): void {
+    // Matching `PresenceSource.clearActivity`: no id clears every activity of that type.
+    setMyActivities((prev) =>
+      prev.filter((key) => (id === undefined ? !key.startsWith(`${type}:`) : key !== activityKey(type, id))),
+    );
+    source?.clearActivity(type, id);
+  }
+
+  /**
+   * Refuse to hand publishing away while this tab is holding something that must keep being
+   * published. The coordinator already resolves two pinned tabs deterministically.
+   */
+  createEffect(() => tabs()?.setPinned(myActivities().length > 0));
+
   provideModuleHostServices({
     presence: {
       peers: () => rawPeers(),
-      setActivity: (activity) => source?.setActivity(activity),
-      clearActivity: (type, id) => source?.clearActivity(type, id),
+      setActivity,
+      clearActivity,
     },
   });
 
@@ -312,8 +344,8 @@ export function PresenceStoreProvider(props: ParentProps) {
     focusDepth,
     setFocusDepth,
     setAvailability: setAvailabilitySignal,
-    setActivity: (activity) => source?.setActivity(activity),
-    clearActivity: (type, id) => source?.clearActivity(type, id),
+    setActivity,
+    clearActivity,
   };
 
   return <PresenceContext.Provider value={store}>{props.children}</PresenceContext.Provider>;

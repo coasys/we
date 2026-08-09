@@ -28,7 +28,13 @@
  * grep `unicast:emulated`. No consumer changes.
  */
 import type { PerspectiveExpression, PerspectiveProxy } from '@coasys/ad4m';
-import type { EphemeralCapabilities, EphemeralChannel, EphemeralPort, EphemeralScope } from '@we/backend-shared';
+import type {
+  EphemeralCapabilities,
+  EphemeralChannel,
+  EphemeralPort,
+  EphemeralScope,
+  PublishResult,
+} from '@we/backend-shared';
 import { trace } from '@we/backend-shared';
 
 /** Namespaces this traffic so it can never be confused with another protocol's links. */
@@ -172,6 +178,9 @@ export function createAd4mEphemeralPort(getMyDid: () => string | undefined): Eph
         let failures = 0;
         /** The one message waiting for the in-flight send to finish. See `publish` below. */
         let queued: { payload: unknown; to?: { agentId?: string } } | null = null;
+        /** Consumers watching what becomes of their sends — see `onPublishResult`. */
+        const watchers = new Set<(result: PublishResult) => void>();
+        const report = (result: PublishResult) => watchers.forEach((cb) => cb(result));
 
         async function dispatch(payload: unknown, to?: { agentId?: string }): Promise<void> {
           // Set before the first await, or a burst all pass the coalesce check below and the
@@ -187,6 +196,7 @@ export function createAd4mEphemeralPort(getMyDid: () => string | undefined): Eph
             // peer that never sees it is the network's problem, not ours.
             const elapsed = Date.now() - startedAt;
             trace('ephemeral', 'send:ok', { tag, ms: elapsed });
+            report({ ok: true, ms: elapsed });
             if (elapsed >= SLOW_SEND_MS) {
               console.warn(
                 `ephemeral: "${tag}" broadcast took ${Math.round(elapsed / 1000)}s to be accepted. ` +
@@ -207,7 +217,9 @@ export function createAd4mEphemeralPort(getMyDid: () => string | undefined): Eph
             // from `sendBroadcastU` would never reach a `.finally`, leaving `inFlight` stuck true and
             // this channel silently muted for the rest of the session.
             failures += 1;
-            trace('ephemeral', 'send:fail', { tag, ms: Date.now() - startedAt, failures, error: String(error) });
+            const failedAfter = Date.now() - startedAt;
+            trace('ephemeral', 'send:fail', { tag, ms: failedAfter, failures, error: String(error) });
+            report({ ok: false, ms: failedAfter, error: String(error) });
             if ((failures & (failures - 1)) === 0) {
               console.warn(`ephemeral: send failed on "${tag}" (${failures} consecutive)`, error);
             }
@@ -236,10 +248,17 @@ export function createAd4mEphemeralPort(getMyDid: () => string | undefined): Eph
             // nothing is lost.
             if (options?.coalesce && inFlight) {
               trace('ephemeral', 'publish:queued', { tag });
+              // The message this one displaces never went anywhere, and a consumer counting on a
+              // send having been attempted should hear that rather than infer it from silence.
+              if (queued) report({ ok: false, ms: 0, superseded: true });
               queued = { payload, to };
               return;
             }
             void dispatch(payload, to);
+          },
+          onPublishResult(cb) {
+            watchers.add(cb);
+            return () => watchers.delete(cb);
           },
           onMessage(cb) {
             let listeners = subscribers.get(tag);

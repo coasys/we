@@ -34,11 +34,23 @@ function state(agentId: string, overrides: Partial<PresenceState> = {}): Presenc
  */
 function createFakeChannel() {
   const subscribers: Array<(from: string, payload: unknown) => void> = [];
+  const watchers: Array<(result: { ok: boolean; ms: number; superseded?: boolean }) => void> = [];
   const published: unknown[] = [];
   return {
     published,
+    /** Play the transport's verdict on the last send, as a real channel would. */
+    report(result: { ok: boolean; ms: number; superseded?: boolean }) {
+      watchers.forEach((cb) => cb(result));
+    },
     channel: {
       publish: (payload: unknown) => published.push(payload),
+      onPublishResult: (cb) => {
+        watchers.push(cb);
+        return () => {
+          const i = watchers.indexOf(cb);
+          if (i !== -1) watchers.splice(i, 1);
+        };
+      },
       onMessage: (cb) => {
         subscribers.push(cb);
         return () => {
@@ -311,6 +323,78 @@ describe('createHeartbeatPresence', () => {
 
     // The reply to a non-hello is a notify, not a send, so nothing here should be a handshake.
     expect(published.filter((message) => (message as { hello?: true }).hello)).toHaveLength(0);
+  });
+
+  describe('reacting to a send the transport refused', () => {
+    // The only closed-loop repair here. Every other one fires on the chance a message was lost after
+    // the transport accepted it; this one fires on being told nothing was sent at all.
+
+    /**
+     * Start, then settle: hearing from a peer ends the handshake repeats and stops the beat being a
+     * solicit, so the only publishes left are the ones each test is about.
+     */
+    function settled() {
+      const harness = start();
+      harness.deliver('peer', { v: 1, state: state('peer') });
+      harness.published.length = 0;
+      return harness;
+    }
+
+    it('retries on a backoff rather than waiting out the heartbeat', () => {
+      const { published, report } = settled();
+
+      report({ ok: false, ms: 30 });
+      clock += 400;
+      vi.advanceTimersByTime(400);
+      expect(published).toHaveLength(1);
+
+      // Doubling, because a refusal usually means the executor is unreachable and retrying hard at an
+      // unreachable executor is how a blip becomes an outage.
+      report({ ok: false, ms: 30 });
+      clock += 400;
+      vi.advanceTimersByTime(400);
+      expect(published).toHaveLength(1);
+      clock += 400;
+      vi.advanceTimersByTime(400);
+      expect(published).toHaveLength(2);
+    });
+
+    it('stops retrying as soon as one succeeds', () => {
+      const { published, report } = settled();
+
+      report({ ok: false, ms: 30 });
+      report({ ok: true, ms: 20 });
+
+      clock += 5_000;
+      vi.advanceTimersByTime(5_000);
+      // The ordinary beat, and nothing else — the pending retry was cancelled.
+      expect(published).toHaveLength(1);
+    });
+
+    it('repeats a hello as a hello, so a failed join is not downgraded to an announcement', () => {
+      // Peers answer a `hello`. Retrying it as a plain beat would leave the joiner waiting for
+      // everyone else's next heartbeat — the failure this whole handshake exists to avoid.
+      // Not `settled()`: this one needs the last publish to have been the join handshake.
+      const { published, report } = start();
+      published.length = 0;
+
+      report({ ok: false, ms: 30 });
+      clock += 400;
+      vi.advanceTimersByTime(400);
+
+      expect(published[0]).toHaveProperty('hello', true);
+    });
+
+    it('ignores a superseded message, which is not a failure to repair', () => {
+      // Coalescing dropped it in favour of a newer one carrying the same state or better.
+      const { published, report } = settled();
+
+      report({ ok: false, ms: 0, superseded: true });
+      clock += 2_000;
+      vi.advanceTimersByTime(2_000);
+
+      expect(published).toHaveLength(0);
+    });
   });
 
   it('sends a state change twice, because losing one costs a whole interval', () => {

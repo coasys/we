@@ -163,6 +163,20 @@ export const HANDSHAKE_RETRIES = [1_000];
  */
 export const STATE_CHANGE_ECHO = 700;
 
+/**
+ * First delay after a send the backend *refused*, doubling each consecutive failure.
+ *
+ * Distinct from every other timer here because it answers a different question. The others guard
+ * against loss the transport cannot see and therefore fire on the chance something went wrong; this
+ * one fires on a refusal, where nothing was sent and there is no chance about it.
+ *
+ * Backed off rather than immediate: a refusal usually means the executor is unreachable, and
+ * retrying hard at an unreachable executor is how a blip becomes an outage — the reasoning that put
+ * coalescing in the transport in the first place. Capped at the heartbeat interval, beyond which the
+ * ordinary beat *is* the retry.
+ */
+export const RETRY_BASE = 400;
+
 /** Trim a focus to the depth the agent has consented to publish. */
 export function applyFocusDepth(focus: Focus | undefined, depth: FocusDepth): Focus | undefined {
   if (!focus || depth === 'off') return undefined;
@@ -314,6 +328,8 @@ export function callRosters(peers: Peer[]): Map<string, Peer[]> {
 export interface PresenceChannel {
   publish(payload: unknown, to?: { agentId?: string }): void;
   onMessage(cb: (from: string, payload: unknown) => void): () => void;
+  /** Optional — see `EphemeralChannel.onPublishResult`. Absent means the transport cannot tell. */
+  onPublishResult?(cb: (result: { ok: boolean; ms: number; superseded?: boolean }) => void): () => void;
 }
 
 export interface HeartbeatOptions {
@@ -355,6 +371,23 @@ export interface PresenceSource {
   /** Stop publishing and listening. Idempotent. */
   stop(): void;
 }
+
+/**
+ * Why a publish is happening — and therefore what to do if it does not arrive.
+ *
+ * A first-class reason rather than an optional lifecycle flag, because three separate repair
+ * policies now key off it and the code had been inferring them from context. It read badly too: a
+ * mute logged as `"beat"` in the trace, which is the one line you would look at to find out whether
+ * a mute had been sent.
+ *
+ * - `beat` — routine. Losing one costs nothing; the next carries the same state.
+ * - `change` — something became true. Losing one leaves peers asserting the opposite until the next
+ *   beat, so it is repeated once. See {@link STATE_CHANGE_ECHO}.
+ * - `hello` — arriving, and asking everyone to answer.
+ * - `solicit` — a beat that asks, sent while this agent knows no peers.
+ * - `bye` — leaving, so peers drop this agent rather than watching it decay.
+ */
+export type PublishReason = 'beat' | 'change' | 'hello' | 'solicit' | 'bye';
 
 /** Wire protocol. Kept minimal: a full state, plus two one-bit lifecycle hints. */
 interface PresenceMessage {
@@ -406,9 +439,15 @@ export function createHeartbeatPresence(channel: PresenceChannel, options: Heart
   const states = new Map<string, PresenceState>();
   let self: PresenceState | null = null;
   let unsubscribe: (() => void) | null = null;
+  let unsubscribeResults: (() => void) | null = null;
   let timer: unknown = null;
   let handshakeTimer: unknown = null;
   let echoTimer: unknown = null;
+  let retryTimer: unknown = null;
+  /** Consecutive failed sends, for the backoff. Reset by any success. */
+  let sendFailures = 0;
+  /** What the last publish was for, so a retry can repeat the right kind of message. */
+  let lastReason: PublishReason = 'beat';
   let running = false;
 
   function notify(): void {
@@ -427,6 +466,41 @@ export function createHeartbeatPresence(channel: PresenceChannel, options: Heart
     }
   }
 
+  function cancelRetry(): void {
+    if (retryTimer !== null) {
+      clearTimer(retryTimer);
+      retryTimer = null;
+    }
+  }
+
+  /**
+   * React to a send that actually failed, rather than waiting to find out by accident.
+   *
+   * This is the one repair here that is *closed-loop*, and it is worth distinguishing from the
+   * others. The echo, the handshake retry and the soliciting beat all guard against loss the
+   * transport cannot see — a message it accepted and the network then dropped — so they can only
+   * ever be timers firing on the chance that something went wrong. A refusal is different: the
+   * backend said no, nothing was sent, and there is no chance about it.
+   *
+   * Retried on a backoff rather than immediately, because a refusal usually means the executor is
+   * unreachable, and hammering an unreachable executor is how a blip becomes an outage — the same
+   * reasoning that put coalescing in the transport. Capped at the heartbeat interval, since past
+   * that the ordinary beat is the retry.
+   */
+  function onSendFailed(): void {
+    sendFailures += 1;
+    const delay = Math.min(RETRY_BASE * 2 ** (sendFailures - 1), interval);
+    trace('presence', 'send:retry', { failures: sendFailures, delay });
+    cancelRetry();
+    retryTimer = setTimer(() => {
+      retryTimer = null;
+      if (!running) return;
+      // The reason is carried over: a `hello` that failed must go out as a `hello`, or nobody
+      // answers it and the join is silently downgraded to a plain announcement.
+      send(lastReason === 'bye' ? 'beat' : lastReason);
+    }, delay);
+  }
+
   /**
    * Publish a state change, and publish it once more shortly after in case the first is lost.
    *
@@ -435,14 +509,14 @@ export function createHeartbeatPresence(channel: PresenceChannel, options: Heart
    * queueing a repeat each. See {@link STATE_CHANGE_ECHO}.
    */
   function publishChange(): void {
-    send();
+    send('change');
     schedule(interval);
     if (echoTimer !== null) clearTimer(echoTimer);
     echoTimer = setTimer(() => {
       echoTimer = null;
       if (!running) return;
       trace('presence', 'change:echo');
-      send();
+      send('change');
       schedule(interval);
     }, STATE_CHANGE_ECHO);
   }
@@ -466,8 +540,9 @@ export function createHeartbeatPresence(channel: PresenceChannel, options: Heart
     }, delay);
   }
 
-  function send(lifecycle?: 'hello' | 'bye'): void {
+  function send(reason: PublishReason = 'beat'): void {
     if (!running || !self) return;
+    lastReason = reason;
     self = { ...self, updatedAt: now() };
     states.set(self.agentId, self);
     // `invisible` is a hard stop, not a client-side filter. Flux keeps broadcasting full state
@@ -478,9 +553,9 @@ export function createHeartbeatPresence(channel: PresenceChannel, options: Heart
     // to retract, and sending one would disclose their departure — and therefore their presence.
     if (self.availability !== 'invisible') {
       const message: PresenceMessage = { v: 1, state: self };
-      if (lifecycle === 'hello') message.hello = true;
-      if (lifecycle === 'bye') message.bye = true;
-      trace('presence', 'send', { lifecycle: lifecycle ?? 'beat', activities: self.activities?.length ?? 0 });
+      if (reason === 'hello' || reason === 'solicit') message.hello = true;
+      if (reason === 'bye') message.bye = true;
+      trace('presence', 'send', { reason, activities: self.activities?.length ?? 0 });
       channel.publish(message);
     }
     notify();
@@ -506,7 +581,7 @@ export function createHeartbeatPresence(channel: PresenceChannel, options: Heart
          * to thirty seconds — and coming back deaf, waiting passively for everyone else's next beat,
          * is how a blip becomes the better part of a minute.
          */
-        send(alone() ? 'hello' : undefined);
+        send(alone() ? 'solicit' : 'beat');
         schedule(interval);
       }
     }, delay);
@@ -564,6 +639,18 @@ export function createHeartbeatPresence(channel: PresenceChannel, options: Heart
       self = { ...state, updatedAt: now() };
       states.set(self.agentId, self);
       unsubscribe = channel.onMessage(receive);
+      unsubscribeResults =
+        channel.onPublishResult?.((result) => {
+          // A superseded message was replaced by a newer one carrying the same state or better, so
+          // it is not a failure to repair — reporting it exists so this cannot be inferred wrongly.
+          if (result.superseded) return;
+          if (result.ok) {
+            sendFailures = 0;
+            cancelRetry();
+            return;
+          }
+          onSendFailed();
+        }) ?? null;
       trace('presence', 'start', { agentId: self.agentId });
       handshake();
       schedule(interval);
@@ -619,6 +706,10 @@ export function createHeartbeatPresence(channel: PresenceChannel, options: Heart
 
       running = false;
       cancelHandshake();
+      cancelRetry();
+      sendFailures = 0;
+      unsubscribeResults?.();
+      unsubscribeResults = null;
       if (echoTimer !== null) {
         clearTimer(echoTimer);
         echoTimer = null;

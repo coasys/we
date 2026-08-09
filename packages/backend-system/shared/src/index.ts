@@ -34,6 +34,7 @@ export type {
   EphemeralRequirements,
   EphemeralGap,
   EphemeralPlan,
+  PublishResult,
 } from './ephemeral';
 
 export {
@@ -132,9 +133,4 @@ export type {
   RuntimeAdminPort,
   TokenizerSource,
 } from './runtimeAdmin';
-export type {
-  TranscriptionModel,
-  TranscriptionPort,
-  TranscriptionStream,
-  TranscriptionTuning,
-} from './transcription';
+export type { TranscriptionModel, TranscriptionPort, TranscriptionStream, TranscriptionTuning } from './transcription';

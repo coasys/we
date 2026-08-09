@@ -270,6 +270,53 @@ describe('createAd4mEphemeralPort', () => {
       expect(env.sent.map((link) => JSON.parse(link.source))).toEqual([{ beat: 1 }, { leftCall: true }]);
     });
 
+    it('reports what became of each publish', async () => {
+      // The information was always here — the adapter awaits the send and times it — and was thrown
+      // away, leaving every consumer above to guess with timers whether anything had gone out.
+      const env = fakePerspective();
+      env.neighbourhood.sendBroadcastU
+        .mockImplementationOnce(async () => {
+          throw new Error('executor gone');
+        })
+        .mockImplementationOnce(async (payload) => {
+          env.sent.push(payload.links[0]);
+          return true;
+        });
+
+      const scope = createAd4mEphemeralPort(() => 'me')(env.perspective)!;
+      const channel = scope.channel('presence');
+      const results: boolean[] = [];
+      channel.onPublishResult!((result) => results.push(result.ok));
+
+      channel.publish({ beat: 1 });
+      await flush();
+      channel.publish({ beat: 2 });
+      await flush();
+
+      expect(results).toEqual([false, true]);
+    });
+
+    it('reports a coalesced message it discarded, rather than letting silence imply it was sent', async () => {
+      const env = fakePerspective();
+      let release: (() => void) | undefined;
+      env.neighbourhood.sendBroadcastU.mockImplementationOnce(
+        async () => new Promise<boolean>((resolve) => (release = () => resolve(true))),
+      );
+
+      const scope = createAd4mEphemeralPort(() => 'me')(env.perspective)!;
+      const channel = scope.channel('presence', { coalesce: true });
+      const superseded: boolean[] = [];
+      channel.onPublishResult!((result) => superseded.push(!!result.superseded));
+
+      channel.publish({ beat: 1 });
+      await flush();
+      channel.publish({ beat: 2 });
+      channel.publish({ beat: 3 }); // displaces beat 2, which never went anywhere
+
+      expect(superseded).toEqual([true]);
+      release?.();
+    });
+
     it('keeps publishing after a send throws synchronously', async () => {
       // A synchronous throw never reaches a `.finally`, so the in-flight flag would stay set and the
       // channel would go silent for the rest of the session — the worst possible failure for the one
