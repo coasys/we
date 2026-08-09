@@ -139,6 +139,24 @@ describe('call module — contributions', () => {
     expect((store[dock.edge] as () => unknown)()).toBeNull();
   });
 
+  it('looks a participant up by id for their face, so a profile arriving cannot remount their video', () => {
+    // The same hazard as the volatile flags above, with a stranger symptom: a profile is fetched
+    // after the tile exists, so folding it onto the tile object would blank that person's video at
+    // the exact moment their avatar loaded. `$tile.name` and `$tile.avatar` used to be declared on
+    // `CallTile`, were never set by anything, and were read here — an invitation to "fix" it the
+    // wrong way.
+    const tile = JSON.stringify(moduleRegistry.schemas()['call.tile'] ?? callModule.schemas?.tile);
+
+    for (const late of ['name', 'avatar']) {
+      expect(tile).not.toContain(`$tile.${late}`);
+    }
+    for (const field of ['image', 'hash', 'name']) {
+      expect(tile).toContain(`"select":"${field}"`);
+    }
+    // Identity that cannot change is still read straight off the tile — nothing to gain by hiding it.
+    expect(tile).toContain('$tile.isSelf');
+  });
+
   it('exposes a launcher a template can place on any node', () => {
     moduleRegistry.register(callModule, host, storeDeps);
     // Anchored calls need a per-node trigger, and only a template knows what a node is.

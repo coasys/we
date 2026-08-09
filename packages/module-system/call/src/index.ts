@@ -84,6 +84,16 @@ const faceOf = (field: string) => ({
   $find: { items: { $store: 'modules.call.tileFaces' }, where: { id: '$tile.id' }, select: field },
 });
 
+/**
+ * Whether this tile is showing moving pictures rather than an avatar.
+ *
+ * Named once and used twice, because two places have to agree about it and disagreeing is invisible:
+ * the tile would show a face in the middle *and* the same face again in the corner, or a screen
+ * share with nothing to say whose it is. A tile with no stream yet is normal for the first second or
+ * two of a join, and a peer with their camera off never gets one at all.
+ */
+const hasVideo = { $and: ['$tile.stream', { $or: [stateOf('videoEnabled'), stateOf('isScreen')] }] };
+
 /** One participant's video, or their avatar when there is nothing to show. */
 const tile: SchemaNode = {
   type: 'Column',
@@ -132,9 +142,8 @@ const tile: SchemaNode = {
     {
       type: '$if',
       props: {
-        // A tile with no stream yet is normal for the first second or two of a join, and a peer with
-        // their camera off never gets one at all. Both show the avatar rather than a black rectangle.
-        condition: { $and: ['$tile.stream', { $or: [stateOf('videoEnabled'), stateOf('isScreen')] }] },
+        // No video means the avatar, rather than a black rectangle.
+        condition: hasVideo,
         then: {
           type: 'we-video',
           props: {
@@ -198,7 +207,7 @@ const tile: SchemaNode = {
           props: {
             image: faceOf('image'),
             hash: faceOf('hash'),
-            initials: faceOf('initials'),
+            initials: faceOf('name'),
             size: 'lg',
           },
         },
@@ -228,6 +237,54 @@ const tile: SchemaNode = {
       type: 'Row',
       props: { position: 'absolute', bottom: '200', left: '200', gap: '100', ay: 'center' },
       children: [
+        /**
+         * Whose tile this is — the question a wall of faces stops answering the moment one of them
+         * turns their camera off, or shares a screen that looks like everybody else's.
+         *
+         * In the same row as the badges rather than its own corner, so the two cannot overlap on a
+         * small tile: one absolutely positioned strip, laid out left to right, name first.
+         */
+        {
+          type: '$if',
+          props: {
+            // Nothing at all rather than an empty chip, for a peer whose profile has not arrived.
+            // Your own tile always has something to say, so it is exempt.
+            condition: { $or: ['$tile.isSelf', faceOf('name')] },
+            then: {
+              type: 'we-badge',
+              props: { variant: 'neutral', size: 'xs', maxWidth: '150px' },
+              children: [
+                {
+                  /**
+                   * The small avatar appears only while video is playing.
+                   *
+                   * With the camera off the large avatar is already in the middle of the tile, and a
+                   * second copy of the same face two centimetres below it is noise. While video is
+                   * playing it is the opposite: a shared desktop carries no clue whose it is.
+                   */
+                  type: '$if',
+                  props: {
+                    condition: hasVideo,
+                    then: {
+                      type: 'we-avatar',
+                      props: { image: faceOf('image'), hash: faceOf('hash'), initials: faceOf('name'), size: 'xxs' },
+                    },
+                  },
+                },
+                {
+                  type: 'we-text',
+                  // `minWidth: 0` is what lets `truncate` actually bite: a flex item's automatic
+                  // minimum is its content, so without it a long name pushes the badge wider than
+                  // its own `maxWidth` instead of being clipped.
+                  props: { variant: 'footnote', truncate: true, minWidth: '0' },
+                  // "You" rather than your own name: it is shorter, and it is the thing you are
+                  // actually looking for when scanning a grid for your own picture.
+                  children: [{ $if: { condition: '$tile.isSelf', then: 'You', else: faceOf('name') } }],
+                },
+              ],
+            },
+          },
+        },
         {
           type: '$if',
           props: {

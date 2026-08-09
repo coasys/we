@@ -108,12 +108,12 @@ export function createCallStore(deps: CallStoreDeps) {
    * everybody else with no profile picture — and stays the same person between renders. `image` wins
    * where a real one exists.
    */
-  function faceOf(agentId: string): { image?: string; hash: string; initials?: string } {
+  function faceOf(agentId: string): { image?: string; hash: string; name?: string } {
     const profile = identities?.get(agentId);
     // Asking is idempotent and the host deduplicates in-flight requests, so this is safe on a hot
     // path — and it is the only thing that ever triggers a fetch for a peer nobody has looked up.
     if (!profile) identities?.fetch(agentId);
-    return { image: profile?.avatar, hash: agentId, initials: profile?.name };
+    return { image: profile?.avatar, hash: agentId, name: profile?.name };
   }
 
   const [callId, setCallId] = signal<string | null>(null);
@@ -539,7 +539,7 @@ export function createCallStore(deps: CallStoreDeps) {
      * blink out precisely when their avatar loaded, which is a strange enough symptom to be worth
      * naming twice.
      */
-    tileFaces: (): { id: string; image?: string; hash: string; initials?: string }[] =>
+    tileFaces: (): { id: string; image?: string; hash: string; name?: string }[] =>
       tiles().map((entry) => ({ id: entry.id, ...faceOf(entry.did) })),
 
     tileCells: (): { id: string; style: Record<string, string | number> }[] => {
@@ -589,8 +589,12 @@ export function createCallStore(deps: CallStoreDeps) {
           // draws a generic person glyph for anything else — so handing it raw presence records, which
           // carry an agent id and no profile at all, drew one grey silhouette per participant.
           // No `tone`: everyone in this list is in the call right now, so a liveness ring would be
-          // encoding a distinction that cannot vary here.
-          .map(({ peer }) => ({ ...faceOf(peer.agentId), did: peer.agentId }))
+          // encoding a distinction that cannot vary here. `initials` rather than `name`, because
+          // that is the prop an avatar asks for — it derives the letters from the name it is given.
+          .map(({ peer }) => {
+            const face = faceOf(peer.agentId);
+            return { image: face.image, hash: face.hash, initials: face.name, did: peer.agentId };
+          })
       );
     },
 
