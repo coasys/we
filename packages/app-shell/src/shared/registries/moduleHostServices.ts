@@ -19,7 +19,7 @@
  * kind of implicit state the last round of seam bugs came from.
  */
 import type { Activity, DatasetHandle, EphemeralPort, Peer, TranscriptionPort } from '@we/backend-shared';
-import type { ModuleStoreDeps } from '@we/module-shared';
+import type { ModuleIdentityAccess, ModuleStoreDeps } from '@we/module-shared';
 
 import { moduleRegistry, moduleStores } from './moduleRegistry';
 
@@ -35,6 +35,8 @@ export interface ModuleHostServices {
     clearActivity: (type: string, id?: string) => void;
   };
   transcription?: TranscriptionPort;
+  /** The profile cache, so a module can put a face to an agent id. See `ModuleIdentityAccess`. */
+  identities?: ModuleIdentityAccess;
   /** Write a record into the current dataset — the host's `model.create`, in imperative form. */
   createEntity?: (entity: string, fields: Record<string, unknown>) => Promise<string | null>;
 }
@@ -94,6 +96,13 @@ export function createModuleStoreDeps(framework: {
         if (!port) throw new Error('transcription: this backend cannot transcribe');
         return port.open(modelId, onText, tuning);
       },
+    },
+
+    // Forwarding, like the ports above: a module store is built before `ProfileStore` mounts, so
+    // capturing the directory itself would capture nothing.
+    identities: {
+      get: (agentId) => services.identities?.get(agentId),
+      fetch: (agentId) => services.identities?.fetch(agentId),
     },
 
     audioInput: () => audioInput(),

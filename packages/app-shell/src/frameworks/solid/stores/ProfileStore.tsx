@@ -6,6 +6,7 @@
  * and owns the own-profile write path (text fields, images, location). Identity itself (`me`,
  * the DID) belongs to SessionStore — this store is about the human-facing profile data.
  */
+import { provideModuleHostServices } from '@shared/registries/moduleHostServices';
 import { type AgentProfileSummary, isProfileEmpty, type PublishProfileFields } from '@we/backend-shared';
 import { toastService } from '@we/components/solid';
 import { compressImageToFileData, dataURIToFileData, shrinkDataUri } from '@we/models';
@@ -345,6 +346,30 @@ export function ProfileStoreProvider(props: ParentProps) {
     await profilePort.publish({ avatarExpressionUrl: expressionUrl } as PublishProfileFields);
     void cacheAvatarOnAccount(dataUri);
   }
+
+  /**
+   * Lend feature modules the same directory the `$agent` block reads.
+   *
+   * A module cannot join an agent id to a face on its own: presence carries ids only, on purpose,
+   * and a module has no way to name a host store. Without this the call module drew the generic
+   * person glyph for everyone — its own comment said as much, and said it would stay that way until
+   * an identities port existed. This is that port.
+   *
+   * `get` reads `profiles()` inside the call, so a module reading it in a derived value re-runs when
+   * a profile lands. The name is assembled here rather than in each module, because how a host makes
+   * a display name out of the fields it holds is the host's business.
+   */
+  provideModuleHostServices({
+    identities: {
+      get: (agentId) => {
+        const profile = profiles().find((entry) => entry.did === agentId);
+        if (!profile) return undefined;
+        const name = [profile.firstName, profile.lastName].filter(Boolean).join(' ').trim();
+        return { name: name || profile.handle || undefined, avatar: profile.avatar };
+      },
+      fetch: (agentId) => void fetchProfile(agentId),
+    },
+  });
 
   const store: ProfileStore = {
     profiles,

@@ -35,12 +35,14 @@ import { anchoredCallId, spaceCallId } from './protocol';
 export interface CallTile {
   id: string;
   did: string;
-  name?: string;
-  avatar?: string;
   /** `null` until that peer's media arrives, which is normal for the first second or two. */
   stream: MediaStream | null;
   isSelf: boolean;
 }
+// No `name` or `avatar` here, and the omission is deliberate rather than an oversight. Both existed,
+// both were always undefined, and both were an open invitation to the one mistake this type is
+// shaped to prevent: a profile arriving is not a reason to remount somebody's video. They are looked
+// up by id instead — see `tileFaces`.
 
 /**
  * A participant's *volatile* state, deliberately kept out of {@link CallTile}.
@@ -91,7 +93,28 @@ export interface CallStoreDeps extends ModuleStoreDeps {
 }
 
 export function createCallStore(deps: CallStoreDeps) {
-  const { signal, effect, dataset, datasetUri, selfId, ephemeral, presence } = deps;
+  const { signal, effect, dataset, datasetUri, selfId, ephemeral, presence, identities } = deps;
+
+  /**
+   * An agent id, joined to whatever the host knows about them, in the shape an avatar wants.
+   *
+   * Computed at the point of display rather than stored, and that is the whole trick: a profile that
+   * arrives late must change the picture without changing the roster, because changing the roster
+   * remounts video elements. Reading `identities.get` inside a derived value is what makes the
+   * picture appear on its own when the fetch lands.
+   *
+   * `hash` is always supplied, never as a fallback for a missing image: it seeds a generated avatar
+   * that is stable per agent, so somebody with no profile picture is still visually distinct from
+   * everybody else with no profile picture — and stays the same person between renders. `image` wins
+   * where a real one exists.
+   */
+  function faceOf(agentId: string): { image?: string; hash: string; initials?: string } {
+    const profile = identities?.get(agentId);
+    // Asking is idempotent and the host deduplicates in-flight requests, so this is safe on a hot
+    // path — and it is the only thing that ever triggers a fetch for a peer nobody has looked up.
+    if (!profile) identities?.fetch(agentId);
+    return { image: profile?.avatar, hash: agentId, initials: profile?.name };
+  }
 
   const [callId, setCallId] = signal<string | null>(null);
   const [tiles, setTiles] = signal<CallTile[]>([]);
@@ -507,6 +530,18 @@ export function createCallStore(deps: CallStoreDeps) {
      * changing, so a stored copy would have to be rebuilt from somewhere that has no business
      * knowing about layout. Here it simply re-derives, and every signal it reads makes it reactive.
      */
+    /**
+     * Each participant's face, looked up by id exactly as their volatile flags are.
+     *
+     * Not on the tile, for the reason nothing else is: `$each` renders through a reference-keyed
+     * `<For>`, so folding a profile onto the tile object would remount that participant's row the
+     * moment their picture arrived — and a remounted row drops `srcObject`. Somebody's video would
+     * blink out precisely when their avatar loaded, which is a strange enough symptom to be worth
+     * naming twice.
+     */
+    tileFaces: (): { id: string; image?: string; hash: string; initials?: string }[] =>
+      tiles().map((entry) => ({ id: entry.id, ...faceOf(entry.did) })),
+
     tileCells: (): { id: string; style: Record<string, string | number> }[] => {
       const focus = focusedId();
       const strip = stageMode() === 'strip';
@@ -547,9 +582,16 @@ export function createCallStore(deps: CallStoreDeps) {
       const uri = datasetUri?.() ?? null;
       if (!uri || !presence) return [];
       const id = spaceCallId(uri);
-      return activitiesOfType(presence.peers(), 'call')
-        .filter(({ activity }) => activity.id === id)
-        .map(({ peer }) => peer);
+      return (
+        activitiesOfType(presence.peers(), 'call')
+          .filter(({ activity }) => activity.id === id)
+          // Faces, not peers. This feeds an `AvatarStack`, which reads `image`/`hash`/`initials` and
+          // draws a generic person glyph for anything else — so handing it raw presence records, which
+          // carry an agent id and no profile at all, drew one grey silhouette per participant.
+          // No `tone`: everyone in this list is in the call right now, so a liveness ring would be
+          // encoding a distinction that cannot vary here.
+          .map(({ peer }) => ({ ...faceOf(peer.agentId), did: peer.agentId }))
+      );
     },
 
     // ── Actions ──────────────────────────────────────────────────────────────

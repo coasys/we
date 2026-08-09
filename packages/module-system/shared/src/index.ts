@@ -26,6 +26,8 @@ export type {
   ModuleCompatibility,
   ModuleDefinition,
   ModuleEmbed,
+  ModuleIdentity,
+  ModuleIdentityAccess,
   ModuleLauncher,
   ModulePresenceAccess,
   ModuleStoreDeps,

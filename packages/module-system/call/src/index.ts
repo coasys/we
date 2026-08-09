@@ -79,6 +79,11 @@ const stateOf = (field: string) => ({
   $find: { items: { $store: 'modules.call.tileStates' }, where: { id: '$tile.id' }, select: field },
 });
 
+/** The same lookup for a participant's picture and name, which are late-arriving for the same reason. */
+const faceOf = (field: string) => ({
+  $find: { items: { $store: 'modules.call.tileFaces' }, where: { id: '$tile.id' }, select: field },
+});
+
 /** One participant's video, or their avatar when there is nothing to show. */
 const tile: SchemaNode = {
   type: 'Column',
@@ -181,11 +186,21 @@ const tile: SchemaNode = {
           },
         },
         else: {
-          // `hash` gives every participant a distinct generated avatar from their DID. Profiles are
-          // not reachable from here — presence carries `agentId` only, and joining it to a profile is
-          // the host's job — so this is what there is until an identities port is lent to modules.
+          /**
+           * The participant's actual picture, with a generated one from their DID behind it.
+           *
+           * Looked up rather than read off `$tile`, because a profile arriving is not a reason to
+           * remount a video — see `tileFaces` in the store. `hash` is always supplied, so an agent
+           * with no picture still gets a distinct and stable one rather than the same grey glyph as
+           * everybody else.
+           */
           type: 'we-avatar',
-          props: { image: '$tile.avatar', hash: '$tile.did', initials: '$tile.name', size: 'lg' },
+          props: {
+            image: faceOf('image'),
+            hash: faceOf('hash'),
+            initials: faceOf('initials'),
+            size: 'lg',
+          },
         },
       },
     },
@@ -402,7 +417,10 @@ const bar: SchemaNode = {
           children: [
             {
               type: 'AvatarStack',
-              props: { avatars: { $store: 'modules.call.ongoing' }, size: 'xs', max: 4 },
+              // `ongoing` returns faces rather than presence records — see the store. Handing an
+              // avatar something with no `image` or `hash` gets the generic person glyph, once per
+              // participant, which is what this used to be.
+              props: { avatars: { $store: 'modules.call.ongoing' }, size: 'sm', max: 4 },
             },
             {
               type: 'we-text',

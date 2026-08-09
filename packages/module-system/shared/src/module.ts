@@ -399,6 +399,20 @@ export interface ModuleStoreDeps {
   presence?: ModulePresenceAccess;
 
   /**
+   * Who an agent id belongs to — the same directory the `$agent` block reads.
+   *
+   * Presence deliberately carries `agentId` and nothing else: a roster that also cached profiles
+   * would re-fetch every peer's on every heartbeat, which is the mistake it was written to avoid. So
+   * the join to a name and a picture happens here instead, at the point of display.
+   *
+   * `get` reads reactively and returns nothing for an id the host has not cached; `fetch` asks it to,
+   * and the read updates on its own when it arrives. A module must therefore render something for an
+   * unknown agent rather than waiting — a generated avatar from the id is the usual answer, and stays
+   * the answer on a host with no directory at all.
+   */
+  identities?: ModuleIdentityAccess;
+
+  /**
    * Speech to text, for a module that listens. Absent when the backend cannot transcribe.
    *
    * A module must degrade rather than throw: no port means no transcription model is reachable, and
@@ -485,6 +499,34 @@ export interface ModulePresenceAccess {
   /** Publish an activity of this agent's own. */
   setActivity: (activity: Activity) => void;
   clearActivity: (type: string, id?: string) => void;
+}
+
+/**
+ * The slice of the host's identity directory a module may read.
+ *
+ * Read-only, and deliberately not `AgentProfileSummary`: what a host knows about an agent is the
+ * host's business, and a module wanting a picture and a name should not be typed against a
+ * particular backend's idea of a person. The fields below are the ones every directory has.
+ */
+export interface ModuleIdentityAccess {
+  /**
+   * The profile the host has cached for this id, or `undefined`.
+   *
+   * Must read reactively, so a module reading it inside a derived value re-runs when a profile
+   * arrives. Returning `undefined` is the ordinary case for a peer whose profile has not been
+   * fetched yet — never an error.
+   */
+  get: (agentId: string) => ModuleIdentity | undefined;
+  /** Ask the host to fetch a profile it has not cached. Safe to call repeatedly. */
+  fetch: (agentId: string) => void;
+}
+
+/** What a module gets to know about an agent. */
+export interface ModuleIdentity {
+  /** Display name, already assembled from whatever name fields the host holds. */
+  name?: string;
+  /** Resolved image, ready to render — never a reference a module would have to fetch itself. */
+  avatar?: string;
 }
 
 /** Identity function that exists for inference and for a greppable declaration site. */
