@@ -194,22 +194,75 @@ const tile: SchemaNode = {
             },
           },
         },
+        /**
+         * No video: who this is, and why there is nothing to watch.
+         *
+         * The second half is the part that was missing. A peer still negotiating and a peer who has
+         * turned their camera off both rendered as a bare avatar, so the first seconds of a working
+         * call were indistinguishable from a broken one — and the only honest thing to do while
+         * waiting is to say that you are waiting.
+         */
         else: {
-          /**
-           * The participant's actual picture, with a generated one from their DID behind it.
-           *
-           * Looked up rather than read off `$tile`, because a profile arriving is not a reason to
-           * remount a video — see `tileFaces` in the store. `hash` is always supplied, so an agent
-           * with no picture still gets a distinct and stable one rather than the same grey glyph as
-           * everybody else.
-           */
-          type: 'we-avatar',
-          props: {
-            image: faceOf('image'),
-            hash: faceOf('hash'),
-            initials: faceOf('name'),
-            size: 'lg',
-          },
+          type: 'Column',
+          props: { gap: '200', ax: 'center', ay: 'center' },
+          children: [
+            {
+              /**
+               * The participant's actual picture, with a generated one from their DID behind it.
+               *
+               * Looked up rather than read off `$tile`, because a profile arriving is not a reason to
+               * remount a video — see `tileFaces` in the store. `hash` is always supplied, so an agent
+               * with no picture still gets a distinct and stable one rather than the same grey glyph
+               * as everybody else.
+               */
+              type: 'we-avatar',
+              props: {
+                image: faceOf('image'),
+                hash: faceOf('hash'),
+                initials: faceOf('name'),
+                size: 'lg',
+              },
+            },
+            {
+              type: '$if',
+              props: {
+                condition: stateOf('connecting'),
+                then: {
+                  type: 'Row',
+                  props: { gap: '100', ay: 'center' },
+                  children: [
+                    { type: 'we-spinner', props: { size: 'xs' } },
+                    {
+                      type: 'we-text',
+                      props: { variant: 'footnote', color: 'neutral-500' },
+                      children: ['Connecting…'],
+                    },
+                  ],
+                },
+                // Failure is not progress and must not animate like it. Nothing at all for the
+                // ordinary case — a connected peer with their camera off needs no explanation, and
+                // labelling it would be noise on every tile of every call.
+                else: {
+                  type: '$if',
+                  props: {
+                    condition: stateOf('failed'),
+                    then: {
+                      type: 'Row',
+                      props: { gap: '100', ay: 'center' },
+                      children: [
+                        { type: 'we-icon', props: { name: 'warning', size: 'xs', color: 'danger-500' } },
+                        {
+                          type: 'we-text',
+                          props: { variant: 'footnote', color: 'danger-500' },
+                          children: ["Couldn't connect"],
+                        },
+                      ],
+                    },
+                  },
+                },
+              },
+            },
+          ],
         },
       },
     },
@@ -308,10 +361,16 @@ const tile: SchemaNode = {
           },
         },
         {
-          // Reconnecting is worth saying out loud — silence looks identical to a frozen call.
+          // Reconnecting is worth saying out loud — a frozen picture looks identical to a still one.
+          //
+          // Only where there is a picture to freeze: with no video the centre of the tile already
+          // says what is happening, and a badge repeating it two centimetres below would be the same
+          // sentence twice.
           type: '$if',
           props: {
-            condition: { $in: [stateOf('connection'), ['connecting', 'disconnected', 'failed']] },
+            condition: {
+              $and: [hasVideo, { $in: [stateOf('connection'), ['connecting', 'disconnected', 'failed']] }],
+            },
             then: {
               type: 'we-badge',
               props: { variant: 'warning', size: 'xs' },

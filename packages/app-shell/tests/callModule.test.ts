@@ -139,6 +139,20 @@ describe('call module — contributions', () => {
     expect((store[dock.edge] as () => unknown)()).toBeNull();
   });
 
+  it('distinguishes waiting for a connection from a camera that is off', () => {
+    // Both render as a bare avatar, so without this the first seconds of a working call look exactly
+    // like a broken one. `connecting` is derived from the absence of a stream rather than from the
+    // connection state, because `peerStates` is empty until the first negotiation — which is the
+    // very window that showed nothing.
+    const tile = JSON.stringify(moduleRegistry.schemas()['call.tile'] ?? callModule.schemas?.tile);
+
+    expect(tile).toContain('"select":"connecting"');
+    expect(tile).toContain('"select":"failed"');
+    // A failure must not animate like progress.
+    expect(tile).toContain('we-spinner');
+    expect(tile).toContain("Couldn't connect");
+  });
+
   it('looks a participant up by id for their face, so a profile arriving cannot remount their video', () => {
     // The same hazard as the volatile flags above, with a stranger symptom: a profile is fetched
     // after the tile exists, so folding it onto the tile object would blank that person's video at

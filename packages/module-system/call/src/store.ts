@@ -66,6 +66,18 @@ export interface CallTileState {
   connection?: RTCPeerConnectionState;
   /** This tile is the one the stage is giving most of its room to. */
   focused: boolean;
+  /**
+   * No media has arrived yet, and waiting is the right thing to do.
+   *
+   * The distinction this exists to draw is between *nothing yet* and *nothing on purpose*, which
+   * looked identical: a peer still negotiating and a peer who has turned their camera off both
+   * rendered as a bare avatar, so a call that was working looked the same as one that was not. A
+   * muted camera is not this — a connected peer still delivers a stream, with the video track
+   * disabled — so an absent stream really does mean the connection is not up yet.
+   */
+  connecting: boolean;
+  /** The connection gave up. Not something waiting will fix, so it must not read as progress. */
+  failed: boolean;
 }
 
 /**
@@ -226,12 +238,17 @@ export function createCallStore(deps: CallStoreDeps) {
 
     if (me) {
       const state = controller?.state();
-      next.push(stabilise({ id: me, did: me, stream: controller?.displayStream() ?? null, isSelf: true }));
+      const own = controller?.displayStream() ?? null;
+      next.push(stabilise({ id: me, did: me, stream: own, isSelf: true }));
       states.push({
         id: me,
         isScreen: state?.screenShareEnabled ?? false,
         audioEnabled: state?.audioEnabled ?? false,
         videoEnabled: state?.videoEnabled ?? false,
+        // Your own tile waits on the device rather than on a peer: `join` announces before it calls
+        // `getUserMedia`, so this covers the seconds a permission prompt is on screen.
+        connecting: !own,
+        failed: false,
       });
     }
 
@@ -246,6 +263,7 @@ export function createCallStore(deps: CallStoreDeps) {
           isSelf: false,
         }),
       );
+      const connection = peerStates.get(peer.agentId);
       states.push({
         id: peer.agentId,
         // Read from the roster, never inferred from the track — the sender is the only one who knows
@@ -253,7 +271,13 @@ export function createCallStore(deps: CallStoreDeps) {
         isScreen: settings?.screenShareEnabled ?? false,
         audioEnabled: settings?.audioEnabled ?? true,
         videoEnabled: settings?.videoEnabled ?? true,
-        connection: peerStates.get(peer.agentId),
+        connection,
+        // An absent stream is the honest signal here. A peer who muted their camera is still
+        // connected and still delivering one, so this cannot be confused with a deliberate choice —
+        // and `peerStates` is empty until the first negotiation, which is exactly the window that
+        // used to show nothing at all.
+        connecting: !remoteStreams.get(peer.agentId) && connection !== 'failed',
+        failed: connection === 'failed',
       });
     }
 
