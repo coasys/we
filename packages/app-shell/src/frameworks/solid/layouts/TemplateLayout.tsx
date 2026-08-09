@@ -56,8 +56,16 @@ export const SHELL_SIDEBAR_WIDTH = '80px';
 // theme/template editor rails and panels. Shared with PersistentAppFrames so the
 // persistent app iframes (rendered outside the template Router) line up with the
 // same viewport the template content occupies.
-export function computeRightOffset(stores: Stores): string {
-  let offset = stores.shellStore.contentInset().right;
+/**
+ * The right-edge chrome the *editor* is holding, in pixels.
+ *
+ * Split out because two different consumers need it separately. The content viewport wants it added
+ * to whatever docks are taking, which is what `computeRightOffset` returns; the dock geometry wants
+ * it on its own, as room already spoken for — a panel that ignored it opened directly on top of the
+ * controls being used to edit the thing it was covering.
+ */
+export function computeEditorRightOffset(stores: Stores): number {
+  let offset = 0;
   if (stores.editorStore.isEditingTheme()) {
     offset += THEME_RAIL_WIDTH;
     if (stores.editorStore.themePanelOpen()) offset += stores.editorStore.themePanelWidth();
@@ -71,6 +79,15 @@ export function computeRightOffset(stores: Stores): string {
       if (stores.editorStore.visualPanelOpen()) offset += stores.editorStore.visualPanelWidth();
     }
   }
+  return offset;
+}
+
+// Right-edge offset of the content viewport — shrinks it to make room for the editor's rails and
+// panels, and for any docked module. Shared with PersistentAppFrames so the persistent app iframes
+// (rendered outside the template Router) line up with the same viewport the template content
+// occupies.
+export function computeRightOffset(stores: Stores): string {
+  const offset = stores.shellStore.contentInset().right + computeEditorRightOffset(stores);
   return offset ? `${offset}px` : '0px';
 }
 

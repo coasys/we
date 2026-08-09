@@ -193,7 +193,7 @@ export function DropdownMenu(props: SolidDropdownMenuProps) {
       placement={props.placement || 'bottom'}
       data-we-menu
     >
-      <we-button slot="trigger" bg="neutral-200" color="neutral-800">
+      <we-button slot="trigger" size={props.size} bg="neutral-200" color="neutral-800">
         <Show when={props.triggerIcon}>
           <we-icon name={props.triggerIcon!} />
         </Show>

@@ -38,6 +38,14 @@ export const NARROW_VIEWPORT_PX = 900;
 export interface Viewport {
   width: number;
   height: number;
+  /**
+   * Chrome already occupying each edge that docks must keep clear of, beyond the shell's own.
+   *
+   * The sidebar and the module rail are constants and live below; this is for what comes and goes.
+   * The template and theme editors open rails and panels along the right edge, and a dock that
+   * ignored them opened on top of the controls being used to edit the thing it was covering.
+   */
+  reserved?: ContentInset;
 }
 
 export interface DockRequest {
@@ -98,11 +106,18 @@ const clamp = (value: number, min: number, max: number) => Math.max(min, Math.mi
 
 /** The region a dock may occupy: the window, less the chrome that is always there. */
 function contentRegion(viewport: Viewport) {
+  const reserved = viewport.reserved;
+  const left = SIDEBAR_PX + (reserved?.left ?? 0);
+  const right = RAIL_PX + (reserved?.right ?? 0);
+  const top = reserved?.top ?? 0;
+  const bottom = reserved?.bottom ?? 0;
   return {
-    left: SIDEBAR_PX,
-    right: RAIL_PX,
-    width: Math.max(0, viewport.width - SIDEBAR_PX - RAIL_PX),
-    height: viewport.height,
+    left,
+    right,
+    top,
+    bottom,
+    width: Math.max(0, viewport.width - left - right),
+    height: Math.max(0, viewport.height - top - bottom),
   };
 }
 
@@ -162,7 +177,7 @@ export function resolveDock(request: DockRequest, viewport: Viewport): DockGeome
     return {
       edge,
       floating: true,
-      bottom: px(DOCK_GAP_PX),
+      bottom: px(region.bottom + DOCK_GAP_PX),
       left: '50%',
       transform: 'translateX(-50%)',
       height: px(dockThickness('bottom', 'sm', viewport)),
@@ -173,8 +188,8 @@ export function resolveDock(request: DockRequest, viewport: Viewport): DockGeome
     return {
       edge,
       floating: true,
-      top: px(DOCK_GAP_PX),
-      bottom: px(DOCK_GAP_PX),
+      top: px(region.top + DOCK_GAP_PX),
+      bottom: px(region.bottom + DOCK_GAP_PX),
       left: px(region.left + DOCK_GAP_PX),
       right: px(region.right + DOCK_GAP_PX),
     };
@@ -187,8 +202,8 @@ export function resolveDock(request: DockRequest, viewport: Viewport): DockGeome
     return {
       ...common,
       handle: edge === 'right' ? 'left' : 'right',
-      top: px(DOCK_GAP_PX),
-      bottom: px(DOCK_GAP_PX),
+      top: px(region.top + DOCK_GAP_PX),
+      bottom: px(region.bottom + DOCK_GAP_PX),
       width: px(thickness - DOCK_GAP_PX),
       ...(edge === 'right' ? { right: px(region.right) } : { left: px(region.left) }),
     };
@@ -200,7 +215,7 @@ export function resolveDock(request: DockRequest, viewport: Viewport): DockGeome
     left: px(region.left + DOCK_GAP_PX),
     right: px(region.right + DOCK_GAP_PX),
     height: px(thickness - DOCK_GAP_PX),
-    ...(edge === 'top' ? { top: px(DOCK_GAP_PX) } : { bottom: px(DOCK_GAP_PX) }),
+    ...(edge === 'top' ? { top: px(region.top + DOCK_GAP_PX) } : { bottom: px(region.bottom + DOCK_GAP_PX) }),
   };
 }
 

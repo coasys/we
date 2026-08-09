@@ -1141,6 +1141,7 @@ export const contextData: ContextData = {
         { name: 'placement', type: 'Placement', optional: true },
         { name: 'triggerLabel', type: 'string', optional: true },
         { name: 'triggerIcon', type: 'string', optional: true },
+        { name: 'size', type: '"xs" | "sm" | "md" | "lg" | "xl"', optional: true },
         { name: 'items', type: 'SolidDropdownMenuEntry[]', optional: false },
       ],
       source: 'components',

@@ -3136,6 +3136,11 @@
           "optional": true
         },
         {
+          "name": "size",
+          "type": "\"xs\" | \"sm\" | \"md\" | \"lg\" | \"xl\"",
+          "optional": true
+        },
+        {
           "name": "items",
           "type": "SolidDropdownMenuEntry[]",
           "optional": false

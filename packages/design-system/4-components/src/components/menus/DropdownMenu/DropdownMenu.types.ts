@@ -64,6 +64,14 @@ export interface DropdownMenuProps {
   placement?: Placement;
   triggerLabel?: string;
   triggerIcon?: string;
+  /**
+   * Trigger size, matching `we-button`'s scale.
+   *
+   * Defaults to `md`, which is `we-button`'s own default and is the wrong one in any bar of `sm`
+   * controls — the trigger simply stood taller than everything beside it, with no way to say
+   * otherwise.
+   */
+  size?: 'xs' | 'sm' | 'md' | 'lg' | 'xl';
   class?: string;
   styles?: Record<string, string | number>;
 }

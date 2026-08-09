@@ -474,6 +474,9 @@ const placementMenu: SchemaNode = {
   props: {
     triggerIcon: 'layout',
     triggerLabel: 'Position',
+    // Matching the bar's other controls. `we-button` defaults to `md`, so without this the trigger
+    // simply stood taller than everything beside it.
+    size: 'sm',
     placement: 'bottom',
     items: {
       $map: {
@@ -520,7 +523,20 @@ const participantsToggle: SchemaNode = {
         onClick: { $action: 'modules.call.toggleStage' },
       },
       children: [
-        { type: 'we-icon', props: { name: 'users' } },
+        {
+          type: 'we-icon',
+          props: {
+            /**
+             * The action, not the subject.
+             *
+             * A person glyph says what the button is *about* and nothing about what pressing it
+             * does — and since the count beside it already names the subject, the icon was spending
+             * the only other slot repeating it. Expanding and contracting arrows say the one thing
+             * left to say, and swap so the button always shows the move it is offering.
+             */
+            name: { $if: { condition: { $store: 'modules.call.stageOpen' }, then: 'arrows-in', else: 'arrows-out' } },
+          },
+        },
         { type: 'we-number', props: { value: { $count: { items: { $store: 'modules.call.tiles' } } } } },
       ],
     },
@@ -589,7 +605,10 @@ const bar: SchemaNode = {
       type: 'Row',
       props: {
         position: 'fixed',
-        top: CALL_BAR_TOP,
+        // Swaps ends when the video is docked along the top, which is the only placement that wants
+        // the same corner of the screen as this does. See `barAtBottom`.
+        top: { $if: { condition: { $store: 'modules.call.barAtBottom' }, then: 'auto', else: CALL_BAR_TOP } },
+        bottom: { $if: { condition: { $store: 'modules.call.barAtBottom' }, then: CALL_BAR_TOP, else: 'auto' } },
         left: '50%',
         transform: 'translateX(-50%)',
         bg: 'neutral-0',

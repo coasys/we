@@ -157,7 +157,15 @@ export function createCallStore(deps: CallStoreDeps) {
   const [tiles, setTiles] = signal<CallTile[]>([]);
   const [tileStates, setTileStates] = signal<CallTileState[]>([]);
   const [visible, setVisible] = signal(false);
-  const [placement, setPlacement] = signal<CallPlacement>('right');
+  /**
+   * Floating by default, because the first press of a button should not reshape the workspace.
+   *
+   * Docking is a decision to give up room, and the opening move is usually a glance at who is there
+   * rather than a commitment to watch. Starting docked meant one click on an unlabelled control
+   * shrank the whole app; starting floating means the panel appears over what you were doing and the
+   * user docks it when they decide it is worth the space.
+   */
+  const [placement, setPlacement] = signal<CallPlacement>('float');
   /**
    * Whose video the stage is giving most of its room to, or `null` for an even grid.
    *
@@ -538,8 +546,18 @@ export function createCallStore(deps: CallStoreDeps) {
       { id: 'full', icon: 'arrows-out', label: 'Full screen', active: placement() === 'full' },
     ],
 
-    /** Whether the video is showing at all — what the participants button reflects. */
+    /** Whether the video is showing at all — what the expand button reflects. */
     stageOpen: visible,
+
+    /**
+     * The control bar has to move when the panel is docked along the top.
+     *
+     * Both are the module's own chrome and both want the top centre, so one of them has to give —
+     * and it should be the small one. The host cannot arbitrate this: it places docks and knows
+     * nothing about a floating pill some module renders through a slot. This module knows about
+     * both, which is exactly why the decision belongs here.
+     */
+    barAtBottom: () => visible() && placement() === 'top',
 
     // ── How the tiles pack ────────────────────────────────────────────────────
     /**

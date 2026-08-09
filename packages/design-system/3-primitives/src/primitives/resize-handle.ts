@@ -26,11 +26,19 @@ const CSS_STYLES = css`
     justify-content: center;
   }
 
-  /* Overridable, so a consumer that already draws its own divider — the editor's panel rails are a
-     32px icon strip that doubles as one — can suppress this without the primitive needing a prop for
-     every appearance somebody might want. */
+  /*
+     Nothing at rest, and that is the default rather than a special case.
+
+     A permanently visible line between a panel and the content beside it reads as a scrollbar,
+     because that is the only other thin vertical strip anybody puts there — and the panel almost
+     always has a border of its own already, so the two together are one line that looks wrong. The
+     affordance is the cursor, which appears the moment the pointer is anywhere near; the line then
+     confirms what the cursor promised.
+
+     Overridable both ways: a consumer wanting a permanent divider sets --we-resize-handle-line.
+  */
   [part='line'] {
-    background: var(--we-resize-handle-line, var(--we-color-neutral-200));
+    background: var(--we-resize-handle-line, transparent);
     transition: background 120ms ease;
   }
 

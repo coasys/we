@@ -62,6 +62,13 @@ export interface ShellStore {
   dockGeometry: Accessor<Record<string, DockGeometry>>;
   /** What the content viewport gives up to docked panels, in pixels per edge. */
   contentInset: Accessor<ContentInset>;
+  /**
+   * Tell the dock system about chrome it must keep clear of, beyond the shell's own furniture.
+   *
+   * Pushed in rather than read out, because the thing occupying the edge is the editor and this
+   * store has no business importing it. See `computeEditorRightOffset`.
+   */
+  setReservedEdges: (reserved: Partial<ContentInset>) => void;
   /** True while a dock is being dragged, so transitions can be suspended and the edge track the cursor. */
   dockResizing: Accessor<boolean>;
   /** Remember a dock's current thickness, so the drag that follows is measured from it. */
@@ -137,11 +144,16 @@ export function ShellStoreProvider(props: ParentProps) {
     })),
   );
 
+  const [reservedEdges, setReservedEdges] = createSignal<ContentInset>({ left: 0, right: 0, top: 0, bottom: 0 });
+
+  /** The window, less whatever else is already holding an edge. What every dock is measured against. */
+  const region = createMemo(() => ({ ...viewport(), reserved: reservedEdges() }));
+
   const dockGeometry = createMemo(() =>
-    Object.fromEntries(dockRequests().map((request) => [request.id, resolveDock(request, viewport())])),
+    Object.fromEntries(dockRequests().map((request) => [request.id, resolveDock(request, region())])),
   );
 
-  const inset = createMemo(() => contentInset(dockRequests(), viewport()));
+  const inset = createMemo(() => contentInset(dockRequests(), region()));
 
   const store: ShellStore = {
     activeShellView,
@@ -162,12 +174,13 @@ export function ShellStoreProvider(props: ParentProps) {
     },
     dockGeometry,
     contentInset: inset,
+    setReservedEdges: (next) => setReservedEdges((prev) => ({ ...prev, ...next })),
     dockResizing,
 
     beginDockResize: (id) => {
       const request = dockRequests().find((entry) => entry.id === id);
       if (!request?.edge) return;
-      resizeOrigin = dockThickness(request.edge, request.size, viewport(), request.resizedTo);
+      resizeOrigin = dockThickness(request.edge, request.size, region(), request.resizedTo);
       setDockResizing(true);
     },
 
