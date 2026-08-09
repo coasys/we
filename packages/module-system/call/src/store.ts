@@ -603,6 +603,16 @@ export function createCallStore(deps: CallStoreDeps) {
             'grid-template-columns': `repeat(${columns}, 1fr)`,
             'grid-auto-rows': 'min-content',
             'align-content': 'start',
+            /**
+             * The one arrangement here that can genuinely overflow, so the one that scrolls.
+             *
+             * Everywhere else rows divide a definite height and cannot exceed it — that invariant is
+             * why the stage clips rather than scrolls. A side dock is the exception by construction:
+             * its rows come from its *width*, so widening it makes every tile taller, and enough
+             * participants or a wide enough drag will run past the bottom of the screen. Clipping
+             * there hides people who are in the call.
+             */
+            'overflow-y': 'auto',
           }
         : {
             display: 'grid',

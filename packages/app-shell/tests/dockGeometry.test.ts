@@ -36,6 +36,13 @@ describe('resolveDock', () => {
     expect(geometry.left).toBeUndefined();
   });
 
+  it('sits a floating panel off the edge, and a docked one flush against the content', () => {
+    // A card over the app needs air to read as being on top; a panel that took room from the app
+    // meets it edge to edge, and the border between them is the divider.
+    expect(resolveDock(dock({ size: 'full', float: true }), desktop).top).toBe('8px');
+    expect(resolveDock(dock(), desktop).top).toBe('0px');
+  });
+
   it('gives a floating strip its content width rather than a band of empty panel', () => {
     const geometry = resolveDock(dock({ size: 'sm', float: true }), desktop);
 
@@ -73,7 +80,9 @@ describe('dragging', () => {
     // The module keeps saying what it wants — `md`, an opening bid — and the host keeps deciding
     // what it gets, which now includes remembering that somebody moved it.
     const geometry = resolveDock(dock({ resizedTo: 600 }), desktop);
-    expect(geometry.width).toBe('592px'); // less the gap it sits off the edge by
+    // Exactly what the content gave up, because a docked panel is flush with it: a gap between the
+    // two would be a strip of background where the content used to be.
+    expect(geometry.width).toBe('600px');
     expect(contentInset([dock({ resizedTo: 600 })], desktop).right).toBe(600);
   });
 

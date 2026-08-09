@@ -29,7 +29,14 @@ export const SIDEBAR_PX = 80;
  */
 export const RAIL_PX = 0;
 
-/** The gap between a floating or docked panel and the edges it sits against. */
+/**
+ * The gap a *floating* panel sits off the edges by. A docked one has none.
+ *
+ * Docked and floating want opposite things here. A floating panel is a card over the app, and a card
+ * needs air around it to read as being on top. A docked panel has taken room *from* the app, so the
+ * two are edge to edge by definition — a gap there is a strip of background between a panel and the
+ * content it displaced, which looks like a rendering fault rather than a margin.
+ */
 export const DOCK_GAP_PX = 8;
 
 /**
@@ -192,13 +199,15 @@ export function resolveDock(request: DockRequest, viewport: Viewport): DockGeome
   const thickness = dockThickness(edge, request.size, viewport, request.resizedTo);
   const common = { edge, floating: false };
 
+  // Flush: the panel's inner edge is exactly where the content now starts, because the content was
+  // inset by precisely this thickness.
   if (edge === 'right' || edge === 'left') {
     return {
       ...common,
       handle: edge === 'right' ? 'left' : 'right',
-      top: px(region.top + DOCK_GAP_PX),
-      bottom: px(region.bottom + DOCK_GAP_PX),
-      width: px(thickness - DOCK_GAP_PX),
+      top: px(region.top),
+      bottom: px(region.bottom),
+      width: px(thickness),
       ...(edge === 'right' ? { right: px(region.right) } : { left: px(region.left) }),
     };
   }
@@ -206,10 +215,10 @@ export function resolveDock(request: DockRequest, viewport: Viewport): DockGeome
   return {
     ...common,
     handle: edge === 'top' ? 'bottom' : 'top',
-    left: px(region.left + DOCK_GAP_PX),
-    right: px(region.right + DOCK_GAP_PX),
-    height: px(thickness - DOCK_GAP_PX),
-    ...(edge === 'top' ? { top: px(region.top + DOCK_GAP_PX) } : { bottom: px(region.bottom + DOCK_GAP_PX) }),
+    left: px(region.left),
+    right: px(region.right),
+    height: px(thickness),
+    ...(edge === 'top' ? { top: px(region.top) } : { bottom: px(region.bottom) }),
   };
 }
 

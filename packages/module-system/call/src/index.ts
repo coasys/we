@@ -629,8 +629,18 @@ const bar: SchemaNode = {
         // the same corner of the screen as this does. See `barAtBottom`.
         top: { $if: { condition: { $store: 'modules.call.barAtBottom' }, then: 'auto', else: CALL_BAR_TOP } },
         bottom: { $if: { condition: { $store: 'modules.call.barAtBottom' }, then: CALL_BAR_TOP, else: 'auto' } },
-        left: '50%',
+        /**
+         * Centred on the content, not the window.
+         *
+         * Every other piece of floating chrome moves when a dock takes an edge — the module rail,
+         * the editor's rails and its toolbar all slide inwards. A bar pinned to the middle of the
+         * *window* stays put while they move, so docking on the right walked the editor's controls
+         * straight into it. Shifting by half the difference between the insets keeps it in the
+         * middle of what is left, which is where it was always meant to be.
+         */
+        left: 'calc(50% + (var(--we-sidebar-width, 0px) + var(--we-dock-left, 0px) - var(--we-dock-right, 0px)) / 2)',
         transform: 'translateX(-50%)',
+        transition: 'left var(--we-chrome-transition, 300ms) ease',
         bg: 'neutral-0',
         border: '1px solid neutral-200',
         r: 'pill',

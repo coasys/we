@@ -170,6 +170,20 @@ export function ShellStoreProvider(props: ParentProps) {
     }
   });
 
+  /**
+   * How long chrome should take to follow the dock — nothing, while it is being dragged.
+   *
+   * Anything animating its own position has to stop animating during a drag or it lags a third of a
+   * second behind the cursor, which reads as the panel and the chrome disagreeing about where the
+   * edge is. The content viewport reads `dockResizing` directly; the editor's toolbar cannot,
+   * because it is in another package with no path to this store — so the same answer goes out as a
+   * duration it can drop into its own `transition`.
+   */
+  createEffect(() => {
+    if (typeof document === 'undefined') return;
+    document.documentElement.style.setProperty('--we-chrome-transition', dockResizing() ? '0s' : '300ms');
+  });
+
   const store: ShellStore = {
     activeShellView,
     openShellView: (id: string, path?: string) => {

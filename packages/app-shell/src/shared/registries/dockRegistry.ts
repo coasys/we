@@ -108,8 +108,12 @@ export function dockFrame(entry: DockEntry, node: SchemaNode): SchemaNode {
           // like two different applications.
           bg: 'neutral-0',
           border: '1px solid neutral-200',
-          r: '500',
-          shadow: 'xl',
+          // Rounded and lifted only while floating. A card over the app should read as being on top;
+          // a docked panel has taken room *from* the app and meets it edge to edge, where a radius
+          // would leave slivers of background in the corners and a shadow would fall on content that
+          // is beside it rather than beneath it.
+          r: { $if: { condition: geo('floating'), then: '500' } },
+          shadow: { $if: { condition: geo('floating'), then: 'xl' } },
           overflow: 'hidden',
           zIndex: 'sticky',
         },
