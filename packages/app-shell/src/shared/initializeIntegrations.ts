@@ -61,6 +61,10 @@ export function initializeIntegrations(
       const definition = defineModule({
         id: app.id,
         name: app.name,
+        // Carried through so an embedded app describes itself in the settings list like every other
+        // module. The seed has always declared it; it simply was not forwarded, which left Flux the
+        // one row on that page with a name and nothing under it.
+        description: app.description,
         icon: app.icon,
         capabilities: app.capabilities.map(seedCapabilityToModule),
         // An embedded app reaches the host's agent through the data layer, so it is coupled to

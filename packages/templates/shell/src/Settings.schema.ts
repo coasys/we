@@ -448,85 +448,138 @@ const themesSection: SchemaNode = {
   ],
 };
 
+/** One module's row. The control differs by group, so it is passed in rather than branched on here. */
+function moduleRow(control: SchemaNode): SchemaNode {
+  return {
+    type: 'Row',
+    props: {
+      ay: 'center',
+      ax: 'between',
+      gap: '300',
+      p: '300',
+      bg: 'neutral-0',
+      r: '300',
+      border: '1px solid neutral-200',
+    },
+    children: [
+      {
+        type: 'Row',
+        props: { gap: '300', ay: 'center' },
+        children: [
+          { type: 'we-icon', props: { name: '$mod.icon', size: '20px' } },
+          {
+            type: 'Column',
+            props: { gap: '100' },
+            children: [
+              { type: 'we-text', props: { variant: 'label' }, children: ['$mod.name'] },
+              {
+                type: 'we-text',
+                props: { variant: 'footnote', color: 'neutral-400' },
+                children: ['$mod.description'],
+              },
+            ],
+          },
+        ],
+      },
+      control,
+    ],
+  };
+}
+
+/**
+ * The modules of one surface, under their own heading.
+ *
+ * Split by `surface` because the three kinds are decided about differently, and one list had to
+ * state all three caveats at once over rows where each applied to only some of them — "a community
+ * still decides which of them it runs" is true of chrome and of nothing else. Grouped, each sentence
+ * sits with the modules it is actually about.
+ *
+ * `surface` is derived by the host from what a module contributes (see `moduleSurface`), so a new
+ * module lands in the right group without declaring one, and without this file changing.
+ */
+function moduleGroup(title: string, blurb: string, surface: string, control: SchemaNode): SchemaNode {
+  const items = { $filter: { items: { $store: 'spaceStore.moduleInstallSettings' }, where: { surface } } };
+  return {
+    type: '$if',
+    props: {
+      // A deployment need not ship all three kinds — a seed declaring no embedded apps would
+      // otherwise render a heading and a paragraph over nothing.
+      condition: { $count: { items } },
+      then: {
+        type: 'Column',
+        props: { gap: '200' },
+        children: [
+          { type: 'we-text', props: { variant: 'label' }, children: [title] },
+          { type: 'we-text', props: { variant: 'footnote', color: 'neutral-400' }, children: [blurb] },
+          {
+            type: 'Column',
+            props: { gap: '200' },
+            children: [{ type: '$each', props: { items, as: 'mod' }, children: [moduleRow(control)] }],
+          },
+        ],
+      },
+    },
+  };
+}
+
+const moduleSwitch: SchemaNode = {
+  type: 'we-switch',
+  props: {
+    checked: '$mod.installed',
+    onChange: { $action: 'spaceStore.setModuleInstalled', args: ['$mod.id', '$event.detail'] },
+  },
+};
+
 const modulesSection: SchemaNode = {
   type: 'Column',
-  props: { gap: '300' },
+  props: { gap: '500' },
   children: [
     {
-      type: 'Row',
-      props: { gap: '200', ay: 'center' },
-      children: [
-        { type: 'we-icon', props: { name: 'puzzle-piece', size: '20px' } },
-        { type: 'we-text', props: { variant: 'heading-sm' }, children: ['Modules'] },
-      ],
-    },
-    {
-      type: 'we-text',
-      props: { variant: 'footnote', color: 'neutral-400' },
-      children: [
-        'Which feature modules you want available to you. This is your own choice and applies in every space \u2014 a community still decides which of them it runs, in that space\u2019s settings. Some modules only supply pieces a template uses, and are listed here without a switch.',
-      ],
-    },
-    {
-      type: '$each',
-      props: { items: { $store: 'spaceStore.moduleInstallSettings' }, as: 'mod' },
+      type: 'Column',
+      props: { gap: '200' },
       children: [
         {
           type: 'Row',
-          props: {
-            ay: 'center',
-            ax: 'between',
-            gap: '300',
-            p: '300',
-            bg: 'neutral-0',
-            r: '300',
-            border: '1px solid neutral-200',
-          },
+          props: { gap: '200', ay: 'center' },
           children: [
-            {
-              type: 'Row',
-              props: { gap: '300', ay: 'center' },
-              children: [
-                { type: 'we-icon', props: { name: '$mod.icon', size: '20px' } },
-                {
-                  type: 'Column',
-                  props: { gap: '100' },
-                  children: [
-                    { type: 'we-text', props: { variant: 'label' }, children: ['$mod.name'] },
-                    {
-                      type: 'we-text',
-                      props: { variant: 'footnote', color: 'neutral-400' },
-                      children: ['$mod.description'],
-                    },
-                  ],
-                },
-              ],
-            },
-            // A capability module gets a note instead of a switch — see `moduleSurface`. It has no
-            // chrome of its own, so "off" could only mean withdrawing a component from whatever
-            // template uses it, which is not something to offer before templates can declare that.
-            {
-              type: '$if',
-              props: {
-                condition: '$mod.switchable',
-                then: {
-                  type: 'we-switch',
-                  props: {
-                    checked: '$mod.installed',
-                    onChange: { $action: 'spaceStore.setModuleInstalled', args: ['$mod.id', '$event.detail'] },
-                  },
-                },
-                else: {
-                  type: 'we-text',
-                  props: { variant: 'footnote', color: 'neutral-400' },
-                  children: ['Used by templates'],
-                },
-              },
-            },
+            { type: 'we-icon', props: { name: 'puzzle-piece', size: '20px' } },
+            { type: 'we-text', props: { variant: 'heading-sm' }, children: ['Modules'] },
           ],
+        },
+        {
+          type: 'we-text',
+          props: { variant: 'footnote', color: 'neutral-400' },
+          children: ['Which feature modules you want available to you. Your own choice, and it applies everywhere.'],
         },
       ],
     },
+
+    moduleGroup(
+      'Embedded apps',
+      'Whole applications, running alongside your spaces rather than inside one. Turning one off takes it out of the app switcher.',
+      'app',
+      moduleSwitch,
+    ),
+
+    moduleGroup(
+      'Space modules',
+      'Panels and buttons that appear inside a space. A community still decides which of these it runs in theirs, in that space\u2019s settings.',
+      'chrome',
+      moduleSwitch,
+    ),
+
+    // No switch here — see `moduleSurface`. A capability module has no chrome of its own, so "off"
+    // could only mean withdrawing a component from whatever template mounts it, which is not
+    // something to offer before templates can declare what they need. A tag rather than the sentence
+    // that used to sit in the switch's place: in that position a sentence reads as a state anyway,
+    // and the reason belongs in the blurb above, where it is a reason. `we-tag` also matches how the
+    // templates and themes lists on this page mark a row that is not the user's to change.
+    moduleGroup(
+      'Template components',
+      'These supply pieces that templates build with, and have no chrome of their own. They stay on \u2014 a template that mounts one would break without it, and a template that has no use for one never loads it.',
+      'capability',
+      { type: 'we-tag', props: { variant: 'neutral' }, children: ['Always on'] },
+    ),
   ],
 };
 
