@@ -66,6 +66,15 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
   let stream: Awaited<ReturnType<NonNullable<typeof transcription>['open']>> | null = null;
   let flushTimer: ReturnType<typeof setTimeout> | null = null;
   let buffer = '';
+  /**
+   * Bumped by every start and every stop, so a start that lost a race can tell.
+   *
+   * Starting is slow in a way the user can act inside of: loading Whisper takes seconds, during
+   * which the panel says "Starting…" and nothing appears. Switching off in that window used to leave
+   * the half-built session to finish and go on transcribing — the UI said off, blocks kept arriving,
+   * and nothing held a reference to shut it down.
+   */
+  let generation = 0;
 
   function clearTimer() {
     if (flushTimer) clearTimeout(flushTimer);
@@ -102,16 +111,36 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
     flushTimer = setTimeout(() => void flush(), FLUSH_AFTER_MS);
   }
 
+  /**
+   * Build the session into locals, and publish it only once it is whole.
+   *
+   * Nothing is assigned to the module-level handles until every await has resolved and the run is
+   * confirmed to still be the current one. That is what makes a cancelled start leave nothing
+   * behind: a stale run closes what it built and returns, and `stop` never has to reason about a
+   * half-constructed pipeline.
+   */
   async function start(audio: MediaStream): Promise<void> {
     if (!transcription) {
       setStatus('no-backend');
       return;
     }
+    const mine = ++generation;
     setStatus('starting');
     setError('');
 
+    let newStream: typeof stream = null;
+    let newContext: AudioContext | null = null;
+
+    /** Undo a start that lost the race, or threw partway. */
+    const unwind = async () => {
+      await newContext?.close().catch(() => {});
+      await newStream?.close().catch(() => {});
+    };
+
     try {
       const models = await transcription.models();
+      if (mine !== generation) return await unwind();
+
       const model = models.find((m) => m.isDefault && m.ready) ?? models.find((m) => m.ready);
       if (!model) {
         // Distinguished from a silent failure on purpose: no model and nobody talking look identical
@@ -120,37 +149,61 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
         return;
       }
 
-      stream = await transcription.open(model.id, onText, TUNING);
+      newStream = await transcription.open(model.id, onText, TUNING);
+      if (mine !== generation) return await unwind();
 
-      context = new AudioContext();
+      newContext = new AudioContext();
       // Built here rather than fetched: see `workletSource`. Revoked as soon as it is registered —
       // `addModule` has finished with it, and an un-revoked object URL keeps its blob alive for the
       // lifetime of the document.
       const workletUrl = URL.createObjectURL(new Blob([WORKLET_SOURCE], { type: 'text/javascript' }));
       try {
-        await context.audioWorklet.addModule(workletUrl);
+        await newContext.audioWorklet.addModule(workletUrl);
       } finally {
         URL.revokeObjectURL(workletUrl);
       }
-      node = new AudioWorkletNode(context, WORKLET_NAME);
-      source = context.createMediaStreamSource(audio);
-      source.connect(node);
+      if (mine !== generation) return await unwind();
+
+      const newNode = new AudioWorkletNode(newContext, WORKLET_NAME);
+      const newSource = newContext.createMediaStreamSource(audio);
+      newSource.connect(newNode);
       // Not connected to the destination: this is a listener, and routing the microphone to the
       // speakers would echo the speaker back to themselves.
-      node.port.onmessage = (event: MessageEvent<Float32Array>) => {
-        void stream?.feed(event.data);
+      //
+      // Closes over the local rather than the field, so an utterance in flight during a teardown
+      // feeds the stream it was captured for instead of whatever happens to be current.
+      const feedTo = newStream;
+      newNode.port.onmessage = (event: MessageEvent<Float32Array>) => {
+        void feedTo.feed(event.data);
       };
 
+      context = newContext;
+      node = newNode;
+      source = newSource;
+      stream = newStream;
       setStatus('listening');
     } catch (cause) {
+      await unwind();
+      // A start that was already superseded must not repaint the panel — the run that replaced it
+      // owns the status now, and an error from an abandoned attempt is noise.
+      if (mine !== generation) return;
       setStatus('error');
       setError(cause instanceof Error ? cause.message : String(cause));
-      await stop();
     }
   }
 
-  async function stop(): Promise<void> {
-    // Flush first: whatever was said before hanging up is still worth keeping.
+  /**
+   * Tear down whatever is running, and cancel whatever is starting.
+   *
+   * `resting` is where the status lands afterwards. It is a parameter because "off" and "on but with
+   * nothing to listen to" are different things to say, and teardown is async — a caller that set the
+   * status itself would have it overwritten when this finished.
+   */
+  async function stop(resting: TranscribeStatus = 'idle'): Promise<void> {
+    // Bumped first: a start still in flight is now stale, and will discard rather than publish.
+    generation++;
+
+    // Flush before teardown: whatever was said before hanging up is still worth keeping.
     await flush();
 
     node?.port.close();
@@ -163,7 +216,7 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
     context = null;
     stream = null;
 
-    if (status() !== 'error') setStatus('idle');
+    if (status() !== 'error') setStatus(resting);
   }
 
   /**
@@ -178,9 +231,9 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
     const on = enabled();
 
     if (!on || !audio) {
-      if (context) void stop();
-      else if (on && !audio) setStatus('no-audio');
-      else if (!on) setStatus('idle');
+      // Unconditional rather than gated on `context`: a start may be in flight with nothing
+      // published yet, and `stop` is the only thing that cancels one. It is a no-op when idle.
+      void stop(on && !audio ? 'no-audio' : 'idle');
       return;
     }
 

@@ -83,6 +83,20 @@ export function createCallStore(deps: CallStoreDeps) {
   });
   /** Surfaced rather than logged: "the call cannot start here" is something the user must see. */
   const [problem, setProblem] = signal<string | null>(null);
+  /**
+   * The microphone this agent is sending, as a signal rather than a read through to the controller.
+   *
+   * It has to be a signal because of *when* the stream appears. `join` sets `callId` and only then
+   * builds the controller and awaits `getUserMedia`, so a consumer that derived the stream from
+   * `callId` would be woken once — while there is still nothing to hear — and never again. The
+   * transcriber sat on `no-audio` for the whole call, and its launcher never appeared.
+   *
+   * Written from `onStateChanged`, which fires when devices are acquired and on every mute since.
+   * The controller returns the same `MediaStream` object each time, so those later writes dedupe on
+   * `===` and consumers do not churn — which is what keeps muting from tearing down and rebuilding
+   * the transcription pipeline. A muted track stays in the stream and simply goes silent.
+   */
+  const [localAudio, setLocalAudio] = signal<MediaStream | null>(null);
 
   let mesh: CallMesh | null = null;
   let controller: MediaController | null = null;
@@ -199,6 +213,7 @@ export function createCallStore(deps: CallStoreDeps) {
     mesh = null;
     controller?.stop();
     controller = null;
+    setLocalAudio(null);
     remoteStreams = new Map();
     peerStates = new Map();
     if (id) presence?.clearActivity('call', id);
@@ -274,6 +289,9 @@ export function createCallStore(deps: CallStoreDeps) {
       onTrackChanged: (kind, track) => void mesh?.setOutboundTrack(kind, track),
       onStateChanged: (state) => {
         setMedia({ ...state });
+        // Fires once when devices are acquired, and on every mute after — the first is what tells a
+        // listener the microphone exists at all.
+        setLocalAudio(controller?.localStream() ?? null);
         publishActivity(anchor);
         rebuildTiles();
       },
@@ -323,7 +341,7 @@ export function createCallStore(deps: CallStoreDeps) {
      * is what makes "mute the call" also mean "stop transcribing", with no coordination between the
      * two and no way for them to disagree.
      */
-    localAudio: () => (callId() ? (controller?.localStream() ?? null) : null),
+    localAudio,
 
     /**
      * True where a call could actually be started.

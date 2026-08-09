@@ -21,26 +21,59 @@ interface Ad4mAiModel {
   id?: string;
   name?: string;
   modelType?: string;
-  status?: { downloaded?: boolean; loaded?: boolean; progress?: number };
 }
 
 export function createAd4mTranscriptionPort(backendClient: unknown): TranscriptionPort {
   const client = backendClient as Ad4mClient;
 
+  /**
+   * Whether a model can actually run right now.
+   *
+   * A separate call per model, because readiness is not on `Model` — the executor keeps it in
+   * `modelLoadingStatus`, which is a different query. Cheap in practice: a deployment has one
+   * transcription model, rarely two.
+   *
+   * Defaults to ready when the query fails. This flag exists so a caller can say "no model is
+   * installed" instead of showing an empty transcript, and refusing to open a stream because a
+   * *diagnostic* call failed would trade a working feature for a better error message.
+   */
+  async function isReady(modelId: string): Promise<boolean> {
+    try {
+      const status = await client.ai.modelLoadingStatus(modelId);
+      return Boolean(status?.loaded ?? status?.downloaded ?? true);
+    } catch {
+      return true;
+    }
+  }
+
   return {
     async models(): Promise<TranscriptionModel[]> {
       const all = (await client.ai.getModels()) as unknown as Ad4mAiModel[];
       const transcription = all.filter((m) => m.modelType === TRANSCRIPTION_MODEL_TYPE);
-      return transcription.map((m, index) => ({
-        id: String(m.id ?? ''),
-        name: m.name ?? String(m.id ?? ''),
-        // The executor's default-per-kind is not exposed on the model itself, so the first
-        // transcription model stands in. A caller that cares which one runs should name it.
-        isDefault: index === 0,
-        // A model still downloading will accept a stream and then never resolve any text, which is
-        // indistinguishable from silence at the callback. Surfacing it lets a caller say so.
-        ready: Boolean(m.status?.loaded ?? m.status?.downloaded ?? true),
-      }));
+
+      // Asked for rather than guessed at. It throws when the user has never chosen one, which is
+      // ordinary on a fresh install — the first model then stands in, so `isDefault` still names
+      // something a caller can open.
+      let defaultId = '';
+      try {
+        defaultId = String((await client.ai.getDefaultModel(TRANSCRIPTION_MODEL_TYPE))?.id ?? '');
+      } catch {
+        defaultId = String(transcription[0]?.id ?? '');
+      }
+
+      return Promise.all(
+        transcription.map(async (m) => {
+          const id = String(m.id ?? '');
+          return {
+            id,
+            name: m.name ?? id,
+            isDefault: id === defaultId,
+            // A model still downloading accepts a stream and then never resolves any text, which is
+            // indistinguishable from silence at the callback. Surfacing it lets a caller say so.
+            ready: await isReady(id),
+          };
+        }),
+      );
     },
 
     async open(
