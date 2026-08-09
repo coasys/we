@@ -160,13 +160,22 @@ export function RightPanelContainer() {
 
   // Slide the container off-screen when neither editing mode is active.
   // When either mode is active, translateX(0) keeps it visible.
+  /**
+   * Where the container sits when it is not editing: its own width to the right, i.e. off the edge.
+   *
+   * Plus whatever a docked module panel has taken from that edge, which is the part that used to be
+   * missing. The container is positioned at `right: var(--we-dock-right)`, so sliding it by its own
+   * width alone lands it *inside* the dock rather than outside the window — and a dock frame paints
+   * above it, so exiting the editor made its controls jump behind the notes panel instead of leaving
+   * the screen.
+   */
   const containerTransform = () => {
     if (aiStore.isEditingTemplate() || aiStore.isEditingTheme()) return 'none';
     let w = TOTAL_RAIL_WIDTH;
     if (aiStore.isOpen()) w += aiStore.aiPanelWidth();
     if (aiStore.codePanelOpen()) w += aiStore.codePanelWidth();
     if (aiStore.themePanelOpen()) w += aiStore.themePanelWidth();
-    return `translateX(${w}px)`;
+    return `translateX(calc(${w}px + var(--we-dock-right, 0px)))`;
   };
 
   return (
