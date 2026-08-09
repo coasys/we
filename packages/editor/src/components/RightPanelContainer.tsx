@@ -125,7 +125,10 @@ function PanelUnit(props: PanelUnitProps) {
             left="0"
             width="100%"
             height="100%"
-            styles={{ '--we-resize-handle-line': 'transparent', '--we-resize-handle-line-active': 'transparent' }}
+            // Native `style`, not the design system's `styles` prop. Both work now, but this is a
+            // custom property on one element rather than a design decision, and going through the DS
+            // prop means going through Solid's custom-element property path to reach the same place.
+            style={{ '--we-resize-handle-line': 'transparent', '--we-resize-handle-line-active': 'transparent' }}
             on:resizestart={onResizeStart}
             on:resize={onResize}
             on:resizeend={onResizeEnd}
