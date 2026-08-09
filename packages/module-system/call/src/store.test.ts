@@ -117,6 +117,18 @@ describe('tile packing', () => {
   it('places nobody when nobody is in the call', () => {
     expect(makeStore().tileCells()).toEqual([]);
   });
+
+  it('makes every cell measurable, so the picture inside can be the right shape', () => {
+    // Without this the picture cannot know how tall its cell is, so it fills the cell instead — and
+    // the name and badges anchored to its corner end up floating in the empty half of a box they
+    // only nominally shared with the video.
+    const store = makeStore();
+    store.setPlacement('right');
+
+    for (const cell of store.tileCells()) {
+      expect(cell.style['container-type']).toBe('size');
+    }
+  });
 });
 
 describe('focus', () => {

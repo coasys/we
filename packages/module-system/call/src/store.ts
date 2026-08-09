@@ -615,9 +615,20 @@ export function createCallStore(deps: CallStoreDeps) {
       // at any participant count. In a strip there is nothing to spotlight — every cell is already
       // the same size and there is only one row.
       const spotlight: Record<string, string | number> = { 'grid-column': '1 / -1', 'grid-row': 'span 2', order: -1 };
+      /**
+       * Every cell is a size container, which is what lets the picture inside it be the right shape.
+       *
+       * A cell is whatever the panel's proportions make it — 440×900 for one person in a side dock —
+       * and a picture cannot be fitted into an arbitrary box by CSS alone unless something can be
+       * measured. `container-type: size` makes the cell measurable, so the tile can ask for "as wide
+       * as 16:9 allows at this height" and stop being a full-height box with a band of video in the
+       * middle. That band was where the name and the mute badge ended up: anchored to the bottom of
+       * the cell, floating in empty space well below the picture they belonged to.
+       */
+      const cell: Record<string, string | number> = { 'container-type': 'size' };
       return tiles().map((entry) => ({
         id: entry.id,
-        style: !strip && entry.id === focus ? spotlight : {},
+        style: !strip && entry.id === focus ? { ...cell, ...spotlight } : cell,
       }));
     },
     /** True when this agent is in a call — the call bar's visibility condition. */

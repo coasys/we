@@ -92,45 +92,38 @@ const faceOf = (field: string) => ({
  */
 const hasVideo = stateOf('hasPicture');
 
-/** One participant's video, or their avatar when there is nothing to show. */
+/**
+ * One participant: a picture the right shape, and everything that belongs on top of it.
+ *
+ * Two boxes rather than one, and the split is what fixed the overlays. The outer box is the grid
+ * cell — whatever proportions the panel happens to have, which for one person in a side dock is
+ * 440×900. The inner box is the picture, sized to the largest 16:9 that fits, so the name and the
+ * badges anchored to its corner land *on the video* instead of somewhere in the empty half of a
+ * cell they nominally shared.
+ */
 const tile: SchemaNode = {
   type: 'Column',
   props: {
-    position: 'relative',
-    /**
-     * A surface only when there is no picture on it.
-     *
-     * With `fit: contain` the video is centred in the tile and the rest of the tile shows through,
-     * so a background here would frame every video in a grey box that grows as the cell gets further
-     * from 16:9. Transparent, the letterboxing is just the panel, and the picture reads as being the
-     * right size rather than as being surrounded.
-     *
-     * Low-numbered where it does paint, so it stays a recessed surface under both themes — see the
-     * note on `stage`.
-     */
-    bg: { $if: { condition: hasVideo, then: 'transparent', else: 'neutral-100' } },
-    r: '400',
-    overflow: 'hidden',
     ax: 'center',
     ay: 'center',
     /**
-     * The tile takes the cell it is given and never asks for more.
+     * The cell takes what it is given and never asks for more.
      *
      * `minWidth`/`minHeight: 0` are the load-bearing pair, not the sizes. A grid item's automatic
-     * minimum size is `auto` — large enough for its content — so a tile holding anything with an
+     * minimum size is `auto` — large enough for its content — so a cell holding anything with an
      * intrinsic size pushes its own track wider than the track was meant to be, and the grid
-     * overflows a stage that had a perfectly definite height. Zeroing it makes the cell authoritative
-     * and the content fit inside, which is the whole invariant here: one participant can never
-     * produce a scrollbar.
+     * overflows a stage that had a perfectly definite height. Zeroing it makes the track
+     * authoritative, which is the whole invariant here: one participant can never produce a
+     * scrollbar.
      */
     minWidth: '0',
     minHeight: '0',
     /**
-     * Focus is a *layout* change, and it is expressed per-item rather than by moving the tile.
+     * Grid placement, and the size containment the picture inside is measured against.
      *
      * Looked up by id like the volatile flags above, because the placement depends on the stage's
      * mode as well as on who is focused — see `tileCells` in the store, which is also where the
-     * spanning is explained.
+     * spanning and the containment are explained.
      *
      * Per-item and never by reparenting, deliberately: promoting the focused tile into a separate
      * "spotlight" node would move it to a different DOM parent, Solid's `<For>` recreates rather
@@ -140,260 +133,296 @@ const tile: SchemaNode = {
     styles: {
       $find: { items: { $store: 'modules.call.tileCells' }, where: { id: '$tile.id' }, select: 'style' },
     },
-    // A ring on whoever has the stage, so clicking a tile has a visible result even in the moment
-    // before the layout settles.
-    border: {
-      $if: { condition: stateOf('focused'), then: '2px solid primary-500', else: '2px solid transparent' },
-    },
   },
   children: [
     {
-      type: '$if',
+      type: 'Column',
       props: {
-        // No video means the avatar, rather than a black rectangle.
-        condition: hasVideo,
-        then: {
-          type: 'we-video',
-          props: {
-            stream: '$tile.stream',
-            autoplay: true,
-            playsinline: true,
-            // Never hear yourself. The self tile plays the same microphone the mesh is sending, and
-            // unmuted it is an immediate feedback loop.
-            muted: '$tile.isSelf',
-            /**
-             * Pinned to the tile's four edges rather than sized `100%` × `100%`.
-             *
-             * Not a stylistic preference — a percentage height only resolves against a parent whose
-             * own height is definite, and every "definite" in a chain of stretched flex and grid
-             * items is a browser judgement call rather than a guarantee. When one of them decides
-             * otherwise the percentage becomes `auto`, and an element whose only child is out of
-             * flow is then zero pixels tall: an invisible video rather than an oversized one. An
-             * absolutely positioned box with all four offsets set has a used size that comes from
-             * the containing block directly, so there is no chain left to fail.
-             *
-             * The tile is `position: relative`, which is what makes it the containing block.
-             */
-            position: 'absolute',
-            top: '0',
-            right: '0',
-            bottom: '0',
-            left: '0',
-            /**
-             * Always `contain` — the whole picture, never a crop.
-             *
-             * Cameras used to get `cover`, which fills the tile and hides the overflow, and that is
-             * fine only while a tile is roughly the shape of the picture. A grid cell is whatever
-             * shape the panel is: one participant in a right-hand dock got a 440×900 cell, so
-             * covering it scaled a 16:9 face until it was 1600px wide and threw away 1160px of it.
-             * What was left was a vertical slice of somebody's nose.
-             *
-             * The cost is letterboxing when a cell is far from 16:9, which is visible but honest —
-             * and the tile paints no background of its own while a picture is showing, so the bars
-             * are the panel rather than a grey box around the video.
-             *
-             * Setting `fit` at all is also what pins the video inside the tile: without it the
-             * element sizes itself from the stream's own pixel dimensions. See the primitive.
-             */
-            fit: 'contain',
-            /**
-             * Your own camera, mirrored — everyone expects to raise the hand they raised.
-             *
-             * Only the camera. A mirrored screen share is unreadable text, and `isScreen` is exactly
-             * the flag that tells the two apart.
-             */
-            transform: {
-              $if: {
-                condition: { $and: ['$tile.isSelf', { $not: stateOf('isScreen') }] },
-                then: 'scaleX(-1)',
-                else: 'none',
-              },
-            },
-          },
-        },
+        position: 'relative',
+        // Low-numbered, so it stays a recessed surface under both themes — see the note on `stage`.
+        // It shows only where a picture cannot fill 16:9, which is a screen share letterboxed inside
+        // its own frame rather than a grey box around every camera.
+        bg: 'neutral-100',
+        r: '400',
+        overflow: 'hidden',
+        ax: 'center',
+        ay: 'center',
         /**
-         * No video: who this is, and why there is nothing to watch.
+         * The largest 16:9 box that fits the cell, centred.
          *
-         * The second half is the part that was missing. A peer still negotiating and a peer who has
-         * turned their camera off both rendered as a bare avatar, so the first seconds of a working
-         * call were indistinguishable from a broken one — and the only honest thing to do while
-         * waiting is to say that you are waiting.
+         * `100cqh` is the cell's height, readable because the cell declares `container-type: size`.
+         * Width is therefore the smaller of "all of it" and "as much as this height allows at 16:9",
+         * and `aspect-ratio` derives the height back from that — which is the fit-a-ratio-box-in-a-
+         * container calculation that CSS cannot otherwise express for a non-replaced element.
+         *
+         * Where container queries are unavailable the width declaration is simply dropped and the
+         * box fills its cell, which is exactly the behaviour this replaces.
          */
-        else: {
-          type: 'Column',
-          props: { gap: '200', ax: 'center', ay: 'center' },
-          children: [
-            {
-              /**
-               * The participant's actual picture, with a generated one from their DID behind it.
-               *
-               * Looked up rather than read off `$tile`, because a profile arriving is not a reason to
-               * remount a video — see `tileFaces` in the store. `hash` is always supplied, so an agent
-               * with no picture still gets a distinct and stable one rather than the same grey glyph
-               * as everybody else.
-               */
-              type: 'we-avatar',
+        styles: {
+          'aspect-ratio': '16 / 9',
+          width: 'min(100%, calc(100cqh * 16 / 9))',
+          margin: 'auto',
+        },
+        // A ring on whoever has the stage, so clicking a tile has a visible result even in the moment
+        // before the layout settles. On the picture rather than the cell, so it frames the video.
+        border: {
+          $if: { condition: stateOf('focused'), then: '2px solid primary-500', else: '2px solid transparent' },
+        },
+      },
+      children: [
+        {
+          type: '$if',
+          props: {
+            // No video means the avatar, rather than a black rectangle.
+            condition: hasVideo,
+            then: {
+              type: 'we-video',
               props: {
-                image: faceOf('image'),
-                hash: faceOf('hash'),
-                initials: faceOf('name'),
-                size: 'lg',
+                stream: '$tile.stream',
+                autoplay: true,
+                playsinline: true,
+                // Never hear yourself. The self tile plays the same microphone the mesh is sending, and
+                // unmuted it is an immediate feedback loop.
+                muted: '$tile.isSelf',
+                /**
+                 * Pinned to the tile's four edges rather than sized `100%` × `100%`.
+                 *
+                 * Not a stylistic preference — a percentage height only resolves against a parent whose
+                 * own height is definite, and every "definite" in a chain of stretched flex and grid
+                 * items is a browser judgement call rather than a guarantee. When one of them decides
+                 * otherwise the percentage becomes `auto`, and an element whose only child is out of
+                 * flow is then zero pixels tall: an invisible video rather than an oversized one. An
+                 * absolutely positioned box with all four offsets set has a used size that comes from
+                 * the containing block directly, so there is no chain left to fail.
+                 *
+                 * The tile is `position: relative`, which is what makes it the containing block.
+                 */
+                position: 'absolute',
+                top: '0',
+                right: '0',
+                bottom: '0',
+                left: '0',
+                /**
+                 * `cover` for a camera, `contain` for a desktop.
+                 *
+                 * Safe again now that the box is 16:9 rather than whatever shape the panel is. It was
+                 * not before: one participant in a right-hand dock got a 440×900 cell, and covering it
+                 * scaled a 16:9 face to 1600px wide and threw away 1160px of it, leaving a vertical
+                 * slice of somebody's nose. Against a box that already matches, `cover` crops nothing
+                 * from a 16:9 source and trims a 4:3 webcam the way every other call app does.
+                 *
+                 * A desktop still gets `contain` — cropping one is the difference between readable and
+                 * not — and the recessed background behind it makes the letterboxing look deliberate.
+                 *
+                 * Setting `fit` at all is also what pins the video inside the box: without it the
+                 * element sizes itself from the stream's own pixel dimensions. See the primitive.
+                 */
+                fit: { $if: { condition: stateOf('isScreen'), then: 'contain', else: 'cover' } },
+                /**
+                 * Your own camera, mirrored — everyone expects to raise the hand they raised.
+                 *
+                 * Only the camera. A mirrored screen share is unreadable text, and `isScreen` is exactly
+                 * the flag that tells the two apart.
+                 */
+                transform: {
+                  $if: {
+                    condition: { $and: ['$tile.isSelf', { $not: stateOf('isScreen') }] },
+                    then: 'scaleX(-1)',
+                    else: 'none',
+                  },
+                },
               },
             },
-            {
-              type: '$if',
-              props: {
-                condition: stateOf('connecting'),
-                then: {
-                  type: 'Row',
-                  props: { gap: '100', ay: 'center' },
-                  children: [
-                    { type: 'we-spinner', props: { size: 'xs' } },
-                    {
-                      type: 'we-text',
-                      props: { variant: 'footnote', color: 'neutral-500' },
-                      children: ['Connecting…'],
-                    },
-                  ],
+            /**
+             * No video: who this is, and why there is nothing to watch.
+             *
+             * The second half is the part that was missing. A peer still negotiating and a peer who has
+             * turned their camera off both rendered as a bare avatar, so the first seconds of a working
+             * call were indistinguishable from a broken one — and the only honest thing to do while
+             * waiting is to say that you are waiting.
+             */
+            else: {
+              type: 'Column',
+              props: { gap: '200', ax: 'center', ay: 'center' },
+              children: [
+                {
+                  /**
+                   * The participant's actual picture, with a generated one from their DID behind it.
+                   *
+                   * Looked up rather than read off `$tile`, because a profile arriving is not a reason to
+                   * remount a video — see `tileFaces` in the store. `hash` is always supplied, so an agent
+                   * with no picture still gets a distinct and stable one rather than the same grey glyph
+                   * as everybody else.
+                   */
+                  type: 'we-avatar',
+                  props: {
+                    image: faceOf('image'),
+                    hash: faceOf('hash'),
+                    initials: faceOf('name'),
+                    size: 'lg',
+                  },
                 },
-                // Failure is not progress and must not animate like it. Nothing at all for the
-                // ordinary case — a connected peer with their camera off needs no explanation, and
-                // labelling it would be noise on every tile of every call.
-                else: {
+                {
                   type: '$if',
                   props: {
-                    condition: stateOf('failed'),
+                    condition: stateOf('connecting'),
                     then: {
                       type: 'Row',
                       props: { gap: '100', ay: 'center' },
                       children: [
-                        { type: 'we-icon', props: { name: 'warning', size: 'xs', color: 'danger-500' } },
+                        { type: 'we-spinner', props: { size: 'xs' } },
                         {
                           type: 'we-text',
-                          props: { variant: 'footnote', color: 'danger-500' },
-                          children: ["Couldn't connect"],
+                          props: { variant: 'footnote', color: 'neutral-500' },
+                          children: ['Connecting…'],
                         },
                       ],
                     },
-                  },
-                },
-              },
-            },
-          ],
-        },
-      },
-    },
-    /**
-     * Click anyone to give them the stage; click them again to go back to an even grid.
-     *
-     * A `bare` button covering the tile rather than an `onClick` on the tile itself: bare is the
-     * appearance-free variant, so it adds nothing visually while keeping the keyboard activation and
-     * the button role that a clickable `Column` silently loses. It sits under the badges in DOM
-     * order so those stay readable, and above the video so the whole picture is the target.
-     */
-    {
-      type: 'we-button',
-      props: {
-        variant: 'bare',
-        position: 'absolute',
-        top: '0',
-        left: '0',
-        width: '100%',
-        height: '100%',
-        onClick: { $action: 'modules.call.focusTile', args: ['$tile.id'] },
-      },
-    },
-    {
-      type: 'Row',
-      props: { position: 'absolute', bottom: '200', left: '200', gap: '100', ay: 'center' },
-      children: [
-        /**
-         * Whose tile this is — the question a wall of faces stops answering the moment one of them
-         * turns their camera off, or shares a screen that looks like everybody else's.
-         *
-         * In the same row as the badges rather than its own corner, so the two cannot overlap on a
-         * small tile: one absolutely positioned strip, laid out left to right, name first.
-         */
-        {
-          type: '$if',
-          props: {
-            // Nothing at all rather than an empty chip, for a peer whose profile has not arrived.
-            // Your own tile always has something to say, so it is exempt.
-            condition: { $or: ['$tile.isSelf', faceOf('name')] },
-            then: {
-              type: 'we-badge',
-              props: { variant: 'neutral', size: 'xs', maxWidth: '150px' },
-              children: [
-                {
-                  /**
-                   * The small avatar appears only while video is playing.
-                   *
-                   * With the camera off the large avatar is already in the middle of the tile, and a
-                   * second copy of the same face two centimetres below it is noise. While video is
-                   * playing it is the opposite: a shared desktop carries no clue whose it is.
-                   */
-                  type: '$if',
-                  props: {
-                    condition: hasVideo,
-                    then: {
-                      type: 'we-avatar',
-                      props: { image: faceOf('image'), hash: faceOf('hash'), initials: faceOf('name'), size: 'xxs' },
+                    // Failure is not progress and must not animate like it. Nothing at all for the
+                    // ordinary case — a connected peer with their camera off needs no explanation, and
+                    // labelling it would be noise on every tile of every call.
+                    else: {
+                      type: '$if',
+                      props: {
+                        condition: stateOf('failed'),
+                        then: {
+                          type: 'Row',
+                          props: { gap: '100', ay: 'center' },
+                          children: [
+                            { type: 'we-icon', props: { name: 'warning', size: 'xs', color: 'danger-500' } },
+                            {
+                              type: 'we-text',
+                              props: { variant: 'footnote', color: 'danger-500' },
+                              children: ["Couldn't connect"],
+                            },
+                          ],
+                        },
+                      },
                     },
                   },
-                },
-                {
-                  type: 'we-text',
-                  // `minWidth: 0` is what lets `truncate` actually bite: a flex item's automatic
-                  // minimum is its content, so without it a long name pushes the badge wider than
-                  // its own `maxWidth` instead of being clipped.
-                  props: { variant: 'footnote', truncate: true, minWidth: '0' },
-                  // "You" rather than your own name: it is shorter, and it is the thing you are
-                  // actually looking for when scanning a grid for your own picture.
-                  children: [{ $if: { condition: '$tile.isSelf', then: 'You', else: faceOf('name') } }],
                 },
               ],
             },
           },
         },
+        /**
+         * Click anyone to give them the stage; click them again to go back to an even grid.
+         *
+         * A `bare` button covering the tile rather than an `onClick` on the tile itself: bare is the
+         * appearance-free variant, so it adds nothing visually while keeping the keyboard activation and
+         * the button role that a clickable `Column` silently loses. It sits under the badges in DOM
+         * order so those stay readable, and above the video so the whole picture is the target.
+         */
         {
-          type: '$if',
+          type: 'we-button',
           props: {
-            condition: { $not: stateOf('audioEnabled') },
-            then: {
-              type: 'we-badge',
-              props: { variant: 'neutral', size: 'xs' },
-              children: [{ type: 'we-icon', props: { name: 'microphone-slash' } }],
-            },
+            variant: 'bare',
+            position: 'absolute',
+            top: '0',
+            left: '0',
+            width: '100%',
+            height: '100%',
+            onClick: { $action: 'modules.call.focusTile', args: ['$tile.id'] },
           },
         },
         {
-          type: '$if',
-          props: {
-            condition: stateOf('isScreen'),
-            then: {
-              type: 'we-badge',
-              props: { variant: 'primary', size: 'xs' },
-              children: [{ type: 'we-icon', props: { name: 'monitor' } }],
+          type: 'Row',
+          props: { position: 'absolute', bottom: '200', left: '200', gap: '100', ay: 'center' },
+          children: [
+            /**
+             * Whose tile this is — the question a wall of faces stops answering the moment one of them
+             * turns their camera off, or shares a screen that looks like everybody else's.
+             *
+             * In the same row as the badges rather than its own corner, so the two cannot overlap on a
+             * small tile: one absolutely positioned strip, laid out left to right, name first.
+             */
+            {
+              type: '$if',
+              props: {
+                // Nothing at all rather than an empty chip, for a peer whose profile has not arrived.
+                // Your own tile always has something to say, so it is exempt.
+                condition: { $or: ['$tile.isSelf', faceOf('name')] },
+                then: {
+                  type: 'we-badge',
+                  props: { variant: 'neutral', size: 'xs', maxWidth: '150px' },
+                  children: [
+                    {
+                      /**
+                       * The small avatar appears only while video is playing.
+                       *
+                       * With the camera off the large avatar is already in the middle of the tile, and a
+                       * second copy of the same face two centimetres below it is noise. While video is
+                       * playing it is the opposite: a shared desktop carries no clue whose it is.
+                       */
+                      type: '$if',
+                      props: {
+                        condition: hasVideo,
+                        then: {
+                          type: 'we-avatar',
+                          props: {
+                            image: faceOf('image'),
+                            hash: faceOf('hash'),
+                            initials: faceOf('name'),
+                            size: 'xxs',
+                          },
+                        },
+                      },
+                    },
+                    {
+                      type: 'we-text',
+                      // `minWidth: 0` is what lets `truncate` actually bite: a flex item's automatic
+                      // minimum is its content, so without it a long name pushes the badge wider than
+                      // its own `maxWidth` instead of being clipped.
+                      props: { variant: 'footnote', truncate: true, minWidth: '0' },
+                      // "You" rather than your own name: it is shorter, and it is the thing you are
+                      // actually looking for when scanning a grid for your own picture.
+                      children: [{ $if: { condition: '$tile.isSelf', then: 'You', else: faceOf('name') } }],
+                    },
+                  ],
+                },
+              },
             },
-          },
-        },
-        {
-          // Reconnecting is worth saying out loud — a frozen picture looks identical to a still one.
-          //
-          // Only where there is a picture to freeze: with no video the centre of the tile already
-          // says what is happening, and a badge repeating it two centimetres below would be the same
-          // sentence twice.
-          type: '$if',
-          props: {
-            condition: {
-              $and: [hasVideo, { $in: [stateOf('connection'), ['connecting', 'disconnected', 'failed']] }],
+            {
+              type: '$if',
+              props: {
+                condition: { $not: stateOf('audioEnabled') },
+                then: {
+                  type: 'we-badge',
+                  props: { variant: 'neutral', size: 'xs' },
+                  children: [{ type: 'we-icon', props: { name: 'microphone-slash' } }],
+                },
+              },
             },
-            then: {
-              type: 'we-badge',
-              props: { variant: 'warning', size: 'xs' },
-              children: [stateOf('connection')],
+            {
+              type: '$if',
+              props: {
+                condition: stateOf('isScreen'),
+                then: {
+                  type: 'we-badge',
+                  props: { variant: 'primary', size: 'xs' },
+                  children: [{ type: 'we-icon', props: { name: 'monitor' } }],
+                },
+              },
             },
-          },
+            {
+              // Reconnecting is worth saying out loud — a frozen picture looks identical to a still one.
+              //
+              // Only where there is a picture to freeze: with no video the centre of the tile already
+              // says what is happening, and a badge repeating it two centimetres below would be the same
+              // sentence twice.
+              type: '$if',
+              props: {
+                condition: {
+                  $and: [hasVideo, { $in: [stateOf('connection'), ['connecting', 'disconnected', 'failed']] }],
+                },
+                then: {
+                  type: 'we-badge',
+                  props: { variant: 'warning', size: 'xs' },
+                  children: [stateOf('connection')],
+                },
+              },
+            },
+          ],
         },
       ],
     },
