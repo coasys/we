@@ -12,9 +12,10 @@ export class Tabs extends DesignSystemElement {
   @property({ type: String }) selectedKey: string = '';
   @property({ type: Object }) styles?: Record<string, string | number | undefined>;
 
-  // Use querySelectorAll instead of @queryAssignedElements — the schema renderer
-  // wraps each child web component in a <div style="display:contents"> which
-  // breaks named-slot assignment. querySelectorAll finds we-tab at any depth.
+  // Use querySelectorAll instead of @queryAssignedElements — the schema renderer wraps each child
+  // in a <div style="display:contents">, so the elements assigned to this slot are those wrappers
+  // and never the tabs themselves. querySelectorAll finds we-tab at any depth, which is what makes
+  // this work under the renderer and under hand-written markup alike.
   private get _allTabs(): HTMLElement[] {
     return [...this.querySelectorAll('we-tab')] as HTMLElement[];
   }
