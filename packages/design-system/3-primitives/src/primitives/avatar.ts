@@ -23,13 +23,10 @@ const styles = css`
     --we-avatar-color: var(--we-color-black);
     --we-avatar-bg: var(--we-color-neutral-100);
   }
-  /* A picture covers the whole circle, so the disc behind it is only ever visible as a
-     rim at the image's antialiased edge — near-black in the dark themes, where
-     neutral-100 inverts. The disc exists for the identicon/initials/icon fallbacks, so
-     it is dropped only when there is an image to cover it. Matching on the attribute
-     alone is not enough: Lit reflects the empty default as an empty image attribute,
-     which would take the disc away from every fallback too. */
-  :host([image]:not([image=''])) {
+  /* The disc exists for the identicon/initials/icon fallbacks; a picture covers it
+     entirely, so it is dropped when there is one. Keyed off the marker attribute rather
+     than the image property itself — see the note there for why it is not reflected. */
+  :host([has-image]) {
     --we-avatar-bg: transparent;
   }
   :host([selected]) {
@@ -104,7 +101,19 @@ export default class Avatar extends LayoutVisualElement {
     return DEFAULT_PROPS;
   }
 
-  @property({ type: String, reflect: true }) image = '';
+  /**
+   * Deliberately not reflected, unlike every other string property here.
+   *
+   * A WE profile picture is a base64 data URI rather than a URL, and an uncapped one runs to
+   * hundreds of kilobytes. Reflecting it writes that whole string into the DOM as an attribute:
+   * held twice per avatar, re-written on every update, and serialized into anything that reads
+   * `outerHTML`. It also stalls the element inspector for seconds on a single avatar, which is how
+   * it was found. `we-image` leaves `src` unreflected for the same reason.
+   *
+   * CSS still needs to know whether there is a picture, so `willUpdate` maintains a `has-image`
+   * marker attribute — one bit instead of the payload.
+   */
+  @property({ type: String }) image = '';
   @property({ type: String, reflect: true }) hash = '';
   @property({ type: Boolean, reflect: true }) selected = false;
   @property({ type: Boolean, reflect: true }) online = false;
@@ -113,6 +122,13 @@ export default class Avatar extends LayoutVisualElement {
   @property({ type: String, reflect: true }) size?: SizeValue;
   @property({ type: Boolean, reflect: true }) clickable = false;
   @property({ type: Object }) styles?: Record<string, string | number | undefined>;
+
+  // Before render rather than after, so the disc is already gone on the frame the picture first
+  // paints — set in `updated` it would flash behind a transparent-edged image on mount.
+  willUpdate(props: Map<string, unknown>) {
+    super.willUpdate(props);
+    this.toggleAttribute('has-image', !!this.image);
+  }
 
   updated(props: Map<string, unknown>) {
     super.updated(props);

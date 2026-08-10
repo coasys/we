@@ -155,7 +155,11 @@ export function ProfileStoreProvider(props: ParentProps) {
     const profilePort = session.backendPorts()?.profiles;
     if (!myDid || !profilePort) return;
 
-    const fileData = await compressImageToFileData(imageFile, field === 'avatar' ? 'profile-image' : 'cover-image');
+    const fileData = await compressImageToFileData(
+      imageFile,
+      field === 'avatar' ? 'profile-image' : 'cover-image',
+      field === 'avatar' ? PROFILE_AVATAR_PX : undefined,
+    );
     // data_base64 from compressImageToFileData is raw base64 (no "data:" prefix) — rebuild the data URI
     // the same way the read path does when resolving it back after a refetch.
     const dataUri = `data:${fileData.file_type};base64,${fileData.data_base64}`;
@@ -272,7 +276,7 @@ export function ProfileStoreProvider(props: ParentProps) {
   }
 
   async function setPendingAvatar(file: File): Promise<void> {
-    const fileData = await compressImageToFileData(file, 'profile-image');
+    const fileData = await compressImageToFileData(file, 'profile-image', PROFILE_AVATAR_PX);
     setPendingAvatarSignal(`data:${fileData.file_type};base64,${fileData.data_base64}`);
   }
 
@@ -312,6 +316,19 @@ export function ProfileStoreProvider(props: ParentProps) {
    * profile page showed the picture perfectly. Comfortably over the 120px the badge renders at.
    */
   const ACCOUNT_AVATAR_PX = 192;
+
+  /**
+   * Longest edge of the published avatar, in px.
+   *
+   * The same trap `ACCOUNT_AVATAR_PX` exists for, one layer out: `compressImageToFileData` scales
+   * to a proportion of the original, so an uncapped upload stayed a fraction of a phone photo —
+   * hundreds of kilobytes of base64 that every peer then syncs, caches and holds in memory to
+   * render a 32px circle. The largest surface an avatar renders at is the 120px profile picture, so
+   * this covers it at 4× device pixel ratio and everything else many times over.
+   *
+   * Only new uploads: an avatar already published keeps its size until it is replaced.
+   */
+  const PROFILE_AVATAR_PX = 512;
 
   /**
    * Mirror the avatar onto the account, at a size the registry will actually keep.

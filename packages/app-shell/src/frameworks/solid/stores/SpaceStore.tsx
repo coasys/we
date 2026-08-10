@@ -306,6 +306,16 @@ export interface SpaceStore {
 
 const SpaceContext = createContext<SpaceStore>();
 
+/**
+ * Longest edge of a space avatar, in px. The counterpart to `PROFILE_AVATAR_PX` in ProfileStore,
+ * for the same reason: `compressImageToFileData` scales to a proportion of the original, which is
+ * no bound at all, and a space avatar renders in the sidebar and headers at a few dozen pixels.
+ *
+ * Cover images are deliberately left uncapped — they render full-bleed, so a ceiling sized for an
+ * avatar would visibly soften them.
+ */
+const SPACE_AVATAR_PX = 512;
+
 export function SpaceStoreProvider(props: ParentProps) {
   const session = useSessionStore();
   const datasetStore = useDatasetStore();
@@ -594,7 +604,9 @@ export function SpaceStoreProvider(props: ParentProps) {
       }
 
       // Process avatar image if provided
-      const avatarData = avatarFile ? await compressImageToFileData(avatarFile, 'space-avatar') : undefined;
+      const avatarData = avatarFile
+        ? await compressImageToFileData(avatarFile, 'space-avatar', SPACE_AVATAR_PX)
+        : undefined;
 
       // Process cover image if provided
       const coverImageData = coverImageFile ? await compressImageToFileData(coverImageFile, 'space-cover') : undefined;
@@ -664,7 +676,7 @@ export function SpaceStoreProvider(props: ParentProps) {
 
     let avatarData: FileData | undefined;
     if (avatarValue instanceof File) {
-      avatarData = await compressImageToFileData(avatarValue, 'space-avatar');
+      avatarData = await compressImageToFileData(avatarValue, 'space-avatar', SPACE_AVATAR_PX);
     } else if (typeof avatarValue === 'string' && avatarValue) {
       // Untouched prefill from the foreign app's own resolved (data-URI) image value —
       // round-tripped back through FILE_STORAGE_LANGUAGE rather than re-compressed.
@@ -889,7 +901,11 @@ export function SpaceStoreProvider(props: ParentProps) {
   async function updateSpaceImage(field: 'avatar' | 'coverImage', imageFile: File, spaceUuid?: string): Promise<void> {
     const ds = targetDataset(spaceUuid);
     if (!ds) return;
-    const fileData = await compressImageToFileData(imageFile, field === 'avatar' ? 'space-image' : 'space-cover');
+    const fileData = await compressImageToFileData(
+      imageFile,
+      field === 'avatar' ? 'space-image' : 'space-cover',
+      field === 'avatar' ? SPACE_AVATAR_PX : undefined,
+    );
     const [spaceModel] = await Space.findAll(ds.handle, { where: spaceSelfWhere(ds) });
     if (!spaceModel) return;
     await Space.update(ds.handle, spaceModel.id, { [field]: fileData });
