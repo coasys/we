@@ -285,6 +285,9 @@ export const storeEntries: StoreEntry[] = [
       personalSpaces: { type: 'array', model: 'Space' },
       sharedSpaces: { type: 'array', model: 'Space' },
       routeSpaceUnjoined: { type: 'boolean' },
+      joiningSpace: { type: 'string' },
+      joinSlow: { type: 'boolean' },
+      joinError: { type: 'object', properties: ['spaceId', 'message'] },
       spaceList: {
         type: 'array',
         properties: [
@@ -712,6 +715,12 @@ export function generateStoresText(entries: StoreEntry[]): string {
         spaceList:
           "{ uuid, name, description, avatar, kind: 'shared' | 'personal' | 'foreign', isWeSpace, canAdminister }[] — one row per joined dataset the agent can act on, ordered like the sidebar and excluding the system datasets. Includes datasets that are not WE spaces (kind 'foreign', isWeSpace false), which are waiting to be initialized. `uuid` is the dataset id, so it keys navigation and settings whether or not a Space record exists",
         creatingSpace: 'boolean (true while a new space is being created)',
+        joiningSpace:
+          "string — the shared id of the space a join is running for, '' when none is. The id rather than a flag so a list can spin only the row being joined; a gate compares it against its own route segment. Stays set for the whole join, which outlives the network call that starts it",
+        joinSlow:
+          'boolean — that join has been going long enough to be worth mentioning. Joining a shared space has to fetch and install it before it exists anywhere, so a first join routinely takes a minute; pair with joiningSpace to say so instead of spinning in silence',
+        joinError:
+          '{ spaceId, message } | null — the last join failure, ready to display. Carries the space so a gate can tell whether the failure is its own: compare joinError.spaceId against the route segment, or a bare message follows the user to the next unjoined space they open',
         orderedSidebarItems:
           'array of sidebar items in user-defined order (uuid, name, avatar, spaceId) — personal + shared spaces merged',
         memberDids: 'string[] — DIDs of all members in the current space (includes own DID)',
@@ -746,7 +755,7 @@ export function generateStoresText(entries: StoreEntry[]): string {
         createSpace:
           "(name, description, access: 'personal' | 'shared', discovery: 'hidden' | 'listed', avatarFile?, coverImageFile?, location?): creates a new space with full setup",
         joinSpace:
-          '(id: string, focus = true): joins a shared space by neighbourhood URL or CID, or focuses it if already joined. Pass focus: false to join without navigating there — for a caller that needs the dataset present rather than open, which is how the marketplace reads its own dataset without moving you out of the space you are in',
+          '(id: string, focus = true): joins a shared space by share link, neighbourhood URL or CID, or focuses it if already joined. Pass focus: false to join without navigating there — for a caller that needs the dataset present rather than open, which is how the marketplace reads its own dataset without moving you out of the space you are in. Rejects when the join could not be completed, so onSuccess means what it says; watch joiningSpace/joinSlow/joinError for what to show while it runs. A join whose network call times out keeps going: the backend usually finishes anyway, and this waits for that before believing the failure',
         initializeAsWeSpace:
           "(name: string, description: string, avatarValue?: File | string | null): installs WE's Space SDNA into the current, already-joined, foreign-native dataset (e.g. one synced in from Flux) and creates a Space entity in place — access is always 'shared' since the dataset is already a published neighbourhood",
         removeSpace:

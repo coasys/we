@@ -391,6 +391,76 @@ describe('dataset lifecycle through the real stores', () => {
     await vi.waitFor(() => expect(stores.datasets.currentDataset()?.name).toBe('Peer Space'));
   }, 10000);
 
+  /**
+   * The bug this suite exists to keep fixed: a join the backend completes and the *call* does not.
+   *
+   * AD4M's client times every call out at 30s, and a first join — fetch the neighbourhood, install
+   * its link language — routinely runs past that while still working. The 408 that came back said
+   * nothing about whether the join had worked, and the store believed it: none of the work that
+   * makes a joined space usable happened, and the join gate stayed up over a space the agent was
+   * by then a member of. Only a page refresh found it.
+   */
+  it('finishes a join whose call timed out after the backend had already done it', async () => {
+    const stores = mountShell();
+    await ready(stores);
+
+    lifecycle.seedShared({ id: 'slow-ds', name: 'Slow Space', sharedUri: 'inmemory://slow-ds' });
+
+    // The shape of the real failure: the backend does the whole job, the caller is told nothing.
+    const backendJoin = lifecycle.join.bind(lifecycle);
+    vi.spyOn(lifecycle, 'join').mockImplementationOnce(async (uri: string) => {
+      await backendJoin(uri);
+      throw new Error("RPC error 408: RPC call 'neighbourhood.join' timed out after 30000ms");
+    });
+
+    await stores.spaces.joinSpace('inmemory://slow-ds');
+
+    // Recovered rather than abandoned: switched to, and reported as no longer joining.
+    await vi.waitFor(() => expect(stores.datasets.currentDataset()?.name).toBe('Slow Space'));
+    expect(stores.spaces.joiningSpace()).toBe('');
+    expect(stores.spaces.joinError()).toBeNull();
+  }, 20000);
+
+  it('reports a backend that answered, rather than waiting out the recovery window', async () => {
+    const stores = mountShell();
+    await ready(stores);
+
+    // Nothing published at that address — a verdict, not a timeout. Waiting changes nothing, so
+    // this has to come back now; the test's own timeout is the assertion that it does.
+    await expect(stores.spaces.joinSpace('inmemory://not-a-space')).rejects.toThrow(/nothing published/);
+
+    expect(stores.spaces.joiningSpace()).toBe('');
+    expect(stores.spaces.joinError()).toEqual({
+      spaceId: 'not-a-space',
+      message: expect.stringContaining('Check the link'),
+    });
+  }, 10000);
+
+  it('collapses two joins of the same space into one', async () => {
+    const stores = mountShell();
+    await ready(stores);
+
+    lifecycle.seedShared({ id: 'twice-ds', name: 'Twice Space', sharedUri: 'inmemory://twice-ds' });
+    const joinSpy = vi.spyOn(lifecycle, 'join');
+
+    // A double click, or a gate and a list asking at once. Two joins racing produce two datasets
+    // for one address, and nothing afterwards can tell which one the space is in.
+    await Promise.all([stores.spaces.joinSpace('inmemory://twice-ds'), stores.spaces.joinSpace('inmemory://twice-ds')]);
+
+    expect(joinSpy).toHaveBeenCalledTimes(1);
+    await vi.waitFor(() => expect(stores.datasets.currentDataset()?.name).toBe('Twice Space'));
+  }, 10000);
+
+  it('takes the web share link as well as the URI and the bare id', async () => {
+    const stores = mountShell();
+    await ready(stores);
+
+    lifecycle.seedShared({ id: 'linked-ds', name: 'Linked Space', sharedUri: 'inmemory://linked-ds' });
+    await stores.spaces.joinSpace('https://we.example/space/linked-ds');
+
+    await vi.waitFor(() => expect(stores.datasets.currentDataset()?.name).toBe('Linked Space'));
+  }, 10000);
+
   it('removing a space prunes the dataset list and mySpaces (via the removal callback)', async () => {
     const stores = mountShell();
     await ready(stores);

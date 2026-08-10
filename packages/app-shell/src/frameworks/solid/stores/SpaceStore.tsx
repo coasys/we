@@ -1,4 +1,4 @@
-import { type ModuleSurface, moduleRegistry, moduleStores, moduleSurface } from '@shared/registries/moduleRegistry';
+import { moduleRegistry, moduleStores, type ModuleSurface, moduleSurface } from '@shared/registries/moduleRegistry';
 import {
   isSpaceSelf,
   type LocationData,
@@ -8,8 +8,8 @@ import {
 } from '@shared/spaceSync';
 import { deriveSlug } from '@shared/utils';
 import type { AgentProfileSummary, DatasetRef } from '@we/backend-shared';
-import { toastService } from '@we/components/solid';
 import { createBlocks, deleteBlocks, reconcileBlocks } from '@we/block-shared';
+import { toastService } from '@we/components/solid';
 import {
   AGENT_DEFAULT,
   CollectionBlock,
@@ -126,27 +126,29 @@ function resolveEnabledModules(raw: string | undefined): string[] {
  */
 function moduleSettingsFrom(raw: string | undefined, installed: Set<string>, muted: Set<string>): ModuleSetting[] {
   const on = new Set(resolveEnabledModules(raw));
-  return moduleRegistry
-    .all()
-    // Chrome only. A contribution is gated where it renders, and chrome is the only surface that
-    // renders inside a space — an app switcher is shell-level, and a capability is mounted by
-    // whatever template asks for it. Neither is a community's decision. See `moduleSurface`.
-    .filter(({ definition }) => moduleSurface(definition) === 'chrome')
-    .map(({ definition }) => {
-      const enabled = on.has(definition.id);
-      const isInstalled = installed.has(definition.id);
-      const isMuted = muted.has(definition.id);
-      return {
-        id: definition.id,
-        name: definition.name,
-        description: definition.description ?? '',
-        icon: definition.icon ?? 'puzzle-piece',
-        enabled,
-        installed: isInstalled,
-        visible: !isMuted,
-        active: enabled && isInstalled && !isMuted,
-      };
-    });
+  return (
+    moduleRegistry
+      .all()
+      // Chrome only. A contribution is gated where it renders, and chrome is the only surface that
+      // renders inside a space — an app switcher is shell-level, and a capability is mounted by
+      // whatever template asks for it. Neither is a community's decision. See `moduleSurface`.
+      .filter(({ definition }) => moduleSurface(definition) === 'chrome')
+      .map(({ definition }) => {
+        const enabled = on.has(definition.id);
+        const isInstalled = installed.has(definition.id);
+        const isMuted = muted.has(definition.id);
+        return {
+          id: definition.id,
+          name: definition.name,
+          description: definition.description ?? '',
+          icon: definition.icon ?? 'puzzle-piece',
+          enabled,
+          installed: isInstalled,
+          visible: !isMuted,
+          active: enabled && isInstalled && !isMuted,
+        };
+      })
+  );
 }
 
 export interface ModuleSetting {
@@ -253,20 +255,31 @@ const JOIN_RECOVERY_MAX_POLL_MS = 15_000;
 const JOIN_SLOW_AFTER_MS = 8_000;
 
 /**
+ * Did the *call* give up, or did the backend answer?
+ *
+ * Only the first is worth waiting out. A timeout or a dropped socket says nothing about whether the
+ * join is still running, so the question is simply unanswered and worth asking again. Anything else
+ * is the backend having looked and told us: a URL that resolves to no space does not become one by
+ * being asked about for another five minutes, and treating the two alike would leave someone who
+ * pasted a bad link watching a spinner until the recovery window ran out.
+ */
+function transportGaveUp(error: unknown): boolean {
+  const raw = error instanceof Error ? error.message : String(error);
+  return /timed out|timeout|\b408\b|\b503\b|websocket|network error|failed to fetch|fetch failed/i.test(raw);
+}
+
+/**
  * What to tell someone whose join did not work.
  *
- * The timeout case is worth separating even here, at the end of the recovery window: the join may
- * genuinely still be running (the window is a budget, not a guarantee), so "try again" is better
- * advice than it sounds — a second attempt costs nothing once the dataset exists, because the
- * backend returns the one it already made.
+ * The two cases stay separate even here, past the end of the recovery window: a join that outlasted
+ * the window may still be running (it is a budget, not a guarantee), which makes "try again" better
+ * advice than it sounds — a second attempt is cheap once the dataset exists, because the backend
+ * hands back the one it already made rather than making another.
  */
-function joinErrorMessage(error: unknown): string {
-  const raw = error instanceof Error ? error.message : String(error);
-  if (/timed out|timeout|\b408\b|websocket/i.test(raw)) {
-    return 'This is taking longer than expected. The space may still be joining in the background — try again in a minute.';
-  }
-  return "Couldn't join this space. Check the link and try again.";
-}
+const joinErrorMessage = (error: unknown): string =>
+  transportGaveUp(error)
+    ? 'This is taking longer than expected. The space may still be joining in the background — try again in a minute.'
+    : "Couldn't join this space. Check the link and try again.";
 
 export interface SpaceStore {
   // State
@@ -299,8 +312,14 @@ export interface SpaceStore {
   joiningSpace: Accessor<string>;
   /** That join has outlasted {@link JOIN_SLOW_AFTER_MS} and is still going — say so rather than spin. */
   joinSlow: Accessor<boolean>;
-  /** Why the last join failed, ready to display, or `''`. Cleared when the next join starts. */
-  joinError: Accessor<string>;
+  /**
+   * The last join failure — which space it was about, and what to say — or null.
+   *
+   * Carries the space rather than just the message so a gate can tell whether the failure is *its*
+   * failure. A bare message follows the user to the next unjoined space they open and reports a
+   * problem there that happened somewhere else.
+   */
+  joinError: Accessor<{ spaceId: string; message: string } | null>;
   /** Sidebar entries in user-defined order — datasets decorated with Space name/avatar when
    * available, plus a virtual pre-join entry for the configured global space. */
   orderedSidebarItems: Accessor<
@@ -438,7 +457,7 @@ export function SpaceStoreProvider(props: ParentProps) {
 
   const [joiningSpace, setJoiningSpace] = createSignal('');
   const [joinSlow, setJoinSlow] = createSignal(false);
-  const [joinError, setJoinError] = createSignal('');
+  const [joinError, setJoinError] = createSignal<{ spaceId: string; message: string } | null>(null);
 
   /**
    * Joins running right now, keyed by shared id.
@@ -520,8 +539,7 @@ export function SpaceStoreProvider(props: ParentProps) {
    */
   const templateOverrideFor = (spaceUuid: string | undefined): string =>
     preferenceFor(spaceUuid)?.templateId || FOLLOW_SPACE;
-  const themeOverrideFor = (spaceUuid: string | undefined): string =>
-    preferenceFor(spaceUuid)?.themeId || FOLLOW_SPACE;
+  const themeOverrideFor = (spaceUuid: string | undefined): string => preferenceFor(spaceUuid)?.themeId || FOLLOW_SPACE;
 
   /**
    * The link that reaches a space from outside — see {@link SpaceListEntry.shareLink}.
@@ -938,27 +956,41 @@ export function SpaceStoreProvider(props: ParentProps) {
   /** One join attempt, start to finish. Owns the state a UI watches while it runs. */
   async function runJoin(id: string, key: string, focus: boolean): Promise<void> {
     const lifecycle = session.lifecycle()!;
-    setJoinError('');
+    setJoinError(null);
     setJoiningSpace(key);
     setJoinSlow(false);
     const slowTimer = setTimeout(() => setJoinSlow(true), JOIN_SLOW_AFTER_MS);
 
     console.log('SpaceStore: joining shared dataset', id);
     try {
+      // Ask the backend what it already has before asking it for more. The caller checked this
+      // store's dataset list, which is a boot-time snapshot plus whatever change events have landed
+      // since — and the case that matters here is the one where neither covers it: a join this
+      // client abandoned, finished by the backend while the page was reloading. Joining again there
+      // is how one space becomes two.
+      const alreadyJoined = (await lifecycle.list().catch(() => null))?.find((ref) => datasetAnswersTo(ref, id));
+      if (alreadyJoined) {
+        console.log('SpaceStore: the backend had already joined this space', alreadyJoined.id);
+        await finishJoin(alreadyJoined, focus);
+        return;
+      }
+
       let joinedRef: DatasetRef | null = null;
       try {
         // The adapter normalizes bare shared ids to its own URI scheme.
         joinedRef = await lifecycle.join!(joinTargetOf(id));
       } catch (error) {
-        // The call gave up; the backend very likely did not. Keep watching before believing it.
+        // A backend that answered has been believed. Only a call that gave up leaves the question
+        // open, and only then is it worth watching for the join to land without us.
+        if (!transportGaveUp(error)) throw error;
         joinedRef = await waitForJoinedDataset(id);
         if (!joinedRef) throw error;
-        console.warn('SpaceStore: the join call failed but the backend finished the join anyway', error);
+        console.warn('SpaceStore: the join call gave up but the backend finished the join anyway', error);
       }
       await finishJoin(joinedRef, focus);
     } catch (error) {
       console.error('SpaceStore: joinSpace error', error);
-      setJoinError(joinErrorMessage(error));
+      setJoinError({ spaceId: key, message: joinErrorMessage(error) });
       // Rethrown rather than swallowed: every caller has an `onSuccess` that navigates somewhere or
       // clears an input, and a swallowed failure fired all of them as though the join had worked.
       throw error;
@@ -1250,8 +1282,6 @@ export function SpaceStoreProvider(props: ParentProps) {
    * space of its chrome.
    */
   const enabledModules = createMemo<string[]>(() => resolveEnabledModules(currentSpace()?.enabledModules));
-
-
 
   /**
    * What actually renders here, for this agent: the three layers intersected, minus personal mutes.

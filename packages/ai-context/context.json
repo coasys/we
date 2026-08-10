@@ -6121,6 +6121,16 @@
         "creatingSpace": {
           "type": "boolean"
         },
+        "joiningSpace": {
+          "type": "string"
+        },
+        "joinSlow": {
+          "type": "boolean"
+        },
+        "joinError": {
+          "type": "object",
+          "properties": ["spaceId", "message"]
+        },
         "orderedSidebarItems": {
           "type": "array",
           "properties": ["uuid", "name", "avatar", "spaceId"]
