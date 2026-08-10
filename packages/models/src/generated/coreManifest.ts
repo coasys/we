@@ -358,6 +358,16 @@ export const CORE_MANIFEST: ModelManifest = {
           "predicate": "we://kind",
           "default": ""
         },
+        "title": {
+          "type": "string",
+          "predicate": "we://title",
+          "default": ""
+        },
+        "description": {
+          "type": "string",
+          "predicate": "we://description",
+          "default": ""
+        },
         "display": {
           "type": "string",
           "predicate": "we://display",
