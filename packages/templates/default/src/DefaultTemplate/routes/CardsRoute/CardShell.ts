@@ -12,6 +12,16 @@ export interface CardShellOptions {
    * Defaults to grid→200px / other→100px.
    */
   maxHeight?: string | Record<string, unknown>;
+  /**
+   * Extra per-card state, merged into the card's own `$localState`.
+   *
+   * A card's controls live in `header`, which is a child of the node holding that declaration — so
+   * a list that puts a delete confirmation or an edit modal in its header has nowhere else to
+   * declare the flag driving it. Without this the flag is undeclared, and `$setLocal` warns to the
+   * console and no-ops: the button renders, is clickable, and does nothing. Both of PostsList's
+   * controls were in exactly that state.
+   */
+  localState?: Record<string, { type: string; initial?: unknown }>;
 }
 
 const defaultMaxHeight = {
@@ -40,6 +50,7 @@ export function cardShell(opts: CardShellOptions): SchemaNode {
     $localState: {
       expanded: { type: 'boolean', initial: false },
       modalOpen: { type: 'boolean', initial: false },
+      ...opts.localState,
     },
     type: 'Card',
     props: {

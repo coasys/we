@@ -44,10 +44,16 @@ export const callsList: SchemaNode = {
         },
         children: [
           cardShell({
+            localState: {
+              confirmDeleteOpen: { type: 'boolean', initial: false },
+              editOpen: { type: 'boolean', initial: false },
+              titleDraft: { type: 'string', initial: '$call.title' },
+              descriptionDraft: { type: 'string', initial: '$call.description' },
+            },
             header: [
               {
                 type: 'Row',
-                props: { ay: 'center', gap: '300', p: '300' },
+                props: { ay: 'center', gap: '300' },
                 children: [
                   { type: 'we-icon', props: { name: 'phone', color: 'primary-700' } },
                   {
@@ -57,7 +63,11 @@ export const callsList: SchemaNode = {
                       {
                         type: 'we-text',
                         props: { fontWeight: 'semibold' },
-                        children: ['Call'],
+                        // The name someone gave it, falling back to the noun. Tested on the field
+                        // rather than shown blank, because an untitled call is the ordinary case:
+                        // the record is created by the first utterance, and nothing on that path
+                        // knows what the call was about.
+                        children: [{ $if: { condition: '$call.title', then: '$call.title', else: 'Call' } }],
                       },
                       {
                         type: 'we-text',
@@ -135,6 +145,193 @@ export const callsList: SchemaNode = {
                           },
                         ],
                       },
+                      /*
+                        Naming the record, and deleting it — both for whoever made it.
+
+                        Gated on authorship the same way a post is. It is a weaker claim here than
+                        there — a call is a shared event and the record belongs to it as much as to
+                        the agent whose transcription created it — but a shared space is a
+                        neighbourhood every member can write to, so this is an affordance rather
+                        than enforcement either way. Offering it to the author only is the narrower
+                        of the two honest options.
+                      */
+                      {
+                        type: '$if',
+                        props: {
+                          condition: { $eq: ['$call.author', '$me.did'] },
+                          then: {
+                            type: 'Row',
+                            props: { gap: '100' },
+                            children: [
+                              {
+                                type: 'we-button',
+                                props: {
+                                  variant: 'ghost',
+                                  size: 'sm',
+                                  square: true,
+                                  /*
+                                    Re-seed the drafts from the record on the way in, so a modal
+                                    that was opened, edited and cancelled does not reopen holding
+                                    the abandoned edit. The `initial` values only run at mount.
+
+                                    `from` rather than `value`, and the difference is the whole
+                                    thing: `value` sets a **literal**, so `value: '$call.title'`
+                                    puts that string itself into the input, verbatim. Only `from`
+                                    is resolved — against the event, or against context when the
+                                    path does not start with `$event`. Same trap as the `$concat`
+                                    wrapper on the avatar hash above.
+                                  */
+                                  onClick: [
+                                    { $setLocal: 'titleDraft', from: '$call.title' },
+                                    { $setLocal: 'descriptionDraft', from: '$call.description' },
+                                    { $setLocal: 'editOpen', value: true },
+                                  ],
+                                },
+                                children: [{ type: 'we-icon', props: { name: 'pencil-simple' } }],
+                              },
+                              {
+                                type: 'we-button',
+                                props: {
+                                  variant: 'ghost',
+                                  size: 'sm',
+                                  square: true,
+                                  onClick: { $setLocal: 'confirmDeleteOpen', value: true },
+                                },
+                                children: [{ type: 'we-icon', props: { name: 'trash' } }],
+                              },
+                            ],
+                          },
+                        },
+                      },
+                      /*
+                        Editing writes the two fields straight onto the CollectionBlock with
+                        `model.update` — no store action, because there is nothing for one to do.
+                        `title` and `description` are plain scalars on the model, so this is the
+                        whole of saving them.
+
+                        No validation: an empty title is a meaningful value here, since it returns
+                        the card to the plain "Call" it started as. A required rule would make
+                        clearing a name impossible.
+                      */
+                      {
+                        type: '$if',
+                        props: {
+                          condition: { $local: 'editOpen' },
+                          then: {
+                            type: 'we-modal',
+                            props: { close: { $setLocal: 'editOpen', value: false } },
+                            children: [
+                              { type: 'we-text', props: { fontWeight: 'semibold' }, children: ['Edit call'] },
+                              {
+                                type: 'we-form-field',
+                                props: { label: 'Title' },
+                                children: [
+                                  {
+                                    type: 'we-input',
+                                    props: {
+                                      value: { $local: 'titleDraft' },
+                                      placeholder: 'What was this call about?',
+                                      onInput: { $setLocal: 'titleDraft', from: '$event.detail' },
+                                    },
+                                  },
+                                ],
+                              },
+                              {
+                                type: 'we-form-field',
+                                props: { label: 'Description' },
+                                children: [
+                                  {
+                                    type: 'we-textarea',
+                                    props: {
+                                      value: { $local: 'descriptionDraft' },
+                                      rows: 3,
+                                      placeholder: 'Anything worth remembering about it',
+                                      onInput: { $setLocal: 'descriptionDraft', from: '$event.detail' },
+                                    },
+                                  },
+                                ],
+                              },
+                              {
+                                type: 'Row',
+                                props: { ax: 'end', gap: '200' },
+                                children: [
+                                  {
+                                    type: 'we-button',
+                                    props: { variant: 'ghost', onClick: { $setLocal: 'editOpen', value: false } },
+                                    children: ['Cancel'],
+                                  },
+                                  {
+                                    type: 'we-button',
+                                    props: {
+                                      onClick: {
+                                        $action: 'model.update',
+                                        args: [
+                                          'CollectionBlock',
+                                          '$call.id',
+                                          {
+                                            title: { $local: 'titleDraft' },
+                                            description: { $local: 'descriptionDraft' },
+                                          },
+                                        ],
+                                        onSuccess: [{ $setLocal: 'editOpen', value: false }],
+                                      },
+                                    },
+                                    children: ['Save'],
+                                  },
+                                ],
+                              },
+                            ],
+                          },
+                        },
+                      },
+                      {
+                        type: '$if',
+                        props: {
+                          condition: { $local: 'confirmDeleteOpen' },
+                          then: {
+                            type: 'we-modal',
+                            props: { close: { $setLocal: 'confirmDeleteOpen', value: false } },
+                            children: [
+                              { type: 'we-text', props: { fontWeight: 'semibold' }, children: ['Delete call?'] },
+                              {
+                                type: 'we-text',
+                                children: [
+                                  'This will permanently delete the recording and every utterance in it. This cannot be undone.',
+                                ],
+                              },
+                              {
+                                type: 'Row',
+                                props: { ax: 'end', gap: '200' },
+                                children: [
+                                  {
+                                    type: 'we-button',
+                                    props: {
+                                      variant: 'ghost',
+                                      onClick: { $setLocal: 'confirmDeleteOpen', value: false },
+                                    },
+                                    children: ['Cancel'],
+                                  },
+                                  {
+                                    type: 'we-button',
+                                    props: {
+                                      variant: 'danger',
+                                      // The generic collection delete: a call record is a
+                                      // CollectionBlock like a post, and the recursive delete does
+                                      // not care which kind it is holding.
+                                      onClick: {
+                                        $action: 'spaceStore.deleteCollection',
+                                        args: ['$call.id'],
+                                        onSuccess: [{ $setLocal: 'confirmDeleteOpen', value: false }],
+                                      },
+                                    },
+                                    children: ['Delete'],
+                                  },
+                                ],
+                              },
+                            ],
+                          },
+                        },
+                      },
                     ],
                   },
                 ],
@@ -143,8 +340,21 @@ export const callsList: SchemaNode = {
             body: [
               {
                 type: 'Column',
-                props: { gap: '400', px: '400', pb: '400' },
+                props: { gap: '400' },
                 children: [
+                  // Above the transcript, and only when there is one — the description is context
+                  // for what follows, which is no use underneath it.
+                  {
+                    type: '$if',
+                    props: {
+                      condition: '$call.description',
+                      then: {
+                        type: 'we-text',
+                        props: { color: 'neutral-700' },
+                        children: ['$call.description'],
+                      },
+                    },
+                  },
                   {
                     type: '$each',
                     // Drilled down from the call rather than hydrated with `include` — see the note

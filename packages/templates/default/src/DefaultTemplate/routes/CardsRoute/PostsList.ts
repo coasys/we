@@ -57,6 +57,13 @@ export const postsList: SchemaNode = {
         },
         children: [
           cardShell({
+            // Both of these drive controls in `header`, so the card is the nearest node that can
+            // declare them. Undeclared, `$setLocal` warned and no-opped — the edit and delete
+            // buttons rendered, took the click, and did nothing.
+            localState: {
+              confirmDeleteOpen: { type: 'boolean', initial: false },
+              editPostOpen: { type: 'boolean', initial: false },
+            },
             header: [
               {
                 type: 'Row',
@@ -168,7 +175,7 @@ export const postsList: SchemaNode = {
                                         props: {
                                           variant: 'danger',
                                           onClick: {
-                                            $action: 'spaceStore.deletePost',
+                                            $action: 'spaceStore.deleteCollection',
                                             args: ['$post.id'],
                                             onSuccess: [{ $setLocal: 'confirmDeleteOpen', value: false }],
                                           },
