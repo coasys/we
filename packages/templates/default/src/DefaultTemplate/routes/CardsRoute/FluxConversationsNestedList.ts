@@ -1,23 +1,22 @@
 import type { LocalStateField, SchemaNode } from '@we/schema-shared';
 
-import { cardShell, gridWrapper } from './CardShell.ts';
+import { emptyState } from '../../EmptyState.ts';
+import { cardList, cardShell } from './CardShell.ts';
 
 const hasConversationModel = {
   $find: { items: { $store: 'datasetStore.currentDatasetModels' }, where: { name: 'Conversation' } },
 };
 
-const emptyState: SchemaNode = {
-  type: 'Column',
-  props: { ax: 'center', ay: 'center', gap: '200', p: '600', width: '100%' },
-  children: [
-    { type: 'we-icon', props: { name: 'chats-circle', size: 'lg', color: 'neutral-400' } },
-    {
-      type: 'we-text',
-      props: { color: 'neutral-400', textAlign: 'center' },
-      children: ["This space doesn't have any Flux conversations."],
-    },
-  ],
-};
+/*
+  Two ways this list can be empty, one sentence for both.
+
+  Either Flux's SDNA is not installed here at all — a plain WE space, where the model is not
+  registered and querying it would surface as an error toast — or it is installed and holds
+  nothing. The distinction is real but not the reader's problem: what they asked was whether this
+  space has Flux conversations, and the answer is no either way.
+*/
+const noModel: SchemaNode = emptyState({ icon: 'chats-circle', label: 'Flux conversations', delay: 0 });
+const noRows: SchemaNode = emptyState({ icon: 'chats-circle', label: 'Flux conversations', searchable: true });
 
 /** Merges extra $localState fields onto a node that may already declare some (e.g. cardShell's own). */
 function withLocalState(node: SchemaNode, extra: Record<string, LocalStateField>): SchemaNode {
@@ -280,122 +279,116 @@ export const fluxConversationsNestedList: SchemaNode = {
   type: '$if',
   props: {
     condition: hasConversationModel,
-    then: gridWrapper([
-      {
-        type: '$each',
-        props: {
-          items: {
-            $query: {
-              entity: 'Conversation',
-              dataset: '$currentDataset',
-              where: {
-                OR: [
-                  { conversationName: { contains: { $local: 'searchText' } } },
-                  { summary: { contains: { $local: 'searchText' } } },
+    then: cardList({
+      query: {
+        entity: 'Conversation',
+        dataset: '$currentDataset',
+        where: {
+          OR: [
+            { conversationName: { contains: { $local: 'searchText' } } },
+            { summary: { contains: { $local: 'searchText' } } },
+          ],
+        },
+        order: { timestamp: { $local: 'sortDirection' } },
+        limit: 20,
+        include: {
+          $subgroupCount: {
+            from: 'subgroupEntities',
+            count: true,
+            where: { type: 'flux://conversation_subgroup' },
+          },
+        },
+      },
+      as: 'conversation',
+      empty: noRows,
+      children: [
+        withLocalState(
+          cardShell({
+            header: [
+              {
+                type: 'Row',
+                props: { ay: 'center', gap: '300' },
+                children: [
+                  { type: 'we-icon', props: { name: 'chats-circle' } },
+                  {
+                    type: 'we-text',
+                    props: { variant: 'heading-sm' },
+                    children: ['$conversation.conversationName'],
+                  },
                 ],
               },
-              order: { timestamp: { $local: 'sortDirection' } },
-              limit: 20,
-              include: {
-                $subgroupCount: {
-                  from: 'subgroupEntities',
-                  count: true,
-                  where: { type: 'flux://conversation_subgroup' },
-                },
-              },
-            },
-          },
-          as: 'conversation',
-        },
-        children: [
-          withLocalState(
-            cardShell({
-              header: [
-                {
-                  type: 'Row',
-                  props: { ay: 'center', gap: '300' },
-                  children: [
-                    { type: 'we-icon', props: { name: 'chats-circle' } },
-                    {
-                      type: 'we-text',
-                      props: { variant: 'heading-sm' },
-                      children: ['$conversation.conversationName'],
-                    },
-                  ],
-                },
-              ],
-              body: [
-                {
-                  type: '$if',
-                  props: {
-                    condition: '$conversation.summary',
-                    then: {
-                      type: 'we-text',
-                      props: { color: 'neutral-600' },
-                      children: ['$conversation.summary'],
-                    },
+            ],
+            body: [
+              {
+                type: '$if',
+                props: {
+                  condition: '$conversation.summary',
+                  then: {
+                    type: 'we-text',
+                    props: { color: 'neutral-600' },
+                    children: ['$conversation.summary'],
                   },
                 },
-                {
-                  type: 'Row',
-                  props: { gap: '300', ay: 'center' },
-                  children: [
-                    {
-                      type: 'AvatarStack',
-                      props: {
-                        avatars: {
-                          $map: {
-                            items: '$conversation.participants',
-                            select: {
-                              image: {
-                                $find: {
-                                  items: { $store: 'profileStore.profiles' },
-                                  where: { did: '$item' },
-                                  select: 'avatar',
-                                },
+              },
+              {
+                type: 'Row',
+                props: { gap: '300', ay: 'center' },
+                children: [
+                  {
+                    type: 'AvatarStack',
+                    props: {
+                      avatars: {
+                        $map: {
+                          items: '$conversation.participants',
+                          select: {
+                            image: {
+                              $find: {
+                                items: { $store: 'profileStore.profiles' },
+                                where: { did: '$item' },
+                                select: 'avatar',
                               },
-                              hash: '$item',
                             },
+                            hash: '$item',
                           },
                         },
-                        max: 5,
-                        size: 'sm',
-                        ring: '0 0 0 2px var(--we-ring-color)',
                       },
+                      max: 5,
+                      size: 'sm',
+                      ring: '0 0 0 2px var(--we-ring-color)',
                     },
-                    {
-                      type: 'Row',
-                      props: { gap: '100' },
-                      children: [
-                        {
-                          type: 'we-number',
-                          props: { value: { $count: { items: '$conversation.participants' } }, shorten: true },
-                        },
-                        {
-                          type: 'we-text',
-                          children: [
-                            {
-                              $plural: {
-                                count: { $count: { items: '$conversation.participants' } },
-                                one: 'Participant',
-                                other: 'Participants',
-                              },
+                  },
+                  {
+                    type: 'Row',
+                    props: { gap: '100' },
+                    children: [
+                      {
+                        type: 'we-number',
+                        props: { value: { $count: { items: '$conversation.participants' } }, shorten: true },
+                      },
+                      {
+                        type: 'we-text',
+                        children: [
+                          {
+                            $plural: {
+                              count: { $count: { items: '$conversation.participants' } },
+                              one: 'Participant',
+                              other: 'Participants',
                             },
-                          ],
-                        },
-                      ],
-                    },
-                  ],
-                },
-                conversationSubgroupsToggle,
-                conversationSubgroupsList,
-              ],
-            }),
-            { subgroupsOpen: { type: 'boolean', initial: false } },
-          ),
-        ],
-      },
-    ]),
-    else: emptyState,
+                          },
+                        ],
+                      },
+                    ],
+                  },
+                ],
+              },
+              conversationSubgroupsToggle,
+              conversationSubgroupsList,
+            ],
+          }),
+          { subgroupsOpen: { type: 'boolean', initial: false } },
+        ),
+      ],
+    }),
+    else: noModel,
   },
 };

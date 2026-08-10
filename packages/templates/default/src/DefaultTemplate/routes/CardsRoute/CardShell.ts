@@ -1,4 +1,4 @@
-import type { SchemaNode } from '@we/schema-shared';
+import type { QueryStateField, SchemaNode, SchemaProp } from '@we/schema-shared';
 
 export interface CardShellOptions {
   /** Nodes always visible regardless of display mode (compact header row) */
@@ -135,3 +135,49 @@ export const gridWrapper = (children: SchemaNode[]): SchemaNode => ({
   },
   children,
 });
+
+export interface CardListOptions {
+  /**
+   * The rows, as a query run once for the whole list. Hoisted to the list's own node via
+   * `$queries` rather than left on the `$each`, because the count has to be readable from outside
+   * the loop to decide whether the loop renders at all — and hoisting means one subscription
+   * answers both, so the placeholder can never disagree with the grid about how many rows there are.
+   */
+  query?: QueryStateField;
+  /** Rows that are already an array — a store accessor or a `$filter` over one. Use instead of `query`. */
+  items?: SchemaProp;
+  /** Context key for each row, as `$each`'s `as`. Also names the hoisted results (`<as>Rows`). */
+  as: string;
+  /** The card template, rendered once per row. */
+  children: SchemaNode[];
+  /** Shown in place of the grid when there are no rows — see `emptyState`. */
+  empty: SchemaNode;
+}
+
+/**
+ * One content type's list: a grid of cards, or a placeholder saying why there isn't one.
+ *
+ * Every section of the cards route is this shape, and before this they were this shape *minus the
+ * placeholder* — an empty `$each` renders nothing at all, so a type with no content produced a page
+ * with a header and blank space under it, indistinguishable from one still loading.
+ *
+ * The empty branch is a sibling of the grid rather than something inside it, because `gridWrapper`
+ * lays out cards in up to three columns: a placeholder rendered as a grid child would sit in the
+ * first column with two empty ones beside it.
+ */
+export function cardList(opts: CardListOptions): SchemaNode {
+  const key = `${opts.as}Rows`;
+  const items = opts.query ? { $local: key } : opts.items;
+
+  const list: SchemaNode = {
+    type: '$if',
+    props: {
+      condition: { $count: { items } },
+      then: gridWrapper([{ type: '$each', props: { items, as: opts.as }, children: opts.children }]),
+      else: opts.empty,
+    },
+  };
+
+  if (!opts.query) return list;
+  return { type: 'Column', props: { width: '100%' }, $queries: { [key]: opts.query }, children: [list] };
+}
