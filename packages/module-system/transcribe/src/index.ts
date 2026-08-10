@@ -24,12 +24,22 @@
  * `AudioWorklet` doing voice-activity detection on the audio thread — lives in the store, which is
  * plain TypeScript against `deps.signal`. Browser APIs are not framework coupling.
  *
+ * ## Where the transcript goes
+ *
+ * Into a `CollectionBlock` with `kind: 'call'` — one per call, holding the utterances as children and
+ * the roster as `participants`, and attached to whatever node the call was anchored to via
+ * `WeNode.calls`. Blocks used to be written loose into the space with `tag: 'transcript'`, which
+ * collided with the Lexical tag field and left transcripts showing up in the Cards route's Text list
+ * next to authored prose.
+ *
+ * The record is created on the first thing said, not on the button press, so a call nobody speaks in
+ * leaves no trace. See `store.ts` for the convergence rule when several agents record at once.
+ *
  * ## What it is not yet
  *
- * Transcript blocks are written flat into the space, tagged and nothing more. No grouping into
- * sessions, no speaker threading, no summary generation — deliberately, because the next step is an
- * LLM pass that builds a knowledge map from this text, and it would rather re-segment raw utterances
- * than unpick someone else's structure.
+ * No speaker threading, and no summary generation — deliberately, because the next step is an LLM
+ * pass that builds a knowledge map from this text, and it would rather re-segment raw utterances than
+ * unpick someone else's structure. It now has somewhere to hang that summary when it arrives.
  */
 import { defineModule, type ModuleStoreDeps } from '@we/module-shared';
 
@@ -39,7 +49,7 @@ import { createTranscribeStore } from './store';
 
 export { CALL_CONTROLS_ANCHOR, callControl } from './CallControl.schema';
 export { panel } from './Panel.schema';
-export { createTranscribeStore, TRANSCRIPT_TAG, type TranscribeStatus } from './store';
+export { CALL_KIND, CALL_PREDICATE, createTranscribeStore, TRANSCRIBE_ACTIVITY, type TranscribeStatus } from './store';
 export { WORKLET_NAME, WORKLET_SOURCE } from './workletSource';
 
 export const transcribeModule = defineModule({

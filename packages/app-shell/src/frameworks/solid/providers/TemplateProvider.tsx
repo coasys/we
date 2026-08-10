@@ -20,9 +20,11 @@ import {
 } from '@solid/stores';
 import type { Stores } from '@solid/types';
 import { Route, Router } from '@solidjs/router';
+import { manifestEntries } from '@we/backend-shared';
 import { toastService } from '@we/components/solid';
 import type { DatasetProxy } from '@we/models';
 import { getModel } from '@we/models';
+import { CORE_MANIFEST } from '@we/models/generated/coreManifest';
 import type { TemplateSchema } from '@we/schema-shared';
 import type { VisualEditorContextValue } from '@we/schema-solid';
 import { RenderSchema, VisualEditorProvider } from '@we/schema-solid';
@@ -84,10 +86,31 @@ export default function TemplateProvider() {
   // The same capability schemas get as `model.create`, lent to module stores that must write
   // without a click to hang a schema action on — a transcript appears because somebody spoke.
   provideModuleHostServices({
-    createEntity: async (entity, fields) => {
+    // `options` is forwarded rather than swallowed so a module can parent its write — a transcript
+    // block belongs inside the call that contains it, and creating it unparented then linking it
+    // afterwards leaves a window where a crash orphans the block into the space.
+    createEntity: async (entity, fields, options) => {
       if (!datasetStore.currentDataset()) return null;
-      const created = (await modelStore.create(entity, fields)) as { id?: string } | undefined;
+      const created = (await modelStore.create(entity, fields, { ...options })) as { id?: string } | undefined;
       return created?.id ?? null;
+    },
+
+    // Add-one on a to-many relation. An instance bound to an existing base expression is enough —
+    // `addRelationValue` writes a single link and never reads the current set, which is what makes
+    // several agents appending to the same list safe without coordination.
+    linkEntity: async (entity, id, relation, value) => {
+      if (!datasetStore.currentDataset()) return;
+      const [Model, p] = resolve(entity);
+      const instance = new (Model as unknown as new (perspective: unknown, base: string) => Record<string, unknown>)(
+        p,
+        id,
+      );
+      const add = instance[`add${relation.charAt(0).toUpperCase()}${relation.slice(1)}`];
+      if (typeof add !== 'function') {
+        console.warn(`linkEntity: ${entity} has no to-many relation "${relation}"`);
+        return;
+      }
+      await (add as (v: string) => Promise<void>).call(instance, value);
     },
   });
 
@@ -125,11 +148,39 @@ export default function TemplateProvider() {
     // Pre-connect they read as absent, which is each consumer's documented degradation mode.
   };
 
+  /**
+   * WE's own entities, in the flat form the ports resolve a query's `scope` against.
+   *
+   * Constant — the core vocabulary does not change with the dataset — so it is built once rather
+   * than per switch.
+   */
+  const coreEntries = manifestEntries(CORE_MANIFEST);
+
+  /**
+   * What the backend ports see: the synced foreign schemas, plus WE's own.
+   *
+   * `datasetStore.currentDatasetModels` holds *only* foreign schemas, and deliberately — it is also
+   * what the AI layer injects as `externalModels`, where core entities would be a duplicate of what
+   * the generated reference already documents. But an adapter resolving `scope` looks `via` up in
+   * this same list, so with foreign models alone a drill-down through core vocabulary could never
+   * resolve: `{ anchor: 'CollectionBlock', via: 'children' }` failed with "no such relation in the
+   * current perspective's model manifest", and every existing `scope` in the templates happened to
+   * be on a Flux entity, so nothing had caught it.
+   *
+   * Merged here, at the host, rather than inside an adapter: `DataBindingDeps` is declared in
+   * `@we/backend-shared` and every backend receives this same list, so the gap was every backend's
+   * and fixing it in one would have left the next to rediscover it.
+   *
+   * Foreign first, so nothing that resolves today changes: `resolveScopeToParent` takes the first
+   * match by name, and core is purely a fallback behind it.
+   */
+  const modelsForBindings = () => [...datasetStore.currentDatasetModels(), ...coreEntries];
+
   const boundBindings = createMemo(() =>
     sessionStore.backendPorts()?.dataBindings({
       // The backend's own handle, not the shell's ref — these bindings feed model calls.
       currentDataset: () => datasetStore.currentDataset()?.handle ?? null,
-      currentDatasetModels: datasetStore.currentDatasetModels,
+      currentDatasetModels: modelsForBindings,
       profiles: profileStore.profiles,
       fetchProfile: profileStore.fetchProfile,
       ephemeral: sessionStore.ephemeralPort,

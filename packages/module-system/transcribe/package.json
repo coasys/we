@@ -25,12 +25,14 @@
   ],
   "peerDependencies": {
     "@we/schema-shared": "workspace:*",
-    "@we/module-shared": "workspace:*"
+    "@we/module-shared": "workspace:*",
+    "@we/backend-shared": "workspace:*"
   },
   "devDependencies": {
     "@we/cli": "workspace:*",
     "@we/module-shared": "workspace:*",
     "@we/schema-shared": "workspace:*",
+    "@we/backend-shared": "workspace:*",
     "tsup": "^8.0.0",
     "typescript": "^5.3.3",
     "vitest": "^1.0.0"

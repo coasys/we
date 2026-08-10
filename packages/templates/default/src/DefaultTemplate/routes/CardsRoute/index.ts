@@ -2,6 +2,7 @@ import type { RouteSchema } from '@we/schema-shared';
 import { createSpaceModal } from '@we/template-shell';
 
 import { blocksList } from './BlocksList.ts';
+import { callsList } from './CallsList.ts';
 import { createPostModal } from './CreatePostModal.ts';
 import { fluxChannelsList } from './FluxChannelsList.ts';
 import { fluxConversationsList } from './FluxConversationsList.ts';
@@ -17,6 +18,9 @@ import { usersList } from './UsersList.ts';
 
 const NON_BLOCK_CONTENT_TYPES = [
   'posts',
+  // A call's record *is* a CollectionBlock, but it is not one of the per-type block sections —
+  // it has its own card, so it is excluded from the fallback that renders `blocksList`.
+  'calls',
   'users',
   'spaces',
   'templates',
@@ -59,6 +63,7 @@ export const cardsRoute: RouteSchema = {
         { type: '$if', props: { condition: { $local: 'createSpaceModalOpen' }, then: createSpaceModal } },
 
         { type: '$if', props: { condition: { $eq: [{ $local: 'contentType' }, 'posts'] }, then: postsList } },
+        callsList,
         { type: '$if', props: { condition: { $eq: [{ $local: 'contentType' }, 'users'] }, then: usersList } },
         { type: '$if', props: { condition: { $eq: [{ $local: 'contentType' }, 'spaces'] }, then: spacesList } },
         { type: '$if', props: { condition: { $eq: [{ $local: 'contentType' }, 'templates'] }, then: templatesList } },

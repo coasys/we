@@ -452,7 +452,44 @@ export interface ModuleStoreDeps {
    *
    * Returns the new record's id, or `null` if there was nowhere to write it.
    */
-  createEntity?: (entity: string, fields: Record<string, unknown>) => Promise<string | null>;
+  createEntity?: (
+    entity: string,
+    fields: Record<string, unknown>,
+    options?: CreateEntityOptions,
+  ) => Promise<string | null>;
+
+  /**
+   * Add one value to a to-many relation on a record that already exists.
+   *
+   * Deliberately **add-one**, not update-the-array. Appending by writing the whole list back is a
+   * read-modify-write, and two agents doing it concurrently lose each other's entry — the same
+   * last-write-wins hazard that rules out a shared `editorState`. Adding a single link is
+   * conflict-free by construction, which is what makes a call's participant list safe to build from
+   * several agents at once with no coordination.
+   *
+   * There is deliberately no general `update` here yet. When one arrives it will need an answer for
+   * concurrent writers, and this covers the add-only cases without pretending to have one.
+   */
+  linkEntity?: (entity: string, id: string, relation: string, value: string) => Promise<void>;
+}
+
+/**
+ * Where a newly created record should be attached, and nothing else.
+ *
+ * Narrow on purpose. The write surface a module gets is one call, and widening it to a general
+ * options bag would let a module reach whatever the host's ORM happens to expose. Attaching to a
+ * parent is the one thing a module genuinely cannot express otherwise: a transcript block is
+ * meaningless outside the call that contains it, and creating it unparented — then linking it in a
+ * second step — leaves a window where a crash orphans the block into the space.
+ */
+export interface CreateEntityOptions {
+  /**
+   * The record to link this one under, named by id and predicate rather than by model class.
+   *
+   * The raw form of the backend's parent scope, chosen because it is expressible without importing
+   * anything: a module has no access to the host's model classes, and should not.
+   */
+  parent?: { id: string; predicate: string };
 }
 
 /** An application embedded in an iframe — see {@link ModuleDefinition.embed}. */

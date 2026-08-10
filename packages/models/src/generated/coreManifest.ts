@@ -137,6 +137,16 @@ export const CORE_MANIFEST: ModelManifest = {
           "target": "Signal",
           "cardinality": "many",
           "predicate": "we://signal"
+        },
+        "participants": {
+          "target": "",
+          "cardinality": "many",
+          "predicate": "we://participants"
+        },
+        "calls": {
+          "target": "",
+          "cardinality": "many",
+          "predicate": "we://call"
         }
       },
       "flag": {
@@ -177,6 +187,16 @@ export const CORE_MANIFEST: ModelManifest = {
           "target": "Signal",
           "cardinality": "many",
           "predicate": "we://signal"
+        },
+        "participants": {
+          "target": "",
+          "cardinality": "many",
+          "predicate": "we://participants"
+        },
+        "calls": {
+          "target": "",
+          "cardinality": "many",
+          "predicate": "we://call"
         }
       },
       "flag": {
@@ -207,6 +227,16 @@ export const CORE_MANIFEST: ModelManifest = {
           "target": "Signal",
           "cardinality": "many",
           "predicate": "we://signal"
+        },
+        "participants": {
+          "target": "",
+          "cardinality": "many",
+          "predicate": "we://participants"
+        },
+        "calls": {
+          "target": "",
+          "cardinality": "many",
+          "predicate": "we://call"
         }
       },
       "flag": {
@@ -237,6 +267,16 @@ export const CORE_MANIFEST: ModelManifest = {
           "target": "Signal",
           "cardinality": "many",
           "predicate": "we://signal"
+        },
+        "participants": {
+          "target": "",
+          "cardinality": "many",
+          "predicate": "we://participants"
+        },
+        "calls": {
+          "target": "",
+          "cardinality": "many",
+          "predicate": "we://call"
         },
         "messages": {
           "target": "ChatMessage",
@@ -283,6 +323,16 @@ export const CORE_MANIFEST: ModelManifest = {
           "target": "Signal",
           "cardinality": "many",
           "predicate": "we://signal"
+        },
+        "participants": {
+          "target": "",
+          "cardinality": "many",
+          "predicate": "we://participants"
+        },
+        "calls": {
+          "target": "",
+          "cardinality": "many",
+          "predicate": "we://call"
         }
       },
       "flag": {
@@ -301,6 +351,11 @@ export const CORE_MANIFEST: ModelManifest = {
         "type": {
           "type": "string",
           "predicate": "we://type",
+          "default": ""
+        },
+        "kind": {
+          "type": "string",
+          "predicate": "we://kind",
           "default": ""
         },
         "display": {
@@ -355,6 +410,16 @@ export const CORE_MANIFEST: ModelManifest = {
           "cardinality": "many",
           "predicate": "we://signal"
         },
+        "participants": {
+          "target": "",
+          "cardinality": "many",
+          "predicate": "we://participants"
+        },
+        "calls": {
+          "target": "",
+          "cardinality": "many",
+          "predicate": "we://call"
+        },
         "children": {
           "target": "",
           "cardinality": "many",
@@ -389,6 +454,16 @@ export const CORE_MANIFEST: ModelManifest = {
           "target": "Signal",
           "cardinality": "many",
           "predicate": "we://signal"
+        },
+        "participants": {
+          "target": "",
+          "cardinality": "many",
+          "predicate": "we://participants"
+        },
+        "calls": {
+          "target": "",
+          "cardinality": "many",
+          "predicate": "we://call"
         }
       },
       "flag": {
@@ -434,6 +509,16 @@ export const CORE_MANIFEST: ModelManifest = {
           "target": "Signal",
           "cardinality": "many",
           "predicate": "we://signal"
+        },
+        "participants": {
+          "target": "",
+          "cardinality": "many",
+          "predicate": "we://participants"
+        },
+        "calls": {
+          "target": "",
+          "cardinality": "many",
+          "predicate": "we://call"
         }
       },
       "flag": {
@@ -491,6 +576,16 @@ export const CORE_MANIFEST: ModelManifest = {
           "target": "Signal",
           "cardinality": "many",
           "predicate": "we://signal"
+        },
+        "participants": {
+          "target": "",
+          "cardinality": "many",
+          "predicate": "we://participants"
+        },
+        "calls": {
+          "target": "",
+          "cardinality": "many",
+          "predicate": "we://call"
         }
       },
       "flag": {
@@ -545,6 +640,16 @@ export const CORE_MANIFEST: ModelManifest = {
           "target": "Signal",
           "cardinality": "many",
           "predicate": "we://signal"
+        },
+        "participants": {
+          "target": "",
+          "cardinality": "many",
+          "predicate": "we://participants"
+        },
+        "calls": {
+          "target": "",
+          "cardinality": "many",
+          "predicate": "we://call"
         }
       },
       "flag": {
@@ -593,6 +698,16 @@ export const CORE_MANIFEST: ModelManifest = {
           "target": "Signal",
           "cardinality": "many",
           "predicate": "we://signal"
+        },
+        "participants": {
+          "target": "",
+          "cardinality": "many",
+          "predicate": "we://participants"
+        },
+        "calls": {
+          "target": "",
+          "cardinality": "many",
+          "predicate": "we://call"
         }
       },
       "flag": {
@@ -639,6 +754,16 @@ export const CORE_MANIFEST: ModelManifest = {
           "target": "Signal",
           "cardinality": "many",
           "predicate": "we://signal"
+        },
+        "participants": {
+          "target": "",
+          "cardinality": "many",
+          "predicate": "we://participants"
+        },
+        "calls": {
+          "target": "",
+          "cardinality": "many",
+          "predicate": "we://call"
         }
       },
       "flag": {
@@ -698,6 +823,16 @@ export const CORE_MANIFEST: ModelManifest = {
           "target": "Signal",
           "cardinality": "many",
           "predicate": "we://signal"
+        },
+        "participants": {
+          "target": "",
+          "cardinality": "many",
+          "predicate": "we://participants"
+        },
+        "calls": {
+          "target": "",
+          "cardinality": "many",
+          "predicate": "we://call"
         }
       },
       "flag": {
@@ -807,6 +942,16 @@ export const CORE_MANIFEST: ModelManifest = {
           "target": "Signal",
           "cardinality": "many",
           "predicate": "we://signal"
+        },
+        "participants": {
+          "target": "",
+          "cardinality": "many",
+          "predicate": "we://participants"
+        },
+        "calls": {
+          "target": "",
+          "cardinality": "many",
+          "predicate": "we://call"
         }
       },
       "flag": {
@@ -885,6 +1030,16 @@ export const CORE_MANIFEST: ModelManifest = {
           "target": "Signal",
           "cardinality": "many",
           "predicate": "we://signal"
+        },
+        "participants": {
+          "target": "",
+          "cardinality": "many",
+          "predicate": "we://participants"
+        },
+        "calls": {
+          "target": "",
+          "cardinality": "many",
+          "predicate": "we://call"
         }
       },
       "flag": {
@@ -925,6 +1080,16 @@ export const CORE_MANIFEST: ModelManifest = {
           "target": "Signal",
           "cardinality": "many",
           "predicate": "we://signal"
+        },
+        "participants": {
+          "target": "",
+          "cardinality": "many",
+          "predicate": "we://participants"
+        },
+        "calls": {
+          "target": "",
+          "cardinality": "many",
+          "predicate": "we://call"
         }
       },
       "flag": {
@@ -955,6 +1120,16 @@ export const CORE_MANIFEST: ModelManifest = {
           "target": "Signal",
           "cardinality": "many",
           "predicate": "we://signal"
+        },
+        "participants": {
+          "target": "",
+          "cardinality": "many",
+          "predicate": "we://participants"
+        },
+        "calls": {
+          "target": "",
+          "cardinality": "many",
+          "predicate": "we://call"
         }
       },
       "flag": {
@@ -991,6 +1166,16 @@ export const CORE_MANIFEST: ModelManifest = {
           "target": "Signal",
           "cardinality": "many",
           "predicate": "we://signal"
+        },
+        "participants": {
+          "target": "",
+          "cardinality": "many",
+          "predicate": "we://participants"
+        },
+        "calls": {
+          "target": "",
+          "cardinality": "many",
+          "predicate": "we://call"
         }
       },
       "flag": {
@@ -1047,6 +1232,16 @@ export const CORE_MANIFEST: ModelManifest = {
           "target": "Signal",
           "cardinality": "many",
           "predicate": "we://signal"
+        },
+        "participants": {
+          "target": "",
+          "cardinality": "many",
+          "predicate": "we://participants"
+        },
+        "calls": {
+          "target": "",
+          "cardinality": "many",
+          "predicate": "we://call"
         }
       },
       "flag": {
@@ -1108,6 +1303,16 @@ export const CORE_MANIFEST: ModelManifest = {
           "target": "Signal",
           "cardinality": "many",
           "predicate": "we://signal"
+        },
+        "participants": {
+          "target": "",
+          "cardinality": "many",
+          "predicate": "we://participants"
+        },
+        "calls": {
+          "target": "",
+          "cardinality": "many",
+          "predicate": "we://call"
         },
         "screenshots": {
           "target": "ImageBlock",
@@ -1188,6 +1393,16 @@ export const CORE_MANIFEST: ModelManifest = {
           "target": "Signal",
           "cardinality": "many",
           "predicate": "we://signal"
+        },
+        "participants": {
+          "target": "",
+          "cardinality": "many",
+          "predicate": "we://participants"
+        },
+        "calls": {
+          "target": "",
+          "cardinality": "many",
+          "predicate": "we://call"
         }
       },
       "flag": {
@@ -1251,6 +1466,16 @@ export const CORE_MANIFEST: ModelManifest = {
           "cardinality": "many",
           "predicate": "we://signal"
         },
+        "participants": {
+          "target": "",
+          "cardinality": "many",
+          "predicate": "we://participants"
+        },
+        "calls": {
+          "target": "",
+          "cardinality": "many",
+          "predicate": "we://call"
+        },
         "screenshots": {
           "target": "ImageBlock",
           "cardinality": "many",
@@ -1306,6 +1531,16 @@ export const CORE_MANIFEST: ModelManifest = {
           "target": "Signal",
           "cardinality": "many",
           "predicate": "we://signal"
+        },
+        "participants": {
+          "target": "",
+          "cardinality": "many",
+          "predicate": "we://participants"
+        },
+        "calls": {
+          "target": "",
+          "cardinality": "many",
+          "predicate": "we://call"
         }
       },
       "flag": {
@@ -1325,6 +1560,16 @@ export const CORE_MANIFEST: ModelManifest = {
           "target": "Signal",
           "cardinality": "many",
           "predicate": "we://signal"
+        },
+        "participants": {
+          "target": "",
+          "cardinality": "many",
+          "predicate": "we://participants"
+        },
+        "calls": {
+          "target": "",
+          "cardinality": "many",
+          "predicate": "we://call"
         }
       },
       "abstract": true

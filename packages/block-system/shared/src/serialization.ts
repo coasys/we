@@ -293,13 +293,28 @@ function extractBlockData(ModelClass: typeof Ad4mModel, node: SerializedBlockNod
  *
  * Parent-child relationships are established via the `children` @HasMany
  * on CollectionBlock (and any other container blocks).
+ *
+ * `kind` stamps the semantic type onto the root — `'post'` for a post. Optional and supplied by the
+ * caller rather than assumed here, because not every root composition is a post: the block system
+ * knows how to persist a document, not what the document is for.
+ *
+ * Why this exists at all: `type: 'root'` has been doing double duty as *the* post discriminator,
+ * which conflates the Lexical node type with what the collection means. Writing `kind` on new roots
+ * starts the changeover without a backfill — reads still key on `type: 'root'`, and can switch once
+ * the legacy set stops mattering. There is no coordinated migration point in a P2P system, so a bulk
+ * rewrite is not available; converging one record at a time as they are created is.
  */
 export async function createBlocks(
   perspective: PerspectiveProxy,
   node: SerializedBlockNode,
+  kind?: string,
 ): Promise<Ad4mModel | undefined> {
   return Ad4mModel.transaction(perspective, async (tx) => {
     const root = await persistNode(perspective, tx.batchId, node);
+    // Assigned before the blob write below so both land in that one `save`, rather than costing a
+    // second round trip for one string.
+    const stampKind = root && kind && 'kind' in root;
+    if (stampKind) (root as CollectionBlock).kind = kind;
 
     // Store the full Lexical serialized JSON as a file-storage blob on the
     // root CollectionBlock for lossless roundtrip. preUploadFileAssets runs
@@ -319,6 +334,10 @@ export async function createBlocks(
       });
       (root as CollectionBlock).textContent = extractTextContent(patchedNode);
       await root.save(tx.batchId);
+    } else if (stampKind) {
+      // A root with no `editorState` skips the blob write entirely, so `kind` would otherwise be
+      // assigned to an instance nobody saves.
+      await root!.save(tx.batchId);
     }
 
     return root;
@@ -694,6 +713,13 @@ const AD4M_ONLY_PROPS = new Set([
   'editorState',
   'comments',
   'reactions',
+  // WeNode/CollectionBlock fields that carry meaning to WE, not to the editor. `kind` in particular
+  // must never reach Lexical: it is a semantic discriminator ('call', 'notes'), and a node type of
+  // 'call' is not something the editor can mount.
+  'kind',
+  'signals',
+  'participants',
+  'calls',
 ]);
 
 /**

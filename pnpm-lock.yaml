@@ -1041,6 +1041,9 @@ importers:
 
   packages/module-system/transcribe:
     devDependencies:
+      '@we/backend-shared':
+        specifier: workspace:*
+        version: link:../../backend-system/shared
       '@we/cli':
         specifier: workspace:*
         version: link:../../cli

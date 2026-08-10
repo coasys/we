@@ -19,7 +19,7 @@
  * kind of implicit state the last round of seam bugs came from.
  */
 import type { Activity, DatasetHandle, EphemeralPort, Peer, TranscriptionPort } from '@we/backend-shared';
-import type { ModuleIdentityAccess, ModuleStoreDeps } from '@we/module-shared';
+import type { CreateEntityOptions, ModuleIdentityAccess, ModuleStoreDeps } from '@we/module-shared';
 
 import { moduleRegistry, moduleStores } from './moduleRegistry';
 
@@ -38,7 +38,13 @@ export interface ModuleHostServices {
   /** The profile cache, so a module can put a face to an agent id. See `ModuleIdentityAccess`. */
   identities?: ModuleIdentityAccess;
   /** Write a record into the current dataset — the host's `model.create`, in imperative form. */
-  createEntity?: (entity: string, fields: Record<string, unknown>) => Promise<string | null>;
+  createEntity?: (
+    entity: string,
+    fields: Record<string, unknown>,
+    options?: CreateEntityOptions,
+  ) => Promise<string | null>;
+  /** Add one value to a to-many relation on an existing record. See `ModuleStoreDeps.linkEntity`. */
+  linkEntity?: (entity: string, id: string, relation: string, value: string) => Promise<void>;
 }
 
 const services: ModuleHostServices = {};
@@ -107,7 +113,11 @@ export function createModuleStoreDeps(framework: {
 
     audioInput: () => audioInput(),
 
-    createEntity: async (entity, fields) => (await services.createEntity?.(entity, fields)) ?? null,
+    createEntity: async (entity, fields, options) => (await services.createEntity?.(entity, fields, options)) ?? null,
+
+    linkEntity: async (entity, id, relation, value) => {
+      await services.linkEntity?.(entity, id, relation, value);
+    },
   };
 }
 

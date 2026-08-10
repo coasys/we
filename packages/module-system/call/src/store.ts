@@ -348,8 +348,18 @@ export function createCallStore(deps: CallStoreDeps) {
     return focus;
   }
 
+  /**
+   * What this call is *about*, held rather than passed around.
+   *
+   * It used to be a `join` parameter that every `publishActivity` call had to remember to forward,
+   * which was survivable while the anchor was fixed at join time. It no longer is — `attachAnchor`
+   * can set one mid-call — and a later republish carrying the stale parameter would silently drop it
+   * again on the next mute toggle. One place to read it from, so nothing can disagree.
+   */
+  let anchor: Focus | undefined;
+
   /** Republish the call activity so peers see mute/camera/screen changes. */
-  function publishActivity(anchor?: Focus) {
+  function publishActivity() {
     const id = callId();
     if (!id || !presence) return;
     presence.setActivity({ type: 'call', id, media: media(), ...(anchor ? { anchor } : {}) });
@@ -366,6 +376,7 @@ export function createCallStore(deps: CallStoreDeps) {
     peerStates = new Map();
     if (id) presence?.clearActivity('call', id);
     setCallId(null);
+    anchor = undefined;
     setVisible(false);
     setFocusedId(null);
     focusIsManual = false;
@@ -373,9 +384,11 @@ export function createCallStore(deps: CallStoreDeps) {
     setTiles([]);
   }
 
-  async function join(id: string, anchor?: Focus) {
+  async function join(id: string, joinAnchor?: Focus) {
     if (callId() === id) return;
     if (callId()) teardown();
+
+    anchor = joinAnchor;
 
     setProblem(null);
 
@@ -443,7 +456,7 @@ export function createCallStore(deps: CallStoreDeps) {
         // Fires once when devices are acquired, and on every mute after — the first is what tells a
         // listener the microphone exists at all.
         setLocalAudio(controller?.localStream() ?? null);
-        publishActivity(anchor);
+        publishActivity();
         rebuildTiles();
       },
       onError: (context, error) => console.error(`call: ${context}`, error),
@@ -451,7 +464,7 @@ export function createCallStore(deps: CallStoreDeps) {
 
     // Announce before acquiring devices: joining should be visible to peers immediately, and the
     // permission prompt can take as long as the user takes.
-    publishActivity(anchor);
+    publishActivity();
     rebuildTiles();
 
     await controller.start();
@@ -723,6 +736,24 @@ export function createCallStore(deps: CallStoreDeps) {
         return;
       }
       void join(spaceCallId(uri));
+    },
+
+    /**
+     * Point an in-progress call at a node, without rejoining it.
+     *
+     * For the case where a call starts loose and turns out to be *about* something — someone opens
+     * the post they are discussing, and from then on the transcript should belong to it.
+     *
+     * Emphatically not a re-join, and not a change of call id. The mesh reconciles against the roster
+     * keyed by call id, so promoting `space:<uri>` to `node:<uri>:<id>` mid-call would read as every
+     * peer leaving one call and joining another: every connection torn down and rebuilt, and the
+     * media with it. The id stays; only what the call says it is about changes.
+     */
+    attachAnchor: (nodeId: string) => {
+      const uri = datasetUri?.() ?? null;
+      if (!callId() || !uri || !nodeId) return;
+      anchor = { datasetUri: uri, nodeId };
+      publishActivity();
     },
 
     /** "Call on this post" — a second call in the same space, which `callRosters` groups for free. */

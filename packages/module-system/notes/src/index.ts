@@ -1,9 +1,29 @@
 /**
  * The Notes feature module — a per-space scratchpad in a right-hand dock panel.
  *
- * The second module, and chosen for what it tests that the globe cannot: **module-owned entities**.
- * It is fully solo-testable, because a personal perspective is local-only — no neighbourhood, no
- * Holochain sync — so it exercises the install path without depending on peer connectivity.
+ * The second module, and originally chosen to prove **module-owned entities** worked. It did, and
+ * then the point stopped being worth making here: it owned a `Note` whose entire content was a
+ * string, which is a `TextBlock` with fewer fields. Two nouns for one thing meant a note written in
+ * the composer and a note written in this panel were unrelated records that could never meet.
+ *
+ * ## Own the container, never the content
+ *
+ * A note is now a core `TextBlock`, held in a `CollectionBlock` with `kind: 'notes'` — one per space,
+ * created on the first note written there. That is the rule the module system settled on: borrow the
+ * shared vocabulary for *what a thing is*, and own only the container that says *what surface it
+ * belongs to*.
+ *
+ * It buys more than deduplication. A module that names entities by string rather than shipping
+ * decorated classes needs no `backends` declaration, so writing durable data no longer costs
+ * portability — which is why this module still declares none while writing to the space.
+ *
+ * The container is a `CollectionBlock` rather than a `kind`-less bag of tagged blocks because
+ * containment and taxonomy are different questions. A tag is what a *user* says a thing is about, and
+ * is theirs to remove; if the panel's contents were "blocks tagged note", removing a tag would
+ * silently empty someone's scratchpad, and anything anyone tagged would appear in it.
+ *
+ * Old `Note` records are still read (see `Note.ts`) and never written. Dropping their manifest would
+ * not delete them, it would orphan them.
  *
  * ## Fragments, not components
  *
@@ -20,6 +40,8 @@
  * - **The notes themselves** — a live `$query` in the fragment. No store method, no manual
  *   subscription; the renderer's reactivity does it.
  * - **Creating one** — `model.create`, already in the stores bag. The module ships no CRUD wrapper.
+ * - **The collection** — found by `$query`, not held anywhere. Deriving it every time is what keeps
+ *   it correct across a space switch; a cached id would write this space's notes into the last one.
  * - **Panel open/closed** — the store, because this is *chrome*. `$localState` is per-node and would
  *   reset the panel every time the route changed, which is exactly what a docked panel must not do.
  *
@@ -32,6 +54,51 @@ import { type SchemaNode } from '@we/schema-shared';
 import { NOTE_MANIFEST, NOTE_PREDICATES } from './Note';
 
 export { NOTE_MANIFEST, NOTE_PREDICATES };
+
+/** The `CollectionBlock.kind` marking a collection as this space's notes. */
+export const NOTES_KIND = 'notes';
+
+/** The predicate `CollectionBlock.children` is minted under — how a note attaches to the collection. */
+const CHILDREN_PREDICATE = 'we://children';
+
+/**
+ * This space's notes collection, resolved live rather than remembered.
+ *
+ * Re-derived wherever it is needed, which reads wasteful and is not: the renderer memoises the query,
+ * and the alternative — holding the id in the store — would be a value that has to be invalidated
+ * every time the dataset changes. Getting that wrong writes one space's notes into another, which is
+ * the kind of bug nobody notices until the wrong people can read them.
+ */
+const collectionId = {
+  $find: {
+    items: { $query: { entity: 'CollectionBlock', where: { kind: NOTES_KIND }, limit: 1 } },
+    select: 'id',
+  },
+};
+
+/**
+ * One note, for whichever entity is holding it.
+ *
+ * Parameterised only by the entity name, which is all that differs between a note and a legacy
+ * `Note` — both expose `text` and both delete by id. Written once so the two lists cannot drift into
+ * looking like different things, which they are not.
+ */
+const noteCard = (entity: string): SchemaNode => ({
+  type: 'Column',
+  props: { bg: 'neutral-50', r: '300', p: '300', gap: '200' },
+  children: [
+    { type: 'we-text', children: ['$note.text'] },
+    {
+      type: 'we-button',
+      props: {
+        variant: 'ghost',
+        size: 'xs',
+        onClick: { $action: 'model.delete', args: [entity, '$note.id'] },
+      },
+      children: [{ type: 'we-icon', props: { name: 'trash' } }],
+    },
+  ],
+});
 
 /**
  * The docked panel.
@@ -100,18 +167,67 @@ const panel: SchemaNode = {
                 onInput: { $setLocal: 'draft', from: '$event.detail' },
               },
             },
+            /*
+              Two buttons, identical to look at, because the first note in a space has to make the
+              collection before it has somewhere to go.
+
+              Split at the node rather than branching inside `onClick` so each path is a plain action
+              list — a `$if` whose arms are action arrays would work, but "what does this button do"
+              stops being answerable by reading it, and this is the file people will copy.
+
+              No CRUD wrapper either way: `model.create` is already in the stores bag, and a module
+              reaching for its own persistence layer would be duplicating the data port.
+            */
             {
-              type: 'we-button',
+              type: '$if',
               props: {
-                size: 'sm',
-                // No CRUD wrapper in this module — `model.create` is already in the stores bag, and a
-                // module reaching for its own persistence layer would be duplicating the data port.
-                onClick: [
-                  { $action: 'model.create', args: ['Note', { text: { $local: 'draft' } }] },
-                  { $setLocal: 'draft', value: '' },
-                ],
+                condition: collectionId,
+                then: {
+                  type: 'we-button',
+                  props: {
+                    size: 'sm',
+                    onClick: [
+                      {
+                        $action: 'model.create',
+                        args: [
+                          'TextBlock',
+                          { text: { $local: 'draft' } },
+                          { parent: { id: collectionId, predicate: CHILDREN_PREDICATE } },
+                        ],
+                      },
+                      { $setLocal: 'draft', value: '' },
+                    ],
+                  },
+                  children: ['Add note'],
+                },
+                // First note here. Create the collection, then hang the note off whatever id comes
+                // back — chained rather than fired together, since the second needs the first's
+                // result and two parallel creates would race to make two collections.
+                else: {
+                  type: 'we-button',
+                  props: {
+                    size: 'sm',
+                    onClick: [
+                      {
+                        $action: 'model.create',
+                        args: ['CollectionBlock', { kind: NOTES_KIND, type: 'collection' }],
+                        onSuccess: [
+                          {
+                            $action: 'model.create',
+                            args: [
+                              'TextBlock',
+                              { text: { $local: 'draft' } },
+                              { parent: { id: '$result.id', predicate: CHILDREN_PREDICATE } },
+                            ],
+                          },
+                          { $setLocal: 'draft', value: '' },
+                        ],
+                      },
+                    ],
+                  },
+                  children: ['Add note'],
+                },
               },
-              children: ['Add note'],
             },
           ],
         },
@@ -122,29 +238,44 @@ const panel: SchemaNode = {
               type: 'Column',
               props: { gap: '300' },
               children: [
+                // The notes themselves — the collection's children, newest first.
+                {
+                  type: '$if',
+                  props: {
+                    condition: collectionId,
+                    then: {
+                      type: '$each',
+                      // Live query — the renderer handles subscription and reactivity, so the module
+                      // needs neither a notes array nor a refresh method. Scoped to the collection
+                      // rather than filtered, because a drill-down from an anchor is the traversal
+                      // the query layer does natively; a `TextBlock` query with no scope would pick
+                      // up every paragraph of every post in the space.
+                      props: {
+                        items: {
+                          $query: {
+                            entity: 'TextBlock',
+                            scope: { anchor: 'CollectionBlock', via: 'children', anchorId: collectionId },
+                            order: { createdAt: 'desc' },
+                          },
+                        },
+                        as: 'note',
+                      },
+                      children: [noteCard('TextBlock')],
+                    },
+                  },
+                },
+                /*
+                  Notes written before a note was a `TextBlock`.
+
+                  Read, never written. They are shown in the same list rather than behind a "legacy"
+                  heading because to the person who wrote them they are simply their notes, and the
+                  storage change is not their problem. Deleting still works, so the set drains on its
+                  own; when it is empty everywhere, this block and `Note.ts` go together.
+                */
                 {
                   type: '$each',
-                  // Live query — the renderer handles subscription and reactivity, so the module needs
-                  // neither a notes array nor a refresh method.
                   props: { items: { $query: { entity: 'Note' } }, as: 'note' },
-                  children: [
-                    {
-                      type: 'Column',
-                      props: { bg: 'neutral-50', r: '300', p: '300', gap: '200' },
-                      children: [
-                        { type: 'we-text', children: ['$note.text'] },
-                        {
-                          type: 'we-button',
-                          props: {
-                            variant: 'ghost',
-                            size: 'xs',
-                            onClick: { $action: 'model.delete', args: ['Note', '$note.id'] },
-                          },
-                          children: [{ type: 'we-icon', props: { name: 'trash' } }],
-                        },
-                      ],
-                    },
-                  ],
+                  children: [noteCard('Note')],
                 },
               ],
             },
@@ -174,6 +305,8 @@ export const notesModule = defineModule({
 
   // No `frameworks` — every piece of UI here is a fragment, so this module is framework-agnostic.
 
+  // Still declared, still never written to. Notes are `TextBlock`s now; this keeps the ones written
+  // before that readable, and removing it would orphan them rather than delete them. See `Note.ts`.
   entities: { manifest: NOTE_MANIFEST },
   schemas: { toggleButton },
 

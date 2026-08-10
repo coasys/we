@@ -2,6 +2,10 @@
 
 > Feature request: allow `@HasMany` to hydrate children as their correct `@Model` subclass instead of the declared target class.
 
+> **Status (Aug 2026): not started upstream, and now has a second motivating case.** Nothing in
+> `ad4m/core/src/model` mentions `polymorphic`, and no PR — open, merged or closed — implements it.
+> Two things have changed since this was written; see **Revisions** at the end before starting work.
+
 ---
 
 ## Problem
@@ -116,3 +120,144 @@ Option 1 (SurrealDB) is preferred for performance.
 | `core/src/model/decorators.ts` | Add `polymorphic` to `RelationMetadataEntry` and `RelationOptions` |
 | `core/src/model/hydration.ts`  | Polymorphic resolution branch in `hydrateRelations()`              |
 | `core/src/model/Ad4mModel.ts`  | Ensure model registry is accessible for type→class lookup          |
+
+---
+
+## Revisions (Aug 2026)
+
+Three findings from re-checking the upstream repo before starting. None invalidate the plan; two
+change how a step should be done, and one adds a second consumer.
+
+### 1. There is no model registry in AD4M core — and there should not be one
+
+The scope list says "Add model registry lookup (**may already exist** — check `Ad4mModel` class
+registry)". It does not: nothing in `core/src/model/*.ts` matches `registerModel` / `modelRegistry` /
+`classRegistry`. WE has one (`@we/models/modelRegistry`); AD4M has none.
+
+Rather than introduce a global registry upstream, **take a resolver in the same shape
+`fromSHACL` already uses**:
+
+```ts
+classResolver?: (localName: string) => typeof Ad4mModel | undefined
+```
+
+`Ad4mModel.fromSHACL` (`core/src/model/Ad4mModel.ts:1946-2010`) already accepts exactly this, and for
+the same reason — the caller knows its own classes and AD4M should not have to. Following that
+precedent keeps the feature free of process-global mutable state, which is what makes a registry
+awkward across multiple perspectives and a hot reload. The consumer passes its resolver on the query,
+or the decorator holds one:
+
+```ts
+@HasMany(() => WeNode, { through: 'we://children', polymorphic: true, classResolver: getBlockModel })
+```
+
+### 2. `sh:class` now survives the round trip — but that is the *declared* target, not the instance's
+
+`feat/fromSHACL-class-resolver` (commit `d47a16bb5`) is **merged to dev**. It fixed
+`parse_shacl_to_links` silently dropping `sh:class`, `ad4m://getter` and
+`ad4m://conformanceConditions`, which had left every collection property on a `fromSHACL`-reconstructed
+class with no target wired up.
+
+Worth reading before starting, and worth *not* mistaking for this feature. It resolves what a relation
+**declares** it points at. Polymorphism is about what each instance **is**, which is a different lookup
+and still missing: `getSubjectClassMetadata` goes className → metadata, and there is no reverse
+(URI → class) primitive. The batch type resolution in **Proposed Solution** is still the new work, and
+option 1 (a SurrealDB batch over the type/flag links) is still the right shape.
+
+### 3. The "Files to modify" table above is stale — hydration moved to Rust
+
+`core/src/model/hydration.ts` is now a **27-line shim** retaining only `normalizeValue()`. Its own
+header says why: *"After the Rust model_query pipeline migration, most hydration logic moved to
+Rust."* The real hydration is `rust-executor/src/perspectives/model_query/` (`hydration.rs`,
+`relations.rs`, `shape.rs`, `projection.rs`).
+
+What survives TS-side is **class instantiation**, and that is the interesting part.
+`jsonToModelInstance` (`core/src/model/Ad4mModel.ts:38`) does:
+
+```ts
+const instance = new ModelClass(perspective, json.id || json.baseExpression);
+```
+
+and at line ~105 instantiates each nested relation item with the single declared `TargetClass`. **That
+line is where polymorphism is decided**, and it is plain TypeScript. If the per-child JSON carried its
+concrete type — or if a resolver could be consulted — choosing a different class per item is a small,
+local change that never enters the Rust pipeline.
+
+### 4. Do not branch into `model_query` right now — that area is contested
+
+| PR | Branch | Base | State | Last touched |
+| --- | --- | --- | --- | --- |
+| #842 | `refactor/typed-rdf-literals-and-fn-cleanup` | dev | open | 2026-07-30 |
+| #846 | `refactor/sparql-pushdown-last-write-wins` | **#842** | draft | 2026-07-27 |
+| #853 | `feat/model-query-construct-hydration` | **#846** | draft | 2026-06-11 |
+| #874 | `…-nico-refactor` ("old state with refactoring") | dev | open | 2026-08-03 |
+
+A three-deep unmerged stack over the model_query hydration path, plus a competing refactor of the same
+base (#874) that is more recently active than the stack above it. Anything landing inside
+`model_query/` now rebases repeatedly or blocks on that resolving.
+
+### 5. Recommended split: ship the missing primitive first, off `dev`
+
+The one thing genuinely absent is a **URI → concrete class name** lookup. Its mirror already exists:
+`perspective.isSubjectInstance(uri, className)` answers *"is this URI an instance of class X"*. What
+nothing answers is *"what class is this URI"*, in one call, for many URIs.
+
+That absence is already costing WE, independently of this feature. `resolveBlockModel`
+(`packages/block-system/shared/src/serialization.ts:447`) is:
+
+```ts
+for (const ModelClass of getRegisteredBlockModels()) {
+  if (await perspective.isSubjectInstance(uri, className)) return ModelClass;
+}
+```
+
+— up to 16 sequential round trips **per block**, then a `findOne` per block, to load one post's tree.
+
+So split the work:
+
+**PR 1 — `subjectClassOf(uris: string[]): Promise<Map<string, string>>` (or similar), branched off `dev`.**
+Batched, executor-side, near the existing subject-class code rather than inside `model_query/`
+hydration. Avoids the contested stack entirely. Independently valuable: it collapses WE's N×M loop to
+one call with no polymorphic feature at all, and it is the prerequisite the full feature needs anyway.
+
+**PR 2 — `polymorphic: true`, once PR 1 has landed and the model_query stack has resolved.**
+With the primitive in place this is mostly `decorators.ts` plus the class choice at
+`jsonToModelInstance`, in the shape described under **Proposed Solution** — and the "batch type
+resolution" step, previously the hard part, is already done.
+
+The sequencing also de-risks: if the stack never lands, WE still gets a real improvement from PR 1.
+
+### 6. Second consumer: call transcripts
+
+The plan cites blocks as the motivating case. Call transcripts are now a second, and they are the one
+that made the gap *user-visible* rather than merely inconvenient.
+
+A call's record is a `CollectionBlock` with `kind: 'call'` holding its utterances as `children`. Posts
+never hit this because they render from the `editorState` blob rather than traversing the relation —
+transcripts cannot, because a shared serialized document is last-write-wins and several agents write
+to one call concurrently. So transcripts are the first thing in WE that genuinely reads `children` as
+a query.
+
+WE's workaround is now a `scope` drill-down (one extra query per call) rather than manual type
+resolution — see **What this unblocks in WE** below.
+
+---
+
+## What this unblocks in WE
+
+WE is **not blocked** on this. `CallsList.ts` drills down with
+`scope: { anchor: 'CollectionBlock', via: 'children', anchorId: '$call.id' }`, which is native on AD4M
+and `compute-up` on any backend that lacks it. That works today and is correct.
+
+What the feature would change, once it lands:
+
+| Today | With `polymorphic: true` |
+| --- | --- |
+| One drill-down query per parent | Folded into the parent query's `include` |
+| Children arrive as their concrete class only because the drill-down names one entity (`TextBlock`) | Genuinely mixed children (text + image + task in one collection) hydrate correctly |
+| `loadBlocks()` resolves types by hand through the block registry | The ORM does it |
+
+So the migration afterwards is **an optimisation, not a correction**: swap a `scope` for an `include`
+where the relation is heterogeneous, and retire the manual resolution in `loadBlocks()`. Nothing about
+the data model, the predicates or the module contract changes — which is the point of doing it this way
+round.

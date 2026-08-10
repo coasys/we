@@ -2,6 +2,7 @@ import type { SchemaNode } from '@we/schema-shared';
 
 const contentTypeOptions = [
   { label: 'Posts', value: 'posts', icon: 'newspaper' },
+  { label: 'Calls', value: 'calls', icon: 'phone' },
   { label: 'Users', value: 'users', icon: 'user' },
   { label: 'Spaces', value: 'spaces', icon: 'users-three' },
   { label: 'Templates', value: 'templates', icon: 'layout' },

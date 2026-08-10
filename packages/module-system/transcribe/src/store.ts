@@ -1,3 +1,4 @@
+import { activitiesOfType } from '@we/backend-shared';
 import type { ModuleStoreDeps } from '@we/module-shared';
 
 import { WORKLET_NAME, WORKLET_SOURCE } from './workletSource';
@@ -24,8 +25,31 @@ const MAX_CHARS = 1000;
 /** Silence after which whatever has accumulated is written, so a short remark is not held forever. */
 const FLUSH_AFTER_MS = 3_000;
 
-/** The tag distinguishing transcript text from the text blocks that make up a post. */
-export const TRANSCRIPT_TAG = 'transcript';
+/**
+ * The `CollectionBlock.kind` marking a collection as one call's record.
+ *
+ * Replaces the old `TRANSCRIPT_TAG`, which wrote `'transcript'` into `TextBlock.tag` — a field that
+ * carries the *Lexical* tag (`ul`, `h1`). Two things were wrong with that beyond the collision: the
+ * value was written and never read back, and the blocks stayed loose in the space, so transcripts
+ * turned up in the Cards route's Text list mixed in with authored prose.
+ */
+export const CALL_KIND = 'call';
+
+/** The predicate `WeNode.calls` is minted under — how a call attaches to the node it is about. */
+export const CALL_PREDICATE = 'we://call';
+
+/** The predicate `CollectionBlock.children` is minted under — how an utterance attaches to its call. */
+export const CHILDREN_PREDICATE = 'we://children';
+
+/**
+ * The activity this module publishes so peers can converge on one record per call.
+ *
+ * Its own type rather than a field on the call activity, which keeps the two modules mutually
+ * ignorant: the call module neither knows nor cares that anyone is recording, and this module never
+ * has to write into a structure the call module owns. It also gives the coverage signal for free —
+ * who is *transcribing* against who is merely present.
+ */
+export const TRANSCRIBE_ACTIVITY = 'transcribe';
 
 /**
  * Flux's *effective* voice-activity thresholds, which are not the ones in its defaults file.
@@ -87,16 +111,35 @@ type WorkletMessage = { kind: 'utterance'; audio: Float32Array } | { kind: 'leve
  *
  * ## What it writes
  *
- * `TextBlock`s tagged {@link TRANSCRIPT_TAG}, into the space the call is in. Not posts: a transcript
- * is not authored content and should not arrive in a feed as though it were. The tag is what lets a
- * later reader tell transcript text from the blocks that make up a post, since both are `TextBlock`
- * in the same perspective.
+ * A `CollectionBlock` with `kind: '{@link CALL_KIND}'` per call, holding the utterances as `children`.
+ * Not posts: a transcript is not authored content and should not arrive in a feed as though it were.
+ *
+ * The collection is what makes the transcript a *thing* rather than loose text — it groups one call's
+ * utterances, carries its participants, and (later) its summary. It renders from its children and
+ * never from an `editorState`, which is what keeps several agents writing into it conflict-free:
+ * children links are add-only, whereas a shared serialized document would be last-write-wins.
  *
  * Author and timestamp come free from the model, so a block already knows who said it and when
- * without this module recording either.
+ * without this module recording either — which is also why speaker attribution is free here and
+ * needs no diarization: every agent transcribes only their own microphone.
+ *
+ * ## Lifecycle
+ *
+ * Created **lazily on first flush**, never on button press. A record therefore exists if and only if
+ * somebody actually said something: no empty records are possible, and no delete path is needed. The
+ * end is derived from the last child's timestamp rather than written, so nobody has to remember to
+ * close it and it cannot go wrong when the creator is the first to leave.
+ *
+ * ## Converging on one record
+ *
+ * Whoever writes first creates the collection and announces it on presence as a
+ * `{@link TRANSCRIBE_ACTIVITY}` activity; everyone else in the same call adopts it off the roster.
+ * If two people speak for the first time inside the same heartbeat, both may create before either
+ * sees the other — that yields two records for one meeting, which is cosmetic (every agent's blocks
+ * are attached to a valid record) and dedupable on read. The simple version ships first.
  */
 export function createTranscribeStore(deps: ModuleStoreDeps) {
-  const { signal, effect, audioInput, transcription, createEntity, dataset } = deps;
+  const { signal, effect, audioInput, transcription, createEntity, linkEntity, dataset, presence, selfId } = deps;
 
   const [status, setStatus] = signal<TranscribeStatus>('idle');
   /** Whether we are recording. Independent of the panel — see the two toggles at the bottom. */
@@ -116,6 +159,25 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
    */
   const [level, setLevel] = signal(0);
   const [speaking, setSpeaking] = signal(false);
+  /**
+   * The collection this session's utterances are written into, once there is one.
+   *
+   * Null until the first thing worth recording is said. Cleared when the call ends, so the next call
+   * starts a new record rather than appending to the last one.
+   */
+  const [collectionId, setCollectionId] = signal<string | null>(null);
+  /**
+   * The call the current collection belongs to.
+   *
+   * The record's lifetime is the *call's*, not the recording toggle's. Tying it to the toggle meant
+   * switching recording off and back on in one meeting produced two records for it — and the whole
+   * point of the collection is that a call has one.
+   */
+  let collectionCallId: string | null = null;
+  /** Agents already appended to the collection's `participants`, so each is written once. */
+  let recordedParticipants = new Set<string>();
+  /** Guards the create, so two flushes racing at the start cannot produce two collections. */
+  let creating: Promise<string | null> | null = null;
 
   let context: AudioContext | null = null;
   let node: AudioWorkletNode | null = null;
@@ -138,6 +200,118 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
     flushTimer = null;
   }
 
+  /**
+   * The call this agent is in, read off its own presence entry.
+   *
+   * Presence is the only channel used, and no message is exchanged with the call module: every
+   * participant already publishes `{ type: 'call', id, anchor? }`, and the presence driver keeps this
+   * agent's own state in the roster. So "which call am I in, and what is it about" is answerable
+   * locally, from data that is already there, without either module knowing the other exists.
+   */
+  function myCall(): { id: string; anchorNodeId: string | null } | null {
+    const me = selfId?.() ?? null;
+    if (!me || !presence) return null;
+    const mine = activitiesOfType(presence.peers(), 'call').find(({ peer }) => peer.agentId === me);
+    if (!mine) return null;
+    const anchor = (mine.activity as { anchor?: { nodeId?: string } }).anchor;
+    return { id: mine.activity.id, anchorNodeId: anchor?.nodeId ?? null };
+  }
+
+  /** A collection some other agent has already announced for this same call, if any. */
+  function announcedCollection(callId: string): string | null {
+    if (!presence) return null;
+    const me = selfId?.() ?? null;
+    const claims = activitiesOfType(presence.peers(), TRANSCRIBE_ACTIVITY)
+      .filter(({ peer, activity }) => peer.agentId !== me && (activity as { id?: string }).id === callId)
+      .map(({ activity }) => (activity as { collection?: string }).collection)
+      .filter((id): id is string => typeof id === 'string' && id.length > 0);
+    // Lowest id wins, so two agents adopting in the same heartbeat still pick the same one.
+    return claims.sort()[0] ?? null;
+  }
+
+  /** Tell the call which record its transcript is going into, so the others can join it. */
+  function announce(callId: string, collection: string): void {
+    presence?.setActivity({ type: TRANSCRIBE_ACTIVITY, id: callId, collection });
+  }
+
+  /**
+   * Append an agent to the call's roster, once each.
+   *
+   * Add-one rather than rewriting the list: several agents append concurrently with no coordination,
+   * and a read-modify-write would drop whoever lost the race. Recorded even for agents who are not
+   * transcribing, because the point of the list is *coverage* — a transcript that can show who was
+   * present but silent is worth much more than one that quietly looks complete.
+   */
+  async function recordParticipants(collection: string, callId: string): Promise<void> {
+    if (!linkEntity || !presence) return;
+    const inCall = activitiesOfType(presence.peers(), 'call')
+      .filter(({ activity }) => activity.id === callId)
+      .map(({ peer }) => peer.agentId);
+
+    for (const agentId of inCall) {
+      if (recordedParticipants.has(agentId)) continue;
+      recordedParticipants.add(agentId);
+      try {
+        await linkEntity('CollectionBlock', collection, 'participants', agentId);
+      } catch (cause) {
+        // Let it be retried on the next flush rather than losing the agent from the roster forever.
+        recordedParticipants.delete(agentId);
+        console.error('transcribe: could not record participant', cause);
+      }
+    }
+  }
+
+  /**
+   * The collection to write into — adopted, or created if this agent is first to speak.
+   *
+   * Serialised through `creating` so two flushes arriving together cannot each create one. Returns
+   * null when there is nothing to attach to, in which case the caller writes nothing: an utterance
+   * with nowhere to belong is better dropped than scattered loose into the space.
+   */
+  async function ensureCollection(): Promise<string | null> {
+    const call = myCall();
+    if (!call || !createEntity) return null;
+
+    const existing = collectionId();
+    if (existing && collectionCallId === call.id) return existing;
+    if (creating) return creating;
+
+    creating = (async () => {
+      // A different call from the one the current record belongs to — start clean rather than
+      // appending this meeting's words to the last one's transcript.
+      if (collectionCallId !== call.id) recordedParticipants = new Set();
+
+      const adopted = announcedCollection(call.id);
+      if (adopted) {
+        setCollectionId(adopted);
+        collectionCallId = call.id;
+        announce(call.id, adopted);
+        return adopted;
+      }
+
+      // Parented straight onto the node the call is about, so `WeNode.calls` is written in the same
+      // operation that creates the record — no window where a crash leaves the call orphaned. A
+      // space-wide call has no anchor and simply lives in the space, found by `kind`.
+      const created = await createEntity(
+        'CollectionBlock',
+        { kind: CALL_KIND, type: 'collection' },
+        call.anchorNodeId ? { parent: { id: call.anchorNodeId, predicate: CALL_PREDICATE } } : undefined,
+      );
+      if (created) {
+        setCollectionId(created);
+        collectionCallId = call.id;
+        announce(call.id, created);
+      }
+      return created;
+    })();
+
+    try {
+      return await creating;
+    } finally {
+      creating = null;
+    }
+  }
+
   /** Write what has accumulated, if anything. Safe to call at any point, including teardown. */
   async function flush(): Promise<void> {
     clearTimer();
@@ -148,7 +322,14 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
 
     setRecent([text, ...recent()].slice(0, 20));
     try {
-      await createEntity?.('TextBlock', { text, tag: TRANSCRIPT_TAG });
+      const collection = await ensureCollection();
+      if (!collection) {
+        console.warn('transcribe: no call to attach this utterance to; not written');
+        return;
+      }
+      await createEntity?.('TextBlock', { text }, { parent: { id: collection, predicate: CHILDREN_PREDICATE } });
+      const call = myCall();
+      if (call) await recordParticipants(collection, call.id);
     } catch (cause) {
       // Reported but not surfaced as a failed state: the transcript continues, and losing one block
       // is better than stopping a call's transcription over a single write.
@@ -291,8 +472,31 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
     setLevel(0);
     setSpeaking(false);
 
+    // The record is deliberately *not* released here. Stopping the recording is not leaving the
+    // call, and someone who switches it off and on again is still in the same meeting — dropping the
+    // id would give that meeting two transcripts. The claim stays published for the same reason: a
+    // peer who starts recording later must adopt this record rather than create a second one.
+    //
+    // Releasing is the call ending's business, and the effect below owns it. `recent` stays either
+    // way, so a session can be read after it stops.
     if (status() !== 'error') setStatus(resting);
   }
+
+  /**
+   * Let go of the record when the call it belongs to is over.
+   *
+   * Keyed on the call rather than on recording, which is the distinction `stop` deliberately does not
+   * make: leaving is what ends a transcript, and withdrawing the claim as we go stops a peer still in
+   * the space from adopting a collection nobody is writing to.
+   */
+  effect?.(() => {
+    const current = myCall()?.id ?? null;
+    if (!collectionCallId || current === collectionCallId) return;
+    presence?.clearActivity(TRANSCRIBE_ACTIVITY);
+    setCollectionId(null);
+    collectionCallId = null;
+    recordedParticipants = new Set();
+  });
 
   /**
    * Follow the audio.
@@ -381,7 +585,15 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
     },
     togglePanel: () => setOpen(!open()),
     closePanel: () => setOpen(false),
+    /**
+     * Text heard, from wherever it came.
+     *
+     * The store's actual input. Normally the transcription port calls it, but it is on the interface
+     * rather than closed over because nothing about buffering, grouping or writing depends on the
+     * words having come from Whisper — a different recogniser, or a test, feeds the same door.
+     */
+    receiveText: (text: string) => onText(text),
     /** Write what has been heard so far without waiting for the buffer to fill. */
-    flushNow: () => void flush(),
+    flushNow: () => flush(),
   };
 }

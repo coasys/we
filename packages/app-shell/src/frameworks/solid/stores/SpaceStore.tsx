@@ -817,7 +817,10 @@ export function SpaceStoreProvider(props: ParentProps) {
   async function createPost(json: unknown): Promise<void> {
     const p = datasetStore.currentDataset()?.handle;
     if (!p) return;
-    await createBlocks(p, json);
+    // Written alongside the `type: 'root'` that already identifies a post, not instead of it: reads
+    // still key on `type`, so existing posts stay in the feed and nothing needs backfilling. See
+    // `createBlocks`.
+    await createBlocks(p, json, 'post');
   }
 
   async function updatePost(postId: string, json: unknown): Promise<void> {

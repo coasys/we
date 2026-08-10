@@ -26,6 +26,17 @@ import type { ModelManifest } from '@we/backend-shared';
  * `we://module/notes/text` — so the declaration and the convention cannot drift apart. Nothing
  * here names a backend: the host compiles this through whichever schema port is connected, which
  * is why this module declares no `backends`.
+ *
+ * ## Legacy — kept for reading, never written
+ *
+ * **Nothing creates a `Note` any more.** A note is a `TextBlock` in the space's notes collection: the
+ * content type already existed, and owning a second near-identical noun meant a note written in the
+ * composer and a note written in the panel were two unrelated records. See the module's own header.
+ *
+ * The manifest stays registered because predicates are how existing data is found — dropping it would
+ * not delete anyone's notes, it would orphan them, silently, which is precisely the failure the essay
+ * above warns about. So the panel reads both shapes and writes only the new one, and this can be
+ * removed in a later release once there is nothing left under it.
  */
 export const NOTE_MANIFEST: ModelManifest = {
   version: '1',
