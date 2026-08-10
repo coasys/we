@@ -723,6 +723,19 @@ const AD4M_ONLY_PROPS = new Set([
 ]);
 
 /**
+ * WE metadata that only a *collection* carries, excluded for those nodes alone.
+ *
+ * Not in `AD4M_ONLY_PROPS`, which is global: `title` and `description` are real Lexical props on
+ * `EventBlock`, `TaskBlock`, `LinkBlock`, `CodeBlock`, `FileBlock`, `AudioBlock` and `VideoBlock`,
+ * and excluding them there would quietly drop a task's title from every round-trip through this
+ * fallback. Same name, different owner — so the exclusion has to know which node it is looking at.
+ */
+const COLLECTION_ONLY_PROPS = new Set(['title', 'description']);
+
+/** The Lexical node types a `CollectionBlock` takes — the same pair `extractTextContent` keys on. */
+const COLLECTION_TYPES = new Set(['root', 'collection']);
+
+/**
  * Convert a loaded block model (from `loadBlocks`) into Lexical-compatible
  * serialized JSON. This is the **lossy fallback** used when the root
  * CollectionBlock has no `editorState` blob (e.g. cross-community content,
@@ -734,9 +747,11 @@ const AD4M_ONLY_PROPS = new Set([
  */
 function blockToLexical(block: Record<string, unknown>): Record<string, unknown> {
   const node: Record<string, unknown> = {};
+  const isCollection = COLLECTION_TYPES.has(block.type as string);
 
   for (const key of Object.keys(block)) {
     if (key.startsWith('_') || AD4M_ONLY_PROPS.has(key)) continue;
+    if (isCollection && COLLECTION_ONLY_PROPS.has(key)) continue;
     const val = block[key];
     if (Array.isArray(val) && val.length === 0) continue;
     if (val !== undefined && val !== null) node[key] = val;

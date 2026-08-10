@@ -41,6 +41,32 @@ export class CollectionBlock extends WeNode {
   @Property({ through: 'we://kind' })
   kind: string = '';
 
+  /**
+   * What this collection is called, and what it is about — set by whoever owns it, not derived.
+   *
+   * On the shared model rather than per kind because they are the two pieces of metadata *every*
+   * collection can have: a call, a notes collection, a board. Kind-specific state (a board's column
+   * config, say) does not belong here and should not accumulate as more scalars — that is what a
+   * per-kind model or a JSON bag is for.
+   *
+   * Scalars for the same reason `kind` is one: these are fields you query by. `where: { title:
+   * { contains: … } }` pushes down to the backend and composes with `order` and `limit`, and a list
+   * can sort by title. Held in `editorState` or a blob they would be invisible to all of that — and
+   * a call has no `editorState` at all, since the transcribe module creates it rather than the
+   * composer.
+   *
+   * Distinct from `textContent`, which is derived from the children for search and preview: a title
+   * written there would be overwritten by the next reconcile.
+   *
+   * Unset costs nothing — an AD4M property is a link that exists only once written — so collections
+   * that never get named carry no storage, and no migration was needed to add these.
+   */
+  @Property({ through: 'we://title' })
+  title: string = '';
+
+  @Property({ through: 'we://description' })
+  description: string = '';
+
   @Property({ through: 'we://display' })
   display: string = '';
 
