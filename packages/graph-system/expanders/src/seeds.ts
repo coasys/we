@@ -10,6 +10,7 @@ import type { EntityShape, GraphEdge, GraphNode, SeedSource } from '@we/graph-pr
 import { datasetAddress, entityAddress } from '@we/graph-protocol';
 
 import { edgeId, rowToNode } from './nodes';
+import { SCHEMA_TYPE } from './schema';
 
 export interface QuerySeedOptions {
   /** Entity type to load. */
@@ -133,9 +134,9 @@ export function schemaSeed(): SeedSource {
         // A type is addressed as an instance of the meta-level: `entity/<dataset>/$schema/<Name>`.
         // Reusing the entity address keeps one addressing scheme rather than minting a parallel one
         // that everything downstream would have to learn.
-        id: entityAddress(dataset, '$schema', shape.name),
+        id: entityAddress(dataset, SCHEMA_TYPE, shape.name),
         kind: 'entity' as const,
-        type: '$schema',
+        type: SCHEMA_TYPE,
         label: shape.name,
         data: {
           entity: shape.name,
@@ -151,8 +152,8 @@ export function schemaSeed(): SeedSource {
       for (const shape of shapes) {
         for (const relation of shape.relations) {
           if (!known.has(relation.target)) continue;
-          const source = entityAddress(dataset, '$schema', shape.name);
-          const target = entityAddress(dataset, '$schema', relation.target);
+          const source = entityAddress(dataset, SCHEMA_TYPE, shape.name);
+          const target = entityAddress(dataset, SCHEMA_TYPE, relation.target);
           edges.push({
             id: edgeId(source, relation.name, target),
             source,

@@ -11,6 +11,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { entityExpander } from './entity';
 import { labelProperty } from './nodes';
+import { SCHEMA_TYPE, schemaExpander } from './schema';
 
 const SHAPES: EntityShape[] = [
   {
@@ -140,5 +141,52 @@ describe('labelProperty', () => {
         relations: [],
       }),
     ).toBe('summary');
+  });
+});
+
+describe('schemaExpander', () => {
+  it('opens a type node into instances of that type', async () => {
+    const { context } = contextWith((request) =>
+      request.entity === 'Agent'
+        ? [
+            { id: 'a1', name: 'James' },
+            { id: 'a2', name: 'Nico' },
+          ]
+        : [],
+    );
+
+    const result = await schemaExpander().expand(
+      { id: entityAddress('ds', SCHEMA_TYPE, 'Agent'), direction: 'out' },
+      context,
+    );
+
+    expect(result.nodes.map((n) => n.label)).toEqual(['James', 'Nico']);
+    // Instances address as ordinary entities, so the entity expander takes over from here and the
+    // schema map and a knowledge map become one continuous gesture.
+    expect(parseAddress(result.nodes[0].id)).toMatchObject({ kind: 'entity', type: 'Agent', id: 'a1' });
+  });
+
+  it('reports a cursor when a full page came back, without inventing a total', async () => {
+    const { context } = contextWith(() => [{ id: 'a1', name: 'James' }]);
+
+    const result = await schemaExpander({ limit: 1 }).expand(
+      { id: entityAddress('ds', SCHEMA_TYPE, 'Agent'), direction: 'out', limit: 1 },
+      context,
+    );
+
+    expect(result.cursor).toBe('1');
+    expect(result.total).toBeUndefined();
+  });
+
+  it('warns rather than throwing for a type the dataset does not declare', async () => {
+    const { context, warnings } = contextWith(() => []);
+
+    const result = await schemaExpander().expand(
+      { id: entityAddress('ds', SCHEMA_TYPE, 'Ghost'), direction: 'out' },
+      context,
+    );
+
+    expect(result.nodes).toEqual([]);
+    expect(warnings.join(' ')).toContain('Ghost');
   });
 });

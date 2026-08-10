@@ -78,6 +78,14 @@ export const GRAPH_PLUGIN_CATALOG: PluginCatalog = {
       example: `"expansion": { "expanders": ["collection"], "defaultDepth": 2, "direction": "out" }`,
     },
     {
+      id: 'schema',
+      category: 'expander',
+      description:
+        'Opens an entity-type node from the schema seed into instances of that type — the step from "what kinds of thing are here" to "here they are". Paired with the schema seed it makes one map out of two.',
+      options: [{ name: 'limit', type: 'number', description: 'Instances loaded per type. Default 25.' }],
+      example: `"seeds": { "source": "schema" }, "expansion": { "expanders": ["schema", "entity"] }`,
+    },
+    {
       id: 'property',
       category: 'expander',
       description:

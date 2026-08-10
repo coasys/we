@@ -10,6 +10,7 @@
  * - {@link entityExpander} — typed relations, both directions, from the dataset's schema.
  * - {@link collectionExpander} — an untyped to-many relation, via the drill-down path.
  * - {@link propertyExpander} — the level below an entity: its own fields, and shared value nodes.
+ * - {@link schemaExpander} — the level *above* an entity: a type node, opened into its instances.
  * - {@link querySeed} / {@link schemaSeed} / {@link datasetSeed} — where a graph starts.
  */
 export { collectionExpander } from './collection';
@@ -19,12 +20,15 @@ export type { EntityExpanderOptions } from './entity';
 export { edgeId, labelProperty, placeholder, rowToNode } from './nodes';
 export { propertyExpander } from './property';
 export type { PropertyExpanderOptions } from './property';
+export { SCHEMA_TYPE, schemaExpander } from './schema';
+export type { SchemaExpanderOptions } from './schema';
 export { datasetSeed, querySeed, schemaSeed } from './seeds';
 export type { QuerySeedOptions, SchemaSeedOptions } from './seeds';
 
 import { collectionExpander } from './collection';
 import { entityExpander } from './entity';
 import { propertyExpander } from './property';
+import { schemaExpander } from './schema';
 import { datasetSeed, querySeed, schemaSeed } from './seeds';
 
 /**
@@ -35,7 +39,7 @@ import { datasetSeed, querySeed, schemaSeed } from './seeds';
  */
 export function defaultExpanders() {
   return {
-    expanders: [entityExpander(), collectionExpander(), propertyExpander()],
+    expanders: [entityExpander(), collectionExpander(), schemaExpander(), propertyExpander()],
     seeds: [querySeed(), schemaSeed(), datasetSeed()],
   };
 }
