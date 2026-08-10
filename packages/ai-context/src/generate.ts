@@ -16,11 +16,12 @@ import { globSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import type { ContextData, ContextFragment } from '@we/schema-shared';
+import type { ContextData, ContextFragment, StoreEntry } from '@we/schema-shared';
 import { format, resolveConfig } from 'prettier';
 
 import { aggregateFragments } from './aggregate.js';
 import { assembleReference } from './assembler.js';
+import { type ExtractedStore, extractRegisteredComponents, extractStores } from './extractors/appShell.js';
 import { extractPrimitives } from './extractors/cem.js';
 import { extractModels } from './extractors/models.js';
 import { extractTokens } from './extractors/tokens.js';
@@ -32,7 +33,7 @@ import { routing } from './fragments/routing.js';
 import { rules } from './fragments/rules.js';
 import { schemaOperators } from './fragments/schema-operators.js';
 import { storePatterns } from './fragments/store-patterns.js';
-import { storeEntries, stores } from './fragments/stores.js';
+import { generateStoresText, storeEntries } from './fragments/stores.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 // From src/generate.ts: up to ai-context/, up to packages/, up to repo root
@@ -47,6 +48,82 @@ const DEFAULTS: Record<string, string> = {
   tokens: 'src',
   models: 'src',
 };
+
+/**
+ * Join the derived store shape to the hand-authored metadata, and say where the two disagree.
+ *
+ * The source decides *what exists* — a member absent here cannot be named in a schema, and one
+ * present is allowed whether or not anybody has described it. The fragment decides *what it means*:
+ * the prose in `fragments/stores.ts` and, more load-bearing, `StateMemberMeta`'s
+ * `properties`/`model`, which is what lets the validator check one level into a `$store` path.
+ *
+ * Both directions of drift are reported, because they fail differently. A member with no entry is
+ * merely undocumented — the AI reference is thinner than it could be. A fragment entry for a member
+ * that no longer exists is worse: it documents something that isn't there, and its metadata would
+ * silently license a `$store` path into nothing.
+ */
+function mergeStoreEntries(derived: ExtractedStore[], authored: StoreEntry[]): StoreEntry[] {
+  const byName = new Map(authored.map((s) => [s.name, s]));
+  const undocumented: string[] = [];
+  const stale: string[] = [];
+
+  /*
+    A hand-authored entry with no interface behind it is kept, not dropped.
+
+    `model` is the case that matters: `model.create` / `.update` / `.delete` are bound by the
+    template provider rather than declared as a store, so there is no `ModelStore` to read. Dropping
+    anything the extractor cannot see would have made every `model.create` in every schema an unknown
+    method — a generator quietly deleting vocabulary is worse than one that keeps too much.
+  */
+  const pseudo = authored.filter((s) => !derived.some((d) => d.name === s.name));
+  if (pseudo.length) {
+    console.log(`  Stores declared without an interface, kept as authored: ${pseudo.map((s) => s.name).join(', ')}`);
+  }
+
+  const merged = derived.map((store) => {
+    const hand = byName.get(store.name);
+    if (!hand) {
+      undocumented.push(store.name);
+      return store as StoreEntry;
+    }
+
+    const state: StoreEntry['state'] = {};
+    for (const [key, meta] of Object.entries(store.state)) {
+      // Hand-authored metadata wins: it carries `properties`/`model`, which is the half that cannot
+      // be derived. The derived coarse type is the fallback for anything newly added.
+      state[key] = hand.state[key] ?? meta;
+      if (!hand.state[key]) undocumented.push(`${store.name}.${key}`);
+    }
+    for (const key of Object.keys(hand.state)) {
+      if (!(key in store.state)) stale.push(`${store.name}.${key}`);
+    }
+    for (const action of hand.actions) {
+      if (!store.actions.includes(action)) stale.push(`${store.name}.${action}()`);
+    }
+    for (const action of store.actions) {
+      if (!hand.actions.includes(action)) undocumented.push(`${store.name}.${action}()`);
+    }
+
+    return { name: store.name, state, actions: store.actions };
+  });
+
+  if (stale.length) {
+    console.warn(`  ⚠ fragments/stores.ts describes members that no longer exist: ${stale.join(', ')}`);
+  }
+  /*
+    Counted, not listed.
+
+    Most undocumented members are internal wiring a schema has no business naming — `provideSpaceLookup`,
+    `setNavigateFunction`, `backendPorts` — and nothing here can tell those from a template-facing
+    member somebody forgot to write up. Printing a hundred names every run would bury the stale list
+    above, which is the half that is always worth acting on. The count is enough to notice a jump.
+  */
+  if (undocumented.length) {
+    console.log(`  ${undocumented.length} store members are valid in schemas but undocumented (mostly internal).`);
+  }
+
+  return [...merged, ...pseudo];
+}
 
 /**
  * Discover packages with a "context" field in their package.json
@@ -118,17 +195,39 @@ async function main() {
   const fragments = discoverFragments();
   const contextData = aggregateFragments(fragments);
 
-  // Store entries stay manually authored for now
-  contextData.storeEntries = storeEntries;
+  // Names come from the source, meaning comes from the fragment. See `extractors/appShell.ts`.
+  contextData.storeEntries = mergeStoreEntries(
+    extractStores(resolve(repoRoot, 'packages/app-shell/src/frameworks/solid/stores')),
+    storeEntries,
+  );
 
-  // Shell/internal components registered in the runtime componentRegistry but intentionally
-  // excluded from AI docs (no public props, not for user schemas). Listed here so the
-  // validator doesn't flag them as unknown when they appear in shell schemas.
-  contextData.shellComponents = ['AiPanel', 'BenchmarkTimer', 'RightPanelContainer', 'DesignToolbar', 'WeCube'];
+  /*
+    Components the host registers that the design-system packages don't document — shell chrome,
+    lazy-loaded marketplace cards, a module's contributed widget. Listed so the validator doesn't
+    report them as unknown, and derived from the registry rather than remembered: it is the single
+    source for what a template may name, and a hand-copied subset of it drifted twice.
+  */
+  const registered = extractRegisteredComponents(
+    resolve(repoRoot, 'packages/app-shell/src/frameworks/solid/registries/componentRegistry.tsx'),
+  );
+  const documented = new Set([
+    ...(contextData.primitives ?? []).map((p) => p.tagName),
+    ...(contextData.components ?? []).map((c) => c.name),
+  ]);
+  contextData.shellComponents = registered.filter((name) => !documented.has(name));
 
   const context = {
     ...contextData,
-    fragments: { schemaOperators, designSystemProps, routing, stores, storePatterns, rules },
+    fragments: {
+      schemaOperators,
+      designSystemProps,
+      routing,
+      // Rebuilt from the merged entries rather than reusing the fragment's own text, so the prose in
+      // the reference lists exactly the members the validator accepts.
+      stores: generateStoresText(contextData.storeEntries ?? []),
+      storePatterns,
+      rules,
+    },
   };
 
   // Schema-only reference — used for in-app AI (schemaContext.ts)

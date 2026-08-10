@@ -261,63 +261,76 @@ Boolean toggle (show/hide, expand/collapse):
 
 Signal types (community-specific reactions/votes):
 Signal types are created per-community by the user. Never hardcode signal type UUIDs in schemas.
-Instead reference them by slug through spaceStore.signalTypesBySlug.
+Resolve them by slug from a hoisted $queries subscription on the node.
+
+There is no store accessor for this. spaceStore.signalTypesBySlug existed once and was removed;
+schemas still referencing it filtered on undefined — a like count that silently counted the wrong
+thing. Query the SignalType entity instead, and look the slug up with $find.
 
 ALWAYS ask the user: "What slug should I use? (e.g. 'like', 'upvote', 'star')"
 Then use that slug in the pattern below.
 
-Pattern — live wired SignalControl (inside a $each over a model with $query include):
+Pattern — live wired SignalControl (one hoisted query, reused by the projection and the control):
 {
-  "type": "$each",
-  "props": {
-    "items": {
-      "$query": {
-        "entity": "MyBlock",
-        "include": {
-          "$totalLikeCount": {
-            "from": "signals",
-            "where": { "signalTypeId": { "$store": "spaceStore.signalTypesBySlug.like.id" } },
-            "count": true
-          },
-          "$myLikeSignal": {
-            "from": "signals",
-            "where": {
-              "signalTypeId": { "$store": "spaceStore.signalTypesBySlug.like.id" },
-              "author": "$me.did"
-            },
-            "limit": 1
-          }
-        }
-      }
-    },
-    "as": "item"
-  },
+  "$queries": { "signalTypes": { "entity": "SignalType", "subscribe": true } },
+  "type": "Column",
   "children": [
     {
-      "type": "$if",
+      "type": "$each",
       "props": {
-        "condition": { "$store": "spaceStore.signalTypesBySlug.like" },
-        "then": {
-          "type": "SignalControl",
+        "items": {
+          "$query": {
+            "entity": "MyBlock",
+            "include": {
+              "signals": true,
+              "$totalLikeCount": {
+                "from": "signals",
+                "where": {
+                  "signalTypeId": { "$find": { "items": { "$local": "signalTypes" }, "where": { "slug": "like" }, "select": "id" } }
+                },
+                "count": true
+              }
+            }
+          }
+        },
+        "as": "item"
+      },
+      "children": [
+        {
+          "type": "$if",
           "props": {
-            "signalType": { "$store": "spaceStore.signalTypesBySlug.like" },
-            "myValue": "$item.$myLikeSignal.value",
-            "aggregate": "$item.$totalLikeCount",
-            "onSignal": {
-              "$action": "spaceStore.upsertSignal",
-              "args": ["$item.id", { "$store": "spaceStore.signalTypesBySlug.like.id" }, "$arg"]
+            "condition": { "$count": { "items": { "$local": "signalTypes" } } },
+            "then": {
+              "type": "$each",
+              "props": { "items": { "$local": "signalTypes" }, "as": "sig" },
+              "children": [
+                {
+                  "type": "SignalControl",
+                  "props": {
+                    "signalType": "$sig",
+                    "signals": { "$filter": { "items": "$item.signals", "where": { "signalTypeId": "$sig.id" } } },
+                    "myDid": "$me.did",
+                    "onSignal": { "$action": "spaceStore.upsertSignal", "args": ["$item.id", "$sig.id", "$arg"] }
+                  }
+                }
+              ]
             }
           }
         }
-      }
+      ]
     }
   ]
 }
 
 Notes:
-- The $if guard hides SignalControl if the community hasn't created a signal type with that slug.
-- Replace "like" with the user's slug throughout (in $store paths and args).
-- $query include adds $totalLikeCount and $myLikeSignal as computed properties on each item.
+- $queries and $localState share one $local namespace, so { "$local": "signalTypes" } reads the
+  subscription from any descendant — the projection above and the controls below stay in agreement
+  about which type a slug means.
+- The $count guard renders nothing until the community has created a signal type.
+- Iterating signalTypes renders every type the community defined; use $find with a slug only where
+  one specific type is meant (e.g. a like count).
+- Replace "like" with the user's slug.
+- $query include adds $totalLikeCount as a computed property on each item.
 - signalType prop accepts the full SignalType object (provides icon, mode, range to the UI component).
 
 Preview / mockup mode (static, no store wiring):

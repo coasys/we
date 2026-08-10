@@ -9,6 +9,7 @@ export type {
   ModelEntry,
   ModelFieldEntry,
   ModelRelationEntry,
+  StateMemberMeta,
   StoreEntry,
   TokenCategory,
   ContextData,

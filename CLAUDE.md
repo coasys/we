@@ -1171,6 +1171,7 @@ CollectionBlock extends WeNode:
   Fields:
   - editorState: string = null [we://editor_state]
   - type: string [we://type]
+  - kind: string [we://kind]
   - display: string [we://display]
   - direction: string [we://direction]
   - format: string [we://format]
@@ -1359,6 +1360,8 @@ WeNode extends Ad4mModel:
   Relations:
   - comments: HasMany [we://comment]
   - signals: HasMany → Signal [we://signal]
+  - participants: HasMany [we://participants]
+  - calls: HasMany [we://call]
 
 ---
 
@@ -1368,39 +1371,19 @@ Stores provide state (readable values) and actions (methods) for dynamic logic i
 Access state with $store and call actions with $action.
 For ephemeral/form state, use $localState/$local/$setLocal instead of stores (see Dynamic Logic).
 
-SessionStore:
-- State:
-  - client: the backend client handle | undefined
-  - me: Agent | undefined — the authenticated identity; prefer the $me token in schemas
-  - bootState: string — 'initialising' | 'login' | 'createAgent' | 'finishing' | 'ready' | 'error'
-  - bootError: string — why the boot failed, when bootState is 'error'. Empty otherwise
-  - passwordError: boolean — true after a failed unlock attempt
-  - loginLoading: boolean
-  - createAgentError: string — the backend message from a failed agent creation, or empty
-  - createAgentLoading: boolean
-  - host: BackendHostInfo | undefined — the node this session runs against when it is somebody's hosting rather than this machine (id, name, description, imageUrl, location, url, computeSpecs, aiModels, rates). Undefined on desktop and on a local executor, so its presence is also the answer to "am I a guest here?" — gate any "connected to" UI on it. `aiModels` comes from the host directory and needs no capability, so it answers "can this node transcribe?" even where the executor refuses to list its models
-  - hostAccount: BackendAccountInfo | undefined — this agent's account with that node (email, remainingCredits, walletAddress, freeAccess). Check freeAccess before showing a balance: on a free node the credit figure means nothing and "0" reads as an account that has run dry
-- Actions:
-  - login(password: string): unlocks the agent and loads user data
-  - createAgent(password: string): creates the agent, loads user data, and lands on the 'finishing' boot state (not 'ready')
-  - clearPasswordError(): clears the failed-unlock flag. Chain it after the password field's $setLocal — the verdict was on the submitted password, so editing that password retracts it and a stale "Incorrect password" should not sit over the correction
-  - finishSetup(): leaves 'finishing' for the running app — sets bootState to 'ready'
-  - retryBoot(): starts the whole boot again from the failure screen, by reloading. A failed boot can have got anywhere before it threw, so retrying in place would race the remains of the first attempt
-  - logout(): locks the agent and returns to the login screen
-
 AccountStore:
 - State:
   - canManageAccounts: boolean — the host can manage local accounts (false on web). Gate every account control on this
   - accounts: Account[] — local accounts (id, name, avatar, active, hasAgent, sharedWithLauncher). id is the data directory; hasAgent is false for one scaffolded but never set up
   - activeAccount: Account | undefined — the account this app instance is running against. Correct at first paint: the list is seeded from a synchronous cache
-  - pendingRemoval: Account | null — the account a removal was requested for, awaiting confirmation
-  - switchingTo: Account | null — the account being switched to, from the click until the process goes away
-  - creating: boolean — true from the moment a create is requested until the process goes away
   - hasOtherAccounts: boolean — true when there is somewhere else to switch to
   - accountsLoaded: boolean — the host has answered. Without it an empty list reads as a first run and flashes a welcome at a returning user
   - isFirstRun: boolean — nothing has ever been set up on this machine: the host has answered and no account holds an identity yet
   - busy: boolean — a mutation is in flight; a successful one ends in a relaunch
+  - switchingTo: Account | null — the account being switched to, from the click until the process goes away
+  - creating: boolean — true from the moment a create is requested until the process goes away
   - error: string — the last account error, for display
+  - pendingRemoval: Account | null — the account a removal was requested for, awaiting confirmation
 - Actions:
   - refresh(): re-reads the account list from the host
   - createAccount(): creates an account under a provisional name and switches into it — the setup screen names it. Does not return on success
@@ -1412,6 +1395,157 @@ AccountStore:
   - confirmRemoval(): deletes the account awaiting confirmation
   - clearError(): clears the error slot
 
+AppStore:
+- State:
+  - apps: RegisteredApp[] — list of registered external apps (id, name, image)
+  - appsWithWe: unknown
+  - activeAppId: string | null — id of the currently active app, or null if none
+- Actions:
+  - activateApp(id: string): activates an app and switches to its view
+  - deactivateApp(): deactivates the current app and returns to the template view
+  - provideInstalledModules(): unknown
+
+DatasetStore:
+- State:
+  - datasets: array of dataset handles (all joined datasets; AD4M perspectives in this backend)
+  - orderedDatasets: datasets sorted by user-defined sidebar order, system datasets excluded
+  - currentDataset: dataset handle | null (the dataset currently being viewed)
+  - currentDatasetUri: unknown
+  - currentDatasetCid: string | undefined — the neighbourhood CID of the current dataset (prefix stripped)
+  - currentDatasetModels: ModelManifestEntry[] (non-WE SHACL models from the current dataset; injected as externalModels into AI messages)
+  - isWeSpace: boolean — true once the current dataset is confirmed to have WE's Space SDNA installed (false for a joined-but-foreign dataset, e.g. one synced in from Flux)
+  - joinedSpaceCids: string[] — CIDs of every joined shared dataset
+  - datasetsLoaded: boolean — the backend has answered with the dataset list. An empty list is otherwise indistinguishable from "not fetched yet", so anything asking "have I joined this?" reads the boot frame as "no". The same reason accountStore.accountsLoaded exists
+  - systemDatasetUuids: string[] — uuids of the we-root/we-test system datasets
+  - rootDataset: dataset handle | null — the agent's personal root dataset (we-root models live here)
+  - testDataset: unknown
+  - globalDataset: dataset handle | null — the seed-configured global discovery space, once joined
+  - marketplaceDataset: dataset handle | null — the seed-configured marketplace, once joined
+  - agentSettings: unknown
+  - globalSpaceConfigured: boolean — the seed declares a global space
+  - globalSpaceId: string | null — the dataset id of the seed-configured global discovery space, or null when it is not configured or not joined. Compare a route segment against it to tell "the user is in the global space" from "the user is in a space of their own"
+  - marketplaceConfigured: boolean — the seed declares a marketplace
+  - marketplaceId: unknown
+  - marketplaceJoined: boolean — the marketplace dataset is joined locally
+  - getDatasetOrder: unknown
+- Actions:
+  - switchDataset(uuid: string): switches to a dataset by UUID, registers its SHACL models as dynamic model classes, and populates currentDatasetModels
+  - reorderDatasets(newOrder: string[]): reorders the sidebar items by UUID array
+  - removeDataset(): unknown
+  - updateAgentSettings(updates: Partial<AgentSettings>): merges and persists root-dataset agent settings
+  - clearCurrentDataset(): unknown
+  - cleanupSpaceSdna(uuid?: string): one-time remediation for a space that accumulated duplicate SDNA installs — removes the redundant duplicate link copies. Defaults to the current dataset. Returns a display-ready summary string naming how many links were removed and the DIDs that authored them (your own DID annotated with "(you)"), or an empty string if nothing needed cleaning up
+  - trackDataset(): unknown
+  - onDatasetRemoved(): unknown
+  - initSystemDatasets(): unknown
+  - loadDatasets(): unknown
+  - subscribeToChanges(): unknown
+
+EditorStore:
+- State:
+  - messages: unknown
+  - isOpen: unknown
+  - isStreaming: unknown
+  - streamingContent: unknown
+  - apiKeyConfigured: unknown
+  - templateName: unknown
+  - templateIcon: unknown
+  - isReadOnly: unknown
+  - hasPendingChanges: unknown
+  - pickerOpen: unknown
+  - pickerAction: unknown
+  - pickerDefaultName: unknown
+  - pickerDefaultIcon: unknown
+  - pickerShowDestination: unknown
+  - sessions: unknown
+  - activeSessionId: unknown
+  - contentMode: unknown
+  - schemaJson: unknown
+  - canUndo: boolean (true when there are schema edits that can be undone)
+  - canRedo: boolean (true when there are undone schema edits that can be redone)
+  - isEditingTemplate: unknown
+  - editAction: unknown
+  - codePanelOpen: unknown
+  - themePanelOpen: unknown
+  - visualPanelOpen: unknown
+  - isEditingTheme: unknown
+  - aiPanelWidth: unknown
+  - codePanelWidth: unknown
+  - themePanelWidth: unknown
+  - visualPanelWidth: unknown
+- Actions:
+  - newChat(): unknown
+  - switchSession(): unknown
+  - deleteSession(): unknown
+  - setContentMode(): unknown
+  - onSchemaEdit(): unknown
+  - undo(): undoes the last schema edit
+  - redo(): redoes the last undone schema edit
+  - pushSnapshot(): unknown
+  - startFork(): unknown
+  - startFresh(): unknown
+  - confirmPicker(): unknown
+  - cancelPicker(): unknown
+  - enterTemplateEditing(): unknown
+  - exitTemplateEditing(): unknown
+  - toggle(): toggles the AI chat panel open/closed
+  - open(): unknown
+  - close(): unknown
+  - toggleCodePanel(): unknown
+  - openCodePanel(): unknown
+  - closeCodePanel(): unknown
+  - toggleThemePanel(): unknown
+  - openThemePanel(): unknown
+  - closeThemePanel(): unknown
+  - toggleVisualPanel(): unknown
+  - enterThemeEditing(): unknown
+  - exitThemeEditing(): unknown
+  - toggleThemeEditing(): unknown
+  - setAiPanelWidth(): unknown
+  - setCodePanelWidth(): unknown
+  - setThemePanelWidth(): unknown
+  - setVisualPanelWidth(): unknown
+  - sendMessage(): unknown
+  - clearHistory(): unknown
+  - setApiKey(): unknown
+
+PresenceStore:
+- State:
+  - peers: unknown
+  - online: unknown
+  - onlineHere: unknown
+  - calls: unknown
+  - available: unknown
+  - focusDepth: unknown
+- Actions:
+  - setFocusDepth(): unknown
+  - setAvailability(): unknown
+  - setActivity(): unknown
+  - clearActivity(): unknown
+
+ProfileStore:
+- State:
+  - profiles: AgentProfileSummary[] — cache of all fetched profiles (did, firstName, lastName, handle, bio, avatar, coverImage, location)
+  - ownProfile: AgentProfileSummary | undefined — reactive accessor for the current user's own profile (derived from the cache)
+  - pendingAvatar: unknown
+- Actions:
+  - setPendingAvatar(file: File): holds a picture chosen before an agent exists; uploaded by completeAccountSetup
+  - completeAccountSetup(name: string, password: string): the whole of first-run setup — creates the agent, then publishes the name and picture, then lets the app appear
+  - fetchProfile(did: string): fetches and caches an agent's profile from their public dataset
+  - updateOwnProfile(fields: { firstName?, lastName?, handle?, bio? }): updates own profile text fields and publishes to the public dataset
+  - updateProfileImage(field: "avatar" | "coverImage", imageFile: File): uploads the image and publishes its expression URL to the public dataset
+  - clearProfileImage(field: "avatar" | "coverImage"): removes that image from the published profile
+  - updateOwnLocation(update: { latitude?, longitude?, city?, country?, countryCode? }): merges the location update into the cache and publishes to the public dataset
+
+RouteStore:
+- State:
+  - currentPath: string (the current route path)
+  - segments: string[] (currentPath split by "/", e.g. ["/foo/bar"] → ["foo", "bar"])
+- Actions:
+  - setNavigateFunction(): unknown
+  - setCurrentPath(): unknown
+  - navigate(to: string, options?): navigates to a route
+
 RuntimeStore:
 - State:
   - canAdminister: boolean — this backend exposes runtime administration at all
@@ -1422,12 +1556,6 @@ RuntimeStore:
   - canManageAi: boolean — gate the AI section on this
   - canConfigureAi: boolean — the models can be changed, not just listed. False for a guest on somebody else's node, where AD4M grants AI READ but refuses UPDATE/DELETE. Gate add/edit/remove/set-default controls on this and the section itself on canManageAi
   - canConfigureExecutor: boolean — this host starts the backend, so how it starts it can be changed. False on web
-  - mcpEnabled: boolean — whether the backend serves MCP on its next start
-  - mcpPort: number — the port MCP is served on
-  - executorRestartPending: boolean — settings were changed that the running backend has not picked up
-  - canBackUp: boolean — a database export/import can be offered: the backend writes the file and the host can name one. False on web
-  - logLevels: { crate, level }[] — per-crate log levels the user has set, sorted. Empty means the backend own defaults are in use
-  - backupStatus: string — what the last export or import did, for display. Empty until one runs
   - aiModels: AiModelView[] — installed models, each carrying its display strings (kindLabel, sourceLabel, detail, statusText, ready) alongside id/name/kind/source/isDefault. Empty until loadAiModels() runs
   - aiTasks: AiTask[] — named prompts apps registered against a model (id, name, modelId, systemPrompt)
   - aiForm: AiModelForm | null — the model form while it is open, null when closed. One flat field per input; read with runtimeStore.aiForm.<field>
@@ -1440,16 +1568,15 @@ RuntimeStore:
   - peerInfos: string[] — this node peer-discovery records, for out-of-band exchange
   - loading: boolean — true while any runtime call is in flight
   - error: string — the last runtime error, for display
+  - canBackUp: boolean — a database export/import can be offered: the backend writes the file and the host can name one. False on web
+  - logLevels: { crate, level }[] — per-crate log levels the user has set, sorted. Empty means the backend own defaults are in use
+  - backupStatus: string — what the last export or import did, for display. Empty until one runs
+  - mcpEnabled: boolean — whether the backend serves MCP on its next start
+  - mcpPort: number — the port MCP is served on
+  - executorRestartPending: boolean — settings were changed that the running backend has not picked up
   - pendingConsent: ConsentRequest | null — a request awaiting the user's decision (kind: 'capability' | 'trust', title, message, app, peerId)
   - consentSecret: string — a code an approval returned, to be relayed to the asking app
 - Actions:
-  - setMcpEnabled(enabled: boolean): turns MCP on or off for the backend next start
-  - setMcpPort(port: number): sets the MCP port. The host refuses one outside 1024-65535
-  - setLogLevel(crate: string, level: string): sets one crate log level — adds it when not already set, so there is no separate add. Levels: error, warn, info, debug, trace
-  - removeLogLevel(crate: string): drops an override, returning that crate to the backend default
-  - exportDatabase(): asks for a file, then has the backend write everything to it
-  - importDatabase(): asks for a file, then has the backend read it back in
-  - restartExecutor(): starts the backend over so written settings take effect. Does not return
   - loadAiModels(): fetches the installed AI models and their load status
   - loadAiTasks(): fetches the prompts apps registered against a model
   - newAiModel(): opens the model form empty, for a new model
@@ -1473,122 +1600,87 @@ RuntimeStore:
   - restartNetwork(): restarts the peer-networking layer
   - loadPeerInfos(): fetches this node peer-discovery records
   - addPeerInfos(text: string): adds pasted peer records (JSON array or one per line)
+  - setMcpEnabled(enabled: boolean): turns MCP on or off for the backend next start
+  - setLogLevel(crate: string, level: string): sets one crate log level — adds it when not already set, so there is no separate add. Levels: error, warn, info, debug, trace
+  - removeLogLevel(crate: string): drops an override, returning that crate to the backend default
+  - exportDatabase(): asks for a file, then has the backend write everything to it
+  - importDatabase(): asks for a file, then has the backend read it back in
+  - setMcpPort(port: number): sets the MCP port. The host refuses one outside 1024-65535
+  - restartExecutor(): starts the backend over so written settings take effect. Does not return
   - approveConsent(): grants the pending request
   - denyConsent(): declines the pending request
   - dismissConsentSecret(): clears the confirmation code display
 
-DatasetStore:
+SessionStore:
 - State:
-  - datasets: array of dataset handles (all joined datasets; AD4M perspectives in this backend)
-  - orderedDatasets: datasets sorted by user-defined sidebar order, system datasets excluded
-  - currentDataset: dataset handle | null (the dataset currently being viewed)
-  - currentDatasetCid: string | undefined — the neighbourhood CID of the current dataset (prefix stripped)
-  - currentDatasetModels: ModelManifestEntry[] (non-WE SHACL models from the current dataset; injected as externalModels into AI messages)
-  - isWeSpace: boolean — true once the current dataset is confirmed to have WE's Space SDNA installed (false for a joined-but-foreign dataset, e.g. one synced in from Flux)
-  - joinedSpaceCids: string[] — CIDs of every joined shared dataset
-  - datasetsLoaded: boolean — the backend has answered with the dataset list. An empty list is otherwise indistinguishable from "not fetched yet", so anything asking "have I joined this?" reads the boot frame as "no". The same reason accountStore.accountsLoaded exists
-  - systemDatasetUuids: string[] — uuids of the we-root/we-test system datasets
-  - rootDataset: dataset handle | null — the agent's personal root dataset (we-root models live here)
-  - globalDataset: dataset handle | null — the seed-configured global discovery space, once joined
-  - marketplaceDataset: dataset handle | null — the seed-configured marketplace, once joined
-  - globalSpaceConfigured: boolean — the seed declares a global space
-  - marketplaceConfigured: boolean — the seed declares a marketplace
-  - marketplaceJoined: boolean — the marketplace dataset is joined locally
+  - bootState: string — 'initialising' | 'login' | 'createAgent' | 'finishing' | 'ready' | 'error'
+  - bootError: string — why the boot failed, when bootState is 'error'. Empty otherwise
+  - passwordError: boolean — true after a failed unlock attempt
+  - loginLoading: boolean
+  - createAgentError: string — the backend message from a failed agent creation, or empty
+  - createAgentLoading: boolean
+  - client: the backend client handle | undefined
+  - agentSession: unknown
+  - lifecycle: unknown
+  - backendPorts: unknown
+  - me: Agent | undefined — the authenticated identity; prefer the $me token in schemas
+  - port: unknown
+  - token: unknown
+  - serverUrl: unknown
+  - host: BackendHostInfo | undefined — the node this session runs against when it is somebody's hosting rather than this machine (id, name, description, imageUrl, location, url, computeSpecs, aiModels, rates). Undefined on desktop and on a local executor, so its presence is also the answer to "am I a guest here?" — gate any "connected to" UI on it. `aiModels` comes from the host directory and needs no capability, so it answers "can this node transcribe?" even where the executor refuses to list its models
+  - hostAccount: BackendAccountInfo | undefined — this agent's account with that node (email, remainingCredits, walletAddress, freeAccess). Check freeAccess before showing a balance: on a free node the credit figure means nothing and "0" reads as an account that has run dry
+  - isDevelopment: unknown
+  - ephemeralPort: unknown
 - Actions:
-  - switchDataset(uuid: string): switches to a dataset by UUID, registers its SHACL models as dynamic model classes, and populates currentDatasetModels
-  - reorderDatasets(newOrder: string[]): reorders the sidebar items by UUID array
-  - updateAgentSettings(updates: Partial<AgentSettings>): merges and persists root-dataset agent settings
-  - cleanupSpaceSdna(uuid?: string): one-time remediation for a space that accumulated duplicate SDNA installs — removes the redundant duplicate link copies. Defaults to the current dataset. Returns a display-ready summary string naming how many links were removed and the DIDs that authored them (your own DID annotated with "(you)"), or an empty string if nothing needed cleaning up
+  - login(password: string): unlocks the agent and loads user data
+  - createAgent(password: string): creates the agent, loads user data, and lands on the 'finishing' boot state (not 'ready')
+  - clearPasswordError(): clears the failed-unlock flag. Chain it after the password field's $setLocal — the verdict was on the submitted password, so editing that password retracts it and a stale "Incorrect password" should not sit over the correction
+  - finishSetup(): leaves 'finishing' for the running app — sets bootState to 'ready'
+  - logout(): locks the agent and returns to the login screen
+  - retryBoot(): starts the whole boot again from the failure screen, by reloading. A failed boot can have got anywhere before it threw, so retrying in place would race the remains of the first attempt
+  - refreshMe(): unknown
+  - markReady(): unknown
+  - onSessionUnlocked(): unknown
 
-ProfileStore:
+ShellStore:
 - State:
-  - pendingAvatar: unknown
-  - profiles: AgentProfileSummary[] — cache of all fetched profiles (did, firstName, lastName, handle, bio, avatar, coverImage, location)
-  - ownProfile: AgentProfileSummary | undefined — reactive accessor for the current user's own profile (derived from the cache)
+  - activeShellView: string | null — id of the currently open shell overlay ('profile' | 'settings' | 'schema-tests' | 'landing-page'), or null
+  - takePendingPath: unknown
+  - createSpaceOpen: unknown
+  - dockGeometry: unknown
+  - contentInset: unknown
+  - dockResizing: unknown
 - Actions:
-  - fetchProfile(did: string): fetches and caches an agent's profile from their public dataset
-  - updateOwnProfile(fields: { firstName?, lastName?, handle?, bio? }): updates own profile text fields and publishes to the public dataset
-  - updateProfileImage(field: "avatar" | "coverImage", imageFile: File): uploads the image and publishes its expression URL to the public dataset
-  - clearProfileImage(field: "avatar" | "coverImage"): removes that image from the published profile
-  - updateOwnLocation(update: { latitude?, longitude?, city?, country?, countryCode? }): merges the location update into the cache and publishes to the public dataset
-  - setPendingAvatar(file: File): holds a picture chosen before an agent exists; uploaded by completeAccountSetup
-  - completeAccountSetup(name: string, password: string): the whole of first-run setup — creates the agent, then publishes the name and picture, then lets the app appear
-
-RouteStore:
-- State:
-  - currentPath: string (the current route path)
-  - segments: string[] (currentPath split by "/", e.g. ["/foo/bar"] → ["foo", "bar"])
-- Actions:
-  - navigate(to: string, options?): navigates to a route
-
-ThemeStore:
-- State:
-  - builtInThemes: array of ThemeData objects — built-in registry themes (origin: "built-in", always available)
-  - installedThemes: array of ThemeData objects — user-installed themes from root perspective (origin: "custom" | "marketplace")
-  - spaceThemes: array of ThemeData objects — themes stored in the current space perspective (origin: "custom")
-  - allThemes: array of ThemeData objects — union of builtInThemes + visible installedThemes + spaceThemes (hidden themes filtered out)
-  - currentThemeId: string — id of the currently active theme
-  - currentTheme: ThemeData — the currently active theme object (id, name, icon, origin)
-  - defaultThemeId: string — id of the user's preferred default theme (used for bootscreen, shell, and future space-override). Persisted to AgentSettings.defaultThemeId
-  - themeScope: unknown
-  - themeScopePreference: unknown
-  - themeScopeGlobal: unknown
-  - themeScopePreviewing: unknown
-  - themeManagementList: ThemeManagementItem[] — flat list of all themes (built-in + all custom) with management metadata (id, name, icon, isBuiltIn, isInstalled, isDefault)
-- Actions:
-  - setCurrentTheme(themeId: string): sets and persists the active theme
-  - setDefaultTheme(themeId: string): sets the preferred default theme (persists to AgentSettings.defaultThemeId)
-  - setThemeScopeGlobal(global: boolean): persists whether a space's theme covers the whole window (true) or only the space's own content (false, the default). Takes a boolean because a switch emits one and a schema cannot map it to a string — `$if` in an action's args resolves at render time, before the event exists
-  - previewThemeScope(scope: 'global' | 'scoped' | null): previews a scope for the current theme-editing session without writing the preference; null drops the preview. Cleared when editing ends
-  - toggleThemeInstalled(themeId: string): toggles a custom theme visible/hidden in pickers; does not delete the theme
-  - installFromMarketplace(marketplaceThemeId: string): installs a marketplace theme into installedThemes
-  - uninstallTheme(themeId: string): removes an installed theme (deletes the model)
-  - deleteTheme(themeId: string): permanently deletes a custom theme
-
-TemplateStore:
-- State:
-  - personalTemplates: array of TemplateSchema objects — core templates plus user's installed custom templates (excludes space templates)
-  - spaceTemplates: array of TemplateSchema objects — templates loaded from the current space perspective
-  - builtInTemplates: array of TemplateSchema objects — built-in system templates (always available)
-  - myTemplates: array of TemplateSchema objects — user's installed custom templates only (excludes built-in and space templates)
-  - allTemplates: array of TemplateSchema objects — union of built-in + personal + space templates
-  - shellTemplates: array of TemplateSchema objects (static system pages: profile, settings, tests)
-  - currentTemplate: TemplateSchema (the active template)
-  - operationLoading: unknown
-  - templateManagementList: TemplateManagementItem[] — flat list of all templates with management metadata (id, name, icon, description, isBuiltIn, isInstalled, isDefault)
-  - switcherGroups: TemplateSwitcherGroup[] — pre-grouped flat items for the template switcher UI; each group has { label: string, items: { id, name, icon }[] }. Groups: "Space templates", "My templates", "Built-in". Use $filter where: { name: { contains: ... } } for search since items have a flat name field.
-- Actions:
-  - updateTemplate(newTemplate: TemplateSchema): updates the current template
-  - switchTemplate(newTemplateId: string): switches to another template
-  - removeTemplate(): removes the current template
-  - saveTemplate(name: string): saves the current template
-  - toggleInstalled(): unknown
-  - setDefaultTemplate(): unknown
-  - deleteTemplate(): unknown
+  - openShellView(id: string, path?: string): opens a shell overlay by id, optionally at a route inside it — the overlay keeps its own memory router, so this never touches the browser URL
+  - closeShellView(): closes the currently open shell overlay
+  - setCreateSpaceOpen(open: boolean): opens or closes the create-space modal. Shell state rather than a page’s $localState because more than one place opens it — the settings page and the sidebar’s spaces group — and a page-scoped flag could only be set from inside that page
+  - scrollToId(id: string): smooth-scrolls the element with that DOM id into view
+  - beginDockResize(): unknown
+  - resizeDock(): unknown
+  - endDockResize(): unknown
 
 SpaceStore:
 - State:
-  - mySpaces: array of Space objects — every space the agent holds, across all joined datasets
-  - personalSpaces: array of Space objects (local/personal spaces; all Space fields)
-  - sharedSpaces: array of Space objects (shared/neighbourhood spaces; all Space fields)
-  - routeSpaceUnjoined: boolean — the current route points at a space this agent has not joined, as a settled fact. What a join gate should read: `currentDataset` being null is also true for the first frames of a refresh, so gating on that flashes a join prompt at someone already inside. False while the answer is still unknown
-  - spaceList: { uuid, name, description, avatar, kind: 'shared' | 'personal' | 'foreign', isWeSpace, canAdminister }[] — one row per joined dataset the agent can act on, ordered like the sidebar and excluding the system datasets. Includes datasets that are not WE spaces (kind 'foreign', isWeSpace false), which are waiting to be initialized. `uuid` is the dataset id, so it keys navigation and settings whether or not a Space record exists
-  - creatingSpace: boolean (true while a new space is being created)
-  - orderedSidebarItems: array of sidebar items in user-defined order (uuid, name, avatar, spaceId) — personal + shared spaces merged
   - memberDids: string[] — DIDs of all members in the current space (includes own DID)
   - members: AgentProfileSummary[] — cached profiles for all memberDids
   - spaceDefaultTemplateId: string — the current space's default template ID (empty string when no space is active)
+  - spaceDefaultThemeId: string — the current space's default theme ID (empty string when no space is active). The counterpart to spaceDefaultTemplateId; compare against it to mark which theme a space is currently on
   - currentSpace: Space | null — the current space model (all Space fields: uuid, url, name, description, access, discovery, avatar, coverImage, defaultTemplateId, defaultThemeId, location, plus id/author/createdAt)
+  - mySpaces: array of Space objects — every space the agent holds, across all joined datasets
+  - personalSpaces: array of Space objects (local/personal spaces; all Space fields)
+  - sharedSpaces: array of Space objects (shared/neighbourhood spaces; all Space fields)
+  - spaceList: { uuid, name, description, avatar, kind: 'shared' | 'personal' | 'foreign', isWeSpace, canAdminister }[] — one row per joined dataset the agent can act on, ordered like the sidebar and excluding the system datasets. Includes datasets that are not WE spaces (kind 'foreign', isWeSpace false), which are waiting to be initialized. `uuid` is the dataset id, so it keys navigation and settings whether or not a Space record exists
+  - routeSpaceUnjoined: boolean — the current route points at a space this agent has not joined, as a settled fact. What a join gate should read: `currentDataset` being null is also true for the first frames of a refresh, so gating on that flashes a join prompt at someone already inside. False while the answer is still unknown
+  - creatingSpace: boolean (true while a new space is being created)
+  - orderedSidebarItems: array of sidebar items in user-defined order (uuid, name, avatar, spaceId) — personal + shared spaces merged
   - foreignSpacePrefill: { name, description, avatar } | null — detected from a foreign app's own model (e.g. Flux's Community) for prefilling the "Initialize as WE space" gate; null once the perspective is a WE space or no recognized foreign model is found
-  - signalTypes: array of SignalType objects (community-created reaction/vote types)
-  - signalTypesBySlug: Record<slug, SignalType> — computed map; access via { $store: "spaceStore.signalTypesBySlug.<slug>" }; use .id for the UUID
   - enabledModules: string[] — ids of the feature modules THIS SPACE has turned on: the community’s decision, shared with every member. An unset value means "not decided", not "none": it falls back to every registered module, so spaces predating the setting keep the chrome they had
+  - templateOverrideOptions: { label, value }[] — options for the per-space template override picker: "Use the space’s default" (space-default), "Use my default" (agent-default), then every template. Each of the first two names what it resolves to. Pre-built because a schema can $map a store array into options but cannot prepend one, and without those entries overriding would be one-way
+  - themeOverrideOptions: { label, value }[] — the same, for themes
   - installedModules: string[] — ids of the feature modules THIS AGENT wants available anywhere. Personal, held in the root dataset; unset means "not decided" and falls back to every registered module
   - requiredModules: string[] — module ids the template on screen mounts components from, derived by walking the schema rather than read from meta.components (which no template fills in). What makes uninstalling a capability module refusable
   - missingModules: string[] — of those, the ones this agent has not installed. Non-empty means the template is mounting a component nothing provides, so part of the page silently renders nothing. Empty in the ordinary case
   - activeModules: string[] — what actually renders here for this agent: registered ∩ installed ∩ enabled, less the modules muted in this space. Module chrome and the launcher rail gate on this; enabledModules alone is not sufficient
-  - templateOverrideOptions: { label, value }[] — options for the per-space template override picker: "Use the space’s default" (space-default), "Use my default" (agent-default), then every template. Each of the first two names what it resolves to. Pre-built because a schema can $map a store array into options but cannot prepend one, and without those entries overriding would be one-way
-  - themeOverrideOptions: { label, value }[] — the same, for themes
   - moduleInstallSettings: { id, name, description, icon, installed, surface, switchable }[] — every registered module and whether this agent wants it anywhere. The global Settings → Modules list, and the only place an 'app' or 'capability' module is decided about: a contribution is gated at the layer where it renders, and only 'chrome' renders inside a space. `surface` is derived from what the module contributes. Its per-space counterpart is `modules` on each spaceList row, which carries enabled/installed/visible/active together and lists chrome modules only
   - moduleLaunchers: { id, icon, label, active }[] — launchers for the modules enabled here and available in this space; what the host module rail renders. Pair with { $action: "spaceStore.launchModule", args: ["$mod.id"] }
 - Actions:
@@ -1603,79 +1695,114 @@ SpaceStore:
   - updateSpaceMeta(updates: { name?, description?, discovery?, location? }, spaceUuid?): updates the space everyone sees. Omit spaceUuid to target the space on screen; pass one to configure a space from the spaces list without navigating to it
   - setSpaceDefaultTemplate(templateId: string, spaceUuid?): sets the template members see when they enter that space. Only repaints the app when the target is the space currently on screen
   - setSpaceDefaultTheme(themeId: string, spaceUuid?): sets the theme members see when they enter that space
-  - createSignalType(config: Partial<SignalType>): creates a new signal type in the community; slug auto-derived from name if blank
-  - upsertSignal(nodeId: string, signalTypeId: string, value: number): adds or updates a signal on a node; value=0 deletes it
-  - navigateToSpace(spaceId: string, view?: string): navigates to a space — accepts a perspective UUID or a neighbourhood CID (sharedUrl without the neighbourhood:// prefix); pre-loads space templates before switching so the template and data arrive together
-  - canAdministerSpace(uuid: string): whether this agent may change what every member of that space sees — true for a personal space, and for a shared one they authored. A UI affordance for deciding whether to offer the controls, NOT enforcement: a shared space is a neighbourhood every member can write to. Ask by name rather than comparing author to $me.did, so the answer can grow (multiple admins, roles) without every template changing
-  - copyShareLink(uuid: string): copies that space's share link to the clipboard, with a toast either way. No-op for a personal space, which has no global id and so no shareable link — read `spaceList[].shareLink` to decide whether to offer the control at all
   - setModuleEnabled(moduleId: string, enabled: boolean, spaceUuid?): turns a feature module on or off for a space; writes the resolved list, so the first toggle also pins whatever was on by fallback. Omit spaceUuid for the space on screen
   - setModuleInstalled(moduleId: string, installed: boolean): turns a module on or off for this agent in every space. Personal — writes AgentSettings.installedModules in the root dataset, so no other member sees it
   - setModuleVisible(moduleId: string, visible: boolean, spaceUuid?): shows or hides a module for this agent in one space, without changing what the community runs. Private: written to the root dataset, never to the space. Phrased positively so a switch can pass `$event.detail` bare — wrapping it in an operator such as `$not` would evaluate at render time and send a constant
   - setSpaceTemplateOverride(templateId: string, spaceUuid?): sets the template THIS AGENT sees in one space, overriding the community's default. Three values: 'space-default' follows the space, 'agent-default' follows your own global default (tracking later changes to it), or a concrete template id pins that one. Private, and applied immediately when that space is the one on screen. Note the sentinels are named values, not '' — the ORM skips empty strings on update, so '' cannot clear a property
   - setSpaceThemeOverride(themeId: string, spaceUuid?): sets the theme THIS AGENT sees in one space. Same three values as setSpaceTemplateOverride. Private
   - launchModule(moduleId: string): invokes that module's declared launcher action. Takes an id rather than a path because $action resolves a literal string, so a rail iterating over modules cannot build modules.<id>.<method> itself
+  - createSignalType(config: Partial<SignalType>): creates a new signal type in the community; slug auto-derived from name if blank
+  - upsertSignal(nodeId: string, signalTypeId: string, value: number): adds or updates a signal on a node; value=0 deletes it
+  - navigateToSpace(spaceId: string, view?: string): navigates to a space — accepts a perspective UUID or a neighbourhood CID (sharedUrl without the neighbourhood:// prefix); pre-loads space templates before switching so the template and data arrive together
+  - canAdministerSpace(uuid: string): whether this agent may change what every member of that space sees — true for a personal space, and for a shared one they authored. A UI affordance for deciding whether to offer the controls, NOT enforcement: a shared space is a neighbourhood every member can write to. Ask by name rather than comparing author to $me.did, so the answer can grow (multiple admins, roles) without every template changing
+  - copyShareLink(uuid: string): copies that space's share link to the clipboard, with a toast either way. No-op for a personal space, which has no global id and so no shareable link — read `spaceList[].shareLink` to decide whether to offer the control at all
+  - getSubgroupMessages(subgroupId: string): messages belonging to one of Flux's conversation subgroups, fetched on demand. A dialect query against a foreign schema rather than a WE model, so it goes through the backend's interop surface instead of $query — which is why it is a store method and not a relation you can drill into
+  - removeSpaceFromGlobal(): unknown
+  - updateSpaceInCache(): unknown
+  - loadSpaces(): unknown
+  - test(): unknown
 
-EditorStore:
+TemplateStore:
 - State:
-  - models: array of Model objects
-  - tasks: array of AITask objects
-  - isOpen: unknown
-  - messages: unknown
-  - isStreaming: unknown
-  - streamingContent: unknown
-  - apiKeyConfigured: unknown
-  - templateName: unknown
-  - templateIcon: unknown
-  - isReadOnly: unknown
-  - hasPendingChanges: unknown
-  - pickerOpen: unknown
-  - pickerAction: unknown
-  - pickerDefaultName: unknown
-  - pickerDefaultIcon: unknown
-  - pickerShowDestination: unknown
-  - sessions: unknown
-  - activeSessionId: unknown
-  - panelMode: unknown
-  - schemaJson: unknown
+  - personalTemplates: array of TemplateSchema objects — core templates plus user's installed custom templates (excludes space templates)
+  - spaceTemplates: array of TemplateSchema objects — templates loaded from the current space perspective
+  - builtInTemplates: array of TemplateSchema objects — built-in system templates (always available)
+  - myTemplates: array of TemplateSchema objects — user's installed custom templates only (excludes built-in and space templates)
+  - allTemplates: array of TemplateSchema objects — union of built-in + personal + space templates
+  - templateManagementList: TemplateManagementItem[] — flat list of all templates with management metadata (id, name, icon, description, isBuiltIn, isInstalled, isDefault)
+  - switcherGroups: TemplateSwitcherGroup[] — pre-grouped flat items for the template switcher UI; each group has { label: string, items: { id, name, icon }[] }. Groups: "Space templates", "My templates", "Built-in". Use $filter where: { name: { contains: ... } } for search since items have a flat name field.
+  - currentTemplate: TemplateSchema (the active template)
+  - loading: unknown
+  - defaultTemplateId: unknown
   - operationLoading: unknown
-  - canUndo: boolean (true when there are schema edits that can be undone)
-  - canRedo: boolean (true when there are undone schema edits that can be redone)
 - Actions:
-  - handleSchemaPrompt(prompt: string): generates a schema from a prompt
-  - sendMessage(): unknown
-  - close(): unknown
-  - toggle(): toggles the AI chat panel open/closed
-  - setApiKey(): unknown
-  - startFork(): unknown
-  - startFresh(): unknown
-  - confirmPicker(): unknown
-  - cancelPicker(): unknown
-  - newChat(): unknown
-  - switchSession(): unknown
-  - deleteSession(): unknown
-  - setPanelMode(): unknown
-  - onSchemaEdit(): unknown
-  - undo(): undoes the last schema edit
-  - redo(): redoes the last undone schema edit
+  - provideSpaceLookup(): unknown
+  - updateTemplate(newTemplate: TemplateSchema): updates the current template
+  - replaceTemplate(): unknown
+  - switchTemplate(newTemplateId: string): switches to another template
+  - removeTemplate(): removes the current template
+  - deleteTemplate(): unknown
+  - installTemplate(): unknown
+  - uninstallTemplate(): unknown
+  - installFromMarketplace(): unknown
+  - installToSpace(marketplaceTemplateId: string): copies a marketplace template into the current space, so every member of that community gets it — as opposed to installing it for yourself. Pair with templateStore.operationLoading to show progress on the row being installed
+  - toggleInstalled(): unknown
+  - setDefaultTemplate(): unknown
+  - saveTemplate(name: string): saves the current template
+  - saveTemplateAs(): unknown
+  - publishToSpace(): unknown
+  - deleteMarketplaceTemplate(): unknown
+  - publishToMarketplace(): unknown
+  - persistCurrentTemplate(): unknown
+  - preloadSpaceTemplates(): unknown
+  - loadSpaceTemplates(): unknown
+  - refreshSpaceTemplates(): unknown
+  - clearSpaceTemplates(): unknown
+  - isBuiltInTemplate(): unknown
+  - isInstalled(): unknown
+  - getTemplateModel(): unknown
 
-ShellStore:
+ThemeStore:
 - State:
-  - activeShellView: string | null — id of the currently open shell overlay ('profile' | 'settings' | 'schema-tests' | 'landing-page'), or null
-  - createSpaceOpen: unknown
+  - builtInThemes: array of ThemeData objects — built-in registry themes (origin: "built-in", always available)
+  - installedThemes: array of ThemeData objects — user-installed themes from root perspective (origin: "custom" | "marketplace")
+  - spaceThemes: array of ThemeData objects — themes stored in the current space perspective (origin: "custom")
+  - allThemes: array of ThemeData objects — union of builtInThemes + visible installedThemes + spaceThemes (hidden themes filtered out)
+  - currentThemeId: string — id of the currently active theme
+  - currentTheme: ThemeData — the currently active theme object (id, name, icon, origin)
+  - defaultThemeId: string — id of the user's preferred default theme (used for bootscreen, shell, and future space-override). Persisted to AgentSettings.defaultThemeId
+  - themeManagementList: ThemeManagementItem[] — flat list of all themes (built-in + all custom) with management metadata (id, name, icon, isBuiltIn, isInstalled, isDefault)
+  - editingTheme: unknown
+  - operationLoading: string | null — the id of the theme operation currently in flight, namespaced by kind (e.g. 'marketplace-install:<themeId>'), or null when idle. A key rather than a boolean so one row's spinner does not appear on every row — compare it against the row you are rendering
+  - themeScope: unknown
+  - themeScopePreference: unknown
+  - themeScopeGlobal: unknown
+  - themeScopePreviewing: unknown
+  - activeTemplateTheme: unknown
+  - saveEditingTheme: unknown
 - Actions:
-  - openShellView(id: string, path?: string): opens a shell overlay by id, optionally at a route inside it — the overlay keeps its own memory router, so this never touches the browser URL
-  - closeShellView(): closes the currently open shell overlay
-  - setCreateSpaceOpen(open: boolean): opens or closes the create-space modal. Shell state rather than a page’s $localState because more than one place opens it — the settings page and the sidebar’s spaces group — and a page-scoped flag could only be set from inside that page
-  - scrollToId(id: string): smooth-scrolls the element with that DOM id into view
+  - registerHistoryCallbacks(): unknown
+  - applySnapshot(): unknown
+  - setCurrentTheme(themeId: string): sets and persists the active theme
+  - setDefaultTheme(themeId: string): sets the preferred default theme (persists to AgentSettings.defaultThemeId)
+  - toggleThemeInstalled(themeId: string): toggles a custom theme visible/hidden in pickers; does not delete the theme
+  - previewThemeScope(scope: 'global' | 'scoped' | null): previews a scope for the current theme-editing session without writing the preference; null drops the preview. Cleared when editing ends
+  - setThemeScopeGlobal(global: boolean): persists whether a space's theme covers the whole window (true) or only the space's own content (false, the default). Takes a boolean because a switch emits one and a schema cannot map it to a string — `$if` in an action's args resolves at render time, before the event exists
+  - replaceTheme(): unknown
+  - restorePersonalTheme(): unknown
+  - clearSpaceTheme(): unknown
+  - startEditing(): unknown
+  - changeBasePreset(): unknown
+  - updateEditingOverrides(): unknown
+  - updateEditingCss(): unknown
+  - updateEditingMeta(): unknown
+  - cancelEditing(): unknown
+  - createAndStartEditing(): unknown
+  - saveEditingThemeAs(): unknown
+  - deleteTheme(themeId: string): permanently deletes a custom theme
+  - installFromMarketplace(marketplaceThemeId: string): installs a marketplace theme into installedThemes
+  - uninstallTheme(themeId: string): removes an installed theme (deletes the model)
+  - deleteMarketplaceTheme(): unknown
+  - publishToMarketplace(): unknown
+  - publishToSpace(): unknown
+  - loadInstalledThemes(): unknown
 
-AppStore:
+Model:
 - State:
-  - apps: RegisteredApp[] — list of registered external apps (id, name, image)
-  - appsWithWe: unknown
-  - activeAppId: string | null — id of the currently active app, or null if none
 - Actions:
-  - activateApp(id: string): activates an app and switches to its view
-  - deactivateApp(): deactivates the current app and returns to the template view
+  - create(): unknown
+  - update(): unknown
+  - delete(): unknown
 
 ---
 
@@ -1936,63 +2063,76 @@ Boolean toggle (show/hide, expand/collapse):
 
 Signal types (community-specific reactions/votes):
 Signal types are created per-community by the user. Never hardcode signal type UUIDs in schemas.
-Instead reference them by slug through spaceStore.signalTypesBySlug.
+Resolve them by slug from a hoisted $queries subscription on the node.
+
+There is no store accessor for this. spaceStore.signalTypesBySlug existed once and was removed;
+schemas still referencing it filtered on undefined — a like count that silently counted the wrong
+thing. Query the SignalType entity instead, and look the slug up with $find.
 
 ALWAYS ask the user: "What slug should I use? (e.g. 'like', 'upvote', 'star')"
 Then use that slug in the pattern below.
 
-Pattern — live wired SignalControl (inside a $each over a model with $query include):
+Pattern — live wired SignalControl (one hoisted query, reused by the projection and the control):
 {
-  "type": "$each",
-  "props": {
-    "items": {
-      "$query": {
-        "entity": "MyBlock",
-        "include": {
-          "$totalLikeCount": {
-            "from": "signals",
-            "where": { "signalTypeId": { "$store": "spaceStore.signalTypesBySlug.like.id" } },
-            "count": true
-          },
-          "$myLikeSignal": {
-            "from": "signals",
-            "where": {
-              "signalTypeId": { "$store": "spaceStore.signalTypesBySlug.like.id" },
-              "author": "$me.did"
-            },
-            "limit": 1
-          }
-        }
-      }
-    },
-    "as": "item"
-  },
+  "$queries": { "signalTypes": { "entity": "SignalType", "subscribe": true } },
+  "type": "Column",
   "children": [
     {
-      "type": "$if",
+      "type": "$each",
       "props": {
-        "condition": { "$store": "spaceStore.signalTypesBySlug.like" },
-        "then": {
-          "type": "SignalControl",
+        "items": {
+          "$query": {
+            "entity": "MyBlock",
+            "include": {
+              "signals": true,
+              "$totalLikeCount": {
+                "from": "signals",
+                "where": {
+                  "signalTypeId": { "$find": { "items": { "$local": "signalTypes" }, "where": { "slug": "like" }, "select": "id" } }
+                },
+                "count": true
+              }
+            }
+          }
+        },
+        "as": "item"
+      },
+      "children": [
+        {
+          "type": "$if",
           "props": {
-            "signalType": { "$store": "spaceStore.signalTypesBySlug.like" },
-            "myValue": "$item.$myLikeSignal.value",
-            "aggregate": "$item.$totalLikeCount",
-            "onSignal": {
-              "$action": "spaceStore.upsertSignal",
-              "args": ["$item.id", { "$store": "spaceStore.signalTypesBySlug.like.id" }, "$arg"]
+            "condition": { "$count": { "items": { "$local": "signalTypes" } } },
+            "then": {
+              "type": "$each",
+              "props": { "items": { "$local": "signalTypes" }, "as": "sig" },
+              "children": [
+                {
+                  "type": "SignalControl",
+                  "props": {
+                    "signalType": "$sig",
+                    "signals": { "$filter": { "items": "$item.signals", "where": { "signalTypeId": "$sig.id" } } },
+                    "myDid": "$me.did",
+                    "onSignal": { "$action": "spaceStore.upsertSignal", "args": ["$item.id", "$sig.id", "$arg"] }
+                  }
+                }
+              ]
             }
           }
         }
-      }
+      ]
     }
   ]
 }
 
 Notes:
-- The $if guard hides SignalControl if the community hasn't created a signal type with that slug.
-- Replace "like" with the user's slug throughout (in $store paths and args).
-- $query include adds $totalLikeCount and $myLikeSignal as computed properties on each item.
+- $queries and $localState share one $local namespace, so { "$local": "signalTypes" } reads the
+  subscription from any descendant — the projection above and the controls below stay in agreement
+  about which type a slug means.
+- The $count guard renders nothing until the community has created a signal type.
+- Iterating signalTypes renders every type the community defined; use $find with a slug only where
+  one specific type is meant (e.g. a like count).
+- Replace "like" with the user's slug.
+- $query include adds $totalLikeCount as a computed property on each item.
 - signalType prop accepts the full SignalType object (provides icon, mode, range to the UI component).
 
 Preview / mockup mode (static, no store wiring):
@@ -2512,15 +2652,18 @@ const spaces = await Space.findAll(perspective, {
 const mySignal = spaces[0].$mySignal; // Signal | null — typed via IncludeExtras
 ```
 
-In JSON schema nodes, store references are used for the `where` values:
+In JSON schema nodes the `where` values are resolved tokens. Signal types have no store accessor —
+resolve one by slug from a hoisted `$queries` subscription (see the Signal types pattern above):
 ```ts
-// Schema node — $store references resolved at render time
+// Schema node — tokens resolved at render time
+$queries: { signalTypes: { entity: 'SignalType', subscribe: true } },
+// …
 include: {
   $myLikeSignal: {
     from: 'signals',
     where: {
-      signalTypeId: { $store: 'spaceStore.signalTypesBySlug.like.id' },
-      author: { $store: 'sessionStore.me.did' },
+      signalTypeId: { $find: { items: { $local: 'signalTypes' }, where: { slug: 'like' }, select: 'id' } },
+      author: '$me.did',
     },
     limit: 1,
   },

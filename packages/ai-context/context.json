@@ -4205,6 +4205,12 @@
           "required": false
         },
         {
+          "name": "kind",
+          "type": "string",
+          "predicate": "we://kind",
+          "required": false
+        },
+        {
           "name": "display",
           "type": "string",
           "predicate": "we://display",
@@ -5138,6 +5144,16 @@
           "kind": "HasMany",
           "predicate": "we://signal",
           "target": "Signal"
+        },
+        {
+          "name": "participants",
+          "kind": "HasMany",
+          "predicate": "we://participants"
+        },
+        {
+          "name": "calls",
+          "kind": "HasMany",
+          "predicate": "we://call"
         }
       ]
     }
@@ -5413,55 +5429,6 @@
   ],
   "storeEntries": [
     {
-      "name": "sessionStore",
-      "state": {
-        "client": {
-          "type": "object"
-        },
-        "me": {
-          "type": "object",
-          "properties": ["did", "perspective", "directMessageLanguage"]
-        },
-        "bootState": {
-          "type": "string"
-        },
-        "bootError": {
-          "type": "string"
-        },
-        "passwordError": {
-          "type": "boolean"
-        },
-        "loginLoading": {
-          "type": "boolean"
-        },
-        "createAgentError": {
-          "type": "string"
-        },
-        "createAgentLoading": {
-          "type": "boolean"
-        },
-        "host": {
-          "type": "object",
-          "properties": [
-            "id",
-            "name",
-            "description",
-            "imageUrl",
-            "location",
-            "url",
-            "computeSpecs",
-            "aiModels",
-            "rates"
-          ]
-        },
-        "hostAccount": {
-          "type": "object",
-          "properties": ["email", "remainingCredits", "walletAddress", "freeAccess"]
-        }
-      },
-      "actions": ["login", "createAgent", "clearPasswordError", "finishSetup", "retryBoot", "logout"]
-    },
-    {
       "name": "accountStore",
       "state": {
         "canManageAccounts": {
@@ -5475,17 +5442,6 @@
           "type": "object",
           "properties": ["id", "name", "avatar", "active", "hasAgent", "sharedWithLauncher"]
         },
-        "pendingRemoval": {
-          "type": "object",
-          "properties": ["id", "name", "avatar", "active", "hasAgent", "sharedWithLauncher"]
-        },
-        "switchingTo": {
-          "type": "object",
-          "properties": ["id", "name", "avatar", "active", "hasAgent", "sharedWithLauncher"]
-        },
-        "creating": {
-          "type": "boolean"
-        },
         "hasOtherAccounts": {
           "type": "boolean"
         },
@@ -5498,8 +5454,19 @@
         "busy": {
           "type": "boolean"
         },
+        "switchingTo": {
+          "type": "object",
+          "properties": ["id", "name", "avatar", "active", "hasAgent", "sharedWithLauncher"]
+        },
+        "creating": {
+          "type": "boolean"
+        },
         "error": {
           "type": "string"
+        },
+        "pendingRemoval": {
+          "type": "object",
+          "properties": ["id", "name", "avatar", "active", "hasAgent", "sharedWithLauncher"]
         }
       },
       "actions": [
@@ -5513,6 +5480,302 @@
         "confirmRemoval",
         "clearError"
       ]
+    },
+    {
+      "name": "appStore",
+      "state": {
+        "apps": {
+          "type": "array",
+          "properties": ["id", "name", "image"]
+        },
+        "appsWithWe": {
+          "type": "array",
+          "properties": ["id", "name", "icon", "image"]
+        },
+        "activeAppId": {
+          "type": "string"
+        }
+      },
+      "actions": ["activateApp", "deactivateApp", "provideInstalledModules"]
+    },
+    {
+      "name": "datasetStore",
+      "state": {
+        "datasets": {
+          "type": "array",
+          "properties": ["id", "name", "sharedUri", "sharedId", "handle"]
+        },
+        "orderedDatasets": {
+          "type": "array",
+          "properties": ["id", "name", "sharedUri", "sharedId", "handle"]
+        },
+        "currentDataset": {
+          "type": "object",
+          "properties": ["id", "name", "sharedUri", "sharedId", "handle"]
+        },
+        "currentDatasetUri": {
+          "type": "string"
+        },
+        "currentDatasetCid": {
+          "type": "string"
+        },
+        "currentDatasetModels": {
+          "type": "array"
+        },
+        "isWeSpace": {
+          "type": "boolean"
+        },
+        "joinedSpaceCids": {
+          "type": "array"
+        },
+        "datasetsLoaded": {
+          "type": "boolean"
+        },
+        "systemDatasetUuids": {
+          "type": "array"
+        },
+        "rootDataset": {
+          "type": "object",
+          "properties": ["id", "name", "sharedUri", "sharedId", "handle"]
+        },
+        "testDataset": {
+          "type": "object"
+        },
+        "globalDataset": {
+          "type": "object",
+          "properties": ["id", "name", "sharedUri", "sharedId", "handle"]
+        },
+        "marketplaceDataset": {
+          "type": "object",
+          "properties": ["id", "name", "sharedUri", "sharedId", "handle"]
+        },
+        "agentSettings": {
+          "type": "object"
+        },
+        "globalSpaceConfigured": {
+          "type": "boolean"
+        },
+        "globalSpaceId": {
+          "type": "string"
+        },
+        "marketplaceConfigured": {
+          "type": "boolean"
+        },
+        "marketplaceId": {
+          "type": "object"
+        },
+        "marketplaceJoined": {
+          "type": "boolean"
+        },
+        "getDatasetOrder": {
+          "type": "array"
+        }
+      },
+      "actions": [
+        "switchDataset",
+        "reorderDatasets",
+        "removeDataset",
+        "updateAgentSettings",
+        "clearCurrentDataset",
+        "cleanupSpaceSdna",
+        "trackDataset",
+        "onDatasetRemoved",
+        "initSystemDatasets",
+        "loadDatasets",
+        "subscribeToChanges"
+      ]
+    },
+    {
+      "name": "editorStore",
+      "state": {
+        "messages": {
+          "type": "array"
+        },
+        "isOpen": {
+          "type": "boolean"
+        },
+        "isStreaming": {
+          "type": "boolean"
+        },
+        "streamingContent": {
+          "type": "string"
+        },
+        "apiKeyConfigured": {
+          "type": "boolean"
+        },
+        "templateName": {
+          "type": "string"
+        },
+        "templateIcon": {
+          "type": "string"
+        },
+        "isReadOnly": {
+          "type": "boolean"
+        },
+        "hasPendingChanges": {
+          "type": "boolean"
+        },
+        "pickerOpen": {
+          "type": "boolean"
+        },
+        "pickerAction": {
+          "type": "string"
+        },
+        "pickerDefaultName": {
+          "type": "string"
+        },
+        "pickerDefaultIcon": {
+          "type": "string"
+        },
+        "pickerShowDestination": {
+          "type": "boolean"
+        },
+        "sessions": {
+          "type": "array"
+        },
+        "activeSessionId": {
+          "type": "string"
+        },
+        "contentMode": {
+          "type": "object"
+        },
+        "schemaJson": {
+          "type": "string"
+        },
+        "canUndo": {
+          "type": "boolean"
+        },
+        "canRedo": {
+          "type": "boolean"
+        },
+        "isEditingTemplate": {
+          "type": "boolean"
+        },
+        "editAction": {
+          "type": "object"
+        },
+        "codePanelOpen": {
+          "type": "boolean"
+        },
+        "themePanelOpen": {
+          "type": "boolean"
+        },
+        "visualPanelOpen": {
+          "type": "boolean"
+        },
+        "isEditingTheme": {
+          "type": "boolean"
+        },
+        "aiPanelWidth": {
+          "type": "number"
+        },
+        "codePanelWidth": {
+          "type": "number"
+        },
+        "themePanelWidth": {
+          "type": "number"
+        },
+        "visualPanelWidth": {
+          "type": "number"
+        }
+      },
+      "actions": [
+        "newChat",
+        "switchSession",
+        "deleteSession",
+        "setContentMode",
+        "onSchemaEdit",
+        "undo",
+        "redo",
+        "pushSnapshot",
+        "startFork",
+        "startFresh",
+        "confirmPicker",
+        "cancelPicker",
+        "enterTemplateEditing",
+        "exitTemplateEditing",
+        "toggle",
+        "open",
+        "close",
+        "toggleCodePanel",
+        "openCodePanel",
+        "closeCodePanel",
+        "toggleThemePanel",
+        "openThemePanel",
+        "closeThemePanel",
+        "toggleVisualPanel",
+        "enterThemeEditing",
+        "exitThemeEditing",
+        "toggleThemeEditing",
+        "setAiPanelWidth",
+        "setCodePanelWidth",
+        "setThemePanelWidth",
+        "setVisualPanelWidth",
+        "sendMessage",
+        "clearHistory",
+        "setApiKey"
+      ]
+    },
+    {
+      "name": "presenceStore",
+      "state": {
+        "peers": {
+          "type": "array"
+        },
+        "online": {
+          "type": "array"
+        },
+        "onlineHere": {
+          "type": "array"
+        },
+        "calls": {
+          "type": "object"
+        },
+        "available": {
+          "type": "boolean"
+        },
+        "focusDepth": {
+          "type": "object"
+        }
+      },
+      "actions": ["setFocusDepth", "setAvailability", "setActivity", "clearActivity"]
+    },
+    {
+      "name": "profileStore",
+      "state": {
+        "profiles": {
+          "type": "array",
+          "properties": ["did", "firstName", "lastName", "handle", "bio", "avatar", "coverImage", "location"]
+        },
+        "ownProfile": {
+          "type": "object",
+          "properties": ["did", "firstName", "lastName", "handle", "bio", "avatar", "coverImage", "location"]
+        },
+        "pendingAvatar": {
+          "type": "string"
+        }
+      },
+      "actions": [
+        "setPendingAvatar",
+        "completeAccountSetup",
+        "fetchProfile",
+        "updateOwnProfile",
+        "updateProfileImage",
+        "clearProfileImage",
+        "updateOwnLocation"
+      ]
+    },
+    {
+      "name": "routeStore",
+      "state": {
+        "currentPath": {
+          "type": "string"
+        },
+        "segments": {
+          "type": "array"
+        }
+      },
+      "actions": ["setNavigateFunction", "setCurrentPath", "navigate"]
     },
     {
       "name": "runtimeStore",
@@ -5540,25 +5803,6 @@
         },
         "canConfigureExecutor": {
           "type": "boolean"
-        },
-        "mcpEnabled": {
-          "type": "boolean"
-        },
-        "mcpPort": {
-          "type": "number"
-        },
-        "executorRestartPending": {
-          "type": "boolean"
-        },
-        "canBackUp": {
-          "type": "boolean"
-        },
-        "logLevels": {
-          "type": "array",
-          "properties": ["crate", "level"]
-        },
-        "backupStatus": {
-          "type": "string"
         },
         "aiModels": {
           "type": "array",
@@ -5630,6 +5874,25 @@
         "error": {
           "type": "string"
         },
+        "canBackUp": {
+          "type": "boolean"
+        },
+        "logLevels": {
+          "type": "array",
+          "properties": ["crate", "level"]
+        },
+        "backupStatus": {
+          "type": "string"
+        },
+        "mcpEnabled": {
+          "type": "boolean"
+        },
+        "mcpPort": {
+          "type": "number"
+        },
+        "executorRestartPending": {
+          "type": "boolean"
+        },
         "pendingConsent": {
           "type": "object",
           "properties": ["kind", "title", "message", "app", "peerId"]
@@ -5639,13 +5902,6 @@
         }
       },
       "actions": [
-        "setMcpEnabled",
-        "setMcpPort",
-        "setLogLevel",
-        "removeLogLevel",
-        "exportDatabase",
-        "importDatabase",
-        "restartExecutor",
         "loadAiModels",
         "loadAiTasks",
         "newAiModel",
@@ -5669,104 +5925,332 @@
         "restartNetwork",
         "loadPeerInfos",
         "addPeerInfos",
+        "setMcpEnabled",
+        "setLogLevel",
+        "removeLogLevel",
+        "exportDatabase",
+        "importDatabase",
+        "setMcpPort",
+        "restartExecutor",
         "approveConsent",
         "denyConsent",
         "dismissConsentSecret"
       ]
     },
     {
-      "name": "datasetStore",
+      "name": "sessionStore",
       "state": {
-        "datasets": {
-          "type": "array",
-          "properties": ["id", "name", "sharedUri", "sharedId", "handle"]
-        },
-        "orderedDatasets": {
-          "type": "array",
-          "properties": ["id", "name", "sharedUri", "sharedId", "handle"]
-        },
-        "currentDataset": {
-          "type": "object",
-          "properties": ["id", "name", "sharedUri", "sharedId", "handle"]
-        },
-        "currentDatasetCid": {
+        "bootState": {
           "type": "string"
         },
-        "currentDatasetModels": {
-          "type": "array"
-        },
-        "isWeSpace": {
-          "type": "boolean"
-        },
-        "joinedSpaceCids": {
-          "type": "array"
-        },
-        "datasetsLoaded": {
-          "type": "boolean"
-        },
-        "systemDatasetUuids": {
-          "type": "array"
-        },
-        "rootDataset": {
-          "type": "object",
-          "properties": ["id", "name", "sharedUri", "sharedId", "handle"]
-        },
-        "globalDataset": {
-          "type": "object",
-          "properties": ["id", "name", "sharedUri", "sharedId", "handle"]
-        },
-        "marketplaceDataset": {
-          "type": "object",
-          "properties": ["id", "name", "sharedUri", "sharedId", "handle"]
-        },
-        "globalSpaceConfigured": {
-          "type": "boolean"
-        },
-        "marketplaceConfigured": {
-          "type": "boolean"
-        },
-        "marketplaceJoined": {
-          "type": "boolean"
-        }
-      },
-      "actions": ["switchDataset", "reorderDatasets", "updateAgentSettings", "cleanupSpaceSdna"]
-    },
-    {
-      "name": "profileStore",
-      "state": {
-        "pendingAvatar": {
+        "bootError": {
           "type": "string"
         },
-        "profiles": {
-          "type": "array",
-          "properties": ["did", "firstName", "lastName", "handle", "bio", "avatar", "coverImage", "location"]
+        "passwordError": {
+          "type": "boolean"
         },
-        "ownProfile": {
+        "loginLoading": {
+          "type": "boolean"
+        },
+        "createAgentError": {
+          "type": "string"
+        },
+        "createAgentLoading": {
+          "type": "boolean"
+        },
+        "client": {
+          "type": "object"
+        },
+        "agentSession": {
+          "type": "object"
+        },
+        "lifecycle": {
+          "type": "object"
+        },
+        "backendPorts": {
+          "type": "object"
+        },
+        "me": {
           "type": "object",
-          "properties": ["did", "firstName", "lastName", "handle", "bio", "avatar", "coverImage", "location"]
+          "properties": ["did", "perspective", "directMessageLanguage"]
+        },
+        "port": {
+          "type": "number"
+        },
+        "token": {
+          "type": "string"
+        },
+        "serverUrl": {
+          "type": "string"
+        },
+        "host": {
+          "type": "object",
+          "properties": [
+            "id",
+            "name",
+            "description",
+            "imageUrl",
+            "location",
+            "url",
+            "computeSpecs",
+            "aiModels",
+            "rates"
+          ]
+        },
+        "hostAccount": {
+          "type": "object",
+          "properties": ["email", "remainingCredits", "walletAddress", "freeAccess"]
+        },
+        "isDevelopment": {
+          "type": "boolean"
+        },
+        "ephemeralPort": {
+          "type": "object"
         }
       },
       "actions": [
-        "fetchProfile",
-        "updateOwnProfile",
-        "updateProfileImage",
-        "clearProfileImage",
-        "updateOwnLocation",
-        "setPendingAvatar",
-        "completeAccountSetup"
+        "login",
+        "createAgent",
+        "clearPasswordError",
+        "finishSetup",
+        "logout",
+        "retryBoot",
+        "refreshMe",
+        "markReady",
+        "onSessionUnlocked"
       ]
     },
     {
-      "name": "routeStore",
+      "name": "shellStore",
       "state": {
-        "currentPath": {
+        "activeShellView": {
           "type": "string"
         },
-        "segments": {
-          "type": "array"
+        "takePendingPath": {
+          "type": "object"
+        },
+        "createSpaceOpen": {
+          "type": "boolean"
+        },
+        "dockGeometry": {
+          "type": "object"
+        },
+        "contentInset": {
+          "type": "object"
+        },
+        "dockResizing": {
+          "type": "boolean"
         }
       },
-      "actions": ["navigate"]
+      "actions": [
+        "openShellView",
+        "closeShellView",
+        "setCreateSpaceOpen",
+        "scrollToId",
+        "beginDockResize",
+        "resizeDock",
+        "endDockResize"
+      ]
+    },
+    {
+      "name": "spaceStore",
+      "state": {
+        "memberDids": {
+          "type": "array",
+          "properties": ["did"]
+        },
+        "members": {
+          "type": "array",
+          "properties": ["did", "firstName", "lastName", "handle", "bio", "avatar", "coverImage", "location"]
+        },
+        "spaceDefaultTemplateId": {
+          "type": "string"
+        },
+        "spaceDefaultThemeId": {
+          "type": "string"
+        },
+        "currentSpace": {
+          "type": "object",
+          "model": "Space"
+        },
+        "mySpaces": {
+          "type": "array",
+          "model": "Space"
+        },
+        "personalSpaces": {
+          "type": "array",
+          "model": "Space"
+        },
+        "sharedSpaces": {
+          "type": "array",
+          "model": "Space"
+        },
+        "spaceList": {
+          "type": "array",
+          "properties": [
+            "uuid",
+            "name",
+            "description",
+            "avatar",
+            "kind",
+            "isWeSpace",
+            "canAdminister",
+            "modules",
+            "shareLink",
+            "defaultTemplateId",
+            "defaultThemeId",
+            "templateOverride",
+            "themeOverride"
+          ]
+        },
+        "routeSpaceUnjoined": {
+          "type": "boolean"
+        },
+        "creatingSpace": {
+          "type": "boolean"
+        },
+        "orderedSidebarItems": {
+          "type": "array",
+          "properties": ["uuid", "name", "avatar", "spaceId"]
+        },
+        "foreignSpacePrefill": {
+          "type": "object",
+          "properties": ["name", "description", "avatar"]
+        },
+        "enabledModules": {
+          "type": "array"
+        },
+        "templateOverrideOptions": {
+          "type": "array",
+          "properties": ["label", "value"]
+        },
+        "themeOverrideOptions": {
+          "type": "array",
+          "properties": ["label", "value"]
+        },
+        "installedModules": {
+          "type": "array"
+        },
+        "requiredModules": {
+          "type": "array"
+        },
+        "missingModules": {
+          "type": "array"
+        },
+        "activeModules": {
+          "type": "array"
+        },
+        "moduleInstallSettings": {
+          "type": "array",
+          "properties": ["id", "name", "description", "icon", "installed"]
+        },
+        "moduleLaunchers": {
+          "type": "array",
+          "properties": ["id", "icon", "label", "active"]
+        }
+      },
+      "actions": [
+        "createSpace",
+        "joinSpace",
+        "initializeAsWeSpace",
+        "removeSpace",
+        "createPost",
+        "updatePost",
+        "deletePost",
+        "updateSpaceImage",
+        "updateSpaceMeta",
+        "setSpaceDefaultTemplate",
+        "setSpaceDefaultTheme",
+        "setModuleEnabled",
+        "setModuleInstalled",
+        "setModuleVisible",
+        "setSpaceTemplateOverride",
+        "setSpaceThemeOverride",
+        "launchModule",
+        "createSignalType",
+        "upsertSignal",
+        "navigateToSpace",
+        "canAdministerSpace",
+        "copyShareLink",
+        "getSubgroupMessages",
+        "removeSpaceFromGlobal",
+        "updateSpaceInCache",
+        "loadSpaces",
+        "test"
+      ]
+    },
+    {
+      "name": "templateStore",
+      "state": {
+        "personalTemplates": {
+          "type": "array",
+          "properties": ["id", "meta", "type", "props", "children", "routes"]
+        },
+        "spaceTemplates": {
+          "type": "array",
+          "properties": ["id", "meta", "type", "props", "children", "routes"]
+        },
+        "builtInTemplates": {
+          "type": "array",
+          "properties": ["id", "meta", "type", "props", "children", "routes"]
+        },
+        "myTemplates": {
+          "type": "array",
+          "properties": ["id", "meta", "type", "props", "children", "routes"]
+        },
+        "allTemplates": {
+          "type": "array",
+          "properties": ["id", "meta", "type", "props", "children", "routes"]
+        },
+        "templateManagementList": {
+          "type": "array",
+          "properties": ["id", "name", "icon", "description", "isBuiltIn", "isInstalled", "isDefault"]
+        },
+        "switcherGroups": {
+          "type": "array",
+          "properties": ["label", "items"]
+        },
+        "currentTemplate": {
+          "type": "object",
+          "properties": ["id", "meta", "type", "props", "children", "routes"]
+        },
+        "loading": {
+          "type": "boolean"
+        },
+        "defaultTemplateId": {
+          "type": "string"
+        },
+        "operationLoading": {
+          "type": "string"
+        }
+      },
+      "actions": [
+        "provideSpaceLookup",
+        "updateTemplate",
+        "replaceTemplate",
+        "switchTemplate",
+        "removeTemplate",
+        "deleteTemplate",
+        "installTemplate",
+        "uninstallTemplate",
+        "installFromMarketplace",
+        "installToSpace",
+        "toggleInstalled",
+        "setDefaultTemplate",
+        "saveTemplate",
+        "saveTemplateAs",
+        "publishToSpace",
+        "deleteMarketplaceTemplate",
+        "publishToMarketplace",
+        "persistCurrentTemplate",
+        "preloadSpaceTemplates",
+        "loadSpaceTemplates",
+        "refreshSpaceTemplates",
+        "clearSpaceTemplates",
+        "isBuiltInTemplate",
+        "isInstalled",
+        "getTemplateModel"
+      ]
     },
     {
       "name": "themeStore",
@@ -5797,6 +6281,16 @@
         "defaultThemeId": {
           "type": "string"
         },
+        "themeManagementList": {
+          "type": "array",
+          "properties": ["id", "name", "icon", "isBuiltIn", "isInstalled", "isDefault"]
+        },
+        "editingTheme": {
+          "type": "object"
+        },
+        "operationLoading": {
+          "type": "string"
+        },
         "themeScope": {
           "type": "string"
         },
@@ -5809,335 +6303,40 @@
         "themeScopePreviewing": {
           "type": "boolean"
         },
-        "themeManagementList": {
-          "type": "array",
-          "properties": ["id", "name", "icon", "isBuiltIn", "isInstalled", "isDefault"]
-        }
-      },
-      "actions": [
-        "setCurrentTheme",
-        "setDefaultTheme",
-        "setThemeScopeGlobal",
-        "previewThemeScope",
-        "toggleThemeInstalled",
-        "installFromMarketplace",
-        "uninstallTheme",
-        "deleteTheme"
-      ]
-    },
-    {
-      "name": "templateStore",
-      "state": {
-        "personalTemplates": {
-          "type": "array",
-          "properties": ["id", "meta", "type", "props", "children", "routes"]
-        },
-        "spaceTemplates": {
-          "type": "array",
-          "properties": ["id", "meta", "type", "props", "children", "routes"]
-        },
-        "builtInTemplates": {
-          "type": "array",
-          "properties": ["id", "meta", "type", "props", "children", "routes"]
-        },
-        "myTemplates": {
-          "type": "array",
-          "properties": ["id", "meta", "type", "props", "children", "routes"]
-        },
-        "allTemplates": {
-          "type": "array",
-          "properties": ["id", "meta", "type", "props", "children", "routes"]
-        },
-        "shellTemplates": {
-          "type": "array",
-          "properties": ["id", "meta", "type", "props", "children", "routes"]
-        },
-        "currentTemplate": {
-          "type": "object",
-          "properties": ["id", "meta", "type", "props", "children", "routes"]
-        },
-        "operationLoading": {
-          "type": "boolean"
-        },
-        "templateManagementList": {
-          "type": "array",
-          "properties": ["id", "name", "icon", "description", "isBuiltIn", "isInstalled", "isDefault"]
-        },
-        "switcherGroups": {
-          "type": "array",
-          "properties": ["label", "items"]
-        }
-      },
-      "actions": [
-        "updateTemplate",
-        "switchTemplate",
-        "removeTemplate",
-        "saveTemplate",
-        "toggleInstalled",
-        "setDefaultTemplate",
-        "deleteTemplate"
-      ]
-    },
-    {
-      "name": "spaceStore",
-      "state": {
-        "mySpaces": {
-          "type": "array",
-          "model": "Space"
-        },
-        "personalSpaces": {
-          "type": "array",
-          "model": "Space"
-        },
-        "sharedSpaces": {
-          "type": "array",
-          "model": "Space"
-        },
-        "routeSpaceUnjoined": {
-          "type": "boolean"
-        },
-        "spaceList": {
-          "type": "array",
-          "properties": [
-            "uuid",
-            "name",
-            "description",
-            "avatar",
-            "kind",
-            "isWeSpace",
-            "canAdminister",
-            "modules",
-            "shareLink",
-            "defaultTemplateId",
-            "defaultThemeId",
-            "templateOverride",
-            "themeOverride"
-          ]
-        },
-        "creatingSpace": {
-          "type": "boolean"
-        },
-        "orderedSidebarItems": {
-          "type": "array",
-          "properties": ["uuid", "name", "avatar", "spaceId"]
-        },
-        "memberDids": {
-          "type": "array",
-          "properties": ["did"]
-        },
-        "members": {
-          "type": "array",
-          "properties": ["did", "firstName", "lastName", "handle", "bio", "avatar", "coverImage", "location"]
-        },
-        "spaceDefaultTemplateId": {
-          "type": "string"
-        },
-        "currentSpace": {
-          "type": "object",
-          "model": "Space"
-        },
-        "foreignSpacePrefill": {
-          "type": "object",
-          "properties": ["name", "description", "avatar"]
-        },
-        "signalTypes": {
-          "type": "array",
-          "model": "SignalType",
-          "properties": [
-            "id",
-            "name",
-            "slug",
-            "description",
-            "icon",
-            "iconSecondary",
-            "mode",
-            "rangeMin",
-            "rangeMax",
-            "step"
-          ]
-        },
-        "signalTypesBySlug": {
+        "activeTemplateTheme": {
           "type": "object"
         },
-        "enabledModules": {
-          "type": "array"
-        },
-        "installedModules": {
-          "type": "array"
-        },
-        "requiredModules": {
-          "type": "array"
-        },
-        "missingModules": {
-          "type": "array"
-        },
-        "activeModules": {
-          "type": "array"
-        },
-        "templateOverrideOptions": {
-          "type": "array",
-          "properties": ["label", "value"]
-        },
-        "themeOverrideOptions": {
-          "type": "array",
-          "properties": ["label", "value"]
-        },
-        "moduleInstallSettings": {
-          "type": "array",
-          "properties": ["id", "name", "description", "icon", "installed"]
-        },
-        "moduleLaunchers": {
-          "type": "array",
-          "properties": ["id", "icon", "label", "active"]
+        "saveEditingTheme": {
+          "type": "object"
         }
       },
       "actions": [
-        "createSpace",
-        "joinSpace",
-        "initializeAsWeSpace",
-        "removeSpace",
-        "createPost",
-        "updatePost",
-        "deletePost",
-        "updateSpaceImage",
-        "updateSpaceMeta",
-        "setSpaceDefaultTemplate",
-        "setSpaceDefaultTheme",
-        "createSignalType",
-        "upsertSignal",
-        "navigateToSpace",
-        "canAdministerSpace",
-        "copyShareLink",
-        "setModuleEnabled",
-        "setModuleInstalled",
-        "setModuleVisible",
-        "setSpaceTemplateOverride",
-        "setSpaceThemeOverride",
-        "launchModule"
+        "registerHistoryCallbacks",
+        "applySnapshot",
+        "setCurrentTheme",
+        "setDefaultTheme",
+        "toggleThemeInstalled",
+        "previewThemeScope",
+        "setThemeScopeGlobal",
+        "replaceTheme",
+        "restorePersonalTheme",
+        "clearSpaceTheme",
+        "startEditing",
+        "changeBasePreset",
+        "updateEditingOverrides",
+        "updateEditingCss",
+        "updateEditingMeta",
+        "cancelEditing",
+        "createAndStartEditing",
+        "saveEditingThemeAs",
+        "deleteTheme",
+        "installFromMarketplace",
+        "uninstallTheme",
+        "deleteMarketplaceTheme",
+        "publishToMarketplace",
+        "publishToSpace",
+        "loadInstalledThemes"
       ]
-    },
-    {
-      "name": "editorStore",
-      "state": {
-        "models": {
-          "type": "array",
-          "properties": ["id", "name"]
-        },
-        "tasks": {
-          "type": "array",
-          "properties": ["id", "status", "result"]
-        },
-        "isOpen": {
-          "type": "boolean"
-        },
-        "messages": {
-          "type": "array"
-        },
-        "isStreaming": {
-          "type": "boolean"
-        },
-        "streamingContent": {
-          "type": "string"
-        },
-        "apiKeyConfigured": {
-          "type": "boolean"
-        },
-        "templateName": {
-          "type": "string"
-        },
-        "templateIcon": {
-          "type": "string"
-        },
-        "isReadOnly": {
-          "type": "boolean"
-        },
-        "hasPendingChanges": {
-          "type": "boolean"
-        },
-        "pickerOpen": {
-          "type": "boolean"
-        },
-        "pickerAction": {
-          "type": "string"
-        },
-        "pickerDefaultName": {
-          "type": "string"
-        },
-        "pickerDefaultIcon": {
-          "type": "string"
-        },
-        "pickerShowDestination": {
-          "type": "boolean"
-        },
-        "sessions": {
-          "type": "array"
-        },
-        "activeSessionId": {
-          "type": "string"
-        },
-        "panelMode": {
-          "type": "string"
-        },
-        "schemaJson": {
-          "type": "string"
-        },
-        "operationLoading": {
-          "type": "boolean"
-        },
-        "canUndo": {
-          "type": "boolean"
-        },
-        "canRedo": {
-          "type": "boolean"
-        }
-      },
-      "actions": [
-        "handleSchemaPrompt",
-        "sendMessage",
-        "close",
-        "toggle",
-        "setApiKey",
-        "startFork",
-        "startFresh",
-        "confirmPicker",
-        "cancelPicker",
-        "newChat",
-        "switchSession",
-        "deleteSession",
-        "setPanelMode",
-        "onSchemaEdit",
-        "undo",
-        "redo"
-      ]
-    },
-    {
-      "name": "shellStore",
-      "state": {
-        "activeShellView": {
-          "type": "string"
-        },
-        "createSpaceOpen": {
-          "type": "boolean"
-        }
-      },
-      "actions": ["openShellView", "closeShellView", "setCreateSpaceOpen", "scrollToId"]
-    },
-    {
-      "name": "appStore",
-      "state": {
-        "apps": {
-          "type": "array",
-          "properties": ["id", "name", "image"]
-        },
-        "appsWithWe": {
-          "type": "array",
-          "properties": ["id", "name", "icon", "image"]
-        },
-        "activeAppId": {
-          "type": "string"
-        }
-      },
-      "actions": ["activateApp", "deactivateApp"]
     },
     {
       "name": "model",
@@ -6145,5 +6344,5 @@
       "actions": ["create", "update", "delete"]
     }
   ],
-  "shellComponents": ["AiPanel", "BenchmarkTimer", "RightPanelContainer", "DesignToolbar", "WeCube"]
+  "shellComponents": ["AiPanel", "CesiumGlobe", "DesignToolbar", "RightPanelContainer", "TemplateCard", "WeCube"]
 }

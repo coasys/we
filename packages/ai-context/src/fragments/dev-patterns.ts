@@ -324,15 +324,18 @@ const spaces = await Space.findAll(perspective, {
 const mySignal = spaces[0].$mySignal; // Signal | null — typed via IncludeExtras
 \`\`\`
 
-In JSON schema nodes, store references are used for the \`where\` values:
+In JSON schema nodes the \`where\` values are resolved tokens. Signal types have no store accessor —
+resolve one by slug from a hoisted \`$queries\` subscription (see the Signal types pattern above):
 \`\`\`ts
-// Schema node — $store references resolved at render time
+// Schema node — tokens resolved at render time
+$queries: { signalTypes: { entity: 'SignalType', subscribe: true } },
+// …
 include: {
   $myLikeSignal: {
     from: 'signals',
     where: {
-      signalTypeId: { $store: 'spaceStore.signalTypesBySlug.like.id' },
-      author: { $store: 'sessionStore.me.did' },
+      signalTypeId: { $find: { items: { $local: 'signalTypes' }, where: { slug: 'like' }, select: 'id' } },
+      author: '$me.did',
     },
     limit: 1,
   },
