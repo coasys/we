@@ -50,6 +50,49 @@ importers:
         specifier: ^5.7.2
         version: 5.9.3
 
+  apps/playgrounds/solid/graph-explorer:
+    dependencies:
+      '@we/graph-core':
+        specifier: workspace:*
+        version: link:../../../../packages/graph-system/core
+      '@we/graph-expanders':
+        specifier: workspace:*
+        version: link:../../../../packages/graph-system/expanders
+      '@we/graph-layouts':
+        specifier: workspace:*
+        version: link:../../../../packages/graph-system/layouts
+      '@we/graph-protocol':
+        specifier: workspace:*
+        version: link:../../../../packages/graph-system/protocol
+      '@we/graph-solid':
+        specifier: workspace:*
+        version: link:../../../../packages/graph-system/frameworks/solid
+      '@we/primitives':
+        specifier: workspace:*
+        version: link:../../../../packages/design-system/3-primitives
+      '@we/tokens':
+        specifier: workspace:*
+        version: link:../../../../packages/design-system/1-tokens
+      solid-js:
+        specifier: ^1.9.5
+        version: 1.9.14
+    devDependencies:
+      happy-dom:
+        specifier: ^20.8.4
+        version: 20.10.6
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+      vite:
+        specifier: ^6.0.0
+        version: 6.4.3(@types/node@24.13.2)(sass@1.101.0)(tsx@4.23.0)(yaml@2.9.0)
+      vite-plugin-solid:
+        specifier: ^2.11.6
+        version: 2.11.12(solid-js@1.9.14)(vite@6.4.3(@types/node@24.13.2)(sass@1.101.0)(tsx@4.23.0)(yaml@2.9.0))
+      vitest:
+        specifier: ^4.1.0
+        version: 4.1.10(@types/node@24.13.2)(@vitest/coverage-v8@4.1.10)(happy-dom@20.10.6)(jsdom@27.4.0)(vite@6.4.3(@types/node@24.13.2)(sass@1.101.0)(tsx@4.23.0)(yaml@2.9.0))
+
   apps/playgrounds/solid/portable-ui-slice:
     dependencies:
       '@we/backend-inmemory':

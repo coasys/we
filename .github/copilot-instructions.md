@@ -978,6 +978,9 @@ Names resolvable inside GraphView props: seed sources (seeds.source), expanders 
   - via: string — Relation holding the children. Defaults to "children".
   - children: string[] — Child entity types to look for.
   - Example: `"expansion": { "expanders": ["collection"], "defaultDepth": 2, "direction": "out" }`
+- `schema` — Opens an entity-type node from the schema seed into instances of that type — the step from "what kinds of thing are here" to "here they are". Paired with the schema seed it makes one map out of two.
+  - limit: number — Instances loaded per type. Default 25.
+  - Example: `"seeds": { "source": "schema" }, "expansion": { "expanders": ["schema", "entity"] }`
 - `property` — Opens an instance out into its own scalar fields, and optionally into shared value nodes so instances converge on common values. The resolution level below an entity.
   - properties: string[] — Only show these fields.
   - valueNodes: boolean — Promote values to shared nodes. Defaults to true.
