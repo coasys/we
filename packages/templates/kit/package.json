@@ -1,7 +1,7 @@
 {
-  "name": "@we/template-shell",
+  "name": "@we/template-kit",
   "version": "0.1.0",
-  "description": "WE's shell surfaces as templates \u2014 sidebar, settings, profile, boot screen, marketplace, about",
+  "description": "Reusable template fragments — the shapes WE's own templates are built from, as data",
   "type": "module",
   "exports": {
     ".": {
@@ -10,8 +10,7 @@
     }
   },
   "dependencies": {
-    "@we/schema-shared": "workspace:*",
-    "@we/template-kit": "workspace:*"
+    "@we/schema-shared": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^24.10.0"

@@ -1,6 +1,5 @@
 import type { SchemaNode } from '@we/schema-shared';
-
-import { peopleTooltip } from '../PeopleTooltip.ts';
+import { peopleRow, peopleTooltip } from '@we/template-kit';
 
 export const spaceHeader: SchemaNode = {
   type: 'Column',
@@ -99,67 +98,13 @@ export const spaceHeader: SchemaNode = {
                     // The faces and the count are one thing to a reader — "12 Members" — so the
                     // roster hangs off both rather than off the avatars alone. Hovering the words
                     // and getting nothing was the tell that the tooltip belonged out here.
-                    peopleTooltip({
+                    peopleRow({
                       items: { $store: 'spaceStore.members' },
-                      image: '$person.avatar',
-                      hash: '$person.did',
-                      name: '$person.name',
-                      children: [
-                        {
-                          type: 'Row',
-                          // `AvatarStack` is a flex container over its avatars, so with none it has
-                          // no children and no height. Members resolve on their own path, later than
-                          // the space itself, so this collapsed and then pushed the header down a
-                          // second time. A fixed floor is right here rather than a workaround: the
-                          // row holds fixed-size avatars, so its height depends on neither the count
-                          // nor on any font metric.
-                          props: { gap: '300', ay: 'center', mt: '200', minHeight: '32px' },
-                          children: [
-                            {
-                              type: 'AvatarStack',
-                              props: {
-                                avatars: {
-                                  $map: {
-                                    items: { $store: 'spaceStore.members' },
-                                    select: {
-                                      image: '$item.avatar',
-                                      hash: '$item.did',
-                                    },
-                                  },
-                                },
-                                max: 5,
-                                size: 'sm',
-                                ring: '0 0 0 2px var(--we-ring-color)',
-                              },
-                            },
-                            {
-                              type: 'Row',
-                              props: { gap: '100', ay: 'center' },
-                              children: [
-                                {
-                                  type: 'we-number',
-                                  props: {
-                                    value: { $count: { items: { $store: 'spaceStore.members' } } },
-                                    shorten: true,
-                                  },
-                                },
-                                {
-                                  type: 'we-text',
-                                  children: [
-                                    {
-                                      $plural: {
-                                        count: { $count: { items: { $store: 'spaceStore.members' } } },
-                                        one: 'Member',
-                                        other: 'Members',
-                                      },
-                                    },
-                                  ],
-                                },
-                              ],
-                            },
-                          ],
-                        },
-                      ],
+                      noun: 'Member',
+                      // Members resolve on their own path, later than the space itself, so without
+                      // a floor this row collapsed and then pushed the header down a second time.
+                      minHeight: '32px',
+                      rowProps: { mt: '200' },
                     }),
                   ],
                 },
@@ -283,6 +228,12 @@ export const spaceNavBar: SchemaNode = {
                 condition: { $gt: [{ $count: { items: { $store: 'presenceStore.online' } } }, 0] },
                 // The count, the label and the faces are one statement, so the roster covers all
                 // three — "3 online now" is as much the hover target as the avatars are.
+                //
+                // Written out rather than built with `peopleRow`: this one puts the count first,
+                // carries a liveness `tone` per avatar and has no ring, so routing it through the
+                // fragment would mean three options serving one call site. Two instances of a
+                // shape is a coincidence; the members row above and the participant rows on cards
+                // are the three that made a fragment worth having.
                 then: peopleTooltip({
                   items: { $store: 'presenceStore.online' },
                   image: '$person.avatar',

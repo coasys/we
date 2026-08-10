@@ -1343,9 +1343,22 @@ importers:
       '@we/schema-shared':
         specifier: workspace:*
         version: link:../../schema-system/shared
+      '@we/template-kit':
+        specifier: workspace:*
+        version: link:../kit
       '@we/template-shell':
         specifier: workspace:*
         version: link:../shell
+    devDependencies:
+      '@types/node':
+        specifier: ^24.10.0
+        version: 24.13.2
+
+  packages/templates/kit:
+    dependencies:
+      '@we/schema-shared':
+        specifier: workspace:*
+        version: link:../../schema-system/shared
     devDependencies:
       '@types/node':
         specifier: ^24.10.0
@@ -1356,6 +1369,9 @@ importers:
       '@we/schema-shared':
         specifier: workspace:*
         version: link:../../schema-system/shared
+      '@we/template-kit':
+        specifier: workspace:*
+        version: link:../kit
     devDependencies:
       '@types/node':
         specifier: ^24.10.0

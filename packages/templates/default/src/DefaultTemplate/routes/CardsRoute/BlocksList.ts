@@ -1,7 +1,5 @@
 import type { SchemaNode } from '@we/schema-shared';
-
-import { emptyState } from '../../EmptyState.ts';
-import { cardList, cardShell } from './CardShell.ts';
+import { cardList, cardShell, emptyState } from '@we/template-kit';
 
 interface BlockSectionOptions {
   /** The `contentType` value this section is selected by, from the header's type picker. */

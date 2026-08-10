@@ -1,7 +1,5 @@
 import type { SchemaNode } from '@we/schema-shared';
-
-import { emptyState } from '../../EmptyState.ts';
-import { cardList, cardShell } from './CardShell.ts';
+import { agentByline, cardList, cardShell, emptyState } from '@we/template-kit';
 
 const hasMessageModel = {
   $find: { items: { $store: 'datasetStore.currentDatasetModels' }, where: { name: 'Message' } },
@@ -34,33 +32,7 @@ export const fluxMessagesList: SchemaNode = {
       empty: noRows,
       children: [
         cardShell({
-          header: [
-            {
-              type: '$agent',
-              props: { did: '$message.author', as: 'author' },
-              children: [
-                {
-                  type: 'Row',
-                  props: { ay: 'center', gap: '300' },
-                  children: [
-                    {
-                      type: 'we-avatar',
-                      props: { size: 'sm', image: '$author.avatar', hash: '$author.did' },
-                    },
-                    {
-                      type: 'we-text',
-                      props: { fontWeight: 'semibold' },
-                      children: ['$author.name'],
-                    },
-                    {
-                      type: 'we-timestamp',
-                      props: { value: '$message.createdAt', relative: true, color: 'neutral-500' },
-                    },
-                  ],
-                },
-              ],
-            },
-          ],
+          header: [agentByline({ did: '$message.author', timestamp: '$message.createdAt' })],
           body: [{ type: 'we-html', props: { content: '$message.body' } }],
         }),
       ],

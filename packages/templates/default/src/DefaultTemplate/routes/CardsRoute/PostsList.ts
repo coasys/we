@@ -1,7 +1,6 @@
 import type { SchemaNode } from '@we/schema-shared';
+import { agentByline, cardList, cardShell, confirmModal, emptyState } from '@we/template-kit';
 
-import { emptyState } from '../../EmptyState.ts';
-import { cardList, cardShell } from './CardShell.ts';
 import { postComposerModal } from './PostComposerModal.ts';
 
 export const postsList: SchemaNode = {
@@ -75,35 +74,7 @@ export const postsList: SchemaNode = {
                 editPostOpen: { type: 'boolean', initial: false },
               },
               children: [
-                {
-                  type: '$agent',
-                  props: { did: '$post.author', as: 'author' },
-                  children: [
-                    {
-                      type: 'Row',
-                      props: { ay: 'center', gap: '300' },
-                      children: [
-                        {
-                          type: 'we-avatar',
-                          props: {
-                            size: 'sm',
-                            image: '$author.avatar',
-                            hash: '$author.did',
-                          },
-                        },
-                        {
-                          type: 'we-text',
-                          props: { fontWeight: 'semibold' },
-                          children: ['$author.name'],
-                        },
-                        {
-                          type: 'we-timestamp',
-                          props: { value: '$post.createdAt', relative: true, color: 'neutral-500' },
-                        },
-                      ],
-                    },
-                  ],
-                },
+                agentByline({ did: '$post.author', timestamp: '$post.createdAt' }),
                 {
                   type: '$if',
                   props: {
@@ -145,51 +116,13 @@ export const postsList: SchemaNode = {
                           },
                           children: [{ type: 'we-icon', props: { name: 'trash' } }],
                         },
-                        {
-                          type: '$if',
-                          props: {
-                            condition: { $local: 'confirmDeleteOpen' },
-                            then: {
-                              type: 'we-modal',
-                              props: { close: { $setLocal: 'confirmDeleteOpen', value: false } },
-                              children: [
-                                { type: 'we-text', props: { fontWeight: 'semibold' }, children: ['Delete post?'] },
-                                {
-                                  type: 'we-text',
-                                  children: [
-                                    'This will permanently delete the post and everything inside it. This cannot be undone.',
-                                  ],
-                                },
-                                {
-                                  type: 'Row',
-                                  props: { ax: 'end', gap: '200' },
-                                  children: [
-                                    {
-                                      type: 'we-button',
-                                      props: {
-                                        variant: 'ghost',
-                                        onClick: { $setLocal: 'confirmDeleteOpen', value: false },
-                                      },
-                                      children: ['Cancel'],
-                                    },
-                                    {
-                                      type: 'we-button',
-                                      props: {
-                                        variant: 'danger',
-                                        onClick: {
-                                          $action: 'spaceStore.deleteCollection',
-                                          args: ['$post.id'],
-                                          onSuccess: [{ $setLocal: 'confirmDeleteOpen', value: false }],
-                                        },
-                                      },
-                                      children: ['Delete'],
-                                    },
-                                  ],
-                                },
-                              ],
-                            },
-                          },
-                        },
+                        confirmModal({
+                          openLocal: 'confirmDeleteOpen',
+                          title: 'Delete post?',
+                          body: 'This will permanently delete the post and everything inside it. This cannot be undone.',
+                          confirmLabel: 'Delete',
+                          confirm: { $action: 'spaceStore.deleteCollection', args: ['$post.id'] },
+                        }),
                       ],
                     },
                   },

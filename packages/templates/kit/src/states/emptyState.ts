@@ -1,5 +1,7 @@
 import type { SchemaNode } from '@we/schema-shared';
 
+import type { Content } from '../types.ts';
+
 export interface EmptyStateOptions {
   /** The content type's own icon — the same name the type picker uses for it. */
   icon: string;
@@ -15,7 +17,7 @@ export interface EmptyStateOptions {
    */
   searchable?: boolean;
   /** Replaces the sentence entirely, for a list the `label` phrasing does not fit. */
-  message?: unknown;
+  message?: Content;
   /**
    * How long the placeholder stays invisible before fading in, in ms.
    *
@@ -32,20 +34,25 @@ export interface EmptyStateOptions {
  * What a list shows when it has nothing to show: the content type's icon, and a sentence naming
  * what is absent.
  *
+ * ## Why this is a fragment and not a component
+ *
+ * Nothing here needs code — it is a centred Column, an icon and a line of text. Kept as data, an
+ * author who wants a smaller icon edits one node; as a component they would need an `iconSize` prop
+ * to have been predicted, implemented and released first. See the kit's README for the full rule.
+ *
  * ## Why a helper rather than a node per list
  *
- * Five of the card lists had one of these and the other nine had nothing, so switching content type
- * either explained the emptiness or left the page blank depending on which type you picked. The
- * difference was not a decision — it was that each one had been written by hand, and writing it
- * fourteen times is what made it easy to skip. One helper is also the only way the icon, the muted
- * colour and the wording stay in agreement as lists are added.
+ * Five of the cards route's fourteen lists had one of these and the other nine had nothing, so
+ * switching content type either explained the emptiness or left the page blank depending on which
+ * type you picked. The difference was not a decision — it was that each one had been written by
+ * hand, and writing it fourteen times is what made it easy to skip.
  *
  * Sized and centred rather than a bare line of text, because it stands in for a grid of cards: a
  * left-aligned sentence under a header reads as a caption for content that is about to appear.
  */
 export function emptyState(opts: EmptyStateOptions): SchemaNode {
   const nothingHere = `This space doesn't have any ${opts.label}.`;
-  const message =
+  const message: Content =
     opts.message ??
     (opts.searchable
       ? {
@@ -73,5 +80,20 @@ export function emptyState(opts: EmptyStateOptions): SchemaNode {
     type: '$animate',
     props: { enterTransition: { type: 'fade', duration: 200, delay } },
     children: [placeholder],
+  };
+}
+
+/**
+ * The one-line version, for a list inside a section that already has a heading.
+ *
+ * Where `emptyState` stands in for a whole page of content and is sized accordingly, this stands in
+ * for a few rows under a title that has already said what they would have been — so it says only
+ * that there are none, quietly.
+ */
+export function emptyNote(text: string): SchemaNode {
+  return {
+    type: 'we-text',
+    props: { variant: 'footnote', color: 'neutral-500', italic: true },
+    children: [text],
   };
 }

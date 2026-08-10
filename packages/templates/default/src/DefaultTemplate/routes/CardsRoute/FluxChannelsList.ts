@@ -1,7 +1,5 @@
 import type { SchemaNode } from '@we/schema-shared';
-
-import { emptyState } from '../../EmptyState.ts';
-import { cardList, cardShell } from './CardShell.ts';
+import { cardList, cardShell, emptyState } from '@we/template-kit';
 
 // Flux's Channel model only exists in perspectives where Flux SDNA is installed (e.g. a
 // Flux community synced into WE). Guard on presence in currentPerspectiveModels so a plain

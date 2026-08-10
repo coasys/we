@@ -1,3 +1,19 @@
+/**
+ * A list of cards, and the card in it.
+ *
+ * ## What these require from the surrounding template
+ *
+ * These are the kit's most scope-dependent fragments, so the contract is written down rather than
+ * discovered: `cardShell` and `gridWrapper` read **`$local: 'displayMode'`** (`'compact' | 'expanded'
+ * | 'grid'`) from an ancestor, and `cardList` *writes* its query results into `$local` under
+ * `<as>Rows`. A template using them must declare `displayMode` somewhere above, and must not use
+ * that derived name for anything else.
+ *
+ * Reading up the tree rather than taking a prop is deliberate: the display toggle belongs to the
+ * page, and threading it through every list and every card would put a prop on each of them whose
+ * only job is to be passed on. The cost is this paragraph, and a check at insert time when these
+ * become insertable.
+ */
 import type { QueryStateField, SchemaNode, SchemaProp } from '@we/schema-shared';
 
 export interface CardShellOptions {

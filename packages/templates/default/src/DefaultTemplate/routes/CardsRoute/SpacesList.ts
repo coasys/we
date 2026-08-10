@@ -1,7 +1,5 @@
 import type { SchemaNode } from '@we/schema-shared';
-
-import { emptyState } from '../../EmptyState.ts';
-import { cardList, cardShell } from './CardShell.ts';
+import { cardList, cardShell, confirmModal, emptyState } from '@we/template-kit';
 
 export const spacesList: SchemaNode = cardList({
   query: {
@@ -81,55 +79,13 @@ export const spacesList: SchemaNode = cardList({
                       },
                       children: [{ type: 'we-icon', props: { name: 'trash' } }],
                     },
-                    {
-                      type: '$if',
-                      props: {
-                        condition: { $local: 'confirmDeleteOpen' },
-                        then: {
-                          type: 'we-modal',
-                          props: { close: { $setLocal: 'confirmDeleteOpen', value: false } },
-                          children: [
-                            {
-                              type: 'we-text',
-                              props: { fontWeight: 'semibold' },
-                              children: ['Remove from discovery?'],
-                            },
-                            {
-                              type: 'we-text',
-                              children: [
-                                'This will remove this space from the global discovery listing. The space and all its content will remain intact.',
-                              ],
-                            },
-                            {
-                              type: 'Row',
-                              props: { ax: 'end', gap: '200' },
-                              children: [
-                                {
-                                  type: 'we-button',
-                                  props: {
-                                    variant: 'ghost',
-                                    onClick: { $setLocal: 'confirmDeleteOpen', value: false },
-                                  },
-                                  children: ['Cancel'],
-                                },
-                                {
-                                  type: 'we-button',
-                                  props: {
-                                    variant: 'danger',
-                                    onClick: {
-                                      $action: 'model.delete',
-                                      args: ['Space', '$space.id'],
-                                      onSuccess: [{ $setLocal: 'confirmDeleteOpen', value: false }],
-                                    },
-                                  },
-                                  children: ['Remove'],
-                                },
-                              ],
-                            },
-                          ],
-                        },
-                      },
-                    },
+                    confirmModal({
+                      openLocal: 'confirmDeleteOpen',
+                      title: 'Remove from discovery?',
+                      body: 'This will remove this space from the global discovery listing. The space and all its content will remain intact.',
+                      confirmLabel: 'Remove',
+                      confirm: { $action: 'model.delete', args: ['Space', '$space.id'] },
+                    }),
                   ],
                 },
               },

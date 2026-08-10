@@ -7,6 +7,7 @@
  */
 
 import type { RouteSchema } from '@we/schema-shared';
+import { gatePrompt } from '@we/template-kit';
 
 export const homeRoute: RouteSchema = {
   path: '/',
@@ -79,26 +80,29 @@ export const homeRoute: RouteSchema = {
             },
           ],
         },
-        // Empty state — shown inline when there are no spaces yet
+        // Empty state — shown inline when there are no spaces yet.
+        //
+        // `$count` rather than reading `.length` off the store path: the latter worked, but it was
+        // the only list in the template asking that way, and it silently returns nothing on a store
+        // that hands back anything other than a plain array.
         {
           type: '$if',
           props: {
-            condition: { $not: { $store: 'spaceStore.orderedSidebarItems.length' } },
+            condition: { $not: { $count: { items: { $store: 'spaceStore.orderedSidebarItems' } } } },
             then: {
               type: 'Card',
               props: { ax: 'center', bg: 'neutral-0', width: '100%' },
               children: [
-                { type: 'we-icon', props: { name: 'plus-circle', size: 'xl', color: 'neutral-300' } },
-                {
-                  type: 'we-text',
-                  props: { variant: 'subheading', textAlign: 'center' },
-                  children: ['No spaces yet'],
-                },
-                {
-                  type: 'we-text',
-                  props: { variant: 'body', textAlign: 'center' },
-                  children: ['Create or join a space to get started.'],
-                },
+                // Inside a card that has its own flow, so it does not claim the height a page-level
+                // gate does.
+                gatePrompt({
+                  icon: 'plus-circle',
+                  iconColor: 'neutral-300',
+                  title: 'No spaces yet',
+                  body: 'Create or join a space to get started.',
+                  fill: false,
+                  gap: '300',
+                }),
               ],
             },
           },

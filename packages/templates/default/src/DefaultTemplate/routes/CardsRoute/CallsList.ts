@@ -1,8 +1,5 @@
 import type { SchemaNode } from '@we/schema-shared';
-
-import { emptyState } from '../../EmptyState.ts';
-import { peopleTooltip } from '../../PeopleTooltip.ts';
-import { cardList, cardShell } from './CardShell.ts';
+import { agentByline, cardList, cardShell, confirmModal, emptyState, peopleRow } from '@we/template-kit';
 
 /**
  * Recorded calls in this space.
@@ -100,66 +97,7 @@ export const callsList: SchemaNode = {
                     // Just the faces here, not the utterance count beside them: that number is
                     // about how much was said, not about who was there, so it is not part of the
                     // same statement the way a member count is.
-                    peopleTooltip({
-                      items: '$call.participants',
-                      image: {
-                        $find: {
-                          items: { $store: 'profileStore.profiles' },
-                          where: { did: '$person' },
-                          select: 'avatar',
-                        },
-                      },
-                      hash: { $concat: ['$person'] },
-                      name: {
-                        $find: {
-                          items: { $store: 'profileStore.profiles' },
-                          where: { did: '$person' },
-                          select: 'name',
-                        },
-                      },
-                      children: [
-                        {
-                          type: 'AvatarStack',
-                          props: {
-                            /*
-                                `participants` is a list of DIDs, so each one is joined to the
-                                profile that carries a picture.
-
-                                The lookup is inside the `select` rather than a filter over the
-                                cache, because the ordering has to follow the *call's* roster — and
-                                because `$filter` has no set-membership operator to express
-                                "profiles whose did is in this list" with.
-
-                                `hash` is set unconditionally, never as a fallback for a missing
-                                `image`: it seeds a generated avatar that is stable per agent, so
-                                somebody whose profile has not arrived is still visually distinct
-                                from everybody else whose profile has not arrived. A real picture
-                                wins where there is one.
-                              */
-                            avatars: {
-                              $map: {
-                                items: '$call.participants',
-                                select: {
-                                  image: {
-                                    $find: {
-                                      items: { $store: 'profileStore.profiles' },
-                                      where: { did: '$item' },
-                                      select: 'avatar',
-                                    },
-                                  },
-                                  // Wrapped rather than written as a bare '$item': a plain string
-                                  // in a `select` is treated as a literal, and only a token object
-                                  // is resolved against the item context.
-                                  hash: { $concat: ['$item'] },
-                                },
-                              },
-                            },
-                            max: 5,
-                            size: 'sm',
-                          },
-                        },
-                      ],
-                    }),
+                    peopleRow({ items: '$call.participants', dids: true, as: 'participant' }),
                     {
                       type: 'we-text',
                       props: { fontSize: '200', color: 'neutral-700' },
@@ -364,74 +302,20 @@ export const callsList: SchemaNode = {
                         },
                       },
                     },
-                    {
-                      type: '$if',
-                      props: {
-                        condition: { $local: 'confirmDeleteOpen' },
-                        then: {
-                          type: 'we-modal',
-                          props: { close: { $setLocal: 'confirmDeleteOpen', value: false } },
-                          children: [
-                            { type: 'we-text', props: { fontWeight: 'semibold' }, children: ['Delete call?'] },
-                            {
-                              type: 'we-text',
-                              children: [
-                                'This will permanently delete the recording and every utterance in it. This cannot be undone.',
-                              ],
-                            },
-                            {
-                              type: 'Row',
-                              props: { ax: 'end', gap: '200' },
-                              children: [
-                                {
-                                  type: 'we-button',
-                                  props: {
-                                    variant: 'ghost',
-                                    onClick: { $setLocal: 'confirmDeleteOpen', value: false },
-                                  },
-                                  children: ['Cancel'],
-                                },
-                                {
-                                  type: 'we-button',
-                                  props: {
-                                    variant: 'danger',
-                                    /*
-                                        The delete is not instant — it walks the collection and
-                                        removes every utterance under it, so a long transcript
-                                        takes a visible moment. Without a spinner the button
-                                        absorbs the click and nothing happens, which reads as a
-                                        failure and invites a second click at a delete that is
-                                        already running.
-
-                                        `deleting` is cleared in `onFinally` rather than
-                                        `onError`: on the success path the card unmounts with the
-                                        record, so the only state worth restoring is the one where
-                                        it did not, and a failure that left the button spinning
-                                        forever would be the worse end of that trade.
-                                      */
-                                    loading: { $local: 'deleting' },
-                                    disabled: { $local: 'deleting' },
-                                    // The generic collection delete: a call record is a
-                                    // CollectionBlock like a post, and the recursive delete does
-                                    // not care which kind it is holding.
-                                    onClick: [
-                                      { $setLocal: 'deleting', value: true },
-                                      {
-                                        $action: 'spaceStore.deleteCollection',
-                                        args: ['$call.id'],
-                                        onSuccess: [{ $setLocal: 'confirmDeleteOpen', value: false }],
-                                        onFinally: [{ $setLocal: 'deleting', value: false }],
-                                      },
-                                    ],
-                                  },
-                                  children: ['Delete'],
-                                },
-                              ],
-                            },
-                          ],
-                        },
-                      },
-                    },
+                    confirmModal({
+                      openLocal: 'confirmDeleteOpen',
+                      title: 'Delete call?',
+                      body: 'This will permanently delete the recording and every utterance in it. This cannot be undone.',
+                      confirmLabel: 'Delete',
+                      // The delete walks the collection and removes every utterance under it, so a
+                      // long transcript takes a visible moment. Without the spinner the button
+                      // absorbs the click and appears to have failed, inviting a second click at a
+                      // delete already running.
+                      busyLocal: 'deleting',
+                      // A call record is a CollectionBlock like a post, and the recursive delete
+                      // does not care which kind it is holding.
+                      confirm: { $action: 'spaceStore.deleteCollection', args: ['$call.id'] },
+                    }),
                   ],
                 },
               ],
@@ -481,50 +365,16 @@ export const callsList: SchemaNode = {
                         same idiom `PostsList` uses for a post's author — and it reaches anyone, not
                         only the current space's members.
                       */
-                    {
-                      type: '$agent',
-                      props: { did: '$utterance.author', as: 'speaker' },
-                      children: [
-                        {
-                          type: 'Row',
-                          props: { gap: '300', ay: 'start' },
-                          children: [
-                            {
-                              type: 'we-avatar',
-                              props: { size: 'sm', image: '$speaker.avatar', hash: '$speaker.did' },
-                            },
-                            {
-                              type: 'Column',
-                              props: { gap: '100' },
-                              children: [
-                                {
-                                  type: 'Row',
-                                  props: { ay: 'center', gap: '200' },
-                                  children: [
-                                    {
-                                      type: 'we-text',
-                                      props: { fontWeight: 'semibold', color: 'neutral-600' },
-                                      children: ['$speaker.name'],
-                                    },
-                                    {
-                                      // When each utterance was written — which is when it was
-                                      // *said*, since a block is flushed as the speaker finishes.
-                                      type: 'we-timestamp',
-                                      props: { value: '$utterance.createdAt', relative: true, color: 'neutral-500' },
-                                    },
-                                  ],
-                                },
-                                {
-                                  type: 'we-text',
-                                  props: { color: 'neutral-900' },
-                                  children: ['$utterance.text'],
-                                },
-                              ],
-                            },
-                          ],
-                        },
-                      ],
-                    },
+                    agentByline({
+                      did: '$utterance.author',
+                      as: 'speaker',
+                      stacked: true,
+                      nameColor: 'neutral-600',
+                      // When each utterance was written — which is when it was *said*, since a
+                      // block is flushed as the speaker finishes.
+                      timestamp: '$utterance.createdAt',
+                      children: [{ type: 'we-text', props: { color: 'neutral-900' }, children: ['$utterance.text'] }],
+                    }),
                   ],
                 },
               ],
