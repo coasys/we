@@ -1,5 +1,41 @@
 import type { SchemaNode } from '@we/schema-shared';
 
+/**
+ * Start a call, and put its record on the list before a word is said.
+ *
+ * The transcript's record is normally created by the first thing spoken, so that a call nobody
+ * recorded leaves no trace. That rule is about calls nobody *asked* for. Asking for one here is a
+ * deliberate act, so the record is created up front and this agent's transcript pinned to it — which
+ * is also what makes the call resumable, since a record is reachable afterwards only if it exists.
+ *
+ * It does mean a call created and never spoken in stays on the list as an empty card. That is the
+ * cost of being able to set one up ahead of time, and it is deletable like any other.
+ *
+ * `resume` rather than a second create: pinning is the same operation Continue performs, and going
+ * through it means the peers who join adopt this record instead of making their own.
+ */
+const startCallButton: SchemaNode = {
+  type: '$if',
+  props: {
+    condition: { $store: 'modules.call.canCall' },
+    then: {
+      type: 'we-button',
+      props: {
+        text: 'Call',
+        variant: 'primary',
+        onClick: {
+          $action: 'model.create',
+          args: ['CollectionBlock', { kind: 'call', type: 'collection' }],
+          onSuccess: [
+            { $action: 'modules.call.joinSpaceCall' },
+            { $action: 'modules.transcribe.resume', args: ['$result.id'] },
+          ],
+        },
+      },
+    },
+  },
+};
+
 const contentTypeOptions = [
   { label: 'Posts', value: 'posts', icon: 'newspaper' },
   { label: 'Calls', value: 'calls', icon: 'phone' },
@@ -144,20 +180,37 @@ export const cardsHeader: SchemaNode = {
         },
       ],
     },
-    // Right: create actions
+    /*
+      Right: create actions, for whatever is being listed.
+
+      The calls tab swaps them rather than adding to them. A row of "Post · Space · Call" makes the
+      create action a menu you have to read, and two of the three are inert on a list of calls — the
+      button that matters is the one for the thing in front of you.
+    */
     {
-      type: 'Row',
-      props: { gap: '300' },
-      children: [
-        {
-          type: 'we-button',
-          props: { text: 'Post', variant: 'primary', onClick: { $setLocal: 'createPostOpen', value: true } },
+      type: '$if',
+      props: {
+        condition: { $eq: [{ $local: 'contentType' }, 'calls'] },
+        then: startCallButton,
+        else: {
+          type: 'Row',
+          props: { gap: '300' },
+          children: [
+            {
+              type: 'we-button',
+              props: { text: 'Post', variant: 'primary', onClick: { $setLocal: 'createPostOpen', value: true } },
+            },
+            {
+              type: 'we-button',
+              props: {
+                text: 'Space',
+                variant: 'outline',
+                onClick: { $setLocal: 'createSpaceModalOpen', value: true },
+              },
+            },
+          ],
         },
-        {
-          type: 'we-button',
-          props: { text: 'Space', variant: 'outline', onClick: { $setLocal: 'createSpaceModalOpen', value: true } },
-        },
-      ],
+      },
     },
   ],
 };

@@ -1,5 +1,7 @@
 import type { SchemaNode } from '@we/schema-shared';
 
+import { peopleTooltip } from '../../PeopleTooltip.ts';
+
 import { cardShell, gridWrapper } from './CardShell.ts';
 
 /**
@@ -93,45 +95,69 @@ export const callsList: SchemaNode = {
                     type: 'Row',
                     props: { ay: 'center', gap: '300', ml: 'auto' },
                     children: [
-                      {
-                        type: 'AvatarStack',
-                        props: {
-                          /*
-                            `participants` is a list of DIDs, so each one is joined to the member
-                            profile that carries a picture.
+                      // Just the faces here, not the utterance count beside them: that number is
+                      // about how much was said, not about who was there, so it is not part of the
+                      // same statement the way a member count is.
+                      peopleTooltip({
+                        items: '$call.participants',
+                        image: {
+                          $find: {
+                            items: { $store: 'profileStore.profiles' },
+                            where: { did: '$person' },
+                            select: 'avatar',
+                          },
+                        },
+                        hash: { $concat: ['$person'] },
+                        name: {
+                          $find: {
+                            items: { $store: 'profileStore.profiles' },
+                            where: { did: '$person' },
+                            select: 'name',
+                          },
+                        },
+                        children: [
+                          {
+                            type: 'AvatarStack',
+                            props: {
+                              /*
+                                `participants` is a list of DIDs, so each one is joined to the
+                                profile that carries a picture.
 
-                            The lookup is inside the `select` rather than a filter over members,
-                            because the ordering has to follow the *call's* roster — and because
-                            `$filter` has no set-membership operator to express "members whose did is
-                            in this list" with.
+                                The lookup is inside the `select` rather than a filter over the
+                                cache, because the ordering has to follow the *call's* roster — and
+                                because `$filter` has no set-membership operator to express
+                                "profiles whose did is in this list" with.
 
-                            `hash` is set unconditionally, never as a fallback for a missing `image`:
-                            it seeds a generated avatar that is stable per agent, so somebody whose
-                            profile has not arrived is still visually distinct from everybody else
-                            whose profile has not arrived. A real picture wins where there is one.
-                          */
-                          avatars: {
-                            $map: {
-                              items: '$call.participants',
-                              select: {
-                                image: {
-                                  $find: {
-                                    items: { $store: 'spaceStore.members' },
-                                    where: { did: '$item' },
-                                    select: 'avatar',
+                                `hash` is set unconditionally, never as a fallback for a missing
+                                `image`: it seeds a generated avatar that is stable per agent, so
+                                somebody whose profile has not arrived is still visually distinct
+                                from everybody else whose profile has not arrived. A real picture
+                                wins where there is one.
+                              */
+                              avatars: {
+                                $map: {
+                                  items: '$call.participants',
+                                  select: {
+                                    image: {
+                                      $find: {
+                                        items: { $store: 'profileStore.profiles' },
+                                        where: { did: '$item' },
+                                        select: 'avatar',
+                                      },
+                                    },
+                                    // Wrapped rather than written as a bare '$item': a plain string
+                                    // in a `select` is treated as a literal, and only a token object
+                                    // is resolved against the item context.
+                                    hash: { $concat: ['$item'] },
                                   },
                                 },
-                                // Wrapped rather than written as a bare '$item': a plain string in a
-                                // `select` is treated as a literal, and only a token object is
-                                // resolved against the item context.
-                                hash: { $concat: ['$item'] },
                               },
+                              max: 5,
+                              size: 'sm',
                             },
                           },
-                          max: 5,
-                          size: 'sm',
-                        },
-                      },
+                        ],
+                      }),
                       {
                         type: 'we-text',
                         props: { fontSize: '200', color: 'neutral-700' },
@@ -145,6 +171,57 @@ export const callsList: SchemaNode = {
                             },
                           },
                         ],
+                      },
+                      /*
+                        Pick this call back up.
+
+                        A transcript's record is reachable only while somebody who was in the call
+                        is still publishing a claim to it, so once everyone has left it can never be
+                        added to again. That is the right default — the next conversation in a space
+                        is a different meeting, and a call that resumed itself would swallow it — but
+                        it leaves no way back into one that ended because the network dropped, or
+                        because everyone stepped out for five minutes.
+
+                        Offered to everyone, unlike edit and delete: continuing a call is joining a
+                        conversation, not editing somebody's record of one.
+                      */
+                      {
+                        type: '$if',
+                        props: {
+                          condition: { $store: 'modules.call.canCall' },
+                          // A real tooltip rather than the button's `title`, which the browser draws
+                          // itself: unthemed, after its own delay, and never on a keyboard focus.
+                          // Rejoining a call from a card is the one control here whose effect is not
+                          // guessable from its icon, so it is the one worth saying out loud.
+                          then: {
+                            type: 'we-tooltip',
+                            props: { title: 'Continue this call', placement: 'top' },
+                            children: [
+                              {
+                                type: 'we-button',
+                                props: {
+                                  variant: 'ghost',
+                                  size: 'sm',
+                                  square: true,
+                                  // Two actions rather than one with an `onSuccess`, because
+                                  // `joinSpaceCall` returns nothing for a lifecycle key to hang off.
+                                  // `resume` is built for that: it holds the record until there is a
+                                  // call to attach it to, so the order these resolve in does not
+                                  // matter.
+                                  onClick: [
+                                    { $action: 'modules.call.joinSpaceCall' },
+                                    { $action: 'modules.transcribe.resume', args: ['$call.id'] },
+                                  ],
+                                },
+                                // Sized past what the button would give it (16px at `sm`), because
+                                // this is the affordance on the card rather than one of a set — the
+                                // edit and delete beside it act on the record, this one takes you
+                                // into the call.
+                                children: [{ type: 'we-icon', props: { name: 'phone-call', size: '20px' } }],
+                              },
+                            ],
+                          },
+                        },
                       },
                       /*
                         Naming the record, and deleting it — both for whoever made it.
@@ -425,7 +502,7 @@ export const callsList: SchemaNode = {
                                       {
                                         type: 'we-text',
                                         props: { fontWeight: 'semibold', color: 'neutral-600' },
-                                        children: [{ $concat: ['$speaker.firstName', ' ', '$speaker.lastName'] }],
+                                        children: ['$speaker.name'],
                                       },
                                       {
                                         // When each utterance was written — which is when it was
