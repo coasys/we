@@ -11,5 +11,6 @@ export function aggregateFragments(fragments: ContextFragment[]): ContextData {
     models: fragments.flatMap((f) => f.models ?? []),
     tokens: fragments.flatMap((f) => f.tokens ?? []),
     storeEntries: fragments.flatMap((f) => f.storeEntries ?? []),
+    pluginCatalogs: fragments.flatMap((f) => f.pluginCatalogs ?? []),
   };
 }

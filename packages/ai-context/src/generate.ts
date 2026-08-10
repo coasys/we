@@ -24,6 +24,7 @@ import { assembleReference } from './assembler.js';
 import { type ExtractedStore, extractRegisteredComponents, extractStores } from './extractors/appShell.js';
 import { extractPrimitives } from './extractors/cem.js';
 import { extractModels } from './extractors/models.js';
+import { extractPluginCatalog } from './extractors/plugins.js';
 import { extractTokens } from './extractors/tokens.js';
 import { extractComponentProps } from './extractors/typescript.js';
 import { architecture } from './fragments/architecture.js';
@@ -47,6 +48,7 @@ const DEFAULTS: Record<string, string> = {
   widgets: 'src',
   tokens: 'src',
   models: 'src',
+  plugins: 'src/catalog.ts',
 };
 
 /**
@@ -129,7 +131,7 @@ function mergeStoreEntries(derived: ExtractedStore[], authored: StoreEntry[]): S
  * Discover packages with a "context" field in their package.json
  * and extract the appropriate context fragment for each.
  */
-function discoverFragments(): ContextFragment[] {
+async function discoverFragments(): Promise<ContextFragment[]> {
   const fragments: ContextFragment[] = [];
 
   // Scan all workspace packages recursively (excludes node_modules).
@@ -167,6 +169,9 @@ function discoverFragments(): ContextFragment[] {
       case 'models':
         fragments.push({ models: extractModels(src) });
         break;
+      case 'plugins':
+        fragments.push({ pluginCatalogs: await extractPluginCatalog(src) });
+        break;
       default:
         console.warn(`  Warning: unknown context type "${config.type}" in ${rel}`);
     }
@@ -192,7 +197,7 @@ async function main() {
   console.log('Generating AI context...');
 
   // Discover and extract context from all workspace packages
-  const fragments = discoverFragments();
+  const fragments = await discoverFragments();
   const contextData = aggregateFragments(fragments);
 
   // Names come from the source, meaning comes from the fragment. See `extractors/appShell.ts`.
