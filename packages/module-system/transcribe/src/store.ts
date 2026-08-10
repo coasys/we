@@ -52,6 +52,20 @@ export const CHILDREN_PREDICATE = 'we://children';
 export const TRANSCRIBE_ACTIVITY = 'transcribe';
 
 /**
+ * How long a non-elected agent will hold its first utterance waiting for the creator's record.
+ *
+ * The election needs a way out, because the agent it picks may simply never speak: whoever is
+ * elected only creates the record on *their* first flush, and a silent creator would otherwise leave
+ * everyone else buffering into a call that produces nothing. After this, whoever is waiting creates
+ * one itself and announces it — a duplicate is recoverable, a lost transcript is not.
+ *
+ * Generous relative to a presence round trip and short relative to a conversation: long enough that
+ * the ordinary case (creator speaks within a few seconds) converges on one record, short enough that
+ * nobody notices the delay on the one utterance it applies to.
+ */
+const ELECTION_WAIT_MS = 5_000;
+
+/**
  * Flux's *effective* voice-activity thresholds, which are not the ones in its defaults file.
  *
  * `audio-processor.js` declares one set and `TranscriberWidget.vue` overwrites it over the port the
@@ -98,6 +112,16 @@ export type TranscribeStatus = 'idle' | 'no-backend' | 'no-model' | 'no-audio' |
 
 /** What the worklet posts. Tagged, because it reports both what it heard and how loud things are. */
 type WorkletMessage = { kind: 'utterance'; audio: Float32Array } | { kind: 'level'; rms: number; speaking: boolean };
+
+/**
+ * Where an utterance can go, if anywhere yet.
+ *
+ * Three outcomes rather than `string | null`, because two of them are nothing alike: `waiting` means
+ * come back in a moment and the words are still good, `nowhere` means there is no call to attach
+ * them to and they never will be. Collapsed into one null, the caller had to guess, and guessing
+ * "drop it" is how a deferred first utterance would be lost.
+ */
+type CollectionSlot = { state: 'ready'; id: string } | { state: 'waiting' } | { state: 'nowhere' };
 
 /**
  * Speech to text for the call this agent is in.
@@ -178,6 +202,16 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
   let recordedParticipants = new Set<string>();
   /** Guards the create, so two flushes racing at the start cannot produce two collections. */
   let creating: Promise<string | null> | null = null;
+  /**
+   * When this agent first deferred to an elected creator, or null when it is not waiting.
+   *
+   * Held rather than derived because the wait is bounded from the moment it *began*, not from the
+   * current attempt — otherwise every retry would restart the clock and a silent creator would keep
+   * a speaker waiting forever.
+   */
+  let deferredSince: number | null = null;
+  /** Peers this agent has already been offered, so a dismissed prompt stays dismissed. */
+  const [dismissedInvites, setDismissedInvites] = signal<string[]>([]);
 
   let context: AudioContext | null = null;
   let node: AudioWorkletNode | null = null;
@@ -229,9 +263,48 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
     return claims.sort()[0] ?? null;
   }
 
-  /** Tell the call which record its transcript is going into, so the others can join it. */
-  function announce(callId: string, collection: string): void {
-    presence?.setActivity({ type: TRANSCRIBE_ACTIVITY, id: callId, collection });
+  /**
+   * Everyone recording this call right now, this agent included, sorted.
+   *
+   * The basis for two things: the prompt shown to agents who are not recording, and the election
+   * that decides which of those who are gets to create the record.
+   */
+  function recordersOf(callId: string): string[] {
+    const me = selfId?.() ?? null;
+    const peers = presence
+      ? activitiesOfType(presence.peers(), TRANSCRIBE_ACTIVITY)
+          .filter(
+            ({ peer, activity }) =>
+              peer.agentId !== me &&
+              (activity as { id?: string }).id === callId &&
+              (activity as { recording?: boolean }).recording === true,
+          )
+          .map(({ peer }) => peer.agentId)
+      : [];
+    return (enabled() && me ? [me, ...peers] : peers).sort();
+  }
+
+  /**
+   * Publish what this agent is doing about this call's transcript.
+   *
+   * One activity carrying two separate facts, because they have different lifetimes. `recording` is
+   * live — it goes true on the button press, which is what gives peers something to react to before
+   * anybody has spoken, and false again on stop. `collection` is a claim about the call: once this
+   * agent knows which record the call's transcript lives in, that stays published even after
+   * recording stops, so a peer who starts later still adopts it rather than creating a second one.
+   *
+   * Publishing `recording` at the press rather than at the first flush is also what makes the
+   * election below deterministic in the ordinary case: by the time anyone speaks, everybody
+   * recording already knows who else is.
+   */
+  function announce(callId: string, recording: boolean, collection?: string | null): void {
+    const claim = collection ?? collectionId();
+    presence?.setActivity({
+      type: TRANSCRIBE_ACTIVITY,
+      id: callId,
+      recording,
+      ...(claim ? { collection: claim } : {}),
+    });
   }
 
   /**
@@ -268,13 +341,43 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
    * null when there is nothing to attach to, in which case the caller writes nothing: an utterance
    * with nowhere to belong is better dropped than scattered loose into the space.
    */
-  async function ensureCollection(): Promise<string | null> {
+  async function ensureCollection(): Promise<CollectionSlot> {
     const call = myCall();
-    if (!call || !createEntity) return null;
+    if (!call || !createEntity) return { state: 'nowhere' };
 
     const existing = collectionId();
-    if (existing && collectionCallId === call.id) return existing;
-    if (creating) return creating;
+    if (existing && collectionCallId === call.id) return { state: 'ready', id: existing };
+    if (creating) {
+      const id = await creating;
+      return id ? { state: 'ready', id } : { state: 'nowhere' };
+    }
+
+    /*
+      Whoever is recording and sorts first creates the record; everyone else waits for them to
+      announce it. Deterministic, because `recording` is published at the button press rather than at
+      the first flush — so by the time anybody speaks, every recorder already knows who else is
+      recording, and they all sort the same list.
+
+      It replaces "whoever writes first creates", whose race was not the heartbeat the old comment
+      described but the whole span before anyone had finished an utterance. Two agents starting
+      together and then speaking together — the ordinary way a call begins — landed in it every time,
+      and produced two records for one meeting.
+
+      Losing the election is not refusing to write, only refusing to *create*: the caller re-buffers
+      and tries again, and `ELECTION_WAIT_MS` is the point at which it gives up waiting for a creator
+      who may never speak. A partition can still produce two records, and nothing here can prevent
+      that — two agents who cannot see each other cannot agree on anything.
+    */
+    if (!announcedCollection(call.id)) {
+      const me = selfId?.() ?? null;
+      const recorders = recordersOf(call.id);
+      const elected = recorders[0] ?? me;
+      if (me && elected !== me) {
+        if (deferredSince === null) deferredSince = Date.now();
+        if (Date.now() - deferredSince < ELECTION_WAIT_MS) return { state: 'waiting' };
+      }
+    }
+    deferredSince = null;
 
     creating = (async () => {
       // A different call from the one the current record belongs to — start clean rather than
@@ -285,7 +388,7 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
       if (adopted) {
         setCollectionId(adopted);
         collectionCallId = call.id;
-        announce(call.id, adopted);
+        announce(call.id, enabled(), adopted);
         return adopted;
       }
 
@@ -300,13 +403,14 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
       if (created) {
         setCollectionId(created);
         collectionCallId = call.id;
-        announce(call.id, created);
+        announce(call.id, enabled(), created);
       }
       return created;
     })();
 
     try {
-      return await creating;
+      const id = await creating;
+      return id ? { state: 'ready', id } : { state: 'nowhere' };
     } finally {
       creating = null;
     }
@@ -320,16 +424,32 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
     setPending('');
     if (!text) return;
 
-    setRecent([text, ...recent()].slice(0, 20));
     try {
-      const collection = await ensureCollection();
-      if (!collection) {
+      const slot = await ensureCollection();
+
+      // Lost the election and the creator has not announced yet. Put the words back and come round
+      // again — dropping them would lose the opening line of every call for everyone but one agent,
+      // which is precisely the part of a conversation worth having.
+      if (slot.state === 'waiting') {
+        buffer = buffer ? `${text} ${buffer}` : text;
+        setPending(buffer);
+        clearTimer();
+        flushTimer = setTimeout(() => void flush(), FLUSH_AFTER_MS);
+        return;
+      }
+
+      if (slot.state === 'nowhere') {
         console.warn('transcribe: no call to attach this utterance to; not written');
         return;
       }
-      await createEntity?.('TextBlock', { text }, { parent: { id: collection, predicate: CHILDREN_PREDICATE } });
+
+      await createEntity?.('TextBlock', { text }, { parent: { id: slot.id, predicate: CHILDREN_PREDICATE } });
+      // After the write, not before. `recent` says these are the blocks written this session, and a
+      // deferred utterance passes through here more than once — listed on the way in, it would show
+      // up once per attempt.
+      setRecent([text, ...recent()].slice(0, 20));
       const call = myCall();
-      if (call) await recordParticipants(collection, call.id);
+      if (call) await recordParticipants(slot.id, call.id);
     } catch (cause) {
       // Reported but not surfaced as a failed state: the transcript continues, and losing one block
       // is better than stopping a call's transcription over a single write.
@@ -496,6 +616,10 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
     setCollectionId(null);
     collectionCallId = null;
     recordedParticipants = new Set();
+    // Both belong to the call that just ended: an election deferred in it must not bound the wait in
+    // the next one, and a prompt dismissed in it should not silence the next call's.
+    deferredSince = null;
+    setDismissedInvites([]);
   });
 
   /**
@@ -564,6 +688,43 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
     thresholdPercent: () => asPercent(VAD.speechOnsetThreshold),
     /** True only while actually producing — what the call bar's record button highlights on. */
     listening: () => status() === 'listening',
+
+    /**
+     * Whether somebody else in this call is recording and this agent is not — the prompt's condition.
+     *
+     * A prompt rather than starting on their behalf, and that is the whole point of it. Transcription
+     * turns this agent's microphone into durable text in a space other people read; starting that
+     * because a third party pressed a button somewhere else takes a decision that is theirs to make.
+     * The module declares a `microphone` capability for the same reason.
+     *
+     * False once dismissed, and false while already recording — there is nothing to offer someone who
+     * has already said yes.
+     */
+    invited: () => {
+      const call = myCall();
+      if (!call || enabled()) return false;
+      const dismissed = new Set(dismissedInvites());
+      return recordersOf(call.id).some((did) => !dismissed.has(did));
+    },
+    /**
+     * Who to name in that prompt.
+     *
+     * One agent rather than the list: the prompt is a single line in a call bar, and "Ana started
+     * transcribing" is the part that makes it act-on-able. Their DID rather than their name, because
+     * this module holds no profiles — the fragment resolves it with `$agent`, the same way the calls
+     * list puts a face on an utterance.
+     */
+    invitedBy: () => {
+      const call = myCall();
+      if (!call) return '';
+      const dismissed = new Set(dismissedInvites());
+      return recordersOf(call.id).find((did) => !dismissed.has(did)) ?? '';
+    },
+    /** Everyone recording this call, this agent included — coverage, for the panel to show. */
+    transcribers: () => {
+      const call = myCall();
+      return call ? recordersOf(call.id) : [];
+    },
     /** There is audio to listen to. Without it, offering to record is offering nothing. */
     available: () => (audioInput?.() ?? null) !== null,
 
@@ -582,6 +743,30 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
       const next = !enabled();
       setEnabled(next);
       if (next) setOpen(true);
+      /*
+        Publish the decision immediately, before a word has been said.
+
+        This is the signal the other agents' prompt reads, and it is also what makes the election
+        deterministic: announcing only at the first flush meant nobody knew who else was recording
+        until somebody had already finished speaking, by which point the record they were racing to
+        create had usually been created twice.
+
+        Turning it off publishes `recording: false` rather than withdrawing the activity, because the
+        collection claim rides on the same entry and outlives the recording — see `announce`.
+      */
+      const call = myCall();
+      if (call) announce(call.id, next);
+    },
+    /**
+     * Stop offering to join the transcript this peer started.
+     *
+     * Per peer rather than per call: someone else starting later is a new thing to be told about,
+     * and a single dismissal should not silence the rest of the call.
+     */
+    dismissInvite: () => {
+      const call = myCall();
+      if (!call) return;
+      setDismissedInvites([...new Set([...dismissedInvites(), ...recordersOf(call.id)])]);
     },
     togglePanel: () => setOpen(!open()),
     closePanel: () => setOpen(false),

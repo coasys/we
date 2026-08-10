@@ -11,7 +11,7 @@
  * just the roster the module reads and the two write calls it makes.
  */
 import type { Activity, Peer } from '@we/backend-shared';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { CALL_KIND, CALL_PREDICATE, createTranscribeStore, TRANSCRIBE_ACTIVITY } from './store';
 
@@ -55,6 +55,15 @@ function harness(peers: Peer[] = []) {
       fn();
     },
     selfId: () => ME,
+    /**
+     * Something to listen to, so the audio effect does not tear the session down on every tick.
+     *
+     * Without it that effect reads "no audio" and calls `stop`, which flushes — so any test that
+     * changes the roster while words are buffered had a second, concurrent flush racing its own for
+     * the buffer, and whichever lost saw nothing to write. The stream is never read here: the store
+     * only hands it to an `AudioContext`, which these tests never reach.
+     */
+    audioInput: () => ({}) as MediaStream,
     presence: {
       peers: () => peers,
       setActivity: (activity) => published.push(activity),
@@ -286,5 +295,98 @@ describe('when the call ends', () => {
     await h.say('after');
 
     expect(h.created.filter((c) => c.entity === 'CollectionBlock')).toHaveLength(1);
+  });
+});
+
+/**
+ * The election that decides who creates the record.
+ *
+ * The failure it replaces was not exotic: two agents start recording, both speak, and each creates a
+ * collection because neither had announced one yet. Announcing at the first flush meant the window
+ * was the whole span before anybody had finished an utterance — which is exactly how a call begins.
+ */
+describe('electing a creator', () => {
+  /** Sorts before ME, so this peer wins the election against it. */
+  const EARLIER = 'did:key:aaa';
+  /** Sorts after ME, so ME wins. */
+  const LATER = 'did:key:zzz';
+
+  function recording(agentId: string) {
+    return peer(
+      agentId,
+      { type: 'call', id: 'space:uri' },
+      { type: TRANSCRIBE_ACTIVITY, id: 'space:uri', recording: true },
+    );
+  }
+
+  it('publishes that it is recording on the button press, before a word is said', async () => {
+    // The signal every other agent's prompt reads, and what makes the election deterministic: by the
+    // time anyone speaks, everybody recording already knows who else is.
+    const h = harness([peer(ME, { type: 'call', id: 'space:uri' })]);
+    h.store.toggle();
+
+    expect(h.published).toContainEqual({ type: TRANSCRIBE_ACTIVITY, id: 'space:uri', recording: true });
+    expect(h.created).toHaveLength(0);
+  });
+
+  it('waits for the elected creator rather than creating a second record', async () => {
+    const h = harness([peer(ME, { type: 'call', id: 'space:uri' }), recording(EARLIER)]);
+    h.store.toggle();
+    await h.say('first words');
+
+    expect(h.created).toHaveLength(0);
+  });
+
+  it('writes the utterance it held once the creator announces, rather than losing it', async () => {
+    // The opening line of a call is worth more than most of what follows it, and it is precisely the
+    // one this defers. Dropping it would be a silent, permanent hole in every transcript but one.
+    const h = harness([peer(ME, { type: 'call', id: 'space:uri' }), recording(EARLIER)]);
+    h.store.toggle();
+    await h.say('first words');
+
+    h.setPeers([
+      peer(ME, { type: 'call', id: 'space:uri' }),
+      peer(
+        EARLIER,
+        { type: 'call', id: 'space:uri' },
+        { type: TRANSCRIBE_ACTIVITY, id: 'space:uri', recording: true, collection: 'theirs' },
+      ),
+    ]);
+    await h.store.flushNow();
+
+    expect(h.created.filter((c) => c.entity === 'CollectionBlock')).toHaveLength(0);
+    expect(h.created[0].fields.text).toBe('first words');
+    expect(h.created[0].options?.parent?.id).toBe('theirs');
+  });
+
+  it('creates immediately when it is the one elected', async () => {
+    const h = harness([peer(ME, { type: 'call', id: 'space:uri' }), recording(LATER)]);
+    h.store.toggle();
+    await h.say('my turn');
+
+    expect(h.created[0].entity).toBe('CollectionBlock');
+    expect(h.created[1].fields.text).toBe('my turn');
+  });
+
+  it('gives up waiting and creates one if the elected creator never speaks', async () => {
+    // The election picks whoever sorts first among those recording, and that agent may simply never
+    // say anything — they only create on their own first flush. Without a deadline, everyone else
+    // buffers into a call that produces nothing at all.
+    vi.useFakeTimers();
+    try {
+      const h = harness([peer(ME, { type: 'call', id: 'space:uri' }), recording(EARLIER)]);
+      h.store.toggle();
+      await h.say('anyone there');
+      expect(h.created).toHaveLength(0);
+
+      // Comfortably past the wait, and through however many retry ticks fall inside it — the point
+      // is that the words come out the other side, not which attempt delivered them.
+      await vi.advanceTimersByTimeAsync(30_000);
+
+      expect(h.created.filter((c) => c.entity === 'CollectionBlock')).toHaveLength(1);
+      expect(h.created.filter((c) => c.entity === 'TextBlock')[0].fields.text).toBe('anyone there');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

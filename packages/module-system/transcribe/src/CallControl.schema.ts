@@ -23,6 +23,61 @@ import { type SchemaNode } from '@we/schema-shared';
 /** Must match `CALL_CONTROLS_ANCHOR` in `@we/module-call`. Deliberately not imported — see above. */
 export const CALL_CONTROLS_ANCHOR = 'call-controls';
 
+/**
+ * The offer to join a transcript somebody else started.
+ *
+ * A prompt rather than starting on this agent's behalf: what is being turned on is their microphone,
+ * feeding durable text into a space other people read, and that is not a decision a peer gets to
+ * take for them. So the coverage cost is real and accepted — a call where nobody accepts is a call
+ * transcribed from one microphone.
+ *
+ * Named, because "somebody is transcribing" is a notification and "Ana started transcribing" is
+ * something you can act on. The DID comes from the store and the name from `$agent`, which is how
+ * this module puts a name to an agent without holding any profiles of its own.
+ *
+ * Dismissable, and dismissed per peer — see `dismissInvite`. Nothing here starts recording; the only
+ * thing the accept button does is the same `toggle` the record button beside it calls.
+ */
+const joinPrompt: SchemaNode = {
+  type: '$if',
+  props: {
+    condition: { $store: 'modules.transcribe.invited' },
+    then: {
+      type: '$agent',
+      props: { did: { $store: 'modules.transcribe.invitedBy' }, as: 'starter' },
+      children: [
+        {
+          type: 'Row',
+          props: { ay: 'center', gap: '200', px: '200', py: '100', bg: 'neutral-100', r: 'pill' },
+          children: [
+            {
+              type: 'we-text',
+              props: { fontSize: '200', truncate: true, maxWidth: '180px' },
+              children: [{ $concat: ['$starter.firstName', ' is transcribing'] }],
+            },
+            {
+              type: 'we-button',
+              props: { size: 'sm', variant: 'secondary', onClick: { $action: 'modules.transcribe.toggle' } },
+              children: ['Join'],
+            },
+            {
+              type: 'we-button',
+              props: {
+                size: 'sm',
+                variant: 'ghost',
+                square: true,
+                title: 'Not now',
+                onClick: { $action: 'modules.transcribe.dismissInvite' },
+              },
+              children: [{ type: 'we-icon', props: { name: 'x' } }],
+            },
+          ],
+        },
+      ],
+    },
+  },
+};
+
 export const callControl: SchemaNode = {
   type: '$if',
   props: {
@@ -30,31 +85,44 @@ export const callControl: SchemaNode = {
     // need the audio one: mid-call, before devices are acquired, there is briefly nothing to record.
     condition: { $store: 'modules.transcribe.available' },
     then: {
-      type: 'we-button',
-      props: {
-        size: 'sm',
-        // Matches how the call's own mute and camera buttons read their state, so the row behaves as
-        // one set of controls rather than as one module's chrome sitting next to another's.
-        variant: { $if: { condition: { $store: 'modules.transcribe.enabled' }, then: 'secondary', else: 'ghost' } },
-        onClick: { $action: 'modules.transcribe.toggle' },
-        title: {
-          $if: {
-            condition: { $store: 'modules.transcribe.enabled' },
-            then: 'Stop transcribing',
-            else: 'Transcribe this call',
-          },
-        },
-      },
+      type: 'Row',
+      props: { ay: 'center', gap: '200' },
       children: [
+        joinPrompt,
         {
-          // Filled while recording — the same "this is live" language a record button anywhere uses,
-          // and readable at a glance in a bar of otherwise outline icons.
-          type: 'we-icon',
+          type: 'we-button',
           props: {
-            name: 'record',
-            weight: { $if: { condition: { $store: 'modules.transcribe.listening' }, then: 'fill', else: 'regular' } },
-            color: { $if: { condition: { $store: 'modules.transcribe.listening' }, then: 'danger-500', else: '' } },
+            size: 'sm',
+            // Matches how the call's own mute and camera buttons read their state, so the row behaves
+            // as one set of controls rather than one module's chrome sitting next to another's.
+            variant: {
+              $if: { condition: { $store: 'modules.transcribe.enabled' }, then: 'secondary', else: 'ghost' },
+            },
+            onClick: { $action: 'modules.transcribe.toggle' },
+            title: {
+              $if: {
+                condition: { $store: 'modules.transcribe.enabled' },
+                then: 'Stop transcribing',
+                else: 'Transcribe this call',
+              },
+            },
           },
+          children: [
+            {
+              // Filled while recording — the same "this is live" language a record button anywhere
+              // uses, and readable at a glance in a bar of otherwise outline icons.
+              type: 'we-icon',
+              props: {
+                name: 'record',
+                weight: {
+                  $if: { condition: { $store: 'modules.transcribe.listening' }, then: 'fill', else: 'regular' },
+                },
+                color: {
+                  $if: { condition: { $store: 'modules.transcribe.listening' }, then: 'danger-500', else: '' },
+                },
+              },
+            },
+          ],
         },
       ],
     },
