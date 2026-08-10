@@ -1428,6 +1428,31 @@ export const contextData: ContextData = {
       ],
       source: 'widgets',
     },
+    {
+      name: 'GraphView',
+      description:
+        "A general-purpose graph view: knowledge maps, schema maps, hierarchies, cluster maps and\nfree-positioned boards, all from the same engine.\n\nThe shape of a graph is set by four independent choices: where it starts (`seeds`), how much of it\nopens (`expansion`), how it is arranged (`layout`), and how it looks (`nodeStyle` / `edgeStyle`).\n\nCommon recipes:\n- **Knowledge map** — `seeds: { source: 'query', options: { entity: 'Belief' } }` with\n`expansion: { defaultDepth: 1 }` and `layout: { type: 'force' }`.\n- **Schema map** — `seeds: { source: 'schema' }`, which draws the dataset's own entity types and\nthe relations between them. Picks up model types added later with no template change.\n- **Hierarchy** — `layout: { type: 'tree' }` with a `collection` expansion for nested content.\n- **Static diagram** — `seeds: { literal: true, nodes: [...], edges: [...] }` and no expansion at all.",
+      props: [
+        { name: 'seeds', type: 'SeedSpec | SeedSpec[]', optional: true },
+        { name: 'expansion', type: 'ExpansionSpec', optional: true },
+        { name: 'layout', type: 'LayoutSpec', optional: true },
+        { name: 'nodeStyle', type: 'NodeStyleRules', optional: true },
+        { name: 'edgeStyle', type: 'EdgeStyleRules', optional: true },
+        { name: 'behaviours', type: 'BehaviourSpec[]', optional: true },
+        { name: 'width', type: 'string', optional: true },
+        { name: 'height', type: 'string', optional: true },
+        { name: 'bg', type: 'string', optional: true },
+        { name: 'showStatus', type: 'boolean', optional: true },
+        { name: 'showControls', type: 'boolean', optional: true },
+        { name: 'onNodeClick', type: '((node: GraphNode) => void)', optional: true },
+        { name: 'onNodeDoubleClick', type: '((node: GraphNode) => void)', optional: true },
+        { name: 'onEdgeClick', type: '((edge: GraphEdge) => void)', optional: true },
+        { name: 'onSelectionChange', type: '((ids: string[]) => void)', optional: true },
+        { name: 'onNodeDragEnd', type: '((payload: { id: string; x: number; y: number; }) => void)', optional: true },
+        { name: 'host', type: 'GraphHostBindings', optional: true },
+      ],
+      source: 'widgets',
+    },
   ],
   models: [
     {

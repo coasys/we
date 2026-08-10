@@ -1,0 +1,186 @@
+/**
+ * Graph view styling.
+ *
+ * The one structural rule: the transformed layer holds both surfaces, so a single camera moves nodes
+ * and edges together. Anything positioned outside it — controls, status — is deliberately outside the
+ * transform so it stays a fixed size while the graph zooms.
+ */
+.we-graph {
+  position: relative;
+  overflow: hidden;
+  touch-action: none;
+  user-select: none;
+  // The graph is a direct-manipulation surface: a drag should move the camera, not select the labels.
+  cursor: grab;
+
+  &:active {
+    cursor: grabbing;
+  }
+}
+
+.we-graph__layer {
+  position: absolute;
+  inset: 0;
+  // Transforms scale about the origin, which is where the layouts put their coordinate space.
+  transform-origin: 0 0;
+  will-change: transform;
+}
+
+.we-graph__edges {
+  position: absolute;
+  // Large enough that curves bowing away from the origin are not clipped; the layer is transformed,
+  // so this costs nothing to paint outside the viewport.
+  left: -50000px;
+  top: -50000px;
+  width: 100000px;
+  height: 100000px;
+  overflow: visible;
+  pointer-events: none;
+
+  path {
+    pointer-events: stroke;
+  }
+}
+
+// The SVG's own coordinate space is offset by the box above, so its contents are shifted back.
+.we-graph__edges > g,
+.we-graph__edges > defs {
+  transform: translate(50000px, 50000px);
+}
+
+.we-graph__edge-label {
+  font-size: 10px;
+  text-anchor: middle;
+  dominant-baseline: middle;
+  paint-order: stroke;
+  stroke: var(--we-color-neutral-0);
+  stroke-width: 3px;
+  pointer-events: none;
+}
+
+.we-graph__node {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--we-space-100);
+  // Centre the node on its position rather than hanging it below and right of it.
+  margin-left: calc(var(--node-size) / -2);
+  margin-top: calc(var(--node-size) / -2);
+  pointer-events: none;
+}
+
+.we-graph__dot {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--node-size);
+  height: var(--node-size);
+  border-radius: var(--node-radius);
+  background: var(--node-color);
+  border: var(--node-border-width) solid var(--node-border);
+  overflow: hidden;
+  transition: box-shadow 120ms ease-out;
+}
+
+.we-graph__image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.we-graph__more {
+  color: var(--we-color-white);
+  font-size: 11px;
+  font-weight: var(--we-font-weight-700);
+  line-height: 1;
+}
+
+.we-graph__label {
+  max-width: 140px;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  // Legible over edges and other nodes without needing a background plate.
+  paint-order: stroke;
+  text-shadow:
+    0 0 3px var(--we-color-neutral-0),
+    0 0 3px var(--we-color-neutral-0);
+}
+
+.we-graph__node--hovered .we-graph__dot {
+  box-shadow: 0 0 0 3px var(--we-color-primary-200);
+}
+
+.we-graph__node--selected .we-graph__dot {
+  box-shadow: 0 0 0 3px var(--we-color-primary-500);
+}
+
+.we-graph__node--unresolved .we-graph__dot {
+  // A placeholder has to look like one — the difference between "not here yet" and "empty".
+  border-style: dashed;
+  background: transparent;
+}
+
+.we-graph__controls {
+  position: absolute;
+  right: var(--we-space-300);
+  bottom: var(--we-space-300);
+  display: flex;
+  flex-direction: column;
+  gap: var(--we-space-100);
+
+  button {
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--we-color-neutral-200);
+    border-radius: var(--we-radius-200);
+    background: var(--we-color-neutral-0);
+    color: var(--we-color-neutral-700);
+    cursor: pointer;
+
+    &:hover {
+      background: var(--we-color-neutral-50);
+    }
+  }
+}
+
+.we-graph__status {
+  position: absolute;
+  left: var(--we-space-300);
+  bottom: var(--we-space-300);
+  display: flex;
+  flex-direction: column;
+  gap: var(--we-space-100);
+  max-width: 60%;
+  pointer-events: none;
+}
+
+.we-graph__status-item {
+  padding: var(--we-space-100) var(--we-space-200);
+  border-radius: var(--we-radius-200);
+  background: var(--we-color-neutral-100);
+  color: var(--we-color-neutral-700);
+  font-size: var(--we-font-size-300);
+}
+
+.we-graph__status-item--warn {
+  background: var(--we-color-warning-100);
+  color: var(--we-color-warning-800);
+}
+
+.we-graph__empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--we-color-neutral-400);
+  pointer-events: none;
+}

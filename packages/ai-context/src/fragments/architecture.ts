@@ -93,7 +93,8 @@ Glossary (these terms pervade stores, models, and \`$query\`/\`perspective\` in 
 | \`@we/backend-ad4m\` | backend-system/ad4m | The AD4M adapter: query adapter, ephemeral & transcription ports, agent identity, SDNA install, model registry | Agnostic |
 | \`@we/backend-inmemory\` | backend-system/inmemory | In-memory adapter — the reference implementation, and how stores test without an executor | Agnostic |
 | \`@we/module-shared\` | module-system/shared | The feature-module contract — what a module author installs | Agnostic |
-| \`@we/module-globe\` · \`-call\` · \`-notes\` · \`-transcribe\` | module-system/* | Bundled feature modules; globe is a *family* (module · protocol · layers · widget) | Agnostic (components injected) |
+| \`@we/module-globe\` · \`-call\` · \`-notes\` · \`-transcribe\` · \`-graph\` | module-system/* | Bundled feature modules; globe is a *family* (module · protocol · layers · widget) | Agnostic (components injected) |
+| \`@we/graph-protocol\` · \`-core\` · \`-expanders\` · \`-layouts\` · \`-solid\` | graph-system/* | The graph engine: expander/layout/renderer contracts, the neutral engine, first-party plugins, and the Solid adapter | **Agnostic** (Solid only in the adapter) |
 | \`@we/block-shared\` | block-system/shared | Block content types + serialization | Agnostic |
 | \`@we/models\` | packages/models | WE's domain models (Space, Block subclasses, …) | **AD4M-decorated** |
 | \`@we/app-shell\` | packages/app-shell | App shell, stores, registries, built-in template schemas | Solid |
@@ -156,6 +157,8 @@ that declares \`backends: ['ad4m']\` — nothing else. See \`docs/architecture/p
 - AD4M wiring (query adapter, SDNA install, agent identity) → \`packages/backend-system/ad4m/src/\`.
 - The feature-module contract → \`packages/module-system/shared/src/module.ts\`; a module → \`packages/module-system/<id>/\`.
 - Data models (Space, blocks) → \`packages/models/src/\` (see packages/models/CONVENTIONS.md).
+- Graph engine (expanders, layouts, expansion state) → \`packages/graph-system/\` (see its README);
+  its data binding lives at \`packages/app-shell/src/frameworks/solid/components/GraphHost.tsx\`.
 
 For deeper detail (data sync/persistence, block & editor internals, the local dev/test loop),
 see docs/architecture/codebase-map.md.

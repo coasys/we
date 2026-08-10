@@ -1,4 +1,11 @@
-import type { AssembledContext, ComponentEntry, ModelEntry, PrimitiveEntry, TokenCategory } from './types.js';
+import type {
+  AssembledContext,
+  ComponentEntry,
+  ModelEntry,
+  PluginCatalog,
+  PrimitiveEntry,
+  TokenCategory,
+} from './types.js';
 
 /**
  * Assemble a formatted text reference from structured context.
@@ -15,6 +22,13 @@ export function assembleReference(ctx: AssembledContext): string {
 
   // Component registry
   sections.push(formatComponentRegistry(context.primitives, context.components));
+
+  // Sub-registries a component resolves by name. Immediately after the component registry, because
+  // the props above are unusable without them: `layout.type` is documented as a string, and the names
+  // that string may hold live here.
+  if (context.pluginCatalogs?.length) {
+    sections.push(formatPluginCatalogs(context.pluginCatalogs));
+  }
 
   // Design system props (inherited by all primitives)
   sections.push(context.fragments.designSystemProps.trim());
@@ -107,6 +121,42 @@ function formatComponentRegistry(primitives: PrimitiveEntry[], components: Compo
   }
 
   return lines.join('\n');
+}
+
+/**
+ * Component plugin registries, grouped by the slot a name plugs into.
+ *
+ * Grouped by category rather than listed flat because the question an author has is always
+ * "what can `layout.type` be?", never "what plugins exist?".
+ */
+function formatPluginCatalogs(catalogs: PluginCatalog[]): string {
+  const lines: string[] = ['## Component Plugin Registries', ''];
+  lines.push(
+    'Some components resolve named plugins from their props. These are the names each accepts —',
+    'a name not listed here does not exist, and the component will warn rather than render.',
+    '',
+  );
+
+  for (const catalog of catalogs) {
+    lines.push(`### ${catalog.component}`);
+    if (catalog.description) lines.push('', catalog.description);
+
+    const categories = [...new Set(catalog.plugins.map((p) => p.category))];
+    for (const category of categories) {
+      lines.push('', `**${category}**`, '');
+      for (const plugin of catalog.plugins.filter((p) => p.category === category)) {
+        lines.push(`- \`${plugin.id}\`${plugin.description ? ` — ${plugin.description}` : ''}`);
+        for (const option of plugin.options ?? []) {
+          const note = option.description ? ` — ${option.description}` : '';
+          lines.push(`  - ${option.name}: ${option.type}${note}`);
+        }
+        if (plugin.example) lines.push(`  - Example: \`${plugin.example}\``);
+      }
+    }
+    lines.push('');
+  }
+
+  return lines.join('\n').trim();
 }
 
 function formatTokens(tokens: TokenCategory[]): string {

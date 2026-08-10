@@ -13,6 +13,8 @@ export type {
   StoreEntry,
   TokenCategory,
   ContextData,
+  PluginCatalog,
+  PluginEntry,
 } from '@we/schema-shared';
 
 import type { ContextData } from '@we/schema-shared';

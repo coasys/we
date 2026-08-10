@@ -11,6 +11,7 @@
  */
 import { callModule } from '@we/module-call';
 import { createGlobeModule } from '@we/module-globe';
+import { createGraphModule } from '@we/module-graph';
 import { notesModule } from '@we/module-notes';
 import type { ModuleDefinition, ModuleStoreDeps } from '@we/module-shared';
 import { transcribeModule } from '@we/module-transcribe';
@@ -34,6 +35,9 @@ export interface ActivationDeps extends BundledModuleDeps {
 
 export const bundledModules: Record<string, BundledModuleFactory> = {
   globe: ({ components }) => createGlobeModule(components.CesiumGlobe),
+  // Same shape as the globe, and for the same reason: the graph's canvas is an imperative core, so it
+  // is a component the host owns, while the module keeps the plugin catalog and the placeable fragments.
+  graph: ({ components }) => createGraphModule(components.GraphView),
   // Takes nothing from the host: every piece of its UI is a schema fragment, so it imports no
   // framework at all.
   notes: () => notesModule,
