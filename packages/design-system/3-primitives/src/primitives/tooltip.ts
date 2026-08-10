@@ -18,18 +18,32 @@ let tooltipIdCounter = 0;
 
 const CSS_STYLES = css`
   :host {
-    --we-tooltip-host-display: inline-block;
+    /* Inline-*flex*, not inline-block, and the difference is the whole of why wrapped content used
+       to sit too high.
+
+       An inline-block trigger is laid out in a line box, so it stands on the parent's text baseline
+       with room reserved beneath it for descenders — space belonging to a font, in a box that may
+       hold no text at all. Wrapping something whose height is its own (a row of avatars) in one
+       therefore made the host taller than its content and pinned that content to the top of it: in
+       a centred flex row the host centred, and the avatars rode high inside it, overflowing the
+       trigger's box at the top.
+
+       Flex boxes have no line boxes and no strut, so the wrapper stops contributing height of its
+       own. The host stays inline-level, so a tooltip around a word in a sentence still flows. */
+    --we-tooltip-host-display: inline-flex;
     /* The var must actually be consumed: without a display rule the host falls back to the
        custom-element default (inline), which ignores explicit width/height — a trigger that
        should fill its container (e.g. a full-height panel rail) collapses to content size. */
-    display: var(--we-tooltip-host-display, inline-block);
+    display: var(--we-tooltip-host-display, inline-flex);
     position: relative;
   }
 
   [part='trigger'] {
-    display: inline-block;
+    display: flex;
+    align-items: center;
     /* Follow an explicit host height so slotted triggers can use height: 100%.
-       With the default content-sized host this resolves to auto — no change. */
+       With the default content-sized host this resolves to auto — no change. The host's default
+       stretch alignment already does this; the declaration stays for a trigger that opts out. */
     height: 100%;
   }
 
@@ -195,7 +209,20 @@ export default class Tooltip extends LayoutElement {
     return html`
       <span part="trigger" aria-describedby=${this._tooltipId}><slot></slot></span>
       <span part="tooltip" id=${this._tooltipId} role="tooltip">
-        ${this.title}
+        <!--
+          Slotted content, falling back to \`title\`.
+
+          A tooltip is usually a phrase, and a string prop is the right shape for a phrase. But some
+          of what a tooltip is *for* does not fit in one — an avatar stack capped at five faces has
+          to be able to say who the other seven are, and a list of faces and names is not a string.
+          Reaching for \`we-popover\` instead would mean re-implementing hover and focus timing that
+          already works here.
+
+          Named, so it cannot collide with the trigger's default slot, and defaulting to \`title\` so
+          every existing caller is untouched. Keep slotted content non-interactive: this lives in a
+          \`role="tooltip"\`, which promises the reader there is nothing in here to operate.
+        -->
+        <slot name="content">${this.title}</slot>
         <span part="arrow"></span>
       </span>
     `;
