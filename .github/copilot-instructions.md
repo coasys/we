@@ -89,7 +89,8 @@ Glossary (these terms pervade stores, models, and `$query`/`perspective` in sche
 | `@we/backend-ad4m` | backend-system/ad4m | The AD4M adapter: query adapter, ephemeral & transcription ports, agent identity, SDNA install, model registry | Agnostic |
 | `@we/backend-inmemory` | backend-system/inmemory | In-memory adapter — the reference implementation, and how stores test without an executor | Agnostic |
 | `@we/module-shared` | module-system/shared | The feature-module contract — what a module author installs | Agnostic |
-| `@we/module-globe` · `-call` · `-notes` · `-transcribe` | module-system/* | Bundled feature modules; globe is a *family* (module · protocol · layers · widget) | Agnostic (components injected) |
+| `@we/module-globe` · `-call` · `-notes` · `-transcribe` · `-graph` | module-system/* | Bundled feature modules; globe is a *family* (module · protocol · layers · widget) | Agnostic (components injected) |
+| `@we/graph-protocol` · `-core` · `-expanders` · `-layouts` · `-solid` | graph-system/* | The graph engine: expander/layout/renderer contracts, the neutral engine, first-party plugins, and the Solid adapter | **Agnostic** (Solid only in the adapter) |
 | `@we/block-shared` | block-system/shared | Block content types + serialization | Agnostic |
 | `@we/models` | packages/models | WE's domain models (Space, Block subclasses, …) | **AD4M-decorated** |
 | `@we/app-shell` | packages/app-shell | App shell, stores, registries, built-in template schemas | Solid |
@@ -152,6 +153,8 @@ that declares `backends: ['ad4m']` — nothing else. See `docs/architecture/pack
 - AD4M wiring (query adapter, SDNA install, agent identity) → `packages/backend-system/ad4m/src/`.
 - The feature-module contract → `packages/module-system/shared/src/module.ts`; a module → `packages/module-system/<id>/`.
 - Data models (Space, blocks) → `packages/models/src/` (see packages/models/CONVENTIONS.md).
+- Graph engine (expanders, layouts, expansion state) → `packages/graph-system/` (see its README);
+  its data binding lives at `packages/app-shell/src/frameworks/solid/components/GraphHost.tsx`.
 
 For deeper detail (data sync/persistence, block & editor internals, the local dev/test loop),
 see docs/architecture/codebase-map.md.
@@ -922,6 +925,100 @@ with configurable styling, layout forces, and interaction handlers.
   Props: data: GraphData, width?: string | number, height?: string | number, nodeStyle?: NodeStyleConfig, edgeStyle?: EdgeStyleConfig, layout?: LayoutConfig, interactions?: InteractionConfig
 - SpaceSidebarWidget
   Props: name: string, description?: string, class?: string, style?: Record<string, string | number>
+- GraphView — A general-purpose graph view: knowledge maps, schema maps, hierarchies, cluster maps and
+free-positioned boards, all from the same engine.
+
+The shape of a graph is set by four independent choices: where it starts (`seeds`), how much of it
+opens (`expansion`), how it is arranged (`layout`), and how it looks (`nodeStyle` / `edgeStyle`).
+
+Common recipes:
+- **Knowledge map** — `seeds: { source: 'query', options: { entity: 'Belief' } }` with
+`expansion: { defaultDepth: 1 }` and `layout: { type: 'force' }`.
+- **Schema map** — `seeds: { source: 'schema' }`, which draws the dataset's own entity types and
+the relations between them. Picks up model types added later with no template change.
+- **Hierarchy** — `layout: { type: 'tree' }` with a `collection` expansion for nested content.
+- **Static diagram** — `seeds: { literal: true, nodes: [...], edges: [...] }` and no expansion at all.
+  Props: seeds?: SeedSpec | SeedSpec[], expansion?: ExpansionSpec, layout?: LayoutSpec, nodeStyle?: NodeStyleRules, edgeStyle?: EdgeStyleRules, behaviours?: BehaviourSpec[], width?: string, height?: string, bg?: string, showStatus?: boolean, showControls?: boolean, onNodeClick?: ((node: GraphNode) => void), onNodeDoubleClick?: ((node: GraphNode) => void), onEdgeClick?: ((edge: GraphEdge) => void), onSelectionChange?: ((ids: string[]) => void), onNodeDragEnd?: ((payload: { id: string; x: number; y: number; }) => void), host?: GraphHostBindings
+
+---
+
+## Component Plugin Registries
+
+Some components resolve named plugins from their props. These are the names each accepts —
+a name not listed here does not exist, and the component will warn rather than render.
+
+### GraphView
+
+Names resolvable inside GraphView props: seed sources (seeds.source), expanders (expansion.expanders), layouts (layout.type) and behaviours (behaviours[]).
+
+**seed**
+
+- `query` — Loads instances of one entity type as nodes; can draw named relations immediately.
+  - entity: string — Entity type to load (required).
+  - where: object — Filter, same operators as $query.
+  - order: object — e.g. { createdAt: "desc" }.
+  - limit: number — Defaults to 100.
+  - relations: string[] — Relations to hydrate and draw as edges up front.
+  - Example: `{ "source": "query", "options": { "entity": "Post", "limit": 50, "relations": ["author"] } }`
+- `schema` — Maps the dataset's own entity types and the relations between them — one node per type. Picks up model types installed after the template was written, so it suits spaces whose vocabulary is open-ended.
+  - entities: string[] — Restrict to these types; omit for all of them.
+  - Example: `{ "source": "schema" }`
+- `dataset` — Seeds a single node for the current space — the starting point for exploring outward.
+  - label: string
+  - Example: `{ "source": "dataset", "options": { "label": "This space" } }`
+
+**expander**
+
+- `entity` — Follows an entity's typed relations, forwards and backwards, from the dataset's schema. The default for knowledge maps.
+  - relations: string[] — Only follow these.
+  - exclude: string[] — Never follow these.
+  - Example: `"expansion": { "expanders": ["entity"], "direction": "both", "defaultDepth": 1 }`
+- `collection` — Opens a container into its children through an untyped to-many relation — the drill-down the schema cannot describe. Recurses naturally into nested collections.
+  - parents: string[] — Container types. Defaults to CollectionBlock.
+  - via: string — Relation holding the children. Defaults to "children".
+  - children: string[] — Child entity types to look for.
+  - Example: `"expansion": { "expanders": ["collection"], "defaultDepth": 2, "direction": "out" }`
+- `property` — Opens an instance out into its own scalar fields, and optionally into shared value nodes so instances converge on common values. The resolution level below an entity.
+  - properties: string[] — Only show these fields.
+  - valueNodes: boolean — Promote values to shared nodes. Defaults to true.
+  - Example: `"expansion": { "expanders": ["property"] }`
+
+**layout**
+
+- `force` — Force-directed, with warm start so newly expanded nodes settle around what is already placed rather than restarting the whole map. The default.
+  - distance: number — Preferred edge length. Default 90.
+  - charge: number — Repulsion; more negative spreads further. Default -220.
+  - collide: number — Minimum spacing. Default 28.
+  - Example: `{ "type": "force", "options": { "distance": 140 } }`
+- `tree` — Layered hierarchy from the graph roots. The right choice for containment and org charts.
+  - direction: "down" | "right"
+  - levelGap: number
+  - siblingGap: number
+  - Example: `{ "type": "tree", "options": { "direction": "right", "levelGap": 200 } }`
+- `radial` — Concentric rings by hop distance from the roots — reads as distance from a centre.
+  - ringGap: number
+  - Example: `{ "type": "radial" }`
+- `grid` — Uniform grid, optionally ordered by a node data field. Honest default when edges say little.
+  - columns: number
+  - sortBy: string — Node data field to order by.
+  - Example: `{ "type": "grid", "options": { "columns": 6, "sortBy": "name" } }`
+- `manual` — Positions come from the nodes themselves — a board, where position is the data being edited rather than something derived. Pair with drag-node and persist via onNodeDragEnd.
+  - xField: string — Node data field holding x. Default "x".
+  - yField: string — Node data field holding y. Default "y".
+  - Example: `{ "type": "manual" }`
+
+**behaviour**
+
+- `pan-zoom` — Drag the background to pan, wheel to zoom about the pointer. List it last — it is the fallback.
+  - Example: `"behaviours": ["pan-zoom", "select", "expand-on-double-click"]`
+- `select` — Click to select, shift-click to extend, background to clear. Emits onNodeClick.
+- `drag-node` — Drag a node to move it. Releases on drop by default so the layout stays in charge; pass { pin: true } on a board.
+  - pin: boolean — Leave the node pinned where it was dropped.
+  - Example: `{ "type": "drag-node", "options": { "pin": true } }`
+- `expand-on-double-click` — Double-click a node to expand it. The usual gesture on a map you also want to select on.
+  - direction: "in" | "out" | "both"
+- `expand-on-click` — Single click expands — for maps meant purely for exploring, where selection is not needed.
+  - direction: "in" | "out" | "both"
 
 ---
 
