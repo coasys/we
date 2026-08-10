@@ -1,6 +1,5 @@
 import type { SchemaNode } from '@we/schema-shared';
-
-import { emptyNote, section } from './settingsSection.ts';
+import { adminSection, emptyNote } from '@we/template-kit';
 
 /** The five the backend's logger accepts; anything else it silently drops. */
 const LOG_LEVEL_OPTIONS = [
@@ -51,7 +50,7 @@ export const connectedApps: SchemaNode = {
   type: '$if',
   props: {
     condition: { $store: 'runtimeStore.canManageApps' },
-    then: section('Connected apps', 'squares-four', 'runtimeStore.loadAuthorizedApps', [
+    then: adminSection('Connected apps', 'squares-four', 'runtimeStore.loadAuthorizedApps', [
       {
         type: '$if',
         props: {
@@ -160,7 +159,7 @@ export const trustedAgents: SchemaNode = {
   type: '$if',
   props: {
     condition: { $store: 'runtimeStore.canManageTrust' },
-    then: section('Trusted agents', 'shield-check', 'runtimeStore.loadTrustedAgents', [
+    then: adminSection('Trusted agents', 'shield-check', 'runtimeStore.loadTrustedAgents', [
       {
         type: '$if',
         props: {
@@ -550,7 +549,7 @@ export const peerNetwork: SchemaNode = {
   type: '$if',
   props: {
     condition: { $store: 'runtimeStore.canManageNetwork' },
-    then: section('Peer network', 'globe', 'runtimeStore.loadNetworkMetrics', [
+    then: adminSection('Peer network', 'globe', 'runtimeStore.loadNetworkMetrics', [
       {
         type: 'Row',
         props: { gap: '200', wrap: true },

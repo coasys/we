@@ -57,6 +57,8 @@ export type { ConfirmModalOptions } from './overlays/confirmModal.ts';
 export { adminSection } from './we/adminSection.ts';
 export { agentByline } from './we/agentByline.ts';
 export type { AgentBylineOptions } from './we/agentByline.ts';
+export { marketplaceList } from './we/marketplaceList.ts';
+export type { MarketplaceListOptions } from './we/marketplaceList.ts';
 export { peopleRow } from './we/peopleRow.ts';
 export type { PeopleRowOptions } from './we/peopleRow.ts';
 export { peopleTooltip } from './we/peopleTooltip.ts';

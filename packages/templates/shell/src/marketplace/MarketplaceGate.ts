@@ -1,38 +1,24 @@
 import type { SchemaNode } from '@we/schema-shared';
+import { gatePrompt } from '@we/template-kit';
 
-const notConfiguredPrompt: SchemaNode = {
-  type: 'Column',
-  props: { flex: '1', height: '100%', ax: 'center', ay: 'center', gap: '400', p: '600' },
-  children: [
-    { type: 'we-icon', props: { name: 'warning', size: 'xl' } },
-    {
-      type: 'we-text',
-      props: { variant: 'heading-md' },
-      children: ['Marketplace not configured'],
-    },
-    {
-      type: 'we-text',
-      props: { variant: 'body', textAlign: 'center', maxWidth: '400px' },
-      children: ['No marketplace URL has been set in we-seed.json.'],
-    },
-  ],
-};
+/*
+  A dead end rather than an invitation, and it says so before it is read: a flat warning icon
+  instead of the gradient the join prompt carries. Nothing the reader does here changes it — the
+  seed file is not theirs to edit from inside the app.
+*/
+const notConfiguredPrompt: SchemaNode = gatePrompt({
+  icon: 'warning',
+  title: 'Marketplace not configured',
+  body: 'No marketplace URL has been set in we-seed.json.',
+});
 
-const joinPrompt: SchemaNode = {
-  type: 'Column',
-  props: { flex: '1', height: '100%', ax: 'center', ay: 'center', gap: '400', p: '600' },
+const joinPrompt: SchemaNode = gatePrompt({
+  icon: 'storefront',
+  iconGradient: 'primary',
+  title: 'Module Marketplace',
+  body: 'Browse and install templates, themes, blocks, and components shared by the WE community.',
+  bodyWidth: '420px',
   children: [
-    { type: 'we-icon', props: { name: 'storefront', size: 'xl', gradient: 'primary' } },
-    {
-      type: 'we-text',
-      props: { variant: 'heading-md', textAlign: 'center' },
-      children: ['Module Marketplace'],
-    },
-    {
-      type: 'we-text',
-      props: { variant: 'body', textAlign: 'center', maxWidth: '420px' },
-      children: ['Browse and install templates, themes, blocks, and components shared by the WE community.'],
-    },
     {
       type: 'we-button',
       $localState: { joining: { type: 'boolean', initial: false } },
@@ -56,7 +42,7 @@ const joinPrompt: SchemaNode = {
       children: ['Explore Marketplace'],
     },
   ],
-};
+});
 
 export const marketplaceGate: SchemaNode = {
   type: '$if',

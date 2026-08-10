@@ -1,6 +1,5 @@
 import type { SchemaNode } from '@we/schema-shared';
-
-import { emptyNote, section } from './settingsSection.ts';
+import { adminSection, emptyNote } from '@we/template-kit';
 
 /**
  * AI — the models the backend runs or calls, and the prompts apps have registered against them.
@@ -364,7 +363,7 @@ export const aiSection: SchemaNode = {
       type: 'Column',
       props: { gap: '600' },
       children: [
-        section('Models', 'sparkle', 'runtimeStore.loadAiModels', [
+        adminSection('Models', 'sparkle', 'runtimeStore.loadAiModels', [
           {
             type: '$if',
             props: {
@@ -406,7 +405,7 @@ export const aiSection: SchemaNode = {
           },
         ]),
 
-        section('Tasks', 'list-checks', 'runtimeStore.loadAiTasks', [
+        adminSection('Tasks', 'list-checks', 'runtimeStore.loadAiTasks', [
           {
             type: '$if',
             props: {

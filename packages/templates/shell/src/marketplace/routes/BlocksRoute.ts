@@ -1,19 +1,13 @@
 import type { SchemaNode } from '@we/schema-shared';
+import { gatePrompt } from '@we/template-kit';
 
-export const blocksRoute: SchemaNode = {
-  type: 'Column',
-  props: { flex: '1', ax: 'center', ay: 'center', gap: '300', p: '600' },
-  children: [
-    { type: 'we-icon', props: { name: 'cube', size: 'xl', color: 'neutral-300' } },
-    {
-      type: 'we-text',
-      props: { textAlign: 'center' },
-      children: ['Blocks coming soon'],
-    },
-    {
-      type: 'we-text',
-      props: { variant: 'label', textAlign: 'center', maxWidth: '360px' },
-      children: ['Community block publishing will be available in a future update.'],
-    },
-  ],
-};
+// `fill: false` — this sits inside the marketplace's own tab flow, which already has a height.
+export const blocksRoute: SchemaNode = gatePrompt({
+  icon: 'cube',
+  iconColor: 'neutral-300',
+  title: 'Blocks coming soon',
+  body: 'Community block publishing will be available in a future update.',
+  fill: false,
+  gap: '300',
+  bodyWidth: '360px',
+});

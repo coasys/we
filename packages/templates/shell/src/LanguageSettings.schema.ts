@@ -1,6 +1,5 @@
 import type { SchemaNode } from '@we/schema-shared';
-
-import { emptyNote, section } from './settingsSection.ts';
+import { adminSection, emptyNote } from '@we/template-kit';
 
 /**
  * Languages — the plugins the backend uses to store and retrieve expressions.
@@ -68,7 +67,7 @@ export const languagesSection: SchemaNode = {
   type: '$if',
   props: {
     condition: { $store: 'runtimeStore.canManageLanguages' },
-    then: section('Languages', 'code', 'runtimeStore.loadLanguages', [
+    then: adminSection('Languages', 'code', 'runtimeStore.loadLanguages', [
       {
         type: '$if',
         props: {
