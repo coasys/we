@@ -402,9 +402,10 @@ export function DesignToolbar() {
             */}
             <we-tooltip
               title={
-                themeStore.themeScope() === 'global'
-                  ? `Preview scoped to the space · your setting is ${themeStore.themeScopePreference() === 'global' ? 'Global' : 'Space only'}`
-                  : `Preview globally · your setting is ${themeStore.themeScopePreference() === 'global' ? 'Global' : 'Space only'}`
+                themeStore.themeScope() === 'global' ? 'Scope theme to the space template' : 'Apply theme globaly'
+                // themeStore.themeScope() === 'global'
+                //   ? `Preview scoped to the space · your setting is ${themeStore.themeScopePreference() === 'global' ? 'Global' : 'Space only'}`
+                //   : `Preview globally · your setting is ${themeStore.themeScopePreference() === 'global' ? 'Global' : 'Space only'}`
               }
               placement="bottom"
             >
