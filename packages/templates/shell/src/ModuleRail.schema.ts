@@ -31,8 +31,13 @@
  */
 import type { SchemaNode } from '@we/schema-shared';
 
-/** The width every docked module panel should clear. Exported so panels stay in step with the rail. */
-export const MODULE_RAIL_WIDTH = '48px';
+/**
+ * The width every docked module panel should clear. Exported so panels stay in step with the rail.
+ *
+ * Derived, not chosen: a `md` square button is 40px and the rail pads it by `200` (8px) a side.
+ * Change either and this has to move with it, or the buttons overflow a rail too narrow to hold them.
+ */
+export const MODULE_RAIL_WIDTH = '56px';
 
 /**
  * Settings for the space you are standing in, one click away.
@@ -53,7 +58,6 @@ const spaceSettingsLauncher: SchemaNode = {
     {
       type: 'we-button',
       props: {
-        size: 'sm',
         square: true,
         variant: 'ghost',
         onClick: {
@@ -80,9 +84,9 @@ export const moduleRail: SchemaNode = {
         top: '96px',
         width: MODULE_RAIL_WIDTH,
         gap: '100',
-        p: '100',
+        p: '200',
         ay: 'center',
-        bg: 'neutral-0',
+        bg: 'neutral-50',
         border: '1px solid neutral-200',
         rtl: '400',
         rbl: '400',
@@ -101,7 +105,6 @@ export const moduleRail: SchemaNode = {
                 {
                   type: 'we-button',
                   props: {
-                    size: 'sm',
                     square: true,
                     // Highlighted while the module reports itself open, which is what makes the
                     // rail read as a set of tabs rather than a row of buttons.
@@ -121,7 +124,7 @@ export const moduleRail: SchemaNode = {
           type: '$if',
           props: {
             condition: { $count: { items: { $store: 'spaceStore.moduleLaunchers' } } },
-            then: { type: 'we-divider', props: { width: '100%' } },
+            then: { type: 'we-divider', props: { width: '100%', my: '100' } },
           },
         },
         spaceSettingsLauncher,
