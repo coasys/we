@@ -116,6 +116,19 @@ export default class Video extends LayoutVisualElement {
   @property({ type: String, reflect: true }) fit: ImageFit = '';
   @property({ type: Boolean }) autoplay = false;
   @property({ type: Boolean }) loop = false;
+  /**
+   * Bound as a DOM *property* in `render`, unlike every other boolean here, and it has to be.
+   *
+   * The `muted` content attribute maps to `defaultMuted`: it seeds the IDL `muted` property at the
+   * moment the element is created and never again. lit-html clones its template with bound
+   * attributes stripped, so this `<video>` is always created without it — which means a `?muted`
+   * binding moves `defaultMuted` on an element whose live mute state is already `false`, and mutes
+   * nothing, ever.
+   *
+   * That is not a theoretical distinction: a call's self tile plays the same microphone the mesh is
+   * sending, so with this prop silently doing nothing you heard yourself through the speakers and
+   * the room fed back.
+   */
   @property({ type: Boolean }) muted = false;
   /** Play inline rather than taking over the screen. Required on iOS Safari, which otherwise forces
    *  any playing video fullscreen — which would make a call tile unusable there. */
@@ -166,7 +179,7 @@ export default class Video extends LayoutVisualElement {
         ?controls=${this.controls}
         ?autoplay=${this.autoplay}
         ?loop=${this.loop}
-        ?muted=${this.muted}
+        .muted=${this.muted}
         ?playsinline=${this.playsinline}
       >
         <slot>${nothing}</slot>
