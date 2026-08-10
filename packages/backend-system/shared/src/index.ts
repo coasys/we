@@ -111,7 +111,7 @@ export type {
 } from './lifecycle';
 export { manifestEntries } from './manifestEntry';
 export type { ModelManifestEntry, ModelManifestProperty } from './manifestEntry';
-export { isProfileEmpty } from './profileTypes';
+export { displayName, isProfileEmpty } from './profileTypes';
 export type { AgentProfileSummary, PublishProfileFields } from './profileTypes';
 export type {
   BackendInterop,

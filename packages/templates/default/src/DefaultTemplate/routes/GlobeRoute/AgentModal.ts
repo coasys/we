@@ -58,7 +58,7 @@ export const agentModal = {
                     {
                       type: 'we-text',
                       props: { variant: 'heading-sm' },
-                      children: [{ $concat: ['$agent.firstName', ' ', '$agent.lastName'] }],
+                      children: ['$agent.name'],
                     },
                     {
                       type: 'we-text',

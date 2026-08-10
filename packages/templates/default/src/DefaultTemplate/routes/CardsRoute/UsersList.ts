@@ -25,7 +25,7 @@ export const usersList: SchemaNode = gridWrapper([
                 type: 'we-avatar',
                 props: {
                   image: '$user.avatar',
-                  initials: { $concat: ['$user.firstName', ' ', '$user.lastName'] },
+                  initials: '$user.name',
                   size: 'sm',
                 },
               },
@@ -36,7 +36,7 @@ export const usersList: SchemaNode = gridWrapper([
                   {
                     type: 'we-text',
                     props: { fontWeight: 'semibold' },
-                    children: [{ $concat: ['$user.firstName', ' ', '$user.lastName'] }],
+                    children: ['$user.name'],
                   },
                   {
                     type: '$if',

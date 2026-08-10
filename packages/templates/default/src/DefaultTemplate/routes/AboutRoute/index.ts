@@ -268,7 +268,7 @@ export const aboutRoute: RouteSchema = {
                             {
                               type: 'we-text',
                               props: { variant: 'body', truncate: true, maxWidth: '160px' },
-                              children: [{ $concat: ['$agent.firstName', ' ', '$agent.lastName'] }],
+                              children: ['$agent.name'],
                             },
                           ],
                         },

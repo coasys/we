@@ -220,7 +220,7 @@ export const spacesList: SchemaNode = gridWrapper([
                           {
                             type: 'we-text',
                             props: { color: 'neutral-800' },
-                            children: [{ $concat: ['$creator.firstName', ' ', '$creator.lastName'] }],
+                            children: ['$creator.name'],
                           },
                         ],
                       },

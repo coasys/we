@@ -7,7 +7,7 @@
  * the DID) belongs to SessionStore — this store is about the human-facing profile data.
  */
 import { provideModuleHostServices } from '@shared/registries/moduleHostServices';
-import { type AgentProfileSummary, isProfileEmpty, type PublishProfileFields } from '@we/backend-shared';
+import { type AgentProfileSummary, displayName, isProfileEmpty, type PublishProfileFields } from '@we/backend-shared';
 import { toastService } from '@we/components/solid';
 import { compressImageToFileData, dataURIToFileData, shrinkDataUri } from '@we/models';
 import { Accessor, createContext, createMemo, createSignal, ParentProps, useContext } from 'solid-js';
@@ -65,8 +65,25 @@ export function ProfileStoreProvider(props: ParentProps) {
   const session = useSessionStore();
   const accounts = useAccountStore();
 
-  const [profiles, setProfiles] = createSignal<AgentProfileSummary[]>([]);
+  const [rawProfiles, setProfiles] = createSignal<AgentProfileSummary[]>([]);
   const [pendingAvatar, setPendingAvatarSignal] = createSignal('');
+
+  /**
+   * The cache, with a display name on every row.
+   *
+   * Derived here rather than written by each of the half-dozen paths that put a profile into the
+   * cache — a fetch, an edit, an avatar upload, first-run setup — because one of them would forget,
+   * and a name that is present on most rows is worse than one that is absent from all of them.
+   *
+   * This is the single decoration point for everything downstream: `spaceStore.members` and
+   * `presenceStore.peers` are both built by mapping over this accessor, and `$identities` — which
+   * backs the `$agent` block and the feature-module identity port — is bound to it too. So one
+   * derived field reaches every list of people in the app, and no template has to spell a name out
+   * of its parts again.
+   */
+  const profiles = createMemo<AgentProfileSummary[]>(() =>
+    rawProfiles().map((profile) => ({ ...profile, name: displayName(profile) })),
+  );
 
   // In-flight deduplication for fetchProfile — prevents concurrent fetches for the same DID
   const inflightFetches = new Map<string, Promise<void>>();
@@ -381,8 +398,9 @@ export function ProfileStoreProvider(props: ParentProps) {
       get: (agentId) => {
         const profile = profiles().find((entry) => entry.did === agentId);
         if (!profile) return undefined;
-        const name = [profile.firstName, profile.lastName].filter(Boolean).join(' ').trim();
-        return { name: name || profile.handle || undefined, avatar: profile.avatar };
+        // The rule this used to inline now lives in `displayName`, applied once when the cache is
+        // decorated — so a module and a template can no longer disagree about someone's name.
+        return { name: profile.name || undefined, avatar: profile.avatar };
       },
       fetch: (agentId) => void fetchProfile(agentId),
     },

@@ -92,7 +92,7 @@ export const postsList: SchemaNode = {
                           {
                             type: 'we-text',
                             props: { fontWeight: 'semibold' },
-                            children: [{ $concat: ['$author.firstName', ' ', '$author.lastName'] }],
+                            children: ['$author.name'],
                           },
                           {
                             type: 'we-timestamp',
