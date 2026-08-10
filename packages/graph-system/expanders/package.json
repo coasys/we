@@ -1,0 +1,36 @@
+{
+  "name": "@we/graph-expanders",
+  "version": "0.1.0",
+  "description": "WE's first-party graph expanders and seed sources — entity relations, containment, properties, schema",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "build:steps": "tsup",
+    "build": "we-build",
+    "test": "vitest run"
+  },
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "peerDependencies": {
+    "@we/graph-protocol": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.0",
+    "@we/cli": "workspace:*",
+    "@we/graph-protocol": "workspace:*",
+    "tsup": "^8.5.1",
+    "typescript": "^5.3.3",
+    "vitest": "^4.0.15"
+  },
+  "sideEffects": false
+}
