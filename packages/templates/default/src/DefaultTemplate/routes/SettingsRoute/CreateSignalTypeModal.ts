@@ -40,7 +40,7 @@ export const createSignalTypeModal = {
     // Slug
     {
       type: 'we-form-field',
-      props: { label: 'Slug', helpText: 'Auto-generated from name. Used in schemas to reference this signal type.' },
+      props: { label: 'Slug', description: 'Auto-generated from name. Used in schemas to reference this signal type.' },
       children: [
         {
           type: 'we-input',
@@ -117,7 +117,7 @@ export const createSignalTypeModal = {
             condition: { $eq: [{ $local: 'mode' }, 'vote'] },
             then: {
               type: 'we-form-field',
-              props: { label: 'Secondary Icon', helpText: 'Used as the negative icon in vote mode' },
+              props: { label: 'Secondary Icon', description: 'Used as the negative icon in vote mode' },
               children: [
                 {
                   type: 'we-icon-picker',

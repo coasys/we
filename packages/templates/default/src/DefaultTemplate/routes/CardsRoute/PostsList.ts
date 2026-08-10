@@ -30,7 +30,24 @@ export const postsList: SchemaNode = {
                 signals: true,
                 $likeCount: {
                   from: 'signals',
-                  where: { signalTypeId: { $store: 'spaceStore.signalTypesBySlug.like.id' } },
+                  /*
+                    The `like` signal type, taken from the hoisted query above rather than a store.
+
+                    `spaceStore.signalTypesBySlug` used to serve this and was deleted with AdamStore
+                    (`044c88c3`) without a replacement, so this filtered on `undefined` — every post's
+                    like count wrong, and sorting by likes with it. Nothing caught it: the route was
+                    not being walked, the docs still listed the member, and no `$query` internals were
+                    checked.
+
+                    Reading `$local` keeps one source for the space's signal types — the same list the
+                    controls below render from — so the count and the buttons can never disagree about
+                    which type `like` is.
+                  */
+                  where: {
+                    signalTypeId: {
+                      $find: { items: { $local: 'signalTypes' }, where: { slug: 'like' }, select: 'id' },
+                    },
+                  },
                   count: true,
                 },
               },

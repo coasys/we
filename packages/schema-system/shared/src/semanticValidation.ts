@@ -365,7 +365,25 @@ function walkNode(
   const n = node as Record<string, unknown>;
 
   const type = n.type as string | undefined;
-  if (!type || typeof type !== 'string') return;
+  if (!type || typeof type !== 'string') {
+    /**
+     * A node with no `type` is legitimate, and returning here used to discard its whole subtree.
+     *
+     * The case that matters is a **grouping route** — `{ path, children, routes }` with nothing to
+     * render of its own, which is how a layout route nests its sub-routes. The default template's
+     * `/space/:spaceId` is exactly that, so bailing here meant About, Globe, Cards, Flux, Graph and
+     * Settings — every space view there is — were never validated at all. Unknown components and
+     * misspelled props inside them passed silently, which is the opposite of what running this is
+     * for.
+     *
+     * There is nothing to check *about* the node itself (no component, so no props to resolve
+     * against one); what matters is that the walk continues through it.
+     */
+    checkRoutes(n, path, ctx, state, errors);
+    const childState = Array.isArray(n.routes) ? { ...state, hasRoutesAncestor: true } : state;
+    walkChildren(n, path, ctx, childState, errors);
+    return;
+  }
 
   /**
    * `$slot` outlet — where a module lets other modules contribute chrome.
@@ -428,14 +446,23 @@ function walkNode(
     return;
   }
 
+  /**
+   * Bring this node's own `$localState` into scope *before* reading its props.
+   *
+   * Declaring state and consuming it on the same node is the ordinary shape — a button that owns a
+   * `joining` flag sets it in `onClick` and reads it in `loading` — and checking props against the
+   * parent scope reported every one of those as undeclared. The runtime has no such ordering: the
+   * signals are created on mount, before any prop resolves.
+   */
+  const newState = updateLocalScope(n, state);
+
+  checkHoistedQueries(n, path, ctx, newState, errors);
+
   // Check props
   const props = n.props as Record<string, unknown> | undefined;
   if (props && typeof props === 'object') {
-    checkProps(props, path, type, ctx, state, errors);
+    checkProps(props, path, type, ctx, newState, errors);
   }
-
-  // Update local scope if $localState is present
-  const newState = updateLocalScope(n, state);
 
   // Check routes
   checkRoutes(n, path, ctx, newState, errors);
@@ -458,15 +485,27 @@ function walkOperatorNode(
   const props = n.props as Record<string, unknown> | undefined;
   if (!props) return;
 
-  if (type === '$each') {
-    // Walk the item template
-    if (props.item && typeof props.item === 'object') {
-      walkNode(props.item, `${path}.props.item`, ctx, state, errors);
-    }
+  /*
+    Every prop on an operator node, checked as a token.
+
+    Only `$if`'s condition used to be, which left the most data-dense prop in the language unexamined:
+    `$each`'s `items` is where a `$query` lives, and nothing looked at it. That is the last link in the
+    chain that let `spaceStore.signalTypesBySlug` outlive the store refactor that deleted it — the
+    route wasn't walked, the docs still listed the member, and even once both were fixed the `$query`
+    holding it sat in a prop nobody read.
+
+    A generic pass rather than a per-operator list, so an operator added later is covered by default
+    instead of silently exempt. There is no known-prop check to make here — an operator's props are
+    its own grammar, not a component's registered surface.
+  */
+  for (const [key, value] of Object.entries(props)) {
+    // `then`/`else` hold schema *nodes*, not tokens — walked below, where a token in that slot is
+    // itself reported as the mistake it is.
+    if (type === '$if' && (key === 'then' || key === 'else')) continue;
+    checkTokenValue(value, `${path}.props.${key}`, ctx, state, errors);
   }
 
   if (type === '$if') {
-    checkTokenValue(props.condition, `${path}.props.condition`, ctx, state, errors);
     checkBranchSlot(props.then, `${path}.props.then`, ctx, state, errors);
     checkBranchSlot(props.else, `${path}.props.else`, ctx, state, errors);
   }
@@ -523,14 +562,25 @@ function checkBranchSlot(
 }
 
 function updateLocalScope(n: Record<string, unknown>, state: WalkState): WalkState {
-  // $localState lives on the node itself (sibling of type/props/children), not inside props
+  // Both live on the node itself (siblings of type/props/children), not inside props.
   const localState = n.$localState as Record<string, unknown> | undefined;
-  if (!localState || typeof localState !== 'object') return state;
+  /**
+   * Hoisted queries declare `$local` names too — they share one namespace with `$localState`, and a
+   * node reads `{ $local: 'signalTypes' }` without caring which declared it.
+   *
+   * Missed until `$count`'s internals started being walked, at which point every read of a hoisted
+   * query was reported as undeclared. Registering them here is what makes those reads legal — and,
+   * in the other direction, makes a typo in a `$queries` key catchable at last.
+   */
+  const queries = n.$queries as Record<string, unknown> | undefined;
+
+  const hasState = localState && typeof localState === 'object';
+  const hasQueries = queries && typeof queries === 'object';
+  if (!hasState && !hasQueries) return state;
 
   const newFields = new Set(state.localScope ?? []);
-  for (const key of Object.keys(localState)) {
-    newFields.add(key);
-  }
+  if (hasState) for (const key of Object.keys(localState)) newFields.add(key);
+  if (hasQueries) for (const key of Object.keys(queries)) newFields.add(key);
   return { ...state, localScope: newFields };
 }
 
@@ -664,9 +714,10 @@ function checkTokenValue(
   // $query token — the entity is checked against the manifest's known models.
   if ('$query' in obj && typeof obj.$query === 'object' && obj.$query !== null) {
     const query = obj.$query as Record<string, unknown>;
-    if (typeof query.entity === 'string') {
+    if (typeof query.entity === 'string' && entityIsCheckable(query)) {
       checkModelRef(query.entity, `${path}.$query.entity`, ctx, errors);
     }
+    checkQueryInternals(query, `${path}.$query`, ctx, state, errors);
   }
 
   // $local token
@@ -773,6 +824,118 @@ function checkTokenValue(
     for (let i = 0; i < obj.$or.length; i++) {
       checkTokenValue(obj.$or[i], `${path}.$or[${i}]`, ctx, state, errors);
     }
+  }
+
+  /*
+    The array operators, whose internals were unchecked for the same reason `$query`'s were: their
+    payload is a plain object, and everything above only recurses through shapes it recognises.
+
+    `items` is the one that matters — it routinely holds a `$store` or a whole `$query`, and a typo in
+    either produced an empty list and no complaint. `where` values are checked too, since they take
+    the same tokens.
+  */
+  for (const op of ['$filter', '$find', '$count'] as const) {
+    if (op in obj && typeof obj[op] === 'object' && obj[op] !== null) {
+      const spec = obj[op] as Record<string, unknown>;
+      checkNestedTokens(spec.items, `${path}.${op}.items`, ctx, state, errors);
+      if (spec.where) checkNestedTokens(spec.where, `${path}.${op}.where`, ctx, state, errors);
+    }
+  }
+
+  if ('$plural' in obj && typeof obj.$plural === 'object' && obj.$plural !== null) {
+    checkNestedTokens((obj.$plural as Record<string, unknown>).count, `${path}.$plural.count`, ctx, state, errors);
+  }
+}
+
+/**
+ * `$queries` — hoisted subscriptions declared on a node — get the same treatment as an inline
+ * `$query`.
+ *
+ * They had none at all: not the entity, not a `$store` in a `where`. The shape is identical to the
+ * prop-level token minus its wrapper, so the same two checks apply.
+ */
+function checkHoistedQueries(
+  n: Record<string, unknown>,
+  path: string,
+  ctx: ValidationContext,
+  state: WalkState,
+  errors: ValidationError[],
+): void {
+  const queries = n.$queries as Record<string, unknown> | undefined;
+  if (!queries || typeof queries !== 'object') return;
+
+  for (const [name, query] of Object.entries(queries)) {
+    if (!query || typeof query !== 'object') continue;
+    const q = query as Record<string, unknown>;
+    const qPath = `${path}.$queries.${name}`;
+    if (typeof q.entity === 'string' && entityIsCheckable(q)) checkModelRef(q.entity, `${qPath}.entity`, ctx, errors);
+    checkQueryInternals(q, qPath, ctx, state, errors);
+  }
+}
+
+/**
+ * Walk anything nested inside a `$query`, checking every token found on the way down.
+ *
+ * Only `entity` used to be checked, so a `$store` inside a `where` clause was never looked at — which
+ * is how `spaceStore.signalTypesBySlug.like.id` survived the store refactor that deleted it, leaving
+ * a like-count projection filtering on `undefined` with every check passing.
+ *
+ * A query's tokens hide behind *plain* objects (`where: { field: { $store } }`,
+ * `include: { $alias: { where: { … } } }`), and `checkTokenValue` only recurses through operator
+ * shapes it recognises. So this descends the plain structure and hands each token over as it finds
+ * one, stopping at tokens rather than recursing into them — they walk their own internals, and
+ * walking them twice would report everything twice.
+ *
+ * Deliberately **not** checked here: relation names in `include`/`scope.via`, and entity names beyond
+ * the existing `entity` check. Those resolve against the *perspective's* manifest at runtime, which
+ * includes foreign schemas synced in from other apps (Flux's `Channel`, `Conversation`) that this
+ * validator has no picture of. Reporting them would be a stream of false positives on templates that
+ * work.
+ */
+function checkQueryInternals(
+  query: Record<string, unknown>,
+  path: string,
+  ctx: ValidationContext,
+  state: WalkState,
+  errors: ValidationError[],
+): void {
+  for (const [key, value] of Object.entries(query)) {
+    // `entity` is a bare model name, already checked by the caller.
+    if (key === 'entity') continue;
+    // `include` keys are aliases (`$likeCount`), not tokens — descend per entry so a `$`-prefixed
+    // alias is never mistaken for an operator.
+    if (key === 'include' && value && typeof value === 'object' && !Array.isArray(value)) {
+      for (const [alias, spec] of Object.entries(value as Record<string, unknown>)) {
+        checkNestedTokens(spec, `${path}.include.${alias}`, ctx, state, errors);
+      }
+      continue;
+    }
+    checkNestedTokens(value, `${path}.${key}`, ctx, state, errors);
+  }
+}
+
+/** Descend plain structure; hand any token to {@link checkTokenValue} and let it own its internals. */
+function checkNestedTokens(
+  value: unknown,
+  path: string,
+  ctx: ValidationContext,
+  state: WalkState,
+  errors: ValidationError[],
+): void {
+  if (Array.isArray(value)) {
+    for (let i = 0; i < value.length; i++) {
+      checkNestedTokens(value[i], `${path}[${i}]`, ctx, state, errors);
+    }
+    return;
+  }
+  if (typeof value !== 'object' || value === null) return;
+
+  if (isTokenObject(value)) {
+    checkTokenValue(value, path, ctx, state, errors);
+    return;
+  }
+  for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
+    checkNestedTokens(child, `${path}.${key}`, ctx, state, errors);
   }
 }
 
@@ -900,6 +1063,24 @@ function checkActionRef(ref: string, path: string, ctx: ValidationContext, error
       severity: 'warning',
     });
   }
+}
+
+/**
+ * Whether a query's entity name can be judged here at all.
+ *
+ * `dataset` names where the data lives, and naming one is the author saying the entity belongs to a
+ * schema this validator has no manifest for: a foreign app's models synced into the space (Flux's
+ * `Channel`, `Conversation`) or a manifest installed at runtime (the query test page's `TestItem`).
+ * Both are real entities that resolve fine against the *perspective's* manifest; only `@we/models`
+ * is knowable statically.
+ *
+ * So the rule is the one the schema docs already state — external data carries `dataset` — and
+ * checking the name anyway turned every such query into a false error the moment operator props
+ * started being walked. A query with no `dataset` targets the current space's WE models, which is
+ * exactly the case worth checking.
+ */
+function entityIsCheckable(query: Record<string, unknown>): boolean {
+  return query.dataset === undefined;
 }
 
 function checkModelRef(name: string, path: string, ctx: ValidationContext, errors: ValidationError[]): void {
@@ -1048,6 +1229,16 @@ function hasRoutesOutlet(node: unknown): boolean {
     for (const slotNode of Object.values(slots)) {
       if (hasRoutesOutlet(slotNode)) return true;
     }
+  }
+  /**
+   * A `$if` keeps its branches in `props`, not `children` — and putting the outlet behind a gate is
+   * the normal shape, not an exotic one: the default template renders its space routes only once the
+   * dataset is confirmed to be a WE space. Without this the outlet is invisible here and the node is
+   * accused of having routes with nowhere to render them.
+   */
+  const props = n.props as Record<string, unknown> | undefined;
+  if (props && typeof props === 'object') {
+    if (hasRoutesOutlet(props.then) || hasRoutesOutlet(props.else)) return true;
   }
   return false;
 }
