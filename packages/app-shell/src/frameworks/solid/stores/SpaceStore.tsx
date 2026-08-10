@@ -7,7 +7,7 @@ import {
   syncSpaceToParent,
 } from '@shared/spaceSync';
 import { deriveSlug } from '@shared/utils';
-import type { AgentProfileSummary } from '@we/backend-shared';
+import type { AgentProfileSummary, DatasetRef } from '@we/backend-shared';
 import { toastService } from '@we/components/solid';
 import { createBlocks, deleteBlocks, reconcileBlocks } from '@we/block-shared';
 import {
@@ -185,6 +185,89 @@ type SpaceInput = Omit<Partial<Space>, 'avatar' | 'coverImage'> & {
   coverImage?: FileData | string;
 };
 
+/**
+ * The three forms a space can be handed to {@link SpaceStore.joinSpace} in, reduced to the one they
+ * share.
+ *
+ * A share link is an ordinary URL on the web, the backend's own URI everywhere else (see
+ * `SpaceListEntry.shareLink`), and what a join gate reads off the route is the bare id sitting
+ * inside both. Nothing can ask "is this the space I am already joining?" — or "is this the space
+ * that just arrived?" — until they collapse to one value, because comparing the raw strings makes a
+ * link and the id inside it two different spaces.
+ *
+ * Scheme-agnostic on purpose: `neighbourhood://` is AD4M's spelling, and this store is not supposed
+ * to know that. Any `<scheme>://` prefix that is not the web's own is the backend's, and the id is
+ * what follows it.
+ */
+function sharedIdOf(input: string): string {
+  const raw = input.trim();
+  if (!raw) return '';
+  if (!/^https?:\/\//i.test(raw)) {
+    const scheme = raw.indexOf('://');
+    return scheme === -1 ? raw : raw.slice(scheme + 3);
+  }
+  try {
+    const segments = new URL(raw).pathname.split('/').filter(Boolean);
+    const marker = segments.indexOf('space');
+    return (marker === -1 ? segments[segments.length - 1] : segments[marker + 1]) ?? '';
+  } catch {
+    return raw;
+  }
+}
+
+/**
+ * What to hand the backend, given what the caller had.
+ *
+ * Everything but a web URL passes through untouched — the adapter already accepts its own URI or a
+ * bare id, and normalizing further would only invent a form it has to undo. A web link is the one
+ * shape no backend can read, so it is unwrapped here, where the fact that WE serves spaces at
+ * `/space/<id>` is already known.
+ */
+const joinTargetOf = (input: string): string => (/^https?:\/\//i.test(input.trim()) ? sharedIdOf(input) : input.trim());
+
+/** Does this dataset answer to the id a caller asked to join, in whichever form they had it? */
+function datasetAnswersTo(ds: { id: string; sharedId?: string; sharedUri?: string }, input: string): boolean {
+  const target = input.trim();
+  const id = sharedIdOf(target);
+  return ds.id === target || ds.id === id || ds.sharedId === id || ds.sharedUri === target;
+}
+
+/**
+ * How long a join keeps looking for a dataset after the call to make it has already failed.
+ *
+ * Joining is a long-running backend operation wearing a request/response call's clothes: the
+ * executor has to fetch the neighbourhood expression and install its link language before the
+ * dataset exists at all, and only creates it at the very end. The transport gives up well before
+ * that on a first join — AD4M's client applies one flat 30s timeout to every call it makes — and
+ * the resulting 408 says nothing whatsoever about whether the join is still running. It usually is.
+ *
+ * So a failed call is not a failed join, and the honest response to one is to keep watching for a
+ * while. Five minutes is past the point where a join that is going to work has worked, and the
+ * backoff keeps a remote host from being asked a hundred times to find out.
+ */
+const JOIN_RECOVERY_WINDOW_MS = 5 * 60_000;
+const JOIN_RECOVERY_FIRST_POLL_MS = 2_000;
+const JOIN_RECOVERY_MAX_POLL_MS = 15_000;
+
+/** When a join stops looking instant, so the UI can say so instead of spinning in silence. */
+const JOIN_SLOW_AFTER_MS = 8_000;
+
+/**
+ * What to tell someone whose join did not work.
+ *
+ * The timeout case is worth separating even here, at the end of the recovery window: the join may
+ * genuinely still be running (the window is a budget, not a guarantee), so "try again" is better
+ * advice than it sounds — a second attempt costs nothing once the dataset exists, because the
+ * backend returns the one it already made.
+ */
+function joinErrorMessage(error: unknown): string {
+  const raw = error instanceof Error ? error.message : String(error);
+  if (/timed out|timeout|\b408\b|websocket/i.test(raw)) {
+    return 'This is taking longer than expected. The space may still be joining in the background — try again in a minute.';
+  }
+  return "Couldn't join this space. Check the link and try again.";
+}
+
 export interface SpaceStore {
   // State
   memberDids: Accessor<string[]>;
@@ -206,6 +289,18 @@ export interface SpaceStore {
    */
   routeSpaceUnjoined: Accessor<boolean>;
   creatingSpace: Accessor<boolean>;
+  /**
+   * The space a join is running for right now — its shared id — or `''` when none is.
+   *
+   * The id rather than a boolean, so a list of spaces can put the spinner on the row being joined
+   * instead of on all of them. A gate, which only ever concerns one space, compares it against its
+   * own route segment.
+   */
+  joiningSpace: Accessor<string>;
+  /** That join has outlasted {@link JOIN_SLOW_AFTER_MS} and is still going — say so rather than spin. */
+  joinSlow: Accessor<boolean>;
+  /** Why the last join failed, ready to display, or `''`. Cleared when the next join starts. */
+  joinError: Accessor<string>;
   /** Sidebar entries in user-defined order — datasets decorated with Space name/avatar when
    * available, plus a virtual pre-join entry for the configured global space. */
   orderedSidebarItems: Accessor<
@@ -262,7 +357,11 @@ export interface SpaceStore {
     coverImageFile?: File,
     location?: LocationData | null,
   ) => Promise<void>;
-  /** Join a shared dataset. `focus` defaults to true; pass false to join without navigating to it. */
+  /**
+   * Join a shared dataset. `focus` defaults to true; pass false to join without navigating to it.
+   *
+   * Rejects when the join could not be completed, so a caller's `onSuccess` means what it says.
+   */
   joinSpace: (id: string, focus?: boolean) => Promise<void>;
   initializeAsWeSpace: (name: string, description: string, avatarValue?: File | string | null) => Promise<Space>;
   /** Remove a space: clears its global-discovery listing (when authored by this agent) and
@@ -336,6 +435,21 @@ export function SpaceStoreProvider(props: ParentProps) {
 
   const [mySpaces, setMySpaces] = createSignal<Space[]>([]);
   const [creatingSpace, setCreatingSpace] = createSignal(false);
+
+  const [joiningSpace, setJoiningSpace] = createSignal('');
+  const [joinSlow, setJoinSlow] = createSignal(false);
+  const [joinError, setJoinError] = createSignal('');
+
+  /**
+   * Joins running right now, keyed by shared id.
+   *
+   * Two clicks on the same space must not become two joins. The backend deduplicates by looking for
+   * a dataset it has already made for that address — which is no help at all while the first join is
+   * still *making* one, the window where a second attempt is most likely: it is exactly when the
+   * first is slow enough to look stuck. Two joins racing that far apart fork the address into two
+   * datasets, and nothing afterwards can tell which one the space is in.
+   */
+  const joinsInFlight = new Map<string, Promise<void>>();
 
   // Derived: personal and shared spaces.
   //
@@ -735,42 +849,123 @@ export function SpaceStoreProvider(props: ParentProps) {
     }
 
     // If already joined locally (by local id, shared id, or full URI), just focus the dataset.
-    const existing = datasetStore.datasets().find((d) => d.id === id || d.sharedId === id || d.sharedUri === id);
+    const existing = datasetStore.datasets().find((d) => datasetAnswersTo(d, id));
     if (existing) {
       if (focus) await datasetStore.switchDataset(existing.id);
       return;
     }
 
+    // Already joining this one — wait on that rather than starting a second. `focus` is answered
+    // here rather than shared with the first caller, because the two can disagree: the marketplace
+    // joins without moving you, and a gate for the same space would still owe you the move.
+    const key = sharedIdOf(id);
+    const inFlight = joinsInFlight.get(key);
+    if (inFlight) {
+      await inFlight;
+      if (focus) {
+        const joined = datasetStore.datasets().find((d) => datasetAnswersTo(d, id));
+        if (joined) await datasetStore.switchDataset(joined.id);
+      }
+      return;
+    }
+
+    const run = runJoin(id, key, focus).finally(() => joinsInFlight.delete(key));
+    joinsInFlight.set(key, run);
+    return run;
+  }
+
+  /**
+   * Everything a join is for, once the dataset itself exists.
+   *
+   * Split out because the dataset can arrive two ways — the join call returning it, or the backend
+   * finishing a join this client already stopped waiting for — and both owe the app the same work.
+   * It used to live inline after the call, which is why a transport timeout skipped all of it: the
+   * space was joined, and none of the things that make a joined space usable had happened.
+   */
+  async function finishJoin(joinedRef: DatasetRef, focus: boolean): Promise<void> {
+    const joinedHandle = joinedRef.handle as DatasetProxy;
+
+    // Install WE SDNA so Space, SignalType, CollectionBlock etc. are queryable
+    // immediately. installSpace diffs against the dataset's actual state before writing,
+    // so this is safe to call unconditionally even when the space's creator or an earlier
+    // joiner already installed it — it won't write a duplicate copy.
+    const joinSchemas = session.backendPorts()!.schemas;
+    await joinSchemas.installSpace(joinedHandle, moduleRegistry.moduleSchemas(joinSchemas));
+
+    // Track locally so gates derived from the dataset list (marketplaceJoined, the sidebar,
+    // the seed-configured global/marketplace slots) update with the join.
+    await datasetStore.trackDataset(joinedRef);
+
+    // Load the Space model and push into mySpaces so the sidebar shows the correct
+    // name immediately, without requiring a reboot.
+    const joinedSpaceModel = joinedRef.sharedId
+      ? await Space.findOne(joinedHandle, { where: { url: joinedRef.sharedId } }).catch(() => null)
+      : null;
+    if (joinedSpaceModel && !mySpaces().some((s) => s.url === joinedSpaceModel.url)) {
+      setMySpaces((prev) => [...prev, joinedSpaceModel]);
+    }
+
+    if (focus) await datasetStore.switchDataset(joinedRef.id);
+    console.log('SpaceStore: joined space', joinedRef.id);
+  }
+
+  /**
+   * Keep asking the backend whether the dataset turned up, for as long as it is worth asking.
+   *
+   * The recovery half of a join: see {@link JOIN_RECOVERY_WINDOW_MS} for why a failed call is not a
+   * failed join. Asks the backend rather than watching this store's own dataset list, because the
+   * list is fed by a change event and the whole point here is to not depend on any one message
+   * arriving — polling and the event both end at the same place, and either one alone is enough.
+   */
+  async function waitForJoinedDataset(id: string): Promise<DatasetRef | null> {
+    const lifecycle = session.lifecycle();
+    if (!lifecycle) return null;
+
+    const deadline = Date.now() + JOIN_RECOVERY_WINDOW_MS;
+    let wait = JOIN_RECOVERY_FIRST_POLL_MS;
+
+    while (Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, wait));
+      wait = Math.min(Math.round(wait * 1.5), JOIN_RECOVERY_MAX_POLL_MS);
+
+      const refs = await lifecycle.list().catch(() => null);
+      const match = refs?.find((ref) => datasetAnswersTo(ref, id));
+      if (match) return match;
+    }
+    return null;
+  }
+
+  /** One join attempt, start to finish. Owns the state a UI watches while it runs. */
+  async function runJoin(id: string, key: string, focus: boolean): Promise<void> {
+    const lifecycle = session.lifecycle()!;
+    setJoinError('');
+    setJoiningSpace(key);
+    setJoinSlow(false);
+    const slowTimer = setTimeout(() => setJoinSlow(true), JOIN_SLOW_AFTER_MS);
+
     console.log('SpaceStore: joining shared dataset', id);
     try {
-      // The adapter normalizes bare shared ids to its own URI scheme.
-      const joinedRef = await lifecycle.join(id);
-      const joinedHandle = joinedRef.handle as DatasetProxy;
-
-      // Install WE SDNA so Space, SignalType, CollectionBlock etc. are queryable
-      // immediately. installSpace diffs against the dataset's actual state before writing,
-      // so this is safe to call unconditionally even when the space's creator or an earlier
-      // joiner already installed it — it won't write a duplicate copy.
-      const joinSchemas = session.backendPorts()!.schemas;
-      await joinSchemas.installSpace(joinedHandle, moduleRegistry.moduleSchemas(joinSchemas));
-
-      // Track locally so gates derived from the dataset list (marketplaceJoined, the sidebar,
-      // the seed-configured global/marketplace slots) update with the join.
-      await datasetStore.trackDataset(joinedRef);
-
-      // Load the Space model and push into mySpaces so the sidebar shows the correct
-      // name immediately, without requiring a reboot.
-      const joinedSpaceModel = joinedRef.sharedId
-        ? await Space.findOne(joinedHandle, { where: { url: joinedRef.sharedId } }).catch(() => null)
-        : null;
-      if (joinedSpaceModel && !mySpaces().some((s) => s.url === joinedSpaceModel.url)) {
-        setMySpaces((prev) => [...prev, joinedSpaceModel]);
+      let joinedRef: DatasetRef | null = null;
+      try {
+        // The adapter normalizes bare shared ids to its own URI scheme.
+        joinedRef = await lifecycle.join!(joinTargetOf(id));
+      } catch (error) {
+        // The call gave up; the backend very likely did not. Keep watching before believing it.
+        joinedRef = await waitForJoinedDataset(id);
+        if (!joinedRef) throw error;
+        console.warn('SpaceStore: the join call failed but the backend finished the join anyway', error);
       }
-
-      if (focus) await datasetStore.switchDataset(joinedRef.id);
-      console.log('SpaceStore: joined space', joinedRef.id);
+      await finishJoin(joinedRef, focus);
     } catch (error) {
       console.error('SpaceStore: joinSpace error', error);
+      setJoinError(joinErrorMessage(error));
+      // Rethrown rather than swallowed: every caller has an `onSuccess` that navigates somewhere or
+      // clears an input, and a swallowed failure fired all of them as though the join had worked.
+      throw error;
+    } finally {
+      clearTimeout(slowTimer);
+      setJoiningSpace('');
+      setJoinSlow(false);
     }
   }
 
@@ -1558,6 +1753,9 @@ export function SpaceStoreProvider(props: ParentProps) {
     spaceList,
     routeSpaceUnjoined,
     creatingSpace,
+    joiningSpace,
+    joinSlow,
+    joinError,
     orderedSidebarItems,
     enabledModules,
     installedModules,
