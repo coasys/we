@@ -1172,6 +1172,8 @@ CollectionBlock extends WeNode:
   - editorState: string = null [we://editor_state]
   - type: string [we://type]
   - kind: string [we://kind]
+  - title: string [we://title]
+  - description: string [we://description]
   - display: string [we://display]
   - direction: string [we://direction]
   - format: string [we://format]
@@ -1690,7 +1692,7 @@ SpaceStore:
   - removeSpace(uuid: string): removes a space — clears its global-discovery listing (when authored by this agent) and removes the backing dataset
   - createPost(editorState: unknown): creates a new post
   - updatePost(postId: string, editorState: unknown): reconciles an edited post against its existing blocks — updates/reuses blocks whose id survived the edit, creates new ones, deletes ones no longer present
-  - deletePost(postId: string): permanently deletes a post and all of its contained blocks (recursive, atomic)
+  - deleteCollection(collectionId: string): permanently deletes a CollectionBlock and everything inside it, recursively. Kind-agnostic — a post, a call record and a notes collection are the same shape, so this is the one delete for all of them
   - updateSpaceImage(field: "avatar" | "coverImage", imageFile: File, spaceUuid?): uploads and sets the space avatar or cover image
   - updateSpaceMeta(updates: { name?, description?, discovery?, location? }, spaceUuid?): updates the space everyone sees. Omit spaceUuid to target the space on screen; pass one to configure a space from the spaces list without navigating to it
   - setSpaceDefaultTemplate(templateId: string, spaceUuid?): sets the template members see when they enter that space. Only repaints the app when the target is the space currently on screen

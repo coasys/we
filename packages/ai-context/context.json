@@ -4211,6 +4211,18 @@
           "required": false
         },
         {
+          "name": "title",
+          "type": "string",
+          "predicate": "we://title",
+          "required": false
+        },
+        {
+          "name": "description",
+          "type": "string",
+          "predicate": "we://description",
+          "required": false
+        },
+        {
           "name": "display",
           "type": "string",
           "predicate": "we://display",
@@ -6156,7 +6168,7 @@
         "removeSpace",
         "createPost",
         "updatePost",
-        "deletePost",
+        "deleteCollection",
         "updateSpaceImage",
         "updateSpaceMeta",
         "setSpaceDefaultTemplate",

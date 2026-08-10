@@ -343,7 +343,7 @@ export const storeEntries: StoreEntry[] = [
       'removeSpace',
       'createPost',
       'updatePost',
-      'deletePost',
+      'deleteCollection',
       'updateSpaceImage',
       'updateSpaceMeta',
       'setSpaceDefaultTemplate',
@@ -754,7 +754,8 @@ export function generateStoresText(entries: StoreEntry[]): string {
         createPost: '(editorState: unknown): creates a new post',
         updatePost:
           '(postId: string, editorState: unknown): reconciles an edited post against its existing blocks — updates/reuses blocks whose id survived the edit, creates new ones, deletes ones no longer present',
-        deletePost: '(postId: string): permanently deletes a post and all of its contained blocks (recursive, atomic)',
+        deleteCollection:
+          '(collectionId: string): permanently deletes a CollectionBlock and everything inside it, recursively. Kind-agnostic — a post, a call record and a notes collection are the same shape, so this is the one delete for all of them',
         updateSpaceImage:
           '(field: "avatar" | "coverImage", imageFile: File, spaceUuid?): uploads and sets the space avatar or cover image',
         createSignalType:

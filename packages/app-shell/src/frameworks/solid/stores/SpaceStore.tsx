@@ -270,7 +270,15 @@ export interface SpaceStore {
   removeSpace: (uuid: string) => Promise<void>;
   createPost: (json: unknown) => Promise<void>;
   updatePost: (postId: string, json: unknown) => Promise<void>;
-  deletePost: (postId: string) => Promise<void>;
+  /**
+   * Delete a `CollectionBlock` and everything inside it, recursively.
+   *
+   * Named for the collection rather than the post because the operation never knew the difference:
+   * it is `deleteBlocks` on a root id, and a call record, a notes collection and a post are the same
+   * shape. It was `deletePost`, which meant a second surface wanting this had to either call an
+   * action named for somebody else's noun or duplicate it.
+   */
+  deleteCollection: (collectionId: string) => Promise<void>;
   /** Every space-scoped write takes an optional target uuid; omitted means the space on screen. */
   updateSpaceImage: (field: 'avatar' | 'coverImage', imageFile: File, spaceUuid?: string) => Promise<void>;
   updateSpaceMeta: (updates: SpaceMetaUpdate, spaceUuid?: string) => Promise<void>;
@@ -843,10 +851,10 @@ export function SpaceStoreProvider(props: ParentProps) {
     await reconcileBlocks(p, existingRoot, json);
   }
 
-  async function deletePost(postId: string): Promise<void> {
+  async function deleteCollection(collectionId: string): Promise<void> {
     const p = datasetStore.currentDataset()?.handle;
     if (!p) return;
-    await deleteBlocks(p, postId);
+    await deleteBlocks(p, collectionId);
   }
 
   async function navigateToSpace(spaceId: string, view?: string): Promise<void> {
@@ -1569,7 +1577,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     removeSpace,
     createPost,
     updatePost,
-    deletePost,
+    deleteCollection,
     updateSpaceImage,
     updateSpaceMeta,
     setSpaceDefaultTemplate,
