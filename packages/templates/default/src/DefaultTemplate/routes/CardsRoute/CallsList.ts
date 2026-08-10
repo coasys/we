@@ -46,6 +46,7 @@ export const callsList: SchemaNode = {
           cardShell({
             localState: {
               confirmDeleteOpen: { type: 'boolean', initial: false },
+              deleting: { type: 'boolean', initial: false },
               editOpen: { type: 'boolean', initial: false },
               titleDraft: { type: 'string', initial: '$call.title' },
               descriptionDraft: { type: 'string', initial: '$call.description' },
@@ -315,14 +316,34 @@ export const callsList: SchemaNode = {
                                     type: 'we-button',
                                     props: {
                                       variant: 'danger',
+                                      /*
+                                        The delete is not instant — it walks the collection and
+                                        removes every utterance under it, so a long transcript
+                                        takes a visible moment. Without a spinner the button
+                                        absorbs the click and nothing happens, which reads as a
+                                        failure and invites a second click at a delete that is
+                                        already running.
+
+                                        `deleting` is cleared in `onFinally` rather than
+                                        `onError`: on the success path the card unmounts with the
+                                        record, so the only state worth restoring is the one where
+                                        it did not, and a failure that left the button spinning
+                                        forever would be the worse end of that trade.
+                                      */
+                                      loading: { $local: 'deleting' },
+                                      disabled: { $local: 'deleting' },
                                       // The generic collection delete: a call record is a
                                       // CollectionBlock like a post, and the recursive delete does
                                       // not care which kind it is holding.
-                                      onClick: {
-                                        $action: 'spaceStore.deleteCollection',
-                                        args: ['$call.id'],
-                                        onSuccess: [{ $setLocal: 'confirmDeleteOpen', value: false }],
-                                      },
+                                      onClick: [
+                                        { $setLocal: 'deleting', value: true },
+                                        {
+                                          $action: 'spaceStore.deleteCollection',
+                                          args: ['$call.id'],
+                                          onSuccess: [{ $setLocal: 'confirmDeleteOpen', value: false }],
+                                          onFinally: [{ $setLocal: 'deleting', value: false }],
+                                        },
+                                      ],
                                     },
                                     children: ['Delete'],
                                   },
