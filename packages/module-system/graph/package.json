@@ -1,0 +1,40 @@
+{
+  "name": "@we/module-graph",
+  "version": "0.1.0",
+  "description": "Graph feature module — a general-purpose graph engine with pluggable expanders, layouts and behaviours",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "build:steps": "tsup",
+    "build": "we-build",
+    "dev": "tsup --watch"
+  },
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "peerDependencies": {
+    "@we/module-shared": "workspace:*",
+    "@we/schema-shared": "workspace:*"
+  },
+  "devDependencies": {
+    "@we/cli": "workspace:*",
+    "@we/module-shared": "workspace:*",
+    "@we/schema-shared": "workspace:*",
+    "tsup": "^8.0.0",
+    "typescript": "^5.3.3"
+  },
+  "context": {
+    "type": "plugins",
+    "src": "src/catalog.ts"
+  },
+  "sideEffects": false
+}
