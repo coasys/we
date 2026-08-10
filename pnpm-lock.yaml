@@ -364,6 +364,12 @@ importers:
       '@we/globe-widget':
         specifier: workspace:*
         version: link:../module-system/globe/widget
+      '@we/graph-protocol':
+        specifier: workspace:*
+        version: link:../graph-system/protocol
+      '@we/graph-solid':
+        specifier: workspace:*
+        version: link:../graph-system/frameworks/solid
       '@we/models':
         specifier: workspace:*
         version: link:../models
@@ -373,6 +379,9 @@ importers:
       '@we/module-globe':
         specifier: workspace:*
         version: link:../module-system/globe/module
+      '@we/module-graph':
+        specifier: workspace:*
+        version: link:../module-system/graph
       '@we/module-notes':
         specifier: workspace:*
         version: link:../module-system/notes
@@ -871,6 +880,134 @@ importers:
         specifier: ^4.0.15
         version: 4.1.10(@types/node@24.13.2)(@vitest/coverage-v8@4.1.10)(happy-dom@20.10.6)(jsdom@27.4.0)(vite@7.3.6(@types/node@24.13.2)(sass@1.101.0)(tsx@4.23.0)(yaml@2.9.0))
 
+  packages/graph-system/core:
+    devDependencies:
+      '@types/node':
+        specifier: ^24.10.0
+        version: 24.13.2
+      '@we/cli':
+        specifier: workspace:*
+        version: link:../../cli
+      '@we/graph-protocol':
+        specifier: workspace:*
+        version: link:../protocol
+      tsup:
+        specifier: ^8.5.1
+        version: 8.5.1(postcss@8.5.16)(tsx@4.23.0)(typescript@5.9.3)(yaml@2.9.0)
+      typescript:
+        specifier: ^5.3.3
+        version: 5.9.3
+      vitest:
+        specifier: ^4.0.15
+        version: 4.1.10(@types/node@24.13.2)(@vitest/coverage-v8@4.1.10)(happy-dom@20.10.6)(jsdom@27.4.0)(vite@7.3.6(@types/node@24.13.2)(sass@1.101.0)(tsx@4.23.0)(yaml@2.9.0))
+
+  packages/graph-system/expanders:
+    devDependencies:
+      '@types/node':
+        specifier: ^24.10.0
+        version: 24.13.2
+      '@we/cli':
+        specifier: workspace:*
+        version: link:../../cli
+      '@we/graph-protocol':
+        specifier: workspace:*
+        version: link:../protocol
+      tsup:
+        specifier: ^8.5.1
+        version: 8.5.1(postcss@8.5.16)(tsx@4.23.0)(typescript@5.9.3)(yaml@2.9.0)
+      typescript:
+        specifier: ^5.3.3
+        version: 5.9.3
+      vitest:
+        specifier: ^4.0.15
+        version: 4.1.10(@types/node@24.13.2)(@vitest/coverage-v8@4.1.10)(happy-dom@20.10.6)(jsdom@27.4.0)(vite@7.3.6(@types/node@24.13.2)(sass@1.101.0)(tsx@4.23.0)(yaml@2.9.0))
+
+  packages/graph-system/frameworks/solid:
+    dependencies:
+      '@we/graph-core':
+        specifier: workspace:*
+        version: link:../../core
+      '@we/graph-expanders':
+        specifier: workspace:*
+        version: link:../../expanders
+      '@we/graph-layouts':
+        specifier: workspace:*
+        version: link:../../layouts
+    devDependencies:
+      '@we/cli':
+        specifier: workspace:*
+        version: link:../../../cli
+      '@we/design-utils':
+        specifier: workspace:*
+        version: link:../../../design-system/utils
+      '@we/graph-protocol':
+        specifier: workspace:*
+        version: link:../../protocol
+      esbuild-plugin-solid:
+        specifier: ^0.6.0
+        version: 0.6.0(esbuild@0.28.1)(solid-js@1.9.14)
+      sass:
+        specifier: ^1.92.1
+        version: 1.101.0
+      solid-js:
+        specifier: ^1.9.5
+        version: 1.9.14
+      tsup:
+        specifier: ^8.5.1
+        version: 8.5.1(postcss@8.5.16)(tsx@4.23.0)(typescript@5.9.3)(yaml@2.9.0)
+      typescript:
+        specifier: ^5.3.3
+        version: 5.9.3
+      vitest:
+        specifier: ^4.0.15
+        version: 4.1.10(@types/node@24.13.2)(@vitest/coverage-v8@4.1.10)(happy-dom@20.10.6)(jsdom@27.4.0)(vite@7.3.6(@types/node@24.13.2)(sass@1.101.0)(tsx@4.23.0)(yaml@2.9.0))
+
+  packages/graph-system/layouts:
+    dependencies:
+      d3-force:
+        specifier: ^3.0.0
+        version: 3.0.0
+    devDependencies:
+      '@types/d3-force':
+        specifier: ^3.0.10
+        version: 3.0.10
+      '@types/node':
+        specifier: ^24.10.0
+        version: 24.13.2
+      '@we/cli':
+        specifier: workspace:*
+        version: link:../../cli
+      '@we/graph-protocol':
+        specifier: workspace:*
+        version: link:../protocol
+      tsup:
+        specifier: ^8.5.1
+        version: 8.5.1(postcss@8.5.16)(tsx@4.23.0)(typescript@5.9.3)(yaml@2.9.0)
+      typescript:
+        specifier: ^5.3.3
+        version: 5.9.3
+      vitest:
+        specifier: ^4.0.15
+        version: 4.1.10(@types/node@24.13.2)(@vitest/coverage-v8@4.1.10)(happy-dom@20.10.6)(jsdom@27.4.0)(vite@7.3.6(@types/node@24.13.2)(sass@1.101.0)(tsx@4.23.0)(yaml@2.9.0))
+
+  packages/graph-system/protocol:
+    devDependencies:
+      '@types/node':
+        specifier: ^24.10.0
+        version: 24.13.2
+      '@we/cli':
+        specifier: workspace:*
+        version: link:../../cli
+      tsup:
+        specifier: ^8.5.1
+        version: 8.5.1(postcss@8.5.16)(tsx@4.23.0)(typescript@5.9.3)(yaml@2.9.0)
+      typescript:
+        specifier: ^5.3.3
+        version: 5.9.3
+      vitest:
+        specifier: ^4.0.15
+        version: 4.1.10(@types/node@24.13.2)(@vitest/coverage-v8@4.1.10)(happy-dom@20.10.6)(jsdom@27.4.0)(vite@7.3.6(@types/node@24.13.2)(sass@1.101.0)(tsx@4.23.0)(yaml@2.9.0))
+
   packages/models:
     dependencies:
       '@coasys/ad4m':
@@ -994,6 +1131,24 @@ importers:
       solid-js:
         specifier: ^1.9.5
         version: 1.9.14
+
+  packages/module-system/graph:
+    devDependencies:
+      '@we/cli':
+        specifier: workspace:*
+        version: link:../../cli
+      '@we/module-shared':
+        specifier: workspace:*
+        version: link:../shared
+      '@we/schema-shared':
+        specifier: workspace:*
+        version: link:../../schema-system/shared
+      tsup:
+        specifier: ^8.0.0
+        version: 8.5.1(postcss@8.5.16)(tsx@4.23.0)(typescript@5.9.3)(yaml@2.9.0)
+      typescript:
+        specifier: ^5.3.3
+        version: 5.9.3
 
   packages/module-system/notes:
     dependencies:
