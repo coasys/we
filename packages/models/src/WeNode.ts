@@ -23,6 +23,13 @@ export class WeNode extends Ad4mModel {
    * point at, and profiles are already resolved separately (see `spaceStore.members` feeding
    * `AvatarStack`). Add-only in practice — each agent appends itself — which is what makes it
    * conflict-free without coordination.
+   *
+   * **One writer per member, and that is a contract rather than an observation.** This is a bag of
+   * links: nothing here can refuse one that is already present, because refusing would mean reading
+   * the current set first and a read-modify-write drops whoever loses the race. So it is a set only
+   * for as long as each agent writes its own entry and nobody else's. A writer that appends every
+   * member it can see turns it into a multiset that grows with every session — which is what the
+   * transcribe module used to do, and why an avatar row drew the same two faces over and over.
    */
   @HasMany({ through: 'we://participants' })
   participants: string[] = [];

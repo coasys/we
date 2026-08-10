@@ -198,8 +198,13 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
    * point of the collection is that a call has one.
    */
   let collectionCallId: string | null = null;
-  /** Agents already appended to the collection's `participants`, so each is written once. */
-  let recordedParticipants = new Set<string>();
+  /**
+   * Records this agent has already added itself to, so it is written once per transcript.
+   *
+   * Keyed on the collection rather than on the agents seen — see `recordSelfParticipation` for why
+   * that key, and why the set is never cleared when a call ends.
+   */
+  const recordedParticipants = new Set<string>();
   /** Guards the create, so two flushes racing at the start cannot produce two collections. */
   let creating: Promise<string | null> | null = null;
   /**
@@ -212,6 +217,15 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
   let deferredSince: number | null = null;
   /** Peers this agent has already been offered, so a dismissed prompt stays dismissed. */
   const [dismissedInvites, setDismissedInvites] = signal<string[]>([]);
+  /**
+   * A record this agent has been asked to continue, held until there is a call to continue it in.
+   *
+   * Deferred rather than applied on the spot because the two halves of "continue this call" cannot
+   * be sequenced from a schema: joining is fire-and-forget — `joinSpaceCall` returns nothing, so an
+   * `onSuccess` never fires — and it publishes the call activity several awaits deep. Pinning
+   * immediately would therefore land before there was any call to pin to, and be dropped.
+   */
+  const [pendingResume, setPendingResume] = signal<string>('');
 
   let context: AudioContext | null = null;
   let node: AudioWorkletNode | null = null;
@@ -308,29 +322,47 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
   }
 
   /**
-   * Append an agent to the call's roster, once each.
+   * Put *this* agent on the call's roster, once per record.
    *
-   * Add-one rather than rewriting the list: several agents append concurrently with no coordination,
-   * and a read-modify-write would drop whoever lost the race. Recorded even for agents who are not
-   * transcribing, because the point of the list is *coverage* — a transcript that can show who was
-   * present but silent is worth much more than one that quietly looks complete.
+   * ## Why only itself
+   *
+   * `participants` is a `@HasMany` — a bag of links, not a set. Nothing at the storage layer can
+   * refuse a link that is already there, and deliberately so: the alternative is a read-modify-write
+   * that drops whoever loses the race. So the only way the relation becomes a set is if there is
+   * exactly one writer per member, and the one writer who can never be raced about an agent's
+   * presence is that agent.
+   *
+   * It used to append *everyone it could see*, from every agent that was recording. That is N writes
+   * per person rather than one, it repeats on every session that resets the guard, and it grew
+   * without bound: a two-person call carried each of them several times over, and the avatar row
+   * drew a wall of the same two faces. Deduplicating at the point of drawing hid it; it did not stop
+   * `$count` — or anything else that reads the relation — from being wrong.
+   *
+   * ## Why coverage survives
+   *
+   * The point of the roster is *coverage*: a transcript that shows somebody was present but silent
+   * is worth much more than one that quietly looks complete. Appending only yourself would lose that
+   * if it were tied to speaking — so it is not. The effect below runs for any agent in the call once
+   * a record exists, whether or not they are recording and whether or not they ever say anything,
+   * because the record's id is published on presence for everyone to read.
+   *
+   * ## Why the guard is keyed on the record
+   *
+   * Not on the call, which is derived from the space and so is the same id forever, and not cleared
+   * when a call ends — an agent who leaves and rejoins the same conversation would otherwise append
+   * itself a second time. Keyed on the collection, the answer to "have I already said I was here"
+   * stays right across every leave and rejoin within a session.
    */
-  async function recordParticipants(collection: string, callId: string): Promise<void> {
-    if (!linkEntity || !presence) return;
-    const inCall = activitiesOfType(presence.peers(), 'call')
-      .filter(({ activity }) => activity.id === callId)
-      .map(({ peer }) => peer.agentId);
-
-    for (const agentId of inCall) {
-      if (recordedParticipants.has(agentId)) continue;
-      recordedParticipants.add(agentId);
-      try {
-        await linkEntity('CollectionBlock', collection, 'participants', agentId);
-      } catch (cause) {
-        // Let it be retried on the next flush rather than losing the agent from the roster forever.
-        recordedParticipants.delete(agentId);
-        console.error('transcribe: could not record participant', cause);
-      }
+  async function recordSelfParticipation(collection: string): Promise<void> {
+    const me = selfId?.() ?? null;
+    if (!linkEntity || !me || recordedParticipants.has(collection)) return;
+    recordedParticipants.add(collection);
+    try {
+      await linkEntity('CollectionBlock', collection, 'participants', me);
+    } catch (cause) {
+      // Let it be retried rather than losing this agent from the roster for the rest of the call.
+      recordedParticipants.delete(collection);
+      console.error('transcribe: could not record participation', cause);
     }
   }
 
@@ -382,7 +414,6 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
     creating = (async () => {
       // A different call from the one the current record belongs to — start clean rather than
       // appending this meeting's words to the last one's transcript.
-      if (collectionCallId !== call.id) recordedParticipants = new Set();
 
       const adopted = announcedCollection(call.id);
       if (adopted) {
@@ -449,7 +480,7 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
       // up once per attempt.
       setRecent([text, ...recent()].slice(0, 20));
       const call = myCall();
-      if (call) await recordParticipants(slot.id, call.id);
+      await recordSelfParticipation(slot.id);
     } catch (cause) {
       // Reported but not surfaced as a failed state: the transcript continues, and losing one block
       // is better than stopping a call's transcription over a single write.
@@ -609,13 +640,58 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
    * make: leaving is what ends a transcript, and withdrawing the claim as we go stops a peer still in
    * the space from adopting a collection nobody is writing to.
    */
+  /**
+   * Take up a record somebody asked to continue, once there is a call to continue it in.
+   *
+   * This is the whole of "continue this call". A transcript's record is otherwise reachable only
+   * while somebody who was in the call is still publishing a claim to it, so once everyone has left
+   * it can never be added to again — which is the correct default, since the next conversation in
+   * that space is a different meeting, but leaves no way back into one that ended by accident.
+   *
+   * Announcing it is what makes this converge for everyone else: peers adopt an announced record in
+   * preference to creating one, so a single agent pressing Continue is enough to pull the whole call
+   * back onto the old transcript.
+   *
+   * Deliberately does not start recording. Continuing a call is a decision about *which record* the
+   * words go into; whether this agent's microphone is producing any is a separate decision, and the
+   * same one the join prompt refuses to take on someone's behalf.
+   */
+  /**
+   * Say "I was here" as soon as there is a transcript to say it on.
+   *
+   * This is what keeps the roster about *presence* rather than about contribution, now that each
+   * agent writes only its own entry. It is deliberately not tied to recording or to speaking: the
+   * record's id is published on presence by whoever owns it, so any agent in the call can read it
+   * and add itself — including one who never turns transcription on and never says a word, which is
+   * exactly the participant a transcript would otherwise quietly omit.
+   *
+   * Reactive on the roster, so an agent who joins a call already in progress lands here on the next
+   * heartbeat rather than only if somebody happens to speak afterwards.
+   */
+  effect?.(() => {
+    const call = myCall();
+    if (!call) return;
+    const collection = collectionId() ?? announcedCollection(call.id);
+    if (collection) void recordSelfParticipation(collection);
+  });
+
+  effect?.(() => {
+    const wanted = pendingResume();
+    const call = myCall();
+    if (!wanted || !call) return;
+    setPendingResume('');
+    setCollectionId(wanted);
+    collectionCallId = call.id;
+    deferredSince = null;
+    announce(call.id, enabled(), wanted);
+  });
+
   effect?.(() => {
     const current = myCall()?.id ?? null;
     if (!collectionCallId || current === collectionCallId) return;
     presence?.clearActivity(TRANSCRIBE_ACTIVITY);
     setCollectionId(null);
     collectionCallId = null;
-    recordedParticipants = new Set();
     // Both belong to the call that just ended: an election deferred in it must not bound the wait in
     // the next one, and a prompt dismissed in it should not silence the next call's.
     deferredSince = null;
@@ -649,6 +725,10 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
     if (!dataset?.()) {
       setEnabled(false);
       if (context) void stop();
+      // A Continue that never reached a call goes with the space it was pressed in. Held, it would
+      // wait indefinitely and then attach that space's old transcript to whatever call happened to
+      // start next — the request is only meaningful for the join it was pressed to accompany.
+      setPendingResume('');
     }
   });
 
@@ -763,6 +843,16 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
      * Per peer rather than per call: someone else starting later is a new thing to be told about,
      * and a single dismissal should not silence the rest of the call.
      */
+    /**
+     * Continue an existing call's transcript rather than starting a new one.
+     *
+     * Takes the record's own id, not a call id: the call id a space-wide call publishes is derived
+     * from the space and never changes, so it identifies the *place* calls happen rather than any
+     * one of them, and could not tell this morning's meeting from this afternoon's.
+     *
+     * Applied when there is a call to apply it to — see the effect that consumes it.
+     */
+    resume: (collection: string) => setPendingResume(collection ?? ''),
     dismissInvite: () => {
       const call = myCall();
       if (!call) return;

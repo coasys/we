@@ -227,14 +227,16 @@ describe('agreeing on one record', () => {
 });
 
 describe('the roster', () => {
-  it('records everyone in the call, not only whoever is transcribing', async () => {
-    // Coverage is the point: transcription is opt-in and hears only its own microphone, so a partial
-    // record is normal. Deriving participants from block authors would show who *contributed* and
-    // quietly lose the fact that anyone else was there.
+  it('writes only its own entry, however many people are in the call', async () => {
+    // `participants` is a bag of links, not a set — nothing at the storage layer can refuse a
+    // duplicate, and a read-modify-write would drop whoever lost the race. One writer per member is
+    // the only thing that makes it a set, and the writer who can never be raced about an agent's
+    // presence is that agent. Appending everyone it could see is what filled a two-person call's
+    // avatar row with the same two faces over and over.
     const h = harness([peer(ME, { type: 'call', id: 'space:uri' }), peer(THEM, { type: 'call', id: 'space:uri' })]);
     await h.say('hello');
 
-    expect(h.linked.map((l) => l.value).sort()).toEqual([ME, THEM].sort());
+    expect(h.linked.map((l) => l.value)).toEqual([ME]);
     expect(h.linked[0]).toMatchObject({ entity: 'CollectionBlock', id: 'id-1', relation: 'participants' });
   });
 
@@ -247,15 +249,41 @@ describe('the roster', () => {
     expect(h.linked).toHaveLength(1);
   });
 
-  it('picks up someone who joins after the recording started', async () => {
-    const h = harness([peer(ME, { type: 'call', id: 'space:uri' })]);
-    await h.say('alone so far');
+  it('adds itself to a record it has never written to, so a silent participant still appears', async () => {
+    // Coverage is the point of the roster, and writing only your own entry would lose it if it were
+    // tied to speaking. It is not: the record's id is published on presence, so an agent who never
+    // turns transcription on and never says a word still reads it and puts itself on the list.
+    const h = harness([
+      peer(ME, { type: 'call', id: 'space:uri' }),
+      peer(
+        THEM,
+        { type: 'call', id: 'space:uri' },
+        { type: TRANSCRIBE_ACTIVITY, id: 'space:uri', collection: 'theirs' },
+      ),
+    ]);
+
+    expect(h.created).toHaveLength(0);
+    expect(h.linked).toEqual([{ entity: 'CollectionBlock', id: 'theirs', relation: 'participants', value: ME }]);
+  });
+
+  it('does not add itself again when it leaves and rejoins the same call', async () => {
+    // The guard is keyed on the record rather than the call, and never cleared when a call ends —
+    // keyed on the call, or reset on leave, a rejoin appends a second copy of the same person.
+    const inCallWithClaim = [
+      peer(ME, { type: 'call', id: 'space:uri' }),
+      peer(
+        THEM,
+        { type: 'call', id: 'space:uri' },
+        { type: TRANSCRIBE_ACTIVITY, id: 'space:uri', collection: 'theirs' },
+      ),
+    ];
+    const h = harness(inCallWithClaim);
     expect(h.linked).toHaveLength(1);
 
-    h.setPeers([peer(ME, { type: 'call', id: 'space:uri' }), peer(THEM, { type: 'call', id: 'space:uri' })]);
-    await h.say('someone arrived');
+    h.setPeers([peer(ME)]);
+    h.setPeers(inCallWithClaim);
 
-    expect(h.linked.map((l) => l.value)).toContain(THEM);
+    expect(h.linked).toHaveLength(1);
   });
 });
 
@@ -388,5 +416,55 @@ describe('electing a creator', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+/**
+ * Picking a call back up after it ended.
+ *
+ * Once everyone has left, nobody publishes a claim to the record any more and it becomes
+ * unreachable — correct, since the next conversation in a space is a different meeting, but it
+ * leaves no way back into one that ended by accident.
+ */
+describe('continuing a call', () => {
+  it('writes into the record it was handed rather than creating one', async () => {
+    const h = harness([peer(ME, { type: 'call', id: 'space:uri' })]);
+    h.store.resume('the-old-record');
+    // The pin lands on the effect that watches for a call, the way it would after joining one.
+    h.setPeers([peer(ME, { type: 'call', id: 'space:uri' })]);
+    await h.say('picking this back up');
+
+    expect(h.created.filter((c) => c.entity === 'CollectionBlock')).toHaveLength(0);
+    expect(h.created[0].options?.parent).toEqual({ id: 'the-old-record', predicate: 'we://children' });
+  });
+
+  it('announces the record it resumed, so the rest of the call converges on it too', async () => {
+    // One agent pressing Continue has to be enough: everybody else adopts an announced record in
+    // preference to creating one, which is what pulls the whole call back onto the old transcript.
+    const h = harness([peer(ME, { type: 'call', id: 'space:uri' })]);
+    h.store.resume('the-old-record');
+    h.setPeers([peer(ME, { type: 'call', id: 'space:uri' })]);
+
+    expect(h.published).toContainEqual({
+      type: TRANSCRIBE_ACTIVITY,
+      id: 'space:uri',
+      recording: false,
+      collection: 'the-old-record',
+    });
+  });
+
+  it('holds the request until there is a call to apply it to', async () => {
+    // Joining is fire-and-forget and publishes the call activity several awaits deep, so a pin that
+    // insisted on a call being there already would land before one was and be dropped.
+    const h = harness([peer(ME)]);
+    h.store.resume('the-old-record');
+    await h.say('too early');
+    expect(h.created).toHaveLength(0);
+
+    h.setPeers([peer(ME, { type: 'call', id: 'space:uri' })]);
+    await h.say('now then');
+
+    expect(h.created.filter((c) => c.entity === 'CollectionBlock')).toHaveLength(0);
+    expect(h.created[0].options?.parent?.id).toBe('the-old-record');
   });
 });
