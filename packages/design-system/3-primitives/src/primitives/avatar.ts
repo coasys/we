@@ -23,7 +23,13 @@ const styles = css`
     --we-avatar-color: var(--we-color-black);
     --we-avatar-bg: var(--we-color-neutral-100);
   }
-  :host([src]) {
+  /* A picture covers the whole circle, so the disc behind it is only ever visible as a
+     rim at the image's antialiased edge — near-black in the dark themes, where
+     neutral-100 inverts. The disc exists for the identicon/initials/icon fallbacks, so
+     it is dropped only when there is an image to cover it. Matching on the attribute
+     alone is not enough: Lit reflects the empty default as an empty image attribute,
+     which would take the disc away from every fallback too. */
+  :host([image]:not([image=''])) {
     --we-avatar-bg: transparent;
   }
   :host([selected]) {

@@ -5,21 +5,25 @@ import { createMemo, For } from 'solid-js';
 import type { AvatarInfo, AvatarStackProps, AvatarTone } from './AvatarStack.types';
 
 /**
- * The default ring is not decoration — it is what separates overlapping avatars in the stack. So a
- * toned avatar swaps the ring's *colour* and never removes it; dropping it would let faces merge.
+ * There is no default ring. A ring reads as a deliberate mark — selection, presence, a tone — so a
+ * stack that paints one nobody asked for is making a claim about the avatars it does not have.
+ *
+ * It once defaulted to `neutral-0`, on the reasoning that overlapping faces need separating. That
+ * colour is only the surface colour on a surface that happens to be `neutral-0`; on any other card
+ * it is a visible band, and because the neutral scale inverts under the dark themes it landed at 8%
+ * lightness there — a black ring around every stacked avatar. Separation is the caller's call to
+ * make against the surface they know they are on: pass `ring`, or set `overlap: 0`.
  */
-const DEFAULT_RING = '0 0 0 2px var(--we-color-neutral-0, white)';
-
 const TONE_RING: Record<AvatarTone, string> = {
   success: '0 0 0 2px var(--we-color-success-500)',
   warning: '0 0 0 2px var(--we-color-warning-500)',
   danger: '0 0 0 2px var(--we-color-danger-500)',
   primary: '0 0 0 2px var(--we-color-primary-500)',
-  neutral: DEFAULT_RING,
+  neutral: '0 0 0 2px var(--we-color-neutral-500)',
 };
 
-function ringFor(avatar: AvatarInfo, fallback?: string): string {
-  return avatar.tone ? TONE_RING[avatar.tone] : (fallback ?? DEFAULT_RING);
+function ringFor(avatar: AvatarInfo, fallback?: string): string | undefined {
+  return avatar.tone ? TONE_RING[avatar.tone] : fallback;
 }
 
 export function AvatarStack(props: AvatarStackProps) {
