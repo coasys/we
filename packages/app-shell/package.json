@@ -45,6 +45,7 @@
     "@we/models": "workspace:*",
     "@we/module-call": "workspace:*",
     "@we/module-globe": "workspace:*",
+    "@we/module-graph": "workspace:*",
     "@we/module-notes": "workspace:*",
     "@we/primitives": "workspace:*",
     "@we/schema-shared": "workspace:*",
@@ -63,7 +64,9 @@
     "@we/template-default": "workspace:*",
     "@we/template-shell": "workspace:*",
     "@we/editor": "workspace:*",
-    "@we/globe-widget": "workspace:*"
+    "@we/globe-widget": "workspace:*",
+    "@we/graph-protocol": "workspace:*",
+    "@we/graph-solid": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",

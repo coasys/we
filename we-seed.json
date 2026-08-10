@@ -10,6 +10,7 @@
   },
   "modules": [
     "globe",
+    "graph",
     "notes",
     "call",
     "transcribe"

@@ -67,6 +67,9 @@ const CesiumGlobeOnDemand = lazy(async () => {
   };
 });
 
+/** The graph engine, its expanders, layouts and d3-force — loaded when a template first draws one. */
+const GraphViewOnDemand = lazy(() => import('../components/GraphHost'));
+
 /** One decorative component, and `three` behind it. */
 const WeCubeOnDemand = lazy(() => import('../components/3d/WeCube'));
 
@@ -111,6 +114,9 @@ export const componentRegistry: ComponentRegistry = {
   // the static registry stays the single source for what a template may name. When modules become
   // installable this entry comes from moduleRegistry.components() instead.
   CesiumGlobe: CesiumGlobeOnDemand,
+  // Contributed by @we/module-graph. Registered here for the same reason the globe is: this registry
+  // is the single source for what a template may name.
+  GraphView: GraphViewOnDemand,
   GraphWidget: (props) => <GraphWidget {...props} data={props.data || mockGraphData} />,
   SignalControl,
 
