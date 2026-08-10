@@ -59,6 +59,8 @@ export type {
   StoreEntry,
   StateMemberMeta,
   TokenCategory,
+  PluginCatalog,
+  PluginEntry,
 } from './contextTypes';
 
 export { validateSchema, validateSemantic, buildValidationContext } from './semanticValidation';

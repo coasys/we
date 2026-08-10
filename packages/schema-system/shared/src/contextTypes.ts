@@ -83,6 +83,35 @@ export interface TokenCategory {
 }
 
 /**
+ * One entry in a component's own plugin registry — a graph expander, a layout, a behaviour.
+ *
+ * Components with a sub-registry are otherwise invisible to schema authoring: their props document
+ * that a `layout.type` is a string, and nothing says which strings exist. The globe demonstrated the
+ * failure mode — its layer system is well-designed, and an LLM cannot author a globe template
+ * because no catalog of layer names ever reaches the context. A component that resolves plugins by
+ * name declares them here so the names are as documented as the props are.
+ */
+export interface PluginEntry {
+  /** The string a schema writes. */
+  id: string;
+  /** Which slot it plugs into — `layout`, `expander`, `seed`, `behaviour`, `metric`, … */
+  category: string;
+  description?: string;
+  /** Option names with a short note each, since options are free-form JSON. */
+  options?: { name: string; type: string; description?: string }[];
+  /** One worked snippet. Worth more than the option list for composing from. */
+  example?: string;
+}
+
+/** A component's plugin registry, as documented for schema authors. */
+export interface PluginCatalog {
+  /** The component whose props these names appear in. */
+  component: string;
+  description?: string;
+  plugins: PluginEntry[];
+}
+
+/**
  * The structured data needed for schema validation.
  * Serialized as `context.json` by @we/ai-context at build time.
  */
@@ -94,6 +123,8 @@ export interface ContextData {
   storeEntries: StoreEntry[];
   /** Shell/internal component names known to the validator but excluded from AI docs. */
   shellComponents?: string[];
+  /** Sub-registries a component resolves by name — see {@link PluginCatalog}. */
+  pluginCatalogs?: PluginCatalog[];
 }
 
 /** A partial context fragment that a single package exports at build time */
