@@ -48,6 +48,7 @@ import {
   peersInDataset,
   peerTone,
   sortByPresence,
+  trace,
 } from '@we/backend-shared';
 import {
   type Accessor,
@@ -57,6 +58,7 @@ import {
   createSignal,
   onCleanup,
   type ParentProps,
+  untrack,
   useContext,
 } from 'solid-js';
 
@@ -100,16 +102,52 @@ export function PresenceStoreProvider(props: ParentProps) {
   const routeStore = useRouteStore();
 
   const [rawPeers, setRawPeers] = createSignal<Peer[]>([]);
+  /**
+   * What this tab is participating in, by `type:id`.
+   *
+   * Tracked here rather than read back off the source because it decides something the source knows
+   * nothing about: whether this tab may be muted. Publishing is restricted to one tab per agent, and
+   * leadership follows window focus — so a tab holding a call would stop publishing the moment you
+   * looked at another window, and its call would vanish from every peer's roster while it was still
+   * running. `setPinned` exists for exactly that and had never been called.
+   */
+  const [myActivities, setMyActivities] = createSignal<string[]>([]);
+  const activityKey = (type: string, id?: string) => `${type}:${id ?? ''}`;
   const [focusDepth, setFocusDepth] = createSignal<FocusDepth>('route');
   const [availability, setAvailabilitySignal] = createSignal<'available' | 'busy' | 'away' | 'invisible'>('available');
   const [available, setAvailable] = createSignal(false);
 
   let source: PresenceSource | null = null;
 
-  // One coordinator for the app: only the focused tab publishes, but every tab subscribes so each
-  // one's UI stays live.
-  const tabs = createTabCoordinator();
-  onCleanup(() => tabs.dispose());
+  /**
+   * One coordinator per **agent**: only the focused tab publishes, but every tab subscribes so each
+   * one's UI stays live.
+   *
+   * Scoped to the DID rather than to the origin, which matters the moment two tabs are signed in as
+   * different agents — the ordinary way this gets developed and tested. Origin-wide, those two tabs
+   * contend for a single leadership that only one of them can hold, and the loser publishes nothing:
+   * one agent goes entirely silent, and because leadership follows window focus it is whichever
+   * agent you are not looking at. Peers then see stale state until you switch tabs, which reads like
+   * a slow network rather than like a tab fighting another tab.
+   */
+  /**
+   * The agent's id alone, as a memo, so downstream work re-runs when the *identity* changes rather
+   * than whenever the identity object is rewritten.
+   *
+   * `session.me()` is replaced as profile fields load, and a memo returning the same string does not
+   * propagate — which is what stops the coordinator being rebuilt, and with it the whole presence
+   * source, for no reason. Cheap to get wrong and visible in a trace as a `bye` moments after
+   * arriving.
+   */
+  const myDid = createMemo(() => session.me()?.did);
+
+  const tabs = createMemo(() => {
+    const did = myDid();
+    if (!did) return null;
+    const coordinator = createTabCoordinator({ scope: did });
+    onCleanup(() => coordinator.dispose());
+    return coordinator;
+  });
 
   // Taken from the store rather than constructed here: one shared port for the whole app, so its
   // per-perspective scope refcounting actually works and the call module later joins the same scope
@@ -132,12 +170,15 @@ export function PresenceStoreProvider(props: ParentProps) {
   // retaining its peers. Retention without subscription only preserves state that is already past its
   // TTL, and the join handshake repopulates in one round trip on return anyway.
   createEffect(() => {
+    // The complete list of things that justify tearing presence down and building it again. Anything
+    // else read below is untracked, deliberately — see `presence.start`.
     const datasetHandle = datasetStore.currentDataset()?.handle;
-    const did = session.me()?.did;
+    const did = myDid();
 
     source?.stop();
     source = null;
     setRawPeers([]);
+    setMyActivities([]);
     setAvailable(false);
 
     if (!datasetHandle || !did) return;
@@ -153,9 +194,18 @@ export function PresenceStoreProvider(props: ParentProps) {
     // in flight costs nothing — and on an unhealthy executor it is the difference between one
     // pending broadcast and six.
     const raw = scope.channel('presence', { coalesce: true });
+    const coordinator = tabs();
     const channel = {
       publish: (payload: unknown, to?: { agentId?: string }) => {
-        if (tabs.isLeader()) raw.publish(payload, to);
+        // No coordinator means no other tab can be holding this agent's leadership, so publishing is
+        // unconditional — the same answer `soleLeader` gives a single-window host.
+        if (!coordinator || coordinator.isLeader()) {
+          raw.publish(payload, to);
+          return;
+        }
+        // The one hop that can swallow a message with nothing else to show for it. Every other drop
+        // is somebody else's; this one is ours, so it says so.
+        trace('presence', 'publish:suppressed', { reason: 'not-tab-leader' });
       },
       onMessage: raw.onMessage,
     };
@@ -163,19 +213,45 @@ export function PresenceStoreProvider(props: ParentProps) {
 
     source = presence;
     setAvailable(true);
-    presence.start({
-      agentId: did,
-      updatedAt: Date.now(),
-      availability: availability(),
-      focus: myFocus(),
-    });
 
-    // Publish as soon as this tab takes over, so leadership changing mid-session doesn't leave
-    // peers waiting out a full interval for the new leader's first heartbeat.
-    const unsubLeader = tabs.onBecomeLeader(() => presence.update({}));
+    /**
+     * Registered *before* `start`, and the order is the point.
+     *
+     * `onBecomeLeader` fires immediately when this tab already leads, and at that moment there is no
+     * presence state yet — so `announce` no-ops and `start`'s own handshake below is the one that
+     * goes out. Every later firing is a real transition, and gets a full handshake rather than a
+     * plain heartbeat: this tab was not publishing until now, so its `hello` never left, and peers
+     * answer a `hello` rather than a state.
+     *
+     * That is the whole of "entering a space takes ten seconds". The handshake was being sent into a
+     * closed gate, and nothing downstream could tell.
+     */
+    const unsubLeader = coordinator?.onBecomeLeader(() => presence.announce());
+
+    /**
+     * Untracked, because these are the source's *initial* values, not its dependencies.
+     *
+     * Read normally, `myFocus()` makes this effect depend on the route — so every navigation stopped
+     * presence and started it again, which means broadcasting a `bye`, dropping the peer map,
+     * re-registering the executor subscription, and re-running the handshake. Entering a space
+     * changes the route, so the churn landed exactly where it hurt most: peers were told this agent
+     * had left, moments after it arrived, and the trace showed the `bye` sitting between two `start`
+     * lines a millisecond apart.
+     *
+     * Both values already have their own effects below, which is the right shape — publish a change,
+     * do not rebuild the publisher.
+     */
+    untrack(() =>
+      presence.start({
+        agentId: did,
+        updatedAt: Date.now(),
+        availability: availability(),
+        focus: myFocus(),
+      }),
+    );
 
     onCleanup(() => {
-      unsubLeader();
+      unsubLeader?.();
       presence.stop();
       scope.dispose();
     });
@@ -231,11 +307,31 @@ export function PresenceStoreProvider(props: ParentProps) {
   // Lend feature modules the activity slice of presence. Narrowed deliberately: a module has a
   // legitimate need to say "I am in this call" and to read who else is, but no business setting
   // another agent's availability or driving the heartbeat. See moduleHostServices.ts.
+  function setActivity(activity: Activity): void {
+    const key = activityKey(activity.type, 'id' in activity ? (activity.id as string) : undefined);
+    setMyActivities((prev) => (prev.includes(key) ? prev : [...prev, key]));
+    source?.setActivity(activity);
+  }
+
+  function clearActivity(type: string, id?: string): void {
+    // Matching `PresenceSource.clearActivity`: no id clears every activity of that type.
+    setMyActivities((prev) =>
+      prev.filter((key) => (id === undefined ? !key.startsWith(`${type}:`) : key !== activityKey(type, id))),
+    );
+    source?.clearActivity(type, id);
+  }
+
+  /**
+   * Refuse to hand publishing away while this tab is holding something that must keep being
+   * published. The coordinator already resolves two pinned tabs deterministically.
+   */
+  createEffect(() => tabs()?.setPinned(myActivities().length > 0));
+
   provideModuleHostServices({
     presence: {
       peers: () => rawPeers(),
-      setActivity: (activity) => source?.setActivity(activity),
-      clearActivity: (type, id) => source?.clearActivity(type, id),
+      setActivity,
+      clearActivity,
     },
   });
 
@@ -248,8 +344,8 @@ export function PresenceStoreProvider(props: ParentProps) {
     focusDepth,
     setFocusDepth,
     setAvailability: setAvailabilitySignal,
-    setActivity: (activity) => source?.setActivity(activity),
-    clearActivity: (type, id) => source?.clearActivity(type, id),
+    setActivity,
+    clearActivity,
   };
 
   return <PresenceContext.Provider value={store}>{props.children}</PresenceContext.Provider>;

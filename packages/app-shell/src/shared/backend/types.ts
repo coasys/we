@@ -12,6 +12,56 @@ export interface BackendConnectionDetails {
 }
 
 /**
+ * The node this session is running against, when it is somebody's hosting rather than this machine.
+ *
+ * Absent on the desktop hosts, which start their own executor — there is no "connected to" to
+ * report, and the answer would be "your own computer".
+ *
+ * Neutral by intent, though it is currently only AD4M that fills it in: a hosted backend of any
+ * shape has a name, an address, and possibly a bill. What is deliberately *not* here is anything
+ * about how to talk to the node — that is {@link BackendConnectionDetails}. This is what to tell the
+ * user about where their data is.
+ */
+export interface BackendHostInfo {
+  /** Stable id from whatever directory the host was chosen out of. */
+  id: string;
+  name: string;
+  description?: string;
+  /** Host's own image, for the settings row. */
+  imageUrl?: string;
+  /** Human-readable, e.g. a region or city — not coordinates. */
+  location?: string;
+  url: string;
+  /** Hardware the operator advertises, displayed verbatim. */
+  computeSpecs?: string;
+  /**
+   * AI models the host advertises it can run.
+   *
+   * Worth carrying separately from `RuntimeAdminPort.aiModels`: this comes from the host directory
+   * and is readable without any capability at all, so it can answer "can this node transcribe?" even
+   * where the executor would refuse to list its models.
+   */
+  aiModels?: string[];
+  /** What the operator charges, as they describe it. Empty when the host is free. */
+  rates?: { description: string; priceInHOT: number }[];
+}
+
+/**
+ * This agent's account with the host — who they are to it, and what they have left to spend.
+ *
+ * Separate from {@link BackendHostInfo} because it changes while the app runs and the host does not.
+ * Running out of credits mid-call, in an app that never mentioned credits existed, is the failure
+ * this exists to prevent.
+ */
+export interface BackendAccountInfo {
+  email?: string;
+  remainingCredits?: number;
+  walletAddress?: string;
+  /** True when the operator is not charging this agent, so the credit figure means nothing. */
+  freeAccess?: boolean;
+}
+
+/**
  * How a host obtains a data-layer client.
  *
  * Split out of {@link PlatformAdapter}, which had grown to answer two unrelated questions: *where am
@@ -31,6 +81,10 @@ export interface BackendInitResult {
   client: unknown;
   ports: BackendPorts;
   connection?: BackendConnectionDetails;
+  /** The node this session runs against, when it is not this machine. See {@link BackendHostInfo}. */
+  host?: BackendHostInfo;
+  /** This agent's account with that node, when it keeps one. See {@link BackendAccountInfo}. */
+  account?: BackendAccountInfo;
   /**
    * End this app's connection to the backend, for backends where the session *is* the connection.
    *

@@ -25,7 +25,7 @@
  * switches. Configuration belongs to the seed (deployment), an agent preference (per-user), and the
  * module's own state — chrome that is only present when relevant needs no hiding mechanism at all.
  */
-import type { SlotAnchor, SlotContribution } from '@we/module-shared';
+import type { CoreSlotAnchor, SlotAnchor, SlotContribution } from '@we/module-shared';
 import type { SchemaNode } from '@we/schema-shared';
 import {
   bootScreen,
@@ -49,9 +49,110 @@ export interface SlotEntry extends SlotContribution {
  * `overlay` first is not a design statement — it is what preserves today's
  * `[bootScreen, sidebar, templateEditor]` ordering exactly. Changing it is a visual change.
  */
-const ANCHOR_ORDER: SlotAnchor[] = ['overlay', 'dock-left', 'dock-right', 'dock-bottom', 'banner'];
+const ANCHOR_ORDER: CoreSlotAnchor[] = ['overlay', 'dock-left', 'dock-right', 'dock-bottom', 'banner'];
+
+const isCoreAnchor = (anchor: SlotAnchor): anchor is CoreSlotAnchor => (ANCHOR_ORDER as string[]).includes(anchor);
 
 const entries = new Map<string, SlotEntry>();
+
+/**
+ * Splice module-declared anchors into a node tree.
+ *
+ * A `{ type: '$slot', props: { anchor } }` marker is replaced by whatever is contributed there, in
+ * order. Resolved here rather than in the renderer because the host is already the thing that
+ * composes chrome into a schema — `TemplateProvider` builds the shell from `nodes()` — so this is one
+ * more step of the same composition rather than a new capability every renderer would have to learn.
+ *
+ * Recursive, because the marker sits wherever the providing module put it: the call module's is deep
+ * inside its control bar's `Row`, not at the top of its contribution.
+ *
+ * An anchor with nothing in it resolves to nothing. That is the ordinary case — the transcribe module
+ * is not installed, so the call bar simply has one fewer button — and it is why the marker must
+ * disappear rather than render an empty container that would leave a gap in the row.
+ */
+function resolveAnchors(node: SchemaNode): SchemaNode | SchemaNode[] {
+  if (node.type === '$slot') {
+    const anchor = (node.props as { anchor?: string } | undefined)?.anchor;
+    if (!anchor) return [];
+    return slotRegistry.nodesFor(anchor);
+  }
+
+  const nextChildren = resolveList(node.children);
+  const nextProps = resolveValue(node.props);
+  const nextSlots = resolveValue(node.slots);
+
+  if (nextChildren === node.children && nextProps === node.props && nextSlots === node.slots) return node;
+  return { ...node, children: nextChildren, props: nextProps, slots: nextSlots } as SchemaNode;
+}
+
+/** Anything node-shaped. Token objects (`{ $store: … }`) have no `type`, so they fall through here. */
+const isNode = (value: unknown): value is SchemaNode =>
+  !!value && typeof value === 'object' && typeof (value as { type?: unknown }).type === 'string';
+
+/**
+ * Walk a children array, flattening the arrays a resolved marker expands into.
+ *
+ * Returns the original reference when nothing changed, so an untouched subtree keeps its identity and
+ * the renderer has no reason to remount it.
+ */
+function resolveList(children: unknown): unknown {
+  if (!Array.isArray(children)) return children;
+
+  let changed = false;
+  const out: unknown[] = [];
+  for (const child of children) {
+    if (!isNode(child)) {
+      out.push(child);
+      continue;
+    }
+    const next = resolveAnchors(child);
+    if (Array.isArray(next)) {
+      changed = true;
+      out.push(...next);
+    } else {
+      if (next !== child) changed = true;
+      out.push(next);
+    }
+  }
+  return changed ? out : children;
+}
+
+/**
+ * Walk anywhere a node can hide, not just `children`.
+ *
+ * Necessary rather than thorough: the registry wraps every module contribution in a per-space `$if`,
+ * whose real content is `props.then` — so a walk that only followed `children` never reached the
+ * chrome it was meant to be resolving, and markers came out untouched. Module chrome nests the same
+ * way of its own accord (the call bar is an `$if` before it is a `Row`), and named `slots` hold nodes
+ * too.
+ */
+function resolveValue(value: unknown): unknown {
+  if (Array.isArray(value)) return resolveList(value);
+  if (isNode(value)) {
+    const next = resolveAnchors(value);
+    // A marker in a node-valued *prop* has nowhere to expand to — `props.then` is one node, not a
+    // list — so several contributions there would have to be dropped. Nothing does this today; the
+    // warning is here so that if something ever does, it says so rather than silently losing chrome.
+    if (Array.isArray(next)) {
+      if (next.length > 1) {
+        console.warn('slotRegistry: $slot in a node-valued prop resolved to several nodes; keeping the first');
+      }
+      return next[0];
+    }
+    return next;
+  }
+  if (value && typeof value === 'object') {
+    let changed = false;
+    const out: Record<string, unknown> = {};
+    for (const [key, inner] of Object.entries(value as Record<string, unknown>)) {
+      const next = resolveValue(inner);
+      if (next !== inner) changed = true;
+      out[key] = next;
+    }
+    return changed ? out : value;
+  }
+  return value;
+}
 
 export const slotRegistry = {
   /** Add a contribution. Replaces any entry with the same id, so re-registration is idempotent. */
@@ -85,17 +186,51 @@ export const slotRegistry = {
    * module happened to load first.
    */
   ordered(): SlotEntry[] {
-    return [...entries.values()].sort(
-      (a, b) =>
-        ANCHOR_ORDER.indexOf(a.anchor) - ANCHOR_ORDER.indexOf(b.anchor) ||
-        (a.order ?? 0) - (b.order ?? 0) ||
-        a.id.localeCompare(b.id),
-    );
+    return [...entries.values()]
+      .filter((entry) => isCoreAnchor(entry.anchor))
+      .sort(
+        (a, b) =>
+          ANCHOR_ORDER.indexOf(a.anchor as CoreSlotAnchor) - ANCHOR_ORDER.indexOf(b.anchor as CoreSlotAnchor) ||
+          (a.order ?? 0) - (b.order ?? 0) ||
+          a.id.localeCompare(b.id),
+      );
   },
 
-  /** Just the nodes, ready to compose into the shell schema. */
+  /**
+   * Contributions to a module-declared anchor, in order — what a `$slot` marker resolves to.
+   *
+   * Kept out of {@link ordered}, which is the shell's own top level. Without that filter a
+   * contribution to an unknown anchor would sort to index -1 and render at the top of the app,
+   * loose, instead of inside the bar it was meant for.
+   */
+  nodesFor(anchor: string): SchemaNode[] {
+    return [...entries.values()]
+      .filter((entry) => entry.anchor === anchor)
+      .sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || a.id.localeCompare(b.id))
+      .map((entry) => entry.node);
+  },
+
+  /**
+   * Every entry, whatever its anchor.
+   *
+   * Distinct from {@link ordered}, which is the shell's top level and therefore core anchors only.
+   * Anything that needs to see *all* contributions — clearing the registry, auditing it — wants this.
+   */
+  all(): SlotEntry[] {
+    return [...entries.values()];
+  },
+
+  /** Every anchor something has been contributed to, for reporting one nobody provides. */
+  contributedAnchors(): string[] {
+    return [...new Set([...entries.values()].map((entry) => entry.anchor))].filter((a) => !isCoreAnchor(a));
+  },
+
+  /** Just the nodes, ready to compose into the shell schema, with `$slot` markers filled in. */
   nodes(): SchemaNode[] {
-    return slotRegistry.ordered().map((entry) => entry.node);
+    return slotRegistry.ordered().flatMap((entry) => {
+      const resolved = resolveAnchors(entry.node);
+      return Array.isArray(resolved) ? resolved : [resolved];
+    });
   },
 };
 

@@ -19,6 +19,11 @@ export const storeEntries: StoreEntry[] = [
       loginLoading: { type: 'boolean' },
       createAgentError: { type: 'string' },
       createAgentLoading: { type: 'boolean' },
+      host: {
+        type: 'object',
+        properties: ['id', 'name', 'description', 'imageUrl', 'location', 'url', 'computeSpecs', 'aiModels', 'rates'],
+      },
+      hostAccount: { type: 'object', properties: ['email', 'remainingCredits', 'walletAddress', 'freeAccess'] },
     },
     actions: ['login', 'createAgent', 'clearPasswordError', 'finishSetup', 'retryBoot', 'logout'],
   },
@@ -64,6 +69,7 @@ export const storeEntries: StoreEntry[] = [
       canManageApps: { type: 'boolean' },
       canManageLanguages: { type: 'boolean' },
       canManageAi: { type: 'boolean' },
+      canConfigureAi: { type: 'boolean' },
       canConfigureExecutor: { type: 'boolean' },
       mcpEnabled: { type: 'boolean' },
       mcpPort: { type: 'number' },
@@ -177,6 +183,7 @@ export const storeEntries: StoreEntry[] = [
       rootDataset: { type: 'object', properties: ['id', 'name', 'sharedUri', 'sharedId', 'handle'] },
       globalDataset: { type: 'object', properties: ['id', 'name', 'sharedUri', 'sharedId', 'handle'] },
       marketplaceDataset: { type: 'object', properties: ['id', 'name', 'sharedUri', 'sharedId', 'handle'] },
+      globalSpaceId: { type: 'string' },
       globalSpaceConfigured: { type: 'boolean' },
       marketplaceConfigured: { type: 'boolean' },
       marketplaceJoined: { type: 'boolean' },
@@ -224,6 +231,7 @@ export const storeEntries: StoreEntry[] = [
       currentThemeId: { type: 'string' },
       currentTheme: { type: 'object', properties: ['id', 'name', 'icon', 'origin'] },
       defaultThemeId: { type: 'string' },
+      operationLoading: { type: 'string' },
       themeScope: { type: 'string' },
       themeScopePreference: { type: 'string' },
       themeScopeGlobal: { type: 'boolean' },
@@ -252,9 +260,7 @@ export const storeEntries: StoreEntry[] = [
       builtInTemplates: { type: 'array', properties: ['id', 'meta', 'type', 'props', 'children', 'routes'] },
       myTemplates: { type: 'array', properties: ['id', 'meta', 'type', 'props', 'children', 'routes'] },
       allTemplates: { type: 'array', properties: ['id', 'meta', 'type', 'props', 'children', 'routes'] },
-      shellTemplates: { type: 'array', properties: ['id', 'meta', 'type', 'props', 'children', 'routes'] },
       currentTemplate: { type: 'object', properties: ['id', 'meta', 'type', 'props', 'children', 'routes'] },
-      operationLoading: { type: 'boolean' },
       templateManagementList: {
         type: 'array',
         properties: ['id', 'name', 'icon', 'description', 'isBuiltIn', 'isInstalled', 'isDefault'],
@@ -267,6 +273,7 @@ export const storeEntries: StoreEntry[] = [
       'removeTemplate',
       'saveTemplate',
       'toggleInstalled',
+      'installToSpace',
       'setDefaultTemplate',
       'deleteTemplate',
     ],
@@ -278,6 +285,9 @@ export const storeEntries: StoreEntry[] = [
       personalSpaces: { type: 'array', model: 'Space' },
       sharedSpaces: { type: 'array', model: 'Space' },
       routeSpaceUnjoined: { type: 'boolean' },
+      joiningSpace: { type: 'string' },
+      joinSlow: { type: 'boolean' },
+      joinError: { type: 'object', properties: ['spaceId', 'message'] },
       spaceList: {
         type: 'array',
         properties: [
@@ -304,27 +314,9 @@ export const storeEntries: StoreEntry[] = [
         properties: ['did', 'firstName', 'lastName', 'handle', 'bio', 'avatar', 'coverImage', 'location'],
       },
       spaceDefaultTemplateId: { type: 'string' },
+      spaceDefaultThemeId: { type: 'string' },
       currentSpace: { type: 'object', model: 'Space' },
       foreignSpacePrefill: { type: 'object', properties: ['name', 'description', 'avatar'] },
-      signalTypes: {
-        type: 'array',
-        model: 'SignalType',
-        properties: [
-          'id',
-          'name',
-          'slug',
-          'description',
-          'icon',
-          'iconSecondary',
-          'mode',
-          'rangeMin',
-          'rangeMax',
-          'step',
-        ],
-      },
-      signalTypesBySlug: {
-        type: 'object',
-      },
       enabledModules: {
         type: 'array',
       },
@@ -354,7 +346,7 @@ export const storeEntries: StoreEntry[] = [
       'removeSpace',
       'createPost',
       'updatePost',
-      'deletePost',
+      'deleteCollection',
       'updateSpaceImage',
       'updateSpaceMeta',
       'setSpaceDefaultTemplate',
@@ -364,6 +356,7 @@ export const storeEntries: StoreEntry[] = [
       'navigateToSpace',
       'canAdministerSpace',
       'copyShareLink',
+      'getSubgroupMessages',
       'setModuleEnabled',
       'setModuleInstalled',
       'setModuleVisible',
@@ -375,8 +368,6 @@ export const storeEntries: StoreEntry[] = [
   {
     name: 'editorStore',
     state: {
-      models: { type: 'array', properties: ['id', 'name'] },
-      tasks: { type: 'array', properties: ['id', 'status', 'result'] },
       isOpen: { type: 'boolean' },
       messages: { type: 'array' },
       isStreaming: { type: 'boolean' },
@@ -393,14 +384,11 @@ export const storeEntries: StoreEntry[] = [
       pickerShowDestination: { type: 'boolean' },
       sessions: { type: 'array' },
       activeSessionId: { type: 'string' },
-      panelMode: { type: 'string' },
       schemaJson: { type: 'string' },
-      operationLoading: { type: 'boolean' },
       canUndo: { type: 'boolean' },
       canRedo: { type: 'boolean' },
     },
     actions: [
-      'handleSchemaPrompt',
       'sendMessage',
       'close',
       'toggle',
@@ -412,7 +400,6 @@ export const storeEntries: StoreEntry[] = [
       'newChat',
       'switchSession',
       'deleteSession',
-      'setPanelMode',
       'onSchemaEdit',
       'undo',
       'redo',
@@ -448,7 +435,7 @@ export const storeEntries: StoreEntry[] = [
 ];
 
 /** Generate the stores text fragment from structured data */
-function generateStoresText(entries: StoreEntry[]): string {
+export function generateStoresText(entries: StoreEntry[]): string {
   const lines: string[] = [
     '## Stores',
     '',
@@ -468,6 +455,9 @@ function generateStoresText(entries: StoreEntry[]): string {
         loginLoading: 'boolean',
         createAgentError: 'string — the backend message from a failed agent creation, or empty',
         createAgentLoading: 'boolean',
+        host: 'BackendHostInfo | undefined — the node this session runs against when it is somebody\'s hosting rather than this machine (id, name, description, imageUrl, location, url, computeSpecs, aiModels, rates). Undefined on desktop and on a local executor, so its presence is also the answer to "am I a guest here?" — gate any "connected to" UI on it. `aiModels` comes from the host directory and needs no capability, so it answers "can this node transcribe?" even where the executor refuses to list its models',
+        hostAccount:
+          'BackendAccountInfo | undefined — this agent\'s account with that node (email, remainingCredits, walletAddress, freeAccess). Check freeAccess before showing a balance: on a free node the credit figure means nothing and "0" reads as an account that has run dry',
       },
       actions: {
         login: '(password: string): unlocks the agent and loads user data',
@@ -522,6 +512,8 @@ function generateStoresText(entries: StoreEntry[]): string {
         canManageApps: 'boolean — gate the authorized-apps section on this',
         canManageLanguages: 'boolean — gate the languages section on this',
         canManageAi: 'boolean — gate the AI section on this',
+        canConfigureAi:
+          "boolean — the models can be changed, not just listed. False for a guest on somebody else's node, where AD4M grants AI READ but refuses UPDATE/DELETE. Gate add/edit/remove/set-default controls on this and the section itself on canManageAi",
         canConfigureExecutor:
           'boolean — this host starts the backend, so how it starts it can be changed. False on web',
         mcpEnabled: 'boolean — whether the backend serves MCP on its next start',
@@ -607,6 +599,8 @@ function generateStoresText(entries: StoreEntry[]): string {
         rootDataset: "dataset handle | null — the agent's personal root dataset (we-root models live here)",
         globalDataset: 'dataset handle | null — the seed-configured global discovery space, once joined',
         marketplaceDataset: 'dataset handle | null — the seed-configured marketplace, once joined',
+        globalSpaceId:
+          'string | null — the dataset id of the seed-configured global discovery space, or null when it is not configured or not joined. Compare a route segment against it to tell "the user is in the global space" from "the user is in a space of their own"',
         globalSpaceConfigured: 'boolean — the seed declares a global space',
         marketplaceConfigured: 'boolean — the seed declares a marketplace',
         marketplaceJoined: 'boolean — the marketplace dataset is joined locally',
@@ -661,6 +655,8 @@ function generateStoresText(entries: StoreEntry[]): string {
         currentTheme: 'ThemeData — the currently active theme object (id, name, icon, origin)',
         defaultThemeId:
           "string — id of the user's preferred default theme (used for bootscreen, shell, and future space-override). Persisted to AgentSettings.defaultThemeId",
+        operationLoading:
+          "string | null — the id of the theme operation currently in flight, namespaced by kind (e.g. 'marketplace-install:<themeId>'), or null when idle. A key rather than a boolean so one row's spinner does not appear on every row — compare it against the row you are rendering",
         themeManagementList:
           'ThemeManagementItem[] — flat list of all themes (built-in + all custom) with management metadata (id, name, icon, isBuiltIn, isInstalled, isDefault)',
       },
@@ -694,7 +690,6 @@ function generateStoresText(entries: StoreEntry[]): string {
         myTemplates:
           "array of TemplateSchema objects — user's installed custom templates only (excludes built-in and space templates)",
         allTemplates: 'array of TemplateSchema objects — union of built-in + personal + space templates',
-        shellTemplates: 'array of TemplateSchema objects (static system pages: profile, settings, tests)',
         currentTemplate: 'TemplateSchema (the active template)',
         templateManagementList:
           'TemplateManagementItem[] — flat list of all templates with management metadata (id, name, icon, description, isBuiltIn, isInstalled, isDefault)',
@@ -706,6 +701,8 @@ function generateStoresText(entries: StoreEntry[]): string {
         switchTemplate: '(newTemplateId: string): switches to another template',
         removeTemplate: '(): removes the current template',
         saveTemplate: '(name: string): saves the current template',
+        installToSpace:
+          '(marketplaceTemplateId: string): copies a marketplace template into the current space, so every member of that community gets it — as opposed to installing it for yourself. Pair with templateStore.operationLoading to show progress on the row being installed',
       },
     },
     spaceStore: {
@@ -718,19 +715,24 @@ function generateStoresText(entries: StoreEntry[]): string {
         spaceList:
           "{ uuid, name, description, avatar, kind: 'shared' | 'personal' | 'foreign', isWeSpace, canAdminister }[] — one row per joined dataset the agent can act on, ordered like the sidebar and excluding the system datasets. Includes datasets that are not WE spaces (kind 'foreign', isWeSpace false), which are waiting to be initialized. `uuid` is the dataset id, so it keys navigation and settings whether or not a Space record exists",
         creatingSpace: 'boolean (true while a new space is being created)',
+        joiningSpace:
+          "string — the shared id of the space a join is running for, '' when none is. The id rather than a flag so a list can spin only the row being joined; a gate compares it against its own route segment. Stays set for the whole join, which outlives the network call that starts it",
+        joinSlow:
+          'boolean — that join has been going long enough to be worth mentioning. Joining a shared space has to fetch and install it before it exists anywhere, so a first join routinely takes a minute; pair with joiningSpace to say so instead of spinning in silence',
+        joinError:
+          '{ spaceId, message } | null — the last join failure, ready to display. Carries the space so a gate can tell whether the failure is its own: compare joinError.spaceId against the route segment, or a bare message follows the user to the next unjoined space they open',
         orderedSidebarItems:
           'array of sidebar items in user-defined order (uuid, name, avatar, spaceId) — personal + shared spaces merged',
         memberDids: 'string[] — DIDs of all members in the current space (includes own DID)',
         members: 'AgentProfileSummary[] — cached profiles for all memberDids',
         spaceDefaultTemplateId:
           "string — the current space's default template ID (empty string when no space is active)",
+        spaceDefaultThemeId:
+          "string — the current space's default theme ID (empty string when no space is active). The counterpart to spaceDefaultTemplateId; compare against it to mark which theme a space is currently on",
         currentSpace:
           'Space | null — the current space model (all Space fields: uuid, url, name, description, access, discovery, avatar, coverImage, defaultTemplateId, defaultThemeId, location, plus id/author/createdAt)',
         foreignSpacePrefill:
           '{ name, description, avatar } | null — detected from a foreign app\'s own model (e.g. Flux\'s Community) for prefilling the "Initialize as WE space" gate; null once the perspective is a WE space or no recognized foreign model is found',
-        signalTypes: 'array of SignalType objects (community-created reaction/vote types)',
-        signalTypesBySlug:
-          'Record<slug, SignalType> — computed map; access via { $store: "spaceStore.signalTypesBySlug.<slug>" }; use .id for the UUID',
         enabledModules:
           'string[] — ids of the feature modules THIS SPACE has turned on: the community\u2019s decision, shared with every member. An unset value means "not decided", not "none": it falls back to every registered module, so spaces predating the setting keep the chrome they had',
         installedModules:
@@ -753,7 +755,7 @@ function generateStoresText(entries: StoreEntry[]): string {
         createSpace:
           "(name, description, access: 'personal' | 'shared', discovery: 'hidden' | 'listed', avatarFile?, coverImageFile?, location?): creates a new space with full setup",
         joinSpace:
-          '(id: string, focus = true): joins a shared space by neighbourhood URL or CID, or focuses it if already joined. Pass focus: false to join without navigating there — for a caller that needs the dataset present rather than open, which is how the marketplace reads its own dataset without moving you out of the space you are in',
+          '(id: string, focus = true): joins a shared space by share link, neighbourhood URL or CID, or focuses it if already joined. Pass focus: false to join without navigating there — for a caller that needs the dataset present rather than open, which is how the marketplace reads its own dataset without moving you out of the space you are in. Rejects when the join could not be completed, so onSuccess means what it says; watch joiningSpace/joinSlow/joinError for what to show while it runs. A join whose network call times out keeps going: the backend usually finishes anyway, and this waits for that before believing the failure',
         initializeAsWeSpace:
           "(name: string, description: string, avatarValue?: File | string | null): installs WE's Space SDNA into the current, already-joined, foreign-native dataset (e.g. one synced in from Flux) and creates a Space entity in place — access is always 'shared' since the dataset is already a published neighbourhood",
         removeSpace:
@@ -761,7 +763,8 @@ function generateStoresText(entries: StoreEntry[]): string {
         createPost: '(editorState: unknown): creates a new post',
         updatePost:
           '(postId: string, editorState: unknown): reconciles an edited post against its existing blocks — updates/reuses blocks whose id survived the edit, creates new ones, deletes ones no longer present',
-        deletePost: '(postId: string): permanently deletes a post and all of its contained blocks (recursive, atomic)',
+        deleteCollection:
+          '(collectionId: string): permanently deletes a CollectionBlock and everything inside it, recursively. Kind-agnostic — a post, a call record and a notes collection are the same shape, so this is the one delete for all of them',
         updateSpaceImage:
           '(field: "avatar" | "coverImage", imageFile: File, spaceUuid?): uploads and sets the space avatar or cover image',
         createSignalType:
@@ -779,6 +782,8 @@ function generateStoresText(entries: StoreEntry[]): string {
           "(uuid: string): copies that space's share link to the clipboard, with a toast either way. No-op for a personal space, which has no global id and so no shareable link — read `spaceList[].shareLink` to decide whether to offer the control at all",
         canAdministerSpace:
           '(uuid: string): whether this agent may change what every member of that space sees — true for a personal space, and for a shared one they authored. A UI affordance for deciding whether to offer the controls, NOT enforcement: a shared space is a neighbourhood every member can write to. Ask by name rather than comparing author to $me.did, so the answer can grow (multiple admins, roles) without every template changing',
+        getSubgroupMessages:
+          "(subgroupId: string): messages belonging to one of Flux's conversation subgroups, fetched on demand. A dialect query against a foreign schema rather than a WE model, so it goes through the backend's interop surface instead of $query — which is why it is a store method and not a relation you can drill into",
         setModuleInstalled:
           '(moduleId: string, installed: boolean): turns a module on or off for this agent in every space. Personal — writes AgentSettings.installedModules in the root dataset, so no other member sees it',
         setModuleVisible:
@@ -786,7 +791,7 @@ function generateStoresText(entries: StoreEntry[]): string {
         setSpaceTemplateOverride:
           "(templateId: string, spaceUuid?): sets the template THIS AGENT sees in one space, overriding the community's default. Three values: 'space-default' follows the space, 'agent-default' follows your own global default (tracking later changes to it), or a concrete template id pins that one. Private, and applied immediately when that space is the one on screen. Note the sentinels are named values, not '' — the ORM skips empty strings on update, so '' cannot clear a property",
         setSpaceThemeOverride:
-          "(themeId: string, spaceUuid?): sets the theme THIS AGENT sees in one space. Same three values as setSpaceTemplateOverride. Private",
+          '(themeId: string, spaceUuid?): sets the theme THIS AGENT sees in one space. Same three values as setSpaceTemplateOverride. Private',
         setModuleEnabled:
           '(moduleId: string, enabled: boolean, spaceUuid?): turns a feature module on or off for a space; writes the resolved list, so the first toggle also pins whatever was on by fallback. Omit spaceUuid for the space on screen',
         launchModule:
@@ -795,13 +800,10 @@ function generateStoresText(entries: StoreEntry[]): string {
     },
     editorStore: {
       state: {
-        models: 'array of Model objects',
-        tasks: 'array of AITask objects',
         canUndo: 'boolean (true when there are schema edits that can be undone)',
         canRedo: 'boolean (true when there are undone schema edits that can be redone)',
       },
       actions: {
-        handleSchemaPrompt: '(prompt: string): generates a schema from a prompt',
         toggle: '(): toggles the AI chat panel open/closed',
         undo: '(): undoes the last schema edit',
         redo: '(): redoes the last undone schema edit',
@@ -834,8 +836,15 @@ function generateStoresText(entries: StoreEntry[]): string {
   };
 
   for (const entry of entries) {
-    const desc = descriptions[entry.name];
-    if (!desc) continue;
+    /*
+      A store with no description block is still listed, with bare member names.
+
+      Skipping it used to be the behaviour, and it hid the thing worth knowing: the store is legal in
+      a schema whether or not anybody has written it up, so omitting it left the reference asserting
+      — by silence — that it does not exist. `presenceStore` was in exactly that position. Thin
+      documentation is a smaller problem than absent documentation that reads as absent capability.
+    */
+    const desc = descriptions[entry.name] ?? { state: {}, actions: {} };
 
     const storeName = entry.name.charAt(0).toUpperCase() + entry.name.slice(1).replace(/Store$/, 'Store');
     lines.push('');
@@ -857,4 +866,13 @@ function generateStoresText(entries: StoreEntry[]): string {
   return lines.join('\n');
 }
 
+/**
+ * The prose block for the reference, built from whatever entries it is given.
+ *
+ * Kept as a default export for consumers that only want the hand-authored view; `generate.ts` calls
+ * `generateStoresText` again over the *merged* entries instead, so the documented list and the list
+ * the validator enforces are the same one. They used to be two — the docs showed what was written
+ * down, the validator checked what the source declared — which is how a store could exist, be legal
+ * in a schema, and be absent from every document describing it.
+ */
 export const stores = generateStoresText(storeEntries);

@@ -84,10 +84,37 @@ export interface EphemeralCapabilities {
 }
 
 /** A protocol's namespaced slice of a dataset's ephemeral traffic. */
+/**
+ * What became of a published message, as far as the transport can tell.
+ *
+ * The limit is stated in the name of {@link EphemeralCapabilities.reliability}: `send-acked` means
+ * the backend confirms it *took* the message, never that a peer received it. So `ok: false` is
+ * actionable — nothing left, retrying is worth it — while `ok: true` says only that the failure
+ * modes past this point are somebody else's.
+ *
+ * That distinction is the whole value. Without it every repair is a blind timer, which is what
+ * presence had: five separate schedules, none able to tell a stalled executor from a lossy network,
+ * all guessing. One of those failures is worth reacting to immediately and the other is not.
+ */
+export interface PublishResult {
+  /** The backend accepted the message. Delivery remains unconfirmed — see above. */
+  ok: boolean;
+  /** How long the attempt took, which is how a stalled executor is recognised. */
+  ms: number;
+  /** Why it failed, for logs. Absent when `ok`. */
+  error?: string;
+  /** A newer message replaced this one before it was sent — see {@link ChannelOptions.coalesce}. */
+  superseded?: boolean;
+}
+
 export interface EphemeralChannel {
   /**
    * Fire-and-forget. Passing `to.agentId` requires `unicast !== 'none'`; under `'emulated'` the
    * payload still reaches every peer, so treat it as addressing, not privacy.
+   *
+   * Returns nothing on purpose. Most callers genuinely do not want to await a broadcast, and a
+   * promise here would make every one of them choose between awaiting and an unhandled rejection.
+   * Consumers that care about outcomes observe them with {@link onPublishResult} instead.
    */
   publish(payload: unknown, to?: { agentId?: string }): void;
 
@@ -96,20 +123,41 @@ export interface EphemeralChannel {
    * {@link EphemeralCapabilities.authenticatedSender} before trusting it. Returns an unsubscribe.
    */
   onMessage(cb: (from: string, payload: unknown) => void): () => void;
+
+  /**
+   * Observe what happens to published messages. Returns an unsubscribe.
+   *
+   * Optional, because a transport that cannot tell should not pretend: absent means "no idea", which
+   * a consumer must treat as neither success nor failure. Present, it is what lets a consumer
+   * respond to a *real* failure — an executor that is stalled or gone — instead of waiting out a
+   * heartbeat interval on the theory that something might have gone wrong.
+   *
+   * Results are not correlated with individual messages, and do not need to be: this channel's
+   * traffic is last-write-wins, so "the most recent publish failed" is the only question worth
+   * asking, and the answer to it is "send the current state again".
+   */
+  onPublishResult?(cb: (result: PublishResult) => void): () => void;
 }
 
 export interface ChannelOptions {
   /**
-   * Drop a publish while a previous one is still in flight, rather than letting sends pile up.
+   * Hold a publish while a previous one is still in flight, and send the latest when it lands —
+   * rather than letting sends pile up.
    *
    * Correct only for **idempotent last-write-wins** traffic — presence, cursors, typing — where a
-   * dropped message costs nothing because the next one carries the same information. It is wrong for
-   * a handshake: an RTC offer dropped because the previous send is slow is simply lost.
+   * superseded message is genuinely worthless because the newer one it is waiting behind carries
+   * everything it did. It is wrong for a handshake: an RTC offer is not superseded by the next one.
    *
    * Earns its place from a real failure. On a struggling AD4M executor `sendBroadcast` hangs until a
    * 30s RPC timeout while presence heartbeats every 5s, so six stuck calls accumulate at steady
    * state, each adding load to the backend that is already the problem. Coalescing turns that into
-   * one in-flight send.
+   * one in-flight send and at most one waiting.
+   *
+   * **Hold, not drop** — and an implementation that drops is wrong even though the difference looks
+   * academic. "The next message carries the same state" is true of a heartbeat and false of the
+   * state *change* that the heartbeat has not started repeating yet: joining a call, leaving one,
+   * answering a peer's hello. Dropping those costs a full heartbeat interval of the other side not
+   * knowing, which is precisely the latency this option looks like it could not possibly cause.
    */
   coalesce?: boolean;
 }
@@ -232,9 +280,20 @@ export function createInMemoryEphemeralPort(bus: InMemoryBus, agentId: string): 
         const existing = channels.get(tag);
         if (existing) return existing;
 
+        const watchers = new Set<(result: PublishResult) => void>();
+
         const channel: EphemeralChannel = {
           publish(payload, to) {
             bus.deliver(key, tag, agentId, payload, to?.agentId);
+            // Reported even though it cannot fail, and that is the point of a reference
+            // implementation: a consumer that only ever sees the AD4M adapter's mix of outcomes
+            // could quietly come to depend on failures arriving, and the branch where everything
+            // succeeds would be the untested one.
+            watchers.forEach((cb) => cb({ ok: true, ms: 0 }));
+          },
+          onPublishResult(cb) {
+            watchers.add(cb);
+            return () => watchers.delete(cb);
           },
           onMessage(cb) {
             return bus.subscribe(key, tag, agentId, cb);

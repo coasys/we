@@ -315,7 +315,11 @@ export async function installModuleSdna(p: PerspectiveProxy, moduleModels: reado
  */
 export async function refreshSpaceSdna(p: PerspectiveProxy): Promise<string[]> {
   const stored = await storedShapePredicates(p).catch(() => new Map<string, Set<string>>());
-  return registerModels(p, [], SPACE_MODELS.filter((m) => shapeIsStale(m, stored)));
+  return registerModels(
+    p,
+    [],
+    SPACE_MODELS.filter((m) => shapeIsStale(m, stored)),
+  );
 }
 
 /**

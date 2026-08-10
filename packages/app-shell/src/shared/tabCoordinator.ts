@@ -31,10 +31,31 @@ const CHANNEL_NAME = 'we-tab-coordinator';
 const HEARTBEAT_INTERVAL = 5_000;
 /** Long enough to survive a missed beat or two; short enough that a crashed leader is replaced fast. */
 const LEADER_TIMEOUT = 15_000;
+/**
+ * How long a claimant waits for an objection before concluding there is nobody to object.
+ *
+ * Two very different questions were being answered by one timeout, and the wrong answer was
+ * expensive. "Has the leader crashed?" must be slow — evicting a live leader over a missed beat
+ * would hand publishing to a background tab. "Is anyone else here at all?" is answered in a
+ * round trip on a same-process channel, and waiting `LEADER_TIMEOUT` for it meant a freshly opened
+ * tab published nothing for fifteen seconds: no heartbeat, and no `hello`, so it neither appeared to
+ * its peers nor learned about them. Entering a space looked like a slow network for as long as it
+ * took to give up and blame one.
+ */
+const CLAIM_TIMEOUT = 300;
 
 type Message =
   /** "I have focus and want to publish." */
   | { type: 'claim'; tabId: string }
+  /**
+   * "Is anyone leading?" — a claim's polite cousin, for a tab that must not displace an incumbent.
+   *
+   * An unfocused tab has no business taking publishing away from the tab the user is looking at, but
+   * it does need to know whether that tab exists. Without a way to ask, the only answer available
+   * was silence over `LEADER_TIMEOUT` — so a lone unfocused tab published nothing for fifteen
+   * seconds, which is most of a page load spent invisible to every peer.
+   */
+  | { type: 'probe'; tabId: string }
   /** The current leader refusing to yield because it is pinned. */
   | { type: 'pinned'; tabId: string }
   | { type: 'heartbeat'; tabId: string }
@@ -63,6 +84,20 @@ export interface TabCoordinatorDeps {
   channel?: CoordinatorChannel | null;
   focus?: FocusSource;
   tabId?: string;
+  /**
+   * What leadership is contended *over*. Tabs coordinate only with tabs in the same scope.
+   *
+   * The agent's id, in practice, and it is not an optimisation. Leadership exists so that N tabs
+   * showing **the same agent** publish that agent's state once rather than N times. Two tabs signed
+   * in as *different* agents share none of that: electing one leader between them means the loser
+   * publishes nothing at all, so an entire agent goes silent — and because leadership follows window
+   * focus, it is whichever agent you are not currently looking at. That reads exactly like a slow
+   * network, which is how it went unnoticed: everything arrives, just not until you look away.
+   *
+   * Two agents on one machine is the ordinary way this gets developed and tested, so an origin-wide
+   * channel is wrong by default rather than in an edge case.
+   */
+  scope?: string;
 }
 
 export interface TabCoordinator {
@@ -90,9 +125,9 @@ function defaultTabId(): string {
   }
 }
 
-function defaultChannel(): CoordinatorChannel | null {
+function defaultChannel(scope?: string): CoordinatorChannel | null {
   if (typeof BroadcastChannel === 'undefined') return null;
-  const bc = new BroadcastChannel(CHANNEL_NAME);
+  const bc = new BroadcastChannel(scope ? `${CHANNEL_NAME}:${scope}` : CHANNEL_NAME);
   return {
     post: (message) => bc.postMessage(message),
     subscribe: (cb) => {
@@ -155,7 +190,7 @@ function isMessage(value: unknown): value is Message {
 }
 
 export function createTabCoordinator(deps: TabCoordinatorDeps = {}): TabCoordinator {
-  const channel = deps.channel !== undefined ? deps.channel : defaultChannel();
+  const channel = deps.channel !== undefined ? deps.channel : defaultChannel(deps.scope);
   const focus = deps.focus ?? defaultFocus();
   if (!channel || !focus) return soleLeader();
 
@@ -192,11 +227,17 @@ export function createTabCoordinator(deps: TabCoordinatorDeps = {}): TabCoordina
     lostLeadership.forEach((cb) => cb());
   }
 
-  /** Assume the leader is gone if it goes quiet for LEADER_TIMEOUT, and take over. */
-  function watchLeader(): void {
+  /**
+   * Take over if nothing is heard for `delay`.
+   *
+   * The delay is the question being asked. `LEADER_TIMEOUT` asks whether an incumbent has crashed;
+   * `CLAIM_TIMEOUT` asks whether an incumbent exists. Any inbound heartbeat resets it to the long
+   * one, so hearing from a live leader always restores the patient behaviour.
+   */
+  function watchLeader(delay: number = LEADER_TIMEOUT): void {
     if (disposed) return;
     if (timeoutTimer) clearTimeout(timeoutTimer);
-    timeoutTimer = setTimeout(becomeLeader, LEADER_TIMEOUT);
+    timeoutTimer = setTimeout(becomeLeader, delay);
   }
 
   function stopWatchingLeader(): void {
@@ -217,6 +258,11 @@ export function createTabCoordinator(deps: TabCoordinatorDeps = {}): TabCoordina
           if (pinned) post('pinned');
           else {
             stepDown();
+            // Say so. A silent step-down is indistinguishable from a leader that simply went quiet,
+            // so the claimant had to wait out the full crash timeout before daring to take over —
+            // fifteen seconds during which this agent published nothing at all. `resign` is the
+            // message that already means "take over now"; the yield just never sent it.
+            post('resign');
             watchLeader();
           }
         }
@@ -236,6 +282,13 @@ export function createTabCoordinator(deps: TabCoordinatorDeps = {}): TabCoordina
           stepDown();
           watchLeader();
         }
+        break;
+
+      case 'probe':
+        // Answer without yielding. A heartbeat is exactly the right reply: the prober's own handler
+        // for it resets the short fuse back to the full crash timeout, so an incumbent's existence
+        // is all that needs to be communicated.
+        if (leader) post('heartbeat');
         break;
 
       case 'heartbeat':
@@ -266,17 +319,26 @@ export function createTabCoordinator(deps: TabCoordinatorDeps = {}): TabCoordina
   });
 
   const unsubscribeFocus = focus.onFocusGained(() => {
-    if (!leader) post('claim');
+    if (leader) return;
+    // Arm the short fuse *before* asking. A reply can land synchronously — an in-process channel
+    // delivers during `post` — and arming afterwards would overwrite the long timeout that reply
+    // just set, so a tab that had been told "somebody is here" would take over anyway 300ms later.
+    watchLeader(CLAIM_TIMEOUT);
+    post('claim');
   });
 
   const unsubscribeHide = focus.onHide(() => {
     if (leader) post('resign');
   });
 
-  // Claim on creation when this tab is the one being looked at; otherwise wait for the incumbent to
-  // go quiet.
-  if (focus.hasFocus()) post('claim');
-  watchLeader();
+  // Ask on creation, either way — the difference is only whether an incumbent has to yield.
+  //
+  // A focused tab claims, and a leader steps aside for it. An unfocused tab probes, and a leader
+  // answers without moving. Both then wait one round trip rather than a crash timeout, because both
+  // are asking the same cheap question: is there anybody here? Only the answer "no" is slow to reach
+  // by silence, and it is the answer a lone tab always gets.
+  watchLeader(CLAIM_TIMEOUT);
+  post(focus.hasFocus() ? 'claim' : 'probe');
 
   return {
     isLeader: () => leader,
@@ -285,7 +347,10 @@ export function createTabCoordinator(deps: TabCoordinatorDeps = {}): TabCoordina
       pinned = next;
       // Becoming pinned while not leader means this tab holds the thing that must not be interrupted
       // — claim so publishing follows it.
-      if (pinned && !leader) post('claim');
+      if (pinned && !leader) {
+        watchLeader(CLAIM_TIMEOUT);
+        post('claim');
+      }
     },
 
     onBecomeLeader(cb) {

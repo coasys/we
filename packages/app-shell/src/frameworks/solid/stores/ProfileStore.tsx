@@ -6,7 +6,8 @@
  * and owns the own-profile write path (text fields, images, location). Identity itself (`me`,
  * the DID) belongs to SessionStore — this store is about the human-facing profile data.
  */
-import { type AgentProfileSummary, isProfileEmpty, type PublishProfileFields } from '@we/backend-shared';
+import { provideModuleHostServices } from '@shared/registries/moduleHostServices';
+import { type AgentProfileSummary, displayName, isProfileEmpty, type PublishProfileFields } from '@we/backend-shared';
 import { toastService } from '@we/components/solid';
 import { compressImageToFileData, dataURIToFileData, shrinkDataUri } from '@we/models';
 import { Accessor, createContext, createMemo, createSignal, ParentProps, useContext } from 'solid-js';
@@ -64,8 +65,25 @@ export function ProfileStoreProvider(props: ParentProps) {
   const session = useSessionStore();
   const accounts = useAccountStore();
 
-  const [profiles, setProfiles] = createSignal<AgentProfileSummary[]>([]);
+  const [rawProfiles, setProfiles] = createSignal<AgentProfileSummary[]>([]);
   const [pendingAvatar, setPendingAvatarSignal] = createSignal('');
+
+  /**
+   * The cache, with a display name on every row.
+   *
+   * Derived here rather than written by each of the half-dozen paths that put a profile into the
+   * cache — a fetch, an edit, an avatar upload, first-run setup — because one of them would forget,
+   * and a name that is present on most rows is worse than one that is absent from all of them.
+   *
+   * This is the single decoration point for everything downstream: `spaceStore.members` and
+   * `presenceStore.peers` are both built by mapping over this accessor, and `$identities` — which
+   * backs the `$agent` block and the feature-module identity port — is bound to it too. So one
+   * derived field reaches every list of people in the app, and no template has to spell a name out
+   * of its parts again.
+   */
+  const profiles = createMemo<AgentProfileSummary[]>(() =>
+    rawProfiles().map((profile) => ({ ...profile, name: displayName(profile) })),
+  );
 
   // In-flight deduplication for fetchProfile — prevents concurrent fetches for the same DID
   const inflightFetches = new Map<string, Promise<void>>();
@@ -154,7 +172,11 @@ export function ProfileStoreProvider(props: ParentProps) {
     const profilePort = session.backendPorts()?.profiles;
     if (!myDid || !profilePort) return;
 
-    const fileData = await compressImageToFileData(imageFile, field === 'avatar' ? 'profile-image' : 'cover-image');
+    const fileData = await compressImageToFileData(
+      imageFile,
+      field === 'avatar' ? 'profile-image' : 'cover-image',
+      field === 'avatar' ? PROFILE_AVATAR_PX : undefined,
+    );
     // data_base64 from compressImageToFileData is raw base64 (no "data:" prefix) — rebuild the data URI
     // the same way the read path does when resolving it back after a refetch.
     const dataUri = `data:${fileData.file_type};base64,${fileData.data_base64}`;
@@ -271,7 +293,7 @@ export function ProfileStoreProvider(props: ParentProps) {
   }
 
   async function setPendingAvatar(file: File): Promise<void> {
-    const fileData = await compressImageToFileData(file, 'profile-image');
+    const fileData = await compressImageToFileData(file, 'profile-image', PROFILE_AVATAR_PX);
     setPendingAvatarSignal(`data:${fileData.file_type};base64,${fileData.data_base64}`);
   }
 
@@ -313,6 +335,19 @@ export function ProfileStoreProvider(props: ParentProps) {
   const ACCOUNT_AVATAR_PX = 192;
 
   /**
+   * Longest edge of the published avatar, in px.
+   *
+   * The same trap `ACCOUNT_AVATAR_PX` exists for, one layer out: `compressImageToFileData` scales
+   * to a proportion of the original, so an uncapped upload stayed a fraction of a phone photo —
+   * hundreds of kilobytes of base64 that every peer then syncs, caches and holds in memory to
+   * render a 32px circle. The largest surface an avatar renders at is the 120px profile picture, so
+   * this covers it at 4× device pixel ratio and everything else many times over.
+   *
+   * Only new uploads: an avatar already published keeps its size until it is replaced.
+   */
+  const PROFILE_AVATAR_PX = 512;
+
+  /**
    * Mirror the avatar onto the account, at a size the registry will actually keep.
    *
    * Never throws: this is a side effect of publishing a profile, and a sign-in label is not worth
@@ -345,6 +380,31 @@ export function ProfileStoreProvider(props: ParentProps) {
     await profilePort.publish({ avatarExpressionUrl: expressionUrl } as PublishProfileFields);
     void cacheAvatarOnAccount(dataUri);
   }
+
+  /**
+   * Lend feature modules the same directory the `$agent` block reads.
+   *
+   * A module cannot join an agent id to a face on its own: presence carries ids only, on purpose,
+   * and a module has no way to name a host store. Without this the call module drew the generic
+   * person glyph for everyone — its own comment said as much, and said it would stay that way until
+   * an identities port existed. This is that port.
+   *
+   * `get` reads `profiles()` inside the call, so a module reading it in a derived value re-runs when
+   * a profile lands. The name is assembled here rather than in each module, because how a host makes
+   * a display name out of the fields it holds is the host's business.
+   */
+  provideModuleHostServices({
+    identities: {
+      get: (agentId) => {
+        const profile = profiles().find((entry) => entry.did === agentId);
+        if (!profile) return undefined;
+        // The rule this used to inline now lives in `displayName`, applied once when the cache is
+        // decorated — so a module and a template can no longer disagree about someone's name.
+        return { name: profile.name || undefined, avatar: profile.avatar };
+      },
+      fetch: (agentId) => void fetchProfile(agentId),
+    },
+  });
 
   const store: ProfileStore = {
     profiles,

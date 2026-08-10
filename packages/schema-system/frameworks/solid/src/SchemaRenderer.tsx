@@ -1004,6 +1004,20 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
     }
   }
 
+  /**
+   * Which of a parent web component's named slots this node goes into.
+   *
+   * Applied to the **wrapper** below rather than to the element itself, and that is the only
+   * placement that can work. Every node is wrapped in a `display: contents` div, so the wrapper —
+   * not the component — is the direct child a shadow host sees, and slot assignment considers
+   * direct children only. `display: contents` does not change that: slotting is a DOM-tree
+   * question, not a layout one.
+   *
+   * On the inner element the attribute was inert. It matched nothing, the wrapper fell into the
+   * default slot regardless, and a node aimed at a named slot rendered as ordinary content beside
+   * the trigger while the slot it named stayed empty. `we-tabs` hit this and worked around it from
+   * the other side, by finding its tabs with `querySelectorAll` at any depth.
+   */
   const slotProp = node.slot ? { slot: node.slot } : {};
   // Compute wrapper div styles. `theme` always uses display:contents so it doesn't affect layout
   // but still scopes CSS custom properties. `styles` is the raw-CSS escape hatch — when present
@@ -1100,7 +1114,7 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
     });
 
     const wcElement = (
-      <Dynamic ref={hostRef} component={component()} {...eventAttrs()} {...slotProp} {...slotElements}>
+      <Dynamic ref={hostRef} component={component()} {...eventAttrs()} {...slotElements}>
         {childrenEl()}
       </Dynamic>
     );
@@ -1109,6 +1123,7 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
       <div
         ref={wrapperRef}
         style={wrapperStyle()}
+        {...slotProp}
         data-we-theme={themeAttr()}
         data-we-node-id={visualEditor.enabled && node.id ? node.id : undefined}
       >
@@ -1138,7 +1153,7 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
   });
 
   const solidElement = (
-    <Dynamic component={component()} {...reactiveAttrs()} {...slotProp} {...slotElements}>
+    <Dynamic component={component()} {...reactiveAttrs()} {...slotElements}>
       {childrenEl()}
     </Dynamic>
   );
@@ -1147,6 +1162,7 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
     <div
       ref={wrapperRef}
       style={wrapperStyle()}
+      {...slotProp}
       data-we-theme={themeAttr()}
       data-we-node-id={visualEditor.enabled && node.id ? node.id : undefined}
     >

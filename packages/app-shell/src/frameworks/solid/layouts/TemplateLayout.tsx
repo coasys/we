@@ -56,7 +56,15 @@ export const SHELL_SIDEBAR_WIDTH = '80px';
 // theme/template editor rails and panels. Shared with PersistentAppFrames so the
 // persistent app iframes (rendered outside the template Router) line up with the
 // same viewport the template content occupies.
-export function computeRightOffset(stores: Stores): string {
+/**
+ * The right-edge chrome the *editor* is holding, in pixels.
+ *
+ * Split out because two different consumers need it separately. The content viewport wants it added
+ * to whatever docks are taking, which is what `computeRightOffset` returns; the dock geometry wants
+ * it on its own, as room already spoken for — a panel that ignored it opened directly on top of the
+ * controls being used to edit the thing it was covering.
+ */
+export function computeEditorRightOffset(stores: Stores): number {
   let offset = 0;
   if (stores.editorStore.isEditingTheme()) {
     offset += THEME_RAIL_WIDTH;
@@ -71,7 +79,40 @@ export function computeRightOffset(stores: Stores): string {
       if (stores.editorStore.visualPanelOpen()) offset += stores.editorStore.visualPanelWidth();
     }
   }
+  return offset;
+}
+
+// Right-edge offset of the content viewport — shrinks it to make room for the editor's rails and
+// panels, and for any docked module. Shared with PersistentAppFrames so the persistent app iframes
+// (rendered outside the template Router) line up with the same viewport the template content
+// occupies.
+export function computeRightOffset(stores: Stores): string {
+  const offset = stores.shellStore.contentInset().right + computeEditorRightOffset(stores);
   return offset ? `${offset}px` : '0px';
+}
+
+/**
+ * The other three edges, from docked module panels alone.
+ *
+ * Separate from `computeRightOffset` because that one is also the editor's, and the editor only
+ * ever grows from the right. Kept as CSS strings for the same reason: these feed DS props, and an
+ * offset of zero should read as `'0px'` rather than as an omitted prop that inherits something.
+ *
+ * The left offset composes with the shell sidebar rather than replacing it — a left dock opens
+ * *beside* the sidebar, not over it, so its width adds to the sidebar's.
+ */
+export function computeLeftOffset(stores: Stores): string {
+  const dock = stores.shellStore.contentInset().left;
+  const sidebar = `var(--we-sidebar-width, ${SHELL_SIDEBAR_WIDTH})`;
+  return dock ? `calc(${sidebar} + ${dock}px)` : sidebar;
+}
+
+export function computeTopOffset(stores: Stores): string {
+  return `${stores.shellStore.contentInset().top}px`;
+}
+
+export function computeBottomOffset(stores: Stores): string {
+  return `${stores.shellStore.contentInset().bottom}px`;
 }
 
 // Shell view registry — maps activeShellView id → schema + optional extra stores.
@@ -183,17 +224,28 @@ export function TemplateLayout(props: ParentProps & { stores: Stores }) {
   });
 
   const rightOffset = () => computeRightOffset(stores);
+  const leftOffset = () => computeLeftOffset(stores);
+  const topOffset = () => computeTopOffset(stores);
+  const bottomOffset = () => computeBottomOffset(stores);
 
   return (
     <>
-      {/* Content viewport — offset from shell sidebar and AI panel */}
+      {/* Content viewport — offset from the shell sidebar, the editor panels, and any docked module.
+          Sized by its four offsets rather than by `height: 100vh`, so a dock on the top or bottom
+          edge takes room from it the same way one on the left or right does. */}
       <Column
         position="fixed"
-        top="0"
-        left={`var(--we-sidebar-width, ${SHELL_SIDEBAR_WIDTH})`}
+        top={topOffset()}
+        bottom={bottomOffset()}
+        left={leftOffset()}
         right={rightOffset()}
-        height="100vh"
-        transition={panelResizing() ? 'none' : 'right 300ms ease'}
+        // Suspended during either kind of drag, so the viewport edge tracks the cursor exactly rather
+        // than lagging a third of a second behind it.
+        transition={
+          panelResizing() || stores.shellStore.dockResizing()
+            ? 'none'
+            : 'top 300ms ease, right 300ms ease, bottom 300ms ease, left 300ms ease'
+        }
       >
         {/*
           Main template content, and the scoped space theme.

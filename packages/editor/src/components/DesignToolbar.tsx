@@ -305,8 +305,13 @@ export function DesignToolbar() {
         ref={containerRef}
         position="absolute"
         top="10px"
-        right={rowRight()}
-        transition={panelResizing() ? 'none' : 'right 300ms ease'}
+        // Plus whatever a docked module panel is taking from the same edge — see `--we-dock-right`.
+        right={`calc(${rowRight()} + var(--we-dock-right, 0px))`}
+        // `--we-chrome-transition` collapses to 0s while a *dock* is being dragged. Without it this
+        // animated `right` over 300ms on every frame of the drag, so the toolbar trailed the panel
+        // edge it was supposed to be sitting beside — `panelResizing` only knows about the editor's
+        // own rails.
+        transition={panelResizing() ? 'none' : 'right var(--we-chrome-transition, 300ms) ease'}
         pointerEvents="auto"
         ay="start"
         gap="200"
@@ -397,9 +402,10 @@ export function DesignToolbar() {
             */}
             <we-tooltip
               title={
-                themeStore.themeScope() === 'global'
-                  ? `Preview scoped to the space · your setting is ${themeStore.themeScopePreference() === 'global' ? 'Global' : 'Space only'}`
-                  : `Preview globally · your setting is ${themeStore.themeScopePreference() === 'global' ? 'Global' : 'Space only'}`
+                themeStore.themeScope() === 'global' ? 'Scope theme to the space template' : 'Apply theme globaly'
+                // themeStore.themeScope() === 'global'
+                //   ? `Preview scoped to the space · your setting is ${themeStore.themeScopePreference() === 'global' ? 'Global' : 'Space only'}`
+                //   : `Preview globally · your setting is ${themeStore.themeScopePreference() === 'global' ? 'Global' : 'Space only'}`
               }
               placement="bottom"
             >

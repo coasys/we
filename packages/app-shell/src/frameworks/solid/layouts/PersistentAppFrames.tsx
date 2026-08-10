@@ -17,7 +17,7 @@ import { Column } from '@we/components/solid';
 import { panelResizing } from '@we/editor/runtime';
 import { For } from 'solid-js';
 
-import { computeRightOffset, SHELL_SIDEBAR_WIDTH } from './TemplateLayout';
+import { computeBottomOffset, computeLeftOffset, computeRightOffset, computeTopOffset } from './TemplateLayout';
 
 export function PersistentAppFrames(props: { stores: Stores }) {
   const { stores } = props;
@@ -26,11 +26,17 @@ export function PersistentAppFrames(props: { stores: Stores }) {
     <Column
       display={stores.appStore.activeAppId() ? 'block' : 'none'}
       position="fixed"
-      top="0"
-      left={`var(--we-sidebar-width, ${SHELL_SIDEBAR_WIDTH})`}
+      top={computeTopOffset(stores)}
+      bottom={computeBottomOffset(stores)}
+      left={computeLeftOffset(stores)}
       right={computeRightOffset(stores)}
-      height="100vh"
-      transition={panelResizing() ? 'none' : 'right 300ms ease'}
+      // Suspended during either kind of drag, so the viewport edge tracks the cursor exactly rather
+      // than lagging a third of a second behind it.
+      transition={
+        panelResizing() || stores.shellStore.dockResizing()
+          ? 'none'
+          : 'top 300ms ease, right 300ms ease, bottom 300ms ease, left 300ms ease'
+      }
     >
       {/* opacity:0/1 creates an explicit GPU compositing layer (unlike visibility:hidden
            which does not). will-change:opacity pre-allocates that layer so the browser

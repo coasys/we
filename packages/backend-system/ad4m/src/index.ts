@@ -48,3 +48,5 @@ export {
 export { createAd4mAgentSession, createAd4mDatasetLifecycle } from './lifecycleAdapter';
 export { type Ad4mRuntimeOptions, createAd4mRuntimeAdmin } from './runtimeAdminAdapter';
 export { createAd4mBackendPorts, createAd4mProfileDirectory, createAd4mSchemaPort } from './backendPortsAdapter';
+export { createAd4mTranscriptionPort } from './transcriptionAdapter';
+export { type Ad4mCapability, capabilitiesFromToken, createCapabilityCheck } from './capabilities';

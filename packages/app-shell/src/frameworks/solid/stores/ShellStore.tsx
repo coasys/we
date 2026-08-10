@@ -7,7 +7,28 @@
  * which is the *overlay-scoped* memory router mounted inside the overlay; this store is
  * app-level, because the controls that open an overlay render outside it.
  */
-import { Accessor, createContext, createSignal, ParentProps, useContext } from 'solid-js';
+import {
+  type ContentInset,
+  contentInset,
+  type DockGeometry,
+  type DockRequest,
+  dockThickness,
+  MIN_DOCK_PX,
+  resolveDock,
+} from '@shared/dockGeometry';
+import { dockRegistry } from '@shared/registries/dockRegistry';
+import { moduleStores } from '@shared/registries/moduleRegistry';
+import type { DockEdge, DockSize } from '@we/module-shared';
+import {
+  Accessor,
+  createContext,
+  createEffect,
+  createMemo,
+  createSignal,
+  onCleanup,
+  ParentProps,
+  useContext,
+} from 'solid-js';
 
 export interface ShellStore {
   /** Id of the currently open shell overlay, or null. */
@@ -40,6 +61,23 @@ export interface ShellStore {
   setCreateSpaceOpen: (open: boolean) => void;
   /** Smooth-scroll the element with the given DOM id into view. */
   scrollToId: (id: string) => void;
+  /**
+   * Every registered dock's resolved box, keyed by dock id.
+   *
+   * Read from schema through `dockGeometryPath` — the frame a dock is wrapped in binds each of its
+   * geometric props to a path into this object, so a panel changing edge or size rewrites props on
+   * a container that stays mounted rather than rebuilding it.
+   */
+  dockGeometry: Accessor<Record<string, DockGeometry>>;
+  /** What the content viewport gives up to docked panels, in pixels per edge. */
+  contentInset: Accessor<ContentInset>;
+  /** True while a dock is being dragged, so transitions can be suspended and the edge track the cursor. */
+  dockResizing: Accessor<boolean>;
+  /** Remember a dock's current thickness, so the drag that follows is measured from it. */
+  beginDockResize: (id: string) => void;
+  /** Apply a drag, in pixels moved since `beginDockResize`. Signed in screen direction. */
+  resizeDock: (id: string, delta: number) => void;
+  endDockResize: () => void;
 }
 
 const ShellContext = createContext<ShellStore>();
@@ -59,10 +97,110 @@ function initialShellView(): string | null {
   return window.location.pathname === '/' ? 'landing-page' : null;
 }
 
+/**
+ * Read one of a dock's declared store keys off the contributing module's store.
+ *
+ * A module publishes accessors, so the value has to be *called* — and reading it inside a memo is
+ * what makes dock geometry track a panel opening, moving or resizing with no subscription wiring
+ * between the module and the shell. A module that has not registered, or that names a key it does
+ * not have, resolves to undefined and falls back, because a dock whose module is absent must render
+ * nothing rather than throw at boot.
+ */
+function readModuleKey(moduleId: string, key: string | undefined): unknown {
+  if (!key) return undefined;
+  const store = moduleStores[moduleId] as Record<string, unknown> | undefined;
+  const value = store?.[key];
+  return typeof value === 'function' ? (value as () => unknown)() : value;
+}
+
 export function ShellStoreProvider(props: ParentProps) {
   const [activeShellView, setActiveShellView] = createSignal<string | null>(initialShellView());
   const [pendingPath, setPendingPath] = createSignal<string | null>(null);
   const [createSpaceOpen, setCreateSpaceOpen] = createSignal(false);
+
+  // Docks are sized against the window, so the window is state. Tracked here rather than in each
+  // module because the whole point of the arrangement is that a module never does viewport maths.
+  const [viewport, setViewport] = createSignal({
+    width: typeof window === 'undefined' ? 1440 : window.innerWidth,
+    height: typeof window === 'undefined' ? 900 : window.innerHeight,
+  });
+  if (typeof window !== 'undefined') {
+    const onResize = () => setViewport({ width: window.innerWidth, height: window.innerHeight });
+    window.addEventListener('resize', onResize);
+    onCleanup(() => window.removeEventListener('resize', onResize));
+  }
+
+  /** What the user has dragged each dock to, by dock id. Empty until somebody drags one. */
+  const [dockSizes, setDockSizes] = createSignal<Record<string, number>>({});
+  const [dockResizing, setDockResizing] = createSignal(false);
+  /** The thickness a drag started from, so every move is measured against one fixed origin. */
+  let resizeOrigin = 0;
+
+  const dockRequests = createMemo<DockRequest[]>(() =>
+    dockRegistry.ordered().map((entry) => ({
+      id: entry.id,
+      edge: (readModuleKey(entry.moduleId, entry.edge) as DockEdge) ?? null,
+      size: (readModuleKey(entry.moduleId, entry.size) as DockSize) ?? 'md',
+      float: Boolean(readModuleKey(entry.moduleId, entry.float)),
+      resizedTo: dockSizes()[entry.id],
+    })),
+  );
+
+  /**
+   * Every dock's box, with each one pushed past whatever is already holding its edge.
+   *
+   * Resolved as a list rather than one at a time, because a dock's position depends on its
+   * neighbours: two panels on the right are a column of panels, not two panels in the same place.
+   * The order is `dockRegistry.ordered()`, so it is the declared `order` then the module id — stable,
+   * and never "whichever module registered first".
+   */
+  const dockGeometry = createMemo(() => {
+    const taken: Record<string, number> = { left: 0, right: 0, top: 0, bottom: 0 };
+    const resolved: Record<string, DockGeometry> = {};
+    for (const request of dockRequests()) {
+      const preceding = request.edge ? taken[request.edge] : 0;
+      resolved[request.id] = resolveDock(request, viewport(), preceding);
+      // Only a docked panel displaces the next one; a floating one is over the top of everything.
+      if (request.edge && !resolved[request.id].floating) {
+        taken[request.edge] += dockThickness(request.edge, request.size, viewport(), request.resizedTo);
+      }
+    }
+    return resolved;
+  });
+
+  const inset = createMemo(() => contentInset(dockRequests(), viewport()));
+
+  /**
+   * Publish the inset as CSS custom properties, so chrome can sit against the *content* rather than
+   * the window.
+   *
+   * Anything pinned to a screen edge has to move when a dock takes that edge, and the things that
+   * need to move — the module rail, the editor's rails, its floating toolbar — live in three
+   * different packages, two of which have no business importing this store. A custom property on the
+   * root is the one channel all of them already share; `--we-sidebar-width` is set the same way and
+   * for the same reason.
+   */
+  createEffect(() => {
+    if (typeof document === 'undefined') return;
+    const edges = inset();
+    for (const [edge, value] of Object.entries(edges)) {
+      document.documentElement.style.setProperty(`--we-dock-${edge}`, `${value}px`);
+    }
+  });
+
+  /**
+   * How long chrome should take to follow the dock — nothing, while it is being dragged.
+   *
+   * Anything animating its own position has to stop animating during a drag or it lags a third of a
+   * second behind the cursor, which reads as the panel and the chrome disagreeing about where the
+   * edge is. The content viewport reads `dockResizing` directly; the editor's toolbar cannot,
+   * because it is in another package with no path to this store — so the same answer goes out as a
+   * duration it can drop into its own `transition`.
+   */
+  createEffect(() => {
+    if (typeof document === 'undefined') return;
+    document.documentElement.style.setProperty('--we-chrome-transition', dockResizing() ? '0s' : '300ms');
+  });
 
   const store: ShellStore = {
     activeShellView,
@@ -81,6 +219,33 @@ export function ShellStoreProvider(props: ParentProps) {
     scrollToId: (id: string) => {
       document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     },
+    dockGeometry,
+    contentInset: inset,
+    dockResizing,
+
+    beginDockResize: (id) => {
+      const request = dockRequests().find((entry) => entry.id === id);
+      if (!request?.edge) return;
+      resizeOrigin = dockThickness(request.edge, request.size, viewport(), request.resizedTo);
+      setDockResizing(true);
+    },
+
+    /**
+     * Turn a screen-space drag into a thickness.
+     *
+     * The sign lives here rather than in the handle because only the host knows which edge the panel
+     * is on, and the answer inverts between edges: a right-hand panel's handle is on its *left*, so
+     * dragging left — a negative delta — makes it wider. A handle that guessed would be wrong half
+     * the time, which is why it reports raw screen movement and nothing else.
+     */
+    resizeDock: (id, delta) => {
+      const request = dockRequests().find((entry) => entry.id === id);
+      if (!request?.edge) return;
+      const grows = request.edge === 'right' || request.edge === 'bottom' ? -1 : 1;
+      setDockSizes((prev) => ({ ...prev, [id]: Math.max(MIN_DOCK_PX, resizeOrigin + grows * delta) }));
+    },
+
+    endDockResize: () => setDockResizing(false),
   };
 
   return <ShellContext.Provider value={store}>{props.children}</ShellContext.Provider>;

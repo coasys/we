@@ -252,7 +252,7 @@ export const globeRoute: RouteSchema = {
                   select: {
                     id: '$item.did',
                     kind: 'agent',
-                    name: { $concat: ['$item.firstName', ' ', '$item.lastName'] },
+                    name: '$item.name',
                     latitude: '$item.location.latitude',
                     longitude: '$item.location.longitude',
                     avatar: '$item.avatar',

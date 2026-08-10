@@ -173,7 +173,6 @@ export const twitterTemplate: TemplateSchema = {
           children: [
             {
               type: 'we-tab',
-              slot: 'tab',
               props: {
                 label: 'For you',
                 key: '/',
@@ -185,7 +184,6 @@ export const twitterTemplate: TemplateSchema = {
             },
             {
               type: 'we-tab',
-              slot: 'tab',
               props: {
                 label: 'Following',
                 key: '/following',

@@ -58,6 +58,7 @@
     "zod": "^4.1.11",
     "@we/backend-shared": "workspace:*",
     "@we/module-shared": "workspace:*",
+    "@we/module-transcribe": "workspace:*",
     "@we/backend-ad4m": "workspace:*",
     "@we/template-default": "workspace:*",
     "@we/template-shell": "workspace:*",

@@ -34,11 +34,23 @@ function state(agentId: string, overrides: Partial<PresenceState> = {}): Presenc
  */
 function createFakeChannel() {
   const subscribers: Array<(from: string, payload: unknown) => void> = [];
+  const watchers: Array<(result: { ok: boolean; ms: number; superseded?: boolean }) => void> = [];
   const published: unknown[] = [];
   return {
     published,
+    /** Play the transport's verdict on the last send, as a real channel would. */
+    report(result: { ok: boolean; ms: number; superseded?: boolean }) {
+      watchers.forEach((cb) => cb(result));
+    },
     channel: {
       publish: (payload: unknown) => published.push(payload),
+      onPublishResult: (cb) => {
+        watchers.push(cb);
+        return () => {
+          const i = watchers.indexOf(cb);
+          if (i !== -1) watchers.splice(i, 1);
+        };
+      },
       onMessage: (cb) => {
         subscribers.push(cb);
         return () => {
@@ -251,6 +263,202 @@ describe('createHeartbeatPresence', () => {
     expect(published).toEqual([{ v: 1, state: expect.objectContaining({ agentId: 'me' }), hello: true }]);
   });
 
+  it('repeats the handshake while nobody answers', () => {
+    // The transport is best-effort: `sendBroadcastU` acks the send, never the delivery, and two
+    // peers still discovering each other exchange nothing at all. One lost hello used to cost a full
+    // heartbeat interval of looking at an empty space, which is the intermittent, asymmetric,
+    // impossible-to-reproduce delay — loss is independent per direction.
+    const { published } = start();
+    expect(published).toHaveLength(1);
+
+    clock += 1_000;
+    vi.advanceTimersByTime(1_000);
+    expect(published).toHaveLength(2);
+    expect(published.every((message) => (message as { hello?: true }).hello)).toBe(true);
+
+    // Bounded — one repeat, not a poll. The next solicitation is the ordinary heartbeat, which is
+    // the mechanism that covers the long tail.
+    clock += 3_000;
+    vi.advanceTimersByTime(3_000);
+    expect(published).toHaveLength(2);
+  });
+
+  it('keeps soliciting on the heartbeat while it has no peers', () => {
+    // Recovery, not startup. A remote executor's client backs its reconnect off to thirty seconds,
+    // and an agent that comes back with an empty peer map would otherwise wait passively for
+    // everyone else's next beat. A beat that asks costs exactly what a beat that announces costs.
+    const { published } = start();
+    // Past the one handshake repeat, so what is left is the heartbeat.
+    clock += 1_000;
+    vi.advanceTimersByTime(1_000);
+    published.length = 0;
+
+    // A full interval from the repeat, not from start: publishing pushes the next tick out, which is
+    // the adaptive scheduling that stops a state change and a beat landing on top of each other.
+    clock += 5_000;
+    vi.advanceTimersByTime(5_000);
+
+    expect(published).toHaveLength(1);
+    expect(published[0]).toHaveProperty('hello', true);
+  });
+
+  it('goes back to a plain beat once somebody is there', () => {
+    const { published, deliver } = start();
+    deliver('peer', { v: 1, state: state('peer') });
+    published.length = 0;
+
+    clock += 5_000;
+    vi.advanceTimersByTime(5_000);
+
+    expect(published).toHaveLength(1);
+    expect(published[0]).not.toHaveProperty('hello');
+  });
+
+  it('stops repeating the moment a peer is heard from', () => {
+    const { published, deliver } = start();
+    published.length = 0;
+
+    deliver('peer', { v: 1, state: state('peer') });
+    vi.advanceTimersByTime(5_000);
+
+    // The reply to a non-hello is a notify, not a send, so nothing here should be a handshake.
+    expect(published.filter((message) => (message as { hello?: true }).hello)).toHaveLength(0);
+  });
+
+  describe('reacting to a send the transport refused', () => {
+    // The only closed-loop repair here. Every other one fires on the chance a message was lost after
+    // the transport accepted it; this one fires on being told nothing was sent at all.
+
+    /**
+     * Start, then settle: hearing from a peer ends the handshake repeats and stops the beat being a
+     * solicit, so the only publishes left are the ones each test is about.
+     */
+    function settled() {
+      const harness = start();
+      harness.deliver('peer', { v: 1, state: state('peer') });
+      harness.published.length = 0;
+      return harness;
+    }
+
+    it('retries on a backoff rather than waiting out the heartbeat', () => {
+      const { published, report } = settled();
+
+      report({ ok: false, ms: 30 });
+      clock += 400;
+      vi.advanceTimersByTime(400);
+      expect(published).toHaveLength(1);
+
+      // Doubling, because a refusal usually means the executor is unreachable and retrying hard at an
+      // unreachable executor is how a blip becomes an outage.
+      report({ ok: false, ms: 30 });
+      clock += 400;
+      vi.advanceTimersByTime(400);
+      expect(published).toHaveLength(1);
+      clock += 400;
+      vi.advanceTimersByTime(400);
+      expect(published).toHaveLength(2);
+    });
+
+    it('stops retrying as soon as one succeeds', () => {
+      const { published, report } = settled();
+
+      report({ ok: false, ms: 30 });
+      report({ ok: true, ms: 20 });
+
+      clock += 5_000;
+      vi.advanceTimersByTime(5_000);
+      // The ordinary beat, and nothing else — the pending retry was cancelled.
+      expect(published).toHaveLength(1);
+    });
+
+    it('repeats a hello as a hello, so a failed join is not downgraded to an announcement', () => {
+      // Peers answer a `hello`. Retrying it as a plain beat would leave the joiner waiting for
+      // everyone else's next heartbeat — the failure this whole handshake exists to avoid.
+      // Not `settled()`: this one needs the last publish to have been the join handshake.
+      const { published, report } = start();
+      published.length = 0;
+
+      report({ ok: false, ms: 30 });
+      clock += 400;
+      vi.advanceTimersByTime(400);
+
+      expect(published[0]).toHaveProperty('hello', true);
+    });
+
+    it('ignores a superseded message, which is not a failure to repair', () => {
+      // Coalescing dropped it in favour of a newer one carrying the same state or better.
+      const { published, report } = settled();
+
+      report({ ok: false, ms: 0, superseded: true });
+      clock += 2_000;
+      vi.advanceTimersByTime(2_000);
+
+      expect(published).toHaveLength(0);
+    });
+  });
+
+  it('sends a state change twice, because losing one costs a whole interval', () => {
+    // A lost heartbeat costs nothing — the next carries the same state. A lost *change* leaves every
+    // peer displaying the opposite of what is true until the next beat: a muted microphone still
+    // showing as live, which reads as lag rather than as loss.
+    const { published, source, deliver } = start();
+    deliver('peer', { v: 1, state: state('peer') });
+    published.length = 0;
+
+    source.setActivity({ type: 'call', id: 'call-1' });
+    expect(published).toHaveLength(1);
+
+    clock += 700;
+    vi.advanceTimersByTime(700);
+    expect(published).toHaveLength(2);
+
+    // One repeat, not a stream of them.
+    clock += 5_000;
+    vi.advanceTimersByTime(5_000);
+    expect(published).toHaveLength(3); // the ordinary beat, on schedule from the repeat
+  });
+
+  it('keeps only one pending repeat when changes come in quick succession', () => {
+    // Toggling twice must not queue two repeats — last-write-wins, the same rule the transport's
+    // coalescing follows.
+    const { published, source, deliver } = start();
+    deliver('peer', { v: 1, state: state('peer') });
+    published.length = 0;
+
+    source.setActivity({ type: 'call', id: 'call-1' });
+    clock += 100;
+    source.clearActivity('call', 'call-1');
+    expect(published).toHaveLength(2); // the two changes themselves
+
+    clock += 700;
+    vi.advanceTimersByTime(700);
+    expect(published).toHaveLength(3); // one repeat, not two
+  });
+
+  it('re-runs the handshake on announce, for a host whose first one never left', () => {
+    // A host may gate publishing — WE lets one tab per agent do the talking — and a `hello` sent
+    // before that gate opens is gone with nothing to notice or retry it. The driver cannot tell, so
+    // the host says when it starts publishing and the handshake runs again. A plain heartbeat would
+    // not do: peers answer a `hello`, not a state.
+    const { published, source } = start();
+    published.length = 0;
+
+    source.announce();
+
+    expect(published).toEqual([{ v: 1, state: expect.objectContaining({ agentId: 'me' }), hello: true }]);
+  });
+
+  it('ignores announce before start, so a host may register its callback first', () => {
+    // `onBecomeLeader` fires immediately when the tab already leads, which happens before `start`.
+    // That firing must do nothing and leave the handshake to `start` itself.
+    const fake = createFakeChannel();
+    const source = createHeartbeatPresence(fake.channel, { now });
+
+    source.announce();
+
+    expect(fake.published).toEqual([]);
+  });
+
   it('answers a peer hello immediately, without itself saying hello', () => {
     const { deliver, published, source } = start();
     published.length = 0;
@@ -263,7 +471,10 @@ describe('createHeartbeatPresence', () => {
   });
 
   it('heartbeats on the interval', () => {
-    const { published } = start();
+    // Settled first: a lone agent repeats its handshake until somebody answers, and those repeats
+    // are publishes too. Hearing from a peer ends them, which is the state this test is about.
+    const { published, deliver } = start();
+    deliver('peer', { v: 1, state: state('peer') });
     published.length = 0;
 
     clock += 5_000;
@@ -276,21 +487,29 @@ describe('createHeartbeatPresence', () => {
   });
 
   it('does not double-send when a change already published inside the window', () => {
-    const { published, source } = start();
+    const { published, source, deliver } = start();
+    // As above: end the handshake repeats so the only publishes here are the ones under test.
+    deliver('peer', { v: 1, state: state('peer') });
     published.length = 0;
 
     clock += 4_000;
     source.update({ focus: { datasetUri: SPACE, path: '/docs' } });
     expect(published).toHaveLength(1); // the change itself
 
-    // The tick that was due at 5s must wait out a full interval from the change, not fire at once.
-    clock += 1_000;
-    vi.advanceTimersByTime(1_000);
-    expect(published).toHaveLength(1);
-
-    clock += 4_000;
-    vi.advanceTimersByTime(4_000);
+    // Its repeat, in case the first was lost — a separate mechanism, see STATE_CHANGE_ECHO.
+    clock += 700;
+    vi.advanceTimersByTime(700);
     expect(published).toHaveLength(2);
+
+    // The tick that was due at 5s must wait out a full interval from the last publish, not fire at
+    // once — which is the behaviour this test is actually about.
+    clock += 300;
+    vi.advanceTimersByTime(300);
+    expect(published).toHaveLength(2);
+
+    clock += 5_000;
+    vi.advanceTimersByTime(5_000);
+    expect(published).toHaveLength(3);
   });
 
   it('stops publishing entirely when invisible, rather than filtering on receipt', () => {

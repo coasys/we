@@ -172,6 +172,37 @@ const DEFAULT_TRANSITION = 'all var(--we-transition-200, 150ms) ease';
  */
 const writtenVars = new WeakMap<HTMLElement, Set<string>>();
 
+/** Inline declarations written from the `styles` prop, tracked so a removed one is actually removed. */
+const writtenStyles = new WeakMap<HTMLElement, Set<string>>();
+
+/**
+ * Apply the `styles` escape hatch to the host element.
+ *
+ * `styles` is a documented design-system prop — "inline CSS applied directly to the component's own
+ * element" — and every layout component honours it. Primitives accepted it, typed it, and dropped it
+ * on the floor: the key is in `designSystemKeys`, so it survived prop filtering and then nothing ever
+ * read it. Passing one to a primitive did nothing at all, with no error and no warning, which is how
+ * a `--we-resize-handle-line: transparent` meant to suppress a divider ended up drawing one.
+ *
+ * Written last, after the custom properties above, so it overrides a DS prop setting the same thing —
+ * which is what "applied last" in the prop table promises.
+ */
+function applyInlineStyles(el: HTMLElement, styles?: Record<string, string | number>): void {
+  const previous = writtenStyles.get(el);
+  const next = new Set<string>();
+
+  for (const [property, value] of Object.entries(styles ?? {})) {
+    if (value === undefined || value === null || value === '') continue;
+    el.style.setProperty(property, String(value));
+    next.add(property);
+  }
+
+  // Anything this element used to set and no longer does. Without this, removing a key from `styles`
+  // would leave its declaration behind for the life of the element.
+  if (previous) for (const property of previous) if (!next.has(property)) el.style.removeProperty(property);
+  writtenStyles.set(el, next);
+}
+
 /**
  * Set or clear a single `--we-*` custom property.
  *
@@ -364,6 +395,7 @@ export function updateAllCustomVars(
   rawExplicitProps?: Partial<DesignSystemProps>,
 ) {
   updateCustomVars(el, componentName, props, rawExplicitProps);
+  applyInlineStyles(el, props.styles);
   ELEMENT_STATES.forEach((state) => {
     const stateProps = props[`${state}Props`];
     // State props are always treated as explicit — no DEFAULT_PROPS fill state blocks.

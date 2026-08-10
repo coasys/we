@@ -21,7 +21,13 @@ export interface AvatarStackProps {
   max?: number;
   size?: 'xxs' | 'xs' | 'sm' | 'md' | 'lg' | 'xl' | 'xxl';
   overlap?: number;
-  /** Ring for every avatar. A per-avatar `tone` takes precedence. */
+  /**
+   * Ring for every avatar, as a `box-shadow` value. A per-avatar `tone` takes precedence.
+   *
+   * Unset means no ring. Pass one where the avatars overlap and the surface behind them needs to
+   * show between faces — `'0 0 0 2px var(--we-ring-color)'` is the idiom the templates use, since
+   * that variable is the theme's and follows it.
+   */
   ring?: string;
   styles?: Record<string, string | number>;
 }

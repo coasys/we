@@ -19,13 +19,20 @@ export {
   seedCapabilityToModule,
 } from './module';
 export type {
+  CreateEntityOptions,
+  DockContribution,
+  DockEdge,
+  DockSize,
   ModuleCapability,
   ModuleCompatibility,
   ModuleDefinition,
   ModuleEmbed,
+  ModuleIdentity,
+  ModuleIdentityAccess,
   ModuleLauncher,
   ModulePresenceAccess,
   ModuleStoreDeps,
+  CoreSlotAnchor,
   SlotAnchor,
   SlotContribution,
 } from './module';

@@ -9,6 +9,7 @@
 import { defineModule, type ModuleStoreDeps, seedCapabilityToModule } from '@we/module-shared';
 
 import type { WeSeedFile } from '../types/seed';
+import { installConsoleTrace } from './installConsoleTrace';
 import { generateIframePermissions, validateSeedForLauncher } from './integrationComposer';
 import type { PlatformAdapter } from './platform/types';
 import { activateSeedModules } from './registries/bundledModules';
@@ -35,6 +36,10 @@ export function initializeIntegrations(
   seed: WeSeedFile,
   deps: IntegrationDeps = {},
 ): void {
+  // Before anything else registers: presence starts early, and a trace that misses the first
+  // handshake misses the part being complained about.
+  installConsoleTrace();
+
   try {
     provideSeed(seed);
 
@@ -61,6 +66,10 @@ export function initializeIntegrations(
       const definition = defineModule({
         id: app.id,
         name: app.name,
+        // Carried through so an embedded app describes itself in the settings list like every other
+        // module. The seed has always declared it; it simply was not forwarded, which left Flux the
+        // one row on that page with a name and nothing under it.
+        description: app.description,
         icon: app.icon,
         capabilities: app.capabilities.map(seedCapabilityToModule),
         // An embedded app reaches the host's agent through the data layer, so it is coupled to

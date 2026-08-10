@@ -8,7 +8,7 @@
   "scripts": {
     "build:icons": "tsx scripts/collect-icons.ts",
     "build:cem": "cem analyze --litelement --config custom-elements-manifest.config.mjs --globs src/**/*.ts",
-    "build:steps": "node scripts/generate-leaflet-css.mjs && pnpm build:icons && pnpm build:cem && tsup",
+    "build:steps": "node scripts/check-super-calls.mjs && node scripts/generate-leaflet-css.mjs && pnpm build:icons && pnpm build:cem && tsup",
     "build": "we-build",
     "start": "pnpm build:cem && storybook dev -p 6006",
     "storybook:build": "storybook build"

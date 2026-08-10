@@ -379,6 +379,9 @@ importers:
       '@we/module-shared':
         specifier: workspace:*
         version: link:../module-system/shared
+      '@we/module-transcribe':
+        specifier: workspace:*
+        version: link:../module-system/transcribe
       '@we/primitives':
         specifier: workspace:*
         version: link:../design-system/3-primitives
@@ -1035,6 +1038,30 @@ importers:
       vitest:
         specifier: ^4.0.15
         version: 4.1.10(@types/node@24.13.2)(@vitest/coverage-v8@4.1.10)(happy-dom@20.10.6)(jsdom@27.4.0)(vite@7.3.6(@types/node@24.13.2)(sass@1.101.0)(tsx@4.23.0)(yaml@2.9.0))
+
+  packages/module-system/transcribe:
+    devDependencies:
+      '@we/backend-shared':
+        specifier: workspace:*
+        version: link:../../backend-system/shared
+      '@we/cli':
+        specifier: workspace:*
+        version: link:../../cli
+      '@we/module-shared':
+        specifier: workspace:*
+        version: link:../shared
+      '@we/schema-shared':
+        specifier: workspace:*
+        version: link:../../schema-system/shared
+      tsup:
+        specifier: ^8.0.0
+        version: 8.5.1(postcss@8.5.16)(tsx@4.23.0)(typescript@5.9.3)(yaml@2.9.0)
+      typescript:
+        specifier: ^5.3.3
+        version: 5.9.3
+      vitest:
+        specifier: ^1.0.0
+        version: 1.6.1(@types/node@24.13.2)(happy-dom@20.10.6)(jsdom@27.4.0)(sass@1.101.0)
 
   packages/schema-system/frameworks/solid:
     dependencies:

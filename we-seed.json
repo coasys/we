@@ -11,7 +11,8 @@
   "modules": [
     "globe",
     "notes",
-    "call"
+    "call",
+    "transcribe"
   ],
   "ad4m": {
     "dataPath": "~/.ad4m",

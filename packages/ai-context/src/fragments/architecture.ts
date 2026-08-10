@@ -46,7 +46,7 @@ app (\`@we/app-shell\`, hosted by the web/electron/tauri targets) talks to an **
 neighbourhoods. Stores (\`sessionStore\`, \`datasetStore\`, \`spaceStore\`, …) expose reactive state to schemas.
 
 AD4M is reached through the **backend contract** rather than directly: \`@we/backend-shared\` declares
-the ports (\`DataSource\` + \`QueryAdapter\`, ephemeral, presence, model manifest) and
+the ports (\`DataSource\` + \`QueryAdapter\`, ephemeral, presence, transcription, model manifest) and
 \`@we/backend-ad4m\` implements them. The renderer, the design system and the module contract never
 import \`@coasys/*\` — which is why a template, a component or a feature module can be reasoned about
 without knowing what holds the data.
@@ -89,11 +89,11 @@ Glossary (these terms pervade stores, models, and \`$query\`/\`perspective\` in 
 | \`@we/editor\` | packages/editor | Template/theme editing surface, embeddable via \`EditorHost\` | Solid (mount fn at the boundary) |
 | \`@we/schema-shared\` | schema-system/shared | Schema semantics: prop resolvers, validation, indexer, registry types, reactivity port | **Agnostic** |
 | \`@we/schema-solid\` | schema-system/frameworks/solid | The schema renderer (walks the tree, mounts components) | Solid (thin adapter) |
-| \`@we/backend-shared\` | backend-system/shared | The backend contract: \`DataSource\`, query IR + engine, ephemeral & presence ports, model manifest | **Agnostic** |
-| \`@we/backend-ad4m\` | backend-system/ad4m | The AD4M adapter: query adapter, ephemeral port, agent identity, SDNA install, model registry | Agnostic |
+| \`@we/backend-shared\` | backend-system/shared | The backend contract: \`DataSource\`, query IR + engine, ephemeral, presence & transcription ports, model manifest | **Agnostic** |
+| \`@we/backend-ad4m\` | backend-system/ad4m | The AD4M adapter: query adapter, ephemeral & transcription ports, agent identity, SDNA install, model registry | Agnostic |
 | \`@we/backend-inmemory\` | backend-system/inmemory | In-memory adapter — the reference implementation, and how stores test without an executor | Agnostic |
 | \`@we/module-shared\` | module-system/shared | The feature-module contract — what a module author installs | Agnostic |
-| \`@we/module-globe\` · \`-call\` · \`-notes\` | module-system/* | Bundled feature modules; globe is a *family* (module · protocol · layers · widget) | Agnostic (components injected) |
+| \`@we/module-globe\` · \`-call\` · \`-notes\` · \`-transcribe\` | module-system/* | Bundled feature modules; globe is a *family* (module · protocol · layers · widget) | Agnostic (components injected) |
 | \`@we/block-shared\` | block-system/shared | Block content types + serialization | Agnostic |
 | \`@we/models\` | packages/models | WE's domain models (Space, Block subclasses, …) | **AD4M-decorated** |
 | \`@we/app-shell\` | packages/app-shell | App shell, stores, registries, built-in template schemas | Solid |

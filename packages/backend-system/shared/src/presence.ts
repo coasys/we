@@ -24,6 +24,8 @@
  * entirely.
  */
 
+import { trace } from './trace';
+
 /** Where an agent is. Hierarchical so consumers can slice at whichever depth they render. */
 export interface Focus {
   /**
@@ -125,6 +127,55 @@ export const DEFAULT_THRESHOLDS: LivenessThresholds = {
 };
 
 export const DEFAULT_HEARTBEAT_INTERVAL = 5_000;
+
+/**
+ * How long to wait before each repeat of the join handshake, until somebody answers.
+ *
+ * Successive delays, so `[1000]` means one repeat a second after the first attempt.
+ *
+ * The handshake is a single fire-and-forget broadcast over a best-effort transport, and one lost
+ * packet costs a full heartbeat interval of looking at an empty space. That is the shape of the
+ * complaint that produced this: sometimes instant, sometimes ten seconds, no pattern, and the two
+ * agents disagreeing about what happened because loss is independent per direction.
+ *
+ * Only one repeat, because it is not the only safety net: a heartbeat sent while this agent still
+ * has no peers is itself a `hello` (see `schedule`), so the second second is covered by the retry
+ * and every fifth second after that by the ordinary beat. Repeating harder in between would be
+ * three mechanisms covering one gap.
+ */
+export const HANDSHAKE_RETRIES = [1_000];
+
+/**
+ * How long after a state change to send it a second time.
+ *
+ * The transport acks the send and never the delivery, so any single message can vanish. For a
+ * heartbeat that costs nothing — the next one carries the same state, and it is five seconds away at
+ * worst. For a *change* it costs the whole interval, during which every peer confidently displays
+ * the opposite of what is true: a muted microphone still showing as live is the visible case, and it
+ * looks like lag rather than like loss.
+ *
+ * One repeat, not a stream of them. It cuts the exposure to a lost change from one heartbeat to a
+ * fraction of a second, at the price of one extra message per mute — and mutes are rare, while
+ * heartbeats are not, which is exactly why this is worth doing here and nowhere else.
+ *
+ * Long enough that the repeat is not lost to the same momentary outage as the original, short enough
+ * that nobody reads it as lag.
+ */
+export const STATE_CHANGE_ECHO = 700;
+
+/**
+ * First delay after a send the backend *refused*, doubling each consecutive failure.
+ *
+ * Distinct from every other timer here because it answers a different question. The others guard
+ * against loss the transport cannot see and therefore fire on the chance something went wrong; this
+ * one fires on a refusal, where nothing was sent and there is no chance about it.
+ *
+ * Backed off rather than immediate: a refusal usually means the executor is unreachable, and
+ * retrying hard at an unreachable executor is how a blip becomes an outage — the reasoning that put
+ * coalescing in the transport in the first place. Capped at the heartbeat interval, beyond which the
+ * ordinary beat *is* the retry.
+ */
+export const RETRY_BASE = 400;
 
 /** Trim a focus to the depth the agent has consented to publish. */
 export function applyFocusDepth(focus: Focus | undefined, depth: FocusDepth): Focus | undefined {
@@ -277,6 +328,8 @@ export function callRosters(peers: Peer[]): Map<string, Peer[]> {
 export interface PresenceChannel {
   publish(payload: unknown, to?: { agentId?: string }): void;
   onMessage(cb: (from: string, payload: unknown) => void): () => void;
+  /** Optional — see `EphemeralChannel.onPublishResult`. Absent means the transport cannot tell. */
+  onPublishResult?(cb: (result: { ok: boolean; ms: number; superseded?: boolean }) => void): () => void;
 }
 
 export interface HeartbeatOptions {
@@ -294,6 +347,19 @@ export interface HeartbeatOptions {
 export interface PresenceSource {
   /** Begin publishing and listening. Sends the join handshake. */
   start(state: PresenceState): void;
+  /**
+   * Re-run the join handshake: publish with `hello` so every peer answers at once.
+   *
+   * `start` already does this, and that is enough only when the transport was able to carry it. A
+   * host may gate publishing — WE lets one tab per agent do the talking — and a `hello` sent before
+   * that gate opens is simply gone. Nothing retries it, because the driver has no idea it was
+   * dropped: it looks like an ordinary send, and the space it is joining looks empty until every
+   * peer's next heartbeat happens to arrive.
+   *
+   * So the host calls this when it becomes the one that publishes. Idempotent — an extra handshake
+   * costs one round trip of answers and cannot leave anything inconsistent.
+   */
+  announce(): void;
   /** Merge a patch into this agent's state and publish immediately. */
   update(patch: Partial<Omit<PresenceState, 'agentId' | 'updatedAt'>>): void;
   /** Add or replace an activity, matched on `type` plus `id` when present. */
@@ -305,6 +371,23 @@ export interface PresenceSource {
   /** Stop publishing and listening. Idempotent. */
   stop(): void;
 }
+
+/**
+ * Why a publish is happening — and therefore what to do if it does not arrive.
+ *
+ * A first-class reason rather than an optional lifecycle flag, because three separate repair
+ * policies now key off it and the code had been inferring them from context. It read badly too: a
+ * mute logged as `"beat"` in the trace, which is the one line you would look at to find out whether
+ * a mute had been sent.
+ *
+ * - `beat` — routine. Losing one costs nothing; the next carries the same state.
+ * - `change` — something became true. Losing one leaves peers asserting the opposite until the next
+ *   beat, so it is repeated once. See {@link STATE_CHANGE_ECHO}.
+ * - `hello` — arriving, and asking everyone to answer.
+ * - `solicit` — a beat that asks, sent while this agent knows no peers.
+ * - `bye` — leaving, so peers drop this agent rather than watching it decay.
+ */
+export type PublishReason = 'beat' | 'change' | 'hello' | 'solicit' | 'bye';
 
 /** Wire protocol. Kept minimal: a full state, plus two one-bit lifecycle hints. */
 interface PresenceMessage {
@@ -356,15 +439,110 @@ export function createHeartbeatPresence(channel: PresenceChannel, options: Heart
   const states = new Map<string, PresenceState>();
   let self: PresenceState | null = null;
   let unsubscribe: (() => void) | null = null;
+  let unsubscribeResults: (() => void) | null = null;
   let timer: unknown = null;
+  let handshakeTimer: unknown = null;
+  let echoTimer: unknown = null;
+  let retryTimer: unknown = null;
+  /** Consecutive failed sends, for the backoff. Reset by any success. */
+  let sendFailures = 0;
+  /** What the last publish was for, so a retry can repeat the right kind of message. */
+  let lastReason: PublishReason = 'beat';
   let running = false;
 
   function notify(): void {
-    options.onPeersChanged?.(derivePeers(states.values(), now(), thresholds));
+    const peers = derivePeers(states.values(), now(), thresholds);
+    trace('presence', 'peers', { count: peers.length });
+    options.onPeersChanged?.(peers);
   }
 
-  function send(lifecycle?: 'hello' | 'bye'): void {
+  /** Have we heard from anybody? `states` always holds our own entry, so one means nobody. */
+  const alone = () => states.size <= 1;
+
+  function cancelHandshake(): void {
+    if (handshakeTimer !== null) {
+      clearTimer(handshakeTimer);
+      handshakeTimer = null;
+    }
+  }
+
+  function cancelRetry(): void {
+    if (retryTimer !== null) {
+      clearTimer(retryTimer);
+      retryTimer = null;
+    }
+  }
+
+  /**
+   * React to a send that actually failed, rather than waiting to find out by accident.
+   *
+   * This is the one repair here that is *closed-loop*, and it is worth distinguishing from the
+   * others. The echo, the handshake retry and the soliciting beat all guard against loss the
+   * transport cannot see — a message it accepted and the network then dropped — so they can only
+   * ever be timers firing on the chance that something went wrong. A refusal is different: the
+   * backend said no, nothing was sent, and there is no chance about it.
+   *
+   * Retried on a backoff rather than immediately, because a refusal usually means the executor is
+   * unreachable, and hammering an unreachable executor is how a blip becomes an outage — the same
+   * reasoning that put coalescing in the transport. Capped at the heartbeat interval, since past
+   * that the ordinary beat is the retry.
+   */
+  function onSendFailed(): void {
+    sendFailures += 1;
+    const delay = Math.min(RETRY_BASE * 2 ** (sendFailures - 1), interval);
+    trace('presence', 'send:retry', { failures: sendFailures, delay });
+    cancelRetry();
+    retryTimer = setTimer(() => {
+      retryTimer = null;
+      if (!running) return;
+      // The reason is carried over: a `hello` that failed must go out as a `hello`, or nobody
+      // answers it and the join is silently downgraded to a plain announcement.
+      send(lastReason === 'bye' ? 'beat' : lastReason);
+    }, delay);
+  }
+
+  /**
+   * Publish a state change, and publish it once more shortly after in case the first is lost.
+   *
+   * At most one repeat is ever pending: a second change replaces the first's, which is the same
+   * last-write-wins rule the transport's coalescing follows, and stops a run of quick toggles from
+   * queueing a repeat each. See {@link STATE_CHANGE_ECHO}.
+   */
+  function publishChange(): void {
+    send('change');
+    schedule(interval);
+    if (echoTimer !== null) clearTimer(echoTimer);
+    echoTimer = setTimer(() => {
+      echoTimer = null;
+      if (!running) return;
+      trace('presence', 'change:echo');
+      send('change');
+      schedule(interval);
+    }, STATE_CHANGE_ECHO);
+  }
+
+  /**
+   * Say hello, and say it again if nobody answers.
+   *
+   * Each repeat is cancelled the instant any peer state arrives, so a healthy space sends exactly
+   * one. See {@link HANDSHAKE_RETRIES} for why a single broadcast is not enough on this transport.
+   */
+  function handshake(attempt = 0): void {
+    send('hello');
+    cancelHandshake();
+    const delay = HANDSHAKE_RETRIES[attempt];
+    if (delay === undefined) return;
+    handshakeTimer = setTimer(() => {
+      handshakeTimer = null;
+      if (!running || !alone()) return;
+      trace('presence', 'handshake:retry', { attempt: attempt + 1 });
+      handshake(attempt + 1);
+    }, delay);
+  }
+
+  function send(reason: PublishReason = 'beat'): void {
     if (!running || !self) return;
+    lastReason = reason;
     self = { ...self, updatedAt: now() };
     states.set(self.agentId, self);
     // `invisible` is a hard stop, not a client-side filter. Flux keeps broadcasting full state
@@ -375,8 +553,9 @@ export function createHeartbeatPresence(channel: PresenceChannel, options: Heart
     // to retract, and sending one would disclose their departure — and therefore their presence.
     if (self.availability !== 'invisible') {
       const message: PresenceMessage = { v: 1, state: self };
-      if (lifecycle === 'hello') message.hello = true;
-      if (lifecycle === 'bye') message.bye = true;
+      if (reason === 'hello' || reason === 'solicit') message.hello = true;
+      if (reason === 'bye') message.bye = true;
+      trace('presence', 'send', { reason, activities: self.activities?.length ?? 0 });
       channel.publish(message);
     }
     notify();
@@ -392,15 +571,38 @@ export function createHeartbeatPresence(channel: PresenceChannel, options: Heart
       const sinceLast = now() - self.updatedAt;
       if (sinceLast < interval) schedule(interval - sinceLast);
       else {
-        send();
+        /**
+         * A beat sent while we know nobody is a `hello`, so it solicits rather than just announces.
+         *
+         * Same message, same rate — the only difference is that peers answer it. It matters because
+         * "no peers" is reached two ways: nobody is here, in which case nothing is listening and the
+         * flag costs nothing; or the transport dropped out from under us and took the peer map with
+         * it. The second is routine against a remote executor, whose client backs its reconnect off
+         * to thirty seconds — and coming back deaf, waiting passively for everyone else's next beat,
+         * is how a blip becomes the better part of a minute.
+         */
+        send(alone() ? 'solicit' : 'beat');
         schedule(interval);
       }
     }, delay);
   }
 
   function receive(from: string, payload: unknown): void {
-    if (!running || !isPresenceMessage(payload)) return;
-    if (self && from === self.agentId) return;
+    if (!running || !isPresenceMessage(payload)) {
+      trace('presence', 'recv:drop', { from, reason: running ? 'malformed' : 'stopped' });
+      return;
+    }
+    if (self && from === self.agentId) {
+      trace('presence', 'recv:drop', { from, reason: 'self' });
+      return;
+    }
+
+    trace('presence', 'recv', {
+      from,
+      hello: payload.hello ?? false,
+      bye: payload.bye ?? false,
+      activities: payload.state.activities?.length ?? 0,
+    });
 
     // A departure retracts the agent outright rather than leaving it to decay.
     if (payload.bye) {
@@ -413,6 +615,9 @@ export function createHeartbeatPresence(channel: PresenceChannel, options: Heart
     // another agent's slot. Where `authenticatedSender` is false this is still the best available
     // key, and the capability flag is what warns a consumer not to act on it.
     states.set(from, { ...payload.state, agentId: from, updatedAt: now() });
+
+    // Somebody is there, so stop repeating our own introduction.
+    cancelHandshake();
 
     // Answer a joiner immediately so they do not wait out a full interval. Not itself a hello, or
     // two peers would ping-pong forever.
@@ -434,15 +639,37 @@ export function createHeartbeatPresence(channel: PresenceChannel, options: Heart
       self = { ...state, updatedAt: now() };
       states.set(self.agentId, self);
       unsubscribe = channel.onMessage(receive);
-      send('hello');
+      unsubscribeResults =
+        channel.onPublishResult?.((result) => {
+          // A superseded message was replaced by a newer one carrying the same state or better, so
+          // it is not a failure to repair — reporting it exists so this cannot be inferred wrongly.
+          if (result.superseded) return;
+          if (result.ok) {
+            sendFailures = 0;
+            cancelRetry();
+            return;
+          }
+          onSendFailed();
+        }) ?? null;
+      trace('presence', 'start', { agentId: self.agentId });
+      handshake();
+      schedule(interval);
+    },
+
+    announce() {
+      // No `self` means `start` has not run, which is the ordinary case when a host registers its
+      // leadership callback before starting the source — the callback fires immediately if this tab
+      // is already the leader, and `start`'s own handshake is the one that should go out.
+      if (!self) return;
+      trace('presence', 'announce');
+      handshake();
       schedule(interval);
     },
 
     update(patch) {
       if (!self) return;
       self = { ...self, ...patch };
-      send();
-      schedule(interval);
+      publishChange();
     },
 
     setActivity(activity) {
@@ -452,8 +679,8 @@ export function createHeartbeatPresence(channel: PresenceChannel, options: Heart
         (a) => a.type !== activity.type || ('id' in a ? a.id : undefined) !== id,
       );
       self = { ...self, activities: [...rest, activity] };
-      send();
-      schedule(interval);
+      trace('presence', 'activity:set', { type: activity.type, activities: self.activities?.length ?? 0 });
+      publishChange();
     },
 
     clearActivity(type, id) {
@@ -462,8 +689,8 @@ export function createHeartbeatPresence(channel: PresenceChannel, options: Heart
         (a) => a.type !== type || (id !== undefined && ('id' in a ? a.id : undefined) !== id),
       );
       self = { ...self, activities };
-      send();
-      schedule(interval);
+      trace('presence', 'activity:clear', { type, activities: activities.length });
+      publishChange();
     },
 
     peers() {
@@ -478,6 +705,15 @@ export function createHeartbeatPresence(channel: PresenceChannel, options: Heart
       send('bye');
 
       running = false;
+      cancelHandshake();
+      cancelRetry();
+      sendFailures = 0;
+      unsubscribeResults?.();
+      unsubscribeResults = null;
+      if (echoTimer !== null) {
+        clearTimer(echoTimer);
+        echoTimer = null;
+      }
       if (timer !== null) {
         clearTimer(timer);
         timer = null;

@@ -161,6 +161,9 @@ function injectCssString(id: string, css: string) {
   styleEl.textContent = css;
 }
 
+/** Custom properties the last applied theme set, so the next one removes exactly those. */
+let appliedThemeVars = new Set<string>();
+
 function applyThemeToDOM(theme: ThemeData) {
   const overrides: ThemeOverrides = theme.overrides ? JSON.parse(theme.overrides) : {};
   // Normalize legacy fontFamily: 'base' sentinel saved before the font-family fix
@@ -175,11 +178,24 @@ function applyThemeToDOM(theme: ThemeData) {
         : 'light';
   document.documentElement.setAttribute('data-we-theme', baseName);
 
-  // Clear previous inline overrides before re-applying so stale vars don't bleed through
-  document.documentElement.style.cssText = '';
+  /**
+   * Clear the previous *theme's* overrides — and only those.
+   *
+   * This wiped `style.cssText` outright, which is a much bigger hammer than "drop the vars I set
+   * last time": the root is shared, and the shell publishes layout there too. Applying a theme
+   * therefore deleted `--we-dock-right` and `--we-chrome-transition` along with the old theme, so
+   * every piece of chrome positioned against a docked panel snapped back to the window edge and
+   * stayed there until something happened to make the dock effect run again. Starting theme editing
+   * with the notes panel open put the editor underneath it; dragging the panel healed it, which is
+   * the tell — a repaint fixing a value nobody had recomputed.
+   */
+  const styles = themeToStyle(overrides);
+  for (const prop of appliedThemeVars) {
+    if (!(prop in styles)) document.documentElement.style.removeProperty(prop);
+  }
+  appliedThemeVars = new Set(Object.keys(styles));
 
   // Inject CSS vars derived from overrides as inline styles (highest specificity)
-  const styles = themeToStyle(overrides);
   for (const [prop, value] of Object.entries(styles)) {
     document.documentElement.style.setProperty(prop, value as string);
   }

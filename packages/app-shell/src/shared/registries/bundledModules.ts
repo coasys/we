@@ -13,6 +13,7 @@ import { callModule } from '@we/module-call';
 import { createGlobeModule } from '@we/module-globe';
 import { notesModule } from '@we/module-notes';
 import type { ModuleDefinition, ModuleStoreDeps } from '@we/module-shared';
+import { transcribeModule } from '@we/module-transcribe';
 
 /**
  * Factories rather than definitions, because a module may need something from the host to describe
@@ -39,6 +40,9 @@ export const bundledModules: Record<string, BundledModuleFactory> = {
   // Nor does the call module, which is the more surprising of the two — live video needs `srcObject`
   // assigned imperatively, but that belongs to the `we-video` primitive, so the module stays data.
   call: () => callModule,
+  // Hears the call without either module referencing the other — the host routes the stream from
+  // whichever module declares `audioSource`. See `@we/module-transcribe`.
+  transcribe: () => transcribeModule,
 };
 
 export interface ModuleActivation {
@@ -67,6 +71,7 @@ export function activateSeedModules(
       host: { backend: string; framework: string },
       storeDeps?: ModuleStoreDeps,
     ) => { registered: boolean; problems: string[] };
+    danglingAnchors?: () => string[];
   },
 ): ModuleActivation {
   const result: ModuleActivation = { activated: [], missing: [], refused: [] };
@@ -84,6 +89,13 @@ export function activateSeedModules(
 
   if (result.missing.length) {
     console.warn(`seed declares modules not present in this build: ${result.missing.join(', ')}`);
+  }
+
+  // Checked once the whole seed is in, not per module: contributing to an anchor whose provider has
+  // not registered yet is ordinary, since seed order is a list rather than a dependency graph.
+  const dangling = registry.danglingAnchors?.() ?? [];
+  if (dangling.length) {
+    console.warn(`chrome contributed to anchors no module provides: ${dangling.join(', ')}`);
   }
 
   return result;

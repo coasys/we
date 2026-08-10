@@ -1,6 +1,6 @@
 import { getAd4mConnect } from '@coasys/ad4m-connect';
 import type { BackendConnector, BackendInitResult } from '@we/app-shell/shared';
-import { createAd4mBackendPorts } from '@we/backend-ad4m';
+import { capabilitiesFromToken, createAd4mBackendPorts } from '@we/backend-ad4m';
 
 export const ad4mConnector: BackendConnector = {
   async initialize(ctx): Promise<BackendInitResult> {
@@ -28,18 +28,53 @@ export const ad4mConnector: BackendConnector = {
     // this is where a web boot waits.
     const client = await connecting;
 
-    // Whether this connection operates the node it reached, which decides how much of the settings
-    // page exists. A host chosen from the connect UI is somebody else's by definition; a multi-user
-    // executor is one where this agent is a user rather than the operator. Either way, trust, peer
-    // networking, languages and AI models belong to whoever runs the node, and offering them here
-    // produces controls that fail — "restart networking" on a shared machine most of all.
+    // Whether this connection operates the node it reached. A host chosen from the connect UI is
+    // somebody else's by definition; a multi-user executor is one where this agent is a user rather
+    // than the operator. It decides whether to offer changes that every user of the node shares —
+    // "restart networking" on a shared machine being the clearest thing that should not exist.
     //
     // Short-circuits, so the extra round trip only happens for a connection that might be local.
     const administersNode = !core.connectedHost && !(await core.isMultiUser());
 
+    // What the executor actually granted this session, read from the token it granted with. Paired
+    // with `administersNode` rather than replacing it: the grant says an operation is permitted, and
+    // `administersNode` says it is ours to perform. Reading models is the case that needs the first
+    // without the second — a hosted guest holds `AI READ`, and hiding it made a working
+    // transcription model look like no model at all.
+    const capabilities = capabilitiesFromToken(core.token);
+
+    const host = core.connectedHost;
+
     return {
       client,
-      ports: createAd4mBackendPorts(client, ctx, { administersNode }),
+      ports: createAd4mBackendPorts(client, ctx, { administersNode, capabilities }),
+      // Only for a host chosen from the directory. A local executor is not somewhere the user needs
+      // telling about, and pointing at "your own machine" would be noise in the settings page.
+      ...(host
+        ? {
+            host: {
+              id: host.id,
+              name: host.name,
+              description: host.description,
+              imageUrl: host.profilePicUrl,
+              location: host.location,
+              url: host.url,
+              computeSpecs: host.computeSpecs ?? undefined,
+              aiModels: host.aiModels,
+              rates: host.rates,
+            },
+            ...(core.userInfo
+              ? {
+                  account: {
+                    email: core.userInfo.email,
+                    remainingCredits: core.userInfo.remainingCredits,
+                    walletAddress: core.userInfo.hotWalletAddress ?? undefined,
+                    freeAccess: core.userInfo.freeAccess,
+                  },
+                }
+              : {}),
+          }
+        : {}),
       // What "log out" means here. The agent may be on a node this app does not run and was never
       // unlocked with a password it holds, so there is no lock to close — ending the session means
       // forgetting the token and the chosen host, which is what `core.disconnect` does. The shell

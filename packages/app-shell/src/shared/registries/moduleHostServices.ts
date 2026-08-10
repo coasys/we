@@ -18,8 +18,10 @@
  * registration into two phases with different capabilities, and "which phase am I in" is exactly the
  * kind of implicit state the last round of seam bugs came from.
  */
-import type { Activity, DatasetHandle, EphemeralPort, Peer } from '@we/backend-shared';
-import type { ModuleStoreDeps } from '@we/module-shared';
+import type { Activity, DatasetHandle, EphemeralPort, Peer, TranscriptionPort } from '@we/backend-shared';
+import type { CreateEntityOptions, ModuleIdentityAccess, ModuleStoreDeps } from '@we/module-shared';
+
+import { moduleRegistry, moduleStores } from './moduleRegistry';
 
 /** What a store publishes here once it is live. All optional: a host need not provide any of it. */
 export interface ModuleHostServices {
@@ -32,6 +34,17 @@ export interface ModuleHostServices {
     setActivity: (activity: Activity) => void;
     clearActivity: (type: string, id?: string) => void;
   };
+  transcription?: TranscriptionPort;
+  /** The profile cache, so a module can put a face to an agent id. See `ModuleIdentityAccess`. */
+  identities?: ModuleIdentityAccess;
+  /** Write a record into the current dataset — the host's `model.create`, in imperative form. */
+  createEntity?: (
+    entity: string,
+    fields: Record<string, unknown>,
+    options?: CreateEntityOptions,
+  ) => Promise<string | null>;
+  /** Add one value to a to-many relation on an existing record. See `ModuleStoreDeps.linkEntity`. */
+  linkEntity?: (entity: string, id: string, relation: string, value: string) => Promise<void>;
 }
 
 const services: ModuleHostServices = {};
@@ -78,5 +91,49 @@ export function createModuleStoreDeps(framework: {
       setActivity: (activity) => services.presence?.setActivity(activity),
       clearActivity: (type, id) => services.presence?.clearActivity(type, id),
     },
+
+    // Forwarding wrappers rather than the ports themselves, so a module that captured its deps at
+    // construction still reaches whatever the host has bound by the time it calls — the same
+    // late-binding contract as `ephemeral` above.
+    transcription: {
+      models: async () => (await services.transcription?.models()) ?? [],
+      open: async (modelId, onText, tuning) => {
+        const port = services.transcription;
+        if (!port) throw new Error('transcription: this backend cannot transcribe');
+        return port.open(modelId, onText, tuning);
+      },
+    },
+
+    // Forwarding, like the ports above: a module store is built before `ProfileStore` mounts, so
+    // capturing the directory itself would capture nothing.
+    identities: {
+      get: (agentId) => services.identities?.get(agentId),
+      fetch: (agentId) => services.identities?.fetch(agentId),
+    },
+
+    audioInput: () => audioInput(),
+
+    createEntity: async (entity, fields, options) => (await services.createEntity?.(entity, fields, options)) ?? null,
+
+    linkEntity: async (entity, id, relation, value) => {
+      await services.linkEntity?.(entity, id, relation, value);
+    },
   };
+}
+
+/**
+ * The audio a module has published via {@link ModuleDefinition.audioSource}.
+ *
+ * Resolved on every read rather than captured, because the producing module's store may not exist
+ * when a consumer is constructed, and the stream itself comes and goes as calls start and end.
+ */
+function audioInput(): MediaStream | null {
+  for (const { definition } of moduleRegistry.all()) {
+    if (!definition.audioSource) continue;
+    const store = moduleStores[definition.id] as Record<string, unknown> | undefined;
+    const source = store?.[definition.audioSource];
+    if (typeof source !== 'function') continue;
+    return ((source as () => unknown)() as MediaStream | null) ?? null;
+  }
+  return null;
 }

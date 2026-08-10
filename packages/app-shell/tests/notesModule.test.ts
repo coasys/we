@@ -11,6 +11,7 @@ import { NOTE_PREDICATES, notesModule } from '@we/module-notes';
 import { checkModuleCompatibility, modulePredicatePrefix, modulePredicateViolations } from '@we/module-shared';
 import { beforeEach, describe, expect, it } from 'vitest';
 
+import { dockRegistry } from '../src/shared/registries/dockRegistry';
 import { moduleRegistry, moduleStores } from '../src/shared/registries/moduleRegistry';
 import { registerCoreSlots, slotRegistry } from '../src/shared/registries/slotRegistry';
 
@@ -51,7 +52,9 @@ describe('notes module — declared coupling', () => {
   });
 
   it('declares what a user is actually agreeing to', () => {
-    expect(notesModule.capabilities).toEqual(['storage', 'slot:dock-right']);
+    // `dock`, not `slot:*` — this panel makes the rest of the app smaller, which is a stronger
+    // thing to agree to than chrome drawn on top of it.
+    expect(notesModule.capabilities).toEqual(['storage', 'dock']);
   });
 });
 
@@ -61,7 +64,10 @@ describe('notes module — contributions', () => {
     expect(result.registered).toBe(true);
 
     expect(moduleStores.notes).toBeDefined();
-    expect(slotRegistry.get('notes:0')?.anchor).toBe('dock-right');
+    // A dock rather than a slot: the panel makes room in the space instead of covering it, which is
+    // also what stops it opening on top of the editor's controls or under a docked call panel.
+    expect(dockRegistry.get('notes:0')?.moduleId).toBe('notes');
+    expect(slotRegistry.get('dock:notes:0')).toBeDefined();
     expect(moduleRegistry.schemas()['notes.toggleButton']).toBeDefined();
   });
 

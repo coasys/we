@@ -1,4 +1,4 @@
-import { type ModuleSurface, moduleRegistry, moduleStores, moduleSurface } from '@shared/registries/moduleRegistry';
+import { moduleRegistry, moduleStores, type ModuleSurface, moduleSurface } from '@shared/registries/moduleRegistry';
 import {
   isSpaceSelf,
   type LocationData,
@@ -7,9 +7,9 @@ import {
   syncSpaceToParent,
 } from '@shared/spaceSync';
 import { deriveSlug } from '@shared/utils';
-import type { AgentProfileSummary } from '@we/backend-shared';
-import { toastService } from '@we/components/solid';
+import type { AgentProfileSummary, DatasetRef } from '@we/backend-shared';
 import { createBlocks, deleteBlocks, reconcileBlocks } from '@we/block-shared';
+import { toastService } from '@we/components/solid';
 import {
   AGENT_DEFAULT,
   CollectionBlock,
@@ -126,27 +126,29 @@ function resolveEnabledModules(raw: string | undefined): string[] {
  */
 function moduleSettingsFrom(raw: string | undefined, installed: Set<string>, muted: Set<string>): ModuleSetting[] {
   const on = new Set(resolveEnabledModules(raw));
-  return moduleRegistry
-    .all()
-    // Chrome only. A contribution is gated where it renders, and chrome is the only surface that
-    // renders inside a space — an app switcher is shell-level, and a capability is mounted by
-    // whatever template asks for it. Neither is a community's decision. See `moduleSurface`.
-    .filter(({ definition }) => moduleSurface(definition) === 'chrome')
-    .map(({ definition }) => {
-      const enabled = on.has(definition.id);
-      const isInstalled = installed.has(definition.id);
-      const isMuted = muted.has(definition.id);
-      return {
-        id: definition.id,
-        name: definition.name,
-        description: definition.description ?? '',
-        icon: definition.icon ?? 'puzzle-piece',
-        enabled,
-        installed: isInstalled,
-        visible: !isMuted,
-        active: enabled && isInstalled && !isMuted,
-      };
-    });
+  return (
+    moduleRegistry
+      .all()
+      // Chrome only. A contribution is gated where it renders, and chrome is the only surface that
+      // renders inside a space — an app switcher is shell-level, and a capability is mounted by
+      // whatever template asks for it. Neither is a community's decision. See `moduleSurface`.
+      .filter(({ definition }) => moduleSurface(definition) === 'chrome')
+      .map(({ definition }) => {
+        const enabled = on.has(definition.id);
+        const isInstalled = installed.has(definition.id);
+        const isMuted = muted.has(definition.id);
+        return {
+          id: definition.id,
+          name: definition.name,
+          description: definition.description ?? '',
+          icon: definition.icon ?? 'puzzle-piece',
+          enabled,
+          installed: isInstalled,
+          visible: !isMuted,
+          active: enabled && isInstalled && !isMuted,
+        };
+      })
+  );
 }
 
 export interface ModuleSetting {
@@ -185,6 +187,100 @@ type SpaceInput = Omit<Partial<Space>, 'avatar' | 'coverImage'> & {
   coverImage?: FileData | string;
 };
 
+/**
+ * The three forms a space can be handed to {@link SpaceStore.joinSpace} in, reduced to the one they
+ * share.
+ *
+ * A share link is an ordinary URL on the web, the backend's own URI everywhere else (see
+ * `SpaceListEntry.shareLink`), and what a join gate reads off the route is the bare id sitting
+ * inside both. Nothing can ask "is this the space I am already joining?" — or "is this the space
+ * that just arrived?" — until they collapse to one value, because comparing the raw strings makes a
+ * link and the id inside it two different spaces.
+ *
+ * Scheme-agnostic on purpose: `neighbourhood://` is AD4M's spelling, and this store is not supposed
+ * to know that. Any `<scheme>://` prefix that is not the web's own is the backend's, and the id is
+ * what follows it.
+ */
+function sharedIdOf(input: string): string {
+  const raw = input.trim();
+  if (!raw) return '';
+  if (!/^https?:\/\//i.test(raw)) {
+    const scheme = raw.indexOf('://');
+    return scheme === -1 ? raw : raw.slice(scheme + 3);
+  }
+  try {
+    const segments = new URL(raw).pathname.split('/').filter(Boolean);
+    const marker = segments.indexOf('space');
+    return (marker === -1 ? segments[segments.length - 1] : segments[marker + 1]) ?? '';
+  } catch {
+    return raw;
+  }
+}
+
+/**
+ * What to hand the backend, given what the caller had.
+ *
+ * Everything but a web URL passes through untouched — the adapter already accepts its own URI or a
+ * bare id, and normalizing further would only invent a form it has to undo. A web link is the one
+ * shape no backend can read, so it is unwrapped here, where the fact that WE serves spaces at
+ * `/space/<id>` is already known.
+ */
+const joinTargetOf = (input: string): string => (/^https?:\/\//i.test(input.trim()) ? sharedIdOf(input) : input.trim());
+
+/** Does this dataset answer to the id a caller asked to join, in whichever form they had it? */
+function datasetAnswersTo(ds: { id: string; sharedId?: string; sharedUri?: string }, input: string): boolean {
+  const target = input.trim();
+  const id = sharedIdOf(target);
+  return ds.id === target || ds.id === id || ds.sharedId === id || ds.sharedUri === target;
+}
+
+/**
+ * How long a join keeps looking for a dataset after the call to make it has already failed.
+ *
+ * Joining is a long-running backend operation wearing a request/response call's clothes: the
+ * executor has to fetch the neighbourhood expression and install its link language before the
+ * dataset exists at all, and only creates it at the very end. The transport gives up well before
+ * that on a first join — AD4M's client applies one flat 30s timeout to every call it makes — and
+ * the resulting 408 says nothing whatsoever about whether the join is still running. It usually is.
+ *
+ * So a failed call is not a failed join, and the honest response to one is to keep watching for a
+ * while. Five minutes is past the point where a join that is going to work has worked, and the
+ * backoff keeps a remote host from being asked a hundred times to find out.
+ */
+const JOIN_RECOVERY_WINDOW_MS = 5 * 60_000;
+const JOIN_RECOVERY_FIRST_POLL_MS = 2_000;
+const JOIN_RECOVERY_MAX_POLL_MS = 15_000;
+
+/** When a join stops looking instant, so the UI can say so instead of spinning in silence. */
+const JOIN_SLOW_AFTER_MS = 8_000;
+
+/**
+ * Did the *call* give up, or did the backend answer?
+ *
+ * Only the first is worth waiting out. A timeout or a dropped socket says nothing about whether the
+ * join is still running, so the question is simply unanswered and worth asking again. Anything else
+ * is the backend having looked and told us: a URL that resolves to no space does not become one by
+ * being asked about for another five minutes, and treating the two alike would leave someone who
+ * pasted a bad link watching a spinner until the recovery window ran out.
+ */
+function transportGaveUp(error: unknown): boolean {
+  const raw = error instanceof Error ? error.message : String(error);
+  return /timed out|timeout|\b408\b|\b503\b|websocket|network error|failed to fetch|fetch failed/i.test(raw);
+}
+
+/**
+ * What to tell someone whose join did not work.
+ *
+ * The two cases stay separate even here, past the end of the recovery window: a join that outlasted
+ * the window may still be running (it is a budget, not a guarantee), which makes "try again" better
+ * advice than it sounds — a second attempt is cheap once the dataset exists, because the backend
+ * hands back the one it already made rather than making another.
+ */
+const joinErrorMessage = (error: unknown): string =>
+  transportGaveUp(error)
+    ? 'This is taking longer than expected. The space may still be joining in the background — try again in a minute.'
+    : "Couldn't join this space. Check the link and try again.";
+
 export interface SpaceStore {
   // State
   memberDids: Accessor<string[]>;
@@ -206,6 +302,24 @@ export interface SpaceStore {
    */
   routeSpaceUnjoined: Accessor<boolean>;
   creatingSpace: Accessor<boolean>;
+  /**
+   * The space a join is running for right now — its shared id — or `''` when none is.
+   *
+   * The id rather than a boolean, so a list of spaces can put the spinner on the row being joined
+   * instead of on all of them. A gate, which only ever concerns one space, compares it against its
+   * own route segment.
+   */
+  joiningSpace: Accessor<string>;
+  /** That join has outlasted {@link JOIN_SLOW_AFTER_MS} and is still going — say so rather than spin. */
+  joinSlow: Accessor<boolean>;
+  /**
+   * The last join failure — which space it was about, and what to say — or null.
+   *
+   * Carries the space rather than just the message so a gate can tell whether the failure is *its*
+   * failure. A bare message follows the user to the next unjoined space they open and reports a
+   * problem there that happened somewhere else.
+   */
+  joinError: Accessor<{ spaceId: string; message: string } | null>;
   /** Sidebar entries in user-defined order — datasets decorated with Space name/avatar when
    * available, plus a virtual pre-join entry for the configured global space. */
   orderedSidebarItems: Accessor<
@@ -262,7 +376,11 @@ export interface SpaceStore {
     coverImageFile?: File,
     location?: LocationData | null,
   ) => Promise<void>;
-  /** Join a shared dataset. `focus` defaults to true; pass false to join without navigating to it. */
+  /**
+   * Join a shared dataset. `focus` defaults to true; pass false to join without navigating to it.
+   *
+   * Rejects when the join could not be completed, so a caller's `onSuccess` means what it says.
+   */
   joinSpace: (id: string, focus?: boolean) => Promise<void>;
   initializeAsWeSpace: (name: string, description: string, avatarValue?: File | string | null) => Promise<Space>;
   /** Remove a space: clears its global-discovery listing (when authored by this agent) and
@@ -270,7 +388,15 @@ export interface SpaceStore {
   removeSpace: (uuid: string) => Promise<void>;
   createPost: (json: unknown) => Promise<void>;
   updatePost: (postId: string, json: unknown) => Promise<void>;
-  deletePost: (postId: string) => Promise<void>;
+  /**
+   * Delete a `CollectionBlock` and everything inside it, recursively.
+   *
+   * Named for the collection rather than the post because the operation never knew the difference:
+   * it is `deleteBlocks` on a root id, and a call record, a notes collection and a post are the same
+   * shape. It was `deletePost`, which meant a second surface wanting this had to either call an
+   * action named for somebody else's noun or duplicate it.
+   */
+  deleteCollection: (collectionId: string) => Promise<void>;
   /** Every space-scoped write takes an optional target uuid; omitted means the space on screen. */
   updateSpaceImage: (field: 'avatar' | 'coverImage', imageFile: File, spaceUuid?: string) => Promise<void>;
   updateSpaceMeta: (updates: SpaceMetaUpdate, spaceUuid?: string) => Promise<void>;
@@ -306,6 +432,16 @@ export interface SpaceStore {
 
 const SpaceContext = createContext<SpaceStore>();
 
+/**
+ * Longest edge of a space avatar, in px. The counterpart to `PROFILE_AVATAR_PX` in ProfileStore,
+ * for the same reason: `compressImageToFileData` scales to a proportion of the original, which is
+ * no bound at all, and a space avatar renders in the sidebar and headers at a few dozen pixels.
+ *
+ * Cover images are deliberately left uncapped — they render full-bleed, so a ceiling sized for an
+ * avatar would visibly soften them.
+ */
+const SPACE_AVATAR_PX = 512;
+
 export function SpaceStoreProvider(props: ParentProps) {
   const session = useSessionStore();
   const datasetStore = useDatasetStore();
@@ -318,6 +454,21 @@ export function SpaceStoreProvider(props: ParentProps) {
 
   const [mySpaces, setMySpaces] = createSignal<Space[]>([]);
   const [creatingSpace, setCreatingSpace] = createSignal(false);
+
+  const [joiningSpace, setJoiningSpace] = createSignal('');
+  const [joinSlow, setJoinSlow] = createSignal(false);
+  const [joinError, setJoinError] = createSignal<{ spaceId: string; message: string } | null>(null);
+
+  /**
+   * Joins running right now, keyed by shared id.
+   *
+   * Two clicks on the same space must not become two joins. The backend deduplicates by looking for
+   * a dataset it has already made for that address — which is no help at all while the first join is
+   * still *making* one, the window where a second attempt is most likely: it is exactly when the
+   * first is slow enough to look stuck. Two joins racing that far apart fork the address into two
+   * datasets, and nothing afterwards can tell which one the space is in.
+   */
+  const joinsInFlight = new Map<string, Promise<void>>();
 
   // Derived: personal and shared spaces.
   //
@@ -388,8 +539,7 @@ export function SpaceStoreProvider(props: ParentProps) {
    */
   const templateOverrideFor = (spaceUuid: string | undefined): string =>
     preferenceFor(spaceUuid)?.templateId || FOLLOW_SPACE;
-  const themeOverrideFor = (spaceUuid: string | undefined): string =>
-    preferenceFor(spaceUuid)?.themeId || FOLLOW_SPACE;
+  const themeOverrideFor = (spaceUuid: string | undefined): string => preferenceFor(spaceUuid)?.themeId || FOLLOW_SPACE;
 
   /**
    * The link that reaches a space from outside — see {@link SpaceListEntry.shareLink}.
@@ -594,7 +744,9 @@ export function SpaceStoreProvider(props: ParentProps) {
       }
 
       // Process avatar image if provided
-      const avatarData = avatarFile ? await compressImageToFileData(avatarFile, 'space-avatar') : undefined;
+      const avatarData = avatarFile
+        ? await compressImageToFileData(avatarFile, 'space-avatar', SPACE_AVATAR_PX)
+        : undefined;
 
       // Process cover image if provided
       const coverImageData = coverImageFile ? await compressImageToFileData(coverImageFile, 'space-cover') : undefined;
@@ -664,7 +816,7 @@ export function SpaceStoreProvider(props: ParentProps) {
 
     let avatarData: FileData | undefined;
     if (avatarValue instanceof File) {
-      avatarData = await compressImageToFileData(avatarValue, 'space-avatar');
+      avatarData = await compressImageToFileData(avatarValue, 'space-avatar', SPACE_AVATAR_PX);
     } else if (typeof avatarValue === 'string' && avatarValue) {
       // Untouched prefill from the foreign app's own resolved (data-URI) image value —
       // round-tripped back through FILE_STORAGE_LANGUAGE rather than re-compressed.
@@ -715,42 +867,137 @@ export function SpaceStoreProvider(props: ParentProps) {
     }
 
     // If already joined locally (by local id, shared id, or full URI), just focus the dataset.
-    const existing = datasetStore.datasets().find((d) => d.id === id || d.sharedId === id || d.sharedUri === id);
+    const existing = datasetStore.datasets().find((d) => datasetAnswersTo(d, id));
     if (existing) {
       if (focus) await datasetStore.switchDataset(existing.id);
       return;
     }
 
+    // Already joining this one — wait on that rather than starting a second. `focus` is answered
+    // here rather than shared with the first caller, because the two can disagree: the marketplace
+    // joins without moving you, and a gate for the same space would still owe you the move.
+    const key = sharedIdOf(id);
+    const inFlight = joinsInFlight.get(key);
+    if (inFlight) {
+      await inFlight;
+      if (focus) {
+        const joined = datasetStore.datasets().find((d) => datasetAnswersTo(d, id));
+        if (joined) await datasetStore.switchDataset(joined.id);
+      }
+      return;
+    }
+
+    const run = runJoin(id, key, focus).finally(() => joinsInFlight.delete(key));
+    joinsInFlight.set(key, run);
+    return run;
+  }
+
+  /**
+   * Everything a join is for, once the dataset itself exists.
+   *
+   * Split out because the dataset can arrive two ways — the join call returning it, or the backend
+   * finishing a join this client already stopped waiting for — and both owe the app the same work.
+   * It used to live inline after the call, which is why a transport timeout skipped all of it: the
+   * space was joined, and none of the things that make a joined space usable had happened.
+   */
+  async function finishJoin(joinedRef: DatasetRef, focus: boolean): Promise<void> {
+    const joinedHandle = joinedRef.handle as DatasetProxy;
+
+    // Install WE SDNA so Space, SignalType, CollectionBlock etc. are queryable
+    // immediately. installSpace diffs against the dataset's actual state before writing,
+    // so this is safe to call unconditionally even when the space's creator or an earlier
+    // joiner already installed it — it won't write a duplicate copy.
+    const joinSchemas = session.backendPorts()!.schemas;
+    await joinSchemas.installSpace(joinedHandle, moduleRegistry.moduleSchemas(joinSchemas));
+
+    // Track locally so gates derived from the dataset list (marketplaceJoined, the sidebar,
+    // the seed-configured global/marketplace slots) update with the join.
+    await datasetStore.trackDataset(joinedRef);
+
+    // Load the Space model and push into mySpaces so the sidebar shows the correct
+    // name immediately, without requiring a reboot.
+    const joinedSpaceModel = joinedRef.sharedId
+      ? await Space.findOne(joinedHandle, { where: { url: joinedRef.sharedId } }).catch(() => null)
+      : null;
+    if (joinedSpaceModel && !mySpaces().some((s) => s.url === joinedSpaceModel.url)) {
+      setMySpaces((prev) => [...prev, joinedSpaceModel]);
+    }
+
+    if (focus) await datasetStore.switchDataset(joinedRef.id);
+    console.log('SpaceStore: joined space', joinedRef.id);
+  }
+
+  /**
+   * Keep asking the backend whether the dataset turned up, for as long as it is worth asking.
+   *
+   * The recovery half of a join: see {@link JOIN_RECOVERY_WINDOW_MS} for why a failed call is not a
+   * failed join. Asks the backend rather than watching this store's own dataset list, because the
+   * list is fed by a change event and the whole point here is to not depend on any one message
+   * arriving — polling and the event both end at the same place, and either one alone is enough.
+   */
+  async function waitForJoinedDataset(id: string): Promise<DatasetRef | null> {
+    const lifecycle = session.lifecycle();
+    if (!lifecycle) return null;
+
+    const deadline = Date.now() + JOIN_RECOVERY_WINDOW_MS;
+    let wait = JOIN_RECOVERY_FIRST_POLL_MS;
+
+    while (Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, wait));
+      wait = Math.min(Math.round(wait * 1.5), JOIN_RECOVERY_MAX_POLL_MS);
+
+      const refs = await lifecycle.list().catch(() => null);
+      const match = refs?.find((ref) => datasetAnswersTo(ref, id));
+      if (match) return match;
+    }
+    return null;
+  }
+
+  /** One join attempt, start to finish. Owns the state a UI watches while it runs. */
+  async function runJoin(id: string, key: string, focus: boolean): Promise<void> {
+    const lifecycle = session.lifecycle()!;
+    setJoinError(null);
+    setJoiningSpace(key);
+    setJoinSlow(false);
+    const slowTimer = setTimeout(() => setJoinSlow(true), JOIN_SLOW_AFTER_MS);
+
     console.log('SpaceStore: joining shared dataset', id);
     try {
-      // The adapter normalizes bare shared ids to its own URI scheme.
-      const joinedRef = await lifecycle.join(id);
-      const joinedHandle = joinedRef.handle as DatasetProxy;
-
-      // Install WE SDNA so Space, SignalType, CollectionBlock etc. are queryable
-      // immediately. installSpace diffs against the dataset's actual state before writing,
-      // so this is safe to call unconditionally even when the space's creator or an earlier
-      // joiner already installed it — it won't write a duplicate copy.
-      const joinSchemas = session.backendPorts()!.schemas;
-      await joinSchemas.installSpace(joinedHandle, moduleRegistry.moduleSchemas(joinSchemas));
-
-      // Track locally so gates derived from the dataset list (marketplaceJoined, the sidebar,
-      // the seed-configured global/marketplace slots) update with the join.
-      await datasetStore.trackDataset(joinedRef);
-
-      // Load the Space model and push into mySpaces so the sidebar shows the correct
-      // name immediately, without requiring a reboot.
-      const joinedSpaceModel = joinedRef.sharedId
-        ? await Space.findOne(joinedHandle, { where: { url: joinedRef.sharedId } }).catch(() => null)
-        : null;
-      if (joinedSpaceModel && !mySpaces().some((s) => s.url === joinedSpaceModel.url)) {
-        setMySpaces((prev) => [...prev, joinedSpaceModel]);
+      // Ask the backend what it already has before asking it for more. The caller checked this
+      // store's dataset list, which is a boot-time snapshot plus whatever change events have landed
+      // since — and the case that matters here is the one where neither covers it: a join this
+      // client abandoned, finished by the backend while the page was reloading. Joining again there
+      // is how one space becomes two.
+      const alreadyJoined = (await lifecycle.list().catch(() => null))?.find((ref) => datasetAnswersTo(ref, id));
+      if (alreadyJoined) {
+        console.log('SpaceStore: the backend had already joined this space', alreadyJoined.id);
+        await finishJoin(alreadyJoined, focus);
+        return;
       }
 
-      if (focus) await datasetStore.switchDataset(joinedRef.id);
-      console.log('SpaceStore: joined space', joinedRef.id);
+      let joinedRef: DatasetRef | null = null;
+      try {
+        // The adapter normalizes bare shared ids to its own URI scheme.
+        joinedRef = await lifecycle.join!(joinTargetOf(id));
+      } catch (error) {
+        // A backend that answered has been believed. Only a call that gave up leaves the question
+        // open, and only then is it worth watching for the join to land without us.
+        if (!transportGaveUp(error)) throw error;
+        joinedRef = await waitForJoinedDataset(id);
+        if (!joinedRef) throw error;
+        console.warn('SpaceStore: the join call gave up but the backend finished the join anyway', error);
+      }
+      await finishJoin(joinedRef, focus);
     } catch (error) {
       console.error('SpaceStore: joinSpace error', error);
+      setJoinError({ spaceId: key, message: joinErrorMessage(error) });
+      // Rethrown rather than swallowed: every caller has an `onSuccess` that navigates somewhere or
+      // clears an input, and a swallowed failure fired all of them as though the join had worked.
+      throw error;
+    } finally {
+      clearTimeout(slowTimer);
+      setJoiningSpace('');
+      setJoinSlow(false);
     }
   }
 
@@ -817,7 +1064,10 @@ export function SpaceStoreProvider(props: ParentProps) {
   async function createPost(json: unknown): Promise<void> {
     const p = datasetStore.currentDataset()?.handle;
     if (!p) return;
-    await createBlocks(p, json);
+    // Written alongside the `type: 'root'` that already identifies a post, not instead of it: reads
+    // still key on `type`, so existing posts stay in the feed and nothing needs backfilling. See
+    // `createBlocks`.
+    await createBlocks(p, json, 'post');
   }
 
   async function updatePost(postId: string, json: unknown): Promise<void> {
@@ -828,10 +1078,10 @@ export function SpaceStoreProvider(props: ParentProps) {
     await reconcileBlocks(p, existingRoot, json);
   }
 
-  async function deletePost(postId: string): Promise<void> {
+  async function deleteCollection(collectionId: string): Promise<void> {
     const p = datasetStore.currentDataset()?.handle;
     if (!p) return;
-    await deleteBlocks(p, postId);
+    await deleteBlocks(p, collectionId);
   }
 
   async function navigateToSpace(spaceId: string, view?: string): Promise<void> {
@@ -886,7 +1136,11 @@ export function SpaceStoreProvider(props: ParentProps) {
   async function updateSpaceImage(field: 'avatar' | 'coverImage', imageFile: File, spaceUuid?: string): Promise<void> {
     const ds = targetDataset(spaceUuid);
     if (!ds) return;
-    const fileData = await compressImageToFileData(imageFile, field === 'avatar' ? 'space-image' : 'space-cover');
+    const fileData = await compressImageToFileData(
+      imageFile,
+      field === 'avatar' ? 'space-image' : 'space-cover',
+      field === 'avatar' ? SPACE_AVATAR_PX : undefined,
+    );
     const [spaceModel] = await Space.findAll(ds.handle, { where: spaceSelfWhere(ds) });
     if (!spaceModel) return;
     await Space.update(ds.handle, spaceModel.id, { [field]: fileData });
@@ -1028,8 +1282,6 @@ export function SpaceStoreProvider(props: ParentProps) {
    * space of its chrome.
    */
   const enabledModules = createMemo<string[]>(() => resolveEnabledModules(currentSpace()?.enabledModules));
-
-
 
   /**
    * What actually renders here, for this agent: the three layers intersected, minus personal mutes.
@@ -1531,6 +1783,9 @@ export function SpaceStoreProvider(props: ParentProps) {
     spaceList,
     routeSpaceUnjoined,
     creatingSpace,
+    joiningSpace,
+    joinSlow,
+    joinError,
     orderedSidebarItems,
     enabledModules,
     installedModules,
@@ -1550,7 +1805,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     removeSpace,
     createPost,
     updatePost,
-    deletePost,
+    deleteCollection,
     updateSpaceImage,
     updateSpaceMeta,
     setSpaceDefaultTemplate,

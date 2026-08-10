@@ -201,6 +201,19 @@ export interface DesignSystemProps {
   rbr?: RadiusValue;
   rbl?: RadiusValue;
 
+  /**
+   * Raw CSS applied to the component's own element, for what the props above cannot say.
+   *
+   * Declared here rather than per-component because it is part of the shared prop surface: the
+   * layout components have honoured it for a long time, `designSystemKeys` has always listed it, and
+   * the prop tables document it. Only the type was missing — so primitives typed it away, accepted
+   * it at runtime, and dropped it. A `--we-resize-handle-line: transparent` meant to suppress a
+   * divider silently drew one.
+   *
+   * Applied last, so it genuinely overrides a DS prop setting the same property.
+   */
+  styles?: Record<string, string | number>;
+
   // Dynamic styles for states
   hoverProps?: Partial<DesignSystemProps>;
   activeProps?: Partial<DesignSystemProps>;

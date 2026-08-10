@@ -15,8 +15,9 @@
  * ## Why the right edge
  *
  * It is the emptiest edge in WE's layout: the sidebar owns the left, the header owns the top, and the
- * call bar owns the bottom centre. Docked module panels open beside it (`right: 48px`), so the rail
- * stays reachable while a panel is open rather than being covered by it.
+ * call bar owns the bottom centre. A docked module panel takes that edge outright and slides the rail
+ * inwards by its width, so the rail stays reachable while a panel is open rather than being covered
+ * by it — and the panel is not stranded in the middle of the edge with chrome on both sides.
  *
  * ## Only inside a space
  *
@@ -30,8 +31,13 @@
  */
 import type { SchemaNode } from '@we/schema-shared';
 
-/** The width every docked module panel should clear. Exported so panels stay in step with the rail. */
-export const MODULE_RAIL_WIDTH = '48px';
+/**
+ * The width every docked module panel should clear. Exported so panels stay in step with the rail.
+ *
+ * Derived, not chosen: a `md` square button is 40px and the rail pads it by `200` (8px) a side.
+ * Change either and this has to move with it, or the buttons overflow a rail too narrow to hold them.
+ */
+export const MODULE_RAIL_WIDTH = '56px';
 
 /**
  * Settings for the space you are standing in, one click away.
@@ -52,7 +58,6 @@ const spaceSettingsLauncher: SchemaNode = {
     {
       type: 'we-button',
       props: {
-        size: 'sm',
         square: true,
         variant: 'ghost',
         onClick: {
@@ -73,13 +78,15 @@ export const moduleRail: SchemaNode = {
       type: 'Column',
       props: {
         position: 'fixed',
-        right: '0px',
+        // Against the content's edge rather than the window's, so a docked panel slides the rail
+        // inwards instead of opening on top of it — see `--we-dock-right` in ShellStore.
+        right: 'var(--we-dock-right, 0px)',
         top: '96px',
         width: MODULE_RAIL_WIDTH,
         gap: '100',
-        p: '100',
+        p: '200',
         ay: 'center',
-        bg: 'neutral-0',
+        bg: 'neutral-50',
         border: '1px solid neutral-200',
         rtl: '400',
         rbl: '400',
@@ -98,7 +105,6 @@ export const moduleRail: SchemaNode = {
                 {
                   type: 'we-button',
                   props: {
-                    size: 'sm',
                     square: true,
                     // Highlighted while the module reports itself open, which is what makes the
                     // rail read as a set of tabs rather than a row of buttons.
@@ -118,7 +124,7 @@ export const moduleRail: SchemaNode = {
           type: '$if',
           props: {
             condition: { $count: { items: { $store: 'spaceStore.moduleLaunchers' } } },
-            then: { type: 'we-divider', props: { width: '100%' } },
+            then: { type: 'we-divider', props: { width: '100%', my: '100' } },
           },
         },
         spaceSettingsLauncher,

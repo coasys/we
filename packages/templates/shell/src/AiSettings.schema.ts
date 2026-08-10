@@ -236,39 +236,53 @@ const modelCard: SchemaNode = {
           type: 'Row',
           props: { gap: '200' },
           children: [
-            // Only offered for a model that is not already the one apps get for its kind.
+            // Changing the models is the node operator's, listing them is not. A guest on somebody
+            // else's node reads this page; these three would return a capability error.
             {
               type: '$if',
               props: {
-                condition: { $not: '$model.isDefault' },
+                condition: { $store: 'runtimeStore.canConfigureAi' },
                 then: {
-                  type: 'we-button',
-                  props: {
-                    text: 'Make default',
-                    variant: 'ghost',
-                    size: 'sm',
-                    onClick: { $action: 'runtimeStore.setDefaultAiModel', args: ['$model.id'] },
-                  },
+                  type: 'Row',
+                  props: { gap: '200', ay: 'center' },
+                  children: [
+                    // Only offered for a model that is not already the one apps get for its kind.
+                    {
+                      type: '$if',
+                      props: {
+                        condition: { $not: '$model.isDefault' },
+                        then: {
+                          type: 'we-button',
+                          props: {
+                            text: 'Make default',
+                            variant: 'ghost',
+                            size: 'sm',
+                            onClick: { $action: 'runtimeStore.setDefaultAiModel', args: ['$model.id'] },
+                          },
+                        },
+                      },
+                    },
+                    {
+                      type: 'we-button',
+                      props: {
+                        variant: 'ghost',
+                        size: 'sm',
+                        onClick: { $action: 'runtimeStore.editAiModel', args: ['$model.id'] },
+                      },
+                      children: [{ type: 'we-icon', props: { name: 'pencil-simple' } }],
+                    },
+                    {
+                      type: 'we-button',
+                      props: {
+                        variant: 'ghost',
+                        size: 'sm',
+                        onClick: { $action: 'runtimeStore.removeAiModel', args: ['$model.id'] },
+                      },
+                      children: [{ type: 'we-icon', props: { name: 'trash' } }],
+                    },
+                  ],
                 },
               },
-            },
-            {
-              type: 'we-button',
-              props: {
-                variant: 'ghost',
-                size: 'sm',
-                onClick: { $action: 'runtimeStore.editAiModel', args: ['$model.id'] },
-              },
-              children: [{ type: 'we-icon', props: { name: 'pencil-simple' } }],
-            },
-            {
-              type: 'we-button',
-              props: {
-                variant: 'ghost',
-                size: 'sm',
-                onClick: { $action: 'runtimeStore.removeAiModel', args: ['$model.id'] },
-              },
-              children: [{ type: 'we-icon', props: { name: 'trash' } }],
             },
           ],
         },
@@ -310,13 +324,19 @@ const taskCard: SchemaNode = {
       children: [
         { type: 'we-text', props: { variant: 'label' }, children: ['$task.name'] },
         {
-          type: 'we-button',
+          type: '$if',
           props: {
-            variant: 'ghost',
-            size: 'sm',
-            onClick: { $action: 'runtimeStore.removeAiTask', args: ['$task.id'] },
+            condition: { $store: 'runtimeStore.canConfigureAi' },
+            then: {
+              type: 'we-button',
+              props: {
+                variant: 'ghost',
+                size: 'sm',
+                onClick: { $action: 'runtimeStore.removeAiTask', args: ['$task.id'] },
+              },
+              children: [{ type: 'we-icon', props: { name: 'trash' } }],
+            },
           },
-          children: [{ type: 'we-icon', props: { name: 'trash' } }],
         },
       ],
     },
@@ -364,19 +384,25 @@ export const aiSection: SchemaNode = {
             },
           },
           {
-            type: 'Row',
-            children: [
-              {
-                type: 'we-button',
-                props: {
-                  text: 'Add a model',
-                  size: 'sm',
-                  variant: 'secondary',
-                  onClick: { $action: 'runtimeStore.newAiModel' },
-                },
-                children: [{ type: 'we-icon', props: { name: 'plus' } }],
+            type: '$if',
+            props: {
+              condition: { $store: 'runtimeStore.canConfigureAi' },
+              then: {
+                type: 'Row',
+                children: [
+                  {
+                    type: 'we-button',
+                    props: {
+                      text: 'Add a model',
+                      size: 'sm',
+                      variant: 'secondary',
+                      onClick: { $action: 'runtimeStore.newAiModel' },
+                    },
+                    children: [{ type: 'we-icon', props: { name: 'plus' } }],
+                  },
+                ],
               },
-            ],
+            },
           },
         ]),
 

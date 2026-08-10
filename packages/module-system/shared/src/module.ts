@@ -21,14 +21,38 @@
  * just components that never update. A module with no framework imports cannot have that problem.
  * Fragments-first is what makes dynamic loading tractable later.
  */
-import type { Activity, DatasetHandle, EphemeralPort, ModelManifest, Peer } from '@we/backend-shared';
+import type {
+  Activity,
+  DatasetHandle,
+  EphemeralPort,
+  ModelManifest,
+  Peer,
+  TranscriptionPort,
+} from '@we/backend-shared';
 import type { SchemaNode } from '@we/schema-shared';
 
 /**
- * Where persistent chrome attaches. A small fixed set on purpose: too few and modules fight for
+ * Where the *host* lets chrome attach. A small fixed set on purpose: too few and modules fight for
  * position, too many and it becomes a layout system.
  */
-export type SlotAnchor = 'overlay' | 'dock-left' | 'dock-right' | 'dock-bottom' | 'banner';
+export type CoreSlotAnchor = 'overlay' | 'dock-left' | 'dock-right' | 'dock-bottom' | 'banner';
+
+/**
+ * Where chrome attaches — a host anchor, or one a module opened up with {@link ModuleDefinition.anchors}.
+ *
+ * The open half exists because the fixed set answers "where on screen" and some chrome needs to
+ * answer "inside what". A transcribe toggle belongs in the call's control bar, beside mute and
+ * camera, and no screen-edge anchor can express that — the bar moves, appears conditionally, and is
+ * owned by another module.
+ *
+ * The alternative was for the call module to name the transcribe module in its own bar, which is the
+ * coupling the whole contract exists to avoid: uninstall one and the other renders a button wired to
+ * nothing. With an anchor, neither module knows the other, and a third (reactions, recording) joins
+ * the same bar without either of them changing.
+ *
+ * `(string & {})` rather than `string` so editors still complete the core names.
+ */
+export type SlotAnchor = CoreSlotAnchor | (string & {});
 
 export interface SlotContribution {
   anchor: SlotAnchor;
@@ -39,6 +63,79 @@ export interface SlotContribution {
    * Position within the anchor. Ties break deterministically on module id — without that, registration
    * order leaks into layout and chrome reshuffles for no visible reason.
    */
+  order?: number;
+}
+
+/**
+ * Which edge a dock occupies, or `null` for "not docked right now".
+ *
+ * The null is what makes this one store key rather than two: a dock's visibility and its position
+ * are the same question, and splitting them lets them disagree.
+ */
+export type DockEdge = 'left' | 'right' | 'top' | 'bottom' | null;
+
+/**
+ * How much room a dock asks for, named rather than measured.
+ *
+ * A module knows how much of the screen its panel *deserves*; only the host knows how much there
+ * is. A module publishing pixels would have to read the viewport, which is the host's business —
+ * and on a narrow window those pixels would be wrong in a way the module could not detect. Four
+ * names, resolved by the host against the current viewport and the edge being docked to.
+ */
+export type DockSize = 'sm' | 'md' | 'lg' | 'full';
+
+/**
+ * A panel that takes room from the app rather than covering it.
+ *
+ * The distinction that earns a second kind of contribution alongside {@link SlotContribution}: a
+ * slot is chrome that *overlays* — it positions itself, and whatever is beneath carries on
+ * underneath. A dock **insets**: the host shrinks the content viewport by the dock's size, so
+ * nothing is hidden and the two can be used at once.
+ *
+ * Which one a piece of chrome wants is not a property of the module, it is a property of the
+ * moment. A call's control bar overlays, because you glance at it; a call's video stage docks,
+ * because you watch it while reading the space. So a module contributes both, and moves its own
+ * state between them.
+ *
+ * ### Why the geometry is the host's
+ *
+ * A docked module used to position itself with `position: fixed` and a hardcoded offset for the
+ * module rail — which meant every module re-derived geometry it cannot see, and none of them could
+ * inset the content because the content viewport is not theirs to resize. Here the module says
+ * *which edge* and *how big*, and the host owns where that lands, what it has to clear, what the
+ * viewport becomes, and what happens when the window is too narrow to give anything up.
+ */
+export interface DockContribution {
+  /**
+   * A key on this module's own store returning {@link DockEdge}.
+   *
+   * A store key rather than a value because a dock moves: the edge is a user preference, and the
+   * same key returning `null` is how the module says the dock is closed. Named like
+   * {@link ModuleLauncher.action} is, and for the same reason — the host reads it, and a module
+   * cannot build a `$store` path to itself.
+   */
+  edge: string;
+  /** A key on this module's store returning {@link DockSize}. Omit for `'md'`. */
+  size?: string;
+  /**
+   * A key on this module's store returning `true` while the dock should **overlay** rather than
+   * inset — the same panel, not taking room.
+   *
+   * Both ends of the size range want this, for opposite reasons. A compact strip is glanceable
+   * chrome and shrinking the app for it would be absurd; a maximised panel is the whole point of
+   * the moment, and insetting it to full size would leave a content viewport of zero width, which
+   * is not a layout any template survives.
+   *
+   * It exists as a flag rather than two contributions because it must be the *same* container:
+   * moving a panel between two nodes remounts its subtree, and a subtree containing live video
+   * loses its streams when that happens. One box that changes shape, never two boxes.
+   *
+   * The host also forces this on when the window is too narrow to give anything up.
+   */
+  float?: string;
+  /** The panel itself. A `SchemaNode`, so a deployment can restyle or white-label it. */
+  node: SchemaNode;
+  /** Ties break on module id, exactly as {@link SlotContribution.order} does. */
   order?: number;
 }
 
@@ -60,6 +157,15 @@ export type ModuleCapability =
   | 'storage'
   | `network:${string}`
   | `slot:${SlotAnchor}`
+  /**
+   * Contributes a panel that takes room from the app rather than drawing over it.
+   *
+   * A stronger claim than `slot:*` and worth saying separately: a slot draws on top of what you were
+   * doing, a dock makes the rest of the app smaller. No edge in the name — which edge is the user's
+   * choice at runtime, so naming one here would be a declaration that goes stale the first time they
+   * move it.
+   */
+  | 'dock'
   /**
    * Access to a slice of the agent's data layer, for a module that reaches it directly rather than
    * through the ports — in practice an embedded application, which talks to the host's agent itself.
@@ -128,6 +234,29 @@ export interface ModuleDefinition {
   slots?: SlotContribution[];
 
   /**
+   * Panels that take room from the app rather than covering it. See {@link DockContribution}.
+   *
+   * Separate from `slots` because the host does something different with them: a slot is spliced
+   * into the shell and positions itself, a dock is given a box and its size is subtracted from the
+   * content viewport.
+   */
+  docks?: DockContribution[];
+
+  /**
+   * Anchor names this module opens up for others to contribute to.
+   *
+   * Declared rather than implied by use, for the same reason a missing module is reported rather
+   * than skipped: a contribution to an anchor nobody provides renders nowhere, and a typo would
+   * otherwise be indistinguishable from a module that is simply switched off. The registry says so
+   * at registration instead.
+   *
+   * The module marks where they land with `{ type: '$slot', props: { anchor: '<name>' } }` inside its
+   * own chrome. Prefix them with the module id — `call-controls`, not `controls` — since the
+   * namespace is shared.
+   */
+  anchors?: string[];
+
+  /**
    * How this module is opened, rendered by the host into one shared rail.
    *
    * Declared rather than contributed as chrome, because the first two modules to need an entry point
@@ -187,6 +316,18 @@ export interface ModuleDefinition {
    * blank iframe and a timeout.
    */
   embed?: ModuleEmbed;
+
+  /**
+   * The key on this module's store that returns the audio it is capturing, as `MediaStream | null`.
+   *
+   * Declared rather than wired, for the same reason `launcher` is: the call module knows it has a
+   * microphone open, and only the host knows who else might want to hear it. Module stores have no
+   * channel to each other by design, and opening one so a transcriber could reach into a call would
+   * be a worse answer than routing through the host.
+   *
+   * One producer is expected. If two ever declare it, the host takes the first and says so.
+   */
+  audioSource?: string;
 
   /**
    * Reactive state, exposed to templates at `modules.<id>.<key>`.
@@ -265,6 +406,90 @@ export interface ModuleStoreDeps {
    * heartbeat, so those stay with the host.
    */
   presence?: ModulePresenceAccess;
+
+  /**
+   * Who an agent id belongs to — the same directory the `$agent` block reads.
+   *
+   * Presence deliberately carries `agentId` and nothing else: a roster that also cached profiles
+   * would re-fetch every peer's on every heartbeat, which is the mistake it was written to avoid. So
+   * the join to a name and a picture happens here instead, at the point of display.
+   *
+   * `get` reads reactively and returns nothing for an id the host has not cached; `fetch` asks it to,
+   * and the read updates on its own when it arrives. A module must therefore render something for an
+   * unknown agent rather than waiting — a generated avatar from the id is the usual answer, and stays
+   * the answer on a host with no directory at all.
+   */
+  identities?: ModuleIdentityAccess;
+
+  /**
+   * Speech to text, for a module that listens. Absent when the backend cannot transcribe.
+   *
+   * A module must degrade rather than throw: no port means no transcription model is reachable, and
+   * saying so is more use than failing.
+   */
+  transcription?: TranscriptionPort;
+
+  /**
+   * Audio the host is currently capturing, or `null` when nothing is.
+   *
+   * The stream itself, deliberately, rather than a copy: a module that transcribes a call must hear
+   * exactly what the call is sending, so that muting the microphone stops the transcript too. A
+   * second `getUserMedia` would keep listening through a mute, which is the kind of surprise that
+   * makes a feature untrustworthy.
+   *
+   * Published by whichever module declares {@link ModuleDefinition.audioSource}; the host routes it
+   * so the two never reference each other.
+   */
+  audioInput?: () => MediaStream | null;
+
+  /**
+   * Write a record into the current dataset.
+   *
+   * The imperative twin of the `model.create` a schema already has. A module that creates data in
+   * response to a click does not need this — the schema action is better, and notes deliberately
+   * ships no CRUD wrapper because of it. This is for data that arrives without a click: a transcript
+   * appears because somebody spoke, and there is no event to hang a schema action on.
+   *
+   * Returns the new record's id, or `null` if there was nowhere to write it.
+   */
+  createEntity?: (
+    entity: string,
+    fields: Record<string, unknown>,
+    options?: CreateEntityOptions,
+  ) => Promise<string | null>;
+
+  /**
+   * Add one value to a to-many relation on a record that already exists.
+   *
+   * Deliberately **add-one**, not update-the-array. Appending by writing the whole list back is a
+   * read-modify-write, and two agents doing it concurrently lose each other's entry — the same
+   * last-write-wins hazard that rules out a shared `editorState`. Adding a single link is
+   * conflict-free by construction, which is what makes a call's participant list safe to build from
+   * several agents at once with no coordination.
+   *
+   * There is deliberately no general `update` here yet. When one arrives it will need an answer for
+   * concurrent writers, and this covers the add-only cases without pretending to have one.
+   */
+  linkEntity?: (entity: string, id: string, relation: string, value: string) => Promise<void>;
+}
+
+/**
+ * Where a newly created record should be attached, and nothing else.
+ *
+ * Narrow on purpose. The write surface a module gets is one call, and widening it to a general
+ * options bag would let a module reach whatever the host's ORM happens to expose. Attaching to a
+ * parent is the one thing a module genuinely cannot express otherwise: a transcript block is
+ * meaningless outside the call that contains it, and creating it unparented — then linking it in a
+ * second step — leaves a window where a crash orphans the block into the space.
+ */
+export interface CreateEntityOptions {
+  /**
+   * The record to link this one under, named by id and predicate rather than by model class.
+   *
+   * The raw form of the backend's parent scope, chosen because it is expressible without importing
+   * anything: a module has no access to the host's model classes, and should not.
+   */
+  parent?: { id: string; predicate: string };
 }
 
 /** An application embedded in an iframe — see {@link ModuleDefinition.embed}. */
@@ -320,6 +545,34 @@ export interface ModulePresenceAccess {
   /** Publish an activity of this agent's own. */
   setActivity: (activity: Activity) => void;
   clearActivity: (type: string, id?: string) => void;
+}
+
+/**
+ * The slice of the host's identity directory a module may read.
+ *
+ * Read-only, and deliberately not `AgentProfileSummary`: what a host knows about an agent is the
+ * host's business, and a module wanting a picture and a name should not be typed against a
+ * particular backend's idea of a person. The fields below are the ones every directory has.
+ */
+export interface ModuleIdentityAccess {
+  /**
+   * The profile the host has cached for this id, or `undefined`.
+   *
+   * Must read reactively, so a module reading it inside a derived value re-runs when a profile
+   * arrives. Returning `undefined` is the ordinary case for a peer whose profile has not been
+   * fetched yet — never an error.
+   */
+  get: (agentId: string) => ModuleIdentity | undefined;
+  /** Ask the host to fetch a profile it has not cached. Safe to call repeatedly. */
+  fetch: (agentId: string) => void;
+}
+
+/** What a module gets to know about an agent. */
+export interface ModuleIdentity {
+  /** Display name, already assembled from whatever name fields the host holds. */
+  name?: string;
+  /** Resolved image, ready to render — never a reference a module would have to fetch itself. */
+  avatar?: string;
 }
 
 /** Identity function that exists for inference and for a greppable declaration site. */

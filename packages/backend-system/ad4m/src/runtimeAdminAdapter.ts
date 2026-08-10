@@ -35,6 +35,8 @@ import type {
   RuntimeAdminPort,
 } from '@we/backend-shared';
 
+import { type Ad4mCapability, CAP_DOMAIN, CAP_VERB, createCapabilityCheck } from './capabilities';
+
 /**
  * The languages the executor installs for itself and cannot run without.
  *
@@ -199,62 +201,54 @@ export interface Ad4mRuntimeOptions {
    * Whether this connection operates the node it reached. Defaults to true.
    *
    * False for a guest on somebody else's executor — a hosted node, or any multi-user one, which is
-   * the normal web case. Almost everything here is then not merely likely to fail but wrong to
-   * offer: trust, peer networking and installed languages are the *node's*, and "restart
-   * networking" on a machine shared with other people is the clearest example of a button that
-   * should not exist rather than one that returns an error.
+   * the normal web case. Declared by the connector, which is what knows how the connection was
+   * obtained.
    *
-   * Declared by the connector, which is what knows how the connection was obtained, rather than
-   * discovered by probing each call — a capability error is what a wrongly-offered control returns,
-   * not a good way to find out whether to offer it.
+   * This is **not** the permission check — {@link capabilities} is. It answers a different question:
+   * whether a permitted change is an appropriate one to offer. AD4M grants a hosted guest
+   * `LANGUAGE DELETE`, and removing a language plugin from a machine other people are using is a
+   * button that should not exist rather than one that returns an error. So the two compose: read
+   * wherever the grant allows, mutate the node only where the node is ours.
    */
   administersNode?: boolean;
+
+  /**
+   * The capability list this connection's token carries, or omitted when it cannot be read.
+   *
+   * Omitted means *unknown*, and is treated as "assume permitted" — a desktop host authenticating
+   * with an empty token against an executor with no admin credential holds `ALL_CAPABILITY`, and
+   * reading that as "no capabilities" would empty the settings page on the hosts that own the node.
+   *
+   * See `capabilities.ts` for why reading the grant beats inferring it.
+   */
+  capabilities?: Ad4mCapability[] | null;
 }
 
 export function createAd4mRuntimeAdmin(backendClient: unknown, options: Ad4mRuntimeOptions = {}): RuntimeAdminPort {
   const client = backendClient as Ad4mClient;
   const administersNode = options.administersNode ?? true;
+  const granted = createCapabilityCheck(options.capabilities ?? null);
+
+  /** Readable where the grant allows it, whoever runs the node. */
+  const canRead = (domain: string) => granted(domain, CAP_VERB.read);
+  /**
+   * Changeable only where the grant allows it *and* the node is ours.
+   *
+   * Both halves are load-bearing. Without the grant we offer controls the executor refuses; without
+   * `administersNode` we offer node-wide changes on a machine shared with other people, which AD4M's
+   * default guest grant permits and good sense does not.
+   */
+  const canWrite = (domain: string, verb: string = CAP_VERB.update) => administersNode && granted(domain, verb);
 
   /**
-   * What belongs to the agent rather than to the node, and so survives being a guest.
+   * What belongs to this session rather than to the node, and so survives being a guest.
    *
-   * Authorized apps are this agent's own grants — `agent.getApps()` answers for whoever is
-   * authenticated — and consent requests are raised at this session. Both are as meaningful on a
-   * node run by somebody else as on one of your own.
+   * Only consent now. Authorized apps used to live here on the reasoning that `agent.getApps()`
+   * "answers for whoever is authenticated" — it does not. The executor keeps them in a
+   * process-global map persisted to one `apps_data.json`, not scoped per user, so on a shared node
+   * the list is either empty or somebody else's. They have moved to the node-scoped group below.
    */
   const agentScoped: RuntimeAdminPort = {
-    // ── External apps ─────────────────────────────────────────────────────────
-    /**
-     * AD4M returns one record per issued token, so an app that reconnected several times appears
-     * several times. Collapsing by URL matches how a user thinks about it — "Flux has access", not
-     * "Flux has four tokens" — and `revoke`/`remove` below re-expand it, acting on every token the
-     * app holds rather than one arbitrary grant.
-     */
-    async authorizedApps() {
-      const apps = await client.agent.getApps();
-      const byUrl = new Map<string, AuthorizedApp>();
-      for (const app of apps) {
-        const mapped = toAuthorizedApp(app);
-        const existing = byUrl.get(mapped.url);
-        // A grant counts as live if any of its tokens is unrevoked.
-        if (existing) existing.revoked = existing.revoked && mapped.revoked;
-        else byUrl.set(mapped.url, mapped);
-      }
-      return [...byUrl.values()];
-    },
-
-    async revokeApp(id) {
-      for (const requestId of await tokensSharingApp(client, id)) {
-        await client.agent.revokeToken(requestId);
-      }
-    },
-
-    async removeApp(id) {
-      for (const requestId of await tokensSharingApp(client, id)) {
-        await client.agent.removeApp(requestId);
-      }
-    },
-
     // ── Consent ───────────────────────────────────────────────────────────────
     /**
      * One executor subscription, demultiplexed into the contract's two request kinds. AD4M raises
@@ -327,11 +321,14 @@ export function createAd4mRuntimeAdmin(backendClient: unknown, options: Ad4mRunt
     },
   };
 
-  if (!administersNode) return agentScoped;
-
-  /** Everything that administers the node itself, and so is only offered to whoever operates it. */
-  const nodeScoped: RuntimeAdminPort = {
-    // ── AI models ─────────────────────────────────────────────────────────────
+  /**
+   * Reading what AI the node can do, which a guest is granted and a guest wants.
+   *
+   * Split out of the node-scoped block because it is the case that proved the old single boolean
+   * wrong: AD4M hands a hosted guest `AI READ`, WE hid the whole section anyway, and a transcription
+   * model the node was happily running looked to the user like no model at all.
+   */
+  const aiRead: RuntimeAdminPort = {
     /**
      * Defaults are read per kind rather than carried on the record. AD4M keeps one default per
      * model type and `getModels` does not say which, so the launcher asked for the LLM default only
@@ -359,6 +356,36 @@ export function createAd4mRuntimeAdmin(backendClient: unknown, options: Ad4mRunt
       return PRESETS[kind] ?? [];
     },
 
+    async aiModelStatus(id) {
+      const status = await client.ai.modelLoadingStatus(id);
+      return {
+        downloaded: status.downloaded,
+        loaded: status.loaded,
+        progress: status.progress ?? 0,
+        status: status.status ?? '',
+      };
+    },
+
+    async aiTasks() {
+      const tasks = await client.ai.tasks();
+      return tasks.map((task) => ({
+        id: task.taskId,
+        name: task.name,
+        modelId: task.modelId,
+        systemPrompt: task.systemPrompt,
+      }));
+    },
+  };
+
+  /**
+   * Changing which models the node runs — administration, and refused to a guest.
+   *
+   * AD4M is explicit about the boundary: `get_user_default_capabilities` grants a hosted user
+   * `AI READ/CREATE/PROMPT/TRANSCRIBE` and pointedly excludes `UPDATE` and `DELETE` as "admin
+   * operations for managing AI models". `CREATE` is granted, but adding a model to a machine other
+   * people share is still the operator's call, so it sits here with the rest.
+   */
+  const aiWrite: RuntimeAdminPort = {
     /**
      * A first model of its kind becomes that kind's default. Otherwise it is added and does
      * nothing, which reads to the user as the button having failed — the launcher does the same for
@@ -387,28 +414,56 @@ export function createAd4mRuntimeAdmin(backendClient: unknown, options: Ad4mRunt
       await client.ai.setDefaultModel(model.modelType, id);
     },
 
-    async aiModelStatus(id) {
-      const status = await client.ai.modelLoadingStatus(id);
-      return {
-        downloaded: status.downloaded,
-        loaded: status.loaded,
-        progress: status.progress ?? 0,
-        status: status.status ?? '',
-      };
-    },
-
-    async aiTasks() {
-      const tasks = await client.ai.tasks();
-      return tasks.map((task) => ({
-        id: task.taskId,
-        name: task.name,
-        modelId: task.modelId,
-        systemPrompt: task.systemPrompt,
-      }));
-    },
-
     async removeAiTask(id) {
       await client.ai.removeTask(id);
+    },
+  };
+
+  /**
+   * The rest of node administration — the store, languages, trust, the peer network, and the app
+   * grants the executor keeps process-wide.
+   *
+   * Everything here changes something every user of the node shares, so it is gated on
+   * `administersNode` and not merely on the grant. AD4M's default guest capabilities include
+   * `LANGUAGE DELETE`; uninstalling a language plugin from a machine other people are using is the
+   * clearest example of a permitted operation that should still not be offered.
+   */
+  const nodeScoped: RuntimeAdminPort = {
+    // ── External apps ─────────────────────────────────────────────────────────
+    /**
+     * AD4M returns one record per issued token, so an app that reconnected several times appears
+     * several times. Collapsing by URL matches how a user thinks about it — "Flux has access", not
+     * "Flux has four tokens" — and `revoke`/`remove` below re-expand it, acting on every token the
+     * app holds rather than one arbitrary grant.
+     *
+     * Node-scoped despite reading like an agent concern: `apps_map` is one process-global map behind
+     * a single `apps_data.json`, so on a multi-user node this is everyone's grants, not yours. It is
+     * also always empty there, because a hosted session is minted by `generate_user_jwt` and never
+     * recorded as an app at all — the section had nothing to show and no right to show it.
+     */
+    async authorizedApps() {
+      const apps = await client.agent.getApps();
+      const byUrl = new Map<string, AuthorizedApp>();
+      for (const app of apps) {
+        const mapped = toAuthorizedApp(app);
+        const existing = byUrl.get(mapped.url);
+        // A grant counts as live if any of its tokens is unrevoked.
+        if (existing) existing.revoked = existing.revoked && mapped.revoked;
+        else byUrl.set(mapped.url, mapped);
+      }
+      return [...byUrl.values()];
+    },
+
+    async revokeApp(id) {
+      for (const requestId of await tokensSharingApp(client, id)) {
+        await client.agent.revokeToken(requestId);
+      }
+    },
+
+    async removeApp(id) {
+      for (const requestId of await tokensSharingApp(client, id)) {
+        await client.agent.removeApp(requestId);
+      }
     },
 
     // ── The whole store ───────────────────────────────────────────────────────
@@ -478,7 +533,20 @@ export function createAd4mRuntimeAdmin(backendClient: unknown, options: Ad4mRunt
     },
   };
 
-  return { ...agentScoped, ...nodeScoped };
+  /**
+   * Assembled from what this connection may actually do.
+   *
+   * The store reads capability off the port's *shape* — `canManageAi` is `!!runtime()?.aiModels` —
+   * so omitting a group here is how a section disappears. That indirection is deliberate: the
+   * neutral contract never learns AD4M's capability vocabulary, and a second backend expresses the
+   * same thing by implementing the same subset.
+   */
+  return {
+    ...agentScoped,
+    ...(canRead(CAP_DOMAIN.ai) ? aiRead : {}),
+    ...(canWrite(CAP_DOMAIN.ai, CAP_VERB.create) ? aiWrite : {}),
+    ...(administersNode ? nodeScoped : {}),
+  };
 }
 
 /** Every token id belonging to the same app URL as `id`. See `authorizedApps` for why. */

@@ -76,10 +76,7 @@ const spaceCard: SchemaNode = {
                 {
                   type: 'Row',
                   props: { gap: '200', ay: 'center', wrap: true },
-                  children: [
-                    { type: 'we-text', props: { variant: 'label' }, children: ['$space.name'] },
-                    kindBadge,
-                  ],
+                  children: [{ type: 'we-text', props: { variant: 'label' }, children: ['$space.name'] }, kindBadge],
                 },
                 {
                   type: '$if',

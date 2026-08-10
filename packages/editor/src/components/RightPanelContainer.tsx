@@ -37,58 +37,62 @@ interface PanelUnitProps {
  */
 function PanelUnit(props: PanelUnitProps) {
   // Controls whether the width transition is active. Disabled during drag to
-  // prevent the CSS animation fighting against live mousemove updates.
+  // prevent the CSS animation fighting against live pointer updates.
   const [resizing, setResizing] = createSignal(false);
-  let startX = 0;
   let startWidth = 0;
+  let openAtStart = false;
   let moved = false; // plain boolean — no reactive overhead needed
 
-  function onMouseDown(e: MouseEvent) {
-    e.preventDefault();
-    startX = e.clientX;
-    const openAtStart = props.isOpen(); // capture once — avoids reading a stale closure
+  /**
+   * The drag policy, which is the half `we-resize-handle` deliberately does not own.
+   *
+   * A rail is not just a resizer: a short press toggles the panel, a drag resizes it, and dragging
+   * leftwards from closed opens it on the way. The handle reports raw screen movement and nothing
+   * else, so all of that stays here — where the panel's minimum, its maximum, and what "closed"
+   * means are already known.
+   */
+  function onResizeStart() {
+    openAtStart = props.isOpen(); // capture once — avoids reading a stale closure
     // When closed, treat start width as 0 so the panel grows from the drag position
     // rather than jumping to the previously stored width.
     startWidth = openAtStart ? props.panelWidth() : 0;
     moved = false;
+  }
 
-    const onMove = (e: MouseEvent) => {
-      // positive delta = mouse moved left = panel grows wider
-      const delta = startX - e.clientX;
+  function onResize(event: CustomEvent<{ delta: number }>) {
+    // The handle reports screen direction; this rail sits to the *left* of its panel, so dragging
+    // left — a negative screen delta — is what makes the panel wider.
+    const delta = -event.detail.delta;
 
-      if (!moved) {
-        if (Math.abs(delta) < DRAG_THRESHOLD_PX) return; // not yet a drag
-        moved = true;
-        setResizing(true); // disable local panel transition — fires only once per drag
-        setPanelResizing(true); // disable canvas/toolbar transitions — fires only once per drag
-        // Drag left on a closed panel → open it before the first width update
-        if (!openAtStart && delta > 0) props.toggle();
-      }
+    if (!moved) {
+      if (Math.abs(delta) < DRAG_THRESHOLD_PX) return; // not yet a drag
+      moved = true;
+      setResizing(true); // disable local panel transition — fires only once per drag
+      setPanelResizing(true); // disable canvas/toolbar transitions — fires only once per drag
+      // Drag left on a closed panel → open it before the first width update
+      if (!openAtStart && delta > 0) props.toggle();
+    }
 
-      if (props.isOpen()) {
-        // When dragging from closed, skip the minimum so the panel tracks the cursor
-        // exactly from the start. The minimum is enforced on mouseup instead.
-        const min = openAtStart ? 240 : 1;
-        props.setPanelWidth(Math.max(min, Math.min(900, startWidth + delta)));
-      }
-    };
+    if (props.isOpen()) {
+      // When dragging from closed, skip the minimum so the panel tracks the cursor
+      // exactly from the start. The minimum is enforced on release instead.
+      const min = openAtStart ? 240 : 1;
+      props.setPanelWidth(Math.max(min, Math.min(900, startWidth + delta)));
+    }
+  }
 
-    const onUp = () => {
-      document.removeEventListener('mousemove', onMove);
-      document.removeEventListener('mouseup', onUp);
-      setResizing(false); // re-enable local transition for open/close animation
-      setPanelResizing(false); // re-enable canvas/toolbar transitions
-      if (!moved) {
-        props.toggle(); // short press = click → toggle
-      } else if (!openAtStart && props.isOpen() && props.panelWidth() < 240) {
-        // Released below minimum after drag-from-closed: snap to minimum.
-        // Transition is re-enabled above so this animates in smoothly.
-        props.setPanelWidth(240);
-      }
-    };
-
-    document.addEventListener('mousemove', onMove);
-    document.addEventListener('mouseup', onUp);
+  function onResizeEnd() {
+    setResizing(false); // re-enable local transition for open/close animation
+    setPanelResizing(false); // re-enable canvas/toolbar transitions
+    if (!moved) {
+      // A press that never moved is a click. The handle reports it as a zero-length drag, which is
+      // the same disambiguation this made for itself before — now without a raw mouse listener.
+      props.toggle();
+    } else if (!openAtStart && props.isOpen() && props.panelWidth() < 240) {
+      // Released below minimum after drag-from-closed: snap to minimum.
+      // Transition is re-enabled above so this animates in smoothly.
+      props.setPanelWidth(240);
+    }
   }
 
   return (
@@ -105,11 +109,30 @@ function PanelUnit(props: PanelUnitProps) {
           bg={props.isOpen() ? 'neutral-100' : 'neutral-50'}
           borderLeft={`1px solid ${tokenVar('color', 'neutral-200')}`}
           hoverProps={{ bg: 'neutral-100' }}
-          cursor="ew-resize"
           flexShrink="0"
-          onMouseDown={onMouseDown}
+          position="relative"
         >
           <we-icon name={props.icon} size="sm" color={props.isOpen() ? 'neutral-700' : 'neutral-400'} />
+          {/*
+            Laid over the whole rail rather than beside it, because the rail *is* the target: it
+            toggles on a press and resizes on a drag, and splitting those across two elements would
+            put a seam through the middle of one control. Its own divider is suppressed — the rail
+            already draws a border, and two lines a pixel apart is one line that looks wrong.
+          */}
+          <we-resize-handle
+            position="absolute"
+            top="0"
+            left="0"
+            width="100%"
+            height="100%"
+            // Native `style`, not the design system's `styles` prop. Both work now, but this is a
+            // custom property on one element rather than a design decision, and going through the DS
+            // prop means going through Solid's custom-element property path to reach the same place.
+            style={{ '--we-resize-handle-line': 'transparent', '--we-resize-handle-line-active': 'transparent' }}
+            on:resizestart={onResizeStart}
+            on:resize={onResize}
+            on:resizeend={onResizeEnd}
+          />
         </Column>
       </we-tooltip>
 
@@ -140,13 +163,22 @@ export function RightPanelContainer() {
 
   // Slide the container off-screen when neither editing mode is active.
   // When either mode is active, translateX(0) keeps it visible.
+  /**
+   * Where the container sits when it is not editing: its own width to the right, i.e. off the edge.
+   *
+   * Plus whatever a docked module panel has taken from that edge, which is the part that used to be
+   * missing. The container is positioned at `right: var(--we-dock-right)`, so sliding it by its own
+   * width alone lands it *inside* the dock rather than outside the window — and a dock frame paints
+   * above it, so exiting the editor made its controls jump behind the notes panel instead of leaving
+   * the screen.
+   */
   const containerTransform = () => {
     if (aiStore.isEditingTemplate() || aiStore.isEditingTheme()) return 'none';
     let w = TOTAL_RAIL_WIDTH;
     if (aiStore.isOpen()) w += aiStore.aiPanelWidth();
     if (aiStore.codePanelOpen()) w += aiStore.codePanelWidth();
     if (aiStore.themePanelOpen()) w += aiStore.themePanelWidth();
-    return `translateX(${w}px)`;
+    return `translateX(calc(${w}px + var(--we-dock-right, 0px)))`;
   };
 
   return (
@@ -155,7 +187,10 @@ export function RightPanelContainer() {
       // the editor is embedded in a panel. See `useEditorSurface`.
       position={surface.positioning === 'container' ? 'absolute' : 'fixed'}
       top="0"
-      right="0"
+      // Beside the content rather than the window, so a docked module panel slides the editor's
+      // rails inwards instead of opening underneath them. Inside a host's own container there is no
+      // dock to account for, and the variable is simply unset.
+      right="var(--we-dock-right, 0px)"
       height={surface.positioning === 'container' ? '100%' : '100vh'}
       zIndex={20}
       transform={containerTransform()}

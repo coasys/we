@@ -302,6 +302,53 @@ describe('unknown store', () => {
     const storeErrors = result.errors.filter((e) => e.message.includes('Unknown store'));
     expect(storeErrors).toHaveLength(0);
   });
+
+  // Which modules exist is a property of the deployment's seed, not of this build, so `modules` is a
+  // namespace with nothing to check members against. Without it a module's own fragments — the only
+  // schemas that *have* to reference their store this way — failed on their first token and could not
+  // be validated at all.
+  it('accepts the modules namespace, whatever the module id', () => {
+    const result = validateSemantic(
+      {
+        type: 'we-button',
+        props: {
+          text: { $store: 'modules.transcribe.pending' },
+          onClick: { $action: 'modules.somethingNobodyHasWrittenYet.toggle' },
+        },
+      },
+      ctx(),
+    );
+    expect(result.errors.filter((e) => e.message.includes('Unknown store'))).toHaveLength(0);
+    expect(result.errors.filter((e) => e.message.includes('Unknown member'))).toHaveLength(0);
+    expect(result.errors.filter((e) => e.message.includes('Unknown method'))).toHaveLength(0);
+  });
+});
+
+describe('$slot outlet', () => {
+  it('accepts a named anchor', () => {
+    const result = validateSemantic({ type: '$slot', props: { anchor: 'call-controls' } }, ctx());
+    expect(result.errors.filter((e) => e.path.includes('anchor'))).toHaveLength(0);
+  });
+
+  // The host resolves the marker before the renderer sees it, so a missing anchor renders nothing and
+  // looks exactly like an anchor nobody contributed to. Nothing else would ever report it.
+  it.each([
+    ['no props at all', { type: '$slot' }],
+    ['no anchor', { type: '$slot', props: {} }],
+    ['an empty anchor', { type: '$slot', props: { anchor: '' } }],
+    ['a non-string anchor', { type: '$slot', props: { anchor: 42 } }],
+  ])('errors on %s', (_case, node) => {
+    const result = validateSemantic(node, ctx());
+    expect(result.errors.some((e) => e.severity === 'error' && e.message.includes('$slot'))).toBe(true);
+  });
+
+  it('is found nested inside other chrome, where a module actually puts it', () => {
+    const result = validateSemantic(
+      { type: 'Row', children: [{ type: 'we-button' }, { type: '$slot', props: {} }] },
+      ctx(),
+    );
+    expect(result.errors.some((e) => e.message.includes('$slot'))).toBe(true);
+  });
 });
 
 describe('unknown store member', () => {
@@ -349,8 +396,10 @@ describe('unknown action', () => {
 
 describe('$event/$arg inside $action args', () => {
   const nested = (args: unknown[]) =>
-    validateSemantic({ type: 'we-button', props: { onClick: { $action: 'routeStore.navigate', args } } }, ctx())
-      .errors.filter((e) => e.severity === 'error' && e.message.includes('nested inside an operator'));
+    validateSemantic(
+      { type: 'we-button', props: { onClick: { $action: 'routeStore.navigate', args } } },
+      ctx(),
+    ).errors.filter((e) => e.severity === 'error' && e.message.includes('nested inside an operator'));
 
   it('errors when an event ref is wrapped in an operator', () => {
     // The bug this exists for: args resolve once at render time, so `$not` evaluates before any

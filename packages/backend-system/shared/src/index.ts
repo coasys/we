@@ -34,6 +34,7 @@ export type {
   EphemeralRequirements,
   EphemeralGap,
   EphemeralPlan,
+  PublishResult,
 } from './ephemeral';
 
 export {
@@ -64,6 +65,9 @@ export type {
   PresenceSource,
   PresenceState,
 } from './presence';
+
+export { setTraceSink, trace, tracing } from './trace';
+export type { TraceSink } from './trace';
 
 export { modelManifestSchema, validateManifest, getEntity, getProperty, getRelation } from './manifest';
 export type {
@@ -105,8 +109,9 @@ export type {
   DatasetLifecyclePort,
   DatasetRef,
 } from './lifecycle';
+export { manifestEntries } from './manifestEntry';
 export type { ModelManifestEntry, ModelManifestProperty } from './manifestEntry';
-export { isProfileEmpty } from './profileTypes';
+export { displayName, isProfileEmpty } from './profileTypes';
 export type { AgentProfileSummary, PublishProfileFields } from './profileTypes';
 export type {
   BackendInterop,
@@ -129,3 +134,4 @@ export type {
   RuntimeAdminPort,
   TokenizerSource,
 } from './runtimeAdmin';
+export type { TranscriptionModel, TranscriptionPort, TranscriptionStream, TranscriptionTuning } from './transcription';
