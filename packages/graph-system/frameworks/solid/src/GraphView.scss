@@ -45,26 +45,30 @@
   // scale change. Re-adding it unconditionally will silently make everything blurry again.
 }
 
+// The edge surface, exactly the size of the layer — **not** an enormous box.
+//
+// This was a 100000×100000 SVG offset by -50000 with its contents translated back, so that curves
+// bowing away from the origin could never be clipped. `overflow: visible` already does that job, and
+// the giant box cost more than it bought: every edge and label ended up drawn at user coordinates
+// around 50,000, which the camera then multiplied. At 4× zoom that is ~200,000 device pixels of
+// offset before any content starts.
+//
+// Paths tolerated it — sub-pixel error in a vector is invisible. Text did not: `text-anchor: middle`
+// re-measures and re-centres at each scale, and at those magnitudes the rounding changed from frame
+// to frame, so edge labels jittered while everything around them moved smoothly.
+//
+// Same size as the layer means SVG user space *is* world space. No offset, no counter-translate.
 .we-graph__edges {
   position: absolute;
-  // Large enough that curves bowing away from the origin are not clipped; the layer is transformed,
-  // so this costs nothing to paint outside the viewport.
-  left: -50000px;
-  top: -50000px;
-  width: 100000px;
-  height: 100000px;
+  inset: 0;
+  // Curves and labels reaching outside the box still paint; this is what made the giant box
+  // unnecessary in the first place.
   overflow: visible;
   pointer-events: none;
 
   path {
     pointer-events: stroke;
   }
-}
-
-// The SVG's own coordinate space is offset by the box above, so its contents are shifted back.
-.we-graph__edges > g,
-.we-graph__edges > defs {
-  transform: translate(50000px, 50000px);
 }
 
 .we-graph__edge-label {
