@@ -22,7 +22,7 @@ import { THEME_PRESETS, type ThemeName } from '@we/themes/presets';
 import { createEffect, createMemo, createSignal, For, Show } from 'solid-js';
 import { render } from 'solid-js/web';
 
-import { editableField, writeField } from './fixture';
+import { clearPositions, editableField, restorePositions, savePosition, writeField } from './fixture';
 import { createHost, type QueryLog } from './host';
 import { CURVES, LAYOUTS, type Scenario, SCENARIOS } from './scenarios';
 
@@ -40,6 +40,7 @@ function Graph(props: {
   host: GraphHostBindings;
   onNodeClick: (node: GraphNode) => void;
   onChanged: () => void;
+  onNodeDragEnd: (payload: { id: string; x: number; y: number }) => void;
 }) {
   void props.remountKey;
   return (
@@ -51,15 +52,17 @@ function Graph(props: {
       bg="neutral-50"
       onNodeClick={props.onNodeClick}
       onSelectionChange={props.onChanged}
-      onNodeDragEnd={props.onChanged}
+      onNodeDragEnd={props.onNodeDragEnd}
     />
   );
 }
 
+restorePositions();
+
 function App() {
   const [scenarioId, setScenarioId] = createSignal(SCENARIOS[0].id);
   const [layoutOverride, setLayoutOverride] = createSignal<string | null>(null);
-  const [curveOverride, setCurveOverride] = createSignal<string | null>(null);
+  const [curveOverride, setCurveOverride] = createSignal<(typeof CURVES)[number] | null>(null);
   const [selected, setSelected] = createSignal<GraphNode | null>(null);
   /** Bumped after a fixture edit, to force the graph to re-seed and pick the new value up. */
   const [dataVersion, setDataVersion] = createSignal(0);
@@ -205,6 +208,28 @@ function App() {
               )}
             </For>
           </Row>
+        </Column>
+
+        <Column gap="200">
+          <we-text variant="label" color="neutral-500" uppercase>
+            Board positions
+          </we-text>
+          <Row gap="100" wrap ay="center">
+            <we-button
+              variant="outline"
+              size="xs"
+              title="Forget every saved card position"
+              onClick={() => {
+                clearPositions();
+                setDataVersion((n) => n + 1);
+              }}
+            >
+              reset saved positions
+            </we-button>
+          </Row>
+          <we-text variant="footnote" color="neutral-500">
+            Dragging a card on the board scenario writes its position and survives a reload.
+          </we-text>
         </Column>
 
         <Column gap="200">
@@ -362,6 +387,16 @@ function App() {
                 flushLog();
               }}
               onChanged={flushLog}
+              /*
+                The persistence path a board actually takes: the drop is written to the record, and
+                the next query reads it back as an ordinary field. Nothing here keeps a side-map of
+                positions — a playground that did would demonstrate persistence while testing none of
+                the wiring that has to work.
+              */
+              onNodeDragEnd={(at) => {
+                savePosition(at.id, at);
+                flushLog();
+              }}
             />
           )}
         </Show>

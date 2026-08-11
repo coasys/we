@@ -313,3 +313,80 @@ export function writeField(node: { type: string; id: string }, field: string, va
   row[field] = value;
   return true;
 }
+
+/*
+  Board positions, persisted the way a backend would persist them.
+
+  The manual layout reads each node's position from its own data, which is what makes a board a board
+  — position is the thing being edited, not something derived. In the playground that was invisible:
+  the fixture carries no coordinates, so dragging a card moved it until the next reload and the layout
+  looked like it did nothing.
+
+  Writing them back into the rows, rather than keeping a side-map of positions in the app, is
+  deliberate. It goes through `onNodeDragEnd` → a write → the query that reads it back, which is the
+  exact path a real board takes; a playground that stored positions beside the data would demonstrate
+  persistence while testing none of the wiring that has to work.
+
+  localStorage is the stand-in for the backend, and only for these two fields — everything else about
+  the fixture stays in memory, so a reload is otherwise a clean slate.
+*/
+const POSITION_KEY = 'we-graph-explorer:positions';
+
+type StoredPositions = Record<string, { x: number; y: number }>;
+
+function readStored(): StoredPositions {
+  try {
+    const raw = localStorage.getItem(POSITION_KEY);
+    return raw ? (JSON.parse(raw) as StoredPositions) : {};
+  } catch {
+    // A malformed or unavailable store is not worth failing a playground over.
+    return {};
+  }
+}
+
+/** Apply any saved positions onto the rows, so a query reads them back as ordinary fields. */
+export function restorePositions(): void {
+  const stored = readStored();
+  for (const rows of Object.values(TABLES)) {
+    for (const row of rows) {
+      const at = stored[String(row.id)];
+      if (!at) continue;
+      row.x = at.x;
+      row.y = at.y;
+    }
+  }
+}
+
+/** Record where a node was dropped, on the row itself and in the store behind it. */
+export function savePosition(nodeId: string, at: { x: number; y: number }): void {
+  const rowId = decodeURIComponent(nodeId.split('/').pop() ?? '');
+  for (const rows of Object.values(TABLES)) {
+    const row = rows.find((candidate) => String(candidate.id) === rowId);
+    if (!row) continue;
+    row.x = Math.round(at.x);
+    row.y = Math.round(at.y);
+    const stored = readStored();
+    stored[rowId] = { x: row.x as number, y: row.y as number };
+    try {
+      localStorage.setItem(POSITION_KEY, JSON.stringify(stored));
+    } catch {
+      // Full or disabled storage: the drag still stands for this session.
+    }
+    return;
+  }
+}
+
+/** Forget every saved position, so the layout goes back to parking cards in a grid. */
+export function clearPositions(): void {
+  for (const rows of Object.values(TABLES)) {
+    for (const row of rows) {
+      delete row.x;
+      delete row.y;
+    }
+  }
+  try {
+    localStorage.removeItem(POSITION_KEY);
+  } catch {
+    // Nothing to do; the rows above are already clear for this session.
+  }
+}
