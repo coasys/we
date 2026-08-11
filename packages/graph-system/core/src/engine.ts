@@ -24,7 +24,7 @@ import { ExpansionState, SEED_OPENER } from './expansion';
 import { PluginRegistry } from './registry';
 import { SpatialIndex } from './spatial';
 import { GraphStore } from './store';
-import { resolveNumber, resolveStyle } from './style';
+import { nodeVisual, resolveStyle } from './style';
 import { boundsOf, Viewport } from './viewport';
 
 export interface EngineOptions {
@@ -481,7 +481,7 @@ export class GraphEngine {
     this.index.rebuild(
       [...this.store.nodes()].flatMap((node) => {
         const position = this.positions.get(node.id);
-        return position ? [{ id: node.id, x: position.x, y: position.y, radius: this.hitRadius(node) }] : [];
+        return position ? [{ id: node.id, x: position.x, y: position.y, ...this.hitArea(node) }] : [];
       }),
     );
   }
@@ -494,11 +494,20 @@ export class GraphEngine {
    * which this used to be — gives a 6px property node an 18px grab area that swallows its neighbours,
    * and a 28px type node one smaller than it looks.
    */
-  private hitRadius(node: GraphNode): number {
-    const style = resolveStyle(node, this.spec.nodeStyle);
-    // Metrics are not resolved for picking: they change what a node *means*, not where it is, and a
-    // hit area that moved when a metric finished computing would be worse than a slightly stale one.
-    return resolveNumber(typeof style.size === 'number' ? style.size : undefined, node.id, NO_METRICS, 14) + 4;
+  private hitArea(node: GraphNode): { radius: number; halfWidth?: number; halfHeight?: number } {
+    // Resolved through `nodeVisual` — the same function the renderer paints from — rather than read
+    // off the raw style rules. Deriving it separately is how a card ended up with an 18px hit spot in
+    // the middle of a 170px box: a card sets `width`, never `size`, so the rule-reading version fell
+    // through to its default and picked a dot.
+    //
+    // Metrics are deliberately not resolved here: they change what a node *means*, not where it is,
+    // and a hit area that moved when a metric finished computing would be worse than a stale one.
+    const visual = nodeVisual(node, resolveStyle(node, this.spec.nodeStyle), NO_METRICS);
+    if (visual.shape === 'card' && visual.width && visual.height) {
+      return { radius: visual.size, halfWidth: visual.width / 2, halfHeight: visual.height / 2 };
+    }
+    // A few pixels of slack, so a mark is grabbable at its edge rather than only inside it.
+    return { radius: visual.size + 4 };
   }
 
   /** Frame everything currently placed. Nothing to frame is not a failure — it is an empty graph. */

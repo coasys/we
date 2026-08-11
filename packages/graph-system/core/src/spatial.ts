@@ -20,8 +20,17 @@ export interface IndexedNode {
   id: string;
   x: number;
   y: number;
-  /** Hit radius in world units. */
+  /** Hit radius in world units. Used when the node has no box. */
   radius: number;
+  /**
+   * Box half-extents, for nodes that are rectangles rather than marks.
+   *
+   * A card is 170×128; picking it with a circle either misses the corners or overshoots the edges
+   * into its neighbours. Both matter on a board, where cards sit close together and a click landing
+   * on the wrong one is worse than a click landing on nothing.
+   */
+  halfWidth?: number;
+  halfHeight?: number;
 }
 
 const DEFAULT_CELL = 120;
@@ -39,9 +48,12 @@ export class SpatialIndex {
 
     // Size cells to the largest node, so a node never spans more than the four cells its corners
     // fall in and the query below can stay a fixed 3×3 sweep.
-    let maxRadius = 0;
-    for (const node of nodes) if (node.radius > maxRadius) maxRadius = node.radius;
-    this.cellSize = Math.max(DEFAULT_CELL, maxRadius * 2);
+    let maxExtent = 0;
+    for (const node of nodes) {
+      const extent = Math.max(node.radius, node.halfWidth ?? 0, node.halfHeight ?? 0);
+      if (extent > maxExtent) maxExtent = extent;
+    }
+    this.cellSize = Math.max(DEFAULT_CELL, maxExtent * 2);
 
     for (const node of nodes) {
       const key = this.key(node.x, node.y);
@@ -68,7 +80,13 @@ export class SpatialIndex {
         if (!cell) continue;
         for (const node of cell) {
           const distance = Math.hypot(node.x - at.x, node.y - at.y);
-          if (distance <= node.radius) hits.push({ id: node.id, distance });
+          const inside =
+            node.halfWidth !== undefined && node.halfHeight !== undefined
+              ? Math.abs(node.x - at.x) <= node.halfWidth && Math.abs(node.y - at.y) <= node.halfHeight
+              : distance <= node.radius;
+          // Distance to centre still orders the hits — for overlapping cards, the one you are
+          // nearest the middle of is the one you meant.
+          if (inside) hits.push({ id: node.id, distance });
         }
       }
     }
@@ -80,11 +98,13 @@ export class SpatialIndex {
   within(bounds: Bounds): string[] {
     const result: string[] = [];
     for (const node of this.items) {
+      const halfWidth = node.halfWidth ?? node.radius;
+      const halfHeight = node.halfHeight ?? node.radius;
       if (
-        node.x + node.radius >= bounds.minX &&
-        node.x - node.radius <= bounds.maxX &&
-        node.y + node.radius >= bounds.minY &&
-        node.y - node.radius <= bounds.maxY
+        node.x + halfWidth >= bounds.minX &&
+        node.x - halfWidth <= bounds.maxX &&
+        node.y + halfHeight >= bounds.minY &&
+        node.y - halfHeight <= bounds.maxY
       ) {
         result.push(node.id);
       }

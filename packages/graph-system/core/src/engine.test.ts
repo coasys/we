@@ -309,3 +309,62 @@ describe('framing', () => {
     expect(engine.viewport.get().x).not.toBe(500);
   });
 });
+
+describe('hit areas follow what is drawn', () => {
+  it('picks a card across its whole box, not a dot in the middle', async () => {
+    // The bug: hit size was read off the raw style rules, and a card sets `width`, never `size` — so
+    // it fell through to the default and gave a 170px card an 18px grab spot in its centre.
+    const registry = new PluginRegistry({ seeds: [seedOf(1)], layouts });
+    const engine = engineWith(
+      {
+        seeds: { source: 'test' },
+        layout: { type: 'grid' },
+        nodeStyle: [{ style: { shape: 'card', width: 170, height: 120 } }],
+      },
+      registry,
+    );
+    await engine.start();
+    engine.resize(800, 600);
+    engine.pin('seed-0', { x: 0, y: 0 });
+
+    // Anywhere inside the box.
+    expect(engine.index.hitTest({ x: 80, y: 55 })).toContain('seed-0');
+    expect(engine.index.hitTest({ x: -80, y: -55 })).toContain('seed-0');
+    // And nowhere outside it — a circle of the same reach would have claimed this.
+    expect(engine.index.hitTest({ x: 0, y: 75 })).not.toContain('seed-0');
+  });
+
+  it('keeps a circular hit area for ordinary marks', async () => {
+    const registry = new PluginRegistry({ seeds: [seedOf(1)], layouts });
+    const engine = engineWith(
+      { seeds: { source: 'test' }, layout: { type: 'grid' }, nodeStyle: [{ style: { size: 20 } }] },
+      registry,
+    );
+    await engine.start();
+    engine.resize(800, 600);
+    engine.pin('seed-0', { x: 0, y: 0 });
+
+    expect(engine.index.hitTest({ x: 18, y: 0 })).toContain('seed-0');
+    expect(engine.index.hitTest({ x: 40, y: 0 })).not.toContain('seed-0');
+  });
+
+  it('does not let a wide card swallow the node beside it', async () => {
+    // On a board cards sit close together, and a click landing on the wrong one is worse than a click
+    // landing on nothing.
+    const registry = new PluginRegistry({ seeds: [seedOf(2)], layouts });
+    const engine = engineWith(
+      {
+        seeds: { source: 'test' },
+        layout: { type: 'grid' },
+        nodeStyle: [{ style: { shape: 'card', width: 100, height: 60 } }],
+      },
+      registry,
+    );
+    await engine.start();
+    engine.resize(800, 600);
+    engine.pin('seed-0', { x: 0, y: 0 });
+    engine.pin('seed-1', { x: 200, y: 0 });
+
+    expect(engine.index.hitTest({ x: 120, y: 0 })).toEqual([]);
+  });
+});
