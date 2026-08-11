@@ -338,6 +338,14 @@ export function buildValidationContext(data: ContextData): ValidationContext {
 
 interface WalkState {
   localScope: Set<string> | null; // null = no $localState in scope
+  /**
+   * Of those, the names contributed by `$queries` — which are read-only.
+   *
+   * Kept apart from `localScope` because a *read* does not care which declared it (that is the
+   * point of one namespace), while a *write* very much does: `$setLocal` on a hoisted query warns
+   * to the console and no-ops, so the control renders, takes the click and does nothing.
+   */
+  queryScope: Set<string>;
   hasRoutesAncestor: boolean;
   /** True only for the root template node and for route entry nodes — the positions the router
    *  actually reads routes arrays from. Child nodes that are not route entries must never own
@@ -580,8 +588,13 @@ function updateLocalScope(n: Record<string, unknown>, state: WalkState): WalkSta
 
   const newFields = new Set(state.localScope ?? []);
   if (hasState) for (const key of Object.keys(localState)) newFields.add(key);
-  if (hasQueries) for (const key of Object.keys(queries)) newFields.add(key);
-  return { ...state, localScope: newFields };
+  const newQueries = new Set(state.queryScope);
+  if (hasQueries) for (const key of Object.keys(queries)) newQueries.add(key);
+  // A `$localState` field on the same node shadows the hoisted query of that name, so the write
+  // check below must not treat it as read-only any more.
+  if (hasState) for (const key of Object.keys(localState)) newQueries.delete(key);
+  for (const key of newQueries) newFields.add(key);
+  return { ...state, localScope: newFields, queryScope: newQueries };
 }
 
 function checkProps(
@@ -728,6 +741,21 @@ function checkTokenValue(
   // $setLocal token
   if ('$setLocal' in obj && typeof obj.$setLocal === 'string') {
     checkLocalRef(obj.$setLocal, `${path}.$setLocal`, 'setLocal', state, errors);
+    checkLocalWrite(obj.$setLocal, `${path}.$setLocal`, 'setLocal', state, errors);
+  }
+
+  /*
+    $toggleLocal and $callLocal were never checked at all, so a typo in either produced exactly the
+    failure this validator exists to catch: the button renders, takes the click, warns to a console
+    nobody has open, and does nothing.
+  */
+  if ('$toggleLocal' in obj && typeof obj.$toggleLocal === 'string') {
+    checkLocalRef(obj.$toggleLocal, `${path}.$toggleLocal`, 'toggleLocal', state, errors);
+    checkLocalWrite(obj.$toggleLocal, `${path}.$toggleLocal`, 'toggleLocal', state, errors);
+  }
+
+  if ('$callLocal' in obj && typeof obj.$callLocal === 'string') {
+    checkLocalRef(obj.$callLocal, `${path}.$callLocal`, 'callLocal', state, errors);
   }
 
   // $error token
@@ -759,7 +787,10 @@ function checkTokenValue(
 
   // $resetLocal token — skip $scope
   if ('$resetLocal' in obj && typeof obj.$resetLocal === 'string') {
-    // $resetLocal: "$scope" is always valid — skip
+    if (obj.$resetLocal !== '$scope') {
+      checkLocalRef(obj.$resetLocal, `${path}.$resetLocal`, 'resetLocal', state, errors);
+      checkLocalWrite(obj.$resetLocal, `${path}.$resetLocal`, 'resetLocal', state, errors);
+    }
   }
 
   // Recurse into nested token objects ($if, $concat, $map, $eq, $ne, etc.)
@@ -778,9 +809,12 @@ function checkTokenValue(
 
   if ('$map' in obj && typeof obj.$map === 'object' && obj.$map !== null) {
     const mapObj = obj.$map as Record<string, unknown>;
-    checkTokenValue(mapObj.source, `${path}.$map.source`, ctx, state, errors);
+    // `items`, not `source` — this read the wrong key since it was written, so a bad `$store`
+    // inside a `$map`'s source was never reported.
+    checkTokenValue(mapObj.items, `${path}.$map.items`, ctx, state, errors);
     if (mapObj.select && typeof mapObj.select === 'object') {
       for (const [k, v] of Object.entries(mapObj.select as Record<string, unknown>)) {
+        checkMapSelectValue(v, `${path}.$map.select.${k}`, errors);
         checkTokenValue(v, `${path}.$map.select.${k}`, ctx, state, errors);
       }
     }
@@ -1095,6 +1129,68 @@ function checkModelRef(name: string, path: string, ctx: ValidationContext, error
   }
 }
 
+/**
+ * A `$map` `select` value that looks like a reference but is resolved as a literal.
+ *
+ * `resolveSelectValue` substitutes a string only when it starts with `'$item.'`. Everything else is
+ * passed through untouched, so a bare `'$item'` becomes the five characters `$item` — identical for
+ * every row. Four participant stacks seeded their avatars that way and rendered the same generated
+ * face for everybody, which reads as a styling quirk rather than as a bug, and survived four
+ * separate reviews. The fix is a token object (`{ $concat: ['$item'] }`), which is always resolved.
+ *
+ * `'$item'` is an error because it is never intentional. Other `$`-strings are a warning: a literal
+ * beginning with `$` is legal, just very rarely what somebody meant to write.
+ */
+function checkMapSelectValue(value: unknown, path: string, errors: ValidationError[]): void {
+  if (typeof value !== 'string' || !value.startsWith('$')) return;
+  if (value.startsWith('$item.')) return;
+
+  if (value === '$item') {
+    errors.push({
+      path,
+      message:
+        `"$item" in a $map select is resolved as a literal, not as the current item — only ` +
+        `"$item.<path>" is substituted. Every row will get the same value. ` +
+        `Use { "$concat": ["$item"] } instead.`,
+      severity: 'error',
+    });
+    return;
+  }
+
+  errors.push({
+    path,
+    message:
+      `"${value}" in a $map select is passed through as a literal string. Only "$item.<path>" is ` +
+      `substituted; wrap a context reference in a token object to have it resolved.`,
+    severity: 'warning',
+  });
+}
+
+/**
+ * A write to a name a `$queries` entry owns.
+ *
+ * `$queries` and `$localState` share one `$local` namespace so a reader need not care which
+ * declared a name — but query results are read-only. `$setLocal` against one warns and no-ops, so
+ * the control renders, accepts the click, and does nothing at all.
+ */
+function checkLocalWrite(
+  fieldName: string,
+  path: string,
+  tokenType: string,
+  state: WalkState,
+  errors: ValidationError[],
+): void {
+  const rootField = fieldName.split('.')[0];
+  if (!state.queryScope.has(rootField)) return;
+  errors.push({
+    path,
+    message:
+      `$${tokenType} writes to "${rootField}", which is declared by $queries and is read-only. ` +
+      `The write will warn and no-op at runtime. Declare it in $localState instead, or write to a different field.`,
+    severity: 'error',
+  });
+}
+
 function checkLocalRef(
   fieldName: string,
   path: string,
@@ -1334,6 +1430,7 @@ export function validateSemantic(schema: unknown, context: ValidationContext): V
   // it reads. Anything else is a fragment; see `WalkState.isFragment`.
   const state: WalkState = {
     localScope: null,
+    queryScope: new Set(),
     hasRoutesAncestor: false,
     isRouteEligible: true,
     isFragment: !meta,
