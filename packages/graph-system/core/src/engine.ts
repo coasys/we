@@ -9,6 +9,7 @@
  */
 import type {
   BehaviourContext,
+  EdgeGeometry,
   ExpandDirection,
   ExpanderContext,
   GraphEvent,
@@ -21,6 +22,7 @@ import type {
 import { addressKind } from '@we/graph-protocol';
 
 import { ExpansionState, SEED_OPENER } from './expansion';
+import { bowOffsets, distanceToEdge, edgeBounds, groupByEndpoints, routeEdge, trimToRadius } from './geometry';
 import { PluginRegistry } from './registry';
 import { SpatialIndex } from './spatial';
 import { GraphStore } from './store';
@@ -94,6 +96,10 @@ export class GraphEngine {
   private pendingFit = false;
   /** Computed metric values, by metric id then node id. Recomputed when the graph changes. */
   private metrics: Map<string, ReadonlyMap<string, number>> = new Map();
+  /** Where every edge runs, recomputed with positions. Read by the renderer and by edge picking. */
+  private edgeGeometry = new Map<string, EdgeGeometry>();
+  /** Bounds per edge, so picking rejects most edges without measuring them. */
+  private edgeBoxes = new Map<string, { minX: number; minY: number; maxX: number; maxY: number }>();
 
   constructor(options: EngineOptions) {
     this.spec = options.spec;
@@ -132,6 +138,17 @@ export class GraphEngine {
 
   getSpec(): Readonly<GraphSpec> {
     return this.spec;
+  }
+
+  /**
+   * Where each edge runs, in world units.
+   *
+   * The renderer draws from this rather than deriving its own, for the same reason node geometry has
+   * one source: two derivations of the same thing drift, and here the second consumer is hit-testing,
+   * where drift means clicking an edge that is not the one under the cursor.
+   */
+  getEdgeGeometry(): ReadonlyMap<string, EdgeGeometry> {
+    return this.edgeGeometry;
   }
 
   /** Computed metric values, for a renderer resolving `MetricRef` styles. */
@@ -465,7 +482,14 @@ export class GraphEngine {
   private applyPositions(positions: Map<string, Placement>, fit?: boolean): void {
     this.positions = positions;
     this.reindex();
+    this.routeEdges();
     if (fit && !this.fitToContent()) this.pendingFit = true;
+    this.notify('positions');
+  }
+
+  /** Recompute routes after a style change — `curve` decides the shape, so it decides the geometry. */
+  refreshEdgeRoutes(): void {
+    this.routeEdges();
     this.notify('positions');
   }
 
@@ -508,6 +532,68 @@ export class GraphEngine {
     }
     // A few pixels of slack, so a mark is grabbable at its edge rather than only inside it.
     return { radius: visual.size + 4 };
+  }
+
+  /**
+   * Work out where every edge runs, and cache the bounds picking rejects against.
+   *
+   * Grouped by endpoint pair first, so mutual and parallel edges fan apart instead of stacking into a
+   * single line that understates the graph.
+   */
+  private routeEdges(): void {
+    this.edgeGeometry = new Map();
+    this.edgeBoxes = new Map();
+
+    for (const group of groupByEndpoints([...this.store.edges()]).values()) {
+      const offsets = bowOffsets(group.length);
+      group.forEach((edge, index) => {
+        const from = this.positions.get(edge.source);
+        const to = this.positions.get(edge.target);
+        if (!from || !to) return;
+        const style = resolveStyle(edge, this.spec.edgeStyle);
+        const targetNode = this.store.node(edge.target);
+        // Stop at the node's edge, so an arrowhead lands on it rather than under it. The radius comes
+        // from the same place the renderer gets its size, so the two cannot disagree.
+        const radius = targetNode ? this.hitArea(targetNode).radius : 14;
+        const end = trimToRadius(from, to, radius + 6);
+        const geometry = routeEdge(edge.id, from, end, style.curve ?? 'bezier', offsets[index]);
+        this.edgeGeometry.set(edge.id, geometry);
+        this.edgeBoxes.set(edge.id, edgeBounds(geometry));
+      });
+    }
+  }
+
+  /**
+   * The edge nearest a point, within a tolerance — the engine's answer to what used to be
+   * `pointer-events: stroke` on an SVG path.
+   *
+   * A linear scan with bounds rejection rather than a spatial structure: edges are re-routed on every
+   * position change, so an index would be rebuilt as often as it is queried, and picking happens on a
+   * click rather than per frame. If a graph ever holds enough edges for this to show up, the grid the
+   * nodes use is the shape to copy.
+   */
+  hitTestEdge(at: Point, tolerance = 8): string | null {
+    let nearestId: string | null = null;
+    let nearest = tolerance;
+
+    for (const [id, box] of this.edgeBoxes) {
+      if (
+        at.x < box.minX - tolerance ||
+        at.x > box.maxX + tolerance ||
+        at.y < box.minY - tolerance ||
+        at.y > box.maxY + tolerance
+      ) {
+        continue;
+      }
+      const geometry = this.edgeGeometry.get(id);
+      if (!geometry) continue;
+      const distance = distanceToEdge(at, geometry);
+      if (distance <= nearest) {
+        nearest = distance;
+        nearestId = id;
+      }
+    }
+    return nearestId;
   }
 
   /** Frame everything currently placed. Nothing to frame is not a failure — it is an empty graph. */
@@ -556,6 +642,8 @@ export class GraphEngine {
   refreshHitAreas(): void {
     this.recomputeMetrics();
     this.reindex();
+    // Node size decides where an edge stops, so a restyle moves the routes too.
+    this.routeEdges();
   }
 
   /** Frame the graph now, or as soon as there is a surface to frame it into. */
@@ -587,9 +675,21 @@ export class GraphEngine {
       if (existing) this.positions.set(id, { x: existing.x, y: existing.y });
     }
     this.layout?.fix?.(id, at);
-    // Reindex, or the node paints where it was dropped and stays hittable where it started — the
-    // failure that makes a dragged node impossible to pick up again under a non-ticking layout.
+    this.positionsChanged();
+  }
+
+  /**
+   * Everything that must happen when a node moves, in one place.
+   *
+   * There are two consumers of a position — the spatial index and the edge routes — and both fail
+   * silently when they are missed. A stale index leaves a dragged node hittable where it *started*;
+   * stale routes leave its edges drawn and picked where they used to run. Both self-heal under a
+   * ticking layout, which makes them look intermittent, and are permanent under one that computes
+   * once. `pin` originally updated only the first, which is exactly the bug this consolidates away.
+   */
+  private positionsChanged(): void {
     this.reindex();
+    this.routeEdges();
     this.notify('positions');
   }
 
@@ -613,6 +713,7 @@ export class GraphEngine {
   behaviourContext(): BehaviourContext {
     return {
       hitTest: (at) => this.index.hitTest(at),
+      hitTestEdge: (at, tolerance) => this.hitTestEdge(at, tolerance),
       select: (ids, mode) => this.select(ids, mode),
       selection: () => this.getSelection(),
       expand: (id, direction) => void this.expand(id, direction),

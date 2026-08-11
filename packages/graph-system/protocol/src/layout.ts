@@ -73,3 +73,28 @@ export interface Layout {
 }
 
 export type LayoutFactory<TOptions = unknown> = (options?: TOptions) => Layout;
+
+/**
+ * Where an edge actually runs, in world units.
+ *
+ * Geometry, not drawing instructions: control points rather than an SVG path string, so the engine can
+ * measure an edge — for picking — without knowing how any particular renderer expresses it, and a
+ * canvas renderer can stroke the same curve without re-deriving it.
+ *
+ * That split is what lets the DOM stop owning edge hit-testing. While `pointer-events: stroke` did the
+ * picking, edges were the one thing behaviours could only reach through the DOM, which is also why a
+ * canvas renderer could not have supported clicking one.
+ */
+export interface EdgeGeometry {
+  id: string;
+  from: Point;
+  /** Trimmed to the target's edge, so an arrowhead lands on the node rather than under it. */
+  to: Point;
+  /** Quadratic control point. Absent for straight and orthogonal routes. */
+  control?: Point;
+  /** Corner for an orthogonal route: from → elbow → to. */
+  elbow?: Point;
+  curve: 'straight' | 'bezier' | 'orthogonal';
+  /** Midpoint of the drawn route — where a label sits. */
+  mid: Point;
+}

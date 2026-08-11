@@ -1285,6 +1285,7 @@ export const contextData: ContextData = {
         { name: 'bg', type: 'string', optional: true },
         { name: 'showStatus', type: 'boolean', optional: true },
         { name: 'showControls', type: 'boolean', optional: true },
+        { name: 'controls', type: 'string[]', optional: true },
         { name: 'onNodeClick', type: '((node: GraphNode) => void)', optional: true },
         { name: 'onNodeDoubleClick', type: '((node: GraphNode) => void)', optional: true },
         { name: 'onEdgeClick', type: '((edge: GraphEdge) => void)', optional: true },

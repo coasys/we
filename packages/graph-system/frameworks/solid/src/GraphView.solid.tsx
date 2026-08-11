@@ -24,7 +24,9 @@
  */
 import { Column, Row } from '@we/components/solid';
 import {
+  DEFAULT_CONTROLS,
   defaultBehaviours,
+  defaultControls,
   defaultMetrics,
   dispatchPointer,
   edgeVisual,
@@ -35,16 +37,29 @@ import {
 } from '@we/graph-core';
 import { DEFAULT_REIFIED_EDGES, defaultExpanders } from '@we/graph-expanders';
 import { defaultLayouts } from '@we/graph-layouts';
-import type { Behaviour, GraphEdge, GraphNode, PointerInput } from '@we/graph-protocol';
+import type { Behaviour, ControlContext, EdgeGeometry, GraphNode, PointerInput } from '@we/graph-protocol';
 import { batch, createEffect, createMemo, createSignal, For, onCleanup, onMount, Show, untrack } from 'solid-js';
 
-import { bowOffsets, edgePath, groupByEndpoints, trimToRadius } from './geometry';
 import type { GraphViewProps } from './GraphView.types';
 
 export type * from './GraphView.types';
 
 /** Sensible without being opinionated: look around, select things, open things. */
 const DEFAULT_BEHAVIOURS = ['pan-zoom', 'select', 'expand-on-double-click'];
+
+/**
+ * A route, as an SVG path.
+ *
+ * The only geometry left in the renderer, and deliberately so: it converts world-space control points
+ * into one syntax. A canvas renderer would write the same three cases into `ctx.quadraticCurveTo`
+ * without re-deriving anything.
+ */
+export function pathFrom(route: EdgeGeometry): string {
+  const { from, to, control, elbow } = route;
+  if (elbow) return `M ${from.x} ${from.y} L ${elbow.x} ${elbow.y} L ${elbow.x} ${to.y} L ${to.x} ${to.y}`;
+  if (control) return `M ${from.x} ${from.y} Q ${control.x} ${control.y} ${to.x} ${to.y}`;
+  return `M ${from.x} ${from.y} L ${to.x} ${to.y}`;
+}
 
 /** Design tokens resolve against the live theme; anything else is passed through as CSS. */
 function color(value: string | undefined, fallback: string): string {
@@ -69,6 +84,7 @@ export function GraphView(props: GraphViewProps) {
     layouts: defaultLayouts(),
     behaviours: defaultBehaviours(),
     metrics: defaultMetrics(),
+    controls: defaultControls(),
   });
 
   const engine = new GraphEngine({
@@ -97,9 +113,12 @@ export function GraphView(props: GraphViewProps) {
           if (node) props.onNodeDoubleClick?.(node);
           break;
         }
-        case 'edgeClick':
-          props.onEdgeClick?.(event.edge);
+        case 'edgeClick': {
+          // The behaviour only knows an id — picking is geometric now, so it never held the edge.
+          const edge = engine.store.edge(event.edge.id);
+          if (edge) props.onEdgeClick?.(edge);
           break;
+        }
         case 'selectionChange':
           props.onSelectionChange?.(event.ids);
           break;
@@ -218,33 +237,18 @@ export function GraphView(props: GraphViewProps) {
 
   const edges = createMemo(() => {
     version();
-    const placed = engine.getPositions();
-    const sized = new Map(nodes().map((entry) => [entry.node.id, entry.visual.size]));
-    const all = [...engine.store.edges()];
-    const result: {
-      edge: GraphEdge;
-      path: string;
-      visual: ReturnType<typeof edgeVisual>;
-      mid: { x: number; y: number };
-    }[] = [];
-
-    for (const group of groupByEndpoints(all).values()) {
-      const offsets = bowOffsets(group.length);
-      group.forEach((edge, index) => {
-        const from = placed.get(edge.source);
-        const to = placed.get(edge.target);
-        if (!from || !to) return;
-        const visual = edgeVisual(edge, resolveStyle(edge, props.edgeStyle), engine.getMetrics());
-        const end = trimToRadius(from, to, (sized.get(edge.target) ?? 14) + 6);
-        result.push({
-          edge,
-          path: edgePath(from, end, visual.curve, offsets[index]),
-          visual,
-          mid: { x: (from.x + end.x) / 2, y: (from.y + end.y) / 2 },
-        });
-      });
-    }
-    return result;
+    // Geometry comes from the engine, which routed these when it placed the nodes. Deriving it again
+    // here is how the renderer and hit-testing would drift — and edge picking is now geometric, so a
+    // second derivation would mean clicking an edge that is not the one under the cursor.
+    const geometry = engine.getEdgeGeometry();
+    const metrics = engine.getMetrics();
+    return [...engine.store.edges()].flatMap((edge) => {
+      const route = geometry.get(edge.id);
+      if (!route) return [];
+      return [
+        { edge, route, path: pathFrom(route), visual: edgeVisual(edge, resolveStyle(edge, props.edgeStyle), metrics) },
+      ];
+    });
   });
 
   const transform = createMemo(() => {
@@ -252,6 +256,33 @@ export function GraphView(props: GraphViewProps) {
     version();
     const { x, y, zoom } = engine.viewport.get();
     return `translate(${x}px, ${y}px) scale(${zoom})`;
+  });
+
+  /**
+   * The chrome buttons this graph shows.
+   *
+   * Resolved from the registry by name, so a module can contribute one and a template can name it —
+   * the same shape as behaviours, and the reason the engine ships chrome at all rather than leaving
+   * every host to rebuild a zoom button.
+   */
+  const controls = createMemo(() => {
+    const ids = props.controls ?? (props.showControls === false ? [] : DEFAULT_CONTROLS);
+    return ids.flatMap((id) => {
+      const control = registry.control(id);
+      if (!control) console.warn(`[graph] no control registered as "${id}"`);
+      return control ? [control] : [];
+    });
+  });
+
+  /** What a control is allowed to do — nudge the view, never edit the graph. */
+  const controlContext = (): ControlContext => ({
+    zoomBy: (factor) => {
+      const { width, height } = engine.viewport.get();
+      engine.behaviourContext().zoomAt({ x: width / 2, y: height / 2 }, factor);
+    },
+    fit: () => engine.fit(),
+    relayout: () => engine.relayout({ fit: true }),
+    viewport: () => engine.viewport.get(),
   });
 
   /** The camera scale on its own, for anything that has to divide by it. */
@@ -285,29 +316,11 @@ export function GraphView(props: GraphViewProps) {
     };
   }
 
-  /**
-   * Did this event start on the chrome rather than the canvas?
-   *
-   * The controls live *inside* the graph element, so without this the canvas treats a press on the
-   * zoom button as a press on the background. That is not merely untidy: the canvas calls
-   * `setPointerCapture` on itself, which retargets the subsequent pointer-up, so the browser fires
-   * `click` on the canvas instead of on the button — and the controls silently stop working.
-   *
-   * `composedPath` rather than `closest`, because the buttons are Lit custom elements and the real
-   * event target is inside their shadow root, where `closest` cannot see the marker.
-   */
-  function fromChrome(event: Event): boolean {
-    return event
-      .composedPath()
-      .some((target) => target instanceof HTMLElement && target.hasAttribute('data-graph-chrome'));
-  }
-
   function dispatch(phase: Parameters<typeof dispatchPointer>[1], event: PointerEvent | WheelEvent | MouseEvent) {
     dispatchPointer(behaviours(), phase, toInput(event), engine.behaviourContext());
   }
 
   function onPointerMove(event: PointerEvent) {
-    if (fromChrome(event)) return;
     dispatch('onPointerMove', event);
     // Hover is read straight off the index rather than from DOM enter/leave, so it behaves the same
     // whether the node is an element or a painted shape.
@@ -324,27 +337,30 @@ export function GraphView(props: GraphViewProps) {
         height: props.height ?? '100%',
         background: color(props.bg, 'neutral-0'),
       }}
-      onPointerDown={(event) => {
-        if (fromChrome(event)) return;
-        (event.currentTarget as HTMLElement).setPointerCapture?.(event.pointerId);
-        dispatch('onPointerDown', event);
-      }}
-      onPointerMove={onPointerMove}
-      onPointerUp={(event) => dispatch('onPointerUp', event)}
-      // Without this a gesture interrupted by the browser leaves whichever behaviour was tracking it
-      // latched onto a node.
-      onPointerCancel={(event) => dispatch('onPointerCancel', event)}
-      onDblClick={(event) => {
-        if (fromChrome(event)) return;
-        dispatch('onDoubleClick', event);
-      }}
-      onWheel={(event) => {
-        // Scrolling over a status message should scroll it, not zoom the graph behind it.
-        if (fromChrome(event)) return;
-        event.preventDefault();
-        dispatch('onWheel', event);
-      }}
     >
+      {/*
+        The canvas hit target. Every gesture is handled here, not on the root — see the note in the
+        stylesheet for why that is what lets the chrome be an ordinary sibling rather than something
+        each overlay has to opt out of.
+      */}
+      <div
+        class="we-graph__surface"
+        onPointerDown={(event) => {
+          (event.currentTarget as HTMLElement).setPointerCapture?.(event.pointerId);
+          dispatch('onPointerDown', event);
+        }}
+        onPointerMove={onPointerMove}
+        onPointerUp={(event) => dispatch('onPointerUp', event)}
+        // Without this a gesture interrupted by the browser leaves whichever behaviour was tracking it
+        // latched onto a node.
+        onPointerCancel={(event) => dispatch('onPointerCancel', event)}
+        onDblClick={(event) => dispatch('onDoubleClick', event)}
+        onWheel={(event) => {
+          event.preventDefault();
+          dispatch('onWheel', event);
+        }}
+      />
+
       <div
         class="we-graph__layer"
         style={{
@@ -368,7 +384,6 @@ export function GraphView(props: GraphViewProps) {
                   // SVG's own answer to "keep this stroke a constant width whatever the transform".
                   vector-effect={entry.visual.scaleWithZoom ? undefined : 'non-scaling-stroke'}
                   marker-end={entry.visual.arrow === 'none' ? undefined : 'url(#we-graph-arrow)'}
-                  onClick={() => props.onEdgeClick?.(entry.edge)}
                 />
               </g>
             )}
@@ -408,7 +423,7 @@ export function GraphView(props: GraphViewProps) {
                 // Second translate centres the element on the midpoint. A percentage *margin* would
                 // resolve against the containing block's width rather than the label's own, which is
                 // the classic way to almost centre something.
-                transform: `translate(${entry.mid.x}px, ${entry.mid.y}px) translate(-50%, -50%)`,
+                transform: `translate(${entry.route.mid.x}px, ${entry.route.mid.y}px) translate(-50%, -50%)`,
                 color: color(entry.visual.labelColor, 'neutral-500'),
               }}
             >
@@ -490,32 +505,28 @@ export function GraphView(props: GraphViewProps) {
         canvas renderer that has no elements at all. So they stay raw, and the SCSS that remains is
         exactly that: the canvas, plus where these overlays sit.
       */}
-      <Show when={props.showControls !== false}>
-        <Column data-graph-chrome position="absolute" right="300" bottom="300" gap="100">
-          <we-button variant="secondary" size="sm" square title="Zoom in" onClick={() => zoomBy(engine, 1.25)}>
-            <we-icon name="plus" size="sm" />
-          </we-button>
-          <we-button variant="secondary" size="sm" square title="Zoom out" onClick={() => zoomBy(engine, 0.8)}>
-            <we-icon name="minus" size="sm" />
-          </we-button>
-          <we-button variant="secondary" size="sm" square title="Fit to view" onClick={() => engine.fit()}>
-            <we-icon name="arrows-out" size="sm" />
-          </we-button>
+      <Show when={controls().length > 0}>
+        <Column position="absolute" right="300" bottom="300" gap="100">
+          <For each={controls()}>
+            {(control) => (
+              <we-button
+                variant="secondary"
+                size="sm"
+                square
+                title={control.title}
+                onClick={() => control.run(controlContext())}
+              >
+                <we-icon name={control.icon} size="sm" />
+              </we-button>
+            )}
+          </For>
         </Column>
       </Show>
 
       <Show
         when={props.showStatus !== false && (status().loading || status().budgetReached || status().warnings.length)}
       >
-        <Column
-          data-graph-chrome
-          pointerEvents="none"
-          position="absolute"
-          left="300"
-          bottom="300"
-          gap="100"
-          maxWidth="60%"
-        >
+        <Column pointerEvents="none" position="absolute" left="300" bottom="300" gap="100" maxWidth="60%">
           <Show when={status().loading}>
             <Row ay="center" gap="200" bg="neutral-100" r="200" px="200" py="100">
               <we-spinner size="xs" />
@@ -533,12 +544,10 @@ export function GraphView(props: GraphViewProps) {
 
       <Show when={!nodes().length && !status().loading}>
         {/*
-          Covers the whole canvas, so it must not be able to intercept anything — an empty graph is
-          still one you can pan and drop things onto. The old stylesheet said `pointer-events: none`
-          here and the conversion to `Column` lost it.
+          Covers the whole canvas, so it must not intercept anything — an empty graph is still one you
+          can pan and drop things onto.
         */}
         <Column
-          data-graph-chrome
           pointerEvents="none"
           position="absolute"
           top="0"
@@ -557,12 +566,6 @@ export function GraphView(props: GraphViewProps) {
       </Show>
     </div>
   );
-}
-
-/** Zoom about the centre of the surface — what a button press means, as opposed to a wheel. */
-function zoomBy(engine: GraphEngine, factor: number): void {
-  const { width, height } = engine.viewport.get();
-  engine.behaviourContext().zoomAt({ x: width / 2, y: height / 2 }, factor);
 }
 
 export type { GraphNode };

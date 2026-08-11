@@ -127,28 +127,34 @@ describe('the graph paints', () => {
     expect(container.textContent).toContain('Node limit reached');
   });
 
-  it('keeps the controls clickable and outside the canvas gesture', async () => {
-    // The canvas calls `setPointerCapture` on itself, which retargets the pointer-up — so without a
-    // guard the browser fired `click` on the canvas rather than on the zoom button, and the controls
-    // silently did nothing.
+  it('draws its chrome as a sibling of the canvas, not on top of its handlers', async () => {
+    // Gestures are handled on a dedicated surface, so chrome is an ordinary sibling that the canvas
+    // never hears about. Previously the handlers sat on the common ancestor and every overlay had to
+    // be marked so the canvas would ignore it — a new overlay that forgot silently broke the canvas.
     const container = mount(scenario('static'));
     await settle();
 
-    const controls = container.querySelector('[data-graph-chrome]');
-    expect(controls).not.toBeNull();
-    expect(container.querySelectorAll('[data-graph-chrome] we-button').length).toBeGreaterThanOrEqual(3);
+    expect(container.querySelector('.we-graph__surface')).not.toBeNull();
+    expect(container.querySelectorAll('.we-graph__surface we-button')).toHaveLength(0);
+    expect(container.querySelectorAll('we-button').length).toBeGreaterThanOrEqual(3);
   });
 
-  it('lets the pointer through the passive overlays', async () => {
-    // The empty state covers the whole canvas; an empty graph is still one you can pan.
-    const container = mount({
-      seeds: { source: 'query', options: { entity: 'Nonexistent' } },
-      layout: { type: 'grid' },
-    });
+  it('honours a request for no chrome at all', async () => {
+    const container = mount({ ...scenario('static'), controls: [] });
     await settle();
 
-    const empty = container.querySelector('[data-graph-chrome][style*="pointer-events"]');
-    expect(empty).not.toBeNull();
+    expect(container.querySelectorAll('we-button')).toHaveLength(0);
+  });
+
+  it('leaves edge picking to the engine rather than the DOM', async () => {
+    // `pointer-events: stroke` on a path was the one thing the DOM still picked, which broke
+    // behaviours on any non-DOM surface.
+    const container = mount(scenario('static'));
+    await settle();
+
+    const path = container.querySelector('.we-graph__edges path');
+    expect(path).not.toBeNull();
+    expect(path?.getAttribute('onClick')).toBeNull();
   });
 
   it('shows an empty state rather than a blank canvas', async () => {

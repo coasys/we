@@ -85,6 +85,7 @@ for every option is the answer for the *common* case, and the option exists for 
 
 | Option | Default | Why |
 |---|---|---|
+| `controls` | `zoom-in`, `zoom-out`, `fit` | Look closer, look wider, see everything. `relayout` is omitted because it is destructive on a board. `[]` for a graph with no chrome. |
 | `layout.type` | `force` | The only layout that says something useful about an arbitrary graph. |
 | `expansion.defaultDepth` | `0` | Opening nothing is safe and cheap. A seed that draws its own relations already looks connected; auto-expanding by default would fire queries nobody asked for. |
 | `expansion.direction` | `both` | "What is this connected to" rarely means one direction. |
@@ -119,14 +120,21 @@ Learned from bugs, each of which was invisible rather than loud:
   picked. Two derivations of the same thing drift, and they have twice — once giving a long-labelled
   node a hit area offset from its dot, once giving a 170px card an 18px grab spot. Any future
   renderer must resolve geometry through the same call.
-- **Every path that moves a node reindexes.** There is one `reindex()`; use it. Skipping it fails
-  silently, and self-heals under a ticking layout, which makes it look intermittent.
 - **Claiming an event stops the ones behind it, except at the end of a gesture.** A behaviour holding
   state must be told the gesture finished whether or not something ahead of it also cared.
 - **A placeholder must look like one.** In a peer-to-peer system an unresolved reference is normal,
   and "not here yet" must be visually distinct from "nothing there".
 - **Nothing silently truncates.** Budgets, paging and dropped references report. A map that quietly
   stops growing reads as complete, and every conclusion drawn from it is wrong.
+- **Nothing is picked by the DOM.** Nodes and edges are both `pointer-events: none`; what you clicked
+  is answered from geometry the core owns. Edges were the exception — `pointer-events: stroke` on an
+  SVG path — which broke behaviours on any non-DOM surface and forced every overlay to opt out of the
+  canvas's gestures. Both problems dissolved together when picking moved into the engine.
+- **One place per consequence.** Moving a node updates the spatial index *and* the edge routes; both
+  fail silently when missed, and both self-heal under a ticking layout, which makes them look
+  intermittent. `positionsChanged()` is the single path. The same rule produced `reindex()` and
+  `nodeVisual()` — when a second consumer of some state appears, give it one door rather than two
+  call sites.
 - **The core stays free of the DOM and of any backend.** It is what makes collapse, budgets and
   expansion testable without a browser, which is the only reason they are tested at all.
 
@@ -137,6 +145,8 @@ Learned from bugs, each of which was invisible rather than loud:
 | Decision | Home |
 |---|---|
 | What a node is, how it is addressed | `@we/graph-protocol` |
+| Where an edge runs, and how far a point is from it | `@we/graph-core/geometry.ts` |
+| What the graph's own chrome offers | `@we/graph-core/controls.ts` — declarative, so a module can add one without shipping a component |
 | Expansion, collapse, budgets, hit-testing, styling | `@we/graph-core` |
 | Where nodes come from | `@we/graph-expanders` |
 | Where nodes go | `@we/graph-layouts` |

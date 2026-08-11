@@ -66,8 +66,15 @@ export interface GraphViewProps {
   bg?: string;
   /** Show the loading/paging/warning strip. Defaults to true. */
   showStatus?: boolean;
-  /** Show the controls (zoom, fit, re-layout). Defaults to true. */
+  /** Show the controls. Defaults to true. Superseded by `controls`, which names them individually. */
   showControls?: boolean;
+  /**
+   * Which chrome buttons to draw, by registered id — `zoom-in`, `zoom-out`, `fit`, `relayout`.
+   *
+   * Omit for the sensible set; pass `[]` for a graph with no chrome, which is what an embedded
+   * thumbnail wants. A module contributing its own control makes it nameable here.
+   */
+  controls?: string[];
 
   onNodeClick?: (node: GraphNode) => void;
   onNodeDoubleClick?: (node: GraphNode) => void;

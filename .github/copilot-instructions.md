@@ -917,7 +917,7 @@ Common recipes:
 the relations between them. Picks up model types added later with no template change.
 - **Hierarchy** — `layout: { type: 'tree' }` with a `collection` expansion for nested content.
 - **Static diagram** — `seeds: { literal: true, nodes: [...], edges: [...] }` and no expansion at all.
-  Props: seeds?: SeedSpec | SeedSpec[], expansion?: ExpansionSpec, layout?: LayoutSpec, nodeStyle?: NodeStyleRules, edgeStyle?: EdgeStyleRules, behaviours?: BehaviourSpec[], reified?: Record<string, { source: string; target: string; type?: string; }>, width?: string, height?: string, bg?: string, showStatus?: boolean, showControls?: boolean, onNodeClick?: ((node: GraphNode) => void), onNodeDoubleClick?: ((node: GraphNode) => void), onEdgeClick?: ((edge: GraphEdge) => void), onSelectionChange?: ((ids: string[]) => void), onNodeDragEnd?: ((payload: { id: string; x: number; y: number; }) => void), host?: GraphHostBindings
+  Props: seeds?: SeedSpec | SeedSpec[], expansion?: ExpansionSpec, layout?: LayoutSpec, nodeStyle?: NodeStyleRules, edgeStyle?: EdgeStyleRules, behaviours?: BehaviourSpec[], reified?: Record<string, { source: string; target: string; type?: string; }>, width?: string, height?: string, bg?: string, showStatus?: boolean, showControls?: boolean, controls?: string[], onNodeClick?: ((node: GraphNode) => void), onNodeDoubleClick?: ((node: GraphNode) => void), onEdgeClick?: ((edge: GraphEdge) => void), onSelectionChange?: ((ids: string[]) => void), onNodeDragEnd?: ((payload: { id: string; x: number; y: number; }) => void), host?: GraphHostBindings
 
 ---
 
@@ -1006,6 +1006,15 @@ Names resolvable inside GraphView props: seed sources (seeds.source), expanders 
 - `community` — Groups the visible graph by label propagation. Pair with scale: "categorical" to colour each cluster differently — this is what makes a cluster map.
   - rounds: number — Propagation rounds. Default 8.
   - Example: `"nodeStyle": [{ "style": { "color": { "metric": "community", "scale": "categorical" } } }]`
+
+**control**
+
+- `zoom-in` — Zooms toward the centre of the view. Shown by default.
+  - Example: `"controls": ["zoom-in", "zoom-out", "fit"]`
+- `zoom-out` — Zooms out from the centre. Shown by default.
+- `fit` — Frames everything currently on the graph. Deliberately not a re-layout — it moves the camera, never the nodes.
+- `relayout` — Re-runs the layout. Not shown by default: a rescue for a tangled force graph, and destructive on a board, where it would discard every position somebody chose.
+  - Example: `"controls": ["zoom-in", "zoom-out", "fit", "relayout"]`
 
 **behaviour**
 

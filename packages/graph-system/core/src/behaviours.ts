@@ -162,6 +162,13 @@ export function selectBehaviour(rawOptions?: Record<string, unknown>): Behaviour
       const id = pressedId;
       pressedId = null;
       if (!id) {
+        // Nothing on a node, so try an edge before treating this as a click on the background. Nodes
+        // win by asking first: an edge passing behind a node is not what you meant to click.
+        const edge = ctx.hitTestEdge(ctx.toWorld(input.at));
+        if (edge) {
+          ctx.emit({ type: 'edgeClick', edge: { id: edge, source: '', target: '', type: '' } });
+          return true;
+        }
         ctx.select([]);
         return;
       }

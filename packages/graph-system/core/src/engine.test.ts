@@ -368,3 +368,88 @@ describe('hit areas follow what is drawn', () => {
     expect(engine.index.hitTest({ x: 120, y: 0 })).toEqual([]);
   });
 });
+
+describe('edge picking', () => {
+  /** A layout that puts two nodes at known places, so an edge's route is predictable. */
+  const placed = {
+    grid: () => ({
+      id: 'grid',
+      init(input: { nodes: { id: string }[] }) {
+        return {
+          positions: new Map(input.nodes.map((node, index) => [node.id, { x: index * 300, y: 0 }])),
+        };
+      },
+    }),
+  };
+
+  function linkedSeed(): SeedSource {
+    return {
+      id: 'linked',
+      async seed() {
+        return {
+          nodes: [
+            { id: 'a', kind: 'entity' as const, type: 'Thing', label: 'a' },
+            { id: 'b', kind: 'entity' as const, type: 'Thing', label: 'b' },
+          ],
+          edges: [{ id: 'a-b', source: 'a', target: 'b', type: 'rel' }],
+        };
+      },
+    };
+  }
+
+  it('finds an edge by geometry, not by the DOM', async () => {
+    // Edges used to be picked by `pointer-events: stroke` on an SVG path, which meant the DOM owned
+    // hit-testing for the one thing nodes did not — and a canvas renderer could never have supported
+    // clicking one.
+    const registry = new PluginRegistry({ seeds: [linkedSeed()], layouts: placed });
+    const engine = engineWith(
+      { seeds: { source: 'linked' }, layout: { type: 'grid' }, edgeStyle: [{ style: { curve: 'straight' } }] },
+      registry,
+    );
+    await engine.start();
+    engine.resize(800, 600);
+
+    expect(engine.hitTestEdge({ x: 150, y: 0 })).toBe('a-b');
+    expect(engine.hitTestEdge({ x: 150, y: 200 })).toBeNull();
+  });
+
+  it('measures against the curve a bowed edge actually follows', async () => {
+    const registry = new PluginRegistry({ seeds: [linkedSeed()], layouts: placed });
+    const engine = engineWith(
+      { seeds: { source: 'linked' }, layout: { type: 'grid' }, edgeStyle: [{ style: { curve: 'bezier' } }] },
+      registry,
+    );
+    await engine.start();
+    engine.resize(800, 600);
+
+    const route = engine.getEdgeGeometry().get('a-b');
+    expect(route?.control).toBeDefined();
+    // On the curve, at its own midpoint.
+    expect(engine.hitTestEdge(route!.mid)).toBe('a-b');
+  });
+
+  it('re-routes when nodes move, so picking follows the drawing', async () => {
+    const registry = new PluginRegistry({ seeds: [linkedSeed()], layouts: placed });
+    const engine = engineWith({ seeds: { source: 'linked' }, layout: { type: 'grid' } }, registry);
+    await engine.start();
+    engine.resize(800, 600);
+    const before = engine.getEdgeGeometry().get('a-b')!.to;
+
+    engine.pin('b', { x: 0, y: 400 });
+
+    expect(engine.getEdgeGeometry().get('a-b')!.to).not.toEqual(before);
+  });
+
+  it('stops short of the target so an arrowhead lands on the node, not under it', async () => {
+    const registry = new PluginRegistry({ seeds: [linkedSeed()], layouts: placed });
+    const engine = engineWith(
+      { seeds: { source: 'linked' }, layout: { type: 'grid' }, nodeStyle: [{ style: { size: 30 } }] },
+      registry,
+    );
+    await engine.start();
+    engine.resize(800, 600);
+
+    // Target sits at x=300; the route must end before it.
+    expect(engine.getEdgeGeometry().get('a-b')!.to.x).toBeLessThan(300 - 30);
+  });
+});

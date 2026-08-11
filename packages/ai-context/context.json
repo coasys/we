@@ -3627,6 +3627,11 @@
           "optional": true
         },
         {
+          "name": "controls",
+          "type": "string[]",
+          "optional": true
+        },
+        {
           "name": "onNodeClick",
           "type": "((node: GraphNode) => void)",
           "optional": true

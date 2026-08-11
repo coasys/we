@@ -191,6 +191,28 @@ export const GRAPH_PLUGIN_CATALOG: PluginCatalog = {
       example: `"nodeStyle": [{ "style": { "color": { "metric": "community", "scale": "categorical" } } }]`,
     },
 
+    // ─── Controls ──────────────────────────────────────────────────────────────
+    {
+      id: 'zoom-in',
+      category: 'control',
+      description: 'Zooms toward the centre of the view. Shown by default.',
+      example: `"controls": ["zoom-in", "zoom-out", "fit"]`,
+    },
+    { id: 'zoom-out', category: 'control', description: 'Zooms out from the centre. Shown by default.' },
+    {
+      id: 'fit',
+      category: 'control',
+      description:
+        'Frames everything currently on the graph. Deliberately not a re-layout — it moves the camera, never the nodes.',
+    },
+    {
+      id: 'relayout',
+      category: 'control',
+      description:
+        'Re-runs the layout. Not shown by default: a rescue for a tangled force graph, and destructive on a board, where it would discard every position somebody chose.',
+      example: `"controls": ["zoom-in", "zoom-out", "fit", "relayout"]`,
+    },
+
     // ─── Behaviours ────────────────────────────────────────────────────────────
     {
       id: 'pan-zoom',

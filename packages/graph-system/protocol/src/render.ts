@@ -58,6 +58,13 @@ export interface NodeRenderer {
 export interface BehaviourContext {
   /** Nodes currently under the pointer, nearest first. */
   hitTest(at: Point): string[];
+  /**
+   * The edge under the pointer, if any, within a tolerance.
+   *
+   * Separate from {@link hitTest} because nodes win: an edge passing behind a node is not what you
+   * meant to click, and a caller that wants both asks for nodes first.
+   */
+  hitTestEdge(at: Point, tolerance?: number): string | null;
   select(ids: string[], mode?: 'replace' | 'add' | 'toggle'): void;
   selection(): string[];
   /** Ask the engine to expand a node — the click-to-explore behaviour's whole job. */
@@ -127,3 +134,30 @@ export interface Behaviour {
 }
 
 export type BehaviourFactory<TOptions = unknown> = (options?: TOptions) => Behaviour;
+
+/**
+ * A button in the graph's own chrome.
+ *
+ * Declared as data — an icon, a title and what it does — rather than as a component, so the renderer
+ * draws every control the same way and a module can contribute one without shipping framework code.
+ * The same reasoning as a module's `launcher`: the contributor knows what the control *means*, only
+ * the host knows where controls go and how they should look.
+ */
+export interface GraphControl {
+  id: string;
+  /** Phosphor icon name. */
+  icon: string;
+  /** Tooltip, and the accessible name. */
+  title: string;
+  run(ctx: ControlContext): void;
+}
+
+/** What a control is allowed to do. Narrow on purpose — chrome nudges the view, it does not edit it. */
+export interface ControlContext {
+  zoomBy(factor: number): void;
+  fit(): void;
+  relayout(): void;
+  viewport(): { x: number; y: number; zoom: number; width: number; height: number };
+}
+
+export type GraphControlFactory<TOptions = unknown> = (options?: TOptions) => GraphControl;

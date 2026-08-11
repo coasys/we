@@ -75,6 +75,13 @@ export interface GraphSpec {
   nodeStyle?: NodeStyleRules;
   edgeStyle?: EdgeStyleRules;
   behaviours?: BehaviourSpec[];
+  /**
+   * Buttons the graph draws in its own corner, by registered id.
+   *
+   * Omit for the sensible set (`zoom-in`, `zoom-out`, `fit`); pass `[]` for a graph with no chrome at
+   * all, which is what an embedded thumbnail wants.
+   */
+  controls?: string[];
   /** Starting camera. Absent fits the seeds to the viewport. */
   viewport?: { x?: number; y?: number; zoom?: number };
 }

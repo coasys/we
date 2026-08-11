@@ -14,7 +14,21 @@
   overflow: hidden;
   touch-action: none;
   user-select: none;
-  // The graph is a direct-manipulation surface: a drag should move the camera, not select the labels.
+}
+
+// The canvas's own hit target, beneath everything it draws and beneath the chrome.
+//
+// Gestures are handled here rather than on the root, which is what lets the chrome be an ordinary
+// sibling: a press on a button bubbles to `.we-graph`, which listens to nothing. The alternative —
+// handlers on the common ancestor — meant marking every overlay so the canvas could learn to ignore
+// it, and a new overlay that forgot the marker silently broke the canvas underneath it.
+//
+// It works as a plain backdrop because nothing above it competes: nodes and edges are painted with
+// `pointer-events: none`, and everything they are picked by is geometry the engine owns.
+.we-graph__surface {
+  position: absolute;
+  inset: 0;
+  // A direct-manipulation surface: a drag moves the camera, it does not select text.
   cursor: grab;
 
   &:active {
@@ -64,11 +78,11 @@
   // Curves and labels reaching outside the box still paint; this is what made the giant box
   // unnecessary in the first place.
   overflow: visible;
+  // Nothing in here takes the pointer. Edge picking is geometric, in the engine — paths used to carry
+  // `pointer-events: stroke`, which made the DOM the only thing that could pick an edge, broke the
+  // rule that the core owns hit-testing, and was why a canvas renderer could not have supported
+  // clicking one.
   pointer-events: none;
-
-  path {
-    pointer-events: stroke;
-  }
 }
 
 // A DOM label, positioned at the midpoint of its edge. See the note in `GraphView.solid.tsx` for why
