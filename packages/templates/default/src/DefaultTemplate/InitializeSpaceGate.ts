@@ -1,5 +1,5 @@
 import type { SchemaNode } from '@we/schema-shared';
-import { gatePrompt } from '@we/template-kit';
+import { field, gatePrompt } from '@we/template-kit';
 
 // Shown when a joined perspective has some other app's SDNA installed (e.g. a Flux
 // Community) but not WE's Space model — offers to add WE's space features in place,
@@ -48,37 +48,8 @@ export const initializeSpaceGate: SchemaNode = gatePrompt({
             },
           ],
         },
-        {
-          type: 'we-form-field',
-          props: { label: 'Name', error: { $if: { condition: { $error: 'name' }, then: { $error: 'name' } } } },
-          children: [
-            {
-              type: 'we-input',
-              props: {
-                bg: 'neutral-25',
-                placeholder: 'Space name...',
-                value: { $local: 'name' },
-                onInput: { $setLocal: 'name', from: '$event.detail' },
-                onBlur: { $touch: 'name' },
-              },
-            },
-          ],
-        },
-        {
-          type: 'we-form-field',
-          props: { label: 'Description' },
-          children: [
-            {
-              type: 'we-input',
-              props: {
-                bg: 'neutral-25',
-                placeholder: 'Description (optional)',
-                value: { $local: 'description' },
-                onInput: { $setLocal: 'description', from: '$event.detail' },
-              },
-            },
-          ],
-        },
+        field({ name: 'name', label: 'Name', placeholder: 'Space name...', validated: true, touchOnBlur: true }),
+        field({ name: 'description', label: 'Description', placeholder: 'Description (optional)' }),
         {
           type: 'we-button',
           props: {

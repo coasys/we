@@ -1,4 +1,5 @@
 import type { SchemaNode } from '@we/schema-shared';
+import { field } from '@we/template-kit';
 
 export const createSpaceModal = {
   type: 'we-modal',
@@ -67,37 +68,10 @@ export const createSpaceModal = {
     },
 
     // Name
-    {
-      type: 'we-form-field',
-      props: { label: 'Name', error: { $if: { condition: { $error: 'name' }, then: { $error: 'name' } } } },
-      children: [
-        {
-          type: 'we-input',
-          props: {
-            placeholder: 'Space name...',
-            value: { $local: 'name' },
-            onInput: { $setLocal: 'name', from: '$event.detail' },
-            onBlur: { $touch: 'name' },
-          },
-        },
-      ],
-    },
+    field({ name: 'name', label: 'Name', placeholder: 'Space name...', validated: true, touchOnBlur: true }),
 
     // Description
-    {
-      type: 'we-form-field',
-      props: { label: 'Description' },
-      children: [
-        {
-          type: 'we-input',
-          props: {
-            placeholder: 'Description (optional)',
-            value: { $local: 'description' },
-            onInput: { $setLocal: 'description', from: '$event.detail' },
-          },
-        },
-      ],
-    },
+    field({ name: 'description', label: 'Description', placeholder: 'Description (optional)' }),
 
     // Location picker
     {

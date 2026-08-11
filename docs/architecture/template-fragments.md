@@ -45,12 +45,12 @@ argues for extracting _something_, not for extracting it into code.
 Concretely, code means: behaviour and focus management, accessibility semantics, browser APIs,
 measurement, performance-critical rendering. That is the whole list.
 
-| Wants to be                           | When                                                   | Examples                                                        |
-| ------------------------------------- | ------------------------------------------------------ | --------------------------------------------------------------- |
-| **A primitive** (`@we/primitives`)    | focus traps, top layer, keyboard, ARIA                 | `we-modal`, `we-popover`, `we-input`                            |
-| **A component** (`@we/components`)    | measurement, layout maths, third-party libs            | `AvatarStack`, `CollapsedContent`, `CodeEditor`                 |
-| **A fragment** (`@we/template-kit`)   | arrangement, even when repeated fourteen times         | `gatePrompt`, `cardList`, `agentByline`                         |
-| **An operator** (`@we/schema-shared`) | the repetition is _schema boilerplate_, not a UI shape | a `$field` shorthand for `value`/`onInput`/`$setLocal` triplets |
+| Wants to be                           | When                                                              | Examples                                        |
+| ------------------------------------- | ----------------------------------------------------------------- | ----------------------------------------------- |
+| **A primitive** (`@we/primitives`)    | focus traps, top layer, keyboard, ARIA                            | `we-modal`, `we-popover`, `we-input`            |
+| **A component** (`@we/components`)    | measurement, layout maths, third-party libs                       | `AvatarStack`, `CollapsedContent`, `CodeEditor` |
+| **A fragment** (`@we/template-kit`)   | arrangement, even when repeated fourteen times                    | `gatePrompt`, `cardList`, `agentByline`         |
+| **An operator** (`@we/schema-shared`) | the repetition is _schema boilerplate_ **and** component-agnostic | `$in` rather than `$filter`+`$count`+`$gt`      |
 
 **Why the line sits there and not somewhere more convenient.** A prop is a customisation somebody
 predicted, implemented and shipped; a node tree is every customisation, including the ones nobody
@@ -239,8 +239,13 @@ Next, in order, none of it blocking the others:
 2. **Loud failures** — store-path resolution and pattern lints in the validator. Higher
    correctness-per-hour than anything else here, and the safety net that makes template refactors
    safe in packages with no tests.
-3. **`$field`-style form wiring** — the largest single repetition left, and an operator question
-   rather than a fragment one.
+3. ~~**`$field`-style form wiring**~~ — done, and it landed as a fragment rather than the operator
+   this document first assumed. The mapping from a field to _how a control reports a change_ is
+   per-component knowledge (`we-input` emits `onInput` with `$event.detail`, `we-select` emits
+   `onChange`, `Search` calls back with `$arg`), so an operator would have to hold a table of
+   design-system conventions inside the schema resolver — which the layering forbids — or be told
+   the event at each call site, saving nothing. The fragment can hold that table because it lives in
+   the layer that already knows the components. A useful worked example of the boundary.
 4. **Recipes in `@we/ai-context`** — the kit's fragments as JSON patterns the in-app AI inlines.
    Also instrumentation: which patterns it reaches for tells you what the marketplace ones should be.
 5. **The extractor, provenance and marketplace fragments** — gated on a real signal that someone

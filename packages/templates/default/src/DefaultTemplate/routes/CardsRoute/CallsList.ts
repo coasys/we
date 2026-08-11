@@ -1,5 +1,5 @@
 import type { SchemaNode } from '@we/schema-shared';
-import { agentByline, cardList, cardShell, confirmModal, emptyState, peopleRow } from '@we/template-kit';
+import { agentByline, cardList, cardShell, confirmModal, emptyState, field, peopleRow } from '@we/template-kit';
 
 /**
  * Recorded calls in this space.
@@ -240,35 +240,13 @@ export const callsList: SchemaNode = {
                           props: { close: { $setLocal: 'editOpen', value: false } },
                           children: [
                             { type: 'we-text', props: { fontWeight: 'semibold' }, children: ['Edit call'] },
-                            {
-                              type: 'we-form-field',
-                              props: { label: 'Title' },
-                              children: [
-                                {
-                                  type: 'we-input',
-                                  props: {
-                                    value: { $local: 'titleDraft' },
-                                    placeholder: 'What was this call about?',
-                                    onInput: { $setLocal: 'titleDraft', from: '$event.detail' },
-                                  },
-                                },
-                              ],
-                            },
-                            {
-                              type: 'we-form-field',
-                              props: { label: 'Description' },
-                              children: [
-                                {
-                                  type: 'we-textarea',
-                                  props: {
-                                    value: { $local: 'descriptionDraft' },
-                                    rows: 3,
-                                    placeholder: 'Anything worth remembering about it',
-                                    onInput: { $setLocal: 'descriptionDraft', from: '$event.detail' },
-                                  },
-                                },
-                              ],
-                            },
+                            field({ name: 'titleDraft', label: 'Title', placeholder: 'What was this call about?' }),
+                            field({
+                              name: 'descriptionDraft',
+                              label: 'Description',
+                              control: 'textarea',
+                              placeholder: 'Anything worth remembering about it',
+                            }),
                             {
                               type: 'Row',
                               props: { ax: 'end', gap: '200' },
