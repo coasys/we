@@ -1025,18 +1025,6 @@ export const contextData: ContextData = {
       source: 'components',
     },
     {
-      name: 'Accordion',
-      props: [
-        { name: 'children', type: 'JSX.Element', optional: true },
-        { name: 'renderContent', type: '((item: AccordionItem, index: number) => JSX.Element)', optional: true },
-        { name: 'onChange', type: '((openItems: string[]) => void)', optional: true },
-        { name: 'items', type: 'AccordionItem[]', optional: true },
-        { name: 'multiple', type: 'boolean', optional: true },
-        { name: 'styles', type: 'Record<string, string | number>', optional: true },
-      ],
-      source: 'components',
-    },
-    {
       name: 'AudioVisualiser',
       props: [
         { name: 'src', type: 'string | undefined', optional: false },
@@ -1060,16 +1048,6 @@ export const contextData: ContextData = {
       source: 'components',
     },
     {
-      name: 'Breadcrumbs',
-      props: [
-        { name: 'onNavigate', type: '((item: BreadcrumbItem, index: number) => void)', optional: true },
-        { name: 'items', type: 'BreadcrumbItem[]', optional: true },
-        { name: 'separator', type: 'string', optional: true },
-        { name: 'styles', type: 'Record<string, string | number>', optional: true },
-      ],
-      source: 'components',
-    },
-    {
       name: 'Calendar',
       props: [
         { name: 'onSelect', type: '((date: string) => void)', optional: true },
@@ -1080,18 +1058,6 @@ export const contextData: ContextData = {
       source: 'components',
     },
     { name: 'Card', superclass: 'DesignSystemElement', props: [], source: 'components' },
-    {
-      name: 'CircleButton',
-      props: [
-        { name: 'label', type: 'string', optional: false },
-        { name: 'icon', type: 'string', optional: true },
-        { name: 'image', type: 'string', optional: true },
-        { name: 'onClick', type: '(() => void)', optional: true },
-        { name: 'class', type: 'string', optional: true },
-        { name: 'styles', type: 'Record<string, string | number>', optional: true },
-      ],
-      source: 'components',
-    },
     {
       name: 'CodeEditor',
       props: [
@@ -1137,8 +1103,8 @@ export const contextData: ContextData = {
       description:
         'Flexible dropdown menu for actions, toggles, and grouped items. Use for context menus, settings panels, layer controls, and command palettes.',
       props: [
-        { name: 'class', type: 'string', optional: true },
         { name: 'styles', type: 'Record<string, string | number>', optional: true },
+        { name: 'class', type: 'string', optional: true },
         { name: 'placement', type: 'Placement', optional: true },
         { name: 'triggerLabel', type: 'string', optional: true },
         { name: 'triggerIcon', type: 'string', optional: true },
@@ -1153,7 +1119,7 @@ export const contextData: ContextData = {
       props: [
         { name: 'src', type: 'string', optional: true },
         { name: 'alt', type: 'string', optional: true },
-        { name: 'fit', type: '"fill" | "cover" | "contain" | "none" | "scale-down"', optional: true },
+        { name: 'fit', type: '"cover" | "contain" | "none" | "fill" | "scale-down"', optional: true },
         { name: 'placeholderIcon', type: 'string', optional: true },
         { name: 'onImageChange', type: '((file: File) => void)', optional: true },
         { name: 'onImageRemove', type: '(() => void)', optional: true },
@@ -1192,47 +1158,6 @@ export const contextData: ContextData = {
       source: 'components',
     },
     {
-      name: 'IconLabelButton',
-      props: [
-        {
-          name: 'icon',
-          type: 'import("/home/james/Desktop/Coding/we/packages/design-system/utils/dist/solid").MaybeAccessor<string>',
-          optional: false,
-        },
-        {
-          name: 'label',
-          type: 'import("/home/james/Desktop/Coding/we/packages/design-system/utils/dist/solid").MaybeAccessor<string>',
-          optional: false,
-        },
-        {
-          name: 'selected',
-          type: 'import("/home/james/Desktop/Coding/we/packages/design-system/utils/dist/solid").MaybeAccessor<boolean | undefined>',
-          optional: true,
-        },
-        {
-          name: 'iconWeight',
-          type: 'import("/home/james/Desktop/Coding/we/packages/design-system/utils/dist/solid").MaybeAccessor<IconWeight | undefined>',
-          optional: true,
-        },
-        {
-          name: 'onClick',
-          type: 'import("/home/james/Desktop/Coding/we/packages/design-system/utils/dist/solid").MaybeAccessor<(() => void) | undefined>',
-          optional: true,
-        },
-        {
-          name: 'class',
-          type: 'import("/home/james/Desktop/Coding/we/packages/design-system/utils/dist/solid").MaybeAccessor<string | undefined>',
-          optional: true,
-        },
-        {
-          name: 'styles',
-          type: 'import("/home/james/Desktop/Coding/we/packages/design-system/utils/dist/solid").MaybeAccessor<Record<string, string | number> | undefined>',
-          optional: true,
-        },
-      ],
-      source: 'components',
-    },
-    {
       name: 'ImageCrop',
       props: [
         { name: 'src', type: 'string', optional: false },
@@ -1251,29 +1176,6 @@ export const contextData: ContextData = {
         { name: 'srcs', type: 'string[]', optional: false },
         { name: 'initialIndex', type: 'number', optional: false },
         { name: 'onClose', type: '() => void', optional: false },
-      ],
-      source: 'components',
-    },
-    {
-      name: 'List',
-      props: [
-        { name: 'children', type: 'JSX.Element', optional: true },
-        { name: 'renderItem', type: '((item: ListItem, index: number) => JSX.Element)', optional: true },
-        { name: 'items', type: 'ListItem[]', optional: true },
-        { name: 'ordered', type: 'boolean', optional: true },
-        { name: 'gap', type: 'string', optional: true },
-        { name: 'styles', type: 'Record<string, string | number>', optional: true },
-      ],
-      source: 'components',
-    },
-    {
-      name: 'PostCard',
-      props: [
-        { name: 'creator', type: '{ name: string; avatar: string; }', optional: true },
-        { name: 'title', type: 'string', optional: false },
-        { name: 'text', type: 'string', optional: false },
-        { name: 'class', type: 'string', optional: true },
-        { name: 'styles', type: 'Record<string, string | number>', optional: true },
       ],
       source: 'components',
     },
@@ -1314,43 +1216,6 @@ export const contextData: ContextData = {
         { name: 'disabled', type: 'boolean', optional: true },
         { name: 'preview', type: 'boolean', optional: true },
         { name: 'class', type: 'string', optional: true },
-        { name: 'styles', type: 'Record<string, string | number>', optional: true },
-      ],
-      source: 'components',
-    },
-    {
-      name: 'Stepper',
-      props: [
-        { name: 'onStepClick', type: '((index: number) => void)', optional: true },
-        { name: 'steps', type: 'StepperStep[]', optional: true },
-        { name: 'activeStep', type: 'number', optional: true },
-        { name: 'orientation', type: '"horizontal" | "vertical"', optional: true },
-        { name: 'styles', type: 'Record<string, string | number>', optional: true },
-      ],
-      source: 'components',
-    },
-    {
-      name: 'Table',
-      props: [
-        {
-          name: 'renderCell',
-          type: '((row: Record<string, unknown>, column: TableColumn, index: number) => JSX.Element)',
-          optional: true,
-        },
-        { name: 'columns', type: 'TableColumn[]', optional: false },
-        { name: 'rows', type: 'Record<string, unknown>[]', optional: false },
-        { name: 'striped', type: 'boolean', optional: true },
-        { name: 'bordered', type: 'boolean', optional: true },
-        { name: 'styles', type: 'Record<string, string | number>', optional: true },
-      ],
-      source: 'components',
-    },
-    {
-      name: 'Timeline',
-      props: [
-        { name: 'children', type: 'JSX.Element', optional: true },
-        { name: 'renderItem', type: '((item: TimelineItem, index: number) => JSX.Element)', optional: true },
-        { name: 'items', type: 'TimelineItem[]', optional: true },
         { name: 'styles', type: 'Record<string, string | number>', optional: true },
       ],
       source: 'components',
@@ -1400,31 +1265,6 @@ export const contextData: ContextData = {
         { name: 'iconSize', type: 'IconSize', optional: true },
         { name: 'onItemClick', type: '((item: CollapsibleSidebarItem) => void)', optional: true },
         { name: 'onExpandedChange', type: '((expanded: boolean) => void)', optional: true },
-      ],
-      source: 'widgets',
-    },
-    {
-      name: 'GraphWidget',
-      description:
-        '2D force-directed graph visualization using D3-force layout and Canvas rendering.\nDisplays typed nodes (user, space, post) and edges (follows, member-of, etc.)\nwith configurable styling, layout forces, and interaction handlers.',
-      props: [
-        { name: 'data', type: 'GraphData', optional: false },
-        { name: 'width', type: 'string | number', optional: true },
-        { name: 'height', type: 'string | number', optional: true },
-        { name: 'nodeStyle', type: 'NodeStyleConfig', optional: true },
-        { name: 'edgeStyle', type: 'EdgeStyleConfig', optional: true },
-        { name: 'layout', type: 'LayoutConfig', optional: true },
-        { name: 'interactions', type: 'InteractionConfig', optional: true },
-      ],
-      source: 'widgets',
-    },
-    {
-      name: 'SpaceSidebarWidget',
-      props: [
-        { name: 'name', type: 'string', optional: false },
-        { name: 'description', type: 'string', optional: true },
-        { name: 'class', type: 'string', optional: true },
-        { name: 'style', type: 'Record<string, string | number>', optional: true },
       ],
       source: 'widgets',
     },

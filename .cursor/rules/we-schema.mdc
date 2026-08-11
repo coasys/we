@@ -863,19 +863,13 @@ when `relative` is enabled.
   Props: url: string | undefined, title: string | undefined, thumbnail: string | undefined, provider: string | undefined, width: number | undefined
 - VideoInput
   Props: url: string | undefined, title: string | undefined, thumbnail: string | undefined, provider: string | undefined, width: number | undefined, onChange: (property: string, value: unknown) => void, isSelected: () => boolean
-- Accordion
-  Props: children?: JSX.Element, renderContent?: ((item: AccordionItem, index: number) => JSX.Element), onChange?: ((openItems: string[]) => void), items?: AccordionItem[], multiple?: boolean, styles?: Record<string, string | number>
 - AudioVisualiser
   Props: src: string | undefined, bars?: number, height?: number, color?: string, activeColor?: string
 - AvatarStack
   Props: avatars: AvatarInfo[], max?: number, size?: "xs" | "sm" | "md" | "lg" | "xl" | "xxs" | "xxl", overlap?: number, ring?: string, styles?: Record<string, string | number>
-- Breadcrumbs
-  Props: onNavigate?: ((item: BreadcrumbItem, index: number) => void), items?: BreadcrumbItem[], separator?: string, styles?: Record<string, string | number>
 - Calendar
   Props: onSelect?: ((date: string) => void), value?: string, events?: CalendarEvent[], styles?: Record<string, string | number>
 - Card (DesignSystemElement)
-- CircleButton
-  Props: label: string, icon?: string, image?: string, onClick?: (() => void), class?: string, styles?: Record<string, string | number>
 - CodeEditor
   Props: code: string, language?: CodeEditorLanguage, readOnly?: boolean, onChange?: ((code: string) => void), onSave?: ((code: string) => void), styles?: Record<string, string | number>
 - CollapsedContent
@@ -884,23 +878,17 @@ when `relative` is enabled.
 - Combobox (DesignSystemElement)
   Props: options: string[] | ComboboxOption[], value?: string, placeholder?: string, size?: "xs" | "sm" | "md" | "lg" | "xl", onChange?: ((value: string) => void)
 - DropdownMenu — Flexible dropdown menu for actions, toggles, and grouped items. Use for context menus, settings panels, layer controls, and command palettes.
-  Props: class?: string, styles?: Record<string, string | number>, placement?: Placement, triggerLabel?: string, triggerIcon?: string, size?: "xs" | "sm" | "md" | "lg" | "xl", items: SolidDropdownMenuEntry[]
+  Props: styles?: Record<string, string | number>, class?: string, placement?: Placement, triggerLabel?: string, triggerIcon?: string, size?: "xs" | "sm" | "md" | "lg" | "xl", items: SolidDropdownMenuEntry[]
 - EditableImage (DesignSystemElement)
-  Props: src?: string, alt?: string, fit?: "fill" | "cover" | "contain" | "none" | "scale-down", placeholderIcon?: string, onImageChange?: ((file: File) => void), onImageRemove?: (() => void), uploadLabel?: string, editLabel?: string, class?: string, aspect?: number, maxSize?: number
+  Props: src?: string, alt?: string, fit?: "cover" | "contain" | "none" | "fill" | "scale-down", placeholderIcon?: string, onImageChange?: ((file: File) => void), onImageRemove?: (() => void), uploadLabel?: string, editLabel?: string, class?: string, aspect?: number, maxSize?: number
 - FlipCard
   Props: front?: JSX.Element, back?: JSX.Element, width?: string, height?: string, flipOnHover?: boolean, flipDuration?: string, wobbleOnHover?: boolean, wobbleDegree?: number, class?: string, styles?: Record<string, string | number>
 - Grid (DesignSystemElement)
   Props: template?: string, columns?: number, minChildWidth?: string
-- IconLabelButton
-  Props: icon: import("/home/james/Desktop/Coding/we/packages/design-system/utils/dist/solid").MaybeAccessor<string>, label: import("/home/james/Desktop/Coding/we/packages/design-system/utils/dist/solid").MaybeAccessor<string>, selected?: import("/home/james/Desktop/Coding/we/packages/design-system/utils/dist/solid").MaybeAccessor<boolean | undefined>, iconWeight?: import("/home/james/Desktop/Coding/we/packages/design-system/utils/dist/solid").MaybeAccessor<IconWeight | undefined>, onClick?: import("/home/james/Desktop/Coding/we/packages/design-system/utils/dist/solid").MaybeAccessor<(() => void) | undefined>, class?: import("/home/james/Desktop/Coding/we/packages/design-system/utils/dist/solid").MaybeAccessor<string | undefined>, styles?: import("/home/james/Desktop/Coding/we/packages/design-system/utils/dist/solid").MaybeAccessor<Record<string, string | number> | undefined>
 - ImageCrop
   Props: src: string, fileName?: string, aspect?: number, maxSize?: number, outputType?: string, quality?: number, onReady?: ((ref: ImageCropRef) => void)
 - ImageLightbox
   Props: srcs: string[], initialIndex: number, onClose: () => void
-- List
-  Props: children?: JSX.Element, renderItem?: ((item: ListItem, index: number) => JSX.Element), items?: ListItem[], ordered?: boolean, gap?: string, styles?: Record<string, string | number>
-- PostCard
-  Props: creator?: { name: string; avatar: string; }, title: string, text: string, class?: string, styles?: Record<string, string | number>
 - RerenderLog
   Props: location: string
 - Row (DesignSystemElement)
@@ -910,24 +898,12 @@ when `relative` is enabled.
   Props: options: SelectOption[], value?: string, placeholder?: string, searchable?: boolean, label?: string, size?: "xs" | "sm" | "md" | "lg" | "xl", onChange?: ((value: string) => void)
 - SignalControl
   Props: signalType: SignalTypeData, signals?: SignalData[], myDid?: string, onSignal?: ((value: number) => void), disabled?: boolean, preview?: boolean, class?: string, styles?: Record<string, string | number>
-- Stepper
-  Props: onStepClick?: ((index: number) => void), steps?: StepperStep[], activeStep?: number, orientation?: "horizontal" | "vertical", styles?: Record<string, string | number>
-- Table
-  Props: renderCell?: ((row: Record<string, unknown>, column: TableColumn, index: number) => JSX.Element), columns: TableColumn[], rows: Record<string, unknown>[], striped?: boolean, bordered?: boolean, styles?: Record<string, string | number>
-- Timeline
-  Props: children?: JSX.Element, renderItem?: ((item: TimelineItem, index: number) => JSX.Element), items?: TimelineItem[], styles?: Record<string, string | number>
 - ToastContainer
   Props: position?: "top-right" | "top-left" | "bottom-right" | "bottom-left" | "top-center" | "bottom-center", styles?: Record<string, string | number>
 
 @we/widgets:
 - CollapsibleSidebar
   Props: header?: JSX.Element, footer?: JSX.Element, items: CollapsibleSidebarItem[], footerItems?: CollapsibleSidebarItem[], side?: "left" | "right", position?: "static" | "absolute" | "fixed", zIndex?: number, collapsedWidth?: string, expandedWidth?: string, defaultExpanded?: boolean, expandOnHover?: boolean, transitionDuration?: number, bg?: string, border?: string, padding?: string, gap?: string, centerItems?: boolean, itemColor?: string, itemColorHover?: string, itemColorActive?: string, itemBg?: string, itemBgHover?: string, itemBgActive?: string, itemPadding?: string, itemGap?: string, badgeBg?: string, badgeColor?: string, iconSize?: IconSize, onItemClick?: ((item: CollapsibleSidebarItem) => void), onExpandedChange?: ((expanded: boolean) => void)
-- GraphWidget — 2D force-directed graph visualization using D3-force layout and Canvas rendering.
-Displays typed nodes (user, space, post) and edges (follows, member-of, etc.)
-with configurable styling, layout forces, and interaction handlers.
-  Props: data: GraphData, width?: string | number, height?: string | number, nodeStyle?: NodeStyleConfig, edgeStyle?: EdgeStyleConfig, layout?: LayoutConfig, interactions?: InteractionConfig
-- SpaceSidebarWidget
-  Props: name: string, description?: string, class?: string, style?: Record<string, string | number>
 - GraphView — A general-purpose graph view: knowledge maps, schema maps, hierarchies, cluster maps and
 free-positioned boards, all from the same engine.
 
@@ -1937,11 +1913,15 @@ Iterating over store data:
   "props": { "items": { "$store": "spaceStore.personalSpaces" }, "as": "space" },
   "children": [
     {
-      "type": "CircleButton",
+      "type": "we-button",
       "props": {
-        "label": "$space.name",
+        "variant": "ghost",
         "onClick": { "$action": "routeStore.navigate", "args": [{ "$concat": ["/space/", "$space.uuid"] }] }
-      }
+      },
+      "children": [
+        { "type": "we-avatar", "props": { "image": "$space.avatar", "initials": "$space.name", "size": "sm" } },
+        { "type": "we-text", "children": ["$space.name"] }
+      ]
     }
   ]
 }

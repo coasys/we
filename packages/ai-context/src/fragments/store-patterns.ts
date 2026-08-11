@@ -27,11 +27,15 @@ Iterating over store data:
   "props": { "items": { "$store": "spaceStore.personalSpaces" }, "as": "space" },
   "children": [
     {
-      "type": "CircleButton",
+      "type": "we-button",
       "props": {
-        "label": "$space.name",
+        "variant": "ghost",
         "onClick": { "$action": "routeStore.navigate", "args": [{ "$concat": ["/space/", "$space.uuid"] }] }
-      }
+      },
+      "children": [
+        { "type": "we-avatar", "props": { "image": "$space.avatar", "initials": "$space.name", "size": "sm" } },
+        { "type": "we-text", "children": ["$space.name"] }
+      ]
     }
   ]
 }

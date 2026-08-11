@@ -71,6 +71,26 @@ will be untouched copies of the first expansion forever, **the seed matters more
 would**: a fragment ships as a starting distribution, not as something that can be fixed later for
 everyone.
 
+### One vocabulary, two grammars
+
+Fragments serve schema-land; the editor and app-shell chrome are TSX. That is not a duplication
+problem, because nothing is expressed twice: **components and primitives are the single-source
+vocabulary, and above them sit two arrangement grammars** — fragments compose the vocabulary for
+schemas, JSX composes the same vocabulary for code. Fragments never re-implement a component
+(`sectionCard` uses `Card`; `peopleRow` uses `AvatarStack`), and TSX never re-implements a
+primitive (the dev rule: DS components, not raw HTML). Tokens and themes carry visual identity
+into both worlds from one definition.
+
+When one pattern is genuinely needed identically on both sides there are exactly two moves, both
+with precedent — demote it to a component (`SignalControl`), or mount a schema island in TSX via
+`RenderSchema`, which is how the entire shell already works. Never a second copy.
+
+And the boundary for which app surfaces are schemas at all: **surfaces a deployment should be able
+to white-label or replace are schemas; tools are code.** The editor stays TSX — the tool must keep
+working while the schema it is editing is broken, and rebuilding tool UI as schemas would generate
+exactly the operator-language pressure named under the falsifiers. The full policy lives in
+`packages/design-system/CONVENTIONS.md`.
+
 ---
 
 ## When to extract

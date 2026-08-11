@@ -15,12 +15,9 @@ import {
   VideoDisplay,
 } from '@we/block-solid';
 import {
-  Accordion,
   AvatarStack,
-  Breadcrumbs,
   Calendar,
   Card,
-  CircleButton,
   CollapsedContent,
   Column,
   Combobox,
@@ -28,21 +25,15 @@ import {
   EditableImage,
   FlipCard,
   Grid,
-  IconLabelButton,
-  List,
-  PostCard,
   RerenderLog,
   Row,
   Search,
   Select,
   SignalControl,
-  Stepper,
-  Table,
-  Timeline,
   ToastContainer,
 } from '@we/components/solid';
 import type { ComponentRegistry } from '@we/schema-solid';
-import { CollapsibleSidebar, GraphWidget, mockGraphData, SpaceSidebarWidget } from '@we/widgets/solid';
+import { CollapsibleSidebar } from '@we/widgets/solid';
 import { lazy } from 'solid-js';
 
 /**
@@ -81,12 +72,9 @@ const AiPanel = lazy(() => import('@we/editor/ai').then((m) => ({ default: m.AiP
 
 export const componentRegistry: ComponentRegistry = {
   // @we/components
-  Accordion,
   AvatarStack,
-  Breadcrumbs,
   Calendar,
   Card,
-  CircleButton,
   CollapsedContent,
   Column,
   Combobox,
@@ -94,21 +82,14 @@ export const componentRegistry: ComponentRegistry = {
   EditableImage,
   FlipCard,
   Grid,
-  IconLabelButton,
-  List,
-  PostCard,
   Row,
   Search,
   Select,
-  Stepper,
-  Table,
-  Timeline,
   ToastContainer,
 
   // @we/widgets
   AiPanel,
   RightPanelContainer,
-  SpaceSidebarWidget,
   CollapsibleSidebar,
   // Contributed by @we/module-globe — registered here rather than injected by the module registry so
   // the static registry stays the single source for what a template may name. When modules become
@@ -117,7 +98,6 @@ export const componentRegistry: ComponentRegistry = {
   // Contributed by @we/module-graph. Registered here for the same reason the globe is: this registry
   // is the single source for what a template may name.
   GraphView: GraphViewOnDemand,
-  GraphWidget: (props) => <GraphWidget {...props} data={props.data || mockGraphData} />,
   SignalControl,
 
   // @we/block-solid

@@ -4,12 +4,61 @@ Rules and patterns for building UI components (`4-components/`) and widgets (`5-
 
 ## Package Roles
 
-| Package                           | Scope                                                    | Examples                                     |
-| --------------------------------- | -------------------------------------------------------- | -------------------------------------------- |
-| `4-components` (`@we/components`) | Single-purpose Solid components composed from primitives | CircleButton, Column, Row, DropdownMenu      |
-| `5-widgets` (`@we/widgets`)       | Composite blocks combining multiple components           | CollapsibleSidebar, CesiumGlobe, GraphWidget |
+| Package                           | Scope                                                    | Examples                               |
+| --------------------------------- | -------------------------------------------------------- | -------------------------------------- |
+| `4-components` (`@we/components`) | Single-purpose Solid components composed from primitives | AvatarStack, Column, Row, DropdownMenu |
+| `5-widgets` (`@we/widgets`)       | Composite blocks combining multiple components           | CollapsibleSidebar, CesiumGlobe        |
 
 Components are leaf-level building blocks. Widgets encapsulate higher-level features. Composition above widgets is handled by the schema system.
+
+## Does this deserve to be code at all?
+
+> **Code owns only what data cannot express**: behaviour and focus management, accessibility
+> semantics, browser APIs, measurement, performance-critical rendering. That is the whole list.
+> Everything above it is arrangement, and arrangement belongs in the schema layer — a template
+> fragment (`@we/template-kit`) or plain nodes — where an author can edit it.
+
+A component that is only a fixed arrangement of primitives is the anti-pattern this rule exists
+for: it freezes layout decisions behind props nobody can extend from a template, and because
+templates cannot use it and code does not need it, it dies unused. Nine of them were deleted in
+one sweep (`PostCard`, `CircleButton`, `IconLabelButton`, `List`, `Table`, `Timeline`, `Accordion`,
+`Breadcrumbs`, `Stepper`) — every one pure arrangement, every one with zero consumers, one
+carrying an invalid design token nobody had noticed because nothing rendered it. Function-valued
+props (`renderItem`, `renderCell`) are the tell: a schema cannot express a render function, so a
+component built around one is unreachable from the layer composition is supposed to happen in.
+
+The test before adding a component: **name the thing it does that a `Column` full of primitives
+cannot.** `AvatarStack` has overlap maths; `CollapsedContent` measures; `DropdownMenu` owns focus.
+If the answer is "it groups things nicely", it is a fragment.
+
+## One vocabulary, two grammars
+
+Components serve two consumers, and the same rules keep them from diverging:
+
+- **Schemas** reach components through the registry (`componentRegistry.tsx`). A registry entry is
+  vocabulary the validator accepts and the AI is taught — never register a component templates
+  cannot meaningfully drive.
+- **TSX code** (the editor, app-shell chrome) imports components directly, and composes them with
+  JSX the way schemas compose them with fragments.
+
+Neither side may re-implement what the other layer owns: fragments arrange components, never
+rebuild them; TSX composes primitives and components, never raw HTML with inline styles. That is
+what keeps visual identity single-sourced while the two arrangement grammars stay independent.
+
+When one _pattern_ is genuinely needed identically on both sides, there are exactly two moves —
+never a second copy:
+
+1. **Demote it to a component** — when it carries behaviour anyway, or pixel-identity matters more
+   than template editability (`SignalControl`).
+2. **Mount a schema island in TSX** via `RenderSchema` — when the shared thing is data-driven and
+   themeable. The shell does this wholesale: Settings, BootScreen and the sidebar are schemas
+   rendered inside the Solid app.
+
+Which app surfaces get built as schemas at all follows one rule: **surfaces a deployment should be
+able to white-label or replace are schemas; tools are code.** The settings pages are schemas; the
+editor's inspector is not, and should not be — the tool must keep working while the schema it is
+editing is broken, and rebuilding tool UI as schemas would pressure the operator language toward
+general-purpose growth the schema system deliberately refuses.
 
 ## Directory Structure
 
@@ -39,17 +88,17 @@ Each component has a `*.types.ts` file defining its prop interface. These are **
 
 ```ts
 // ✅ Good — framework-agnostic
-export interface PostCardProps {
-  title: string;
-  creator?: { name: string; avatar: string };
-  style?: Record<string, string | number>;
+export interface FlipCardProps {
+  width?: string;
+  flipOnHover?: boolean;
+  styles?: Record<string, string | number>;
 }
 
 // ❌ Bad — Solid-specific
 import { JSX } from 'solid-js';
-export interface PostCardProps {
-  title: string;
-  style?: JSX.CSSProperties;
+export interface FlipCardProps {
+  width?: string;
+  styles?: JSX.CSSProperties;
 }
 ```
 
