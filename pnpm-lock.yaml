@@ -188,6 +188,28 @@ importers:
         specifier: ^4.1.0
         version: 4.1.10(@types/node@24.13.2)(@vitest/coverage-v8@4.1.10)(happy-dom@20.10.6)(jsdom@27.4.0)(vite@6.4.3(@types/node@24.13.2)(sass@1.101.0)(tsx@4.23.0)(yaml@2.9.0))
 
+  apps/playgrounds/vanilla/flicker-probe:
+    dependencies:
+      '@we/primitives':
+        specifier: workspace:*
+        version: link:../../../../packages/design-system/3-primitives
+      '@we/schema-shared':
+        specifier: workspace:*
+        version: link:../../../../packages/schema-system/shared
+      '@we/themes':
+        specifier: workspace:*
+        version: link:../../../../packages/design-system/2-themes
+      '@we/tokens':
+        specifier: workspace:*
+        version: link:../../../../packages/design-system/1-tokens
+    devDependencies:
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+      vite:
+        specifier: ^6.0.0
+        version: 6.4.3(@types/node@24.13.2)(sass@1.101.0)(tsx@4.23.0)(yaml@2.9.0)
+
   apps/we-electron:
     dependencies:
       '@apollo/client':

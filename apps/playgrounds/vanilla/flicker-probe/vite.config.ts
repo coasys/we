@@ -1,11 +1,8 @@
 import { defineConfig } from 'vite';
-import solidPlugin from 'vite-plugin-solid';
 
+// No framework plugin, on purpose: this page exists to tell a design-system problem from an
+// application one, and it cannot do that if it ships a framework of its own.
 export default defineConfig({
-  plugins: [solidPlugin()],
-  // One solid-js instance across app and libraries. Load-bearing: two instances give two owner
-  // graphs and effects silently stop updating, which looks correct on first paint.
-  resolve: { dedupe: ['solid-js', 'solid-js/web', 'solid-js/store'] },
   /*
     Never pre-bundle the WE packages.
 
@@ -19,7 +16,7 @@ export default defineConfig({
     exclude: ['@we/primitives', '@we/tokens', '@we/themes', '@we/schema-shared', '@we/design-utils'],
   },
   server: {
-    port: 3300,
+    port: 3310,
     fs: { allow: ['../../../..'] },
   },
   build: { target: 'esnext' },
