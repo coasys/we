@@ -252,24 +252,39 @@ Nothing in `@we/schema-solid`, nothing in the backend, nothing in the module con
 
 Done:
 
-1. The kit, and WE's own templates built from it.
+1. The kit, and both of WE's own template packages built from it.
+2. Loud failures — `$map` select lints, hoisted-query write checks, the previously unchecked
+   `$toggleLocal`/`$callLocal`, all with tests.
+3. Form wiring — landed as the `field` _fragment_ rather than the operator this document first
+   assumed: which event carries a control's value is design-system knowledge, and an operator would
+   have to smuggle that table into the schema resolver. A worked example of the boundary.
+4. Recipes in `@we/ai-context` — the kit's shapes in the in-app AI's prompt, with a hand-sync rule
+   in the kit's CONVENTIONS.
+5. The design-system counterpart: arrangement-in-code components deleted, the
+   one-vocabulary-two-grammars policy in `design-system/CONVENTIONS.md`.
 
-Next, in order, none of it blocking the others:
-
-2. **Loud failures** — store-path resolution and pattern lints in the validator. Higher
-   correctness-per-hour than anything else here, and the safety net that makes template refactors
-   safe in packages with no tests.
-3. ~~**`$field`-style form wiring**~~ — done, and it landed as a fragment rather than the operator
-   this document first assumed. The mapping from a field to _how a control reports a change_ is
-   per-component knowledge (`we-input` emits `onInput` with `$event.detail`, `we-select` emits
-   `onChange`, `Search` calls back with `$arg`), so an operator would have to hold a table of
-   design-system conventions inside the schema resolver — which the layering forbids — or be told
-   the event at each call site, saving nothing. The fragment can hold that table because it lives in
-   the layer that already knows the components. A useful worked example of the boundary.
-4. **Recipes in `@we/ai-context`** — the kit's fragments as JSON patterns the in-app AI inlines.
-   Also instrumentation: which patterns it reaches for tells you what the marketplace ones should be.
-5. **The extractor, provenance and marketplace fragments** — gated on a real signal that someone
-   outside the team wants to share a pattern.
+Next: the component explorer and fragment palette
+(`docs/internal/plans/prs/COMPONENT_EXPLORER_AND_FRAGMENT_PALETTE_PLAN.md`) — node insertion for
+the editor and the AI through one checked pipeline, whose fragment manifests are the substrate the
+provenance system lands on.
 
 The property worth protecting at every step: **the artifact is always plain JSON, so no step commits
 you to the next one.**
+
+---
+
+## Deferred obligations, and what triggers each
+
+Deliberately not built yet — deferring is the decision, and these are its tripwires. The failure
+mode this table exists to prevent is calcifying by accident: the contract becoming whatever the
+first hundred templates happened to depend on, versioned under pressure as archaeology.
+
+| Obligation                                                                                                                             | Trigger to build it                                                                                                                                                                                                          |
+| -------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `$fragment` provenance + editor machinery (insert/push/detach/update, drift)                                                           | A second serious template exists, or someone actually asks to extract-and-reuse across templates                                                                                                                             |
+| Store-contract versioning (the template↔store surface as a declared, versioned API)                                                    | Store churn visibly slows, or the first _external_ template author appears. Until then the validator's store-path lints are the dev-mode form: they keep churn safe and become the contract's enforcement when it is written |
+| Compatibility constitution becomes binding (registry append-only, shipped prop semantics frozen, deprecated components render forever) | The first persisted templates we are unwilling to break — marketplace beta at the latest. Pre-1.0, breaking freely is policy, which is why the dead-component deletion happened _now_                                        |
+| Action capabilities + outbound-src filtering for untrusted templates                                                                   | The marketplace accepts contributions from strangers. Disclosure at insert is necessary but is not containment                                                                                                               |
+
+Each row is cheap to honour early and ruinous to retrofit late; the trigger is the latest safe
+moment, not the recommended one.
