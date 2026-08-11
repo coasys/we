@@ -209,13 +209,23 @@ export function GraphView(props: GraphViewProps) {
   // Reload when what the graph *is* changes — where it starts and how far it opens. Deliberately
   // narrow: recolouring a map must never re-run its queries, and depending on the whole prop bag
   // would do exactly that. `props.layout` is read untracked so a layout swap does not land here.
-  createEffect(() => {
-    void props.seeds;
-    void props.expansion;
+  createEffect((previous: string | undefined) => {
+    /*
+      Compared by value, not by identity.
+
+      A host that rebuilds its spec object — because some unrelated control changed — hands over a new
+      `seeds` every time, and reading it here re-runs whatever computed it. Tracking that alone meant
+      switching the edge shape in a picker restarted the graph and threw away every node position,
+      which looks like a layout bug and is really this effect firing on churn. The layout and style
+      effects below already compare; this one is the reason to.
+    */
+    const next = JSON.stringify([props.seeds ?? null, props.expansion ?? null]);
+    if (previous === next) return next;
     untrack(() => {
       engine.setSpec(currentSpec());
       void engine.start();
     });
+    return next;
   });
 
   // A layout swap rearranges what is already loaded rather than reloading it — the whole point of

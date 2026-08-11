@@ -10,10 +10,11 @@
  * both. Anything about *where* things are drawn belongs to the layout tests.
  */
 import { GraphView } from '@we/graph-solid';
+import { createSignal } from 'solid-js';
 import { render } from 'solid-js/web';
 import { afterEach, describe, expect, it } from 'vitest';
 
-import { createHost } from './host';
+import { createHost, type QueryLog } from './host';
 import { SCENARIOS } from './scenarios';
 
 const host = createHost();
@@ -29,6 +30,17 @@ function mount(spec: Record<string, unknown>) {
   const container = document.createElement('div');
   document.body.appendChild(container);
   dispose = render(() => <GraphView {...spec} host={host} />, container);
+  return container;
+}
+
+/**
+ * Mount with a spec that is rebuilt whenever a signal changes — how a host with its own controls
+ * behaves, as opposed to the fixed object the other tests hand over.
+ */
+function mountReactive(build: () => Record<string, unknown>, bindings = host) {
+  const container = document.createElement('div');
+  document.body.appendChild(container);
+  dispose = render(() => <GraphView {...build()} host={bindings} />, container);
   return container;
 }
 
@@ -184,5 +196,39 @@ describe('the graph paints', () => {
 
     expect(nodes(container)).toHaveLength(0);
     expect(container.textContent).toContain('Nothing to show yet');
+  });
+
+  /*
+    A host rebuilding its spec object must not restart the graph.
+
+    Any control outside the graph — an edge-shape picker, a colour toggle — hands over a fresh spec,
+    and reading `seeds` from it re-runs whatever computed it. When the reload effect tracked that
+    rather than comparing values, switching edge shape called `start()` and threw away every node
+    position, which presents as the layout randomly resetting and gives no hint that a style control
+    caused it.
+  */
+  it('keeps its nodes when a host rebuilds the spec without changing what the graph is', async () => {
+    /*
+      Asserted on the query log rather than on where the nodes ended up.
+
+      Position is the symptom but it is a poor probe: several of these scenarios lay out
+      deterministically, so a restart puts everything back exactly where it was and the test passes
+      whether or not the graph was destroyed and rebuilt. Queries do not lie — `start()` clears the
+      store and re-seeds, so a restart is visible as the seed query running a second time.
+    */
+    const log: QueryLog = { entries: [] };
+    const spec = scenario('knowledge');
+    const [curve, setCurve] = createSignal('smooth');
+    const container = mountReactive(() => ({ ...spec, edgeStyle: [{ style: { curve: curve() } }] }), createHost(log));
+    await settle();
+
+    expect([...nodes(container)].length).toBeGreaterThan(0);
+    const queriesAfterLoad = log.entries.length;
+    expect(queriesAfterLoad).toBeGreaterThan(0);
+
+    setCurve('step');
+    await settle();
+
+    expect(log.entries.length).toBe(queriesAfterLoad);
   });
 });

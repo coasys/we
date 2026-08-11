@@ -81,8 +81,8 @@ describe('routeEdge', () => {
   it('accepts the previous curve names, so templates written against them keep working', () => {
     expect(normaliseCurve('bezier')).toBe('arc');
     expect(normaliseCurve('orthogonal')).toBe('step');
-    expect(normaliseCurve(undefined)).toBe('arc');
-    expect(normaliseCurve('nonsense')).toBe('arc');
+    expect(normaliseCurve(undefined)).toBe('smooth');
+    expect(normaliseCurve('nonsense')).toBe('smooth');
   });
 
   it('leaves and arrives along the dominant axis on a smooth curve', () => {
@@ -91,6 +91,32 @@ describe('routeEdge', () => {
     expect(route.control).toEqual({ x: 50, y: 0 });
     // Arrival tangent likewise shares the target's.
     expect(route.control2).toEqual({ x: 50, y: 40 });
+  });
+
+  it('departs towards the target when a smooth edge runs right to left', () => {
+    // Taking the magnitude of the span put both controls behind the source and looped the curve back
+    // on itself — invisible on any left-to-right edge, which is most of them in a tidy layout.
+    const route = routeEdge('e', { x: 100, y: 0 }, { x: 0, y: 40 }, 'smooth');
+    expect(route.control).toEqual({ x: 50, y: 0 });
+    expect(route.control2).toEqual({ x: 50, y: 40 });
+  });
+
+  it('shifts parallel straight edges sideways rather than bending them', () => {
+    // Picking `straight` and getting a curve back for the mutual pair is the wrong trade: the shape
+    // was chosen, and separating two relationships does not require abandoning it.
+    const route = routeEdge('e', { x: 0, y: 0 }, { x: 100, y: 0 }, 'straight', 20);
+    expect(route.control).toBeUndefined();
+    expect(route.from.y).toBe(10);
+    expect(route.to.y).toBe(10);
+    // Still parallel to the original, so it reads as the same relationship moved over.
+    expect(route.from.x).toBe(0);
+    expect(route.to.x).toBe(100);
+  });
+
+  it('crosses parallel steps at different places', () => {
+    const one = routeEdge('e', { x: 0, y: 0 }, { x: 100, y: 50 }, 'step', 20);
+    const other = routeEdge('f', { x: 0, y: 0 }, { x: 100, y: 50 }, 'step', -20);
+    expect(one.elbows![0].x).not.toBe(other.elbows![0].x);
   });
 
   it('gives a self-loop a visible shape rather than a zero-length route', () => {

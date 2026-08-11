@@ -84,10 +84,10 @@ export type LayoutFactory<TOptions = unknown> = (options?: TOptions) => Layout;
  *
  * - `straight` — a direct line. Says the least, and is the right answer when the layout is doing the
  *   talking.
- * - `arc` — bows to one side. The default: two nodes related in both directions produce two edges with
- *   the same endpoints, and drawn straight they are one line, so the graph silently understates itself.
- * - `smooth` — leaves and arrives along the dominant axis, the flow-chart S. Reads as direction, so it
- *   suits hierarchies and pipelines.
+ * - `arc` — bows to one side. Deliberate curvature, when a graph is dense enough that lines need
+ *   telling apart by shape.
+ * - `smooth` — leaves and arrives along the dominant axis, the flow-chart S. The default: it reads as
+ *   direction without insisting on it, and it is the shape people expect from a node graph.
  * - `step` — right angles. For containment and org charts, where the eye follows a rank rather than a
  *   line.
  */

@@ -24,7 +24,7 @@ export function normaliseCurve(curve: string | undefined): EdgeCurve {
   if (curve === 'bezier' || curve === 'arc') return 'arc';
   if (curve === 'orthogonal' || curve === 'step') return 'step';
   if (curve === 'straight' || curve === 'smooth') return curve;
-  return 'arc';
+  return 'smooth';
 }
 
 /**
@@ -94,14 +94,18 @@ export function routeEdge(id: string, from: Point, to: Point, curve: EdgeCurve, 
   const horizontal = Math.abs(to.x - from.x) >= Math.abs(to.y - from.y);
 
   if (curve === 'step') {
+    // Parallel steps cross at different places rather than tracing each other exactly. Half the
+    // offset, so the separation matches what a bow of the same offset achieves — a quadratic's
+    // midpoint deviates half its control distance, not all of it.
+    const crossing = horizontal ? (from.x + to.x) / 2 + offset / 2 : (from.y + to.y) / 2 + offset / 2;
     const elbows: Point[] = horizontal
       ? [
-          { x: (from.x + to.x) / 2, y: from.y },
-          { x: (from.x + to.x) / 2, y: to.y },
+          { x: crossing, y: from.y },
+          { x: crossing, y: to.y },
         ]
       : [
-          { x: from.x, y: (from.y + to.y) / 2 },
-          { x: to.x, y: (from.y + to.y) / 2 },
+          { x: from.x, y: crossing },
+          { x: to.x, y: crossing },
         ];
     // The middle of the crossing segment, which is the one long enough to carry a label.
     return {
@@ -117,7 +121,10 @@ export function routeEdge(id: string, from: Point, to: Point, curve: EdgeCurve, 
   if (curve === 'smooth') {
     // Tangents held along the dominant axis for half the span: enough to read as a direction of
     // travel, not so much that the curve loops back on itself when the two nodes are close.
-    const reach = (horizontal ? Math.abs(to.x - from.x) : Math.abs(to.y - from.y)) / 2;
+    // Signed, so an edge running right-to-left departs leftwards. Taking the magnitude put both
+    // control points behind the source and looped the curve back on itself, which only ever showed on
+    // edges pointing the other way.
+    const reach = (horizontal ? to.x - from.x : to.y - from.y) / 2;
     const perpendicular = horizontal ? { x: 0, y: offset } : { x: offset, y: 0 };
     const control = horizontal
       ? { x: from.x + reach, y: from.y + perpendicular.y }
@@ -141,8 +148,25 @@ export function routeEdge(id: string, from: Point, to: Point, curve: EdgeCurve, 
     };
   }
 
-  if (curve === 'straight' && !offset) {
-    return { id, from, to, curve, mid: { x: (from.x + to.x) / 2, y: (from.y + to.y) / 2 } };
+  if (curve === 'straight') {
+    if (!offset) return { id, from, to, curve, mid: { x: (from.x + to.x) / 2, y: (from.y + to.y) / 2 } };
+    /*
+      Parallel, not bowed.
+
+      Asking for straight edges and getting curved ones for the mutual pairs is the wrong trade: the
+      author picked a shape, and separating relationships does not require abandoning it. Shifting the
+      whole line sideways keeps both — two straight lines, visibly two. Half the offset for the same
+      reason as the step above.
+    */
+    const dx = to.x - from.x;
+    const dy = to.y - from.y;
+    const length = Math.hypot(dx, dy) || 1;
+    const shift = offset / 2;
+    const nx = (-dy / length) * shift;
+    const ny = (dx / length) * shift;
+    const a = { x: from.x + nx, y: from.y + ny };
+    const b = { x: to.x + nx, y: to.y + ny };
+    return { id, from: a, to: b, curve, mid: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 } };
   }
 
   const dx = to.x - from.x;

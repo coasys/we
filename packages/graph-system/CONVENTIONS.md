@@ -97,7 +97,7 @@ for every option is the answer for the *common* case, and the option exists for 
 | node `color` | `primary-500` | A token, so it answers to the theme. |
 | card `width` / `height` | `160` × 75% | Post-it proportions; height derives so widening keeps the shape. |
 | `scaleLabelWithZoom` | `true` | The intuition people arrive with is a board, where zoom magnifies everything. |
-| edge `curve` | `arc` | Bowed edges separate mutual pairs and read better when dense. `straight`, `smooth` and `step` are the alternatives; the names describe the look, because they are chosen from a sentence. |
+| edge `curve` | `smooth` | The shape people expect from a node graph: reads as direction without insisting on it. `straight`, `arc` and `step` are the alternatives; the names describe the look, because they are chosen from a sentence. Parallel edges are separated whichever is picked — by shifting, not by overriding the choice. |
 | edge `arrow` | `target` | Relations are directional; hiding that loses information. |
 | edge `width` / `color` | `1.5` / `neutral-300` | Present without competing with the nodes. |
 | `scaleWithZoom` (edge) | `true` | Same reasoning as labels. |
