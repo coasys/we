@@ -51,6 +51,16 @@ export interface LayoutResult {
    * pass simply never sets it, and costs nothing.
    */
   running?: boolean;
+  /**
+   * Anything the layout could not do, in the author's terms.
+   *
+   * A layout that finds nothing to work with still has to return positions, so without somewhere to
+   * say so its only options are to fail silently or to invent an arrangement and pretend it derived
+   * one. `manual` is the case that forced this: asked to read positions from node data that does not
+   * carry any, it keeps what is already there — indistinguishable, on screen, from a layout that ran
+   * and decided nothing needed moving.
+   */
+  warnings?: string[];
 }
 
 /**

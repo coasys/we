@@ -96,6 +96,15 @@ export class GraphEngine {
   private disposed = false;
   /** A fit was asked for before there was a surface to fit into. Applied on the next real resize. */
   private pendingFit = false;
+  /**
+   * Keep framing until a running layout stops moving.
+   *
+   * A fit applied once at `init` frames the positions a force simulation *starts* from, and it then
+   * spends a second or two spreading out from under the camera — which reads as the graph wandering
+   * off into a corner. Following it until it settles costs nothing for a layout that computes in one
+   * pass, since those never report themselves as running.
+   */
+  private fitUntilSettled = false;
   /** Computed metric values, by metric id then node id. Recomputed when the graph changes. */
   private metrics: Map<string, ReadonlyMap<string, number>> = new Map();
   /** Where every edge runs, recomputed with positions. Read by the renderer and by edge picking. */
@@ -477,6 +486,8 @@ export class GraphEngine {
       containment: this.containment(),
       viewport: { width: width || 800, height: height || 600 },
     });
+    for (const warning of result.warnings ?? []) this.warn(warning);
+    this.fitUntilSettled = !!options?.fit && !!result.running;
     this.applyPositions(result.positions, options?.fit);
     // A fit that could not run yet (no surface measured) is remembered, not dropped.
     if (options?.fit && !this.positions.size) this.pendingFit = true;
@@ -488,9 +499,13 @@ export class GraphEngine {
     this.layoutTimer = setTimeout(() => {
       this.layoutTimer = undefined;
       const result = this.layout?.tick?.();
-      if (!result) return;
-      this.applyPositions(result.positions);
+      if (!result) {
+        this.fitUntilSettled = false;
+        return;
+      }
+      this.applyPositions(result.positions, this.fitUntilSettled);
       if (result.running) this.scheduleTick();
+      else this.fitUntilSettled = false;
     }, 16);
   }
 

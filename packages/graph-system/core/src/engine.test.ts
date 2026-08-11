@@ -508,3 +508,69 @@ describe('re-tuning a layout', () => {
     expect(built).toBe(afterStart);
   });
 });
+
+describe('a layout that is still settling', () => {
+  /**
+   * Starts compact and spreads a long way over its next few ticks — a force simulation in miniature,
+   * and the shape that tells a camera which follows from one that frames once and stops.
+   */
+  function drifting() {
+    return {
+      drift: () => {
+        let tick = 0;
+        let nodes: { id: string }[] = [];
+        const place = () => new Map(nodes.map((node, index) => [node.id, { x: index * 400 * tick, y: 0 }]));
+        return {
+          id: 'drift',
+          init(input: { nodes: { id: string }[] }) {
+            nodes = input.nodes;
+            tick = 0;
+            return { positions: place(), running: true };
+          },
+          tick() {
+            tick += 1;
+            return { positions: place(), running: tick < 4 };
+          },
+        };
+      },
+    };
+  }
+
+  /*
+    Fitting once at `init` frames where a simulation *starts*, and it then spends a second or two
+    spreading out from under the camera. That reads as the graph wandering off into a corner, which is
+    a fair description of what has happened: the camera stopped following it.
+  */
+  it('still has the graph on screen once the layout settles', async () => {
+    const plugins = new PluginRegistry({ seeds: [seedOf(4)], layouts: drifting() });
+    const engine = engineWith({ seeds: { source: 'test' }, layout: { type: 'drift' } }, plugins);
+    engine.resize(800, 600);
+    await engine.start();
+    await new Promise((resolve) => setTimeout(resolve, 150));
+
+    const view = engine.viewport.visibleBounds();
+    for (const [id, at] of engine.getPositions()) {
+      expect(at.x, `${id} is off screen`).toBeGreaterThanOrEqual(view.minX);
+      expect(at.x, `${id} is off screen`).toBeLessThanOrEqual(view.maxX);
+    }
+  });
+
+  it('reports what a layout could not do, rather than leaving it to look like nothing happened', async () => {
+    const plugins = new PluginRegistry({
+      seeds: [seedOf(2)],
+      layouts: {
+        picky: () => ({
+          id: 'picky',
+          init: (input: { nodes: { id: string }[] }) => ({
+            positions: new Map(input.nodes.map((node) => [node.id, { x: 0, y: 0 }])),
+            warnings: ['nothing to read'],
+          }),
+        }),
+      },
+    });
+    const engine = engineWith({ seeds: { source: 'test' }, layout: { type: 'picky' } }, plugins);
+    await engine.start();
+
+    expect(engine.getStatus().warnings).toContain('nothing to read');
+  });
+});

@@ -261,6 +261,7 @@ export function manualLayout(rawOptions?: Record<string, unknown>): Layout {
     init(input): LayoutResult {
       const positions = new Map<string, Placement>();
       let unplaced = 0;
+      let fromData = 0;
 
       for (const node of input.nodes) {
         const override = pinned.get(node.id);
@@ -272,6 +273,7 @@ export function manualLayout(rawOptions?: Record<string, unknown>): Layout {
         const y = Number(node.data?.[options.yField]);
         if (Number.isFinite(x) && Number.isFinite(y)) {
           positions.set(node.id, { x, y, fixed: true });
+          fromData += 1;
           continue;
         }
         const previous = input.previous?.get(node.id);
@@ -286,7 +288,23 @@ export function manualLayout(rawOptions?: Record<string, unknown>): Layout {
         });
         unplaced += 1;
       }
-      return { positions };
+
+      /*
+        Say so when there was nothing to read.
+
+        This layout's whole job is to take positions from the data, so a dataset that carries none
+        leaves it holding everything exactly where it found it — on screen, identical to a layout that
+        ran and decided nothing needed to move. Picking it and seeing no change is then indistinguishable
+        from picking it and having it silently do nothing, which is the version people conclude.
+      */
+      const warnings: string[] = [];
+      if (input.nodes.length && fromData === 0) {
+        warnings.push(
+          `manual layout: no node carries "${options.xField}" and "${options.yField}", so positions were left as they were. ` +
+            `It suits a board, where position is the data being edited — a graph without stored positions wants a layout that derives them.`,
+        );
+      }
+      return { positions, warnings };
     },
 
     fix(id, at) {
