@@ -12,6 +12,7 @@ import '@we/tokens/css';
 import '@we/graph-solid/styles';
 import './styles.css';
 
+import { Column, Row } from '@we/components/solid';
 import { GraphView } from '@we/graph-solid';
 import { createMemo, createSignal, For, Show } from 'solid-js';
 import { render } from 'solid-js/web';
@@ -48,7 +49,7 @@ function App() {
   }
 
   return (
-    <div class="app">
+    <Row width="100%" height="100vh">
       {/*
         Design-system all the way down, deliberately.
 
@@ -57,15 +58,24 @@ function App() {
         that the design system is what you build with. Primitives are Lit custom elements, so this
         costs no framework coupling.
       */}
-      <aside class="rail">
-        <div class="group">
+      <Column
+        width="280px"
+        height="100%"
+        gap="500"
+        p="400"
+        overflow="auto"
+        bg="neutral-0"
+        borderRight="1px solid neutral-200"
+        flex="0 0 auto"
+      >
+        <Column gap="100">
           <we-text variant="heading-sm">Graph engine</we-text>
           <we-text variant="footnote" color="neutral-500">
             Real engine, in-memory data. No AD4M.
           </we-text>
-        </div>
+        </Column>
 
-        <div class="group">
+        <Column gap="100">
           <For each={SCENARIOS}>
             {(item) => (
               <we-button
@@ -77,15 +87,15 @@ function App() {
               </we-button>
             )}
           </For>
-        </div>
+        </Column>
 
         <we-alert variant="neutral">{scenario().note}</we-alert>
 
-        <div class="group">
+        <Column gap="200">
           <we-text variant="label" color="neutral-500" uppercase>
             Layout
           </we-text>
-          <div class="row">
+          <Row gap="100" wrap>
             <we-button
               variant={layoutOverride() === null ? 'primary' : 'outline'}
               size="xs"
@@ -104,27 +114,27 @@ function App() {
                 </we-button>
               )}
             </For>
-          </div>
-        </div>
+          </Row>
+        </Column>
 
         <Show when={selected()}>
           {(node) => (
-            <div class="group">
+            <Column gap="200">
               <we-text variant="label" color="neutral-500" uppercase>
                 Selected
               </we-text>
-              <div class="row">
+              <Row gap="100" wrap>
                 <we-badge variant="primary" size="xs">
                   {node().kind}
                 </we-badge>
                 <we-badge size="xs">{node().type}</we-badge>
-              </div>
+              </Row>
               <we-text variant="footnote">{node().label}</we-text>
-            </div>
+            </Column>
           )}
         </Show>
 
-        <div class="group grow">
+        <Column gap="200" flex="1" overflow="hidden">
           <we-text variant="label" color="neutral-500" uppercase>
             Queries served
           </we-text>
@@ -152,14 +162,14 @@ function App() {
               </For>
             </ul>
           </Show>
-        </div>
+        </Column>
 
         <we-text variant="footnote" color="neutral-500">
           Drag the background to pan · wheel to zoom · double-click a node to expand or collapse it
         </we-text>
-      </aside>
+      </Column>
 
-      <main class="stage">
+      <Column flex="1" height="100%" position="relative" overflow="hidden">
         {/* Keyed on the scenario so switching is a genuine remount — the same thing a template does
             when a `$if` swaps one graph for another, and the path a leaked engine would show up on. */}
         <Show when={scenario()} keyed>
@@ -179,8 +189,8 @@ function App() {
             />
           )}
         </Show>
-      </main>
-    </div>
+      </Column>
+    </Row>
   );
 }
 

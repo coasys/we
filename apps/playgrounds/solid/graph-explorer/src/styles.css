@@ -1,8 +1,8 @@
 /*
-  Layout only.
+  Almost nothing.
 
-  Everything with an appearance — buttons, badges, text, the scenario note — is a design-system
-  primitive, so this file holds the two-column shell and the spacing between groups and nothing else.
+  Layout is `Column`/`Row` with design-system props, and everything with an appearance is a primitive,
+  so what is left is the page reset and the one list that has no component equivalent.
   The graph brings its own styles from @we/graph-solid/styles.
 */
 
@@ -17,56 +17,16 @@ body {
   background: var(--we-color-neutral-0);
 }
 
-.app {
-  display: grid;
-  grid-template-columns: 280px 1fr;
-  height: 100vh;
-}
-
-.rail {
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-  padding: 20px;
-  overflow-y: auto;
-  border-right: 1px solid var(--we-color-neutral-200);
-  background: var(--we-color-neutral-0);
-}
-
-.group {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.grow {
-  flex: 1;
-  min-height: 0;
-}
-
-.row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-}
-
 .log {
   margin: 0;
   padding: 0;
   list-style: none;
-  font-size: 11px;
-  line-height: 1.7;
   overflow-y: auto;
 }
 
 .log li {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--we-space-100);
   justify-content: space-between;
-}
-
-.stage {
-  position: relative;
-  overflow: hidden;
 }

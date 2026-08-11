@@ -983,6 +983,9 @@ importers:
       '@we/cli':
         specifier: workspace:*
         version: link:../../../cli
+      '@we/components':
+        specifier: workspace:*
+        version: link:../../../design-system/4-components
       '@we/design-utils':
         specifier: workspace:*
         version: link:../../../design-system/utils

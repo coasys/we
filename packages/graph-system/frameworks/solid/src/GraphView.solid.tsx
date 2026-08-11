@@ -16,6 +16,7 @@
  * The engine owns hit-testing rather than the DOM, so behaviours work identically whichever surface a
  * node is drawn on. That is the property that keeps a dense canvas renderer additive later.
  */
+import { Column, Row } from '@we/components/solid';
 import {
   defaultBehaviours,
   dispatchPointer,
@@ -387,16 +388,19 @@ export function GraphView(props: GraphViewProps) {
       </div>
 
       {/*
-        Chrome is design-system, canvas is not.
+        Chrome is design-system, canvas is not — and the line is drawn on cost, not taste.
 
-        Nodes and edges are painted at arbitrary positions inside a transformed layer, updated every
-        frame, and have to survive a renderer that has no elements at all — so they stay raw. The
-        controls, status and empty state are ordinary UI, and hand-rolling them meant the graph's own
-        furniture ignored the theme and matched nothing else in the app. Primitives are Lit custom
-        elements, so using them adds no framework coupling.
+        Everything below is ordinary UI that appears once, so it is `Column`/`Row` with design-system
+        props and primitives inside: the theme reaches it, and there is no stylesheet to keep in sync.
+
+        The canvas above is not. `we-graph__layer` is re-transformed every frame, and `we-graph__node`
+        exists once per node — at a two-thousand-node budget that is two thousand component instances
+        wrapping two thousand divs, on the hottest path in the system. They also have to survive a
+        canvas renderer that has no elements at all. So they stay raw, and the SCSS that remains is
+        exactly that: the canvas, plus where these overlays sit.
       */}
       <Show when={props.showControls !== false}>
-        <div class="we-graph__controls">
+        <Column position="absolute" right="300" bottom="300" gap="100">
           <we-button variant="secondary" size="sm" square title="Zoom in" onClick={() => zoomBy(engine, 1.25)}>
             <we-icon name="plus" size="sm" />
           </we-button>
@@ -406,35 +410,35 @@ export function GraphView(props: GraphViewProps) {
           <we-button variant="secondary" size="sm" square title="Fit to view" onClick={() => engine.fit()}>
             <we-icon name="arrows-out" size="sm" />
           </we-button>
-        </div>
+        </Column>
       </Show>
 
       <Show
         when={props.showStatus !== false && (status().loading || status().budgetReached || status().warnings.length)}
       >
-        <div class="we-graph__status">
+        <Column position="absolute" left="300" bottom="300" gap="100" maxWidth="60%">
           <Show when={status().loading}>
-            <div class="we-graph__status-item">
+            <Row ay="center" gap="200" bg="neutral-100" r="200" px="200" py="100">
               <we-spinner size="xs" />
               <we-text variant="footnote" color="neutral-600">
                 Loading…
               </we-text>
-            </div>
+            </Row>
           </Show>
           <Show when={status().budgetReached}>
             <we-alert variant="warning">Node limit reached — collapse something to keep exploring</we-alert>
           </Show>
           <For each={status().warnings}>{(warning) => <we-alert variant="warning">{warning}</we-alert>}</For>
-        </div>
+        </Column>
       </Show>
 
       <Show when={!nodes().length && !status().loading}>
-        <div class="we-graph__empty">
+        <Column position="absolute" top="0" left="0" width="100%" height="100%" ax="center" ay="center" gap="200">
           <we-icon name="graph" size="lg" color="neutral-300" />
           <we-text variant="footnote" color="neutral-400">
             Nothing to show yet.
           </we-text>
-        </div>
+        </Column>
       </Show>
     </div>
   );
