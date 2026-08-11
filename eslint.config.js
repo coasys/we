@@ -227,7 +227,12 @@ export default [
     //   - only DS-consuming packages. @we/components and @we/widgets *implement* DS props
     //     and legitimately write raw CSS; the React playgrounds have no DS at all.
     name: 'design-system/prefer-ds-props',
-    files: ['packages/app-framework/**/*.tsx', 'packages/block-system/**/*.tsx', 'packages/schema-system/**/*.tsx'],
+    files: [
+      'packages/app-shell/**/*.tsx',
+      'packages/editor/**/*.tsx',
+      'packages/block-system/**/*.tsx',
+      'packages/schema-system/**/*.tsx',
+    ],
     rules: {
       'no-restricted-syntax': ['error', ...dsPropSelectors()],
     },
