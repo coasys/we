@@ -27,7 +27,22 @@
   inset: 0;
   // Transforms scale about the origin, which is where the layouts put their coordinate space.
   transform-origin: 0 0;
-  will-change: transform;
+
+  // Deliberately no `will-change: transform`.
+  //
+  // It is the obvious optimisation here and it is wrong for this element. Promoting the layer makes
+  // the browser rasterise its contents *once* at the current scale and reuse that texture for later
+  // transforms. For panning that is free and lossless — translating a bitmap loses nothing. For
+  // zooming it means the bitmap is stretched, so every label, border and edge goes soft the moment
+  // you zoom in, and stays soft.
+  //
+  // Without the hint the layer re-rasterises at the new scale, and text and vectors stay sharp at any
+  // zoom. The cost is a repaint per transform, which at DOM-node counts (a two-thousand node budget,
+  // and far fewer in practice) is not the bottleneck — the dense case has its own answer in a canvas
+  // renderer, which does not have this trade-off at all.
+  //
+  // If this needs re-visiting, promote only *during a pan gesture* and drop the hint before any
+  // scale change. Re-adding it unconditionally will silently make everything blurry again.
 }
 
 .we-graph__edges {
