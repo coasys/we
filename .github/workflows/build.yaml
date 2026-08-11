@@ -5,6 +5,12 @@ on:
     branches: [dev]
   pull_request:
 
+# One run per branch/PR — a second push cancels the in-flight run instead of
+# duplicating the full AD4M source build.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -16,13 +22,12 @@ jobs:
         with:
           node-version: '24'
 
-      # ad4m's monorepo uses object-format pnpm.overrides which pnpm v10
-      # rejects.  Install pnpm 9.15.0 directly via npm and pin it for the
-      # whole workflow — WE's `packageManager: pnpm@10.18.3` works fine
-      # under pnpm 9 (the warning is cosmetic) and pnpm/action-setup@v4
-      # refuses to override packageManager without erroring.
-      - name: Install pnpm 9.15.0
-        run: npm install -g pnpm@9.15.0
+      # WE runs under the pnpm major developers actually use (packageManager:
+      # pnpm@10.18.3).  ad4m's monorepo uses object-format pnpm.overrides which
+      # pnpm v10 rejects, so its install (below) is invoked via `npx pnpm@9`
+      # without touching the global binary.
+      - name: Install pnpm
+        run: npm install -g pnpm@10.18.3
 
       - name: Detect branch
         id: branch
@@ -67,21 +72,32 @@ jobs:
         if: steps.ad4m-cache.outputs.cache-hit != 'true'
         run: |
           cd ad4m
-          pnpm install --no-frozen-lockfile
+          npx -y pnpm@9.15.0 install --no-frozen-lockfile
 
-          cd core && pnpm exec tsc && pnpm run bundle && cd ..
-          cd connect && pnpm run build && cd ..
+          cd core && npx -y pnpm@9.15.0 exec tsc && npx -y pnpm@9.15.0 run bundle && cd ..
+          cd connect && npx -y pnpm@9.15.0 run build && cd ..
 
       # --- WE build ---
 
-      - name: Cache WE dependencies
+      # Cache the pnpm content-addressable store, not node_modules: the
+      # workspace nests packages 2–4 levels deep, so a node_modules glob
+      # misses most of it, and pnpm's own guidance is to cache the store.
+      - name: Get pnpm store directory
+        id: pnpm-store
+        run: echo "path=$(pnpm store path --silent)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache pnpm store
         uses: actions/cache@v4
         with:
-          path: |
-            node_modules
-            */node_modules
-            !ad4m/node_modules
-          key: we-deps-${{ hashFiles('pnpm-lock.yaml') }}
+          path: ${{ steps.pnpm-store.outputs.path }}
+          key: pnpm-store-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: pnpm-store-
+
+      # Gate lockfile drift while package.json is still pristine — the AD4M
+      # override rewrite below necessarily diverges from the lockfile, so this
+      # is the only point where --frozen-lockfile can be meaningful.
+      - name: Check lockfile is in sync
+        run: pnpm install --frozen-lockfile --ignore-scripts
 
       - name: Override AD4M packages with local builds
         run: |
@@ -94,6 +110,9 @@ jobs:
             require('fs').writeFileSync('./package.json', JSON.stringify(pkg, null, 2) + '\n');
           "
 
+      # --no-frozen-lockfile is required here (the file: overrides above are
+      # deliberate lockfile drift); sync with the committed manifests was
+      # already verified by the frozen install before the rewrite.
       - name: Install WE dependencies
         run: pnpm install --no-frozen-lockfile
 
@@ -103,26 +122,32 @@ jobs:
           find . -name '.turbo' -type d -not -path './ad4m/*' -not -path './node_modules/*' -exec rm -rf {} + 2>/dev/null || true
           find . -name '.vite' -type d -path '*/node_modules/.vite' -not -path './ad4m/*' -exec rm -rf {} + 2>/dev/null || true
 
-      # Non-blocking: this is the first CI workflow on the WE repo, so
-      # pre-existing lint debt on `dev` (mostly `no-explicit-any`
-      # warnings, plus the occasional unsorted import) shows up the
-      # moment lint actually runs.  Surface the warnings to reviewers
-      # via the run annotations, but don't fail the build until the
-      # backlog is cleared in a follow-up.
       - name: Lint
         run: NODE_OPTIONS='--max-old-space-size=8192' pnpm lint
-        continue-on-error: true
 
       - name: Build
         run: NODE_OPTIONS='--max-old-space-size=8192' pnpm build
 
-      # Non-blocking on first CI introduction.  Same rationale as Lint:
-      # `dev` carries pre-existing failures in unrelated packages (e.g.
-      # an app-shell test imports a file that no longer exists) and
-      # this PR is the first to actually run vitest in CI.  Surface the
-      # failures in the run summary so a follow-up can clear the
-      # backlog, but don't block the abort-controller work on unrelated
-      # test debt.
+      # `pnpm build` regenerates the AI-context outputs (CLAUDE.md et al.) and
+      # the core manifest.  If a PR changed their inputs without committing the
+      # regenerated files, fail here rather than drifting silently.
+      - name: Check generated files are committed
+        run: |
+          git diff --exit-code -- \
+            CLAUDE.md \
+            .github/copilot-instructions.md \
+            .cursor/rules/we-schema.mdc \
+            packages/ai-context/src/schemaContext.ts \
+            packages/ai-context/context.json \
+            packages/schema-system/shared/src/generated/contextData.ts \
+            packages/models/src/generated/coreManifest.ts \
+            || { echo '::error::Generated files are stale — run `pnpm build` and commit the regenerated output.'; exit 1; }
+
+      # Runs after Build so every package's dist types exist.  Only packages
+      # that define a `typecheck` script participate; coverage is being grown
+      # package by package.
+      - name: Typecheck
+        run: pnpm typecheck
+
       - name: Test
         run: pnpm test
-        continue-on-error: true
