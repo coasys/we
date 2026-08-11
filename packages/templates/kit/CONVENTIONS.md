@@ -4,6 +4,10 @@ Rules for adding to or changing this package. The package's purpose and the frag
 live in [README.md](./README.md) and `docs/architecture/template-fragments.md`; this file is the
 working ruleset.
 
+These rules also govern **module-provided fragments** — a feature module shipping ready-made
+schemas beside its components (`@we/module-graph`'s `fragments.ts` is the first). Same options-object
+API, same body style, same doc-comment duty; only the address differs.
+
 ## Should this be a fragment at all?
 
 > **Code owns only what data cannot express.** Behaviour and focus management, accessibility
