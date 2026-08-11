@@ -134,6 +134,9 @@ export default [
       '**/target/**',
       '**/dist-electron/**',
       '**/.storybook/**',
+      // Machine-generated sources (e.g. packages/models/src/generated/coreManifest.ts,
+      // written by generateCoreManifest.mjs) — emitted JSON-style, not prettier-style.
+      '**/src/generated/**',
       // The branch-aware ad4m build (scripts/build-with-ad4m-link.sh) and
       // its CI counterpart clone the matching ad4m branch into ./ad4m and
       // link it via pnpm.overrides.  ESLint must not walk into that
