@@ -63,6 +63,57 @@ export function relayoutControl(): GraphControl {
   };
 }
 
+/**
+ * Hold the selected nodes where they are, so the layout stops moving them.
+ *
+ * The standard way to shape a force layout: put the thing you care about where you want it, hold it
+ * there, and let everything else settle around it. Acting on the selection rather than inventing a
+ * gesture keeps it discoverable — there is a button, and it says what it will do — and reuses the
+ * selection people are already making.
+ *
+ * Not shown by default. On a board every node is pinned already and the control means nothing; it
+ * earns its place on a graph whose positions are derived.
+ */
+export function pinControl(): GraphControl {
+  return {
+    id: 'pin',
+    icon: 'push-pin',
+    title: 'Hold the selection in place',
+    activeIcon: 'push-pin-slash',
+    activeTitle: 'Release the selection back to the layout',
+    // Active only when *every* selected node is held: a mixed selection offers to pin the rest,
+    // which is the more useful of the two readings and the one that cannot lose work.
+    active: (ctx) => ctx.selection().length > 0 && ctx.selection().every((id) => ctx.isPinned(id)),
+    enabled: (ctx) => ctx.selection().length > 0,
+    run: (ctx) => {
+      const ids = ctx.selection();
+      ctx.setPinned(ids, !ids.every((id) => ctx.isPinned(id)));
+    },
+  };
+}
+
+/**
+ * Stop the graph being rearranged by accident.
+ *
+ * About the user, not the layout: a locked force graph still settles, it just cannot be dragged. The
+ * request behind this is always "I am reading, or showing someone, and I do not want to nudge
+ * anything" — freezing a simulation is a different thing that nobody asks for.
+ *
+ * Not shown by default either. It is only meaningful where dragging is possible, which the template
+ * already decides by listing `drag-node`.
+ */
+export function lockControl(): GraphControl {
+  return {
+    id: 'lock',
+    icon: 'lock-open',
+    title: 'Lock the graph so nodes cannot be moved',
+    activeIcon: 'lock',
+    activeTitle: 'Unlock the graph',
+    active: (ctx) => ctx.isLocked(),
+    run: (ctx) => ctx.setLocked(!ctx.isLocked()),
+  };
+}
+
 /** Shown when a template says nothing: look closer, look wider, see everything. */
 export const DEFAULT_CONTROLS = ['zoom-in', 'zoom-out', 'fit'];
 
@@ -73,5 +124,7 @@ export function defaultControls(): Record<string, () => GraphControl> {
     'zoom-out': zoomOutControl,
     fit: fitControl,
     relayout: relayoutControl,
+    pin: pinControl,
+    lock: lockControl,
   };
 }

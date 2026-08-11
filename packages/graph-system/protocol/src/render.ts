@@ -73,6 +73,13 @@ export interface BehaviourContext {
   /** Pin a node at a world position, or release it. */
   pin(id: string, at: Point | null): void;
   /**
+   * Whether the user is currently allowed to move nodes.
+   *
+   * Read by anything that moves one on a gesture, so a locked graph refuses at the point the gesture
+   * starts rather than by silently discarding the result.
+   */
+  locked(): boolean;
+  /**
    * Where a node currently is, in world units.
    *
    * Needed by anything that moves a node *relative* to where it already was — a drag has to preserve
@@ -150,14 +157,55 @@ export interface GraphControl {
   /** Tooltip, and the accessible name. */
   title: string;
   run(ctx: ControlContext): void;
+  /**
+   * Whether this control is currently *on*.
+   *
+   * Every control used to be a momentary action — zoom, fit, re-run the layout — so there was nothing
+   * for a button to be. A lock is not that: it has a state, and a toggle that does not show its own
+   * state is a switch you have to remember the position of. Omitted for an action, which is most of
+   * them.
+   */
+  active?(ctx: ControlContext): boolean;
+  /**
+   * Whether it can be used at all right now.
+   *
+   * Pinning acts on the selection, so with nothing selected it has nothing to act on. A button that
+   * silently does nothing teaches people it is broken.
+   */
+  enabled?(ctx: ControlContext): boolean;
+  /** Icon and tooltip while active, for a toggle that reads better as two states than one pressed one. */
+  activeIcon?: string;
+  activeTitle?: string;
 }
 
-/** What a control is allowed to do. Narrow on purpose — chrome nudges the view, it does not edit it. */
+/**
+ * What a control is allowed to do.
+ *
+ * Narrow on purpose: chrome acts on the *scene* — what is on screen and how it is arranged — and
+ * never on the data. `relayout` has always moved nodes, so the line was never "does not touch
+ * positions"; it is that nothing here writes anything back. Pinning and locking sit on the same side
+ * of it: a pinned node is held by the layout, not saved, and persisting a position remains the job of
+ * `onNodeDragEnd` and the host that listens to it.
+ */
 export interface ControlContext {
   zoomBy(factor: number): void;
   fit(): void;
   relayout(): void;
   viewport(): { x: number; y: number; zoom: number; width: number; height: number };
+  /** Ids currently selected. */
+  selection(): readonly string[];
+  /** Whether a node is held where it was put, so a layout will not move it. */
+  isPinned(id: string): boolean;
+  /** Hold nodes where they are, or release them back to the layout. */
+  setPinned(ids: readonly string[], pinned: boolean): void;
+  /**
+   * Whether node movement by the user is blocked.
+   *
+   * Deliberately about the user rather than the layout: locking a board stops it being rearranged by
+   * accident, and freezing a force simulation is a different request that nobody has made.
+   */
+  isLocked(): boolean;
+  setLocked(locked: boolean): void;
 }
 
 export type GraphControlFactory<TOptions = unknown> = (options?: TOptions) => GraphControl;

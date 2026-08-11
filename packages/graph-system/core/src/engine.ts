@@ -96,6 +96,8 @@ export class GraphEngine {
   private disposed = false;
   /** A fit was asked for before there was a surface to fit into. Applied on the next real resize. */
   private pendingFit = false;
+  /** Whether the user may move nodes. See `isLocked`. */
+  private locked = false;
   /**
    * Keep framing until a running layout stops moving.
    *
@@ -704,6 +706,53 @@ export class GraphEngine {
     return result;
   }
 
+  /**
+   * Whether the user may move nodes.
+   *
+   * Scene state, not a spec field: a template says whether a graph is draggable at all by listing
+   * `drag-node`, and this is the viewer saying "not right now" about a graph that is. Two different
+   * questions, and collapsing them would mean a lock that a template could not offer without also
+   * being able to take dragging away permanently.
+   */
+  isLocked(): boolean {
+    return this.locked;
+  }
+
+  setLocked(locked: boolean): void {
+    if (this.locked === locked) return;
+    this.locked = locked;
+    this.notify('status');
+  }
+
+  isPinned(id: string): boolean {
+    return this.positions.get(id)?.fixed === true;
+  }
+
+  /**
+   * Hold nodes where they are, or release them back to the layout.
+   *
+   * Batched, because pinning a selection of forty nodes one at a time would reindex and re-route
+   * every edge forty times — `positionsChanged` is not cheap and it is the same work each time.
+   */
+  setPinned(ids: readonly string[], pinned: boolean): void {
+    let changed = false;
+    for (const id of ids) {
+      const at = this.positions.get(id);
+      if (!at) continue;
+      if (pinned) {
+        if (at.fixed) continue;
+        this.positions.set(id, { x: at.x, y: at.y, fixed: true });
+        this.layout?.fix?.(id, { x: at.x, y: at.y });
+      } else {
+        if (!at.fixed) continue;
+        this.positions.set(id, { x: at.x, y: at.y });
+        this.layout?.fix?.(id, null);
+      }
+      changed = true;
+    }
+    if (changed) this.positionsChanged();
+  }
+
   pin(id: string, at: Point | null): void {
     if (at) this.positions.set(id, { ...at, fixed: true });
     else {
@@ -752,6 +801,7 @@ export class GraphEngine {
       hitTestEdge: (at, tolerance) => this.hitTestEdge(at, tolerance),
       select: (ids, mode) => this.select(ids, mode),
       selection: () => this.getSelection(),
+      locked: () => this.locked,
       expand: (id, direction) => void this.expand(id, direction),
       collapse: (id) => this.collapse(id),
       pin: (id, at) => this.pin(id, at),

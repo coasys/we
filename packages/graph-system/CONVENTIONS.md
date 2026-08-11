@@ -85,7 +85,7 @@ for every option is the answer for the *common* case, and the option exists for 
 
 | Option | Default | Why |
 |---|---|---|
-| `controls` | `zoom-in`, `zoom-out`, `fit` | Look closer, look wider, see everything. `relayout` is omitted because it is destructive on a board. `[]` for a graph with no chrome. |
+| `controls` | `zoom-in`, `zoom-out`, `fit` | Look closer, look wider, see everything. `relayout` is omitted because it is destructive on a board; `pin` and `lock` because each is meaningless on some graphs — nothing to hold on a board, nothing to lock where dragging is already off. `[]` for a graph with no chrome. |
 | `layout.type` | `force` | The only layout that says something useful about an arbitrary graph. |
 | `expansion.defaultDepth` | `0` | Opening nothing is safe and cheap. A seed that draws its own relations already looks connected; auto-expanding by default would fire queries nobody asked for. |
 | `expansion.direction` | `both` | "What is this connected to" rarely means one direction. |
@@ -141,6 +141,14 @@ Learned from bugs, each of which was invisible rather than loud:
   intermittent. `positionsChanged()` is the single path. The same rule produced `reindex()` and
   `nodeVisual()` — when a second consumer of some state appears, give it one door rather than two
   call sites.
+- **Chrome acts on the scene, never on the data.** `relayout` has always moved nodes, so the line was
+  never "controls do not touch positions" — it is that nothing a control does gets written anywhere.
+  `pin` holds a node against the layout and `lock` refuses a gesture; neither persists, and persisting
+  a position stays the job of `onNodeDragEnd` and whatever host is listening. A control that needs to
+  write is an action on the host, not a button the engine draws.
+- **A state the layout obeys has to be visible.** A pinned node that looks identical to an unpinned
+  one turns "the layout is ignoring this node" into a mystery, and the cause is usually a drag nobody
+  remembers making. The same argument as the placeholder rule, one level down.
 - **The core stays free of the DOM and of any backend.** It is what makes collapse, budgets and
   expansion testable without a browser, which is the only reason they are tested at all.
 

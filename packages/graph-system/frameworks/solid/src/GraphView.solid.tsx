@@ -328,7 +328,7 @@ export function GraphView(props: GraphViewProps) {
     });
   });
 
-  /** What a control is allowed to do — nudge the view, never edit the graph. */
+  /** What a control is allowed to do — act on the scene, never write to the data. */
   const controlContext = (): ControlContext => ({
     zoomBy: (factor) => {
       const { width, height } = engine.viewport.get();
@@ -337,6 +337,11 @@ export function GraphView(props: GraphViewProps) {
     fit: () => engine.fit(),
     relayout: () => engine.relayout({ fit: true }),
     viewport: () => engine.viewport.get(),
+    selection: () => engine.getSelection(),
+    isPinned: (id) => engine.isPinned(id),
+    setPinned: (ids, pinned) => engine.setPinned(ids, pinned),
+    isLocked: () => engine.isLocked(),
+    setLocked: (locked) => engine.setLocked(locked),
   });
 
   /** The camera scale on its own, for anything that has to divide by it. */
@@ -510,6 +515,10 @@ export function GraphView(props: GraphViewProps) {
                 'we-graph__node--hovered': hovered() === entry.node.id,
                 'we-graph__node--unresolved': entry.node.unresolved === true,
                 'we-graph__node--card': entry.visual.shape === 'card',
+                // Held state has to be visible. A node the layout will not move, that looks exactly
+                // like one it will, is a graph that behaves differently for no reason you can see —
+                // and the reason is usually a drag somebody forgot they made.
+                'we-graph__node--pinned': entry.at.fixed === true,
               }}
               style={{
                 transform: `translate(${entry.at.x}px, ${entry.at.y}px)`,
@@ -577,17 +586,37 @@ export function GraphView(props: GraphViewProps) {
       <Show when={controls().length > 0}>
         <Column position="absolute" right="300" bottom="300" gap="100">
           <For each={controls()}>
-            {(control) => (
-              <we-button
-                variant="secondary"
-                size="sm"
-                square
-                title={control.title}
-                onClick={() => control.run(controlContext())}
-              >
-                <we-icon name={control.icon} size="sm" />
-              </we-button>
-            )}
+            {(control) => {
+              /*
+                Recomputed against the live scene rather than captured once.
+
+                A toggle has to redraw when what it reflects changes, and what it reflects is engine
+                state — the selection for `pin`, the lock for `lock`. Reading it through the same
+                signals everything else here depends on is what makes the button follow a selection
+                made by clicking a node, rather than only by pressing the button itself.
+              */
+              const state = createMemo(() => {
+                version();
+                statusVersion();
+                const ctx = controlContext();
+                return {
+                  active: control.active?.(ctx) ?? false,
+                  enabled: control.enabled?.(ctx) ?? true,
+                };
+              });
+              return (
+                <we-button
+                  variant={state().active ? 'primary' : 'secondary'}
+                  size="sm"
+                  square
+                  disabled={!state().enabled}
+                  title={(state().active && control.activeTitle) || control.title}
+                  onClick={() => control.run(controlContext())}
+                >
+                  <we-icon name={(state().active && control.activeIcon) || control.icon} size="sm" />
+                </we-button>
+              );
+            }}
           </For>
         </Column>
       </Show>

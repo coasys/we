@@ -220,6 +220,20 @@ export const GRAPH_PLUGIN_CATALOG: PluginCatalog = {
         'Frames everything currently on the graph. Deliberately not a re-layout — it moves the camera, never the nodes.',
     },
     {
+      id: 'pin',
+      category: 'control',
+      description:
+        'Holds the selected nodes where they are, so the layout stops moving them; press again to release. The usual way to shape a force graph — put the thing you care about where you want it, hold it there, and let the rest settle around it. Held nodes are ringed so the state is visible. Not shown by default: on a board every node is placed already and it means nothing.',
+      example: `"controls": ["zoom-in", "zoom-out", "fit", "pin"]`,
+    },
+    {
+      id: 'lock',
+      category: 'control',
+      description:
+        'Blocks moving nodes, so a graph cannot be rearranged by accident while it is being read or shown to someone. Affects dragging only — panning, zooming and a settling force layout all carry on. Not shown by default, and only meaningful where the template allows dragging at all.',
+      example: `"controls": ["zoom-in", "zoom-out", "fit", "lock"]`,
+    },
+    {
       id: 'relayout',
       category: 'control',
       description:

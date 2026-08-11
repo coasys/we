@@ -84,6 +84,9 @@ export function dragNodeBehaviour(rawOptions?: Record<string, unknown>): Behavio
     id: 'drag-node',
     description: 'Drag a node to move it, from wherever you took hold of it.',
     onPointerDown(input, ctx) {
+      // Refused at the start of the gesture rather than by discarding its result: a drag that follows
+      // the pointer and then snaps back has told you it worked and then taken it away.
+      if (ctx.locked()) return;
       const world = ctx.toWorld(input.at);
       const [hit] = ctx.hitTest(world);
       if (!hit) return;

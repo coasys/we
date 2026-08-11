@@ -1017,6 +1017,10 @@ Names resolvable inside GraphView props: seed sources (seeds.source), expanders 
   - Example: `"controls": ["zoom-in", "zoom-out", "fit"]`
 - `zoom-out` — Zooms out from the centre. Shown by default.
 - `fit` — Frames everything currently on the graph. Deliberately not a re-layout — it moves the camera, never the nodes.
+- `pin` — Holds the selected nodes where they are, so the layout stops moving them; press again to release. The usual way to shape a force graph — put the thing you care about where you want it, hold it there, and let the rest settle around it. Held nodes are ringed so the state is visible. Not shown by default: on a board every node is placed already and it means nothing.
+  - Example: `"controls": ["zoom-in", "zoom-out", "fit", "pin"]`
+- `lock` — Blocks moving nodes, so a graph cannot be rearranged by accident while it is being read or shown to someone. Affects dragging only — panning, zooming and a settling force layout all carry on. Not shown by default, and only meaningful where the template allows dragging at all.
+  - Example: `"controls": ["zoom-in", "zoom-out", "fit", "lock"]`
 - `relayout` — Re-runs the layout. Not shown by default: a rescue for a tangled force graph, and destructive on a board, where it would discard every position somebody chose.
   - Example: `"controls": ["zoom-in", "zoom-out", "fit", "relayout"]`
 

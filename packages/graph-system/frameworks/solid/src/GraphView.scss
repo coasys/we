@@ -234,6 +234,23 @@
   box-shadow: 0 0 0 3px var(--we-color-primary-500);
 }
 
+/*
+  A held node says so.
+
+  Pinning is state the layout obeys and nothing else shows, so without a mark a graph that refuses to
+  rearrange one node looks broken rather than instructed — and the usual cause is a drag somebody has
+  forgotten making. Drawn as a ring rather than a badge so it costs no layout and survives a card, a
+  dot and whatever shape comes next.
+
+  `outline` rather than `box-shadow`: the selected and hovered rings already use the shadow, and a
+  node can easily be both held and selected.
+*/
+.we-graph__node--pinned .we-graph__dot,
+.we-graph__node--pinned .we-graph__card {
+  outline: 2px dashed var(--we-color-neutral-500);
+  outline-offset: 3px;
+}
+
 .we-graph__node--unresolved .we-graph__dot {
   // A placeholder has to look like one — the difference between "not here yet" and "empty".
   border-style: dashed;

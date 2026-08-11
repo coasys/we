@@ -29,6 +29,8 @@ function fakeContext(overrides: Partial<BehaviourContext> = {}) {
       if (at) positions.set(id, at);
     },
     positionOf: (id) => positions.get(id) ?? null,
+    locked: () => false,
+    hitTestEdge: () => null,
     pan: () => undefined,
     zoomAt: () => undefined,
     toWorld: (at) => at,
@@ -210,5 +212,38 @@ describe('gesture cleanup', () => {
     drag.onPointerMove?.(at(300, 300), ctx);
 
     expect(pinned).toEqual([]);
+  });
+});
+
+describe('a locked graph', () => {
+  /*
+    Refused where the gesture starts, not where it ends.
+
+    A drag that follows the pointer and then snaps back has told you it worked and then taken it away;
+    worse, it leaves the question of whether the position was saved before the snap. Declining the
+    pointer-down means the graph simply does not respond, which is what a lock looks like.
+  */
+  it('does not begin a drag at all', () => {
+    const { ctx, pinned } = fakeContext({ locked: () => true });
+    const drag = dragNodeBehaviour();
+
+    const claimed = drag.onPointerDown?.({ at: { x: 100, y: 100 }, buttons: 1 }, ctx);
+    drag.onPointerMove?.({ at: { x: 160, y: 160 }, buttons: 1 }, ctx);
+
+    expect(claimed).toBeFalsy();
+    expect(pinned).toHaveLength(0);
+  });
+
+  it('can still be looked around', () => {
+    // Locking is about not rearranging a graph, not about not being able to read it, so panning is
+    // untouched. Pressed on the background, since pan deliberately declines a press on a node.
+    const pan = vi.fn();
+    const { ctx } = fakeContext({ locked: () => true, pan });
+    const behaviours = [dragNodeBehaviour(), panZoomBehaviour()];
+
+    dispatchPointer(behaviours, 'onPointerDown', { at: { x: 500, y: 500 }, buttons: 1 }, ctx);
+    dispatchPointer(behaviours, 'onPointerMove', { at: { x: 520, y: 500 }, buttons: 1 }, ctx);
+
+    expect(pan).toHaveBeenCalledWith(20, 0);
   });
 });

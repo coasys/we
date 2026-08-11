@@ -62,6 +62,9 @@ export const SCENARIOS: Scenario[] = [
       // review↔revise are mutual: they must bow apart, not draw as one line.
       edgeStyle: [{ style: { showLabel: true, arrow: 'target' } }],
       behaviours: ['pan-zoom', 'select', { type: 'drag-node', options: { pin: true } }],
+      // A hand-arranged diagram is exactly what `lock` is for: once it reads the way you meant, the
+      // only thing left to do to it is nudge it by mistake.
+      controls: ['zoom-in', 'zoom-out', 'fit', 'lock'],
     },
   },
 
@@ -73,6 +76,9 @@ export const SCENARIOS: Scenario[] = [
       seeds: { source: 'schema' },
       expansion: { defaultDepth: 0, limit: 20 },
       layout: { type: 'force', options: { distance: 170, charge: -320 } },
+      // `pin` belongs on a derived layout: select the node the map is really about, hold it, and let
+      // the simulation arrange everything else around it.
+      controls: ['zoom-in', 'zoom-out', 'fit', 'pin'],
       nodeStyle: [
         { style: { shape: 'rect', size: 20, color: 'primary-500' } },
         { when: { 'data.relations': 0 }, style: { color: 'neutral-400', size: 14 } },
@@ -248,6 +254,9 @@ export const SCENARIOS: Scenario[] = [
       // `pin: true` is what separates a board from an explorer: a dropped node stays dropped rather
       // than being reclaimed by the layout on the next change.
       behaviours: ['pan-zoom', 'select', { type: 'drag-node', options: { pin: true } }],
+      // And `lock` rather than `pin`: every card is placed already, so there is nothing to hold, and
+      // the risk worth guarding against is rearranging somebody else's board by accident.
+      controls: ['zoom-in', 'zoom-out', 'fit', 'lock'],
     },
   },
 ];
