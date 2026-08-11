@@ -73,6 +73,9 @@ importers:
       '@we/primitives':
         specifier: workspace:*
         version: link:../../../../packages/design-system/3-primitives
+      '@we/schema-shared':
+        specifier: workspace:*
+        version: link:../../../../packages/schema-system/shared
       '@we/themes':
         specifier: workspace:*
         version: link:../../../../packages/design-system/2-themes
@@ -693,6 +696,12 @@ importers:
       rimraf:
         specifier: ^6.0.1
         version: 6.1.3
+      tsup:
+        specifier: ^8.5.1
+        version: 8.5.1(postcss@8.5.16)(tsx@4.23.0)(typescript@5.9.3)(yaml@2.9.0)
+      typescript:
+        specifier: ^5.3.3
+        version: 5.9.3
 
   packages/design-system/3-primitives:
     dependencies:

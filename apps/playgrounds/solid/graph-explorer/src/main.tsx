@@ -16,6 +16,8 @@ import './styles.css';
 
 import { Column, Row } from '@we/components/solid';
 import { GraphView } from '@we/graph-solid';
+import { applyThemeVars } from '@we/schema-shared';
+import { THEME_PRESETS, type ThemeName } from '@we/themes/presets';
 import { createEffect, createMemo, createSignal, For, Show } from 'solid-js';
 import { render } from 'solid-js/web';
 
@@ -27,14 +29,28 @@ function App() {
   const [layoutOverride, setLayoutOverride] = createSignal<string | null>(null);
   const [selected, setSelected] = createSignal<{ type: string; label?: string; kind: string } | null>(null);
   const [log, setLog] = createSignal<QueryLog['entries']>([]);
-  const [theme, setTheme] = createSignal<'light' | 'dark'>('light');
+  const [theme, setTheme] = createSignal<ThemeName>('light');
 
   /**
-   * Themes are CSS-variable overlays selected by an attribute on the root, so switching one is a
-   * single `setAttribute` — and worth having here precisely because the graph paints tokens rather
-   * than colours. Anything hardcoded shows up the moment this flips.
+   * Applying a theme is two things, and the first attempt here did only the second.
+   *
+   * A theme is a *parameter set* — hue, saturation, and a multiplier that inverts the lightness ramp
+   * — written onto the root as custom properties. That is what actually recolours anything. The
+   * `data-we-theme` attribute drives the handful of rules that cannot be parametric (a modal shadow,
+   * a tooltip inversion), so setting it alone changes almost nothing, which is exactly what the first
+   * version of this toggle did.
+   *
+   * Both halves come from shared code rather than from numbers copied into the harness: the presets
+   * are the design system's, and `applyThemeVars` is the same function the app uses.
+   *
+   * Worth having beyond convenience — the graph paints tokens rather than colours, and flipping the
+   * theme is the fastest way to catch anything that does not.
    */
-  createEffect(() => document.documentElement.setAttribute('data-we-theme', theme()));
+  createEffect(() => {
+    const name = theme();
+    document.documentElement.setAttribute('data-we-theme', name);
+    applyThemeVars(document.documentElement, THEME_PRESETS[name].parameters);
+  });
 
   // A live log of what the graph actually asked the data layer for. Worth having in front of you:
   // "one expansion, four queries" is the kind of thing that is obvious here and invisible in an app.
@@ -85,10 +101,10 @@ function App() {
               variant="ghost"
               size="sm"
               square
-              title={theme() === 'dark' ? 'Switch to light' : 'Switch to dark'}
+              title={`Theme: ${THEME_PRESETS[theme()].name}`}
               onClick={() => setTheme((current) => (current === 'dark' ? 'light' : 'dark'))}
             >
-              <we-icon name={theme() === 'dark' ? 'sun' : 'moon'} size="sm" />
+              <we-icon name={THEME_PRESETS[theme() === 'dark' ? 'light' : 'dark'].icon} size="sm" />
             </we-button>
           </Row>
           <we-text variant="footnote" color="neutral-500">

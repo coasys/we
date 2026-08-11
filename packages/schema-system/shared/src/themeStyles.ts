@@ -192,3 +192,33 @@ export function themeToStyle(theme: ThemeOverrides): Record<string, string> {
 
   return style;
 }
+
+/**
+ * Write a theme's variables onto an element, removing exactly the ones the previous theme set.
+ *
+ * The removal bookkeeping is the whole reason this is a function rather than a loop at each call
+ * site. Clearing with `style.cssText = ''` is the obvious shortcut and is wrong: the root is shared,
+ * and a host publishes layout variables there too. Doing that deleted `--we-dock-right` and
+ * `--we-chrome-transition` along with the old theme, so every piece of chrome positioned against a
+ * docked panel snapped to the window edge and stayed there until something happened to recompute it.
+ * Dragging the panel healed it, which was the tell — a repaint fixing a value nobody had recalculated.
+ *
+ * State is per element, so two roots (a page and a space-scoped subtree) do not clear each other's
+ * variables.
+ */
+const appliedThemeVars = new WeakMap<HTMLElement, Set<string>>();
+
+export function applyThemeVars(root: HTMLElement, theme: ThemeOverrides): void {
+  const styles = themeToStyle(theme);
+  const previous = appliedThemeVars.get(root);
+
+  if (previous) {
+    for (const prop of previous) {
+      if (!(prop in styles)) root.style.removeProperty(prop);
+    }
+  }
+  appliedThemeVars.set(root, new Set(Object.keys(styles)));
+
+  // Inline, so a theme beats any stylesheet — including a component's own defaults.
+  for (const [prop, value] of Object.entries(styles)) root.style.setProperty(prop, value);
+}
