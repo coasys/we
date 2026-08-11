@@ -111,6 +111,7 @@ describe('assembleReference', () => {
         routing: 'routing content',
         stores: 'stores content',
         storePatterns: 'store patterns content',
+        patterns: 'patterns content',
         rules: 'rules content',
       },
     };
@@ -145,6 +146,7 @@ describe('assembleReference', () => {
         routing: '',
         stores: '',
         storePatterns: '',
+        patterns: '',
         rules: '',
       },
     };

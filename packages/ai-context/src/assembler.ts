@@ -47,6 +47,11 @@ export function assembleReference(ctx: AssembledContext): string {
   // Store patterns
   sections.push(context.fragments.storePatterns.trim());
 
+  // Ready-made shapes. After the stores and their patterns — a recipe names both, so it only reads
+  // once the vocabulary underneath it has been introduced — and before the rules, which are the
+  // short prohibitions a reader should meet last.
+  sections.push(context.fragments.patterns.trim());
+
   // Routing
   sections.push(context.fragments.routing.trim());
 
