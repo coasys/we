@@ -212,4 +212,33 @@ describe('groupByEndpoints', () => {
     // The last corner shares the arrival row, so the final segment really is horizontal.
     expect(route.elbows![1].y).toBe(40);
   });
+
+  /*
+    Separation has to hold where the edges are easiest to look at: at the nodes.
+
+    A step used to separate only by crossing at different places, which left the segments running into
+    each node sitting on the same centre line — the two edges were one line exactly at both ends. It
+    also made the gap look smaller than `straight`, which moves its whole line for the same offset.
+  */
+  it.each(['straight', 'smooth', 'step'] as const)('separates a mutual %s pair at the nodes too', (curve) => {
+    const a = { x: 0, y: 0 };
+    const b = { x: 100, y: 0 };
+    const [first, second] = bowOffsets(2);
+    const there = routeEdge('there', a, b, curve, first);
+    const back = routeEdge('back', b, a, curve, second);
+
+    // Where each one meets the shared node, not merely where it passes the middle.
+    expect(there.to.y).not.toBe(back.from.y);
+    expect(Math.sign(there.to.y)).toBe(-Math.sign(back.from.y));
+  });
+
+  it('keeps a lane on the face of the node it lands on', () => {
+    // A small node with a wide offset would otherwise attach beside itself rather than to itself.
+    const tight = routeEdge('e', { x: 0, y: 0 }, { x: 100, y: 0 }, 'step', 60, 10);
+    expect(Math.abs(tight.to.y)).toBeLessThanOrEqual(5);
+
+    // Given room, the full half-offset applies.
+    const roomy = routeEdge('e', { x: 0, y: 0 }, { x: 100, y: 0 }, 'step', 60, 100);
+    expect(Math.abs(roomy.to.y)).toBe(30);
+  });
 });

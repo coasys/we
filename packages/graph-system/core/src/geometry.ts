@@ -90,6 +90,31 @@ export function groupByEndpoints<T extends { source: string; target: string }>(e
 }
 
 /**
+ * How far to slide an axis-aligned route sideways, and where that puts an endpoint.
+ *
+ * A step separates its two legs by crossing at different places, which does nothing for the segments
+ * running into the nodes: those sit at the centre line at both ends, so the two edges are the same
+ * line exactly where they are easiest to look at. Straight edges do not have the problem because the
+ * whole line moves, which is also why their gap looks bigger for the same offset.
+ *
+ * So the attachment moves along the node's face instead — a lane, in the flow-chart sense. Because
+ * the shift is along a fixed axis rather than a perpendicular derived from the edge's direction, it
+ * is immune to the reversal that made fanning fail before, without needing any canonicalising.
+ *
+ * Clamped to the node it lands on, so a lane never slides off the face of a small node. With no
+ * clearance given there is no node to fall off, and the full half-offset applies.
+ */
+function laneWidth(offset: number, clearance: number): number {
+  const half = offset / 2;
+  if (clearance <= 0) return half;
+  return Math.sign(half) * Math.min(Math.abs(half), clearance * 0.5);
+}
+
+function shiftLane(point: Point, lane: number, horizontal: boolean): Point {
+  return horizontal ? { x: point.x, y: point.y + lane } : { x: point.x + lane, y: point.y };
+}
+
+/**
  * Route one edge.
  *
  * `offset` bows the curve to one side. Two nodes related in both directions produce two edges with
@@ -158,24 +183,26 @@ export function routeEdge(
   const end = attachPoint(from, to, curve, clearance, horizontal);
 
   if (curve === 'step') {
-    // Parallel steps cross at different places rather than tracing each other exactly. Half the
-    // offset, so the separation matches what a bow of the same offset achieves — a quadratic's
-    // midpoint deviates half its control distance, not all of it.
-    const crossing = horizontal ? (from.x + end.x) / 2 + offset / 2 : (from.y + end.y) / 2 + offset / 2;
+    // Two separations, at right angles to each other so they compose rather than compete: the lane
+    // holds the approach segments apart, and the crossing holds the segment between them apart.
+    const lane = laneWidth(offset, clearance);
+    const start = shiftLane(from, lane, horizontal);
+    const finish = shiftLane(end, lane, horizontal);
+    const crossing = horizontal ? (start.x + finish.x) / 2 + offset / 2 : (start.y + finish.y) / 2 + offset / 2;
     const elbows: Point[] = horizontal
       ? [
-          { x: crossing, y: from.y },
-          { x: crossing, y: end.y },
+          { x: crossing, y: start.y },
+          { x: crossing, y: finish.y },
         ]
       : [
-          { x: from.x, y: crossing },
-          { x: end.x, y: crossing },
+          { x: start.x, y: crossing },
+          { x: finish.x, y: crossing },
         ];
     // The middle of the crossing segment, which is the one long enough to carry a label.
     return {
       id,
-      from,
-      to: end,
+      from: start,
+      to: finish,
       elbows,
       curve,
       mid: { x: (elbows[0].x + elbows[1].x) / 2, y: (elbows[0].y + elbows[1].y) / 2 },
@@ -188,26 +215,31 @@ export function routeEdge(
     // Signed, so an edge running right-to-left departs leftwards. Taking the magnitude put both
     // control points behind the source and looped the curve back on itself, which only ever showed on
     // edges pointing the other way.
-    const reach = (horizontal ? end.x - from.x : end.y - from.y) / 2;
-    const perpendicular = horizontal ? { x: 0, y: offset } : { x: offset, y: 0 };
-    const control = horizontal
-      ? { x: from.x + reach, y: from.y + perpendicular.y }
-      : { x: from.x + perpendicular.x, y: from.y + reach };
-    const control2 = horizontal
-      ? { x: end.x - reach, y: end.y + perpendicular.y }
-      : { x: end.x + perpendicular.x, y: end.y - reach };
+    /*
+      Separated by lane, not by bowing the controls apart.
+
+      Displacing only the control points left both ends meeting at the same place, so a mutual pair
+      bulged apart in the middle and converged where it mattered. Moving the whole curve gives two
+      parallel S-curves — the same thing `straight` does, and legible for the same reason.
+    */
+    const lane = laneWidth(offset, clearance);
+    const start = shiftLane(from, lane, horizontal);
+    const finish = shiftLane(end, lane, horizontal);
+    const reach = (horizontal ? finish.x - start.x : finish.y - start.y) / 2;
+    const control = horizontal ? { x: start.x + reach, y: start.y } : { x: start.x, y: start.y + reach };
+    const control2 = horizontal ? { x: finish.x - reach, y: finish.y } : { x: finish.x, y: finish.y - reach };
     return {
       id,
-      from,
-      to: end,
+      from: start,
+      to: finish,
       control,
       control2,
       curve,
       // A cubic's midpoint is the average of its endpoints and three times each control, not the
       // average of its endpoints — the same trap the quadratic case documents below.
       mid: {
-        x: (from.x + 3 * control.x + 3 * control2.x + end.x) / 8,
-        y: (from.y + 3 * control.y + 3 * control2.y + end.y) / 8,
+        x: (start.x + 3 * control.x + 3 * control2.x + finish.x) / 8,
+        y: (start.y + 3 * control.y + 3 * control2.y + finish.y) / 8,
       },
     };
   }
