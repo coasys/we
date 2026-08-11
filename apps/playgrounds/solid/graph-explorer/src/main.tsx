@@ -63,6 +63,16 @@ function App() {
   const [scenarioId, setScenarioId] = createSignal(SCENARIOS[0].id);
   const [layoutOverride, setLayoutOverride] = createSignal<string | null>(null);
   const [curveOverride, setCurveOverride] = createSignal<(typeof CURVES)[number] | null>(null);
+  /*
+    Live force tuning, and deliberately here rather than in the graph's own chrome.
+
+    `distance`, `charge` and `collide` are already authorable — they are the force layout's options —
+    so what is missing is not a way to express them but a way to *find* the numbers worth writing
+    down. That is a playground's job. Putting sliders in the engine's chrome would make every graph
+    ship a tuning panel for a decision its author already made, and hand a reader controls over
+    something they have no reason to have an opinion about.
+  */
+  const [force, setForce] = createSignal({ distance: 90, charge: -220, collide: 28 });
   const [selected, setSelected] = createSignal<GraphNode | null>(null);
   /** Bumped after a fixture edit, to force the graph to re-seed and pick the new value up. */
   const [dataVersion, setDataVersion] = createSignal(0);
@@ -113,6 +123,11 @@ function App() {
     const curve = curveOverride();
     let spec = current.spec;
     if (layout) spec = { ...spec, layout: { type: layout } };
+    // Tuning applies wherever the graph is actually running a force layout, whether that came from
+    // the scenario or from the picker above.
+    if ((spec.layout as { type?: string } | undefined)?.type === 'force') {
+      spec = { ...spec, layout: { type: 'force', options: force() } };
+    }
     if (curve) {
       // Appended rather than replacing, so a scenario's own edge rules still decide colour, width and
       // labels — the picker is overriding one property, not the styling.
@@ -209,6 +224,47 @@ function App() {
             </For>
           </Row>
         </Column>
+
+        <Show when={(specFor(scenario()).layout as { type?: string } | undefined)?.type === 'force'}>
+          <Column gap="200">
+            <we-text variant="label" color="neutral-500" uppercase>
+              Force
+            </we-text>
+            <For
+              each={
+                [
+                  { key: 'distance', label: 'link distance', min: 30, max: 300, step: 10 },
+                  { key: 'charge', label: 'repulsion', min: -800, max: -20, step: 20 },
+                  { key: 'collide', label: 'spacing', min: 0, max: 80, step: 2 },
+                ] as const
+              }
+            >
+              {(control) => (
+                <Column gap="100">
+                  <Row ax="between" ay="center">
+                    <we-text variant="footnote" color="neutral-500">
+                      {control.label}
+                    </we-text>
+                    <we-text variant="footnote" color="neutral-700">
+                      {force()[control.key]}
+                    </we-text>
+                  </Row>
+                  <we-slider
+                    value={force()[control.key]}
+                    min={control.min}
+                    max={control.max}
+                    step={control.step}
+                    // `input` rather than `change`: the point of a slider here is watching the graph
+                    // answer while you drag it, not after you let go.
+                    on:input={(event: CustomEvent<number>) =>
+                      setForce((current) => ({ ...current, [control.key]: event.detail }))
+                    }
+                  />
+                </Column>
+              )}
+            </For>
+          </Column>
+        </Show>
 
         <Column gap="200">
           <we-text variant="label" color="neutral-500" uppercase>

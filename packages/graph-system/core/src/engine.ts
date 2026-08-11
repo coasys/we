@@ -99,6 +99,15 @@ export class GraphEngine {
   /** Whether the user may move nodes. See `isLocked`. */
   private locked = false;
   /**
+   * Nodes the user has asked to hold, owned here rather than read back off the layout.
+   *
+   * A layout is told about a pin and reports positions, and the two are not the same thing: every
+   * `tick` replaces the position map wholesale, so a layout that does not think to re-report `fixed`
+   * silently drops it. The force layout survives by re-deriving it, which is luck rather than
+   * contract — and a request the *user* made should not be something a plugin can forget.
+   */
+  private pinnedIds = new Set<string>();
+  /**
    * Keep framing until a running layout stops moving.
    *
    * A fit applied once at `init` frames the positions a force simulation *starts* from, and it then
@@ -232,6 +241,8 @@ export class GraphEngine {
     this.store.clear();
     this.expansion.reset();
     this.positions = new Map();
+    // A different graph cannot inherit holds on nodes it does not contain.
+    this.pinnedIds.clear();
     this.selected.clear();
     this.status = { loading: false, budgetReached: false, warnings: [] };
 
@@ -512,6 +523,11 @@ export class GraphEngine {
   }
 
   private applyPositions(positions: Map<string, Placement>, fit?: boolean): void {
+    // Re-asserted over whatever the layout returned — see `pinnedIds`.
+    for (const id of this.pinnedIds) {
+      const at = positions.get(id);
+      if (at && !at.fixed) positions.set(id, { ...at, fixed: true });
+    }
     this.positions = positions;
     this.reindex();
     this.routeEdges();
@@ -735,7 +751,7 @@ export class GraphEngine {
   }
 
   isPinned(id: string): boolean {
-    return this.positions.get(id)?.fixed === true;
+    return this.pinnedIds.has(id) || this.positions.get(id)?.fixed === true;
   }
 
   /**
@@ -750,27 +766,54 @@ export class GraphEngine {
       const at = this.positions.get(id);
       if (!at) continue;
       if (pinned) {
-        if (at.fixed) continue;
+        if (this.isPinned(id)) continue;
+        this.pinnedIds.add(id);
         this.positions.set(id, { x: at.x, y: at.y, fixed: true });
         this.layout?.fix?.(id, { x: at.x, y: at.y });
       } else {
-        if (!at.fixed) continue;
+        if (!this.isPinned(id)) continue;
+        this.pinnedIds.delete(id);
         this.positions.set(id, { x: at.x, y: at.y });
         this.layout?.fix?.(id, null);
       }
       changed = true;
     }
-    if (changed) this.positionsChanged();
+    if (!changed) return;
+    this.positionsChanged();
+    // Releasing especially: a node handed back to the layout should be drawn into place, not left
+    // sitting where it was let go.
+    this.resumeLayout();
   }
 
   pin(id: string, at: Point | null): void {
-    if (at) this.positions.set(id, { ...at, fixed: true });
-    else {
+    if (at) {
+      this.pinnedIds.add(id);
+      this.positions.set(id, { ...at, fixed: true });
+    } else {
+      this.pinnedIds.delete(id);
       const existing = this.positions.get(id);
       if (existing) this.positions.set(id, { x: existing.x, y: existing.y });
     }
     this.layout?.fix?.(id, at);
     this.positionsChanged();
+    this.resumeLayout();
+  }
+
+  /**
+   * Ask a settled layout for more frames, after something gave it a reason to move.
+   *
+   * A force simulation re-energises itself when a node is held or released — that is what makes the
+   * rest of the graph flow around the one you are dragging. But the engine stops polling once a layout
+   * reports itself settled, so the reheat went nowhere: the dragged node moved and nothing else
+   * responded, which makes a force layout look like a deterministic one and makes pinning look like it
+   * does nothing at all.
+   *
+   * Costs nothing for a layout that computes in one pass — `tick` is absent, the first poll returns
+   * undefined, and polling stops again.
+   */
+  private resumeLayout(): void {
+    if (!this.layout?.tick) return;
+    this.scheduleTick();
   }
 
   /**

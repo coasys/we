@@ -612,3 +612,66 @@ describe('whether being pinned is worth showing', () => {
     expect(engine.pinningIsMeaningful()).toBe(false);
   });
 });
+
+describe('a settled layout that is given a reason to move', () => {
+  /*
+    A force simulation re-energises itself when a node is held or released — that is what makes the
+    rest of a graph flow around the one being dragged. The engine stops polling once a layout reports
+    itself settled, so without resuming it the reheat went nowhere: the dragged node moved and nothing
+    else responded, which makes a force layout look deterministic and makes pinning look inert.
+  */
+  function reheating() {
+    return {
+      reheat: () => {
+        // `energy` settles and can be topped up; `moved` only ever counts up, so "it started moving
+        // again" is distinguishable from "it moved the same amount a second time".
+        let energy = 3;
+        let moved = 0;
+        let nodes: { id: string }[] = [];
+        const place = () => new Map(nodes.map((node) => [node.id, { x: moved * 10, y: 0 }]));
+        return {
+          id: 'reheat',
+          init(input: { nodes: { id: string }[] }) {
+            nodes = input.nodes;
+            return { positions: place(), running: false };
+          },
+          tick() {
+            energy += 1;
+            moved += 1;
+            return { positions: place(), running: energy < 3 };
+          },
+          fix() {
+            energy = 0;
+          },
+        };
+      },
+    };
+  }
+
+  it('starts moving again when a node is pinned', async () => {
+    const plugins = new PluginRegistry({ seeds: [seedOf(2)], layouts: reheating() });
+    const engine = engineWith({ seeds: { source: 'test' }, layout: { type: 'reheat' } }, plugins);
+    await engine.start();
+    expect(engine.getPositions().get('seed-0')?.x).toBe(0);
+
+    engine.pin('seed-0', { x: 500, y: 500 });
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
+    // The layout kept being polled after the pin, rather than the reheat going nowhere.
+    expect(engine.getPositions().get('seed-1')?.x).toBeGreaterThan(0);
+  });
+
+  it('starts moving again when one is released', async () => {
+    const plugins = new PluginRegistry({ seeds: [seedOf(2)], layouts: reheating() });
+    const engine = engineWith({ seeds: { source: 'test' }, layout: { type: 'reheat' } }, plugins);
+    await engine.start();
+
+    engine.setPinned(['seed-0'], true);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    const held = engine.getPositions().get('seed-1')?.x ?? 0;
+
+    engine.setPinned(['seed-0'], false);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(engine.getPositions().get('seed-1')?.x).toBeGreaterThan(held);
+  });
+});
