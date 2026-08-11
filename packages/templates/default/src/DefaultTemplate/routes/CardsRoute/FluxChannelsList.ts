@@ -1,5 +1,5 @@
 import type { SchemaNode } from '@we/schema-shared';
-import { cardList, cardShell, emptyState } from '@we/template-kit';
+import { cardList, cardShell, emptyState, statChip } from '@we/template-kit';
 
 // Flux's Channel model only exists in perspectives where Flux SDNA is installed (e.g. a
 // Flux community synced into WE). Guard on presence in currentPerspectiveModels so a plain
@@ -78,24 +78,8 @@ export const fluxChannelsList: SchemaNode = {
               type: 'Row',
               props: { gap: '500', ay: 'center', wrap: true },
               children: [
-                {
-                  type: 'Row',
-                  props: { gap: '100', ay: 'center', flex: 'none' },
-                  children: [
-                    { type: 'we-icon', props: { name: 'chat-dots', size: 'sm', color: 'neutral-600' } },
-                    { type: 'we-number', props: { value: '$channel.$conversationCount' } },
-                    { type: 'we-text', props: { color: 'neutral-600' }, children: ['Conversations'] },
-                  ],
-                },
-                {
-                  type: 'Row',
-                  props: { gap: '100', ay: 'center', flex: 'none' },
-                  children: [
-                    { type: 'we-icon', props: { name: 'envelope-simple', size: 'sm', color: 'neutral-600' } },
-                    { type: 'we-number', props: { value: '$channel.$messageCount' } },
-                    { type: 'we-text', props: { color: 'neutral-600' }, children: ['Messages'] },
-                  ],
-                },
+                statChip({ icon: 'chat-dots', count: '$channel.$conversationCount', label: 'Conversations' }),
+                statChip({ icon: 'envelope-simple', count: '$channel.$messageCount', label: 'Messages' }),
               ],
             },
           ],

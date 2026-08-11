@@ -38,7 +38,7 @@ export interface EmptyStateOptions {
  *
  * Nothing here needs code — it is a centred Column, an icon and a line of text. Kept as data, an
  * author who wants a smaller icon edits one node; as a component they would need an `iconSize` prop
- * to have been predicted, implemented and released first. See the kit's README for the full rule.
+ * to have been predicted, implemented and released first. See CONVENTIONS.md for the full rule.
  *
  * ## Why a helper rather than a node per list
  *

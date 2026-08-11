@@ -10,7 +10,16 @@ import type { SchemaNode } from '@we/schema-shared';
  * WE-domain rather than layout: the spinner reads `runtimeStore.loading`, so a deployment without
  * that store gets a control that never resolves.
  */
-export function adminSection(title: string, icon: string, refresh: string, children: SchemaNode[]): SchemaNode {
+export interface AdminSectionOptions {
+  title: string;
+  icon: string;
+  /** The store action a manual refresh calls — `'runtimeStore.loadTrustedAgents'`. */
+  refresh: string;
+  children: SchemaNode[];
+}
+
+export function adminSection(opts: AdminSectionOptions): SchemaNode {
+  const { title, icon, refresh, children } = opts;
   return {
     type: 'Column',
     props: { gap: '300' },

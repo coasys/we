@@ -1,18 +1,18 @@
-import type { SchemaNode } from '@we/schema-shared';
+import type { SchemaNode, SchemaProp } from '@we/schema-shared';
 
 export interface PeopleTooltipOptions {
   /** What to wrap — the avatars *and* whatever count or label sits beside them. */
   children: SchemaNode[];
   /** The people to list. Any array expression: a store accessor, or a field on the current item. */
-  items: unknown;
+  items: SchemaProp;
   /** Context key for each person inside the list. Must not collide with an outer `$each`. */
   as?: string;
   /** Expression for a row's picture, in terms of `as`. */
-  image: unknown;
+  image: SchemaProp;
   /** Expression for a row's identicon seed — a DID, so a face is stable per agent. */
-  hash: unknown;
+  hash: SchemaProp;
   /** Expression for a row's name. A row that resolves to nothing shows a face and no label. */
-  name: unknown;
+  name: SchemaProp;
   placement?: 'top' | 'bottom' | 'left' | 'right';
 }
 

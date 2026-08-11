@@ -30,6 +30,9 @@ export interface AgentBylineOptions {
  * The picture is addressed by `hash` as well as `image` so an agent with no avatar still gets a
  * stable identicon rather than an empty circle — the same face every time, which is most of what a
  * byline is for.
+ *
+ * `avatar`, `name` and `time` are named because both arrangements share them — the `as`
+ * interpolation should exist exactly once. See CONVENTIONS.md.
  */
 export function agentByline(opts: AgentBylineOptions): SchemaNode {
   const as = opts.as ?? 'author';
@@ -47,27 +50,31 @@ export function agentByline(opts: AgentBylineOptions): SchemaNode {
       ? [{ type: 'we-timestamp', props: { value: opts.timestamp, relative: true, color: 'neutral-500' } }]
       : [];
 
-  const inner: SchemaNode = opts.stacked
-    ? {
-        type: 'Row',
-        props: { gap: '300', ay: 'start' },
-        children: [
-          avatar,
-          {
-            type: 'Column',
-            props: { gap: '100' },
+  return {
+    type: '$agent',
+    props: { did: opts.did, as },
+    children: [
+      opts.stacked
+        ? {
+            type: 'Row',
+            props: { gap: '300', ay: 'start' },
             children: [
-              { type: 'Row', props: { ay: 'center', gap: '200' }, children: [name, ...time] },
-              ...(opts.children ?? []),
+              avatar,
+              {
+                type: 'Column',
+                props: { gap: '100' },
+                children: [
+                  { type: 'Row', props: { ay: 'center', gap: '200' }, children: [name, ...time] },
+                  ...(opts.children ?? []),
+                ],
+              },
             ],
+          }
+        : {
+            type: 'Row',
+            props: { ay: 'center', gap: '300' },
+            children: [avatar, name, ...time, ...(opts.children ?? [])],
           },
-        ],
-      }
-    : {
-        type: 'Row',
-        props: { ay: 'center', gap: '300' },
-        children: [avatar, name, ...time, ...(opts.children ?? [])],
-      };
-
-  return { type: '$agent', props: { did: opts.did, as }, children: [inner] };
+    ],
+  };
 }

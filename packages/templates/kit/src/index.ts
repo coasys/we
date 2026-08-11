@@ -26,7 +26,9 @@
  * So `AvatarStack` is a component (overlap maths) and the count beside it is a fragment;
  * `we-modal` is a primitive (focus trap, top layer) and the confirm dialog inside it is a fragment.
  *
- * See `docs/architecture/template-fragments.md` for where this is going.
+ * The package README states this rule in full; CONVENTIONS.md carries the authoring rules
+ * (extraction threshold, options-object API, the const rule); and
+ * `docs/architecture/template-fragments.md` is where all of it is going.
  */
 
 // States — what a surface shows when it has nothing to show.
@@ -36,7 +38,7 @@ export { gatePrompt } from './states/gatePrompt.ts';
 export type { GatePromptOptions } from './states/gatePrompt.ts';
 
 // Lists — a grid of cards, and the card in it.
-export { cardList, cardShell, gridWrapper } from './lists/cards.ts';
+export { cardList, cardShell } from './lists/cards.ts';
 export type { CardListOptions, CardShellOptions } from './lists/cards.ts';
 
 // Layout — the boxes a page is made of.
@@ -59,6 +61,7 @@ export type { ConfirmModalOptions } from './overlays/confirmModal.ts';
 
 // WE-domain — these name WE's stores or its agent machinery.
 export { adminSection } from './we/adminSection.ts';
+export type { AdminSectionOptions } from './we/adminSection.ts';
 export { agentByline } from './we/agentByline.ts';
 export type { AgentBylineOptions } from './we/agentByline.ts';
 export { marketplaceList } from './we/marketplaceList.ts';

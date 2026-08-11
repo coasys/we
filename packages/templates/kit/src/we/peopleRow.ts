@@ -9,9 +9,9 @@ export interface PeopleRowOptions {
    * The items are DIDs rather than profiles, so pictures and names are joined from
    * `profileStore.profiles`.
    *
-   * The join happens inside the `$map`'s `select` rather than as a filter over the cache, because
-   * the order has to follow *this* list — and because `$filter` has no set-membership operator to
-   * express "profiles whose did is in this list" with.
+   * The join happens per row rather than as a filter over the cache, because the order has to
+   * follow *this* list — and because `$filter` has no set-membership operator to express "profiles
+   * whose did is in this list" with.
    */
   dids?: boolean;
   /** Singular noun for the count beside the faces. Omit for faces alone. */
@@ -49,71 +49,21 @@ export interface PeopleRowOptions {
  */
 export function peopleRow(opts: PeopleRowOptions): SchemaNode {
   const as = opts.as ?? 'person';
-  const lookup = (field: string) => ({
-    $find: { items: { $store: 'profileStore.profiles' }, where: { did: '$item' }, select: field },
+  /**
+   * Join a DID to one field of its cached profile. Takes the context ref because the same join runs
+   * in two scopes: the stack's `$map` addresses a person as `$item`, the roster rows as `$<as>`.
+   */
+  const lookup = (ref: string, field: string) => ({
+    $find: { items: { $store: 'profileStore.profiles' }, where: { did: ref }, select: field },
   });
-
-  const avatars = {
-    $map: {
-      items: opts.items,
-      select: opts.dids
-        ? {
-            image: lookup('avatar'),
-            /*
-              Wrapped rather than written as a bare `'$item'`. `$map`'s `select` resolves a string
-              only when it starts with `'$item.'`; a bare one is a literal, so the hash would be the
-              five characters `$item` for everybody and every generated avatar in the row would come
-              out identical. A token object is always resolved.
-
-              Set unconditionally, never as a fallback for a missing `image`: it seeds an avatar
-              that is stable per agent, so somebody whose profile has not arrived is still visually
-              distinct from everybody else whose profile has not arrived. A real picture wins where
-              there is one.
-            */
-            hash: { $concat: ['$item'] },
-          }
-        : { image: '$item.avatar', hash: '$item.did' },
-    },
-  };
-
   const count = { $count: { items: opts.items } };
-
-  const stack: SchemaNode = {
-    type: 'AvatarStack',
-    props: {
-      avatars,
-      max: opts.max ?? 5,
-      size: opts.size ?? 'sm',
-      ring: '0 0 0 2px var(--we-ring-color)',
-    },
-  };
-
-  const tally: SchemaNode[] = opts.noun
-    ? [
-        {
-          type: 'Row',
-          props: { gap: '100', ay: 'center' },
-          children: [
-            { type: 'we-number', props: { value: count, shorten: true } },
-            {
-              type: 'we-text',
-              children: [{ $plural: { count, one: opts.noun, other: opts.nounPlural ?? `${opts.noun}s` } }],
-            },
-          ],
-        },
-      ]
-    : [];
 
   return peopleTooltip({
     items: opts.items,
     as,
-    image: opts.dids
-      ? { $find: { items: { $store: 'profileStore.profiles' }, where: { did: `$${as}` }, select: 'avatar' } }
-      : `$${as}.avatar`,
+    image: opts.dids ? lookup(`$${as}`, 'avatar') : `$${as}.avatar`,
     hash: opts.dids ? { $concat: [`$${as}`] } : `$${as}.did`,
-    name: opts.dids
-      ? { $find: { items: { $store: 'profileStore.profiles' }, where: { did: `$${as}` }, select: 'name' } }
-      : `$${as}.name`,
+    name: opts.dids ? lookup(`$${as}`, 'name') : `$${as}.name`,
     children: [
       {
         type: 'Row',
@@ -123,7 +73,53 @@ export function peopleRow(opts: PeopleRowOptions): SchemaNode {
           ...(opts.minHeight && { minHeight: opts.minHeight }),
           ...opts.rowProps,
         },
-        children: [stack, ...tally],
+        children: [
+          {
+            type: 'AvatarStack',
+            props: {
+              avatars: {
+                $map: {
+                  items: opts.items,
+                  select: opts.dids
+                    ? {
+                        image: lookup('$item', 'avatar'),
+                        /*
+                          Wrapped rather than written as a bare `'$item'`. `$map`'s `select`
+                          resolves a string only when it starts with `'$item.'`; a bare one is a
+                          literal, so the hash would be the five characters `$item` for everybody
+                          and every generated avatar in the row would come out identical.
+
+                          Set unconditionally, never as a fallback for a missing `image`: it seeds
+                          an avatar that is stable per agent, so somebody whose profile has not
+                          arrived is still visually distinct from everybody else whose profile has
+                          not arrived. A real picture wins where there is one.
+                        */
+                        hash: { $concat: ['$item'] },
+                      }
+                    : { image: '$item.avatar', hash: '$item.did' },
+                },
+              },
+              max: opts.max ?? 5,
+              size: opts.size ?? 'sm',
+              ring: '0 0 0 2px var(--we-ring-color)',
+            },
+          },
+          ...(opts.noun
+            ? [
+                {
+                  type: 'Row',
+                  props: { gap: '100', ay: 'center' },
+                  children: [
+                    { type: 'we-number', props: { value: count, shorten: true } },
+                    {
+                      type: 'we-text',
+                      children: [{ $plural: { count, one: opts.noun, other: opts.nounPlural ?? `${opts.noun}s` } }],
+                    },
+                  ],
+                } as SchemaNode,
+              ]
+            : []),
+        ],
       },
     ],
   });

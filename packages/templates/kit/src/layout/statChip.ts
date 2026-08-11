@@ -8,8 +8,13 @@ export interface StatChipOptions {
   count?: SchemaProp;
   /** A value to show after the label — for "Access: Shared". Mutually exclusive with `count`. */
   value?: Content;
-  /** The noun after a count, or the name before a value. */
-  label: Content;
+  /**
+   * The noun after a count, or the name before a value.
+   *
+   * A plain string, not `Content`: the value form interpolates it (`\`${label}:\``), and a token
+   * object through that template literal would render `[object Object]:`.
+   */
+  label: string;
   iconColor?: string;
 }
 
@@ -37,7 +42,7 @@ export function statChip(opts: StatChipOptions): SchemaNode {
             { type: 'we-text', props: { color: 'neutral-600' }, children: [opts.label] } as SchemaNode,
           ]
         : [
-            { type: 'we-text', props: { color: 'neutral-600' }, children: [`${String(opts.label)}:`] } as SchemaNode,
+            { type: 'we-text', props: { color: 'neutral-600' }, children: [`${opts.label}:`] } as SchemaNode,
             { type: 'we-text', props: { color: 'neutral-800' }, children: [opts.value] } as SchemaNode,
           ]),
     ],

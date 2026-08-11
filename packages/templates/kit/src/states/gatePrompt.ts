@@ -1,4 +1,4 @@
-import type { LocalStateField, SchemaNode, SchemaProp } from '@we/schema-shared';
+import type { LocalStateField, SchemaNode } from '@we/schema-shared';
 
 import type { Content } from '../types.ts';
 
@@ -47,11 +47,8 @@ export interface GatePromptOptions {
  * needs to be code.
  */
 export function gatePrompt(opts: GatePromptOptions): SchemaNode {
-  const iconProps: Record<string, SchemaProp> = { name: opts.icon, size: 'xl' };
-  if (opts.iconGradient) iconProps.gradient = opts.iconGradient;
-  if (opts.iconColor) iconProps.color = opts.iconColor;
-
-  const node: SchemaNode = {
+  return {
+    ...(opts.localState && { $localState: opts.localState }),
     type: 'Column',
     props: {
       flex: '1',
@@ -63,7 +60,15 @@ export function gatePrompt(opts: GatePromptOptions): SchemaNode {
       ...(opts.scroll && { overflow: 'auto' }),
     },
     children: [
-      { type: 'we-icon', props: iconProps },
+      {
+        type: 'we-icon',
+        props: {
+          name: opts.icon,
+          size: 'xl',
+          ...(opts.iconGradient && { gradient: opts.iconGradient }),
+          ...(opts.iconColor && { color: opts.iconColor }),
+        },
+      },
       { type: 'we-text', props: { variant: 'heading-md', textAlign: 'center' }, children: [opts.title] },
       ...(opts.body !== undefined
         ? [
@@ -81,6 +86,4 @@ export function gatePrompt(opts: GatePromptOptions): SchemaNode {
       ...(opts.children ?? []),
     ],
   };
-
-  return opts.localState ? { ...node, $localState: opts.localState } : node;
 }

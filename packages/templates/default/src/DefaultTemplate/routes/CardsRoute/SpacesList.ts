@@ -1,5 +1,5 @@
 import type { SchemaNode } from '@we/schema-shared';
-import { cardList, cardShell, confirmModal, emptyState } from '@we/template-kit';
+import { cardList, cardShell, confirmModal, emptyState, statChip } from '@we/template-kit';
 
 export const spacesList: SchemaNode = cardList({
   query: {
@@ -105,55 +105,25 @@ export const spacesList: SchemaNode = cardList({
           type: 'Row',
           props: { gap: '500', ay: 'center', wrap: true },
           children: [
-            {
-              type: 'Row',
-              props: { gap: '100', ay: 'center', flex: 'none' },
-              children: [
-                { type: 'we-icon', props: { name: 'lock-simple', size: 'sm', color: 'neutral-600' } },
-                { type: 'we-text', props: { color: 'neutral-600' }, children: ['Access:'] },
-                {
-                  type: 'we-text',
-                  props: { color: 'neutral-800' },
-                  children: [{ $if: { condition: '$space.url', then: 'Shared', else: 'Personal' } }],
-                },
-              ],
-            },
-            {
-              type: 'Row',
-              props: { gap: '100', ay: 'center', flex: 'none' },
-              children: [
-                { type: 'we-icon', props: { name: 'globe', size: 'sm', color: 'neutral-600' } },
-                { type: 'we-text', props: { color: 'neutral-600' }, children: ['Discovery:'] },
-                {
-                  type: 'we-text',
-                  props: { color: 'neutral-800' },
-                  children: [
-                    { $if: { condition: { $eq: ['$space.discovery', 'listed'] }, then: 'Listed', else: 'Hidden' } },
-                  ],
-                },
-              ],
-            },
+            statChip({
+              icon: 'lock-simple',
+              label: 'Access',
+              value: { $if: { condition: '$space.url', then: 'Shared', else: 'Personal' } },
+            }),
+            statChip({
+              icon: 'globe',
+              label: 'Discovery',
+              value: { $if: { condition: { $eq: ['$space.discovery', 'listed'] }, then: 'Listed', else: 'Hidden' } },
+            }),
             {
               type: '$if',
               props: {
                 condition: '$space.location',
-                then: {
-                  type: 'Row',
-                  props: { gap: '100', ay: 'center', flex: 'none' },
-                  children: [
-                    { type: 'we-icon', props: { name: 'map-pin', size: 'sm', color: 'neutral-600' } },
-                    {
-                      type: 'we-text',
-                      props: { color: 'neutral-600' },
-                      children: ['Location:'],
-                    },
-                    {
-                      type: 'we-text',
-                      props: { color: 'neutral-800' },
-                      children: [{ $concat: ['$space.location.city', ', ', '$space.location.country'] }],
-                    },
-                  ],
-                },
+                then: statChip({
+                  icon: 'map-pin',
+                  label: 'Location',
+                  value: { $concat: ['$space.location.city', ', ', '$space.location.country'] },
+                }),
               },
             },
             {

@@ -14,7 +14,7 @@
  * only job is to be passed on. The cost is this paragraph, and a check at insert time when these
  * become insertable.
  */
-import type { QueryStateField, SchemaNode, SchemaProp } from '@we/schema-shared';
+import type { LocalStateField, QueryStateField, SchemaNode, SchemaProp } from '@we/schema-shared';
 
 export interface CardShellOptions {
   /** Nodes always visible regardless of display mode (compact header row) */
@@ -37,7 +37,7 @@ export interface CardShellOptions {
    * console and no-ops: the button renders, is clickable, and does nothing. Both of PostsList's
    * controls were in exactly that state.
    */
-  localState?: Record<string, { type: string; initial?: unknown }>;
+  localState?: Record<string, LocalStateField>;
 }
 
 const defaultMaxHeight = {
@@ -135,8 +135,12 @@ export function cardShell(opts: CardShellOptions): SchemaNode {
   };
 }
 
-/** Grid wrapper that switches between 1-column and 3-column based on displayMode */
-export const gridWrapper = (children: SchemaNode[]): SchemaNode => ({
+/**
+ * Grid wrapper switching 1 ↔ 3 columns on displayMode. Internal: after the cardList conversion no
+ * template calls it directly, and an export nobody calls is vocabulary noise once fragments are
+ * things the marketplace lists.
+ */
+const gridWrapper = (children: SchemaNode[]): SchemaNode => ({
   type: 'Grid',
   props: {
     gap: '400',

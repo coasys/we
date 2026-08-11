@@ -4,7 +4,6 @@ import { attributeRow, pageShell, sectionCard } from '@we/template-kit';
 export const aboutRoute: RouteSchema = {
   path: '/about',
   ...pageShell({
-    pt: '500',
     children: [
       sectionCard({
         title: 'About this space',

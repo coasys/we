@@ -6,11 +6,11 @@ export interface PageShellOptions {
   gap?: string;
   /** Horizontal padding inside the measure. */
   px?: string;
+  /** Vertical padding inside the measure. */
   py?: string;
-  pt?: string;
   /** The measure itself. Defaults to the `lg` layout token, which is what every route uses. */
   maxWidth?: string;
-  /** Keep the page at least a screen tall, less the header. */
+  /** Keep a short page at least a screen tall — the cards route uses this to hold its grid open. */
   minHeight?: string;
 }
 
@@ -35,10 +35,8 @@ export function pageShell(opts: PageShellOptions): SchemaNode {
           width: '100%',
           maxWidth: opts.maxWidth ?? 'var(--we-layout-lg)',
           gap: opts.gap ?? '500',
-          ...(opts.px !== undefined ? { px: opts.px } : { px: '400' }),
-          ...(opts.py !== undefined && { py: opts.py }),
-          ...(opts.pt !== undefined && { pt: opts.pt }),
-          ...(opts.py === undefined && opts.pt === undefined && { py: '500' }),
+          px: opts.px ?? '400',
+          py: opts.py ?? '500',
           ...(opts.minHeight !== undefined && { minHeight: opts.minHeight }),
         },
         children: opts.children,
