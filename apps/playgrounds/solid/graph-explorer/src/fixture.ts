@@ -81,12 +81,35 @@ export const SHAPES: EntityShape[] = [
     ],
   },
   {
+    name: 'SemanticRelationship',
+    description: 'An edge with data — which topic a belief is about, and how strongly.',
+    properties: [{ name: 'relevance', type: 'number', required: true }],
+    relations: [
+      { name: 'expression', target: 'Belief', cardinality: 'one' },
+      { name: 'tag', target: 'Topic', cardinality: 'one' },
+    ],
+  },
+  {
+    name: 'Utterance',
+    identityProperty: 'text',
+    description: 'A line of transcript — enough of them to make paging visible.',
+    properties: [
+      { name: 'text', type: 'string', required: true },
+      { name: 'speaker', type: 'string' },
+    ],
+    relations: [{ name: 'topic', target: 'Topic', cardinality: 'one' }],
+  },
+  {
     name: 'CollectionBlock',
     identityProperty: 'name',
     description: 'A container — a call transcript, a note, a nested group.',
     properties: [
       { name: 'name', type: 'string', required: true },
       { name: 'kind', type: 'string' },
+      // Board positions live on the entity — the inversion that makes a freeform canvas a *mode* of
+      // this engine rather than a different engine. `manual` layout reads exactly these.
+      { name: 'x', type: 'number' },
+      { name: 'y', type: 'number' },
     ],
     // `children` is deliberately absent from `relations`: it is untyped in WE, which is exactly why
     // the containment expander has to reach it through the drill-down path instead.
@@ -143,6 +166,25 @@ export const TABLES: Record<string, Row[]> = {
       author: 'ag-josh',
       topic: 'to-interp',
     },
+    {
+      // Deliberately authored by someone who is not in the Agent table. In a peer-to-peer system a
+      // relation target that has not synced is ordinary, and the engine must render it as a
+      // placeholder — "not here yet" rather than "nothing there". Nothing else exercises that path.
+      id: 'be-5',
+      title: 'Peers will disagree about what was said',
+      confidence: 'low',
+      author: 'ag-unsynced',
+      topic: 'to-sync',
+    },
+  ],
+
+  // Edges with data. Drawn naively these would be four extra dots; the engine collapses each into the
+  // single relationship it stands for, carrying `relevance` and staying clickable via `reifiedAs`.
+  SemanticRelationship: [
+    { id: 'sr-1', relevance: 0.9, expression: 'be-1', tag: 'to-graph' },
+    { id: 'sr-2', relevance: 0.6, expression: 'be-2', tag: 'to-graph' },
+    { id: 'sr-3', relevance: 0.95, expression: 'be-2', tag: 'to-interp' },
+    { id: 'sr-4', relevance: 0.4, expression: 'be-4', tag: 'to-sync' },
   ],
 
   Task: [
@@ -186,9 +228,48 @@ export const TABLES: Record<string, Row[]> = {
   ],
 
   CollectionBlock: [
-    { id: 'co-standup', name: 'Standup, 10 Aug', kind: 'call', children: ['tx-1', 'tx-2', 'co-thread'] },
-    { id: 'co-thread', name: 'Side thread on layouts', kind: 'call', children: ['tx-3', 'tx-4'] },
-    { id: 'co-notes', name: 'Scratch notes', kind: 'notes', children: ['tx-5'] },
+    { id: 'co-standup', name: 'Standup, 10 Aug', kind: 'call', children: ['tx-1', 'tx-2', 'co-thread'], x: 120, y: 90 },
+    { id: 'co-thread', name: 'Side thread on layouts', kind: 'call', children: ['tx-3', 'tx-4'], x: 460, y: 260 },
+    { id: 'co-notes', name: 'Scratch notes', kind: 'notes', children: ['tx-5'], x: 150, y: 420 },
+    { id: 'co-board', name: 'Roadmap board', kind: 'board', children: [], x: 520, y: 60 },
+  ],
+
+  Utterance: [
+    { id: 'ut-01', text: 'The expander is the unit, not the widget.', speaker: 'James', topic: 'to-graph' },
+    {
+      id: 'ut-02',
+      text: 'Reverse traversal is half of what makes it explorable.',
+      speaker: 'Nico',
+      topic: 'to-interp',
+    },
+    { id: 'ut-03', text: 'Collapse has to bundle, or the view lies.', speaker: 'Josh', topic: 'to-sync' },
+    { id: 'ut-04', text: 'Warm start, or the map jumps every expansion.', speaker: 'James', topic: 'to-graph' },
+    { id: 'ut-05', text: 'Hit-testing belongs to the core.', speaker: 'Nico', topic: 'to-interp' },
+    { id: 'ut-06', text: 'Placeholders are a first-class state here.', speaker: 'Josh', topic: 'to-sync' },
+    { id: 'ut-07', text: 'Paging is not optional on a hub node.', speaker: 'James', topic: 'to-graph' },
+    { id: 'ut-08', text: 'A budget that truncates silently is worse than none.', speaker: 'Nico', topic: 'to-interp' },
+    { id: 'ut-09', text: 'Tree layout wants crossing reduction.', speaker: 'Josh', topic: 'to-sync' },
+    { id: 'ut-10', text: 'Community detection gives us cluster maps.', speaker: 'James', topic: 'to-graph' },
+    { id: 'ut-11', text: 'Metrics stay out of hit-testing.', speaker: 'Nico', topic: 'to-interp' },
+    { id: 'ut-12', text: 'One address scheme or the explorer is a rewrite.', speaker: 'Josh', topic: 'to-sync' },
+    { id: 'ut-13', text: 'Reified edges must not render as nodes.', speaker: 'James', topic: 'to-graph' },
+    { id: 'ut-14', text: 'The catalog is what makes plugins reachable.', speaker: 'Nico', topic: 'to-interp' },
+    { id: 'ut-15', text: 'Manual layout inverts who owns position.', speaker: 'Josh', topic: 'to-sync' },
+    { id: 'ut-16', text: 'Schema maps work in an empty space.', speaker: 'James', topic: 'to-graph' },
+    { id: 'ut-17', text: 'Degree is a decent proxy for importance.', speaker: 'Nico', topic: 'to-interp' },
+    { id: 'ut-18', text: 'Barycentre sweeps beat traversal order.', speaker: 'Josh', topic: 'to-sync' },
+    { id: 'ut-19', text: 'Two conventions for one problem is one too many.', speaker: 'James', topic: 'to-graph' },
+    { id: 'ut-20', text: 'The harness found the bug, which is the point.', speaker: 'Nico', topic: 'to-interp' },
+    { id: 'ut-21', text: 'Fit has to survive a zero-sized box.', speaker: 'Josh', topic: 'to-sync' },
+    { id: 'ut-22', text: 'Reindex on every path that moves a node.', speaker: 'James', topic: 'to-graph' },
+    { id: 'ut-23', text: 'Untyped relations need the drill-down path.', speaker: 'Nico', topic: 'to-interp' },
+    { id: 'ut-24', text: 'Value nodes converge or they are pointless.', speaker: 'Josh', topic: 'to-sync' },
+    { id: 'ut-25', text: 'Seed sources and expanders are the same shape.', speaker: 'James', topic: 'to-graph' },
+    { id: 'ut-26', text: 'A cluster is a collapsed synthetic node.', speaker: 'Nico', topic: 'to-interp' },
+    { id: 'ut-27', text: 'Do not grow JSON toward a language.', speaker: 'Josh', topic: 'to-sync' },
+    { id: 'ut-28', text: 'Name the plugin, keep the data declarative.', speaker: 'James', topic: 'to-graph' },
+    { id: 'ut-29', text: 'Forward-only relations shape the whole engine.', speaker: 'Nico', topic: 'to-interp' },
+    { id: 'ut-30', text: 'Bundles carry a weight so the count survives.', speaker: 'Josh', topic: 'to-sync' },
   ],
 
   TextBlock: [

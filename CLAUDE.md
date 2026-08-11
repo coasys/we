@@ -917,7 +917,7 @@ Common recipes:
 the relations between them. Picks up model types added later with no template change.
 - **Hierarchy** — `layout: { type: 'tree' }` with a `collection` expansion for nested content.
 - **Static diagram** — `seeds: { literal: true, nodes: [...], edges: [...] }` and no expansion at all.
-  Props: seeds?: SeedSpec | SeedSpec[], expansion?: ExpansionSpec, layout?: LayoutSpec, nodeStyle?: NodeStyleRules, edgeStyle?: EdgeStyleRules, behaviours?: BehaviourSpec[], width?: string, height?: string, bg?: string, showStatus?: boolean, showControls?: boolean, onNodeClick?: ((node: GraphNode) => void), onNodeDoubleClick?: ((node: GraphNode) => void), onEdgeClick?: ((edge: GraphEdge) => void), onSelectionChange?: ((ids: string[]) => void), onNodeDragEnd?: ((payload: { id: string; x: number; y: number; }) => void), host?: GraphHostBindings
+  Props: seeds?: SeedSpec | SeedSpec[], expansion?: ExpansionSpec, layout?: LayoutSpec, nodeStyle?: NodeStyleRules, edgeStyle?: EdgeStyleRules, behaviours?: BehaviourSpec[], reified?: Record<string, { source: string; target: string; type?: string; }>, width?: string, height?: string, bg?: string, showStatus?: boolean, showControls?: boolean, onNodeClick?: ((node: GraphNode) => void), onNodeDoubleClick?: ((node: GraphNode) => void), onEdgeClick?: ((edge: GraphEdge) => void), onSelectionChange?: ((ids: string[]) => void), onNodeDragEnd?: ((payload: { id: string; x: number; y: number; }) => void), host?: GraphHostBindings
 
 ---
 
@@ -988,6 +988,15 @@ Names resolvable inside GraphView props: seed sources (seeds.source), expanders 
   - xField: string — Node data field holding x. Default "x".
   - yField: string — Node data field holding y. Default "y".
   - Example: `{ "type": "manual" }`
+
+**metric**
+
+- `degree` — How connected a node is, normalised 0..1. The usual answer to "make the important things bigger". Reference it from a style value rather than a fixed number.
+  - range: [number, number] — Output range, e.g. [8, 30].
+  - Example: `"nodeStyle": [{ "style": { "size": { "metric": "degree", "range": [10, 34] } } }]`
+- `community` — Groups the visible graph by label propagation. Pair with scale: "categorical" to colour each cluster differently — this is what makes a cluster map.
+  - rounds: number — Propagation rounds. Default 8.
+  - Example: `"nodeStyle": [{ "style": { "color": { "metric": "community", "scale": "categorical" } } }]`
 
 **behaviour**
 

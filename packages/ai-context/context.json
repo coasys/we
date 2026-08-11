@@ -3597,6 +3597,11 @@
           "optional": true
         },
         {
+          "name": "reified",
+          "type": "Record<string, { source: string; target: string; type?: string; }>",
+          "optional": true
+        },
+        {
           "name": "width",
           "type": "string",
           "optional": true

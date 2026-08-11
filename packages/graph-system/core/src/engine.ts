@@ -50,6 +50,24 @@ export interface EngineStatus {
 /** Metrics deliberately do not participate in hit-testing — see `hitRadius`. */
 const NO_METRICS = new Map<string, ReadonlyMap<string, number>>();
 
+/**
+ * Metric ids a rule set actually references.
+ *
+ * Computed metrics are cheap but not free, and a graph whose rules mention none should pay nothing —
+ * so the engine runs exactly the metrics the style asks for and no others.
+ */
+function referencedMetrics(rules: readonly { style: Record<string, unknown> }[] | undefined): string[] {
+  const found = new Set<string>();
+  for (const rule of rules ?? []) {
+    for (const value of Object.values(rule.style ?? {})) {
+      if (value && typeof value === 'object' && 'metric' in value) {
+        found.add(String((value as { metric: unknown }).metric));
+      }
+    }
+  }
+  return [...found];
+}
+
 const DEFAULT_MAX_NODES = 2000;
 const DEFAULT_EXPAND_LIMIT = 50;
 
@@ -74,6 +92,8 @@ export class GraphEngine {
   private disposed = false;
   /** A fit was asked for before there was a surface to fit into. Applied on the next real resize. */
   private pendingFit = false;
+  /** Computed metric values, by metric id then node id. Recomputed when the graph changes. */
+  private metrics: Map<string, ReadonlyMap<string, number>> = new Map();
 
   constructor(options: EngineOptions) {
     this.spec = options.spec;
@@ -112,6 +132,50 @@ export class GraphEngine {
 
   getSpec(): Readonly<GraphSpec> {
     return this.spec;
+  }
+
+  /** Computed metric values, for a renderer resolving `MetricRef` styles. */
+  getMetrics(): ReadonlyMap<string, ReadonlyMap<string, number>> {
+    return this.metrics;
+  }
+
+  /**
+   * Recompute whatever the current style rules reference.
+   *
+   * Structure-dependent by definition — degree changes when an edge arrives, communities change when
+   * a cluster grows — so this runs on graph change rather than on a timer, and never per frame.
+   */
+  private recomputeMetrics(): void {
+    const wanted = [
+      ...referencedMetrics(this.spec.nodeStyle as { style: Record<string, unknown> }[] | undefined),
+      ...referencedMetrics(this.spec.edgeStyle as { style: Record<string, unknown> }[] | undefined),
+    ];
+    if (!wanted.length) {
+      if (this.metrics.size) this.metrics = new Map();
+      return;
+    }
+
+    const snapshot = {
+      nodes: [...this.store.nodes()].map((node) => ({ id: node.id })),
+      edges: [...this.store.edges()].map((edge) => ({ source: edge.source, target: edge.target })),
+    };
+
+    const next = new Map<string, ReadonlyMap<string, number>>();
+    for (const id of new Set(wanted)) {
+      const metric = this.registry.metric(id);
+      if (!metric) {
+        this.warn(`no metric registered as "${id}"`);
+        continue;
+      }
+      try {
+        next.set(id, metric.compute(snapshot));
+      } catch (error) {
+        // A metric that throws must not take the graph down with it — the map still draws, just
+        // without that dimension.
+        this.warn(`metric "${id}" failed: ${describe(error)}`);
+      }
+    }
+    this.metrics = next;
   }
 
   // ─── Lifecycle ───────────────────────────────────────────────────────────────
@@ -173,6 +237,7 @@ export class GraphEngine {
     }
 
     await this.runAutoExpansion();
+    this.recomputeMetrics();
     this.relayout({ fit: true });
     this.notify('graph');
   }
@@ -196,7 +261,13 @@ export class GraphEngine {
     const node = this.store.node(id);
     if (!node) return;
     if (this.expansion.isExpanded(id) && !this.expansion.hasMore(id)) return;
-    if (this.atBudget()) return;
+    // Refusing because the graph is full is itself worth saying. Landing exactly on the ceiling used
+    // to stop expansion without ever tripping the flag, so the map went quiet with no explanation —
+    // which is the precise failure the budget exists to prevent.
+    if (this.atBudget()) {
+      this.reportBudgetReached();
+      return;
+    }
 
     const spec = this.spec.expansion ?? {};
     const expanders = this.registry.expandersFor(node.kind, node.type, spec.expanders);
@@ -253,6 +324,7 @@ export class GraphEngine {
 
     this.expansion.markExpanded(id, { cursor, total, added });
     this.emit({ type: 'expanded', id, added, total });
+    this.recomputeMetrics();
     this.relayout();
     this.notify('graph');
   }
@@ -274,6 +346,7 @@ export class GraphEngine {
     if (this.status.budgetReached && !this.atBudget()) {
       this.status = { ...this.status, budgetReached: false };
     }
+    this.recomputeMetrics();
     this.relayout();
     this.notify('graph');
   }
@@ -295,7 +368,12 @@ export class GraphEngine {
     for (let level = 0; level < Math.max(depth, ...rules.map((r) => r.depth), 0); level += 1) {
       const next: string[] = [];
       for (const id of frontier) {
-        if (this.atBudget()) return;
+        // Same reasoning as in `expand`: auto-expansion stopping because the graph is full is a fact
+        // the user needs, not a silent early return.
+        if (this.atBudget()) {
+          this.reportBudgetReached();
+          return;
+        }
         const node = this.store.node(id);
         if (!node) continue;
         const rule = rules.find((r) => matchesAuto(node, r.when));
@@ -328,12 +406,15 @@ export class GraphEngine {
   private trimToBudget(nodes: GraphNode[]): GraphNode[] {
     const room = this.maxNodes() - this.store.nodeCount;
     if (nodes.length <= room) return nodes;
-    if (!this.status.budgetReached) {
-      this.status = { ...this.status, budgetReached: true };
-      this.emit({ type: 'budgetReached', limit: this.maxNodes() });
-      this.notify('status');
-    }
+    this.reportBudgetReached();
     return nodes.slice(0, Math.max(0, room));
+  }
+
+  private reportBudgetReached(): void {
+    if (this.status.budgetReached) return;
+    this.status = { ...this.status, budgetReached: true };
+    this.emit({ type: 'budgetReached', limit: this.maxNodes() });
+    this.notify('status');
   }
 
   // ─── Layout ──────────────────────────────────────────────────────────────────
@@ -464,6 +545,7 @@ export class GraphEngine {
    * anything moving — at which point the index is holding areas sized by the old rules.
    */
   refreshHitAreas(): void {
+    this.recomputeMetrics();
     this.reindex();
   }
 

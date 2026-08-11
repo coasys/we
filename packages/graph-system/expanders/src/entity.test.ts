@@ -190,3 +190,101 @@ describe('schemaExpander', () => {
     expect(warnings.join(' ')).toContain('Ghost');
   });
 });
+
+describe('reified edges', () => {
+  const REIFIED = { SemanticRelationship: { source: 'expression', target: 'tag', type: 'tagged' } };
+
+  const REIFIED_SHAPES: EntityShape[] = [
+    ...SHAPES,
+    {
+      name: 'SemanticRelationship',
+      properties: [{ name: 'relevance', type: 'number', required: true }],
+      relations: [
+        { name: 'expression', target: 'Post', cardinality: 'one' },
+        { name: 'tag', target: 'Agent', cardinality: 'one' },
+      ],
+    },
+  ];
+
+  function reifiedContext(rows: (query: ExpanderQuery) => Record<string, unknown>[]) {
+    const warnings: string[] = [];
+    return {
+      warnings,
+      context: {
+        query: async (request: ExpanderQuery) => rows(request),
+        defaultDataset: () => 'ds',
+        models: () => REIFIED_SHAPES,
+        warn: (m: string) => warnings.push(m),
+      } as ExpanderContext,
+    };
+  }
+
+  it('collapses a relationship entity into one edge instead of a node', async () => {
+    // The failure this prevents: every SemanticRelationship rendering as a dot, so a map of tagged
+    // messages shows three times as many nodes and none of the relationships they encode.
+    const { context } = reifiedContext((request) =>
+      request.entity === 'SemanticRelationship'
+        ? [{ id: 'sr1', relevance: 0.9, expression: { id: 'p1', title: 'Hello' }, tag: { id: 'a1', name: 'James' } }]
+        : [],
+    );
+
+    const result = await entityExpander({ reified: REIFIED }).expand({ id: POST, direction: 'in' }, context);
+
+    // Two endpoints, and no node for the relationship itself.
+    expect(result.nodes.map((n) => n.type).sort()).toEqual(['Agent', 'Post']);
+    expect(result.nodes.some((n) => n.type === 'SemanticRelationship')).toBe(false);
+    expect(result.edges).toHaveLength(1);
+  });
+
+  it('carries the relationshipic own data and stays traceable to its record', async () => {
+    const { context } = reifiedContext((request) =>
+      request.entity === 'SemanticRelationship'
+        ? [{ id: 'sr1', relevance: 0.9, expression: { id: 'p1' }, tag: { id: 'a1' } }]
+        : [],
+    );
+
+    const [edge] = (await entityExpander({ reified: REIFIED }).expand({ id: POST, direction: 'in' }, context)).edges;
+
+    expect(edge.type).toBe('tagged');
+    expect(edge.data?.relevance).toBe(0.9);
+    // Clicking the edge must be able to open the record behind it rather than dead-ending.
+    expect(edge.reifiedAs).toContain('SemanticRelationship');
+  });
+
+  it('is idempotent — reaching the same relationship twice is one edge', async () => {
+    const { context } = reifiedContext((request) =>
+      request.entity === 'SemanticRelationship'
+        ? [{ id: 'sr1', relevance: 0.5, expression: { id: 'p1' }, tag: { id: 'a1' } }]
+        : [],
+    );
+    const expander = entityExpander({ reified: REIFIED });
+
+    const first = await expander.expand({ id: POST, direction: 'in' }, context);
+    const second = await expander.expand({ id: POST, direction: 'in' }, context);
+
+    expect(first.edges[0].id).toBe(second.edges[0].id);
+  });
+
+  it('skips and warns when an endpoint is missing rather than drawing half an edge', async () => {
+    const { context, warnings } = reifiedContext((request) =>
+      request.entity === 'SemanticRelationship' ? [{ id: 'sr1', relevance: 0.5, expression: { id: 'p1' } }] : [],
+    );
+
+    const result = await entityExpander({ reified: REIFIED }).expand({ id: POST, direction: 'in' }, context);
+
+    expect(result.edges).toEqual([]);
+    expect(warnings.join(' ')).toContain('endpoint');
+  });
+
+  it('leaves the entity as an ordinary node when nothing declares it reified', async () => {
+    // The distinction is configuration, not inference: a Comment with author and post is a node
+    // people want to read, and only the person modelling the space knows which is which.
+    const { context } = reifiedContext((request) =>
+      request.entity === 'SemanticRelationship' ? [{ id: 'sr1', relevance: 0.9 }] : [],
+    );
+
+    const result = await entityExpander().expand({ id: POST, direction: 'in' }, context);
+
+    expect(result.nodes.some((n) => n.type === 'SemanticRelationship')).toBe(true);
+  });
+});

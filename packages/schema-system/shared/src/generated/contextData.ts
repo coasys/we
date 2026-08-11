@@ -1279,6 +1279,7 @@ export const contextData: ContextData = {
         { name: 'nodeStyle', type: 'NodeStyleRules', optional: true },
         { name: 'edgeStyle', type: 'EdgeStyleRules', optional: true },
         { name: 'behaviours', type: 'BehaviourSpec[]', optional: true },
+        { name: 'reified', type: 'Record<string, { source: string; target: string; type?: string; }>', optional: true },
         { name: 'width', type: 'string', optional: true },
         { name: 'height', type: 'string', optional: true },
         { name: 'bg', type: 'string', optional: true },

@@ -10,6 +10,7 @@ import type { EntityShape, GraphEdge, GraphNode, SeedSource } from '@we/graph-pr
 import { datasetAddress, entityAddress } from '@we/graph-protocol';
 
 import { edgeId, rowToNode } from './nodes';
+import { endpointRelations, isReified, reifiedEdgeFrom, type ReifiedEdgeMap } from './reified';
 import { SCHEMA_TYPE } from './schema';
 
 export interface QuerySeedOptions {
@@ -24,10 +25,17 @@ export interface QuerySeedOptions {
    * A map with `defaultDepth: 0` and one relation here is the cheapest useful graph there is.
    */
   relations?: string[];
+  /**
+   * Entities that are really edges — see `reified.ts`.
+   *
+   * Seeding one directly is how you draw "every tagged message in this space" in a single query: the
+   * relationships come back as edges with their endpoints attached, rather than as a field of dots.
+   */
+  reified?: ReifiedEdgeMap;
 }
 
 /** Instances of one entity type, optionally with some relations already drawn. */
-export function querySeed(): SeedSource {
+export function querySeed(defaults: { reified?: ReifiedEdgeMap } = {}): SeedSource {
   return {
     id: 'query',
     description: 'Loads instances of an entity type as nodes, optionally drawing named relations.',
@@ -38,10 +46,16 @@ export function querySeed(): SeedSource {
         return { nodes: [], edges: [] };
       }
       const dataset = options.dataset ?? context.defaultDataset() ?? '';
-      const shape = context.models(dataset).find((s) => s.name === options.entity);
+      const shapes = context.models(dataset);
+      const shape = shapes.find((s) => s.name === options.entity);
+      const reified = options.reified ?? defaults.reified;
+      const seedingAnEdge = isReified(options.entity, reified);
 
       const include: Record<string, unknown> = {};
       for (const relation of options.relations ?? []) include[relation] = true;
+      // Seeding a reified class means seeding *edges*: both endpoints have to come back with it, or
+      // there is nothing to attach them to.
+      if (seedingAnEdge) for (const name of endpointRelations(options.entity, reified!)) include[name] = true;
 
       const rows = await context.query({
         entity: options.entity,
@@ -49,12 +63,25 @@ export function querySeed(): SeedSource {
         where: options.where,
         order: options.order,
         limit: options.limit ?? 100,
-        include: options.relations?.length ? include : undefined,
+        include: Object.keys(include).length ? include : undefined,
         signal,
       });
 
       const nodes: GraphNode[] = [];
       const edges: GraphEdge[] = [];
+
+      if (seedingAnEdge) {
+        for (const row of rows) {
+          const resolved = reifiedEdgeFrom(row, options.entity, reified![options.entity], dataset, shapes, 'query');
+          if (!resolved) {
+            context.warn(`${options.entity} ${String(row.id)} is missing an endpoint — skipped`);
+            continue;
+          }
+          nodes.push(...resolved.nodes);
+          edges.push(resolved.edge);
+        }
+        return { nodes, edges, total: rows.length };
+      }
 
       for (const row of rows) {
         const node = rowToNode(row, options.entity, dataset, shape, 'query');

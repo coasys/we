@@ -150,6 +150,24 @@ export const GRAPH_PLUGIN_CATALOG: PluginCatalog = {
       example: `{ "type": "manual" }`,
     },
 
+    // ─── Metrics ───────────────────────────────────────────────────────────────
+    {
+      id: 'degree',
+      category: 'metric',
+      description:
+        'How connected a node is, normalised 0..1. The usual answer to "make the important things bigger". Reference it from a style value rather than a fixed number.',
+      options: [{ name: 'range', type: '[number, number]', description: 'Output range, e.g. [8, 30].' }],
+      example: `"nodeStyle": [{ "style": { "size": { "metric": "degree", "range": [10, 34] } } }]`,
+    },
+    {
+      id: 'community',
+      category: 'metric',
+      description:
+        'Groups the visible graph by label propagation. Pair with scale: "categorical" to colour each cluster differently — this is what makes a cluster map.',
+      options: [{ name: 'rounds', type: 'number', description: 'Propagation rounds. Default 8.' }],
+      example: `"nodeStyle": [{ "style": { "color": { "metric": "community", "scale": "categorical" } } }]`,
+    },
+
     // ─── Behaviours ────────────────────────────────────────────────────────────
     {
       id: 'pan-zoom',

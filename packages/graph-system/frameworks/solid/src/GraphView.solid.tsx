@@ -19,6 +19,7 @@
 import { Column, Row } from '@we/components/solid';
 import {
   defaultBehaviours,
+  defaultMetrics,
   dispatchPointer,
   edgeVisual,
   GraphEngine,
@@ -26,7 +27,7 @@ import {
   PluginRegistry,
   resolveStyle,
 } from '@we/graph-core';
-import { defaultExpanders } from '@we/graph-expanders';
+import { DEFAULT_REIFIED_EDGES, defaultExpanders } from '@we/graph-expanders';
 import { defaultLayouts } from '@we/graph-layouts';
 import type { Behaviour, GraphEdge, GraphNode, PointerInput } from '@we/graph-protocol';
 import { batch, createEffect, createMemo, createSignal, For, onCleanup, onMount, Show, untrack } from 'solid-js';
@@ -55,10 +56,13 @@ export function GraphView(props: GraphViewProps) {
   const [statusVersion, setStatusVersion] = createSignal(0);
   const [hovered, setHovered] = createSignal<string | null>(null);
 
+  // Read once: expanders are constructed with their options, so changing `reified` needs a remount —
+  // which is what a template does anyway when it swaps one graph for another.
   const registry = new PluginRegistry({
-    ...defaultExpanders(),
+    ...defaultExpanders({ reified: props.reified ?? DEFAULT_REIFIED_EDGES }),
     layouts: defaultLayouts(),
     behaviours: defaultBehaviours(),
+    metrics: defaultMetrics(),
   });
 
   const engine = new GraphEngine({
@@ -132,6 +136,7 @@ export function GraphView(props: GraphViewProps) {
     expansion: props.expansion,
     layout: props.layout,
     nodeStyle: props.nodeStyle,
+    edgeStyle: props.edgeStyle,
   });
 
   // Reload when what the graph *is* changes — where it starts and how far it opens. Deliberately
@@ -160,7 +165,7 @@ export function GraphView(props: GraphViewProps) {
   // Restyling re-sizes hit areas but must never re-run a query or move a node, so it updates the spec
   // and reindexes rather than restarting or re-laying out.
   createEffect((previous: string | undefined) => {
-    const next = JSON.stringify(props.nodeStyle ?? []);
+    const next = JSON.stringify([props.nodeStyle ?? [], props.edgeStyle ?? []]);
     if (previous !== undefined && previous !== next) {
       engine.setSpec(currentSpec());
       engine.refreshHitAreas();
@@ -196,7 +201,7 @@ export function GraphView(props: GraphViewProps) {
         {
           node,
           at,
-          visual: nodeVisual(node, style, EMPTY_METRICS),
+          visual: nodeVisual(node, style, engine.getMetrics()),
           selected: selected.has(node.id),
           expanded: engine.expansion.isExpanded(node.id),
           hasMore: engine.expansion.hasMore(node.id),
@@ -223,7 +228,7 @@ export function GraphView(props: GraphViewProps) {
         const from = placed.get(edge.source);
         const to = placed.get(edge.target);
         if (!from || !to) return;
-        const visual = edgeVisual(edge, resolveStyle(edge, props.edgeStyle), EMPTY_METRICS);
+        const visual = edgeVisual(edge, resolveStyle(edge, props.edgeStyle), engine.getMetrics());
         const end = trimToRadius(from, to, (sized.get(edge.target) ?? 14) + 6);
         result.push({
           edge,
@@ -449,8 +454,5 @@ function zoomBy(engine: GraphEngine, factor: number): void {
   const { width, height } = engine.viewport.get();
   engine.behaviourContext().zoomAt({ x: width / 2, y: height / 2 }, factor);
 }
-
-/** Metrics are computed on demand by the algorithms package; nothing here requests them yet. */
-const EMPTY_METRICS = new Map<string, ReadonlyMap<string, number>>();
 
 export type { GraphNode };

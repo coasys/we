@@ -64,8 +64,8 @@ describe('the graph paints', () => {
     const container = mount(scenario('schema'));
     await settle();
 
-    // Seven shapes in the fixture.
-    expect(nodes(container)).toHaveLength(7);
+    // One node per shape the fixture declares.
+    expect(nodes(container)).toHaveLength(9);
     expect(container.textContent).toContain('Belief');
     expect(container.textContent).toContain('CollectionBlock');
   });

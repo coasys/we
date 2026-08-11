@@ -1,4 +1,5 @@
 import './icons/register-bundled-icons';
+import './primitives/alert';
 import './primitives/audio';
 import './primitives/avatar';
 import './primitives/badge';

@@ -23,6 +23,7 @@ export {
 } from './behaviours';
 export type { PanZoomOptions, SelectOptions } from './behaviours';
 export { GraphEngine, kindOf } from './engine';
+export { communityMetric, defaultMetrics, degreeMetric } from './metrics';
 export type { ChangeReason, EngineOptions, EngineStatus } from './engine';
 export { ExpansionState, SEED_OPENER } from './expansion';
 export type { CollapseResult } from './expansion';

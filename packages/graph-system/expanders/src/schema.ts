@@ -38,6 +38,9 @@ export function schemaExpander(options: SchemaExpanderOptions = {}): Expander {
     async expand(request, context) {
       const address = parseAddress(request.id);
       if (!address || address.kind !== 'entity' || !address.id) return { nodes: [], edges: [] };
+      // A type *contains* its instances; nothing points at a type. Asking what points at `Belief`
+      // and being handed every Belief would be a different question answered wrongly.
+      if (request.direction === 'in') return { nodes: [], edges: [] };
 
       // The seed puts the real entity name in `id`; `data.entity` carries it too, but the address is
       // the one thing guaranteed to survive a round trip through persisted state.
