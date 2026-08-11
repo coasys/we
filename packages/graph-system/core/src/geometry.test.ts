@@ -157,4 +157,59 @@ describe('groupByEndpoints', () => {
     expect(groups.size).toBe(2);
     expect([...groups.values()].find((group) => group.length === 2)).toBeDefined();
   });
+
+  /*
+    Fanning has to survive the return leg.
+
+    `routeEdge` used to take its perpendicular from the edge's own direction, which reverses on the
+    way back, cancelling the already-opposite offset and stacking a mutual pair exactly on top of
+    each other. It had therefore never worked in any shape, including the one whose whole
+    justification for being the default was that it separated them.
+  */
+  it.each(['straight', 'arc', 'smooth', 'step'] as const)('fans a mutual %s pair to opposite sides', (curve) => {
+    const a = { x: 0, y: 0 };
+    const b = { x: 100, y: 0 };
+    const [first, second] = bowOffsets(2);
+    const there = routeEdge('there', a, b, curve, first);
+    const back = routeEdge('back', b, a, curve, second);
+
+    expect(there.mid).not.toEqual(back.mid);
+    // Opposite sides, not merely different points along the same line.
+    const axis = curve === 'step' ? 'x' : 'y';
+    const centre = axis === 'y' ? 0 : 50;
+    expect(Math.sign(there.mid[axis] - centre)).toBe(-Math.sign(back.mid[axis] - centre));
+  });
+
+  /*
+    Where an edge meets its target depends on the shape it is drawn with.
+
+    Trimming along the line between two centres is right for a shape that travels along it and wrong
+    for one that does not: a smooth curve arrives horizontally and a step arrives at a right angle, so
+    a chord trim put the arrowhead somewhere the line was never pointing — reading on screen as an
+    arrow aimed at a corner, sliding around the rim as the node moved.
+  */
+  it('meets the target on the chord for shapes that travel along it', () => {
+    const route = routeEdge('e', { x: 0, y: 0 }, { x: 100, y: 100 }, 'straight', 0, 10);
+    // On the line between the centres, 10 short of the far one.
+    expect(Math.hypot(route.to.x - 100, route.to.y - 100)).toBeCloseTo(10);
+    expect(route.to.y / route.to.x).toBeCloseTo(1);
+  });
+
+  it('meets the target on the side it approaches from for axis-aligned shapes', () => {
+    // Mostly horizontal, so a smooth curve arrives horizontally and should land on the near side at
+    // the target's own height — not on the diagonal between the centres.
+    const route = routeEdge('e', { x: 0, y: 0 }, { x: 100, y: 40 }, 'smooth', 0, 10);
+    expect(route.to).toEqual({ x: 90, y: 40 });
+
+    // Mostly vertical, so it arrives from above instead.
+    const down = routeEdge('e', { x: 0, y: 0 }, { x: 40, y: 100 }, 'smooth', 0, 10);
+    expect(down.to).toEqual({ x: 40, y: 90 });
+  });
+
+  it('lands a step on the node face its last segment runs into', () => {
+    const route = routeEdge('e', { x: 0, y: 0 }, { x: 100, y: 40 }, 'step', 0, 10);
+    expect(route.to).toEqual({ x: 90, y: 40 });
+    // The last corner shares the arrival row, so the final segment really is horizontal.
+    expect(route.elbows![1].y).toBe(40);
+  });
 });

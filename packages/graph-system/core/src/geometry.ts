@@ -55,6 +55,28 @@ export function bowOffsets(count: number, spacing = 26): number[] {
   });
 }
 
+/**
+ * A unit perpendicular that does not depend on which way the edge is traversed.
+ *
+ * This is what makes fanning work at all. Taking the perpendicular of the edge's own direction gives
+ * opposite normals for the two legs of a mutual pair, and the offsets handed to them are already
+ * opposite — so the two sign flips cancel and the pair stacks exactly on top of each other. Bowing
+ * mutual edges apart had therefore never actually worked in any shape, despite being the stated
+ * reason `arc` was the default: what looked like two curves was one curve drawn twice.
+ *
+ * Pinning the normal to a half-plane fixes it geometrically rather than by asking callers to
+ * compensate, so `routeEdge(a, b, +n)` and `routeEdge(b, a, -n)` separate on their own.
+ */
+function canonicalNormal(from: Point, to: Point): Point {
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  const length = Math.hypot(dx, dy) || 1;
+  const nx = -dy / length;
+  const ny = dx / length;
+  const flip = ny < 0 || (ny === 0 && nx < 0);
+  return flip ? { x: -nx, y: -ny } : { x: nx, y: ny };
+}
+
 /** Group edges by unordered endpoint pair, so mutual and parallel edges can be fanned apart. */
 export function groupByEndpoints<T extends { source: string; target: string }>(edges: T[]): Map<string, T[]> {
   const groups = new Map<string, T[]>();
@@ -73,7 +95,46 @@ export function groupByEndpoints<T extends { source: string; target: string }>(e
  * `offset` bows the curve to one side. Two nodes related in both directions produce two edges with
  * the same endpoints; drawn straight they are one line and the graph silently understates itself.
  */
-export function routeEdge(id: string, from: Point, to: Point, curve: EdgeCurve, offset = 0): EdgeGeometry {
+/**
+ * Where an edge meets its target.
+ *
+ * The route decides this, because the route is what knows how it arrives. Trimming along the straight
+ * line between two centres is right for a shape that *travels* along it, and wrong for one that does
+ * not: a smooth curve arrives horizontally and a step arrives at a right angle, so meeting the node
+ * on the chord put the arrowhead somewhere the line was never pointing. On screen that reads as an
+ * arrow aimed at a corner, sliding around the node's rim as it moves, and it gets worse the further
+ * the curve is from straight.
+ *
+ * Axis-aligned shapes therefore attach on the side they approach from, which is also why the
+ * attachment jumps from a side to an underside as a node crosses the diagonal: that is the same
+ * moment the curve itself changes which axis it travels along. One visible change rather than two
+ * disagreeing ones.
+ */
+function attachPoint(from: Point, to: Point, curve: EdgeCurve, clearance: number, horizontal: boolean): Point {
+  if (clearance <= 0) return to;
+  if (curve === 'smooth' || curve === 'step') {
+    return horizontal
+      ? { x: to.x - Math.sign(to.x - from.x || 1) * clearance, y: to.y }
+      : { x: to.x, y: to.y - Math.sign(to.y - from.y || 1) * clearance };
+  }
+  return trimToRadius(from, to, clearance);
+}
+
+/**
+ * Route one edge.
+ *
+ * `clearance` is how far short of the target's centre to stop, so an arrowhead lands on the node
+ * rather than inside it. It is applied here rather than by the caller because where an edge lands
+ * depends on the shape it is drawn with — see `attachPoint`.
+ */
+export function routeEdge(
+  id: string,
+  from: Point,
+  to: Point,
+  curve: EdgeCurve,
+  offset = 0,
+  clearance = 0,
+): EdgeGeometry {
   if (from.x === to.x && from.y === to.y) {
     // A self-loop has no direction to bow along, so it gets a fixed teardrop above the node.
     const r = 26;
@@ -92,26 +153,29 @@ export function routeEdge(id: string, from: Point, to: Point, curve: EdgeCurve, 
   // laid out left-to-right wants to depart sideways. Deriving it from the endpoints means neither the
   // layout nor the author has to say so.
   const horizontal = Math.abs(to.x - from.x) >= Math.abs(to.y - from.y);
+  // Computed from the centres, then held: deriving it again from the attachment point would let a
+  // short edge flip axis purely because the clearance shortened it.
+  const end = attachPoint(from, to, curve, clearance, horizontal);
 
   if (curve === 'step') {
     // Parallel steps cross at different places rather than tracing each other exactly. Half the
     // offset, so the separation matches what a bow of the same offset achieves — a quadratic's
     // midpoint deviates half its control distance, not all of it.
-    const crossing = horizontal ? (from.x + to.x) / 2 + offset / 2 : (from.y + to.y) / 2 + offset / 2;
+    const crossing = horizontal ? (from.x + end.x) / 2 + offset / 2 : (from.y + end.y) / 2 + offset / 2;
     const elbows: Point[] = horizontal
       ? [
           { x: crossing, y: from.y },
-          { x: crossing, y: to.y },
+          { x: crossing, y: end.y },
         ]
       : [
           { x: from.x, y: crossing },
-          { x: to.x, y: crossing },
+          { x: end.x, y: crossing },
         ];
     // The middle of the crossing segment, which is the one long enough to carry a label.
     return {
       id,
       from,
-      to,
+      to: end,
       elbows,
       curve,
       mid: { x: (elbows[0].x + elbows[1].x) / 2, y: (elbows[0].y + elbows[1].y) / 2 },
@@ -124,32 +188,32 @@ export function routeEdge(id: string, from: Point, to: Point, curve: EdgeCurve, 
     // Signed, so an edge running right-to-left departs leftwards. Taking the magnitude put both
     // control points behind the source and looped the curve back on itself, which only ever showed on
     // edges pointing the other way.
-    const reach = (horizontal ? to.x - from.x : to.y - from.y) / 2;
+    const reach = (horizontal ? end.x - from.x : end.y - from.y) / 2;
     const perpendicular = horizontal ? { x: 0, y: offset } : { x: offset, y: 0 };
     const control = horizontal
       ? { x: from.x + reach, y: from.y + perpendicular.y }
       : { x: from.x + perpendicular.x, y: from.y + reach };
     const control2 = horizontal
-      ? { x: to.x - reach, y: to.y + perpendicular.y }
-      : { x: to.x + perpendicular.x, y: to.y - reach };
+      ? { x: end.x - reach, y: end.y + perpendicular.y }
+      : { x: end.x + perpendicular.x, y: end.y - reach };
     return {
       id,
       from,
-      to,
+      to: end,
       control,
       control2,
       curve,
       // A cubic's midpoint is the average of its endpoints and three times each control, not the
       // average of its endpoints — the same trap the quadratic case documents below.
       mid: {
-        x: (from.x + 3 * control.x + 3 * control2.x + to.x) / 8,
-        y: (from.y + 3 * control.y + 3 * control2.y + to.y) / 8,
+        x: (from.x + 3 * control.x + 3 * control2.x + end.x) / 8,
+        y: (from.y + 3 * control.y + 3 * control2.y + end.y) / 8,
       },
     };
   }
 
   if (curve === 'straight') {
-    if (!offset) return { id, from, to, curve, mid: { x: (from.x + to.x) / 2, y: (from.y + to.y) / 2 } };
+    if (!offset) return { id, from, to: end, curve, mid: { x: (from.x + end.x) / 2, y: (from.y + end.y) / 2 } };
     /*
       Parallel, not bowed.
 
@@ -158,35 +222,33 @@ export function routeEdge(id: string, from: Point, to: Point, curve: EdgeCurve, 
       whole line sideways keeps both — two straight lines, visibly two. Half the offset for the same
       reason as the step above.
     */
-    const dx = to.x - from.x;
-    const dy = to.y - from.y;
-    const length = Math.hypot(dx, dy) || 1;
+    const normal = canonicalNormal(from, end);
     const shift = offset / 2;
-    const nx = (-dy / length) * shift;
-    const ny = (dx / length) * shift;
+    const nx = normal.x * shift;
+    const ny = normal.y * shift;
     const a = { x: from.x + nx, y: from.y + ny };
-    const b = { x: to.x + nx, y: to.y + ny };
+    const b = { x: end.x + nx, y: end.y + ny };
     return { id, from: a, to: b, curve, mid: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 } };
   }
 
-  const dx = to.x - from.x;
-  const dy = to.y - from.y;
-  const length = Math.hypot(dx, dy) || 1;
-  // Perpendicular to the segment, so the bow is symmetrical whichever way the edge runs.
+  const length = Math.hypot(end.x - from.x, end.y - from.y) || 1;
+  // Perpendicular to the segment, and canonically oriented so the bow is symmetrical whichever way
+  // the edge runs — see `canonicalNormal`.
+  const normal = canonicalNormal(from, end);
   const bow = offset || Math.min(length * 0.12, 40);
   const control = {
-    x: (from.x + to.x) / 2 + (-dy / length) * bow,
-    y: (from.y + to.y) / 2 + (dx / length) * bow,
+    x: (from.x + end.x) / 2 + normal.x * bow,
+    y: (from.y + end.y) / 2 + normal.y * bow,
   };
   return {
     id,
     from,
-    to,
+    to: end,
     control,
     curve: 'arc',
     // A quadratic's midpoint is the average of its endpoints and twice its control, not the average
     // of its endpoints — putting a label at the latter leaves it off the line it belongs to.
-    mid: { x: (from.x + 2 * control.x + to.x) / 4, y: (from.y + 2 * control.y + to.y) / 4 },
+    mid: { x: (from.x + 2 * control.x + end.x) / 4, y: (from.y + 2 * control.y + end.y) / 4 },
   };
 }
 

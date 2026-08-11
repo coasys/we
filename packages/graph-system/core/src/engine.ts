@@ -22,15 +22,7 @@ import type {
 import { addressKind } from '@we/graph-protocol';
 
 import { ExpansionState, SEED_OPENER } from './expansion';
-import {
-  bowOffsets,
-  distanceToEdge,
-  edgeBounds,
-  groupByEndpoints,
-  normaliseCurve,
-  routeEdge,
-  trimToRadius,
-} from './geometry';
+import { bowOffsets, distanceToEdge, edgeBounds, groupByEndpoints, normaliseCurve, routeEdge } from './geometry';
 import { PluginRegistry } from './registry';
 import { SpatialIndex } from './spatial';
 import { GraphStore } from './store';
@@ -560,11 +552,12 @@ export class GraphEngine {
         if (!from || !to) return;
         const style = resolveStyle(edge, this.spec.edgeStyle);
         const targetNode = this.store.node(edge.target);
-        // Stop at the node's edge, so an arrowhead lands on it rather than under it. The radius comes
-        // from the same place the renderer gets its size, so the two cannot disagree.
+        // Stop short of the node's centre, so an arrowhead lands on it rather than inside it. The
+        // radius comes from the same place the renderer gets its size, so the two cannot disagree.
+        // *Where* on the node it lands is the route's decision, not this one — a curve that arrives
+        // along an axis does not meet the node where the straight line between centres would.
         const radius = targetNode ? this.hitArea(targetNode).radius : 14;
-        const end = trimToRadius(from, to, radius + 6);
-        const geometry = routeEdge(edge.id, from, end, normaliseCurve(style.curve), offsets[index]);
+        const geometry = routeEdge(edge.id, from, to, normaliseCurve(style.curve), offsets[index], radius + 6);
         this.edgeGeometry.set(edge.id, geometry);
         this.edgeBoxes.set(edge.id, edgeBounds(geometry));
       });
@@ -650,8 +643,13 @@ export class GraphEngine {
   refreshHitAreas(): void {
     this.recomputeMetrics();
     this.reindex();
-    // Node size decides where an edge stops, so a restyle moves the routes too.
+    // Node size decides where an edge stops, and the edge's own shape decides how it gets there, so a
+    // restyle moves the routes too.
     this.routeEdges();
+    // And has to say so. Without this the new geometry sat in the map unpainted until something else
+    // happened to notify — dragging a node, usually — so changing an edge's shape appeared to do
+    // nothing until you touched the graph, and then applied retroactively.
+    this.notify('positions');
   }
 
   /** Frame the graph now, or as soon as there is a surface to frame it into. */
