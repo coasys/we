@@ -151,7 +151,7 @@ function App() {
             </we-button>
           </Row>
           <we-text variant="footnote" color="neutral-500">
-            Real engine, in-memory data. No AD4M.
+            Real engine, in-memory data.
           </we-text>
         </Column>
 

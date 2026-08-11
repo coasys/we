@@ -150,6 +150,29 @@ export const GRAPH_PLUGIN_CATALOG: PluginCatalog = {
       example: `{ "type": "manual" }`,
     },
 
+    // ─── Presentation ──────────────────────────────────────────────────────────
+    {
+      id: 'scaleWithZoom',
+      category: 'style',
+      description:
+        'Edge style. true (default) treats the line as part of the drawing, so it thickens as you zoom in — right for a board. false pins it to a constant on-screen width, so hairlines stay visible when you zoom out to see a whole network.',
+      example: `"edgeStyle": [{ "style": { "scaleWithZoom": false } }]`,
+    },
+    {
+      id: 'scaleLabelWithZoom',
+      category: 'style',
+      description:
+        'Node style. true (default) scales the label with the camera; false keeps it a constant on-screen size, which keeps text readable at any zoom on a map you navigate by reading. Affects the label only — a node mark always scales, because its size and its hit area are both world units.',
+      example: `"nodeStyle": [{ "style": { "scaleLabelWithZoom": false } }]`,
+    },
+    {
+      id: 'labelMinZoom',
+      category: 'style',
+      description:
+        'Node style. Hides the label below this zoom level, so a dense graph stays readable when zoomed out and gains its detail as you move in.',
+      example: `"nodeStyle": [{ "style": { "labelMinZoom": 0.6 } }]`,
+    },
+
     // ─── Metrics ───────────────────────────────────────────────────────────────
     {
       id: 'degree',

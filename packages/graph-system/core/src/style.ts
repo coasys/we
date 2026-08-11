@@ -160,6 +160,9 @@ export function nodeVisual(node: GraphNode, style: NodeStyle, metrics: MetricVal
     label: node.label ?? node.type,
     labelColor: style.labelColor ?? DEFAULT_NODE.labelColor,
     labelSize: style.labelSize ?? DEFAULT_NODE.labelSize,
+    // Scaling by default: the intuition people arrive with is a board, where zooming magnifies the
+    // whole drawing. Constant-size text is the specialist choice, so it is the one you ask for.
+    scaleLabelWithZoom: style.scaleLabelWithZoom ?? true,
   };
   if (visual.shape === 'card') {
     visual.width = style.width ?? DEFAULT_CARD.width;
@@ -195,6 +198,8 @@ export interface EdgeVisual {
   curve: 'straight' | 'bezier' | 'orthogonal';
   arrow: 'none' | 'target' | 'both';
   dashed?: boolean;
+  /** False keeps stroke width constant on screen. See `EdgeStyle.scaleWithZoom`. */
+  scaleWithZoom: boolean;
   label?: string;
   labelColor?: string;
 }
@@ -208,6 +213,7 @@ export function edgeVisual(edge: GraphEdge, style: EdgeStyle, metrics: MetricVal
     color: resolveColor(style.color, edge.id, metrics, DEFAULT_EDGE.color),
     curve: style.curve ?? 'bezier',
     arrow: style.arrow ?? 'target',
+    scaleWithZoom: style.scaleWithZoom ?? true,
   };
   if (style.opacity !== undefined) visual.opacity = style.opacity;
   if (style.dashed !== undefined) visual.dashed = style.dashed;

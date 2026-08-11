@@ -78,6 +78,17 @@ export interface NodeStyle {
   labelSize?: number;
   /** Hide the label below this zoom, so a dense graph stays readable when zoomed out. */
   labelMinZoom?: number;
+  /**
+   * Whether the label grows and shrinks with the camera. Default `true`.
+   *
+   * `false` pins it to a constant on-screen size, which keeps text readable at any zoom — right for a
+   * map you navigate by reading, wrong for a board where the text *is* the artwork.
+   *
+   * Only the label. A node's mark always scales: its size is world units and so is its hit area, and
+   * letting the two disagree is precisely the class of bug where what you can click stops matching
+   * what you can see.
+   */
+  scaleLabelWithZoom?: boolean;
   icon?: string;
   image?: string;
   /** Name of a registered node renderer, when the built-in shapes are not enough. */
@@ -92,6 +103,14 @@ export interface EdgeStyle {
   curve?: 'straight' | 'bezier' | 'orthogonal';
   arrow?: 'none' | 'target' | 'both';
   dashed?: boolean;
+  /**
+   * Whether stroke width grows with the camera. Default `true`.
+   *
+   * `true` treats the edge as part of the drawing, which is what a board wants — zoom in and the line
+   * gets thicker, like ink. `false` keeps it a constant on-screen width, which is what a large network
+   * wants, since hairlines vanish when you zoom out to see the whole thing.
+   */
+  scaleWithZoom?: boolean;
   showLabel?: boolean;
   labelColor?: string;
 }

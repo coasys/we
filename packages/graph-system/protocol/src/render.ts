@@ -31,6 +31,8 @@ export interface NodeVisual {
   label?: string;
   labelColor?: string;
   labelSize?: number;
+  /** False pins the label to a constant on-screen size. See `NodeStyle.scaleLabelWithZoom`. */
+  scaleLabelWithZoom?: boolean;
   icon?: string;
   image?: string;
 }

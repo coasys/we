@@ -135,7 +135,12 @@
   left: 0;
   // Just below the dot, whatever size it is.
   top: calc(var(--node-size) / 2 + var(--we-space-100));
-  transform: translateX(-50%);
+  // `--label-scale` is 1 by default and `1 / zoom` when the label is pinned to a constant on-screen
+  // size. Scaling about the top centre keeps it hanging under the node rather than drifting as it
+  // resizes; the translate centres it and is unaffected by the scale beside it, since a percentage
+  // translate resolves against the element's own box.
+  transform-origin: 50% 0;
+  transform: translateX(-50%) scale(var(--label-scale, 1));
   // Sizes to its text up to the cap, so `text-overflow` has a width to work against.
   width: max-content;
   max-width: 140px;

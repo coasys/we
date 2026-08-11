@@ -9,7 +9,7 @@
 import type { GraphNode } from '@we/graph-protocol';
 import { describe, expect, it } from 'vitest';
 
-import { matches, nodeVisual, resolveColor, resolveNumber, resolveStyle } from './style';
+import { edgeVisual, matches, nodeVisual, resolveColor, resolveNumber, resolveStyle } from './style';
 
 const belief: GraphNode = {
   id: 'a',
@@ -97,5 +97,33 @@ describe('metric references', () => {
     // drawing plainly beats refusing to draw.
     expect(resolveNumber({ metric: 'betweenness' }, 'a', metrics, 14)).toBe(14);
     expect(resolveColor({ metric: 'betweenness' }, 'a', metrics, 'neutral-500')).toBe('neutral-500');
+  });
+});
+
+describe('defaults', () => {
+  it('scales labels and edges with the camera unless told otherwise', () => {
+    // The intuition people arrive with is a board, where zoom magnifies the whole drawing. Constant
+    // on-screen size is the specialist choice, so it is the one you ask for.
+    expect(nodeVisual(belief, {}, NO_METRICS).scaleLabelWithZoom).toBe(true);
+    expect(edgeVisual({ id: 'e', source: 'a', target: 'b', type: 'rel' }, {}, NO_METRICS).scaleWithZoom).toBe(true);
+  });
+
+  it('treats an omitted option as the default, never as off', () => {
+    // `undefined` and `false` must not collapse into each other — an author who said nothing has not
+    // asked for the opposite, which is how a graph ends up with no arrows because nobody mentioned
+    // arrows.
+    const edge = edgeVisual({ id: 'e', source: 'a', target: 'b', type: 'rel' }, {}, NO_METRICS);
+    expect(edge.arrow).toBe('target');
+    expect(edge.curve).toBe('bezier');
+
+    const off = edgeVisual({ id: 'e', source: 'a', target: 'b', type: 'rel' }, { scaleWithZoom: false }, NO_METRICS);
+    expect(off.scaleWithZoom).toBe(false);
+  });
+
+  it('derives a card height from its width, so widening keeps the shape', () => {
+    const visual = nodeVisual(belief, { shape: 'card', width: 200 }, NO_METRICS);
+    expect(visual.height).toBe(150);
+    // `size` becomes the half-extent, which is what hit-testing reads.
+    expect(visual.size).toBe(100);
   });
 });

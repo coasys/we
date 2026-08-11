@@ -248,6 +248,13 @@ export function GraphView(props: GraphViewProps) {
     return `translate(${x}px, ${y}px) scale(${zoom})`;
   });
 
+  /** The camera scale on its own, for anything that has to divide by it. */
+  const zoom = createMemo(() => {
+    viewportVersion();
+    version();
+    return engine.viewport.get().zoom;
+  });
+
   const status = createMemo(() => {
     statusVersion();
     return engine.getStatus();
@@ -308,7 +315,15 @@ export function GraphView(props: GraphViewProps) {
         dispatch('onWheel', event);
       }}
     >
-      <div class="we-graph__layer" style={{ transform: transform() }}>
+      <div
+        class="we-graph__layer"
+        style={{
+          transform: transform(),
+          // Published so anything that must keep a constant on-screen size can divide by it in CSS,
+          // rather than every such element needing its own reactive computation in JS.
+          '--graph-zoom': String(zoom()),
+        }}
+      >
         <svg class="we-graph__edges" aria-hidden="true">
           <For each={edges()}>
             {(entry) => (
@@ -320,6 +335,8 @@ export function GraphView(props: GraphViewProps) {
                   stroke-width={entry.visual.width}
                   stroke-opacity={entry.visual.opacity ?? 1}
                   stroke-dasharray={entry.visual.dashed ? '4 4' : undefined}
+                  // SVG's own answer to "keep this stroke a constant width whatever the transform".
+                  vector-effect={entry.visual.scaleWithZoom ? undefined : 'non-scaling-stroke'}
                   marker-end={entry.visual.arrow === 'none' ? undefined : 'url(#we-graph-arrow)'}
                   onClick={() => props.onEdgeClick?.(entry.edge)}
                 />
@@ -372,6 +389,7 @@ export function GraphView(props: GraphViewProps) {
                 '--node-radius': entry.visual.shape === 'circle' ? '50%' : 'var(--we-radius-300)',
                 '--node-label-color': color(entry.visual.labelColor, 'neutral-800'),
                 '--node-label-size': `${entry.visual.labelSize ?? 12}px`,
+                '--label-scale': entry.visual.scaleLabelWithZoom ? '1' : 'calc(1 / var(--graph-zoom))',
                 opacity: entry.visual.opacity ?? 1,
               }}
               title={entry.visual.label}

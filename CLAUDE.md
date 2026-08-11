@@ -989,6 +989,15 @@ Names resolvable inside GraphView props: seed sources (seeds.source), expanders 
   - yField: string — Node data field holding y. Default "y".
   - Example: `{ "type": "manual" }`
 
+**style**
+
+- `scaleWithZoom` — Edge style. true (default) treats the line as part of the drawing, so it thickens as you zoom in — right for a board. false pins it to a constant on-screen width, so hairlines stay visible when you zoom out to see a whole network.
+  - Example: `"edgeStyle": [{ "style": { "scaleWithZoom": false } }]`
+- `scaleLabelWithZoom` — Node style. true (default) scales the label with the camera; false keeps it a constant on-screen size, which keeps text readable at any zoom on a map you navigate by reading. Affects the label only — a node mark always scales, because its size and its hit area are both world units.
+  - Example: `"nodeStyle": [{ "style": { "scaleLabelWithZoom": false } }]`
+- `labelMinZoom` — Node style. Hides the label below this zoom level, so a dense graph stays readable when zoomed out and gains its detail as you move in.
+  - Example: `"nodeStyle": [{ "style": { "labelMinZoom": 0.6 } }]`
+
 **metric**
 
 - `degree` — How connected a node is, normalised 0..1. The usual answer to "make the important things bigger". Reference it from a style value rather than a fixed number.
