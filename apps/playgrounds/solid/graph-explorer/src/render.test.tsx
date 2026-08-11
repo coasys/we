@@ -60,6 +60,17 @@ describe('the graph paints', () => {
     expect(container.textContent).toContain('Publish');
   });
 
+  it('draws edge labels as DOM, so they track the camera like every other piece of text', async () => {
+    // They were SVG `<text>` and jittered for seconds after a zoom while the lines moved cleanly.
+    const container = mount(scenario('static'));
+    await settle();
+
+    const labels = container.querySelectorAll('.we-graph__edge-label');
+    expect(labels.length).toBeGreaterThan(0);
+    expect(container.querySelectorAll('.we-graph__edges text')).toHaveLength(0);
+    expect([...labels].map((el) => el.textContent)).toContain('approve');
+  });
+
   it('maps the dataset schema, one node per entity type', async () => {
     const container = mount(scenario('schema'));
     await settle();

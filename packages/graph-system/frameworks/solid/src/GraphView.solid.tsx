@@ -6,12 +6,18 @@
  * per-framework adapter), and it is why a React host would be a second file of this size rather than a
  * second implementation of the engine.
  *
- * ## Why edges are SVG and nodes are DOM
+ * ## What is drawn where
  *
- * Nodes want to be real elements — that is what makes a node able to hold a schema fragment, an
- * avatar, eventually an editable block. Edges want a single retained-mode surface with sub-pixel
- * curves, which SVG gives for free. Both live inside one transformed layer so a single camera moves
- * them together and nothing has to keep two coordinate systems in agreement.
+ * Edge *lines* are SVG: a single retained-mode surface with sub-pixel curves, which SVG gives for
+ * free. Everything else — nodes, node labels, edge labels — is DOM. Nodes want to be real elements,
+ * since that is what lets a node hold a schema fragment, an avatar, eventually an editable block.
+ *
+ * Text is DOM without exception, and that is a scar rather than a preference: edge labels were SVG
+ * `<text>` and jittered for seconds after a zoom, because the browser rasterises SVG text into a
+ * cached texture and re-renders it at the new scale on its own schedule. HTML text is re-laid out with
+ * the transform, so it simply tracks. One text pipeline, no second thing to keep in agreement.
+ *
+ * All of it lives inside one transformed layer, so a single camera moves everything together.
  *
  * The engine owns hit-testing rather than the DOM, so behaviours work identically whichever surface a
  * node is drawn on. That is the property that keeps a dense canvas renderer additive later.
@@ -340,16 +346,6 @@ export function GraphView(props: GraphViewProps) {
                   marker-end={entry.visual.arrow === 'none' ? undefined : 'url(#we-graph-arrow)'}
                   onClick={() => props.onEdgeClick?.(entry.edge)}
                 />
-                <Show when={entry.visual.label}>
-                  <text
-                    class="we-graph__edge-label"
-                    x={entry.mid.x}
-                    y={entry.mid.y}
-                    fill={color(entry.visual.labelColor, 'neutral-500')}
-                  >
-                    {entry.visual.label}
-                  </text>
-                </Show>
               </g>
             )}
           </For>
@@ -367,6 +363,35 @@ export function GraphView(props: GraphViewProps) {
             </marker>
           </defs>
         </svg>
+
+        {/*
+          Edge labels are DOM, not SVG `<text>`.
+
+          They were SVG, and jittered for seconds after a zoom while everything around them moved
+          cleanly — the browser rasterises SVG text into a cached texture and re-renders it at the new
+          scale on its own schedule, which nothing on our side can hurry. Node labels never had the
+          problem because they are ordinary HTML text, re-laid out with the transform.
+          One text pipeline for the whole graph is the fix, rather than a third attempt at persuading
+          the SVG one.
+
+          Only labelled edges produce an element, so an unlabelled graph pays nothing.
+        */}
+        <For each={edges().filter((entry) => entry.visual.label)}>
+          {(entry) => (
+            <span
+              class="we-graph__edge-label"
+              style={{
+                // Second translate centres the element on the midpoint. A percentage *margin* would
+                // resolve against the containing block's width rather than the label's own, which is
+                // the classic way to almost centre something.
+                transform: `translate(${entry.mid.x}px, ${entry.mid.y}px) translate(-50%, -50%)`,
+                color: color(entry.visual.labelColor, 'neutral-500'),
+              }}
+            >
+              {entry.visual.label}
+            </span>
+          )}
+        </For>
 
         <For each={nodes()}>
           {(entry) => (

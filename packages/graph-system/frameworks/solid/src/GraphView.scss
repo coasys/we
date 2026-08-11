@@ -71,14 +71,20 @@
   }
 }
 
+// A DOM label, positioned at the midpoint of its edge. See the note in `GraphView.solid.tsx` for why
+// this is not SVG text.
 .we-graph__edge-label {
+  position: absolute;
+  top: 0;
+  left: 0;
   font-size: 10px;
-  text-anchor: middle;
-  dominant-baseline: middle;
-  paint-order: stroke;
-  stroke: var(--we-color-neutral-0);
-  stroke-width: 3px;
+  white-space: nowrap;
   pointer-events: none;
+  // Legible over the edge it sits on, without a background plate that would hide the line.
+  text-shadow:
+    0 0 3px var(--we-color-neutral-0),
+    0 0 3px var(--we-color-neutral-0),
+    0 0 3px var(--we-color-neutral-0);
 }
 
 // A **zero-size anchor** at the node's position, with the dot and label hung off it.
