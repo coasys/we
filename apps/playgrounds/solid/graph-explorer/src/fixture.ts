@@ -283,3 +283,33 @@ export const TABLES: Record<string, Row[]> = {
 
 /** The dataset id the harness pretends to be scoped to. */
 export const DATASET = 'playground';
+
+/**
+ * Which field of a node is worth editing, if any.
+ *
+ * The harness needs *a* write path to exercise — a graph that can only be read tells you nothing
+ * about whether editing a record flows back through seeds and expanders. This picks the identity
+ * property, which is the one a card actually displays.
+ */
+export function editableField(node: { type: string; data?: Record<string, unknown> }): string | null {
+  const shape = SHAPES.find((s) => s.name === node.type);
+  const field = shape?.identityProperty;
+  return field && node.data && field in node.data ? field : null;
+}
+
+/**
+ * Write a value back into the fixture.
+ *
+ * Mutating the source rows rather than patching the rendered node on purpose: the point is to prove
+ * the value survives a round trip *through* the seed and expander path, exactly as it would through a
+ * real data layer. Returns false when the row cannot be found, so the caller can leave the UI alone
+ * rather than showing a change that did not happen.
+ */
+export function writeField(node: { type: string; id: string }, field: string, value: string): boolean {
+  // The graph node's id is an address; the row id is its last segment.
+  const rowId = decodeURIComponent(node.id.split('/').pop() ?? '');
+  const row = (TABLES[node.type] ?? []).find((candidate) => candidate.id === rowId);
+  if (!row) return false;
+  row[field] = value;
+  return true;
+}

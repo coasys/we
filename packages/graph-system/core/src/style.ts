@@ -149,6 +149,9 @@ const DEFAULT_NODE: Required<Pick<NodeVisual, 'shape' | 'size' | 'color' | 'labe
 };
 
 /** Turn a node plus its resolved style into a drawing instruction. */
+/** A card readable at one glance without dominating the canvas. */
+const DEFAULT_CARD = { width: 160, height: 120 };
+
 export function nodeVisual(node: GraphNode, style: NodeStyle, metrics: MetricValues): NodeVisual {
   const visual: NodeVisual = {
     shape: style.shape ?? DEFAULT_NODE.shape,
@@ -158,6 +161,15 @@ export function nodeVisual(node: GraphNode, style: NodeStyle, metrics: MetricVal
     labelColor: style.labelColor ?? DEFAULT_NODE.labelColor,
     labelSize: style.labelSize ?? DEFAULT_NODE.labelSize,
   };
+  if (visual.shape === 'card') {
+    visual.width = style.width ?? DEFAULT_CARD.width;
+    // Proportional rather than fixed, so widening a card keeps its shape instead of turning it into
+    // a letterbox.
+    visual.height = style.height ?? Math.round(visual.width * 0.75);
+    // `size` is the hit radius everywhere else in the system; for a card it is half the box, so
+    // picking covers the card rather than a dot in the middle of it.
+    visual.size = Math.max(visual.width, visual.height) / 2;
+  }
   if (style.borderColor !== undefined) visual.borderColor = style.borderColor;
   if (style.borderWidth !== undefined) visual.borderWidth = style.borderWidth;
   if (style.opacity !== undefined) visual.opacity = style.opacity;

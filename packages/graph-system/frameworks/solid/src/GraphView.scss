@@ -115,6 +115,8 @@
 
 .we-graph__label {
   position: absolute;
+  color: var(--node-label-color);
+  font-size: var(--node-label-size);
   left: 0;
   // Just below the dot, whatever size it is.
   top: calc(var(--node-size) / 2 + var(--we-space-100));
@@ -131,6 +133,50 @@
   text-shadow:
     0 0 3px var(--we-color-neutral-0),
     0 0 3px var(--we-color-neutral-0);
+}
+
+// The post-it: a sized box holding its own text, centred on the node's coordinates like every other
+// shape, so edges and hit-testing need no special case.
+.we-graph__card {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform: translate(-50%, -50%);
+  display: flex;
+  width: var(--node-width);
+  height: var(--node-height);
+  padding: var(--we-space-300);
+  border-radius: var(--node-radius);
+  background: var(--node-color);
+  border: var(--node-border-width) solid var(--node-border);
+  box-shadow: var(--we-shadow-sm);
+  overflow: hidden;
+}
+
+.we-graph__card-text {
+  color: var(--node-label-color);
+  font-size: var(--node-label-size);
+  line-height: 1.4;
+  // Clamped rather than scrolled: a card is a glance, and the inspector is where the whole value is.
+  display: -webkit-box;
+  -webkit-line-clamp: 5;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.we-graph__more--card {
+  position: absolute;
+  right: var(--we-space-200);
+  bottom: var(--we-space-200);
+  color: var(--node-label-color);
+}
+
+.we-graph__node--card.we-graph__node--hovered .we-graph__card {
+  box-shadow: var(--we-shadow-md);
+}
+
+.we-graph__node--card.we-graph__node--selected .we-graph__card {
+  box-shadow: 0 0 0 3px var(--we-color-primary-500);
 }
 
 .we-graph__node--hovered .we-graph__dot {

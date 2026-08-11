@@ -15,19 +15,53 @@ import '@we/graph-solid/styles';
 import './styles.css';
 
 import { Column, Row } from '@we/components/solid';
-import { GraphView } from '@we/graph-solid';
+import type { GraphNode } from '@we/graph-protocol';
+import { type GraphHostBindings, GraphView, type GraphViewProps } from '@we/graph-solid';
 import { applyThemeVars } from '@we/schema-shared';
 import { THEME_PRESETS, type ThemeName } from '@we/themes/presets';
 import { createEffect, createMemo, createSignal, For, Show } from 'solid-js';
 import { render } from 'solid-js/web';
 
+import { editableField, writeField } from './fixture';
 import { createHost, type QueryLog } from './host';
 import { LAYOUTS, type Scenario, SCENARIOS } from './scenarios';
+
+/**
+ * The graph, wrapped so its remount key has somewhere to live.
+ *
+ * `Show keyed` hands the key to its child and `GraphView` has no use for it, so rather than smuggle
+ * it past the types this makes it a real prop. The wrapper also keeps the scenario switch honest: a
+ * new key is a genuine remount, which is what a template does when a `$if` swaps one graph for
+ * another, and the path a leaked engine would show up on.
+ */
+function Graph(props: {
+  remountKey: { scenario: string; version: number };
+  spec: GraphViewProps;
+  host: GraphHostBindings;
+  onNodeClick: (node: GraphNode) => void;
+  onChanged: () => void;
+}) {
+  void props.remountKey;
+  return (
+    <GraphView
+      {...props.spec}
+      host={props.host}
+      width="100%"
+      height="100%"
+      bg="neutral-50"
+      onNodeClick={props.onNodeClick}
+      onSelectionChange={props.onChanged}
+      onNodeDragEnd={props.onChanged}
+    />
+  );
+}
 
 function App() {
   const [scenarioId, setScenarioId] = createSignal(SCENARIOS[0].id);
   const [layoutOverride, setLayoutOverride] = createSignal<string | null>(null);
-  const [selected, setSelected] = createSignal<{ type: string; label?: string; kind: string } | null>(null);
+  const [selected, setSelected] = createSignal<GraphNode | null>(null);
+  /** Bumped after a fixture edit, to force the graph to re-seed and pick the new value up. */
+  const [dataVersion, setDataVersion] = createSignal(0);
   const [log, setLog] = createSignal<QueryLog['entries']>([]);
   const [theme, setTheme] = createSignal<ThemeName>('light');
 
@@ -59,6 +93,15 @@ function App() {
   const flushLog = () => setLog([...queryLog.entries].slice(-12).reverse());
 
   const scenario = createMemo(() => SCENARIOS.find((s) => s.id === scenarioId()) ?? SCENARIOS[0]);
+
+  /**
+   * Identity of the graph currently mounted.
+   *
+   * An object rather than a string because `Show keyed` compares by reference, and a memo only mints
+   * a new one when the scenario or the data actually changed — which is precisely when the graph
+   * should be rebuilt from scratch.
+   */
+  const graphKey = createMemo(() => ({ scenario: scenarioId(), version: dataVersion() }));
 
   /** The scenario's spec, with the layout picker applied over it. */
   const specFor = (current: Scenario) => {
@@ -154,19 +197,80 @@ function App() {
           </Row>
         </Column>
 
+        {/*
+          The inspector.
+
+          A graph shows structure and hides everything else, so a node's actual content has to be
+          readable somewhere. This is host territory rather than engine — the engine already hands the
+          whole node to `onNodeClick`, and where the detail goes is a template's decision.
+
+          The label is editable here to exercise the *write* path, deliberately from a panel rather
+          than inline on the canvas: text editing inside a transformed, zoomable surface is the hard
+          part of the board project, and faking it here would teach the wrong thing about what exists.
+        */}
         <Show when={selected()}>
           {(node) => (
             <Column gap="200">
-              <we-text variant="label" color="neutral-500" uppercase>
-                Selected
-              </we-text>
+              <Row ax="between" ay="center">
+                <we-text variant="label" color="neutral-500" uppercase>
+                  Inspector
+                </we-text>
+                <we-button variant="ghost" size="xs" square title="Clear" onClick={() => setSelected(null)}>
+                  <we-icon name="x" size="xs" />
+                </we-button>
+              </Row>
+
               <Row gap="100" wrap>
                 <we-badge variant="primary" size="xs">
                   {node().kind}
                 </we-badge>
                 <we-badge size="xs">{node().type}</we-badge>
+                <Show when={node().unresolved}>
+                  <we-badge variant="warning" size="xs">
+                    not synced
+                  </we-badge>
+                </Show>
               </Row>
-              <we-text variant="footnote">{node().label}</we-text>
+
+              <Show when={editableField(node())} keyed>
+                {(field) => (
+                  <Column gap="100">
+                    <we-text variant="footnote" color="neutral-500">
+                      {field}
+                    </we-text>
+                    <we-textarea
+                      rows={3}
+                      value={String(node().data?.[field] ?? '')}
+                      onChange={(event: Event) => {
+                        const value = (event.target as HTMLTextAreaElement).value;
+                        if (writeField(node(), field, value)) {
+                          setSelected(null);
+                          setDataVersion((n) => n + 1);
+                        }
+                      }}
+                    />
+                  </Column>
+                )}
+              </Show>
+
+              <Column gap="100">
+                <For each={Object.entries(node().data ?? {})}>
+                  {([key, value]) => (
+                    <Row gap="200" ax="between">
+                      <we-text variant="footnote" color="neutral-500">
+                        {key}
+                      </we-text>
+                      <we-text variant="footnote" truncate>
+                        {String(value ?? '—')}
+                      </we-text>
+                    </Row>
+                  )}
+                </For>
+              </Column>
+
+              <we-text variant="footnote" color="neutral-400" truncate>
+                {node().id}
+              </we-text>
             </Column>
           )}
         </Show>
@@ -209,20 +313,19 @@ function App() {
       <Column flex="1" height="100%" position="relative" overflow="hidden">
         {/* Keyed on the scenario so switching is a genuine remount — the same thing a template does
             when a `$if` swaps one graph for another, and the path a leaked engine would show up on. */}
-        <Show when={scenario()} keyed>
-          {(current) => (
-            <GraphView
-              {...specFor(current)}
+        {/* Keyed on scenario *and* data version, so an edit re-seeds through the real path rather
+            than being patched into the rendered node. */}
+        <Show when={graphKey()} keyed>
+          {(remountKey) => (
+            <Graph
+              remountKey={remountKey}
+              spec={specFor(scenario())}
               host={host}
-              width="100%"
-              height="100%"
-              bg="neutral-50"
               onNodeClick={(node) => {
-                setSelected({ kind: node.kind, type: node.type, label: node.label });
+                setSelected(node);
                 flushLog();
               }}
-              onSelectionChange={() => flushLog()}
-              onNodeDragEnd={() => flushLog()}
+              onChanged={flushLog}
             />
           )}
         </Show>

@@ -18,8 +18,12 @@ import type { NodeStyle } from './style';
  * possible later without rewriting the plugins that produce these.
  */
 export interface NodeVisual {
-  shape: 'circle' | 'rect' | 'template';
+  shape: 'circle' | 'rect' | 'card' | 'template';
+  /** Radius for a mark; half-height for a box. A card uses `width`/`height` instead. */
   size: number;
+  /** Card geometry, in world units. Present only for `shape: 'card'`. */
+  width?: number;
+  height?: number;
   color: string;
   borderColor?: string;
   borderWidth?: number;
@@ -111,6 +115,11 @@ export interface Behaviour {
   onPointerDown?(input: PointerInput, ctx: BehaviourContext): boolean | void;
   onPointerMove?(input: PointerInput, ctx: BehaviourContext): boolean | void;
   onPointerUp?(input: PointerInput, ctx: BehaviourContext): boolean | void;
+  /**
+   * The gesture was abandoned — the pointer was captured away, the window lost focus, a touch was
+   * interrupted. Any behaviour holding state across a gesture must reset here, or it stays latched.
+   */
+  onPointerCancel?(input: PointerInput, ctx: BehaviourContext): boolean | void;
   onWheel?(input: PointerInput, ctx: BehaviourContext): boolean | void;
   onDoubleClick?(input: PointerInput, ctx: BehaviourContext): boolean | void;
 }

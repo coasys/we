@@ -229,16 +229,19 @@ export const SCENARIOS: Scenario[] = [
   {
     id: 'board',
     label: 'Board (manual)',
-    note: 'Position is the data, not a derivation of it — each collection carries x/y and the layout reads them. Drag a node and it stays where you put it; a real board would persist the drop via onNodeDragEnd. This is the mode a freeform canvas builds on.',
+    note: 'Post-it cards, positioned by their own x/y rather than by a layout — position is the data here. Drag one and it stays put; a real board would persist the drop via onNodeDragEnd. Select a card to read and edit it in the inspector. Inline editing is deliberately absent: text editing on a transformed canvas is the board project, not a flag.',
     spec: {
       seeds: { source: 'query', options: { entity: 'CollectionBlock', limit: 10 } },
       expansion: { defaultDepth: 0, expanders: ['collection'] },
       layout: { type: 'manual' },
       nodeStyle: [
-        { style: { shape: 'rect', size: 26, color: 'primary-500' } },
-        { when: { 'data.kind': 'call' }, style: { color: 'success-500' } },
-        { when: { 'data.kind': 'notes' }, style: { color: 'warning-500' } },
-        { when: { 'data.kind': 'board' }, style: { color: 'danger-500' } },
+        // A card carries its text inside the box — the node *is* the content, rather than a mark with
+        // a caption. `size` stops meaning radius here and the width/height take over.
+        { style: { shape: 'card', width: 170, color: 'primary-100', labelColor: 'primary-900' } },
+        { when: { 'data.kind': 'call' }, style: { color: 'success-100', labelColor: 'success-900' } },
+        { when: { 'data.kind': 'notes' }, style: { color: 'warning-100', labelColor: 'warning-900' } },
+        { when: { 'data.kind': 'board' }, style: { color: 'danger-100', labelColor: 'danger-900' } },
+        // Children opened out of a card stay small marks, so the two levels read differently.
         { when: { type: { not: 'CollectionBlock' } }, style: { shape: 'circle', size: 10, color: 'neutral-400' } },
       ],
       edgeStyle: [{ style: { curve: 'orthogonal', color: 'neutral-300', arrow: 'none' } }],

@@ -299,6 +299,9 @@ export function GraphView(props: GraphViewProps) {
       }}
       onPointerMove={onPointerMove}
       onPointerUp={(event) => dispatch('onPointerUp', event)}
+      // Without this a gesture interrupted by the browser leaves whichever behaviour was tracking it
+      // latched onto a node.
+      onPointerCancel={(event) => dispatch('onPointerCancel', event)}
       onDblClick={(event) => dispatch('onDoubleClick', event)}
       onWheel={(event) => {
         event.preventDefault();
@@ -356,37 +359,53 @@ export function GraphView(props: GraphViewProps) {
                 'we-graph__node--selected': entry.selected,
                 'we-graph__node--hovered': hovered() === entry.node.id,
                 'we-graph__node--unresolved': entry.node.unresolved === true,
+                'we-graph__node--card': entry.visual.shape === 'card',
               }}
               style={{
                 transform: `translate(${entry.at.x}px, ${entry.at.y}px)`,
                 '--node-size': `${entry.visual.size * 2}px`,
+                '--node-width': `${entry.visual.width ?? entry.visual.size * 2}px`,
+                '--node-height': `${entry.visual.height ?? entry.visual.size * 2}px`,
                 '--node-color': color(entry.visual.color, 'primary-500'),
                 '--node-border': color(entry.visual.borderColor, 'transparent'),
                 '--node-border-width': `${entry.visual.borderWidth ?? 0}px`,
-                '--node-radius': entry.visual.shape === 'rect' ? 'var(--we-radius-300)' : '50%',
+                '--node-radius': entry.visual.shape === 'circle' ? '50%' : 'var(--we-radius-300)',
+                '--node-label-color': color(entry.visual.labelColor, 'neutral-800'),
+                '--node-label-size': `${entry.visual.labelSize ?? 12}px`,
                 opacity: entry.visual.opacity ?? 1,
               }}
               title={entry.visual.label}
             >
-              <div class="we-graph__dot">
-                <Show when={entry.visual.image}>
-                  <img class="we-graph__image" src={entry.visual.image} alt="" />
-                </Show>
-                <Show when={!entry.visual.image && entry.hasMore}>
-                  {/* An open node with more to give says so — otherwise a paged expansion looks
-                      identical to one that returned everything. */}
-                  <span class="we-graph__more">+</span>
-                </Show>
-              </div>
-              <span
-                class="we-graph__label"
-                style={{
-                  color: color(entry.visual.labelColor, 'neutral-800'),
-                  'font-size': `${entry.visual.labelSize ?? 12}px`,
-                }}
+              {/*
+                A card carries its text *inside* the box — the post-it, where the content is the node
+                rather than a caption attached to a mark. Everything else keeps the label underneath,
+                which is what keeps a dense map readable when the marks are 8px across.
+              */}
+              <Show
+                when={entry.visual.shape === 'card'}
+                fallback={
+                  <>
+                    <div class="we-graph__dot">
+                      <Show when={entry.visual.image}>
+                        <img class="we-graph__image" src={entry.visual.image} alt="" />
+                      </Show>
+                      <Show when={!entry.visual.image && entry.hasMore}>
+                        {/* An open node with more to give says so — otherwise a paged expansion looks
+                            identical to one that returned everything. */}
+                        <span class="we-graph__more">+</span>
+                      </Show>
+                    </div>
+                    <span class="we-graph__label">{entry.visual.label}</span>
+                  </>
+                }
               >
-                {entry.visual.label}
-              </span>
+                <div class="we-graph__card">
+                  <span class="we-graph__card-text">{entry.visual.label}</span>
+                  <Show when={entry.hasMore}>
+                    <span class="we-graph__more we-graph__more--card">+</span>
+                  </Show>
+                </div>
+              </Show>
             </div>
           )}
         </For>

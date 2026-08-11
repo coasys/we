@@ -61,8 +61,18 @@ export interface NodeStyle {
   color?: StyleValue<string>;
   borderColor?: string;
   borderWidth?: number;
-  /** `circle` and `rect` draw in both DOM and canvas modes; `template` requires DOM. */
-  shape?: 'circle' | 'rect' | 'template';
+  /**
+   * `circle` and `rect` draw in both DOM and canvas modes; `template` requires DOM.
+   *
+   * `card` is the post-it: a sized box with the label *inside* it, wrapped, rather than a mark with a
+   * caption underneath. Worth being a shape rather than a flag because it changes what `size` means —
+   * a card is `width` × `height`, not a radius — and because a board is mostly cards.
+   */
+  shape?: 'circle' | 'rect' | 'card' | 'template';
+  /** Card width in world units. Only meaningful for `shape: 'card'`; defaults to a readable box. */
+  width?: number;
+  /** Card height. Defaults to `width` × 0.75, roughly a post-it. */
+  height?: number;
   opacity?: number;
   labelColor?: string;
   labelSize?: number;

@@ -160,3 +160,55 @@ describe('select', () => {
     expect(selected).toEqual([['n1']]);
   });
 });
+
+describe('gesture cleanup', () => {
+  it('lets go of a node when another behaviour claims the pointer-up', () => {
+    // The bug: on a board the order is [pan-zoom, select, drag-node]; a plain click let `select`
+    // claim the release, so drag-node never learned the press had ended, kept the node latched, and
+    // the next movement — with no button held — dragged it. From the outside, clicking a node once
+    // stuck it to the cursor with no obvious way to put it down.
+    const { ctx, pinned } = fakeContext();
+    const behaviours = [selectBehaviour(), dragNodeBehaviour()];
+
+    dispatchPointer(behaviours, 'onPointerDown', at(100, 100), ctx);
+    dispatchPointer(behaviours, 'onPointerUp', at(100, 100), ctx);
+    // Button released, so `buttons: 0`.
+    dispatchPointer(behaviours, 'onPointerMove', { ...at(300, 300), buttons: 0 }, ctx);
+
+    expect(pinned.filter((p) => p.at !== null)).toEqual([]);
+  });
+
+  it('still stops at the first claimer while a gesture is in progress', () => {
+    // Broadcasting terminal events must not turn into broadcasting everything — claiming is still
+    // how drag-node takes precedence over pan-canvas on the way down.
+    const { ctx } = fakeContext();
+    const later = { id: 'later', onPointerDown: vi.fn() } satisfies Behaviour;
+
+    dispatchPointer([dragNodeBehaviour(), later], 'onPointerDown', at(100, 100), ctx);
+
+    expect(later.onPointerDown).not.toHaveBeenCalled();
+  });
+
+  it('ignores movement with no button held', () => {
+    // Independent of dispatch order: covers the pointer leaving the window and any future ordering
+    // mistake that swallows the release again.
+    const drag = dragNodeBehaviour();
+    const { ctx, pinned } = fakeContext();
+
+    drag.onPointerDown?.(at(100, 100), ctx);
+    drag.onPointerMove?.({ ...at(200, 200), buttons: 0 }, ctx);
+
+    expect(pinned).toEqual([]);
+  });
+
+  it('releases on a cancelled gesture', () => {
+    const drag = dragNodeBehaviour();
+    const { ctx, pinned } = fakeContext();
+
+    drag.onPointerDown?.(at(100, 100), ctx);
+    drag.onPointerCancel?.(at(100, 100), ctx);
+    drag.onPointerMove?.(at(300, 300), ctx);
+
+    expect(pinned).toEqual([]);
+  });
+});
