@@ -30,6 +30,7 @@ import { extractComponentProps } from './extractors/typescript.js';
 import { architecture } from './fragments/architecture.js';
 import { designSystemProps } from './fragments/design-system-props.js';
 import { devPatterns } from './fragments/dev-patterns.js';
+import { patterns } from './fragments/patterns.js';
 import { routing } from './fragments/routing.js';
 import { rules } from './fragments/rules.js';
 import { schemaOperators } from './fragments/schema-operators.js';
@@ -231,6 +232,7 @@ async function main() {
       // the reference lists exactly the members the validator accepts.
       stores: generateStoresText(contextData.storeEntries ?? []),
       storePatterns,
+      patterns,
       rules,
     },
   };

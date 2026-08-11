@@ -1,4 +1,5 @@
 import type { SchemaNode } from '@we/schema-shared';
+import { emptyNote } from '@we/template-kit';
 
 /**
  * One row per joined dataset, space or not — see `spaceStore.spaceList`.
@@ -138,11 +139,7 @@ export const spacesListSection: SchemaNode = {
             },
           ],
         },
-        else: {
-          type: 'we-text',
-          props: { variant: 'footnote', color: 'neutral-400', italic: true },
-          children: ['No spaces yet'],
-        },
+        else: emptyNote('No spaces yet'),
       },
     },
   ],

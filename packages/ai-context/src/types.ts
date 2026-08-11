@@ -27,6 +27,8 @@ export interface AssembledContext extends ContextData {
     routing: string;
     stores: string;
     storePatterns: string;
+    /** Ready-made JSON shapes to copy — the recipes behind `@we/template-kit`. */
+    patterns: string;
     rules: string;
   };
 }

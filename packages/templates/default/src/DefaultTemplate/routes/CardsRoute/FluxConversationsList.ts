@@ -1,7 +1,5 @@
 import type { SchemaNode } from '@we/schema-shared';
-
-import { emptyState } from '../../EmptyState.ts';
-import { cardList, cardShell } from './CardShell.ts';
+import { cardList, cardShell, emptyState, peopleRow } from '@we/template-kit';
 
 const hasConversationModel = {
   $find: { items: { $store: 'datasetStore.currentDatasetModels' }, where: { name: 'Conversation' } },
@@ -61,57 +59,7 @@ export const fluxConversationsList: SchemaNode = {
                 then: { type: 'we-text', props: { color: 'neutral-600' }, children: ['$conversation.summary'] },
               },
             },
-            {
-              type: 'Row',
-              props: { gap: '300', ay: 'center' },
-              children: [
-                {
-                  type: 'AvatarStack',
-                  props: {
-                    avatars: {
-                      $map: {
-                        items: '$conversation.participants',
-                        select: {
-                          image: {
-                            $find: {
-                              items: { $store: 'profileStore.profiles' },
-                              where: { did: '$item' },
-                              select: 'avatar',
-                            },
-                          },
-                          hash: '$item',
-                        },
-                      },
-                    },
-                    max: 5,
-                    size: 'sm',
-                    ring: '0 0 0 2px var(--we-ring-color)',
-                  },
-                },
-                {
-                  type: 'Row',
-                  props: { gap: '100' },
-                  children: [
-                    {
-                      type: 'we-number',
-                      props: { value: { $count: { items: '$conversation.participants' } }, shorten: true },
-                    },
-                    {
-                      type: 'we-text',
-                      children: [
-                        {
-                          $plural: {
-                            count: { $count: { items: '$conversation.participants' } },
-                            one: 'Participant',
-                            other: 'Participants',
-                          },
-                        },
-                      ],
-                    },
-                  ],
-                },
-              ],
-            },
+            peopleRow({ items: '$conversation.participants', dids: true, noun: 'Participant' }),
           ],
         }),
       ],

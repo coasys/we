@@ -54,14 +54,16 @@ export function createGraphModule(graphViewComponent: unknown) {
 
     /**
      * Placeable graphs. Named rather than parameterised where a fragment is genuinely fixed, and a
-     * function where the only thing that varies is the entity — a `knowledgeMap('Belief')` reads
-     * better in a template than a fragment plus an override.
+     * function where the only thing that varies is the entity — `knowledgeMap({ entity: 'Belief' })`
+     * reads better in a template than a fragment plus an override. Options object rather than a
+     * positional argument, per the kit's fragment conventions: uniform call sites, and room to grow
+     * depth or layout options without a migration.
      */
     schemas: {
       schemaMap,
       contentTree,
       staticDiagram,
-      knowledgeMapPosts: knowledgeMap('Post'),
+      knowledgeMapPosts: knowledgeMap({ entity: 'Post' }),
     },
   });
 }

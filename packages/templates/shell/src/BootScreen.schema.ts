@@ -1,4 +1,5 @@
 import type { OperatorToken, SchemaNode, SchemaProp } from '@we/schema-shared';
+import { field } from '@we/template-kit';
 
 /**
  * The boot screen: the four states a session can be in before the app is usable.
@@ -438,69 +439,7 @@ const unlockForm: SchemaNode = {
         },
       },
     },
-    {
-      type: 'we-form-field',
-      props: {
-        error: {
-          $if: {
-            condition: { $store: 'sessionStore.passwordError' },
-            then: 'Incorrect password',
-            else: '',
-          },
-        },
-      },
-      children: [
-        // Field and submit on one row — the shape an OS sign-in uses when there is exactly one
-        // thing to type and one thing to do with it. The setup screen keeps a full-width button
-        // instead, because its submit applies to three fields rather than the one beside it.
-        {
-          type: 'Row',
-          props: { gap: '300', ay: 'center' },
-          children: [
-            {
-              type: 'we-input',
-              props: {
-                width: '220px',
-                type: 'password',
-                // The reveal toggle is the input's own, not a button assembled beside it.
-                revealable: true,
-                placeholder: 'Password...',
-                value: { $local: 'password' },
-                // Editing the password retracts the verdict on it. "Incorrect password" is about
-                // the string that was submitted, so it has nothing to say about the one being
-                // typed to replace it — left up, it reads as a running judgement of the new one.
-                onInput: [
-                  { $setLocal: 'password', from: '$event.detail' },
-                  { $action: 'sessionStore.clearPasswordError' },
-                ],
-                // Enter carries the same precondition as the button, or an empty field would
-                // reach the executor, fail to unlock, and come back as "Incorrect password" —
-                // the wrong diagnosis for a password that was never typed.
-                onKeyDown: {
-                  $if: {
-                    condition: { $and: [{ $eq: ['$arg.detail.key', 'Enter'] }, { $local: 'password' }] },
-                    then: { $action: 'sessionStore.login', args: [{ $local: 'password' }] },
-                  },
-                },
-              },
-            },
-            {
-              type: 'we-button',
-              props: {
-                variant: 'primary',
-                // Gated on the value, not on a validation rule. There is nothing to submit until
-                // something is typed, which is a precondition rather than a judgement — and the
-                // OS sign-in screens this follows all hold the button until there is.
-                disabled: { $not: { $local: 'password' } },
-                loading: { $store: 'sessionStore.loginLoading' },
-                onClick: { $action: 'sessionStore.login', args: [{ $local: 'password' }] },
-              },
-              children: ['Login'],
-            },
-          ],
-        },
-      ],
-    },
+    field({ name: 'password', placeholder: 'Password...' }),
   ],
 };
 
@@ -798,67 +737,15 @@ export const bootScreen: SchemaNode = {
                             },
                             // The profile's name, not a separate local label. One DID, one
                             // identity, one thing to type.
-                            {
-                              type: 'we-form-field',
-                              props: { label: 'Name', error: { $error: 'name' } },
-                              children: [
-                                {
-                                  type: 'we-input',
-                                  props: {
-                                    placeholder: 'Name...',
-                                    value: { $local: 'name' },
-                                    onInput: { $setLocal: 'name', from: '$event.detail' },
-                                  },
-                                },
-                              ],
-                            },
+                            field({ name: 'name', label: 'Name', placeholder: 'Name...', validated: true }),
                             // Password + confirm
-                            {
-                              type: 'we-form-field',
-                              props: { label: 'Password', error: { $error: 'password' } },
-                              children: [
-                                {
-                                  type: 'we-input',
-                                  props: {
-                                    width: '100%',
-                                    type: 'password',
-                                    revealable: true,
-                                    placeholder: 'Password...',
-                                    value: { $local: 'password' },
-                                    onInput: { $setLocal: 'password', from: '$event.detail' },
-                                  },
-                                },
-                              ],
-                            },
-                            {
-                              type: 'we-form-field',
-                              props: {
-                                label: 'Confirm password',
-                                error: {
-                                  $if: {
-                                    condition: { $error: 'confirm' },
-                                    then: { $error: 'confirm' },
-                                    else: { $store: 'sessionStore.createAgentError' },
-                                  },
-                                },
-                              },
-                              children: [
-                                {
-                                  type: 'we-input',
-                                  props: {
-                                    width: '100%',
-                                    type: 'password',
-                                    // Each field's toggle is its own — the primitive keeps the
-                                    // reveal state per instance, so revealing one does not
-                                    // reveal the other.
-                                    revealable: true,
-                                    placeholder: 'Confirm password...',
-                                    value: { $local: 'confirm' },
-                                    onInput: { $setLocal: 'confirm', from: '$event.detail' },
-                                  },
-                                },
-                              ],
-                            },
+                            field({ name: 'password', label: 'Password', placeholder: 'Password...', validated: true }),
+                            field({
+                              name: 'confirm',
+                              label: 'Confirm password',
+                              placeholder: 'Confirm password...',
+                              validated: true,
+                            }),
                           ],
                         },
                         {

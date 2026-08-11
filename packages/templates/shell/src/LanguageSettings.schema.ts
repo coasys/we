@@ -1,6 +1,5 @@
 import type { SchemaNode } from '@we/schema-shared';
-
-import { emptyNote, section } from './settingsSection.ts';
+import { adminSection, emptyNote } from '@we/template-kit';
 
 /**
  * Languages — the plugins the backend uses to store and retrieve expressions.
@@ -68,59 +67,64 @@ export const languagesSection: SchemaNode = {
   type: '$if',
   props: {
     condition: { $store: 'runtimeStore.canManageLanguages' },
-    then: section('Languages', 'code', 'runtimeStore.loadLanguages', [
-      {
-        type: '$if',
-        props: {
-          condition: { $count: { items: { $store: 'runtimeStore.languages' } } },
-          then: {
-            type: 'Column',
-            props: { gap: '200' },
-            children: [
-              {
-                type: '$each',
-                props: { items: { $store: 'runtimeStore.languages' }, as: 'language' },
-                children: [languageRow],
-              },
-            ],
+    then: adminSection({
+      title: 'Languages',
+      icon: 'code',
+      refresh: 'runtimeStore.loadLanguages',
+      children: [
+        {
+          type: '$if',
+          props: {
+            condition: { $count: { items: { $store: 'runtimeStore.languages' } } },
+            then: {
+              type: 'Column',
+              props: { gap: '200' },
+              children: [
+                {
+                  type: '$each',
+                  props: { items: { $store: 'runtimeStore.languages' }, as: 'language' },
+                  children: [languageRow],
+                },
+              ],
+            },
+            else: emptyNote('No languages are installed.'),
           },
-          else: emptyNote('No languages are installed.'),
         },
-      },
-      {
-        type: 'Row',
-        props: { gap: '200' },
-        children: [
-          {
-            type: 'we-input',
-            props: {
-              flex: '1',
-              size: 'sm',
-              placeholder: 'Language address, e.g. QmUTkvPcyaUGntqfzi3iR1xomADm5yYC2j8hcPdhMHpTem',
-              value: { $local: 'newLanguageAddress' },
-              onInput: { $setLocal: 'newLanguageAddress', from: '$event.detail' },
-            },
-          },
-          {
-            type: 'we-button',
-            props: {
-              text: 'Install',
-              size: 'sm',
-              variant: 'secondary',
-              // The backend fetches the bundle over the network, so this is the one runtime action
-              // that can take long enough to need a spinner rather than just finishing.
-              loading: { $store: 'runtimeStore.loading' },
-              disabled: { $not: { $local: 'newLanguageAddress' } },
-              onClick: {
-                $action: 'runtimeStore.installLanguage',
-                args: [{ $local: 'newLanguageAddress' }],
-                onSuccess: [{ $setLocal: 'newLanguageAddress', value: '' }],
+        {
+          type: 'Row',
+          props: { gap: '200' },
+          children: [
+            {
+              type: 'we-input',
+              props: {
+                flex: '1',
+                size: 'sm',
+                placeholder: 'Language address, e.g. QmUTkvPcyaUGntqfzi3iR1xomADm5yYC2j8hcPdhMHpTem',
+                value: { $local: 'newLanguageAddress' },
+                onInput: { $setLocal: 'newLanguageAddress', from: '$event.detail' },
               },
             },
-          },
-        ],
-      },
-    ]),
+            {
+              type: 'we-button',
+              props: {
+                text: 'Install',
+                size: 'sm',
+                variant: 'secondary',
+                // The backend fetches the bundle over the network, so this is the one runtime action
+                // that can take long enough to need a spinner rather than just finishing.
+                loading: { $store: 'runtimeStore.loading' },
+                disabled: { $not: { $local: 'newLanguageAddress' } },
+                onClick: {
+                  $action: 'runtimeStore.installLanguage',
+                  args: [{ $local: 'newLanguageAddress' }],
+                  onSuccess: [{ $setLocal: 'newLanguageAddress', value: '' }],
+                },
+              },
+            },
+          ],
+        },
+      ],
+    }),
   },
 };
 

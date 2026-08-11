@@ -1,7 +1,5 @@
 import type { LocalStateField, SchemaNode } from '@we/schema-shared';
-
-import { emptyState } from '../../EmptyState.ts';
-import { cardList, cardShell } from './CardShell.ts';
+import { agentByline, cardList, cardShell, emptyState, peopleRow } from '@we/template-kit';
 
 const hasConversationModel = {
   $find: { items: { $store: 'datasetStore.currentDatasetModels' }, where: { name: 'Conversation' } },
@@ -106,28 +104,7 @@ const subgroupMessagesList: SchemaNode = {
               type: 'Column',
               props: { gap: '200', p: '400', bg: 'neutral-50', r: '300', border: '1px solid neutral-200' },
               children: [
-                {
-                  type: '$agent',
-                  props: { did: '$msg.author', as: 'author' },
-                  children: [
-                    {
-                      type: 'Row',
-                      props: { ay: 'center', gap: '300' },
-                      children: [
-                        { type: 'we-avatar', props: { size: 'sm', image: '$author.avatar', hash: '$author.did' } },
-                        {
-                          type: 'we-text',
-                          props: { fontWeight: 'semibold' },
-                          children: ['$author.name'],
-                        },
-                        {
-                          type: 'we-timestamp',
-                          props: { value: '$msg.timestamp', relative: true, color: 'neutral-500' },
-                        },
-                      ],
-                    },
-                  ],
-                },
+                agentByline({ did: '$msg.author', timestamp: '$msg.timestamp' }),
                 { type: 'we-html', props: { color: 'neutral-700', content: '$msg.body' } },
               ],
             },
@@ -165,57 +142,7 @@ const subgroupCard: SchemaNode = withLocalState(
           then: { type: 'we-text', props: { color: 'neutral-600' }, children: ['$subgroup.summary'] },
         },
       },
-      {
-        type: 'Row',
-        props: { gap: '300', ay: 'center' },
-        children: [
-          {
-            type: 'AvatarStack',
-            props: {
-              avatars: {
-                $map: {
-                  items: '$subgroup.participants',
-                  select: {
-                    image: {
-                      $find: {
-                        items: { $store: 'profileStore.profiles' },
-                        where: { did: '$item' },
-                        select: 'avatar',
-                      },
-                    },
-                    hash: '$item',
-                  },
-                },
-              },
-              max: 5,
-              size: 'sm',
-              ring: '0 0 0 2px var(--we-ring-color)',
-            },
-          },
-          {
-            type: 'Row',
-            props: { gap: '100' },
-            children: [
-              {
-                type: 'we-number',
-                props: { value: { $count: { items: '$subgroup.participants' } }, shorten: true },
-              },
-              {
-                type: 'we-text',
-                children: [
-                  {
-                    $plural: {
-                      count: { $count: { items: '$subgroup.participants' } },
-                      one: 'Participant',
-                      other: 'Participants',
-                    },
-                  },
-                ],
-              },
-            ],
-          },
-        ],
-      },
+      peopleRow({ items: '$subgroup.participants', dids: true, noun: 'Participant' }),
       subgroupMessagesToggle,
       subgroupMessagesList,
     ],
@@ -330,57 +257,7 @@ export const fluxConversationsNestedList: SchemaNode = {
                   },
                 },
               },
-              {
-                type: 'Row',
-                props: { gap: '300', ay: 'center' },
-                children: [
-                  {
-                    type: 'AvatarStack',
-                    props: {
-                      avatars: {
-                        $map: {
-                          items: '$conversation.participants',
-                          select: {
-                            image: {
-                              $find: {
-                                items: { $store: 'profileStore.profiles' },
-                                where: { did: '$item' },
-                                select: 'avatar',
-                              },
-                            },
-                            hash: '$item',
-                          },
-                        },
-                      },
-                      max: 5,
-                      size: 'sm',
-                      ring: '0 0 0 2px var(--we-ring-color)',
-                    },
-                  },
-                  {
-                    type: 'Row',
-                    props: { gap: '100' },
-                    children: [
-                      {
-                        type: 'we-number',
-                        props: { value: { $count: { items: '$conversation.participants' } }, shorten: true },
-                      },
-                      {
-                        type: 'we-text',
-                        children: [
-                          {
-                            $plural: {
-                              count: { $count: { items: '$conversation.participants' } },
-                              one: 'Participant',
-                              other: 'Participants',
-                            },
-                          },
-                        ],
-                      },
-                    ],
-                  },
-                ],
-              },
+              peopleRow({ items: '$conversation.participants', dids: true, noun: 'Participant' }),
               conversationSubgroupsToggle,
               conversationSubgroupsList,
             ],

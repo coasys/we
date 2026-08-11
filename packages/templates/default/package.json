@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@we/schema-shared": "workspace:*",
+    "@we/template-kit": "workspace:*",
     "@we/template-shell": "workspace:*"
   },
   "devDependencies": {

@@ -223,6 +223,7 @@ Always read \`CONVENTIONS.md\` before creating or modifying files in that packag
 
 Key packages with conventions files:
 - \`packages/models/CONVENTIONS.md\` — model authoring: entities vs blocks, predicates, @Flag, WeNode, Model.create() pattern
+- \`packages/templates/kit/CONVENTIONS.md\` — fragment authoring: what belongs in the kit, extraction threshold, options-object API, body style
 
 ---
 

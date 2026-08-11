@@ -1,6 +1,5 @@
 import type { SchemaNode } from '@we/schema-shared';
-
-import { emptyNote, section } from './settingsSection.ts';
+import { adminSection, emptyNote } from '@we/template-kit';
 
 /**
  * AI — the models the backend runs or calls, and the prompts apps have registered against them.
@@ -364,68 +363,78 @@ export const aiSection: SchemaNode = {
       type: 'Column',
       props: { gap: '600' },
       children: [
-        section('Models', 'sparkle', 'runtimeStore.loadAiModels', [
-          {
-            type: '$if',
-            props: {
-              condition: { $count: { items: { $store: 'runtimeStore.aiModels' } } },
-              then: {
-                type: 'Column',
-                props: { gap: '200' },
-                children: [
-                  {
-                    type: '$each',
-                    props: { items: { $store: 'runtimeStore.aiModels' }, as: 'model' },
-                    children: [modelCard],
-                  },
-                ],
-              },
-              else: emptyNote('No models are configured. Apps asking for one will have nothing to use.'),
-            },
-          },
-          {
-            type: '$if',
-            props: {
-              condition: { $store: 'runtimeStore.canConfigureAi' },
-              then: {
-                type: 'Row',
-                children: [
-                  {
-                    type: 'we-button',
-                    props: {
-                      text: 'Add a model',
-                      size: 'sm',
-                      variant: 'secondary',
-                      onClick: { $action: 'runtimeStore.newAiModel' },
+        adminSection({
+          title: 'Models',
+          icon: 'sparkle',
+          refresh: 'runtimeStore.loadAiModels',
+          children: [
+            {
+              type: '$if',
+              props: {
+                condition: { $count: { items: { $store: 'runtimeStore.aiModels' } } },
+                then: {
+                  type: 'Column',
+                  props: { gap: '200' },
+                  children: [
+                    {
+                      type: '$each',
+                      props: { items: { $store: 'runtimeStore.aiModels' }, as: 'model' },
+                      children: [modelCard],
                     },
-                    children: [{ type: 'we-icon', props: { name: 'plus' } }],
-                  },
-                ],
+                  ],
+                },
+                else: emptyNote('No models are configured. Apps asking for one will have nothing to use.'),
               },
             },
-          },
-        ]),
+            {
+              type: '$if',
+              props: {
+                condition: { $store: 'runtimeStore.canConfigureAi' },
+                then: {
+                  type: 'Row',
+                  children: [
+                    {
+                      type: 'we-button',
+                      props: {
+                        text: 'Add a model',
+                        size: 'sm',
+                        variant: 'secondary',
+                        onClick: { $action: 'runtimeStore.newAiModel' },
+                      },
+                      children: [{ type: 'we-icon', props: { name: 'plus' } }],
+                    },
+                  ],
+                },
+              },
+            },
+          ],
+        }),
 
-        section('Tasks', 'list-checks', 'runtimeStore.loadAiTasks', [
-          {
-            type: '$if',
-            props: {
-              condition: { $count: { items: { $store: 'runtimeStore.aiTasks' } } },
-              then: {
-                type: 'Column',
-                props: { gap: '200' },
-                children: [
-                  {
-                    type: '$each',
-                    props: { items: { $store: 'runtimeStore.aiTasks' }, as: 'task' },
-                    children: [taskCard],
-                  },
-                ],
+        adminSection({
+          title: 'Tasks',
+          icon: 'list-checks',
+          refresh: 'runtimeStore.loadAiTasks',
+          children: [
+            {
+              type: '$if',
+              props: {
+                condition: { $count: { items: { $store: 'runtimeStore.aiTasks' } } },
+                then: {
+                  type: 'Column',
+                  props: { gap: '200' },
+                  children: [
+                    {
+                      type: '$each',
+                      props: { items: { $store: 'runtimeStore.aiTasks' }, as: 'task' },
+                      children: [taskCard],
+                    },
+                  ],
+                },
+                else: emptyNote('No app has registered a prompt yet.'),
               },
-              else: emptyNote('No app has registered a prompt yet.'),
             },
-          },
-        ]),
+          ],
+        }),
 
         { type: '$if', props: { condition: { $store: 'runtimeStore.aiForm' }, then: modelForm } },
       ],

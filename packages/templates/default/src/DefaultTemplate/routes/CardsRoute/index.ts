@@ -1,4 +1,5 @@
 import type { RouteSchema } from '@we/schema-shared';
+import { pageShell } from '@we/template-kit';
 import { createSpaceModal } from '@we/template-shell';
 
 import { blocksList } from './BlocksList.ts';
@@ -34,8 +35,6 @@ const NON_BLOCK_CONTENT_TYPES = [
 
 export const cardsRoute: RouteSchema = {
   path: '/cards',
-  type: 'Column',
-  props: { width: '100%', ax: 'center' },
   $localState: {
     createPostOpen: { type: 'boolean', initial: false },
     createSpaceModalOpen: { type: 'boolean', initial: false },
@@ -45,63 +44,57 @@ export const cardsRoute: RouteSchema = {
     displayMode: { type: 'string', initial: 'expanded' },
     searchText: { type: 'string', initial: '' },
   },
-  children: [
-    {
-      type: 'Column',
-      props: {
-        gap: '400',
-        px: '600',
-        py: '400',
-        width: '100%',
-        maxWidth: 'var(--we-layout-lg)',
-        minHeight: 'calc(100vh - 70px)',
+  ...pageShell({
+    gap: '400',
+    px: '600',
+    py: '400',
+    // Holds the grid open on a space with little content — the viewport, less the nav bar.
+    minHeight: 'calc(100vh - 70px)',
+    children: [
+      cardsHeader,
+
+      { type: '$if', props: { condition: { $local: 'createPostOpen' }, then: createPostModal } },
+      { type: '$if', props: { condition: { $local: 'createSpaceModalOpen' }, then: createSpaceModal } },
+
+      { type: '$if', props: { condition: { $eq: [{ $local: 'contentType' }, 'posts'] }, then: postsList } },
+      callsList,
+      { type: '$if', props: { condition: { $eq: [{ $local: 'contentType' }, 'users'] }, then: usersList } },
+      { type: '$if', props: { condition: { $eq: [{ $local: 'contentType' }, 'spaces'] }, then: spacesList } },
+      { type: '$if', props: { condition: { $eq: [{ $local: 'contentType' }, 'templates'] }, then: templatesList } },
+      { type: '$if', props: { condition: { $eq: [{ $local: 'contentType' }, 'themes'] }, then: themesList } },
+      {
+        type: '$if',
+        props: { condition: { $eq: [{ $local: 'contentType' }, 'flux-channels'] }, then: fluxChannelsList },
       },
-      children: [
-        cardsHeader,
-
-        { type: '$if', props: { condition: { $local: 'createPostOpen' }, then: createPostModal } },
-        { type: '$if', props: { condition: { $local: 'createSpaceModalOpen' }, then: createSpaceModal } },
-
-        { type: '$if', props: { condition: { $eq: [{ $local: 'contentType' }, 'posts'] }, then: postsList } },
-        callsList,
-        { type: '$if', props: { condition: { $eq: [{ $local: 'contentType' }, 'users'] }, then: usersList } },
-        { type: '$if', props: { condition: { $eq: [{ $local: 'contentType' }, 'spaces'] }, then: spacesList } },
-        { type: '$if', props: { condition: { $eq: [{ $local: 'contentType' }, 'templates'] }, then: templatesList } },
-        { type: '$if', props: { condition: { $eq: [{ $local: 'contentType' }, 'themes'] }, then: themesList } },
-        {
-          type: '$if',
-          props: { condition: { $eq: [{ $local: 'contentType' }, 'flux-channels'] }, then: fluxChannelsList },
+      {
+        type: '$if',
+        props: { condition: { $eq: [{ $local: 'contentType' }, 'flux-conversations'] }, then: fluxConversationsList },
+      },
+      {
+        type: '$if',
+        props: {
+          condition: { $eq: [{ $local: 'contentType' }, 'flux-conversations-nested'] },
+          then: fluxConversationsNestedList,
         },
-        {
-          type: '$if',
-          props: { condition: { $eq: [{ $local: 'contentType' }, 'flux-conversations'] }, then: fluxConversationsList },
+      },
+      {
+        type: '$if',
+        props: {
+          condition: { $eq: [{ $local: 'contentType' }, 'flux-conversation-subgroups'] },
+          then: fluxConversationSubgroupsList,
         },
-        {
-          type: '$if',
-          props: {
-            condition: { $eq: [{ $local: 'contentType' }, 'flux-conversations-nested'] },
-            then: fluxConversationsNestedList,
-          },
+      },
+      {
+        type: '$if',
+        props: { condition: { $eq: [{ $local: 'contentType' }, 'flux-messages'] }, then: fluxMessagesList },
+      },
+      {
+        type: '$if',
+        props: {
+          condition: { $not: { $in: [{ $local: 'contentType' }, NON_BLOCK_CONTENT_TYPES] } },
+          then: blocksList,
         },
-        {
-          type: '$if',
-          props: {
-            condition: { $eq: [{ $local: 'contentType' }, 'flux-conversation-subgroups'] },
-            then: fluxConversationSubgroupsList,
-          },
-        },
-        {
-          type: '$if',
-          props: { condition: { $eq: [{ $local: 'contentType' }, 'flux-messages'] }, then: fluxMessagesList },
-        },
-        {
-          type: '$if',
-          props: {
-            condition: { $not: { $in: [{ $local: 'contentType' }, NON_BLOCK_CONTENT_TYPES] } },
-            then: blocksList,
-          },
-        },
-      ],
-    },
-  ],
+      },
+    ],
+  }),
 };

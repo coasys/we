@@ -9,6 +9,11 @@
  *
  * They are also deliberately small. A fragment that configured everything would be a thing to modify
  * rather than a thing to read.
+ *
+ * These are *module-provided* fragments — the scope `docs/architecture/template-fragments.md` names
+ * alongside the kit's own — and they follow `packages/templates/kit/CONVENTIONS.md`: a single
+ * options object where anything varies, bodies that read as the tree they emit, and a doc comment
+ * saying why each exists.
  */
 import type { SchemaNode } from '@we/schema-shared';
 
@@ -41,15 +46,20 @@ export const schemaMap: SchemaNode = {
  * judgement call: zero shows disconnected dots and tells you nothing about structure, two opens far
  * enough that the first paint is already a hairball on any real dataset.
  */
-export const knowledgeMap = (entity: string): SchemaNode => ({
+export interface KnowledgeMapOptions {
+  /** The entity type the map is seeded from and highlights. */
+  entity: string;
+}
+
+export const knowledgeMap = (opts: KnowledgeMapOptions): SchemaNode => ({
   type: 'GraphView',
   props: {
-    seeds: { source: 'query', options: { entity, limit: 60 } },
+    seeds: { source: 'query', options: { entity: opts.entity, limit: 60 } },
     expansion: { defaultDepth: 1, direction: 'both', limit: 25, maxNodes: 600 },
     layout: { type: 'force' },
     nodeStyle: [
       { style: { size: 14, color: 'neutral-400' } },
-      { when: { type: entity }, style: { size: 20, color: 'primary-500' } },
+      { when: { type: opts.entity }, style: { size: 20, color: 'primary-500' } },
       { when: { unresolved: true }, style: { color: 'neutral-200' } },
     ],
     edgeStyle: [{ style: { curve: 'bezier', arrow: 'target' } }],

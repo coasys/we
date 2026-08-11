@@ -10,7 +10,8 @@
     }
   },
   "dependencies": {
-    "@we/schema-shared": "workspace:*"
+    "@we/schema-shared": "workspace:*",
+    "@we/template-kit": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^24.10.0"

@@ -1,12 +1,16 @@
 import type { SchemaNode } from '@we/schema-shared';
+import { field, gatePrompt } from '@we/template-kit';
 
 // Shown when a joined perspective has some other app's SDNA installed (e.g. a Flux
 // Community) but not WE's Space model — offers to add WE's space features in place,
 // prefilled from that foreign app's own data where recognized (spaceStore.foreignSpacePrefill).
-export const initializeSpaceGate: SchemaNode = {
-  type: 'Column',
-  props: { flex: '1', height: '100%', ax: 'center', ay: 'center', gap: '400', p: '600', overflow: 'auto' },
-  $localState: {
+export const initializeSpaceGate: SchemaNode = gatePrompt({
+  icon: 'rocket',
+  title: 'Set Up This Space in WE',
+  body: "This space was created in another app. Add WE's space features — templates, themes, signals — to enable it here.",
+  // The form makes this the one prompt tall enough to overflow on a short window.
+  scroll: true,
+  localState: {
     name: {
       type: 'string',
       initial: { $store: 'spaceStore.foreignSpacePrefill.name' },
@@ -17,15 +21,6 @@ export const initializeSpaceGate: SchemaNode = {
     submitting: { type: 'boolean', initial: false },
   },
   children: [
-    { type: 'we-icon', props: { name: 'rocket', size: 'xl' } },
-    { type: 'we-text', props: { variant: 'heading-md', textAlign: 'center' }, children: ['Set Up This Space in WE'] },
-    {
-      type: 'we-text',
-      props: { variant: 'body', textAlign: 'center', maxWidth: 'var(--we-layout-xs)' },
-      children: [
-        "This space was created in another app. Add WE's space features — templates, themes, signals — to enable it here.",
-      ],
-    },
     {
       type: 'Column',
       props: { width: '100%', maxWidth: '400px', gap: '300' },
@@ -53,37 +48,8 @@ export const initializeSpaceGate: SchemaNode = {
             },
           ],
         },
-        {
-          type: 'we-form-field',
-          props: { label: 'Name', error: { $if: { condition: { $error: 'name' }, then: { $error: 'name' } } } },
-          children: [
-            {
-              type: 'we-input',
-              props: {
-                bg: 'neutral-25',
-                placeholder: 'Space name...',
-                value: { $local: 'name' },
-                onInput: { $setLocal: 'name', from: '$event.detail' },
-                onBlur: { $touch: 'name' },
-              },
-            },
-          ],
-        },
-        {
-          type: 'we-form-field',
-          props: { label: 'Description' },
-          children: [
-            {
-              type: 'we-input',
-              props: {
-                bg: 'neutral-25',
-                placeholder: 'Description (optional)',
-                value: { $local: 'description' },
-                onInput: { $setLocal: 'description', from: '$event.detail' },
-              },
-            },
-          ],
-        },
+        field({ name: 'name', label: 'Name', placeholder: 'Space name...', validated: true, touchOnBlur: true }),
+        field({ name: 'description', label: 'Description', placeholder: 'Description (optional)' }),
         {
           type: 'we-button',
           props: {
@@ -111,4 +77,4 @@ export const initializeSpaceGate: SchemaNode = {
       ],
     },
   ],
-};
+});

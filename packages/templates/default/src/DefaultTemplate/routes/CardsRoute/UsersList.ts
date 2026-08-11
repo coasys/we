@@ -1,7 +1,5 @@
 import type { SchemaNode } from '@we/schema-shared';
-
-import { emptyState } from '../../EmptyState.ts';
-import { cardList, cardShell } from './CardShell.ts';
+import { cardList, cardShell, emptyState } from '@we/template-kit';
 
 export const usersList: SchemaNode = cardList({
   // The roster is already in the store, so this list is filtered in place rather than queried —

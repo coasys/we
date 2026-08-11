@@ -1,3 +1,5 @@
+import { field } from '@we/template-kit';
+
 export const createSignalTypeModal = {
   type: 'we-modal',
   props: { close: { $setLocal: 'createSignalTypeOpen', value: false }, maxWidth: '500px', width: '100%' },
@@ -22,52 +24,18 @@ export const createSignalTypeModal = {
     },
 
     // Name
-    {
-      type: 'we-form-field',
-      props: { label: 'Name' },
-      children: [
-        {
-          type: 'we-input',
-          props: {
-            placeholder: 'e.g. Like',
-            value: { $local: 'name' },
-            onInput: { $setLocal: 'name', from: '$event.detail' },
-          },
-        },
-      ],
-    },
+    field({ name: 'name', label: 'Name', placeholder: 'e.g. Like' }),
 
     // Slug
-    {
-      type: 'we-form-field',
-      props: { label: 'Slug', description: 'Auto-generated from name. Used in schemas to reference this signal type.' },
-      children: [
-        {
-          type: 'we-input',
-          props: {
-            placeholder: 'e.g. like',
-            value: { $local: 'slug' },
-            onInput: { $setLocal: 'slug', from: '$event.detail' },
-          },
-        },
-      ],
-    },
+    field({
+      name: 'slug',
+      label: 'Slug',
+      description: 'Auto-generated from name. Used in schemas to reference this signal type.',
+      placeholder: 'e.g. like',
+    }),
 
     // Description
-    {
-      type: 'we-form-field',
-      props: { label: 'Description' },
-      children: [
-        {
-          type: 'we-textarea',
-          props: {
-            placeholder: 'Description',
-            value: { $local: 'description' },
-            onInput: { $setLocal: 'description', from: '$event.detail' },
-          },
-        },
-      ],
-    },
+    field({ name: 'description', label: 'Description', control: 'textarea', placeholder: 'Description' }),
 
     // Mode & icon selectors
     {
@@ -75,25 +43,7 @@ export const createSignalTypeModal = {
       props: { gap: '400', ax: 'center', wrap: true },
       children: [
         // Mode selector
-        {
-          type: 'we-form-field',
-          props: { label: 'Mode' },
-          children: [
-            {
-              type: 'we-select',
-              props: {
-                value: { $local: 'mode' },
-                onChange: { $setLocal: 'mode', from: '$event.target.value' },
-                options: [
-                  { label: 'Toggle', value: 'toggle' },
-                  { label: 'Vote', value: 'vote' },
-                  { label: 'Rating', value: 'rating' },
-                  { label: 'Slider', value: 'slider' },
-                ],
-              },
-            },
-          ],
-        },
+        field({ name: 'mode', label: 'Mode', control: 'select' }),
 
         // Primary icon
         {

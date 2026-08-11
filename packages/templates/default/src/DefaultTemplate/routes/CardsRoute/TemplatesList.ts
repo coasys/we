@@ -1,7 +1,5 @@
 import type { SchemaNode } from '@we/schema-shared';
-
-import { emptyState } from '../../EmptyState.ts';
-import { cardList, cardShell } from './CardShell.ts';
+import { cardList, cardShell, emptyState } from '@we/template-kit';
 
 export const templatesList: SchemaNode = cardList({
   query: {
