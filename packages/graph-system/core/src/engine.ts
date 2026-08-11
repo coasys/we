@@ -87,6 +87,8 @@ export class GraphEngine {
   private positions = new Map<string, Placement>();
   private selected = new Set<string>();
   private layout?: Layout;
+  /** Type *and* options of the live layout, so a re-tuned layout is rebuilt rather than reused. */
+  private layoutKey?: string;
   private layoutTimer?: ReturnType<typeof setTimeout>;
   private listeners = new Set<(reason: ChangeReason) => void>();
   private status: EngineStatus = { loading: false, budgetReached: false, warnings: [] };
@@ -445,13 +447,26 @@ export class GraphEngine {
    */
   relayout(options?: { fit?: boolean }): void {
     const spec = this.spec.layout ?? { type: 'force' };
-    if (!this.layout || this.layout.id !== spec.type) {
+    /*
+      Keyed on the options as well as the type.
+
+      A layout is constructed with its options and holds them, so comparing only the type reused a
+      live instance whenever a spec re-tuned a layout without swapping it. Everything downstream
+      looked correct — the spec updated, `relayout` ran, positions were reapplied — and the graph
+      simply did not move, because it had been laid out again by the same layout with the same
+      numbers. It showed up as a picker that worked from every layout except the one the graph was
+      already using, and it would have silently ignored any template that changed `levelGap` or
+      `columns` on its own.
+    */
+    const key = `${spec.type}:${JSON.stringify(spec.options ?? null)}`;
+    if (!this.layout || this.layoutKey !== key) {
       this.layout?.stop?.();
       this.layout = this.registry.layout(spec.type, spec.options);
       if (!this.layout) {
         this.warn(`no layout registered as "${spec.type}"`);
         return;
       }
+      this.layoutKey = key;
     }
 
     const { width, height } = this.viewport.get();

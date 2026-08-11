@@ -453,3 +453,58 @@ describe('edge picking', () => {
     expect(engine.getEdgeGeometry().get('a-b')!.to.x).toBeLessThan(300 - 30);
   });
 });
+
+describe('re-tuning a layout', () => {
+  /*
+    A layout is constructed with its options and holds them, so reusing a live instance whenever the
+    type happened to match meant a spec that re-tuned a layout was ignored. Everything downstream
+    looked right — the spec updated, `relayout` ran, positions were reapplied — and nothing moved.
+
+    It presented as a layout picker that worked from every layout except the one already in use, and
+    it would have silently swallowed any template changing `levelGap` or `columns` on its own.
+  */
+  const spaced = {
+    spaced: (options?: { gap?: number }) => ({
+      id: 'spaced',
+      init(input: { nodes: { id: string }[] }) {
+        const gap = options?.gap ?? 10;
+        return { positions: new Map(input.nodes.map((node, index) => [node.id, { x: index * gap, y: 0 }])) };
+      },
+    }),
+  };
+
+  it('rebuilds the layout when only its options change', async () => {
+    const plugins = new PluginRegistry({ seeds: [seedOf(3)], layouts: spaced });
+    const engine = engineWith({ seeds: { source: 'test' }, layout: { type: 'spaced', options: { gap: 10 } } }, plugins);
+    await engine.start();
+    expect(engine.getPositions().get('seed-2')?.x).toBe(20);
+
+    engine.setSpec({ seeds: { source: 'test' }, layout: { type: 'spaced', options: { gap: 50 } } });
+    engine.relayout();
+    expect(engine.getPositions().get('seed-2')?.x).toBe(100);
+  });
+
+  it('keeps the live layout when nothing about it changed', async () => {
+    let built = 0;
+    const counted = {
+      counted: () => {
+        built += 1;
+        return {
+          id: 'counted',
+          init: (input: { nodes: { id: string }[] }) => ({
+            positions: new Map(input.nodes.map((node, index) => [node.id, { x: index, y: 0 }])),
+          }),
+        };
+      },
+    };
+    const plugins = new PluginRegistry({ seeds: [seedOf(3)], layouts: counted });
+    const engine = engineWith({ seeds: { source: 'test' }, layout: { type: 'counted' } }, plugins);
+    await engine.start();
+    const afterStart = built;
+
+    engine.relayout();
+    // A warm layout is the whole reason expansion does not make the map jump; rebuilding on every
+    // call would throw that away.
+    expect(built).toBe(afterStart);
+  });
+});
