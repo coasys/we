@@ -574,3 +574,41 @@ describe('a layout that is still settling', () => {
     expect(engine.getStatus().warnings).toContain('nothing to read');
   });
 });
+
+describe('whether being pinned is worth showing', () => {
+  /*
+    A held node is worth marking because the layout would otherwise move it. Under a layout that reads
+    positions from the data there is nothing to be held against — every node is placed by definition —
+    so the same mark lands on all of them and says nothing, which reads as every card being in some
+    special state rather than as none of them being.
+  */
+  const layouts = {
+    derived: () => ({
+      id: 'derived',
+      init: (input: { nodes: { id: string }[] }) => ({
+        positions: new Map(input.nodes.map((node, index) => [node.id, { x: index, y: 0 }])),
+      }),
+    }),
+    fromData: () => ({
+      id: 'fromData',
+      derivesPositions: false,
+      init: (input: { nodes: { id: string }[] }) => ({
+        positions: new Map(input.nodes.map((node, index) => [node.id, { x: index, y: 0, fixed: true }])),
+      }),
+    }),
+  };
+
+  it('is worth showing under a layout that works out where things go', async () => {
+    const plugins = new PluginRegistry({ seeds: [seedOf(2)], layouts });
+    const engine = engineWith({ seeds: { source: 'test' }, layout: { type: 'derived' } }, plugins);
+    await engine.start();
+    expect(engine.pinningIsMeaningful()).toBe(true);
+  });
+
+  it('is not, under a layout that reads them from the data', async () => {
+    const plugins = new PluginRegistry({ seeds: [seedOf(2)], layouts });
+    const engine = engineWith({ seeds: { source: 'test' }, layout: { type: 'fromData' } }, plugins);
+    await engine.start();
+    expect(engine.pinningIsMeaningful()).toBe(false);
+  });
+});

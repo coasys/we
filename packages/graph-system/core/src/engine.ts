@@ -724,6 +724,16 @@ export class GraphEngine {
     this.notify('status');
   }
 
+  /**
+   * Whether being pinned means anything on this graph.
+   *
+   * False under a layout that reads positions from the data, where every node is placed and none is
+   * held against anything — so a renderer marking pinned nodes marks all of them.
+   */
+  pinningIsMeaningful(): boolean {
+    return this.layout?.derivesPositions !== false;
+  }
+
   isPinned(id: string): boolean {
     return this.positions.get(id)?.fixed === true;
   }

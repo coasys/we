@@ -71,6 +71,16 @@ export interface LayoutResult {
  */
 export interface Layout {
   id: string;
+  /**
+   * Whether this layout works out where nodes go, as opposed to reading it from them.
+   *
+   * Almost all of them do, so it is omitted by default and only `manual` says otherwise. What it
+   * buys is the difference between a pinned node being an *exception* and being the rule: a node held
+   * against a force or tree layout is worth marking, because the layout would otherwise move it, while
+   * on a board every node is placed by definition and the same mark is on everything and means
+   * nothing.
+   */
+  derivesPositions?: boolean;
   description?: string;
   /** Seed or re-seed. Called when the node set changes. */
   init(input: LayoutInput): LayoutResult;

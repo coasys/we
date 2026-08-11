@@ -258,6 +258,10 @@ export function manualLayout(rawOptions?: Record<string, unknown>): Layout {
   return {
     id: 'manual',
     description: 'Reads each node position from its own data; new nodes are parked in a grid.',
+    // Position is the data here, so every node is placed and none is held *against* anything. Saying
+    // so keeps a renderer from marking all of them as pinned, which marks the rule rather than the
+    // exception and reads as every card being in some special state.
+    derivesPositions: false,
     init(input): LayoutResult {
       const positions = new Map<string, Placement>();
       let unplaced = 0;

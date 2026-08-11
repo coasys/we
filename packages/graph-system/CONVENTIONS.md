@@ -146,9 +146,13 @@ Learned from bugs, each of which was invisible rather than loud:
   `pin` holds a node against the layout and `lock` refuses a gesture; neither persists, and persisting
   a position stays the job of `onNodeDragEnd` and whatever host is listening. A control that needs to
   write is an action on the host, not a button the engine draws.
-- **A state the layout obeys has to be visible.** A pinned node that looks identical to an unpinned
-  one turns "the layout is ignoring this node" into a mystery, and the cause is usually a drag nobody
-  remembers making. The same argument as the placeholder rule, one level down.
+- **A state the layout obeys has to be visible, and reversible.** A pinned node that looks identical
+  to an unpinned one turns "the layout is ignoring this node" into a mystery, and the cause is usually
+  a drag nobody remembers making. Both halves matter: a graph that pins on drag without offering
+  `pin` in its controls marks every node you touch and gives you no way to undo it. And mark only what
+  is *exceptional* — under a layout that reads positions from the data every node is placed, so the
+  same ring lands on all of them and says nothing, which reads as every card being in some special
+  state rather than none of them. `Layout.derivesPositions` is how a layout says which it is.
 - **The core stays free of the DOM and of any backend.** It is what makes collapse, budgets and
   expansion testable without a browser, which is the only reason they are tested at all.
 

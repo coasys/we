@@ -62,9 +62,9 @@ export const SCENARIOS: Scenario[] = [
       // review↔revise are mutual: they must bow apart, not draw as one line.
       edgeStyle: [{ style: { showLabel: true, arrow: 'target' } }],
       behaviours: ['pan-zoom', 'select', { type: 'drag-node', options: { pin: true } }],
-      // A hand-arranged diagram is exactly what `lock` is for: once it reads the way you meant, the
-      // only thing left to do to it is nudge it by mistake.
-      controls: ['zoom-in', 'zoom-out', 'fit', 'lock'],
+      // `pin` as well as `lock`, because dragging here pins: without a release, arranging the diagram
+      // would leave a held node behind on every card you touched and no way to undo it.
+      controls: ['zoom-in', 'zoom-out', 'fit', 'pin', 'lock'],
     },
   },
 

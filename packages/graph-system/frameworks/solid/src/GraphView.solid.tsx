@@ -515,10 +515,12 @@ export function GraphView(props: GraphViewProps) {
                 'we-graph__node--hovered': hovered() === entry.node.id,
                 'we-graph__node--unresolved': entry.node.unresolved === true,
                 'we-graph__node--card': entry.visual.shape === 'card',
-                // Held state has to be visible. A node the layout will not move, that looks exactly
-                // like one it will, is a graph that behaves differently for no reason you can see —
-                // and the reason is usually a drag somebody forgot they made.
-                'we-graph__node--pinned': entry.at.fixed === true,
+                // Held state has to be visible — a node the layout will not move, looking exactly
+                // like one it will, is a graph behaving differently for no reason you can see, and
+                // the reason is usually a drag somebody forgot making. Only where it is an exception,
+                // though: under a layout that reads positions from the data every node is placed, so
+                // the same mark lands on all of them and says nothing.
+                'we-graph__node--pinned': entry.at.fixed === true && engine.pinningIsMeaningful(),
               }}
               style={{
                 transform: `translate(${entry.at.x}px, ${entry.at.y}px)`,
