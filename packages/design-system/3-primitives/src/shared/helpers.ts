@@ -181,16 +181,127 @@ const ANIMATABLE_STATE_PROPS = [
   'background-color',
   'border-color',
   'outline-color',
-  'color',
   'box-shadow',
   'opacity',
   'fill',
   'stroke',
 ];
 
-const DEFAULT_TRANSITION = ANIMATABLE_STATE_PROPS.map((prop) => `${prop} var(--we-transition-200, 150ms) ease`).join(
-  ', ',
-);
+/**
+ * The same list plus `color`, for a theme change rather than a hover.
+ *
+ * `color` is absent above for a measured reason. Two otherwise identical columns of buttons — same
+ * shape, same 50ms arrival, same instant departure, differing only in whether the hover changed the
+ * text colour as well as the background — flickered at roughly a hundred to one. A column with no
+ * text at all was as clean as the background-only one. Animating text means re-rasterising every
+ * glyph on every frame of the fade, and glyph rendering is both far more perceptible than the fill
+ * behind it and invisible to everything that had been measuring the fade: computed style is correct
+ * throughout, the interpolation sits exactly on its line, the geometry never moves.
+ *
+ * Snapping it costs nothing anyone can see. The background carries the state change and arrives
+ * inside 50ms; the text simply agrees with it immediately instead of catching up.
+ *
+ * A theme change is the opposite case and gets the longer list. There the text colour *is* the thing
+ * changing — a switch that faded every background while the text jumped would read as broken — and it
+ * happens once, deliberately, rather than repeatedly under a moving pointer.
+ */
+const THEME_FADE_PROPS = [...ANIMATABLE_STATE_PROPS, 'color'];
+
+/*
+  A state may take time to arrive. It must not take time to leave.
+
+  ## What the flicker actually was
+
+  Hovering across a list of buttons produced an occasional glitch that survived four rounds of
+  instrumentation — zero dropped frames, zero long tasks, every individual transition textbook. It was
+  finally isolated by building nine variants of the same list, each differing in one property, and
+  the result had no exceptions: **every variant with a hover-*out* fade flickered, and every variant
+  without one was clean.** `transition: none` was clean; fade-in-with-instant-out was clean; and
+  instant-in-with-fade-out — which changes nothing about how the highlight appears — flickered as
+  badly as the original. A single button on its own could not be made to flicker at all.
+
+  So the mechanism is the trail. A pointer crosses one of these buttons in 40–70ms, measured; with a
+  fade on the way out, each button keeps painting a decaying highlight after the pointer has gone, and
+  one or two ghosts sit lit behind the cursor at any moment, appearing and vanishing in sequence. No
+  single transition is wrong, which is exactly why nothing that examined transitions one at a time
+  ever found anything.
+
+  Stated as a rule: a hover indicator exists to say *the pointer is here*. Any persistence after the
+  pointer leaves is the indicator asserting something false about somewhere it isn't. Arrival can be
+  animated, because the statement is becoming true. Departure cannot, because it has already stopped
+  being true.
+
+  ## Why there are two declarations
+
+  These properties are also what cross-fades when the theme changes, and that transition is wanted —
+  it is the only thing making a light/dark switch feel like one event rather than a repaint. But it is
+  a different job from state feedback, on a different timescale, and CSS gives us exactly one
+  `transition` per rule to express both.
+
+  The split falls out of where each rule applies. `STATE_TRANSITION` goes on the `:hover`/`:focus`/
+  `:active` rules, which govern the animation *into* those states — the arrival. `REST_TRANSITION`
+  goes on the base rule, which governs the animation back *out* of them — the departure — and so
+  resolves to `0s` and snaps. A theme switch mutates custom properties while the base rule is the one
+  matching, so it reads the same declaration; `--we-theme-switch-duration` is raised for the duration
+  of the switch (see `applyThemeVars`) and lowered again, which buys the cross-fade back without ever
+  putting a duration on a hover exit. Custom properties inherit through shadow boundaries, so one
+  value on the root reaches every primitive.
+
+  ## Why the arrival is 50ms
+
+  Not because of interruption, which is the intuitive answer and is wrong. Back when both directions
+  still faded, 150ms flickered *less* than 50ms — the opposite of what a theory about interrupted
+  transitions predicts, and reason enough to discard it. Once departures snap the constraint reverses,
+  and the measurement is unambiguous:
+
+      over   -624
+             -603   18% faded
+             -588   34% faded
+      out    -577
+             -571    0%          ← snapped off at a third
+
+  A pointer crosses one of these buttons in 40-70ms. With a 150ms arrival that buys about a third of
+  the fade, so a quick pass lights the button dimly and then removes it — a partial state that
+  appears and aborts, which reads as a glitch precisely because it never resolved into anything. With
+  a 50ms arrival and `ease-out` the same pass is essentially complete, so it reads as a highlight
+  that came and went.
+
+  So the rule has a second half. A state may take time to arrive — but not more time than the gesture
+  that triggers it, or the arrival never finishes and the user is shown a fraction of an answer. That
+  makes the ceiling here a measured property of pointing at a small target, not a matter of taste.
+
+  `ease-out` matters for the same reason at the margin: it front-loads the change, so the shortest
+  hovers still land most of it.
+
+  ## Why the text does not animate at all
+
+  Even with both of the above right, the flicker persisted — and every number said it should not.
+  Every transition was textbook, no two buttons were ever lit at once, the interpolation sat exactly
+  on its line, the geometry never moved, and a full computed-style diff showed hovering changed
+  `background-color`, `color`, and eighteen aliases of `color`, and nothing else.
+
+  What settled it was noticing that every control which had tested clean changed the background
+  *alone*. Adding a text-colour change to the clean shape, with nothing else different, brought the
+  flicker back at roughly a hundred times the rate; removing the text entirely left it clean. So
+  `color` leaves the state list — see the note on `THEME_FADE_PROPS` — and keeps its place in the
+  theme fade, where it is the point rather than a side effect.
+
+  What remains after that is a residual on the order of one percent, present on a plain `<button>`
+  with hand-written CSS and no framework of any kind. That one is the browser's, and the honest thing
+  is to say so rather than keep changing the design system in front of it.
+*/
+const STATE_TRANSITION = ANIMATABLE_STATE_PROPS.map(
+  (prop) => `${prop} var(--we-theme-state-duration, var(--we-transition-100, 50ms)) ease-out`,
+).join(', ');
+
+/**
+ * The resting declaration: instant, except while a theme is being applied.
+ *
+ * Governs leaving a state, so `0s` is the whole point — see the note above. The variable is the seam
+ * that lets a theme change animate the same properties without a hover exit ever inheriting a
+ * duration from it.
+ */
+const REST_TRANSITION = THEME_FADE_PROPS.map((prop) => `${prop} var(--we-theme-switch-duration, 0s) ease`).join(', ');
 
 // ────────────────────────────────────────────
 // Runtime: CSS custom property updates
@@ -535,7 +646,7 @@ export function getStaticDSStyles(
   // ── Base ([part="base"]) ──
   const baseLines: string[] = ['width: 100%;', 'height: 100%;'];
   if (l.has('visual')) {
-    baseLines.push(`transition: var(${p}transition, ${DEFAULT_TRANSITION});`);
+    baseLines.push(`transition: var(${p}transition, ${REST_TRANSITION});`);
     baseLines.push(joinDecls(p, baseVisual));
   }
   if (l.has('layout')) baseLines.push(joinDecls(p, BASE_LAYOUT));
@@ -610,8 +721,7 @@ export function getStaticDSStyles(
       // Base state
       if (baseSpecs.length > 0) {
         const lines: string[] = [];
-        if (l.has('visual'))
-          lines.push(`transition: var(${sp}transition, var(${p}transition, ${DEFAULT_TRANSITION}));`);
+        if (l.has('visual')) lines.push(`transition: var(${sp}transition, var(${p}transition, ${STATE_TRANSITION}));`);
         lines.push(joinStateDecls(sp, p, baseSpecs));
         const sel =
           state === 'disabled'

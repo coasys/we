@@ -208,9 +208,51 @@ export function themeToStyle(theme: ThemeOverrides): Record<string, string> {
  */
 const appliedThemeVars = new WeakMap<HTMLElement, Set<string>>();
 
+/**
+ * How long the switch itself cross-fades for, and how long the window stays open.
+ *
+ * The window has to outlast the fade or the duration is withdrawn mid-flight and everything jumps to
+ * its new colour. The margin is generous because it costs nothing: while it is open the only
+ * difference is that a colour change would animate, and no colour is changing.
+ */
+const SWITCH_DURATION_MS = 250;
+const SWITCH_WINDOW_MS = 400;
+const switchTimers = new WeakMap<HTMLElement, ReturnType<typeof setTimeout>>();
+
 export function applyThemeVars(root: HTMLElement, theme: ThemeOverrides): void {
   const styles = themeToStyle(theme);
   const previous = appliedThemeVars.get(root);
+
+  /*
+    Open the cross-fade window before writing anything.
+
+    Components animate their colours from `var(--we-theme-switch-duration, 0s)`, which is `0s` at all
+    other times — deliberately, because that same declaration is what governs a hover *exit*, and a
+    duration there is what made a fast pass across a list of buttons leave a trail of decaying
+    highlights behind the pointer (see the note in @we/primitives `shared/helpers.ts`). Raising it
+    around the switch and lowering it again gives the theme change its cross-fade without a hover exit
+    ever inheriting one.
+
+    A `<style>` rule could not do this: primitives paint inside shadow roots, and a custom property is
+    the one thing that crosses that boundary, so setting it on the root is what reaches them.
+  */
+  // Only when there is something to cross-fade *from*. The first application is the initial paint,
+  // not a switch, and opening the window for it left every component running a 250ms departure
+  // transition for the first fraction of a second of the page's life — long enough to be sampled by a
+  // diagnostic reading the value at load, and to report the exact behaviour this is designed to avoid.
+  if (previous) {
+    root.style.setProperty('--we-theme-switch-duration', `${SWITCH_DURATION_MS}ms`);
+    const running = switchTimers.get(root);
+    // Switching again mid-fade restarts the window rather than letting the first timer close it early.
+    if (running) clearTimeout(running);
+    switchTimers.set(
+      root,
+      setTimeout(() => {
+        root.style.removeProperty('--we-theme-switch-duration');
+        switchTimers.delete(root);
+      }, SWITCH_WINDOW_MS),
+    );
+  }
 
   if (previous) {
     for (const prop of previous) {

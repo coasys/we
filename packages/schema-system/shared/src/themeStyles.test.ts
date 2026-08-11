@@ -7,7 +7,7 @@
  * silently deletes the host's own state, which is how a docked panel's chrome ends up snapped to the
  * window edge until something forces a recompute.
  */
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { applyThemeVars } from './themeStyles';
 
@@ -66,5 +66,76 @@ describe('applyThemeVars', () => {
     applyThemeVars(b.el, { multiplier: 1 });
 
     expect(a.props.has('--we-color-primary-hue')).toBe(true);
+  });
+});
+
+/**
+ * The cross-fade window.
+ *
+ * `--we-theme-switch-duration` is the one seam that lets a theme change animate the same properties a
+ * hover exit uses, without a hover exit ever inheriting a duration from it. Both halves matter and
+ * both are easy to break silently: leave it set and every button trails on the way out again; never
+ * set it and a light/dark switch becomes a repaint.
+ *
+ * The first-application case is the one that already went wrong once. Opening the window on initial
+ * paint is not a switch — there is nothing to fade *from* — and it left every component running a
+ * 250ms departure transition for the first fraction of a second of the page's life, which was long
+ * enough to be sampled and reported as the exact fault the variable exists to avoid.
+ */
+describe('applyThemeVars cross-fade window', () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  const DURATION = '--we-theme-switch-duration';
+
+  it('does not open a window on the first application, which is the initial paint', () => {
+    const { el, props } = fakeRoot();
+    applyThemeVars(el, { multiplier: -1 });
+
+    expect(props.has(DURATION)).toBe(false);
+  });
+
+  it('opens one on a later application, when there is something to fade from', () => {
+    const { el, props } = fakeRoot();
+    applyThemeVars(el, { multiplier: -1 });
+    applyThemeVars(el, { multiplier: 1 });
+
+    expect(props.get(DURATION)).toBe('250ms');
+  });
+
+  it('closes the window afterwards, so a hover exit never inherits a duration', () => {
+    const { el, props } = fakeRoot();
+    applyThemeVars(el, { multiplier: -1 });
+    applyThemeVars(el, { multiplier: 1 });
+
+    vi.advanceTimersByTime(400);
+    expect(props.has(DURATION)).toBe(false);
+  });
+
+  it('restarts the window when a second switch lands mid-fade, rather than closing early', () => {
+    const { el, props } = fakeRoot();
+    applyThemeVars(el, { multiplier: -1 });
+    applyThemeVars(el, { multiplier: 1 });
+
+    vi.advanceTimersByTime(300);
+    applyThemeVars(el, { multiplier: -1 });
+
+    // The first switch's timer would have fired by now had it not been cleared.
+    vi.advanceTimersByTime(200);
+    expect(props.get(DURATION)).toBe('250ms');
+
+    vi.advanceTimersByTime(200);
+    expect(props.has(DURATION)).toBe(false);
+  });
+
+  it('tracks the window per root, so two subtrees do not close each other', () => {
+    const a = fakeRoot();
+    const b = fakeRoot();
+    applyThemeVars(a.el, { multiplier: -1 });
+    applyThemeVars(a.el, { multiplier: 1 });
+    applyThemeVars(b.el, { multiplier: -1 });
+
+    expect(a.props.get(DURATION)).toBe('250ms');
+    expect(b.props.has(DURATION)).toBe(false);
   });
 });
