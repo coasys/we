@@ -202,3 +202,110 @@ describe('GraphEngine', () => {
     expect(ctx.selection()).toEqual(['seed-1']);
   });
 });
+
+describe('the scene stays consistent with what is drawn', () => {
+  it('re-indexes after a pin, so a dragged node is hittable where it was dropped', async () => {
+    // The bug this pins down: `pin` moved the node visually and left the spatial index holding its
+    // old position, so hover and a second drag both missed it. Invisible under force layout, which
+    // re-indexes on the next tick; permanent under a layout that computes once.
+    const registry = new PluginRegistry({ seeds: [seedOf(2)], layouts });
+    const engine = engineWith({ seeds: { source: 'test' }, layout: { type: 'grid' } }, registry);
+    await engine.start();
+    engine.resize(800, 600);
+
+    engine.pin('seed-0', { x: 400, y: 400 });
+
+    expect(engine.index.hitTest({ x: 400, y: 400 })).toContain('seed-0');
+    expect(engine.index.hitTest({ x: 0, y: 0 })).not.toContain('seed-0');
+  });
+
+  it('re-indexes when a pin is released', async () => {
+    const registry = new PluginRegistry({ seeds: [seedOf(1)], layouts });
+    const engine = engineWith({ seeds: { source: 'test' }, layout: { type: 'grid' } }, registry);
+    await engine.start();
+    engine.resize(800, 600);
+
+    engine.pin('seed-0', { x: 250, y: 250 });
+    engine.pin('seed-0', null);
+
+    expect(engine.index.hitTest({ x: 250, y: 250 })).toContain('seed-0');
+  });
+
+  it('sizes the hit area from the node style rather than a fixed radius', async () => {
+    const registry = new PluginRegistry({ seeds: [seedOf(1)], layouts });
+    const engine = engineWith(
+      {
+        seeds: { source: 'test' },
+        layout: { type: 'grid' },
+        nodeStyle: [{ style: { size: 40 } }],
+      },
+      registry,
+    );
+    await engine.start();
+    engine.resize(800, 600);
+    engine.pin('seed-0', { x: 0, y: 0 });
+
+    // Inside a 40px node, outside the 18px radius this used to hardcode.
+    expect(engine.index.hitTest({ x: 30, y: 0 })).toContain('seed-0');
+    expect(engine.index.hitTest({ x: 80, y: 0 })).not.toContain('seed-0');
+  });
+});
+
+describe('framing', () => {
+  it('applies a fit that was asked for before the surface had been measured', async () => {
+    // The bug: `start()` requests a fit, but a renderer has not measured itself yet, and
+    // `Viewport.fit` cannot frame into a zero-sized box. The request was dropped, the camera stayed
+    // at the origin, and every deterministic layout ended up in the top-left corner.
+    const registry = new PluginRegistry({ seeds: [seedOf(6)], layouts });
+    const engine = engineWith({ seeds: { source: 'test' }, layout: { type: 'grid' } }, registry);
+
+    await engine.start();
+    expect(engine.viewport.get()).toMatchObject({ x: 0, y: 0, zoom: 1 });
+
+    engine.resize(800, 600);
+
+    const camera = engine.viewport.get();
+    expect(camera.x === 0 && camera.y === 0).toBe(false);
+  });
+
+  it('centres the content it framed', async () => {
+    const registry = new PluginRegistry({ seeds: [seedOf(6)], layouts });
+    const engine = engineWith({ seeds: { source: 'test' }, layout: { type: 'grid' } }, registry);
+    await engine.start();
+    engine.resize(800, 600);
+
+    const positions = [...engine.getPositions().values()];
+    const midX = (Math.min(...positions.map((p) => p.x)) + Math.max(...positions.map((p) => p.x))) / 2;
+    const midY = (Math.min(...positions.map((p) => p.y)) + Math.max(...positions.map((p) => p.y))) / 2;
+    const onScreen = engine.viewport.toScreen({ x: midX, y: midY });
+
+    expect(onScreen.x).toBeCloseTo(400, 0);
+    expect(onScreen.y).toBeCloseTo(300, 0);
+  });
+
+  it('does not re-frame on an ordinary resize, which would yank the camera mid-exploration', async () => {
+    const registry = new PluginRegistry({ seeds: [seedOf(4)], layouts });
+    const engine = engineWith({ seeds: { source: 'test' }, layout: { type: 'grid' } }, registry);
+    await engine.start();
+    engine.resize(800, 600);
+
+    engine.behaviourContext().pan(120, 90);
+    const panned = { ...engine.viewport.get() };
+    engine.resize(820, 610);
+
+    expect(engine.viewport.get().x).toBe(panned.x);
+    expect(engine.viewport.get().y).toBe(panned.y);
+  });
+
+  it('frames on demand', async () => {
+    const registry = new PluginRegistry({ seeds: [seedOf(4)], layouts });
+    const engine = engineWith({ seeds: { source: 'test' }, layout: { type: 'grid' } }, registry);
+    await engine.start();
+    engine.resize(800, 600);
+    engine.behaviourContext().pan(500, 500);
+
+    engine.fit();
+
+    expect(engine.viewport.get().x).not.toBe(500);
+  });
+});

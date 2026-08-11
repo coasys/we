@@ -119,8 +119,19 @@ export function GraphView(props: GraphViewProps) {
     });
   });
 
-  /** The spec the engine should be holding, rebuilt from props on demand. */
-  const currentSpec = () => ({ seeds: props.seeds, expansion: props.expansion, layout: props.layout });
+  /**
+   * The spec the engine should be holding, rebuilt from props on demand.
+   *
+   * `nodeStyle` is in here even though the engine never paints: it sizes the *hit area* from the same
+   * rules that size the circle, so a 40px node is grabbable across its whole face and a 6px one does
+   * not swallow its neighbours. Leaving it out silently reverts picking to a fixed radius.
+   */
+  const currentSpec = () => ({
+    seeds: props.seeds,
+    expansion: props.expansion,
+    layout: props.layout,
+    nodeStyle: props.nodeStyle,
+  });
 
   // Reload when what the graph *is* changes — where it starts and how far it opens. Deliberately
   // narrow: recolouring a map must never re-run its queries, and depending on the whole prop bag
@@ -145,12 +156,23 @@ export function GraphView(props: GraphViewProps) {
     return next;
   });
 
+  // Restyling re-sizes hit areas but must never re-run a query or move a node, so it updates the spec
+  // and reindexes rather than restarting or re-laying out.
+  createEffect((previous: string | undefined) => {
+    const next = JSON.stringify(props.nodeStyle ?? []);
+    if (previous !== undefined && previous !== next) {
+      engine.setSpec(currentSpec());
+      engine.refreshHitAreas();
+    }
+    return next;
+  });
+
   onMount(() => {
     if (!surface) return;
     const observer = new ResizeObserver((entries) => {
       const box = entries[0]?.contentRect;
       if (!box) return;
-      engine.viewport.resize(box.width, box.height);
+      engine.resize(box.width, box.height);
       setViewportVersion((n) => n + 1);
     });
     observer.observe(surface);
@@ -364,17 +386,26 @@ export function GraphView(props: GraphViewProps) {
         </For>
       </div>
 
+      {/*
+        Chrome is design-system, canvas is not.
+
+        Nodes and edges are painted at arbitrary positions inside a transformed layer, updated every
+        frame, and have to survive a renderer that has no elements at all — so they stay raw. The
+        controls, status and empty state are ordinary UI, and hand-rolling them meant the graph's own
+        furniture ignored the theme and matched nothing else in the app. Primitives are Lit custom
+        elements, so using them adds no framework coupling.
+      */}
       <Show when={props.showControls !== false}>
         <div class="we-graph__controls">
-          <button type="button" title="Zoom in" onClick={() => zoomBy(engine, 1.25)}>
-            +
-          </button>
-          <button type="button" title="Zoom out" onClick={() => zoomBy(engine, 0.8)}>
-            −
-          </button>
-          <button type="button" title="Fit to view" onClick={() => engine.relayout({ fit: true })}>
-            ⤢
-          </button>
+          <we-button variant="secondary" size="sm" square title="Zoom in" onClick={() => zoomBy(engine, 1.25)}>
+            <we-icon name="plus" size="sm" />
+          </we-button>
+          <we-button variant="secondary" size="sm" square title="Zoom out" onClick={() => zoomBy(engine, 0.8)}>
+            <we-icon name="minus" size="sm" />
+          </we-button>
+          <we-button variant="secondary" size="sm" square title="Fit to view" onClick={() => engine.fit()}>
+            <we-icon name="arrows-out" size="sm" />
+          </we-button>
         </div>
       </Show>
 
@@ -383,21 +414,27 @@ export function GraphView(props: GraphViewProps) {
       >
         <div class="we-graph__status">
           <Show when={status().loading}>
-            <span class="we-graph__status-item">Loading…</span>
+            <div class="we-graph__status-item">
+              <we-spinner size="xs" />
+              <we-text variant="footnote" color="neutral-600">
+                Loading…
+              </we-text>
+            </div>
           </Show>
           <Show when={status().budgetReached}>
-            <span class="we-graph__status-item we-graph__status-item--warn">
-              Node limit reached — collapse something to keep exploring
-            </span>
+            <we-alert variant="warning">Node limit reached — collapse something to keep exploring</we-alert>
           </Show>
-          <For each={status().warnings}>
-            {(warning) => <span class="we-graph__status-item we-graph__status-item--warn">{warning}</span>}
-          </For>
+          <For each={status().warnings}>{(warning) => <we-alert variant="warning">{warning}</we-alert>}</For>
         </div>
       </Show>
 
       <Show when={!nodes().length && !status().loading}>
-        <div class="we-graph__empty">Nothing to show yet.</div>
+        <div class="we-graph__empty">
+          <we-icon name="graph" size="lg" color="neutral-300" />
+          <we-text variant="footnote" color="neutral-400">
+            Nothing to show yet.
+          </we-text>
+        </div>
       </Show>
     </div>
   );

@@ -1,7 +1,7 @@
 {
   "name": "@we/graph-solid",
   "version": "0.1.0",
-  "description": "SolidJS renderer for the graph engine — DOM nodes, SVG edges, behaviour wiring",
+  "description": "SolidJS renderer for the graph engine \u2014 DOM nodes, SVG edges, behaviour wiring",
   "license": "MIT",
   "type": "module",
   "scripts": {
@@ -31,12 +31,14 @@
   },
   "peerDependencies": {
     "@we/graph-protocol": "workspace:*",
+    "@we/primitives": "^1.0.0",
     "solid-js": "^1.9.5"
   },
   "devDependencies": {
     "@we/cli": "workspace:*",
     "@we/design-utils": "workspace:*",
     "@we/graph-protocol": "workspace:*",
+    "@we/primitives": "workspace:*",
     "esbuild-plugin-solid": "^0.6.0",
     "sass": "^1.92.1",
     "solid-js": "^1.9.5",

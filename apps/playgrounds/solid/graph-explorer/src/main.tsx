@@ -49,45 +49,59 @@ function App() {
 
   return (
     <div class="app">
+      {/*
+        Design-system all the way down, deliberately.
+
+        A harness that hand-rolls its own buttons is a harness that stops telling you anything about
+        the real thing — and it is the wrong advertisement for a repository whose whole argument is
+        that the design system is what you build with. Primitives are Lit custom elements, so this
+        costs no framework coupling.
+      */}
       <aside class="rail">
-        <h1>Graph engine</h1>
-        <p class="sub">Real engine, in-memory data. No AD4M.</p>
+        <div class="group">
+          <we-text variant="heading-sm">Graph engine</we-text>
+          <we-text variant="footnote" color="neutral-500">
+            Real engine, in-memory data. No AD4M.
+          </we-text>
+        </div>
 
         <div class="group">
           <For each={SCENARIOS}>
             {(item) => (
-              <button
-                type="button"
-                classList={{ item: true, 'item--active': scenarioId() === item.id }}
+              <we-button
+                variant={scenarioId() === item.id ? 'primary' : 'ghost'}
+                size="sm"
                 onClick={() => pick(item.id)}
               >
                 {item.label}
-              </button>
+              </we-button>
             )}
           </For>
         </div>
 
-        <p class="note">{scenario().note}</p>
+        <we-alert variant="neutral">{scenario().note}</we-alert>
 
         <div class="group">
-          <span class="label">Layout</span>
+          <we-text variant="label" color="neutral-500" uppercase>
+            Layout
+          </we-text>
           <div class="row">
-            <button
-              type="button"
-              classList={{ chip: true, 'chip--active': layoutOverride() === null }}
+            <we-button
+              variant={layoutOverride() === null ? 'primary' : 'outline'}
+              size="xs"
               onClick={() => setLayoutOverride(null)}
             >
               default
-            </button>
+            </we-button>
             <For each={LAYOUTS}>
               {(name) => (
-                <button
-                  type="button"
-                  classList={{ chip: true, 'chip--active': layoutOverride() === name }}
+                <we-button
+                  variant={layoutOverride() === name ? 'primary' : 'outline'}
+                  size="xs"
                   onClick={() => setLayoutOverride(name)}
                 >
                   {name}
-                </button>
+                </we-button>
               )}
             </For>
           </div>
@@ -96,23 +110,43 @@ function App() {
         <Show when={selected()}>
           {(node) => (
             <div class="group">
-              <span class="label">Selected</span>
-              <div class="selected">
-                <code>{node().kind}</code> · <code>{node().type}</code>
-                <div>{node().label}</div>
+              <we-text variant="label" color="neutral-500" uppercase>
+                Selected
+              </we-text>
+              <div class="row">
+                <we-badge variant="primary" size="xs">
+                  {node().kind}
+                </we-badge>
+                <we-badge size="xs">{node().type}</we-badge>
               </div>
+              <we-text variant="footnote">{node().label}</we-text>
             </div>
           )}
         </Show>
 
         <div class="group grow">
-          <span class="label">Queries served</span>
-          <Show when={log().length} fallback={<p class="empty">none yet</p>}>
+          <we-text variant="label" color="neutral-500" uppercase>
+            Queries served
+          </we-text>
+          <Show
+            when={log().length}
+            fallback={
+              <we-text variant="footnote" color="neutral-400">
+                none yet
+              </we-text>
+            }
+          >
             <ul class="log">
               <For each={log()}>
                 {(entry) => (
                   <li>
-                    <code>{entry.entity}</code> <span>{entry.kind}</span> <b>{entry.rows}</b>
+                    <we-badge size="xs">{entry.entity}</we-badge>
+                    <we-text variant="footnote" color="neutral-500" truncate>
+                      {entry.kind}
+                    </we-text>
+                    <we-text variant="footnote" fontWeight="700">
+                      {entry.rows}
+                    </we-text>
                   </li>
                 )}
               </For>
@@ -120,7 +154,9 @@ function App() {
           </Show>
         </div>
 
-        <p class="hint">Drag the background to pan · wheel to zoom · double-click a node to expand or collapse it</p>
+        <we-text variant="footnote" color="neutral-500">
+          Drag the background to pan · wheel to zoom · double-click a node to expand or collapse it
+        </we-text>
       </aside>
 
       <main class="stage">

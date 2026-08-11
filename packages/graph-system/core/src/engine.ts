@@ -24,6 +24,7 @@ import { ExpansionState, SEED_OPENER } from './expansion';
 import { PluginRegistry } from './registry';
 import { SpatialIndex } from './spatial';
 import { GraphStore } from './store';
+import { resolveNumber, resolveStyle } from './style';
 import { boundsOf, Viewport } from './viewport';
 
 export interface EngineOptions {
@@ -45,6 +46,9 @@ export interface EngineStatus {
   /** Non-fatal problems worth surfacing — an expander that could not answer, a dropped ref. */
   warnings: string[];
 }
+
+/** Metrics deliberately do not participate in hit-testing — see `hitRadius`. */
+const NO_METRICS = new Map<string, ReadonlyMap<string, number>>();
 
 const DEFAULT_MAX_NODES = 2000;
 const DEFAULT_EXPAND_LIMIT = 50;
@@ -68,6 +72,8 @@ export class GraphEngine {
   private status: EngineStatus = { loading: false, budgetReached: false, warnings: [] };
   private inFlight = 0;
   private disposed = false;
+  /** A fit was asked for before there was a surface to fit into. Applied on the next real resize. */
+  private pendingFit = false;
 
   constructor(options: EngineOptions) {
     this.spec = options.spec;
@@ -359,6 +365,8 @@ export class GraphEngine {
       viewport: { width: width || 800, height: height || 600 },
     });
     this.applyPositions(result.positions, options?.fit);
+    // A fit that could not run yet (no surface measured) is remembered, not dropped.
+    if (options?.fit && !this.positions.size) this.pendingFit = true;
     if (result.running) this.scheduleTick();
   }
 
@@ -375,17 +383,94 @@ export class GraphEngine {
 
   private applyPositions(positions: Map<string, Placement>, fit?: boolean): void {
     this.positions = positions;
+    this.reindex();
+    if (fit && !this.fitToContent()) this.pendingFit = true;
+    this.notify('positions');
+  }
+
+  /**
+   * Rebuild the spatial index from the current positions.
+   *
+   * Every path that moves a node has to call this. Missing one does not fail loudly — the node paints
+   * in its new place and stays *hittable in its old one*, so it silently stops responding to hover and
+   * cannot be picked up again. That is invisible under a running force simulation, which reindexes on
+   * the next tick anyway, and permanent under a layout that computes once.
+   */
+  private reindex(): void {
     this.index.rebuild(
       [...this.store.nodes()].flatMap((node) => {
-        const position = positions.get(node.id);
-        return position ? [{ id: node.id, x: position.x, y: position.y, radius: 18 }] : [];
+        const position = this.positions.get(node.id);
+        return position ? [{ id: node.id, x: position.x, y: position.y, radius: this.hitRadius(node) }] : [];
       }),
     );
-    if (fit) {
-      const bounds = boundsOf([...positions.values()].map((p) => ({ ...p, radius: 30 })));
-      if (bounds) this.viewport.fit(bounds);
+  }
+
+  /**
+   * How large a node is for picking, from the same style rules that draw it.
+   *
+   * Resolved here rather than passed in by the renderer because the engine owns hit-testing, and a
+   * radius the renderer computed separately would drift from the one it paints. A fixed radius —
+   * which this used to be — gives a 6px property node an 18px grab area that swallows its neighbours,
+   * and a 28px type node one smaller than it looks.
+   */
+  private hitRadius(node: GraphNode): number {
+    const style = resolveStyle(node, this.spec.nodeStyle);
+    // Metrics are not resolved for picking: they change what a node *means*, not where it is, and a
+    // hit area that moved when a metric finished computing would be worse than a slightly stale one.
+    return resolveNumber(typeof style.size === 'number' ? style.size : undefined, node.id, NO_METRICS, 14) + 4;
+  }
+
+  /** Frame everything currently placed. Nothing to frame is not a failure — it is an empty graph. */
+  private fitToContent(): boolean {
+    const bounds = boundsOf([...this.positions.values()].map((p) => ({ ...p, radius: 30 })));
+    if (!bounds) return false;
+    const { width, height } = this.viewport.get();
+    if (!width || !height) return false;
+    this.viewport.fit(bounds);
+    return true;
+  }
+
+  /**
+   * Tell the engine how large its surface is.
+   *
+   * More than a setter: the first fit is requested during `start()`, which runs before any renderer
+   * has had a chance to measure itself, and `Viewport.fit` cannot frame content into a zero-sized
+   * box. So a fit asked for too early is remembered and applied here, the moment there is a viewport
+   * to fit into. Without this the camera stays at the origin and a graph laid out from `0,0` — every
+   * deterministic layout — sits in the top-left corner with half of it off-screen.
+   */
+  resize(width: number, height: number): void {
+    const previous = this.viewport.get();
+    this.viewport.resize(width, height);
+    if (!width || !height) return;
+
+    if (this.pendingFit) {
+      if (this.fitToContent()) this.pendingFit = false;
+      this.notify('viewport');
+      return;
     }
-    this.notify('positions');
+    // Growing from nothing is a first measurement, not a resize — anything already placed was laid
+    // out against a guess, so it is worth re-framing rather than leaving off-centre.
+    if (!previous.width || !previous.height) {
+      this.fitToContent();
+    }
+    this.notify('viewport');
+  }
+
+  /**
+   * Recompute hit areas after a style change.
+   *
+   * Public because the radius comes from `nodeStyle`, and a renderer may change styling without
+   * anything moving — at which point the index is holding areas sized by the old rules.
+   */
+  refreshHitAreas(): void {
+    this.reindex();
+  }
+
+  /** Frame the graph now, or as soon as there is a surface to frame it into. */
+  fit(): void {
+    if (!this.fitToContent()) this.pendingFit = true;
+    else this.notify('viewport');
   }
 
   /**
@@ -411,6 +496,9 @@ export class GraphEngine {
       if (existing) this.positions.set(id, { x: existing.x, y: existing.y });
     }
     this.layout?.fix?.(id, at);
+    // Reindex, or the node paints where it was dropped and stays hittable where it started — the
+    // failure that makes a dragged node impossible to pick up again under a non-ticking layout.
+    this.reindex();
     this.notify('positions');
   }
 

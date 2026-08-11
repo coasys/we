@@ -1,4 +1,10 @@
-/* Harness chrome only — the graph brings its own styles from @we/graph-solid/styles. */
+/*
+  Layout only.
+
+  Everything with an appearance — buttons, badges, text, the scenario note — is a design-system
+  primitive, so this file holds the two-column shell and the spacing between groups and nothing else.
+  The graph brings its own styles from @we/graph-solid/styles.
+*/
 
 * {
   box-sizing: border-box;
@@ -27,17 +33,6 @@ body {
   background: var(--we-color-neutral-0);
 }
 
-.rail h1 {
-  margin: 0;
-  font-size: 18px;
-}
-
-.sub {
-  margin: -14px 0 0;
-  font-size: 12px;
-  color: var(--we-color-neutral-500);
-}
-
 .group {
   display: flex;
   flex-direction: column;
@@ -49,72 +44,10 @@ body {
   min-height: 0;
 }
 
-.label {
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--we-color-neutral-500);
-}
-
-.item {
-  padding: 8px 10px;
-  text-align: left;
-  border: 1px solid transparent;
-  border-radius: 6px;
-  background: transparent;
-  color: var(--we-color-neutral-800);
-  font-size: 14px;
-  cursor: pointer;
-}
-
-.item:hover {
-  background: var(--we-color-neutral-100);
-}
-
-.item--active {
-  background: var(--we-color-primary-100);
-  border-color: var(--we-color-primary-300);
-  color: var(--we-color-primary-900);
-}
-
-.note {
-  margin: 0;
-  padding: 10px;
-  border-radius: 6px;
-  background: var(--we-color-neutral-100);
-  font-size: 12px;
-  line-height: 1.5;
-  color: var(--we-color-neutral-700);
-}
-
 .row {
   display: flex;
   flex-wrap: wrap;
   gap: 4px;
-}
-
-.chip {
-  padding: 4px 8px;
-  border: 1px solid var(--we-color-neutral-200);
-  border-radius: 999px;
-  background: transparent;
-  font-size: 12px;
-  cursor: pointer;
-}
-
-.chip--active {
-  background: var(--we-color-primary-500);
-  border-color: var(--we-color-primary-500);
-  color: #fff;
-}
-
-.selected {
-  padding: 8px 10px;
-  border-radius: 6px;
-  background: var(--we-color-neutral-100);
-  font-size: 12px;
-  line-height: 1.6;
-  overflow-wrap: anywhere;
 }
 
 .log {
@@ -128,29 +61,9 @@ body {
 
 .log li {
   display: flex;
+  align-items: center;
   gap: 6px;
   justify-content: space-between;
-  color: var(--we-color-neutral-600);
-}
-
-.log span {
-  flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.empty {
-  margin: 0;
-  font-size: 12px;
-  color: var(--we-color-neutral-400);
-}
-
-.hint {
-  margin: 0;
-  font-size: 11px;
-  line-height: 1.6;
-  color: var(--we-color-neutral-500);
 }
 
 .stage {
