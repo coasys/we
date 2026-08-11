@@ -41,6 +41,9 @@
   inset: 0;
   // Transforms scale about the origin, which is where the layouts put their coordinate space.
   transform-origin: 0 0;
+  // Also set inline by the renderer, where the reasoning lives: the layer must never take the
+  // pointer, or it covers the hit surface wherever the camera has moved it to.
+  pointer-events: none;
 
   // Deliberately no `will-change: transform`.
   //

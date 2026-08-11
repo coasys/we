@@ -126,6 +126,12 @@ Learned from bugs, each of which was invisible rather than loud:
   and "not here yet" must be visually distinct from "nothing there".
 - **Nothing silently truncates.** Budgets, paging and dropped references report. A map that quietly
   stops growing reads as complete, and every conclusion drawn from it is wrong.
+- **Nothing between the pointer and the surface.** Gestures are handled on `.we-graph__surface`,
+  which sits beneath everything the graph draws. Every layer above it — the transformed layer, the
+  edge SVG, nodes, labels, passive overlays — is `pointer-events: none`. The transformed layer is the
+  easy one to miss: it is viewport-sized and the *camera moves it*, so leaving it interactive blanks
+  out whichever region it happens to cover, which reads as a dead corner of the canvas rather than as
+  a layering mistake.
 - **Nothing is picked by the DOM.** Nodes and edges are both `pointer-events: none`; what you clicked
   is answered from geometry the core owns. Edges were the exception — `pointer-events: stroke` on an
   SVG path — which broke behaviours on any non-DOM surface and forced every overlay to opt out of the

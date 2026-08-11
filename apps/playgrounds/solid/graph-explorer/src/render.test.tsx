@@ -146,6 +146,24 @@ describe('the graph paints', () => {
     expect(container.querySelectorAll('we-button')).toHaveLength(0);
   });
 
+  it('never lets a drawing layer stand between the pointer and the canvas', async () => {
+    // The transformed layer is viewport-sized and the camera moves it, so with default
+    // `pointer-events` it silently covers whichever region it has been translated over — which showed
+    // up as a dead quadrant of the canvas once gestures moved off the root onto their own surface.
+    const container = mount(scenario('static'));
+    await settle();
+
+    const layer = container.querySelector('.we-graph__layer') as HTMLElement | null;
+    expect(layer).not.toBeNull();
+    expect(layer!.style.pointerEvents).toBe('none');
+
+    // And everything it contains, so nothing inside can reintroduce the problem either.
+    for (const selector of ['.we-graph__edges', '.we-graph__node']) {
+      const child = container.querySelector(selector);
+      expect(child, selector).not.toBeNull();
+    }
+  });
+
   it('leaves edge picking to the engine rather than the DOM', async () => {
     // `pointer-events: stroke` on a path was the one thing the DOM still picked, which broke
     // behaviours on any non-DOM surface.

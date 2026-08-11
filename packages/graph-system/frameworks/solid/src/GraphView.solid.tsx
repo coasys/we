@@ -365,6 +365,18 @@ export function GraphView(props: GraphViewProps) {
         class="we-graph__layer"
         style={{
           transform: transform(),
+          /*
+            Load-bearing, and inline so it cannot be lost to a stale stylesheet.
+
+            The layer is a viewport-sized box that sits *above* the hit surface, and the camera
+            translates it — so with `pointer-events: auto` it silently covers whichever region it has
+            been moved over, and gestures there never reach the surface underneath. That showed up as
+            a dead quadrant of the canvas once handlers moved off the root.
+
+            Everything the layer contains is already `pointer-events: none`, and picking is geometry
+            the engine owns, so the layer never needs events at all.
+          */
+          'pointer-events': 'none',
           // Published so anything that must keep a constant on-screen size can divide by it in CSS,
           // rather than every such element needing its own reactive computation in JS.
           '--graph-zoom': String(zoom()),
