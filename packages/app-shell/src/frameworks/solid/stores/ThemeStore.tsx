@@ -11,7 +11,7 @@ import {
   Theme,
 } from '@we/models';
 import type { ThemeOverrides } from '@we/schema-shared';
-import { themeToStyle } from '@we/schema-shared';
+import { applyThemeVars } from '@we/schema-shared';
 import {
   Accessor,
   createContext,
@@ -161,9 +161,6 @@ function injectCssString(id: string, css: string) {
   styleEl.textContent = css;
 }
 
-/** Custom properties the last applied theme set, so the next one removes exactly those. */
-let appliedThemeVars = new Set<string>();
-
 function applyThemeToDOM(theme: ThemeData) {
   const overrides: ThemeOverrides = theme.overrides ? JSON.parse(theme.overrides) : {};
   // Normalize legacy fontFamily: 'base' sentinel saved before the font-family fix
@@ -178,27 +175,13 @@ function applyThemeToDOM(theme: ThemeData) {
         : 'light';
   document.documentElement.setAttribute('data-we-theme', baseName);
 
-  /**
-   * Clear the previous *theme's* overrides — and only those.
-   *
-   * This wiped `style.cssText` outright, which is a much bigger hammer than "drop the vars I set
-   * last time": the root is shared, and the shell publishes layout there too. Applying a theme
-   * therefore deleted `--we-dock-right` and `--we-chrome-transition` along with the old theme, so
-   * every piece of chrome positioned against a docked panel snapped back to the window edge and
-   * stayed there until something happened to make the dock effect run again. Starting theme editing
-   * with the notes panel open put the editor underneath it; dragging the panel healed it, which is
-   * the tell — a repaint fixing a value nobody had recomputed.
-   */
-  const styles = themeToStyle(overrides);
-  for (const prop of appliedThemeVars) {
-    if (!(prop in styles)) document.documentElement.style.removeProperty(prop);
-  }
-  appliedThemeVars = new Set(Object.keys(styles));
-
-  // Inject CSS vars derived from overrides as inline styles (highest specificity)
-  for (const [prop, value] of Object.entries(styles)) {
-    document.documentElement.style.setProperty(prop, value as string);
-  }
+  /*
+    Writing the variables — and clearing exactly the previous theme's — now lives in
+    `applyThemeVars`, so a second host gets the same behaviour without re-deriving it. The hazard it
+    guards against is documented there: clearing `style.cssText` outright also deletes the layout
+    variables the shell publishes on the same root.
+  */
+  applyThemeVars(document.documentElement, overrides);
 
   // Inject the theme's CSS string (component-level rules + any non-parametric vars)
   injectCssString('we-custom-theme-css', theme.css ?? '');

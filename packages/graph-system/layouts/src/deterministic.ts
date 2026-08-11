@@ -71,18 +71,92 @@ export interface TreeLayoutOptions {
   direction?: 'down' | 'right';
 }
 
+/**
+ * Order each row so its edges cross as little as possible.
+ *
+ * Without this a layered graph is only *layered* — rows are correct and the lines between them are a
+ * tangle, because a node's position in its row is whatever order the traversal happened to reach it.
+ * The barycentre heuristic is the standard fix and most of what a full layered engine buys you: sort
+ * each row by the mean position of its neighbours in the row above, sweep down, then up, repeat.
+ *
+ * A few sweeps get most of the benefit; this is not Sugiyama, and when `tree` visibly fails on real
+ * data the answer is to adapt dagre or ELK rather than to grow this function.
+ */
+function reduceCrossings(levels: Map<number, string[]>, input: LayoutInput, sweeps = 4): Map<number, string[]> {
+  const above = new Map<string, string[]>();
+  const below = new Map<string, string[]>();
+  for (const edge of input.edges) {
+    (above.get(edge.target) ?? above.set(edge.target, []).get(edge.target)!).push(edge.source);
+    (below.get(edge.source) ?? below.set(edge.source, []).get(edge.source)!).push(edge.target);
+  }
+
+  const ordered = new Map(levels);
+  const indexIn = (row: string[]) => new Map(row.map((id, i) => [id, i]));
+
+  const sortRow = (row: string[], neighbourRow: string[], neighbours: Map<string, string[]>) => {
+    const position = indexIn(neighbourRow);
+    const barycentre = (id: string): number => {
+      const linked = (neighbours.get(id) ?? []).map((other) => position.get(other)).filter((p) => p !== undefined);
+      // A node with no neighbour in the adjacent row has no opinion; leaving it where it is keeps the
+      // sort stable rather than dragging it to one end.
+      if (!linked.length) return row.indexOf(id);
+      return (linked as number[]).reduce((sum, p) => sum + p, 0) / linked.length;
+    };
+    return [...row].sort((a, b) => barycentre(a) - barycentre(b) || a.localeCompare(b));
+  };
+
+  const depths = [...ordered.keys()].sort((a, b) => a - b);
+  for (let sweep = 0; sweep < sweeps; sweep += 1) {
+    // Down: each row settles against the one above it.
+    for (let i = 1; i < depths.length; i += 1) {
+      const row = ordered.get(depths[i])!;
+      ordered.set(depths[i], sortRow(row, ordered.get(depths[i - 1])!, above));
+    }
+    // Up: and then against the one below, which is what resolves the rows the downward pass fixed early.
+    for (let i = depths.length - 2; i >= 0; i -= 1) {
+      const row = ordered.get(depths[i])!;
+      ordered.set(depths[i], sortRow(row, ordered.get(depths[i + 1])!, below));
+    }
+  }
+  return ordered;
+}
+
+/**
+ * Keep a parent's children next to each other.
+ *
+ * The protocol passes a containment tree and this used to ignore it, so an expanded collection's
+ * children scattered across their row wherever crossing-reduction put them. Grouping by parent first
+ * means a group reads as a group; ordering *within* each group is still the barycentre's job.
+ */
+function groupByParent(row: string[], containment: ReadonlyMap<string, string[]> | undefined): string[] {
+  if (!containment?.size) return row;
+  const parentOf = new Map<string, string>();
+  for (const [parent, children] of containment) {
+    for (const child of children) parentOf.set(child, parent);
+  }
+  if (!row.some((id) => parentOf.has(id))) return row;
+
+  const groups = new Map<string, string[]>();
+  for (const id of row) {
+    const key = parentOf.get(id) ?? `\u0000${id}`;
+    (groups.get(key) ?? groups.set(key, []).get(key)!).push(id);
+  }
+  return [...groups.values()].flat();
+}
+
 /** Layered hierarchy — the right shape for containment, org charts and dependency chains. */
 export function treeLayout(rawOptions?: Record<string, unknown>): Layout {
   const options = { levelGap: 120, siblingGap: 90, direction: 'down', ...(rawOptions as TreeLayoutOptions) };
   return {
     id: 'tree',
-    description: 'Layered hierarchy from the graph roots, laid out downward or rightward.',
+    description: 'Layered hierarchy with barycentre crossing reduction; groups children under their parent.',
     init(input): LayoutResult {
-      const levels = groupByLevel(levelise(input, findRoots(input)));
+      const levels = reduceCrossings(groupByLevel(levelise(input, findRoots(input))), input);
       const positions = new Map<string, Placement>();
       const widest = Math.max(1, ...[...levels.values()].map((row) => row.length));
 
-      for (const [level, row] of levels) {
+      for (const [level, unordered] of levels) {
+        const row = groupByParent(unordered, input.containment);
         row.forEach((id, index) => {
           // Centre each row against the widest, so the tree is symmetrical rather than left-ragged.
           const offset = (index - (row.length - 1) / 2) * options.siblingGap + (widest * options.siblingGap) / 2;
@@ -184,9 +258,14 @@ export function manualLayout(rawOptions?: Record<string, unknown>): Layout {
   return {
     id: 'manual',
     description: 'Reads each node position from its own data; new nodes are parked in a grid.',
+    // Position is the data here, so every node is placed and none is held *against* anything. Saying
+    // so keeps a renderer from marking all of them as pinned, which marks the rule rather than the
+    // exception and reads as every card being in some special state.
+    derivesPositions: false,
     init(input): LayoutResult {
       const positions = new Map<string, Placement>();
       let unplaced = 0;
+      let fromData = 0;
 
       for (const node of input.nodes) {
         const override = pinned.get(node.id);
@@ -198,6 +277,7 @@ export function manualLayout(rawOptions?: Record<string, unknown>): Layout {
         const y = Number(node.data?.[options.yField]);
         if (Number.isFinite(x) && Number.isFinite(y)) {
           positions.set(node.id, { x, y, fixed: true });
+          fromData += 1;
           continue;
         }
         const previous = input.previous?.get(node.id);
@@ -212,7 +292,23 @@ export function manualLayout(rawOptions?: Record<string, unknown>): Layout {
         });
         unplaced += 1;
       }
-      return { positions };
+
+      /*
+        Say so when there was nothing to read.
+
+        This layout's whole job is to take positions from the data, so a dataset that carries none
+        leaves it holding everything exactly where it found it — on screen, identical to a layout that
+        ran and decided nothing needed to move. Picking it and seeing no change is then indistinguishable
+        from picking it and having it silently do nothing, which is the version people conclude.
+      */
+      const warnings: string[] = [];
+      if (input.nodes.length && fromData === 0) {
+        warnings.push(
+          `manual layout: no node carries "${options.xField}" and "${options.yField}", so positions were left as they were. ` +
+            `It suits a board, where position is the data being edited — a graph without stored positions wants a layout that derives them.`,
+        );
+      }
+      return { positions, warnings };
     },
 
     fix(id, at) {

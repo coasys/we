@@ -10,7 +10,7 @@
  * two graphs on one page share whatever the last one registered, which is exactly the class of bug
  * that is impossible to reproduce.
  */
-import type { Behaviour, Expander, Layout, Metric, NodeRenderer, SeedSource } from '@we/graph-protocol';
+import type { Behaviour, Expander, GraphControl, Layout, Metric, NodeRenderer, SeedSource } from '@we/graph-protocol';
 
 export interface GraphPlugins {
   expanders?: Expander[];
@@ -19,6 +19,8 @@ export interface GraphPlugins {
   behaviours?: Record<string, (options?: Record<string, unknown>) => Behaviour>;
   renderers?: NodeRenderer[];
   metrics?: Metric[];
+  /** Buttons the graph draws in its own chrome, by the id a template names. */
+  controls?: Record<string, () => GraphControl>;
 }
 
 export class PluginRegistry {
@@ -28,6 +30,7 @@ export class PluginRegistry {
   private readonly behaviours = new Map<string, (options?: Record<string, unknown>) => Behaviour>();
   private readonly renderers = new Map<string, NodeRenderer>();
   private readonly metrics = new Map<string, Metric>();
+  private readonly controls = new Map<string, () => GraphControl>();
 
   constructor(plugins?: GraphPlugins) {
     if (plugins) this.register(plugins);
@@ -40,6 +43,7 @@ export class PluginRegistry {
     for (const [id, factory] of Object.entries(plugins.behaviours ?? {})) this.behaviours.set(id, factory);
     for (const renderer of plugins.renderers ?? []) this.renderers.set(renderer.id, renderer);
     for (const metric of plugins.metrics ?? []) this.metrics.set(metric.id, metric);
+    for (const [id, factory] of Object.entries(plugins.controls ?? {})) this.controls.set(id, factory);
     this.expanders.sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0));
   }
 
@@ -84,6 +88,10 @@ export class PluginRegistry {
     return this.metrics.get(id);
   }
 
+  control(id: string): GraphControl | undefined {
+    return this.controls.get(id)?.();
+  }
+
   /** Ids by category — what the AI-context catalog and a debug panel enumerate. */
   catalog(): Record<string, string[]> {
     return {
@@ -93,6 +101,7 @@ export class PluginRegistry {
       behaviours: [...this.behaviours.keys()],
       renderers: [...this.renderers.keys()],
       metrics: [...this.metrics.keys()],
+      controls: [...this.controls.keys()],
     };
   }
 }

@@ -1,0 +1,277 @@
+/*
+  Page furniture only. The buttons under test carry no styles from here beyond the plain-DOM
+  controls, which deliberately reimplement the design system's hover behaviour in bare CSS so the
+  comparison is like for like.
+*/
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: var(--we-space-500, 24px);
+  font-family: var(--we-font-family-base, system-ui, sans-serif);
+  color: var(--we-color-neutral-900);
+  background: var(--we-color-neutral-0);
+}
+
+body.flash {
+  outline: 3px solid var(--we-color-danger-500, crimson);
+  outline-offset: -3px;
+}
+
+h1 {
+  margin: 0 0 8px;
+  font-size: 20px;
+}
+
+h2 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+p {
+  margin: 0 0 4px;
+  max-width: 70ch;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.quiet {
+  color: var(--we-color-neutral-500);
+  font-size: 12px;
+}
+
+kbd {
+  padding: 1px 5px;
+  border: 1px solid var(--we-color-neutral-300);
+  border-radius: 4px;
+  background: var(--we-color-neutral-100);
+  font-size: 11px;
+}
+
+.bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 16px 0;
+}
+
+.counters {
+  color: var(--we-color-neutral-500);
+  font: 12px ui-monospace, monospace;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 24px;
+}
+
+.column {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+/* Matches the explorer's rail: a tight vertical stack, which is what a fast sweep crosses. */
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 8px;
+}
+
+/*
+  The controls. Same metrics as we-button size="sm" so a sweep crosses them at the same rate, and
+  the same transition the design system now emits — the only difference that remains is everything
+  WE puts between the pointer and the paint.
+*/
+.control {
+  appearance: none;
+  border: 0;
+  border-radius: var(--we-radius-400, 8px);
+  padding: 0 12px;
+  height: 32px;
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+  color: var(--we-color-neutral-900);
+  background-color: transparent;
+  transition: background-color 50ms ease-out, color 50ms ease-out;
+}
+
+.control:hover {
+  background-color: var(--we-color-neutral-100);
+}
+
+.control.legacy {
+  transition: all 150ms ease;
+}
+
+.chrome {
+  appearance: none;
+  border: 1px solid var(--we-color-neutral-300);
+  border-radius: 6px;
+  padding: 6px 12px;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  color: var(--we-color-neutral-900);
+  background: var(--we-color-neutral-50);
+}
+
+.chrome.primary {
+  border-color: var(--we-color-primary-500);
+  color: var(--we-color-primary-700);
+  background: var(--we-color-primary-50);
+}
+
+.findings {
+  margin-top: 24px;
+}
+
+.findings ul {
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+  font: 12px ui-monospace, monospace;
+}
+
+.findings li {
+  padding: 4px 0;
+  border-bottom: 1px solid var(--we-color-neutral-200);
+  line-height: 1.5;
+}
+
+.dump {
+  margin-top: 16px;
+  padding: 12px;
+  border-radius: 8px;
+  background: var(--we-color-neutral-100);
+  font: 11px/1.45 ui-monospace, monospace;
+  white-space: pre;
+  overflow-x: auto;
+}
+
+/*
+  No animation at all. The hover colour is on or off, so anything visible here happens without a
+  transition being involved — which is the one thing none of the other columns can establish.
+*/
+.control.instant {
+  transition: none;
+}
+
+/*
+  Between two opaque colours rather than out of `transparent`.
+
+  A transition from `transparent` interpolates alpha, so every intermediate frame is composited
+  against whatever sits behind the button; between two solid colours nothing is composited at all.
+  That is the only difference between this column and the plain control, so a clean result here
+  isolates transparency as the mechanism.
+*/
+.control.opaque {
+  background-color: var(--we-color-neutral-50);
+}
+
+.control.opaque:hover {
+  background-color: var(--we-color-neutral-200);
+}
+
+/* Duration held at 50ms, curve changed — the 150ms column varies both, so it cannot separate them. */
+.control.ease50 {
+  transition: background-color 50ms ease, color 50ms ease;
+}
+
+/*
+  The two directions of the hover, separated.
+
+  A transition animating *into* a state is declared by the rule for the state being entered, and the
+  one animating back out by the rule being returned to. So putting the transition on `:hover` alone
+  fades in and snaps out, and putting it on the base rule alone snaps in and fades out. Between them
+  they decide whether what reads as a flicker is the highlight arriving or the trail of highlights
+  left behind on the buttons already passed.
+*/
+.control.fadein {
+  transition: none;
+}
+
+.control.fadein:hover {
+  transition: background-color 50ms ease-out, color 50ms ease-out;
+}
+
+.control.fadeout {
+  transition: background-color 50ms ease-out, color 50ms ease-out;
+}
+
+.control.fadeout:hover {
+  transition: none;
+}
+
+.solo {
+  margin: 40px 0;
+  padding: 32px 0;
+  border-top: 1px solid var(--we-color-neutral-200);
+  border-bottom: 1px solid var(--we-color-neutral-200);
+}
+
+.control.big {
+  margin-top: 16px;
+  padding: 0 24px;
+  height: 56px;
+  font-size: 15px;
+}
+
+.tag {
+  align-self: flex-start;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.tag.test {
+  color: var(--we-color-primary-700);
+  background: var(--we-color-primary-100);
+}
+
+.tag.reference {
+  color: var(--we-color-neutral-600);
+  background: var(--we-color-neutral-100);
+}
+
+/* The resting transition, read back off the element — see the note at its construction. */
+.running {
+  font: 11px ui-monospace, monospace;
+  color: var(--we-color-danger-600, crimson);
+}
+
+.running.good {
+  color: var(--we-color-success-600, seagreen);
+}
+
+/*
+  Background *and* text, in bare CSS.
+
+  Every clean plain-<button> column changed the background alone, because the :hover rule above only
+  ever set background-color. we-button's ghost variant changes both. Matching it here is what decides
+  whether the remaining flicker belongs to WE or to drawing text over a backdrop that is moving.
+*/
+.control.textfade {
+  color: var(--we-color-neutral-700);
+}
+
+.control.textfade:hover {
+  color: var(--we-color-neutral-900);
+}
+
+/* Nothing to rasterise: the same fade with no glyphs over it. */
+.control.blank {
+  min-height: 32px;
+}

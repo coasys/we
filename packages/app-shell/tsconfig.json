@@ -9,6 +9,6 @@
     "isolatedModules": true,
     "experimentalDecorators": true,
     "paths": { "@shared/*": ["./src/shared/*"], "@solid/*": ["./src/frameworks/solid/*"] },
-    "types": ["@we/primitives/solid", "node"]
+    "types": ["node"]
   }
 }

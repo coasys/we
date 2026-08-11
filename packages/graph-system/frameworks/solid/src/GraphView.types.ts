@@ -48,6 +48,17 @@ export interface GraphViewProps {
   edgeStyle?: EdgeStyleRules;
   /** Interactions to enable, by registered id. Defaults to pan-zoom, select and expand-on-double-click. */
   behaviours?: BehaviourSpec[];
+  /**
+   * Entity types that are really *edges*, keyed by name — `{ SemanticRelationship: { source, target } }`.
+   *
+   * Some relationships carry data and are modelled as entities; drawn naively each becomes a node, so
+   * a map of tagged messages shows three times as many dots and no relationships. Declaring one here
+   * collapses each instance into the edge it stands for. Defaults to the shapes AD4M's interpretation
+   * work and Flux already produce; pass `{}` to switch it off.
+   *
+   * Read once when the graph mounts, since expanders are constructed with it.
+   */
+  reified?: Record<string, { source: string; target: string; type?: string }>;
 
   width?: string;
   height?: string;
@@ -55,8 +66,15 @@ export interface GraphViewProps {
   bg?: string;
   /** Show the loading/paging/warning strip. Defaults to true. */
   showStatus?: boolean;
-  /** Show the controls (zoom, fit, re-layout). Defaults to true. */
+  /** Show the controls. Defaults to true. Superseded by `controls`, which names them individually. */
   showControls?: boolean;
+  /**
+   * Which chrome buttons to draw, by registered id — `zoom-in`, `zoom-out`, `fit`, `relayout`.
+   *
+   * Omit for the sensible set; pass `[]` for a graph with no chrome, which is what an embedded
+   * thumbnail wants. A module contributing its own control makes it nameable here.
+   */
+  controls?: string[];
 
   onNodeClick?: (node: GraphNode) => void;
   onNodeDoubleClick?: (node: GraphNode) => void;

@@ -360,7 +360,10 @@ export const HOST_LAYOUT_SPECS: PropSpec[] = [
  * bgImageTint, which are handled by the separate bg-image composite mechanism, not
  * state-variance (swapping the background image itself on hover is out of scope here). */
 export const BASE_VISUAL_SPECS: PropSpec[] = [
-  ['background', 'bg'],
+  // `background-color`, not the `background` shorthand — see the note in `buildLayoutStyles`. A
+  // shorthand here resets the background longhands the base rule sets, which made every hover
+  // animate `background-position` for no reason.
+  ['background-color', 'bg'],
   ['color', 'color'],
   ['opacity', 'opacity'],
   ['border', 'border'],
@@ -599,12 +602,26 @@ export function buildLayoutStyles(props: LayoutStyleProps, direction: 'row' | 'c
 
   // Colors & backgrounds
   if (props.bg) {
-    // Always the `background` shorthand (not `background-color`) — matches the Lit-side
-    // PropSpec convention (helpers.ts's BASE_VISUAL_SPECS) so the interactive-state var
-    // remap below can read buildLayoutStyles's own output directly, keyed consistently.
-    style['background'] = props.bg.startsWith('gradient-')
-      ? `var(--we-gradient-${props.bg.slice(9)})`
-      : tokenVar('color', props.bg);
+    /*
+      Longhands, never the `background` shorthand.
+
+      The shorthand resets every background longhand it does not mention — image, size, position,
+      repeat. The base rule sets `background-position: var(--we-*-bg-image-position, center)` on every
+      component, so a hover rule using the shorthand silently reset position from `50% 50%` to
+      `0% 0%`. With the design system's `transition: all` default, that difference *animated*, so every
+      hover ran two pointless transitions (`background-position-x` and `-y`) alongside the colour —
+      repainting the background area for 150ms and producing a visible flicker.
+
+      It was a correctness bug too, not only a cosmetic one: any component with a `bgImage` and a
+      hover `bg` had its image reset on hover, because the shorthand cleared `background-image`.
+
+      Splitting by kind keeps each value in the property that owns it, so nothing clobbers anything.
+    */
+    if (props.bg.startsWith('gradient-')) {
+      style['background-image'] = `var(--we-gradient-${props.bg.slice(9)})`;
+    } else {
+      style['background-color'] = tokenVar('color', props.bg);
+    }
   }
   if (props.bgImage) {
     if (isBgImageFaded(props)) {

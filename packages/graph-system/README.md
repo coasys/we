@@ -38,6 +38,10 @@ A board uses the scene and none of the exploration. A knowledge map uses both. K
 what stops a board dragging in expansion state it has no use for, and stops undo and marquee selection
 leaking into an explorer that will never want them.
 
+**Before extending any of this, read [`CONVENTIONS.md`](./CONVENTIONS.md)** — what belongs in the API
+and what does not, why the defaults are what they are, and the invariants that have already been
+broken once each.
+
 ## Decisions worth knowing before changing anything
 
 **Node addressing is the load-bearing decision.** Every node — an entity, one of its properties, a

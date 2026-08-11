@@ -26,12 +26,20 @@ import type {
 import { parseAddress } from '@we/graph-protocol';
 
 import { edgeId, placeholder, rowToNode } from './nodes';
+import { endpointRelations, isReified, reifiedEdgeFrom, type ReifiedEdgeMap } from './reified';
 
 export interface EntityExpanderOptions {
   /** Relations to follow. Absent means all of them. */
   relations?: string[];
   /** Relations never to follow — noisy back-references, audit trails. */
   exclude?: string[];
+  /**
+   * Entities that are really edges — see `reified.ts`.
+   *
+   * Without this an interpretation or Flux dataset draws every `SemanticRelationship` as a node, so
+   * the map shows three times as many dots and none of the relationships they encode.
+   */
+  reified?: ReifiedEdgeMap;
 }
 
 const ID = 'entity';
@@ -105,7 +113,14 @@ async function expandForward({
   if (!relations.length) return;
 
   const include: Record<string, unknown> = {};
-  for (const relation of relations) include[relation.name] = true;
+  for (const relation of relations) {
+    // Nesting the endpoints so a relation pointing *at* a reified class can be resolved through it in
+    // the same round trip, rather than drawing the relationship and stopping there.
+    const nested = isReified(relation.target, options.reified)
+      ? { include: Object.fromEntries(endpointRelations(relation.target, options.reified!).map((n) => [n, true])) }
+      : true;
+    include[relation.name] = nested;
+  }
 
   const rows = await context.query({
     entity: shape.name,
@@ -124,6 +139,22 @@ async function expandForward({
     const targetShape = context.models(dataset).find((s) => s.name === relation.target);
 
     for (const target of targets.slice(0, request.limit ?? 50)) {
+      if (isReified(relation.target, options.reified) && target && typeof target === 'object') {
+        const resolved = reifiedEdgeFrom(
+          target as Record<string, unknown>,
+          relation.target,
+          options.reified![relation.target],
+          dataset,
+          context.models(dataset),
+          ID,
+        );
+        if (resolved) {
+          nodes.push(...resolved.nodes);
+          edges.push(resolved.edge);
+          continue;
+        }
+      }
+
       // A relation comes back either hydrated (include worked) or as a bare id (it did not, or the
       // instance has not synced). Both are legitimate; the bare case becomes a placeholder rather
       // than being dropped, so the edge still tells you something is there.
@@ -169,12 +200,17 @@ async function expandBackward({
   );
 
   for (const { source, relation } of candidates) {
+    const reifiedInclude = isReified(source.name, options.reified)
+      ? Object.fromEntries(endpointRelations(source.name, options.reified!).map((name) => [name, true]))
+      : undefined;
+
     const rows = await context
       .query({
         entity: source.name,
         dataset,
         scope: { anchor: address.type!, via: relation.name, anchorId: address.id!, direction: 'in' },
         limit: request.limit ?? 50,
+        include: reifiedInclude,
         signal: request.signal,
       })
       .catch((error: unknown) => {
@@ -187,6 +223,19 @@ async function expandBackward({
       });
 
     for (const row of rows) {
+      // A reified class reached backwards is the normal way an edge is found: you are standing on one
+      // endpoint and the relationship points at you. Collapse it rather than adding a dot.
+      if (isReified(source.name, options.reified)) {
+        const resolved = reifiedEdgeFrom(row, source.name, options.reified![source.name], dataset, shapes, ID);
+        if (!resolved) {
+          context.warn(`${source.name} ${String(row.id)} is missing an endpoint — skipped`);
+          continue;
+        }
+        nodes.push(...resolved.nodes);
+        edges.push(resolved.edge);
+        continue;
+      }
+
       const node = rowToNode(row, source.name, dataset, source, ID);
       if (!node) continue;
       nodes.push(node);

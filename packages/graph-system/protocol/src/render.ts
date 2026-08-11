@@ -18,8 +18,12 @@ import type { NodeStyle } from './style';
  * possible later without rewriting the plugins that produce these.
  */
 export interface NodeVisual {
-  shape: 'circle' | 'rect' | 'template';
+  shape: 'circle' | 'rect' | 'card' | 'template';
+  /** Radius for a mark; half-height for a box. A card uses `width`/`height` instead. */
   size: number;
+  /** Card geometry, in world units. Present only for `shape: 'card'`. */
+  width?: number;
+  height?: number;
   color: string;
   borderColor?: string;
   borderWidth?: number;
@@ -27,6 +31,8 @@ export interface NodeVisual {
   label?: string;
   labelColor?: string;
   labelSize?: number;
+  /** False pins the label to a constant on-screen size. See `NodeStyle.scaleLabelWithZoom`. */
+  scaleLabelWithZoom?: boolean;
   icon?: string;
   image?: string;
 }
@@ -52,6 +58,13 @@ export interface NodeRenderer {
 export interface BehaviourContext {
   /** Nodes currently under the pointer, nearest first. */
   hitTest(at: Point): string[];
+  /**
+   * The edge under the pointer, if any, within a tolerance.
+   *
+   * Separate from {@link hitTest} because nodes win: an edge passing behind a node is not what you
+   * meant to click, and a caller that wants both asks for nodes first.
+   */
+  hitTestEdge(at: Point, tolerance?: number): string | null;
   select(ids: string[], mode?: 'replace' | 'add' | 'toggle'): void;
   selection(): string[];
   /** Ask the engine to expand a node — the click-to-explore behaviour's whole job. */
@@ -59,6 +72,20 @@ export interface BehaviourContext {
   collapse(id: string): void;
   /** Pin a node at a world position, or release it. */
   pin(id: string, at: Point | null): void;
+  /**
+   * Whether the user is currently allowed to move nodes.
+   *
+   * Read by anything that moves one on a gesture, so a locked graph refuses at the point the gesture
+   * starts rather than by silently discarding the result.
+   */
+  locked(): boolean;
+  /**
+   * Where a node currently is, in world units.
+   *
+   * Needed by anything that moves a node *relative* to where it already was — a drag has to preserve
+   * the offset between the node's centre and the point you grabbed it by, or it snaps to the cursor.
+   */
+  positionOf(id: string): Point | null;
   /** Move the camera. */
   pan(dx: number, dy: number): void;
   zoomAt(at: Point, factor: number): void;
@@ -104,8 +131,81 @@ export interface Behaviour {
   onPointerDown?(input: PointerInput, ctx: BehaviourContext): boolean | void;
   onPointerMove?(input: PointerInput, ctx: BehaviourContext): boolean | void;
   onPointerUp?(input: PointerInput, ctx: BehaviourContext): boolean | void;
+  /**
+   * The gesture was abandoned — the pointer was captured away, the window lost focus, a touch was
+   * interrupted. Any behaviour holding state across a gesture must reset here, or it stays latched.
+   */
+  onPointerCancel?(input: PointerInput, ctx: BehaviourContext): boolean | void;
   onWheel?(input: PointerInput, ctx: BehaviourContext): boolean | void;
   onDoubleClick?(input: PointerInput, ctx: BehaviourContext): boolean | void;
 }
 
 export type BehaviourFactory<TOptions = unknown> = (options?: TOptions) => Behaviour;
+
+/**
+ * A button in the graph's own chrome.
+ *
+ * Declared as data — an icon, a title and what it does — rather than as a component, so the renderer
+ * draws every control the same way and a module can contribute one without shipping framework code.
+ * The same reasoning as a module's `launcher`: the contributor knows what the control *means*, only
+ * the host knows where controls go and how they should look.
+ */
+export interface GraphControl {
+  id: string;
+  /** Phosphor icon name. */
+  icon: string;
+  /** Tooltip, and the accessible name. */
+  title: string;
+  run(ctx: ControlContext): void;
+  /**
+   * Whether this control is currently *on*.
+   *
+   * Every control used to be a momentary action — zoom, fit, re-run the layout — so there was nothing
+   * for a button to be. A lock is not that: it has a state, and a toggle that does not show its own
+   * state is a switch you have to remember the position of. Omitted for an action, which is most of
+   * them.
+   */
+  active?(ctx: ControlContext): boolean;
+  /**
+   * Whether it can be used at all right now.
+   *
+   * Pinning acts on the selection, so with nothing selected it has nothing to act on. A button that
+   * silently does nothing teaches people it is broken.
+   */
+  enabled?(ctx: ControlContext): boolean;
+  /** Icon and tooltip while active, for a toggle that reads better as two states than one pressed one. */
+  activeIcon?: string;
+  activeTitle?: string;
+}
+
+/**
+ * What a control is allowed to do.
+ *
+ * Narrow on purpose: chrome acts on the *scene* — what is on screen and how it is arranged — and
+ * never on the data. `relayout` has always moved nodes, so the line was never "does not touch
+ * positions"; it is that nothing here writes anything back. Pinning and locking sit on the same side
+ * of it: a pinned node is held by the layout, not saved, and persisting a position remains the job of
+ * `onNodeDragEnd` and the host that listens to it.
+ */
+export interface ControlContext {
+  zoomBy(factor: number): void;
+  fit(): void;
+  relayout(): void;
+  viewport(): { x: number; y: number; zoom: number; width: number; height: number };
+  /** Ids currently selected. */
+  selection(): readonly string[];
+  /** Whether a node is held where it was put, so a layout will not move it. */
+  isPinned(id: string): boolean;
+  /** Hold nodes where they are, or release them back to the layout. */
+  setPinned(ids: readonly string[], pinned: boolean): void;
+  /**
+   * Whether node movement by the user is blocked.
+   *
+   * Deliberately about the user rather than the layout: locking a board stops it being rearranged by
+   * accident, and freezing a force simulation is a different request that nobody has made.
+   */
+  isLocked(): boolean;
+  setLocked(locked: boolean): void;
+}
+
+export type GraphControlFactory<TOptions = unknown> = (options?: TOptions) => GraphControl;

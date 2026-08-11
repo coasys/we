@@ -917,7 +917,7 @@ Common recipes:
 the relations between them. Picks up model types added later with no template change.
 - **Hierarchy** — `layout: { type: 'tree' }` with a `collection` expansion for nested content.
 - **Static diagram** — `seeds: { literal: true, nodes: [...], edges: [...] }` and no expansion at all.
-  Props: seeds?: SeedSpec | SeedSpec[], expansion?: ExpansionSpec, layout?: LayoutSpec, nodeStyle?: NodeStyleRules, edgeStyle?: EdgeStyleRules, behaviours?: BehaviourSpec[], width?: string, height?: string, bg?: string, showStatus?: boolean, showControls?: boolean, onNodeClick?: ((node: GraphNode) => void), onNodeDoubleClick?: ((node: GraphNode) => void), onEdgeClick?: ((edge: GraphEdge) => void), onSelectionChange?: ((ids: string[]) => void), onNodeDragEnd?: ((payload: { id: string; x: number; y: number; }) => void), host?: GraphHostBindings
+  Props: seeds?: SeedSpec | SeedSpec[], expansion?: ExpansionSpec, layout?: LayoutSpec, nodeStyle?: NodeStyleRules, edgeStyle?: EdgeStyleRules, behaviours?: BehaviourSpec[], reified?: Record<string, { source: string; target: string; type?: string; }>, width?: string, height?: string, bg?: string, showStatus?: boolean, showControls?: boolean, controls?: string[], onNodeClick?: ((node: GraphNode) => void), onNodeDoubleClick?: ((node: GraphNode) => void), onEdgeClick?: ((edge: GraphEdge) => void), onSelectionChange?: ((ids: string[]) => void), onNodeDragEnd?: ((payload: { id: string; x: number; y: number; }) => void), host?: GraphHostBindings
 
 ---
 
@@ -988,6 +988,41 @@ Names resolvable inside GraphView props: seed sources (seeds.source), expanders 
   - xField: string — Node data field holding x. Default "x".
   - yField: string — Node data field holding y. Default "y".
   - Example: `{ "type": "manual" }`
+
+**style**
+
+- `curve` — Edge style — the shape a connection is drawn with. "smooth" (default) leaves and arrives along the axis the edge mostly runs on, the flow-chart S, so it reads as direction and suits hierarchies and pipelines. "straight" is a direct line, right when the layout is already doing the talking. "arc" bows to one side, for a graph dense enough that lines need telling apart by shape. "step" turns at right angles, for containment and org charts where the eye follows a rank. Two nodes related in both directions are always separated — shifted sideways, or crossed at different points — so picking a shape never hides a relationship.
+  - Example: `"edgeStyle": [{ "style": { "curve": "smooth" } }]`
+- `arrow` — Edge style — which ends carry an arrowhead. "target" (default) points at the thing being related to; "both" for a mutual relationship drawn as one line; "none" when the relation has no direction worth showing. The head scales with the line's width, and the line stops short of it rather than running underneath.
+  - Example: `"edgeStyle": [{ "style": { "arrow": "none" } }]`
+- `scaleWithZoom` — Edge style. true (default) treats the line as part of the drawing, so it thickens as you zoom in — right for a board. false pins it to a constant on-screen width, so hairlines stay visible when you zoom out to see a whole network.
+  - Example: `"edgeStyle": [{ "style": { "scaleWithZoom": false } }]`
+- `scaleLabelWithZoom` — Node style. true (default) scales the label with the camera; false keeps it a constant on-screen size, which keeps text readable at any zoom on a map you navigate by reading. Affects the label only — a node mark always scales, because its size and its hit area are both world units.
+  - Example: `"nodeStyle": [{ "style": { "scaleLabelWithZoom": false } }]`
+- `labelMinZoom` — Node style. Hides the label below this zoom level, so a dense graph stays readable when zoomed out and gains its detail as you move in.
+  - Example: `"nodeStyle": [{ "style": { "labelMinZoom": 0.6 } }]`
+
+**metric**
+
+- `degree` — How connected a node is, normalised 0..1. The usual answer to "make the important things bigger". Reference it from a style value rather than a fixed number.
+  - range: [number, number] — Output range, e.g. [8, 30].
+  - Example: `"nodeStyle": [{ "style": { "size": { "metric": "degree", "range": [10, 34] } } }]`
+- `community` — Groups the visible graph by label propagation. Pair with scale: "categorical" to colour each cluster differently — this is what makes a cluster map.
+  - rounds: number — Propagation rounds. Default 8.
+  - Example: `"nodeStyle": [{ "style": { "color": { "metric": "community", "scale": "categorical" } } }]`
+
+**control**
+
+- `zoom-in` — Zooms toward the centre of the view. Shown by default.
+  - Example: `"controls": ["zoom-in", "zoom-out", "fit"]`
+- `zoom-out` — Zooms out from the centre. Shown by default.
+- `fit` — Frames everything currently on the graph. Deliberately not a re-layout — it moves the camera, never the nodes.
+- `pin` — Holds the selected nodes where they are, so the layout stops moving them; press again to release. The usual way to shape a force graph — put the thing you care about where you want it, hold it there, and let the rest settle around it. Held nodes are ringed so the state is visible. Not shown by default: on a board every node is placed already and it means nothing.
+  - Example: `"controls": ["zoom-in", "zoom-out", "fit", "pin"]`
+- `lock` — Blocks moving nodes, so a graph cannot be rearranged by accident while it is being read or shown to someone. Affects dragging only — panning, zooming and a settling force layout all carry on. Not shown by default, and only meaningful where the template allows dragging at all.
+  - Example: `"controls": ["zoom-in", "zoom-out", "fit", "lock"]`
+- `relayout` — Re-runs the layout. Not shown by default: a rescue for a tangled force graph, and destructive on a board, where it would discard every position somebody chose.
+  - Example: `"controls": ["zoom-in", "zoom-out", "fit", "relayout"]`
 
 **behaviour**
 

@@ -218,6 +218,44 @@ function extractComponentsFromCustomElementsManifest(cemData: CustomElementsMani
     });
 }
 
+/**
+ * Native DOM events, in both spellings a framework accepts.
+ *
+ * Solid understands two forms and they are not interchangeable: `onClick` installs a *delegated*
+ * listener at the document, which works for native bubbling events; `on:click` attaches a real
+ * listener to the element, which is what a custom event needs since Solid does not delegate those.
+ * A component's own events are therefore emitted as `on:<name>` (see `getEventProps`).
+ *
+ * The trap that produces: having just learned `on:` for custom events, the obvious next move is
+ * `on:click` — which **works at runtime** and used to fail to typecheck, because only the camelCase
+ * spelling was declared. A type error on correct code is a false negative, and this is a hot enough
+ * path that it costs someone an afternoon every time. Both spellings are declared for Solid; the
+ * camelCase one stays first so it reads as the default.
+ */
+const DOM_EVENTS: { prop: string; dom: string; fallback: string }[] = [
+  { prop: 'onClick', dom: 'click', fallback: 'MouseEvent' },
+  { prop: 'onInput', dom: 'input', fallback: 'InputEvent' },
+  { prop: 'onChange', dom: 'change', fallback: 'Event' },
+  { prop: 'onFocus', dom: 'focus', fallback: 'FocusEvent' },
+  { prop: 'onBlur', dom: 'blur', fallback: 'FocusEvent' },
+  { prop: 'onKeyDown', dom: 'keydown', fallback: 'KeyboardEvent' },
+  { prop: 'onKeyUp', dom: 'keyup', fallback: 'KeyboardEvent' },
+  { prop: 'onSubmit', dom: 'submit', fallback: 'Event' },
+];
+
+function getDomEventProps(customEventTypes: Map<string, string>, framework?: Framework): string[] {
+  return DOM_EVENTS.flatMap(({ prop, dom, fallback }) => {
+    const type = customEventTypes.get(dom) || fallback;
+    const lines = [`${indent(4)}${prop}?: (event: ${type}) => void;`];
+    // Only Solid has the second spelling. React uses camelCase alone; Svelte's `on:` directive is not
+    // a prop and is not typed through this map.
+    if (framework?.name === 'solid' && !customEventTypes.has(dom)) {
+      lines.push(`${indent(4)}'on:${dom}'?: (event: ${type}) => void;`);
+    }
+    return lines;
+  });
+}
+
 function generateComponentProps(component: Component, typesPath: string, framework?: Framework): string {
   // Build a map of custom event names to their types so DOM handlers can be overridden
   const customEventTypes = new Map<string, string>();
@@ -240,14 +278,7 @@ function generateComponentProps(component: Component, typesPath: string, framewo
     ...getStandardProps(framework),
 
     // Add DOM event handlers (use custom event type when the component overrides the event)
-    `${indent(4)}onClick?: (event: ${customEventTypes.get('click') || 'MouseEvent'}) => void;`,
-    `${indent(4)}onInput?: (event: ${customEventTypes.get('input') || 'InputEvent'}) => void;`,
-    `${indent(4)}onChange?: (event: ${customEventTypes.get('change') || 'Event'}) => void;`,
-    `${indent(4)}onFocus?: (event: ${customEventTypes.get('focus') || 'FocusEvent'}) => void;`,
-    `${indent(4)}onBlur?: (event: ${customEventTypes.get('blur') || 'FocusEvent'}) => void;`,
-    `${indent(4)}onKeyDown?: (event: ${customEventTypes.get('keydown') || 'KeyboardEvent'}) => void;`,
-    `${indent(4)}onKeyUp?: (event: ${customEventTypes.get('keyup') || 'KeyboardEvent'}) => void;`,
-    `${indent(4)}onSubmit?: (event: ${customEventTypes.get('submit') || 'Event'}) => void;`,
+    ...getDomEventProps(customEventTypes, framework),
 
     // Add component-specific custom events
     ...getEventProps(component.events, framework),

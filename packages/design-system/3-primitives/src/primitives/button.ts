@@ -132,8 +132,22 @@ const CSS_STYLES = css`
     );
   }
 
+  /*
+    The gradient overlay, and *only* when there is a gradient.
+
+    The content property is driven by a variable, so the pseudo-element is not generated at all on an
+    ordinary button. It used to exist on every button in the app: invisible, since its background
+    resolved to none, and still transitioning its opacity from 1 to 0 on every hover. An opacity
+    transition is compositor-driven, so each hover promoted the element to its own layer and demoted
+    it afterwards, repainting the button's whole area independently of the background change happening
+    underneath — two paints of the same region, which reads as the background stepping in, out and in
+    again.
+
+    That is a per-hover cost and a per-hover artefact paid by every button for a feature almost none
+    of them use.
+  */
   [part='base']::before {
-    content: '';
+    content: var(--we-button-gradient-overlay, none);
     position: absolute;
     inset: 0;
     border-radius: inherit;
@@ -211,11 +225,12 @@ export default class Button extends DesignSystemElement {
 
   override updated(changedProperties: Map<string, unknown>) {
     super.updated(changedProperties);
-    // Apply gradient CSS variable on the host — only works with primary variant
-    this.style.setProperty(
-      '--we-button-gradient',
-      this.gradient && this.variant === 'primary' ? 'var(--we-gradient-primary)' : 'none',
-    );
+    // Gradients are a primary-variant affordance; anywhere else the flag is meaningless.
+    const hasGradient = this.gradient && this.variant === 'primary';
+    this.style.setProperty('--we-button-gradient', hasGradient ? 'var(--we-gradient-primary)' : 'none');
+    // Generates the overlay pseudo-element only when it has something to draw — see the note beside
+    // `[part='base']::before`. `none` suppresses the box entirely rather than drawing an invisible one.
+    this.style.setProperty('--we-button-gradient-overlay', hasGradient ? "''" : 'none');
   }
 
   override getInstanceProps() {

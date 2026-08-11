@@ -81,12 +81,35 @@ export const SHAPES: EntityShape[] = [
     ],
   },
   {
+    name: 'SemanticRelationship',
+    description: 'An edge with data — which topic a belief is about, and how strongly.',
+    properties: [{ name: 'relevance', type: 'number', required: true }],
+    relations: [
+      { name: 'expression', target: 'Belief', cardinality: 'one' },
+      { name: 'tag', target: 'Topic', cardinality: 'one' },
+    ],
+  },
+  {
+    name: 'Utterance',
+    identityProperty: 'text',
+    description: 'A line of transcript — enough of them to make paging visible.',
+    properties: [
+      { name: 'text', type: 'string', required: true },
+      { name: 'speaker', type: 'string' },
+    ],
+    relations: [{ name: 'topic', target: 'Topic', cardinality: 'one' }],
+  },
+  {
     name: 'CollectionBlock',
     identityProperty: 'name',
     description: 'A container — a call transcript, a note, a nested group.',
     properties: [
       { name: 'name', type: 'string', required: true },
       { name: 'kind', type: 'string' },
+      // Board positions live on the entity — the inversion that makes a freeform canvas a *mode* of
+      // this engine rather than a different engine. `manual` layout reads exactly these.
+      { name: 'x', type: 'number' },
+      { name: 'y', type: 'number' },
     ],
     // `children` is deliberately absent from `relations`: it is untyped in WE, which is exactly why
     // the containment expander has to reach it through the drill-down path instead.
@@ -143,6 +166,25 @@ export const TABLES: Record<string, Row[]> = {
       author: 'ag-josh',
       topic: 'to-interp',
     },
+    {
+      // Deliberately authored by someone who is not in the Agent table. In a peer-to-peer system a
+      // relation target that has not synced is ordinary, and the engine must render it as a
+      // placeholder — "not here yet" rather than "nothing there". Nothing else exercises that path.
+      id: 'be-5',
+      title: 'Peers will disagree about what was said',
+      confidence: 'low',
+      author: 'ag-unsynced',
+      topic: 'to-sync',
+    },
+  ],
+
+  // Edges with data. Drawn naively these would be four extra dots; the engine collapses each into the
+  // single relationship it stands for, carrying `relevance` and staying clickable via `reifiedAs`.
+  SemanticRelationship: [
+    { id: 'sr-1', relevance: 0.9, expression: 'be-1', tag: 'to-graph' },
+    { id: 'sr-2', relevance: 0.6, expression: 'be-2', tag: 'to-graph' },
+    { id: 'sr-3', relevance: 0.95, expression: 'be-2', tag: 'to-interp' },
+    { id: 'sr-4', relevance: 0.4, expression: 'be-4', tag: 'to-sync' },
   ],
 
   Task: [
@@ -186,9 +228,48 @@ export const TABLES: Record<string, Row[]> = {
   ],
 
   CollectionBlock: [
-    { id: 'co-standup', name: 'Standup, 10 Aug', kind: 'call', children: ['tx-1', 'tx-2', 'co-thread'] },
-    { id: 'co-thread', name: 'Side thread on layouts', kind: 'call', children: ['tx-3', 'tx-4'] },
-    { id: 'co-notes', name: 'Scratch notes', kind: 'notes', children: ['tx-5'] },
+    { id: 'co-standup', name: 'Standup, 10 Aug', kind: 'call', children: ['tx-1', 'tx-2', 'co-thread'], x: 120, y: 90 },
+    { id: 'co-thread', name: 'Side thread on layouts', kind: 'call', children: ['tx-3', 'tx-4'], x: 460, y: 260 },
+    { id: 'co-notes', name: 'Scratch notes', kind: 'notes', children: ['tx-5'], x: 150, y: 420 },
+    { id: 'co-board', name: 'Roadmap board', kind: 'board', children: [], x: 520, y: 60 },
+  ],
+
+  Utterance: [
+    { id: 'ut-01', text: 'The expander is the unit, not the widget.', speaker: 'James', topic: 'to-graph' },
+    {
+      id: 'ut-02',
+      text: 'Reverse traversal is half of what makes it explorable.',
+      speaker: 'Nico',
+      topic: 'to-interp',
+    },
+    { id: 'ut-03', text: 'Collapse has to bundle, or the view lies.', speaker: 'Josh', topic: 'to-sync' },
+    { id: 'ut-04', text: 'Warm start, or the map jumps every expansion.', speaker: 'James', topic: 'to-graph' },
+    { id: 'ut-05', text: 'Hit-testing belongs to the core.', speaker: 'Nico', topic: 'to-interp' },
+    { id: 'ut-06', text: 'Placeholders are a first-class state here.', speaker: 'Josh', topic: 'to-sync' },
+    { id: 'ut-07', text: 'Paging is not optional on a hub node.', speaker: 'James', topic: 'to-graph' },
+    { id: 'ut-08', text: 'A budget that truncates silently is worse than none.', speaker: 'Nico', topic: 'to-interp' },
+    { id: 'ut-09', text: 'Tree layout wants crossing reduction.', speaker: 'Josh', topic: 'to-sync' },
+    { id: 'ut-10', text: 'Community detection gives us cluster maps.', speaker: 'James', topic: 'to-graph' },
+    { id: 'ut-11', text: 'Metrics stay out of hit-testing.', speaker: 'Nico', topic: 'to-interp' },
+    { id: 'ut-12', text: 'One address scheme or the explorer is a rewrite.', speaker: 'Josh', topic: 'to-sync' },
+    { id: 'ut-13', text: 'Reified edges must not render as nodes.', speaker: 'James', topic: 'to-graph' },
+    { id: 'ut-14', text: 'The catalog is what makes plugins reachable.', speaker: 'Nico', topic: 'to-interp' },
+    { id: 'ut-15', text: 'Manual layout inverts who owns position.', speaker: 'Josh', topic: 'to-sync' },
+    { id: 'ut-16', text: 'Schema maps work in an empty space.', speaker: 'James', topic: 'to-graph' },
+    { id: 'ut-17', text: 'Degree is a decent proxy for importance.', speaker: 'Nico', topic: 'to-interp' },
+    { id: 'ut-18', text: 'Barycentre sweeps beat traversal order.', speaker: 'Josh', topic: 'to-sync' },
+    { id: 'ut-19', text: 'Two conventions for one problem is one too many.', speaker: 'James', topic: 'to-graph' },
+    { id: 'ut-20', text: 'The harness found the bug, which is the point.', speaker: 'Nico', topic: 'to-interp' },
+    { id: 'ut-21', text: 'Fit has to survive a zero-sized box.', speaker: 'Josh', topic: 'to-sync' },
+    { id: 'ut-22', text: 'Reindex on every path that moves a node.', speaker: 'James', topic: 'to-graph' },
+    { id: 'ut-23', text: 'Untyped relations need the drill-down path.', speaker: 'Nico', topic: 'to-interp' },
+    { id: 'ut-24', text: 'Value nodes converge or they are pointless.', speaker: 'Josh', topic: 'to-sync' },
+    { id: 'ut-25', text: 'Seed sources and expanders are the same shape.', speaker: 'James', topic: 'to-graph' },
+    { id: 'ut-26', text: 'A cluster is a collapsed synthetic node.', speaker: 'Nico', topic: 'to-interp' },
+    { id: 'ut-27', text: 'Do not grow JSON toward a language.', speaker: 'Josh', topic: 'to-sync' },
+    { id: 'ut-28', text: 'Name the plugin, keep the data declarative.', speaker: 'James', topic: 'to-graph' },
+    { id: 'ut-29', text: 'Forward-only relations shape the whole engine.', speaker: 'Nico', topic: 'to-interp' },
+    { id: 'ut-30', text: 'Bundles carry a weight so the count survives.', speaker: 'Josh', topic: 'to-sync' },
   ],
 
   TextBlock: [
@@ -202,3 +283,110 @@ export const TABLES: Record<string, Row[]> = {
 
 /** The dataset id the harness pretends to be scoped to. */
 export const DATASET = 'playground';
+
+/**
+ * Which field of a node is worth editing, if any.
+ *
+ * The harness needs *a* write path to exercise — a graph that can only be read tells you nothing
+ * about whether editing a record flows back through seeds and expanders. This picks the identity
+ * property, which is the one a card actually displays.
+ */
+export function editableField(node: { type: string; data?: Record<string, unknown> }): string | null {
+  const shape = SHAPES.find((s) => s.name === node.type);
+  const field = shape?.identityProperty;
+  return field && node.data && field in node.data ? field : null;
+}
+
+/**
+ * Write a value back into the fixture.
+ *
+ * Mutating the source rows rather than patching the rendered node on purpose: the point is to prove
+ * the value survives a round trip *through* the seed and expander path, exactly as it would through a
+ * real data layer. Returns false when the row cannot be found, so the caller can leave the UI alone
+ * rather than showing a change that did not happen.
+ */
+export function writeField(node: { type: string; id: string }, field: string, value: string): boolean {
+  // The graph node's id is an address; the row id is its last segment.
+  const rowId = decodeURIComponent(node.id.split('/').pop() ?? '');
+  const row = (TABLES[node.type] ?? []).find((candidate) => candidate.id === rowId);
+  if (!row) return false;
+  row[field] = value;
+  return true;
+}
+
+/*
+  Board positions, persisted the way a backend would persist them.
+
+  The manual layout reads each node's position from its own data, which is what makes a board a board
+  — position is the thing being edited, not something derived. In the playground that was invisible:
+  the fixture carries no coordinates, so dragging a card moved it until the next reload and the layout
+  looked like it did nothing.
+
+  Writing them back into the rows, rather than keeping a side-map of positions in the app, is
+  deliberate. It goes through `onNodeDragEnd` → a write → the query that reads it back, which is the
+  exact path a real board takes; a playground that stored positions beside the data would demonstrate
+  persistence while testing none of the wiring that has to work.
+
+  localStorage is the stand-in for the backend, and only for these two fields — everything else about
+  the fixture stays in memory, so a reload is otherwise a clean slate.
+*/
+const POSITION_KEY = 'we-graph-explorer:positions';
+
+type StoredPositions = Record<string, { x: number; y: number }>;
+
+function readStored(): StoredPositions {
+  try {
+    const raw = localStorage.getItem(POSITION_KEY);
+    return raw ? (JSON.parse(raw) as StoredPositions) : {};
+  } catch {
+    // A malformed or unavailable store is not worth failing a playground over.
+    return {};
+  }
+}
+
+/** Apply any saved positions onto the rows, so a query reads them back as ordinary fields. */
+export function restorePositions(): void {
+  const stored = readStored();
+  for (const rows of Object.values(TABLES)) {
+    for (const row of rows) {
+      const at = stored[String(row.id)];
+      if (!at) continue;
+      row.x = at.x;
+      row.y = at.y;
+    }
+  }
+}
+
+/** Record where a node was dropped, on the row itself and in the store behind it. */
+export function savePosition(nodeId: string, at: { x: number; y: number }): void {
+  const rowId = decodeURIComponent(nodeId.split('/').pop() ?? '');
+  for (const rows of Object.values(TABLES)) {
+    const row = rows.find((candidate) => String(candidate.id) === rowId);
+    if (!row) continue;
+    row.x = Math.round(at.x);
+    row.y = Math.round(at.y);
+    const stored = readStored();
+    stored[rowId] = { x: row.x as number, y: row.y as number };
+    try {
+      localStorage.setItem(POSITION_KEY, JSON.stringify(stored));
+    } catch {
+      // Full or disabled storage: the drag still stands for this session.
+    }
+    return;
+  }
+}
+
+/** Forget every saved position, so the layout goes back to parking cards in a grid. */
+export function clearPositions(): void {
+  for (const rows of Object.values(TABLES)) {
+    for (const row of rows) {
+      delete row.x;
+      delete row.y;
+    }
+  }
+  try {
+    localStorage.removeItem(POSITION_KEY);
+  } catch {
+    // Nothing to do; the rows above are already clear for this session.
+  }
+}

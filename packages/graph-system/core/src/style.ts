@@ -12,6 +12,7 @@
  * language it is slowly becoming.
  */
 import type {
+  EdgeCurve,
   EdgeStyle,
   GraphEdge,
   GraphNode,
@@ -23,6 +24,8 @@ import type {
   NodeVisual,
   StyleRule,
 } from '@we/graph-protocol';
+
+import { normaliseCurve } from './geometry';
 
 /** Normalised metric output, by metric id then node id. Produced by the algorithms package. */
 export type MetricValues = ReadonlyMap<string, ReadonlyMap<string, number>>;
@@ -149,6 +152,9 @@ const DEFAULT_NODE: Required<Pick<NodeVisual, 'shape' | 'size' | 'color' | 'labe
 };
 
 /** Turn a node plus its resolved style into a drawing instruction. */
+/** A card readable at one glance without dominating the canvas. */
+const DEFAULT_CARD = { width: 160, height: 120 };
+
 export function nodeVisual(node: GraphNode, style: NodeStyle, metrics: MetricValues): NodeVisual {
   const visual: NodeVisual = {
     shape: style.shape ?? DEFAULT_NODE.shape,
@@ -157,7 +163,19 @@ export function nodeVisual(node: GraphNode, style: NodeStyle, metrics: MetricVal
     label: node.label ?? node.type,
     labelColor: style.labelColor ?? DEFAULT_NODE.labelColor,
     labelSize: style.labelSize ?? DEFAULT_NODE.labelSize,
+    // Scaling by default: the intuition people arrive with is a board, where zooming magnifies the
+    // whole drawing. Constant-size text is the specialist choice, so it is the one you ask for.
+    scaleLabelWithZoom: style.scaleLabelWithZoom ?? true,
   };
+  if (visual.shape === 'card') {
+    visual.width = style.width ?? DEFAULT_CARD.width;
+    // Proportional rather than fixed, so widening a card keeps its shape instead of turning it into
+    // a letterbox.
+    visual.height = style.height ?? Math.round(visual.width * 0.75);
+    // `size` is the hit radius everywhere else in the system; for a card it is half the box, so
+    // picking covers the card rather than a dot in the middle of it.
+    visual.size = Math.max(visual.width, visual.height) / 2;
+  }
   if (style.borderColor !== undefined) visual.borderColor = style.borderColor;
   if (style.borderWidth !== undefined) visual.borderWidth = style.borderWidth;
   if (style.opacity !== undefined) visual.opacity = style.opacity;
@@ -180,9 +198,11 @@ export interface EdgeVisual {
   width: number;
   color: string;
   opacity?: number;
-  curve: 'straight' | 'bezier' | 'orthogonal';
+  curve: EdgeCurve;
   arrow: 'none' | 'target' | 'both';
   dashed?: boolean;
+  /** False keeps stroke width constant on screen. See `EdgeStyle.scaleWithZoom`. */
+  scaleWithZoom: boolean;
   label?: string;
   labelColor?: string;
 }
@@ -194,8 +214,9 @@ export function edgeVisual(edge: GraphEdge, style: EdgeStyle, metrics: MetricVal
   const visual: EdgeVisual = {
     width: resolveNumber(style.width, edge.id, metrics, DEFAULT_EDGE.width) * weightBoost,
     color: resolveColor(style.color, edge.id, metrics, DEFAULT_EDGE.color),
-    curve: style.curve ?? 'bezier',
+    curve: normaliseCurve(style.curve),
     arrow: style.arrow ?? 'target',
+    scaleWithZoom: style.scaleWithZoom ?? true,
   };
   if (style.opacity !== undefined) visual.opacity = style.opacity;
   if (style.dashed !== undefined) visual.dashed = style.dashed;

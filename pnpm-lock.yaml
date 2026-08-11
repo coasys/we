@@ -52,6 +52,9 @@ importers:
 
   apps/playgrounds/solid/graph-explorer:
     dependencies:
+      '@we/components':
+        specifier: workspace:*
+        version: link:../../../../packages/design-system/4-components
       '@we/graph-core':
         specifier: workspace:*
         version: link:../../../../packages/graph-system/core
@@ -70,6 +73,12 @@ importers:
       '@we/primitives':
         specifier: workspace:*
         version: link:../../../../packages/design-system/3-primitives
+      '@we/schema-shared':
+        specifier: workspace:*
+        version: link:../../../../packages/schema-system/shared
+      '@we/themes':
+        specifier: workspace:*
+        version: link:../../../../packages/design-system/2-themes
       '@we/tokens':
         specifier: workspace:*
         version: link:../../../../packages/design-system/1-tokens
@@ -178,6 +187,28 @@ importers:
       vitest:
         specifier: ^4.1.0
         version: 4.1.10(@types/node@24.13.2)(@vitest/coverage-v8@4.1.10)(happy-dom@20.10.6)(jsdom@27.4.0)(vite@6.4.3(@types/node@24.13.2)(sass@1.101.0)(tsx@4.23.0)(yaml@2.9.0))
+
+  apps/playgrounds/vanilla/flicker-probe:
+    dependencies:
+      '@we/primitives':
+        specifier: workspace:*
+        version: link:../../../../packages/design-system/3-primitives
+      '@we/schema-shared':
+        specifier: workspace:*
+        version: link:../../../../packages/schema-system/shared
+      '@we/themes':
+        specifier: workspace:*
+        version: link:../../../../packages/design-system/2-themes
+      '@we/tokens':
+        specifier: workspace:*
+        version: link:../../../../packages/design-system/1-tokens
+    devDependencies:
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+      vite:
+        specifier: ^6.0.0
+        version: 6.4.3(@types/node@24.13.2)(sass@1.101.0)(tsx@4.23.0)(yaml@2.9.0)
 
   apps/we-electron:
     dependencies:
@@ -687,6 +718,12 @@ importers:
       rimraf:
         specifier: ^6.0.1
         version: 6.1.3
+      tsup:
+        specifier: ^8.5.1
+        version: 8.5.1(postcss@8.5.16)(tsx@4.23.0)(typescript@5.9.3)(yaml@2.9.0)
+      typescript:
+        specifier: ^5.3.3
+        version: 5.9.3
 
   packages/design-system/3-primitives:
     dependencies:
@@ -980,15 +1017,24 @@ importers:
       '@we/cli':
         specifier: workspace:*
         version: link:../../../cli
+      '@we/components':
+        specifier: workspace:*
+        version: link:../../../design-system/4-components
       '@we/design-utils':
         specifier: workspace:*
         version: link:../../../design-system/utils
       '@we/graph-protocol':
         specifier: workspace:*
         version: link:../../protocol
+      '@we/primitives':
+        specifier: workspace:*
+        version: link:../../../design-system/3-primitives
       esbuild-plugin-solid:
         specifier: ^0.6.0
         version: 0.6.0(esbuild@0.28.1)(solid-js@1.9.14)
+      happy-dom:
+        specifier: ^20.8.4
+        version: 20.10.6
       sass:
         specifier: ^1.92.1
         version: 1.101.0
@@ -1001,9 +1047,15 @@ importers:
       typescript:
         specifier: ^5.3.3
         version: 5.9.3
+      vite:
+        specifier: ^6.0.0
+        version: 6.4.3(@types/node@24.13.2)(sass@1.101.0)(tsx@4.23.0)(yaml@2.9.0)
+      vite-plugin-solid:
+        specifier: ^2.11.6
+        version: 2.11.12(solid-js@1.9.14)(vite@6.4.3(@types/node@24.13.2)(sass@1.101.0)(tsx@4.23.0)(yaml@2.9.0))
       vitest:
         specifier: ^4.0.15
-        version: 4.1.10(@types/node@24.13.2)(@vitest/coverage-v8@4.1.10)(happy-dom@20.10.6)(jsdom@27.4.0)(vite@7.3.6(@types/node@24.13.2)(sass@1.101.0)(tsx@4.23.0)(yaml@2.9.0))
+        version: 4.1.10(@types/node@24.13.2)(@vitest/coverage-v8@4.1.10)(happy-dom@20.10.6)(jsdom@27.4.0)(vite@6.4.3(@types/node@24.13.2)(sass@1.101.0)(tsx@4.23.0)(yaml@2.9.0))
 
   packages/graph-system/layouts:
     dependencies:

@@ -17,6 +17,7 @@
  * with components.
  */
 import type { GraphValue } from './graph';
+import type { EdgeCurve } from './layout';
 
 /** Operators a match clause may use against a node/edge field. Mirrors the schema system's `$filter`. */
 export interface MatchOperators {
@@ -61,13 +62,34 @@ export interface NodeStyle {
   color?: StyleValue<string>;
   borderColor?: string;
   borderWidth?: number;
-  /** `circle` and `rect` draw in both DOM and canvas modes; `template` requires DOM. */
-  shape?: 'circle' | 'rect' | 'template';
+  /**
+   * `circle` and `rect` draw in both DOM and canvas modes; `template` requires DOM.
+   *
+   * `card` is the post-it: a sized box with the label *inside* it, wrapped, rather than a mark with a
+   * caption underneath. Worth being a shape rather than a flag because it changes what `size` means —
+   * a card is `width` × `height`, not a radius — and because a board is mostly cards.
+   */
+  shape?: 'circle' | 'rect' | 'card' | 'template';
+  /** Card width in world units. Only meaningful for `shape: 'card'`; defaults to a readable box. */
+  width?: number;
+  /** Card height. Defaults to `width` × 0.75, roughly a post-it. */
+  height?: number;
   opacity?: number;
   labelColor?: string;
   labelSize?: number;
   /** Hide the label below this zoom, so a dense graph stays readable when zoomed out. */
   labelMinZoom?: number;
+  /**
+   * Whether the label grows and shrinks with the camera. Default `true`.
+   *
+   * `false` pins it to a constant on-screen size, which keeps text readable at any zoom — right for a
+   * map you navigate by reading, wrong for a board where the text *is* the artwork.
+   *
+   * Only the label. A node's mark always scales: its size is world units and so is its hit area, and
+   * letting the two disagree is precisely the class of bug where what you can click stops matching
+   * what you can see.
+   */
+  scaleLabelWithZoom?: boolean;
   icon?: string;
   image?: string;
   /** Name of a registered node renderer, when the built-in shapes are not enough. */
@@ -79,9 +101,21 @@ export interface EdgeStyle {
   color?: StyleValue<string>;
   opacity?: number;
   /** `bezier` is the readable default for dense graphs; `orthogonal` suits trees and flows. */
-  curve?: 'straight' | 'bezier' | 'orthogonal';
+  /**
+   * See `EdgeCurve`. `bezier` and `orthogonal` are accepted as the previous names for `arc` and
+   * `step`, so templates written against them keep working.
+   */
+  curve?: EdgeCurve | 'bezier' | 'orthogonal';
   arrow?: 'none' | 'target' | 'both';
   dashed?: boolean;
+  /**
+   * Whether stroke width grows with the camera. Default `true`.
+   *
+   * `true` treats the edge as part of the drawing, which is what a board wants — zoom in and the line
+   * gets thicker, like ink. `false` keeps it a constant on-screen width, which is what a large network
+   * wants, since hairlines vanish when you zoom out to see the whole thing.
+   */
+  scaleWithZoom?: boolean;
   showLabel?: boolean;
   labelColor?: string;
 }

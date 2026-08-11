@@ -22,7 +22,25 @@ export {
   selectBehaviour,
 } from './behaviours';
 export type { PanZoomOptions, SelectOptions } from './behaviours';
+export {
+  DEFAULT_CONTROLS,
+  defaultControls,
+  fitControl,
+  relayoutControl,
+  zoomInControl,
+  zoomOutControl,
+} from './controls';
 export { GraphEngine, kindOf } from './engine';
+export {
+  bowOffsets,
+  distanceToEdge,
+  edgeBounds,
+  groupByEndpoints,
+  polyline,
+  routeEdge,
+  trimToRadius,
+} from './geometry';
+export { communityMetric, defaultMetrics, degreeMetric } from './metrics';
 export type { ChangeReason, EngineOptions, EngineStatus } from './engine';
 export { ExpansionState, SEED_OPENER } from './expansion';
 export type { CollapseResult } from './expansion';

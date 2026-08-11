@@ -10,10 +10,11 @@
  * both. Anything about *where* things are drawn belongs to the layout tests.
  */
 import { GraphView } from '@we/graph-solid';
+import { createSignal } from 'solid-js';
 import { render } from 'solid-js/web';
 import { afterEach, describe, expect, it } from 'vitest';
 
-import { createHost } from './host';
+import { createHost, type QueryLog } from './host';
 import { SCENARIOS } from './scenarios';
 
 const host = createHost();
@@ -29,6 +30,17 @@ function mount(spec: Record<string, unknown>) {
   const container = document.createElement('div');
   document.body.appendChild(container);
   dispose = render(() => <GraphView {...spec} host={host} />, container);
+  return container;
+}
+
+/**
+ * Mount with a spec that is rebuilt whenever a signal changes — how a host with its own controls
+ * behaves, as opposed to the fixed object the other tests hand over.
+ */
+function mountReactive(build: () => Record<string, unknown>, bindings = host) {
+  const container = document.createElement('div');
+  document.body.appendChild(container);
+  dispose = render(() => <GraphView {...build()} host={bindings} />, container);
   return container;
 }
 
@@ -60,12 +72,23 @@ describe('the graph paints', () => {
     expect(container.textContent).toContain('Publish');
   });
 
+  it('draws edge labels as DOM, so they track the camera like every other piece of text', async () => {
+    // They were SVG `<text>` and jittered for seconds after a zoom while the lines moved cleanly.
+    const container = mount(scenario('static'));
+    await settle();
+
+    const labels = container.querySelectorAll('.we-graph__edge-label');
+    expect(labels.length).toBeGreaterThan(0);
+    expect(container.querySelectorAll('.we-graph__edges text')).toHaveLength(0);
+    expect([...labels].map((el) => el.textContent)).toContain('approve');
+  });
+
   it('maps the dataset schema, one node per entity type', async () => {
     const container = mount(scenario('schema'));
     await settle();
 
-    // Seven shapes in the fixture.
-    expect(nodes(container)).toHaveLength(7);
+    // One node per shape the fixture declares.
+    expect(nodes(container)).toHaveLength(9);
     expect(container.textContent).toContain('Belief');
     expect(container.textContent).toContain('CollectionBlock');
   });
@@ -116,6 +139,54 @@ describe('the graph paints', () => {
     expect(container.textContent).toContain('Node limit reached');
   });
 
+  it('draws its chrome as a sibling of the canvas, not on top of its handlers', async () => {
+    // Gestures are handled on a dedicated surface, so chrome is an ordinary sibling that the canvas
+    // never hears about. Previously the handlers sat on the common ancestor and every overlay had to
+    // be marked so the canvas would ignore it — a new overlay that forgot silently broke the canvas.
+    const container = mount(scenario('static'));
+    await settle();
+
+    expect(container.querySelector('.we-graph__surface')).not.toBeNull();
+    expect(container.querySelectorAll('.we-graph__surface we-button')).toHaveLength(0);
+    expect(container.querySelectorAll('we-button').length).toBeGreaterThanOrEqual(3);
+  });
+
+  it('honours a request for no chrome at all', async () => {
+    const container = mount({ ...scenario('static'), controls: [] });
+    await settle();
+
+    expect(container.querySelectorAll('we-button')).toHaveLength(0);
+  });
+
+  it('never lets a drawing layer stand between the pointer and the canvas', async () => {
+    // The transformed layer is viewport-sized and the camera moves it, so with default
+    // `pointer-events` it silently covers whichever region it has been translated over — which showed
+    // up as a dead quadrant of the canvas once gestures moved off the root onto their own surface.
+    const container = mount(scenario('static'));
+    await settle();
+
+    const layer = container.querySelector('.we-graph__layer') as HTMLElement | null;
+    expect(layer).not.toBeNull();
+    expect(layer!.style.pointerEvents).toBe('none');
+
+    // And everything it contains, so nothing inside can reintroduce the problem either.
+    for (const selector of ['.we-graph__edges', '.we-graph__node']) {
+      const child = container.querySelector(selector);
+      expect(child, selector).not.toBeNull();
+    }
+  });
+
+  it('leaves edge picking to the engine rather than the DOM', async () => {
+    // `pointer-events: stroke` on a path was the one thing the DOM still picked, which broke
+    // behaviours on any non-DOM surface.
+    const container = mount(scenario('static'));
+    await settle();
+
+    const path = container.querySelector('.we-graph__edges path');
+    expect(path).not.toBeNull();
+    expect(path?.getAttribute('onClick')).toBeNull();
+  });
+
   it('shows an empty state rather than a blank canvas', async () => {
     const container = mount({
       seeds: { source: 'query', options: { entity: 'Nonexistent' } },
@@ -125,5 +196,39 @@ describe('the graph paints', () => {
 
     expect(nodes(container)).toHaveLength(0);
     expect(container.textContent).toContain('Nothing to show yet');
+  });
+
+  /*
+    A host rebuilding its spec object must not restart the graph.
+
+    Any control outside the graph — an edge-shape picker, a colour toggle — hands over a fresh spec,
+    and reading `seeds` from it re-runs whatever computed it. When the reload effect tracked that
+    rather than comparing values, switching edge shape called `start()` and threw away every node
+    position, which presents as the layout randomly resetting and gives no hint that a style control
+    caused it.
+  */
+  it('keeps its nodes when a host rebuilds the spec without changing what the graph is', async () => {
+    /*
+      Asserted on the query log rather than on where the nodes ended up.
+
+      Position is the symptom but it is a poor probe: several of these scenarios lay out
+      deterministically, so a restart puts everything back exactly where it was and the test passes
+      whether or not the graph was destroyed and rebuilt. Queries do not lie — `start()` clears the
+      store and re-seeds, so a restart is visible as the seed query running a second time.
+    */
+    const log: QueryLog = { entries: [] };
+    const spec = scenario('knowledge');
+    const [curve, setCurve] = createSignal('smooth');
+    const container = mountReactive(() => ({ ...spec, edgeStyle: [{ style: { curve: curve() } }] }), createHost(log));
+    await settle();
+
+    expect([...nodes(container)].length).toBeGreaterThan(0);
+    const queriesAfterLoad = log.entries.length;
+    expect(queriesAfterLoad).toBeGreaterThan(0);
+
+    setCurve('step');
+    await settle();
+
+    expect(log.entries.length).toBe(queriesAfterLoad);
   });
 });

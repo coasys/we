@@ -6,6 +6,18 @@ export default defineConfig({
   // One solid-js instance across app and libraries. Load-bearing: two instances give two owner
   // graphs and effects silently stop updating, which looks correct on first paint.
   resolve: { dedupe: ['solid-js', 'solid-js/web', 'solid-js/store'] },
+  /*
+    Never pre-bundle the WE packages.
+
+    They resolve to `dist/`, so Vite treats them as ordinary dependencies and caches an optimised copy
+    under node_modules/.vite. That copy does not invalidate when the package is rebuilt, so after a
+    `pnpm build` the dev server keeps serving the previous design system — silently, and indefinitely.
+    It cost a full round of testing here: a fix was verified present in dist and still absent from the
+    page, because the page was running a bundle from before it.
+  */
+  optimizeDeps: {
+    exclude: ['@we/primitives', '@we/tokens', '@we/themes', '@we/schema-shared', '@we/design-utils'],
+  },
   server: {
     port: 3300,
     fs: { allow: ['../../../..'] },

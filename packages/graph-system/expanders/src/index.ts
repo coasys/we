@@ -22,12 +22,21 @@ export { propertyExpander } from './property';
 export type { PropertyExpanderOptions } from './property';
 export { SCHEMA_TYPE, schemaExpander } from './schema';
 export type { SchemaExpanderOptions } from './schema';
+export {
+  DEFAULT_REIFIED_EDGES,
+  endpointRelations,
+  isReified,
+  type ReifiedEdgeMap,
+  type ReifiedEdgeSpec,
+  reifiedEdgeFrom,
+} from './reified';
 export { datasetSeed, querySeed, schemaSeed } from './seeds';
 export type { QuerySeedOptions, SchemaSeedOptions } from './seeds';
 
 import { collectionExpander } from './collection';
 import { entityExpander } from './entity';
 import { propertyExpander } from './property';
+import type { ReifiedEdgeMap } from './reified';
 import { schemaExpander } from './schema';
 import { datasetSeed, querySeed, schemaSeed } from './seeds';
 
@@ -37,9 +46,14 @@ import { datasetSeed, querySeed, schemaSeed } from './seeds';
  * A function rather than a constant so each engine instance gets its own expander objects — they are
  * stateless today, and a shared mutable one would be a bug that only appears with two graphs on a page.
  */
-export function defaultExpanders() {
+export function defaultExpanders(options: { reified?: ReifiedEdgeMap } = {}) {
   return {
-    expanders: [entityExpander(), collectionExpander(), schemaExpander(), propertyExpander()],
-    seeds: [querySeed(), schemaSeed(), datasetSeed()],
+    expanders: [
+      entityExpander({ reified: options.reified }),
+      collectionExpander(),
+      schemaExpander(),
+      propertyExpander(),
+    ],
+    seeds: [querySeed({ reified: options.reified }), schemaSeed(), datasetSeed()],
   };
 }

@@ -6,7 +6,6 @@
     "jsx": "preserve",
     "jsxImportSource": "solid-js",
     "types": [
-      "@we/primitives/solid",
       "vite/client"
     ],
     "strict": true,

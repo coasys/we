@@ -51,6 +51,9 @@ export function panZoomBehaviour(rawOptions?: Record<string, unknown>): Behaviou
       panning = false;
       return true;
     },
+    onPointerCancel() {
+      panning = false;
+    },
     onWheel(input, ctx) {
       if (input.delta === undefined) return;
       // Exponential so each notch is a constant *ratio*: zooming out then back in returns you to
@@ -61,37 +64,67 @@ export function panZoomBehaviour(rawOptions?: Record<string, unknown>): Behaviou
   };
 }
 
-/** Drag a node to reposition it. Pins while dragging; releases unless `pin` is set. */
+/**
+ * Drag a node to reposition it. Pins while dragging; releases unless `pin` is set.
+ *
+ * The grab offset is the whole difference between this feeling like dragging and feeling like
+ * teleporting. Setting the node's position *to* the pointer snaps its centre under the cursor the
+ * instant you move — so grabbing a node near its edge makes it jump, which reads as a glitch even
+ * though the drag then tracks correctly. Recording where inside the node you took hold of it, and
+ * preserving that, means the node moves with your hand.
+ */
 export function dragNodeBehaviour(rawOptions?: Record<string, unknown>): Behaviour {
   const options = { pin: false, ...(rawOptions as { pin?: boolean }) };
   let dragging: string | null = null;
   let moved = false;
+  /** Node position minus grab position, in world units. Constant for the life of one drag. */
+  let grabOffset = { x: 0, y: 0 };
 
   return {
     id: 'drag-node',
-    description: 'Drag a node to move it; optionally leaves it pinned where it was dropped.',
+    description: 'Drag a node to move it, from wherever you took hold of it.',
     onPointerDown(input, ctx) {
-      const [hit] = ctx.hitTest(ctx.toWorld(input.at));
+      // Refused at the start of the gesture rather than by discarding its result: a drag that follows
+      // the pointer and then snaps back has told you it worked and then taken it away.
+      if (ctx.locked()) return;
+      const world = ctx.toWorld(input.at);
+      const [hit] = ctx.hitTest(world);
       if (!hit) return;
       dragging = hit;
       moved = false;
+      const at = ctx.positionOf(hit);
+      grabOffset = at ? { x: at.x - world.x, y: at.y - world.y } : { x: 0, y: 0 };
       return true;
     },
     onPointerMove(input, ctx) {
       if (!dragging) return;
+      // Independent of the dispatch fix above: if no button is held there is no drag, whatever this
+      // behaviour thinks. Covers the pointer leaving the window, a cancelled gesture, and any future
+      // ordering mistake that swallows the pointer-up again.
+      if (input.buttons === 0) {
+        dragging = null;
+        return;
+      }
       moved = true;
-      ctx.pin(dragging, ctx.toWorld(input.at));
+      const world = ctx.toWorld(input.at);
+      ctx.pin(dragging, { x: world.x + grabOffset.x, y: world.y + grabOffset.y });
       return true;
+    },
+    onPointerCancel() {
+      dragging = null;
     },
     onPointerUp(input, ctx) {
       if (!dragging) return;
       const id = dragging;
       dragging = null;
       if (!moved) return;
-      const at = ctx.toWorld(input.at);
+      const world = ctx.toWorld(input.at);
+      const at = { x: world.x + grabOffset.x, y: world.y + grabOffset.y };
       // Released rather than left pinned by default: on an explorer, a dragged node that stays put
       // fights the layout for every subsequent expansion. A board passes `pin: true`.
       if (!options.pin) ctx.pin(id, null);
+      // The node's position, not the pointer's — what a board persists has to be where the node
+      // actually ended up.
       ctx.emit({ type: 'nodeDragEnd', node: { id, kind: 'entity', type: '' }, position: at });
       return true;
     },
@@ -116,6 +149,10 @@ export function selectBehaviour(rawOptions?: Record<string, unknown>): Behaviour
       pressedAt = input.at;
       pressedId = ctx.hitTest(ctx.toWorld(input.at))[0] ?? null;
     },
+    onPointerCancel() {
+      pressedAt = null;
+      pressedId = null;
+    },
     onPointerUp(input, ctx) {
       if (!pressedAt) return;
       const travelled = Math.hypot(input.at.x - pressedAt.x, input.at.y - pressedAt.y);
@@ -128,6 +165,13 @@ export function selectBehaviour(rawOptions?: Record<string, unknown>): Behaviour
       const id = pressedId;
       pressedId = null;
       if (!id) {
+        // Nothing on a node, so try an edge before treating this as a click on the background. Nodes
+        // win by asking first: an edge passing behind a node is not what you meant to click.
+        const edge = ctx.hitTestEdge(ctx.toWorld(input.at));
+        if (edge) {
+          ctx.emit({ type: 'edgeClick', edge: { id: edge, source: '', target: '', type: '' } });
+          return true;
+        }
         ctx.select([]);
         return;
       }
@@ -191,13 +235,30 @@ export function defaultBehaviours() {
  * Here rather than in the renderer so the ordering rule has exactly one implementation — a second
  * renderer resolving precedence slightly differently would be a bug nobody could see.
  */
+/**
+ * Phases where "I claimed this" must **not** stop later behaviours running.
+ *
+ * Claiming answers "who is handling this gesture", and that is the right rule while a gesture is in
+ * progress. It is the wrong rule for the event that *ends* one: a behaviour holding state across a
+ * gesture has to be told the gesture finished, whether or not something ahead of it also cared.
+ *
+ * Getting this wrong produced a genuinely confusing bug. On a board the order is
+ * `[pan-zoom, select, drag-node]`; a plain click on a node let `select` claim the pointer-up, so
+ * `drag-node` never learned the press had ended, kept its node latched, and the next mouse movement —
+ * with no button held — dragged it. From the outside: click a node once and it sticks to the cursor,
+ * with no obvious way to put it down.
+ */
+const BROADCAST_PHASES = new Set(['onPointerUp', 'onPointerCancel']);
+
 export function dispatchPointer(
   behaviours: Behaviour[],
-  phase: 'onPointerDown' | 'onPointerMove' | 'onPointerUp' | 'onWheel' | 'onDoubleClick',
+  phase: 'onPointerDown' | 'onPointerMove' | 'onPointerUp' | 'onPointerCancel' | 'onWheel' | 'onDoubleClick',
   input: PointerInput,
   ctx: BehaviourContext,
 ): void {
+  const broadcast = BROADCAST_PHASES.has(phase);
   for (const behaviour of behaviours) {
-    if (behaviour[phase]?.(input, ctx) === true) return;
+    const claimed = behaviour[phase]?.(input, ctx) === true;
+    if (claimed && !broadcast) return;
   }
 }

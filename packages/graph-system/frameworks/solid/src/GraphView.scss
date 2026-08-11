@@ -1,5 +1,9 @@
 /**
- * Graph view styling.
+ * Graph view styling — layout and the canvas, not appearance.
+ *
+ * The chrome (controls, status, empty state) is built from primitives, so anything about how a button
+ * or an alert *looks* lives in the design system. What is left here is the two things the design
+ * system cannot express: where the chrome sits over the canvas, and the canvas itself.
  *
  * The one structural rule: the transformed layer holds both surfaces, so a single camera moves nodes
  * and edges together. Anything positioned outside it — controls, status — is deliberately outside the
@@ -10,7 +14,21 @@
   overflow: hidden;
   touch-action: none;
   user-select: none;
-  // The graph is a direct-manipulation surface: a drag should move the camera, not select the labels.
+}
+
+// The canvas's own hit target, beneath everything it draws and beneath the chrome.
+//
+// Gestures are handled here rather than on the root, which is what lets the chrome be an ordinary
+// sibling: a press on a button bubbles to `.we-graph`, which listens to nothing. The alternative —
+// handlers on the common ancestor — meant marking every overlay so the canvas could learn to ignore
+// it, and a new overlay that forgot the marker silently broke the canvas underneath it.
+//
+// It works as a plain backdrop because nothing above it competes: nodes and edges are painted with
+// `pointer-events: none`, and everything they are picked by is geometry the engine owns.
+.we-graph__surface {
+  position: absolute;
+  inset: 0;
+  // A direct-manipulation surface: a drag moves the camera, it does not select text.
   cursor: grab;
 
   &:active {
@@ -23,56 +41,95 @@
   inset: 0;
   // Transforms scale about the origin, which is where the layouts put their coordinate space.
   transform-origin: 0 0;
-  will-change: transform;
+  // Also set inline by the renderer, where the reasoning lives: the layer must never take the
+  // pointer, or it covers the hit surface wherever the camera has moved it to.
+  pointer-events: none;
+
+  // Deliberately no `will-change: transform`.
+  //
+  // It is the obvious optimisation here and it is wrong for this element. Promoting the layer makes
+  // the browser rasterise its contents *once* at the current scale and reuse that texture for later
+  // transforms. For panning that is free and lossless — translating a bitmap loses nothing. For
+  // zooming it means the bitmap is stretched, so every label, border and edge goes soft the moment
+  // you zoom in, and stays soft.
+  //
+  // Without the hint the layer re-rasterises at the new scale, and text and vectors stay sharp at any
+  // zoom. The cost is a repaint per transform, which at DOM-node counts (a two-thousand node budget,
+  // and far fewer in practice) is not the bottleneck — the dense case has its own answer in a canvas
+  // renderer, which does not have this trade-off at all.
+  //
+  // If this needs re-visiting, promote only *during a pan gesture* and drop the hint before any
+  // scale change. Re-adding it unconditionally will silently make everything blurry again.
 }
 
+// The edge surface, exactly the size of the layer — **not** an enormous box.
+//
+// This was a 100000×100000 SVG offset by -50000 with its contents translated back, so that curves
+// bowing away from the origin could never be clipped. `overflow: visible` already does that job, and
+// the giant box cost more than it bought: every edge and label ended up drawn at user coordinates
+// around 50,000, which the camera then multiplied. At 4× zoom that is ~200,000 device pixels of
+// offset before any content starts.
+//
+// Paths tolerated it — sub-pixel error in a vector is invisible. Text did not: `text-anchor: middle`
+// re-measures and re-centres at each scale, and at those magnitudes the rounding changed from frame
+// to frame, so edge labels jittered while everything around them moved smoothly.
+//
+// Same size as the layer means SVG user space *is* world space. No offset, no counter-translate.
 .we-graph__edges {
   position: absolute;
-  // Large enough that curves bowing away from the origin are not clipped; the layer is transformed,
-  // so this costs nothing to paint outside the viewport.
-  left: -50000px;
-  top: -50000px;
-  width: 100000px;
-  height: 100000px;
+  inset: 0;
+  // Curves and labels reaching outside the box still paint; this is what made the giant box
+  // unnecessary in the first place.
   overflow: visible;
+  // Nothing in here takes the pointer. Edge picking is geometric, in the engine — paths used to carry
+  // `pointer-events: stroke`, which made the DOM the only thing that could pick an edge, broke the
+  // rule that the core owns hit-testing, and was why a canvas renderer could not have supported
+  // clicking one.
   pointer-events: none;
-
-  path {
-    pointer-events: stroke;
-  }
 }
 
-// The SVG's own coordinate space is offset by the box above, so its contents are shifted back.
-.we-graph__edges > g,
-.we-graph__edges > defs {
-  transform: translate(50000px, 50000px);
-}
-
+// A DOM label, positioned at the midpoint of its edge. See the note in `GraphView.solid.tsx` for why
+// this is not SVG text.
 .we-graph__edge-label {
+  position: absolute;
+  top: 0;
+  left: 0;
   font-size: 10px;
-  text-anchor: middle;
-  dominant-baseline: middle;
-  paint-order: stroke;
-  stroke: var(--we-color-neutral-0);
-  stroke-width: 3px;
+  white-space: nowrap;
   pointer-events: none;
+  // Legible over the edge it sits on, without a background plate that would hide the line.
+  text-shadow:
+    0 0 3px var(--we-color-neutral-0),
+    0 0 3px var(--we-color-neutral-0),
+    0 0 3px var(--we-color-neutral-0);
 }
 
+// A **zero-size anchor** at the node's position, with the dot and label hung off it.
+//
+// This used to be a shrink-to-fit flex column pulled back by half the dot's width, which is correct
+// only while the dot is the widest thing in it. The moment a label is longer — "SemanticRelationship",
+// or any real sentence — the box widens, `align-items: center` re-centres the dot inside the *box*,
+// and the dot drifts right of its own coordinates by half the overhang. Edges are drawn at the true
+// position, so they appeared to stop short of the node; worse, hit-testing stayed at the true
+// position too, so the thing you clicked was not quite the thing you saw.
+//
+// Zero-size means there is no box to be widened, and absolute children make the dot's centre exactly
+// the node's coordinates whatever the label does.
 .we-graph__node {
   position: absolute;
   top: 0;
   left: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: var(--we-space-100);
-  // Centre the node on its position rather than hanging it below and right of it.
-  margin-left: calc(var(--node-size) / -2);
-  margin-top: calc(var(--node-size) / -2);
+  width: 0;
+  height: 0;
   pointer-events: none;
 }
 
 .we-graph__dot {
+  position: absolute;
+  left: 0;
+  top: 0;
+  // Centres the dot on the anchor rather than hanging it below and right.
+  transform: translate(-50%, -50%);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -99,6 +156,20 @@
 }
 
 .we-graph__label {
+  position: absolute;
+  color: var(--node-label-color);
+  font-size: var(--node-label-size);
+  left: 0;
+  // Just below the dot, whatever size it is.
+  top: calc(var(--node-size) / 2 + var(--we-space-100));
+  // `--label-scale` is 1 by default and `1 / zoom` when the label is pinned to a constant on-screen
+  // size. Scaling about the top centre keeps it hanging under the node rather than drifting as it
+  // resizes; the translate centres it and is unaffected by the scale beside it, since a percentage
+  // translate resolves against the element's own box.
+  transform-origin: 50% 0;
+  transform: translateX(-50%) scale(var(--label-scale, 1));
+  // Sizes to its text up to the cap, so `text-overflow` has a width to work against.
+  width: max-content;
   max-width: 140px;
   text-align: center;
   white-space: nowrap;
@@ -111,6 +182,50 @@
     0 0 3px var(--we-color-neutral-0);
 }
 
+// The post-it: a sized box holding its own text, centred on the node's coordinates like every other
+// shape, so edges and hit-testing need no special case.
+.we-graph__card {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform: translate(-50%, -50%);
+  display: flex;
+  width: var(--node-width);
+  height: var(--node-height);
+  padding: var(--we-space-300);
+  border-radius: var(--node-radius);
+  background: var(--node-color);
+  border: var(--node-border-width) solid var(--node-border);
+  box-shadow: var(--we-shadow-sm);
+  overflow: hidden;
+}
+
+.we-graph__card-text {
+  color: var(--node-label-color);
+  font-size: var(--node-label-size);
+  line-height: 1.4;
+  // Clamped rather than scrolled: a card is a glance, and the inspector is where the whole value is.
+  display: -webkit-box;
+  -webkit-line-clamp: 5;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.we-graph__more--card {
+  position: absolute;
+  right: var(--we-space-200);
+  bottom: var(--we-space-200);
+  color: var(--node-label-color);
+}
+
+.we-graph__node--card.we-graph__node--hovered .we-graph__card {
+  box-shadow: var(--we-shadow-md);
+}
+
+.we-graph__node--card.we-graph__node--selected .we-graph__card {
+  box-shadow: 0 0 0 3px var(--we-color-primary-500);
+}
+
 .we-graph__node--hovered .we-graph__dot {
   box-shadow: 0 0 0 3px var(--we-color-primary-200);
 }
@@ -119,68 +234,26 @@
   box-shadow: 0 0 0 3px var(--we-color-primary-500);
 }
 
+/*
+  A held node says so.
+
+  Pinning is state the layout obeys and nothing else shows, so without a mark a graph that refuses to
+  rearrange one node looks broken rather than instructed — and the usual cause is a drag somebody has
+  forgotten making. Drawn as a ring rather than a badge so it costs no layout and survives a card, a
+  dot and whatever shape comes next.
+
+  `outline` rather than `box-shadow`: the selected and hovered rings already use the shadow, and a
+  node can easily be both held and selected.
+*/
+.we-graph__node--pinned .we-graph__dot,
+.we-graph__node--pinned .we-graph__card {
+  outline: 2px dashed var(--we-color-neutral-500);
+  outline-offset: 3px;
+}
+
 .we-graph__node--unresolved .we-graph__dot {
   // A placeholder has to look like one — the difference between "not here yet" and "empty".
   border-style: dashed;
   background: transparent;
 }
 
-.we-graph__controls {
-  position: absolute;
-  right: var(--we-space-300);
-  bottom: var(--we-space-300);
-  display: flex;
-  flex-direction: column;
-  gap: var(--we-space-100);
-
-  button {
-    width: 32px;
-    height: 32px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border: 1px solid var(--we-color-neutral-200);
-    border-radius: var(--we-radius-200);
-    background: var(--we-color-neutral-0);
-    color: var(--we-color-neutral-700);
-    cursor: pointer;
-
-    &:hover {
-      background: var(--we-color-neutral-50);
-    }
-  }
-}
-
-.we-graph__status {
-  position: absolute;
-  left: var(--we-space-300);
-  bottom: var(--we-space-300);
-  display: flex;
-  flex-direction: column;
-  gap: var(--we-space-100);
-  max-width: 60%;
-  pointer-events: none;
-}
-
-.we-graph__status-item {
-  padding: var(--we-space-100) var(--we-space-200);
-  border-radius: var(--we-radius-200);
-  background: var(--we-color-neutral-100);
-  color: var(--we-color-neutral-700);
-  font-size: var(--we-font-size-300);
-}
-
-.we-graph__status-item--warn {
-  background: var(--we-color-warning-100);
-  color: var(--we-color-warning-800);
-}
-
-.we-graph__empty {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--we-color-neutral-400);
-  pointer-events: none;
-}

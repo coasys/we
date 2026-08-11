@@ -6,7 +6,8 @@
 import '@we/primitives'; // side-effect: defines all we-* custom elements
 import '@we/tokens/css'; // design-token CSS variables
 
-import { createInMemoryBackend, type Row } from '@we/backend-inmemory';
+import { createInMemoryBackend, type Row as BackendRow } from '@we/backend-inmemory';
+import { Row } from '@we/components/solid';
 import { mountTemplateEditor } from '@we/editor';
 import type { TemplateSchema } from '@we/schema-shared';
 import { RenderSchema } from '@we/schema-solid';
@@ -40,7 +41,7 @@ let n = 0;
 function addPost() {
   n += 1;
   backend.mutate((tables) => {
-    (tables.Post as Row[]).push({
+    (tables.Post as BackendRow[]).push({
       id: `new-${n}`,
       title: `Graph update #${n}`,
       content: 'Added at runtime — the live subscription re-rendered this.',
@@ -77,21 +78,14 @@ function App() {
   return (
     <div>
       <EditingSurface />
-      <button
-        onClick={addPost}
-        style={{
-          position: 'fixed',
-          top: '16px',
-          right: '16px',
-          'z-index': '10',
-          padding: '8px 14px',
-          'border-radius': '8px',
-          border: '1px solid #ccc',
-          cursor: 'pointer',
-        }}
-      >
-        + Add graph post (test live reactivity)
-      </button>
+      {/* A `we-button` rather than a styled `<button>`: this harness exists to show the design system
+          rendering over a non-AD4M backend, and its own control opting out of that was quietly
+          undermining the demonstration. */}
+      <Row position="fixed" top="400" right="400" zIndex={10}>
+        <we-button size="sm" onClick={addPost}>
+          + Add graph post (test live reactivity)
+        </we-button>
+      </Row>
       <RenderSchema node={feedTemplate} stores={backend.stores} registry={registry} />
     </div>
   );

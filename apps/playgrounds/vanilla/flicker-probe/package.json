@@ -1,0 +1,22 @@
+{
+  "private": true,
+  "name": "@we/playground-flicker-probe",
+  "version": "0.0.0",
+  "description": "Bisects the hover flicker: the same buttons through the design system and through bare CSS, with the painted colour sampled every frame.",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@we/primitives": "workspace:*",
+    "@we/schema-shared": "workspace:*",
+    "@we/themes": "workspace:*",
+    "@we/tokens": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3",
+    "vite": "^6.0.0"
+  }
+}

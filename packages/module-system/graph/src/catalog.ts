@@ -150,6 +150,97 @@ export const GRAPH_PLUGIN_CATALOG: PluginCatalog = {
       example: `{ "type": "manual" }`,
     },
 
+    // ─── Presentation ──────────────────────────────────────────────────────────
+    {
+      id: 'curve',
+      category: 'style',
+      description:
+        'Edge style — the shape a connection is drawn with. "smooth" (default) leaves and arrives along the axis the edge mostly runs on, the flow-chart S, so it reads as direction and suits hierarchies and pipelines. "straight" is a direct line, right when the layout is already doing the talking. "arc" bows to one side, for a graph dense enough that lines need telling apart by shape. "step" turns at right angles, for containment and org charts where the eye follows a rank. Two nodes related in both directions are always separated — shifted sideways, or crossed at different points — so picking a shape never hides a relationship.',
+      example: `"edgeStyle": [{ "style": { "curve": "smooth" } }]`,
+    },
+    {
+      id: 'arrow',
+      category: 'style',
+      description:
+        'Edge style — which ends carry an arrowhead. "target" (default) points at the thing being related to; "both" for a mutual relationship drawn as one line; "none" when the relation has no direction worth showing. The head scales with the line\'s width, and the line stops short of it rather than running underneath.',
+      example: `"edgeStyle": [{ "style": { "arrow": "none" } }]`,
+    },
+    {
+      id: 'scaleWithZoom',
+      category: 'style',
+      description:
+        'Edge style. true (default) treats the line as part of the drawing, so it thickens as you zoom in — right for a board. false pins it to a constant on-screen width, so hairlines stay visible when you zoom out to see a whole network.',
+      example: `"edgeStyle": [{ "style": { "scaleWithZoom": false } }]`,
+    },
+    {
+      id: 'scaleLabelWithZoom',
+      category: 'style',
+      description:
+        'Node style. true (default) scales the label with the camera; false keeps it a constant on-screen size, which keeps text readable at any zoom on a map you navigate by reading. Affects the label only — a node mark always scales, because its size and its hit area are both world units.',
+      example: `"nodeStyle": [{ "style": { "scaleLabelWithZoom": false } }]`,
+    },
+    {
+      id: 'labelMinZoom',
+      category: 'style',
+      description:
+        'Node style. Hides the label below this zoom level, so a dense graph stays readable when zoomed out and gains its detail as you move in.',
+      example: `"nodeStyle": [{ "style": { "labelMinZoom": 0.6 } }]`,
+    },
+
+    // ─── Metrics ───────────────────────────────────────────────────────────────
+    {
+      id: 'degree',
+      category: 'metric',
+      description:
+        'How connected a node is, normalised 0..1. The usual answer to "make the important things bigger". Reference it from a style value rather than a fixed number.',
+      options: [{ name: 'range', type: '[number, number]', description: 'Output range, e.g. [8, 30].' }],
+      example: `"nodeStyle": [{ "style": { "size": { "metric": "degree", "range": [10, 34] } } }]`,
+    },
+    {
+      id: 'community',
+      category: 'metric',
+      description:
+        'Groups the visible graph by label propagation. Pair with scale: "categorical" to colour each cluster differently — this is what makes a cluster map.',
+      options: [{ name: 'rounds', type: 'number', description: 'Propagation rounds. Default 8.' }],
+      example: `"nodeStyle": [{ "style": { "color": { "metric": "community", "scale": "categorical" } } }]`,
+    },
+
+    // ─── Controls ──────────────────────────────────────────────────────────────
+    {
+      id: 'zoom-in',
+      category: 'control',
+      description: 'Zooms toward the centre of the view. Shown by default.',
+      example: `"controls": ["zoom-in", "zoom-out", "fit"]`,
+    },
+    { id: 'zoom-out', category: 'control', description: 'Zooms out from the centre. Shown by default.' },
+    {
+      id: 'fit',
+      category: 'control',
+      description:
+        'Frames everything currently on the graph. Deliberately not a re-layout — it moves the camera, never the nodes.',
+    },
+    {
+      id: 'pin',
+      category: 'control',
+      description:
+        'Holds the selected nodes where they are, so the layout stops moving them; press again to release. The usual way to shape a force graph — put the thing you care about where you want it, hold it there, and let the rest settle around it. Held nodes are ringed so the state is visible. Not shown by default: on a board every node is placed already and it means nothing.',
+      example: `"controls": ["zoom-in", "zoom-out", "fit", "pin"]`,
+    },
+    {
+      id: 'lock',
+      category: 'control',
+      description:
+        'Blocks moving nodes, so a graph cannot be rearranged by accident while it is being read or shown to someone. Affects dragging only — panning, zooming and a settling force layout all carry on. Not shown by default, and only meaningful where the template allows dragging at all.',
+      example: `"controls": ["zoom-in", "zoom-out", "fit", "lock"]`,
+    },
+    {
+      id: 'relayout',
+      category: 'control',
+      description:
+        'Re-runs the layout. Not shown by default: a rescue for a tangled force graph, and destructive on a board, where it would discard every position somebody chose.',
+      example: `"controls": ["zoom-in", "zoom-out", "fit", "relayout"]`,
+    },
+
     // ─── Behaviours ────────────────────────────────────────────────────────────
     {
       id: 'pan-zoom',

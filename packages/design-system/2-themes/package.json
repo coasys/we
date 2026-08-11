@@ -8,11 +8,15 @@
   "scripts": {
     "clean": "rimraf dist",
     "build:css": "postcss 'src/**/index.css' --base src --dir dist",
-    "build:steps": "pnpm run clean && pnpm run build:css",
+    "build:steps": "pnpm run clean && pnpm run build:css && tsup",
     "build": "we-build"
   },
   "exports": {
     ".": "./dist/index.css",
+    "./presets": {
+      "types": "./dist/presets.d.ts",
+      "import": "./dist/presets.js"
+    },
     "./light": "./dist/light/index.css",
     "./dark": "./dist/dark/index.css",
     "./black": "./dist/black/index.css",
@@ -30,7 +34,9 @@
     "postcss": "^8.4.23",
     "postcss-cli": "^10.1.0",
     "postcss-import": "^15.1.0",
-    "rimraf": "^6.0.1"
+    "rimraf": "^6.0.1",
+    "tsup": "^8.5.1",
+    "typescript": "^5.3.3"
   },
   "publishConfig": {
     "access": "public"
