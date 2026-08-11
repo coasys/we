@@ -28,22 +28,15 @@
     "dist"
   ],
   "dependencies": {
-    "d3-force": "^3.0.0"
+    "@we/design-utils": "workspace:*"
   },
   "peerDependencies": {
-    "@we/components": "^0.1.0",
-    "@we/primitives": "^1.0.0",
+    "@we/primitives": "^0.1.0",
     "solid-js": "^1.9.5"
   },
   "devDependencies": {
-    "@types/d3-force": "^3.0.10",
-    "@we/block-shared": "workspace:*",
     "@we/cli": "workspace:*",
-    "@we/components": "workspace:*",
-    "@we/design-utils": "workspace:*",
-    "@we/models": "workspace:*",
     "@we/primitives": "workspace:*",
-    "@we/tokens": "workspace:*",
     "esbuild-plugin-solid": "^0.6.0",
     "sass": "^1.92.1",
     "solid-js": "^1.9.5",

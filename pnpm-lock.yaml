@@ -855,34 +855,16 @@ importers:
 
   packages/design-system/5-widgets:
     dependencies:
-      d3-force:
-        specifier: ^3.0.0
-        version: 3.0.0
-    devDependencies:
-      '@types/d3-force':
-        specifier: ^3.0.10
-        version: 3.0.10
-      '@we/block-shared':
-        specifier: workspace:*
-        version: link:../../block-system/shared
-      '@we/cli':
-        specifier: workspace:*
-        version: link:../../cli
-      '@we/components':
-        specifier: workspace:*
-        version: link:../4-components
       '@we/design-utils':
         specifier: workspace:*
         version: link:../utils
-      '@we/models':
+    devDependencies:
+      '@we/cli':
         specifier: workspace:*
-        version: link:../../models
+        version: link:../../cli
       '@we/primitives':
         specifier: workspace:*
         version: link:../3-primitives
-      '@we/tokens':
-        specifier: workspace:*
-        version: link:../1-tokens
       esbuild-plugin-solid:
         specifier: ^0.6.0
         version: 0.6.0(esbuild@0.28.1)(solid-js@1.9.14)
