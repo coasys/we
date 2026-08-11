@@ -285,11 +285,29 @@ export function GraphView(props: GraphViewProps) {
     };
   }
 
+  /**
+   * Did this event start on the chrome rather than the canvas?
+   *
+   * The controls live *inside* the graph element, so without this the canvas treats a press on the
+   * zoom button as a press on the background. That is not merely untidy: the canvas calls
+   * `setPointerCapture` on itself, which retargets the subsequent pointer-up, so the browser fires
+   * `click` on the canvas instead of on the button — and the controls silently stop working.
+   *
+   * `composedPath` rather than `closest`, because the buttons are Lit custom elements and the real
+   * event target is inside their shadow root, where `closest` cannot see the marker.
+   */
+  function fromChrome(event: Event): boolean {
+    return event
+      .composedPath()
+      .some((target) => target instanceof HTMLElement && target.hasAttribute('data-graph-chrome'));
+  }
+
   function dispatch(phase: Parameters<typeof dispatchPointer>[1], event: PointerEvent | WheelEvent | MouseEvent) {
     dispatchPointer(behaviours(), phase, toInput(event), engine.behaviourContext());
   }
 
   function onPointerMove(event: PointerEvent) {
+    if (fromChrome(event)) return;
     dispatch('onPointerMove', event);
     // Hover is read straight off the index rather than from DOM enter/leave, so it behaves the same
     // whether the node is an element or a painted shape.
@@ -307,6 +325,7 @@ export function GraphView(props: GraphViewProps) {
         background: color(props.bg, 'neutral-0'),
       }}
       onPointerDown={(event) => {
+        if (fromChrome(event)) return;
         (event.currentTarget as HTMLElement).setPointerCapture?.(event.pointerId);
         dispatch('onPointerDown', event);
       }}
@@ -315,8 +334,13 @@ export function GraphView(props: GraphViewProps) {
       // Without this a gesture interrupted by the browser leaves whichever behaviour was tracking it
       // latched onto a node.
       onPointerCancel={(event) => dispatch('onPointerCancel', event)}
-      onDblClick={(event) => dispatch('onDoubleClick', event)}
+      onDblClick={(event) => {
+        if (fromChrome(event)) return;
+        dispatch('onDoubleClick', event);
+      }}
       onWheel={(event) => {
+        // Scrolling over a status message should scroll it, not zoom the graph behind it.
+        if (fromChrome(event)) return;
         event.preventDefault();
         dispatch('onWheel', event);
       }}
@@ -467,7 +491,7 @@ export function GraphView(props: GraphViewProps) {
         exactly that: the canvas, plus where these overlays sit.
       */}
       <Show when={props.showControls !== false}>
-        <Column position="absolute" right="300" bottom="300" gap="100">
+        <Column data-graph-chrome position="absolute" right="300" bottom="300" gap="100">
           <we-button variant="secondary" size="sm" square title="Zoom in" onClick={() => zoomBy(engine, 1.25)}>
             <we-icon name="plus" size="sm" />
           </we-button>
@@ -483,7 +507,15 @@ export function GraphView(props: GraphViewProps) {
       <Show
         when={props.showStatus !== false && (status().loading || status().budgetReached || status().warnings.length)}
       >
-        <Column position="absolute" left="300" bottom="300" gap="100" maxWidth="60%">
+        <Column
+          data-graph-chrome
+          pointerEvents="none"
+          position="absolute"
+          left="300"
+          bottom="300"
+          gap="100"
+          maxWidth="60%"
+        >
           <Show when={status().loading}>
             <Row ay="center" gap="200" bg="neutral-100" r="200" px="200" py="100">
               <we-spinner size="xs" />
@@ -500,7 +532,23 @@ export function GraphView(props: GraphViewProps) {
       </Show>
 
       <Show when={!nodes().length && !status().loading}>
-        <Column position="absolute" top="0" left="0" width="100%" height="100%" ax="center" ay="center" gap="200">
+        {/*
+          Covers the whole canvas, so it must not be able to intercept anything — an empty graph is
+          still one you can pan and drop things onto. The old stylesheet said `pointer-events: none`
+          here and the conversion to `Column` lost it.
+        */}
+        <Column
+          data-graph-chrome
+          pointerEvents="none"
+          position="absolute"
+          top="0"
+          left="0"
+          width="100%"
+          height="100%"
+          ax="center"
+          ay="center"
+          gap="200"
+        >
           <we-icon name="graph" size="lg" color="neutral-300" />
           <we-text variant="footnote" color="neutral-400">
             Nothing to show yet.

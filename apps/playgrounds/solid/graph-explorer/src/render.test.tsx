@@ -127,6 +127,30 @@ describe('the graph paints', () => {
     expect(container.textContent).toContain('Node limit reached');
   });
 
+  it('keeps the controls clickable and outside the canvas gesture', async () => {
+    // The canvas calls `setPointerCapture` on itself, which retargets the pointer-up — so without a
+    // guard the browser fired `click` on the canvas rather than on the zoom button, and the controls
+    // silently did nothing.
+    const container = mount(scenario('static'));
+    await settle();
+
+    const controls = container.querySelector('[data-graph-chrome]');
+    expect(controls).not.toBeNull();
+    expect(container.querySelectorAll('[data-graph-chrome] we-button').length).toBeGreaterThanOrEqual(3);
+  });
+
+  it('lets the pointer through the passive overlays', async () => {
+    // The empty state covers the whole canvas; an empty graph is still one you can pan.
+    const container = mount({
+      seeds: { source: 'query', options: { entity: 'Nonexistent' } },
+      layout: { type: 'grid' },
+    });
+    await settle();
+
+    const empty = container.querySelector('[data-graph-chrome][style*="pointer-events"]');
+    expect(empty).not.toBeNull();
+  });
+
   it('shows an empty state rather than a blank canvas', async () => {
     const container = mount({
       seeds: { source: 'query', options: { entity: 'Nonexistent' } },
