@@ -158,7 +158,39 @@ const COMPONENT_CASCADE: Record<string, ComponentCascade> = {
   code: { radiusGroup: '--we-theme-surface-radius' },
 };
 
-const DEFAULT_TRANSITION = 'all var(--we-transition-200, 150ms) ease';
+/**
+ * What a state change is allowed to animate.
+ *
+ * This was `all`, which is the default nearly every design system reaches for and is wrong here for a
+ * specific, observable reason: the properties a hover block may set include layout and typography, so
+ * `all` animates **geometry**. Instrumenting the hover flicker caught `border-top-width`,
+ * `border-right-width`, `border-bottom-width`, `border-left-width` and `outline-width` transitioning
+ * on ordinary hovers — an element whose box is mid-animation moves under the cursor, which can drop
+ * and re-apply `:hover`, and repaints its own bounds every frame while it does.
+ *
+ * `all` also meant any incidental change to a computed value became visible motion rather than an
+ * invisible no-op — which is how a stray `background-position` reset (fixed separately) turned into
+ * 150ms of flicker instead of nothing at all.
+ *
+ * The list is every property a state block legitimately wants to animate and nothing that can move a
+ * box. `border-color` and `outline-color` cover their four longhands; their *widths* deliberately do
+ * not appear. A component that genuinely needs something else can still say so: the `transition` prop
+ * overrides this per instance.
+ */
+const ANIMATABLE_STATE_PROPS = [
+  'background-color',
+  'border-color',
+  'outline-color',
+  'color',
+  'box-shadow',
+  'opacity',
+  'fill',
+  'stroke',
+];
+
+const DEFAULT_TRANSITION = ANIMATABLE_STATE_PROPS.map((prop) => `${prop} var(--we-transition-200, 150ms) ease`).join(
+  ', ',
+);
 
 // ────────────────────────────────────────────
 // Runtime: CSS custom property updates
