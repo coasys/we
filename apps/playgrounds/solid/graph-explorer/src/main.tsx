@@ -24,7 +24,7 @@ import { render } from 'solid-js/web';
 
 import { editableField, writeField } from './fixture';
 import { createHost, type QueryLog } from './host';
-import { LAYOUTS, type Scenario, SCENARIOS } from './scenarios';
+import { CURVES, LAYOUTS, type Scenario, SCENARIOS } from './scenarios';
 
 /**
  * The graph, wrapped so its remount key has somewhere to live.
@@ -59,6 +59,7 @@ function Graph(props: {
 function App() {
   const [scenarioId, setScenarioId] = createSignal(SCENARIOS[0].id);
   const [layoutOverride, setLayoutOverride] = createSignal<string | null>(null);
+  const [curveOverride, setCurveOverride] = createSignal<string | null>(null);
   const [selected, setSelected] = createSignal<GraphNode | null>(null);
   /** Bumped after a fixture edit, to force the graph to re-seed and pick the new value up. */
   const [dataVersion, setDataVersion] = createSignal(0);
@@ -103,10 +104,18 @@ function App() {
    */
   const graphKey = createMemo(() => ({ scenario: scenarioId(), version: dataVersion() }));
 
-  /** The scenario's spec, with the layout picker applied over it. */
+  /** The scenario's spec, with the pickers applied over it. */
   const specFor = (current: Scenario) => {
-    const override = layoutOverride();
-    return override ? { ...current.spec, layout: { type: override } } : current.spec;
+    const layout = layoutOverride();
+    const curve = curveOverride();
+    let spec = current.spec;
+    if (layout) spec = { ...spec, layout: { type: layout } };
+    if (curve) {
+      // Appended rather than replacing, so a scenario's own edge rules still decide colour, width and
+      // labels — the picker is overriding one property, not the styling.
+      spec = { ...spec, edgeStyle: [...(spec.edgeStyle ?? []), { style: { curve } }] };
+    }
+    return spec;
   };
 
   function pick(id: string) {
@@ -114,6 +123,7 @@ function App() {
     setLog([]);
     setSelected(null);
     setLayoutOverride(null);
+    setCurveOverride(null);
     setScenarioId(id);
   }
 
@@ -189,6 +199,32 @@ function App() {
                   variant={layoutOverride() === name ? 'primary' : 'outline'}
                   size="xs"
                   onClick={() => setLayoutOverride(name)}
+                >
+                  {name}
+                </we-button>
+              )}
+            </For>
+          </Row>
+        </Column>
+
+        <Column gap="200">
+          <we-text variant="label" color="neutral-500" uppercase>
+            Edge shape
+          </we-text>
+          <Row gap="100" wrap>
+            <we-button
+              variant={curveOverride() === null ? 'primary' : 'outline'}
+              size="xs"
+              onClick={() => setCurveOverride(null)}
+            >
+              default
+            </we-button>
+            <For each={CURVES}>
+              {(name) => (
+                <we-button
+                  variant={curveOverride() === name ? 'primary' : 'outline'}
+                  size="xs"
+                  onClick={() => setCurveOverride(name)}
                 >
                   {name}
                 </we-button>

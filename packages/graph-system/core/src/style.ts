@@ -12,6 +12,7 @@
  * language it is slowly becoming.
  */
 import type {
+  EdgeCurve,
   EdgeStyle,
   GraphEdge,
   GraphNode,
@@ -23,6 +24,8 @@ import type {
   NodeVisual,
   StyleRule,
 } from '@we/graph-protocol';
+
+import { normaliseCurve } from './geometry';
 
 /** Normalised metric output, by metric id then node id. Produced by the algorithms package. */
 export type MetricValues = ReadonlyMap<string, ReadonlyMap<string, number>>;
@@ -195,7 +198,7 @@ export interface EdgeVisual {
   width: number;
   color: string;
   opacity?: number;
-  curve: 'straight' | 'bezier' | 'orthogonal';
+  curve: EdgeCurve;
   arrow: 'none' | 'target' | 'both';
   dashed?: boolean;
   /** False keeps stroke width constant on screen. See `EdgeStyle.scaleWithZoom`. */
@@ -211,7 +214,7 @@ export function edgeVisual(edge: GraphEdge, style: EdgeStyle, metrics: MetricVal
   const visual: EdgeVisual = {
     width: resolveNumber(style.width, edge.id, metrics, DEFAULT_EDGE.width) * weightBoost,
     color: resolveColor(style.color, edge.id, metrics, DEFAULT_EDGE.color),
-    curve: style.curve ?? 'bezier',
+    curve: normaliseCurve(style.curve),
     arrow: style.arrow ?? 'target',
     scaleWithZoom: style.scaleWithZoom ?? true,
   };

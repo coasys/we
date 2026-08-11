@@ -253,3 +253,12 @@ export const SCENARIOS: Scenario[] = [
 ];
 
 export const LAYOUTS = ['force', 'tree', 'radial', 'grid', 'manual'] as const;
+
+/**
+ * The edge shapes, for the picker.
+ *
+ * Worth being able to flip between on a live graph rather than choosing from a description: which one
+ * reads best depends on how dense the graph is and how much the layout is already saying, and that is
+ * not a judgement anybody makes correctly from a name.
+ */
+export const CURVES = ['arc', 'straight', 'smooth', 'step'] as const;

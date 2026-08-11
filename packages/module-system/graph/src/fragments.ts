@@ -34,7 +34,7 @@ export const schemaMap: SchemaNode = {
       { style: { size: 20, color: 'primary-500', shape: 'rect' } },
       { when: { 'data.relations': { gt: 3 } }, style: { size: 28, color: 'primary-700' } },
     ],
-    edgeStyle: [{ style: { showLabel: true, curve: 'bezier' } }],
+    edgeStyle: [{ style: { showLabel: true, curve: 'arc' } }],
     height: '100%',
   },
 };
@@ -62,7 +62,7 @@ export const knowledgeMap = (opts: KnowledgeMapOptions): SchemaNode => ({
       { when: { type: opts.entity }, style: { size: 20, color: 'primary-500' } },
       { when: { unresolved: true }, style: { color: 'neutral-200' } },
     ],
-    edgeStyle: [{ style: { curve: 'bezier', arrow: 'target' } }],
+    edgeStyle: [{ style: { curve: 'arc', arrow: 'target' } }],
     behaviours: ['pan-zoom', 'select', 'expand-on-double-click', { type: 'drag-node' }],
     height: '100%',
   },
@@ -86,7 +86,7 @@ export const contentTree: SchemaNode = {
       { when: { type: 'CollectionBlock' }, style: { size: 18, color: 'primary-500' } },
       { when: { 'data.kind': 'call' }, style: { color: 'success-500', icon: 'phone' } },
     ],
-    edgeStyle: [{ style: { curve: 'orthogonal', arrow: 'target', color: 'neutral-200' } }],
+    edgeStyle: [{ style: { curve: 'step', arrow: 'target', color: 'neutral-200' } }],
     height: '100%',
   },
 };

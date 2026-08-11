@@ -10,7 +10,22 @@
  * path string. A renderer turns that into whatever it strokes with, and the core can measure the same
  * curve without knowing anything about either.
  */
-import type { EdgeGeometry, Point } from '@we/graph-protocol';
+import type { EdgeCurve, EdgeGeometry, Point } from '@we/graph-protocol';
+
+/**
+ * Canonical curve name for whatever a style asked for.
+ *
+ * `bezier` and `orthogonal` were the original names, and they described the maths rather than the
+ * look — which matters here because these values are hand-written into templates and picked by a model
+ * from a description. Normalising in one place means every consumer downstream sees exactly four
+ * cases, and the old names keep working without a second code path.
+ */
+export function normaliseCurve(curve: string | undefined): EdgeCurve {
+  if (curve === 'bezier' || curve === 'arc') return 'arc';
+  if (curve === 'orthogonal' || curve === 'step') return 'step';
+  if (curve === 'straight' || curve === 'smooth') return curve;
+  return 'arc';
+}
 
 /**
  * Trim a segment so it ends at the node's edge rather than its centre.
@@ -58,13 +73,7 @@ export function groupByEndpoints<T extends { source: string; target: string }>(e
  * `offset` bows the curve to one side. Two nodes related in both directions produce two edges with
  * the same endpoints; drawn straight they are one line and the graph silently understates itself.
  */
-export function routeEdge(
-  id: string,
-  from: Point,
-  to: Point,
-  curve: 'straight' | 'bezier' | 'orthogonal',
-  offset = 0,
-): EdgeGeometry {
+export function routeEdge(id: string, from: Point, to: Point, curve: EdgeCurve, offset = 0): EdgeGeometry {
   if (from.x === to.x && from.y === to.y) {
     // A self-loop has no direction to bow along, so it gets a fixed teardrop above the node.
     const r = 26;
@@ -73,14 +82,63 @@ export function routeEdge(
       from,
       to,
       control: { x: from.x, y: from.y - r * 2.2 },
-      curve: 'bezier',
+      curve: 'arc',
       mid: { x: from.x, y: from.y - r * 1.1 },
     };
   }
 
-  if (curve === 'orthogonal') {
-    const elbow = { x: (from.x + to.x) / 2, y: from.y };
-    return { id, from, to, elbow, curve, mid: { x: elbow.x, y: (from.y + to.y) / 2 } };
+  // Which way a step turns first, and which way a smooth curve leaves, both follow the axis the edge
+  // mostly runs along. A hierarchy laid out top-to-bottom wants to depart downwards; the same rule
+  // laid out left-to-right wants to depart sideways. Deriving it from the endpoints means neither the
+  // layout nor the author has to say so.
+  const horizontal = Math.abs(to.x - from.x) >= Math.abs(to.y - from.y);
+
+  if (curve === 'step') {
+    const elbows: Point[] = horizontal
+      ? [
+          { x: (from.x + to.x) / 2, y: from.y },
+          { x: (from.x + to.x) / 2, y: to.y },
+        ]
+      : [
+          { x: from.x, y: (from.y + to.y) / 2 },
+          { x: to.x, y: (from.y + to.y) / 2 },
+        ];
+    // The middle of the crossing segment, which is the one long enough to carry a label.
+    return {
+      id,
+      from,
+      to,
+      elbows,
+      curve,
+      mid: { x: (elbows[0].x + elbows[1].x) / 2, y: (elbows[0].y + elbows[1].y) / 2 },
+    };
+  }
+
+  if (curve === 'smooth') {
+    // Tangents held along the dominant axis for half the span: enough to read as a direction of
+    // travel, not so much that the curve loops back on itself when the two nodes are close.
+    const reach = (horizontal ? Math.abs(to.x - from.x) : Math.abs(to.y - from.y)) / 2;
+    const perpendicular = horizontal ? { x: 0, y: offset } : { x: offset, y: 0 };
+    const control = horizontal
+      ? { x: from.x + reach, y: from.y + perpendicular.y }
+      : { x: from.x + perpendicular.x, y: from.y + reach };
+    const control2 = horizontal
+      ? { x: to.x - reach, y: to.y + perpendicular.y }
+      : { x: to.x + perpendicular.x, y: to.y - reach };
+    return {
+      id,
+      from,
+      to,
+      control,
+      control2,
+      curve,
+      // A cubic's midpoint is the average of its endpoints and three times each control, not the
+      // average of its endpoints — the same trap the quadratic case documents below.
+      mid: {
+        x: (from.x + 3 * control.x + 3 * control2.x + to.x) / 8,
+        y: (from.y + 3 * control.y + 3 * control2.y + to.y) / 8,
+      },
+    };
   }
 
   if (curve === 'straight' && !offset) {
@@ -101,7 +159,7 @@ export function routeEdge(
     from,
     to,
     control,
-    curve: 'bezier',
+    curve: 'arc',
     // A quadratic's midpoint is the average of its endpoints and twice its control, not the average
     // of its endpoints — putting a label at the latter leaves it off the line it belongs to.
     mid: { x: (from.x + 2 * control.x + to.x) / 4, y: (from.y + 2 * control.y + to.y) / 4 },
@@ -109,6 +167,14 @@ export function routeEdge(
 }
 
 /** A point on a quadratic bezier at `t`. */
+function cubicAt(from: Point, c1: Point, c2: Point, to: Point, t: number): Point {
+  const u = 1 - t;
+  return {
+    x: u * u * u * from.x + 3 * u * u * t * c1.x + 3 * u * t * t * c2.x + t * t * t * to.x,
+    y: u * u * u * from.y + 3 * u * u * t * c1.y + 3 * u * t * t * c2.y + t * t * t * to.y,
+  };
+}
+
 function quadraticAt(from: Point, control: Point, to: Point, t: number): Point {
   const inverse = 1 - t;
   return {
@@ -125,11 +191,13 @@ function quadraticAt(from: Point, control: Point, to: Point, t: number): Point {
  * same function serves straight and orthogonal routes, which are already polylines.
  */
 export function polyline(geometry: EdgeGeometry, samples = 16): Point[] {
-  if (geometry.elbow) return [geometry.from, geometry.elbow, { x: geometry.elbow.x, y: geometry.to.y }, geometry.to];
+  if (geometry.elbows) return [geometry.from, ...geometry.elbows, geometry.to];
   if (!geometry.control) return [geometry.from, geometry.to];
-  return Array.from({ length: samples + 1 }, (_, i) =>
-    quadraticAt(geometry.from, geometry.control!, geometry.to, i / samples),
-  );
+  const { from, to, control, control2 } = geometry;
+  if (control2) {
+    return Array.from({ length: samples + 1 }, (_, i) => cubicAt(from, control, control2, to, i / samples));
+  }
+  return Array.from({ length: samples + 1 }, (_, i) => quadraticAt(from, control, to, i / samples));
 }
 
 /** Shortest distance from a point to a line segment. */

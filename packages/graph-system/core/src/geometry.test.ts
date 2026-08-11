@@ -7,7 +7,7 @@
  */
 import { describe, expect, it } from 'vitest';
 
-import { bowOffsets, distanceToEdge, groupByEndpoints, routeEdge, trimToRadius } from './geometry';
+import { bowOffsets, distanceToEdge, groupByEndpoints, normaliseCurve, routeEdge, trimToRadius } from './geometry';
 
 describe('trimToRadius', () => {
   it('stops the segment at the node edge, not its centre', () => {
@@ -49,26 +49,52 @@ describe('routeEdge', () => {
   });
 
   it('bows a curve to the requested side', () => {
-    const left = routeEdge('e', { x: 0, y: 0 }, { x: 100, y: 0 }, 'bezier', 20);
-    const right = routeEdge('e', { x: 0, y: 0 }, { x: 100, y: 0 }, 'bezier', -20);
+    const left = routeEdge('e', { x: 0, y: 0 }, { x: 100, y: 0 }, 'arc', 20);
+    const right = routeEdge('e', { x: 0, y: 0 }, { x: 100, y: 0 }, 'arc', -20);
     expect(left.control).not.toEqual(right.control);
   });
 
   it('puts the label on the curve, not on the chord', () => {
     // A quadratic's midpoint is the average of its endpoints and *twice* its control. Using the chord
     // midpoint leaves the label floating off the line it belongs to.
-    const route = routeEdge('e', { x: 0, y: 0 }, { x: 100, y: 0 }, 'bezier', 40);
+    const route = routeEdge('e', { x: 0, y: 0 }, { x: 100, y: 0 }, 'arc', 40);
     expect(route.mid.y).not.toBe(0);
     expect(Math.abs(route.mid.y)).toBeLessThan(40);
   });
 
-  it('routes orthogonally through an elbow', () => {
-    const route = routeEdge('e', { x: 0, y: 0 }, { x: 100, y: 50 }, 'orthogonal');
-    expect(route.elbow).toEqual({ x: 50, y: 0 });
+  it('steps through two corners, turning along the axis it mostly runs on', () => {
+    const across = routeEdge('e', { x: 0, y: 0 }, { x: 100, y: 50 }, 'step');
+    expect(across.elbows).toEqual([
+      { x: 50, y: 0 },
+      { x: 50, y: 50 },
+    ]);
+
+    // Mostly vertical, so it departs vertically instead — a top-to-bottom hierarchy should not leave
+    // sideways before it starts descending.
+    const down = routeEdge('e', { x: 0, y: 0 }, { x: 50, y: 100 }, 'step');
+    expect(down.elbows).toEqual([
+      { x: 0, y: 50 },
+      { x: 50, y: 50 },
+    ]);
+  });
+
+  it('accepts the previous curve names, so templates written against them keep working', () => {
+    expect(normaliseCurve('bezier')).toBe('arc');
+    expect(normaliseCurve('orthogonal')).toBe('step');
+    expect(normaliseCurve(undefined)).toBe('arc');
+    expect(normaliseCurve('nonsense')).toBe('arc');
+  });
+
+  it('leaves and arrives along the dominant axis on a smooth curve', () => {
+    const route = routeEdge('e', { x: 0, y: 0 }, { x: 100, y: 40 }, 'smooth');
+    // Departure tangent is horizontal, so the first control shares the source's y.
+    expect(route.control).toEqual({ x: 50, y: 0 });
+    // Arrival tangent likewise shares the target's.
+    expect(route.control2).toEqual({ x: 50, y: 40 });
   });
 
   it('gives a self-loop a visible shape rather than a zero-length route', () => {
-    const route = routeEdge('e', { x: 10, y: 10 }, { x: 10, y: 10 }, 'bezier');
+    const route = routeEdge('e', { x: 10, y: 10 }, { x: 10, y: 10 }, 'arc');
     expect(route.control).toBeDefined();
     expect(route.mid).not.toEqual({ x: 10, y: 10 });
   });
@@ -84,7 +110,7 @@ describe('distanceToEdge', () => {
   it('measures against the curve rather than the chord', () => {
     // The whole point of geometric picking: a bowed edge is not where the straight line between its
     // endpoints is, and clicking the chord should not select it.
-    const bowed = routeEdge('e', { x: 0, y: 0 }, { x: 100, y: 0 }, 'bezier', 60);
+    const bowed = routeEdge('e', { x: 0, y: 0 }, { x: 100, y: 0 }, 'arc', 60);
     expect(distanceToEdge({ x: 50, y: 0 }, bowed)).toBeGreaterThan(20);
     expect(distanceToEdge({ x: 50, y: 30 }, bowed)).toBeLessThan(5);
   });

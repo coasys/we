@@ -17,6 +17,7 @@
  * with components.
  */
 import type { GraphValue } from './graph';
+import type { EdgeCurve } from './layout';
 
 /** Operators a match clause may use against a node/edge field. Mirrors the schema system's `$filter`. */
 export interface MatchOperators {
@@ -100,7 +101,11 @@ export interface EdgeStyle {
   color?: StyleValue<string>;
   opacity?: number;
   /** `bezier` is the readable default for dense graphs; `orthogonal` suits trees and flows. */
-  curve?: 'straight' | 'bezier' | 'orthogonal';
+  /**
+   * See `EdgeCurve`. `bezier` and `orthogonal` are accepted as the previous names for `arc` and
+   * `step`, so templates written against them keep working.
+   */
+  curve?: EdgeCurve | 'bezier' | 'orthogonal';
   arrow?: 'none' | 'target' | 'both';
   dashed?: boolean;
   /**

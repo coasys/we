@@ -22,7 +22,15 @@ import type {
 import { addressKind } from '@we/graph-protocol';
 
 import { ExpansionState, SEED_OPENER } from './expansion';
-import { bowOffsets, distanceToEdge, edgeBounds, groupByEndpoints, routeEdge, trimToRadius } from './geometry';
+import {
+  bowOffsets,
+  distanceToEdge,
+  edgeBounds,
+  groupByEndpoints,
+  normaliseCurve,
+  routeEdge,
+  trimToRadius,
+} from './geometry';
 import { PluginRegistry } from './registry';
 import { SpatialIndex } from './spatial';
 import { GraphStore } from './store';
@@ -556,7 +564,7 @@ export class GraphEngine {
         // from the same place the renderer gets its size, so the two cannot disagree.
         const radius = targetNode ? this.hitArea(targetNode).radius : 14;
         const end = trimToRadius(from, to, radius + 6);
-        const geometry = routeEdge(edge.id, from, end, style.curve ?? 'bezier', offsets[index]);
+        const geometry = routeEdge(edge.id, from, end, normaliseCurve(style.curve), offsets[index]);
         this.edgeGeometry.set(edge.id, geometry);
         this.edgeBoxes.set(edge.id, edgeBounds(geometry));
       });

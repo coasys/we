@@ -75,6 +75,25 @@ export interface Layout {
 export type LayoutFactory<TOptions = unknown> = (options?: TOptions) => Layout;
 
 /**
+ * The shape an edge is drawn with.
+ *
+ * Named for what it looks like rather than for the maths behind it, because these names are written by
+ * hand into templates and chosen by a model from a sentence like "show me how these connect". `arc`
+ * says bows-to-one-side; `bezier` said quadratic-with-one-control, which is both harder to picture and
+ * actively misleading — in most node editors "bezier" means the S-curve, which is `smooth` here.
+ *
+ * - `straight` — a direct line. Says the least, and is the right answer when the layout is doing the
+ *   talking.
+ * - `arc` — bows to one side. The default: two nodes related in both directions produce two edges with
+ *   the same endpoints, and drawn straight they are one line, so the graph silently understates itself.
+ * - `smooth` — leaves and arrives along the dominant axis, the flow-chart S. Reads as direction, so it
+ *   suits hierarchies and pipelines.
+ * - `step` — right angles. For containment and org charts, where the eye follows a rank rather than a
+ *   line.
+ */
+export type EdgeCurve = 'straight' | 'arc' | 'smooth' | 'step';
+
+/**
  * Where an edge actually runs, in world units.
  *
  * Geometry, not drawing instructions: control points rather than an SVG path string, so the engine can
@@ -90,11 +109,24 @@ export interface EdgeGeometry {
   from: Point;
   /** Trimmed to the target's edge, so an arrowhead lands on the node rather than under it. */
   to: Point;
-  /** Quadratic control point. Absent for straight and orthogonal routes. */
+  /**
+   * First control point: the whole of an `arc`'s quadratic, or the departure tangent of a `smooth`
+   * cubic. Absent for `straight` and `step`.
+   */
   control?: Point;
-  /** Corner for an orthogonal route: from → elbow → to. */
-  elbow?: Point;
-  curve: 'straight' | 'bezier' | 'orthogonal';
+  /** Second control point — the arrival tangent of a `smooth` cubic. Its presence is what makes the
+   * route cubic rather than quadratic, so a renderer picks its path command from that alone. */
+  control2?: Point;
+  /**
+   * Corners of a `step` route, between `from` and `to`.
+   *
+   * A list rather than the single point this used to be, because a step turns twice, and which way it
+   * turns first depends on the axis the edge mostly runs along. Storing one corner forced every
+   * consumer to re-derive the second and to assume horizontal-first, which is wrong for a graph laid
+   * out top-to-bottom.
+   */
+  elbows?: Point[];
+  curve: EdgeCurve;
   /** Midpoint of the drawn route — where a label sits. */
   mid: Point;
 }

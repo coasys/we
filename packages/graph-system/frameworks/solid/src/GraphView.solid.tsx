@@ -37,7 +37,7 @@ import {
 } from '@we/graph-core';
 import { DEFAULT_REIFIED_EDGES, defaultExpanders } from '@we/graph-expanders';
 import { defaultLayouts } from '@we/graph-layouts';
-import type { Behaviour, ControlContext, EdgeGeometry, GraphNode, PointerInput } from '@we/graph-protocol';
+import type { Behaviour, ControlContext, EdgeGeometry, GraphNode, Point, PointerInput } from '@we/graph-protocol';
 import { batch, createEffect, createMemo, createSignal, For, onCleanup, onMount, Show, untrack } from 'solid-js';
 
 import type { GraphViewProps } from './GraphView.types';
@@ -54,12 +54,54 @@ const DEFAULT_BEHAVIOURS = ['pan-zoom', 'select', 'expand-on-double-click'];
  * into one syntax. A canvas renderer would write the same three cases into `ctx.quadraticCurveTo`
  * without re-deriving anything.
  */
-export function pathFrom(route: EdgeGeometry): string {
-  const { from, to, control, elbow } = route;
-  if (elbow) return `M ${from.x} ${from.y} L ${elbow.x} ${elbow.y} L ${elbow.x} ${to.y} L ${to.x} ${to.y}`;
+export function pathFrom(route: EdgeGeometry, endGap = 0): string {
+  const { from, control, control2, elbows } = route;
+  const to = endGap > 0 ? backOff(route, endGap) : route.to;
+  if (elbows) return `M ${from.x} ${from.y} ` + [...elbows, to].map((p) => `L ${p.x} ${p.y}`).join(' ');
+  // The second control is what makes it cubic — a renderer needs no other signal to pick its command.
+  if (control && control2) {
+    return `M ${from.x} ${from.y} C ${control.x} ${control.y} ${control2.x} ${control2.y} ${to.x} ${to.y}`;
+  }
   if (control) return `M ${from.x} ${from.y} Q ${control.x} ${control.y} ${to.x} ${to.y}`;
   return `M ${from.x} ${from.y} L ${to.x} ${to.y}`;
 }
+
+/**
+ * Stop the stroke short, so an arrowhead sits at the end of the line rather than on top of it.
+ *
+ * The marker used to be positioned with its tip near the path end (`refX="9"` of a 10-unit viewBox),
+ * which ran the line underneath almost the whole arrowhead. That is invisible until you notice the
+ * arithmetic: markers scale with stroke width, so the line's half-width is a *constant* 0.83 viewBox
+ * units whatever the stroke, while the triangle's half-height where the line stopped was only 0.5.
+ * The line was wider than the arrow at the point it ended, so its edges showed either side of the
+ * tip — always, with zoom merely magnifying it.
+ *
+ * With the marker's base at the path end instead, the fix is to end the path an arrowhead earlier.
+ * The route itself is untouched: picking still uses the full line, because the part under the
+ * arrowhead is still part of the edge as far as clicking on it is concerned.
+ *
+ * Backing off along the closing tangent rather than re-solving the curve is an approximation, and a
+ * deliberate one — over an arrowhead's length the error is far below a pixel, and the alternative is
+ * splitting a cubic at an arc length nobody can see.
+ */
+function backOff(route: EdgeGeometry, gap: number): Point {
+  const { to, control, control2, elbows } = route;
+  const previous = elbows?.[elbows.length - 1] ?? control2 ?? control ?? route.from;
+  const dx = to.x - previous.x;
+  const dy = to.y - previous.y;
+  const length = Math.hypot(dx, dy);
+  if (length <= gap || length === 0) return to;
+  return { x: to.x - (dx / length) * gap, y: to.y - (dy / length) * gap };
+}
+
+/**
+ * Arrowhead length, in multiples of the stroke width.
+ *
+ * `markerUnits` defaults to `strokeWidth`, so this scales with the line and a hairline edge does not
+ * get the arrowhead of a thick one. It is also how far the stroke is shortened — one constant, so the
+ * head and the gap it needs cannot drift apart.
+ */
+const ARROW_LENGTH = 6;
 
 /** Design tokens resolve against the live theme; anything else is passed through as CSS. */
 function color(value: string | undefined, fallback: string): string {
@@ -245,9 +287,11 @@ export function GraphView(props: GraphViewProps) {
     return [...engine.store.edges()].flatMap((edge) => {
       const route = geometry.get(edge.id);
       if (!route) return [];
-      return [
-        { edge, route, path: pathFrom(route), visual: edgeVisual(edge, resolveStyle(edge, props.edgeStyle), metrics) },
-      ];
+      const visual = edgeVisual(edge, resolveStyle(edge, props.edgeStyle), metrics);
+      // The gap is the arrowhead's own length, in world units — the marker scales with stroke width,
+      // so the stroke has to give up the same amount it takes.
+      const gap = visual.arrow === 'none' ? 0 : ARROW_LENGTH * visual.width;
+      return [{ edge, route, path: pathFrom(route, gap), visual }];
     });
   });
 
@@ -395,6 +439,7 @@ export function GraphView(props: GraphViewProps) {
                   stroke-dasharray={entry.visual.dashed ? '4 4' : undefined}
                   // SVG's own answer to "keep this stroke a constant width whatever the transform".
                   vector-effect={entry.visual.scaleWithZoom ? undefined : 'non-scaling-stroke'}
+                  marker-start={entry.visual.arrow === 'both' ? 'url(#we-graph-arrow)' : undefined}
                   marker-end={entry.visual.arrow === 'none' ? undefined : 'url(#we-graph-arrow)'}
                 />
               </g>
@@ -404,10 +449,12 @@ export function GraphView(props: GraphViewProps) {
             <marker
               id="we-graph-arrow"
               viewBox="0 0 10 10"
-              refX="9"
+              // Base at the path end, not tip. The stroke is shortened by the same length in
+              // `backOff`, so the line meets the arrowhead instead of running under it.
+              refX="0"
               refY="5"
-              markerWidth="6"
-              markerHeight="6"
+              markerWidth={ARROW_LENGTH}
+              markerHeight={ARROW_LENGTH}
               orient="auto-start-reverse"
             >
               <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--we-color-neutral-400)" />

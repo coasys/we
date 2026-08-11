@@ -114,7 +114,7 @@ describe('defaults', () => {
     // arrows.
     const edge = edgeVisual({ id: 'e', source: 'a', target: 'b', type: 'rel' }, {}, NO_METRICS);
     expect(edge.arrow).toBe('target');
-    expect(edge.curve).toBe('bezier');
+    expect(edge.curve).toBe('arc');
 
     const off = edgeVisual({ id: 'e', source: 'a', target: 'b', type: 'rel' }, { scaleWithZoom: false }, NO_METRICS);
     expect(off.scaleWithZoom).toBe(false);

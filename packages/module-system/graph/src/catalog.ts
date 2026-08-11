@@ -152,6 +152,20 @@ export const GRAPH_PLUGIN_CATALOG: PluginCatalog = {
 
     // ─── Presentation ──────────────────────────────────────────────────────────
     {
+      id: 'curve',
+      category: 'style',
+      description:
+        'Edge style — the shape a connection is drawn with. "arc" (default) bows to one side, which is what keeps two nodes related in both directions from collapsing into a single line. "straight" is a direct line, right when the layout is already doing the talking. "smooth" leaves and arrives along the axis the edge mostly runs on, the flow-chart S, so it reads as direction and suits hierarchies and pipelines. "step" turns at right angles, for containment and org charts where the eye follows a rank. Parallel edges are fanned apart whichever you pick, so "straight" never silently hides a relationship.',
+      example: `"edgeStyle": [{ "style": { "curve": "smooth" } }]`,
+    },
+    {
+      id: 'arrow',
+      category: 'style',
+      description:
+        'Edge style — which ends carry an arrowhead. "target" (default) points at the thing being related to; "both" for a mutual relationship drawn as one line; "none" when the relation has no direction worth showing. The head scales with the line\'s width, and the line stops short of it rather than running underneath.',
+      example: `"edgeStyle": [{ "style": { "arrow": "none" } }]`,
+    },
+    {
       id: 'scaleWithZoom',
       category: 'style',
       description:

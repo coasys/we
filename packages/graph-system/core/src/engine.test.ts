@@ -416,7 +416,7 @@ describe('edge picking', () => {
   it('measures against the curve a bowed edge actually follows', async () => {
     const registry = new PluginRegistry({ seeds: [linkedSeed()], layouts: placed });
     const engine = engineWith(
-      { seeds: { source: 'linked' }, layout: { type: 'grid' }, edgeStyle: [{ style: { curve: 'bezier' } }] },
+      { seeds: { source: 'linked' }, layout: { type: 'grid' }, edgeStyle: [{ style: { curve: 'arc' } }] },
       registry,
     );
     await engine.start();

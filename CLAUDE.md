@@ -991,6 +991,10 @@ Names resolvable inside GraphView props: seed sources (seeds.source), expanders 
 
 **style**
 
+- `curve` — Edge style — the shape a connection is drawn with. "arc" (default) bows to one side, which is what keeps two nodes related in both directions from collapsing into a single line. "straight" is a direct line, right when the layout is already doing the talking. "smooth" leaves and arrives along the axis the edge mostly runs on, the flow-chart S, so it reads as direction and suits hierarchies and pipelines. "step" turns at right angles, for containment and org charts where the eye follows a rank. Parallel edges are fanned apart whichever you pick, so "straight" never silently hides a relationship.
+  - Example: `"edgeStyle": [{ "style": { "curve": "smooth" } }]`
+- `arrow` — Edge style — which ends carry an arrowhead. "target" (default) points at the thing being related to; "both" for a mutual relationship drawn as one line; "none" when the relation has no direction worth showing. The head scales with the line's width, and the line stops short of it rather than running underneath.
+  - Example: `"edgeStyle": [{ "style": { "arrow": "none" } }]`
 - `scaleWithZoom` — Edge style. true (default) treats the line as part of the drawing, so it thickens as you zoom in — right for a board. false pins it to a constant on-screen width, so hairlines stay visible when you zoom out to see a whole network.
   - Example: `"edgeStyle": [{ "style": { "scaleWithZoom": false } }]`
 - `scaleLabelWithZoom` — Node style. true (default) scales the label with the camera; false keeps it a constant on-screen size, which keeps text readable at any zoom on a map you navigate by reading. Affects the label only — a node mark always scales, because its size and its hit area are both world units.

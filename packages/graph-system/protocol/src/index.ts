@@ -38,7 +38,16 @@ export type {
   ExpandResult,
   SeedSource,
 } from './expander';
-export type { EdgeGeometry, Layout, LayoutFactory, LayoutInput, LayoutResult, Placement, Point } from './layout';
+export type {
+  EdgeCurve,
+  EdgeGeometry,
+  Layout,
+  LayoutFactory,
+  LayoutInput,
+  LayoutResult,
+  Placement,
+  Point,
+} from './layout';
 export type {
   Behaviour,
   BehaviourContext,
