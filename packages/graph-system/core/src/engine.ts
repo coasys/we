@@ -609,6 +609,10 @@ export class GraphEngine {
       expand: (id, direction) => void this.expand(id, direction),
       collapse: (id) => this.collapse(id),
       pin: (id, at) => this.pin(id, at),
+      positionOf: (id) => {
+        const at = this.positions.get(id);
+        return at ? { x: at.x, y: at.y } : null;
+      },
       pan: (dx, dy) => {
         this.viewport.pan(dx, dy);
         this.notify('viewport');

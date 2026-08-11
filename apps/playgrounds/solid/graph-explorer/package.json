@@ -18,6 +18,7 @@
     "@we/graph-protocol": "workspace:*",
     "@we/graph-solid": "workspace:*",
     "@we/primitives": "workspace:*",
+    "@we/themes": "workspace:*",
     "@we/tokens": "workspace:*",
     "solid-js": "^1.9.5"
   },

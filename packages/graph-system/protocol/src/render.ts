@@ -59,6 +59,13 @@ export interface BehaviourContext {
   collapse(id: string): void;
   /** Pin a node at a world position, or release it. */
   pin(id: string, at: Point | null): void;
+  /**
+   * Where a node currently is, in world units.
+   *
+   * Needed by anything that moves a node *relative* to where it already was — a drag has to preserve
+   * the offset between the node's centre and the point you grabbed it by, or it snaps to the cursor.
+   */
+  positionOf(id: string): Point | null;
   /** Move the camera. */
   pan(dx: number, dy: number): void;
   zoomAt(at: Point, factor: number): void;

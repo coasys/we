@@ -61,26 +61,40 @@ export function panZoomBehaviour(rawOptions?: Record<string, unknown>): Behaviou
   };
 }
 
-/** Drag a node to reposition it. Pins while dragging; releases unless `pin` is set. */
+/**
+ * Drag a node to reposition it. Pins while dragging; releases unless `pin` is set.
+ *
+ * The grab offset is the whole difference between this feeling like dragging and feeling like
+ * teleporting. Setting the node's position *to* the pointer snaps its centre under the cursor the
+ * instant you move — so grabbing a node near its edge makes it jump, which reads as a glitch even
+ * though the drag then tracks correctly. Recording where inside the node you took hold of it, and
+ * preserving that, means the node moves with your hand.
+ */
 export function dragNodeBehaviour(rawOptions?: Record<string, unknown>): Behaviour {
   const options = { pin: false, ...(rawOptions as { pin?: boolean }) };
   let dragging: string | null = null;
   let moved = false;
+  /** Node position minus grab position, in world units. Constant for the life of one drag. */
+  let grabOffset = { x: 0, y: 0 };
 
   return {
     id: 'drag-node',
-    description: 'Drag a node to move it; optionally leaves it pinned where it was dropped.',
+    description: 'Drag a node to move it, from wherever you took hold of it.',
     onPointerDown(input, ctx) {
-      const [hit] = ctx.hitTest(ctx.toWorld(input.at));
+      const world = ctx.toWorld(input.at);
+      const [hit] = ctx.hitTest(world);
       if (!hit) return;
       dragging = hit;
       moved = false;
+      const at = ctx.positionOf(hit);
+      grabOffset = at ? { x: at.x - world.x, y: at.y - world.y } : { x: 0, y: 0 };
       return true;
     },
     onPointerMove(input, ctx) {
       if (!dragging) return;
       moved = true;
-      ctx.pin(dragging, ctx.toWorld(input.at));
+      const world = ctx.toWorld(input.at);
+      ctx.pin(dragging, { x: world.x + grabOffset.x, y: world.y + grabOffset.y });
       return true;
     },
     onPointerUp(input, ctx) {
@@ -88,10 +102,13 @@ export function dragNodeBehaviour(rawOptions?: Record<string, unknown>): Behavio
       const id = dragging;
       dragging = null;
       if (!moved) return;
-      const at = ctx.toWorld(input.at);
+      const world = ctx.toWorld(input.at);
+      const at = { x: world.x + grabOffset.x, y: world.y + grabOffset.y };
       // Released rather than left pinned by default: on an explorer, a dragged node that stays put
       // fights the layout for every subsequent expansion. A board passes `pin: true`.
       if (!options.pin) ctx.pin(id, null);
+      // The node's position, not the pointer's — what a board persists has to be where the node
+      // actually ended up.
       ctx.emit({ type: 'nodeDragEnd', node: { id, kind: 'entity', type: '' }, position: at });
       return true;
     },

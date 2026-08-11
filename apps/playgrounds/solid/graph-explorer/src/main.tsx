@@ -9,12 +9,14 @@
  */
 import '@we/primitives';
 import '@we/tokens/css';
+// Every theme, switched by the `data-we-theme` attribute below — the same mechanism the app uses.
+import '@we/themes';
 import '@we/graph-solid/styles';
 import './styles.css';
 
 import { Column, Row } from '@we/components/solid';
 import { GraphView } from '@we/graph-solid';
-import { createMemo, createSignal, For, Show } from 'solid-js';
+import { createEffect, createMemo, createSignal, For, Show } from 'solid-js';
 import { render } from 'solid-js/web';
 
 import { createHost, type QueryLog } from './host';
@@ -25,6 +27,14 @@ function App() {
   const [layoutOverride, setLayoutOverride] = createSignal<string | null>(null);
   const [selected, setSelected] = createSignal<{ type: string; label?: string; kind: string } | null>(null);
   const [log, setLog] = createSignal<QueryLog['entries']>([]);
+  const [theme, setTheme] = createSignal<'light' | 'dark'>('light');
+
+  /**
+   * Themes are CSS-variable overlays selected by an attribute on the root, so switching one is a
+   * single `setAttribute` — and worth having here precisely because the graph paints tokens rather
+   * than colours. Anything hardcoded shows up the moment this flips.
+   */
+  createEffect(() => document.documentElement.setAttribute('data-we-theme', theme()));
 
   // A live log of what the graph actually asked the data layer for. Worth having in front of you:
   // "one expansion, four queries" is the kind of thing that is obvious here and invisible in an app.
@@ -69,7 +79,18 @@ function App() {
         flex="0 0 auto"
       >
         <Column gap="100">
-          <we-text variant="heading-sm">Graph engine</we-text>
+          <Row ax="between" ay="center" gap="200">
+            <we-text variant="heading-sm">Graph engine</we-text>
+            <we-button
+              variant="ghost"
+              size="sm"
+              square
+              title={theme() === 'dark' ? 'Switch to light' : 'Switch to dark'}
+              onClick={() => setTheme((current) => (current === 'dark' ? 'light' : 'dark'))}
+            >
+              <we-icon name={theme() === 'dark' ? 'sun' : 'moon'} size="sm" />
+            </we-button>
+          </Row>
           <we-text variant="footnote" color="neutral-500">
             Real engine, in-memory data. No AD4M.
           </we-text>

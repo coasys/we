@@ -2,3 +2,4 @@
 
 declare module '@we/tokens/css';
 declare module '*.css';
+declare module '@we/themes';
