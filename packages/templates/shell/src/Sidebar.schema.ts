@@ -21,7 +21,7 @@ import { railGroup, railItem, railShell } from '@we/template-kit';
  * that cause them: the items are top-aligned rather than vertically centred, and a group's heading
  * leaves rather than fading in place.
  */
-const USE_FRAGMENT_RAIL = true;
+const USE_FRAGMENT_RAIL = false;
 
 /**
  * The collapsed width, matching `SHELL_SIDEBAR_WIDTH` in TemplateLayout — which is what the page
