@@ -109,8 +109,8 @@ function main() {
     }
 
     // Create empty config files so build doesn't fail
-    fs.writeFileSync(PORT_MAP_FILE, JSON.stringify({}, null, 2));
-    fs.writeFileSync(PORT_MAP_FILE_WEB, JSON.stringify({}, null, 2));
+    fs.writeFileSync(PORT_MAP_FILE, JSON.stringify({}, null, 2) + '\n');
+    fs.writeFileSync(PORT_MAP_FILE_WEB, JSON.stringify({}, null, 2) + '\n');
 
     writeRuntimeConfig(seed);
 
@@ -179,19 +179,19 @@ function main() {
   }
 
   // Write port map JSON (both in src-tauri/generated and src/generated for Vite access)
-  fs.writeFileSync(PORT_MAP_FILE, JSON.stringify(portMap, null, 2), 'utf8');
+  fs.writeFileSync(PORT_MAP_FILE, JSON.stringify(portMap, null, 2) + '\n', 'utf8');
   console.log(`✅ Port map written to: ${path.relative(process.cwd(), PORT_MAP_FILE)}`);
 
   // Also write to src/generated for Vite/frontend access
   if (!fs.existsSync(SRC_GENERATED_DIR)) {
     fs.mkdirSync(SRC_GENERATED_DIR, { recursive: true });
   }
-  fs.writeFileSync(PORT_MAP_FILE_WEB, JSON.stringify(portMap, null, 2), 'utf8');
+  fs.writeFileSync(PORT_MAP_FILE_WEB, JSON.stringify(portMap, null, 2) + '\n', 'utf8');
   console.log(`✅ Port map (frontend) written to: ${path.relative(process.cwd(), PORT_MAP_FILE_WEB)}`);
 
   // Write bundle resources JSON
   const BUNDLE_RESOURCES_FILE = path.join(OUTPUT_DIR, 'seed-bundle-resources.json');
-  fs.writeFileSync(BUNDLE_RESOURCES_FILE, JSON.stringify(bundleResources, null, 2), 'utf8');
+  fs.writeFileSync(BUNDLE_RESOURCES_FILE, JSON.stringify(bundleResources, null, 2) + '\n', 'utf8');
   console.log(`✅ Bundle resources written to: ${path.relative(process.cwd(), BUNDLE_RESOURCES_FILE)}`);
 
   // Generate Rust app server code
@@ -313,7 +313,7 @@ function updateTauriConfig(bundleResources) {
     config.bundle = config.bundle || {};
     config.bundle.resources = bundleResources;
 
-    fs.writeFileSync(TAURI_CONF_FILE, JSON.stringify(config, null, 2), 'utf8');
+    fs.writeFileSync(TAURI_CONF_FILE, JSON.stringify(config, null, 2) + '\n', 'utf8');
     console.log(`✅ Updated tauri.conf.json with generated resources`);
   } catch (error) {
     console.error(`❌ Failed to update tauri.conf.json:`, error.message);
