@@ -62,7 +62,7 @@ export function commentThread(opts: CommentThreadOptions): SchemaNode {
             condition: { $count: { items: `$${as}.comments` } },
             then: {
               type: 'we-text',
-              props: { variant: 'footnote', color: 'neutral-400' },
+              props: { variant: 'footnote', color: 'text-faint' },
               children: [
                 { type: 'we-number', props: { value: { $count: { items: `$${as}.comments` } } } },
                 ' more in this thread',
@@ -106,16 +106,26 @@ export function commentThread(opts: CommentThreadOptions): SchemaNode {
 /** The reply count on a node, as a label — "4 replies". Reads the relation without loading it. */
 export function replyCount(anchor: string): SchemaNode {
   return {
-    type: 'Row',
-    props: { gap: '100', ay: 'center' },
-    children: [
-      { type: 'we-number', props: { value: { $count: { items: `${anchor}.comments` } }, shorten: true } },
-      {
-        type: 'we-text',
-        props: { variant: 'footnote', color: 'neutral-400' },
-        children: [{ $plural: { count: { $count: { items: `${anchor}.comments` } }, one: 'reply', other: 'replies' } }],
+    type: '$if',
+    // "0 replies" under every post in a quiet feed is a column of zeroes asserting nothing, and it
+    // is the row's whole height. A count is worth showing once there is something to count.
+    props: {
+      condition: { $count: { items: `${anchor}.comments` } },
+      then: {
+        type: 'Row',
+        props: { gap: '100', ay: 'center' },
+        children: [
+          { type: 'we-number', props: { value: { $count: { items: `${anchor}.comments` } }, shorten: true } },
+          {
+            type: 'we-text',
+            props: { variant: 'footnote', color: 'text-faint' },
+            children: [
+              { $plural: { count: { $count: { items: `${anchor}.comments` } }, one: 'reply', other: 'replies' } },
+            ],
+          },
+        ],
       },
-    ],
+    },
   };
 }
 

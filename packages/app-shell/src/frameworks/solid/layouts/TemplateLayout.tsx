@@ -274,7 +274,13 @@ export function TemplateLayout(props: ParentProps & { stores: Stores }) {
           pointerEvents={stores.appStore.activeAppId() ? 'none' : 'auto'}
           overflow="auto"
           scrollbarGutter="stable"
-          bg="neutral-50"
+          // The surface a template is painted on, so it is the `page` role rather than the scale
+          // position that happened to look right in the two themes that existed. It carries
+          // `data-we-theme` on the same element, which is what makes the difference visible: a
+          // space theme pinning `page` restyled everything it owned and left this — its own
+          // backing — a shade off, showing as a frame around a template that did not fill the
+          // viewport. Defaults to `neutral-50`, exactly what was here.
+          bg="page"
           data-we-theme={spaceThemeName()}
           styles={spaceThemeStyle()}
         >

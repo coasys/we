@@ -79,46 +79,63 @@ const leftRail: SchemaNode = {
   ],
 };
 
-/** One post in the timeline: byline, content, reactions, reply count. */
-const postCard = (opts: { clickable?: boolean }): SchemaNode => ({
-  type: 'Column',
-  props: { width: '100%', gap: '300', p: '400', borderBottom: '1px solid neutral-200' },
-  children: [
-    agentByline({ did: '$post.author', timestamp: '$post.createdAt' }),
-    opts.clickable
-      ? {
-          // `bare`, not `ghost`: the card supplies its own affordance, and a ghost hover rectangle
-          // over a post reads as a selection state it does not have.
-          type: 'we-button',
-          props: {
-            variant: 'bare',
-            width: '100%',
-            onClick: { $action: 'routeStore.navigate', args: [{ $concat: ['/post/', '$post.id'] }] },
-          },
-          children: [
-            {
-              type: 'BlockRenderer',
-              props: {
-                editorState: '$post.editorState',
-                perspective: { $store: 'datasetStore.currentDataset.handle' },
-              },
-            },
-          ],
-        }
-      : {
-          type: 'BlockRenderer',
-          props: {
-            editorState: '$post.editorState',
-            perspective: { $store: 'datasetStore.currentDataset.handle' },
-          },
+/**
+ * One post in the timeline.
+ *
+ * Stacked: the avatar sits beside the *whole* post — name, text and actions all in one column to its
+ * right — rather than only beside the name with the text starting again at the far left. The
+ * difference is a single hanging edge running down the feed instead of two, and it is most of what
+ * makes a timeline read as a column of utterances rather than a stack of cards.
+ */
+const postCard = (opts: { clickable?: boolean }): SchemaNode => {
+  const body: SchemaNode = opts.clickable
+    ? {
+        // `bare`, not `ghost`: the card supplies its own affordance, and a ghost hover rectangle
+        // over a post reads as a selection state it does not have.
+        type: 'we-button',
+        props: {
+          variant: 'bare',
+          width: '100%',
+          onClick: { $action: 'routeStore.navigate', args: [{ $concat: ['/post/', '$post.id'] }] },
         },
-    {
-      type: 'Row',
-      props: { gap: '600', ay: 'center', width: '100%' },
-      children: [signalRow('$post'), replyCount('$post')],
-    },
-  ],
-});
+        children: [
+          {
+            type: 'BlockRenderer',
+            props: {
+              editorState: '$post.editorState',
+              perspective: { $store: 'datasetStore.currentDataset.handle' },
+            },
+          },
+        ],
+      }
+    : {
+        type: 'BlockRenderer',
+        props: {
+          editorState: '$post.editorState',
+          perspective: { $store: 'datasetStore.currentDataset.handle' },
+        },
+      };
+
+  return {
+    type: 'Column',
+    props: { width: '100%', p: '400', borderBottom: '1px solid border' },
+    children: [
+      agentByline({
+        did: '$post.author',
+        timestamp: '$post.createdAt',
+        stacked: true,
+        children: [
+          body,
+          {
+            type: 'Row',
+            props: { gap: '600', ay: 'center', width: '100%', pt: '200' },
+            children: [signalRow('$post'), replyCount('$post')],
+          },
+        ],
+      }),
+    ],
+  };
+};
 
 const timeline: SchemaNode = {
   type: 'Column',
@@ -134,7 +151,7 @@ const timeline: SchemaNode = {
   children: [
     {
       type: 'Row',
-      props: { gap: '200', p: '300', ay: 'center', borderBottom: '1px solid neutral-200' },
+      props: { gap: '200', p: '300', ay: 'center', borderBottom: '1px solid border' },
       children: [
         {
           type: '$each',
@@ -243,7 +260,7 @@ const postDetail: RouteSchema = {
               reply: (as) => [
                 {
                   type: 'Column',
-                  props: { width: '100%', gap: '200', py: '300', borderTop: '1px solid neutral-200' },
+                  props: { width: '100%', gap: '200', py: '300', borderTop: '1px solid border' },
                   children: [
                     agentByline({ did: `$${as}.author`, timestamp: `$${as}.createdAt` }),
                     {
@@ -275,7 +292,7 @@ export const twitterTemplate: TemplateSchema = {
     themeId: 'timeline',
   },
   type: 'Row',
-  props: { bg: 'neutral-50', width: '100%', minHeight: '100%', ax: 'center', ay: 'stretch' },
+  props: { bg: 'page', width: '100%', minHeight: '100%', ax: 'center', ay: 'stretch' },
   children: [
     leftRail,
     {
@@ -286,8 +303,8 @@ export const twitterTemplate: TemplateSchema = {
         flex: '1',
         minWidth: '0',
         bg: 'neutral-0',
-        borderLeft: '1px solid neutral-200',
-        borderRight: '1px solid neutral-200',
+        borderLeft: '1px solid border',
+        borderRight: '1px solid border',
       },
       children: [{ type: '$routes' }],
     },
@@ -323,7 +340,7 @@ export const twitterTemplate: TemplateSchema = {
       path: '*',
       type: 'Column',
       props: { p: '600', ax: 'center' },
-      children: [{ type: 'we-text', props: { color: 'neutral-400' }, children: ['Not found.'] }],
+      children: [{ type: 'we-text', props: { color: 'text-faint' }, children: ['Not found.'] }],
     },
   ],
 };

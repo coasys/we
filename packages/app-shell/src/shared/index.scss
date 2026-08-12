@@ -12,15 +12,23 @@ body,
   padding: 0;
   overflow: hidden;
   display: flex;
-  background-color: var(--we-color-neutral-50);
 
-  // Set default text color
+  // What sits behind the app *is* the page, so a theme pinning that role should reach here — and it
+  // did not: a theme could paint every surface it owned and still leave a frame of `neutral-50`
+  // around the whole window, wherever the app did not fill the viewport. `role.page` defaults to
+  // `neutral-50`, exactly what was hardcoded, so nothing moves for a theme that pins nothing.
+  background-color: var(--we-role-page);
+
+  // Deliberately *not* `--we-role-text`, which defaults to `neutral-900` rather than the
+  // `neutral-1000` here. Adopting it would darken-or-lighten body text in every existing theme as a
+  // side effect of a background fix. It belongs to the role migration proper, where the change can
+  // be seen and decided on.
   color: var(--we-color-neutral-1000);
 }
 
 // Before the app has mounted anything, paint what the boot screen is about to paint.
 //
-// The document background is neutral-50 — a shade lighter than the boot screen's neutral-0 — and
+// The document background is the `page` role — a shade lighter than the boot screen's neutral-0 — and
 // it is what fills the window between a reload and Solid's first render. On an account switch
 // that gap is long enough to see, so it read as the screen flashing a lighter colour. The window
 // background is set to the same token from the main process, so the whole chain
