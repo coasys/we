@@ -48,10 +48,22 @@ export const MODE = { document: 'document', feed: 'feed' } as const;
 /**
  * A composer in a modal, saving through `spaceStore.createPost`.
  *
- * One fragment for posts, messages, replies and event descriptions, because they differ only in
- * `kind` and where they anchor — the composer, the blob, the search index and the mention edges are
- * identical. That equivalence is the substrate's claim made concrete: if a reply needed its own
- * composer, replies would not really be compositions.
+ * One fragment for posts, messages, replies and cards, because they differ only in `kind` and where
+ * they anchor — the composer, the blob, the search index and the mention edges are identical. That
+ * equivalence is the substrate's claim made concrete: if a reply needed its own composer, replies
+ * would not really be compositions.
+ *
+ * ## The save handshake, which is not optional
+ *
+ * `BlockComposer.onSave` does **not** fire when the user types, or when the modal closes. It fires
+ * when somebody calls the composer's own `save()`, which it hands out once through `onReady`. So the
+ * wiring is: `onReady` stores that function in a `function`-typed local, the button calls it with
+ * `$callLocal`, and the action runs *inside* `onSave` with the serialized tree as `$arg`.
+ *
+ * Written the obvious way instead — button calls the action with a `draft` local the composer was
+ * expected to have filled in — it type-checks, validates, renders, and posts `null`, which surfaces
+ * as `Cannot read properties of null (reading 'type')` from deep inside `persistNode`. Nothing about
+ * the failure points at the missing handshake.
  */
 export function composerModal(opts: {
   /** `$localState` boolean on an ancestor of the *opening button*, not merely of this modal. */
@@ -70,63 +82,71 @@ export function composerModal(opts: {
       condition: { $local: opts.openLocal },
       then: {
         type: 'we-modal',
-        props: { close: { $setLocal: opts.openLocal, value: false } },
+        props: {
+          close: { $setLocal: opts.openLocal, value: false },
+          maxWidth: 'var(--we-layout-md)',
+          width: '100%',
+          ax: 'center',
+        },
         $localState: {
-          draft: { type: 'object', initial: null },
-          saving: { type: 'boolean', initial: false },
+          // The composer's own `save()`, handed over by `onReady`. A `function` field, which is
+          // what `$callLocal` reads.
+          savePost: { type: 'function', initial: null },
+          submitting: { type: 'boolean', initial: false },
         },
         children: [
+          { type: 'we-text', props: { variant: 'heading-md' }, children: [opts.title] },
           {
             type: 'Column',
-            props: { gap: '400', p: '400', width: '100%' },
+            props: { width: '100%', bg: 'neutral-25', p: '600', r: '400', overflow: 'auto' },
             children: [
-              { type: 'we-text', props: { variant: 'heading-md' }, children: [opts.title] },
               {
                 type: 'BlockComposer',
                 props: {
                   perspective: { $store: 'datasetStore.currentDataset.handle' },
-                  // The composer hands back its serialized tree; it is held rather than saved so
-                  // the save button owns the write and can show its own in-flight state.
-                  onSave: { $setLocal: 'draft', from: '$arg' },
-                },
-              },
-              {
-                type: 'Row',
-                props: { ax: 'end', gap: '200', width: '100%' },
-                children: [
-                  {
-                    type: 'we-button',
-                    props: { variant: 'ghost', onClick: { $setLocal: opts.openLocal, value: false } },
-                    children: ['Cancel'],
-                  },
-                  {
-                    type: 'we-button',
-                    props: {
-                      variant: 'primary',
-                      loading: { $local: 'saving' },
-                      // Disabled only while in flight, never on "nothing typed yet" — the house
-                      // rule, and here there is nothing locally judgeable about a draft anyway.
-                      disabled: { $local: 'saving' },
-                      onClick: [
-                        { $setLocal: 'saving', value: true },
+                  onReady: { $setLocal: 'savePost', from: '$event.save' },
+                  onSave: [
+                    { $setLocal: 'submitting', value: true },
+                    {
+                      $action: 'spaceStore.createPost',
+                      // `$arg` is the serialized tree the composer just produced, and it goes
+                      // first: `createPost(json, options)`.
+                      args: [
+                        '$arg',
                         {
-                          $action: 'spaceStore.createPost',
-                          args: [
-                            { $local: 'draft' },
-                            {
-                              kind: opts.kind,
-                              ...(opts.parentId !== undefined && { parentId: opts.parentId }),
-                              ...(opts.predicate && { predicate: opts.predicate }),
-                            },
-                          ],
-                          onSuccess: [{ $setLocal: opts.openLocal, value: false }],
-                          onFinally: [{ $setLocal: 'saving', value: false }],
+                          kind: opts.kind,
+                          ...(opts.parentId !== undefined && { parentId: opts.parentId }),
+                          ...(opts.predicate && { predicate: opts.predicate }),
                         },
                       ],
+                      onSuccess: [{ $setLocal: opts.openLocal, value: false }],
+                      onFinally: [{ $setLocal: 'submitting', value: false }],
                     },
-                    children: [opts.saveLabel ?? 'Post'],
-                  },
-                ],
+                  ],
+                },
+              },
+            ],
+          },
+          {
+            type: 'Row',
+            props: { ax: 'end', gap: '300', mt: '200', width: '100%' },
+            children: [
+              {
+                type: 'we-button',
+                props: { variant: 'ghost', onClick: { $setLocal: opts.openLocal, value: false } },
+                children: ['Cancel'],
+              },
+              {
+                type: 'we-button',
+                props: {
+                  variant: 'primary',
+                  loading: { $local: 'submitting' },
+                  // Disabled only while in flight, never on "nothing typed yet" — the house rule,
+                  // and nothing about a draft is locally judgeable anyway.
+                  disabled: { $local: 'submitting' },
+                  onClick: { $callLocal: 'savePost' },
+                },
+                children: [opts.saveLabel ?? 'Post'],
               },
             ],
           },
@@ -287,5 +307,18 @@ export function signalRow(nodeRef: string): SchemaNode {
   };
 }
 
-/** The hoisted subscription `signalRow` reads. Declare on a node above every use. */
+/**
+ * The hoisted subscription `signalRow` reads.
+ *
+ * **Declare it inside the route that uses it, never only on the template root.** A route subtree is
+ * rendered by `buildRoutes` through a fresh `RenderSchema` call, so it inherits *no* context from
+ * the template root — `$queries` and `$localState` declared up there are invisible below a
+ * `$routes` outlet. Getting this wrong is quiet in the worst way: the reads resolve to nothing, the
+ * `$count` guard reads falsy, and the signal controls simply never appear, with only a
+ * `Schema $local: field "signalTypes" not declared` line in the console to say so.
+ *
+ * One declaration per route, not per row: hoisting is what stops a feed of thirty posts opening
+ * thirty identical subscriptions, and it is what keeps the like-count projection and the controls
+ * below it agreeing about which type a slug names.
+ */
 export const signalTypesQuery = { signalTypes: { entity: 'SignalType', subscribe: true } };

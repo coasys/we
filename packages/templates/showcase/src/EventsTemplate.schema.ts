@@ -20,7 +20,7 @@
 import type { SchemaNode, TemplateSchema } from '@we/schema-shared';
 import { agentByline, collectionFeed, emptyState, peopleRow } from '@we/template-kit';
 
-import { composerModal, KIND, signalTypesQuery } from './shared.ts';
+import { composerModal, KIND } from './shared.ts';
 
 /** Am I on this roster? `$in` over the DID list — membership, not a scan. */
 const isAttending = (as: string) => ({ $in: ['$me.did', `$${as}.participants`] });
@@ -106,7 +106,6 @@ export const eventsTemplate: TemplateSchema = {
   type: 'Column',
   props: { bg: 'neutral-50', width: '100%', minHeight: '100%', ax: 'center' },
   $localState: { composeOpen: { type: 'boolean', initial: false } },
-  $queries: signalTypesQuery,
   children: [
     {
       type: 'Column',

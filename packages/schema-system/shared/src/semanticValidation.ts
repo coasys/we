@@ -1310,8 +1310,34 @@ function checkRoutes(
     });
   }
 
-  // Walk route nodes. isRouteEligible = true so route entries themselves may define sub-routes.
-  const routeState = { ...state, hasRoutesAncestor: true, isRouteEligible: true };
+  /*
+    Walk route nodes. `isRouteEligible` so route entries may define sub-routes of their own.
+
+    **Local scope resets at a route boundary**, and that is the renderer's behaviour rather than a
+    conservative choice: `buildRoutes` renders each route through its own `RenderSchema` call, which
+    starts with no inherited context. So a `$localState` field or a `$queries` entry declared on the
+    template root is invisible to everything below a `$routes` outlet.
+
+    Carrying the parent's scope across here made the validator disagree with the renderer in the
+    quietest possible direction — it *approved* reads that resolve to nothing at runtime. A feed
+    whose hoisted `signalTypes` query sat on the template root passed validation and then rendered
+    no signal controls at all, with a `field "signalTypes" not declared` line in the console as the
+    only evidence.
+  */
+  const routeState = {
+    ...state,
+    hasRoutesAncestor: true,
+    isRouteEligible: true,
+    /*
+      An **empty** scope, not `null`. The two mean different things here: `null` is "unknown", which
+      is how a fragment validated on its own is treated so that reading a local its eventual parent
+      declares is not an error. Below a route there is nothing unknown — the renderer starts that
+      subtree with no context at all — so an empty set is the accurate statement, and it is what
+      makes the orphan check run rather than be skipped.
+    */
+    localScope: new Set<string>(),
+    queryScope: new Set<string>(),
+  };
   for (let i = 0; i < routes.length; i++) {
     walkNode(routes[i], `${path}.routes[${i}]`, ctx, routeState, errors);
   }

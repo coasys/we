@@ -296,7 +296,6 @@ export const youtubeTemplate: TemplateSchema = {
   type: 'Column',
   props: { bg: 'neutral-50', width: '100%', minHeight: '100%' },
   $localState: { composeOpen: { type: 'boolean', initial: false } },
-  $queries: signalTypesQuery,
   children: [
     {
       type: 'Row',

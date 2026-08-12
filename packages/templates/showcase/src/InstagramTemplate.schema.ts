@@ -211,7 +211,6 @@ export const instagramTemplate: TemplateSchema = {
   },
   type: 'Column',
   props: { bg: 'neutral-50', width: '100%', minHeight: '100%' },
-  $queries: signalTypesQuery,
   children: [header, { type: '$routes' }],
   routes: [
     {

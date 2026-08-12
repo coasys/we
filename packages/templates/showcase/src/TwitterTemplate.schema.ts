@@ -123,6 +123,9 @@ const postCard = (opts: { clickable?: boolean }): SchemaNode => ({
 const timeline: SchemaNode = {
   type: 'Column',
   props: { width: '100%' },
+  // Declared here rather than inherited from the template root: a route subtree renders through a
+  // fresh `RenderSchema`, so the root's `$queries` never reach it. See `signalTypesQuery`.
+  $queries: signalTypesQuery,
   $localState: {
     // View state, mirrored into the URL: a link to "top posts" should open on top posts for
     // whoever receives it. Sort replaces rather than pushes, so history is not a keystroke log.
@@ -270,7 +273,6 @@ export const twitterTemplate: TemplateSchema = {
   },
   type: 'Row',
   props: { bg: 'neutral-50', width: '100%', minHeight: '100%', ax: 'center', ay: 'stretch' },
-  $queries: signalTypesQuery,
   children: [
     leftRail,
     {

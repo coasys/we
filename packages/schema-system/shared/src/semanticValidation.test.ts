@@ -139,3 +139,64 @@ describe('undeclared local writes', () => {
     expect(messages(node, 'error').join()).toContain('onConfrim');
   });
 });
+
+describe('local scope across a route boundary', () => {
+  /**
+   * `buildRoutes` renders each route through its own `RenderSchema` call, so a route subtree
+   * inherits no context — `$localState` and `$queries` on the template root are invisible below a
+   * `$routes` outlet. The validator used to carry the parent scope across, which made it *approve*
+   * reads that resolve to nothing: the showcase Timeline template hoisted its `signalTypes` query
+   * onto the root, validated clean, and rendered no signal controls at all.
+   *
+   * The reads are in `props` because that is where the real ones were (a `$count` guard and a
+   * `$find` inside a query projection) — and because a token sitting directly in a `children` array
+   * is not walked at all, which is a separate gap this does not pretend to cover.
+   */
+  const template = (routes: unknown): SchemaNode =>
+    ({
+      meta: { name: 'T', description: 'd', icon: 'bug' },
+      type: 'Column',
+      $queries: { signalTypes: { entity: 'SignalType' } },
+      $localState: { draft: { type: 'string', initial: '' } },
+      children: [{ type: '$routes' }],
+      routes,
+    }) as SchemaNode;
+
+  const readsSignalTypes = { type: 'we-text', props: { text: { $local: 'signalTypes' } } };
+
+  it('rejects a route reading a $queries entry declared on the root', () => {
+    const node = template([{ path: '/', type: 'Column', children: [readsSignalTypes] }]);
+    expect(messages(node, 'error').join(' ')).toMatch(/\$local references "signalTypes"/);
+  });
+
+  it('rejects a route reading a $localState field declared on the root', () => {
+    const node = template([
+      { path: '/', type: 'Column', children: [{ type: 'we-text', props: { text: { $local: 'draft' } } }] },
+    ]);
+    expect(messages(node, 'error').join(' ')).toMatch(/\$local references "draft"/);
+  });
+
+  it('accepts the same read when the route declares it itself', () => {
+    const node = template([
+      {
+        path: '/',
+        type: 'Column',
+        $queries: { signalTypes: { entity: 'SignalType' } },
+        children: [readsSignalTypes],
+      },
+    ]);
+    expect(messages(node, 'error')).toEqual([]);
+  });
+
+  it('still lets a route’s own declaration reach its nested children', () => {
+    const node = template([
+      {
+        path: '/',
+        type: 'Column',
+        $localState: { open: { type: 'boolean', initial: false } },
+        children: [{ type: 'Column', children: [{ type: 'we-text', props: { text: { $local: 'open' } } }] }],
+      },
+    ]);
+    expect(messages(node, 'error')).toEqual([]);
+  });
+});
