@@ -1,5 +1,7 @@
 // Design system styles (must be imported before components)
 import '@we/tokens/css';
+// The hosted webfonts are an opt-in separate file so the token variables stay offline-safe.
+import '@we/tokens/css/fonts';
 import '@we/primitives/solid';
 import '@we/components/styles';
 import '@we/widgets/styles';

@@ -329,7 +329,7 @@ Call store methods, with support for argument extraction from callbacks and asyn
 ```typescript
 {
   onClick: {
-    $action: 'adamStore.navigate',
+    $action: 'routeStore.navigate',
     args: ['/settings']
   }
 }
@@ -395,7 +395,7 @@ Call store methods, with support for argument extraction from callbacks and asyn
       $if: {
         condition: { $formValid: '$scope' },
         then: {
-          $action: 'adamStore.createSpace',
+          $action: 'spaceStore.createSpace',
           args: [{ $local: 'name' }, { $local: 'description' }],
           onSuccess: [{ $setLocal: 'createSpaceModalOpen', value: false }],
         },
@@ -413,7 +413,7 @@ Within `onSuccess` / `onError` / `onFinally` callback arrays, the string `'$resu
 
 ```typescript
 {
-  $action: 'adamStore.createSpace',
+  $action: 'spaceStore.createSpace',
   args: [...],
   onSuccess: [
     { $setLocal: 'modalOpen', value: false },
@@ -567,7 +567,7 @@ The first element is the value to search for; the second is the array to search 
 // Check whether the current perspective UUID is a system perspective
 {
   condition: {
-    $in: [{ $store: 'spaceStore.uuid' }, { $store: 'adamStore.systemPerspectiveUuids' }];
+    $in: [{ $store: 'spaceStore.uuid' }, { $store: 'datasetStore.systemDatasetUuids' }];
   }
 }
 
@@ -1124,7 +1124,7 @@ Conditionally renders entire subtrees based on a boolean condition.
 {
   type: '$if',
   props: {
-    condition: { $store: 'adamStore.bootState' },
+    condition: { $store: 'sessionStore.bootState' },
     then: {
       type: 'we-modal',
       props: { title: 'Settings' },
@@ -1383,7 +1383,7 @@ Load a single model item via a `$query` descriptor and render children with the 
     item: {
       $query: {
         model: 'Profile',
-        params: { author: { $store: 'adamStore.did' } },
+        params: { author: '$me.did' },
         subscribe: true
       }
     },

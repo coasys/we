@@ -4,8 +4,9 @@ import type { ComparisonOperator, ConditionExpr, ConditionOperand, ScopeGroup } 
 import { isUnaryOperator, parseCondition, serializeCondition } from '@we/schema-shared';
 import { createEffect, createMemo, createSignal, For, Show, untrack } from 'solid-js';
 
+import { exprComplete, operandValueType } from '../helpers';
 import { CodeViewer } from './CodeViewer';
-import { OperandInput, operandValueType } from './ValueRefPicker';
+import { OperandInput } from './ValueRefPicker';
 
 /**
  * Row-based editor for a condition token ($if conditions today; `disabled`/`hidden`
@@ -33,27 +34,6 @@ const OPERATOR_OPTIONS = (Object.keys(OPERATOR_LABELS) as ComparisonOperator[]).
 }));
 
 /** A reference with no path chosen yet, or an unfilled literal, isn't ready to emit. */
-function operandComplete(operand: ConditionOperand | undefined): boolean {
-  if (!operand) return false;
-  switch (operand.kind) {
-    case 'list':
-      return operand.value.length > 0;
-    case 'literal':
-      return operand.value !== '';
-    case 'count':
-      return operandComplete(operand.items);
-    case 'formState':
-      return operand.field.trim() !== '';
-    default:
-      return operand.path.trim() !== '';
-  }
-}
-
-function exprComplete(expr: ConditionExpr): boolean {
-  if (expr.type === 'group') return expr.children.length > 0 && expr.children.every(exprComplete);
-  if (!operandComplete(expr.left)) return false;
-  return isUnaryOperator(expr.operator) ? true : operandComplete(expr.right);
-}
 
 function emptyRow(): ConditionExpr {
   return { type: 'comparison', operator: 'truthy', left: { kind: 'context', path: '' } };

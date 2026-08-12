@@ -21,10 +21,11 @@
     }
   },
   "dependencies": {
+    "@we/backend-shared": "workspace:*",
     "@we/design-utils": "workspace:*",
+    "@we/themes": "workspace:*",
     "@we/tokens": "workspace:*",
-    "zod": "^4.1.12",
-    "@we/backend-shared": "workspace:*"
+    "zod": "^4.1.12"
   },
   "devDependencies": {
     "@types/node": "^24.10.0",

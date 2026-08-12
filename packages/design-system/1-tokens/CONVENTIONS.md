@@ -19,7 +19,10 @@ Each token category lives in its own source file under `src/`:
 | `font.ts`      | Font family, size, weight, line-height, letter-spacing | `--we-font-*`                                        |
 | `size.ts`      | Component sizes, radius, avatar sizes                  | `--we-size-*`, `--we-radius-*`, `--we-avatar-size-*` |
 | `border.ts`    | Border width, color                                    | `--we-border-*`                                      |
-| `effect.ts`    | Depth/shadow presets                                   | `--we-depth-*`                                       |
+| `shadow.ts`    | Shadow scale (the one components use via `shadow=`)    | `--we-shadow-*`                                      |
+| `role.ts`      | Semantic role slots over the scale                     | `--we-role-*`                                        |
+| `layout.ts`    | Layout measure widths                                  | `--we-layout-*`                                      |
+| `z-index.ts`   | Stacking layers                                        | `--we-z-*`                                           |
 | `animation.ts` | Transition durations                                   | `--we-transition-*`                                  |
 | `component.ts` | Component-specific tokens (scrollbar)                  | `--we-scrollbar-*`                                   |
 

@@ -13,9 +13,10 @@ import { formatExternalManifestForPrompt, sendClaudeRequest } from '@shared/ai/a
 import { applySchemaPatches, type SchemaPatch } from '@shared/ai/schemaPatches';
 import { deepClone } from '@shared/utils';
 import { type EditingTheme, useDatasetStore, useTemplateStore, useThemeStore } from '@solid/stores';
+import { toastService } from '@we/components/solid';
 import { ChatMessage as ChatMessageModel, ChatSession as ChatSessionModel } from '@we/models';
 import type { SchemaNode, TemplateSchema } from '@we/schema-shared';
-import { contextData } from '@we/schema-shared';
+import { contextData, setLocalWarningSink } from '@we/schema-shared';
 import {
   buildValidationContext,
   ensureNodeIds,
@@ -29,6 +30,7 @@ import {
   createEffect,
   createMemo,
   createSignal,
+  onCleanup,
   ParentProps,
   untrack,
   useContext,
@@ -313,7 +315,7 @@ export function EditorStoreProvider(props: ParentProps) {
   }
 
   // Wire theme history into the unified stack. ThemeStore is a parent provider and
-  // cannot call back into AiStore, so we register callbacks here after both stores
+  // cannot call back into EditorStore, so we register callbacks here after both stores
   // and the stack signals are initialised.
   themeStore.registerHistoryCallbacks({
     onEntry: (snapshot: EditingTheme) => {
@@ -540,6 +542,18 @@ export function EditorStoreProvider(props: ParentProps) {
     themeStore.cancelEditing();
   }
 
+  // Template-authoring warnings ($setLocal on an undeclared field, …) surface as
+  // toasts only while an editing surface is open. Installing this for every viewer
+  // toasted warnings from *stored* templates at people merely opening a space —
+  // an authoring diagnostic aimed at whoever can act on it, so it follows the
+  // editing session. The console keeps a copy either way (see schema-shared's
+  // propResolvers/local.ts).
+  createEffect(() => {
+    const authoring = isEditingTemplate() || isEditingTheme() || isOpen();
+    setLocalWarningSink(authoring ? (message) => toastService.warning(message) : null);
+  });
+  onCleanup(() => setLocalWarningSink(null));
+
   function toggleThemeEditing() {
     if (isEditingTheme()) {
       exitThemeEditing();
@@ -602,42 +616,21 @@ export function EditorStoreProvider(props: ParentProps) {
 
   // Panel widths — signal updates immediately; localStorage write is debounced to avoid
   // blocking the main thread on every mousemove pixel during drag-to-resize.
-  const [aiPanelWidth, setAiPanelWidthSignal] = createSignal(
-    parseInt(localStorage.getItem('we-ai-panel-width') ?? '400', 10),
-  );
-  const [codePanelWidth, setCodePanelWidthSignal] = createSignal(
-    parseInt(localStorage.getItem('we-code-panel-width') ?? '480', 10),
-  );
-  const [themePanelWidth, setThemePanelWidthSignal] = createSignal(
-    parseInt(localStorage.getItem('we-theme-panel-width') ?? '320', 10),
-  );
-  const [visualPanelWidth, setVisualPanelWidthSignal] = createSignal(
-    parseInt(localStorage.getItem('we-visual-panel-width') ?? '280', 10),
-  );
-  let aiWidthPersistTimer: ReturnType<typeof setTimeout> | undefined;
-  let codeWidthPersistTimer: ReturnType<typeof setTimeout> | undefined;
-  let themeWidthPersistTimer: ReturnType<typeof setTimeout> | undefined;
-  let visualWidthPersistTimer: ReturnType<typeof setTimeout> | undefined;
-  function setAiPanelWidth(w: number) {
-    setAiPanelWidthSignal(w);
-    clearTimeout(aiWidthPersistTimer);
-    aiWidthPersistTimer = setTimeout(() => localStorage.setItem('we-ai-panel-width', String(w)), 500);
+  // One helper, four panels: these were four byte-identical signal+debounce blocks.
+  function createPersistedWidth(storageKey: string, fallback: number) {
+    const [width, setWidthSignal] = createSignal(parseInt(localStorage.getItem(storageKey) ?? String(fallback), 10));
+    let persistTimer: ReturnType<typeof setTimeout> | undefined;
+    function setWidth(w: number) {
+      setWidthSignal(w);
+      clearTimeout(persistTimer);
+      persistTimer = setTimeout(() => localStorage.setItem(storageKey, String(w)), 500);
+    }
+    return [width, setWidth] as const;
   }
-  function setCodePanelWidth(w: number) {
-    setCodePanelWidthSignal(w);
-    clearTimeout(codeWidthPersistTimer);
-    codeWidthPersistTimer = setTimeout(() => localStorage.setItem('we-code-panel-width', String(w)), 500);
-  }
-  function setThemePanelWidth(w: number) {
-    setThemePanelWidthSignal(w);
-    clearTimeout(themeWidthPersistTimer);
-    themeWidthPersistTimer = setTimeout(() => localStorage.setItem('we-theme-panel-width', String(w)), 500);
-  }
-  function setVisualPanelWidth(w: number) {
-    setVisualPanelWidthSignal(w);
-    clearTimeout(visualWidthPersistTimer);
-    visualWidthPersistTimer = setTimeout(() => localStorage.setItem('we-visual-panel-width', String(w)), 500);
-  }
+  const [aiPanelWidth, setAiPanelWidth] = createPersistedWidth('we-ai-panel-width', 400);
+  const [codePanelWidth, setCodePanelWidth] = createPersistedWidth('we-code-panel-width', 480);
+  const [themePanelWidth, setThemePanelWidth] = createPersistedWidth('we-theme-panel-width', 320);
+  const [visualPanelWidth, setVisualPanelWidth] = createPersistedWidth('we-visual-panel-width', 280);
 
   // ----------------------------------------------------------------
   // API key management (persisted to AgentSettings)
@@ -855,12 +848,12 @@ export function EditorStoreProvider(props: ParentProps) {
             continue;
           }
 
-          console.log(`[EditorStore] Tool call ${tc.id} — ${patches.length} patch(es):`);
+          if (import.meta.env.DEV) console.log(`[EditorStore] Tool call ${tc.id} — ${patches.length} patch(es):`);
           for (const p of patches) {
             const op = p.node ? 'update' : p.insert ? 'insert' : 'remove';
-            console.log(`  targetId: "${p.targetId}", op: ${op}`);
+            if (import.meta.env.DEV) console.log(`  targetId: "${p.targetId}", op: ${op}`);
           }
-          console.log('[EditorStore] Patch detail:', JSON.stringify(patches, null, 2));
+          if (import.meta.env.DEV) console.log('[EditorStore] Patch detail:', JSON.stringify(patches, null, 2));
 
           // Apply ID-based patches to the accumulated schema (not to the store yet) — the
           // mechanics live in shared/ai/schemaPatches.
@@ -902,7 +895,7 @@ export function EditorStoreProvider(props: ParentProps) {
       // --- Atomic apply: validate + apply only if ALL tool calls succeeded ---
       if (allPatchesValid) {
         const mergedTemplate = accumulatedSchema as TemplateSchema;
-        console.log('[EditorStore] merged template:', JSON.stringify(mergedTemplate, null, 2));
+        if (import.meta.env.DEV) console.log('[EditorStore] merged template:', JSON.stringify(mergedTemplate, null, 2));
 
         // Step 1: Structural validation (Zod schema check)
         const structural = validateStructure(mergedTemplate);
@@ -922,7 +915,7 @@ export function EditorStoreProvider(props: ParentProps) {
             tr.is_error = true;
           }
         } else {
-          console.log('[EditorStore] Structural validation passed');
+          if (import.meta.env.DEV) console.log('[EditorStore] Structural validation passed');
 
           // Step 2: Semantic validation (component/prop/store checks)
           // Only fail on NEW issues introduced by the patch, not pre-existing ones
@@ -933,7 +926,8 @@ export function EditorStoreProvider(props: ParentProps) {
           const isClean = newIssues.length === 0;
 
           if (semantic.errors.length > 0 && newIssues.length === 0) {
-            console.log(`[EditorStore] Semantic validation: ${semantic.errors.length} pre-existing issue(s) ignored`);
+            if (import.meta.env.DEV)
+              console.log(`[EditorStore] Semantic validation: ${semantic.errors.length} pre-existing issue(s) ignored`);
           }
 
           if (!isClean) {
@@ -952,14 +946,15 @@ export function EditorStoreProvider(props: ParentProps) {
               tr.is_error = true;
             }
           } else if (isReadOnly()) {
-            console.log('[EditorStore] Semantic validation passed — buffering (read-only template)');
+            if (import.meta.env.DEV)
+              console.log('[EditorStore] Semantic validation passed — buffering (read-only template)');
             pushSnapshot();
             setPendingTemplate(stripNodeIds(mergedTemplate) as TemplateSchema);
             for (const tr of toolResults) {
               tr.content = 'Schema changes validated and buffered. Template is read-only — user must fork to apply.';
             }
           } else {
-            console.log('[EditorStore] Semantic validation passed — applying to store');
+            if (import.meta.env.DEV) console.log('[EditorStore] Semantic validation passed — applying to store');
             pushSnapshot();
             templateStore.updateTemplate({
               ...stripNodeIds(mergedTemplate),

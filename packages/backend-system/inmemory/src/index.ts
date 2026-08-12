@@ -6,17 +6,9 @@
  * template `$query` → shim → QueryIR → engine → render — over a non-AD4M backend, with ZERO changes
  * to the shared renderer. No `@coasys/ad4m` anywhere in this app's dependency graph.
  */
-import {
-  type AdapterCapabilities,
-  compileQuery,
-  executeQueryIR,
-  type InMemoryDataset,
-  irToFlatQuery,
-  planQuery,
-  type QueryAdapter,
-  type QueryIR,
-  type Row,
-} from '@we/backend-shared';
+import { compileQuery, executeQueryIR, type InMemoryDataset, type Row } from '@we/backend-shared';
+
+import { inMemoryQueryAdapter } from './queryAdapter';
 
 export type { Row } from '@we/backend-shared';
 
@@ -49,33 +41,6 @@ function toEngineRelations(relations: BackendConfig['relations']): InMemoryDatas
   }
   return out;
 }
-
-// The in-memory backend consumes the flat `$query` dialect (run() re-compiles it via executeQueryIR),
-// so its adapter lowers with the neutral `irToFlatQuery`. Capabilities mirror what that flat lowering
-// expresses — relation filters / non-count aggregates / scope stay gaps (irToFlatQuery throws on them),
-// which the renderer then falls back on. This is a real, AD4M-free QueryAdapter — it exercises the
-// same renderer path the AD4M adapter does.
-const inMemoryCapabilities: AdapterCapabilities = {
-  operators: ['eq', 'ne', 'lt', 'lte', 'gt', 'gte', 'in', 'nin', 'contains', 'exists'],
-  booleanCombinators: true,
-  relationFilters: false,
-  scope: false,
-  include: { supported: true },
-  aggregate: ['count'],
-  sort: { multiKey: true, byRelationPath: true, byAggregate: true },
-  pagination: ['offset'],
-  live: 'push',
-};
-
-const inMemoryQueryAdapter: QueryAdapter = {
-  capabilities: inMemoryCapabilities,
-  plan: (ir: QueryIR) => planQuery(ir, inMemoryCapabilities),
-  lower: (ir: QueryIR) => {
-    const { entity: _entity, ...opts } = irToFlatQuery(ir);
-    void _entity;
-    return opts;
-  },
-};
 
 export function createInMemoryBackend(config: BackendConfig) {
   const subscribers = new Set<() => void>();
@@ -138,3 +103,4 @@ export {
   type InMemoryDatasetSeed,
   type InMemoryLifecycle,
 } from './lifecycle';
+export { inMemoryCapabilities, inMemoryQueryAdapter } from './queryAdapter';

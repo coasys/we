@@ -118,7 +118,10 @@ export const spacesList: SchemaNode = cardList({
             {
               type: '$if',
               props: {
-                condition: '$space.location',
+                // Gated on city, not the location object: a lat/lng-only location
+                // (reverse geocoding off) renders ", " and says nothing. Matches
+                // the member card's gate.
+                condition: '$space.location.city',
                 then: statChip({
                   icon: 'map-pin',
                   label: 'Location',

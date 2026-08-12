@@ -748,6 +748,28 @@ mod tests {
         fs::write(path.join("mainnet_seed.seed"), "{}").unwrap();
     }
 
+    /// The registry file is shared with the electron host byte for byte, so both hosts parse the
+    /// same fixtures (apps/we-electron/electron/fixtures/) — a spelling that only one host reads
+    /// is a name-and-avatar wipe waiting for the next write. The electron suite reads these same
+    /// files; run with `cargo test`.
+    #[test]
+    fn parses_the_shared_registry_fixture_both_hosts_agree_on() {
+        let fixture = include_str!("../../../we-electron/electron/fixtures/registry.shared.json");
+        let state: RegistryState = serde_json::from_str(fixture).expect("shared fixture must parse");
+        assert_eq!(state.accounts.len(), 2);
+        assert_eq!(state.accounts[0].name, "Main");
+        assert_eq!(state.accounts[0].avatar.as_deref(), Some("data:image/png;base64,aGk="));
+        assert!(state.accounts[1].provisional);
+        assert!(state.selected_path.is_some());
+    }
+
+    #[test]
+    fn parses_the_legacy_snake_case_file_this_host_once_wrote() {
+        let fixture = include_str!("../../../we-electron/electron/fixtures/registry.legacy-tauri.json");
+        let state: RegistryState = serde_json::from_str(fixture).expect("legacy fixture must parse");
+        assert_eq!(state.selected_path.as_ref().map(|p| p.to_string_lossy().into_owned()), Some("<root>/.ad4m".to_string()));
+    }
+
     #[test]
     fn lists_the_default_account_before_anything_is_registered() {
         let (root, default_path, registry) = temp_registry();

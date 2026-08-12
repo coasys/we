@@ -1,30 +1,14 @@
 import type { SchemaNode, TemplateSchema } from '@we/schema-shared';
 
-import forBuildersV1 from '../assets/CTAv1/ForBuilders.jpg';
-import forCommunitiesV1 from '../assets/CTAv1/ForCommunitiesLarge.jpg';
-import howItWorksV1 from '../assets/CTAv1/HowItWorks.jpg';
-import seeItInPracticeV1 from '../assets/CTAv1/SeeItInPractice.jpg';
-import forBuildersV2 from '../assets/CTAv2/ForBuilders.jpg';
-import forCommunitiesV2 from '../assets/CTAv2/ForCommunities.jpg';
-import howItWorksV2 from '../assets/CTAv2/HowItWorks.jpg';
-import seeItInPracticeV2 from '../assets/CTAv2/SeeItInPractice.jpg';
+import forBuilders from '../assets/CTAv1/ForBuilders.jpg';
+import forCommunities from '../assets/CTAv1/ForCommunitiesLarge.jpg';
+import howItWorks from '../assets/CTAv1/HowItWorks.jpg';
+import seeItInPractice from '../assets/CTAv1/SeeItInPractice.jpg';
 
-const IMAGE_SETS = {
-  v1: {
-    forCommunities: forCommunitiesV1,
-    forBuilders: forBuildersV1,
-    howItWorks: howItWorksV1,
-    seeItInPractice: seeItInPracticeV1,
-  },
-  v2: {
-    forCommunities: forCommunitiesV2,
-    forBuilders: forBuildersV2,
-    howItWorks: howItWorksV2,
-    seeItInPractice: seeItInPracticeV2,
-  },
-} as const;
-
-const IMAGES = IMAGE_SETS.v1;
+// One image set. A v2 set sat here unreachable behind `IMAGE_SETS.v1` — 776 KB
+// that could never render but, being statically imported, could never be
+// tree-shaken either. It lives in git history if the redesign resumes.
+const IMAGES = { forCommunities, forBuilders, howItWorks, seeItInPractice };
 
 const FLIP_CARDS = [
   {

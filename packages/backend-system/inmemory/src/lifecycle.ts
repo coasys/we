@@ -14,17 +14,22 @@ import type {
   AgentSessionPort,
   BackendPorts,
   BackendPortsContext,
+  DataBindingDeps,
   DatasetChangeHandlers,
   DatasetLifecyclePort,
   DatasetRef,
+  EphemeralPort,
   ModelManifest,
   ProfileDirectoryPort,
+  RendererDataBindings,
   SchemaPort,
 } from '@we/backend-shared';
-import { registerModel } from '@we/models';
+import { createInMemoryEphemeralPort, InMemoryBus } from '@we/backend-shared';
+import { getModel, getModelForPerspective, registerModel } from '@we/models';
 import { CORE_MANIFEST } from '@we/models/generated/coreManifest';
 
 import { compileEntities, type EntityRuntime } from './entities';
+import { inMemoryQueryAdapter } from './queryAdapter';
 
 export interface InMemoryDatasetSeed {
   id: string;
@@ -257,11 +262,17 @@ export interface InMemoryBackendPortsOptions {
 
 /**
  * The complete in-memory backend — what a test (or a backend-less demo host) returns from
- * `BackendConnector.ports()`. Ephemeral reports the capability absent.
+ * `BackendConnector.ports()`.
  *
  * Connecting registers the core entities, which is when `Space`, `AgentSettings` and the rest
  * resolve to something that works. That mirrors the AD4M connector: entities exist because a
  * backend supplied them, never because a module was imported.
+ *
+ * The data plane is real, not stubbed: `dataBindings` exposes the same binding surface the AD4M
+ * adapter does ($getModel, $queryAdapter, model mutations, $identities, $ephemeral), backed by the
+ * row-backed entities and the shared query engine, and `ephemeral` is the shared in-process bus.
+ * That is what makes this bundle a conformance surface rather than a boot-only stub — a suite
+ * running against these ports can exercise queries and mutations, not just lifecycle.
  */
 export function createInMemoryBackendPorts(
   ctx: BackendPortsContext,
@@ -274,12 +285,60 @@ export function createInMemoryBackendPorts(
   const manifest = opts.entities === undefined ? CORE_MANIFEST : opts.entities;
   if (manifest) schemas.declare(manifest, { moduleId: 'core' });
 
+  // One bus per bundle; the per-agent port is constructed lazily so the agent id is read after
+  // the session unlocks (mirrors the AD4M port's lazy selfId).
+  const bus = new InMemoryBus();
+  const ephemeral: EphemeralPort = (dataset) =>
+    createInMemoryEphemeralPort(bus, ctx.selfId() ?? 'did:inmemory:anonymous')(dataset);
+
+  const mutationDataset = (deps: DataBindingDeps, opts?: Record<string, unknown>): unknown => {
+    const explicit = opts?.perspective as { handle?: unknown } | undefined;
+    if (explicit && typeof explicit === 'object' && 'handle' in explicit) return explicit.handle;
+    return deps.currentDataset();
+  };
+
   return {
     agentSession: createInMemoryAgentSession(opts.agent),
     lifecycle,
     schemas,
     profiles: createInMemoryProfileDirectory(ctx),
-    ephemeral: () => null,
-    dataBindings: (deps) => ({ $currentDataset: deps.currentDataset, $ephemeral: deps.ephemeral }),
+    ephemeral,
+    dataBindings: (deps) => ({
+      $currentDataset: deps.currentDataset,
+      // @we/models' ModelClass and the contract's ModelClass<unknown> are structurally
+      // compatible but declared separately; the cast bridges the two declarations.
+      $getModel: (name) => getModel(name) as unknown as ReturnType<NonNullable<RendererDataBindings['$getModel']>>,
+      $getModelForPerspective: (name, dataset) =>
+        getModelForPerspective(name, dataset) as ReturnType<
+          NonNullable<RendererDataBindings['$getModelForPerspective']>
+        >,
+      $queryAdapter: inMemoryQueryAdapter,
+      $identities: {
+        get: (id) => deps.profiles().find((p) => p.did === id) as Record<string, unknown> | undefined,
+        fetch: (id) => void deps.fetchProfile(id),
+      },
+      $ephemeral: deps.ephemeral,
+      model: {
+        async create(model, data, mutationOpts) {
+          const cls = getModel(model) as unknown as {
+            create(dataset: unknown, data?: Record<string, unknown>): Promise<{ id: string }>;
+          };
+          return cls.create(mutationDataset(deps, mutationOpts), data);
+        },
+        async update(model, id, data, mutationOpts) {
+          const cls = getModel(model) as unknown as {
+            update(dataset: unknown, id: string, data: Record<string, unknown>): Promise<unknown>;
+          };
+          return cls.update(mutationDataset(deps, mutationOpts), id, data);
+        },
+        async delete(model, id, mutationOpts) {
+          const cls = getModel(model) as unknown as {
+            findOne(dataset: unknown, query?: Record<string, unknown>): Promise<{ delete(): Promise<void> } | null>;
+          };
+          const instance = await cls.findOne(mutationDataset(deps, mutationOpts), { where: { id } });
+          await instance?.delete();
+        },
+      },
+    }),
   };
 }

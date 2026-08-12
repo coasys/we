@@ -1,0 +1,294 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`token CSS generation > color.css — hues, lightness ramp, palettes, roles, gradient 1`] = `
+"/* COLOR TOKENS - Generated from JS tokens */
+
+:root {
+  /* Color System Configuration */
+  --we-color-multiplier: 1;
+  --we-color-subtractor: 0%;
+  --we-color-saturation: 60%;
+  --we-color-neutral-saturation: 10%;
+
+  /* Color Hues */
+  --we-color-neutral-hue: var(--we-color-primary-hue);
+  --we-color-primary-hue: 250;
+  --we-color-success-hue: 130;
+  --we-color-warning-hue: 45;
+  --we-color-danger-hue: 350;
+
+  /* Lightness Scale */
+  --we-color-lightness-0: calc((100% - var(--we-color-subtractor)) * var(--we-color-multiplier));
+  --we-color-lightness-25: calc((97.5% - var(--we-color-subtractor)) * var(--we-color-multiplier));
+  --we-color-lightness-50: calc((95% - var(--we-color-subtractor)) * var(--we-color-multiplier));
+  --we-color-lightness-75: calc((92.5% - var(--we-color-subtractor)) * var(--we-color-multiplier));
+  --we-color-lightness-100: calc((90% - var(--we-color-subtractor)) * var(--we-color-multiplier));
+  --we-color-lightness-200: calc((80% - var(--we-color-subtractor)) * var(--we-color-multiplier));
+  --we-color-lightness-300: calc((70% - var(--we-color-subtractor)) * var(--we-color-multiplier));
+  --we-color-lightness-400: calc((60% - var(--we-color-subtractor)) * var(--we-color-multiplier));
+  --we-color-lightness-500: calc((50% - var(--we-color-subtractor)) * var(--we-color-multiplier));
+  --we-color-lightness-600: calc((40% - var(--we-color-subtractor)) * var(--we-color-multiplier));
+  --we-color-lightness-700: calc((30% - var(--we-color-subtractor)) * var(--we-color-multiplier));
+  --we-color-lightness-800: calc((20% - var(--we-color-subtractor)) * var(--we-color-multiplier));
+  --we-color-lightness-900: calc((10% - var(--we-color-subtractor)) * var(--we-color-multiplier));
+  --we-color-lightness-1000: calc((0% - var(--we-color-subtractor)) * var(--we-color-multiplier));
+
+  /* Neutral Colors */
+  --we-color-neutral-0: hsl(var(--we-color-neutral-hue) var(--we-color-neutral-saturation) var(--we-color-lightness-0));
+  --we-color-neutral-25: hsl(var(--we-color-neutral-hue) var(--we-color-neutral-saturation) var(--we-color-lightness-25));
+  --we-color-neutral-50: hsl(var(--we-color-neutral-hue) var(--we-color-neutral-saturation) var(--we-color-lightness-50));
+  --we-color-neutral-75: hsl(var(--we-color-neutral-hue) var(--we-color-neutral-saturation) var(--we-color-lightness-75));
+  --we-color-neutral-100: hsl(var(--we-color-neutral-hue) var(--we-color-neutral-saturation) var(--we-color-lightness-100));
+  --we-color-neutral-200: hsl(var(--we-color-neutral-hue) var(--we-color-neutral-saturation) var(--we-color-lightness-200));
+  --we-color-neutral-300: hsl(var(--we-color-neutral-hue) var(--we-color-neutral-saturation) var(--we-color-lightness-300));
+  --we-color-neutral-400: hsl(var(--we-color-neutral-hue) var(--we-color-neutral-saturation) var(--we-color-lightness-400));
+  --we-color-neutral-500: hsl(var(--we-color-neutral-hue) var(--we-color-neutral-saturation) var(--we-color-lightness-500));
+  --we-color-neutral-600: hsl(var(--we-color-neutral-hue) var(--we-color-neutral-saturation) var(--we-color-lightness-600));
+  --we-color-neutral-700: hsl(var(--we-color-neutral-hue) var(--we-color-neutral-saturation) var(--we-color-lightness-700));
+  --we-color-neutral-800: hsl(var(--we-color-neutral-hue) var(--we-color-neutral-saturation) var(--we-color-lightness-800));
+  --we-color-neutral-900: hsl(var(--we-color-neutral-hue) var(--we-color-neutral-saturation) var(--we-color-lightness-900));
+  --we-color-neutral-1000: hsl(var(--we-color-neutral-hue) var(--we-color-neutral-saturation) var(--we-color-lightness-1000));
+
+  /* Primary Colors */
+  --we-color-primary-0: hsl(var(--we-color-primary-hue) var(--we-color-saturation) var(--we-color-lightness-0));
+  --we-color-primary-25: hsl(var(--we-color-primary-hue) var(--we-color-saturation) var(--we-color-lightness-25));
+  --we-color-primary-50: hsl(var(--we-color-primary-hue) var(--we-color-saturation) var(--we-color-lightness-50));
+  --we-color-primary-75: hsl(var(--we-color-primary-hue) var(--we-color-saturation) var(--we-color-lightness-75));
+  --we-color-primary-100: hsl(var(--we-color-primary-hue) var(--we-color-saturation) var(--we-color-lightness-100));
+  --we-color-primary-200: hsl(var(--we-color-primary-hue) var(--we-color-saturation) var(--we-color-lightness-200));
+  --we-color-primary-300: hsl(var(--we-color-primary-hue) var(--we-color-saturation) var(--we-color-lightness-300));
+  --we-color-primary-400: hsl(var(--we-color-primary-hue) var(--we-color-saturation) var(--we-color-lightness-400));
+  --we-color-primary-500: hsl(var(--we-color-primary-hue) var(--we-color-saturation) var(--we-color-lightness-500));
+  --we-color-primary-600: hsl(var(--we-color-primary-hue) var(--we-color-saturation) var(--we-color-lightness-600));
+  --we-color-primary-700: hsl(var(--we-color-primary-hue) var(--we-color-saturation) var(--we-color-lightness-700));
+  --we-color-primary-800: hsl(var(--we-color-primary-hue) var(--we-color-saturation) var(--we-color-lightness-800));
+  --we-color-primary-900: hsl(var(--we-color-primary-hue) var(--we-color-saturation) var(--we-color-lightness-900));
+  --we-color-primary-1000: hsl(var(--we-color-primary-hue) var(--we-color-saturation) var(--we-color-lightness-1000));
+
+  /* Success Colors */
+  --we-color-success-0: hsl(var(--we-color-success-hue) var(--we-color-saturation) var(--we-color-lightness-0));
+  --we-color-success-25: hsl(var(--we-color-success-hue) var(--we-color-saturation) var(--we-color-lightness-25));
+  --we-color-success-50: hsl(var(--we-color-success-hue) var(--we-color-saturation) var(--we-color-lightness-50));
+  --we-color-success-75: hsl(var(--we-color-success-hue) var(--we-color-saturation) var(--we-color-lightness-75));
+  --we-color-success-100: hsl(var(--we-color-success-hue) var(--we-color-saturation) var(--we-color-lightness-100));
+  --we-color-success-200: hsl(var(--we-color-success-hue) var(--we-color-saturation) var(--we-color-lightness-200));
+  --we-color-success-300: hsl(var(--we-color-success-hue) var(--we-color-saturation) var(--we-color-lightness-300));
+  --we-color-success-400: hsl(var(--we-color-success-hue) var(--we-color-saturation) var(--we-color-lightness-400));
+  --we-color-success-500: hsl(var(--we-color-success-hue) var(--we-color-saturation) var(--we-color-lightness-500));
+  --we-color-success-600: hsl(var(--we-color-success-hue) var(--we-color-saturation) var(--we-color-lightness-600));
+  --we-color-success-700: hsl(var(--we-color-success-hue) var(--we-color-saturation) var(--we-color-lightness-700));
+  --we-color-success-800: hsl(var(--we-color-success-hue) var(--we-color-saturation) var(--we-color-lightness-800));
+  --we-color-success-900: hsl(var(--we-color-success-hue) var(--we-color-saturation) var(--we-color-lightness-900));
+  --we-color-success-1000: hsl(var(--we-color-success-hue) var(--we-color-saturation) var(--we-color-lightness-1000));
+
+  /* Warning Colors */
+  --we-color-warning-0: hsl(var(--we-color-warning-hue) var(--we-color-saturation) var(--we-color-lightness-0));
+  --we-color-warning-25: hsl(var(--we-color-warning-hue) var(--we-color-saturation) var(--we-color-lightness-25));
+  --we-color-warning-50: hsl(var(--we-color-warning-hue) var(--we-color-saturation) var(--we-color-lightness-50));
+  --we-color-warning-75: hsl(var(--we-color-warning-hue) var(--we-color-saturation) var(--we-color-lightness-75));
+  --we-color-warning-100: hsl(var(--we-color-warning-hue) var(--we-color-saturation) var(--we-color-lightness-100));
+  --we-color-warning-200: hsl(var(--we-color-warning-hue) var(--we-color-saturation) var(--we-color-lightness-200));
+  --we-color-warning-300: hsl(var(--we-color-warning-hue) var(--we-color-saturation) var(--we-color-lightness-300));
+  --we-color-warning-400: hsl(var(--we-color-warning-hue) var(--we-color-saturation) var(--we-color-lightness-400));
+  --we-color-warning-500: hsl(var(--we-color-warning-hue) var(--we-color-saturation) var(--we-color-lightness-500));
+  --we-color-warning-600: hsl(var(--we-color-warning-hue) var(--we-color-saturation) var(--we-color-lightness-600));
+  --we-color-warning-700: hsl(var(--we-color-warning-hue) var(--we-color-saturation) var(--we-color-lightness-700));
+  --we-color-warning-800: hsl(var(--we-color-warning-hue) var(--we-color-saturation) var(--we-color-lightness-800));
+  --we-color-warning-900: hsl(var(--we-color-warning-hue) var(--we-color-saturation) var(--we-color-lightness-900));
+  --we-color-warning-1000: hsl(var(--we-color-warning-hue) var(--we-color-saturation) var(--we-color-lightness-1000));
+
+  /* Danger Colors */
+  --we-color-danger-0: hsl(var(--we-color-danger-hue) var(--we-color-saturation) var(--we-color-lightness-0));
+  --we-color-danger-25: hsl(var(--we-color-danger-hue) var(--we-color-saturation) var(--we-color-lightness-25));
+  --we-color-danger-50: hsl(var(--we-color-danger-hue) var(--we-color-saturation) var(--we-color-lightness-50));
+  --we-color-danger-75: hsl(var(--we-color-danger-hue) var(--we-color-saturation) var(--we-color-lightness-75));
+  --we-color-danger-100: hsl(var(--we-color-danger-hue) var(--we-color-saturation) var(--we-color-lightness-100));
+  --we-color-danger-200: hsl(var(--we-color-danger-hue) var(--we-color-saturation) var(--we-color-lightness-200));
+  --we-color-danger-300: hsl(var(--we-color-danger-hue) var(--we-color-saturation) var(--we-color-lightness-300));
+  --we-color-danger-400: hsl(var(--we-color-danger-hue) var(--we-color-saturation) var(--we-color-lightness-400));
+  --we-color-danger-500: hsl(var(--we-color-danger-hue) var(--we-color-saturation) var(--we-color-lightness-500));
+  --we-color-danger-600: hsl(var(--we-color-danger-hue) var(--we-color-saturation) var(--we-color-lightness-600));
+  --we-color-danger-700: hsl(var(--we-color-danger-hue) var(--we-color-saturation) var(--we-color-lightness-700));
+  --we-color-danger-800: hsl(var(--we-color-danger-hue) var(--we-color-saturation) var(--we-color-lightness-800));
+  --we-color-danger-900: hsl(var(--we-color-danger-hue) var(--we-color-saturation) var(--we-color-lightness-900));
+  --we-color-danger-1000: hsl(var(--we-color-danger-hue) var(--we-color-saturation) var(--we-color-lightness-1000));
+
+  /* Base Colors */
+  --we-color-white: hsl(var(--we-color-neutral-hue) var(--we-color-neutral-saturation) var(--we-color-lightness-0));
+  --we-color-black: hsl(var(--we-color-neutral-hue) var(--we-color-neutral-saturation) var(--we-color-lightness-1000));
+
+  /* Semantic Roles — intent over scale position. Defaults are parametric expressions
+     so every theme keeps working untouched; themes may pin individual roles
+     (ThemeOverrides.roles in @we/themes → --we-role-*). */
+  --we-role-page: var(--we-color-neutral-50);
+  --we-role-surface: var(--we-color-neutral-0);
+  --we-role-surface-raised: var(--we-color-neutral-0);
+  --we-role-surface-sunken: var(--we-color-neutral-100);
+  --we-role-text: var(--we-color-neutral-900);
+  --we-role-text-muted: var(--we-color-neutral-500);
+  --we-role-text-faint: var(--we-color-neutral-400);
+  --we-role-text-inverse: var(--we-color-neutral-0);
+  --we-role-border: var(--we-color-neutral-200);
+  --we-role-border-strong: var(--we-color-neutral-500);
+  --we-role-accent: var(--we-color-primary-500);
+  --we-role-accent-text: var(--we-color-neutral-0);
+
+  /* Focus Colors */
+  --we-color-focus: var(--we-color-primary-500);
+  --we-focus-outline: 0 0 0 2px var(--we-color-focus);
+
+  /* Gradient */
+  --we-gradient-primary: linear-gradient(135deg, hsl(calc(var(--we-color-primary-hue) - 25) var(--we-color-saturation) var(--we-color-lightness-500)) 0%, hsl(calc(var(--we-color-primary-hue) + 25) var(--we-color-saturation) var(--we-color-lightness-500)) 100%);
+}"
+`;
+
+exports[`token CSS generation > component.css — scrollbar values come from the token source 1`] = `
+"/* COMPONENT TOKENS - Generated from JS tokens */
+
+:root {
+  /* Scrollbar Styles */
+  --we-scrollbar-width: 6px;
+  --we-scrollbar-background-image: none;
+  --we-scrollbar-background: transparent;
+  --we-scrollbar-corner-background: transparent;
+  --we-scrollbar-thumb-box-shadow: none;
+  --we-scrollbar-thumb-border-radius: var(--we-radius-pill);
+  --we-scrollbar-thumb-background: var(--we-color-neutral-100);
+}"
+`;
+
+exports[`token CSS generation > font.css — families, sizes, weights, line heights, letter spacing 1`] = `
+"/* FONT TOKENS - Generated from JS tokens */
+
+:root {
+  /* Font Family Palette */
+  --we-font-family-base: 'DM Sans', sans-serif;
+  --we-font-family-mozilla: 'Mozilla Text', serif;
+  --we-font-family-boldonse: 'Boldonse', serif;
+
+  /* Active font family — used by all components; themes can override this */
+  --we-font-family: var(--we-font-family-base);
+
+  /* Font Sizes */
+  --we-font-base-size: 16px;
+  --we-font-size-100: 0.75rem;
+  --we-font-size-200: 0.875rem;
+  --we-font-size-300: 1rem;
+  --we-font-size-400: 1.125rem;
+  --we-font-size-500: 1.25rem;
+  --we-font-size-600: 1.5rem;
+  --we-font-size-700: 2rem;
+  --we-font-size-800: 2.5rem;
+  --we-font-size-900: 3.5rem;
+  --we-font-size-1000: 4.5rem;
+
+  /* Font Weights */
+  --we-font-weight-100: 100;
+  --we-font-weight-200: 200;
+  --we-font-weight-300: 300;
+  --we-font-weight-400: 400;
+  --we-font-weight-500: 500;
+  --we-font-weight-600: 600;
+  --we-font-weight-700: 700;
+  --we-font-weight-800: 800;
+  --we-font-weight-900: 900;
+  --we-font-weight-regular: 400;
+  --we-font-weight-medium: 500;
+  --we-font-weight-semibold: 600;
+  --we-font-weight-bold: 700;
+
+  /* Line Heights */
+  --we-line-height-none: 1;
+  --we-line-height-tight: 1.25;
+  --we-line-height-snug: 1.375;
+  --we-line-height-normal: 1.5;
+  --we-line-height-relaxed: 1.625;
+  --we-line-height-loose: 2;
+
+  /* Letter Spacing */
+  --we-letter-spacing-tighter: -0.05em;
+  --we-letter-spacing-tight: -0.025em;
+  --we-letter-spacing-normal: 0;
+  --we-letter-spacing-wide: 0.025em;
+  --we-letter-spacing-wider: 0.05em;
+  --we-letter-spacing-widest: 0.1em;
+}"
+`;
+
+exports[`token CSS generation > size.css — sizes, radii, avatar sizes, component heights 1`] = `
+"/* SIZE TOKENS - Generated from JS tokens */
+
+:root {
+  /* Component Sizes */
+  --we-size-xxs: 0.75rem;
+  --we-size-xs: 1rem;
+  --we-size-sm: 1.5rem;
+  --we-size-md: 2rem;
+  --we-size-lg: 2.5rem;
+  --we-size-xl: 3rem;
+  --we-size-xxl: 4rem;
+
+  /* Border Radius Sizes */
+  --we-radius-0: 0;
+  --we-radius-100: 0.125rem;
+  --we-radius-200: 0.25rem;
+  --we-radius-300: 0.375rem;
+  --we-radius-400: 0.5rem;
+  --we-radius-500: 0.75rem;
+  --we-radius-600: 1rem;
+  --we-radius-700: 1.25rem;
+  --we-radius-800: 1.5rem;
+  --we-radius-900: 2rem;
+  --we-radius-pill: 9999px;
+  --we-radius-full: 50%;
+
+  /* Avatar Sizes */
+  --we-avatar-size-xxs: 1rem;
+  --we-avatar-size-xs: 1.5rem;
+  --we-avatar-size-sm: 2rem;
+  --we-avatar-size-md: 2.5rem;
+  --we-avatar-size-lg: 3rem;
+  --we-avatar-size-xl: 4rem;
+  --we-avatar-size-xxl: 5rem;
+
+  /* Component Heights */
+  --we-component-height-xs: 1.5rem;
+  --we-component-height-sm: 2rem;
+  --we-component-height-md: 2.5rem;
+  --we-component-height-lg: 3rem;
+  --we-component-height-xl: 3.5rem;
+}"
+`;
+
+exports[`token CSS generation > space.css 1`] = `
+"/* SPACE TOKENS - Generated from JS tokens */
+
+:root {
+  /* Spacing Values */
+  --we-space-0: 0rem;
+  --we-space-100: 0.25rem;
+  --we-space-200: 0.5rem;
+  --we-space-300: 0.75rem;
+  --we-space-400: 1rem;
+  --we-space-500: 1.5rem;
+  --we-space-600: 2rem;
+  --we-space-700: 2.5rem;
+  --we-space-800: 3rem;
+  --we-space-900: 4rem;
+  --we-space-1000: 6rem;
+}"
+`;
+
+exports[`token CSS generation > z-index.css 1`] = `
+"/* Z-INDEX TOKENS - Generated from JS tokens */
+
+:root {
+  /* Stacking Layers */
+  --we-z-dropdown: 100;
+  --we-z-sticky: 200;
+  --we-z-modal: 300;
+  --we-z-popover: 400;
+  --we-z-toast: 500;
+  --we-z-tooltip: 600;
+}"
+`;

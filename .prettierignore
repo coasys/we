@@ -8,6 +8,9 @@
 .git
 pnpm-lock.yaml
 
+# Machine-generated sources (e.g. packages/models/src/generated/coreManifest.ts)
+**/src/generated
+
 # Auto-generated AI context files (packages/ai-context)
 .github/copilot-instructions.md
 CLAUDE.md

@@ -1,8 +1,0 @@
-[build]
-  command = "pnpm build"
-  publish = "apps/we-web/dist"
-
-[[redirects]]
-  from   = "/*"
-  to     = "/index.html"
-  status = 200

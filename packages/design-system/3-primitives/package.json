@@ -11,7 +11,8 @@
     "build:steps": "node scripts/check-super-calls.mjs && node scripts/generate-leaflet-css.mjs && pnpm build:icons && pnpm build:cem && tsup",
     "build": "we-build",
     "start": "pnpm build:cem && storybook dev -p 6006",
-    "storybook:build": "storybook build"
+    "storybook:build": "storybook build",
+    "test": "vitest run --passWithNoTests"
   },
   "exports": {
     "./types": {
@@ -22,48 +23,48 @@
       "types": "./dist/types/global/index.d.ts"
     },
     "./*": {
-      "import": "./dist/components/*.js",
-      "types": "./dist/types/global/components/*.d.ts"
+      "import": "./dist/primitives/*.js",
+      "types": "./dist/types/global/primitives/*.d.ts"
     },
     "./react": {
       "import": "./dist/index.js",
       "types": "./dist/types/react/index.d.ts"
     },
     "./react/*": {
-      "import": "./dist/components/*.js",
-      "types": "./dist/types/react/components/*.d.ts"
+      "import": "./dist/primitives/*.js",
+      "types": "./dist/types/react/primitives/*.d.ts"
     },
     "./react-jsx": {
       "import": "./dist/index.js",
       "types": "./dist/types/react-jsx/index.d.ts"
     },
     "./react-jsx/*": {
-      "import": "./dist/components/*.js",
-      "types": "./dist/types/react-jsx/components/*.d.ts"
+      "import": "./dist/primitives/*.js",
+      "types": "./dist/types/react-jsx/primitives/*.d.ts"
     },
     "./react-jsxdev": {
       "import": "./dist/index.js",
       "types": "./dist/types/react-jsxdev/index.d.ts"
     },
     "./react-jsxdev/*": {
-      "import": "./dist/components/*.js",
-      "types": "./dist/types/react-jsxdev/components/*.d.ts"
+      "import": "./dist/primitives/*.js",
+      "types": "./dist/types/react-jsxdev/primitives/*.d.ts"
     },
     "./svelte": {
       "import": "./dist/index.js",
       "types": "./dist/types/svelte/index.d.ts"
     },
     "./svelte/*": {
-      "import": "./dist/components/*.js",
-      "types": "./dist/types/svelte/components/*.d.ts"
+      "import": "./dist/primitives/*.js",
+      "types": "./dist/types/svelte/primitives/*.d.ts"
     },
     "./solid": {
       "import": "./dist/index.js",
       "types": "./dist/types/solid/index.d.ts"
     },
     "./solid/*": {
-      "import": "./dist/components/*.js",
-      "types": "./dist/types/solid/components/*.d.ts"
+      "import": "./dist/primitives/*.js",
+      "types": "./dist/types/solid/primitives/*.d.ts"
     },
     "./solid/types": {
       "types": "./dist/types/solid/index.d.ts"
@@ -102,7 +103,8 @@
     "prettier": "3.9.4",
     "storybook": "8.4.6",
     "tsup": "^8.5.1",
-    "tsx": "^4.19.3"
+    "tsx": "^4.21.0",
+    "vitest": "^4.0.15"
   },
   "publishConfig": {
     "access": "public"
@@ -116,37 +118,37 @@
         "./dist/types/global/index.d.ts"
       ],
       "/*": [
-        "./dist/types/global/components/*.d.ts"
+        "./dist/types/global/primitives/*.d.ts"
       ],
       "react": [
         "./dist/types/react/index.d.ts"
       ],
       "react/*": [
-        "./dist/types/react/components/*.d.ts"
+        "./dist/types/react/primitives/*.d.ts"
       ],
       "react-jsx": [
         "./dist/types/react-jsx/index.d.ts"
       ],
       "react-jsx/*": [
-        "./dist/types/react-jsx/components/*.d.ts"
+        "./dist/types/react-jsx/primitives/*.d.ts"
       ],
       "react-jsxdev": [
         "./dist/types/react-jsxdev/index.d.ts"
       ],
       "react-jsxdev/*": [
-        "./dist/types/react-jsxdev/components/*.d.ts"
+        "./dist/types/react-jsxdev/primitives/*.d.ts"
       ],
       "svelte": [
         "./dist/types/svelte/index.d.ts"
       ],
       "svelte/*": [
-        "./dist/types/svelte/components/*.d.ts"
+        "./dist/types/svelte/primitives/*.d.ts"
       ],
       "solid": [
         "./dist/types/solid/index.d.ts"
       ],
       "solid/*": [
-        "./dist/types/solid/components/*.d.ts"
+        "./dist/types/solid/primitives/*.d.ts"
       ]
     }
   }

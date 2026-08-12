@@ -59,49 +59,12 @@ export type TransitionEffect = {
  */
 export type TransitionConfig = TransitionEffect | TransitionEffect[];
 
-/** Parametric theme overrides — each field maps to a CSS custom property on the design system. */
-export type ThemeOverrides = {
-  // Named preset
-  themeName?: string; // Named theme preset (e.g. 'dark', 'cyberpunk', 'retro') — sets data-we-theme attribute
-
-  // Color
-  primaryHue?: number; // --we-color-primary-hue
-  successHue?: number; // --we-color-success-hue
-  warningHue?: number; // --we-color-warning-hue
-  dangerHue?: number; // --we-color-danger-hue
-  neutralHue?: number; // --we-color-neutral-hue
-  saturation?: string; // --we-color-saturation  (e.g. "50%")
-  neutralSaturation?: string; // --we-color-neutral-saturation
-  multiplier?: number; // --we-color-multiplier
-  subtractor?: string; // --we-color-subtractor  (e.g. "108%")
-  ringColor?: string; // --we-ring-color  (focus ring / accent color)
-
-  // Typography
-  fontFamily?: string; // --we-font-family
-  letterSpacing?: string; // --we-theme-letter-spacing  (e.g. "0.05em" for airy headlines)
-  lineHeight?: string; // --we-theme-line-height  (e.g. "1.5" or "relaxed")
-  fontScale?: number; // scales root font-size (1 = 100%, 1.125 = 112.5%) — affects all rem-based tokens
-
-  // Shape — radius cascade: component r= prop → component theme → group theme → token default
-  controlRadius?: string; // --we-theme-control-radius  (buttons, badges, tags)
-  surfaceRadius?: string; // --we-theme-surface-radius  (modals, drawers, alerts)
-  inputRadius?: string; // --we-theme-input-radius  (inputs, selects, textareas)
-
-  // Density — padding/gap cascade: component p=/gap= prop → component theme → group theme → size default
-  controlPaddingX?: string; // --we-theme-control-padding-x  (button / badge / tag horizontal padding)
-  controlGap?: string; // --we-theme-control-gap  (button / badge internal icon-text gap)
-  controlHeight?: string; // --we-theme-control-height-offset  (px offset added to all fixed-height controls, e.g. '4px', '-4px')
-  surfaceSpacing?: string; // --we-theme-surface-spacing  (card / modal / drawer padding)
-  surfaceGap?: string; // --we-theme-surface-gap  (card / modal / drawer child gap)
-
-  // Effects
-  shadowIntensity?: 'flat' | 'subtle' | 'elevated' | 'dramatic'; // maps to --we-theme-shadow-preset
-  surfaceOpacity?: number; // --we-theme-surface-opacity  (0–1, background alpha for surfaces)
-  surfaceBlur?: number; // --we-theme-surface-blur  (px, backdrop-filter blur for frosted glass)
-
-  // Motion
-  animationSpeed?: 'none' | 'fast' | 'normal' | 'slow'; // maps to --we-theme-animation-speed-preset
-};
+/**
+ * Parametric theme overrides — the vocabulary lives in `@we/themes` (its owner: the keys map onto
+ * design-system CSS custom properties). Re-exported here because schema nodes carry a `theme`.
+ */
+export type { ThemeOverrides, ThemeRole } from '@we/themes/presets';
+import type { ThemeOverrides } from '@we/themes/presets';
 
 export type SchemaNode = {
   id?: string; // Stable node identifier for ID-based patching (assigned by ensureNodeIds)
@@ -192,7 +155,38 @@ export type LocalStateField = {
   /** Literal seed value, or any schema expression token (e.g. { $store: '...' }) evaluated once at mount. */
   initial: string | boolean | number | null | Record<string, unknown>;
   validate?: ValidationRule[];
+  /**
+   * Persist this field on the device (localStorage) under the given key, so it survives a
+   * reload. For *preferences* — display density, collapsed rails — things a shared link should
+   * NOT impose on its recipient. The key is explicit and global to the deployment
+   * (`'cards.displayMode'`), so two views naming the same key deliberately share the setting;
+   * pick namespaced names. The stored value wins over `initial` on mount; `$resetLocal` clears
+   * it. Ignored for 'file' and 'function' fields, which have no JSON form.
+   */
+  persist?: string;
+  /**
+   * Mirror this field into a URL query parameter, so the view is shareable and survives a
+   * reload as part of the address. For *view state* — selected content type, sort, filters:
+   * what a link's recipient should see exactly as the sender does. A string names the param;
+   * the object form adds `push: true` for changes that deserve a Back entry (content-type
+   * switches; leave sort/filter changes on the default replace). Precedence on mount:
+   * URL param > persisted value > `initial`; setting the field back to its initial removes
+   * the param, keeping URLs clean. Requires the host to bind `$routeParams` (the app shell
+   * does); degrades to plain local state elsewhere. See
+   * docs/architecture/routing-and-view-state.md for which state belongs where.
+   */
+  syncParam?: string | { name: string; push?: boolean };
 };
+
+/**
+ * The host's URL-query-parameter binding, injected into the stores bag as `$routeParams`.
+ * What lets `$localState`'s `syncParam` read and write the URL without the renderer knowing
+ * which router the host runs.
+ */
+export interface RouteParamsBinding {
+  get(name: string): string | undefined;
+  set(name: string, value: string | null, options?: { push?: boolean }): void;
+}
 
 /** A single entry in $queries — a reactive subscription hoisted to the node root. */
 export type QueryStateField = QueryToken['$query'];

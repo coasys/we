@@ -112,6 +112,10 @@ function mergeStoreEntries(derived: ExtractedStore[], authored: StoreEntry[]): S
 
   if (stale.length) {
     console.warn(`  ⚠ fragments/stores.ts describes members that no longer exist: ${stale.join(', ')}`);
+    // A stale entry documents vocabulary that resolves to nothing — always wrong, so it fails
+    // the build rather than scrolling past as a warning nobody acts on. (The undocumented
+    // direction below stays informational: most of those are internal wiring.)
+    process.exitCode = 1;
   }
   /*
     Counted, not listed.

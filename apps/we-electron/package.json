@@ -23,29 +23,25 @@
   },
   "main": "electron/main.js",
   "dependencies": {
-    "@apollo/client": "^3.7.10",
-    "@coasys/ad4m": "0.11.0",
-    "@solidjs/router": "^0.15.3",
+    "@coasys/ad4m": "0.13.0-test-9",
     "@we/app-shell": "workspace:*",
     "electron-context-menu": "^4.1.1",
     "express": "^5.2.1",
-    "graphql": "15.7.2",
-    "graphql-ws": "5.12.0",
     "solid-js": "^1.9.5",
     "uuid": "^13.0.0",
     "@we/backend-ad4m": "workspace:*"
   },
   "devDependencies": {
-    "@types/node": "^22.10.5",
+    "@types/node": "^24.10.0",
     "@we/cli": "workspace:*",
     "concurrently": "^9.1.2",
     "electron": "^33.4.11",
     "electron-builder": "^25.1.8",
     "typescript": "^5.7.2",
-    "vite": "^6.0.0",
-    "vite-plugin-solid": "^2.11.6",
+    "vite": "^6.0.7",
+    "vite-plugin-solid": "^2.11.11",
     "vite-plugin-static-copy": "^3.1.4",
     "wait-on": "^8.0.1",
-    "vitest": "^4.1.10"
+    "vitest": "^4.0.15"
   }
 }

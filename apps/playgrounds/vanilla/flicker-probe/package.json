@@ -16,7 +16,7 @@
     "@we/tokens": "workspace:*"
   },
   "devDependencies": {
-    "typescript": "^5.9.3",
-    "vite": "^6.0.0"
+    "typescript": "^5.7.2",
+    "vite": "^6.0.7"
   }
 }

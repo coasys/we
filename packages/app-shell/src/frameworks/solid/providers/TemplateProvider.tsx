@@ -28,7 +28,7 @@ import { CORE_MANIFEST } from '@we/models/generated/coreManifest';
 import type { TemplateSchema } from '@we/schema-shared';
 import type { VisualEditorContextValue } from '@we/schema-solid';
 import { RenderSchema, VisualEditorProvider } from '@we/schema-solid';
-import { createEffect, createMemo, createSignal, onMount, Show } from 'solid-js';
+import { createEffect, createMemo, createSignal, onMount, Show, untrack } from 'solid-js';
 
 import { PersistentAppFrames } from '../layouts/PersistentAppFrames';
 import { SHELL_SIDEBAR_WIDTH, TemplateLayout } from '../layouts/TemplateLayout';
@@ -137,6 +137,13 @@ export default function TemplateProvider() {
     // Host wiring, not backend adaptation — any backend would wire these the same way, so they stay
     // here rather than pretending to be AD4M-specific.
     $onError: (msg: string) => toastService.error(msg),
+    // The router binding behind $localState's syncParam: view state a template
+    // mirrors into the URL (?type=…&sort=…) so a shared link reproduces the view.
+    $routeParams: {
+      get: (name: string) => routeStore.params()[name],
+      set: (name: string, value: string | null, options?: { push?: boolean }) =>
+        routeStore.setParam(name, value, options),
+    },
     $useQueryIR: queryIRFlag.enabled, // reactive; default from the seed, live-toggled via testStore
     // Template-facing vocabulary (templates read `$me.did`), as opposed to the renderer-facing
     // bindings below: the renderer never reads `$me` itself, it resolves like any `$store` path.
@@ -245,6 +252,53 @@ export default function TemplateProvider() {
   const Layout = (props: { children?: unknown }) => TemplateLayout({ stores, children: props.children as never });
 
   // Visual editor context — lives here (above the Router) so context is available to all
+  /**
+   * Honor a link's ?template= / ?theme= suggestion — the sharing half of the
+   * routing conventions (docs/architecture/routing-and-view-state.md).
+   *
+   * A link may carry the template/theme its sender was viewing with. When the
+   * recipient has it (built-in, installed, or a space template), it is applied
+   * silently, exactly as if they had picked it — clicking the link is the
+   * consent. When they don't, the app falls back to what they already use and
+   * says so once with a warning toast, so the link's intent isn't silently
+   * lost. Each suggestion is handled once per value: the effect re-runs as
+   * templates/themes stream in (a space template may arrive after boot), but a
+   * suggestion is only marked handled when it either applies or is reported.
+   */
+  const handledSuggestions = { template: '', theme: '', templateReported: '', themeReported: '' };
+  createEffect(() => {
+    const params = routeStore.params();
+
+    const wantedTemplate = params.template;
+    if (wantedTemplate && handledSuggestions.template !== wantedTemplate) {
+      const known = templateStore.allTemplates().find((t) => t.id === wantedTemplate);
+      if (known) {
+        handledSuggestions.template = wantedTemplate;
+        if (untrack(() => templateStore.currentTemplate.id) !== wantedTemplate) {
+          templateStore.switchTemplate(wantedTemplate);
+        }
+      } else if (templateStore.allTemplates().length && handledSuggestions.templateReported !== wantedTemplate) {
+        // Report once templates have actually loaded — an empty list is boot, not absence.
+        handledSuggestions.templateReported = wantedTemplate;
+        toastService.warning(`This link suggests a template ("${wantedTemplate}") you don't have — using your own.`);
+      }
+    }
+
+    const wantedTheme = params.theme;
+    if (wantedTheme && handledSuggestions.theme !== wantedTheme) {
+      const known = themeStore.allThemes().find((t) => t.id === wantedTheme);
+      if (known) {
+        handledSuggestions.theme = wantedTheme;
+        if (untrack(themeStore.currentThemeId) !== wantedTheme) {
+          themeStore.setCurrentTheme(wantedTheme);
+        }
+      } else if (themeStore.allThemes().length && handledSuggestions.themeReported !== wantedTheme) {
+        handledSuggestions.themeReported = wantedTheme;
+        toastService.warning(`This link suggests a theme ("${wantedTheme}") you don't have — using your own.`);
+      }
+    }
+  });
+
   // route RenderSchema instances, which are called as direct functions inside the Router's
   // reactive scope rather than as JSX components with their own Solid owner boundary.
   const [hoveredNodeId, setHoveredNodeId] = createSignal<string | null>(null);

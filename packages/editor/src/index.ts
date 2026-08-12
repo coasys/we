@@ -8,24 +8,15 @@
  * The AI panel is a separate entry (`@we/editor/ai`) so a deployment without an API key never
  * bundles a prompt.
  */
-export { CodePanel } from './components/CodePanel';
-export { CodeViewer } from './components/CodeViewer';
-export { ConditionEditor } from './components/ConditionEditor';
-export { ContentEditor } from './components/ContentEditor';
+// The public component surface is exactly what the app shell lazy-loads
+// (`import('@we/editor').then((m) => m.X)` in componentRegistry/TemplateLayout —
+// dynamic imports, so a grep for static imports will NOT find these consumers;
+// trimming them broke the toolbar once already). Everything else (CodePanel,
+// InspectorPanel, ThemePanel, …) is internal to these four and stays unexported.
 export { DesignToolbar } from './components/DesignToolbar';
 export { EditorOverlay } from './components/EditorOverlay';
-export { InspectorPanel } from './components/InspectorPanel';
-export { PublishToMarketplaceModal } from './components/PublishToMarketplaceModal';
-export {
-  panelResizing,
-  RAIL_STRIP_WIDTH,
-  RightPanelContainer,
-  TEMPLATE_RAILS_WIDTH,
-  THEME_RAIL_WIDTH,
-  TOTAL_RAIL_WIDTH,
-} from './components/RightPanelContainer';
+export { RightPanelContainer } from './components/RightPanelContainer';
 export { TemplateCard } from './components/TemplateCard';
-export { ThemePanel } from './components/ThemePanel';
 
 export { mountTemplateEditor, type MountOptions } from './mount';
 export { EditorSurfaceProvider, type EditorSurface, type SurfacePositioning, useEditorSurface } from './surface';

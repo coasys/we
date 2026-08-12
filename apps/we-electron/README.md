@@ -44,7 +44,7 @@ Unlike the Tauri app which embeds the Rust executor as a library, the Electron a
 
 This launcher can embed external apps (like Flux) via iframe. The embedded apps receive AD4M credentials through a postMessage protocol.
 
-**See:** [`EMBEDDING.md`](../EMBEDDING.md) for the generic integration pattern.
+**See:** [`embedding-external-apps.md`](../../docs/guides/embedding-external-apps.md) for the generic integration pattern.
 
 ### Electron-Specific Considerations
 

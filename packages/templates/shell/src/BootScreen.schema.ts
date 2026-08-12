@@ -439,7 +439,70 @@ const unlockForm: SchemaNode = {
         },
       },
     },
-    field({ name: 'password', placeholder: 'Password...' }),
+    {
+      type: 'we-form-field',
+      props: {
+        error: {
+          $if: {
+            condition: { $store: 'sessionStore.passwordError' },
+            then: 'Incorrect password',
+            else: '',
+          },
+        },
+      },
+      children: [
+        // Field and submit on one row — the shape an OS sign-in uses when there is exactly one
+        // thing to type and one thing to do with it. Deliberately NOT the `field` fragment: the
+        // fragment renders a lone control, and collapsing this row to one lost the Login button,
+        // the Enter handler and the error wiring — nothing could call sessionStore.login at all.
+        {
+          type: 'Row',
+          props: { gap: '300', ay: 'center' },
+          children: [
+            {
+              type: 'we-input',
+              props: {
+                width: '220px',
+                type: 'password',
+                // The reveal toggle is the input's own, not a button assembled beside it.
+                revealable: true,
+                placeholder: 'Password...',
+                value: { $local: 'password' },
+                // Editing the password retracts the verdict on it. "Incorrect password" is about
+                // the string that was submitted, so it has nothing to say about the one being
+                // typed to replace it — left up, it reads as a running judgement of the new one.
+                onInput: [
+                  { $setLocal: 'password', from: '$event.detail' },
+                  { $action: 'sessionStore.clearPasswordError' },
+                ],
+                // Enter carries the same precondition as the button, or an empty field would
+                // reach the executor, fail to unlock, and come back as "Incorrect password" —
+                // the wrong diagnosis for a password that was never typed.
+                onKeyDown: {
+                  $if: {
+                    condition: { $and: [{ $eq: ['$arg.detail.key', 'Enter'] }, { $local: 'password' }] },
+                    then: { $action: 'sessionStore.login', args: [{ $local: 'password' }] },
+                  },
+                },
+              },
+            },
+            {
+              type: 'we-button',
+              props: {
+                variant: 'primary',
+                // Gated on the value, not on a validation rule. There is nothing to submit until
+                // something is typed, which is a precondition rather than a judgement — and the
+                // OS sign-in screens this follows all hold the button until there is.
+                disabled: { $not: { $local: 'password' } },
+                loading: { $store: 'sessionStore.loginLoading' },
+                onClick: { $action: 'sessionStore.login', args: [{ $local: 'password' }] },
+              },
+              children: ['Login'],
+            },
+          ],
+        },
+      ],
+    },
   ],
 };
 

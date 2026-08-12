@@ -27,7 +27,7 @@ editable by AI in place. Data lives separately, in AD4M perspectives the user ow
 the interface never costs you your history.
 
 Contributions form a ladder: most are **templates and themes** (authored in-browser, often
-AI-assisted, no code). **Modules** (tokens → elements → components → widgets → pages, plus
+AI-assisted, no code). **Modules** (tokens → primitives → components → widgets, plus
 blocks and feature modules) are the developer layer beneath — lower volume, but they raise the
 ceiling on what every template above can express. A deployment is described by a **seed file**
 (`we-seed.json`): which modules to include, how to arrange/theme them, platform settings.
@@ -276,7 +276,7 @@ Filters an array to items where all where conditions match. Mirrors the $query w
 Where values (including those inside operator objects) are resolved through the prop system,
 so $store, $local, and context refs like { "$local": "searchText" } all work.
 
-$query-only logical combinators (OR / AND / NOT) — NOT supported in $filter, only in $query's where:
+Logical combinators (OR / AND / NOT) — supported in both $query's where and $filter's where:
   { "OR": [ { "field": "value" }, { "field2": "value2" } ] }   — matches if ANY branch matches
   { "AND": [ { ... }, { ... } ] }                              — matches if ALL branches match (sibling keys at the
                                                                   same level are already implicitly ANDed — use AND
@@ -284,7 +284,8 @@ $query-only logical combinators (OR / AND / NOT) — NOT supported in $filter, o
   { "NOT": { "field": "value" } }                              — matches if the branch does NOT match
 Branches are full where-clause objects (can contain multiple fields, and can nest OR/AND/NOT inside each other).
 Sibling keys alongside OR/AND/NOT at the same level are implicitly ANDed with it.
-Example — case-insensitive search across two fields:
+Example — case-insensitive search across two fields ($filter takes the same shape, e.g. a member
+list matching name OR handle):
 {
   "$query": {
     "entity": "Space",
@@ -414,6 +415,22 @@ For external-app datasets, always add dataset: "$currentDataset".
 Local state (scoped ephemeral state):
 Declare on any node: "$localState": { "name": { "type": "string", "initial": "" } }
 Supported types: "string", "boolean", "number", "function", "object".
+Two opt-in persistence tiers (see docs/architecture/routing-and-view-state.md for the full rules):
+- "syncParam": "<param>" mirrors the field into a URL query parameter — for VIEW STATE (selected
+  content type, sort, filters, search): what a shared link's recipient should see exactly as the
+  sender does. Object form { "name": "type", "push": true } adds a Back entry on change (use for
+  content-type switches; sort/filter changes keep the default replace). A field back at its
+  declared initial removes its param, keeping URLs clean.
+  Example: { "type": "string", "initial": "posts", "syncParam": { "name": "type", "push": true } }
+- "persist": "<key>" keeps the field on the device (localStorage) — for PREFERENCES (display
+  density, collapsed rails): things a shared link must NOT impose on its recipient. The key is
+  explicit and deployment-global (namespace it, e.g. "cards.displayMode").
+Precedence on mount: URL param > persisted value > declared "initial"; $resetLocal clears both.
+Neither applies to "file"/"function" fields. Open-modal and in-flight flags stay plain (ephemeral).
+The deciding question: "if I sent this URL to someone, should they see the effect?" — yes: syncParam;
+no but future-me should: persist; no one: plain.
+Links may also carry ?template=<id> and ?theme=<id> — the shell applies them when the recipient has
+them and warns (toast) when not. Templates never handle these params themselves.
 Read:  { "$local": "name" } — returns the signal value (reactive).
        { "$local": "name.nested.path" } — dot-notation reads into object-typed fields (reactive).
 Write: { "$setLocal": "name", "from": "$event.target.value" } — event handler that updates the signal.
@@ -444,6 +461,10 @@ Solves two problems: avoids N duplicate subscriptions inside $each loops, and ma
 "$queries": { "signalTypes": { "entity": "SignalType", "subscribe": true } }
 Results are injected into $local as read-only reactive arrays, accessible via { "$local": "signalTypes" }.
 Query options are identical to $each's $query prop (entity, where, order, limit, include, dataset, subscribe).
+Each entry also exposes a read-only boolean { "$local": "<name>Loaded" } — false until the first
+result set (or error) arrives, then true for good. Gate a loading skeleton on it so the empty
+state only ever asserts "loaded and empty", never "not answered yet":
+{ "$if": { "condition": { "$local": "signalTypesLoaded" }, "then": <list-or-empty>, "else": <skeleton> } }
 $queries and $localState share the same $local namespace — avoid duplicate names across both.
 $setLocal will warn and no-op on $queries entries (they are read-only).
 Use with $count + $gt for conditional visibility:
@@ -759,8 +780,6 @@ div — not focusable, so there is no way to resize a panel from the keyboard. P
   Props: orientation: 'vertical' | 'horizontal' = 'vertical', align: 'start' | 'center' | 'end' = 'center', step: number = 16, dragging: boolean = false
 - we-scroll-area (DesignSystemElement)
   Props: maxHeight: string = '', maxWidth: string = ''
-- we-select (DesignSystemElement)
-  Props: options: SelectOption[] = [], value: string = '', placeholder: string = '', disabled: boolean = false, searchable: boolean = false, name: string = '', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md'
 - we-select (DesignSystemElement) — Pick a single value from a list of options. Custom-rendered dropdown.
 Use for form fields, settings, filters. Set searchable=true for type-to-filter.
   Props: options: SelectOption[] = [], value: string = '', placeholder: string = '', disabled: boolean = false, searchable: boolean = false, name: string = '', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md'
@@ -804,11 +823,11 @@ when `relative` is enabled.
 - AudioInput
   Props: title: string | undefined, artist: string | undefined, audioUrl: string | FileData | undefined, duration: number | undefined, albumArt: string | undefined, onChange: (property: string, value: unknown) => void, isSelected: () => boolean
 - BlockComposer (DesignSystemElement)
-  Props: editorState?: any, perspective?: PerspectiveProxy | null, onSave?: ((json: SerializedBlockNode) => void), onReady?: ((api: { save: () => void; }) => void)
+  Props: editorState?: SerializedBlockNode, perspective?: PerspectiveProxy | null, onSave?: ((json: SerializedBlockNode) => void), onReady?: ((api: { save: () => void; }) => void)
 - BlockPlaceholder
   Props: icon: string, label: string, hint?: string, accept?: string, onFileDrop?: ((file: File) => void), onClick?: (() => void)
 - BlockRenderer (DesignSystemElement)
-  Props: editorState?: any, perspective?: PerspectiveProxy | null, rootClass?: string
+  Props: editorState?: SerializedBlockNode, perspective?: PerspectiveProxy | null, rootClass?: string
 - BlockToolbar
   Props: placement?: BlockToolbarPlacement, children: JSX.Element, stopPropagation?: boolean
 - CalloutDisplay
@@ -820,9 +839,9 @@ when `relative` is enabled.
 - CodeInput
   Props: code: string | undefined, language: string | undefined, title: string | undefined, onChange: (property: string, value: unknown) => void, isSelected: () => boolean
 - CollectionDisplay
-  Props: layout?: string, columnCount?: number, gap?: string, childEditorState?: any
+  Props: layout?: string, columnCount?: number, gap?: string, childEditorState?: SerializedBlockNode
 - CollectionInput
-  Props: nodeKey: string, layout?: string, columnCount?: number, gap?: string, childEditorState?: any, onChange: (property: string, value: unknown) => void, isSelected: () => boolean
+  Props: nodeKey: string, layout?: string, columnCount?: number, gap?: string, childEditorState?: SerializedBlockNode, onChange: (property: string, value: unknown) => void, isSelected: () => boolean
 - DividerDisplay
   Props: style: "solid" | "dashed" | "dotted" | undefined
 - DividerInput
@@ -1197,8 +1216,6 @@ color.lightness: '0', '25', '50', '75', '100', '200', '300', '400', '500', '600'
 component.scrollbar: 'width', 'backgroundImage', 'background', 'cornerBackground', 'thumbBoxShadow', 'thumbBorderRadius', 'thumbBackground'
 
 componentHeight: 'xs', 'sm', 'md', 'lg', 'xl'
-
-effect.depth: '100', '200', '300', '400', '500', 'none'
 
 font.family: 'base', 'mozilla', 'boldonse'
 
@@ -1657,10 +1674,12 @@ RouteStore:
 - State:
   - currentPath: string (the current route path)
   - segments: string[] (currentPath split by "/", e.g. ["/foo/bar"] → ["foo", "bar"])
+  - params: Record<string, string> — the URL's query parameters, reactive; read one as { $store: 'routeStore.params.<name>' }. Prefer $localState with syncParam for fields a view owns; read params directly only for parameters something else writes
 - Actions:
   - setNavigateFunction(): unknown
   - setCurrentPath(): unknown
-  - navigate(to: string, options?): navigates to a route
+  - navigate(to: string, options?): navigates to a route (a bare path restores that route's remembered query string)
+  - setParam(name: string, value: string | null, options?: { push?: boolean }): writes one query parameter (null removes); replaceState by default, push: true for changes that deserve a Back entry. Prefer $localState syncParam over calling this directly
 
 RuntimeStore:
 - State:
@@ -1829,7 +1848,6 @@ SpaceStore:
   - removeSpaceFromGlobal(): unknown
   - updateSpaceInCache(): unknown
   - loadSpaces(): unknown
-  - test(): unknown
 
 TemplateStore:
 - State:
@@ -1915,6 +1933,7 @@ ThemeStore:
   - publishToMarketplace(): unknown
   - publishToSpace(): unknown
   - loadInstalledThemes(): unknown
+  - refreshSpaceThemes(): unknown
 
 Model:
 - State:

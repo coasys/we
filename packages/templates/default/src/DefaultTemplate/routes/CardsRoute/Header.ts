@@ -205,7 +205,10 @@ export const cardsHeader: SchemaNode = {
               props: {
                 text: 'Space',
                 variant: 'outline',
-                onClick: { $setLocal: 'createSpaceModalOpen', value: true },
+                // Opens the shell-chrome mount (slot 'core:createSpace'), which exists once and
+                // closes itself via the same shell flag. A route-local copy of the modal used to
+                // live here, gated on a local flag its close never cleared — unclosable.
+                onClick: { $action: 'shellStore.setCreateSpaceOpen', args: [true] },
               },
             },
           ],

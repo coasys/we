@@ -5,7 +5,6 @@
  */
 
 import type { RouteSchema } from '@we/schema-shared';
-import { createSpaceModal } from '@we/template-shell';
 
 import { agentModal } from './AgentModal.ts';
 import { spaceModal } from './SpaceModal.ts';
@@ -29,7 +28,6 @@ export const globeRoute: RouteSchema = {
     // Currently selected pin (from clicking a location on the globe)
     selectedPin: { type: 'object', initial: null },
     // Modal open states
-    createSpaceModalOpen: { type: 'boolean', initial: false },
   },
   children: [
     // Header
@@ -151,7 +149,7 @@ export const globeRoute: RouteSchema = {
                     text: 'Create New Space',
                     variant: 'primary',
                     height: '40px',
-                    onClick: { $setLocal: 'createSpaceModalOpen', value: true },
+                    onClick: { $action: 'shellStore.setCreateSpaceOpen', args: [true] },
                   },
                 },
               ],
@@ -284,12 +282,6 @@ export const globeRoute: RouteSchema = {
           },
         ],
       },
-    },
-
-    // Create Space Modal
-    {
-      type: '$if',
-      props: { condition: { $local: 'createSpaceModalOpen' }, then: createSpaceModal },
     },
 
     // Space Modal (shown when a Space pin is clicked)

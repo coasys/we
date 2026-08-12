@@ -9,7 +9,9 @@ import type {
   ValidationRule,
 } from '@we/schema-shared';
 import {
+  deepUnwrap,
   hasToken,
+  pruneUnresolvedWhere,
   REACTIVE_ACCESSOR,
   resolveProp,
   resolveQueryProp,
@@ -25,40 +27,6 @@ import { ConditionalRenderer } from './ConditionalRenderer';
 import type { RendererOutput, RenderProps, SchemaNode } from './types';
 import { useVisualEditor } from './VisualEditorContext';
 
-const MAX_UNWRAP_DEPTH = 10;
-
-/**
- * Recursively unwrap reactive accessors (marked with REACTIVE_ACCESSOR) inside
- * complex prop values so that components receive plain data instead of leaked
- * signal functions. Event handlers and other plain functions pass through
- * untouched.
- *
- * Called inside tracked computations (createMemo / createEffect), so calling
- * accessors here registers them as dependencies — reactivity is preserved
- * without wrapping each value in its own memo.
- */
-function deepUnwrap(value: unknown, depth = 0): unknown {
-  if (depth > MAX_UNWRAP_DEPTH) return value;
-  if (typeof value === 'function' && REACTIVE_ACCESSOR in value) {
-    return deepUnwrap((value as unknown as () => unknown)(), depth + 1);
-  }
-  if (typeof value === 'function') return value;
-  if (Array.isArray(value)) {
-    return value.map((item) => deepUnwrap(item, depth + 1));
-  }
-  if (value && typeof value === 'object') {
-    // Don't deconstruct non-plain objects (File, Blob, Date, DOM nodes, etc.)
-    const proto = Object.getPrototypeOf(value);
-    if (proto !== Object.prototype && proto !== null) return value;
-    const result: Record<string, unknown> = {};
-    for (const [k, v] of Object.entries(value)) {
-      result[k] = deepUnwrap(v, depth + 1);
-    }
-    return result;
-  }
-  return value;
-}
-
 /** Check if a prop key is an event handler name (e.g. onClick, onInput, onKeyDown) */
 function isEventProp(key: string): boolean {
   return key.length > 2 && key.startsWith('on') && key[2] === key[2].toUpperCase();
@@ -73,12 +41,7 @@ function isEventProp(key: string): boolean {
  *
  * Must be called during component setup, not inside a createMemo or createEffect.
  */
-function hoistMapQuerySignals(
-  value: unknown,
-  stores: RendererStores,
-  getModel: (name: string) => ModelClass,
-  context: Record<string, unknown> = {},
-): unknown {
+function hoistMapQuerySignals(value: unknown, stores: RendererStores, context: Record<string, unknown> = {}): unknown {
   if (!value || typeof value !== 'object') return value;
 
   // Found $map with $query items — replace items with a live reactive signal
@@ -86,7 +49,7 @@ function hoistMapQuerySignals(
     const mapSpec = (value as { $map: MapProp }).$map;
     if (hasToken(mapSpec.items, '$query', 'object')) {
       const descriptor = resolveQueryProp(mapSpec.items);
-      const signal = createQuerySignal(descriptor, stores, getModel, context);
+      const signal = createQuerySignal(descriptor, stores, context);
       return { $map: { ...mapSpec, items: signal } };
     }
     return value;
@@ -95,7 +58,7 @@ function hoistMapQuerySignals(
   if (Array.isArray(value)) {
     let changed = false;
     const mapped = value.map((item) => {
-      const h = hoistMapQuerySignals(item, stores, getModel, context);
+      const h = hoistMapQuerySignals(item, stores, context);
       if (h !== item) changed = true;
       return h;
     });
@@ -106,7 +69,7 @@ function hoistMapQuerySignals(
   let changed = false;
   const result: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
-    const h = hoistMapQuerySignals(v, stores, getModel, context);
+    const h = hoistMapQuerySignals(v, stores, context);
     result[k] = h;
     if (h !== v) changed = true;
   }
@@ -265,14 +228,27 @@ function routeQueryThroughIR(
 function createQuerySignal(
   descriptor: QueryDescriptor,
   stores: RendererStores,
-  getModel: (name: string) => ModelClass,
   context: Record<string, unknown> = {},
-): () => unknown[] {
+): (() => unknown[]) & { loaded: () => boolean } {
   const [items, setItems] = createStore<unknown[]>([]);
+  // False until the first result set (or error) arrives, then true for good —
+  // a re-run (filter change, dataset switch) keeps showing the old rows until
+  // the new ones reconcile, rather than flashing a placeholder.
+  const [loaded, setLoaded] = createSignal(false);
   const readItems = () => items;
-  const getModelForPerspective = stores.$getModelForPerspective;
 
   createEffect(() => {
+    // Read the data bindings INSIDE the effect: the host exposes them as getters
+    // over a memo of the backend ports, so these reads are reactive. A query
+    // mounted before the backend connects (a reload straight into a data route)
+    // re-runs and subscribes when the bindings land — previously it was stranded
+    // with an empty result until a route change happened to remount it.
+    const getModel = stores.$getModel;
+    const getModelForPerspective = stores.$getModelForPerspective;
+    if (!getModel) {
+      setItems(reconcile([]));
+      return;
+    }
     let p: unknown = null;
     if (descriptor.dataset) {
       const parts = descriptor.dataset.split('.');
@@ -310,6 +286,13 @@ function createQuerySignal(
     }
 
     const resolvedParams = deepResolveTokens(descriptor.params, stores, context) as Record<string, unknown>;
+    // An unresolved reference in a filter (a $store that hasn't loaded) must drop
+    // the condition, not ship an empty one the backend cannot parse.
+    if (resolvedParams.where && typeof resolvedParams.where === 'object') {
+      const prunedWhere = pruneUnresolvedWhere(resolvedParams.where as Record<string, unknown>);
+      if (prunedWhere === undefined) delete resolvedParams.where;
+      else resolvedParams.where = prunedWhere;
+    }
     const resolvedInclude =
       descriptor.include !== undefined
         ? (deepResolveTokens(descriptor.include, stores, context) as Record<string, boolean | Record<string, unknown>>)
@@ -353,12 +336,15 @@ function createQuerySignal(
       builder
         .subscribe((results) => {
           setItems(reconcile(normalise(results), { key: 'id', merge: true }));
+          setLoaded(true);
         })
         .then((initial) => {
           setItems(reconcile(normalise(initial), { key: 'id', merge: true }));
+          setLoaded(true);
         })
         .catch((err) => {
           setItems(reconcile([]));
+          setLoaded(true);
           reportQueryError(stores, descriptor.entity, err);
         });
       onCleanup(() => builder.dispose());
@@ -379,18 +365,20 @@ function createQuerySignal(
         .then((results) => {
           if (controller.signal.aborted) return;
           setItems(reconcile(normalise(results), { key: 'id', merge: true }));
+          setLoaded(true);
         })
         .catch((err) => {
           // AbortError = a newer effect run or unmount cancelled this query.
           // Silently drop — no UI state to update, the new run handles it.
           if (isAbort(err)) return;
           setItems(reconcile([]));
+          setLoaded(true);
           reportQueryError(stores, descriptor.entity, err);
         });
     }
   });
 
-  return readItems;
+  return Object.assign(readItems, { loaded });
 }
 
 /** Detect values with no schema tokens — can be passed through without reactive tracking. */
@@ -444,11 +432,85 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
 
     for (const [name, field] of Object.entries(node.$localState as Record<string, LocalStateField>)) {
       const rawInitial = field.initial;
-      const [get, set] = createSignal<unknown>(resolveInitial(rawInitial));
+
+      // Device persistence: an explicit key opts the field into localStorage, so
+      // settings like a list's content type survive a reload. The stored value
+      // wins over `initial` on mount; writes go through the setter; $resetLocal
+      // clears the stored copy (see meta.reset below). Files and functions have
+      // no JSON form and are ignored.
+      const persistKey =
+        typeof field.persist === 'string' &&
+        field.type !== 'file' &&
+        field.type !== 'function' &&
+        typeof localStorage !== 'undefined'
+          ? `we-local:${field.persist}`
+          : null;
+
+      // URL mirroring: view state (content type, sort, filters) syncs with a query
+      // parameter through the host's $routeParams binding, so a shared link
+      // reproduces the view. Serialized as plain text for strings, JSON otherwise.
+      const syncSpec =
+        field.syncParam && field.type !== 'file' && field.type !== 'function'
+          ? typeof field.syncParam === 'string'
+            ? { name: field.syncParam, push: false }
+            : { name: field.syncParam.name, push: field.syncParam.push ?? false }
+          : null;
+      const routeParams = stores.$routeParams as
+        | {
+            get(name: string): string | undefined;
+            set(name: string, value: string | null, o?: { push?: boolean }): void;
+          }
+        | undefined;
+      const decodeParam = (raw: string): unknown => {
+        if (field.type === 'string') return raw;
+        try {
+          return JSON.parse(raw);
+        } catch {
+          return raw;
+        }
+      };
+      const encodeParam = (v: unknown): string => (field.type === 'string' ? String(v) : JSON.stringify(v));
+
+      // Precedence: URL param > persisted value > declared initial.
+      let initialValue = resolveInitial(rawInitial);
+      if (persistKey) {
+        try {
+          const storedRaw = localStorage.getItem(persistKey);
+          if (storedRaw !== null) initialValue = JSON.parse(storedRaw);
+        } catch {
+          // Corrupt entry — fall back to the declared initial.
+        }
+      }
+      if (syncSpec && routeParams) {
+        const fromUrl = routeParams.get(syncSpec.name);
+        if (fromUrl !== undefined) initialValue = decodeParam(fromUrl);
+      }
+
+      const [get, set] = createSignal<unknown>(initialValue);
       accessors[name] = get;
       // Function-type fields: Solid treats setter(fn) as a functional update (calls fn(prev)).
       // Wrap the setter so that storing a function value works correctly.
-      setters[name] = field.type === 'function' ? (v) => set(() => v as never) : (set as (v: unknown) => void);
+      const baseSetter: (v: unknown) => void =
+        field.type === 'function' ? (v) => set(() => v as never) : (set as (v: unknown) => void);
+      const declaredInitial = resolveInitial(rawInitial);
+      setters[name] =
+        persistKey || (syncSpec && routeParams)
+          ? (v) => {
+              baseSetter(v);
+              if (persistKey) {
+                try {
+                  localStorage.setItem(persistKey, JSON.stringify(v));
+                } catch {
+                  // Quota/serialization failure — the in-memory value still applies.
+                }
+              }
+              if (syncSpec && routeParams) {
+                // Back at the declared initial → drop the param, keeping URLs clean.
+                const atDefault = JSON.stringify(v) === JSON.stringify(declaredInitial);
+                routeParams.set(syncSpec.name, atDefault ? null : encodeParam(v), { push: syncSpec.push });
+              }
+            }
+          : baseSetter;
       scopeFields.push(name);
 
       const [touched, setTouched] = createSignal(false);
@@ -474,6 +536,8 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
         errors,
         reset: () => {
           set(resolveInitial(rawInitial) as never);
+          if (persistKey) localStorage.removeItem(persistKey);
+          if (syncSpec && routeParams) routeParams.set(syncSpec.name, null);
           setTouched(false);
         },
       };
@@ -512,20 +576,23 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
   // Each entry runs createQuerySignal at node mount and injects the result array into
   // $local under the given name — read-only, shared across the entire subtree.
   if (node.$queries) {
-    const getModel = stores.$getModel;
-    if (getModel) {
-      const queryAccessors: Record<string, () => unknown[]> = {};
-      for (const [name, field] of Object.entries(node.$queries as Record<string, QueryStateField>)) {
-        const descriptor = resolveQueryProp({ $query: field });
-        queryAccessors[name] = createQuerySignal(descriptor, stores, getModel, effectiveContext);
-      }
-      effectiveContext = {
-        ...effectiveContext,
-        $local: { ...((effectiveContext.$local as Record<string, unknown>) ?? {}), ...queryAccessors },
-      };
-    } else {
-      console.warn('Schema $queries: $getModel not found in stores. Did you wire the model registry?');
+    // Always created, even before the backend's data bindings land (a reload
+    // straight into a data route, or a presentation-only host): the accessor
+    // reads $getModel reactively inside its own effect and starts the real
+    // subscription the moment the bindings arrive. Each entry also exposes
+    // `<name>Loaded` — false until the first result set (or error) — so a
+    // template can hold a skeleton instead of flashing its empty state.
+    const queryAccessors: Record<string, () => unknown> = {};
+    for (const [name, field] of Object.entries(node.$queries as Record<string, QueryStateField>)) {
+      const descriptor = resolveQueryProp({ $query: field });
+      const accessor = createQuerySignal(descriptor, stores, effectiveContext);
+      queryAccessors[name] = accessor;
+      queryAccessors[`${name}Loaded`] = accessor.loaded;
     }
+    effectiveContext = {
+      ...effectiveContext,
+      $local: { ...((effectiveContext.$local as Record<string, unknown>) ?? {}), ...queryAccessors },
+    };
   }
 
   function renderNode(node?: SchemaNode, nodeContext?: Record<string, unknown>) {
@@ -656,13 +723,9 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
     const rawItems = node.props?.items;
     if (hasToken(rawItems, '$query', 'object')) {
       const descriptor = resolveQueryProp(rawItems);
-      const getModel = stores.$getModel;
-      if (!getModel) {
-        console.warn('Schema $query: $getModel not found in stores. Did you wire the model registry?');
-        itemsArray = () => [];
-      } else {
-        itemsArray = createQuerySignal(descriptor, stores, getModel, effectiveContext);
-      }
+      // The accessor reads $getModel reactively inside its own effect — empty
+      // until the backend bindings land, live from then on.
+      itemsArray = createQuerySignal(descriptor, stores, effectiveContext);
     } else {
       itemsArray = createMemo(() => {
         // Read from store proxy INSIDE the memo so Solid tracks mutations from updateSchema/patching
@@ -694,13 +757,16 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
     const rawItems = node.props?.item;
     if (hasToken(rawItems, '$query', 'object')) {
       const descriptor = resolveQueryProp(rawItems);
-      const getModelFn = stores.$getModel;
-      const getModelForPerspective = stores.$getModelForPerspective;
-
-      if (!getModelFn) {
-        console.warn('Schema $single: $getModel not found in stores. Did you wire the model registry?');
-      } else {
+      {
         createEffect(() => {
+          // Read inside the effect — reactive, so a mount before the backend
+          // connects self-heals when the bindings land (see createQuerySignal).
+          const getModelFn = stores.$getModel;
+          const getModelForPerspective = stores.$getModelForPerspective;
+          if (!getModelFn) {
+            setHasItem(false);
+            return;
+          }
           let p: unknown = null;
           if (descriptor.dataset) {
             const parts = descriptor.dataset.split('.');
@@ -733,6 +799,11 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
             string,
             unknown
           >;
+          if (resolvedParams.where && typeof resolvedParams.where === 'object') {
+            const prunedWhere = pruneUnresolvedWhere(resolvedParams.where as Record<string, unknown>);
+            if (prunedWhere === undefined) delete resolvedParams.where;
+            else resolvedParams.where = prunedWhere;
+          }
           const resolvedInclude =
             descriptor.include !== undefined
               ? (deepResolveTokens(descriptor.include, stores, effectiveContext) as Record<
@@ -954,13 +1025,7 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
       // $query: set up reactive subscription via createSignal + createEffect
       // instead of createMemo — subscriptions are side effects, not derivations.
       const descriptor = resolveQueryProp(rawValue);
-      const getModel = stores.$getModel;
-      if (!getModel) {
-        console.warn('Schema $query: $getModel not found in stores. Did you wire the model registry?');
-        propMemos[key] = () => [];
-      } else {
-        propMemos[key] = createQuerySignal(descriptor, stores, getModel, effectiveContext);
-      }
+      propMemos[key] = createQuerySignal(descriptor, stores, effectiveContext);
     } else if (
       hasToken(rawValue, '$map', 'object') &&
       hasToken((rawValue as { $map: MapProp }).$map.items, '$query', 'object')
@@ -969,16 +1034,10 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
       // then pass the live signal into resolveMapProp so it re-maps on every update.
       const mapSpec = (rawValue as { $map: MapProp }).$map;
       const descriptor = resolveQueryProp(mapSpec.items);
-      const getModel = stores.$getModel;
-      if (!getModel) {
-        console.warn('Schema $query: $getModel not found in stores. Did you wire the model registry?');
-        propMemos[key] = () => [];
-      } else {
-        const itemsSignal = createQuerySignal(descriptor, stores, getModel, effectiveContext);
-        propMemos[key] = createMemo(() =>
-          deepUnwrap(resolveProp({ $map: { ...mapSpec, items: itemsSignal } }, stores, effectiveContext, createMemo)),
-        );
-      }
+      const itemsSignal = createQuerySignal(descriptor, stores, effectiveContext);
+      propMemos[key] = createMemo(() =>
+        deepUnwrap(resolveProp({ $map: { ...mapSpec, items: itemsSignal } }, stores, effectiveContext, createMemo)),
+      );
     } else if (isEventProp(key) && Array.isArray(rawValue)) {
       // Event handler arrays: resolve each item lazily at call time so that
       // $if conditions with $event.* references (e.g. '$event.detail') resolve
@@ -995,8 +1054,7 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
           }
         };
     } else {
-      const getModel = stores.$getModel;
-      const raw = getModel ? hoistMapQuerySignals(rawValue, stores, getModel, effectiveContext) : rawValue;
+      const raw = hoistMapQuerySignals(rawValue, stores, effectiveContext);
       propMemos[key] = createMemo(() => {
         const resolved = resolveProp(raw, stores, effectiveContext, createMemo);
         return deepUnwrap(resolved);

@@ -18,15 +18,20 @@ Each theme lives in its own directory under `src/`:
 ```
 src/
 ├── index.css          ← aggregator (@import for each theme)
+├── light/index.css   (near-empty by design — light is the parametric default)
 ├── dark/index.css
 ├── black/index.css
 ├── retro/index.css
-└── cyberpunk/index.css
+├── cyberpunk/index.css
+├── presets.ts        (the built-in themes as parameters — THEME_PRESETS)
+├── overrides.ts      (ThemeOverrides — the theme vocabulary)
+└── themeStyles.ts    (themeToStyle / applyThemeVars — parameters → CSS vars)
 ```
 
 The aggregator `src/index.css` imports all themes:
 
 ```css
+@import url('./light/index.css');
 @import url('./dark/index.css');
 @import url('./black/index.css');
 @import url('./retro/index.css');

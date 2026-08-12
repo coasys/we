@@ -1,5 +1,6 @@
+import type { SerializedBlockNode as BaseSerializedBlockNode } from '@we/block-shared';
 import { getBlockRegistration } from '@we/block-shared';
-import type { LexicalEditor, LexicalNode, NodeKey, SerializedLexicalNode } from 'lexical';
+import type { LexicalEditor, LexicalNode, NodeKey } from 'lexical';
 import {
   $createNodeSelection,
   $getNodeByKey,
@@ -16,8 +17,14 @@ import { createEffect, createMemo, createSignal, onCleanup } from 'solid-js';
 
 import { useDisplayOverride } from '../components/BlockDisplayOverrides';
 
-export interface SerializedBlockNode extends SerializedLexicalNode {
-  [key: string]: unknown;
+/**
+ * The editor-side refinement of @we/block-shared's SerializedBlockNode:
+ * structurally identical, but Lexical requires `version` to be present.
+ * One name, one base shape — the two packages previously declared
+ * unrelated types under this name.
+ */
+export interface SerializedBlockNode extends BaseSerializedBlockNode {
+  version: number;
 }
 
 /** Public interface for block nodes created by the factory. */

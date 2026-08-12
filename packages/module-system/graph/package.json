@@ -1,7 +1,7 @@
 {
   "name": "@we/module-graph",
   "version": "0.1.0",
-  "description": "Graph feature module — a general-purpose graph engine with pluggable expanders, layouts and behaviours",
+  "description": "Graph feature module \u2014 a general-purpose graph engine with pluggable expanders, layouts and behaviours",
   "license": "MIT",
   "type": "module",
   "scripts": {
@@ -29,8 +29,8 @@
     "@we/cli": "workspace:*",
     "@we/module-shared": "workspace:*",
     "@we/schema-shared": "workspace:*",
-    "tsup": "^8.0.0",
-    "typescript": "^5.3.3"
+    "tsup": "^8.5.1",
+    "typescript": "^5.7.2"
   },
   "context": {
     "type": "plugins",

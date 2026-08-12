@@ -5,17 +5,24 @@
     "description": "Pure WE application built with design system and schema renderer",
     "author": "James Weir"
   },
-
+  "features": {
+    "useQueryIR": true
+  },
+  "modules": [
+    "globe",
+    "graph",
+    "notes",
+    "call",
+    "transcribe"
+  ],
   "ad4m": {
     "dataPath": "~/.we-native-app",
     "executorPath": "../ad4m/target/release/ad4m-executor",
     "repoPath": "../ad4m"
   },
-
   "electron": {
     "appDistPath": "dist",
     "basePort": 8080
   },
-
   "apps": []
 }

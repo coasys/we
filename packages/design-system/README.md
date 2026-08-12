@@ -1,45 +1,53 @@
-# WE Design System Packages
+# WE Design System
 
-Welcome to the **WE Design System**! This directory contains the foundational packages that power the UI, theming, and component experience across all WE applications and modules.
-
-## Overview
-
-The design system is organized as a set of composable, reusable packages, each with a clear responsibility. It enables rapid development, consistent user experience, and easy theming for community-driven apps built on the WE platform.
+The foundational packages powering UI, theming, and the component experience
+across all WE applications and modules — a set of composable packages, each
+with one responsibility, layered bottom-up.
 
 ## Packages
 
-- **1-tokens/**: Centralized design tokens for spacing, color, typography, etc.
-- **2-themes/**: Theme definitions and utilities for light/dark/custom themes.
-- **3-primitives/**: Atomic, reusable web components. Framework-agnostic, can be used in any JS app.
-- **4-components/**: Higher-level UI components for SolidJS, composed from elements and tokens.
-- **5-widgets/**: Composite UI blocks that encapsulate specific functionality (e.g., search bars, carousels, chat panels). Widgets combine multiple components and elements to deliver higher-level features. This is the highest level of the design system — composition above widgets is handled by the schema system.
-- **types/**: All designs system types
-- **utils/**: All designs system utils
+- **1-tokens/** (`@we/tokens`): Design tokens — spacing, color, typography,
+  radius, z-index, and the semantic role variables — as CSS variables and a
+  JS object. The generated CSS is snapshot-tested.
+- **2-themes/** (`@we/themes`): What a theme *is*: the parametric vocabulary
+  (`ThemeOverrides`), the built-in presets, the parameters→CSS mapping
+  (`themeToStyle`/`applyThemeVars`), and the per-theme CSS files.
+- **3-primitives/** (`@we/primitives`): Atomic Lit web components
+  (`we-button`, `we-input`, …). Framework-agnostic; usable in any JS app,
+  per-component importable (`@we/primitives/button`).
+- **4-components/** (`@we/components`): Solid layout and composite components
+  (Column, Row, Grid, Card, block displays/inputs), built on the shared
+  DS-props machinery.
+- **5-widgets/** (`@we/widgets`): Generic composite widgets (currently
+  `CollapsibleSidebar`) — the highest design-system layer; composition above
+  widgets is the schema system's job. Feature widgets live with their module
+  family (the globe widget, the graph view).
+- **types/** (`@we/design-types`): The `DesignSystemProps` surface and shared
+  type vocabulary.
+- **utils/** (`@we/design-utils`): The DS-props → CSS computation shared by
+  Lit primitives and Solid components, token resolvers, and the
+  `DesignSystemProps` ↔ `designSystemKeys` invariant test.
 
-## Usage
-
-Each package is published independently and can be installed via npm or pnpm. See the README in each subpackage for usage details and API docs.
-
-## Contributing
-
-We welcome contributions! To add or update a component, element, or theme:
-
-1. Fork the repo and create a branch.
-2. Add your code in the appropriate package directory.
-3. Write or update stories and tests.
-4. Run `pnpm build` and ensure all packages build and tests pass.
-5. Submit a pull request with a clear description.
-
-See the [CONTRIBUTING.md](../../CONTRIBUTING.md) for more details.
+All packages are consumed in-workspace (`workspace:*`); `publishConfig` is set
+for eventual publishing. See each subpackage's README and `CONVENTIONS.md` for
+authoring rules — the root [`CONVENTIONS.md`](./CONVENTIONS.md) holds the
+directory structure and prop patterns every component follows.
 
 ## Storybook
 
-We use a monorepo-level Storybook for live documentation and development of all design system packages. Run `pnpm storybook` from the repo root to start the Storybook server.
+`@we/primitives` has a Storybook: `pnpm --filter @we/primitives start`.
+(Coverage is partial; stories live in `3-primitives/.storybook/stories/`.)
+
+## Contributing
+
+1. Create a branch from `dev`.
+2. Add your code in the appropriate package directory, following that
+   package's `CONVENTIONS.md`.
+3. Write or update tests (`pnpm --filter <pkg> test`) and stories where they
+   exist.
+4. `pnpm build && pnpm lint && pnpm test` from the repo root.
+5. Submit a pull request against `dev`.
 
 ## License
 
-MIT. See [LICENSE](../../LICENSE).
-
----
-
-For questions or suggestions, open an issue or join the WE community!
+MIT (per-package `license` fields).

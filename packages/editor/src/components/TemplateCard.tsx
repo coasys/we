@@ -33,16 +33,16 @@ interface Props {
 }
 
 export function TemplateCard(props: Props) {
-  const adamStore = useEditorHost().identity;
+  const identity = useEditorHost().identity;
   const templateStore = useEditorHost().template;
   const mode = () => props.mode ?? 'marketplace';
 
   onMount(() => {
-    if (props.template.author) adamStore.fetchAgent(props.template.author);
+    if (props.template.author) identity.fetchAgent(props.template.author);
   });
 
   const author = createMemo<AgentProfileSummary | undefined>(() =>
-    adamStore.agents().find((a) => a.did === props.template.author),
+    identity.agents().find((a) => a.did === props.template.author),
   );
 
   const authorName = createMemo(() => {
@@ -51,7 +51,7 @@ export function TemplateCard(props: Props) {
     return [a.firstName, a.lastName].filter(Boolean).join(' ');
   });
 
-  const isOwnTemplate = createMemo(() => props.template.author === adamStore.me()?.did);
+  const isOwnTemplate = createMemo(() => props.template.author === identity.me()?.did);
 
   const installedVersion = createMemo(() =>
     typeof props.installed === 'number' ? props.installed : props.installed ? 1 : 0,

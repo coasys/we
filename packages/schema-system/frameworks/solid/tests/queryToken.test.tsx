@@ -366,11 +366,17 @@ describe('$query token', () => {
 
   // ---- Missing $getModel ----
 
-  it('warns and returns empty array when $getModel is missing', async () => {
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+  it('is quietly empty without $getModel, then goes live when the binding arrives', async () => {
+    // The reload case: the template mounts before the backend's data bindings
+    // land. The binding is read reactively inside the query effect, so the
+    // subscription must start on its own when $getModel appears — previously
+    // the query was stranded empty until a route change remounted the tree.
+    const [getModelSignal, setGetModelSignal] = createSignal<((name: string) => unknown) | undefined>(undefined);
     const stores = {
       $currentDataset: () => ({ uuid: 'p1' }),
-      // Note: no $getModel
+      get $getModel() {
+        return getModelSignal();
+      },
     };
 
     const node: SchemaNode = {
@@ -381,11 +387,18 @@ describe('$query token', () => {
     const { container } = render(() => <RenderSchema node={node} stores={asStores(stores)} registry={registry} />);
     await tick();
 
-    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('$getModel not found'));
-
     const el = container.querySelector('[data-testid="data"]');
     expect(el?.textContent).toBe('[]');
 
-    warnSpy.mockRestore();
+    // Backend connects: the binding appears, the query starts unprompted.
+    const builder = createMockBuilder();
+    const MockModel = { query: vi.fn(() => builder), findAll: vi.fn() };
+    setGetModelSignal(() => () => MockModel);
+    await tick();
+    expect(builder.subscribe).toHaveBeenCalledOnce();
+
+    builder.push([{ id: 'p-1', title: 'Arrived' }]);
+    await tick();
+    expect(el?.textContent).toContain('Arrived');
   });
 });

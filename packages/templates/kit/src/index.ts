@@ -33,6 +33,8 @@
 
 // States — what a surface shows when it has nothing to show.
 export { emptyNote, emptyState } from './states/emptyState.ts';
+export { skeletonList } from './states/skeletonList.ts';
+export type { SkeletonListOptions } from './states/skeletonList.ts';
 export type { EmptyStateOptions } from './states/emptyState.ts';
 export { gatePrompt } from './states/gatePrompt.ts';
 export type { GatePromptOptions } from './states/gatePrompt.ts';
@@ -64,6 +66,8 @@ export { adminSection } from './we/adminSection.ts';
 export type { AdminSectionOptions } from './we/adminSection.ts';
 export { agentByline } from './we/agentByline.ts';
 export type { AgentBylineOptions } from './we/agentByline.ts';
+export { installedList } from './we/installedList.ts';
+export type { InstalledListOptions } from './we/installedList.ts';
 export { marketplaceList } from './we/marketplaceList.ts';
 export type { MarketplaceListOptions } from './we/marketplaceList.ts';
 export { peopleRow } from './we/peopleRow.ts';

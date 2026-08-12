@@ -6,7 +6,7 @@ import type { EditorChatMessage as ChatMessage } from '../host';
 import { useEditorHost } from '../host';
 
 export function AiPanel() {
-  const aiStore = useEditorHost().session;
+  const session = useEditorHost().session;
 
   const [inputValue, setInputValue] = createSignal('');
   const [apiKeyInput, setApiKeyInput] = createSignal('');
@@ -14,8 +14,8 @@ export function AiPanel() {
 
   // Auto-scroll to bottom when messages change or streaming content updates
   createEffect(() => {
-    void aiStore.messages().length;
-    void aiStore.streamingContent();
+    void session.messages().length;
+    void session.streamingContent();
     requestAnimationFrame(() => {
       messagesEndRef?.scrollIntoView({ behavior: 'smooth' });
     });
@@ -23,8 +23,8 @@ export function AiPanel() {
 
   function handleSend() {
     const text = inputValue().trim();
-    if (!text || aiStore.isStreaming()) return;
-    aiStore.sendMessage(text);
+    if (!text || session.isStreaming()) return;
+    session.sendMessage(text);
     setInputValue('');
   }
 
@@ -38,8 +38,8 @@ export function AiPanel() {
       onKeyDown={(e: KeyboardEvent) => {
         if ((e.metaKey || e.ctrlKey) && e.key === 'z') {
           e.preventDefault();
-          if (e.shiftKey) aiStore.redo();
-          else aiStore.undo();
+          if (e.shiftKey) session.redo();
+          else session.undo();
         }
       }}
       tabIndex={0}
@@ -58,12 +58,12 @@ export function AiPanel() {
         </we-text>
         <Row ay="center" gap="100">
           <we-tooltip title="New chat session">
-            <we-button variant="ghost" size="sm" onClick={() => aiStore.newChat()}>
+            <we-button variant="ghost" size="sm" onClick={() => session.newChat()}>
               <we-icon name="file-plus" size="sm" />
             </we-button>
           </we-tooltip>
           <we-tooltip title="Close chat panel">
-            <we-button variant="ghost" size="sm" onClick={() => aiStore.close()}>
+            <we-button variant="ghost" size="sm" onClick={() => session.close()}>
               <we-icon name="x" size="sm" />
             </we-button>
           </we-tooltip>
@@ -71,7 +71,7 @@ export function AiPanel() {
       </Row>
 
       {/* API Key Setup */}
-      <Show when={!aiStore.apiKeyConfigured()}>
+      <Show when={!session.apiKeyConfigured()}>
         <Column
           gap="200"
           p="400"
@@ -96,7 +96,7 @@ export function AiPanel() {
               on:input={(e: CustomEvent) => setApiKeyInput(e.detail)}
               on:keydown={(e: CustomEvent) => {
                 if (e.detail.key === 'Enter' && apiKeyInput().trim()) {
-                  aiStore.setApiKey(apiKeyInput().trim());
+                  session.setApiKey(apiKeyInput().trim());
                   setApiKeyInput('');
                 }
               }}
@@ -105,7 +105,7 @@ export function AiPanel() {
               size="sm"
               disabled={!apiKeyInput().trim()}
               onClick={() => {
-                aiStore.setApiKey(apiKeyInput().trim());
+                session.setApiKey(apiKeyInput().trim());
                 setApiKeyInput('');
               }}
             >
@@ -116,7 +116,7 @@ export function AiPanel() {
       </Show>
 
       {/* Session tabs */}
-      <Show when={aiStore.sessions().length > 0}>
+      <Show when={session.sessions().length > 0}>
         <Row
           ay="center"
           gap="100"
@@ -125,9 +125,9 @@ export function AiPanel() {
           flexShrink="0"
           overflowX="auto"
         >
-          <For each={aiStore.sessions()}>
-            {(session) => {
-              const isActive = () => session.id === aiStore.activeSessionId();
+          <For each={session.sessions()}>
+            {(chat) => {
+              const isActive = () => chat.id === session.activeSessionId();
               return (
                 <Row
                   ay="center"
@@ -144,18 +144,18 @@ export function AiPanel() {
                     fontSize="300"
                     fontWeight={isActive() ? '600' : '400'}
                     color={isActive() ? 'neutral-900' : 'neutral-700'}
-                    onClick={() => aiStore.switchSession(session.id)}
+                    onClick={() => session.switchSession(chat.id)}
                     cursor="pointer"
                   >
-                    {session.name || 'Chat'}
+                    {chat.name || 'Chat'}
                   </we-text>
-                  <Show when={aiStore.sessions().length > 1}>
+                  <Show when={session.sessions().length > 1}>
                     <we-button
                       variant="ghost"
                       size="xs"
                       onClick={(e: MouseEvent) => {
                         e.stopPropagation();
-                        aiStore.deleteSession(session.id);
+                        session.deleteSession(chat.id);
                       }}
                       mr="-8px"
                       square
@@ -172,12 +172,12 @@ export function AiPanel() {
 
       {/* Messages */}
       <Column gap="400" p="400" pr="300" flex="1" overflow="auto">
-        <For each={aiStore.messages()}>
+        <For each={session.messages()}>
           {(msg) => (
             <MessageBubble
               message={msg}
-              isStreaming={aiStore.isStreaming() && msg.status === 'streaming'}
-              streamingContent={msg.status === 'streaming' ? aiStore.streamingContent() : undefined}
+              isStreaming={session.isStreaming() && msg.status === 'streaming'}
+              streamingContent={msg.status === 'streaming' ? session.streamingContent() : undefined}
             />
           )}
         </For>
@@ -189,7 +189,7 @@ export function AiPanel() {
         <we-textarea
           value={inputValue()}
           placeholder="Describe a change to the template..."
-          disabled={aiStore.isStreaming()}
+          disabled={session.isStreaming()}
           rows={1}
           resize="none"
           flex="1"
@@ -203,7 +203,7 @@ export function AiPanel() {
           maxHeight="160px"
           overflowY="auto"
         />
-        <we-button size="sm" onClick={handleSend} disabled={aiStore.isStreaming() || inputValue().trim() === ''}>
+        <we-button size="sm" onClick={handleSend} disabled={session.isStreaming() || inputValue().trim() === ''}>
           <we-icon name="paper-plane-tilt" size="sm" />
         </we-button>
       </Row>

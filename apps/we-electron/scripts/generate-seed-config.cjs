@@ -125,17 +125,17 @@ function main() {
   }
 
   // Write port map
-  fs.writeFileSync(PORT_MAP_FILE, JSON.stringify(portMap, null, 2), 'utf8');
+  fs.writeFileSync(PORT_MAP_FILE, JSON.stringify(portMap, null, 2) + '\n', 'utf8');
   console.log(`✅ Port map written to: ${path.relative(process.cwd(), PORT_MAP_FILE)}`);
 
   // Write extraResources
-  fs.writeFileSync(EXTRA_RESOURCES_FILE, JSON.stringify(allExtraResources, null, 2), 'utf8');
+  fs.writeFileSync(EXTRA_RESOURCES_FILE, JSON.stringify(allExtraResources, null, 2) + '\n', 'utf8');
   console.log(`✅ extraResources written to: ${path.relative(process.cwd(), EXTRA_RESOURCES_FILE)}`);
 
   // Write runtime settings. Separate from the port map because the main process needs these
   // before any window (or renderer, or seed loader) exists — it starts the executor first.
   const runtime = { ad4mDataPath: seed.ad4m?.dataPath || DEFAULT_AD4M_DATA_PATH };
-  fs.writeFileSync(RUNTIME_FILE, JSON.stringify(runtime, null, 2), 'utf8');
+  fs.writeFileSync(RUNTIME_FILE, JSON.stringify(runtime, null, 2) + '\n', 'utf8');
   console.log(`✅ Runtime settings written to: ${path.relative(process.cwd(), RUNTIME_FILE)}`);
   console.log(`   AD4M data path: ${runtime.ad4mDataPath}`);
 

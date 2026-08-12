@@ -346,7 +346,7 @@ async function generateComponentDeclaration(component: Component, framework: Fra
     __dirname,
     '../dist/types',
     framework.name,
-    'components',
+    'primitives',
     `${component.className}.d.ts`,
   );
   await fs.writeFile(outputPath, declaration);
@@ -386,7 +386,7 @@ async function generateFrameworkDeclarations(): Promise<void> {
         .flat()
         .map(async (framework) => {
           // Create directory - resolve path relative to script location
-          const frameworkDir = path.resolve(__dirname, '../dist/types', framework.name, 'components');
+          const frameworkDir = path.resolve(__dirname, '../dist/types', framework.name, 'primitives');
           await fs.mkdir(frameworkDir, { recursive: true });
 
           // Generate individual component declarations

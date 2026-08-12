@@ -69,7 +69,7 @@ function LoadEditorState({
   createEffect(() => {
     if (!editorState || !editor) return;
 
-    const rootNode: SerializedBlockNode =
+    const rootNode: SerializedBlockNode | null =
       typeof editorState === 'string' ? decodeEditorState(editorState) : editorState;
     if (!rootNode) return;
 
@@ -81,7 +81,11 @@ function LoadEditorState({
       // which the browser can't render as <img src>.
       const resolved = perspective ? await resolveExpressionAddresses(perspective, node) : node;
       try {
-        const lexicalState = editor.parseEditorState({ root: resolved });
+        // The shared SerializedBlockNode keeps `version` optional; Lexical's root
+        // requires it. Editor-produced state always carries it, so assert here.
+        const lexicalState = editor.parseEditorState({ root: resolved } as Parameters<
+          typeof editor.parseEditorState
+        >[0]);
         editor.setEditorState(lexicalState);
         // Re-attach each existing block's AD4M id (lost on load for built-in
         // text node types — see blockIdState.ts) so saving this content back

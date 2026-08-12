@@ -134,6 +134,9 @@ export default [
       '**/target/**',
       '**/dist-electron/**',
       '**/.storybook/**',
+      // Machine-generated sources (e.g. packages/models/src/generated/coreManifest.ts,
+      // written by generateCoreManifest.mjs) — emitted JSON-style, not prettier-style.
+      '**/src/generated/**',
       // The branch-aware ad4m build (scripts/build-with-ad4m-link.sh) and
       // its CI counterpart clone the matching ad4m branch into ./ad4m and
       // link it via pnpm.overrides.  ESLint must not walk into that
@@ -224,7 +227,12 @@ export default [
     //   - only DS-consuming packages. @we/components and @we/widgets *implement* DS props
     //     and legitimately write raw CSS; the React playgrounds have no DS at all.
     name: 'design-system/prefer-ds-props',
-    files: ['packages/app-framework/**/*.tsx', 'packages/block-system/**/*.tsx', 'packages/schema-system/**/*.tsx'],
+    files: [
+      'packages/app-shell/**/*.tsx',
+      'packages/editor/**/*.tsx',
+      'packages/block-system/**/*.tsx',
+      'packages/schema-system/**/*.tsx',
+    ],
     rules: {
       'no-restricted-syntax': ['error', ...dsPropSelectors()],
     },

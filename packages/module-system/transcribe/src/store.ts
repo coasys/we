@@ -479,7 +479,6 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
       // deferred utterance passes through here more than once — listed on the way in, it would show
       // up once per attempt.
       setRecent([text, ...recent()].slice(0, 20));
-      const call = myCall();
       await recordSelfParticipation(slot.id);
     } catch (cause) {
       // Reported but not surfaced as a failed state: the transcript continues, and losing one block

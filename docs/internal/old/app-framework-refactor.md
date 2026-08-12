@@ -1,3 +1,6 @@
+> **Archived: completed refactor.** `packages/app-framework` became `packages/app-shell`;
+> everything this plan proposed either shipped or was superseded. Historical context only.
+
 # App Framework Refactor
 
 Targeted cleanup of `@we/app-shell`: fix the seed import, remove dead integration infrastructure, fix type/validator mismatches, and add an `Ad4mIframe` wrapper for embedded app credential sharing.

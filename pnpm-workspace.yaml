@@ -14,7 +14,8 @@ packages:
   - packages/editor
   # Feature modules — the developer rung above blocks (see notes/we/August-2026/feature-modules.md)
   - packages/module-system/*
-  - packages/module-system/*/*
+  # The globe module is a family: module + protocol + layers + widget
+  - packages/module-system/globe/*
 
 onlyBuiltDependencies:
   - electron

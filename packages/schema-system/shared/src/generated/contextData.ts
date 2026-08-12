@@ -447,20 +447,6 @@ export const contextData: ContextData = {
     {
       tagName: 'we-select',
       className: 'Select',
-      superclass: 'DesignSystemElement',
-      ownProps: [
-        { name: 'options', type: 'SelectOption[]', optional: false, default: '[]' },
-        { name: 'value', type: 'string', optional: false, default: "''" },
-        { name: 'placeholder', type: 'string', optional: false, default: "''" },
-        { name: 'disabled', type: 'boolean', optional: false, default: 'false' },
-        { name: 'searchable', type: 'boolean', optional: false, default: 'false' },
-        { name: 'name', type: 'string', optional: false, default: "''" },
-        { name: 'size', type: "'xs' | 'sm' | 'md' | 'lg' | 'xl'", optional: false, default: "'md'" },
-      ],
-    },
-    {
-      tagName: 'we-select',
-      className: 'Select',
       description:
         'Pick a single value from a list of options. Custom-rendered dropdown.\nUse for form fields, settings, filters. Set searchable=true for type-to-filter.',
       superclass: 'DesignSystemElement',
@@ -703,7 +689,7 @@ export const contextData: ContextData = {
       name: 'BlockComposer',
       superclass: 'DesignSystemElement',
       props: [
-        { name: 'editorState', type: 'any', optional: true },
+        { name: 'editorState', type: 'SerializedBlockNode', optional: true },
         { name: 'perspective', type: 'PerspectiveProxy | null', optional: true },
         { name: 'onSave', type: '((json: SerializedBlockNode) => void)', optional: true },
         { name: 'onReady', type: '((api: { save: () => void; }) => void)', optional: true },
@@ -726,7 +712,7 @@ export const contextData: ContextData = {
       name: 'BlockRenderer',
       superclass: 'DesignSystemElement',
       props: [
-        { name: 'editorState', type: 'any', optional: true },
+        { name: 'editorState', type: 'SerializedBlockNode', optional: true },
         { name: 'perspective', type: 'PerspectiveProxy | null', optional: true },
         { name: 'rootClass', type: 'string', optional: true },
       ],
@@ -787,7 +773,7 @@ export const contextData: ContextData = {
         { name: 'layout', type: 'string', optional: true },
         { name: 'columnCount', type: 'number', optional: true },
         { name: 'gap', type: 'string', optional: true },
-        { name: 'childEditorState', type: 'any', optional: true },
+        { name: 'childEditorState', type: 'SerializedBlockNode', optional: true },
       ],
       source: 'components',
     },
@@ -798,7 +784,7 @@ export const contextData: ContextData = {
         { name: 'layout', type: 'string', optional: true },
         { name: 'columnCount', type: 'number', optional: true },
         { name: 'gap', type: 'string', optional: true },
-        { name: 'childEditorState', type: 'any', optional: true },
+        { name: 'childEditorState', type: 'SerializedBlockNode', optional: true },
         { name: 'onChange', type: '(property: string, value: unknown) => void', optional: false },
         { name: 'isSelected', type: '() => boolean', optional: false },
       ],
@@ -1778,7 +1764,7 @@ export const contextData: ContextData = {
         background: 'transparent',
         cornerBackground: 'transparent',
         thumbBoxShadow: 'none',
-        thumbBorderRadius: "radius['pill']",
+        thumbBorderRadius: 'var(--we-radius-pill)',
         thumbBackground: 'var(--we-color-neutral-100)',
       },
     },
@@ -1786,18 +1772,6 @@ export const contextData: ContextData = {
       name: 'componentHeight',
       type: 'Record<ComponentSize, string>',
       values: { xs: '1.5rem', sm: '2rem', md: '2.5rem', lg: '3rem', xl: '3.5rem' },
-    },
-    {
-      name: 'effect.depth',
-      type: 'Record<DepthToken, string>',
-      values: {
-        '100': '0px 1px 1px 0px rgb(9 30 66 / 50%), 0px 2px 4px 0px rgb(9 30 66 / 15%)',
-        '200': '0px 2px 2px 0px rgb(9 30 66 / 6%), 0px 4px 8px -2px rgb(9 30 66 / 25%)',
-        '300': '0px 2px 2px 0px rgb(9 30 66 / 6%), 0px 8px 16px -4px rgb(9 30 66 / 25%)',
-        '400': '0px 4px 4px 0px rgb(9 30 66 / 6%), 0px 12px 24px -6px rgb(9 30 66 / 25%)',
-        '500': '0px 6px 6px 0px rgb(9 30 66 / 10%), 0px 20px 32px -8px rgb(9 30 66 / 25%)',
-        none: 'none',
-      },
     },
     {
       name: 'font.family',
@@ -2104,8 +2078,8 @@ export const contextData: ContextData = {
     },
     {
       name: 'routeStore',
-      state: { currentPath: { type: 'string' }, segments: { type: 'array' } },
-      actions: ['setNavigateFunction', 'setCurrentPath', 'navigate'],
+      state: { currentPath: { type: 'string' }, segments: { type: 'array' }, params: { type: 'object' } },
+      actions: ['setNavigateFunction', 'setCurrentPath', 'navigate', 'setParam'],
     },
     {
       name: 'runtimeStore',
@@ -2345,7 +2319,6 @@ export const contextData: ContextData = {
         'removeSpaceFromGlobal',
         'updateSpaceInCache',
         'loadSpaces',
-        'test',
       ],
     },
     {
@@ -2443,6 +2416,7 @@ export const contextData: ContextData = {
         'publishToMarketplace',
         'publishToSpace',
         'loadInstalledThemes',
+        'refreshSpaceThemes',
       ],
     },
     { name: 'model', state: {}, actions: ['create', 'update', 'delete'] },

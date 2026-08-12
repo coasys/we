@@ -117,7 +117,7 @@ Filters an array to items where all where conditions match. Mirrors the $query w
 Where values (including those inside operator objects) are resolved through the prop system,
 so $store, $local, and context refs like { "$local": "searchText" } all work.
 
-$query-only logical combinators (OR / AND / NOT) — NOT supported in $filter, only in $query's where:
+Logical combinators (OR / AND / NOT) — supported in both $query's where and $filter's where:
   { "OR": [ { "field": "value" }, { "field2": "value2" } ] }   — matches if ANY branch matches
   { "AND": [ { ... }, { ... } ] }                              — matches if ALL branches match (sibling keys at the
                                                                   same level are already implicitly ANDed — use AND
@@ -125,7 +125,8 @@ $query-only logical combinators (OR / AND / NOT) — NOT supported in $filter, o
   { "NOT": { "field": "value" } }                              — matches if the branch does NOT match
 Branches are full where-clause objects (can contain multiple fields, and can nest OR/AND/NOT inside each other).
 Sibling keys alongside OR/AND/NOT at the same level are implicitly ANDed with it.
-Example — case-insensitive search across two fields:
+Example — case-insensitive search across two fields ($filter takes the same shape, e.g. a member
+list matching name OR handle):
 {
   "$query": {
     "entity": "Space",
@@ -255,6 +256,22 @@ For external-app datasets, always add dataset: "$currentDataset".
 Local state (scoped ephemeral state):
 Declare on any node: "$localState": { "name": { "type": "string", "initial": "" } }
 Supported types: "string", "boolean", "number", "function", "object".
+Two opt-in persistence tiers (see docs/architecture/routing-and-view-state.md for the full rules):
+- "syncParam": "<param>" mirrors the field into a URL query parameter — for VIEW STATE (selected
+  content type, sort, filters, search): what a shared link's recipient should see exactly as the
+  sender does. Object form { "name": "type", "push": true } adds a Back entry on change (use for
+  content-type switches; sort/filter changes keep the default replace). A field back at its
+  declared initial removes its param, keeping URLs clean.
+  Example: { "type": "string", "initial": "posts", "syncParam": { "name": "type", "push": true } }
+- "persist": "<key>" keeps the field on the device (localStorage) — for PREFERENCES (display
+  density, collapsed rails): things a shared link must NOT impose on its recipient. The key is
+  explicit and deployment-global (namespace it, e.g. "cards.displayMode").
+Precedence on mount: URL param > persisted value > declared "initial"; $resetLocal clears both.
+Neither applies to "file"/"function" fields. Open-modal and in-flight flags stay plain (ephemeral).
+The deciding question: "if I sent this URL to someone, should they see the effect?" — yes: syncParam;
+no but future-me should: persist; no one: plain.
+Links may also carry ?template=<id> and ?theme=<id> — the shell applies them when the recipient has
+them and warns (toast) when not. Templates never handle these params themselves.
 Read:  { "$local": "name" } — returns the signal value (reactive).
        { "$local": "name.nested.path" } — dot-notation reads into object-typed fields (reactive).
 Write: { "$setLocal": "name", "from": "$event.target.value" } — event handler that updates the signal.
@@ -285,6 +302,10 @@ Solves two problems: avoids N duplicate subscriptions inside $each loops, and ma
 "$queries": { "signalTypes": { "entity": "SignalType", "subscribe": true } }
 Results are injected into $local as read-only reactive arrays, accessible via { "$local": "signalTypes" }.
 Query options are identical to $each's $query prop (entity, where, order, limit, include, dataset, subscribe).
+Each entry also exposes a read-only boolean { "$local": "<name>Loaded" } — false until the first
+result set (or error) arrives, then true for good. Gate a loading skeleton on it so the empty
+state only ever asserts "loaded and empty", never "not answered yet":
+{ "$if": { "condition": { "$local": "signalTypesLoaded" }, "then": <list-or-empty>, "else": <skeleton> } }
 $queries and $localState share the same $local namespace — avoid duplicate names across both.
 $setLocal will warn and no-op on $queries entries (they are read-only).
 Use with $count + $gt for conditional visibility:

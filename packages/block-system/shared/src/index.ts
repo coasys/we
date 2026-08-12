@@ -2,14 +2,7 @@ export type { BlockComposerProps, BlockRendererProps, SerializedBlockNode } from
 export type { BlockRegistration } from './registry';
 export { registerBlock, getBlockRegistration, getBlockModel, updateBlockRegistration } from './registry';
 export { registerCoreBlocks } from './core-blocks';
-export {
-  createBlocks,
-  loadBlocks,
-  deleteBlocks,
-  reconcileBlocks,
-  blocksToLexicalJSON,
-  resolveExpressionAddresses,
-} from './serialization';
+export { createBlocks, loadBlocks, deleteBlocks, reconcileBlocks, resolveExpressionAddresses } from './serialization';
 export { decodeEditorState } from './utils';
 
 // Back-compat: consumers importing blocks from @we/block-shared still work

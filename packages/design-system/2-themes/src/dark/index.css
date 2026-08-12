@@ -1,5 +1,10 @@
 [data-we-theme='dark'] {
   --we-color-primary-50: hsl(var(--we-color-primary-hue) var(--we-color-saturation) var(--we-color-lightness-50));
+
+  /* Elevation inverts in dark: a raised surface gets lighter instead of casting a
+     shadow. Mirrors the `roles` override in the dark preset (presets.ts), so
+     CSS-only consumers of data-we-theme="dark" get the same relationship. */
+  --we-role-surface-raised: var(--we-color-neutral-100);
 }
 
 [data-we-theme='dark'] we-modal::part(modal) {
@@ -11,6 +16,6 @@
   color: var(--we-color-black);
 }
 
-we-text[variant='heading-md'] {
+[data-we-theme='dark'] we-text[variant='heading-md'] {
   color: var(--we-color-primary-700);
 }

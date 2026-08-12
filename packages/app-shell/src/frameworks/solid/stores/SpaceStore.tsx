@@ -8,6 +8,7 @@ import {
 } from '@shared/spaceSync';
 import { deriveSlug } from '@shared/utils';
 import type { AgentProfileSummary, DatasetRef } from '@we/backend-shared';
+import type { SerializedBlockNode } from '@we/block-shared';
 import { createBlocks, deleteBlocks, reconcileBlocks } from '@we/block-shared';
 import { toastService } from '@we/components/solid';
 import {
@@ -427,7 +428,6 @@ export interface SpaceStore {
   loadSpaces: () => Promise<void>;
 
   // Testing
-  test: () => Promise<void>;
 }
 
 const SpaceContext = createContext<SpaceStore>();
@@ -1053,21 +1053,14 @@ export function SpaceStoreProvider(props: ParentProps) {
     })();
   });
 
-  async function test() {
-    const p = datasetStore.currentDataset()?.handle;
-    if (!p) return;
-    const spaces = await Space.findAll(p, { include: { location: true } });
-    console.log('Spaces in dataset:', spaces);
-    console.log('spaceId: ', p.uuid);
-  }
-
   async function createPost(json: unknown): Promise<void> {
     const p = datasetStore.currentDataset()?.handle;
     if (!p) return;
     // Written alongside the `type: 'root'` that already identifies a post, not instead of it: reads
     // still key on `type`, so existing posts stay in the feed and nothing needs backfilling. See
     // `createBlocks`.
-    await createBlocks(p, json, 'post');
+    // The action arrives from a schema as unknown; the composer produced it, so it is editor state.
+    await createBlocks(p, json as SerializedBlockNode, 'post');
   }
 
   async function updatePost(postId: string, json: unknown): Promise<void> {
@@ -1075,7 +1068,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     if (!p) return;
     const existingRoot = await CollectionBlock.findOne(p, { where: { id: postId } });
     if (!existingRoot) return;
-    await reconcileBlocks(p, existingRoot, json);
+    await reconcileBlocks(p, existingRoot, json as SerializedBlockNode);
   }
 
   async function deleteCollection(collectionId: string): Promise<void> {
@@ -1826,8 +1819,6 @@ export function SpaceStoreProvider(props: ParentProps) {
     updateSpaceInCache,
 
     loadSpaces,
-
-    test,
   };
 
   return <SpaceContext.Provider value={store}>{props.children}</SpaceContext.Provider>;

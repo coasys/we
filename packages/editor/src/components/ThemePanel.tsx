@@ -167,7 +167,7 @@ function CollapsibleSection(props: { title: string; defaultOpen?: boolean; child
 // ─── ThemePanel ───────────────────────────────────────────────────────────────
 
 export function ThemePanel() {
-  const aiStore = useEditorHost().session;
+  const session = useEditorHost().session;
   const themeStore = useEditorHost().theme;
 
   const editing = () => themeStore.editingTheme();
@@ -435,7 +435,7 @@ export function ThemePanel() {
           Theme Editor
         </we-text>
         <we-tooltip title="Close theme panel">
-          <we-button variant="ghost" size="sm" onClick={() => aiStore.closeThemePanel()}>
+          <we-button variant="ghost" size="sm" onClick={() => session.closeThemePanel()}>
             <we-icon name="x" size="sm" />
           </we-button>
         </we-tooltip>

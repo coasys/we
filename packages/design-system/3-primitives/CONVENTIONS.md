@@ -219,7 +219,7 @@ When adding or referencing types in `DesignSystemProps`:
 
 **Rule of thumb:** If there's a value map that generates CSS custom properties, it's a token. If it's just a union of CSS keywords, it's a type.
 
-See [token-type-consolidation plan](../../docs/internal/plans/prs/token-type-consolidation.md) for the full migration plan.
+(The token-type-consolidation plan this referenced has shipped and its plan file was removed; git history has it.)
 
 ## Migration Checklist
 

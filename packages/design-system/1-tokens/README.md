@@ -8,7 +8,7 @@ A modern, JavaScript-first design token system that provides type-safe tokens an
 - 🎨 **Dynamic theming**: CSS variables that respond to configuration changes
 - 📦 **Modular imports**: Import only what you need
 - 🔧 **Flexible consumption**: Use as JS objects or CSS variables
-- ⚡ **Zero runtime**: Compile-time token generation
+- ⚡ **CSS-first**: tokens compile to CSS variables; the JS `tokens` object is there for tooling and token-aware code
 - 🎛️ **Theme flexibility**: Built-in support for theme switching
 
 ## Installation
@@ -119,7 +119,7 @@ Full TypeScript support with exported types:
 ```typescript
 import {
   // Strict token types (autocomplete only)
-  type ColorHueToken, // 'ui' | 'primary' | 'success' | 'warning' | 'danger'
+  type ColorHueToken, // 'neutral' | 'primary' | 'success' | 'warning' | 'danger'
   type ColorLightnessToken, // '0' | '25' | '50' | ... | '1000'
   type SpaceToken, // '0' | '100' | '200' | '300' | ... | '1000'
   type FontSizeToken, // 'base' | '100' | '200' | ... | '1000'
@@ -143,7 +143,7 @@ All tokens are available as CSS custom properties with the `--we-` prefix:
 .card {
   background: var(--we-color-white);
   border: var(--we-border-width) solid var(--we-border-color);
-  border-radius: var(--we-border-radius-lg);
+  border-radius: var(--we-radius-400);
   box-shadow: var(--we-depth-200);
   font-family: var(--we-font-family);
   padding: var(--we-space-500);
@@ -205,7 +205,7 @@ const tokens = {
       '500': 'hsl(610, 60%, 50%)', // Base
       '1000': 'hsl(610, 60%, 0%)', // Darkest
     },
-    ui: {/* UI colors with lower saturation */},
+    neutral: {/* neutral colors with lower saturation */},
     base: { white: '#ffffff', black: '#000000' },
   },
   space: {
