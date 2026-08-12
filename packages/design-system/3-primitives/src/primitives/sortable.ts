@@ -131,7 +131,7 @@ export default class Sortable extends DesignSystemElement {
       `pointer-events:none`,
       `opacity:0.85`,
       `z-index:9999`,
-      `box-shadow:0 4px 16px rgba(0,0,0,0.2)`,
+      `box-shadow:0 4px 16px color-mix(in srgb, var(--we-role-shadow-color) 20%, transparent)`,
       `border-radius:6px`,
       `margin:0`,
     ].join(';');

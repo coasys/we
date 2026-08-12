@@ -259,6 +259,43 @@ importers:
         specifier: ^8.0.1
         version: 8.0.5
 
+  apps/we-preview:
+    dependencies:
+      '@we/app-shell':
+        specifier: workspace:*
+        version: link:../../packages/app-shell
+      '@we/backend-inmemory':
+        specifier: workspace:*
+        version: link:../../packages/backend-system/inmemory
+      '@we/backend-shared':
+        specifier: workspace:*
+        version: link:../../packages/backend-system/shared
+      '@we/components':
+        specifier: workspace:*
+        version: link:../../packages/design-system/4-components
+      '@we/models':
+        specifier: workspace:*
+        version: link:../../packages/models
+      '@we/template-fixtures':
+        specifier: workspace:*
+        version: link:../../packages/templates/fixtures
+      solid-js:
+        specifier: ^1.9.5
+        version: 1.9.14
+    devDependencies:
+      playwright-core:
+        specifier: ^1.62.1
+        version: 1.62.1
+      typescript:
+        specifier: ^5.7.2
+        version: 5.9.3
+      vite:
+        specifier: ^6.0.7
+        version: 6.4.3(@types/node@24.13.2)(sass@1.101.0)(tsx@4.23.0)(yaml@2.9.0)
+      vite-plugin-solid:
+        specifier: ^2.11.11
+        version: 2.11.12(solid-js@1.9.14)(vite@6.4.3(@types/node@24.13.2)(sass@1.101.0)(tsx@4.23.0)(yaml@2.9.0))
+
   apps/we-tauri:
     dependencies:
       '@coasys/ad4m':
@@ -663,6 +700,9 @@ importers:
 
   packages/design-system/2-themes:
     devDependencies:
+      '@types/node':
+        specifier: ^24.10.0
+        version: 24.13.2
       '@we/cli':
         specifier: workspace:*
         version: link:../../cli
@@ -1366,6 +1406,18 @@ importers:
       '@types/node':
         specifier: ^24.10.0
         version: 24.13.2
+
+  packages/templates/fixtures:
+    devDependencies:
+      '@types/node':
+        specifier: ^24.10.0
+        version: 24.13.2
+      typescript:
+        specifier: ^5.7.2
+        version: 5.9.3
+      vitest:
+        specifier: ^4.0.15
+        version: 4.1.10(@types/node@24.13.2)(@vitest/coverage-v8@4.1.10)(happy-dom@20.10.6)(jsdom@27.4.0)(vite@7.3.6(@types/node@24.13.2)(sass@1.101.0)(tsx@4.23.0)(yaml@2.9.0))
 
   packages/templates/kit:
     dependencies:
@@ -3295,6 +3347,7 @@ packages:
   '@xmldom/xmldom@0.9.10':
     resolution: {integrity: sha512-A9gOqLdi6cV4ibazAjcQufGj0B1y/vDqYrcuP6d/6x8P27gRS8643Dj9o1dEKtB6O7fwxb2FgBmJS2mX7gpvdw==}
     engines: {node: '>=14.6'}
+    deprecated: this version has critical issues, please update to the latest version
 
   '@zip.js/zip.js@2.8.26':
     resolution: {integrity: sha512-RQ4h9F6DOiHxpdocUDrOl6xBM+yOtz+LkUol47AVWcfebGBDpZ7w7Xvz9PS24JgXvLGiXXzSAfdCdVy1tPlaFA==}
@@ -5423,6 +5476,11 @@ packages:
 
   pkg-types@1.3.1:
     resolution: {integrity: sha512-/Jm5M4RvtBFVkKWRu2BLUTNP8/M2a+UwuAX+ae4770q1qVGtfjG+WTCupoZixokjmHiry8uI+dlY8KXYV5HVVQ==}
+
+  playwright-core@1.62.1:
+    resolution: {integrity: sha512-wPYSwEBJY9GHraISXqyqtx0na0LpO3XEX7jNDhntbex7tzUS7kLnZsOlFruFJB4Hi/rhDMjXGqHewDZ68nYZVw==}
+    engines: {node: '>=20'}
+    hasBin: true
 
   plist@3.1.1:
     resolution: {integrity: sha512-ZIfcLJC+7E7FBFnDxm9MPmt7D+DidyQ26lewieO75AdhA2ayMtsJSES0iWzqJQbcVRSrTufQoy0DR94xHue0oA==}
@@ -10781,6 +10839,8 @@ snapshots:
       confbox: 0.1.8
       mlly: 1.8.2
       pathe: 2.0.3
+
+  playwright-core@1.62.1: {}
 
   plist@3.1.1:
     dependencies:

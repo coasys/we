@@ -12,7 +12,7 @@
   --we-scrollbar-thumb-border-radius: 0;
 }
 
-[data-we-theme='retro'] we-modal::part(modal) {
+[data-we-theme='retro'] we-modal::part(base) {
   position: relative;
   background: silver;
   box-shadow:
@@ -40,13 +40,12 @@
   justify-content: center;
 }
 
-[data-we-theme='retro'] we-modal::part(header) {
-  display: block;
-  height: 50px;
-  background: linear-gradient(90deg, navy, #1084d0);
-}
+/* A Win95 title bar wants a `header` part on we-modal. There isn't one — the element renders
+   backdrop, base, close-button-wrapper and a default slot, and nothing else — so the rule that
+   used to sit here never matched anything. Removing it changes no pixels. Restoring the intent
+   means adding the part to the primitive, which is a modal API change, not a theme fix. */
 
-[data-we-theme='retro'] we-toggle::part(indicator) {
+[data-we-theme='retro'] we-switch::part(thumb) {
   border-radius: 0;
   box-shadow:
     inset -1px -1px #0a0a0a,
@@ -55,7 +54,7 @@
     inset 2px 2px #dfdfdf;
 }
 
-[data-we-theme='retro'] we-toggle::part(toggle) {
+[data-we-theme='retro'] we-switch::part(track) {
   border-radius: 0;
   box-shadow:
     inset -1px -1px #0a0a0a,
@@ -116,7 +115,7 @@
     inset 2px 2px #dfdfdf;
 }
 
-[data-we-theme='retro'] we-button[circle]::part(base) {
+[data-we-theme='retro'] we-button[square]::part(base) {
   border-radius: 0;
 }
 
@@ -133,11 +132,11 @@
   background: var(--we-color-neutral-100);
 }
 
-[data-we-theme='retro'] we-menu-group-item::part(summary) {
+[data-we-theme='retro'] we-menu-group::part(summary) {
   padding-left: var(--we-space-300);
 }
 
-[data-we-theme='retro'] we-menu-group-item::part(content) {
+[data-we-theme='retro'] we-menu-group::part(content) {
   border-left: 1px dotted grey;
   margin-left: var(--we-space-500);
 }
@@ -156,7 +155,7 @@
   border-top: 1px dotted grey;
 }
 
-[data-we-theme='retro'] we-tab-item::part(base) {
+[data-we-theme='retro'] we-tab::part(base) {
   box-shadow:
     inset -1px -1px #0a0a0a,
     inset 1px 1px #fff,
@@ -164,7 +163,7 @@
     inset 2px 2px #dfdfdf;
 }
 
-[data-we-theme='retro'] we-input::part(input-wrapper) {
+[data-we-theme='retro'] we-input::part(base) {
   background: white;
   border: 0;
   box-shadow:
@@ -174,7 +173,7 @@
     inset 2px 2px #dfdfdf;
 }
 
-[data-we-theme='retro'] we-input::part(input-wrapper):focus-within {
+[data-we-theme='retro'] we-input::part(base):focus-within {
   border: 0;
   box-shadow:
     inset -1px -1px #0a0a0a,

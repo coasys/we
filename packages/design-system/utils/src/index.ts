@@ -1,5 +1,5 @@
 import type { DesignSystemProps, FlexDirection } from '@we/design-types';
-import { font } from '@we/tokens';
+import { font, role } from '@we/tokens';
 
 // --- Shared sub-arrays (used by CSS helpers directly) ---
 export const paddingKeys = ['p', 'px', 'py', 'pt', 'pr', 'pb', 'pl'] as const;
@@ -195,6 +195,22 @@ export const resolveFontWeight = makeTokenResolver(new Set(Object.keys(font.weig
 /** Resolves fontFamily: token names → CSS var, raw CSS font stacks → passthrough. */
 export const resolveFontFamily = makeTokenResolver(new Set(Object.keys(font.family)), 'font-family');
 
+/**
+ * Role names, kebab-cased, as a template writes them: `bg="surface-sunken"`.
+ *
+ * Roles could not be *named* from a template before this. The vocabulary existed and a theme could
+ * pin one, but every consumer had to spell `var(--we-role-surface-sunken)` by hand — so templates
+ * kept reaching for scale positions instead, and a scale position cannot express a relationship
+ * that inverts between light and dark. The Discord-shaped template is the case in point: it paints
+ * its rail `neutral-100` over a `neutral-50` page, which is darker-on-lighter in light mode and
+ * *lighter-on-darker* in dark, because the whole scale inverts. Discord's rails are darker than its
+ * page in both. Only a role can say that.
+ *
+ * No collision with colour tokens: those are `{hue}-{shade}` over a closed set of five hues, and no
+ * role name begins with one.
+ */
+const ROLE_NAMES = new Set(Object.keys(role).map((name) => name.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`)));
+
 export function tokenVar(prefix: string, token?: string, fallback = '0') {
   // If no token, return fallback
   if (!token) return fallback;
@@ -204,6 +220,9 @@ export function tokenVar(prefix: string, token?: string, fallback = '0') {
 
   // Allow raw CSS values (hex colors, px, rem, %, rgba, etc.)
   if (isRawCSSValue(token)) return token;
+
+  // A colour prop may name a semantic role instead of a scale position.
+  if (prefix === 'color' && ROLE_NAMES.has(token)) return `var(--we-role-${token})`;
 
   // Otherwise return CSS variable
   return `var(--we-${prefix}-${token})`;

@@ -21,7 +21,18 @@ import { createContext, createEffect, createMemo, createSignal, JSX, onMount, Pa
 import type { RouteStore } from './RouteStore';
 import { useShellStore } from './ShellStore';
 
-const ShellRouteContext = createContext<RouteStore>();
+/**
+ * The shell's store, plus the one setter only {@link ShellRouterRoot} may call.
+ *
+ * The query string has to come from the MemoryRouter's location rather than `window.location`,
+ * which is the whole reason this store exists separately: the overlay's URL is deliberately not
+ * the browser's. Consumers get the narrowed {@link RouteStore} from `useShellRouteStore`.
+ */
+interface ShellRouteStore extends RouteStore {
+  setSearch: (search: string) => void;
+}
+
+const ShellRouteContext = createContext<ShellRouteStore>();
 
 /**
  * Provides the ShellRouteStore context. Must wrap everything that renders the shell overlay,
@@ -30,8 +41,10 @@ const ShellRouteContext = createContext<RouteStore>();
  */
 export function ShellRouteStoreProvider(props: ParentProps) {
   const [currentPath, setCurrentPath] = createSignal('/');
+  const [search, setSearch] = createSignal('');
   const [navigateFunction, setNavigateFunction] = createSignal<ReturnType<typeof useNavigate> | null>(null);
   const segments = createMemo(() => currentPath().split('/').filter(Boolean));
+  const params = createMemo(() => Object.fromEntries(new URLSearchParams(search())));
 
   function navigate(to: string, options?: Record<string, unknown>) {
     const nav = navigateFunction();
@@ -39,12 +52,32 @@ export function ShellRouteStoreProvider(props: ParentProps) {
     else console.warn('ShellRouteStore: navigate called before router was ready');
   }
 
-  const store: RouteStore = {
+  /**
+   * Writes one query parameter by navigating the memory router.
+   *
+   * The main `RouteStore` reaches for `history.replaceState` here so the route tree does not
+   * re-resolve on a param-only change. That is not available to a MemoryRouter — its location is
+   * not the browser's — so this navigates instead, and `replace` keeps it out of the overlay's
+   * history the same way. The overlay's route tree is small enough that re-resolving costs
+   * nothing worth engineering around.
+   */
+  function setParam(name: string, value: string | null, options?: { push?: boolean }) {
+    const next = new URLSearchParams(search());
+    if (value === null || value === undefined || value === '') next.delete(name);
+    else next.set(name, value);
+    const query = next.toString();
+    navigate(`${currentPath()}${query ? `?${query}` : ''}`, { replace: !options?.push });
+  }
+
+  const store: ShellRouteStore = {
     currentPath,
     segments,
+    params,
     setNavigateFunction,
     setCurrentPath,
+    setSearch,
     navigate,
+    setParam,
   };
 
   return <ShellRouteContext.Provider value={store}>{props.children}</ShellRouteContext.Provider>;
@@ -55,13 +88,15 @@ export function ShellRouteStoreProvider(props: ParentProps) {
  * from inside the router context and wires them into the ShellRouteStore signals.
  */
 export function ShellRouterRoot(props: ParentProps): JSX.Element {
-  const store = useShellRouteStore();
+  const store = useContext(ShellRouteContext);
+  if (!store) throw new Error('ShellRouterRoot must be mounted within ShellRouteStoreProvider');
   const shell = useShellStore();
   const navigate = useNavigate();
   const location = useLocation();
 
   createEffect(() => store.setNavigateFunction(() => navigate));
   createEffect(() => store.setCurrentPath(location.pathname));
+  createEffect(() => store.setSearch(location.search));
 
   // A control outside the overlay can ask for a page inside it — see `ShellStore.openShellView`.
   // Claimed here rather than by the opener because this is the first moment `navigate` exists, and

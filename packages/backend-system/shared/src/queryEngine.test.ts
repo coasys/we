@@ -204,3 +204,43 @@ describe('executeQueryIR', () => {
     expect(ids(row.$likes)).toEqual(['s1', 's2']); // same relation, aliased + filtered separately
   });
 });
+
+describe('untyped relations', () => {
+  /**
+   * A relation with no declared target holds children *of any type* — `CollectionBlock.children` is
+   * the case, since a collection mixes text, images and embeds. Reading that as an empty table made
+   * every projection over it resolve to null, so a media grid (which drops posts with no image
+   * rather than showing blank tiles) rendered as nothing at all.
+   */
+  const data = {
+    tables: {
+      Post: [{ id: 'p1' }, { id: 'p2' }],
+      TextBlock: [{ id: 't1', __Post_children: 'p1', text: 'hello' }],
+      ImageBlock: [
+        { id: 'i1', __Post_children: 'p1', src: 'a.png' },
+        { id: 'i2', __Post_children: 'p2', src: 'b.png' },
+      ],
+    },
+    relations: { Post: { children: { target: '', cardinality: 'many' as const, foreignKey: '__Post_children' } } },
+  };
+
+  it('hydrates children from every table', () => {
+    const [first] = executeQueryIR(
+      { entity: 'Post', include: { children: true }, filter: { field: 'id', op: 'eq', value: 'p1' } } as never,
+      data,
+    );
+    expect((first.children as Array<{ id: string }>).map((c) => c.id).sort()).toEqual(['i1', 't1']);
+  });
+
+  it('still filters a projection over one, which is what a cover image is', () => {
+    const rows = executeQueryIR(
+      {
+        entity: 'Post',
+        include: { $cover: { over: 'children', filter: { field: 'src', op: 'exists', value: true }, first: true } },
+      } as never,
+      data,
+    );
+    expect((rows[0].$cover as { id: string }).id).toBe('i1');
+    expect((rows[1].$cover as { id: string }).id).toBe('i2');
+  });
+});

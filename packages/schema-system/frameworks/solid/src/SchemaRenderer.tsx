@@ -737,10 +737,31 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
       });
     }
 
-    // Return a list of the rendered items
+    // Return a list of the rendered items.
+    //
+    // Alongside the item, each row gets `$index` and `$prev` — its position, and the row before it.
+    //
+    // `$prev` is what makes *grouping* expressible, and grouping is not a detail: a chat log that
+    // repeats the avatar and byline on every line of a four-line message from one person is a
+    // different design from one that does not, and the difference is most of the density. Without a
+    // view of the neighbour a template can only ask about the row it is on, so the compact form was
+    // simply unreachable — no theme or prop could recover it.
+    //
+    // Plain values rather than accessors, matching how the item itself is passed: a context ref
+    // resolves by path lookup, and a function under `prev` would break that. The consequence is that
+    // `$prev` is captured when a row renders, so it can go stale if the list is *reordered* under a
+    // keyed `<For>` without that row's own identity changing. Appends and prepends — every feed
+    // here — are unaffected.
     return (
       <For each={itemsArray()}>
-        {(item) => renderNode(itemSchema, { ...effectiveContext, [String(node.props?.as ?? 'item')]: item })}
+        {(item, index) =>
+          renderNode(itemSchema, {
+            ...effectiveContext,
+            [String(node.props?.as ?? 'item')]: item,
+            index: index(),
+            prev: index() > 0 ? itemsArray()[index() - 1] : undefined,
+          })
+        }
       </For>
     );
   }

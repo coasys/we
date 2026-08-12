@@ -29,10 +29,10 @@ const styles = css`
   [part='popover'] {
     position: absolute;
     z-index: var(--we-z-dropdown);
-    background: var(--we-color-neutral-0);
-    border: 1px solid var(--we-color-neutral-200);
+    background: var(--we-role-surface-raised);
+    border: 1px solid var(--we-role-border);
     border-radius: var(--we-radius-500);
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+    box-shadow: 0 4px 16px color-mix(in srgb, var(--we-role-shadow-color) 12%, transparent);
     padding: var(--we-space-400);
     display: flex;
     flex-direction: column;

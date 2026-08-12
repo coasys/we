@@ -8,6 +8,7 @@ import { describe, expect, it } from 'vitest';
 import { color } from '../src/color';
 import { component } from '../src/component';
 import { font } from '../src/font';
+import { role } from '../src/role';
 import { avatarSize, componentHeight, radius, size } from '../src/size';
 import { space } from '../src/space';
 import { zIndex } from '../src/z-index';
@@ -51,23 +52,27 @@ describe('token CSS generation', () => {
     expect(css).toContain(`--we-scrollbar-thumb-background: ${component.scrollbar.thumbBackground}`);
   });
 
-  it('every role token resolves to a parametric expression over the scale', () => {
+  it('every declared role is emitted, and none of them hardcodes a colour', () => {
+    // Derived from the token object rather than a hand-listed set: a role added to `role.ts` and
+    // forgotten here would otherwise be untested, which is how `overlay` and `shadowColor` came to
+    // be hardcoded in nine primitives in the first place.
     const css = generateColorCSS(color);
-    for (const name of [
-      'page',
-      'surface',
-      'surface-raised',
-      'surface-sunken',
-      'text',
-      'text-muted',
-      'text-faint',
-      'text-inverse',
-      'border',
-      'border-strong',
-      'accent',
-      'accent-text',
-    ]) {
-      expect(css).toMatch(new RegExp(`--we-role-${name}: var\\(--we-color-`));
+    for (const name of Object.keys(role)) {
+      const cssName = name.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`);
+      const declaration = new RegExp(`--we-role-${cssName}: (.+);`).exec(css);
+      expect(declaration, `role '${name}' is not emitted`).not.toBeNull();
+
+      // Either a scale position or an expression over the hue/saturation variables — never a
+      // literal, which is what makes a role themeable at all.
+      expect(declaration![1], `role '${name}' hardcodes a colour`).toMatch(/^(var\(--we-color-|hsl\(var\(--we-color-)/);
+    }
+  });
+
+  it('covers the roles the overlay primitives depend on', () => {
+    // These are the ones the modal/drawer/popover migration reads; losing one silently un-themes
+    // an overlay rather than failing a build.
+    for (const name of ['overlay', 'shadow-color', 'surface-raised', 'focus']) {
+      expect(generateColorCSS(color)).toContain(`--we-role-${name}:`);
     }
   });
 });

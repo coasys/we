@@ -152,10 +152,10 @@ const styles = css`
     z-index: var(--we-z-dropdown, 9999);
     min-width: 320px;
     max-width: 380px;
-    background: var(--we-color-neutral-0);
-    border: 1px solid var(--we-color-neutral-200);
+    background: var(--we-role-surface-raised);
+    border: 1px solid var(--we-role-border);
     border-radius: var(--we-radius-500);
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+    box-shadow: 0 8px 24px color-mix(in srgb, var(--we-role-shadow-color) 12%, transparent);
     padding: var(--we-space-400);
     display: flex;
     flex-direction: column;

@@ -77,7 +77,7 @@ const styles = css`
     border-radius: var(--we-radius-full);
     background: var(--we-color-primary-500);
     border: 2px solid white;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+    box-shadow: 0 1px 3px color-mix(in srgb, var(--we-role-shadow-color) 20%, transparent);
     margin-top: calc((var(--thumb-size) - var(--track-height)) / -2);
   }
 
@@ -87,7 +87,7 @@ const styles = css`
     border-radius: var(--we-radius-full);
     background: var(--we-color-primary-500);
     border: 2px solid white;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+    box-shadow: 0 1px 3px color-mix(in srgb, var(--we-role-shadow-color) 20%, transparent);
   }
 
   :host([disabled]) {

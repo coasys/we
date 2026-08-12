@@ -20,6 +20,7 @@ import type {
   DatasetRef,
   EphemeralPort,
   ModelManifest,
+  PresenceState,
   ProfileDirectoryPort,
   RendererDataBindings,
   SchemaPort,
@@ -219,9 +220,20 @@ export function createInMemorySchemaPort(runtime: EntityRuntime): SchemaPort {
   };
 }
 
-/** Map-backed profile directory; uploads echo a retrievable inmemory URL. */
-export function createInMemoryProfileDirectory(ctx: BackendPortsContext): ProfileDirectoryPort {
-  const profiles = new Map<string, AgentProfileSummary>();
+/**
+ * Map-backed profile directory; uploads echo a retrievable inmemory URL.
+ *
+ * `seed` pre-populates other agents' profiles — the one thing `publish` cannot do, since it writes
+ * only `ctx.selfId()`'s record, as the real directory does. Without it every peer resolves to a
+ * blank, and a feed, a member list or a presence roster renders as a column of identical
+ * initial-less avatars: structurally correct and visually useless. Anything rendering more than one
+ * person needs this, which is most of what WE renders.
+ */
+export function createInMemoryProfileDirectory(
+  ctx: BackendPortsContext,
+  seed: readonly AgentProfileSummary[] = [],
+): ProfileDirectoryPort {
+  const profiles = new Map<string, AgentProfileSummary>(seed.map((p) => [p.did, p]));
   let uploadCounter = 0;
 
   const blank = (did: string): AgentProfileSummary => ({ did, firstName: '', lastName: '', handle: '', bio: '' });
@@ -258,6 +270,97 @@ export interface InMemoryBackendPortsOptions {
    * manifest, which is what makes `Space.findAll(...)` work in a test with no executor running.
    */
   entities?: ModelManifest | null;
+  /**
+   * Other agents' published profiles, by DID. See {@link createInMemoryProfileDirectory} — the
+   * directory can only publish the *self* profile, so peers have no other way to exist.
+   */
+  profiles?: readonly AgentProfileSummary[];
+  /**
+   * Peers to report as present, and what they are doing.
+   *
+   * The ephemeral bus carries one agent — this process — so presence is otherwise always a roster
+   * of one. `presenceStore.onlineHere` is read directly by templates (the channel header in the
+   * Discord-shaped template, for one), and a roster showing only yourself is the same failure as a
+   * feed of one author: it renders, and shows nothing about how the design holds up.
+   *
+   * These beat on the same channel a real peer's heartbeat uses, so nothing about the store is
+   * special-cased — see {@link startSeededPresence} for why they have to keep beating.
+   */
+  presence?: readonly SeededPeer[];
+}
+
+/**
+ * A peer to announce on the ephemeral bus — a {@link PresenceState} without the two fields the
+ * heartbeat owns (`agentId` comes from `did`, `updatedAt` is stamped on every beat).
+ *
+ * `focus` is what decides whether a peer shows up at all: `presenceStore.online` filters on
+ * `focus.datasetUri` and `onlineHere` further filters on `focus.path`. A seeded peer with no focus
+ * is present in the abstract and visible nowhere.
+ */
+export interface SeededPeer extends Omit<PresenceState, 'agentId' | 'updatedAt'> {
+  did: string;
+}
+
+/**
+ * Beat seeded peers onto a dataset's presence channel until every scope over it is disposed.
+ *
+ * Repeating rather than announcing once, for two reasons. Presence is self-healing by design —
+ * `derivePeers` ages every state out on a TTL — so a single delivery would show a roster that
+ * empties itself a few seconds later, and a screenshot would then depend on when it was taken. And
+ * a subscriber that has not attached yet receives nothing, so a one-shot at connect races the
+ * store's own setup.
+ *
+ * Refcounted per dataset because a leaked interval keeps a vitest run alive forever, which is a
+ * worse failure than the one this exists to fix.
+ */
+function startSeededPresence(bus: InMemoryBus, dataset: unknown, peers: readonly SeededPeer[]): () => void {
+  // Keyed by bus *and* dataset. `keyFor` counts from zero per bus, so the first dataset of every
+  // bundle is `ds-0` — a registry keyed on that alone has two independent backends sharing an entry,
+  // and the second one silently never beats. Found by the tests below running in sequence.
+  const beats = seededPresence.get(bus) ?? new Map<string, PresenceBeat>();
+  seededPresence.set(bus, beats);
+
+  const key = bus.keyFor(dataset);
+  const existing = beats.get(key);
+  if (existing) {
+    existing.refs += 1;
+    return () => release(beats, key);
+  }
+
+  const beat = () => {
+    for (const { did, ...state } of peers) {
+      bus.deliver(key, 'presence', did, { ...state, agentId: did, updatedAt: Date.now() } satisfies PresenceState);
+    }
+  };
+
+  // Faster than the app's own 5s DEFAULT_HEARTBEAT_INTERVAL, deliberately. That interval is tuned
+  // for the cost of a broadcast over a real network; there is no network here, and what matters
+  // instead is how long after load a screenshot has to wait for the roster to fill. A subscriber
+  // always attaches *after* the scope it subscribes through is created, so the first beat cannot be
+  // synchronous — one second is the ceiling on that gap, and still far inside the 15s idle
+  // threshold, so a seeded peer reads `online` in every render.
+  const timer = setInterval(beat, 1_000);
+  beats.set(key, { refs: 1, timer });
+  // Harmless for a subscriber that is somehow already attached, and free otherwise.
+  beat();
+  return () => release(beats, key);
+}
+
+interface PresenceBeat {
+  refs: number;
+  timer: ReturnType<typeof setInterval>;
+}
+
+/** Weak on the bus so a discarded bundle takes its beats with it. */
+const seededPresence = new WeakMap<InMemoryBus, Map<string, PresenceBeat>>();
+
+function release(beats: Map<string, PresenceBeat>, key: string): void {
+  const entry = beats.get(key);
+  if (!entry) return;
+  entry.refs -= 1;
+  if (entry.refs > 0) return;
+  clearInterval(entry.timer);
+  beats.delete(key);
 }
 
 /**
@@ -288,8 +391,21 @@ export function createInMemoryBackendPorts(
   // One bus per bundle; the per-agent port is constructed lazily so the agent id is read after
   // the session unlocks (mirrors the AD4M port's lazy selfId).
   const bus = new InMemoryBus();
-  const ephemeral: EphemeralPort = (dataset) =>
-    createInMemoryEphemeralPort(bus, ctx.selfId() ?? 'did:inmemory:anonymous')(dataset);
+  const ephemeral: EphemeralPort = (dataset) => {
+    const scope = createInMemoryEphemeralPort(bus, ctx.selfId() ?? 'did:inmemory:anonymous')(dataset);
+    if (!scope || !opts.presence?.length) return scope;
+
+    // Seeded peers beat for as long as somebody is listening to this dataset, and the scope's own
+    // dispose is the only signal for that — hence the wrap rather than starting them at connect.
+    const stop = startSeededPresence(bus, dataset, opts.presence);
+    return {
+      ...scope,
+      dispose() {
+        stop();
+        scope.dispose();
+      },
+    };
+  };
 
   const mutationDataset = (deps: DataBindingDeps, opts?: Record<string, unknown>): unknown => {
     const explicit = opts?.perspective as { handle?: unknown } | undefined;
@@ -301,7 +417,7 @@ export function createInMemoryBackendPorts(
     agentSession: createInMemoryAgentSession(opts.agent),
     lifecycle,
     schemas,
-    profiles: createInMemoryProfileDirectory(ctx),
+    profiles: createInMemoryProfileDirectory(ctx, opts.profiles),
     ephemeral,
     dataBindings: (deps) => ({
       $currentDataset: deps.currentDataset,

@@ -132,6 +132,15 @@ exports[`token CSS generation > color.css — hues, lightness ramp, palettes, ro
   --we-role-border-strong: var(--we-color-neutral-500);
   --we-role-accent: var(--we-color-primary-500);
   --we-role-accent-text: var(--we-color-neutral-0);
+  --we-role-accent-muted: var(--we-color-primary-100);
+  --we-role-surface-hover: var(--we-color-neutral-100);
+  --we-role-surface-active: var(--we-color-neutral-200);
+  --we-role-overlay: hsl(var(--we-color-neutral-hue) var(--we-color-neutral-saturation) 4% / 60%);
+  --we-role-shadow-color: hsl(var(--we-color-neutral-hue) var(--we-color-neutral-saturation) 4%);
+  --we-role-focus: var(--we-color-primary-500);
+  --we-role-danger-surface: var(--we-color-danger-50);
+  --we-role-success-surface: var(--we-color-success-50);
+  --we-role-warning-surface: var(--we-color-warning-50);
 
   /* Focus Colors */
   --we-color-focus: var(--we-color-primary-500);

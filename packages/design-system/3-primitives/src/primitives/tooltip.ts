@@ -71,7 +71,7 @@ const CSS_STYLES = css`
     background: #222;
     color: white;
     border-radius: var(--we-border-radius, 4px);
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+    box-shadow: 0 2px 8px color-mix(in srgb, var(--we-role-shadow-color) 15%, transparent);
     pointer-events: none;
   }
 

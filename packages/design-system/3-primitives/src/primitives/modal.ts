@@ -6,7 +6,7 @@ import { OverlayElement } from '../shared/overlay-element';
 import sharedStyles from '../shared/styles';
 
 const DEFAULT_PROPS: Partial<DesignSystemProps> = {
-  bg: 'neutral-0',
+  bg: 'var(--we-role-surface-raised)',
   r: '600',
   p: '900',
   ax: 'stretch',
@@ -27,7 +27,7 @@ const CSS_STYLES = css`
     position: absolute;
     width: 100%;
     height: 100%;
-    background: rgba(0, 0, 0, 0.6);
+    background: var(--we-role-overlay);
   }
 
   [part='base'] {
