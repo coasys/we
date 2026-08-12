@@ -6,6 +6,7 @@ export type {
   SchemaProp,
   TemplateMeta,
   TemplateSchema,
+  RouteParamsBinding,
   ThemeOverrides,
   RouteSchema,
   TransitionConfig,

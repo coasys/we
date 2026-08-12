@@ -36,14 +36,16 @@ export const cardsRoute: RouteSchema = {
   path: '/cards',
   $localState: {
     createPostOpen: { type: 'boolean', initial: false },
-    // View settings persist on the device, so a reload lands where you left it.
-    // Search stays ephemeral: a stale filter silently hiding content on return
-    // reads as missing data, not as a remembered preference.
-    contentType: { type: 'string', initial: 'posts', persist: 'cards.contentType' },
-    sortDirection: { type: 'string', initial: 'DESC', persist: 'cards.sortDirection' },
-    sortField: { type: 'string', initial: 'date', persist: 'cards.sortField' },
+    // The routing conventions' tiers (docs/architecture/routing-and-view-state.md):
+    // view state mirrors into the URL so a shared link reproduces the view —
+    // the content-type switch pushes history (Back leaves the tab), sort and
+    // search replace. Display density is a device preference, not something a
+    // link should impose on its recipient, so it persists locally instead.
+    contentType: { type: 'string', initial: 'posts', syncParam: { name: 'type', push: true } },
+    sortDirection: { type: 'string', initial: 'DESC', syncParam: 'dir' },
+    sortField: { type: 'string', initial: 'date', syncParam: 'sort' },
     displayMode: { type: 'string', initial: 'expanded', persist: 'cards.displayMode' },
-    searchText: { type: 'string', initial: '' },
+    searchText: { type: 'string', initial: '', syncParam: 'q' },
   },
   ...pageShell({
     gap: '400',

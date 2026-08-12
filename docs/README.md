@@ -15,6 +15,7 @@ How WE is designed and why.
 
 - [Codebase Map](architecture/codebase-map.md) — **Start here.** Current package layering, AD4M runtime, render pipeline, framework-agnosticism strategy
 - [Package Conventions](architecture/package-conventions.md) — How packages are structured and named in the monorepo
+- [Routing & View State](architecture/routing-and-view-state.md) — Where UI state lives: path, query params (`syncParam`), device (`persist`), or nowhere — and how links carry template/theme suggestions
 - [Template Fragments](architecture/template-fragments.md) — The template kit: what fragments are, the extraction threshold, and where the fragment layer is going. Read before adding to `@we/template-kit`
 - [Why a Meta-App Instead of Many Separate Apps?](architecture/meta-app-vs-separate-apps.md) — Why shared continuity and cumulative evolution matter
 - [Practical Examples](architecture/examples.md) — Simple examples of how WE ideas work in practice

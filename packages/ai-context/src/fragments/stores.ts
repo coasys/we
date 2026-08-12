@@ -218,8 +218,13 @@ export const storeEntries: StoreEntry[] = [
     state: {
       currentPath: { type: 'string' },
       segments: { type: 'array' },
+      params: {
+        type: 'object',
+        description:
+          "the URL's query parameters, reactive — read one as { $store: 'routeStore.params.<name>' }. Prefer $localState with syncParam for fields a view owns; read params directly only for parameters someone else writes",
+      },
     },
-    actions: ['navigate'],
+    actions: ['navigate', 'setParam'],
   },
   {
     name: 'themeStore',

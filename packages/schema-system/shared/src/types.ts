@@ -157,14 +157,36 @@ export type LocalStateField = {
   validate?: ValidationRule[];
   /**
    * Persist this field on the device (localStorage) under the given key, so it survives a
-   * reload — a list's selected content type, sort settings, and the like. The key is explicit
-   * and global to the deployment (`'cards.contentType'`), so two views naming the same key
-   * deliberately share the setting; pick namespaced names. The stored value wins over
-   * `initial` on mount; `$resetLocal` clears it. Ignored for 'file' and 'function' fields,
-   * which have no JSON form.
+   * reload. For *preferences* — display density, collapsed rails — things a shared link should
+   * NOT impose on its recipient. The key is explicit and global to the deployment
+   * (`'cards.displayMode'`), so two views naming the same key deliberately share the setting;
+   * pick namespaced names. The stored value wins over `initial` on mount; `$resetLocal` clears
+   * it. Ignored for 'file' and 'function' fields, which have no JSON form.
    */
   persist?: string;
+  /**
+   * Mirror this field into a URL query parameter, so the view is shareable and survives a
+   * reload as part of the address. For *view state* — selected content type, sort, filters:
+   * what a link's recipient should see exactly as the sender does. A string names the param;
+   * the object form adds `push: true` for changes that deserve a Back entry (content-type
+   * switches; leave sort/filter changes on the default replace). Precedence on mount:
+   * URL param > persisted value > `initial`; setting the field back to its initial removes
+   * the param, keeping URLs clean. Requires the host to bind `$routeParams` (the app shell
+   * does); degrades to plain local state elsewhere. See
+   * docs/architecture/routing-and-view-state.md for which state belongs where.
+   */
+  syncParam?: string | { name: string; push?: boolean };
 };
+
+/**
+ * The host's URL-query-parameter binding, injected into the stores bag as `$routeParams`.
+ * What lets `$localState`'s `syncParam` read and write the URL without the renderer knowing
+ * which router the host runs.
+ */
+export interface RouteParamsBinding {
+  get(name: string): string | undefined;
+  set(name: string, value: string | null, options?: { push?: boolean }): void;
+}
 
 /** A single entry in $queries — a reactive subscription hoisted to the node root. */
 export type QueryStateField = QueryToken['$query'];

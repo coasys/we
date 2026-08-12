@@ -255,11 +255,22 @@ For external-app datasets, always add dataset: "$currentDataset".
 Local state (scoped ephemeral state):
 Declare on any node: "$localState": { "name": { "type": "string", "initial": "" } }
 Supported types: "string", "boolean", "number", "function", "object".
-Add "persist": "<key>" to keep a field on the device across reloads (localStorage) — for view
-settings like a selected content type or sort order: { "type": "string", "initial": "posts", "persist": "cards.contentType" }.
-The key is explicit and deployment-global (namespace it); the stored value wins over "initial" on
-mount, and $resetLocal clears it. Not supported for "file"/"function" fields. Keep search text and
-open-modal flags ephemeral — a persisted filter silently hiding content reads as missing data.
+Two opt-in persistence tiers (see docs/architecture/routing-and-view-state.md for the full rules):
+- "syncParam": "<param>" mirrors the field into a URL query parameter — for VIEW STATE (selected
+  content type, sort, filters, search): what a shared link's recipient should see exactly as the
+  sender does. Object form { "name": "type", "push": true } adds a Back entry on change (use for
+  content-type switches; sort/filter changes keep the default replace). A field back at its
+  declared initial removes its param, keeping URLs clean.
+  Example: { "type": "string", "initial": "posts", "syncParam": { "name": "type", "push": true } }
+- "persist": "<key>" keeps the field on the device (localStorage) — for PREFERENCES (display
+  density, collapsed rails): things a shared link must NOT impose on its recipient. The key is
+  explicit and deployment-global (namespace it, e.g. "cards.displayMode").
+Precedence on mount: URL param > persisted value > declared "initial"; $resetLocal clears both.
+Neither applies to "file"/"function" fields. Open-modal and in-flight flags stay plain (ephemeral).
+The deciding question: "if I sent this URL to someone, should they see the effect?" — yes: syncParam;
+no but future-me should: persist; no one: plain.
+Links may also carry ?template=<id> and ?theme=<id> — the shell applies them when the recipient has
+them and warns (toast) when not. Templates never handle these params themselves.
 Read:  { "$local": "name" } — returns the signal value (reactive).
        { "$local": "name.nested.path" } — dot-notation reads into object-typed fields (reactive).
 Write: { "$setLocal": "name", "from": "$event.target.value" } — event handler that updates the signal.

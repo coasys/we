@@ -446,6 +446,32 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
           ? `we-local:${field.persist}`
           : null;
 
+      // URL mirroring: view state (content type, sort, filters) syncs with a query
+      // parameter through the host's $routeParams binding, so a shared link
+      // reproduces the view. Serialized as plain text for strings, JSON otherwise.
+      const syncSpec =
+        field.syncParam && field.type !== 'file' && field.type !== 'function'
+          ? typeof field.syncParam === 'string'
+            ? { name: field.syncParam, push: false }
+            : { name: field.syncParam.name, push: field.syncParam.push ?? false }
+          : null;
+      const routeParams = stores.$routeParams as
+        | {
+            get(name: string): string | undefined;
+            set(name: string, value: string | null, o?: { push?: boolean }): void;
+          }
+        | undefined;
+      const decodeParam = (raw: string): unknown => {
+        if (field.type === 'string') return raw;
+        try {
+          return JSON.parse(raw);
+        } catch {
+          return raw;
+        }
+      };
+      const encodeParam = (v: unknown): string => (field.type === 'string' ? String(v) : JSON.stringify(v));
+
+      // Precedence: URL param > persisted value > declared initial.
       let initialValue = resolveInitial(rawInitial);
       if (persistKey) {
         try {
@@ -455,6 +481,10 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
           // Corrupt entry — fall back to the declared initial.
         }
       }
+      if (syncSpec && routeParams) {
+        const fromUrl = routeParams.get(syncSpec.name);
+        if (fromUrl !== undefined) initialValue = decodeParam(fromUrl);
+      }
 
       const [get, set] = createSignal<unknown>(initialValue);
       accessors[name] = get;
@@ -462,16 +492,25 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
       // Wrap the setter so that storing a function value works correctly.
       const baseSetter: (v: unknown) => void =
         field.type === 'function' ? (v) => set(() => v as never) : (set as (v: unknown) => void);
-      setters[name] = persistKey
-        ? (v) => {
-            baseSetter(v);
-            try {
-              localStorage.setItem(persistKey, JSON.stringify(v));
-            } catch {
-              // Quota/serialization failure — the in-memory value still applies.
+      const declaredInitial = resolveInitial(rawInitial);
+      setters[name] =
+        persistKey || (syncSpec && routeParams)
+          ? (v) => {
+              baseSetter(v);
+              if (persistKey) {
+                try {
+                  localStorage.setItem(persistKey, JSON.stringify(v));
+                } catch {
+                  // Quota/serialization failure — the in-memory value still applies.
+                }
+              }
+              if (syncSpec && routeParams) {
+                // Back at the declared initial → drop the param, keeping URLs clean.
+                const atDefault = JSON.stringify(v) === JSON.stringify(declaredInitial);
+                routeParams.set(syncSpec.name, atDefault ? null : encodeParam(v), { push: syncSpec.push });
+              }
             }
-          }
-        : baseSetter;
+          : baseSetter;
       scopeFields.push(name);
 
       const [touched, setTouched] = createSignal(false);
@@ -498,6 +537,7 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
         reset: () => {
           set(resolveInitial(rawInitial) as never);
           if (persistKey) localStorage.removeItem(persistKey);
+          if (syncSpec && routeParams) routeParams.set(syncSpec.name, null);
           setTouched(false);
         },
       };
