@@ -1256,6 +1256,7 @@ AgentSettings extends Ad4mModel:
   - globalSpaceJoined: boolean = false [we://global_space_joined]
   - globalSpaceUrl: string [we://global_space_url]
   - useSpaceTemplate: boolean = true [we://use_space_template]
+  - useTemplateTheme: boolean = true [we://use_template_theme]
   - themeScope: string [we://theme_scope]
   - installedModules: string [we://installed_modules]
   Relations:
@@ -1919,6 +1920,7 @@ ThemeStore:
   - themeScopePreference: unknown
   - themeScopeGlobal: unknown
   - themeScopePreviewing: unknown
+  - useTemplateTheme: unknown
   - activeTemplateTheme: unknown
   - saveEditingTheme: unknown
 - Actions:
@@ -1929,6 +1931,7 @@ ThemeStore:
   - toggleThemeInstalled(themeId: string): toggles a custom theme visible/hidden in pickers; does not delete the theme
   - previewThemeScope(scope: 'global' | 'scoped' | null): previews a scope for the current theme-editing session without writing the preference; null drops the preview. Cleared when editing ends
   - setThemeScopeGlobal(global: boolean): persists whether a space's theme covers the whole window (true) or only the space's own content (false, the default). Takes a boolean because a switch emits one and a schema cannot map it to a string — `$if` in an action's args resolves at render time, before the event exists
+  - setUseTemplateTheme(): unknown
   - replaceTheme(): unknown
   - restorePersonalTheme(): unknown
   - clearSpaceTheme(): unknown

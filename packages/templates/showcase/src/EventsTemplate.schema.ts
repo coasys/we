@@ -102,6 +102,8 @@ export const eventsTemplate: TemplateSchema = {
     name: 'Events',
     description: 'Events with RSVPs, built from participants, event blocks and the calendar.',
     icon: 'calendar',
+    // Retro's warmer primary hue suits an invitation better than the neutral default.
+    themeId: 'retro',
   },
   type: 'Column',
   props: { bg: 'neutral-50', width: '100%', minHeight: '100%', ax: 'center' },

@@ -208,6 +208,8 @@ export const instagramTemplate: TemplateSchema = {
     name: 'Photos',
     description: 'The same posts as a photo grid — one space, a different lens.',
     icon: 'image',
+    // The triptych's shared theme — see the Timeline template. Dark also lets photographs carry the page.
+    themeId: 'dark',
   },
   type: 'Column',
   props: { bg: 'neutral-50', width: '100%', minHeight: '100%' },

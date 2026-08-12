@@ -295,6 +295,41 @@ const themeScopeSection: SchemaNode = {
         },
       ],
     },
+    {
+      type: 'Row',
+      props: {
+        ay: 'center',
+        ax: 'between',
+        gap: '300',
+        p: '300',
+        bg: 'neutral-0',
+        r: '300',
+        border: '1px solid neutral-200',
+      },
+      children: [
+        {
+          type: 'Column',
+          props: { gap: '100', flex: '1' },
+          children: [
+            { type: 'we-text', props: { variant: 'label' }, children: ['Let templates bring their own theme'] },
+            {
+              type: 'we-text',
+              props: { variant: 'footnote', color: 'neutral-400' },
+              children: [
+                'On, switching to a template designed for a particular theme switches the look with it, and switching back restores what you had. Off, only you and the space decide the theme. A theme you pick for a space always wins either way.',
+              ],
+            },
+          ],
+        },
+        {
+          type: 'we-switch',
+          props: {
+            checked: { $store: 'themeStore.useTemplateTheme' },
+            onChange: { $action: 'themeStore.setUseTemplateTheme', args: ['$event.detail'] },
+          },
+        },
+      ],
+    },
   ],
 };
 

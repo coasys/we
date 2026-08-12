@@ -313,6 +313,8 @@ export const zTemplateMeta: z.ZodType<TemplateMeta> = z
     name: z.string(),
     description: z.string(),
     icon: z.string(),
+    /** A theme this template suggests. See `TemplateMeta.themeId` — a suggestion, not a setting. */
+    themeId: z.string().optional(),
     stores: z
       .union([
         z.array(z.string()),

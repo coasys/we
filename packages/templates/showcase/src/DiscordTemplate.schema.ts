@@ -215,6 +215,8 @@ export const discordTemplate: TemplateSchema = {
     name: 'Channels',
     description: 'Categories, channels and messages — a Discord-shaped community space.',
     icon: 'hash',
+    // Dark, like the chat clients this shape comes from — and it keeps the unread dots legible.
+    themeId: 'dark',
   },
   type: 'Row',
   props: { bg: 'neutral-50', width: '100%', minHeight: '100%', ay: 'stretch' },

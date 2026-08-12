@@ -7,6 +7,24 @@ export type TemplateMeta = {
   name: string;
   description: string;
   icon: string;
+  /**
+   * A theme this template is designed to be seen in — a **suggestion**, never a setting.
+   *
+   * Resolved rather than written: it takes effect as a rung in the theme chain, so switching
+   * template changes the look without overwriting anyone's choice, and switching back restores what
+   * was there. See `spaceStore`'s theme resolution for the precedence, which turns on *who chose the
+   * template* rather than on layer: a theme picked alongside a template stops applying once someone
+   * overrides that template, because it was a decision about a different interface.
+   *
+   * Lives in `meta` rather than only on the `Template` model because built-in templates have no
+   * model record — they are schemas in the registry — and because here it travels with a fork, a
+   * publish and a `?template=` link. `Template.themeId` is the queryable mirror `saveTemplate`
+   * writes.
+   *
+   * Honoured only when the theme resolves for this agent; a suggestion naming something they have
+   * not installed is reported once and ignored, exactly as `?theme=` in a share link is.
+   */
+  themeId?: string;
   stores?: string[] | StoreDeclaration;
   components?: string[];
 };

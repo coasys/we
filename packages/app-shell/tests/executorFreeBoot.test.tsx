@@ -68,6 +68,8 @@ vi.mock('../src/frameworks/solid/stores/ThemeStore', () => ({
   useThemeStore: () => ({
     allThemes: () => [],
     defaultThemeId: () => 'default',
+    // Templates may suggest a theme; the boot suite has none, so the value only has to exist.
+    useTemplateTheme: () => true,
     replaceTheme: () => {},
     restorePersonalTheme: () => {},
     clearSpaceTheme: () => {},

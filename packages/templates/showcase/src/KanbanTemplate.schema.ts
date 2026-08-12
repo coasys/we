@@ -248,6 +248,8 @@ export const kanbanTemplate: TemplateSchema = {
     name: 'Boards',
     description: 'Kanban boards where a card’s column is its status — coordination on the same substrate.',
     icon: 'kanban',
+    // Light: a board is read at a glance, and it sets coordination apart from the social three.
+    themeId: 'light',
   },
   type: 'Column',
   props: { bg: 'neutral-50', width: '100%', minHeight: '100%' },

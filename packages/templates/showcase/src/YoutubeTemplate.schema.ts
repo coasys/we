@@ -292,6 +292,8 @@ export const youtubeTemplate: TemplateSchema = {
     name: 'Videos',
     description: 'The same posts as a video library, with playlists and comments. Embeds only.',
     icon: 'video-camera',
+    // The triptych's shared theme — see the Timeline template.
+    themeId: 'dark',
   },
   type: 'Column',
   props: { bg: 'neutral-50', width: '100%', minHeight: '100%' },

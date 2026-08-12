@@ -57,6 +57,11 @@ export const CORE_MANIFEST: ModelManifest = {
           "predicate": "we://use_space_template",
           "default": true
         },
+        "useTemplateTheme": {
+          "type": "boolean",
+          "predicate": "we://use_template_theme",
+          "default": true
+        },
         "themeScope": {
           "type": "string",
           "predicate": "we://theme_scope",

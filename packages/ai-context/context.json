@@ -3683,6 +3683,13 @@
           "default": "true"
         },
         {
+          "name": "useTemplateTheme",
+          "type": "boolean",
+          "predicate": "we://use_template_theme",
+          "required": false,
+          "default": "true"
+        },
+        {
           "name": "themeScope",
           "type": "string",
           "predicate": "we://theme_scope",
@@ -6035,6 +6042,9 @@
         "themeScopePreviewing": {
           "type": "boolean"
         },
+        "useTemplateTheme": {
+          "type": "boolean"
+        },
         "activeTemplateTheme": {
           "type": "object"
         },
@@ -6050,6 +6060,7 @@
         "toggleThemeInstalled",
         "previewThemeScope",
         "setThemeScopeGlobal",
+        "setUseTemplateTheme",
         "replaceTheme",
         "restorePersonalTheme",
         "clearSpaceTheme",

@@ -6,6 +6,7 @@ import {
   spaceSelfWhere,
   syncSpaceToParent,
 } from '@shared/spaceSync';
+import { resolveSpaceTheme } from '@shared/themeResolution';
 import { deriveSlug } from '@shared/utils';
 import type { AgentProfileSummary, DatasetRef } from '@we/backend-shared';
 import type { SerializedBlockNode } from '@we/block-shared';
@@ -1682,12 +1683,40 @@ export function SpaceStoreProvider(props: ParentProps) {
     return override;
   };
 
-  const resolveThemeFor = (uuid: string): string => {
-    const override = themeOverrideFor(uuid);
-    if (override === AGENT_DEFAULT) return themeStore.defaultThemeId();
-    if (override === FOLLOW_SPACE) return spaceForUuid(uuid)?.defaultThemeId || '';
-    return override;
+  /**
+   * The theme a template asks to be seen in, if this agent allows it and actually has that theme.
+   *
+   * A suggestion resolved live, never written — which is what makes template switching
+   * non-destructive: switching away and back restores the previous look by recomputation, and
+   * nobody's stored choice is touched on the way.
+   *
+   * A suggestion naming a theme this agent has not installed resolves to nothing rather than
+   * failing, mirroring how `?theme=` in a share link degrades. The caller reports it once.
+   */
+  const templateThemeFor = (uuid: string): string => {
+    if (!themeStore.useTemplateTheme()) return '';
+    const templateId = resolveTemplateFor(uuid);
+    const suggested = templateStore.allTemplates().find((t) => t.id === templateId)?.meta?.themeId;
+    if (!suggested) return '';
+    return themeStore.allThemes().some((t) => t.id === suggested) ? suggested : '';
   };
+
+  /**
+   * Which theme this agent sees in one space.
+   *
+   * The precedence itself lives in `resolveSpaceTheme` — a pure function, because the rule is the
+   * feature and it was designed wrong once. This reads the signals it needs and hands them over.
+   */
+  const resolveThemeFor = (uuid: string): string =>
+    resolveSpaceTheme({
+      themeOverride: themeOverrideFor(uuid),
+      templateOverride: templateOverrideFor(uuid),
+      spaceTheme: spaceForUuid(uuid)?.defaultThemeId || '',
+      templateTheme: templateThemeFor(uuid),
+      agentTheme: themeStore.defaultThemeId(),
+      agentDefaultSentinel: AGENT_DEFAULT,
+      followSpaceSentinel: FOLLOW_SPACE,
+    });
 
   /**
    * Override the template this agent sees in one space. {@link FOLLOW_SPACE} returns to its default.
@@ -1835,6 +1864,34 @@ export function SpaceStoreProvider(props: ParentProps) {
       // In a space with no default theme — clear any previously scoped space theme.
       themeStore.clearSpaceTheme();
     }
+  });
+
+  /**
+   * Say once when a template asks for a theme this agent does not have.
+   *
+   * Separate from the effect that applies the theme, because that one runs on every space switch
+   * and every preference write — a toast in there would repeat. Reported per theme id, matching how
+   * `TemplateProvider` handles a `?theme=` suggestion it cannot honour: the intent is degraded
+   * rather than silently dropped, and said no more than once.
+   *
+   * Gated on `allThemes()` being populated so the boot frame, where nothing is loaded yet, does not
+   * read as "you don't have it".
+   */
+  const reportedMissingThemes = new Set<string>();
+  createEffect(() => {
+    if (!themeStore.useTemplateTheme()) return;
+    const uuid = datasetStore.currentDataset()?.id;
+    if (!uuid) return;
+    const themes = themeStore.allThemes();
+    if (!themes.length) return;
+
+    const templateId = resolveTemplateFor(uuid);
+    const suggested = templateStore.allTemplates().find((t) => t.id === templateId)?.meta?.themeId;
+    if (!suggested || themes.some((t) => t.id === suggested)) return;
+    if (reportedMissingThemes.has(suggested)) return;
+
+    reportedMissingThemes.add(suggested);
+    toastService.warning(`This template suggests a theme ("${suggested}") you don't have — using your own.`);
   });
 
   async function setSpaceDefaultTemplate(templateId: string, spaceUuid?: string): Promise<void> {
