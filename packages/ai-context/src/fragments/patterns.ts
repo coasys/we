@@ -378,4 +378,89 @@ the route's background reaches the edges, the inner holds the measure.
 \`\`\`
 
 Drop the outer \`Row\` and the control for the read-only form.
+
+### A rail that opens on hover — collapsed navigation
+
+The shape of WE's shell sidebar: a narrow strip of icons that widens when pointed at, with the
+labels opening sideways beside them.
+
+Three pieces of state do all of it, and none of it needs a component. The shell owns \`expanded\`
+and writes it from \`onMouseEnter\`/\`onMouseLeave\`; every label reads it. Groups hold their
+collapsed ids in one \`array\` field rather than a boolean each, which is what lets the groups
+themselves come from a \`$query\`.
+
+\`\`\`json
+{
+  "type": "Column",
+  "$localState": {
+    "expanded": { "type": "boolean", "initial": false, "persist": "shell.sidebarExpanded" },
+    "collapsedGroups": { "type": "array", "initial": [] }
+  },
+  "props": {
+    "width": { "$if": { "condition": { "$local": "expanded" }, "then": "240px", "else": "80px" } },
+    "transition": "width 300 ease-in-out",
+    "height": "100%",
+    "overflow": "hidden",
+    "position": "fixed",
+    "bg": "neutral-50",
+    "onMouseEnter": { "$setLocal": "expanded", "value": true },
+    "onMouseLeave": { "$setLocal": "expanded", "value": false }
+  },
+  "children": [
+    {
+      "type": "we-button",
+      "props": { "variant": "ghost", "width": "100%", "ax": "start", "gap": "300", "p": "300" },
+      "children": [
+        { "type": "we-icon", "props": { "name": "user" } },
+        {
+          "type": "$if",
+          "props": {
+            "condition": { "$local": "expanded" },
+            "enterTransition": [{ "type": "reveal", "axis": "inline", "duration": 250 }, { "type": "fade", "duration": 150 }],
+            "exitTransition": [{ "type": "reveal", "axis": "inline", "duration": 250 }, { "type": "fade", "duration": 150 }],
+            "then": { "type": "we-text", "props": { "truncate": true }, "children": ["Profile"] }
+          }
+        }
+      ]
+    }
+  ]
+}
+\`\`\`
+
+The label is mounted only while the rail is open rather than narrowed to nothing: at collapsed width
+there is no room for it, and a hidden-but-present label is still in the accessibility tree and still
+found by find-in-page.
+
+A group heading toggles its own id in the set, and its body reveals on the block axis:
+
+\`\`\`json
+{
+  "type": "we-button",
+  "props": { "variant": "ghost", "onClick": { "$toggleLocalIn": "collapsedGroups", "value": "spaces" } },
+  "children": [
+    {
+      "type": "we-icon",
+      "props": {
+        "name": {
+          "$if": {
+            "condition": { "$in": ["spaces", { "$local": "collapsedGroups" }] },
+            "then": "caret-right",
+            "else": "caret-down"
+          }
+        }
+      }
+    },
+    { "type": "we-text", "children": ["Spaces"] }
+  ]
+}
+\`\`\`
+
+**Prefer \`railShell\` / \`railGroup\` / \`railItem\` from \`@we/template-kit\`**, which own all
+of the above. \`railItem\` and \`railGroup\` read \`expanded\` from the shell above them, so they
+are only valid inside a \`railShell\`.
+
+For drag-to-reorder, wrap a group's items in \`we-sortable\` and give each row a \`data-we-id\` on
+a **native element** — a web component's props are assigned as DOM properties, so the attribute
+\`we-sortable\` looks for would never exist on a \`we-button\`. Listen with \`onReorder\` and read
+the new order from \`$arg.detail\`.
 `;
