@@ -29,10 +29,19 @@ export default defineConfig({
         '**/node_modules/**',
         'tests/**',
         'src/**/index.ts',
-        'src/frameworks/**',
         'src/seed/cli.ts',
         'src/seed/examples.ts',
       ],
+      /*
+        `src/frameworks/**` used to be excluded — all 9,380 lines of the stores, the largest and
+        least-covered part of the biggest package in the repo. Every coverage number the project
+        produced was therefore measured over its safe half, which is precisely why the store gap
+        stayed invisible while the figure looked respectable.
+
+        Included now, with no threshold attached. A number nobody can see is not a gate, and a gate
+        set to today's number is a gate that only ever ratchets by accident; the first honest reading
+        is the input to deciding what to test, which is what the audit's P4-2 asks for.
+      */
     },
     projects: [
       {
