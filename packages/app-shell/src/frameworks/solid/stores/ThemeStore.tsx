@@ -122,6 +122,7 @@ export interface ThemeStore {
   }) => Promise<boolean>;
   publishToSpace: (perspectiveUuid: string, spaceName: string) => Promise<boolean>;
   loadInstalledThemes: () => Promise<void>;
+  refreshSpaceThemes: () => Promise<void>;
 }
 
 const ThemeContext = createContext<ThemeStore>();
@@ -832,6 +833,9 @@ export function ThemeStoreProvider(props: ParentProps) {
       await model.delete();
       themeModelMap.delete(themeId);
       setInstalledThemes((prev) => prev.filter((t) => t.id !== themeId));
+      // A space theme lives in spaceThemes, not installedThemes — drop it from
+      // both lists so the deletion is visible without reloading the space.
+      setSpaceThemes((prev) => prev.filter((t) => t.id !== themeId));
       if (currentThemeId() === themeId) setCurrentTheme('light');
       toastService.success('Theme deleted');
     } catch (e) {
@@ -1114,6 +1118,10 @@ export function ThemeStoreProvider(props: ParentProps) {
     publishToMarketplace,
     publishToSpace,
     loadInstalledThemes,
+    // Schema-facing alias: templates re-pull the space theme list after a
+    // mutation they performed themselves (e.g. deleting a space theme),
+    // mirroring templateStore.refreshSpaceTemplates.
+    refreshSpaceThemes: loadSpaceThemes,
   };
 
   return <ThemeContext.Provider value={store}>{props.children}</ThemeContext.Provider>;

@@ -11,6 +11,6 @@
   color: var(--we-color-black);
 }
 
-we-text[variant='heading-md'] {
+[data-we-theme='dark'] we-text[variant='heading-md'] {
   color: var(--we-color-primary-700);
 }

@@ -114,6 +114,7 @@ export const themesList: SchemaNode = cardList({
                         onClick: {
                           $action: 'model.delete',
                           args: ['Theme', '$theme.id'],
+                          onSuccess: [{ $action: 'themeStore.refreshSpaceThemes' }],
                         },
                       },
                       children: [{ type: 'we-icon', props: { name: 'trash' } }],
