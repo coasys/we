@@ -3,8 +3,6 @@
  * This file defines component-specific tokens that serve as the source of truth for the design system.
  */
 
-import { radius } from './size.js';
-
 // Literal union type for scrollbar properties
 export type ScrollbarToken =
   | 'width'
@@ -25,7 +23,7 @@ export const scrollbar = {
   background: 'transparent',
   cornerBackground: 'transparent',
   thumbBoxShadow: 'none',
-  thumbBorderRadius: radius['pill'],
+  thumbBorderRadius: 'var(--we-radius-pill)',
   thumbBackground: 'var(--we-color-neutral-100)',
 } satisfies Record<ScrollbarToken, string>;
 

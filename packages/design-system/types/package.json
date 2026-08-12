@@ -8,7 +8,8 @@
   "scripts": {
     "clean": "rimraf dist",
     "build:steps": "pnpm run clean && tsc",
-    "build": "we-build"
+    "build": "we-build",
+    "test": "vitest run --passWithNoTests"
   },
   "main": "dist/index.js",
   "module": "dist/index.js",
@@ -26,7 +27,8 @@
   "devDependencies": {
     "@we/cli": "workspace:*",
     "@we/tokens": "workspace:*",
-    "rimraf": "^6.1.0"
+    "rimraf": "^6.1.0",
+    "vitest": "^4.0.15"
   },
   "publishConfig": {
     "access": "public"

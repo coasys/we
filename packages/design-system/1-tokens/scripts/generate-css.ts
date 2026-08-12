@@ -50,18 +50,21 @@ export async function generateCSS() {
       zIndex,
     } = tokens;
 
-    // Generate CSS files
-    generateAnimationCSS(animation, outputDir);
-    generateBorderCSS(border, outputDir);
-    generateColorCSS(color, outputDir);
-    generateComponentCSS(component, outputDir);
-    generateEffectCSS(effect, outputDir);
-    generateFontCSS(font, outputDir);
-    generateLayoutCSS(layout, outputDir);
-    generateShadowCSS(shadow, outputDir);
-    generateSizeCSS(size, radius, avatarSize, componentHeight, outputDir);
-    generateSpaceCSS(space, outputDir);
-    generateZIndexCSS(zIndex, outputDir);
+    // Generate CSS files — pure string builders (exported for tests), written here
+    const files: Record<string, string> = {
+      'animation.css': generateAnimationCSS(animation),
+      'border.css': generateBorderCSS(border),
+      'color.css': generateColorCSS(color),
+      'component.css': generateComponentCSS(component),
+      'effect.css': generateEffectCSS(effect),
+      'font.css': generateFontCSS(font),
+      'layout.css': generateLayoutCSS(layout),
+      'shadow.css': generateShadowCSS(shadow),
+      'size.css': generateSizeCSS(size, radius, avatarSize, componentHeight),
+      'space.css': generateSpaceCSS(space),
+      'z-index.css': generateZIndexCSS(zIndex),
+    };
+    for (const [name, css] of Object.entries(files)) fs.writeFileSync(path.join(outputDir, name), css);
 
     // Generate combined index file
     generateCombinedCSS(outputDir);
@@ -74,7 +77,7 @@ export async function generateCSS() {
 }
 
 // Helper functions for CSS generation
-function generateAnimationCSS(animation: typeof animationTokens, outputDir: string) {
+export function generateAnimationCSS(animation: typeof animationTokens) {
   const transitionVars = Object.entries(animation.transition)
     .map(([key, value]) => `  --we-transition-${key}: ${value};`)
     .join('\n');
@@ -86,10 +89,10 @@ function generateAnimationCSS(animation: typeof animationTokens, outputDir: stri
 ${transitionVars}
 }`;
 
-  fs.writeFileSync(path.join(outputDir, 'animation.css'), css);
+  return css;
 }
 
-function generateBorderCSS(border: typeof borderTokens, outputDir: string) {
+export function generateBorderCSS(border: typeof borderTokens) {
   const css = `/* BORDER TOKENS - Generated from JS tokens */
 
 :root {
@@ -107,10 +110,10 @@ function generateBorderCSS(border: typeof borderTokens, outputDir: string) {
   --we-ring-color: var(--we-color-primary-500);
 }`;
 
-  fs.writeFileSync(path.join(outputDir, 'border.css'), css);
+  return css;
 }
 
-function generateColorCSS(color: typeof colorTokens, outputDir: string) {
+export function generateColorCSS(color: typeof colorTokens) {
   const hueVars = Object.entries(color.hues)
     .map(([key, value]) => {
       // neutral-hue inherits from primary-hue by default so neutral surfaces tint to match the primary color
@@ -176,7 +179,7 @@ ${roleVars}
   --we-gradient-primary: linear-gradient(135deg, hsl(calc(var(--we-color-primary-hue) - 25) var(--we-color-saturation) var(--we-color-lightness-500)) 0%, hsl(calc(var(--we-color-primary-hue) + 25) var(--we-color-saturation) var(--we-color-lightness-500)) 100%);
 }`;
 
-  fs.writeFileSync(path.join(outputDir, 'color.css'), css);
+  return css;
 }
 
 function camelToKebab(str: string): string {
@@ -187,9 +190,8 @@ const roleVars = Object.entries(roleTokens)
   .map(([key, value]) => `  --we-role-${camelToKebab(key)}: ${value};`)
   .join('\n');
 
-function generateComponentCSS(component: typeof componentTokens, outputDir: string) {
+export function generateComponentCSS(component: typeof componentTokens) {
   const scrollbarVars = Object.entries(component.scrollbar)
-    .filter(([key]) => key !== 'thumbBorderRadius' && key !== 'thumbBackground')
     .map(([key, value]) => `  --we-scrollbar-${camelToKebab(key)}: ${value};`)
     .join('\n');
 
@@ -198,14 +200,12 @@ function generateComponentCSS(component: typeof componentTokens, outputDir: stri
 :root {
   /* Scrollbar Styles */
 ${scrollbarVars}
-  --we-scrollbar-thumb-border-radius: var(--we-radius-pill);
-  --we-scrollbar-thumb-background: var(--we-color-neutral-100);
 }`;
 
-  fs.writeFileSync(path.join(outputDir, 'component.css'), css);
+  return css;
 }
 
-function generateEffectCSS(effect: typeof effectTokens, outputDir: string) {
+export function generateEffectCSS(effect: typeof effectTokens) {
   const depthVars = Object.entries(effect.depth)
     .filter(([key]) => key !== 'none')
     .map(([key, value]) => `  --we-depth-${key}: ${value};`)
@@ -219,10 +219,10 @@ function generateEffectCSS(effect: typeof effectTokens, outputDir: string) {
 ${depthVars}
 }`;
 
-  fs.writeFileSync(path.join(outputDir, 'effect.css'), css);
+  return css;
 }
 
-function generateFontCSS(font: typeof fontTokens, outputDir: string) {
+export function generateFontCSS(font: typeof fontTokens) {
   const fontFamilyVars = Object.entries(font.family)
     .map(([key, value]) => `  --we-font-family-${key}: ${value};`)
     .join('\n');
@@ -267,10 +267,10 @@ ${lineHeightVars}
 ${letterSpacingVars}
 }`;
 
-  fs.writeFileSync(path.join(outputDir, 'font.css'), css);
+  return css;
 }
 
-function generateLayoutCSS(layout: typeof layoutTokens, outputDir: string) {
+export function generateLayoutCSS(layout: typeof layoutTokens) {
   const layoutVars = Object.entries(layout)
     .map(([key, value]) => `  --we-layout-${key}: ${value};`)
     .join('\n');
@@ -282,10 +282,10 @@ function generateLayoutCSS(layout: typeof layoutTokens, outputDir: string) {
 ${layoutVars}
 }`;
 
-  fs.writeFileSync(path.join(outputDir, 'layout.css'), css);
+  return css;
 }
 
-function generateShadowCSS(shadow: typeof shadowTokens, outputDir: string) {
+export function generateShadowCSS(shadow: typeof shadowTokens) {
   const shadowVars = Object.entries(shadow)
     .map(([key, value]) => `  --we-shadow-${key}: ${value};`)
     .join('\n');
@@ -297,15 +297,14 @@ function generateShadowCSS(shadow: typeof shadowTokens, outputDir: string) {
 ${shadowVars}
 }`;
 
-  fs.writeFileSync(path.join(outputDir, 'shadow.css'), css);
+  return css;
 }
 
-function generateSizeCSS(
+export function generateSizeCSS(
   size: typeof sizeTokens,
   radius: typeof radiusTokens,
   avatarSize: typeof avatarSizeTokens,
   componentHeight: typeof componentHeightTokens,
-  outputDir: string,
 ) {
   const sizeVars = Object.entries(size)
     .map(([key, value]) => `  --we-size-${key}: ${value};`)
@@ -339,10 +338,10 @@ ${avatarVars}
 ${componentHeightVars}
 }`;
 
-  fs.writeFileSync(path.join(outputDir, 'size.css'), css);
+  return css;
 }
 
-function generateSpaceCSS(space: typeof spaceTokens, outputDir: string) {
+export function generateSpaceCSS(space: typeof spaceTokens) {
   const spaceVars = Object.entries(space)
     .map(([key, value]) => `  --we-space-${key}: ${value};`)
     .join('\n');
@@ -354,17 +353,17 @@ function generateSpaceCSS(space: typeof spaceTokens, outputDir: string) {
 ${spaceVars}
 }`;
 
-  fs.writeFileSync(path.join(outputDir, 'space.css'), css);
+  return css;
 }
 
-function generateZIndexCSS(zIndex: typeof zIndexTokens, outputDir: string) {
+export function generateZIndexCSS(zIndex: typeof zIndexTokens) {
   const zIndexVars = Object.entries(zIndex)
     .map(([key, value]) => `  --we-z-${key}: ${value};`)
     .join('\n');
 
   const css = `/* Z-INDEX TOKENS - Generated from JS tokens */\n\n:root {\n  /* Stacking Layers */\n${zIndexVars}\n}`;
 
-  fs.writeFileSync(path.join(outputDir, 'z-index.css'), css);
+  return css;
 }
 
 function generateCombinedCSS(outputDir: string) {
