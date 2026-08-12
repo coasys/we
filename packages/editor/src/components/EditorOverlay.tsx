@@ -3,6 +3,17 @@ import { findNodeById, insertChild, mergeNode, removeChild, replaceNodeInTree } 
 import { useVisualEditor } from '@we/schema-solid';
 import { createEffect, createMemo, createSignal, For, onCleanup, Show } from 'solid-js';
 
+import {
+  computeSizeDelta,
+  handleCursor,
+  type HandleId,
+  isHeightHandle,
+  isLeftHandle,
+  isTopHandle,
+  isWidthHandle,
+  nearestToken,
+  toRelativeRect,
+} from '../helpers';
 import { useEditorHost } from '../host';
 import { deepClone } from '../utils';
 
@@ -34,10 +45,7 @@ function isContainerNode(node: SchemaNode): boolean {
 // Resize helpers
 // -----------------------------------------------------------------------
 
-type HandleId = 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw';
-
 const HANDLE_SIZE = 8;
-const SNAP_THRESHOLD = 8;
 const SPACE_TOKENS = ['0', '100', '200', '300', '400', '500', '600', '700', '800', '900', '1000'];
 const SIZE_TOKENS = ['xxs', 'xs', 'sm', 'md', 'lg', 'xl', 'xxl'];
 
@@ -56,47 +64,6 @@ function resolveSpaceTokens(): Array<{ token: string; px: number }> {
 
 function resolveSizeTokens(): Array<{ token: string; px: number }> {
   return SIZE_TOKENS.map((t) => ({ token: t, px: readCssVarPx(`--we-size-${t}`) })).filter((t) => t.px > 0);
-}
-
-function nearestToken(px: number, tokens: Array<{ token: string; px: number }>): { token: string; px: number } | null {
-  let best: { token: string; px: number } | null = null;
-  let bestDist = Infinity;
-  for (const t of tokens) {
-    const dist = Math.abs(px - t.px);
-    if (dist < bestDist) {
-      bestDist = dist;
-      best = t;
-    }
-  }
-  return bestDist <= SNAP_THRESHOLD ? best : null;
-}
-
-function isWidthHandle(h: HandleId): boolean {
-  return ['e', 'w', 'ne', 'nw', 'se', 'sw'].includes(h);
-}
-function isHeightHandle(h: HandleId): boolean {
-  return ['n', 's', 'ne', 'nw', 'se', 'sw'].includes(h);
-}
-function isLeftHandle(h: HandleId): boolean {
-  return ['w', 'nw', 'sw'].includes(h);
-}
-function isTopHandle(h: HandleId): boolean {
-  return ['n', 'ne', 'nw'].includes(h);
-}
-
-function handleCursor(h: HandleId): string {
-  if (h === 'n' || h === 's') return 'ns-resize';
-  if (h === 'e' || h === 'w') return 'ew-resize';
-  if (h === 'ne' || h === 'sw') return 'nesw-resize';
-  return 'nwse-resize';
-}
-
-// Compute a single size delta for SIZE_PROP_TYPES (uniform resize)
-function computeSizeDelta(h: HandleId, dx: number, dy: number): number {
-  const xDelta = isLeftHandle(h) ? -dx : isWidthHandle(h) ? dx : 0;
-  const yDelta = isTopHandle(h) ? -dy : isHeightHandle(h) ? dy : 0;
-  if (xDelta !== 0 && yDelta !== 0) return (xDelta + yDelta) / 2;
-  return xDelta || yDelta;
 }
 
 // -----------------------------------------------------------------------
@@ -328,13 +295,7 @@ function VisualEditorLayer() {
 
   function toRelative(rect: DOMRect | null): HighlightRect | null {
     if (!rect || !overlayRef) return null;
-    const base = overlayRef.getBoundingClientRect();
-    return {
-      top: `${rect.top - base.top}px`,
-      left: `${rect.left - base.left}px`,
-      width: `${rect.width}px`,
-      height: `${rect.height}px`,
-    };
+    return toRelativeRect(rect, overlayRef.getBoundingClientRect());
   }
 
   const hoverRelRect = createMemo(() => toRelative(hoverRect()));

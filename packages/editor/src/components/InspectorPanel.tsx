@@ -14,6 +14,7 @@ import { useVisualEditor } from '@we/schema-solid';
 import type { JSX } from 'solid-js';
 import { createEffect, createMemo, createSignal, For, onCleanup, Show } from 'solid-js';
 
+import { composeRing, parseRing, RING_THEME_ACCENT } from '../helpers';
 import { type EditorImage, useEditorHost } from '../host';
 import { deepClone } from '../utils';
 import { ConditionEditor } from './ConditionEditor';
@@ -107,31 +108,6 @@ const RING_DEFAULT_COLOR = 'primary-500';
 // Sentinel color value meaning "follow the active theme's ring color" — writes
 // var(--we-ring-color) directly instead of a hardcoded token, so it stays in sync
 // if the theme's accent color changes later.
-const RING_THEME_ACCENT = 'var(--we-ring-color)';
-
-interface ParsedRing {
-  widthPx: number;
-  blurPx: number;
-  /** A color token like 'success-400', RING_THEME_ACCENT, or an unrecognized raw CSS color. */
-  color: string;
-}
-
-function parseRing(value: string): ParsedRing | null {
-  const m = /^0\s+0\s+(-?[\d.]+)(?:px)?\s+(-?[\d.]+)(?:px)?\s+(.+)$/.exec(value.trim());
-  if (!m) return null;
-  const [, blurRaw, widthRaw, colorRaw] = m;
-  const color = colorRaw.trim();
-  const parsed: ParsedRing = { widthPx: Number(widthRaw), blurPx: Number(blurRaw), color };
-  if (/^var\(--we-ring-color(?:\s*,.*)?\)$/.test(color)) return { ...parsed, color: RING_THEME_ACCENT };
-  const tokenMatch = /^var\(--we-color-([a-z]+-\d+|white|black)\)$/.exec(color);
-  if (tokenMatch) return { ...parsed, color: tokenMatch[1] };
-  return parsed;
-}
-
-function composeRing(widthPx: number, blurPx: number, color: string): string {
-  const colorCss = color === RING_THEME_ACCENT || color.includes('(') ? color : `var(--we-color-${color})`;
-  return `0 0 ${blurPx}px ${widthPx}px ${colorCss}`;
-}
 
 // Component types where free text in `children` is idiomatic — used to offer an empty
 // "Content" field on childless nodes. Nodes that already have string children get the

@@ -1,8 +1,10 @@
 import { Column, Row } from '@we/components/solid';
 import { tokenVar } from '@we/design-utils';
-import type { ConditionOperand, FormStateToken, ScopeGroup, ScopeRef, ScopeValueType } from '@we/schema-shared';
+import type { ConditionOperand, ScopeGroup, ScopeRef, ScopeValueType } from '@we/schema-shared';
 import { inferRefKind } from '@we/schema-shared';
 import { createEffect, createMemo, createSignal, For, Match, onCleanup, Show, Switch } from 'solid-js';
+
+import { operandLabel, refPath, refToOperand } from '../helpers';
 
 /**
  * Pickers for a single value in the logic editors.
@@ -22,71 +24,12 @@ const KIND_ICONS: Record<ScopeRef['kind'], string> = {
   context: 'globe',
 };
 
-const FORM_STATE_LABELS: Record<FormStateToken, (field: string) => string> = {
-  formValid: () => 'all fields are valid',
-  valid: (field) => `${field} is valid`,
-  touched: (field) => `${field} was edited`,
-  error: (field) => `${field} error message`,
-};
-
-export function operandLabel(operand: ConditionOperand | undefined): string {
-  if (!operand) return '';
-  switch (operand.kind) {
-    case 'store':
-    case 'local':
-    case 'context':
-      return operand.path;
-    case 'list':
-      return operand.value.join(', ');
-    case 'count':
-      return `count of ${operandLabel(operand.items) || '…'}`;
-    case 'formState':
-      return FORM_STATE_LABELS[operand.token](operand.field);
-    case 'literal':
-      if (operand.value === null) return 'null';
-      if (operand.value === '') return '';
-      return String(operand.value);
-  }
-}
-
 function operandIcon(operand: ConditionOperand | undefined): string {
   if (!operand) return 'plus';
   if (operand.kind === 'literal' || operand.kind === 'list') return 'text-aa';
   if (operand.kind === 'count') return 'hash';
   if (operand.kind === 'formState') return 'check-circle';
   return KIND_ICONS[operand.kind];
-}
-
-/** The referenced path, or undefined for operands that aren't a plain reference. */
-function refPath(operand: ConditionOperand | undefined): string | undefined {
-  if (!operand) return undefined;
-  return operand.kind === 'store' || operand.kind === 'local' || operand.kind === 'context' ? operand.path : undefined;
-}
-
-/** Map a scope ref onto the operand kind that serializes to the same token. */
-function refToOperand(ref: ScopeRef): ConditionOperand {
-  if (ref.kind === 'store') return { kind: 'store', path: ref.path };
-  if (ref.kind === 'local') return { kind: 'local', path: ref.path };
-  return { kind: 'context', path: ref.path };
-}
-
-/** The declared type of the picked reference, used to type the opposite side's literal input. */
-export function operandValueType(operand: ConditionOperand | undefined, scope: ScopeGroup[]): ScopeValueType {
-  if (!operand) return 'unknown';
-  if (operand.kind === 'literal') {
-    if (typeof operand.value === 'boolean') return 'boolean';
-    if (typeof operand.value === 'number') return 'number';
-    return 'string';
-  }
-  if (operand.kind === 'list') return 'array';
-  if (operand.kind === 'count') return 'number';
-  if (operand.kind === 'formState') return operand.token === 'error' ? 'string' : 'boolean';
-  for (const group of scope) {
-    for (const ref of group.refs) {
-      if (ref.path === operand.path) return ref.valueType;
-    }
-  }
-  return 'unknown';
 }
 
 // ── ValueRefPicker ──────────────────────────────────────────────────────────
@@ -518,3 +461,6 @@ export function OperandInput(props: {
     </Row>
   );
 }
+
+// Re-exported for existing consumers; the implementations live in ../helpers.
+export { operandLabel, operandValueType } from '../helpers';
