@@ -22,11 +22,15 @@
  *    escape hatch from everything below.
  * 2. **`AGENT_DEFAULT` is also explicit** — a choice to follow one's own global default — so a
  *    template does not get to reinterpret it.
- * 3. **The space chose the template** → the space's theme, then the template's suggestion, then the
- *    agent's global default.
- * 4. **The agent chose the template** (their global default, or one pinned here) → the suggestion
- *    first, since the space's theme is now a leftover from an interface they just replaced. The
- *    space's theme still backs it up, so a community's look survives a template with no opinion.
+ * 3. **The template on screen is the space's default** → the space's theme, then the template's
+ *    suggestion, then the agent's global default. The pair the community set holds.
+ * 4. **It is anything else** — switched, pinned, or the agent's own global default — → the
+ *    suggestion first, since the space's theme is now a leftover from an interface that was
+ *    replaced. The space's theme still backs it up, so a community's look survives a template with
+ *    no opinion of its own.
+ *
+ * "Who chose it" is read off *what is rendering* rather than off a preference field, because the
+ * switcher and the per-space override write different places. See `templateIsSpaceDefault`.
  *
  * None of this is stored. Resolving rather than writing is what makes template switching
  * non-destructive: switching away and back restores the previous look by recomputation, and no
@@ -41,8 +45,20 @@ export interface ThemeResolutionInput {
    * Anything falsy is read as `FOLLOW_SPACE`, since that is what a record predating the field means.
    */
   themeOverride: string;
-  /** `SpacePreference.templateId`, read only to tell who chose the template. */
-  templateOverride: string;
+  /**
+   * Is the template **actually on screen** the one the space set as its default?
+   *
+   * Derived from the rendering template rather than from `SpacePreference.templateId`, because
+   * there are two ways to change template and only one goes through that field:
+   * `spaceStore.setSpaceTemplateOverride` writes the preference, while the template *switcher*
+   * calls `templateStore.switchTemplate`, which writes `AgentSettings.currentTemplateId` and never
+   * touches it. Reading the preference therefore said "the space chose" while the agent was looking
+   * at something they had picked themselves a second ago — and the suggestion never applied.
+   *
+   * Comparing what is rendering against the space's default answers the question the rule actually
+   * asks, and answers it the same way however the template got there.
+   */
+  templateIsSpaceDefault: boolean;
   /** `Space.defaultThemeId` — what the community set, if anything. */
   spaceTheme: string;
   /**
@@ -61,7 +77,7 @@ export interface ThemeResolutionInput {
 }
 
 export function resolveSpaceTheme(input: ThemeResolutionInput): string {
-  const { themeOverride, templateOverride, spaceTheme, templateTheme, agentTheme } = input;
+  const { themeOverride, templateIsSpaceDefault, spaceTheme, templateTheme, agentTheme } = input;
   const { agentDefaultSentinel, followSpaceSentinel } = input;
 
   // A concrete id is a pin. Nothing outranks it.
@@ -72,8 +88,5 @@ export function resolveSpaceTheme(input: ThemeResolutionInput): string {
   // "Follow my global default" is a decision too, not an absence of one.
   if (themeOverride === agentDefaultSentinel) return agentTheme;
 
-  // Falsy reads as follow-the-space, matching `SpacePreference`'s own convention.
-  const spaceChoseTemplate = !templateOverride || templateOverride === followSpaceSentinel;
-
-  return spaceChoseTemplate ? spaceTheme || templateTheme || agentTheme : templateTheme || spaceTheme || agentTheme;
+  return templateIsSpaceDefault ? spaceTheme || templateTheme || agentTheme : templateTheme || spaceTheme || agentTheme;
 }

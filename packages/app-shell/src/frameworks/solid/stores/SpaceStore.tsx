@@ -1693,10 +1693,24 @@ export function SpaceStoreProvider(props: ParentProps) {
    * A suggestion naming a theme this agent has not installed resolves to nothing rather than
    * failing, mirroring how `?theme=` in a share link degrades. The caller reports it once.
    */
+  /**
+   * The suggestion, read off the template **actually rendering**.
+   *
+   * `templateStore.currentTemplate` rather than `resolveTemplateFor(uuid)`, because those disagree
+   * on the path people actually use: the switcher calls `templateStore.switchTemplate`, which
+   * writes `AgentSettings.currentTemplateId` and leaves `SpacePreference.templateId` alone. Reading
+   * the preference meant the suggestion was computed from the space's default template while the
+   * agent was looking at the one they had just picked — so applying a template changed nothing.
+   *
+   * Only meaningful for the space on screen; `currentTemplate` is a single global. For any other
+   * space this returns nothing, which is right rather than merely safe: the only caller that passes
+   * a different uuid is `setSpaceThemeOverride`, which is writing a pin that outranks the
+   * suggestion anyway.
+   */
   const templateThemeFor = (uuid: string): string => {
     if (!themeStore.useTemplateTheme()) return '';
-    const templateId = resolveTemplateFor(uuid);
-    const suggested = templateStore.allTemplates().find((t) => t.id === templateId)?.meta?.themeId;
+    if (datasetStore.currentDataset()?.id !== uuid) return '';
+    const suggested = templateStore.currentTemplate?.meta?.themeId;
     if (!suggested) return '';
     return themeStore.allThemes().some((t) => t.id === suggested) ? suggested : '';
   };
@@ -1707,16 +1721,22 @@ export function SpaceStoreProvider(props: ParentProps) {
    * The precedence itself lives in `resolveSpaceTheme` — a pure function, because the rule is the
    * feature and it was designed wrong once. This reads the signals it needs and hands them over.
    */
-  const resolveThemeFor = (uuid: string): string =>
-    resolveSpaceTheme({
+  const resolveThemeFor = (uuid: string): string => {
+    const current = datasetStore.currentDataset()?.id === uuid ? templateStore.currentTemplate?.id : undefined;
+    const spaceDefault = spaceForUuid(uuid)?.defaultTemplateId || '';
+    return resolveSpaceTheme({
       themeOverride: themeOverrideFor(uuid),
-      templateOverride: templateOverrideFor(uuid),
+      // For a space that is not on screen there is no rendering template to compare, so fall back
+      // to what the preferences say would apply there.
+      templateIsSpaceDefault:
+        current !== undefined ? current === spaceDefault : templateOverrideFor(uuid) === FOLLOW_SPACE,
       spaceTheme: spaceForUuid(uuid)?.defaultThemeId || '',
       templateTheme: templateThemeFor(uuid),
       agentTheme: themeStore.defaultThemeId(),
       agentDefaultSentinel: AGENT_DEFAULT,
       followSpaceSentinel: FOLLOW_SPACE,
     });
+  };
 
   /**
    * Override the template this agent sees in one space. {@link FOLLOW_SPACE} returns to its default.
@@ -1885,8 +1905,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     const themes = themeStore.allThemes();
     if (!themes.length) return;
 
-    const templateId = resolveTemplateFor(uuid);
-    const suggested = templateStore.allTemplates().find((t) => t.id === templateId)?.meta?.themeId;
+    const suggested = templateStore.currentTemplate?.meta?.themeId;
     if (!suggested || themes.some((t) => t.id === suggested)) return;
     if (reportedMissingThemes.has(suggested)) return;
 
