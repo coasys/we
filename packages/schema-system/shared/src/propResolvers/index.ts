@@ -1,6 +1,6 @@
 export { resolveProp, resolveProps } from './dispatcher';
 export { walkPath } from './path';
-export { resolveQueryProp } from './query';
+export { pruneUnresolvedWhere, resolveQueryProp } from './query';
 export { REACTIVE_ACCESSOR, deepUnwrap } from './reactive';
 export { splitProps } from './splitProps';
 export { setLocalWarningSink } from './local';

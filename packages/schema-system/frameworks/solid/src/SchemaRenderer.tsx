@@ -11,6 +11,7 @@ import type {
 import {
   deepUnwrap,
   hasToken,
+  pruneUnresolvedWhere,
   REACTIVE_ACCESSOR,
   resolveProp,
   resolveQueryProp,
@@ -277,6 +278,13 @@ function createQuerySignal(
     }
 
     const resolvedParams = deepResolveTokens(descriptor.params, stores, context) as Record<string, unknown>;
+    // An unresolved reference in a filter (a $store that hasn't loaded) must drop
+    // the condition, not ship an empty one the backend cannot parse.
+    if (resolvedParams.where && typeof resolvedParams.where === 'object') {
+      const prunedWhere = pruneUnresolvedWhere(resolvedParams.where as Record<string, unknown>);
+      if (prunedWhere === undefined) delete resolvedParams.where;
+      else resolvedParams.where = prunedWhere;
+    }
     const resolvedInclude =
       descriptor.include !== undefined
         ? (deepResolveTokens(descriptor.include, stores, context) as Record<string, boolean | Record<string, unknown>>)
@@ -709,6 +717,11 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
             string,
             unknown
           >;
+          if (resolvedParams.where && typeof resolvedParams.where === 'object') {
+            const prunedWhere = pruneUnresolvedWhere(resolvedParams.where as Record<string, unknown>);
+            if (prunedWhere === undefined) delete resolvedParams.where;
+            else resolvedParams.where = prunedWhere;
+          }
           const resolvedInclude =
             descriptor.include !== undefined
               ? (deepResolveTokens(descriptor.include, stores, effectiveContext) as Record<

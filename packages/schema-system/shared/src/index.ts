@@ -72,6 +72,7 @@ export { findMutations, isLengthMutation } from './mutations';
 export {
   resolveProp,
   resolveProps,
+  pruneUnresolvedWhere,
   resolveQueryProp,
   splitProps,
   REACTIVE_ACCESSOR,
