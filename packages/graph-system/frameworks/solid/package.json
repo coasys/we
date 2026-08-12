@@ -33,7 +33,7 @@
   "peerDependencies": {
     "@we/components": "^0.1.0",
     "@we/graph-protocol": "workspace:*",
-    "@we/primitives": "^1.0.0",
+    "@we/primitives": "workspace:*",
     "solid-js": "^1.9.5"
   },
   "devDependencies": {

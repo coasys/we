@@ -55,7 +55,6 @@
     "@we/themes": "workspace:*",
     "@we/tokens": "workspace:*",
     "@we/widgets": "workspace:*",
-    "gsap": "^3.13.0",
     "solid-js": "^1.9.5",
     "three": "^0.176.0",
     "@we/backend-shared": "workspace:*",
