@@ -747,6 +747,21 @@ export function EditorStoreProvider(props: ParentProps) {
     } finally {
       // Mark user message as sent
       setMessages((prev) => prev.map((m) => (m.id === userMsg.id ? { ...m, status: 'sent' as const } : m)));
+      /*
+        Resolve any placeholder still marked `streaming`.
+
+        `sendViaClaude` creates one before the first token and clears it only on the paths that
+        finish — so a 401, a 429 or a timeout appended an error message *beside* an empty bubble
+        that shimmered for the life of the panel. Every escape from that function passes through
+        here, which is why the cleanup belongs here and not beside each throw.
+      */
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.status === 'streaming'
+            ? { ...m, status: undefined, content: m.content || 'The assistant stopped before replying.' }
+            : m,
+        ),
+      );
       setIsStreaming(false);
       setStreamingContent('');
     }
@@ -795,6 +810,24 @@ export function EditorStoreProvider(props: ParentProps) {
 
       if (textContent) {
         allTextContent += (allTextContent ? '\n\n' : '') + textContent;
+      }
+
+      /*
+        Truncated, not finished.
+
+        `max_tokens` was falling into the branch below and being reported as a completed turn, so a
+        reply cut off mid-tool-call silently dropped the edit and told the user it had worked. The
+        half-written text is still worth showing — it is usually most of an answer — but it has to
+        be labelled, because the difference between "here is your change" and "here is most of a
+        change I did not make" is the whole message.
+      */
+      if (stopReason === 'max_tokens') {
+        setStreamingContent('');
+        updateAssistantMessage(
+          streamMsg.id,
+          `${allTextContent}\n\n---\n\n**This reply was cut off before it finished, so no changes were applied.** Ask again, or in smaller steps.`.trim(),
+        );
+        return;
       }
 
       // No tool calls — text-only response, we're done

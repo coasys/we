@@ -855,6 +855,11 @@ export function SpaceStoreProvider(props: ParentProps) {
       setMySpaces((prev) => [...prev, spaceModel]);
     } catch (error) {
       console.error('SpaceStore: createSpace error', error);
+      toastService.error('Could not create the space.');
+      // The clearest case of the whole class: the create modal chains `onSuccess` to close itself
+      // and navigate into the new space, so a swallowed failure closed the form, threw away what
+      // the user had typed, and navigated to a space that does not exist.
+      throw error;
     } finally {
       setCreatingSpace(false);
     }
@@ -1092,6 +1097,11 @@ export function SpaceStoreProvider(props: ParentProps) {
       await datasetStore.removeDataset(uuid);
     } catch (error) {
       console.error('SpaceStore: removeSpace error', error);
+      toastService.error('Could not remove this space.');
+      // Rethrown, for the reason `joinSpace` rethrows: callers chain `onSuccess` off this to close a
+      // confirmation and navigate away, and a swallowed failure ran all of it — leaving the user
+      // somewhere else, told the space was gone, while it was still there.
+      throw error;
     }
   }
 
@@ -1815,7 +1825,10 @@ export function SpaceStoreProvider(props: ParentProps) {
       await Space.update(ds.handle, space.id, { enabledModules: enabledModulesJson });
     } catch (error) {
       console.error('SpaceStore: could not persist enabledModules', error);
-      return;
+      toastService.error('Could not save this change for the space.');
+      // A switch that reports success and does not persist is worse than one that fails visibly:
+      // the setting is a community decision, and the next member to open the page sees the old one.
+      throw error;
     }
     updateSpaceInCache(ds, { enabledModules: enabledModulesJson } as never);
     if (!isCurrent(ds)) return;

@@ -887,10 +887,20 @@ export function ThemeStoreProvider(props: ParentProps) {
       const sourceOverrides = decodeFileAsString(source.overrides) || null;
       const sourceCss = decodeFileAsString(source.css) || null;
 
-      // Check if already installed by slug — update in place if so
+      /*
+        Check if already installed by slug — update in place if so.
+
+        Constrained to models that are actually *installed*, which means the ones living in the root
+        perspective. `themeModelMap` is also filled by `loadSpaceThemes`, from every space visited
+        this session and never pruned, so an unconstrained slug match could bind `existingModel` to a
+        theme belonging to a *space* — and `save()` would then publish marketplace content into that
+        space, for every member, while the toast said "updated" and the installed list showed nothing
+        new. Slugs are not unique across perspectives and were never meant to be.
+      */
+      const installedIds = new Set(installedThemes().map((theme) => theme.id));
       let existingModel: Theme | undefined;
       for (const model of themeModelMap.values()) {
-        if (model.slug === sourceSlug) {
+        if (installedIds.has(model.id) && model.slug === sourceSlug) {
           existingModel = model;
           break;
         }

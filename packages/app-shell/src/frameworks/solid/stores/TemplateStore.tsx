@@ -601,17 +601,24 @@ export function TemplateStoreProvider(props: ParentProps) {
     const template = savedTemplateMap.get(templateId)!;
 
     setOperationLoading(`install:${templateId}`);
-    const prefs = datasetStore.agentSettings();
-    if (prefs) {
-      await prefs.addInstalledTemplates(template).catch(() => {});
-    }
+    try {
+      const prefs = datasetStore.agentSettings();
+      // `.catch(() => {})` swallowed the only write this function makes, so the sidebar gained a
+      // template that the next boot would not have — the state moved and the record did not.
+      if (prefs) await prefs.addInstalledTemplates(template);
 
-    setInstalledIds((prev) => {
-      const next = new Set(prev);
-      next.add(templateId);
-      return next;
-    });
-    setOperationLoading(null);
+      setInstalledIds((prev) => {
+        const next = new Set(prev);
+        next.add(templateId);
+        return next;
+      });
+    } catch (error) {
+      console.error('TemplateStore: installTemplate error', error);
+      toastService.error('Could not install this template.');
+      throw error;
+    } finally {
+      setOperationLoading(null);
+    }
   }
 
   /** Remove a template from the installed set (hidden from sidebar, not deleted) */
@@ -620,17 +627,22 @@ export function TemplateStoreProvider(props: ParentProps) {
     const template = savedTemplateMap.get(templateId)!;
 
     setOperationLoading(`uninstall:${templateId}`);
-    const prefs = datasetStore.agentSettings();
-    if (prefs) {
-      await prefs.removeInstalledTemplates(template).catch(() => {});
-    }
+    try {
+      const prefs = datasetStore.agentSettings();
+      if (prefs) await prefs.removeInstalledTemplates(template);
 
-    setInstalledIds((prev) => {
-      const next = new Set(prev);
-      next.delete(templateId);
-      return next;
-    });
-    setOperationLoading(null);
+      setInstalledIds((prev) => {
+        const next = new Set(prev);
+        next.delete(templateId);
+        return next;
+      });
+    } catch (error) {
+      console.error('TemplateStore: uninstallTemplate error', error);
+      toastService.error('Could not uninstall this template.');
+      throw error;
+    } finally {
+      setOperationLoading(null);
+    }
   }
 
   /** Fetch a template from the marketplace perspective and save it to the user's root perspective */

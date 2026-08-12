@@ -42,14 +42,12 @@ export function marketplaceList(opts: MarketplaceListOptions): SchemaNode {
   const key = `${opts.as}Items`;
   const grid = opts.layout !== 'list';
 
+  /** What the grid actually shows — the filter the count below must agree with. */
+  const matching = { $filter: { items: { $local: key }, where: { name: { contains: { $local: 'search' } } } } };
+
   const rows: SchemaNode = {
     type: '$each',
-    props: {
-      items: {
-        $filter: { items: { $local: key }, where: { name: { contains: { $local: 'search' } } } },
-      },
-      as: opts.as,
-    },
+    props: { items: matching, as: opts.as },
     children: [{ type: 'TemplateCard', props: { template: `$${opts.as}`, ...opts.card } }],
   };
 
@@ -104,25 +102,59 @@ export function marketplaceList(opts: MarketplaceListOptions): SchemaNode {
         ],
       },
       {
+        /*
+          Three states, not two: still loading, loaded and empty, and loaded with nothing *matching*.
+
+          It gated on the unfiltered count with no `Loaded` check — though the `$queries` entry
+          right above exposes one — so every marketplace page flashed "No … available yet" on load,
+          across four routes. And because the count ignored the search box while the grid honoured
+          it, a search with no matches rendered a blank area with no message at all: the count said
+          "there are items", the grid drew none, and nothing explained the difference.
+        */
         type: '$if',
         props: {
-          condition: { $count: { items: { $local: key } } },
-          then: grid
-            ? {
-                type: 'Column',
-                props: { flex: '1', gap: '0', maxWidth: '1200px', width: '100%' },
-                children: [{ type: 'Grid', props: { columns: 3, gap: '400', width: '100%' }, children: [rows] }],
-              }
-            : { type: 'Column', props: { gap: '200' }, children: [rows] },
-          else: gatePrompt({
-            icon: opts.emptyIcon,
-            iconColor: 'neutral-300',
-            title: `No ${opts.label} available yet`,
-            body: opts.emptyBody,
-            fill: false,
-            gap: '300',
-            bodyWidth: '360px',
-          }),
+          condition: { $local: `${key}Loaded` },
+          then: {
+            type: '$if',
+            props: {
+              condition: { $count: { items: matching } },
+              then: grid
+                ? {
+                    type: 'Column',
+                    props: { flex: '1', gap: '0', maxWidth: '1200px', width: '100%' },
+                    children: [{ type: 'Grid', props: { columns: 3, gap: '400', width: '100%' }, children: [rows] }],
+                  }
+                : { type: 'Column', props: { gap: '200' }, children: [rows] },
+              // Two different absences, two different sentences. Saying "none available yet" to
+              // somebody who has just typed a search is telling them the shelf is empty when what
+              // is empty is their query.
+              else: {
+                type: '$if',
+                props: {
+                  condition: { $local: 'search' },
+                  then: gatePrompt({
+                    icon: 'magnifying-glass',
+                    iconColor: 'neutral-300',
+                    title: `No ${opts.label} match your search`,
+                    body: 'Try a different word, or clear the search to see everything.',
+                    fill: false,
+                    gap: '300',
+                    bodyWidth: '360px',
+                  }),
+                  else: gatePrompt({
+                    icon: opts.emptyIcon,
+                    iconColor: 'neutral-300',
+                    title: `No ${opts.label} available yet`,
+                    body: opts.emptyBody,
+                    fill: false,
+                    gap: '300',
+                    bodyWidth: '360px',
+                  }),
+                },
+              },
+            },
+          },
+          // Still loading: nothing, rather than an assertion that there is nothing.
         },
       },
     ],
