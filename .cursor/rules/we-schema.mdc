@@ -276,7 +276,7 @@ Filters an array to items where all where conditions match. Mirrors the $query w
 Where values (including those inside operator objects) are resolved through the prop system,
 so $store, $local, and context refs like { "$local": "searchText" } all work.
 
-$query-only logical combinators (OR / AND / NOT) — NOT supported in $filter, only in $query's where:
+Logical combinators (OR / AND / NOT) — supported in both $query's where and $filter's where:
   { "OR": [ { "field": "value" }, { "field2": "value2" } ] }   — matches if ANY branch matches
   { "AND": [ { ... }, { ... } ] }                              — matches if ALL branches match (sibling keys at the
                                                                   same level are already implicitly ANDed — use AND
@@ -284,7 +284,8 @@ $query-only logical combinators (OR / AND / NOT) — NOT supported in $filter, o
   { "NOT": { "field": "value" } }                              — matches if the branch does NOT match
 Branches are full where-clause objects (can contain multiple fields, and can nest OR/AND/NOT inside each other).
 Sibling keys alongside OR/AND/NOT at the same level are implicitly ANDed with it.
-Example — case-insensitive search across two fields:
+Example — case-insensitive search across two fields ($filter takes the same shape, e.g. a member
+list matching name OR handle):
 {
   "$query": {
     "entity": "Space",

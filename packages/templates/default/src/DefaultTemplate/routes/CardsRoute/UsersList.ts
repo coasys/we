@@ -7,7 +7,15 @@ export const usersList: SchemaNode = cardList({
   items: {
     $filter: {
       items: { $store: 'spaceStore.members' },
-      where: { handle: { contains: { $local: 'searchText' } } },
+      // `name` is the assembled display name (first + last, falling back to the
+      // handle), so one branch covers both name parts; the handle branch covers
+      // @handle searches for members who also have a real name. Bio is left out
+      // deliberately: this is a people search, and matching a stray word deep in
+      // a bio surfaces people who don't look like matches. One more OR branch if
+      // that call changes.
+      where: {
+        OR: [{ name: { contains: { $local: 'searchText' } } }, { handle: { contains: { $local: 'searchText' } } }],
+      },
     },
   },
   as: 'user',

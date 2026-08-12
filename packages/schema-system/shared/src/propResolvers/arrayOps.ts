@@ -26,6 +26,43 @@ function matchesWhere(
 ): boolean {
   const itemRecord = item as Record<string, unknown>;
   for (const [key, rawValue] of Object.entries(where)) {
+    // Logical combinators, mirroring $query's where grammar: branches are full
+    // where-clauses; siblings at the same level stay implicitly ANDed. Added
+    // because $filter's lack of OR forced single-field searches (a member list
+    // matching handle only while the spaces list beside it matched name OR
+    // description).
+    if (key === 'OR') {
+      if (!Array.isArray(rawValue)) return false;
+      if (
+        !rawValue.some(
+          (branch) =>
+            branch !== null &&
+            typeof branch === 'object' &&
+            matchesWhere(item, branch as Record<string, unknown>, stores, context, memo, resolvePropFn),
+        )
+      )
+        return false;
+      continue;
+    }
+    if (key === 'AND') {
+      if (!Array.isArray(rawValue)) return false;
+      if (
+        !rawValue.every(
+          (branch) =>
+            branch !== null &&
+            typeof branch === 'object' &&
+            matchesWhere(item, branch as Record<string, unknown>, stores, context, memo, resolvePropFn),
+        )
+      )
+        return false;
+      continue;
+    }
+    if (key === 'NOT') {
+      if (rawValue === null || typeof rawValue !== 'object') return false;
+      if (matchesWhere(item, rawValue as Record<string, unknown>, stores, context, memo, resolvePropFn)) return false;
+      continue;
+    }
+
     const actual = itemRecord?.[key];
 
     if (rawValue !== null && typeof rawValue === 'object') {
