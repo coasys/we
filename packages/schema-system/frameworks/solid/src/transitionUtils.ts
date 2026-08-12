@@ -37,11 +37,39 @@ export function hiddenOpacity(config: TransitionConfig): number {
 }
 
 /**
+ * The 'reveal' effect in a config, if it has one.
+ *
+ * Only the first counts. Two reveals would be two conflicting values for one grid track, and
+ * silently honouring whichever came last is worse than the author noticing nothing happened.
+ */
+export function revealEffect(config: TransitionConfig): TransitionEffect | undefined {
+  return toEffects(config).find((e) => e.type === 'reveal');
+}
+
+/**
+ * Which grid track a reveal animates.
+ *
+ * The technique: the animating element is a grid whose single track goes `0fr` → `1fr`, and the
+ * content inside it is clipped. `1fr` on a single-track grid resolves to the content's natural
+ * size, so this eases to `auto` — the thing a plain `height` transition famously cannot do.
+ *
+ * The alternative, a `max-height` guessed high enough to clear the content, is wrong in a way that
+ * is easy to miss: the easing curve is applied to the guess rather than to the real height, so most
+ * of the duration is spent traversing space that isn't there, and the whole thing breaks silently
+ * the day some content exceeds the guess. (`interpolate-size: allow-keywords` will eventually make
+ * `height: auto` animate directly, but it is not cross-browser baseline yet.)
+ */
+export function revealTrackProperty(effect: TransitionEffect): 'grid-template-rows' | 'grid-template-columns' {
+  return effect.axis === 'inline' ? 'grid-template-columns' : 'grid-template-rows';
+}
+
+/**
  * CSS transition shorthand string for the given config.
  * Each effect maps to its own CSS property with independent timing:
- *   - 'fade'  → opacity
- *   - 'slide' → transform
- *   - 'scale' → transform
+ *   - 'fade'   → opacity
+ *   - 'slide'  → transform
+ *   - 'scale'  → transform
+ *   - 'reveal' → grid-template-rows / -columns
  */
 export function buildTransitionCSS(config: TransitionConfig): string {
   const parts: string[] = [];
@@ -52,9 +80,23 @@ export function buildTransitionCSS(config: TransitionConfig): string {
       parts.push(`opacity ${duration}ms ${easing}`);
     } else if (effect.type === 'slide' || effect.type === 'scale') {
       parts.push(`transform ${duration}ms ${easing}`);
+    } else if (effect.type === 'reveal') {
+      parts.push(`${revealTrackProperty(effect)} ${duration}ms ${easing}`);
     }
   }
   return parts.join(', ');
+}
+
+/**
+ * How long a config takes to finish, in ms — the **longest** effect, not the first one.
+ *
+ * Used to decide when an exiting node may unmount. Reading it off the first effect (which is what
+ * this replaced) meant `[{ fade, 200 }, { slide, 700 }]` tore the element out of the DOM 200ms in,
+ * cutting the slide at under a third of its length. Composition is the whole point of the array
+ * form, so the array has to be what decides.
+ */
+export function transitionSpan(config: TransitionConfig): number {
+  return toEffects(config).reduce((longest, e) => Math.max(longest, e.duration ?? 300), 0);
 }
 
 /**

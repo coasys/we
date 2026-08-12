@@ -43,6 +43,10 @@ export type RouteSchema = SchemaNode & { path: string; redirect?: string; keepAl
  * - 'fade'  — animates opacity only
  * - 'slide' — animates transform only (use alongside 'fade' for a combined slide+fade)
  * - 'scale' — animates transform (scale) only
+ * - 'reveal' — animates the element open to the size its content actually wants, and closed
+ *   again. The size axis the other three deliberately lack: fade and slide/scale move paint,
+ *   this one moves the box. Use it for anything that opens in place — a disclosure, an
+ *   accordion, a sidebar label appearing as the rail expands.
  * - 'pulse' — a persistent looping CSS `@keyframes` animation (not a one-shot enter/exit
  *   transition like the others — fade/slide/scale interpolate between two static states,
  *   which a CSS `transition` already does natively; a loop needs real keyframes, defined
@@ -50,13 +54,19 @@ export type RouteSchema = SchemaNode & { path: string; redirect?: string; keepAl
  *   `distance` don't apply.
  */
 export type TransitionEffect = {
-  type: 'fade' | 'slide' | 'scale' | 'pulse';
+  type: 'fade' | 'slide' | 'scale' | 'reveal' | 'pulse';
   duration?: number; // Milliseconds (default: 300; pulse default: 1200)
   easing?: string; // CSS easing function (default: 'ease'; pulse default: 'ease-in-out')
   delay?: number; // Milliseconds (default: 0)
   // slide / scale options
   direction?: 'left' | 'right' | 'up' | 'down'; // Slide direction (default: 'up')
   distance?: string; // Slide/scale distance (default: '40px' for slide, '0.95' for scale)
+  // reveal options
+  /**
+   * Which way the element opens. 'block' (default) is vertical — the accordion case.
+   * 'inline' is horizontal, for a label appearing beside an icon.
+   */
+  axis?: 'block' | 'inline';
 };
 
 /**
