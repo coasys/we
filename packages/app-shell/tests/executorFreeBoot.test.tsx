@@ -158,12 +158,33 @@ describe('boot', () => {
 
     await vi.waitFor(() => expect(stores.session.bootState()).toBe('login'));
 
-    await stores.session.login('wrong');
+    // Rejects now: a schema chaining `onSuccess` off sign-in used to fire it on a failed one.
+    await expect(stores.session.login('wrong')).rejects.toThrow();
     expect(stores.session.passwordError()).toBe(true);
     expect(stores.session.bootState()).toBe('login');
 
     await stores.session.login('secret');
     await ready(stores);
+  });
+
+  it('does not blame the password for a failure that happened after it was accepted', async () => {
+    agentOptions = { unlocked: false, password: 'secret' };
+    const stores = mountShell();
+    await vi.waitFor(() => expect(stores.session.bootState()).toBe('login'));
+
+    // The unlock succeeds; the load behind it does not. Injected at the seam the boot controller
+    // registers through, because every step inside that load catches its own errors — which is why
+    // this bug is latent on the dataset path rather than reproducible through it.
+    stores.session.onSessionUnlocked(async () => {
+      throw new Error('dataset store unreachable');
+    });
+
+    await expect(stores.session.login('secret')).rejects.toThrow(/unreachable/);
+
+    // The bug: one `try` covered both halves, so a data failure reported "Incorrect password" about
+    // a password the executor had just accepted — sending the user to change something that was
+    // never wrong.
+    expect(stores.session.passwordError()).toBe(false);
   });
 
   it('routes to agent creation when no agent exists', async () => {
@@ -194,6 +215,28 @@ describe('first run', () => {
     expect(names).toEqual(['we-root', 'we-test']);
   }, 10000);
 
+  it('does not strand the user on the create screen after the agent exists', async () => {
+    const stores = mountShell();
+    await vi.waitFor(() => expect(stores.session.bootState()).toBe('createAgent'));
+
+    stores.session.onSessionUnlocked(async () => {
+      throw new Error('dataset store unreachable');
+    });
+
+    await expect(stores.session.createAgent('a-strong-passphrase')).rejects.toThrow(/unreachable/);
+
+    /*
+      The agent was created. Sharing one catch with the load meant this reported "Could not create
+      your agent" and left the user on the create screen — where retrying calls `generate` again and
+      the executor refuses, because an agent already exists. There was no way out.
+
+      A boot failure instead: `error` has a screen and a retry, which is the shape this needs.
+    */
+    expect(stores.session.bootState()).toBe('error');
+    expect(stores.session.bootError()).toMatch(/unreachable/);
+    expect(stores.session.createAgentError()).toBe('');
+  });
+
   it('finishing setup reaches ready, and the app is usable from there', async () => {
     const stores = mountShell();
     await vi.waitFor(() => expect(stores.session.bootState()).toBe('createAgent'));
@@ -215,7 +258,7 @@ describe('first run', () => {
     const stores = mountShell();
     await vi.waitFor(() => expect(stores.session.bootState()).toBe('login'));
 
-    await stores.session.createAgent('another-passphrase');
+    await expect(stores.session.createAgent('another-passphrase')).rejects.toThrow(/already exists/);
 
     expect(stores.session.createAgentError()).toBe('an agent already exists');
     expect(stores.session.createAgentLoading()).toBe(false);
