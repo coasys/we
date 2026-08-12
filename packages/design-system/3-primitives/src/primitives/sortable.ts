@@ -25,6 +25,11 @@ const CSS_STYLES = css`
  * of IDs — the event name is unprefixed, like every other primitive's
  * (`change`, `select`, `toggle`). In Solid, listen with `on:reorder`; a
  * listener for `we-reorder` never fires and the drop silently does nothing.
+ * From a schema the same event is `onReorder`, which Solid lowercases to a
+ * direct `reorder` listener.
+ *
+ * The `data-we-id` may sit on the slotted child or on something inside it —
+ * see `_resolveItem` for why the second case exists.
  *
  * @fires reorder - detail: string[] — new ordered array of `data-we-id` values
  */
@@ -65,7 +70,29 @@ export default class Sortable extends DesignSystemElement {
   }
 
   private _getItems(): Element[] {
-    return this._slot?.assignedElements() ?? [];
+    return (this._slot?.assignedElements() ?? []).map((el) => this._resolveItem(el));
+  }
+
+  /**
+   * The element a slotted child actually *is*, once layout-transparent wrappers are seen through.
+   *
+   * Needed because this primitive was unusable from a template. The schema renderer wraps every
+   * node in a `display: contents` div, so `assignedElements()` hands back wrappers rather than the
+   * nodes an author wrote: no `data-we-id` on them, and — having no box — a zero rect, which broke
+   * both halves of a drag at once. Every id came out empty and every drop index computed against
+   * 0x0 rectangles stacked at the origin.
+   *
+   * Resolving to the identified descendant fixes both, because `display: contents` promotes its
+   * children to be the container's real flex items: the element carrying the id is also the element
+   * carrying the geometry. Everything downstream — hit testing, rects, the ghost clone, the dimming
+   * of the original — then works on a real box.
+   *
+   * A child that identifies itself is returned untouched, so a hand-written consumer that puts the
+   * attribute on the slotted element (which is what TSX callers do) is unaffected.
+   */
+  private _resolveItem(el: Element): Element {
+    if (el.hasAttribute('data-we-id')) return el;
+    return el.querySelector('[data-we-id]') ?? el;
   }
 
   private _getItemId(el: Element): string {
