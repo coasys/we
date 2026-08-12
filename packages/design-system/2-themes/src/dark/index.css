@@ -7,7 +7,7 @@
   --we-role-surface-raised: var(--we-color-neutral-100);
 }
 
-[data-we-theme='dark'] we-modal::part(modal) {
+[data-we-theme='dark'] we-modal::part(base) {
   box-shadow: 0 0 40px 20px hsl(var(--we-color-primary-hue) var(--we-color-saturation) 20% / 5%);
 }
 

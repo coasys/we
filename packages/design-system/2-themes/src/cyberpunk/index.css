@@ -40,11 +40,11 @@
   clip-path: polygon(90% 0, 0 0, 0 50%, 5% 100%, 0% 100%, 100% 100%, 100% 0%);
 }
 
-[data-we-theme='cyberpunk'] we-tab-item::part(base) {
+[data-we-theme='cyberpunk'] we-tab::part(base) {
   clip-path: polygon(87% 0, 0 0, 0 50%, 13% 100%, 88% 100%, 100% 100%, 99% 16%);
 }
 
-[data-we-theme='cyberpunk'] we-input::part(input-wrapper) {
+[data-we-theme='cyberpunk'] we-input::part(base) {
   height: 60px;
   font-size: 16px;
   border: 10px solid var(--we-color-primary-500);
@@ -67,7 +67,7 @@
   );
 }
 
-[data-we-theme='cyberpunk'] we-input::part(input-wrapper):focus-within {
+[data-we-theme='cyberpunk'] we-input::part(base):focus-within {
   border-color: var(--we-color-primary-500);
 }
 
