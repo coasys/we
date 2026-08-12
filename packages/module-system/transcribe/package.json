@@ -9,6 +9,7 @@
     "build": "we-build",
     "dev": "tsup --watch",
     "test": "vitest run",
+    "typecheck": "tsc --noEmit",
     "test:watch": "vitest"
   },
   "main": "./dist/index.js",

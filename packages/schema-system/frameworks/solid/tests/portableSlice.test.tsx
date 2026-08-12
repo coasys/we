@@ -26,7 +26,7 @@ const registry: ComponentRegistry = { Stack, Field };
 
 function seedBackend() {
   return createInMemoryBackend({
-    uuid: 'in-memory-dataset',
+    id: 'in-memory-dataset',
     tables: {
       Agent: [
         { id: 'a1', name: 'Ada' },

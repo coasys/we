@@ -188,7 +188,7 @@ describe('transport and device lifetime', () => {
       selfId: () => 'did:test:me',
       ephemeral: () => scope,
       presence: { peers: () => [], setActivity: () => {}, clearActivity: () => {} },
-      onDispose: (fn) => disposers.push(fn),
+      onDispose: (fn: () => void) => disposers.push(fn),
       createPeerConnection: () => ({}) as RTCPeerConnection,
     } as never) as ReturnType<typeof createCallStore> & Record<string, (...args: unknown[]) => unknown>;
 

@@ -9,6 +9,9 @@
     "isolatedModules": true,
     "experimentalDecorators": true,
     "paths": { "@shared/*": ["./src/shared/*"], "@solid/*": ["./src/frameworks/solid/*"] },
-    "types": ["node"]
+    // `vite/client` for `import.meta.env`, which ten files read. Its absence is why app-shell had
+    // no typecheck script, and that is why `ShellRouteStore` could ship missing two members of the
+    // interface it declares (audit P2-4) — the bug class this gate exists to catch.
+    "types": ["node", "vite/client"]
   }
 }

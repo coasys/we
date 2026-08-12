@@ -1,6 +1,8 @@
 {
   "extends": "../../../tsconfig.json",
   "compilerOptions": {
+    // Tests read fixtures from disk.
+    "types": ["node"],
     "jsx": "preserve",
     "rootDir": "src",
     "outDir": "dist"

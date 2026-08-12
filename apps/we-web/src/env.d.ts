@@ -5,8 +5,9 @@
  * build time. `vite/client` declares the common extensions but not this one, so a host that
  * typechecks the shell's source has to say so itself.
  *
- * Duplicated in `apps/we-preview`. It belongs with the asset, but an ambient declaration only
- * applies to the program that includes it, and each host compiles the shell under its own tsconfig.
+ * The same block appears in we-preview and we-electron. It belongs with the asset, but an ambient
+ * declaration only applies to the program that includes it, and each host compiles the shell under
+ * its own tsconfig.
  */
 declare module '*.glb' {
   const src: string;

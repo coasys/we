@@ -8,6 +8,16 @@
     "noEmit": true,
     "isolatedModules": true,
     "experimentalDecorators": true,
-    "baseUrl": "."
+    // The shell and the template packages import each other with explicit `.ts` extensions.
+    "allowImportingTsExtensions": true,
+    "resolveJsonModule": true,
+    "baseUrl": ".",
+    // The shell's own aliases, which existed only in Vite's config. Their absence is why this app
+    // could not be typechecked at all: every `@shared/*` import inside the shell's source resolved
+    // for the bundler and not for tsc, producing 200 errors none of which were in this app's code.
+    "paths": {
+      "@shared/*": ["../../packages/app-shell/src/shared/*"],
+      "@solid/*": ["../../packages/app-shell/src/frameworks/solid/*"]
+    }
   }
 }

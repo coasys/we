@@ -78,7 +78,10 @@ export function createStandaloneEditorHost(initial: TemplateSchema): {
       updateEditingMeta: () => {},
       saveEditingTheme: async () => null,
       themeScope: () => 'global',
-      toggleThemeScope: () => {},
+      // `toggleThemeScope` was renamed to a preference plus an explicit preview when scoping grew a
+      // third state; this stand-in host still implemented the old one, which nothing called.
+      themeScopePreference: () => 'global',
+      previewThemeScope: () => {},
       publishToSpace: async () => false,
       publishToMarketplace: async () => undefined,
     },

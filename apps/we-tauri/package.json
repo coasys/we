@@ -13,7 +13,8 @@
     "serve": "vite preview",
     "tauri": "tauri",
     "tauri:dev": "concurrently \"pnpm dev\" \"wait-on http://localhost:1420 && tauri dev -- --release\"",
-    "tauri:build": "tauri build"
+    "tauri:build": "tauri build",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@coasys/ad4m": "0.13.0-test-9",

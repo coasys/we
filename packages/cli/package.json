@@ -8,7 +8,8 @@
   "scripts": {
     "bootstrap": "tsup",
     "build:steps": "tsup",
-    "build": "if [ -f ./dist/we-build.js ]; then node ./dist/we-build.js; else pnpm run build:steps; fi"
+    "build": "if [ -f ./dist/we-build.js ]; then node ./dist/we-build.js; else pnpm run build:steps; fi",
+    "typecheck": "tsc --noEmit"
   },
   "bin": {
     "we-build": "./dist/we-build.js",

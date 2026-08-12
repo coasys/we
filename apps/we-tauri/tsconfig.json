@@ -19,7 +19,22 @@
 
     /* Path aliases */
     "baseUrl": ".",
-    "paths": { "@/*": ["./src/*"] }
+    // `@shared`/`@solid` are the shell's own aliases, which existed only in Vite's config. Without
+    // them every import inside the shell's source failed to resolve, and the unresolved types then
+    // cascaded into a hundred implicit-any errors none of which were in this app's code.
+    "paths": {
+      "@/*": ["./src/*"],
+      "@shared/*": ["../../packages/app-shell/src/shared/*"],
+      "@solid/*": ["../../packages/app-shell/src/frameworks/solid/*"]
+    }
   },
-  "references": [{ "path": "./tsconfig.node.json" }]
+  "references": [{ "path": "./tsconfig.node.json" }],
+  /*
+    Without this, tsc sweeps the whole directory — including `src-tauri/target`, where the Rust
+    build leaves vendored Go and CMake-generated C++ stubs. That produced 544 syntax errors about
+    files nobody wrote in a language this project does not compile, and zero signal about the app,
+    which is why this package could not be typechecked at all.
+  */
+  // `vite.config.ts` belongs to the referenced node project, which builds it separately.
+  "include": ["src"]
 }

@@ -7,6 +7,7 @@
     "build:steps": "tsup",
     "build": "we-build",
     "test": "vitest run",
+    "typecheck": "tsc --noEmit",
     "coverage": "vitest run --coverage",
     "validate": "tsx src/cli/we-validate-schemas.ts ../../app-shell/src/shared/schemas/ ../../templates/shell/src/ ../../templates/default/src/ ../../templates/showcase/src/ ../../module-system/"
   },

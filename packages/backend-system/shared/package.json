@@ -1,12 +1,13 @@
 {
   "name": "@we/backend-shared",
   "version": "0.1.0",
-  "description": "The backend contract — data, query, identity and ephemeral ports every adapter implements",
+  "description": "The backend contract \u2014 data, query, identity and ephemeral ports every adapter implements",
   "type": "module",
   "scripts": {
     "build:steps": "tsup",
     "build": "we-build",
     "test": "vitest run",
+    "typecheck": "tsc --noEmit",
     "coverage": "vitest run --coverage"
   },
   "types": "dist/index.d.ts",

@@ -200,12 +200,18 @@ export default class LocationPicker extends DesignSystemElement {
     const initialLng = this.longitude ?? 0;
     const initialZoom = this.latitude != null ? 8 : 2;
 
-    this._map = L.map(this._mapDiv, { zoomControl: true }).setView([initialLat, initialLng], initialZoom);
+    // Bound to a local as well as the field, and the handlers below close over the local. `_map` is
+    // a mutable property, so TypeScript cannot narrow it inside a callback — the marker created on
+    // click was being added to a `Map | null`. Narrowing by hand with a non-null assertion would
+    // have said the same thing less honestly: the map is genuinely non-null for the life of these
+    // handlers, because they are registered on it.
+    const map = L.map(this._mapDiv, { zoomControl: true }).setView([initialLat, initialLng], initialZoom);
+    this._map = map;
 
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
       maxZoom: 18,
-    }).addTo(this._map);
+    }).addTo(map);
 
     // Custom pin icon using a simple data URI — avoids broken icon path issue in Leaflet+bundlers
     const pinIcon = L.divIcon({
@@ -222,10 +228,10 @@ export default class LocationPicker extends DesignSystemElement {
     if (this.latitude != null && this.longitude != null) {
       this._pendingLat = this.latitude;
       this._pendingLng = this.longitude;
-      this._marker = L.marker([this.latitude, this.longitude], { icon: pinIcon }).addTo(this._map);
+      this._marker = L.marker([this.latitude, this.longitude], { icon: pinIcon }).addTo(map);
     }
 
-    this._map.on('click', (e: { latlng: { lat: number; lng: number } }) => {
+    map.on('click', (e: { latlng: { lat: number; lng: number } }) => {
       const { lat, lng } = e.latlng;
       this._pendingLat = Math.round(lat * 1e6) / 1e6;
       this._pendingLng = Math.round(lng * 1e6) / 1e6;
@@ -233,7 +239,7 @@ export default class LocationPicker extends DesignSystemElement {
       if (this._marker) {
         this._marker.setLatLng([lat, lng]);
       } else {
-        this._marker = L.marker([lat, lng], { icon: pinIcon }).addTo(this._map);
+        this._marker = L.marker([lat, lng], { icon: pinIcon }).addTo(map);
       }
       this.requestUpdate();
     });

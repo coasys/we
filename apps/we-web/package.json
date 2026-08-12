@@ -8,7 +8,8 @@
     "dev": "vite",
     "build:steps": "vite build",
     "build": "we-build",
-    "serve": "vite preview"
+    "serve": "vite preview",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@we/app-shell": "workspace:*",

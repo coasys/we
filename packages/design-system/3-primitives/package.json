@@ -12,7 +12,8 @@
     "build": "we-build",
     "start": "pnpm build:cem && storybook dev -p 6006",
     "storybook:build": "storybook build",
-    "test": "vitest run --passWithNoTests"
+    "test": "vitest run --passWithNoTests",
+    "typecheck": "tsc --noEmit"
   },
   "exports": {
     "./types": {

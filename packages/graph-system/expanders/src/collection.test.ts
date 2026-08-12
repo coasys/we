@@ -129,8 +129,8 @@ describe('propertyExpander', () => {
     const { context } = contextWith((request) => [{ id: String(request.where?.id), status: 'blocked' }]);
 
     const expander = propertyExpander({ properties: ['status'] });
-    const first = await expander.expand({ id: entityAddress('ds', 'Task', 'a') }, context);
-    const second = await expander.expand({ id: entityAddress('ds', 'Task', 'b') }, context);
+    const first = await expander.expand({ id: entityAddress('ds', 'Task', 'a'), direction: 'out' }, context);
+    const second = await expander.expand({ id: entityAddress('ds', 'Task', 'b'), direction: 'out' }, context);
 
     const literalOf = (r: typeof first) => r.nodes.find((n) => n.kind === 'literal')!.id;
     // The literal address is deliberately not instance-scoped — that convergence
@@ -140,13 +140,19 @@ describe('propertyExpander', () => {
 
   it('hides empty values by default', async () => {
     const { context } = contextWith(() => [{ id: 'task-1', status: '', notes: null }]);
-    const result = await propertyExpander({ properties: ['status', 'notes'] }).expand({ id: TASK }, context);
+    const result = await propertyExpander({ properties: ['status', 'notes'] }).expand(
+      { id: TASK, direction: 'out' },
+      context,
+    );
     expect(result.nodes).toEqual([]);
   });
 
   it('valueNodes: false collapses to leaf labels', async () => {
     const { context } = contextWith(() => [{ id: 'task-1', status: 'open' }]);
-    const result = await propertyExpander({ properties: ['status'], valueNodes: false }).expand({ id: TASK }, context);
+    const result = await propertyExpander({ properties: ['status'], valueNodes: false }).expand(
+      { id: TASK, direction: 'out' },
+      context,
+    );
     expect(result.nodes).toHaveLength(1);
     expect(result.nodes[0].label).toBe('status: open');
   });

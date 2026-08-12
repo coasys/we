@@ -8,7 +8,8 @@
   "scripts": {
     "build": "we-build",
     "build:css": "sass src/styles/index.scss dist/styles/index.css --no-source-map --style=compressed",
-    "build:steps": "tsup && pnpm build:css"
+    "build:steps": "tsup && pnpm build:css",
+    "typecheck": "tsc --noEmit"
   },
   "types": "dist/index.d.ts",
   "exports": {

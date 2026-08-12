@@ -9,7 +9,8 @@
     "build:css": "sass src/styles/index.scss dist/styles/index.css --no-source-map --style=compressed",
     "build:steps": "tsup && pnpm build:css",
     "build": "we-build",
-    "test": "vitest run --passWithNoTests"
+    "test": "vitest run --passWithNoTests",
+    "typecheck": "tsc --noEmit"
   },
   "types": "dist/index.d.ts",
   "exports": {

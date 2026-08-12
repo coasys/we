@@ -8,7 +8,8 @@
   "scripts": {
     "build": "we-build",
     "build:steps": "tsup",
-    "test": "vitest run"
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
   },
   "types": "dist/index.d.ts",
   "exports": {
