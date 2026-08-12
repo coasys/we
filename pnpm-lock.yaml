@@ -908,6 +908,10 @@ importers:
         version: 4.1.10(@types/node@24.13.2)(@vitest/coverage-v8@4.1.10)(happy-dom@20.10.6)(jsdom@27.4.0)(vite@7.3.6(@types/node@24.13.2)(sass@1.101.0)(tsx@4.23.0)(yaml@2.9.0))
 
   packages/design-system/utils:
+    dependencies:
+      '@we/tokens':
+        specifier: workspace:*
+        version: link:../1-tokens
     devDependencies:
       '@we/cli':
         specifier: workspace:*
@@ -915,9 +919,6 @@ importers:
       '@we/design-types':
         specifier: workspace:*
         version: link:../types
-      '@we/tokens':
-        specifier: workspace:*
-        version: link:../1-tokens
       esbuild-plugin-solid:
         specifier: ^0.6.0
         version: 0.6.0(esbuild@0.28.1)(solid-js@1.9.14)

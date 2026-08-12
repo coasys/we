@@ -367,12 +367,18 @@ export function generateZIndexCSS(zIndex: typeof zIndexTokens) {
 }
 
 function generateCombinedCSS(outputDir: string) {
-  const indexCSS = `/* @we/tokens CSS variables - Main Entry Point */
+  // The webfont fetches live in their own opt-in file: the token variables must
+  // work offline (local-first app), so the main entry makes no network requests.
+  // A host that wants the hosted faces imports '@we/tokens/css/fonts' alongside.
+  const fontsCSS = `/* @we/tokens webfonts — opt-in, network-fetching. Import alongside ./index.css. */
 
-/* Font imports */
 @import url('https://fonts.googleapis.com/css2?family=DM+Sans&display=swap');
 @import url('https://fonts.googleapis.com/css2?family=Mozilla+Text:wght@200..700&display=swap');
 @import url('https://fonts.googleapis.com/css2?family=Boldonse&family=Mozilla+Text:wght@200..700&display=swap');
+`;
+  fs.writeFileSync(path.join(outputDir, 'fonts.css'), fontsCSS);
+
+  const indexCSS = `/* @we/tokens CSS variables - Main Entry Point */
 
 /* Design token variables */
 @import './animation.css';
