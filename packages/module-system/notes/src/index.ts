@@ -312,17 +312,6 @@ export const notesModule = defineModule({
   // before that readable, and removing it would orphan them rather than delete them. See `Note.ts`.
   entities: { manifest: NOTE_MANIFEST },
 
-  // The container this module owns. `feed`, because notes accumulate independently — reconciling
-  // this collection would treat one writer's tree as the whole truth and delete everyone else's.
-  kinds: [
-    {
-      kind: NOTES_KIND,
-      name: 'Notes',
-      icon: 'note',
-      mode: 'feed',
-      description: "A space's scratchpad — loose text blocks, appended.",
-    },
-  ],
   schemas: { toggleButton },
 
   /**
