@@ -1,5 +1,5 @@
 import { walkPath } from './path';
-import { markReactive } from './reactive';
+import { markReactive, REACTIVE_ACCESSOR } from './reactive';
 import type { Memo, Props } from './types';
 import { noMemo } from './types';
 
@@ -174,6 +174,62 @@ export function resolveToggleLocalProp(value: { $toggleLocal: string }, context:
   }
   return () => {
     setter(!accessor());
+  };
+}
+
+/**
+ * Resolves $toggleLocalIn tokens: { $toggleLocalIn: "fieldName", value: <expr> } → event handler
+ * that adds the value to an array-typed field, or removes it if already there.
+ *
+ * Why this exists rather than a boolean per thing. `$localState` field names are static and `$local`
+ * walks a static path, so there is no spelling for "the collapsed flag *for this group*" when the
+ * groups come from a `$query` or a `$store`. A template could only pre-declare a flag per group it
+ * already knew about — which is exactly the set of groups a data-driven list does not have.
+ *
+ * Inverting it fixes that: the field holds the ids that are on, the varying part moves into the
+ * value, and an expression can reach it. The read side needed nothing new —
+ * `{ $in: ['$group.id', { $local: 'collapsedGroups' }] }` already worked.
+ *
+ * `value` goes through the full prop pipeline, so a context ref, a `$store` read and a literal are
+ * all fine. Resolved at call time rather than render time, like `$action` args, so it reads the
+ * state as it is when the user clicks.
+ */
+export function resolveToggleLocalInProp(
+  value: { $toggleLocalIn: string; value: unknown },
+  stores: Props,
+  context: Props,
+  resolve: (value: unknown, stores: Props, context: Props, memo: Memo) => unknown,
+): () => void {
+  const localState = context.$local as Record<string, () => unknown> | undefined;
+  const localSetters = context.$localSetters as Record<string, (v: unknown) => void> | undefined;
+  if (!localState || !localSetters) {
+    warn(`Schema $toggleLocalIn: no $localState in scope for "${value.$toggleLocalIn}"`);
+    return () => {};
+  }
+  const accessor = localState[value.$toggleLocalIn];
+  const setter = localSetters[value.$toggleLocalIn];
+  if (!accessor || !setter) {
+    warn(
+      `Schema $toggleLocalIn: field "${value.$toggleLocalIn}" not declared in $localState (fields from $queries are read-only)`,
+    );
+    return () => {};
+  }
+  return () => {
+    let member = resolve(value.value, stores, context, noMemo);
+    if (typeof member === 'function' && REACTIVE_ACCESSOR in (member as object)) {
+      member = (member as () => unknown)();
+    }
+    const current = accessor();
+    if (current !== undefined && current !== null && !Array.isArray(current)) {
+      // Silently replacing it with an array would discard whatever was there and leave the
+      // author's `$local` read returning something of a different shape than they declared.
+      warn(
+        `Schema $toggleLocalIn: field "${value.$toggleLocalIn}" holds ${typeof current}, not an array — declare it as { type: 'array', initial: [] }`,
+      );
+      return;
+    }
+    const list = Array.isArray(current) ? current : [];
+    setter(list.includes(member) ? list.filter((entry) => entry !== member) : [...list, member]);
   };
 }
 

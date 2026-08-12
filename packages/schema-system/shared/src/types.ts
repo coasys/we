@@ -184,9 +184,15 @@ export type QueryToken = {
 };
 
 export type LocalStateField = {
-  type: 'string' | 'boolean' | 'number' | 'file' | 'function' | 'object';
+  /**
+   * 'array' is a set of values rather than a shape — the type `$toggleLocalIn` writes and `$in`
+   * reads. It exists because `$localState` field names are static, so per-row state (which rows
+   * are expanded, which are selected) cannot be a boolean per row when the rows come from data.
+   * Holding the ids instead moves the varying part into the value, where an expression can reach it.
+   */
+  type: 'string' | 'boolean' | 'number' | 'file' | 'function' | 'object' | 'array';
   /** Literal seed value, or any schema expression token (e.g. { $store: '...' }) evaluated once at mount. */
-  initial: string | boolean | number | null | Record<string, unknown>;
+  initial: string | boolean | number | null | Record<string, unknown> | unknown[];
   validate?: ValidationRule[];
   /**
    * Persist this field on the device (localStorage) under the given key, so it survives a
@@ -250,6 +256,8 @@ export type FormValidToken = { $formValid: string };
 export type TouchToken = { $touch: string };
 export type ResetLocalToken = { $resetLocal: string };
 export type ToggleLocalToken = { $toggleLocal: string };
+/** Add/remove one value in an array-typed field — per-row state whose rows come from data. */
+export type ToggleLocalInToken = { $toggleLocalIn: string; value: unknown };
 export type CallLocalToken = { $callLocal: string };
 
 /** Descriptor returned by the shared resolver — pure data, no framework effects */
@@ -287,6 +295,7 @@ export type OperatorToken =
   | TouchToken
   | ResetLocalToken
   | ToggleLocalToken
+  | ToggleLocalInToken
   | CallLocalToken
   | FilterToken
   | CountToken

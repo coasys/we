@@ -30,7 +30,7 @@ The schema system has **two categories** of operators:
 
 - `$store`, `$concat`, `$action`, `$map`, `$pick`, `$if` (prop), `$eq`, `$ne`, `$in`, `$not`, `$and`, `$or`, `$lt`, `$gt`
 - Array operators: `$filter`, `$count`, `$find`, `$plural`
-- Local state: `$local`, `$setLocal`, `$toggleLocal`, `$callLocal`, `$error`, `$valid`, `$touched`, `$formValid`, `$touch`, `$resetLocal`
+- Local state: `$local`, `$setLocal`, `$toggleLocal`, `$toggleLocalIn`, `$callLocal`, `$error`, `$valid`, `$touched`, `$formValid`, `$touch`, `$resetLocal`
 - Context reference strings: `$item.name`, `$space.uuid` (resolved inline by the dispatcher)
 
 **Renderer-level operators** (handled by the framework-specific renderer) — these appear as the `type` field and control rendering structure:
@@ -903,6 +903,29 @@ Return an event handler that flips a boolean local state field.
 **Syntax:** `{ $toggleLocal: 'fieldName' }`
 
 **Example:** `{ onClick: { $toggleLocal: 'isExpanded' } }`
+
+---
+
+### `$toggleLocalIn`
+
+Return an event handler that adds a value to an `array`-typed local state field, or removes it if
+it is already there.
+
+**Syntax:** `{ $toggleLocalIn: 'fieldName', value: <expression> }`
+
+**Example:** `{ onClick: { $toggleLocalIn: 'collapsedGroups', value: '$group.id' } }`
+
+Read it back with `$in`: `{ $in: ['$group.id', { $local: 'collapsedGroups' }] }`.
+
+**Why it exists.** `$localState` field names are fixed when the template is written, and `$local`
+walks a static path — so "is _this_ group collapsed?" has no spelling when the groups come from a
+`$query` or a `$store`. A template could only pre-declare a flag per group it already knew about,
+which is exactly the set a data-driven list does not have. Holding the ids instead moves the varying
+part into the value, where an expression can reach it.
+
+`value` goes through the full prop pipeline (context refs, `$store`, literals) and is resolved when
+the handler fires, not when it renders. A fixed, known-in-advance set of sections is still better
+served by one boolean each.
 
 ---
 

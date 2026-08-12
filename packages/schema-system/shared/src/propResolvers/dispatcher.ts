@@ -20,6 +20,7 @@ import {
   resolveLocalProp,
   resolveResetLocalProp,
   resolveSetLocalProp,
+  resolveToggleLocalInProp,
   resolveToggleLocalProp,
   resolveTouchedProp,
   resolveTouchProp,
@@ -70,6 +71,13 @@ export function resolveProp(value: unknown, stores: Props, context: Props, memo:
     if (hasToken(value, '$resetLocal', 'string')) return resolveResetLocalProp(context);
     if (hasToken(value, '$toggleLocal', 'string'))
       return resolveToggleLocalProp(value as { $toggleLocal: string }, context);
+    if (hasToken(value, '$toggleLocalIn', 'string'))
+      return resolveToggleLocalInProp(
+        value as { $toggleLocalIn: string; value: unknown },
+        stores,
+        context,
+        resolveProp,
+      );
     if (hasToken(value, '$callLocal', 'string')) return resolveCallLocalProp(value as { $callLocal: string }, context);
     if (hasToken(value, '$action', 'string')) return resolveActionProp(value, context, stores, memo, resolveProp);
     if (hasToken(value, '$concat', 'array'))

@@ -255,7 +255,9 @@ For external-app datasets, always add dataset: "$currentDataset".
 
 Local state (scoped ephemeral state):
 Declare on any node: "$localState": { "name": { "type": "string", "initial": "" } }
-Supported types: "string", "boolean", "number", "function", "object".
+Supported types: "string", "boolean", "number", "function", "object", "array".
+"array" is a set of values — the type $toggleLocalIn writes and $in reads. Use it for per-row state
+(which rows are open, which are selected) where the rows come from data.
 Two opt-in persistence tiers (see docs/architecture/routing-and-view-state.md for the full rules):
 - "syncParam": "<param>" mirrors the field into a URL query parameter — for VIEW STATE (selected
   content type, sort, filters, search): what a shared link's recipient should see exactly as the
@@ -278,6 +280,14 @@ Write: { "$setLocal": "name", "from": "$event.target.value" } — event handler 
        { "$setLocal": "name", "value": "literal" } — sets to a literal value (string, number, boolean, null, object).
        { "$setLocal": "name", "merge": { "field": "$event.detail" } } — shallow-merges fields into an object-typed signal. Values are resolved as event paths (e.g. "$event.detail") or passed as literals. Use for partial updates to object state.
 Toggle: { "$toggleLocal": "fieldName" } — toggles a boolean field (equivalent to setting it to !current). Use for show/hide, open/close, expand/collapse patterns.
+Toggle one of many: { "$toggleLocalIn": "fieldName", "value": "$group.id" } — adds the value to an
+  array-typed field, or removes it if already there. Read it back with $in:
+  { "$in": ["$group.id", { "$local": "collapsedGroups" }] }.
+  This is how PER-ROW state works when the rows come from data. $localState field names are fixed
+  when the template is written, so "expanded?" cannot be a boolean per row for rows that come from a
+  $query or a $store — there is no name to give them. Hold the ids instead:
+    "$localState": { "collapsedGroups": { "type": "array", "initial": [] } }
+  A fixed, known-in-advance set of sections is still better served by one boolean each.
 Call function: { "$callLocal": "fieldName" } — event handler that calls the function stored in a function-typed local field.
   Used when a child component needs to trigger a callback passed in via $localState.
   The field must be declared as type: 'function' and set via $setLocal.
