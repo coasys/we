@@ -259,6 +259,31 @@ importers:
         specifier: ^8.0.1
         version: 8.0.5
 
+  apps/we-preview:
+    dependencies:
+      '@we/app-shell':
+        specifier: workspace:*
+        version: link:../../packages/app-shell
+      '@we/backend-inmemory':
+        specifier: workspace:*
+        version: link:../../packages/backend-system/inmemory
+      '@we/backend-shared':
+        specifier: workspace:*
+        version: link:../../packages/backend-system/shared
+      solid-js:
+        specifier: ^1.9.5
+        version: 1.9.14
+    devDependencies:
+      typescript:
+        specifier: ^5.7.2
+        version: 5.9.3
+      vite:
+        specifier: ^6.0.7
+        version: 6.4.3(@types/node@24.13.2)(sass@1.101.0)(tsx@4.23.0)(yaml@2.9.0)
+      vite-plugin-solid:
+        specifier: ^2.11.11
+        version: 2.11.12(solid-js@1.9.14)(vite@6.4.3(@types/node@24.13.2)(sass@1.101.0)(tsx@4.23.0)(yaml@2.9.0))
+
   apps/we-tauri:
     dependencies:
       '@coasys/ad4m':

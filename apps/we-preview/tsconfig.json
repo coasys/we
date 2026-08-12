@@ -1,0 +1,24 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "target": "ESNext",
+    "jsx": "preserve",
+    "jsxImportSource": "solid-js",
+    "types": ["vite/client"],
+    "noEmit": true,
+    "isolatedModules": true,
+    // The shell and the template packages import each other with explicit `.ts` extensions.
+    "allowImportingTsExtensions": true,
+    "experimentalDecorators": true,
+    "baseUrl": ".",
+    "resolveJsonModule": true,
+    // The shell's own aliases, mirrored from its tsconfig. we-web omits these, which is why it is
+    // one of the two packages that cannot currently be typechecked at all (audit P3-1): every
+    // `@shared/*` import inside the shell's source resolves in Vite and not in tsc.
+    "paths": {
+      "@shared/*": ["../../packages/app-shell/src/shared/*"],
+      "@solid/*": ["../../packages/app-shell/src/frameworks/solid/*"]
+    }
+  },
+  "include": ["src", "vite.config.ts"]
+}
