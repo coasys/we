@@ -9,7 +9,7 @@
     "validate:seed": "node scripts/validate-seed.cjs",
     "validate:schemas": "pnpm --filter @we/schema-shared validate",
     "prepare": "pnpm --filter @we/cli run bootstrap",
-    "clean": "find . -name 'node_modules' -type d -prune -exec rm -rf '{}' + && find . -name 'dist' -type d -prune -exec rm -rf '{}' + && rm -f pnpm-lock.yaml && pnpm store prune",
+    "clean": "find . -name 'node_modules' -type d -prune -exec rm -rf '{}' + && find . -name 'dist' -type d -prune -exec rm -rf '{}' + && pnpm store prune",
     "build": "pnpm -r --workspace-concurrency=1 run build",
     "build:web": "pnpm --filter @we/app-web build",
     "build:electron": "pnpm --filter @we/app-electron electron:build",
@@ -23,7 +23,9 @@
     "typecheck": "pnpm -r run typecheck",
     "lint": "eslint . --max-warnings 0",
     "lint:fix": "eslint . --fix",
-    "format": "prettier --write ."
+    "format": "prettier --write .",
+    "clean:deep": "pnpm clean && rm -rf apps/we-tauri/src-tauri/target apps/we-electron/dist-electron",
+    "lint:css": "stylelint 'packages/**/src/**/*.css' 'apps/*/src/**/*.css'"
   },
   "packageManager": "pnpm@10.18.3",
   "devDependencies": {
