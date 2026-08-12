@@ -2078,15 +2078,7 @@ export const contextData: ContextData = {
     },
     {
       name: 'routeStore',
-      state: {
-        currentPath: { type: 'string' },
-        segments: { type: 'array' },
-        params: {
-          type: 'object',
-          description:
-            "the URL's query parameters, reactive — read one as { $store: 'routeStore.params.<name>' }. Prefer $localState with syncParam for fields a view owns; read params directly only for parameters someone else writes",
-        },
-      },
+      state: { currentPath: { type: 'string' }, segments: { type: 'array' }, params: { type: 'object' } },
       actions: ['setNavigateFunction', 'setCurrentPath', 'navigate', 'setParam'],
     },
     {

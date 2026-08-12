@@ -5461,8 +5461,7 @@
           "type": "array"
         },
         "params": {
-          "type": "object",
-          "description": "the URL's query parameters, reactive — read one as { $store: 'routeStore.params.<name>' }. Prefer $localState with syncParam for fields a view owns; read params directly only for parameters someone else writes"
+          "type": "object"
         }
       },
       "actions": ["setNavigateFunction", "setCurrentPath", "navigate", "setParam"]

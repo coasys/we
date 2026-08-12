@@ -218,11 +218,7 @@ export const storeEntries: StoreEntry[] = [
     state: {
       currentPath: { type: 'string' },
       segments: { type: 'array' },
-      params: {
-        type: 'object',
-        description:
-          "the URL's query parameters, reactive — read one as { $store: 'routeStore.params.<name>' }. Prefer $localState with syncParam for fields a view owns; read params directly only for parameters someone else writes",
-      },
+      params: { type: 'object' },
     },
     actions: ['navigate', 'setParam'],
   },
@@ -645,8 +641,15 @@ export function generateStoresText(entries: StoreEntry[]): string {
       state: {
         currentPath: 'string (the current route path)',
         segments: 'string[] (currentPath split by "/", e.g. ["/foo/bar"] → ["foo", "bar"])',
+        params:
+          "Record<string, string> — the URL's query parameters, reactive; read one as { $store: 'routeStore.params.<name>' }. Prefer $localState with syncParam for fields a view owns; read params directly only for parameters something else writes",
       },
-      actions: { navigate: '(to: string, options?): navigates to a route' },
+      actions: {
+        navigate:
+          "(to: string, options?): navigates to a route (a bare path restores that route's remembered query string)",
+        setParam:
+          '(name: string, value: string | null, options?: { push?: boolean }): writes one query parameter (null removes); replaceState by default, push: true for changes that deserve a Back entry. Prefer $localState syncParam over calling this directly',
+      },
     },
     themeStore: {
       state: {
