@@ -43,7 +43,19 @@ export const createSignalTypeModal = {
       props: { gap: '400', ax: 'center', wrap: true },
       children: [
         // Mode selector
-        field({ name: 'mode', label: 'Mode', control: 'select' }),
+        field({
+          name: 'mode',
+          label: 'Mode',
+          control: 'select',
+          props: {
+            options: [
+              { label: 'Toggle', value: 'toggle' },
+              { label: 'Vote', value: 'vote' },
+              { label: 'Rating', value: 'rating' },
+              { label: 'Slider', value: 'slider' },
+            ],
+          },
+        }),
 
         // Primary icon
         {
