@@ -16,6 +16,8 @@ import { readFile, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { format, resolveConfig } from 'prettier';
+
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, '../../..');
 const outPath = resolve(here, '../src/shared/registries/bundledTemplates.generated.ts');
@@ -92,5 +94,15 @@ ${members}
 };
 `;
 
-await writeFile(outPath, output, 'utf8');
+/*
+  Formatted before writing, following `@we/ai-context`'s generator.
+
+  Not cosmetic: this file is committed and CI diffs generated output against a fresh run. Emitted
+  unformatted, `lint --fix` rewrites it, and the next regeneration then differs from the committed
+  copy — so the diff check fails on a file nobody edited. The other convention in this repo is to
+  put generated sources under `src/generated/**` and lint-ignore them; formatting here is the better
+  half of that trade for a file this small, since it stays readable in review.
+*/
+const prettierConfig = await resolveConfig(outPath);
+await writeFile(outPath, await format(output, { ...prettierConfig, filepath: outPath }), 'utf8');
 console.log(`bundledTemplates.generated.ts — ${ids.length} template(s): ${ids.join(', ')}`);
