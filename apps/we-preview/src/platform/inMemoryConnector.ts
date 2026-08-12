@@ -76,6 +76,8 @@ export const inMemoryConnector: BackendConnector = {
     // How the shoot script knows where to go without loading the page twice. Everything here is
     // derived from the fixture, so it is also knowable ahead of time — this is a convenience and a
     // cross-check, not the source of truth.
+    // The full catalogue, so `shoot` with no `--fixture` can enumerate rather than be told twice.
+    (window as unknown as Record<string, unknown>).__weFixtures = FIXTURES;
     (window as unknown as Record<string, unknown>).__wePreview = {
       fixture: fixture.id,
       templateId: fixture.templateId,

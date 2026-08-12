@@ -9,7 +9,8 @@
     "dev": "vite",
     "build": "vite build",
     "serve": "vite preview",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "shoot": "node scripts/shoot.mjs"
   },
   "dependencies": {
     "@we/app-shell": "workspace:*",
