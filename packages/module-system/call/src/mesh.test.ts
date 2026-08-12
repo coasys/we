@@ -305,3 +305,83 @@ describe('protocol parsing', () => {
     expect(spaceCallId('neighbourhood://abc')).not.toBe(spaceCallId('neighbourhood://def'));
   });
 });
+
+describe('signalling that arrives before the roster', () => {
+  /**
+   * Dropping it was normally self-healing — both peers add tracks, so a discarded offer is followed
+   * by another `negotiationneeded` a moment later. **A peer who denied the microphone has no
+   * outbound tracks, so it never fires.** They joined, appeared on everyone's roster, and connected
+   * to nobody in either direction, showing "Connecting…" forever because `connectionState` never
+   * reaches `failed` and the honest error badge never appears.
+   */
+  let bus: InMemoryBus;
+  const dataset = { id: 'space-1' };
+  const callId = spaceCallId('neighbourhood://abc');
+
+  beforeEach(() => {
+    bus = new InMemoryBus();
+  });
+
+  it('connects a peer whose roster arrived after the offer, with no tracks of their own', async () => {
+    const alice = makeMesh(bus, dataset, 'did:alice', callId);
+    const bob = makeMesh(bus, dataset, 'did:bob', callId);
+
+    // Alice knows about Bob and starts sending. Bob's presence has not ticked yet.
+    alice.mesh.setRoster(['did:alice', 'did:bob']);
+    await alice.mesh.setOutboundTrack('audio', { kind: 'audio' } as MediaStreamTrack);
+    await settle();
+    await settle();
+
+    // Bob has no connection at all yet, so Alice's offer had nowhere to go.
+    expect(bob.connections).toHaveLength(0);
+
+    bob.mesh.setRoster(['did:alice', 'did:bob']);
+    await settle();
+    await settle();
+
+    // Held rather than dropped: Bob answers without either side needing to re-offer — which Bob
+    // could not do anyway, having denied the microphone and added no track.
+    expect(bob.connections).toHaveLength(1);
+    expect(bob.connections[0].remoteDescription?.type).toBe('offer');
+    expect(bob.connections[0].localDescription?.type).toBe('answer');
+  });
+
+  it('does not negotiate with an agent the roster never lists', async () => {
+    const alice = makeMesh(bus, dataset, 'did:alice', callId);
+    const stranger = makeMesh(bus, dataset, 'did:stranger', callId);
+
+    // The stranger believes they are in the call and offers.
+    stranger.mesh.setRoster(['did:stranger', 'did:alice']);
+    await stranger.mesh.setOutboundTrack('audio', { kind: 'audio' } as MediaStreamTrack);
+    await settle();
+    await settle();
+
+    // Alice's roster names somebody else entirely. Holding a message is not a promise to negotiate.
+    alice.mesh.setRoster(['did:alice', 'did:bob']);
+    await settle();
+
+    expect(alice.connections).toHaveLength(1);
+    expect(alice.connections[0].remoteDescription).toBeNull();
+  });
+
+  it('bounds what it holds for an agent nobody has vouched for', async () => {
+    const alice = makeMesh(bus, dataset, 'did:alice', callId);
+    const bob = makeMesh(bus, dataset, 'did:bob', callId);
+
+    bob.mesh.setRoster(['did:alice', 'did:bob']);
+    // Twenty renegotiations before Alice ever hears of Bob. This buffers messages from an agent the
+    // roster has not vouched for, so it must not be a memory target.
+    for (let n = 0; n < 20; n += 1) {
+      await bob.mesh.setOutboundTrack('audio', { kind: 'audio' } as MediaStreamTrack);
+      await bob.mesh.setOutboundTrack('audio', null);
+    }
+    await settle();
+
+    alice.mesh.setRoster(['did:alice', 'did:bob']);
+    await settle();
+    await settle();
+
+    // It replayed something rather than nothing, and did not replay everything.
+    expect(alice.connections[0].remoteDescription).not.toBeNull();
+  });
+});

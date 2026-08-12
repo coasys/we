@@ -216,10 +216,46 @@ export function createCallMesh(options: CallMeshOptions): CallMesh {
     // Only negotiate with peers the roster put in the call. Without this, anyone on the channel could
     // open a connection by sending an offer.
     const slot = slots.get(from);
-    if (!slot) return;
+    if (!slot) {
+      hold(from, message);
+      return;
+    }
 
     void handle(from, slot, message);
   });
+
+  /**
+   * Signalling that arrived before the roster had caught up, kept until it does.
+   *
+   * Dropping it was normally self-healing: both peers add tracks, so whoever's offer was discarded
+   * fires `negotiationneeded` again a moment later. **A peer who denied the microphone has no
+   * outbound tracks, so it never fires at all.** They joined, appeared on everyone's roster, and
+   * connected to nobody in either direction — showing "Connecting…" forever, since `connectionState`
+   * never reaches `failed` and the honest error badge never appears.
+   *
+   * Bounded on both axes, because this buffers messages from agents the roster has not vouched for
+   * and an unbounded one is a memory target for anybody on the channel. Overflow drops the oldest:
+   * a stale offer is worth less than the one behind it.
+   */
+  const pending = new Map<string, CallMessage[]>();
+  const MAX_PENDING_PEERS = 16;
+  const MAX_PENDING_PER_PEER = 8;
+
+  function hold(peerId: string, message: CallMessage): void {
+    if (!pending.has(peerId) && pending.size >= MAX_PENDING_PEERS) return;
+    const queue = pending.get(peerId) ?? [];
+    queue.push(message);
+    if (queue.length > MAX_PENDING_PER_PEER) queue.shift();
+    pending.set(peerId, queue);
+  }
+
+  /** Replay what this peer sent while we were still learning they were here. */
+  function release(peerId: string, slot: PeerSlot): void {
+    const queue = pending.get(peerId);
+    if (!queue) return;
+    pending.delete(peerId);
+    for (const message of queue) void handle(peerId, slot, message);
+  }
 
   async function handle(peerId: string, slot: PeerSlot, message: CallMessage) {
     try {
@@ -263,7 +299,11 @@ export function createCallMesh(options: CallMeshOptions): CallMesh {
         if (!wanted.has(peerId)) disconnect(peerId);
       }
       for (const peerId of wanted) {
-        if (!slots.has(peerId)) connect(peerId);
+        if (!slots.has(peerId)) release(peerId, connect(peerId));
+      }
+      // Anything held for an agent the roster does not list is not going to be wanted.
+      for (const peerId of pending.keys()) {
+        if (!wanted.has(peerId)) pending.delete(peerId);
       }
       emitStreams();
     },
@@ -307,6 +347,7 @@ export function createCallMesh(options: CallMeshOptions): CallMesh {
     close() {
       closed = true;
       unsubscribe();
+      pending.clear();
       for (const peerId of [...slots.keys()]) disconnect(peerId);
       emitStreams();
     },
