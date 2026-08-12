@@ -31,14 +31,17 @@ function LoadEditorState(props: { editorState?: SerializedBlockNode; perspective
     const perspective = props.perspective;
     if (!editorState || !editor) return;
 
-    const rootNode: SerializedBlockNode =
+    const rootNode: SerializedBlockNode | null =
       typeof editorState === 'string' ? decodeEditorState(editorState) : editorState;
     if (!rootNode) return;
 
     const load = async (node: SerializedBlockNode) => {
       const resolved = perspective ? await resolveExpressionAddresses(perspective, node) : node;
       try {
-        const lexicalState = editor.parseEditorState({ root: resolved });
+        // Editor-produced state always carries the `version` Lexical requires.
+        const lexicalState = editor.parseEditorState({ root: resolved } as Parameters<
+          typeof editor.parseEditorState
+        >[0]);
         editor.setEditorState(lexicalState);
       } catch (error) {
         console.error('Error loading editor state:', error);

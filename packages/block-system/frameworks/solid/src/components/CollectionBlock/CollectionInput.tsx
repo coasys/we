@@ -47,7 +47,8 @@ function LoadEditorState({ editorState }: { editorState?: SerializedBlockNode })
   createEffect(() => {
     if (!editorState || !editor) return;
     try {
-      const state = editor.parseEditorState({ root: editorState });
+      // Editor-produced state always carries the `version` Lexical requires.
+      const state = editor.parseEditorState({ root: editorState } as Parameters<typeof editor.parseEditorState>[0]);
       editor.setEditorState(state);
       // Re-attach each existing block's AD4M id (lost on load for built-in
       // text node types — see blockIdState.ts) so saving this content back
