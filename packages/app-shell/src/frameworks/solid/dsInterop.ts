@@ -62,7 +62,12 @@ function buildInteractiveStateCSS(): string {
   const focus = `${focusSelector('[data-we-interactive]')} { ${joinStateDeclsCSS('--we-ds-focus-', '--we-ds-', INTERACTIVE_SPECS)} }`;
   const hover = `[data-we-interactive]:hover { ${joinStateDeclsCSS('--we-ds-hover-', '--we-ds-', INTERACTIVE_SPECS)} }`;
   const active = `[data-we-interactive]:active { ${joinStateDeclsCSS('--we-ds-active-', '--we-ds-', INTERACTIVE_SPECS)} }`;
-  return [base, focus, hover, active].join('\n');
+  // Layout elements have no native :disabled, so disabledProps keys off
+  // aria-disabled="true" — the consumer marks the element disabled the accessible
+  // way and the styling follows. Declared last so a disabled element's styles win
+  // over hover/active at equal specificity.
+  const disabled = `[data-we-interactive][aria-disabled='true'] { ${joinStateDeclsCSS('--we-ds-disabled-', '--we-ds-', INTERACTIVE_SPECS)} }`;
+  return [base, focus, hover, active, disabled].join('\n');
 }
 
 /**

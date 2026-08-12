@@ -64,7 +64,8 @@ export function useStateProps(
   const hasHover = () => props.hoverProps && Object.keys(props.hoverProps).length > 0;
   const hasActive = () => props.activeProps && Object.keys(props.activeProps).length > 0;
   const hasFocus = () => props.focusProps && Object.keys(props.focusProps).length > 0;
-  const hasAny = () => hasHover() || hasActive() || hasFocus();
+  const hasDisabled = () => props.disabledProps && Object.keys(props.disabledProps).length > 0;
+  const hasAny = () => hasHover() || hasActive() || hasFocus() || hasDisabled();
 
   const attrs: JSX.HTMLAttributes<HTMLDivElement> = {};
   Object.defineProperty(attrs, 'data-we-interactive', {
@@ -98,6 +99,11 @@ export function useStateProps(
     const activeVars = hasActive()
       ? toInteractiveVars('active-', buildStateFragmentStyles(props.activeProps!, direction))
       : {};
+    // Layout elements have no native :disabled — the stylesheet keys the disabled
+    // state off aria-disabled="true", which the consumer sets alongside disabledProps.
+    const disabledVars = hasDisabled()
+      ? toInteractiveVars('disabled-', buildStateFragmentStyles(props.disabledProps!, direction))
+      : {};
 
     return {
       ...withoutInteractiveProps,
@@ -105,6 +111,7 @@ export function useStateProps(
       ...focusVars,
       ...hoverVars,
       ...activeVars,
+      ...disabledVars,
     } as unknown as JSX.CSSProperties;
   };
 
