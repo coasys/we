@@ -168,6 +168,7 @@ const zFormValidToken = z.object({ $formValid: z.string().min(1) }).strict();
 const zTouchToken = z.object({ $touch: z.string().min(1) }).strict();
 const zResetLocalToken = z.object({ $resetLocal: z.string().min(1) }).strict();
 const zToggleLocalToken = z.object({ $toggleLocal: z.string().min(1) }).strict();
+const zToggleLocalInToken = z.object({ $toggleLocalIn: z.string().min(1), value: z.unknown() }).strict();
 const zCallLocalToken = z.object({ $callLocal: z.string().min(1) }).strict();
 
 // --- Validation rule Zod schemas ---
@@ -222,6 +223,7 @@ const zPropToken = z.union([
   zTouchToken,
   zResetLocalToken,
   zToggleLocalToken,
+  zToggleLocalInToken,
   zCallLocalToken,
   zFilterToken,
   zCountToken,
@@ -230,8 +232,10 @@ const zPropToken = z.union([
 ]);
 
 const zLocalStateField = z.object({
-  type: z.enum(['string', 'boolean', 'number', 'file', 'function', 'object']),
-  initial: z.union([z.string(), z.boolean(), z.number(), z.null(), zPropToken]),
+  type: z.enum(['string', 'boolean', 'number', 'file', 'function', 'object', 'array']),
+  // Arrays are structurally distinct from token objects, so admitting them here cannot make a
+  // malformed token (`{ $storee: … }`) pass as a plain-object initial.
+  initial: z.union([z.string(), z.boolean(), z.number(), z.null(), z.array(z.unknown()), zPropToken]),
   validate: z.array(zValidationRule).optional(),
   persist: z.string().optional(),
   syncParam: z.union([z.string(), z.object({ name: z.string(), push: z.boolean().optional() })]).optional(),

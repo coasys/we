@@ -77,7 +77,7 @@ we-divider, we-icon, we-menu-group, we-popover, we-spinner, we-tooltip
 | cursor | "pointer" \\| "default" \\| "text" \\| "not-allowed" | Cursor style |
 | pointerEvents | "none" \\| "auto" | Pointer events |
 | transform | string | CSS transform |
-| transition | string | CSS transition |
+| transition | string | CSS transition. Durations may be animation tokens (\`'0'\`–\`'500'\`): \`'width 300 ease-in-out'\`. Prefer the token — a theme's animationSpeed preset overrides those, so \`300\` respects a reduced-motion setting where \`300ms\` overrides it. Use for a property whose *value* changes in place (a width bound to \`$local\`); for something appearing and disappearing use \`$if\`/\`$animate\` transitions instead |
 | r | RadiusValue | Border radius (all corners) |
 | rt | RadiusValue | Border radius top |
 | rb | RadiusValue | Border radius bottom |

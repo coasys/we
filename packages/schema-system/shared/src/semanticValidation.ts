@@ -346,6 +346,14 @@ interface WalkState {
    * to the console and no-ops, so the control renders, takes the click and does nothing.
    */
   queryScope: Set<string>;
+  /**
+   * The declared `type` of each `$localState` field in scope, for the checks that care.
+   *
+   * Only `$toggleLocalIn` does today — it writes a set, and pointed at a boolean it would replace
+   * that boolean with an array, which is silent at runtime and confusing everywhere the field is
+   * read afterwards.
+   */
+  localTypes: Map<string, string>;
   hasRoutesAncestor: boolean;
   /** True only for the root template node and for route entry nodes — the positions the router
    *  actually reads routes arrays from. Child nodes that are not route entries must never own
@@ -587,7 +595,13 @@ function updateLocalScope(n: Record<string, unknown>, state: WalkState): WalkSta
   if (!hasState && !hasQueries) return state;
 
   const newFields = new Set(state.localScope ?? []);
-  if (hasState) for (const key of Object.keys(localState)) newFields.add(key);
+  const newTypes = new Map(state.localTypes);
+  if (hasState)
+    for (const [key, field] of Object.entries(localState)) {
+      newFields.add(key);
+      const declared = (field as { type?: unknown } | null)?.type;
+      if (typeof declared === 'string') newTypes.set(key, declared);
+    }
   const newQueries = new Set(state.queryScope);
   if (hasQueries)
     for (const key of Object.keys(queries)) {
@@ -601,7 +615,7 @@ function updateLocalScope(n: Record<string, unknown>, state: WalkState): WalkSta
   // check below must not treat it as read-only any more.
   if (hasState) for (const key of Object.keys(localState)) newQueries.delete(key);
   for (const key of newQueries) newFields.add(key);
-  return { ...state, localScope: newFields, queryScope: newQueries };
+  return { ...state, localScope: newFields, queryScope: newQueries, localTypes: newTypes };
 }
 
 /**
@@ -797,6 +811,12 @@ function checkTokenValue(
   if ('$toggleLocal' in obj && typeof obj.$toggleLocal === 'string') {
     checkLocalRef(obj.$toggleLocal, `${path}.$toggleLocal`, 'toggleLocal', state, errors);
     checkLocalWrite(obj.$toggleLocal, `${path}.$toggleLocal`, 'toggleLocal', state, errors);
+  }
+
+  if ('$toggleLocalIn' in obj && typeof obj.$toggleLocalIn === 'string') {
+    checkLocalRef(obj.$toggleLocalIn, `${path}.$toggleLocalIn`, 'toggleLocalIn', state, errors);
+    checkLocalWrite(obj.$toggleLocalIn, `${path}.$toggleLocalIn`, 'toggleLocalIn', state, errors);
+    checkToggleLocalInField(obj, path, state, errors);
   }
 
   if ('$callLocal' in obj && typeof obj.$callLocal === 'string') {
@@ -1218,6 +1238,41 @@ function checkMapSelectValue(value: unknown, path: string, errors: ValidationErr
  * declared a name — but query results are read-only. `$setLocal` against one warns and no-ops, so
  * the control renders, accepts the click, and does nothing at all.
  */
+/**
+ * `$toggleLocalIn` writes a set, so the field it names has to be one, and it has to be given
+ * something to put in it.
+ *
+ * Both mistakes are otherwise silent: a missing `value` toggles `undefined` in and out of the array
+ * forever, and a field declared `boolean` is quietly replaced by an array the first time it is
+ * clicked, so every read of it downstream starts answering a different question.
+ */
+function checkToggleLocalInField(
+  obj: Record<string, unknown>,
+  path: string,
+  state: WalkState,
+  errors: ValidationError[],
+): void {
+  if (!('value' in obj) || obj.value === undefined) {
+    errors.push({
+      path: `${path}.$toggleLocalIn`,
+      message: '$toggleLocalIn needs a "value" — the entry to add or remove, e.g. { value: "$group.id" }',
+      severity: 'error',
+    });
+  }
+
+  const field = String(obj.$toggleLocalIn).split('.')[0];
+  const declared = state.localTypes.get(field);
+  if (declared !== undefined && declared !== 'array') {
+    errors.push({
+      path: `${path}.$toggleLocalIn`,
+      message:
+        `$toggleLocalIn writes a set to "${field}", which is declared as "${declared}". ` +
+        `Declare it as { type: 'array', initial: [] }.`,
+      severity: 'error',
+    });
+  }
+}
+
 function checkLocalWrite(
   fieldName: string,
   path: string,
@@ -1374,6 +1429,7 @@ function checkRoutes(
       makes the orphan check run rather than be skipped.
     */
     localScope: new Set<string>(),
+    localTypes: new Map<string, string>(),
     queryScope: new Set<string>(),
   };
   for (let i = 0; i < routes.length; i++) {
@@ -1523,6 +1579,7 @@ export function validateSemantic(schema: unknown, context: ValidationContext): V
   // it reads. Anything else is a fragment; see `WalkState.isFragment`.
   const state: WalkState = {
     localScope: null,
+    localTypes: new Map<string, string>(),
     queryScope: new Set(),
     hasRoutesAncestor: false,
     isRouteEligible: true,

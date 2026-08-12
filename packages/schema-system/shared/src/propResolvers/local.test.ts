@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
 import type { Props } from '../types';
-import { resolveSetLocalProp } from './local';
+import { resolveProp } from './dispatcher';
+import { resolveSetLocalProp, resolveToggleLocalInProp } from './local';
 
 /** A `$localState` scope holding one field, with the accessor/setter pair the resolver reads. */
 function scope(field: string, initial: unknown): { context: Props; read: () => unknown } {
@@ -48,5 +49,48 @@ describe('resolveSetLocalProp — the `by` form', () => {
     expect(read()).toBe('literal');
     resolveSetLocalProp({ $setLocal: 'name', from: '$event.detail' }, context)({ detail: 'from-event' });
     expect(read()).toBe('from-event');
+  });
+});
+
+describe('resolveToggleLocalInProp', () => {
+  const toggle = (field: string, value: unknown, context: Props) =>
+    resolveToggleLocalInProp({ $toggleLocalIn: field, value }, {} as Props, context, resolveProp);
+
+  it('adds a value that is not there and removes one that is', () => {
+    const { context, read } = scope('collapsed', []);
+    toggle('collapsed', 'spaces', context)();
+    expect(read()).toEqual(['spaces']);
+    toggle('collapsed', 'apps', context)();
+    expect(read()).toEqual(['spaces', 'apps']);
+    toggle('collapsed', 'spaces', context)();
+    expect(read()).toEqual(['apps']);
+  });
+
+  it('resolves the value through the prop pipeline, so a context ref names the current row', () => {
+    const { context, read } = scope('collapsed', []);
+    // What a $each row does: the id is only knowable per iteration, which is the whole reason
+    // this token exists rather than a boolean per group.
+    const rowContext = { ...context, group: { id: 'group-7' } } as unknown as Props;
+    toggle('collapsed', '$group.id', rowContext)();
+    expect(read()).toEqual(['group-7']);
+  });
+
+  it('starts a fresh set when the field is empty rather than throwing', () => {
+    const { context, read } = scope('collapsed', undefined);
+    toggle('collapsed', 'a', context)();
+    expect(read()).toEqual(['a']);
+  });
+
+  it('refuses to overwrite a field holding something that is not a set', () => {
+    // Silently replacing it would leave every `$local` read of it answering a different question.
+    const { context, read } = scope('collapsed', true);
+    toggle('collapsed', 'a', context)();
+    expect(read()).toBe(true);
+  });
+
+  it('no-ops on an undeclared field instead of throwing', () => {
+    const { context, read } = scope('collapsed', []);
+    toggle('somethingElse', 'a', context)();
+    expect(read()).toEqual([]);
   });
 });

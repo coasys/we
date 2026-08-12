@@ -228,6 +228,41 @@ export function tokenVar(prefix: string, token?: string, fallback = '0') {
   return `var(--we-${prefix}-${token})`;
 }
 
+/**
+ * The duration tokens a `transition` shorthand may name — `animation.transition`'s keys.
+ */
+const TRANSITION_DURATION_TOKENS = new Set(['0', '100', '200', '300', '400', '500']);
+
+/**
+ * Resolve duration tokens inside a `transition` shorthand.
+ *
+ * `transition` was the one DS prop that bypassed the token system entirely — a raw passthrough, so
+ * `transition: '300'` emitted an unitless value the browser drops, silently and indistinguishably
+ * from a typo. That is the same bug the offset props (top/right/bottom/left) had and the same fix:
+ * discriminate by shape, so a token becomes a var and `'300ms'`, `'ease-in-out'`, `'0.2s'` and
+ * everything else passes through untouched.
+ *
+ * It buys more than consistency here. `--we-transition-*` is what a theme's `animationSpeed` preset
+ * overrides — 'instant' sets every one of them to 0ms — so a duration written as a token honours a
+ * reduced-motion choice, and one written as `300ms` overrides it.
+ *
+ * Only exact token names are substituted, and only where they stand alone as a segment. There is no
+ * other numeric slot in the shorthand — the two that exist, duration and delay, are both durations.
+ */
+export function parseTransition(value?: string): string | undefined {
+  if (!value) return undefined;
+  return value
+    .split(',')
+    .map((part) =>
+      part
+        .trim()
+        .split(/\s+/)
+        .map((segment) => (TRANSITION_DURATION_TOKENS.has(segment) ? `var(--we-transition-${segment})` : segment))
+        .join(' '),
+    )
+    .join(', ');
+}
+
 /** Resolve a zIndex prop value: layer names → CSS var, numbers → passthrough. */
 export function zIndexVar(value?: string | number): string | undefined {
   if (value == null) return undefined;
@@ -687,7 +722,7 @@ export function buildLayoutStyles(props: LayoutStyleProps, direction: 'row' | 'c
     style['box-shadow'] = parts;
   }
   if (props.transform) style.transform = props.transform;
-  if (props.transition) style.transition = props.transition;
+  if (props.transition) style.transition = parseTransition(props.transition)!;
 
   // Typography
   if (props.textAlign) style['text-align'] = props.textAlign;

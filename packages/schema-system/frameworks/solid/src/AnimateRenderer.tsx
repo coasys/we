@@ -1,11 +1,13 @@
 import type { TransitionConfig } from '@we/schema-shared';
-import { createEffect, createMemo, createSignal, onCleanup } from 'solid-js';
+import { createEffect, createMemo, createSignal, onCleanup, Show } from 'solid-js';
 
 import {
   buildTransitionCSS,
   hiddenOpacity,
   hiddenTransform,
   pulseAnimationCSS,
+  revealEffect,
+  revealTrackProperty,
   scrollRootMargin,
 } from './transitionUtils';
 import type { RendererOutput, SchemaNode } from './types';
@@ -57,6 +59,16 @@ export function AnimateRenderer({ node, renderNode }: AnimateRendererProps): Ren
   const [opacity, setOpacity] = createSignal(initOpacity);
   const [transform, setTransform] = createSignal(initTransform);
   const [transitionCSS, setTransitionCSS] = createSignal('');
+  /*
+    Reveal — the size axis. Same grid technique as `$if`'s (see ConditionalRenderer), and the reason
+    it is worth having here too: `$animate` keeps its child mounted, so a section can open and close
+    in place without its content — a scroll position, a half-typed field — being destroyed on the
+    way. `$if` is the right tool when the content genuinely should not exist while closed.
+  */
+  const enterReveal = enterTransition ? revealEffect(enterTransition) : undefined;
+  const exitReveal = exitTransition ? revealEffect(exitTransition) : undefined;
+  const hasReveal = enterReveal ?? exitReveal;
+  const [open, setOpen] = createSignal(!enterReveal);
   // 'pulse' is a persistent loop, not a one-shot state transition like fade/slide/scale —
   // it starts once entered and keeps running until exit, rather than settling into a
   // final state. Starts empty (not pulsing) like opacity/transform start hidden — actual
@@ -69,11 +81,13 @@ export function AnimateRenderer({ node, renderNode }: AnimateRendererProps): Ren
     // Snap to hidden state (in case called after animateOut)
     setOpacity(hiddenOpacity(config));
     setTransform(hiddenTransform(config));
+    if (revealEffect(config)) setOpen(false);
     requestAnimationFrame(() => {
       const firstEffect = Array.isArray(config) ? config[0] : config;
       setTimeout(() => {
         setOpacity(1);
         setTransform('');
+        setOpen(true);
       }, firstEffect?.delay ?? 0);
     });
   };
@@ -85,6 +99,7 @@ export function AnimateRenderer({ node, renderNode }: AnimateRendererProps): Ren
     setTimeout(() => {
       setOpacity(hiddenOpacity(config));
       setTransform(hiddenTransform(config));
+      if (revealEffect(config)) setOpen(false);
     }, firstEffect?.delay ?? 0);
   };
 
@@ -157,12 +172,26 @@ export function AnimateRenderer({ node, renderNode }: AnimateRendererProps): Ren
     if (t) style.transform = t;
     const a = animationCSS();
     if (a) style.animation = a;
+    if (hasReveal) {
+      style.display = 'grid';
+      style[revealTrackProperty(hasReveal)] = open() ? '1fr' : '0fr';
+    }
     return style;
   });
 
+  // Clip for the reveal. `min-*: 0` overrides a grid item's automatic minimum size, which is its
+  // content — without it the track can never go below that and nothing appears to animate.
+  const innerStyle = createMemo<Record<string, string> | undefined>(() =>
+    hasReveal
+      ? { overflow: 'hidden', [(hasReveal.axis ?? 'block') === 'inline' ? 'min-width' : 'min-height']: '0' }
+      : undefined,
+  );
+
   return (
     <div ref={wrapperRef} style={wrapperStyle()}>
-      {renderNode(node.children?.[0] as SchemaNode | undefined)}
+      <Show when={hasReveal} fallback={renderNode(node.children?.[0] as SchemaNode | undefined)}>
+        <div style={innerStyle()}>{renderNode(node.children?.[0] as SchemaNode | undefined)}</div>
+      </Show>
     </div>
   );
 }

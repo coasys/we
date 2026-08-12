@@ -255,7 +255,9 @@ For external-app datasets, always add dataset: "$currentDataset".
 
 Local state (scoped ephemeral state):
 Declare on any node: "$localState": { "name": { "type": "string", "initial": "" } }
-Supported types: "string", "boolean", "number", "function", "object".
+Supported types: "string", "boolean", "number", "function", "object", "array".
+"array" is a set of values — the type $toggleLocalIn writes and $in reads. Use it for per-row state
+(which rows are open, which are selected) where the rows come from data.
 Two opt-in persistence tiers (see docs/architecture/routing-and-view-state.md for the full rules):
 - "syncParam": "<param>" mirrors the field into a URL query parameter — for VIEW STATE (selected
   content type, sort, filters, search): what a shared link's recipient should see exactly as the
@@ -278,6 +280,14 @@ Write: { "$setLocal": "name", "from": "$event.target.value" } — event handler 
        { "$setLocal": "name", "value": "literal" } — sets to a literal value (string, number, boolean, null, object).
        { "$setLocal": "name", "merge": { "field": "$event.detail" } } — shallow-merges fields into an object-typed signal. Values are resolved as event paths (e.g. "$event.detail") or passed as literals. Use for partial updates to object state.
 Toggle: { "$toggleLocal": "fieldName" } — toggles a boolean field (equivalent to setting it to !current). Use for show/hide, open/close, expand/collapse patterns.
+Toggle one of many: { "$toggleLocalIn": "fieldName", "value": "$group.id" } — adds the value to an
+  array-typed field, or removes it if already there. Read it back with $in:
+  { "$in": ["$group.id", { "$local": "collapsedGroups" }] }.
+  This is how PER-ROW state works when the rows come from data. $localState field names are fixed
+  when the template is written, so "expanded?" cannot be a boolean per row for rows that come from a
+  $query or a $store — there is no name to give them. Hold the ids instead:
+    "$localState": { "collapsedGroups": { "type": "array", "initial": [] } }
+  A fixed, known-in-advance set of sections is still better served by one boolean each.
 Call function: { "$callLocal": "fieldName" } — event handler that calls the function stored in a function-typed local field.
   Used when a child component needs to trigger a callback passed in via $localState.
   The field must be declared as type: 'function' and set via $setLocal.
@@ -466,15 +476,32 @@ Conditional rendering:
 Renders "then" node if condition is truthy, else renders "else" node.
 Supports enterTransition / exitTransition for CSS animations when the node mounts/unmounts.
 TransitionConfig = TransitionEffect | TransitionEffect[]
-TransitionEffect = { type: 'fade'|'slide'|'scale'|'pulse', duration?: ms, easing?: string, delay?: ms, direction?: 'left'|'right'|'up'|'down', distance?: string }
+TransitionEffect = { type: 'fade'|'slide'|'scale'|'reveal'|'pulse', duration?: ms, easing?: string, delay?: ms, direction?: 'left'|'right'|'up'|'down', distance?: string, axis?: 'block'|'inline' }
 fade controls opacity only; slide/scale control transform only. pulse is a persistent looping animation (not a one-shot transition) — starts once entered, stops on exit; direction/distance don't apply (default duration 1200ms, easing 'ease-in-out'). Compose fade/slide/scale together in an array; pulse is typically used alone.
 Example: enterTransition: [{ type: 'fade', duration: 300 }, { type: 'slide', direction: 'up', distance: '40px', duration: 400 }]
 Example (pulse): enterTransition: { type: 'pulse', duration: 1500 }
 
+reveal — opening and closing in place:
+reveal is the size axis the others lack: it eases the element open to the size its content actually
+wants, and closed again. Use it for anything that opens in place — a disclosure, an accordion
+section, a "show more", a sidebar label appearing as the rail expands. axis: 'block' (the default)
+opens downward; axis: 'inline' opens sideways.
+Example (disclosure): enterTransition: [{ "type": "reveal", "duration": 300 }, { "type": "fade", "duration": 180 }]
+Example (label beside an icon): enterTransition: { "type": "reveal", "axis": "inline", "duration": 250 }
+Do NOT hand-roll this with maxHeight and a transition string. A guessed maxHeight applies the easing
+curve to the guess rather than to the real height, so most of the duration is spent crossing space
+that isn't there, and it breaks silently the day the content grows past the guess.
+reveal composes with fade exactly as slide does. Pair them: opening a box that is fully opaque from
+the first frame reads as a jump, however smooth the size change is.
+A reveal in an exitTransition also decides when the node unmounts — the node stays mounted for the
+longest effect in the config, so the collapse finishes before the content is removed.
+
 Viewport / mount animation (child always in DOM):
 { "type": "$animate", "props": { "scrollReveal"?: true | number, "scrollLeave"?: true | number, "scrollPast"?: string, "enterTransition"?: TransitionConfig, "exitTransition"?: TransitionConfig }, "children": [<node>] }
-The child is always mounted. fade/slide/scale are CSS transitions (opacity/transform); pulse is a real CSS @keyframes loop — use this for scroll-reveal effects.
+The child is always mounted. fade/slide/scale are CSS transitions (opacity/transform); reveal animates the element's own size; pulse is a real CSS @keyframes loop — use this for scroll-reveal effects.
 Do NOT use $animate when the child should be absent from the DOM. Use $if for conditional DOM presence.
+For an open/close that must NOT destroy what is inside it — a section holding a scroll position or a
+half-typed field — use $animate with a reveal rather than $if, which unmounts the content when closed.
 scrollReveal: true fires enterTransition when the element enters the viewport.
 scrollReveal: -100 fires 100px before the element would enter (negative = earlier reveal).
 scrollLeave fires exitTransition when the element leaves the viewport.
