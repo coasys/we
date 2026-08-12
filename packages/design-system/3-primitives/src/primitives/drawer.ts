@@ -8,7 +8,7 @@ import sharedStyles from '../shared/styles';
 import type { DrawerPosition } from '../types';
 
 const DEFAULT_PROPS: Partial<DesignSystemProps> = {
-  bg: 'neutral-0',
+  bg: 'var(--we-role-surface-raised)',
   r: '600',
   p: '600',
   direction: 'column',
@@ -31,13 +31,13 @@ const styles = css`
     position: absolute;
     width: 100%;
     height: 100%;
-    background: rgba(0, 0, 0, 0.4);
+    background: var(--we-role-overlay);
   }
 
   [part='base'] {
     position: absolute;
     overflow-y: auto;
-    box-shadow: var(--we-theme-shadow, var(--we-shadow-lg, 0 10px 40px rgba(0, 0, 0, 0.15)));
+    box-shadow: var(--we-theme-shadow, var(--we-shadow-lg, 0 10px 40px color-mix(in srgb, var(--we-role-shadow-color) 15%, transparent)));
     transition: transform var(--we-transition-300, 250ms) ease;
   }
 

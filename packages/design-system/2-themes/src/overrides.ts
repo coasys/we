@@ -22,6 +22,8 @@ export type ThemeRole =
   | 'surface'
   | 'surfaceRaised'
   | 'surfaceSunken'
+  | 'surfaceHover'
+  | 'surfaceActive'
   | 'text'
   | 'textMuted'
   | 'textFaint'
@@ -29,7 +31,14 @@ export type ThemeRole =
   | 'border'
   | 'borderStrong'
   | 'accent'
-  | 'accentText';
+  | 'accentText'
+  | 'accentMuted'
+  | 'overlay'
+  | 'shadowColor'
+  | 'focus'
+  | 'dangerSurface'
+  | 'successSurface'
+  | 'warningSurface';
 
 export type ThemeOverrides = {
   // Named preset

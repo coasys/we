@@ -38,6 +38,42 @@ export const role = {
   accent: 'var(--we-color-primary-500)',
   /** Text/icon colour on top of the accent. */
   accentText: 'var(--we-color-neutral-0)',
+  /** A de-emphasised accent — accent-tinted fills, selected rows, subtle highlights. */
+  accentMuted: 'var(--we-color-primary-100)',
+
+  /** Hover tint on a surface (menu items, list rows, ghost buttons). */
+  surfaceHover: 'var(--we-color-neutral-100)',
+  /** Pressed tint on a surface. */
+  surfaceActive: 'var(--we-color-neutral-200)',
+
+  /**
+   * The scrim behind a modal or drawer.
+   *
+   * One value, deliberately: the six hardcoded black alphas this replaces differed by accident
+   * rather than by decision, and a scrim that varies by which overlay opened it reads as a bug.
+   * Alpha is baked in because a scrim is a finished colour, not a base to tint from.
+   */
+  overlay: 'hsl(var(--we-color-neutral-hue) var(--we-color-neutral-saturation) 4% / 60%)',
+
+  /**
+   * The colour shadows are built from — opaque, with the consumer supplying alpha:
+   * `color-mix(in srgb, var(--we-role-shadow-color) 12%, transparent)`.
+   *
+   * Opaque rather than pre-alpha'd because the nine primitives that hardcoded `rgba(0,0,0,…)`
+   * used seven different alphas for genuinely different elevations, and collapsing those would
+   * flatten the hierarchy. What was never a decision is the *hue*: a black shadow is invisible on
+   * a near-black surface, which is why a dark theme has to reach for elevation-by-lightness
+   * instead. Pinning this lets a theme tint or lighten shadows rather than work around them.
+   */
+  shadowColor: 'hsl(var(--we-color-neutral-hue) var(--we-color-neutral-saturation) 4%)',
+
+  /** The focus ring. `--we-ring-color` resolves to this, so the two cannot drift. */
+  focus: 'var(--we-color-primary-500)',
+
+  /** Tinted surfaces behind status content (alerts, badges, destructive confirmations). */
+  dangerSurface: 'var(--we-color-danger-50)',
+  successSurface: 'var(--we-color-success-50)',
+  warningSurface: 'var(--we-color-warning-50)',
 } as const;
 
 export type RoleToken = keyof typeof role;

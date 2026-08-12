@@ -100,10 +100,10 @@ const styles = css`
     z-index: var(--we-z-dropdown);
     max-height: 200px;
     overflow-y: auto;
-    background: var(--we-color-neutral-0);
-    border: 1px solid var(--we-color-neutral-200);
+    background: var(--we-role-surface-raised);
+    border: 1px solid var(--we-role-border);
     border-radius: var(--we-theme-surface-radius, var(--we-radius-400));
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    box-shadow: 0 4px 12px color-mix(in srgb, var(--we-role-shadow-color) 10%, transparent);
     margin-top: var(--we-space-100);
     padding: var(--we-space-100) 0;
   }

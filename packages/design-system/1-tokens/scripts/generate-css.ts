@@ -103,8 +103,9 @@ export function generateBorderCSS(border: typeof borderTokens) {
   --we-border-color: var(--we-color-neutral-100);
   --we-border-color-strong: var(--we-color-neutral-200);
 
-  /* Focus ring color — themes override this to match their accent colour */
-  --we-ring-color: var(--we-color-primary-500);
+  /* Focus ring color — resolves to the focus role, so a theme pinning that role moves the ring
+     with it. Themes may still override this variable directly (ThemeOverrides.ringColor). */
+  --we-ring-color: var(--we-role-focus);
 }`;
 
   return css;

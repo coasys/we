@@ -53,7 +53,7 @@ const styles = css`
     border-radius: var(--we-radius-full);
     background: white;
     transition: transform var(--we-transition-200, 150ms) ease;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+    box-shadow: 0 1px 3px color-mix(in srgb, var(--we-role-shadow-color) 20%, transparent);
   }
 
   :host([checked]) [part='thumb'] {

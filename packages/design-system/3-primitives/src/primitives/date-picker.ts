@@ -60,10 +60,10 @@ const styles = css`
     top: 100%;
     left: 0;
     z-index: var(--we-z-dropdown);
-    background: var(--we-color-neutral-0);
-    border: 1px solid var(--we-color-neutral-200);
+    background: var(--we-role-surface-raised);
+    border: 1px solid var(--we-role-border);
     border-radius: var(--we-radius-400);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    box-shadow: 0 4px 12px color-mix(in srgb, var(--we-role-shadow-color) 10%, transparent);
     padding: var(--we-space-300);
     margin-top: var(--we-space-100);
   }
