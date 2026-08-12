@@ -18,3 +18,4 @@ packages/design-system/3-primitives/src/generated/
 # PR summary drafts — scratch documents for a pull request description,
 # never part of the repo (see CLAUDE.md, "PR summary convention").
 PR_*.md
+template-bundle.json

@@ -383,7 +383,8 @@ async function seedPost() {
     version: 1,
     children: [paragraph('one'), paragraph('two')],
   };
-  const root = (await createBlocks(perspective, node, { kind: 'post' })) as FakeCollection & Ad4mModel & { children: string[] };
+  const root = (await createBlocks(perspective, node, { kind: 'post' })) as FakeCollection &
+    Ad4mModel & { children: string[] };
   const [p1, p2] = root.children.map((id) => byId.get(id)!) as FakeText[];
   return { root, p1, p2 };
 }

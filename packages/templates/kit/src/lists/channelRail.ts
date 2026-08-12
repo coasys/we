@@ -158,7 +158,11 @@ export function channelRail(opts: ChannelRailOptions): SchemaNode {
   };
 
   if (!opts.categories) {
-    return { type: 'Column', props: { width: '100%', gap: '300' }, children: [flat, ...(opts.footer ? [opts.footer] : [])] };
+    return {
+      type: 'Column',
+      props: { width: '100%', gap: '300' },
+      children: [flat, ...(opts.footer ? [opts.footer] : [])],
+    };
   }
 
   return {

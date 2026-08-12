@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import { resolveSetLocalProp } from './local';
 import type { Props } from '../types';
+import { resolveSetLocalProp } from './local';
 
 /** A `$localState` scope holding one field, with the accessor/setter pair the resolver reads. */
 function scope(field: string, initial: unknown): { context: Props; read: () => unknown } {

@@ -425,6 +425,11 @@ export interface SpaceStore {
    */
   moveChild: (childId: string, fromId: string, toId: string) => Promise<void>;
   /**
+   * Join or leave a node's participant roster — an RSVP. Writes only this agent's own entry, which
+   * is what keeps the roster conflict-free without coordination.
+   */
+  setAttending: (nodeId: string, attending: boolean) => Promise<void>;
+  /**
    * DIDs this agent has muted, everywhere. Private, held in the root dataset.
    *
    * A feed filters on this before rendering — `{ $not: { $in: ['$post.author', …] } }`. Hiding on
@@ -1175,6 +1180,33 @@ export function SpaceStoreProvider(props: ParentProps) {
     }
   }
 
+  /**
+   * Join or leave a node's participant roster — an event RSVP, a document's co-editor list.
+   *
+   * **Writes only this agent's own entry, ever.** That is not a convenience, it is what keeps
+   * `participants` conflict-free: it is a bag of links with no way to refuse a duplicate, so it
+   * behaves as a set exactly as long as each agent writes itself and nobody else. A caller that
+   * appended every member it could see is what turned the transcribe module's roster into a
+   * multiset that grew each session — see the note on `WeNode.participants`.
+   *
+   * No read-modify-write for the same reason: `addParticipants` and `removeParticipants` are single
+   * link operations, so two agents RSVPing at the same moment cannot drop each other.
+   */
+  async function setAttending(nodeId: string, attending: boolean): Promise<void> {
+    const p = datasetStore.currentDataset()?.handle;
+    const me = session.me()?.did;
+    if (!p || !nodeId || !me) return;
+    try {
+      const node = await CollectionBlock.findOne(p, { where: { id: nodeId } });
+      if (!node) return;
+      if (attending) await node.addParticipants(me);
+      else await node.removeParticipants(me);
+    } catch (error) {
+      console.error('SpaceStore: could not update attendance', error);
+      toastService.error('Could not update your RSVP');
+    }
+  }
+
   async function deleteCollection(collectionId: string): Promise<void> {
     const p = datasetStore.currentDataset()?.handle;
     if (!p) return;
@@ -1523,9 +1555,7 @@ export function SpaceStoreProvider(props: ParentProps) {
    * the only form the resolver supports. Linear per rendered row, over a list the size of the
    * channels one agent has opened.
    */
-  const readMarkerRows = createMemo(() =>
-    readMarkers().map((m) => ({ nodeId: m.nodeId, lastReadAt: m.lastReadAt })),
-  );
+  const readMarkerRows = createMemo(() => readMarkers().map((m) => ({ nodeId: m.nodeId, lastReadAt: m.lastReadAt })));
 
   async function setAgentMuted(did: string, muted: boolean, description = ''): Promise<void> {
     const root = datasetStore.rootDataset();
@@ -1985,6 +2015,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     createPost,
     updatePost,
     moveChild,
+    setAttending,
     mutedDids,
     mutedAgents,
     setAgentMuted,

@@ -91,7 +91,11 @@ export function kanbanBoard(opts: KanbanBoardOptions): SchemaNode {
                     type: 'Row',
                     props: { ax: 'between', ay: 'center', width: '100%' },
                     children: [
-                      { type: 'we-text', props: { fontWeight: 'semibold', truncate: true }, children: ['$column.title'] },
+                      {
+                        type: 'we-text',
+                        props: { fontWeight: 'semibold', truncate: true },
+                        children: ['$column.title'],
+                      },
                       {
                         type: 'we-badge',
                         props: { size: 'sm' },

@@ -75,5 +75,6 @@ export class WeNode extends Ad4mModel {
   mentions: string[] = [];
 }
 
-export interface WeNode
-  extends HasManyMethods<'comments' | 'signals' | 'reactions' | 'participants' | 'calls' | 'mentions'> {}
+export interface WeNode extends HasManyMethods<
+  'comments' | 'signals' | 'reactions' | 'participants' | 'calls' | 'mentions'
+> {}

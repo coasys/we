@@ -26,7 +26,6 @@
 import type { QueryStateField, SchemaNode } from '@we/schema-shared';
 
 import type { AnchorId } from '../types.ts';
-
 import { loadMore } from './loadMore.ts';
 
 export interface CollectionFeedOptions {
@@ -104,9 +103,7 @@ export function collectionFeed(opts: CollectionFeedOptions): SchemaNode {
       condition: { $count: { items: { $local: key } } },
       then: opts.wrapper
         ? opts.wrapper([{ type: '$each', props: { items: { $local: key }, as: opts.as }, children: opts.children }])
-        : defaultWrapper([
-            { type: '$each', props: { items: { $local: key }, as: opts.as }, children: opts.children },
-          ]),
+        : defaultWrapper([{ type: '$each', props: { items: { $local: key }, as: opts.as }, children: opts.children }]),
       else: opts.empty,
     },
   };

@@ -90,6 +90,27 @@ const zCountToken = z
     }),
   })
   .strict();
+/*
+  Count-noun labels — `{ $plural: { count, one, other } }`.
+
+  Documented in the schema reference and resolvable since the operator was added, but missing from
+  this union until now, so any schema using one failed validation for a pattern that renders fine.
+  Nothing caught it because the only fragment emitting one (`peopleRow`'s count) had no validated
+  caller — a reminder that this union is a second, hand-maintained list of the operators the
+  dispatcher supports, and the two drift silently in exactly this direction.
+
+  `count` is `zDefined` rather than a number: it is nearly always an expression
+  (`{ $count: { items } }`), which is the whole reason the operator exists.
+*/
+const zPluralToken = z
+  .object({
+    $plural: z.object({
+      count: zDefined,
+      one: z.string(),
+      other: z.string(),
+    }),
+  })
+  .strict();
 const zFindToken = z
   .object({
     $find: z.object({
@@ -106,8 +127,17 @@ const zQuery = z.object({
   entity: z.string().min(1),
   where: z.record(z.string(), z.unknown()).optional(),
   order: z.record(z.string(), z.unknown()).optional(),
-  limit: z.number().int().positive().optional(),
-  offset: z.number().int().nonnegative().optional(),
+  /*
+    A literal, or a token resolving to one.
+
+    Token-valued paging is what makes a "load more" button possible at all: the button raises a
+    `$local` number and the query re-runs with a bigger window. The renderer has always supported it
+    — `descriptor.params` is deep-resolved before the query is built, exactly like `where` — but the
+    schema said `number`, so every paginated list was a validation error for a pattern that worked.
+    `scope.anchorId` above already carries the same allowance, and for the same reason.
+  */
+  limit: z.union([z.number().int().positive(), z.record(z.string(), z.unknown())]).optional(),
+  offset: z.union([z.number().int().nonnegative(), z.record(z.string(), z.unknown())]).optional(),
   include: z.record(z.string(), z.unknown()).optional(),
   // Neutral drill-down. `anchorId` may be a token (e.g. '$conversation.id') resolved before the query runs.
   scope: z
@@ -128,6 +158,8 @@ const zSetLocalToken = z.union([
   z.object({ $setLocal: z.string().min(1), from: z.string().min(1) }).strict(),
   z.object({ $setLocal: z.string().min(1), value: z.unknown() }).strict(),
   z.object({ $setLocal: z.string().min(1), merge: z.record(z.string(), z.unknown()) }).strict(),
+  // Add to a number field — the schema layer's only arithmetic. See `resolveSetLocalProp`.
+  z.object({ $setLocal: z.string().min(1), by: z.number() }).strict(),
 ]);
 const zErrorToken = z.object({ $error: z.string().min(1) }).strict();
 const zValidToken = z.object({ $valid: z.string().min(1) }).strict();
@@ -194,6 +226,7 @@ const zPropToken = z.union([
   zFilterToken,
   zCountToken,
   zFindToken,
+  zPluralToken,
 ]);
 
 const zLocalStateField = z.object({

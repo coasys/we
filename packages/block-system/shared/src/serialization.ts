@@ -728,7 +728,7 @@ export async function reconcileBlocks(
     throw new Error(
       `reconcileBlocks refused: collection '${root.kind || 'untitled'}' is in '${root.mode}' mode, not 'document'. ` +
         'Reconciling it would delete every child the incoming tree omits, which in a container ' +
-        'many agents write to is everyone else\'s content. Append with createBlocks({ anchor }) instead.',
+        "many agents write to is everyone else's content. Append with createBlocks({ anchor }) instead.",
     );
   }
 

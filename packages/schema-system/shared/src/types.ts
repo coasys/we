@@ -136,8 +136,13 @@ export type QueryToken = {
     entity: string;
     where?: Record<string, unknown>;
     order?: Record<string, unknown>;
-    limit?: number;
-    offset?: number;
+    /**
+     * A literal, or a token resolving to one — `{ $local: 'pageSize' }` is how a "load more"
+     * button works, since raising the local re-runs the query with a bigger window. Params are
+     * deep-resolved before the query is built, so a token here has always worked at runtime.
+     */
+    limit?: number | Record<string, unknown>;
+    offset?: number | Record<string, unknown>;
     include?: Record<string, unknown>;
     /**
      * Neutral drill-down: fetch this entity's instances anchored to `anchorId` via the anchor entity's

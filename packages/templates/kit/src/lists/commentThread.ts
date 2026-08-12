@@ -74,7 +74,7 @@ export function commentThread(opts: CommentThreadOptions): SchemaNode {
 
   return {
     type: 'Column',
-    props: { width: '100%', gap: '300', ...(level > 1 && { pl: (opts.indent ?? '400') }) },
+    props: { width: '100%', gap: '300', ...(level > 1 && { pl: opts.indent ?? '400' }) },
     $queries: {
       [key]: {
         entity: 'CollectionBlock',
@@ -113,9 +113,7 @@ export function replyCount(anchor: string): SchemaNode {
       {
         type: 'we-text',
         props: { variant: 'footnote', color: 'neutral-400' },
-        children: [
-          { $plural: { count: { $count: { items: `${anchor}.comments` } }, one: 'reply', other: 'replies' } },
-        ],
+        children: [{ $plural: { count: { $count: { items: `${anchor}.comments` } }, one: 'reply', other: 'replies' } }],
       },
     ],
   };

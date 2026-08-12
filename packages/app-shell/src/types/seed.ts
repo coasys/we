@@ -48,6 +48,25 @@ export interface WeSeedFile {
    */
   modules?: string[];
 
+  /**
+   * Built-in template ids this deployment ships, matched against the bundled template set.
+   *
+   * The counterpart to `modules`, and until now the missing half of the seed: a deployment could
+   * declare which *capabilities* it includes but not which *interfaces*, even though templates are
+   * the highest-volume contribution type in the whole system. Without it "built-in" was
+   * all-or-nothing — whatever `templateRegistry` happened to import shipped everywhere, so adding a
+   * showcase template imposed it on every white-label.
+   *
+   * **Unlisted templates leave the bundle**, not merely the picker: `pnpm --filter @we/app-shell
+   * generate-templates` rewrites the generated registry from this list, so an unselected template
+   * is never imported. Runtime filtering would have hidden it while still shipping it.
+   *
+   * Omit to ship the default set (`['default']`). An empty array is a deployment with no built-in
+   * templates at all — legal, and what a host expecting to load everything from a marketplace
+   * wants.
+   */
+  templates?: string[];
+
   /** Host app customization (WE shell) — optional white-labeling */
   host?: {
     /** Theme overrides for the host */

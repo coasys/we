@@ -441,6 +441,9 @@ importers:
       '@we/template-shell':
         specifier: workspace:*
         version: link:../templates/shell
+      '@we/template-showcase':
+        specifier: workspace:*
+        version: link:../templates/showcase
       '@we/themes':
         specifier: workspace:*
         version: link:../design-system/2-themes
@@ -1378,6 +1381,19 @@ importers:
         version: 4.1.10(@types/node@24.13.2)(@vitest/coverage-v8@4.1.10)(happy-dom@20.10.6)(jsdom@27.4.0)(vite@7.3.6(@types/node@24.13.2)(sass@1.101.0)(tsx@4.23.0)(yaml@2.9.0))
 
   packages/templates/shell:
+    dependencies:
+      '@we/schema-shared':
+        specifier: workspace:*
+        version: link:../../schema-system/shared
+      '@we/template-kit':
+        specifier: workspace:*
+        version: link:../kit
+    devDependencies:
+      '@types/node':
+        specifier: ^24.10.0
+        version: 24.13.2
+
+  packages/templates/showcase:
     dependencies:
       '@we/schema-shared':
         specifier: workspace:*

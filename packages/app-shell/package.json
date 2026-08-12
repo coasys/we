@@ -5,6 +5,8 @@
   "license": "MIT",
   "type": "module",
   "scripts": {
+    "generate-templates": "node scripts/generateTemplateRegistry.mjs",
+    "publish-templates": "tsx scripts/publishTemplates.mjs",
     "build:steps": "tsup",
     "build": "we-build",
     "test": "vitest run",
@@ -60,6 +62,7 @@
     "@we/module-transcribe": "workspace:*",
     "@we/backend-ad4m": "workspace:*",
     "@we/template-default": "workspace:*",
+    "@we/template-showcase": "workspace:*",
     "@we/template-shell": "workspace:*",
     "@we/editor": "workspace:*",
     "@we/globe-widget": "workspace:*",
