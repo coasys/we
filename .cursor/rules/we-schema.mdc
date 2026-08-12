@@ -600,6 +600,26 @@ Each loop:
 { "type": "$each", "props": { "items": { "$store": "storeName.arrayProperty" }, "as": "itemName" }, "children": [ ... ] }
 Renders children once for each item. The "as" name becomes a context key. Defaults to "item" — omit "as" unless you need a different name.
 
+Each row also gets two context keys describing its position in the list:
+- { "$index": ... } — read as "$index", the 0-based position.
+- "$prev" — the previous item, absent on the first row. Read fields off it like any context ref: "$prev.author".
+
+"$prev" is what makes **grouping** expressible — collapsing consecutive rows by the same author so
+a run of messages shows one avatar and byline instead of repeating them. Without it a row can only
+ask about itself, and the compact form is unreachable by any prop or theme:
+{
+  "type": "$if",
+  "props": {
+    "condition": { "$eq": ["$message.author", "$prev.author"] },
+    "then": { "...": "compact row — no avatar, no byline" },
+    "else": { "...": "full row" }
+  }
+}
+The first row has no "$prev" at all, so the condition is false there and it keeps its byline —
+which is what a feed wants, and why absent must not read as "same as the last item".
+
+Both shadow in a nested $each, exactly as the item does: the inner "$index" restarts at 0.
+
 Conditional rendering:
 { "type": "$if", "props": { "condition": ..., "then": { ... }, "else": { ... } } }
 Renders "then" node if condition is truthy, else renders "else" node.
