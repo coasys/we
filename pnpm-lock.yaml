@@ -1359,9 +1359,6 @@ importers:
       '@we/template-kit':
         specifier: workspace:*
         version: link:../kit
-      '@we/template-shell':
-        specifier: workspace:*
-        version: link:../shell
     devDependencies:
       '@types/node':
         specifier: ^24.10.0

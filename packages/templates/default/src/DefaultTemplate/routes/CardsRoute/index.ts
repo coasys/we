@@ -1,6 +1,5 @@
 import type { RouteSchema } from '@we/schema-shared';
 import { pageShell } from '@we/template-kit';
-import { createSpaceModal } from '@we/template-shell';
 
 import { blocksList } from './BlocksList.ts';
 import { callsList } from './CallsList.ts';
@@ -37,7 +36,6 @@ export const cardsRoute: RouteSchema = {
   path: '/cards',
   $localState: {
     createPostOpen: { type: 'boolean', initial: false },
-    createSpaceModalOpen: { type: 'boolean', initial: false },
     contentType: { type: 'string', initial: 'posts' },
     sortDirection: { type: 'string', initial: 'DESC' },
     sortField: { type: 'string', initial: 'date' },
@@ -54,7 +52,6 @@ export const cardsRoute: RouteSchema = {
       cardsHeader,
 
       { type: '$if', props: { condition: { $local: 'createPostOpen' }, then: createPostModal } },
-      { type: '$if', props: { condition: { $local: 'createSpaceModalOpen' }, then: createSpaceModal } },
 
       { type: '$if', props: { condition: { $eq: [{ $local: 'contentType' }, 'posts'] }, then: postsList } },
       callsList,
