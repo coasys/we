@@ -518,3 +518,38 @@ describe('stopping', () => {
     expect(store.enabled()).toBe(false);
   });
 });
+
+describe('a backend that cannot transcribe', () => {
+  /**
+   * `'no-backend'` was dead code. The host always supplies a forwarding wrapper for the
+   * transcription port — it has to, because a module store is built before the backend binds — so
+   * `if (!transcription)` never fired, and a node with no speech-to-text at all fell through to
+   * `'no-model'` and told the user to go and install one.
+   */
+  it('says so, rather than telling the user to install a model', async () => {
+    const h = harness([], {
+      transcription: { available: () => false, models: async () => [], open: async () => ({}) },
+    });
+
+    h.store.toggle();
+    // The stand-in host re-runs effects on demand, the way a reactive one would when state moves.
+    h.setPeers([]);
+    await Promise.resolve();
+
+    expect(h.store.status()).toBe('no-backend');
+  });
+
+  it('still asks a backend that does not answer the question', async () => {
+    // `available` is optional, so an adapter predating it must read as "yes, ask me" — not as a
+    // backend that cannot transcribe.
+    const h = harness([], {
+      transcription: { models: async () => [], open: async () => ({}) },
+    });
+
+    h.store.toggle();
+    h.setPeers([]);
+    await Promise.resolve();
+
+    expect(h.store.status()).not.toBe('no-backend');
+  });
+});

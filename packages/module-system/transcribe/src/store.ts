@@ -511,7 +511,10 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
    * half-constructed pipeline.
    */
   async function start(audio: MediaStream): Promise<void> {
-    if (!transcription) {
+    // Asked at start rather than at construction: the host supplies a forwarding wrapper before the
+    // backend has bound, so `transcription` is an object either way and only it knows whether there
+    // is a port behind it yet.
+    if (!transcription || transcription.available?.() === false) {
       setStatus('no-backend');
       return;
     }
