@@ -13,9 +13,10 @@ import { formatExternalManifestForPrompt, sendClaudeRequest } from '@shared/ai/a
 import { applySchemaPatches, type SchemaPatch } from '@shared/ai/schemaPatches';
 import { deepClone } from '@shared/utils';
 import { type EditingTheme, useDatasetStore, useTemplateStore, useThemeStore } from '@solid/stores';
+import { toastService } from '@we/components/solid';
 import { ChatMessage as ChatMessageModel, ChatSession as ChatSessionModel } from '@we/models';
 import type { SchemaNode, TemplateSchema } from '@we/schema-shared';
-import { contextData } from '@we/schema-shared';
+import { contextData, setLocalWarningSink } from '@we/schema-shared';
 import {
   buildValidationContext,
   ensureNodeIds,
@@ -29,6 +30,7 @@ import {
   createEffect,
   createMemo,
   createSignal,
+  onCleanup,
   ParentProps,
   untrack,
   useContext,
@@ -539,6 +541,18 @@ export function EditorStoreProvider(props: ParentProps) {
     setThemePanelOpen(false);
     themeStore.cancelEditing();
   }
+
+  // Template-authoring warnings ($setLocal on an undeclared field, …) surface as
+  // toasts only while an editing surface is open. Installing this for every viewer
+  // toasted warnings from *stored* templates at people merely opening a space —
+  // an authoring diagnostic aimed at whoever can act on it, so it follows the
+  // editing session. The console keeps a copy either way (see schema-shared's
+  // propResolvers/local.ts).
+  createEffect(() => {
+    const authoring = isEditingTemplate() || isEditingTheme() || isOpen();
+    setLocalWarningSink(authoring ? (message) => toastService.warning(message) : null);
+  });
+  onCleanup(() => setLocalWarningSink(null));
 
   function toggleThemeEditing() {
     if (isEditingTheme()) {

@@ -14,7 +14,6 @@ import {
   REACTIVE_ACCESSOR,
   resolveProp,
   resolveQueryProp,
-  setLocalWarningSink,
   themeToStyle,
   validateField,
 } from '@we/schema-shared';
@@ -372,11 +371,6 @@ function isStaticValue(value: unknown): boolean {
 
 export function RenderSchema({ node, stores, registry, context = {}, children }: RenderProps): RendererOutput {
   if (!node) return null;
-
-  // Route the local-state resolvers' template-authoring warnings through the
-  // host's error surface, so a $setLocal on an undeclared field reaches the
-  // same toast the renderer's own failures do (console keeps a copy).
-  if (stores.$onError) setLocalWarningSink(stores.$onError);
 
   const visualEditor = useVisualEditor();
 

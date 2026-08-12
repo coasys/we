@@ -5,10 +5,11 @@ import { noMemo } from './types';
 
 /**
  * Template-authoring mistakes ($local without a declaration, $touch on an
- * unknown field, …) used to go only to console.warn — invisible to the host's
- * toast surface while SchemaRenderer routed its own failures through $onError.
- * The renderer installs the host's error binding here so both speak through
- * one channel; the console keeps a copy for devtools either way.
+ * unknown field, …) go to console.warn always, and additionally to whatever
+ * sink the host installs here. The app shell installs a toast sink only while
+ * an editing surface is open — these are authoring diagnostics, aimed at
+ * whoever can act on them; installed globally they toasted warnings from
+ * *stored* templates at people merely opening a space.
  */
 let hostWarningSink: ((message: string) => void) | null = null;
 
