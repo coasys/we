@@ -5,7 +5,7 @@ import { useEditorHost } from '../host';
 import { CodeViewer } from './CodeViewer';
 
 export function CodePanel() {
-  const aiStore = useEditorHost().session;
+  const session = useEditorHost().session;
 
   return (
     <Column
@@ -16,8 +16,8 @@ export function CodePanel() {
       onKeyDown={(e: KeyboardEvent) => {
         if ((e.metaKey || e.ctrlKey) && e.key === 'z') {
           e.preventDefault();
-          if (e.shiftKey) aiStore.redo();
-          else aiStore.undo();
+          if (e.shiftKey) session.redo();
+          else session.undo();
         }
       }}
       tabIndex={0}
@@ -35,7 +35,7 @@ export function CodePanel() {
           Code Editor
         </we-text>
         <we-tooltip title="Close code panel">
-          <we-button variant="ghost" size="sm" onClick={() => aiStore.closeCodePanel()}>
+          <we-button variant="ghost" size="sm" onClick={() => session.closeCodePanel()}>
             <we-icon name="x" size="sm" />
           </we-button>
         </we-tooltip>
@@ -43,9 +43,9 @@ export function CodePanel() {
 
       {/* Code viewer */}
       <CodeViewer
-        json={aiStore.schemaJson()}
-        onSave={(json) => aiStore.onSchemaEdit(json)}
-        readOnly={aiStore.isReadOnly()}
+        json={session.schemaJson()}
+        onSave={(json) => session.onSchemaEdit(json)}
+        readOnly={session.isReadOnly()}
       />
     </Column>
   );

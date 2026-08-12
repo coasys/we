@@ -151,9 +151,9 @@ function getAllInstanceRects(nodeId: string): DOMRect[] {
 // -----------------------------------------------------------------------
 
 export function EditorOverlay() {
-  const aiStore = useEditorHost().session;
+  const session = useEditorHost().session;
   return (
-    <Show when={aiStore.contentMode() === 'visual' && !aiStore.isStreaming()}>
+    <Show when={session.contentMode() === 'visual' && !session.isStreaming()}>
       <VisualEditorLayer />
     </Show>
   );
@@ -165,7 +165,7 @@ export function EditorOverlay() {
 
 function VisualEditorLayer() {
   const templateStore = useEditorHost().template;
-  const aiStore = useEditorHost().session;
+  const session = useEditorHost().session;
   const visualEditor = useVisualEditor();
 
   let overlayRef: HTMLDivElement | undefined;
@@ -388,7 +388,7 @@ function VisualEditorLayer() {
 
       const patched = mergeNode(found.node, { props });
       const updated = replaceNodeInTree(clone as SchemaNode, found.node, patched) as TemplateSchema;
-      aiStore.pushSnapshot();
+      session.pushSnapshot();
       templateStore.updateTemplate(updated);
       templateStore.persistCurrentTemplate();
     } catch (e) {
@@ -799,7 +799,7 @@ function VisualEditorLayer() {
         return;
       }
 
-      aiStore.pushSnapshot();
+      session.pushSnapshot();
       templateStore.updateTemplate(clone);
       templateStore.persistCurrentTemplate();
     } catch (err) {
@@ -846,7 +846,7 @@ function VisualEditorLayer() {
         return;
       }
 
-      aiStore.pushSnapshot();
+      session.pushSnapshot();
       templateStore.updateTemplate(clone);
       templateStore.persistCurrentTemplate();
       visualEditor.onSelect(null);

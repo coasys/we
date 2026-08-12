@@ -14,7 +14,7 @@ interface Props {
 }
 
 export function PublishToMarketplaceModal(props: Props) {
-  const adamStore = useEditorHost().identity;
+  const identity = useEditorHost().identity;
   const templateStore = useEditorHost().template;
   const themeStore = useEditorHost().theme;
 
@@ -68,7 +68,7 @@ export function PublishToMarketplaceModal(props: Props) {
           description: description(),
           version: baseTheme().version ?? 1,
           icon: icon(),
-          author: adamStore.me()?.did,
+          author: identity.me()?.did,
           screenshots: screenshotPreviews(),
         }
       : {
@@ -77,7 +77,7 @@ export function PublishToMarketplaceModal(props: Props) {
           version: 1,
           icon: icon(),
           slug: slug(),
-          author: adamStore.me()?.did,
+          author: identity.me()?.did,
           screenshots: screenshotPreviews(),
         },
   );

@@ -360,7 +360,7 @@ function NodeTree() {
 
 export function InspectorPanel() {
   const templateStore = useEditorHost().template;
-  const aiStore = useEditorHost().session;
+  const session = useEditorHost().session;
   const visualEditor = useVisualEditor();
   const [treeHeight, setTreeHeight] = createSignal(200);
   const [dividerResizing, setDividerResizing] = createSignal(false);
@@ -403,7 +403,7 @@ export function InspectorPanel() {
         value === '' || value === null || value === false ? { props: { [key]: null } } : { props: { [key]: value } };
       const patched = mergeNode(found.node, patch);
       const updated = replaceNodeInTree(clone as SchemaNode, found.node, patched) as TemplateSchema;
-      aiStore.pushSnapshot();
+      session.pushSnapshot();
       templateStore.updateTemplate(updated);
       schedulePersist();
     } catch (e) {
@@ -421,7 +421,7 @@ export function InspectorPanel() {
       if (!found) return;
       const patched = mergeNode(found.node, { children });
       const updated = replaceNodeInTree(clone as SchemaNode, found.node, patched) as TemplateSchema;
-      aiStore.pushSnapshot();
+      session.pushSnapshot();
       templateStore.updateTemplate(updated);
       schedulePersist();
     } catch (e) {
@@ -478,7 +478,7 @@ export function InspectorPanel() {
           Visual Inspector
         </we-text>
         <we-tooltip title="Close inspector panel">
-          <we-button variant="ghost" size="sm" onClick={() => aiStore.toggleVisualPanel()}>
+          <we-button variant="ghost" size="sm" onClick={() => session.toggleVisualPanel()}>
             <we-icon name="x" size="sm" />
           </we-button>
         </we-tooltip>

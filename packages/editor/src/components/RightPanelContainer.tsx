@@ -159,7 +159,7 @@ function PanelUnit(props: PanelUnitProps) {
 
 export function RightPanelContainer() {
   const surface = useEditorSurface();
-  const aiStore = useEditorHost().session;
+  const session = useEditorHost().session;
 
   // Slide the container off-screen when neither editing mode is active.
   // When either mode is active, translateX(0) keeps it visible.
@@ -173,11 +173,11 @@ export function RightPanelContainer() {
    * the screen.
    */
   const containerTransform = () => {
-    if (aiStore.isEditingTemplate() || aiStore.isEditingTheme()) return 'none';
+    if (session.isEditingTemplate() || session.isEditingTheme()) return 'none';
     let w = TOTAL_RAIL_WIDTH;
-    if (aiStore.isOpen()) w += aiStore.aiPanelWidth();
-    if (aiStore.codePanelOpen()) w += aiStore.codePanelWidth();
-    if (aiStore.themePanelOpen()) w += aiStore.themePanelWidth();
+    if (session.isOpen()) w += session.aiPanelWidth();
+    if (session.codePanelOpen()) w += session.codePanelWidth();
+    if (session.themePanelOpen()) w += session.themePanelWidth();
     return `translateX(calc(${w}px + var(--we-dock-right, 0px)))`;
   };
 
@@ -195,33 +195,33 @@ export function RightPanelContainer() {
       zIndex={20}
       transform={containerTransform()}
       transition={panelResizing() ? 'none' : 'transform 300ms ease'}
-      pointerEvents={aiStore.isEditingTemplate() || aiStore.isEditingTheme() ? 'auto' : 'none'}
+      pointerEvents={session.isEditingTemplate() || session.isEditingTheme() ? 'auto' : 'none'}
     >
       {/* Theme panel — visible when isEditingTheme */}
-      <Show when={aiStore.isEditingTheme()}>
+      <Show when={session.isEditingTheme()}>
         <PanelUnit
           icon="paint-bucket"
           tooltip="Theme editor"
-          isOpen={() => aiStore.themePanelOpen()}
-          panelWidth={() => aiStore.themePanelWidth()}
-          toggle={() => aiStore.toggleThemePanel()}
-          setPanelWidth={(w) => aiStore.setThemePanelWidth(w)}
+          isOpen={() => session.themePanelOpen()}
+          panelWidth={() => session.themePanelWidth()}
+          toggle={() => session.toggleThemePanel()}
+          setPanelWidth={(w) => session.setThemePanelWidth(w)}
         >
           <ThemePanel />
         </PanelUnit>
       </Show>
 
       {/* Code + AI panels — visible when isEditingTemplate */}
-      <Show when={aiStore.isEditingTemplate()}>
+      <Show when={session.isEditingTemplate()}>
         {/* Visual properties panel — only in visual mode */}
-        <Show when={aiStore.contentMode() === 'visual'}>
+        <Show when={session.contentMode() === 'visual'}>
           <PanelUnit
             icon="cursor-click"
             tooltip="Properties"
-            isOpen={() => aiStore.visualPanelOpen()}
-            panelWidth={() => aiStore.visualPanelWidth()}
-            toggle={() => aiStore.toggleVisualPanel()}
-            setPanelWidth={(w) => aiStore.setVisualPanelWidth(w)}
+            isOpen={() => session.visualPanelOpen()}
+            panelWidth={() => session.visualPanelWidth()}
+            toggle={() => session.toggleVisualPanel()}
+            setPanelWidth={(w) => session.setVisualPanelWidth(w)}
           >
             <InspectorPanel />
           </PanelUnit>
@@ -230,10 +230,10 @@ export function RightPanelContainer() {
         <PanelUnit
           icon="code"
           tooltip="Code editor"
-          isOpen={() => aiStore.codePanelOpen()}
-          panelWidth={() => aiStore.codePanelWidth()}
-          toggle={() => aiStore.toggleCodePanel()}
-          setPanelWidth={(w) => aiStore.setCodePanelWidth(w)}
+          isOpen={() => session.codePanelOpen()}
+          panelWidth={() => session.codePanelWidth()}
+          toggle={() => session.toggleCodePanel()}
+          setPanelWidth={(w) => session.setCodePanelWidth(w)}
         >
           <CodePanel />
         </PanelUnit>
@@ -241,10 +241,10 @@ export function RightPanelContainer() {
         <PanelUnit
           icon="chat-circle"
           tooltip="AI chat"
-          isOpen={() => aiStore.isOpen()}
-          panelWidth={() => aiStore.aiPanelWidth()}
-          toggle={() => aiStore.toggle()}
-          setPanelWidth={(w) => aiStore.setAiPanelWidth(w)}
+          isOpen={() => session.isOpen()}
+          panelWidth={() => session.aiPanelWidth()}
+          toggle={() => session.toggle()}
+          setPanelWidth={(w) => session.setAiPanelWidth(w)}
         >
           <AiPanel />
         </PanelUnit>

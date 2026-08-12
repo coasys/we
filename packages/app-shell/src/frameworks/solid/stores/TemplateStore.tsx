@@ -135,7 +135,10 @@ export function TemplateStoreProvider(props: ParentProps) {
   const shellTemplates: TemplateSchema[] = [
     { ...deepClone(profileTemplate), id: 'profile' },
     { ...deepClone(settingsTemplate), id: 'settings' },
-    { ...deepClone(schemaTestsTemplate), id: 'schema-tests' },
+    // The schema test harness is a developer tool — 3k LOC of test schemas that
+    // have no business in a production bundle. The DEV-gated branch lets the
+    // app build drop both the registration and (via tree-shaking) the schemas.
+    ...(import.meta.env.DEV ? [{ ...deepClone(schemaTestsTemplate), id: 'schema-tests' }] : []),
   ];
 
   const initialTemplate = deepClone(

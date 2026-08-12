@@ -9,8 +9,8 @@ import { panelResizing, RAIL_STRIP_WIDTH, TEMPLATE_RAILS_WIDTH, THEME_RAIL_WIDTH
 export function DesignToolbar() {
   const templateStore = useEditorHost().template;
   const spaceStore = useEditorHost().identity;
-  const aiStore = useEditorHost().session;
-  const adamStore = useEditorHost().identity;
+  const session = useEditorHost().session;
+  const identity = useEditorHost().identity;
   const themeStore = useEditorHost().theme;
 
   let containerRef: HTMLDivElement | undefined;
@@ -72,7 +72,7 @@ export function DesignToolbar() {
     setThemeShareOpen(false);
     setThemeShareView('main');
     setThemePickerOpen(false);
-    if (aiStore.pickerOpen()) aiStore.cancelPicker();
+    if (session.pickerOpen()) session.cancelPicker();
   }
 
   // ── Toggle helpers — close others, then open target ──
@@ -113,24 +113,24 @@ export function DesignToolbar() {
   // which happens during saveEditingTheme after the theme is persisted.
   createEffect(() => {
     const newId = themeStore.currentThemeId();
-    if (untrack(() => aiStore.isEditingTheme())) {
+    if (untrack(() => session.isEditingTheme())) {
       const editingId = untrack(() => themeStore.editingTheme()?.id);
-      if (newId !== editingId) aiStore.exitThemeEditing();
+      if (newId !== editingId) session.exitThemeEditing();
     }
   });
 
   // Seed picker fields when it opens
   createEffect(() => {
-    if (aiStore.pickerOpen()) {
-      setPickerName(aiStore.pickerDefaultName());
-      setPickerIcon(aiStore.pickerDefaultIcon());
+    if (session.pickerOpen()) {
+      setPickerName(session.pickerDefaultName());
+      setPickerIcon(session.pickerDefaultIcon());
       setPickerDestination('personal');
     }
   });
 
   // Keyboard shortcuts for undo/redo while editing
   createEffect(() => {
-    if (!aiStore.isEditingTemplate() && !aiStore.isEditingTheme()) return;
+    if (!session.isEditingTemplate() && !session.isEditingTheme()) return;
     const handler = (e: KeyboardEvent) => {
       if (!e.ctrlKey && !e.metaKey) return;
       if (e.key !== 'z' && e.key !== 'Z') return;
@@ -138,9 +138,9 @@ export function DesignToolbar() {
       if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) return;
       e.preventDefault();
       if (e.shiftKey) {
-        if (aiStore.canRedo()) aiStore.redo();
+        if (session.canRedo()) session.redo();
       } else {
-        if (aiStore.canUndo()) aiStore.undo();
+        if (session.canUndo()) session.undo();
       }
     };
     document.addEventListener('keydown', handler);
@@ -150,7 +150,7 @@ export function DesignToolbar() {
   // Close all when clicking outside the chip container
   const anyOpen = () =>
     open() ||
-    aiStore.pickerOpen() ||
+    session.pickerOpen() ||
     templateEditOpen() ||
     templateShareOpen() ||
     themeOpen() ||
@@ -181,7 +181,7 @@ export function DesignToolbar() {
 
   const filteredSpaces = createMemo(() => {
     const q = spaceSearch().toLowerCase();
-    const items = adamStore.orderedSidebarItems();
+    const items = identity.orderedSidebarItems();
     return q ? items.filter((s) => s.name.toLowerCase().includes(q)) : items;
   });
 
@@ -202,22 +202,22 @@ export function DesignToolbar() {
     return q ? themeStore.spaceThemes().filter((t) => t.name.toLowerCase().includes(q)) : themeStore.spaceThemes();
   });
 
-  const canEdit = () => !aiStore.isReadOnly();
+  const canEdit = () => !session.isReadOnly();
 
   // Toolbar right offset — accounts for whichever rails/panels are visible
   const rowRight = () => {
     let offset = 10;
-    if (aiStore.isEditingTheme()) {
+    if (session.isEditingTheme()) {
       offset += THEME_RAIL_WIDTH;
-      if (aiStore.themePanelOpen()) offset += aiStore.themePanelWidth();
+      if (session.themePanelOpen()) offset += session.themePanelWidth();
     }
-    if (aiStore.isEditingTemplate()) {
+    if (session.isEditingTemplate()) {
       offset += TEMPLATE_RAILS_WIDTH;
-      if (aiStore.codePanelOpen()) offset += aiStore.codePanelWidth();
-      if (aiStore.isOpen()) offset += aiStore.aiPanelWidth();
-      if (aiStore.contentMode() === 'visual') {
+      if (session.codePanelOpen()) offset += session.codePanelWidth();
+      if (session.isOpen()) offset += session.aiPanelWidth();
+      if (session.contentMode() === 'visual') {
         offset += RAIL_STRIP_WIDTH;
-        if (aiStore.visualPanelOpen()) offset += aiStore.visualPanelWidth();
+        if (session.visualPanelOpen()) offset += session.visualPanelWidth();
       }
     }
     return `${offset}px`;
@@ -229,15 +229,15 @@ export function DesignToolbar() {
     if (!name) return;
     setPickerSaving(true);
     try {
-      await aiStore.confirmPicker(name, pickerIcon() || 'cube', pickerDestination());
+      await session.confirmPicker(name, pickerIcon() || 'cube', pickerDestination());
     } finally {
       setPickerSaving(false);
     }
   }
 
   function handleExportJson() {
-    const json = aiStore.schemaJson();
-    const name = aiStore.templateName();
+    const json = session.schemaJson();
+    const name = session.templateName();
     const blob = new Blob([json], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -287,7 +287,7 @@ export function DesignToolbar() {
       );
       if (ok) {
         setThemePickerOpen(false);
-        aiStore.enterThemeEditing();
+        session.enterThemeEditing();
       }
     } finally {
       setThemePickerSaving(false);
@@ -317,7 +317,7 @@ export function DesignToolbar() {
         gap="200"
       >
         {/* ── Undo/redo chip (visible whenever template or theme editing is active) ── */}
-        <Show when={aiStore.isEditingTemplate() || aiStore.isEditingTheme()}>
+        <Show when={session.isEditingTemplate() || session.isEditingTheme()}>
           <Row
             ay="center"
             gap="100"
@@ -327,12 +327,12 @@ export function DesignToolbar() {
             p="200"
           >
             <we-tooltip title="Undo" placement="bottom">
-              <we-button variant="ghost" square disabled={!aiStore.canUndo()} onClick={() => aiStore.undo()}>
+              <we-button variant="ghost" square disabled={!session.canUndo()} onClick={() => session.undo()}>
                 <we-icon name="arrow-u-up-left" />
               </we-button>
             </we-tooltip>
             <we-tooltip title="Redo" placement="bottom">
-              <we-button variant="ghost" square disabled={!aiStore.canRedo()} onClick={() => aiStore.redo()}>
+              <we-button variant="ghost" square disabled={!session.canRedo()} onClick={() => session.redo()}>
                 <we-icon name="arrow-u-up-right" />
               </we-button>
             </we-tooltip>
@@ -340,7 +340,7 @@ export function DesignToolbar() {
         </Show>
 
         {/* ── Mode chip (visible when editing a template) ── */}
-        <Show when={aiStore.isEditingTemplate()}>
+        <Show when={session.isEditingTemplate()}>
           <Row
             ay="center"
             gap="100"
@@ -351,18 +351,18 @@ export function DesignToolbar() {
           >
             <we-tooltip title="Preview" placement="bottom">
               <we-button
-                variant={aiStore.contentMode() === 'preview' ? 'secondary' : 'ghost'}
+                variant={session.contentMode() === 'preview' ? 'secondary' : 'ghost'}
                 square
-                onClick={() => aiStore.setContentMode('preview')}
+                onClick={() => session.setContentMode('preview')}
               >
                 <we-icon name="eye" />
               </we-button>
             </we-tooltip>
             <we-tooltip title="Visual editor" placement="bottom">
               <we-button
-                variant={aiStore.contentMode() === 'visual' ? 'secondary' : 'ghost'}
+                variant={session.contentMode() === 'visual' ? 'secondary' : 'ghost'}
                 square
-                onClick={() => aiStore.setContentMode('visual')}
+                onClick={() => session.setContentMode('visual')}
               >
                 <we-icon name="pencil-ruler" />
               </we-button>
@@ -419,7 +419,7 @@ export function DesignToolbar() {
             </we-tooltip>
 
             {/* Inactive: pencil opens edit dropdown */}
-            <Show when={!aiStore.isEditingTheme()}>
+            <Show when={!session.isEditingTheme()}>
               <we-tooltip title="Edit theme" placement="bottom">
                 <we-button variant={themeEditOpen() ? 'secondary' : 'ghost'} square onClick={toggleThemeEditDropdown}>
                   <we-icon name="pencil-simple" />
@@ -428,14 +428,14 @@ export function DesignToolbar() {
             </Show>
 
             {/* Active: share + ✕ */}
-            <Show when={aiStore.isEditingTheme()}>
+            <Show when={session.isEditingTheme()}>
               <we-tooltip title="Share" placement="bottom">
                 <we-button variant={themeShareOpen() ? 'secondary' : 'ghost'} square onClick={toggleThemeShareDropdown}>
                   <we-icon name="share-network" />
                 </we-button>
               </we-tooltip>
               <we-tooltip title="Exit theme editing" placement="bottom">
-                <we-button variant="ghost" square onClick={() => aiStore.exitThemeEditing()}>
+                <we-button variant="ghost" square onClick={() => session.exitThemeEditing()}>
                   <we-icon name="x" />
                 </we-button>
               </we-tooltip>
@@ -590,7 +590,7 @@ export function DesignToolbar() {
                     hoverProps={{ bg: 'neutral-100' }}
                     onClick={() => {
                       themeStore.startEditing(themeStore.currentThemeId());
-                      aiStore.enterThemeEditing();
+                      session.enterThemeEditing();
                       closeAllDropdowns();
                     }}
                   >
@@ -766,16 +766,16 @@ export function DesignToolbar() {
                     gap="400"
                     px="300"
                     py="200"
-                    cursor={adamStore.marketplaceJoined() ? 'pointer' : 'not-allowed'}
-                    opacity={adamStore.marketplaceJoined() ? 1 : 0.4}
-                    hoverProps={adamStore.marketplaceJoined() ? { bg: 'neutral-100' } : undefined}
-                    onClick={adamStore.marketplaceJoined() ? handlePublishThemeToMarketplace : undefined}
+                    cursor={identity.marketplaceJoined() ? 'pointer' : 'not-allowed'}
+                    opacity={identity.marketplaceJoined() ? 1 : 0.4}
+                    hoverProps={identity.marketplaceJoined() ? { bg: 'neutral-100' } : undefined}
+                    onClick={identity.marketplaceJoined() ? handlePublishThemeToMarketplace : undefined}
                   >
                     <we-icon name="storefront" color="neutral-600" />
                     <Column gap="0">
                       <we-text color="neutral-800">Upload to marketplace</we-text>
                       <we-text fontSize="300" color="neutral-500">
-                        {adamStore.marketplaceJoined() ? 'Publish for others to install' : 'Marketplace not connected'}
+                        {identity.marketplaceJoined() ? 'Publish for others to install' : 'Marketplace not connected'}
                       </we-text>
                     </Column>
                   </Row>
@@ -860,8 +860,8 @@ export function DesignToolbar() {
             {/* Template selector */}
             <we-tooltip title="Select a template" placement="bottom">
               <we-button variant="ghost" onClick={toggleSwitcher} p="200">
-                <we-icon name={aiStore.templateIcon()} />
-                <we-text>{aiStore.templateName()}</we-text>
+                <we-icon name={session.templateIcon()} />
+                <we-text>{session.templateName()}</we-text>
                 <we-icon name={open() ? 'caret-up' : 'caret-down'} color="neutral-500" />
               </we-button>
             </we-tooltip>
@@ -869,7 +869,7 @@ export function DesignToolbar() {
             <we-divider orientation="vertical" color="neutral-200" height="28px" />
 
             {/* Inactive: pencil opens edit dropdown */}
-            <Show when={!aiStore.isEditingTemplate()}>
+            <Show when={!session.isEditingTemplate()}>
               <we-tooltip title="Edit template" placement="bottom">
                 <we-button
                   variant={templateEditOpen() ? 'secondary' : 'ghost'}
@@ -882,7 +882,7 @@ export function DesignToolbar() {
             </Show>
 
             {/* Active: share + ✕ */}
-            <Show when={aiStore.isEditingTemplate()}>
+            <Show when={session.isEditingTemplate()}>
               <we-tooltip title="Share" placement="bottom">
                 <we-button
                   variant={templateShareOpen() ? 'secondary' : 'ghost'}
@@ -893,7 +893,7 @@ export function DesignToolbar() {
                 </we-button>
               </we-tooltip>
               <we-tooltip title="Exit template editing" placement="bottom">
-                <we-button variant="ghost" square onClick={() => aiStore.exitTemplateEditing()}>
+                <we-button variant="ghost" square onClick={() => session.exitTemplateEditing()}>
                   <we-icon name="x" />
                 </we-button>
               </we-tooltip>
@@ -996,7 +996,7 @@ export function DesignToolbar() {
                     cursor="pointer"
                     hoverProps={{ bg: 'neutral-100' }}
                     onClick={() => {
-                      aiStore.enterTemplateEditing('edit');
+                      session.enterTemplateEditing('edit');
                       closeAllDropdowns();
                     }}
                   >
@@ -1018,7 +1018,7 @@ export function DesignToolbar() {
                   hoverProps={{ bg: 'neutral-100' }}
                   onClick={() => {
                     closeAllDropdowns();
-                    aiStore.startFork();
+                    session.startFork();
                   }}
                 >
                   <we-icon name="git-fork" color="neutral-600" size="sm" />
@@ -1038,7 +1038,7 @@ export function DesignToolbar() {
                   hoverProps={{ bg: 'neutral-100' }}
                   onClick={() => {
                     closeAllDropdowns();
-                    aiStore.startFresh();
+                    session.startFresh();
                   }}
                 >
                   <we-icon name="file-plus" color="neutral-600" size="sm" />
@@ -1091,16 +1091,16 @@ export function DesignToolbar() {
                     gap="400"
                     px="300"
                     py="200"
-                    cursor={adamStore.marketplaceJoined() ? 'pointer' : 'not-allowed'}
-                    opacity={adamStore.marketplaceJoined() ? 1 : 0.4}
-                    hoverProps={adamStore.marketplaceJoined() ? { bg: 'neutral-100' } : undefined}
-                    onClick={adamStore.marketplaceJoined() ? handlePublishTemplateToMarketplace : undefined}
+                    cursor={identity.marketplaceJoined() ? 'pointer' : 'not-allowed'}
+                    opacity={identity.marketplaceJoined() ? 1 : 0.4}
+                    hoverProps={identity.marketplaceJoined() ? { bg: 'neutral-100' } : undefined}
+                    onClick={identity.marketplaceJoined() ? handlePublishTemplateToMarketplace : undefined}
                   >
                     <we-icon name="storefront" color="neutral-600" />
                     <Column gap="0">
                       <we-text color="neutral-800">Upload to marketplace</we-text>
                       <we-text fontSize="300" color="neutral-500">
-                        {adamStore.marketplaceJoined() ? 'Publish for others to install' : 'Marketplace not connected'}
+                        {identity.marketplaceJoined() ? 'Publish for others to install' : 'Marketplace not connected'}
                       </we-text>
                     </Column>
                   </Row>
@@ -1172,7 +1172,7 @@ export function DesignToolbar() {
           </Show>
 
           {/* Name + icon picker (fork / start fresh) */}
-          <Show when={aiStore.pickerOpen()}>
+          <Show when={session.pickerOpen()}>
             <Column
               position="absolute"
               top="100%"
@@ -1187,7 +1187,7 @@ export function DesignToolbar() {
               minWidth="280px"
             >
               <we-text fontSize="400" fontWeight="600" color="neutral-800">
-                {aiStore.pickerAction() === 'fresh' ? 'Create New Template' : 'Name Your Fork'}
+                {session.pickerAction() === 'fresh' ? 'Create New Template' : 'Name Your Fork'}
               </we-text>
 
               <Column gap="100">
@@ -1201,7 +1201,7 @@ export function DesignToolbar() {
                   on:input={(e: CustomEvent) => setPickerName(e.detail)}
                   on:keydown={(e: CustomEvent) => {
                     if (e.detail.key === 'Enter') handlePickerConfirm();
-                    if (e.detail.key === 'Escape') aiStore.cancelPicker();
+                    if (e.detail.key === 'Escape') session.cancelPicker();
                   }}
                 />
               </Column>
@@ -1217,7 +1217,7 @@ export function DesignToolbar() {
                 />
               </Column>
 
-              <Show when={aiStore.pickerShowDestination()}>
+              <Show when={session.pickerShowDestination()}>
                 <Column gap="100">
                   <we-text fontSize="200" fontWeight="600" color="neutral-600">
                     Save to
@@ -1242,7 +1242,7 @@ export function DesignToolbar() {
               </Show>
 
               <Row ax="end" gap="200">
-                <we-button size="sm" variant="ghost" onClick={() => aiStore.cancelPicker()} disabled={pickerSaving()}>
+                <we-button size="sm" variant="ghost" onClick={() => session.cancelPicker()} disabled={pickerSaving()}>
                   Cancel
                 </we-button>
                 <we-button
@@ -1251,7 +1251,7 @@ export function DesignToolbar() {
                   loading={pickerSaving()}
                   onClick={handlePickerConfirm}
                 >
-                  {pickerSaving() ? 'Saving...' : aiStore.pickerAction() === 'fresh' ? 'Create' : 'Fork'}
+                  {pickerSaving() ? 'Saving...' : session.pickerAction() === 'fresh' ? 'Create' : 'Fork'}
                 </we-button>
               </Row>
             </Column>

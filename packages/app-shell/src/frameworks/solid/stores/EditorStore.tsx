@@ -313,7 +313,7 @@ export function EditorStoreProvider(props: ParentProps) {
   }
 
   // Wire theme history into the unified stack. ThemeStore is a parent provider and
-  // cannot call back into AiStore, so we register callbacks here after both stores
+  // cannot call back into EditorStore, so we register callbacks here after both stores
   // and the stack signals are initialised.
   themeStore.registerHistoryCallbacks({
     onEntry: (snapshot: EditingTheme) => {
@@ -602,42 +602,21 @@ export function EditorStoreProvider(props: ParentProps) {
 
   // Panel widths — signal updates immediately; localStorage write is debounced to avoid
   // blocking the main thread on every mousemove pixel during drag-to-resize.
-  const [aiPanelWidth, setAiPanelWidthSignal] = createSignal(
-    parseInt(localStorage.getItem('we-ai-panel-width') ?? '400', 10),
-  );
-  const [codePanelWidth, setCodePanelWidthSignal] = createSignal(
-    parseInt(localStorage.getItem('we-code-panel-width') ?? '480', 10),
-  );
-  const [themePanelWidth, setThemePanelWidthSignal] = createSignal(
-    parseInt(localStorage.getItem('we-theme-panel-width') ?? '320', 10),
-  );
-  const [visualPanelWidth, setVisualPanelWidthSignal] = createSignal(
-    parseInt(localStorage.getItem('we-visual-panel-width') ?? '280', 10),
-  );
-  let aiWidthPersistTimer: ReturnType<typeof setTimeout> | undefined;
-  let codeWidthPersistTimer: ReturnType<typeof setTimeout> | undefined;
-  let themeWidthPersistTimer: ReturnType<typeof setTimeout> | undefined;
-  let visualWidthPersistTimer: ReturnType<typeof setTimeout> | undefined;
-  function setAiPanelWidth(w: number) {
-    setAiPanelWidthSignal(w);
-    clearTimeout(aiWidthPersistTimer);
-    aiWidthPersistTimer = setTimeout(() => localStorage.setItem('we-ai-panel-width', String(w)), 500);
+  // One helper, four panels: these were four byte-identical signal+debounce blocks.
+  function createPersistedWidth(storageKey: string, fallback: number) {
+    const [width, setWidthSignal] = createSignal(parseInt(localStorage.getItem(storageKey) ?? String(fallback), 10));
+    let persistTimer: ReturnType<typeof setTimeout> | undefined;
+    function setWidth(w: number) {
+      setWidthSignal(w);
+      clearTimeout(persistTimer);
+      persistTimer = setTimeout(() => localStorage.setItem(storageKey, String(w)), 500);
+    }
+    return [width, setWidth] as const;
   }
-  function setCodePanelWidth(w: number) {
-    setCodePanelWidthSignal(w);
-    clearTimeout(codeWidthPersistTimer);
-    codeWidthPersistTimer = setTimeout(() => localStorage.setItem('we-code-panel-width', String(w)), 500);
-  }
-  function setThemePanelWidth(w: number) {
-    setThemePanelWidthSignal(w);
-    clearTimeout(themeWidthPersistTimer);
-    themeWidthPersistTimer = setTimeout(() => localStorage.setItem('we-theme-panel-width', String(w)), 500);
-  }
-  function setVisualPanelWidth(w: number) {
-    setVisualPanelWidthSignal(w);
-    clearTimeout(visualWidthPersistTimer);
-    visualWidthPersistTimer = setTimeout(() => localStorage.setItem('we-visual-panel-width', String(w)), 500);
-  }
+  const [aiPanelWidth, setAiPanelWidth] = createPersistedWidth('we-ai-panel-width', 400);
+  const [codePanelWidth, setCodePanelWidth] = createPersistedWidth('we-code-panel-width', 480);
+  const [themePanelWidth, setThemePanelWidth] = createPersistedWidth('we-theme-panel-width', 320);
+  const [visualPanelWidth, setVisualPanelWidth] = createPersistedWidth('we-visual-panel-width', 280);
 
   // ----------------------------------------------------------------
   // API key management (persisted to AgentSettings)
