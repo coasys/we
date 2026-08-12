@@ -9,6 +9,7 @@ import type {
   ValidationRule,
 } from '@we/schema-shared';
 import {
+  deepUnwrap,
   hasToken,
   REACTIVE_ACCESSOR,
   resolveProp,
@@ -24,40 +25,6 @@ import { AnimateRenderer } from './AnimateRenderer';
 import { ConditionalRenderer } from './ConditionalRenderer';
 import type { RendererOutput, RenderProps, SchemaNode } from './types';
 import { useVisualEditor } from './VisualEditorContext';
-
-const MAX_UNWRAP_DEPTH = 10;
-
-/**
- * Recursively unwrap reactive accessors (marked with REACTIVE_ACCESSOR) inside
- * complex prop values so that components receive plain data instead of leaked
- * signal functions. Event handlers and other plain functions pass through
- * untouched.
- *
- * Called inside tracked computations (createMemo / createEffect), so calling
- * accessors here registers them as dependencies — reactivity is preserved
- * without wrapping each value in its own memo.
- */
-function deepUnwrap(value: unknown, depth = 0): unknown {
-  if (depth > MAX_UNWRAP_DEPTH) return value;
-  if (typeof value === 'function' && REACTIVE_ACCESSOR in value) {
-    return deepUnwrap((value as unknown as () => unknown)(), depth + 1);
-  }
-  if (typeof value === 'function') return value;
-  if (Array.isArray(value)) {
-    return value.map((item) => deepUnwrap(item, depth + 1));
-  }
-  if (value && typeof value === 'object') {
-    // Don't deconstruct non-plain objects (File, Blob, Date, DOM nodes, etc.)
-    const proto = Object.getPrototypeOf(value);
-    if (proto !== Object.prototype && proto !== null) return value;
-    const result: Record<string, unknown> = {};
-    for (const [k, v] of Object.entries(value)) {
-      result[k] = deepUnwrap(v, depth + 1);
-    }
-    return result;
-  }
-  return value;
-}
 
 /** Check if a prop key is an event handler name (e.g. onClick, onInput, onKeyDown) */
 function isEventProp(key: string): boolean {

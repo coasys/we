@@ -1,5 +1,5 @@
 import type { resolveProp } from './dispatcher';
-import { REACTIVE_ACCESSOR } from './reactive';
+import { deepUnwrap } from './reactive';
 import type { Memo, Props } from './types';
 
 // Resolves relative paths used in router navigation (e.g. '.', './', '../')
@@ -72,27 +72,6 @@ function processArgValue(arg: unknown, callArgs: unknown[]): unknown {
     return result;
   }
   return arg;
-}
-
-// Recursively unwrap reactive accessors inside plain objects and arrays so store
-// methods always receive plain values rather than signal/memo functions.
-// Only recurses into plain objects (constructor === Object) — class instances,
-// Dates, Files etc. are passed through as-is to avoid unintended spreading.
-function deepUnwrap(value: unknown): unknown {
-  if (typeof value === 'function' && REACTIVE_ACCESSOR in value) {
-    return deepUnwrap((value as unknown as () => unknown)());
-  }
-  if (Array.isArray(value)) {
-    return value.map(deepUnwrap);
-  }
-  if (value !== null && typeof value === 'object' && (value as object).constructor === Object) {
-    const result: Record<string, unknown> = {};
-    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
-      result[k] = deepUnwrap(v);
-    }
-    return result;
-  }
-  return value;
 }
 
 // Resolves $action props: { $action: 'routeStore.navigate', args: ['/home'] }

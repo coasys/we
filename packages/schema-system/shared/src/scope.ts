@@ -13,6 +13,7 @@
  */
 
 import type { ModelEntry, StateMemberMeta, StoreEntry } from './contextTypes';
+import { isPropsSchemaNode, isSchemaChild } from './treeUtils';
 import type { SchemaNode } from './types';
 
 // ── Public types ────────────────────────────────────────────────────────────
@@ -76,20 +77,6 @@ const CONTEXT_REFS: ScopeRef[] = [
 ];
 
 // ── Ancestor walk ───────────────────────────────────────────────────────────
-
-/** Returns true if val is a SchemaNode embedded as a prop value (e.g. `$if.props.then`). */
-function isPropsSchemaNode(val: unknown): val is SchemaNode {
-  if (typeof val !== 'object' || val === null || Array.isArray(val)) return false;
-  const type = (val as Record<string, unknown>).type;
-  if (typeof type !== 'string') return false;
-  return /^[A-Z$]/.test(type) || type.includes('-');
-}
-
-function isSchemaChild(child: unknown): child is SchemaNode {
-  if (typeof child !== 'object' || child === null || Array.isArray(child)) return false;
-  if ('type' in child || 'id' in child) return true;
-  return !Object.keys(child).some((k) => k.startsWith('$'));
-}
 
 /**
  * Find the chain of nodes from `root` down to the node with `nodeId`, inclusive.

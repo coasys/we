@@ -19,31 +19,8 @@
  * - "panel"      — large child subtrees within a route (keyed by qualifier)
  */
 
-import type { OperatorToken, RouteSchema, SchemaNode, TemplateSchema } from './types';
-
-/** Type guard: a child is a SchemaNode (not a string or operator token) */
-function isSchemaChild(child: string | SchemaNode | OperatorToken): child is SchemaNode {
-  if (typeof child !== 'object' || child === null) return false;
-  // A node with `type` or `id` is always a SchemaNode, even if it also
-  // carries $-prefixed properties like $localState.
-  if ('type' in child || 'id' in child) return true;
-  // Otherwise reject objects whose keys are all $-prefixed (operator tokens).
-  return !Object.keys(child).some((k) => k.startsWith('$'));
-}
-
-/**
- * Returns true if val is a SchemaNode embedded as a prop value.
- * Requires `type` to look like a component name: PascalCase, hyphenated (we-button),
- * or $-prefixed ($if, $each). This distinguishes SchemaNodes from other objects that
- * appear in props — TransitionConfig ({ type: 'fade' }), styles objects, data items,
- * and operator tokens — which must not be assigned IDs.
- */
-function isPropsSchemaNode(val: unknown): val is SchemaNode {
-  if (typeof val !== 'object' || val === null || Array.isArray(val)) return false;
-  const type = (val as Record<string, unknown>).type;
-  if (typeof type !== 'string') return false;
-  return /^[A-Z$]/.test(type) || type.includes('-');
-}
+import { isPropsSchemaNode, isSchemaChild } from './treeUtils';
+import type { RouteSchema, SchemaNode, TemplateSchema } from './types';
 
 /**
  * Call fn for each SchemaNode-shaped value directly embedded in node.props.
