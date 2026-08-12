@@ -890,6 +890,101 @@ export const CORE_MANIFEST: ModelManifest = {
         "value": "we://location_block"
       }
     },
+    "MutedAgent": {
+      "properties": {
+        "did": {
+          "type": "string",
+          "predicate": "we://did",
+          "default": ""
+        },
+        "description": {
+          "type": "string",
+          "predicate": "we://description",
+          "default": ""
+        }
+      },
+      "relations": {
+        "comments": {
+          "target": "",
+          "cardinality": "many",
+          "predicate": "we://comment"
+        },
+        "signals": {
+          "target": "Signal",
+          "cardinality": "many",
+          "predicate": "we://signal"
+        },
+        "participants": {
+          "target": "",
+          "cardinality": "many",
+          "predicate": "we://participants"
+        },
+        "calls": {
+          "target": "",
+          "cardinality": "many",
+          "predicate": "we://call"
+        },
+        "mentions": {
+          "target": "",
+          "cardinality": "many",
+          "predicate": "we://mention"
+        }
+      },
+      "flag": {
+        "predicate": "we://flag",
+        "value": "we://muted_agent"
+      }
+    },
+    "ReadMarker": {
+      "properties": {
+        "nodeId": {
+          "type": "string",
+          "predicate": "we://node_id",
+          "default": ""
+        },
+        "spaceUuid": {
+          "type": "string",
+          "predicate": "we://space_uuid",
+          "default": ""
+        },
+        "lastReadAt": {
+          "type": "string",
+          "predicate": "we://last_read_at",
+          "default": ""
+        }
+      },
+      "relations": {
+        "comments": {
+          "target": "",
+          "cardinality": "many",
+          "predicate": "we://comment"
+        },
+        "signals": {
+          "target": "Signal",
+          "cardinality": "many",
+          "predicate": "we://signal"
+        },
+        "participants": {
+          "target": "",
+          "cardinality": "many",
+          "predicate": "we://participants"
+        },
+        "calls": {
+          "target": "",
+          "cardinality": "many",
+          "predicate": "we://call"
+        },
+        "mentions": {
+          "target": "",
+          "cardinality": "many",
+          "predicate": "we://mention"
+        }
+      },
+      "flag": {
+        "predicate": "we://flag",
+        "value": "we://read_marker"
+      }
+    },
     "Signal": {
       "properties": {
         "signalTypeId": {

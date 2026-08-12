@@ -15,6 +15,8 @@ import {
   ImageBlock,
   LinkBlock,
   LocationBlock,
+  MutedAgent,
+  ReadMarker,
   Signal,
   SignalType,
   Space,
@@ -43,6 +45,10 @@ export const ROOT_MODELS = [
   Template,
   Theme,
   LocationBlock,
+  // Per-agent private state. Root-dataset models by definition — written into a space they would
+  // sync one agent's read positions, and their mute list, to every member of that community.
+  ReadMarker,
+  MutedAgent,
 ] as const;
 
 /**

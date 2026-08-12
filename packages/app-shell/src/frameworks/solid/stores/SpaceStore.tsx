@@ -21,7 +21,9 @@ import {
   FOLLOW_SPACE,
   getModelForPerspective,
   LocationBlock,
+  MutedAgent,
   PREDICATES,
+  ReadMarker,
   Signal,
   SignalType,
   Space,
@@ -418,6 +420,27 @@ export interface SpaceStore {
   createPost: (json: unknown, options?: CreatePostOptions) => Promise<void>;
   updatePost: (postId: string, json: unknown) => Promise<void>;
   /**
+   * DIDs this agent has muted, everywhere. Private, held in the root dataset.
+   *
+   * A feed filters on this before rendering — `{ $not: { $in: ['$post.author', …] } }`. Hiding on
+   * this agent's screen only: an AD4M neighbourhood is writable by every member, so nothing here
+   * removes anything for anyone else.
+   */
+  mutedDids: Accessor<string[]>;
+  /** Full mute records, for a settings list that wants the note as well as the DID. */
+  mutedAgents: Accessor<MutedAgent[]>;
+  /** Mute or unmute an agent. Positively phrased so a switch can pass `$event.detail` bare. */
+  setAgentMuted: (did: string, muted: boolean, description?: string) => Promise<void>;
+  /**
+   * When this agent last read each node, as `{ [nodeId]: ISO-8601 }`.
+   *
+   * An unread indicator is "latest child newer than this" — the seen-half of the standing-query
+   * pattern notifications will generalise. Absent means never read, so everything is unread.
+   */
+  readMarkers: Accessor<Record<string, string>>;
+  /** Mark a node read as of now. Silent on failure — a lost marker is a stale dot, not an error. */
+  markRead: (nodeId: string, spaceUuid?: string) => Promise<void>;
+  /**
    * Delete a `CollectionBlock` and everything inside it, recursively.
    *
    * Named for the collection rather than the post because the operation never knew the difference:
@@ -542,6 +565,8 @@ export function SpaceStoreProvider(props: ParentProps) {
 
   /** This agent's personal choices per space, from the root dataset. See `SpacePreference`. */
   const [spacePreferences, setSpacePreferences] = createSignal<SpacePreference[]>([]);
+  const [readMarkers, setReadMarkers] = createSignal<ReadMarker[]>([]);
+  const [mutedAgents, setMutedAgents] = createSignal<MutedAgent[]>([]);
 
   const preferenceFor = (spaceUuid: string | undefined): SpacePreference | undefined =>
     spaceUuid ? spacePreferences().find((p) => p.spaceUuid === spaceUuid) : undefined;
@@ -1394,6 +1419,85 @@ export function SpaceStoreProvider(props: ParentProps) {
       .catch(() => setSpacePreferences([]));
   });
 
+  // Per-agent private state, loaded from the root dataset alongside space preferences and for the
+  // same reason: it is not any one space's, and a feed has to filter on the mute list before it can
+  // render a single row.
+  createEffect(() => {
+    const root = datasetStore.rootDataset();
+    if (!root) {
+      setReadMarkers([]);
+      setMutedAgents([]);
+      return;
+    }
+    void ReadMarker.findAll(root.handle)
+      .then(setReadMarkers)
+      .catch(() => setReadMarkers([]));
+    void MutedAgent.findAll(root.handle)
+      .then(setMutedAgents)
+      .catch(() => setMutedAgents([]));
+  });
+
+  /**
+   * Mark a node read, as of now.
+   *
+   * Upsert on `nodeId` — one marker per node, moved forward rather than accumulated. Called on
+   * opening a channel, so it runs often and stays silent on failure: a lost marker shows a stale
+   * unread dot, which is not worth a toast interrupting what the user opened the channel to do.
+   */
+  async function markRead(nodeId: string, spaceUuid?: string): Promise<void> {
+    const root = datasetStore.rootDataset();
+    const uuid = spaceUuid ?? datasetStore.currentDataset()?.id;
+    if (!root || !nodeId || !uuid) return;
+    // ISO-8601 UTC: the marker is compared against `createdAt` as a string, so the format has to be
+    // the one whose lexicographic order is chronological. See `ReadMarker.lastReadAt`.
+    const lastReadAt = new Date().toISOString();
+    try {
+      const existing = readMarkers().find((m) => m.nodeId === nodeId);
+      if (existing) await ReadMarker.update(root.handle, existing.id, { lastReadAt });
+      else await ReadMarker.create(root.handle, { nodeId, spaceUuid: uuid, lastReadAt });
+      setReadMarkers(await ReadMarker.findAll(root.handle));
+    } catch (error) {
+      console.error('SpaceStore: could not write read marker', error);
+    }
+  }
+
+  /**
+   * Mute or unmute an agent for this agent, everywhere.
+   *
+   * Phrased positively — `muted: boolean` — so a switch can pass `$event.detail` bare; the same
+   * constraint `setModuleVisible` documents.
+   *
+   * Reports failure, unlike `markRead`: this one was asked for deliberately, and someone who thinks
+   * they have muted an account and has not is worse off than someone who knows it did not work.
+   */
+  /** Just the DIDs — what a feed filter wants, without every consumer mapping the records. */
+  const mutedDids = createMemo(() => mutedAgents().map((m) => m.did));
+
+  /**
+   * Markers keyed by node id.
+   *
+   * A record rather than the array because the read is always "this node's marker" from inside a
+   * `$each` over channels: a schema can index an object but cannot `$find` cheaply per row, and the
+   * array form would be a linear scan per rendered channel.
+   */
+  const readMarkerMap = createMemo(() =>
+    Object.fromEntries(readMarkers().map((m) => [m.nodeId, m.lastReadAt])),
+  );
+
+  async function setAgentMuted(did: string, muted: boolean, description = ''): Promise<void> {
+    const root = datasetStore.rootDataset();
+    if (!root || !did) return;
+    try {
+      const existing = mutedAgents().find((m) => m.did === did);
+      if (muted && !existing) await MutedAgent.create(root.handle, { did, description });
+      else if (!muted && existing) await MutedAgent.delete(root.handle, existing.id);
+      setMutedAgents(await MutedAgent.findAll(root.handle));
+    } catch (error) {
+      console.error('SpaceStore: could not update mute list', error);
+      toastService.error(muted ? 'Could not mute that account' : 'Could not unmute that account');
+    }
+  }
+
   /** Turn a module on or off for this agent everywhere. See `AgentSettings.installedModules`. */
   /**
    * Put a space's share link on the clipboard.
@@ -1837,6 +1941,11 @@ export function SpaceStoreProvider(props: ParentProps) {
     removeSpace,
     createPost,
     updatePost,
+    mutedDids,
+    mutedAgents,
+    setAgentMuted,
+    readMarkers: readMarkerMap,
+    markRead,
     deleteCollection,
     updateSpaceImage,
     updateSpaceMeta,
