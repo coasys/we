@@ -5,7 +5,7 @@
  * both are the kind that only bite once: a name that escapes its parent directory, and removal
  * erasing data another app owns.
  */
-import { existsSync, mkdirSync, mkdtempSync, renameSync, rmSync, writeFileSync } from 'fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -450,5 +450,43 @@ describe('expandHome', () => {
     expect(expandHome('~/.ad4m')).toBe(join(home, '.ad4m'));
     expect(expandHome('/tmp/a')).toBe('/tmp/a');
     expect(expandHome('a~b')).toBe('a~b');
+  });
+});
+
+describe('the registry file shared with the tauri host', () => {
+  /**
+   * Both hosts read and write one registry.json, so both suites parse the same fixtures
+   * (./fixtures). The hazard is documented in both implementations: a spelling only one host
+   * understands makes the other read the file as malformed, fall back to an empty registry,
+   * and rewrite it — dropping every name and cached picture. The tauri side asserts these same
+   * files in accounts.rs (`cargo test`).
+   */
+  function seedFromFixture(name) {
+    const raw = readFileSync(join(import.meta.dirname, 'fixtures', name), 'utf8').replaceAll('<root>', root);
+    mkdirSync(join(defaultPath, 'we-accounts'), { recursive: true });
+    writeFileSync(join(defaultPath, 'we-accounts', 'registry.json'), raw, 'utf8');
+  }
+
+  it('reads the agreed camelCase dialect, names and avatars intact', () => {
+    seedAd4mData(defaultPath);
+    seedAd4mData(join(root, '.ad4m-container/work'));
+    seedFromFixture('registry.shared.json');
+    registry = createAccountRegistry({ configDir, defaultPath });
+
+    const accounts = registry.list();
+    const main = accounts.find((a) => a.name === 'Main');
+    expect(main).toBeDefined();
+    expect(main.avatar).toBe('data:image/png;base64,aGk=');
+    expect(accounts.find((a) => a.active).path ?? accounts.find((a) => a.active).id).toContain('work');
+  });
+
+  it('reads the snake_case selection legacy tauri builds wrote', () => {
+    seedAd4mData(defaultPath);
+    seedFromFixture('registry.legacy-tauri.json');
+    registry = createAccountRegistry({ configDir, defaultPath });
+
+    const active = registry.list().find((a) => a.active);
+    expect(active).toBeDefined();
+    expect(active.id).toBe(defaultPath);
   });
 });

@@ -1,0 +1,7 @@
+{
+  "accounts": [
+    { "name": "Main", "path": "<root>/.ad4m", "avatar": "data:image/png;base64,aGk=" },
+    { "name": "Work", "path": "<root>/.ad4m-container/work", "provisional": true }
+  ],
+  "selectedPath": "<root>/.ad4m-container/work"
+}
