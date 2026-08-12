@@ -20,6 +20,10 @@ export type ChatMessage = C.ChatMessage;
 export const ChatMessage = defineEntity('ChatMessage') as unknown as typeof C.ChatMessage;
 export type ChatSession = C.ChatSession;
 export const ChatSession = defineEntity('ChatSession') as unknown as typeof C.ChatSession;
+export type MutedAgent = C.MutedAgent;
+export const MutedAgent = defineEntity('MutedAgent') as unknown as typeof C.MutedAgent;
+export type ReadMarker = C.ReadMarker;
+export const ReadMarker = defineEntity('ReadMarker') as unknown as typeof C.ReadMarker;
 export type Signal = C.Signal;
 export const Signal = defineEntity('Signal') as unknown as typeof C.Signal;
 export type SignalType = C.SignalType;
@@ -70,7 +74,7 @@ export type TextBlock = C.TextBlock;
 export const TextBlock = defineEntity('TextBlock') as unknown as typeof C.TextBlock;
 export type VideoBlock = C.VideoBlock;
 export const VideoBlock = defineEntity('VideoBlock') as unknown as typeof C.VideoBlock;
-export { FILE_STORAGE_LANGUAGE } from './constants';
+export { FILE_STORAGE_LANGUAGE, PREDICATES } from './constants';
 export {
   asFileField,
   dataURItoBlob,

@@ -109,3 +109,42 @@ describe('$action path resolution', () => {
     expect(signal).not.toHaveBeenCalled();
   });
 });
+
+describe('lifecycle dispatch resolves without a reactive owner', () => {
+  /**
+   * `onSuccess`/`onError`/`onFinally` run from a promise callback, after the action settled, where
+   * there is no reactive owner. Resolving them with the injected `memo` therefore created a
+   * computation outside a root — Solid warns and never disposes it — so they resolve with `noMemo`.
+   *
+   * The observable half of that, and what these pin: an argument resolved through a memo arrives as
+   * an *accessor*, so anything reading it before `deepUnwrap` sees a function rather than a value.
+   */
+  it('passes a $concat argument to a lifecycle action as a string, not an accessor', async () => {
+    const navigate = vi.fn();
+    const create = vi.fn().mockResolvedValue({ id: 'abc' });
+    const handler = resolve(
+      {
+        $action: 'myStore.create',
+        onSuccess: [{ $action: 'routeStore.navigate', args: [{ $concat: ['/board/', '$result.id'] }] }],
+      },
+      { myStore: { create }, routeStore: { navigate } },
+    );
+
+    (handler as () => void)();
+    await vi.waitFor(() => expect(navigate).toHaveBeenCalled());
+    expect(navigate).toHaveBeenCalledWith('/board/abc');
+  });
+
+  it('gives a memo-passing caller the same final value, so unwrapping still covers the render path', () => {
+    const save = vi.fn();
+    // A render-time resolve keeps the reactive memo; `deepUnwrap` flattens it before the call.
+    const handler = resolveProp(
+      { $action: 'myStore.save', args: [{ $concat: ['a', 'b'] }] },
+      { myStore: { save } },
+      {},
+      (fn) => fn(),
+    );
+    (handler as () => void)();
+    expect(save).toHaveBeenCalledWith('ab');
+  });
+});

@@ -3683,6 +3683,13 @@
           "default": "true"
         },
         {
+          "name": "useTemplateTheme",
+          "type": "boolean",
+          "predicate": "we://use_template_theme",
+          "required": false,
+          "default": "true"
+        },
+        {
           "name": "themeScope",
           "type": "string",
           "predicate": "we://theme_scope",
@@ -3897,6 +3904,12 @@
           "required": false
         },
         {
+          "name": "mode",
+          "type": "string",
+          "predicate": "we://mode",
+          "required": false
+        },
+        {
           "name": "title",
           "type": "string",
           "predicate": "we://title",
@@ -3906,42 +3919,6 @@
           "name": "description",
           "type": "string",
           "predicate": "we://description",
-          "required": false
-        },
-        {
-          "name": "display",
-          "type": "string",
-          "predicate": "we://display",
-          "required": false
-        },
-        {
-          "name": "direction",
-          "type": "string",
-          "predicate": "we://direction",
-          "required": false
-        },
-        {
-          "name": "format",
-          "type": "string",
-          "predicate": "we://format",
-          "required": false
-        },
-        {
-          "name": "indent",
-          "type": "number",
-          "predicate": "we://indent",
-          "required": false
-        },
-        {
-          "name": "columns",
-          "type": "number",
-          "predicate": "we://columns",
-          "required": false
-        },
-        {
-          "name": "gap",
-          "type": "string",
-          "predicate": "we://gap",
           "required": false
         },
         {
@@ -4247,6 +4224,52 @@
           "name": "version",
           "type": "number",
           "predicate": "we://version",
+          "required": false
+        }
+      ],
+      "relations": []
+    },
+    {
+      "name": "MutedAgent",
+      "className": "MutedAgent",
+      "extends": "WeNode",
+      "fields": [
+        {
+          "name": "did",
+          "type": "string",
+          "predicate": "we://did",
+          "required": false
+        },
+        {
+          "name": "description",
+          "type": "string",
+          "predicate": "we://description",
+          "required": false
+        }
+      ],
+      "relations": []
+    },
+    {
+      "name": "ReadMarker",
+      "className": "ReadMarker",
+      "extends": "WeNode",
+      "fields": [
+        {
+          "name": "nodeId",
+          "type": "string",
+          "predicate": "we://node_id",
+          "required": false
+        },
+        {
+          "name": "spaceUuid",
+          "type": "string",
+          "predicate": "we://space_uuid",
+          "required": false
+        },
+        {
+          "name": "lastReadAt",
+          "type": "string",
+          "predicate": "we://last_read_at",
           "required": false
         }
       ],
@@ -4852,6 +4875,11 @@
           "name": "calls",
           "kind": "HasMany",
           "predicate": "we://call"
+        },
+        {
+          "name": "mentions",
+          "kind": "HasMany",
+          "predicate": "we://mention"
         }
       ]
     }
@@ -5846,6 +5874,15 @@
         "moduleLaunchers": {
           "type": "array",
           "properties": ["id", "icon", "label", "active"]
+        },
+        "mutedDids": {
+          "type": "array"
+        },
+        "mutedAgents": {
+          "type": "array"
+        },
+        "readMarkers": {
+          "type": "array"
         }
       },
       "actions": [
@@ -5855,6 +5892,10 @@
         "removeSpace",
         "createPost",
         "updatePost",
+        "moveChild",
+        "setAttending",
+        "setAgentMuted",
+        "markRead",
         "deleteCollection",
         "updateSpaceImage",
         "updateSpaceMeta",
@@ -6001,6 +6042,9 @@
         "themeScopePreviewing": {
           "type": "boolean"
         },
+        "useTemplateTheme": {
+          "type": "boolean"
+        },
         "activeTemplateTheme": {
           "type": "object"
         },
@@ -6016,6 +6060,7 @@
         "toggleThemeInstalled",
         "previewThemeScope",
         "setThemeScopeGlobal",
+        "setUseTemplateTheme",
         "replaceTheme",
         "restorePersonalTheme",
         "clearSpaceTheme",

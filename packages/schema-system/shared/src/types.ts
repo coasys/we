@@ -7,6 +7,24 @@ export type TemplateMeta = {
   name: string;
   description: string;
   icon: string;
+  /**
+   * A theme this template is designed to be seen in — a **suggestion**, never a setting.
+   *
+   * Resolved rather than written: it takes effect as a rung in the theme chain, so switching
+   * template changes the look without overwriting anyone's choice, and switching back restores what
+   * was there. See `spaceStore`'s theme resolution for the precedence, which turns on *who chose the
+   * template* rather than on layer: a theme picked alongside a template stops applying once someone
+   * overrides that template, because it was a decision about a different interface.
+   *
+   * Lives in `meta` rather than only on the `Template` model because built-in templates have no
+   * model record — they are schemas in the registry — and because here it travels with a fork, a
+   * publish and a `?template=` link. `Template.themeId` is the queryable mirror `saveTemplate`
+   * writes.
+   *
+   * Honoured only when the theme resolves for this agent; a suggestion naming something they have
+   * not installed is reported once and ignored, exactly as `?theme=` in a share link is.
+   */
+  themeId?: string;
   stores?: string[] | StoreDeclaration;
   components?: string[];
 };
@@ -136,8 +154,13 @@ export type QueryToken = {
     entity: string;
     where?: Record<string, unknown>;
     order?: Record<string, unknown>;
-    limit?: number;
-    offset?: number;
+    /**
+     * A literal, or a token resolving to one — `{ $local: 'pageSize' }` is how a "load more"
+     * button works, since raising the local re-runs the query with a bigger window. Params are
+     * deep-resolved before the query is built, so a token here has always worked at runtime.
+     */
+    limit?: number | Record<string, unknown>;
+    offset?: number | Record<string, unknown>;
     include?: Record<string, unknown>;
     /**
      * Neutral drill-down: fetch this entity's instances anchored to `anchorId` via the anchor entity's
@@ -207,7 +230,9 @@ export type LocalToken = { $local: string };
 export type SetLocalToken =
   | { $setLocal: string; from: string }
   | { $setLocal: string; value: unknown }
-  | { $setLocal: string; merge: Record<string, unknown> };
+  | { $setLocal: string; merge: Record<string, unknown> }
+  /** Add to a number field. The schema layer's only arithmetic — see `resolveSetLocalProp`. */
+  | { $setLocal: string; by: number };
 export type ErrorToken = { $error: string };
 export type ValidToken = { $valid: string };
 export type TouchedToken = { $touched: string };

@@ -37,6 +37,22 @@ export class AgentSettings extends Ad4mModel {
   useSpaceTemplate: boolean = true;
 
   /**
+   * Whether a template may bring its own theme.
+   *
+   * The sibling of `useSpaceTemplate`, and the same species of question: may something other than me
+   * choose part of how this looks. A template can name a theme it was designed for
+   * (`TemplateMeta.themeId`), which is honoured as a rung in the theme chain rather than written
+   * anywhere — so this flag is one condition in the resolver, not a setting to unwind.
+   *
+   * Defaults on, because a showcase template that renders in the wrong palette is a worse first
+   * impression than one that moves a theme somebody had not thought about. Anyone who has
+   * deliberately settled on a look turns it off once, or pins a theme per space, and template
+   * switching stops touching it.
+   */
+  @Property({ through: 'we://use_template_theme' })
+  useTemplateTheme: boolean = true;
+
+  /**
    * Whether a space's theme covers the whole window, or only the space's own content.
    *
    * `'global'` themes everything including the shell — the sidebar, settings, your profile.

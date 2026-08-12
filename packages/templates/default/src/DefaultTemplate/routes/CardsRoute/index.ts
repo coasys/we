@@ -56,7 +56,8 @@ export const cardsRoute: RouteSchema = {
     children: [
       cardsHeader,
 
-      { type: '$if', props: { condition: { $local: 'createPostOpen' }, then: createPostModal } },
+      // Gates itself on `createPostOpen` — see `composerModal`.
+      createPostModal,
 
       { type: '$if', props: { condition: { $eq: [{ $local: 'contentType' }, 'posts'] }, then: postsList } },
       callsList,

@@ -10,4 +10,3 @@
  * holds the data, which framework renders it, or what a perspective is.
  */
 export { defaultTemplate } from './DefaultTemplate';
-export { twitterTemplate } from './TwitterTemplate.schema';

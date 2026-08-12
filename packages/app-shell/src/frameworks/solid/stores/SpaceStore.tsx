@@ -6,6 +6,7 @@ import {
   spaceSelfWhere,
   syncSpaceToParent,
 } from '@shared/spaceSync';
+import { resolveSpaceTheme } from '@shared/themeResolution';
 import { deriveSlug } from '@shared/utils';
 import type { AgentProfileSummary, DatasetRef } from '@we/backend-shared';
 import type { SerializedBlockNode } from '@we/block-shared';
@@ -21,6 +22,9 @@ import {
   FOLLOW_SPACE,
   getModelForPerspective,
   LocationBlock,
+  MutedAgent,
+  PREDICATES,
+  ReadMarker,
   Signal,
   SignalType,
   Space,
@@ -172,6 +176,25 @@ export interface SpaceMetaUpdate {
   description?: string;
   discovery?: 'listed' | 'hidden';
   location?: LocationData | null;
+}
+
+/**
+ * Where a composed artifact lands, for `createPost`.
+ *
+ * Flat scalars rather than a nested `anchor` object because these come from a template: a schema
+ * writes `args` as JSON, and `parentId` reading `"$channel.id"` is a plain context substitution
+ * where a nested object would need the author to know the resolver descends into it.
+ */
+export interface CreatePostOptions {
+  /** Free label for what this is. Defaults to `'post'`. */
+  kind?: string;
+  /** Id of the node to attach to. Omit for a post, which sits in the space unattached. */
+  parentId?: string;
+  /**
+   * How it attaches. Defaults to `we://children` — containment, which is what a channel message
+   * wants. Pass `we://comment` for a reply, which hangs off a node rather than sitting inside it.
+   */
+  predicate?: string;
 }
 
 export interface FluxSubgroupMessage {
@@ -387,8 +410,49 @@ export interface SpaceStore {
   /** Remove a space: clears its global-discovery listing (when authored by this agent) and
    * removes the backing dataset. */
   removeSpace: (uuid: string) => Promise<void>;
-  createPost: (json: unknown) => Promise<void>;
+  /**
+   * Create a composed artifact from editor state — a post, a channel message, a reply.
+   *
+   * One action for all three because they differ only in `kind` and where they attach; the
+   * composer, the blob, the search index and the mention edges are identical. See
+   * {@link CreatePostOptions}. Keeps its name because a post is the default and renaming it would
+   * churn every existing template for no gain.
+   */
+  createPost: (json: unknown, options?: CreatePostOptions) => Promise<void>;
   updatePost: (postId: string, json: unknown) => Promise<void>;
+  /**
+   * Move a child between two collections — a card between kanban columns. A relink of the two
+   * `we://children` edges; the child itself is untouched.
+   */
+  moveChild: (childId: string, fromId: string, toId: string) => Promise<void>;
+  /**
+   * Join or leave a node's participant roster — an RSVP. Writes only this agent's own entry, which
+   * is what keeps the roster conflict-free without coordination.
+   */
+  setAttending: (nodeId: string, attending: boolean) => Promise<void>;
+  /**
+   * DIDs this agent has muted, everywhere. Private, held in the root dataset.
+   *
+   * A feed filters on this before rendering — `{ $not: { $in: ['$post.author', …] } }`. Hiding on
+   * this agent's screen only: an AD4M neighbourhood is writable by every member, so nothing here
+   * removes anything for anyone else.
+   */
+  mutedDids: Accessor<string[]>;
+  /** Full mute records, for a settings list that wants the note as well as the DID. */
+  mutedAgents: Accessor<MutedAgent[]>;
+  /** Mute or unmute an agent. Positively phrased so a switch can pass `$event.detail` bare. */
+  setAgentMuted: (did: string, muted: boolean, description?: string) => Promise<void>;
+  /**
+   * When this agent last read each node, as `{ nodeId, lastReadAt }` rows.
+   *
+   * An unread indicator is "latest child newer than this" — the seen-half of the standing-query
+   * pattern notifications will generalise. No row means never read, so everything is unread.
+   *
+   * Read it with `$find` on `nodeId`; a schema cannot index a keyed map by a context ref.
+   */
+  readMarkers: Accessor<{ nodeId: string; lastReadAt: string }[]>;
+  /** Mark a node read as of now. Silent on failure — a lost marker is a stale dot, not an error. */
+  markRead: (nodeId: string, spaceUuid?: string) => Promise<void>;
   /**
    * Delete a `CollectionBlock` and everything inside it, recursively.
    *
@@ -514,6 +578,8 @@ export function SpaceStoreProvider(props: ParentProps) {
 
   /** This agent's personal choices per space, from the root dataset. See `SpacePreference`. */
   const [spacePreferences, setSpacePreferences] = createSignal<SpacePreference[]>([]);
+  const [readMarkers, setReadMarkers] = createSignal<ReadMarker[]>([]);
+  const [mutedAgents, setMutedAgents] = createSignal<MutedAgent[]>([]);
 
   const preferenceFor = (spaceUuid: string | undefined): SpacePreference | undefined =>
     spaceUuid ? spacePreferences().find((p) => p.spaceUuid === spaceUuid) : undefined;
@@ -1053,14 +1119,25 @@ export function SpaceStoreProvider(props: ParentProps) {
     })();
   });
 
-  async function createPost(json: unknown): Promise<void> {
+  async function createPost(json: unknown, options: CreatePostOptions = {}): Promise<void> {
     const p = datasetStore.currentDataset()?.handle;
     if (!p) return;
-    // Written alongside the `type: 'root'` that already identifies a post, not instead of it: reads
-    // still key on `type`, so existing posts stay in the feed and nothing needs backfilling. See
-    // `createBlocks`.
+
+    // `kind` is written alongside the `type: 'root'` that already identifies a post, not instead of
+    // it: reads still key on `type`, so existing posts stay in the feed and nothing needs
+    // backfilling. See `createBlocks`.
+    //
+    // The anchor is what makes one action serve every composed artifact. A post has none — it sits
+    // in the space. A message names its channel through `we://children`; a reply names whatever it
+    // answers through `we://comment`. Both arrive from a schema as ids, which is all a template
+    // has, and both are `$each`/route values rather than anything the store could derive.
+    const { kind = 'post', parentId, predicate = PREDICATES.CHILDREN } = options;
+
     // The action arrives from a schema as unknown; the composer produced it, so it is editor state.
-    await createBlocks(p, json as SerializedBlockNode, 'post');
+    await createBlocks(p, json as SerializedBlockNode, {
+      kind,
+      ...(parentId && { anchor: { id: parentId, predicate } }),
+    });
   }
 
   async function updatePost(postId: string, json: unknown): Promise<void> {
@@ -1069,6 +1146,66 @@ export function SpaceStoreProvider(props: ParentProps) {
     const existingRoot = await CollectionBlock.findOne(p, { where: { id: postId } });
     if (!existingRoot) return;
     await reconcileBlocks(p, existingRoot, json as SerializedBlockNode);
+  }
+
+  /**
+   * Move a child from one collection to another — a kanban card between columns, a post between
+   * channels.
+   *
+   * A relink, not an edit: the child is untouched and only the two `we://children` edges change.
+   * That is what makes containment a usable way to express status (see the `kanbanBoard`
+   * fragment) — the card carries no column field that could disagree with where it actually is.
+   *
+   * Add before remove, deliberately. Both writes are separate round trips, so a failure between
+   * them leaves the card in **two** columns rather than in none — visible and fixable by moving it
+   * again, where the other order loses it somewhere no view lists. Not atomic: `Ad4mModel`'s batch
+   * covers a transaction on one model's own writes, and this touches two.
+   *
+   * A no-op when the source and target are the same, so a menu listing every column including the
+   * current one cannot remove a card by "moving" it where it already is.
+   */
+  async function moveChild(childId: string, fromId: string, toId: string): Promise<void> {
+    const p = datasetStore.currentDataset()?.handle;
+    if (!p || !childId || !fromId || !toId || fromId === toId) return;
+    try {
+      const [from, to] = await Promise.all([
+        CollectionBlock.findOne(p, { where: { id: fromId } }),
+        CollectionBlock.findOne(p, { where: { id: toId } }),
+      ]);
+      if (!from || !to) return;
+      await to.addChildren(childId);
+      await from.removeChildren(childId);
+    } catch (error) {
+      console.error('SpaceStore: could not move child between collections', error);
+      toastService.error('Could not move that item');
+    }
+  }
+
+  /**
+   * Join or leave a node's participant roster — an event RSVP, a document's co-editor list.
+   *
+   * **Writes only this agent's own entry, ever.** That is not a convenience, it is what keeps
+   * `participants` conflict-free: it is a bag of links with no way to refuse a duplicate, so it
+   * behaves as a set exactly as long as each agent writes itself and nobody else. A caller that
+   * appended every member it could see is what turned the transcribe module's roster into a
+   * multiset that grew each session — see the note on `WeNode.participants`.
+   *
+   * No read-modify-write for the same reason: `addParticipants` and `removeParticipants` are single
+   * link operations, so two agents RSVPing at the same moment cannot drop each other.
+   */
+  async function setAttending(nodeId: string, attending: boolean): Promise<void> {
+    const p = datasetStore.currentDataset()?.handle;
+    const me = session.me()?.did;
+    if (!p || !nodeId || !me) return;
+    try {
+      const node = await CollectionBlock.findOne(p, { where: { id: nodeId } });
+      if (!node) return;
+      if (attending) await node.addParticipants(me);
+      else await node.removeParticipants(me);
+    } catch (error) {
+      console.error('SpaceStore: could not update attendance', error);
+      toastService.error('Could not update your RSVP');
+    }
   }
 
   async function deleteCollection(collectionId: string): Promise<void> {
@@ -1355,6 +1492,86 @@ export function SpaceStoreProvider(props: ParentProps) {
       .catch(() => setSpacePreferences([]));
   });
 
+  // Per-agent private state, loaded from the root dataset alongside space preferences and for the
+  // same reason: it is not any one space's, and a feed has to filter on the mute list before it can
+  // render a single row.
+  createEffect(() => {
+    const root = datasetStore.rootDataset();
+    if (!root) {
+      setReadMarkers([]);
+      setMutedAgents([]);
+      return;
+    }
+    void ReadMarker.findAll(root.handle)
+      .then(setReadMarkers)
+      .catch(() => setReadMarkers([]));
+    void MutedAgent.findAll(root.handle)
+      .then(setMutedAgents)
+      .catch(() => setMutedAgents([]));
+  });
+
+  /**
+   * Mark a node read, as of now.
+   *
+   * Upsert on `nodeId` — one marker per node, moved forward rather than accumulated. Called on
+   * opening a channel, so it runs often and stays silent on failure: a lost marker shows a stale
+   * unread dot, which is not worth a toast interrupting what the user opened the channel to do.
+   */
+  async function markRead(nodeId: string, spaceUuid?: string): Promise<void> {
+    const root = datasetStore.rootDataset();
+    const uuid = spaceUuid ?? datasetStore.currentDataset()?.id;
+    if (!root || !nodeId || !uuid) return;
+    // ISO-8601 UTC: the marker is compared against `createdAt` as a string, so the format has to be
+    // the one whose lexicographic order is chronological. See `ReadMarker.lastReadAt`.
+    const lastReadAt = new Date().toISOString();
+    try {
+      const existing = readMarkers().find((m) => m.nodeId === nodeId);
+      if (existing) await ReadMarker.update(root.handle, existing.id, { lastReadAt });
+      else await ReadMarker.create(root.handle, { nodeId, spaceUuid: uuid, lastReadAt });
+      setReadMarkers(await ReadMarker.findAll(root.handle));
+    } catch (error) {
+      console.error('SpaceStore: could not write read marker', error);
+    }
+  }
+
+  /**
+   * Mute or unmute an agent for this agent, everywhere.
+   *
+   * Phrased positively — `muted: boolean` — so a switch can pass `$event.detail` bare; the same
+   * constraint `setModuleVisible` documents.
+   *
+   * Reports failure, unlike `markRead`: this one was asked for deliberately, and someone who thinks
+   * they have muted an account and has not is worse off than someone who knows it did not work.
+   */
+  /** Just the DIDs — what a feed filter wants, without every consumer mapping the records. */
+  const mutedDids = createMemo(() => mutedAgents().map((m) => m.did));
+
+  /**
+   * Markers as `{ nodeId, lastReadAt }` rows.
+   *
+   * An array rather than a map keyed by node id, because **a schema cannot index a map
+   * dynamically**: `$store` resolves a static dot path, so `spaceStore.readMarkers.<some context
+   * ref>` is not expressible — the path would be taken literally. The read is always "this row's
+   * marker" from inside a `$each`, which means `$find` over an array with a context ref in `where`,
+   * the only form the resolver supports. Linear per rendered row, over a list the size of the
+   * channels one agent has opened.
+   */
+  const readMarkerRows = createMemo(() => readMarkers().map((m) => ({ nodeId: m.nodeId, lastReadAt: m.lastReadAt })));
+
+  async function setAgentMuted(did: string, muted: boolean, description = ''): Promise<void> {
+    const root = datasetStore.rootDataset();
+    if (!root || !did) return;
+    try {
+      const existing = mutedAgents().find((m) => m.did === did);
+      if (muted && !existing) await MutedAgent.create(root.handle, { did, description });
+      else if (!muted && existing) await MutedAgent.delete(root.handle, existing.id);
+      setMutedAgents(await MutedAgent.findAll(root.handle));
+    } catch (error) {
+      console.error('SpaceStore: could not update mute list', error);
+      toastService.error(muted ? 'Could not mute that account' : 'Could not unmute that account');
+    }
+  }
+
   /** Turn a module on or off for this agent everywhere. See `AgentSettings.installedModules`. */
   /**
    * Put a space's share link on the clipboard.
@@ -1466,11 +1683,59 @@ export function SpaceStoreProvider(props: ParentProps) {
     return override;
   };
 
+  /**
+   * The theme a template asks to be seen in, if this agent allows it and actually has that theme.
+   *
+   * A suggestion resolved live, never written — which is what makes template switching
+   * non-destructive: switching away and back restores the previous look by recomputation, and
+   * nobody's stored choice is touched on the way.
+   *
+   * A suggestion naming a theme this agent has not installed resolves to nothing rather than
+   * failing, mirroring how `?theme=` in a share link degrades. The caller reports it once.
+   */
+  /**
+   * The suggestion, read off the template **actually rendering**.
+   *
+   * `templateStore.currentTemplate` rather than `resolveTemplateFor(uuid)`, because those disagree
+   * on the path people actually use: the switcher calls `templateStore.switchTemplate`, which
+   * writes `AgentSettings.currentTemplateId` and leaves `SpacePreference.templateId` alone. Reading
+   * the preference meant the suggestion was computed from the space's default template while the
+   * agent was looking at the one they had just picked — so applying a template changed nothing.
+   *
+   * Only meaningful for the space on screen; `currentTemplate` is a single global. For any other
+   * space this returns nothing, which is right rather than merely safe: the only caller that passes
+   * a different uuid is `setSpaceThemeOverride`, which is writing a pin that outranks the
+   * suggestion anyway.
+   */
+  const templateThemeFor = (uuid: string): string => {
+    if (!themeStore.useTemplateTheme()) return '';
+    if (datasetStore.currentDataset()?.id !== uuid) return '';
+    const suggested = templateStore.currentTemplate?.meta?.themeId;
+    if (!suggested) return '';
+    return themeStore.allThemes().some((t) => t.id === suggested) ? suggested : '';
+  };
+
+  /**
+   * Which theme this agent sees in one space.
+   *
+   * The precedence itself lives in `resolveSpaceTheme` — a pure function, because the rule is the
+   * feature and it was designed wrong once. This reads the signals it needs and hands them over.
+   */
   const resolveThemeFor = (uuid: string): string => {
-    const override = themeOverrideFor(uuid);
-    if (override === AGENT_DEFAULT) return themeStore.defaultThemeId();
-    if (override === FOLLOW_SPACE) return spaceForUuid(uuid)?.defaultThemeId || '';
-    return override;
+    const current = datasetStore.currentDataset()?.id === uuid ? templateStore.currentTemplate?.id : undefined;
+    const spaceDefault = spaceForUuid(uuid)?.defaultTemplateId || '';
+    return resolveSpaceTheme({
+      themeOverride: themeOverrideFor(uuid),
+      // For a space that is not on screen there is no rendering template to compare, so fall back
+      // to what the preferences say would apply there.
+      templateIsSpaceDefault:
+        current !== undefined ? current === spaceDefault : templateOverrideFor(uuid) === FOLLOW_SPACE,
+      spaceTheme: spaceForUuid(uuid)?.defaultThemeId || '',
+      templateTheme: templateThemeFor(uuid),
+      agentTheme: themeStore.defaultThemeId(),
+      agentDefaultSentinel: AGENT_DEFAULT,
+      followSpaceSentinel: FOLLOW_SPACE,
+    });
   };
 
   /**
@@ -1619,6 +1884,33 @@ export function SpaceStoreProvider(props: ParentProps) {
       // In a space with no default theme — clear any previously scoped space theme.
       themeStore.clearSpaceTheme();
     }
+  });
+
+  /**
+   * Say once when a template asks for a theme this agent does not have.
+   *
+   * Separate from the effect that applies the theme, because that one runs on every space switch
+   * and every preference write — a toast in there would repeat. Reported per theme id, matching how
+   * `TemplateProvider` handles a `?theme=` suggestion it cannot honour: the intent is degraded
+   * rather than silently dropped, and said no more than once.
+   *
+   * Gated on `allThemes()` being populated so the boot frame, where nothing is loaded yet, does not
+   * read as "you don't have it".
+   */
+  const reportedMissingThemes = new Set<string>();
+  createEffect(() => {
+    if (!themeStore.useTemplateTheme()) return;
+    const uuid = datasetStore.currentDataset()?.id;
+    if (!uuid) return;
+    const themes = themeStore.allThemes();
+    if (!themes.length) return;
+
+    const suggested = templateStore.currentTemplate?.meta?.themeId;
+    if (!suggested || themes.some((t) => t.id === suggested)) return;
+    if (reportedMissingThemes.has(suggested)) return;
+
+    reportedMissingThemes.add(suggested);
+    toastService.warning(`This template suggests a theme ("${suggested}") you don't have — using your own.`);
   });
 
   async function setSpaceDefaultTemplate(templateId: string, spaceUuid?: string): Promise<void> {
@@ -1798,6 +2090,13 @@ export function SpaceStoreProvider(props: ParentProps) {
     removeSpace,
     createPost,
     updatePost,
+    moveChild,
+    setAttending,
+    mutedDids,
+    mutedAgents,
+    setAgentMuted,
+    readMarkers: readMarkerRows,
+    markRead,
     deleteCollection,
     updateSpaceImage,
     updateSpaceMeta,

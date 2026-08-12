@@ -80,6 +80,16 @@ export interface ThemeStore {
    */
   setThemeScopeGlobal: (global: boolean) => Promise<void>;
   /**
+   * Whether a template may bring the theme it was designed for. Defaults on.
+   *
+   * The suggestion is resolved, never written (see `spaceStore`'s theme precedence), so this flag
+   * is one condition in the resolver rather than a setting that has to be unwound — turning it off
+   * restores whatever the theme would otherwise have been, immediately.
+   */
+  useTemplateTheme: Accessor<boolean>;
+  /** Persist that choice. Boolean, so a switch can pass `$event.detail` bare. */
+  setUseTemplateTheme: (enabled: boolean) => Promise<void>;
+  /**
    * The theme the scoped template wrapper renders — the theme being edited if there is one, else the
    * space's. Null in global mode, where the template inherits documentElement.
    */
@@ -519,6 +529,19 @@ export function ThemeStoreProvider(props: ParentProps) {
   async function setThemeScopeGlobal(global: boolean) {
     setThemeScopeOverride(null);
     await datasetStore.updateAgentSettings({ themeScope: global ? 'global' : 'scoped' });
+  }
+
+  /*
+    Defaults **on** when unset, which is why this reads `!== false` rather than coercing.
+
+    An agent whose settings predate the field, or who has never opened the switch, has no opinion —
+    and the useful default is that a template designed for a particular look arrives in it. A plain
+    truthiness read would make "never decided" mean off, which is the opposite.
+  */
+  const useTemplateTheme = createMemo(() => datasetStore.agentSettings()?.useTemplateTheme !== false);
+
+  async function setUseTemplateTheme(enabled: boolean) {
+    await datasetStore.updateAgentSettings({ useTemplateTheme: enabled });
   }
 
   function setDefaultTheme(themeId: string) {
@@ -1087,6 +1110,8 @@ export function ThemeStoreProvider(props: ParentProps) {
     themeScope,
     themeScopePreference,
     themeScopeGlobal,
+    useTemplateTheme,
+    setUseTemplateTheme,
     themeScopePreviewing,
     previewThemeScope,
     setThemeScopeGlobal,

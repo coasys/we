@@ -6,3 +6,4 @@ export { splitProps } from './splitProps';
 export { setLocalWarningSink } from './local';
 export type { LocalFieldMeta, LocalMetaMap } from './local';
 export type { MapProp } from './types';
+export { noMemo } from './types';

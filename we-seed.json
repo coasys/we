@@ -9,6 +9,7 @@
     "useQueryIR": true
   },
   "modules": ["globe", "graph", "notes", "call", "transcribe"],
+  "templates": ["default", "discord", "twitter", "instagram", "youtube", "kanban", "events"],
   "ad4m": {
     "dataPath": "~/.ad4m",
     "executorPath": "../ad4m/target/release/ad4m-executor",

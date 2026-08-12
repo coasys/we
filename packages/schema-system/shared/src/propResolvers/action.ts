@@ -1,6 +1,6 @@
 import type { resolveProp } from './dispatcher';
 import { deepUnwrap } from './reactive';
-import type { Memo, Props } from './types';
+import { type Memo, noMemo, type Props } from './types';
 
 // Resolves relative paths used in router navigation (e.g. '.', './', '../')
 export function resolveRelativePath(rawPath: string, baseDepth: number, pathname: string): string {
@@ -121,10 +121,23 @@ export function resolveActionProp(
 
   // Return a callable function if the method exists
   if (typeof method === 'function') {
-    // Local helper: dispatch an array of action tokens with an optionally augmented context
+    /*
+      Dispatch an array of action tokens with an optionally augmented context.
+
+      Resolved with `noMemo`, not the injected `memo`. These run from a promise callback — after the
+      action settled — where there is no reactive owner, so a `createMemo` here is a computation
+      created outside a root: Solid warns, and the computation is never disposed. A lifecycle array
+      is evaluated exactly once, at a moment that has already happened, so there is nothing for a
+      memo to be *for*.
+
+      It also fixes a quieter bug. A memoized argument arrives as an accessor rather than a value,
+      and the relative-path branch below tests `typeof resolvedArgs[0] === 'string'` before
+      `deepUnwrap` runs — so `onSuccess: [{ $action: 'routeStore.navigate', args: [{ $concat: … }] }]`
+      skipped relative-path resolution entirely. Absolute paths survived that; relative ones did not.
+    */
     function dispatchActions(actions: unknown[], ctx: Props): void {
       for (const item of actions) {
-        const fn = resolvePropFn(item, stores, ctx, memo);
+        const fn = resolvePropFn(item, stores, ctx, noMemo);
         if (typeof fn === 'function') (fn as (...a: unknown[]) => unknown)();
       }
     }

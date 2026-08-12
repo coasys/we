@@ -428,7 +428,9 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
       // space-wide call has no anchor and simply lives in the space, found by `kind`.
       const created = await createEntity(
         'CollectionBlock',
-        { kind: CALL_KIND, type: 'collection' },
+        // Feed mode: every participant's transcriber appends to this one record, so it has no
+        // single authoring agent and must never be reconciled.
+        { kind: CALL_KIND, type: 'collection', mode: 'feed' },
         call.anchorNodeId ? { parent: { id: call.anchorNodeId, predicate: CALL_PREDICATE } } : undefined,
       );
       if (created) {

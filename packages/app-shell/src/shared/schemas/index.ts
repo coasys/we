@@ -1,5 +1,5 @@
 // Templates — data, shipped from content/
-export { defaultTemplate, twitterTemplate } from '@we/template-default';
+export { defaultTemplate } from '@we/template-default';
 
 // Shell
 export {

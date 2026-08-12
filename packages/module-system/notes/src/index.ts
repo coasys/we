@@ -210,7 +210,10 @@ const panel: SchemaNode = {
                     onClick: [
                       {
                         $action: 'model.create',
-                        args: ['CollectionBlock', { kind: NOTES_KIND, type: 'collection' }],
+                        // `mode: 'feed'` is what stops `reconcileBlocks` ever running here: notes
+                        // accumulate from whoever is in the space, so treating one writer's tree
+                        // as the whole truth would delete everyone else's.
+                        args: ['CollectionBlock', { kind: NOTES_KIND, type: 'collection', mode: 'feed' }],
                         onSuccess: [
                           {
                             $action: 'model.create',
@@ -308,6 +311,7 @@ export const notesModule = defineModule({
   // Still declared, still never written to. Notes are `TextBlock`s now; this keeps the ones written
   // before that readable, and removing it would orphan them rather than delete them. See `Note.ts`.
   entities: { manifest: NOTE_MANIFEST },
+
   schemas: { toggleButton },
 
   /**

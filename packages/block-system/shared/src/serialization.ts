@@ -3,6 +3,8 @@ import { Ad4mModel, getPropertiesMetadata } from '@coasys/ad4m';
 import type { CollectionBlock, FileData } from '@we/models';
 import { asFileField, dataURIToFileData } from '@we/models';
 
+import type { CollectionMode } from './modes';
+import { isReconcilable } from './modes';
 import { getBlockModel, getRegisteredBlockModels } from './registry';
 import type { SerializedBlockNode } from './types';
 
@@ -32,6 +34,48 @@ export function extractInlineText(children: SerializedBlockNode[]): string {
     .filter((c) => INLINE_TYPES.has(c.type))
     .map((c) => (c as Record<string, unknown>).text ?? (c.type === 'linebreak' ? '\n' : ''))
     .join('');
+}
+
+/**
+ * Lexical inline node type for an @-mention. Carries the mentioned agent's DID in `did`, and its
+ * display text — a handle at the time of writing — in `text`, like any other inline run.
+ *
+ * Not in {@link INLINE_TYPES}: a mention is text, so it must flow into `extractInlineText` and the
+ * search index alongside the run it sits in. Its presence here is only for {@link extractMentions}
+ * to recognise.
+ */
+const MENTION_TYPE = 'mention';
+
+/**
+ * Every DID mentioned anywhere in a composed tree, de-duplicated, in document order.
+ *
+ * Reads the `did` off mention nodes rather than parsing `@handle` out of text, which is the whole
+ * point of the edge: handles are mutable and not unique, so a text scan matches the wrong agent
+ * whenever two people share a display name and misses one who has since renamed. The editor knows
+ * exactly who was picked from the autocomplete; this preserves that.
+ *
+ * De-duplicated because the relation is a set — mentioning someone three times in a post is one
+ * fact about that post — and ordered because a set built from document order at least reads
+ * predictably when displayed.
+ */
+export function extractMentions(node: SerializedBlockNode): string[] {
+  const dids = new Set<string>();
+
+  function walk(n: SerializedBlockNode): void {
+    if (n.type === MENTION_TYPE) {
+      const did = (n as Record<string, unknown>).did;
+      if (typeof did === 'string' && did) dids.add(did);
+    }
+    // A collection's sub-editor content is embedded rather than linked, so mentions inside a
+    // nested gallery or column belong to the post that contains it.
+    if (n.type === 'collection' && n.childEditorState) {
+      walk(n.childEditorState as SerializedBlockNode);
+    }
+    if (n.children) for (const child of n.children) walk(child);
+  }
+
+  walk(node);
+  return [...dids];
 }
 
 /** Text properties to extract per block type for the textContent search index. */
@@ -289,6 +333,79 @@ export function extractBlockData(ModelClass: typeof Ad4mModel, node: SerializedB
   return data;
 }
 
+/** A model exposing `WeNode`'s mentions relation — every block root does, but the type is erased. */
+interface NodeWithMentions {
+  mentions: string[];
+  addMentions(target: string | string[], batchId?: string): Promise<void>;
+  removeMentions(target: string | string[], batchId?: string): Promise<void>;
+}
+
+function hasMentions(model: unknown): model is Ad4mModel & NodeWithMentions {
+  return typeof (model as NodeWithMentions)?.addMentions === 'function';
+}
+
+/**
+ * Reconcile a root's `we://mention` edges against the mentions in its composed tree.
+ *
+ * A read-modify-write, which every other relation on `WeNode` avoids — and correct here for the
+ * reason the field's docstring gives: the author owns the text, so they own every mention in it,
+ * and there is no second writer to race. Contrast `participants`, where each agent appends only
+ * itself precisely because a rewrite would drop whoever lost.
+ *
+ * Diffed rather than cleared-and-rewritten so that editing a post's wording does not churn links
+ * for the mentions it kept — each removed link is a network write, and an unchanged edge should
+ * cost nothing.
+ */
+async function writeMentions(root: Ad4mModel, node: SerializedBlockNode, batchId?: string): Promise<void> {
+  if (!hasMentions(root)) return;
+
+  const wanted = extractMentions(node);
+  const current = Array.isArray(root.mentions) ? root.mentions : [];
+  if (!wanted.length && !current.length) return;
+
+  const added = wanted.filter((did) => !current.includes(did));
+  const removed = current.filter((did) => !wanted.includes(did));
+
+  if (added.length) await root.addMentions(added, batchId);
+  if (removed.length) await root.removeMentions(removed, batchId);
+}
+
+/**
+ * Where a newly-created composition attaches, as a raw predicate link.
+ *
+ * A predicate rather than a relation name because the two anchors that matter mean different
+ * things and live on different models: `we://children` puts a message *inside* a channel
+ * (composition — what a container is made of), `we://comment` hangs a reply *off* any `WeNode`
+ * (discourse — what was said about it). A relation-name API would have to resolve the name against
+ * the anchor's class, which the block system does not have and should not need: it is persisting a
+ * document, and where that document belongs is the caller's knowledge.
+ */
+export interface BlockAnchor {
+  /** Id of the existing node the new root links from. */
+  id: string;
+  /** The predicate to link through — `'we://children'`, `'we://comment'`. */
+  predicate: string;
+}
+
+export interface CreateBlocksOptions {
+  /** Free label stamped onto the root saying what it is for — see the discussion below. */
+  kind?: string;
+  /**
+   * Who owns the root's children (`'document'` | `'feed'` | `'collaborative'`).
+   *
+   * Defaults to `'document'` **when a `kind` is given**, because everything this function creates
+   * is a composed artifact: it persists an editor's tree, which is the definition of document
+   * mode. A feed container is not made here — it is made with `model.create` and named by its
+   * template — so the default is right for every caller of this function and wrong for none.
+   *
+   * Left unset when no `kind` is given, so a caller that opts out of the whole vocabulary writes
+   * neither field and reads back as legacy.
+   */
+  mode?: CollectionMode;
+  /** Attach the root to something that already exists. See {@link BlockAnchor}. */
+  anchor?: BlockAnchor;
+}
+
 /**
  * Recursively creates AD4M block models from a serialized block tree.
  * Uses Ad4mModel.transaction() for atomic persistence — if any block
@@ -310,14 +427,17 @@ export function extractBlockData(ModelClass: typeof Ad4mModel, node: SerializedB
 export async function createBlocks(
   perspective: PerspectiveProxy,
   node: SerializedBlockNode,
-  kind?: string,
+  options: CreateBlocksOptions = {},
 ): Promise<Ad4mModel | undefined> {
+  const { kind, mode = kind ? 'document' : undefined, anchor } = options;
   return Ad4mModel.transaction(perspective, async (tx) => {
-    const root = await persistNode(perspective, tx.batchId, node);
+    const root = await persistNode(perspective, tx.batchId, node, undefined, undefined, anchor);
     // Assigned before the blob write below so both land in that one `save`, rather than costing a
     // second round trip for one string.
     const stampKind = root && kind && 'kind' in root;
     if (stampKind) (root as CollectionBlock).kind = kind;
+    const stampMode = root && mode && 'mode' in root;
+    if (stampMode) (root as CollectionBlock).mode = mode;
 
     // Store the full Lexical serialized JSON as a file-storage blob on the
     // root CollectionBlock for lossless roundtrip. preUploadFileAssets runs
@@ -337,11 +457,15 @@ export async function createBlocks(
       });
       (root as CollectionBlock).textContent = extractTextContent(patchedNode);
       await root.save(tx.batchId);
-    } else if (stampKind) {
-      // A root with no `editorState` skips the blob write entirely, so `kind` would otherwise be
-      // assigned to an instance nobody saves.
+    } else if (stampKind || stampMode) {
+      // A root with no `editorState` skips the blob write entirely, so `kind`/`mode` would
+      // otherwise be assigned to an instance nobody saves.
       await root!.save(tx.batchId);
     }
+
+    // After the save: `addMentions` writes links, which is a separate operation from the property
+    // write above and has nothing to add to that round trip.
+    if (root) await writeMentions(root, node, tx.batchId);
 
     return root;
   });
@@ -352,6 +476,11 @@ export async function createBlocks(
  * mutating `node` in place with the `id` of each created block. Shared by
  * `createBlocks` (no parent — first call) and `reconcileBlocks` (parent is
  * an existing, already-persisted root).
+ *
+ * `anchor` applies to the **root call only** — it is the incoming link that attaches this whole
+ * artifact to something that already exists (a channel, or the node a reply answers). Not passed
+ * down: descendants are attached to their in-tree parent through `addChildren`, and an anchor
+ * inherited downward would link every block in the post to the channel as well.
  */
 async function persistNode(
   perspective: PerspectiveProxy,
@@ -359,6 +488,7 @@ async function persistNode(
   node: SerializedBlockNode,
   parent?: Ad4mModel,
   inherited?: Record<string, unknown>,
+  anchor?: BlockAnchor,
 ): Promise<Ad4mModel | undefined> {
   // Pass-through containers (e.g. "list"): don't create a model,
   // carry metadata down to children
@@ -394,7 +524,10 @@ async function persistNode(
       data.text = extractInlineText(node.children);
     }
 
-    block = await ModelClass.create(perspective, data, { batchId });
+    block = await ModelClass.create(perspective, data, {
+      batchId,
+      ...(anchor && { parent: { id: anchor.id, predicate: anchor.predicate } }),
+    });
     node.id = block.id;
 
     if (parent && block && hasChildrenRelation(parent)) {
@@ -571,12 +704,34 @@ async function collectDescendants(perspective: PerspectiveProxy, childUris: stri
  * ordered id list once its subtree is reconciled — relation assignment
  * fully replaces the link set, so reordering and reparenting fall out for
  * free without needing a separate move/diff step.
+ *
+ * ## Document-mode only
+ *
+ * Every sentence above assumes the incoming tree is the **whole truth** about this collection's
+ * contents — which is true of an artifact one agent authored and just re-saved, and false of a
+ * container many agents append to. Run this against a channel and the orphan pass deletes every
+ * message the editing agent's tree does not mention, which is all of them but their own.
+ *
+ * So it refuses anything whose `kind` is registered as a non-document mode (see `kinds.ts`; the
+ * check is an allow-list, and legacy `kind`-less posts pass). Loud, because the alternative
+ * failure is silent and destroys other people's content.
  */
 export async function reconcileBlocks(
   perspective: PerspectiveProxy,
   existingRoot: Ad4mModel & BlockWithChildren,
   node: SerializedBlockNode,
 ): Promise<Ad4mModel> {
+  // Read structurally rather than through `CollectionBlock`: the parameter is typed as a generic
+  // block root, and `Partial<CollectionBlock>` does not overlap it enough for a direct cast.
+  const root = existingRoot as Ad4mModel & BlockWithChildren & { kind?: string; mode?: string };
+  if (!isReconcilable(root.mode)) {
+    throw new Error(
+      `reconcileBlocks refused: collection '${root.kind || 'untitled'}' is in '${root.mode}' mode, not 'document'. ` +
+        'Reconciling it would delete every child the incoming tree omits, which in a container ' +
+        "many agents write to is everyone else's content. Append with createBlocks({ anchor }) instead.",
+    );
+  }
+
   return Ad4mModel.transaction(perspective, async (tx) => {
     const existing = await collectDescendants(perspective, existingRoot.children);
     const claimed = new Set<string>();
@@ -690,6 +845,10 @@ export async function reconcileBlocks(
     });
     (existingRoot as CollectionBlock).textContent = extractTextContent(patchedNode);
     await existingRoot.save(tx.batchId);
+
+    // Edits add and remove mentions like any other content, so the edge set is reconciled here for
+    // the same reason `textContent` is rewritten: both are projections of the tree that just changed.
+    await writeMentions(existingRoot, node, tx.batchId);
 
     return existingRoot;
   });

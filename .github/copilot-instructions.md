@@ -1256,6 +1256,7 @@ AgentSettings extends Ad4mModel:
   - globalSpaceJoined: boolean = false [we://global_space_joined]
   - globalSpaceUrl: string [we://global_space_url]
   - useSpaceTemplate: boolean = true [we://use_space_template]
+  - useTemplateTheme: boolean = true [we://use_template_theme]
   - themeScope: string [we://theme_scope]
   - installedModules: string [we://installed_modules]
   Relations:
@@ -1303,14 +1304,9 @@ CollectionBlock extends WeNode:
   - editorState: string = null [we://editor_state]
   - type: string [we://type]
   - kind: string [we://kind]
+  - mode: string [we://mode]
   - title: string [we://title]
   - description: string [we://description]
-  - display: string [we://display]
-  - direction: string [we://direction]
-  - format: string [we://format]
-  - indent: number [we://indent]
-  - columns: number [we://columns]
-  - gap: string [we://gap]
   - version: number [we://version]
   - textContent: string [we://text_content]
   Relations:
@@ -1374,6 +1370,17 @@ LocationBlock extends WeNode:
   - countryCode: string [we://country_code]
   - country: string [we://country]
   - version: number [we://version]
+
+MutedAgent extends WeNode:
+  Fields:
+  - did: string [we://did]
+  - description: string [we://description]
+
+ReadMarker extends WeNode:
+  Fields:
+  - nodeId: string [we://node_id]
+  - spaceUuid: string [we://space_uuid]
+  - lastReadAt: string [we://last_read_at]
 
 Signal extends Ad4mModel:
   Fields:
@@ -1495,6 +1502,7 @@ WeNode extends Ad4mModel:
   - signals: HasMany → Signal [we://signal]
   - participants: HasMany [we://participants]
   - calls: HasMany [we://call]
+  - mentions: HasMany [we://mention]
 
 ---
 
@@ -1821,6 +1829,9 @@ SpaceStore:
   - activeModules: string[] — what actually renders here for this agent: registered ∩ installed ∩ enabled, less the modules muted in this space. Module chrome and the launcher rail gate on this; enabledModules alone is not sufficient
   - moduleInstallSettings: { id, name, description, icon, installed, surface, switchable }[] — every registered module and whether this agent wants it anywhere. The global Settings → Modules list, and the only place an 'app' or 'capability' module is decided about: a contribution is gated at the layer where it renders, and only 'chrome' renders inside a space. `surface` is derived from what the module contributes. Its per-space counterpart is `modules` on each spaceList row, which carries enabled/installed/visible/active together and lists chrome modules only
   - moduleLaunchers: { id, icon, label, active }[] — launchers for the modules enabled here and available in this space; what the host module rail renders. Pair with { $action: "spaceStore.launchModule", args: ["$mod.id"] }
+  - mutedDids: unknown
+  - mutedAgents: unknown
+  - readMarkers: unknown
 - Actions:
   - createSpace(name, description, access: 'personal' | 'shared', discovery: 'hidden' | 'listed', avatarFile?, coverImageFile?, location?): creates a new space with full setup
   - joinSpace(id: string, focus = true): joins a shared space by share link, neighbourhood URL or CID, or focuses it if already joined. Pass focus: false to join without navigating there — for a caller that needs the dataset present rather than open, which is how the marketplace reads its own dataset without moving you out of the space you are in. Rejects when the join could not be completed, so onSuccess means what it says; watch joiningSpace/joinSlow/joinError for what to show while it runs. A join whose network call times out keeps going: the backend usually finishes anyway, and this waits for that before believing the failure
@@ -1828,6 +1839,10 @@ SpaceStore:
   - removeSpace(uuid: string): removes a space — clears its global-discovery listing (when authored by this agent) and removes the backing dataset
   - createPost(editorState: unknown): creates a new post
   - updatePost(postId: string, editorState: unknown): reconciles an edited post against its existing blocks — updates/reuses blocks whose id survived the edit, creates new ones, deletes ones no longer present
+  - moveChild(): unknown
+  - setAttending(): unknown
+  - setAgentMuted(): unknown
+  - markRead(): unknown
   - deleteCollection(collectionId: string): permanently deletes a CollectionBlock and everything inside it, recursively. Kind-agnostic — a post, a call record and a notes collection are the same shape, so this is the one delete for all of them
   - updateSpaceImage(field: "avatar" | "coverImage", imageFile: File, spaceUuid?): uploads and sets the space avatar or cover image
   - updateSpaceMeta(updates: { name?, description?, discovery?, location? }, spaceUuid?): updates the space everyone sees. Omit spaceUuid to target the space on screen; pass one to configure a space from the spaces list without navigating to it
@@ -1905,6 +1920,7 @@ ThemeStore:
   - themeScopePreference: unknown
   - themeScopeGlobal: unknown
   - themeScopePreviewing: unknown
+  - useTemplateTheme: unknown
   - activeTemplateTheme: unknown
   - saveEditingTheme: unknown
 - Actions:
@@ -1915,6 +1931,7 @@ ThemeStore:
   - toggleThemeInstalled(themeId: string): toggles a custom theme visible/hidden in pickers; does not delete the theme
   - previewThemeScope(scope: 'global' | 'scoped' | null): previews a scope for the current theme-editing session without writing the preference; null drops the preview. Cleared when editing ends
   - setThemeScopeGlobal(global: boolean): persists whether a space's theme covers the whole window (true) or only the space's own content (false, the default). Takes a boolean because a switch emits one and a schema cannot map it to a string — `$if` in an action's args resolves at render time, before the event exists
+  - setUseTemplateTheme(): unknown
   - replaceTheme(): unknown
   - restorePersonalTheme(): unknown
   - clearSpaceTheme(): unknown
@@ -2432,6 +2449,66 @@ Undeclared, `$setLocal` warns and no-ops: the button renders, takes the click, a
 
 If the action is slow (a recursive delete walks its whole collection), add a `busy` boolean set
 before it and cleared in `onFinally`, and bind the confirm button's `loading` and `disabled` to it.
+
+### Composing a post — the BlockComposer save handshake
+
+`BlockComposer` is **pull-based**. Its `onSave` does *not* fire when the user types or when a modal
+closes — it fires when somebody calls the composer's own `save()`, which it hands out exactly once
+through `onReady`. So the sequence is: `onReady` stores that function in a **`function`-typed**
+`$localState` field, the button calls it with `$callLocal`, `save()` serializes the tree, and
+`onSave` runs the action with the tree as `$arg`.
+
+```json
+{
+  "type": "we-modal",
+  "props": { "close": { "$setLocal": "composeOpen", "value": false } },
+  "$localState": {
+    "savePost": { "type": "function", "initial": null },
+    "submitting": { "type": "boolean", "initial": false }
+  },
+  "children": [
+    {
+      "type": "BlockComposer",
+      "props": {
+        "perspective": { "$store": "datasetStore.currentDataset.handle" },
+        "onReady": { "$setLocal": "savePost", "from": "$event.save" },
+        "onSave": [
+          { "$setLocal": "submitting", "value": true },
+          {
+            "$action": "spaceStore.createPost",
+            "args": ["$arg"],
+            "onSuccess": [{ "$setLocal": "composeOpen", "value": false }],
+            "onFinally": [{ "$setLocal": "submitting", "value": false }]
+          }
+        ]
+      }
+    },
+    {
+      "type": "we-button",
+      "props": {
+        "variant": "primary",
+        "loading": { "$local": "submitting" },
+        "disabled": { "$local": "submitting" },
+        "onClick": { "$callLocal": "savePost" }
+      },
+      "children": ["Post"]
+    }
+  ]
+}
+```
+
+**Do not** wire the button straight to the action against a `draft` local the composer was expected
+to fill in. That spelling typechecks, validates, renders — and posts `null`, surfacing as
+`Cannot read properties of null (reading 'type')` from inside `persistNode`, several frames from
+the cause. And because `onReady` is optional, omitting it makes the composer render a floppy-disk
+save button of its own, so the screen ends up with two buttons and only the unexpected one works.
+(`we-validate-schemas` rejects `onSave` without `onReady`.)
+
+`$arg` goes wherever the action wants it — first for `createPost(json, options)`, second for
+`updatePost(postId, json)`.
+
+**Prefer `composerModal` from `@we/template-kit`**, which owns all of the above; write it out by
+hand only when the modal itself needs a different shape.
 
 ### Form field
 

@@ -1,0 +1,22 @@
+{
+  "name": "@we/template-showcase",
+  "version": "0.1.0",
+  "description": "Showcase templates — six applications over one universal container, demonstrating the template system's range",
+  "type": "module",
+  "exports": {
+    ".": {
+      "import": "./src/index.ts",
+      "types": "./src/index.ts"
+    }
+  },
+  "dependencies": {
+    "@we/schema-shared": "workspace:*",
+    "@we/template-kit": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.0"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  }
+}

@@ -57,6 +57,11 @@ export const CORE_MANIFEST: ModelManifest = {
           "predicate": "we://use_space_template",
           "default": true
         },
+        "useTemplateTheme": {
+          "type": "boolean",
+          "predicate": "we://use_template_theme",
+          "default": true
+        },
         "themeScope": {
           "type": "string",
           "predicate": "we://theme_scope",
@@ -147,6 +152,11 @@ export const CORE_MANIFEST: ModelManifest = {
           "target": "",
           "cardinality": "many",
           "predicate": "we://call"
+        },
+        "mentions": {
+          "target": "",
+          "cardinality": "many",
+          "predicate": "we://mention"
         }
       },
       "flag": {
@@ -197,6 +207,11 @@ export const CORE_MANIFEST: ModelManifest = {
           "target": "",
           "cardinality": "many",
           "predicate": "we://call"
+        },
+        "mentions": {
+          "target": "",
+          "cardinality": "many",
+          "predicate": "we://mention"
         }
       },
       "flag": {
@@ -237,6 +252,11 @@ export const CORE_MANIFEST: ModelManifest = {
           "target": "",
           "cardinality": "many",
           "predicate": "we://call"
+        },
+        "mentions": {
+          "target": "",
+          "cardinality": "many",
+          "predicate": "we://mention"
         }
       },
       "flag": {
@@ -277,6 +297,11 @@ export const CORE_MANIFEST: ModelManifest = {
           "target": "",
           "cardinality": "many",
           "predicate": "we://call"
+        },
+        "mentions": {
+          "target": "",
+          "cardinality": "many",
+          "predicate": "we://mention"
         },
         "messages": {
           "target": "ChatMessage",
@@ -333,6 +358,11 @@ export const CORE_MANIFEST: ModelManifest = {
           "target": "",
           "cardinality": "many",
           "predicate": "we://call"
+        },
+        "mentions": {
+          "target": "",
+          "cardinality": "many",
+          "predicate": "we://mention"
         }
       },
       "flag": {
@@ -358,6 +388,11 @@ export const CORE_MANIFEST: ModelManifest = {
           "predicate": "we://kind",
           "default": ""
         },
+        "mode": {
+          "type": "string",
+          "predicate": "we://mode",
+          "default": ""
+        },
         "title": {
           "type": "string",
           "predicate": "we://title",
@@ -366,36 +401,6 @@ export const CORE_MANIFEST: ModelManifest = {
         "description": {
           "type": "string",
           "predicate": "we://description",
-          "default": ""
-        },
-        "display": {
-          "type": "string",
-          "predicate": "we://display",
-          "default": ""
-        },
-        "direction": {
-          "type": "string",
-          "predicate": "we://direction",
-          "default": ""
-        },
-        "format": {
-          "type": "string",
-          "predicate": "we://format",
-          "default": ""
-        },
-        "indent": {
-          "type": "number",
-          "predicate": "we://indent",
-          "default": 0
-        },
-        "columns": {
-          "type": "number",
-          "predicate": "we://columns",
-          "default": 0
-        },
-        "gap": {
-          "type": "string",
-          "predicate": "we://gap",
           "default": ""
         },
         "version": {
@@ -429,6 +434,11 @@ export const CORE_MANIFEST: ModelManifest = {
           "target": "",
           "cardinality": "many",
           "predicate": "we://call"
+        },
+        "mentions": {
+          "target": "",
+          "cardinality": "many",
+          "predicate": "we://mention"
         },
         "children": {
           "target": "",
@@ -474,6 +484,11 @@ export const CORE_MANIFEST: ModelManifest = {
           "target": "",
           "cardinality": "many",
           "predicate": "we://call"
+        },
+        "mentions": {
+          "target": "",
+          "cardinality": "many",
+          "predicate": "we://mention"
         }
       },
       "flag": {
@@ -529,6 +544,11 @@ export const CORE_MANIFEST: ModelManifest = {
           "target": "",
           "cardinality": "many",
           "predicate": "we://call"
+        },
+        "mentions": {
+          "target": "",
+          "cardinality": "many",
+          "predicate": "we://mention"
         }
       },
       "flag": {
@@ -596,6 +616,11 @@ export const CORE_MANIFEST: ModelManifest = {
           "target": "",
           "cardinality": "many",
           "predicate": "we://call"
+        },
+        "mentions": {
+          "target": "",
+          "cardinality": "many",
+          "predicate": "we://mention"
         }
       },
       "flag": {
@@ -660,6 +685,11 @@ export const CORE_MANIFEST: ModelManifest = {
           "target": "",
           "cardinality": "many",
           "predicate": "we://call"
+        },
+        "mentions": {
+          "target": "",
+          "cardinality": "many",
+          "predicate": "we://mention"
         }
       },
       "flag": {
@@ -718,6 +748,11 @@ export const CORE_MANIFEST: ModelManifest = {
           "target": "",
           "cardinality": "many",
           "predicate": "we://call"
+        },
+        "mentions": {
+          "target": "",
+          "cardinality": "many",
+          "predicate": "we://mention"
         }
       },
       "flag": {
@@ -774,6 +809,11 @@ export const CORE_MANIFEST: ModelManifest = {
           "target": "",
           "cardinality": "many",
           "predicate": "we://call"
+        },
+        "mentions": {
+          "target": "",
+          "cardinality": "many",
+          "predicate": "we://mention"
         }
       },
       "flag": {
@@ -843,11 +883,111 @@ export const CORE_MANIFEST: ModelManifest = {
           "target": "",
           "cardinality": "many",
           "predicate": "we://call"
+        },
+        "mentions": {
+          "target": "",
+          "cardinality": "many",
+          "predicate": "we://mention"
         }
       },
       "flag": {
         "predicate": "we://flag",
         "value": "we://location_block"
+      }
+    },
+    "MutedAgent": {
+      "properties": {
+        "did": {
+          "type": "string",
+          "predicate": "we://did",
+          "default": ""
+        },
+        "description": {
+          "type": "string",
+          "predicate": "we://description",
+          "default": ""
+        }
+      },
+      "relations": {
+        "comments": {
+          "target": "",
+          "cardinality": "many",
+          "predicate": "we://comment"
+        },
+        "signals": {
+          "target": "Signal",
+          "cardinality": "many",
+          "predicate": "we://signal"
+        },
+        "participants": {
+          "target": "",
+          "cardinality": "many",
+          "predicate": "we://participants"
+        },
+        "calls": {
+          "target": "",
+          "cardinality": "many",
+          "predicate": "we://call"
+        },
+        "mentions": {
+          "target": "",
+          "cardinality": "many",
+          "predicate": "we://mention"
+        }
+      },
+      "flag": {
+        "predicate": "we://flag",
+        "value": "we://muted_agent"
+      }
+    },
+    "ReadMarker": {
+      "properties": {
+        "nodeId": {
+          "type": "string",
+          "predicate": "we://node_id",
+          "default": ""
+        },
+        "spaceUuid": {
+          "type": "string",
+          "predicate": "we://space_uuid",
+          "default": ""
+        },
+        "lastReadAt": {
+          "type": "string",
+          "predicate": "we://last_read_at",
+          "default": ""
+        }
+      },
+      "relations": {
+        "comments": {
+          "target": "",
+          "cardinality": "many",
+          "predicate": "we://comment"
+        },
+        "signals": {
+          "target": "Signal",
+          "cardinality": "many",
+          "predicate": "we://signal"
+        },
+        "participants": {
+          "target": "",
+          "cardinality": "many",
+          "predicate": "we://participants"
+        },
+        "calls": {
+          "target": "",
+          "cardinality": "many",
+          "predicate": "we://call"
+        },
+        "mentions": {
+          "target": "",
+          "cardinality": "many",
+          "predicate": "we://mention"
+        }
+      },
+      "flag": {
+        "predicate": "we://flag",
+        "value": "we://read_marker"
       }
     },
     "Signal": {
@@ -962,6 +1102,11 @@ export const CORE_MANIFEST: ModelManifest = {
           "target": "",
           "cardinality": "many",
           "predicate": "we://call"
+        },
+        "mentions": {
+          "target": "",
+          "cardinality": "many",
+          "predicate": "we://mention"
         }
       },
       "flag": {
@@ -1050,6 +1195,11 @@ export const CORE_MANIFEST: ModelManifest = {
           "target": "",
           "cardinality": "many",
           "predicate": "we://call"
+        },
+        "mentions": {
+          "target": "",
+          "cardinality": "many",
+          "predicate": "we://mention"
         }
       },
       "flag": {
@@ -1100,6 +1250,11 @@ export const CORE_MANIFEST: ModelManifest = {
           "target": "",
           "cardinality": "many",
           "predicate": "we://call"
+        },
+        "mentions": {
+          "target": "",
+          "cardinality": "many",
+          "predicate": "we://mention"
         }
       },
       "flag": {
@@ -1140,6 +1295,11 @@ export const CORE_MANIFEST: ModelManifest = {
           "target": "",
           "cardinality": "many",
           "predicate": "we://call"
+        },
+        "mentions": {
+          "target": "",
+          "cardinality": "many",
+          "predicate": "we://mention"
         }
       },
       "flag": {
@@ -1186,6 +1346,11 @@ export const CORE_MANIFEST: ModelManifest = {
           "target": "",
           "cardinality": "many",
           "predicate": "we://call"
+        },
+        "mentions": {
+          "target": "",
+          "cardinality": "many",
+          "predicate": "we://mention"
         }
       },
       "flag": {
@@ -1252,6 +1417,11 @@ export const CORE_MANIFEST: ModelManifest = {
           "target": "",
           "cardinality": "many",
           "predicate": "we://call"
+        },
+        "mentions": {
+          "target": "",
+          "cardinality": "many",
+          "predicate": "we://mention"
         }
       },
       "flag": {
@@ -1323,6 +1493,11 @@ export const CORE_MANIFEST: ModelManifest = {
           "target": "",
           "cardinality": "many",
           "predicate": "we://call"
+        },
+        "mentions": {
+          "target": "",
+          "cardinality": "many",
+          "predicate": "we://mention"
         },
         "screenshots": {
           "target": "ImageBlock",
@@ -1413,6 +1588,11 @@ export const CORE_MANIFEST: ModelManifest = {
           "target": "",
           "cardinality": "many",
           "predicate": "we://call"
+        },
+        "mentions": {
+          "target": "",
+          "cardinality": "many",
+          "predicate": "we://mention"
         }
       },
       "flag": {
@@ -1486,6 +1666,11 @@ export const CORE_MANIFEST: ModelManifest = {
           "cardinality": "many",
           "predicate": "we://call"
         },
+        "mentions": {
+          "target": "",
+          "cardinality": "many",
+          "predicate": "we://mention"
+        },
         "screenshots": {
           "target": "ImageBlock",
           "cardinality": "many",
@@ -1551,6 +1736,11 @@ export const CORE_MANIFEST: ModelManifest = {
           "target": "",
           "cardinality": "many",
           "predicate": "we://call"
+        },
+        "mentions": {
+          "target": "",
+          "cardinality": "many",
+          "predicate": "we://mention"
         }
       },
       "flag": {
@@ -1580,6 +1770,11 @@ export const CORE_MANIFEST: ModelManifest = {
           "target": "",
           "cardinality": "many",
           "predicate": "we://call"
+        },
+        "mentions": {
+          "target": "",
+          "cardinality": "many",
+          "predicate": "we://mention"
         }
       },
       "abstract": true
