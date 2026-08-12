@@ -9,6 +9,7 @@ import type { component as componentTokens } from '../src/component.js';
 import type { effect as effectTokens } from '../src/effect.js';
 import type { font as fontTokens } from '../src/font.js';
 import type { layout as layoutTokens } from '../src/layout.js';
+import { role as roleTokens } from '../src/role.js';
 import type { shadow as shadowTokens } from '../src/shadow.js';
 import type {
   avatarSize as avatarSizeTokens,
@@ -162,6 +163,11 @@ ${colorPalettes}
   --we-color-white: hsl(var(--we-color-neutral-hue) var(--we-color-neutral-saturation) var(--we-color-lightness-0));
   --we-color-black: hsl(var(--we-color-neutral-hue) var(--we-color-neutral-saturation) var(--we-color-lightness-1000));
 
+  /* Semantic Roles — intent over scale position. Defaults are parametric expressions
+     so every theme keeps working untouched; themes may pin individual roles
+     (ThemeOverrides.roles in @we/themes → --we-role-*). */
+${roleVars}
+
   /* Focus Colors */
   --we-color-focus: var(--we-color-primary-500);
   --we-focus-outline: 0 0 0 2px var(--we-color-focus);
@@ -176,6 +182,10 @@ ${colorPalettes}
 function camelToKebab(str: string): string {
   return str.replace(/[A-Z]/g, (m) => `-${m.toLowerCase()}`);
 }
+
+const roleVars = Object.entries(roleTokens)
+  .map(([key, value]) => `  --we-role-${camelToKebab(key)}: ${value};`)
+  .join('\n');
 
 function generateComponentCSS(component: typeof componentTokens, outputDir: string) {
   const scrollbarVars = Object.entries(component.scrollbar)

@@ -20,32 +20,21 @@
  * space — those are host concerns and stay in the app.
  */
 
+import type { ThemeOverrides } from './overrides';
+
 /**
- * The parametric inputs a theme sets.
- *
- * Deliberately only the fields the built-in presets use. The full vocabulary is `ThemeOverrides` in
- * `@we/schema-shared`, which a user-authored theme may use all of; these two describe the same thing
- * from two packages and should be consolidated — see the note in the audit.
+ * @deprecated One vocabulary, one declaration: `ThemeParameters` was the deliberately-narrow subset
+ * the built-in presets used, while `ThemeOverrides` (then in `@we/schema-shared`) was the full
+ * vocabulary — two declarations of the same thing, drifting apart. `ThemeOverrides` now lives here
+ * and is the single type; this alias remains for compatibility.
  */
-export interface ThemeParameters {
-  /** `1` keeps the lightness ramp as authored, `-1` inverts it — the difference between light and dark. */
-  multiplier?: number;
-  /** Shifts the ramp before inverting. The percentages above 100 keep dark themes off pure black. */
-  subtractor?: string;
-  saturation?: string;
-  neutralSaturation?: string;
-  primaryHue?: number;
-  successHue?: number;
-  warningHue?: number;
-  dangerHue?: number;
-  neutralHue?: number;
-}
+export type ThemeParameters = ThemeOverrides;
 
 export interface ThemePreset {
   name: string;
   /** Phosphor icon name, for a theme picker. */
   icon: string;
-  parameters: ThemeParameters;
+  parameters: ThemeOverrides;
 }
 
 export const THEME_PRESETS = {
@@ -59,7 +48,15 @@ export const THEME_PRESETS = {
     icon: 'moon',
     // 108 rather than 100 so the darkest step lands short of pure black. A hand-tuned constant, and a
     // sign that a linear inversion is an approximation of a dark theme rather than a design of one.
-    parameters: { multiplier: -1, subtractor: '108%', saturation: '50%', neutralSaturation: '20%' },
+    // The role override is the first step past that approximation: in dark, a raised surface gets
+    // *lighter* instead of casting a shadow — a relationship the uniform inversion cannot express.
+    parameters: {
+      multiplier: -1,
+      subtractor: '108%',
+      saturation: '50%',
+      neutralSaturation: '20%',
+      roles: { surfaceRaised: 'var(--we-color-neutral-100)' },
+    },
   },
   black: {
     name: 'Black',
@@ -85,3 +82,7 @@ export const THEME_NAMES = Object.keys(THEME_PRESETS) as ThemeName[];
 export function isThemeName(value: string): value is ThemeName {
   return value in THEME_PRESETS;
 }
+
+// The vocabulary and its mapping live beside the presets — one JS entry for the package.
+export type { ThemeOverrides, ThemeRole } from './overrides';
+export { applyThemeVars, roleVar, themeToStyle } from './themeStyles';

@@ -11,6 +11,7 @@ import { component } from './component.js';
 import { effect } from './effect.js';
 import { font } from './font.js';
 import { layout } from './layout.js';
+import { role } from './role.js';
 import { shadow } from './shadow.js';
 import { avatarSize, componentHeight, radius, size } from './size.js';
 import { space } from './space.js';
@@ -26,6 +27,7 @@ export {
   font,
   layout,
   shadow,
+  role,
   size,
   radius,
   avatarSize,
@@ -66,6 +68,7 @@ export type { SizeToken, SizeValue, RadiusToken, RadiusValue, ComponentSize } fr
 export type { SpaceToken, SpaceValue } from './space.js';
 export type { ZIndexLayer, ZIndexValue } from './z-index.js';
 export type { LayoutToken } from './layout.js';
+export type { RoleToken } from './role.js';
 
 /**
  * Complete design token system.
@@ -80,10 +83,12 @@ export const tokens = {
   effect,
   font,
   layout,
+  role,
   shadow,
   size,
   radius,
   avatarSize,
   componentHeight,
   space,
+  zIndex,
 };

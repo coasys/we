@@ -9,7 +9,8 @@
     "clean": "rimraf dist",
     "build:css": "postcss 'src/**/index.css' --base src --dir dist",
     "build:steps": "pnpm run clean && pnpm run build:css && tsup",
-    "build": "we-build"
+    "build": "we-build",
+    "test": "vitest run"
   },
   "exports": {
     ".": "./dist/index.css",
@@ -36,7 +37,9 @@
     "postcss-import": "^15.1.0",
     "rimraf": "^6.0.1",
     "tsup": "^8.5.1",
-    "typescript": "^5.3.3"
+    "typescript": "^5.3.3",
+    "@we/tokens": "workspace:*",
+    "vitest": "^4.0.15"
   },
   "publishConfig": {
     "access": "public"
