@@ -480,19 +480,26 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
   // $local under the given name — read-only, shared across the entire subtree.
   if (node.$queries) {
     const getModel = stores.$getModel;
-    if (getModel) {
-      const queryAccessors: Record<string, () => unknown[]> = {};
-      for (const [name, field] of Object.entries(node.$queries as Record<string, QueryStateField>)) {
+    // No $getModel is a legitimate state, not a wiring mistake: a presentation-only
+    // host omits the data bindings entirely (see RendererDataBindings), and on a
+    // reload straight into a data route the first frame renders before the backend
+    // bindings land — the wired render replaces this tree a beat later. Either way
+    // the declared fields must still exist in $local, empty: dropping them made
+    // every downstream `$local` read warn "not declared" over a query that simply
+    // hadn't started yet.
+    const queryAccessors: Record<string, () => unknown[]> = {};
+    for (const [name, field] of Object.entries(node.$queries as Record<string, QueryStateField>)) {
+      if (getModel) {
         const descriptor = resolveQueryProp({ $query: field });
         queryAccessors[name] = createQuerySignal(descriptor, stores, getModel, effectiveContext);
+      } else {
+        queryAccessors[name] = () => [];
       }
-      effectiveContext = {
-        ...effectiveContext,
-        $local: { ...((effectiveContext.$local as Record<string, unknown>) ?? {}), ...queryAccessors },
-      };
-    } else {
-      console.warn('Schema $queries: $getModel not found in stores. Did you wire the model registry?');
     }
+    effectiveContext = {
+      ...effectiveContext,
+      $local: { ...((effectiveContext.$local as Record<string, unknown>) ?? {}), ...queryAccessors },
+    };
   }
 
   function renderNode(node?: SchemaNode, nodeContext?: Record<string, unknown>) {
@@ -625,7 +632,8 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
       const descriptor = resolveQueryProp(rawItems);
       const getModel = stores.$getModel;
       if (!getModel) {
-        console.warn('Schema $query: $getModel not found in stores. Did you wire the model registry?');
+        // Quietly empty — a data-less host or a pre-wiring boot frame, not an error
+        // (see the $queries note above).
         itemsArray = () => [];
       } else {
         itemsArray = createQuerySignal(descriptor, stores, getModel, effectiveContext);
@@ -665,7 +673,8 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
       const getModelForPerspective = stores.$getModelForPerspective;
 
       if (!getModelFn) {
-        console.warn('Schema $single: $getModel not found in stores. Did you wire the model registry?');
+        // Quietly itemless — a data-less host or a pre-wiring boot frame (see the
+        // $queries note above); the wired render supplies the item.
       } else {
         createEffect(() => {
           let p: unknown = null;
