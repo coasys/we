@@ -123,6 +123,10 @@ export function CesiumGlobe(props: CesiumGlobeProps) {
   let cleanupFunctions: Map<string, Array<() => void>> | undefined;
   let updateResolution: (() => void) | undefined;
   let resizeObserver: ResizeObserver | undefined;
+  /** The deferred construction frame, so unmounting before it fires can cancel it. */
+  let pendingFrame: number | undefined;
+  /** Set by cleanup. The frame callback checks it, since cancellation alone is not a guarantee. */
+  let disposed = false;
 
   const [viewerReady, setViewerReady] = createSignal(false);
 
@@ -135,8 +139,15 @@ export function CesiumGlobe(props: CesiumGlobeProps) {
     if (!containerRef) return;
 
     // Wait for next frame to ensure DOM is ready
-    requestAnimationFrame(() => {
-      if (!containerRef) return;
+    pendingFrame = requestAnimationFrame(() => {
+      pendingFrame = undefined;
+      // Unmounted between this frame being asked for and it arriving. Without this check the
+      // cleanup below finds `viewer === undefined` — it runs synchronously, before the frame — and
+      // does nothing, while this callback goes on to build a `Viewer` on a detached container,
+      // plus a resize listener, a ResizeObserver and a postUpdate handler that nothing then holds.
+      // Browsers cap live WebGL contexts at around sixteen, so a handful of mount/unmount cycles is
+      // enough to lose the globe entirely.
+      if (disposed || !containerRef) return;
 
       // Create Cesium viewer with minimal UI
       viewer = new Viewer(containerRef, {
@@ -404,6 +415,12 @@ export function CesiumGlobe(props: CesiumGlobeProps) {
 
   // Cleanup on component unmount - MUST happen after layer cleanup
   onCleanup(() => {
+    // Before anything else: stop the deferred construction, and tell it so. Cancelling is not on its
+    // own sufficient — a frame already dispatched still runs its callback.
+    disposed = true;
+    if (pendingFrame !== undefined) cancelAnimationFrame(pendingFrame);
+    pendingFrame = undefined;
+
     // First cleanup all layers
     if (cleanupFunctions) {
       for (const cleanups of cleanupFunctions.values()) {
@@ -428,10 +445,12 @@ export function CesiumGlobe(props: CesiumGlobeProps) {
       window.removeEventListener('resize', updateResolution);
     }
 
-    // Finally destroy viewer
-    if (viewer) {
+    // Finally destroy viewer. `isDestroyed` because a layer cleanup above can destroy it first, and
+    // Cesium throws on a second `destroy()` rather than ignoring it.
+    if (viewer && !viewer.isDestroyed()) {
       viewer.destroy();
     }
+    viewer = undefined;
   });
 
   return (

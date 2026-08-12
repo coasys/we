@@ -35,7 +35,7 @@ function peer(agentId: string, ...activities: Activity[]): Peer {
   return { agentId, updatedAt: 0, availability: 'available', activities, liveness: 'online' };
 }
 
-function harness(peers: Peer[] = []) {
+function harness(peers: Peer[] = [], extraDeps: Record<string, unknown> = {}) {
   const created: Created[] = [];
   const linked: Linked[] = [];
   const published: Activity[] = [];
@@ -76,6 +76,7 @@ function harness(peers: Peer[] = []) {
     linkEntity: async (entity, id, relation, value) => {
       linked.push({ entity, id, relation, value });
     },
+    ...extraDeps,
   }) as ReturnType<typeof createTranscribeStore> & Record<string, (...args: unknown[]) => unknown>;
 
   return {
@@ -466,5 +467,54 @@ describe('continuing a call', () => {
 
     expect(h.created.filter((c) => c.entity === 'CollectionBlock')).toHaveLength(0);
     expect(h.created[0].options?.parent?.id).toBe('the-old-record');
+  });
+});
+
+describe('stopping', () => {
+  /**
+   * `stop()` used to flush *before* tearing the audio graph down, which left `context` non-null
+   * across an await. The start guard is `if (!context)`, so audio returning inside that window found
+   * a context already on its way out, skipped, and then watched `stop` null it. Recording was dead
+   * with the button lit and no dependency left to change, so nothing re-triggered the effect — the
+   * only way back was to leave the space.
+   */
+  it('is idle once it has stopped, not wedged mid-teardown', async () => {
+    const { store } = harness();
+
+    store.toggle();
+    await store.stopNow();
+
+    // The observable half of the fix: nothing is left holding the "already running" state that made
+    // a restart impossible.
+    expect(store.status()).toBe('idle');
+    expect(store.speaking()).toBe(false);
+    expect(store.level()).toBe(0);
+  });
+
+  it('still writes what was said before it was stopped', async () => {
+    // Needs a call to attach to — "no call" is a legitimate refusal, not the case under test.
+    const { store, created } = harness([peer(ME, { type: 'call', id: 'space:uri' })]);
+
+    store.receiveText('the last thing anybody said');
+    await store.stopNow();
+
+    // Closing the audio graph first must not cost the buffer — the port is closed, but `buffer`
+    // already holds the words, and a closed port cannot race the flush with one more message.
+    expect(created.some((c) => JSON.stringify(c.fields).includes('the last thing anybody said'))).toBe(true);
+  });
+
+  it('releases its session when the module is disposed', async () => {
+    const disposers: Array<() => void> = [];
+    const { store } = harness([], { onDispose: (fn: () => void) => disposers.push(fn) });
+
+    store.toggle();
+    expect(disposers.length).toBeGreaterThan(0);
+
+    for (const dispose of disposers) dispose();
+    await Promise.resolve();
+
+    // Same class as the call module's camera: unregistering must close the AudioContext and the
+    // backend stream, not drop the only reference to them.
+    expect(store.enabled()).toBe(false);
   });
 });
