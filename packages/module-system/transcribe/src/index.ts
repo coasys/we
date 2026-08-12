@@ -45,7 +45,7 @@ import { defineModule, type ModuleStoreDeps } from '@we/module-shared';
 
 import { CALL_CONTROLS_ANCHOR, callControl } from './CallControl.schema';
 import { panel } from './Panel.schema';
-import { createTranscribeStore } from './store';
+import { CALL_KIND, createTranscribeStore } from './store';
 
 export { CALL_CONTROLS_ANCHOR, callControl } from './CallControl.schema';
 export { panel } from './Panel.schema';
@@ -65,6 +65,18 @@ export const transcribeModule = defineModule({
 
   // No `backends`: transcription goes through the port, so this runs on any backend that implements
   // one — and degrades to a stated reason on any that does not. No `frameworks`: fragments only.
+
+  // One collection per call, holding the utterances. `feed`: every participant's transcriber
+  // appends to the same record, so it has no single authoring agent and must never be reconciled.
+  kinds: [
+    {
+      kind: CALL_KIND,
+      name: 'Call',
+      icon: 'phone',
+      mode: 'feed',
+      description: 'The record of one call — its transcript, as text blocks.',
+    },
+  ],
 
   slots: [
     // Into the call module's own bar. It declares the anchor; we never name the module.

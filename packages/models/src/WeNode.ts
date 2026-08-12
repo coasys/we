@@ -50,6 +50,30 @@ export class WeNode extends Ad4mModel {
    */
   @HasMany({ through: 'we://call' })
   calls: string[] = [];
+
+  /**
+   * Agents named inside this node — the @-mentions in its composed content.
+   *
+   * DIDs, exactly as {@link WeNode.participants} holds them, and for the same reason: there is no
+   * agent entity in the perspective to point a typed relation at.
+   *
+   * The point of writing it as an edge at all is that "posts mentioning me" must be a **query**.
+   * The alternative — scanning `textContent` for a handle — is wrong twice over: handles are
+   * mutable and not unique, so it matches the wrong people and misses renamed ones, and a
+   * substring filter cannot be pushed down, so it degrades with every post in the space.
+   *
+   * Distinct from `participants` even though the shape is identical: participation is something an
+   * agent does to itself (each writes its own entry, which is what keeps the set conflict-free),
+   * whereas a mention is something an author asserts about someone else. Merging them would let
+   * any author add anyone to any roster.
+   *
+   * Derived, not authored: the serializer rewrites the whole set from the composed tree on every
+   * save, so it is the one relation here where a read-modify-write is correct — the author owns
+   * the text, therefore owns every mention in it, so there is no second writer to race.
+   */
+  @HasMany({ through: 'we://mention' })
+  mentions: string[] = [];
 }
 
-export interface WeNode extends HasManyMethods<'comments' | 'signals' | 'reactions' | 'participants' | 'calls'> {}
+export interface WeNode
+  extends HasManyMethods<'comments' | 'signals' | 'reactions' | 'participants' | 'calls' | 'mentions'> {}

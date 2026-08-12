@@ -70,7 +70,7 @@ export type TextBlock = C.TextBlock;
 export const TextBlock = defineEntity('TextBlock') as unknown as typeof C.TextBlock;
 export type VideoBlock = C.VideoBlock;
 export const VideoBlock = defineEntity('VideoBlock') as unknown as typeof C.VideoBlock;
-export { FILE_STORAGE_LANGUAGE } from './constants';
+export { FILE_STORAGE_LANGUAGE, PREDICATES } from './constants';
 export {
   asFileField,
   dataURItoBlob,

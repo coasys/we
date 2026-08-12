@@ -2,6 +2,9 @@ export type { BlockComposerProps, BlockRendererProps, SerializedBlockNode } from
 export type { BlockRegistration } from './registry';
 export { registerBlock, getBlockRegistration, getBlockModel, updateBlockRegistration } from './registry';
 export { registerCoreBlocks } from './core-blocks';
+export type { CollectionMode } from './modes';
+export { isCollectionMode, isReconcilable } from './modes';
+export type { BlockAnchor, CreateBlocksOptions } from './serialization';
 export { createBlocks, loadBlocks, deleteBlocks, reconcileBlocks, resolveExpressionAddresses } from './serialization';
 export { decodeEditorState } from './utils';
 

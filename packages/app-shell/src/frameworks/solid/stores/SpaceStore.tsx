@@ -21,6 +21,7 @@ import {
   FOLLOW_SPACE,
   getModelForPerspective,
   LocationBlock,
+  PREDICATES,
   Signal,
   SignalType,
   Space,
@@ -172,6 +173,25 @@ export interface SpaceMetaUpdate {
   description?: string;
   discovery?: 'listed' | 'hidden';
   location?: LocationData | null;
+}
+
+/**
+ * Where a composed artifact lands, for `createPost`.
+ *
+ * Flat scalars rather than a nested `anchor` object because these come from a template: a schema
+ * writes `args` as JSON, and `parentId` reading `"$channel.id"` is a plain context substitution
+ * where a nested object would need the author to know the resolver descends into it.
+ */
+export interface CreatePostOptions {
+  /** Free label for what this is. Defaults to `'post'`. */
+  kind?: string;
+  /** Id of the node to attach to. Omit for a post, which sits in the space unattached. */
+  parentId?: string;
+  /**
+   * How it attaches. Defaults to `we://children` — containment, which is what a channel message
+   * wants. Pass `we://comment` for a reply, which hangs off a node rather than sitting inside it.
+   */
+  predicate?: string;
 }
 
 export interface FluxSubgroupMessage {
@@ -387,7 +407,15 @@ export interface SpaceStore {
   /** Remove a space: clears its global-discovery listing (when authored by this agent) and
    * removes the backing dataset. */
   removeSpace: (uuid: string) => Promise<void>;
-  createPost: (json: unknown) => Promise<void>;
+  /**
+   * Create a composed artifact from editor state — a post, a channel message, a reply.
+   *
+   * One action for all three because they differ only in `kind` and where they attach; the
+   * composer, the blob, the search index and the mention edges are identical. See
+   * {@link CreatePostOptions}. Keeps its name because a post is the default and renaming it would
+   * churn every existing template for no gain.
+   */
+  createPost: (json: unknown, options?: CreatePostOptions) => Promise<void>;
   updatePost: (postId: string, json: unknown) => Promise<void>;
   /**
    * Delete a `CollectionBlock` and everything inside it, recursively.
@@ -1053,14 +1081,25 @@ export function SpaceStoreProvider(props: ParentProps) {
     })();
   });
 
-  async function createPost(json: unknown): Promise<void> {
+  async function createPost(json: unknown, options: CreatePostOptions = {}): Promise<void> {
     const p = datasetStore.currentDataset()?.handle;
     if (!p) return;
-    // Written alongside the `type: 'root'` that already identifies a post, not instead of it: reads
-    // still key on `type`, so existing posts stay in the feed and nothing needs backfilling. See
-    // `createBlocks`.
+
+    // `kind` is written alongside the `type: 'root'` that already identifies a post, not instead of
+    // it: reads still key on `type`, so existing posts stay in the feed and nothing needs
+    // backfilling. See `createBlocks`.
+    //
+    // The anchor is what makes one action serve every composed artifact. A post has none — it sits
+    // in the space. A message names its channel through `we://children`; a reply names whatever it
+    // answers through `we://comment`. Both arrive from a schema as ids, which is all a template
+    // has, and both are `$each`/route values rather than anything the store could derive.
+    const { kind = 'post', parentId, predicate = PREDICATES.CHILDREN } = options;
+
     // The action arrives from a schema as unknown; the composer produced it, so it is editor state.
-    await createBlocks(p, json as SerializedBlockNode, 'post');
+    await createBlocks(p, json as SerializedBlockNode, {
+      kind,
+      ...(parentId && { anchor: { id: parentId, predicate } }),
+    });
   }
 
   async function updatePost(postId: string, json: unknown): Promise<void> {
