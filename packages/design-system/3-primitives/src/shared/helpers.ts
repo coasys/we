@@ -19,6 +19,7 @@ import {
   marginKeys,
   paddingKeys,
   parseBorder,
+  parseTransition,
   radiusKeys,
   resolveFontFamily,
   resolveFontWeight,
@@ -483,7 +484,7 @@ function updateCustomVars(
     setProperty(el, `${prefix}box-shadow`, undefined);
   }
   setProperty(el, `${prefix}transform`, props.transform);
-  setProperty(el, `${prefix}transition`, props.transition);
+  setProperty(el, `${prefix}transition`, parseTransition(props.transition));
   setProperty(el, `${prefix}cursor`, props.cursor);
   setProperty(el, `${prefix}pointer-events`, props.pointerEvents);
   setProperty(el, `${prefix}visibility`, props.visibility);
