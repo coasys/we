@@ -38,6 +38,12 @@ Semantics:
   on one page must not share names.
 - The machinery is the host's `$routeParams` binding (app shell wires it from
   `routeStore`); a host without it degrades to plain local state.
+- **Params survive leaving and returning:** the store remembers each path's
+  last query string (in memory, per session) and `navigate('/cards')` restores
+  it. Keep-alive routes hold their live state across navigation, so without
+  this the screen and the URL disagreed the moment you came back — and a
+  reload believed the URL. An explicit `?` in the navigation target always
+  wins over the memory.
 
 **3. Preferences — how I like things → `persist` (device) or AgentSettings (agent).**
 Display density, collapsed rails, panel widths. A shared link must NOT impose

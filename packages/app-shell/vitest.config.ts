@@ -15,6 +15,7 @@ const SOLID_TESTS = [
   'tests/runtimeStore.test.tsx',
   'tests/accountStore.test.tsx',
   'tests/profileStore.test.tsx',
+  'tests/routeStore.test.tsx',
 ];
 
 export default defineConfig({

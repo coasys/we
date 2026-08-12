@@ -42,6 +42,22 @@ export function RouteStoreProvider(props: ParentProps) {
   const [params, setParamsSignal] = createSignal<Record<string, string>>(readParams());
   const segments = createMemo(() => currentPath().split('/').filter(Boolean));
 
+  /**
+   * Last-seen query string per pathname, restored by navigate(). Keep-alive
+   * routes stay mounted across navigation with their live state intact, but the
+   * router strips the query string on the way out — so returning landed on the
+   * bare path, the screen showed one sort order and the URL claimed another,
+   * and a reload believed the URL. In-memory only: a reload starts from the
+   * URL itself, which this keeps truthful.
+   */
+  const rememberedSearch = new Map<string, string>();
+  function rememberCurrentSearch() {
+    if (typeof window === 'undefined') return;
+    const { pathname, search } = window.location;
+    if (search) rememberedSearch.set(pathname, search);
+    else rememberedSearch.delete(pathname);
+  }
+
   // The router reports every location change through setCurrentPath — refreshing
   // the params there keeps them in sync with router-driven navigation, and the
   // popstate listener covers Back/Forward over param-only history entries the
@@ -49,6 +65,7 @@ export function RouteStoreProvider(props: ParentProps) {
   function setCurrentPath(path: string) {
     setCurrentPathSignal(path);
     setParamsSignal(readParams());
+    rememberCurrentSearch();
   }
 
   if (typeof window !== 'undefined') {
@@ -61,8 +78,13 @@ export function RouteStoreProvider(props: ParentProps) {
     // Skip if already on the exact target path (no-op router push)
     if (window.location.pathname === to) return;
 
+    // A bare path restores that route's remembered query string, so a
+    // kept-alive route's URL params survive leaving and returning. An explicit
+    // `?` in `to` always wins.
+    const target = !to.includes('?') && rememberedSearch.has(to) ? `${to}${rememberedSearch.get(to)}` : to;
+
     const nav = navigateFunction();
-    if (nav) nav(to, options);
+    if (nav) nav(target, options);
     else console.warn('Navigate function not available yet');
   }
 
@@ -79,6 +101,7 @@ export function RouteStoreProvider(props: ParentProps) {
     if (options?.push) window.history.pushState(null, '', url);
     else window.history.replaceState(null, '', url);
     setParamsSignal(readParams());
+    rememberCurrentSearch();
   }
 
   const store: RouteStore = {
