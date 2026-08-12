@@ -1,3 +1,9 @@
+> **Archived (2026-08): describes a registry that no longer exists.** `launcherUIRegistry`,
+> `seed.host.ui.appSettings` and `enableTemplateSwitching` were removed; today the seed's
+> launcher customization surface is `host.ui.bootScreen` plus `host.theme` (see
+> `docs/getting-started/seed-system.md` and `packages/app-shell/src/types/seed.ts`).
+> Kept for the design intent only.
+
 # Launcher UI Customization
 
 The WE launcher shell can be fully customized via the `seed.host.ui` configuration. This allows white-labeling of the launcher interface while keeping the embedded apps or native WE templates intact.

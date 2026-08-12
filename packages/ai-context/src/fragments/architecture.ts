@@ -31,7 +31,7 @@ editable by AI in place. Data lives separately, in AD4M perspectives the user ow
 the interface never costs you your history.
 
 Contributions form a ladder: most are **templates and themes** (authored in-browser, often
-AI-assisted, no code). **Modules** (tokens → elements → components → widgets → pages, plus
+AI-assisted, no code). **Modules** (tokens → primitives → components → widgets, plus
 blocks and feature modules) are the developer layer beneath — lower volume, but they raise the
 ceiling on what every template above can express. A deployment is described by a **seed file**
 (\`we-seed.json\`): which modules to include, how to arrange/theme them, platform settings.

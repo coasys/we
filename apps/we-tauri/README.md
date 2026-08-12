@@ -33,7 +33,7 @@ Unlike the Electron app which spawns the executor as a child process, the Tauri 
 
 This launcher can embed external apps (like Flux) via iframe. The embedded apps receive AD4M credentials through a postMessage protocol.
 
-**See:** [`../EMBEDDING.md`](../EMBEDDING.md) for the generic integration pattern.
+**See:** [`embedding-external-apps.md`](../../docs/guides/embedding-external-apps.md) for the generic integration pattern.
 
 ### Tauri-Specific Considerations
 

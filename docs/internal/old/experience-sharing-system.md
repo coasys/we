@@ -1,3 +1,6 @@
+> **Archived: superseded design.** Superseded by v2 (sibling file), and both predate the
+> current template/theme marketplace implementation. Historical context only.
+
 # Experience Sharing & Distribution System
 
 Design for making schemas, component packages, and app stores shareable and installable between WE peers — enabling the experience ecosystem described in the architecture overview.

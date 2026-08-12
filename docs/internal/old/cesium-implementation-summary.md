@@ -1,3 +1,10 @@
+> **Archived (2026-08): describes the pre-move package layout.** The globe layer system
+> now lives at `packages/module-system/globe/` as the globe module family
+> (`@we/globe-layers`, `@we/globe-widget`, `@we/globe-protocol`, `@we/module-globe`);
+> `@we/cesium-layers` and the `@we/widgets` CesiumGlobe export no longer exist. Current
+> docs: `packages/module-system/globe/layers/README.md` and `EXAMPLES.md`. Kept for the
+> design rationale; the paths and commands below are stale.
+
 # 🎉 Cesium Layers System - Implementation Complete!
 
 ## What Was Built

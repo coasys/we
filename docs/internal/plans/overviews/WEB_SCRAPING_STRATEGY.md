@@ -1,3 +1,6 @@
+> **Status: unimplemented plan.** Proposes an `@we/link-scraper` package that was never
+> created. Kept as design input; nothing in the codebase implements it.
+
 # Link Scraping Strategy for WE
 
 ## Overview

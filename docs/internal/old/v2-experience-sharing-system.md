@@ -1,3 +1,6 @@
+> **Archived: superseded design.** Predates the current template/theme marketplace
+> implementation (templateStore/themeStore + marketplace datasets). Historical context only.
+
 # Experience Sharing & Distribution System (v2)
 
 Revised plan grounded in the actual codebase state, with a pragmatic phasing that validates architectural assumptions early and defers speculative infrastructure until demand warrants it.

@@ -5,25 +5,26 @@
     "description": "Testing multi-app integration with Flux and React playground",
     "author": "James Weir"
   },
-
   "ad4m": {
     "dataPath": "~/.we-multi-app",
     "executorPath": "../ad4m/target/release/ad4m-executor",
     "repoPath": "../ad4m"
   },
-
   "electron": {
     "appDistPath": "dist",
     "basePort": 8080
   },
-
   "apps": [
     {
       "id": "flux",
       "name": "Flux",
       "icon": "camera",
       "description": "Social web3 toolkit for communities",
-      "capabilities": ["perspectives", "languages", "agents"],
+      "capabilities": [
+        "perspectives",
+        "languages",
+        "agents"
+      ],
       "paths": {
         "projectRoot": "../flux/app",
         "dist": "../flux/app/dist",
@@ -48,5 +49,12 @@
         }
       }
     }
+  ],
+  "modules": [
+    "globe",
+    "graph",
+    "notes",
+    "call",
+    "transcribe"
   ]
 }

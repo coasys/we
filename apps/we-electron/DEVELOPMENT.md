@@ -141,7 +141,7 @@ See `electron/main.js` for implementation details.
 
 ### 6. Integration Protocol
 
-Embedded apps receive AD4M credentials via postMessage. See [`../EMBEDDING.md`](../EMBEDDING.md) for the complete protocol.
+Embedded apps receive AD4M credentials via postMessage. See [`embedding-external-apps.md`](../../docs/guides/embedding-external-apps.md) for the complete protocol.
 
 ## Troubleshooting
 
@@ -160,7 +160,7 @@ Check the console for errors. Common issues:
 
 - Flux not built (run `pnpm build` in flux/app)
 - Wrong port configuration
-- Missing postMessage request (see EMBEDDING.md)
+- Missing postMessage request (see embedding-external-apps.md (docs/guides))
 
 ### Login Hangs After HMR Update (Dev Mode)
 

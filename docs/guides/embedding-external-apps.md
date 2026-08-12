@@ -1,12 +1,18 @@
 # Embedding External Apps via iframe
 
+> The launcher side of this contract is implemented in
+> `packages/app-shell/src/frameworks/solid/services/appBridge.ts` — read its
+> header for the full choreography (config handoff, the web host's postMessage
+> GraphQL proxy, and the buffering that covers an iframe asking before boot
+> finishes).
+
 > **Example:** This guide uses Flux as a concrete example, but the pattern works for any external app you want to embed in the WE launcher.
 
 ## How AD4M Config is Passed to Embedded Apps
 
 The parent launcher app (we-electron or we-tauri) embeds external apps in an iframe using the `we-iframe` component. To share the AD4M connection details (port + token) with the embedded app, we use a **request-response pattern** with the `postMessage` API.
 
-### Parent Launcher Flow (AdamStore.tsx)
+### Parent Launcher Flow (`appBridge.ts` in @we/app-shell)
 
 1. **On initialization**, the parent launcher:
    - Starts the AD4M executor

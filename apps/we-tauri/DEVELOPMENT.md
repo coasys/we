@@ -69,7 +69,7 @@ Simply run `pnpm tauri:dev` as shown above. The launcher will look for embedded 
 
 ### 5. Integration Protocol
 
-Embedded apps receive AD4M credentials via postMessage. See [`../EMBEDDING.md`](../EMBEDDING.md) for the complete protocol and implementation details.
+Embedded apps receive AD4M credentials via postMessage. See [`embedding-external-apps.md`](../../docs/guides/embedding-external-apps.md) for the complete protocol and implementation details.
 
 ### 6. Tauri-Specific Notes
 
@@ -86,5 +86,5 @@ To embed your own app (not Flux):
 1. Build your app to a `dist` directory
 2. Update `package.json` scripts to serve your app on a local port (for dev)
 3. Update `src-tauri/tauri.conf.json` resources to bundle your app (for production)
-4. Implement the postMessage protocol in your app (see `../EMBEDDING.md`)
+4. Implement the postMessage protocol in your app (see `../../docs/guides/embedding-external-apps.md`)
 5. Update the launcher's routing to display your app's iframe

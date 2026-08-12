@@ -116,7 +116,7 @@ export const webAdapter: PlatformAdapter = {
 
 ## Embedding External Apps
 
-The web launcher can embed external apps via iframe using the same postMessage protocol as the desktop apps. See [`../EMBEDDING.md`](../EMBEDDING.md) for the complete integration guide.
+The web launcher can embed external apps via iframe using the same postMessage protocol as the desktop apps. See [`embedding-external-apps.md`](../../docs/guides/embedding-external-apps.md) for the complete integration guide.
 
 **Advantages in Web:**
 

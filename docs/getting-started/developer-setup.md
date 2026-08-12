@@ -4,7 +4,7 @@ This guide explains how to set up the WE workspace for development or production
 
 ## Prerequisites
 
-- Node.js 18+
+- Node.js 24+ (`.nvmrc` pins the exact version)
 - pnpm (`npm install -g pnpm`)
 - Rust and Cargo (for AD4M and Tauri)
 - Yarn (for Flux)
@@ -15,9 +15,9 @@ This guide explains how to set up the WE workspace for development or production
 
 ```bash
 # Clone all required repositories
-git clone https://github.com/your-org/we.git
-git clone https://github.com/your-org/flux.git
-git clone https://github.com/your-org/ad4m.git
+git clone https://github.com/coasys/we.git
+git clone https://github.com/coasys/flux.git
+git clone https://github.com/coasys/ad4m.git
 
 # Your directory structure should look like:
 # Coding/
@@ -113,6 +113,11 @@ pnpm build:all
 | Command                | Description                                                |
 | ---------------------- | ---------------------------------------------------------- |
 | `pnpm setup-workspace` | Complete workspace setup (run after clone or seed changes) |
+| `pnpm test` | Every package's tests (`--no-bail`: all failures at once) |
+| `pnpm lint` / `pnpm lint:css` | ESLint (zero-warning) / Stylelint over authored CSS |
+| `pnpm typecheck` | Typecheck packages that define a `typecheck` script |
+| `pnpm validate:schemas` | Validate all template schemas |
+| `pnpm --filter @we/ai-context generate-context` | Regenerate CLAUDE.md and the other AI references |
 | `pnpm validate:seed`   | Validate seed file configuration                           |
 | `pnpm dev`             | Start web dev (same as `dev:web`)                          |
 | `pnpm dev:web`         | Start web development server                               |
@@ -226,8 +231,18 @@ we/
 │   ├── setup-workspace.cjs       # Setup automation
 │   └── validate-seed.cjs         # Validation tool
 ├── packages/
-│   ├── app-shell/               # WE's own app host — stores, registries, shell chrome
-│   └── cli/                      # Build tooling
+│   ├── design-system/            # tokens, themes, primitives, components, widgets
+│   ├── schema-system/            # schema semantics + the Solid renderer
+│   ├── block-system/             # block content composition
+│   ├── backend-system/           # the backend contract, AD4M adapter, in-memory reference
+│   ├── graph-system/             # the graph engine
+│   ├── module-system/            # feature-module contract + bundled modules
+│   ├── templates/                # template kit, shell surfaces, built-in templates
+│   ├── app-shell/                # WE's own app host — stores, registries, shell chrome
+│   ├── editor/                   # the template/theme editing surface
+│   ├── models/                   # domain models
+│   ├── ai-context/               # generates the AI/schema reference
+│   └── cli/                      # build tooling (we-build)
 └── apps/
     ├── we-web/                   # Web app
     ├── we-electron/              # Electron app

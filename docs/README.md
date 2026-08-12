@@ -15,6 +15,7 @@ How WE is designed and why.
 
 - [Codebase Map](architecture/codebase-map.md) — **Start here.** Current package layering, AD4M runtime, render pipeline, framework-agnosticism strategy
 - [Package Conventions](architecture/package-conventions.md) — How packages are structured and named in the monorepo
+- [Template Fragments](architecture/template-fragments.md) — The template kit: what fragments are, the extraction threshold, and where the fragment layer is going. Read before adding to `@we/template-kit`
 - [Why a Meta-App Instead of Many Separate Apps?](architecture/meta-app-vs-separate-apps.md) — Why shared continuity and cumulative evolution matter
 - [Practical Examples](architecture/examples.md) — Simple examples of how WE ideas work in practice
 - [Performance](architecture/performance.md) — What the template system and design system cost, measured against raw DOM and plain Solid
@@ -23,9 +24,10 @@ How WE is designed and why.
 
 How to build with WE.
 
-- [Launcher UI Customization](guides/launcher-ui-customization.md) — Customizing boot screen and settings via seed
-- [Cesium Layers](guides/cesium/layers-guide.md) — Using the 3D globe layer system
-- [Cesium Implementation](guides/cesium/implementation-summary.md) — Implementation details and status
+- [Embedding External Apps](guides/embedding-external-apps.md) — The postMessage contract for embedding apps like Flux in the launcher
+
+Per-system docs live with the code — every `packages/<system>/` directory has a README
+(`graph-system`'s is the model), and packages with authoring rules carry a `CONVENTIONS.md`.
 
 ## Internal
 
@@ -33,8 +35,8 @@ Working notes for maintainers — plans, design decisions, and superseded docume
 
 - [decisions/](internal/decisions/) — Design decisions and rationale (block system, schema system, template storage, semantic predicates, AI integration)
 - [plans/](internal/plans/) — Strategy docs for upcoming work
-- [old/](internal/old/) — Superseded documents, kept for historical context
+- [old/](internal/old/) — Superseded documents, kept for historical context — each carries a banner naming what replaced it
 
 > **Note:** documents under `internal/old/` and some under `internal/plans/` describe designs that
-> are aspirational or have drifted from the implementation. They carry a warning banner. For the
-> current state of the codebase, always use the [Codebase Map](architecture/codebase-map.md).
+> are aspirational or have drifted from the implementation. For the current state of the codebase,
+> always use the [Codebase Map](architecture/codebase-map.md).

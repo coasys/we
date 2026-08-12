@@ -1,20 +1,17 @@
-# @we/cesium-layers
+# @we/globe-layers
 
 Modular layer system for CesiumJS globe. Provides reusable, pluggable layers for user locations, country outlines, H3 hexagon grids, and more.
 
 ## Installation
 
-```bash
-npm install @we/cesium-layers
-# or
-pnpm add @we/cesium-layers
-```
+Part of the globe module family (`packages/module-system/globe/`): module ·
+protocol · **layers** · widget. Consumed in-workspace as `@we/globe-layers`.
 
 ## Quick Start
 
 ```typescript
 import { CesiumGlobe } from '@we/widgets/cesium';
-import { userLocationsLayer, countryOutlinesLayer, h3HexagonsLayer } from '@we/cesium-layers';
+import { userLocationsLayer, countryOutlinesLayer, h3HexagonsLayer } from '@we/globe-layers';
 
 <CesiumGlobe
   ionAccessToken="your-token-here"
@@ -47,7 +44,7 @@ import { userLocationsLayer, countryOutlinesLayer, h3HexagonsLayer } from '@we/c
 Display markers with labels on the globe.
 
 ```typescript
-import { userLocationsLayer } from '@we/cesium-layers';
+import { userLocationsLayer } from '@we/globe-layers';
 
 {
   factory: userLocationsLayer,
@@ -70,7 +67,7 @@ import { userLocationsLayer } from '@we/cesium-layers';
 Render country boundaries on the globe.
 
 ```typescript
-import { countryOutlinesLayer } from '@we/cesium-layers';
+import { countryOutlinesLayer } from '@we/globe-layers';
 
 {
   factory: countryOutlinesLayer,
@@ -87,7 +84,7 @@ import { countryOutlinesLayer } from '@we/cesium-layers';
 Display H3 hexagonal grid on the globe with click interactions.
 
 ```typescript
-import { h3HexagonsLayer } from '@we/cesium-layers';
+import { h3HexagonsLayer } from '@we/globe-layers';
 
 {
   factory: h3HexagonsLayer,

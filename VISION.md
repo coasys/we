@@ -168,7 +168,7 @@ WE is **not** a framework where developers build modules and everyone else consu
 | **Users & communities** | Their own space's layout; templates and themes made in-browser, often AI-assisted | Highest | Local                                     |
 | **Designers**           | Themes, token sets, visual identities                                             | High    | Aesthetic                                 |
 | **Template authors**    | Full application shells composed from existing modules — no code required         | Medium  | Structural                                |
-| **Developers**          | Elements, components, widgets, blocks, feature modules                            | Lowest  | **Raises the ceiling for everyone above** |
+| **Developers**          | Primitives, components, widgets, blocks, feature modules                          | Lowest  | **Raises the ceiling for everyone above** |
 
 Most of what flows through the ecosystem will be **templates and themes**, made by people who never open a code editor — exactly as WordPress's ecosystem is dominated by themes rather than plugins.
 
@@ -182,9 +182,11 @@ That doesn't make the developer layer less important; it makes it _load-bearing_
 
 **The module stack.** Templates and themes are composed from modules, each layer building on the one below:
 
-**Design tokens** → **Elements** (buttons, inputs, cards) → **Components** (message bubbles, avatars, editors) → **Widgets** (comment threads, reaction pickers, media galleries) → **Pages** → **Templates**.
+**Design tokens** → **Primitives** (buttons, inputs, form fields — framework-neutral web components) → **Components** (layout, cards, editors) → **Widgets** (sidebars, graph views, media galleries) → **Templates**.
 
-Plus **feature modules** that install into any community: layer systems (like the Cesium globe for geographic and location-based community mapping), governance modules (voting, moderation, consensus), economics modules (payment flows, mutual credit, resource allocation), and integration modules (bridges, imports, connectors).
+Between components and templates sits the **template kit** — reusable fragments (a card list, an empty state, a marketplace browser) that expand into plain schema nodes at authoring time. Fragments are what make forking practical at scale: a template built from fragments shares its load-bearing decisions with every other template built from them, instead of copying two hundred lines that will silently drift. (See `docs/architecture/template-fragments.md` for how this works and where it is going.)
+
+Plus **feature modules** that install into any community: the **graph engine** (knowledge maps, schema maps, boards — one engine, pluggable expanders and layouts), layer systems (like the Cesium globe for geographic and location-based community mapping), calls and transcription, notes — and, ahead, governance modules (voting, moderation, consensus), economics modules (payment flows, mutual credit, resource allocation), and integration modules (bridges, imports, connectors).
 
 **Blocks** are composable content units — text, image, embed, code, task, event — that users arrange freely within pages. **Themes** are complete visual identities: token sets plus styling, shareable across any template.
 
