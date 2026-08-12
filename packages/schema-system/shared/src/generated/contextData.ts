@@ -489,7 +489,7 @@ export const contextData: ContextData = {
       tagName: 'we-sortable',
       className: 'Sortable',
       description:
-        "Drag-to-reorder container primitive.\n\nUsage: wrap a list of elements that each have a `data-we-id` attribute.\nFires a `reorder` CustomEvent<string[]> on drop with the new ordered array\nof IDs — the event name is unprefixed, like every other primitive's\n(`change`, `select`, `toggle`). In Solid, listen with `on:reorder`; a\nlistener for `we-reorder` never fires and the drop silently does nothing.",
+        "Drag-to-reorder container primitive.\n\nUsage: wrap a list of elements that each have a `data-we-id` attribute.\nFires a `reorder` CustomEvent<string[]> on drop with the new ordered array\nof IDs — the event name is unprefixed, like every other primitive's\n(`change`, `select`, `toggle`). In Solid, listen with `on:reorder`; a\nlistener for `we-reorder` never fires and the drop silently does nothing.\nFrom a schema the same event is `onReorder`, which Solid lowercases to a\ndirect `reorder` listener.\n\nThe `data-we-id` may sit on the slotted child or on something inside it —\nsee `_resolveItem` for why the second case exists.",
       superclass: 'DesignSystemElement',
       ownProps: [
         { name: 'direction', type: "'vertical' | 'horizontal'", optional: false, default: "'vertical'" },

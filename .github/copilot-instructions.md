@@ -841,6 +841,11 @@ Fires a `reorder` CustomEvent<string[]> on drop with the new ordered array
 of IDs — the event name is unprefixed, like every other primitive's
 (`change`, `select`, `toggle`). In Solid, listen with `on:reorder`; a
 listener for `we-reorder` never fires and the drop silently does nothing.
+From a schema the same event is `onReorder`, which Solid lowercases to a
+direct `reorder` listener.
+
+The `data-we-id` may sit on the slotted child or on something inside it —
+see `_resolveItem` for why the second case exists.
   Props: direction: 'vertical' | 'horizontal' = 'vertical', gap: string = ''
 - we-spinner (LayoutElement)
   Props: size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' | (string & {}) = 'md', color: string = ''
