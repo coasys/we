@@ -160,17 +160,23 @@ export default class LocationPicker extends DesignSystemElement {
 
   connectedCallback() {
     super.connectedCallback();
-    this._onDocClick = this._onDocClick.bind(this);
-    document.addEventListener('click', this._onDocClick);
+    this._onDocPointerDown = this._onDocPointerDown.bind(this);
+    document.addEventListener('pointerdown', this._onDocPointerDown);
   }
 
   disconnectedCallback() {
     super.disconnectedCallback();
-    document.removeEventListener('click', this._onDocClick);
+    document.removeEventListener('pointerdown', this._onDocPointerDown);
     this._destroyMap();
   }
 
-  private _onDocClick(e: Event) {
+  /**
+   * Dismiss on a press that *starts* outside — not on `click`. A click's target
+   * is the common ancestor of its mousedown and mouseup, so dragging the map and
+   * releasing outside the picker produced an "outside click" and closed the map
+   * mid-gesture. Where the press began is what the user means by inside/outside.
+   */
+  private _onDocPointerDown(e: Event) {
     if (!this.contains(e.target as Node)) {
       this._open = false;
       this._destroyMap();
