@@ -4,14 +4,15 @@ import { basename } from 'node:path';
 import { defineConfig } from 'tsup';
 
 // One entry per primitive so `import '@we/primitives/button'` works — the
-// package.json `./*` exports map to dist/components/*.js, matching the
-// dist/types/*/components/*.d.ts layout the declaration generator emits.
-const componentEntries = Object.fromEntries(
-  globSync('src/primitives/*.ts').map((file) => [`components/${basename(file, '.ts')}`, file]),
+// package.json `./*` exports map to dist/primitives/*.js, mirroring
+// src/primitives (the declaration generator emits the matching
+// dist/types/*/primitives/*.d.ts layout).
+const primitiveEntries = Object.fromEntries(
+  globSync('src/primitives/*.ts').map((file) => [`primitives/${basename(file, '.ts')}`, file]),
 );
 
 export default defineConfig({
-  entry: { index: 'src/index.ts', ...componentEntries },
+  entry: { index: 'src/index.ts', ...primitiveEntries },
   format: ['esm'],
   dts: false,
   sourcemap: true,
