@@ -8,7 +8,6 @@ import { animation } from './animation.js';
 import { border } from './border.js';
 import { color } from './color.js';
 import { component } from './component.js';
-import { effect } from './effect.js';
 import { font } from './font.js';
 import { layout } from './layout.js';
 import { role } from './role.js';
@@ -23,7 +22,6 @@ export {
   border,
   color,
   component,
-  effect,
   font,
   layout,
   shadow,
@@ -51,7 +49,6 @@ export type {
   ColorValue,
 } from './color.js';
 export type { ScrollbarToken } from './component.js';
-export type { DepthToken } from './effect.js';
 export type {
   FontFamilyToken,
   FontFamilyValue,
@@ -80,7 +77,6 @@ export const tokens = {
   border,
   color,
   component,
-  effect,
   font,
   layout,
   role,

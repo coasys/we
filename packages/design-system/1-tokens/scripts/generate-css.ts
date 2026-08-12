@@ -6,7 +6,6 @@ import type { animation as animationTokens } from '../src/animation.js';
 import type { border as borderTokens } from '../src/border.js';
 import type { color as colorTokens } from '../src/color.js';
 import type { component as componentTokens } from '../src/component.js';
-import type { effect as effectTokens } from '../src/effect.js';
 import type { font as fontTokens } from '../src/font.js';
 import type { layout as layoutTokens } from '../src/layout.js';
 import { role as roleTokens } from '../src/role.js';
@@ -38,7 +37,6 @@ export async function generateCSS() {
       border,
       color,
       component,
-      effect,
       font,
       layout,
       shadow,
@@ -56,7 +54,6 @@ export async function generateCSS() {
       'border.css': generateBorderCSS(border),
       'color.css': generateColorCSS(color),
       'component.css': generateComponentCSS(component),
-      'effect.css': generateEffectCSS(effect),
       'font.css': generateFontCSS(font),
       'layout.css': generateLayoutCSS(layout),
       'shadow.css': generateShadowCSS(shadow),
@@ -200,23 +197,6 @@ export function generateComponentCSS(component: typeof componentTokens) {
 :root {
   /* Scrollbar Styles */
 ${scrollbarVars}
-}`;
-
-  return css;
-}
-
-export function generateEffectCSS(effect: typeof effectTokens) {
-  const depthVars = Object.entries(effect.depth)
-    .filter(([key]) => key !== 'none')
-    .map(([key, value]) => `  --we-depth-${key}: ${value};`)
-    .join('\n');
-
-  const css = `/* EFFECT TOKENS - Generated from JS tokens */
-
-:root {
-  /* Shadows */
-  --we-depth-none: ${effect.depth.none};
-${depthVars}
 }`;
 
   return css;
@@ -385,7 +365,6 @@ function generateCombinedCSS(outputDir: string) {
 @import './border.css';
 @import './color.css';
 @import './component.css';
-@import './effect.css';
 @import './font.css';
 @import './layout.css';
 @import './shadow.css';

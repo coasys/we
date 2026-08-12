@@ -123,7 +123,9 @@ export const componentRegistry: ComponentRegistry = {
   DesignToolbar,
 
   // Testing
-  RerenderLog,
+  // A perf debugging tool — logging on every mount is its purpose, which is
+  // exactly why production templates should not be able to reach it.
+  ...(import.meta.env.DEV ? { RerenderLog } : {}),
 
   // 3D
   WeCube: WeCubeOnDemand,
