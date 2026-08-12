@@ -130,7 +130,17 @@ function hasLiveVideo(stream: MediaStream | null): boolean {
 }
 
 export function createCallStore(deps: CallStoreDeps) {
-  const { signal, effect, dataset, datasetUri, selfId, ephemeral, presence, identities } = deps;
+  const { signal, effect, dataset, datasetUri, selfId, ephemeral, presence, identities, onDispose } = deps;
+
+  /**
+   * The transport scope this call holds, so leaving can give it back.
+   *
+   * `EphemeralScope` is refcounted, and every join acquired one and never disposed it. Ten joins
+   * left ten refs outstanding, so the backend's signal handler for that perspective was never
+   * removed for the life of the app. `PresenceStore` has always done this correctly; this is the
+   * same discipline.
+   */
+  let scopeHandle: { dispose(): void } | null = null;
 
   /**
    * An agent id, joined to whatever the host knows about them, in the shape an avatar wants.
@@ -371,6 +381,8 @@ export function createCallStore(deps: CallStoreDeps) {
     mesh = null;
     controller?.stop();
     controller = null;
+    scopeHandle?.dispose();
+    scopeHandle = null;
     setLocalAudio(null);
     remoteStreams = new Map();
     peerStates = new Map();
@@ -404,6 +416,7 @@ export function createCallStore(deps: CallStoreDeps) {
     }
 
     const scope = ephemeral(handle);
+    scopeHandle = scope;
     if (!scope) {
       // A personal space has no neighbourhood — there is nobody to call. Say so rather than
       // presenting controls that will never connect.
@@ -484,6 +497,16 @@ export function createCallStore(deps: CallStoreDeps) {
     const handle = dataset?.();
     if (!handle && callId()) teardown();
   });
+
+  /**
+   * Losing the module leaves the call too.
+   *
+   * Until the contract had teardown, unregistering this module — or merely re-registering it, which
+   * a hot reload does — dropped the only reference to live `RTCPeerConnection`s and a
+   * `getUserMedia` stream. Nothing was left able to close them and the camera light stayed on. It is
+   * the same `teardown()` a deliberate hangup runs; the only new thing is that somebody now calls it.
+   */
+  onDispose?.(() => teardown());
 
   /**
    * How many columns the tiles pack into.

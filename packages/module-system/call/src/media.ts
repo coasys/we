@@ -83,6 +83,20 @@ export function createMediaController(options: MediaControllerOptions = {}): Med
   /** Whether the camera was on before sharing started, so stopping restores what the user had. */
   let videoBeforeShare = false;
 
+  /**
+   * Which acquisition attempt is current. Bumped by `stop()`, checked by `start()` after every await.
+   *
+   * `getUserMedia` sits behind a permission prompt, so it can be outstanding for as long as the user
+   * takes to answer. Leave the call — or join a different one — while that prompt is open and
+   * `stop()` ran against a null stream and found nothing to close; the promise then resolved into a
+   * live camera and microphone that nothing held a reference to. **They stayed on for the life of
+   * the document.**
+   *
+   * The transcribe store already solved exactly this with a generation counter; this is the same
+   * idiom, which is worth saying because the next port needing it should reach for the same one.
+   */
+  let generation = 0;
+
   const state: MediaState = { audioEnabled: true, videoEnabled: true, screenShareEnabled: false };
 
   const emitState = () => options.onStateChanged?.({ ...state });
@@ -114,20 +128,33 @@ export function createMediaController(options: MediaControllerOptions = {}): Med
 
     async start(constraints = DEFAULT_CONSTRAINTS) {
       if (stream) return;
+      const mine = ++generation;
+      /** Close a stream that arrived after this attempt was cancelled, rather than storing it. */
+      const claim = (acquired: MediaStream): boolean => {
+        if (mine === generation) return true;
+        for (const track of acquired.getTracks()) track.stop();
+        return false;
+      };
+
+      let acquired: MediaStream;
       try {
-        stream = await devices.getUserMedia(constraints);
+        acquired = await devices.getUserMedia(constraints);
       } catch (error) {
         // A refused or missing camera must not stop the call — audio-only is a valid way to be in
         // one. Retry audio alone before giving up entirely.
         options.onError?.('acquiring camera and microphone', error);
+        if (mine !== generation) return;
         try {
-          stream = await devices.getUserMedia({ audio: constraints.audio ?? true });
+          acquired = await devices.getUserMedia({ audio: constraints.audio ?? true });
+          if (!claim(acquired)) return;
           state.videoEnabled = false;
         } catch (audioError) {
           options.onError?.('acquiring microphone', audioError);
           return;
         }
       }
+      if (!claim(acquired)) return;
+      stream = acquired;
 
       for (const track of stream.getAudioTracks()) track.enabled = state.audioEnabled;
       for (const track of stream.getVideoTracks()) track.enabled = state.videoEnabled;
@@ -181,6 +208,9 @@ export function createMediaController(options: MediaControllerOptions = {}): Med
     stopScreenShare,
 
     stop() {
+      // Before closing anything: an acquisition still waiting on the permission prompt has to learn
+      // it has been cancelled, or it resolves into a device this call no longer owns.
+      generation += 1;
       for (const track of stream?.getTracks() ?? []) track.stop();
       for (const track of screenStream?.getTracks() ?? []) track.stop();
       stream = null;

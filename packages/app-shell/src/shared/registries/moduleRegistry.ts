@@ -81,6 +81,13 @@ export interface RegisteredModule {
   definition: ModuleDefinition;
   /** Instantiated lazily on registration, so a module can be declared before the host is ready. */
   store?: Record<string, unknown>;
+  /**
+   * Teardown the store registered through `deps.onDispose`, run on unregister.
+   *
+   * Held beside the store rather than on it: a module's store keys are template-callable at
+   * `modules.<id>.<key>`, and teardown is not vocabulary a rendered schema should have.
+   */
+  disposers?: Array<() => void>;
 }
 
 const modules = new Map<string, RegisteredModule>();
@@ -180,9 +187,15 @@ export const moduleRegistry = {
       moduleRegistry.unregister(definition.id);
     }
 
-    // Reactivity is lent by the host, so a module store never imports a framework.
-    const store = storeDeps ? definition.createStore?.(storeDeps) : undefined;
-    modules.set(definition.id, { definition, store });
+    // Reactivity is lent by the host, so a module store never imports a framework. `onDispose` is
+    // added per module rather than living on the shared deps object, because the shared one cannot
+    // say *which* module registered a disposer — and running the wrong module's teardown is worse
+    // than running none.
+    const disposers: Array<() => void> = [];
+    const store = storeDeps
+      ? definition.createStore?.({ ...storeDeps, onDispose: (fn) => disposers.push(fn) })
+      : undefined;
+    modules.set(definition.id, { definition, store, disposers });
     if (store) moduleStores[definition.id] = store;
 
     // Two registrations are needed for a module-owned entity, and missing either fails at a
@@ -257,6 +270,22 @@ export const moduleRegistry = {
     compiledEntities.delete(id);
     delete moduleStores[id];
     modules.delete(id);
+
+    // Teardown last, and after the entry is gone: a disposer that throws must not leave a
+    // half-unregistered module in the map, and a disposer that re-enters `unregister` (a call
+    // module closing a session that fires a handler that unregisters) finds nothing to do rather
+    // than recursing.
+    //
+    // Reverse order because later teardown generally depends on earlier setup, and each is guarded
+    // because these close real devices: one throwing disposer must not be able to leave the camera
+    // on for the rest of them.
+    for (const dispose of [...(entry.disposers ?? [])].reverse()) {
+      try {
+        dispose();
+      } catch (error) {
+        console.error(`module "${id}": teardown failed`, error);
+      }
+    }
   },
 
   get(id: string): RegisteredModule | undefined {

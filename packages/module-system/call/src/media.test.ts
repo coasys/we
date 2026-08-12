@@ -212,3 +212,80 @@ describe('media controller', () => {
     expect(sent(tracks, 'video')).toBeNull();
   });
 });
+
+describe('acquisition cancelled mid-prompt', () => {
+  /**
+   * `getUserMedia` sits behind a permission prompt, so it can be outstanding for as long as the user
+   * takes to answer. Leaving the call in that window used to run `stop()` against a null stream —
+   * nothing to close — and then the promise resolved into a live camera and microphone that nothing
+   * held a reference to. They stayed on for the life of the document.
+   */
+  function deferredSetup() {
+    const mic = fakeTrack('audio');
+    const camera = fakeTrack('video');
+    let release!: (stream: MediaStream) => void;
+    const pending = new Promise<MediaStream>((resolve) => (release = resolve));
+
+    const { controller, tracks, states, errors } = setup({ getUserMedia: vi.fn(() => pending) });
+    return { controller, mic, camera, tracks, states, errors, arrive: () => release(fakeStream([mic, camera])) };
+  }
+
+  it('stops a stream that arrives after stop()', async () => {
+    const { controller, mic, camera, arrive } = deferredSetup();
+
+    const starting = controller.start();
+    controller.stop();
+    arrive();
+    await starting;
+
+    expect(mic.stopped).toBe(true);
+    expect(camera.stopped).toBe(true);
+    expect(controller.localStream()).toBeNull();
+  });
+
+  it('does not publish tracks the call no longer wants', async () => {
+    const { controller, tracks, arrive } = deferredSetup();
+
+    const starting = controller.start();
+    controller.stop();
+    arrive();
+    await starting;
+
+    // `stop()` publishes nulls; a late arrival must not put a live track back on the mesh after it.
+    expect(sent(tracks, 'audio')).toBeNull();
+    expect(sent(tracks, 'video')).toBeNull();
+  });
+
+  it('keeps a stream that arrives while the attempt is still current', async () => {
+    const { controller, mic, arrive } = deferredSetup();
+
+    const starting = controller.start();
+    arrive();
+    await starting;
+
+    expect(mic.stopped).toBe(false);
+    expect(controller.localStream()).not.toBeNull();
+  });
+
+  it('discards a superseded attempt when start is called twice', async () => {
+    const first = fakeTrack('audio');
+    const second = fakeTrack('audio');
+    const streams = [fakeStream([first]), fakeStream([second])];
+    let call = 0;
+    const releases: Array<(s: MediaStream) => void> = [];
+    const { controller } = setup({
+      getUserMedia: vi.fn(() => new Promise<MediaStream>((resolve) => releases.push(resolve))),
+    });
+
+    const a = controller.start();
+    controller.stop();
+    const b = controller.start();
+    releases[0](streams[call++]);
+    releases[1](streams[call]);
+    await Promise.all([a, b]);
+
+    // The abandoned attempt's device is closed; the current one's is kept.
+    expect(first.stopped).toBe(true);
+    expect(second.stopped).toBe(false);
+  });
+});

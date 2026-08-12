@@ -370,6 +370,27 @@ export interface ModuleStoreDeps {
   effect?: (fn: () => void) => void;
 
   /**
+   * Register teardown for this module's store. Run when the module is unregistered, in reverse
+   * order, each guarded so one failure cannot strand the rest.
+   *
+   * The contract had no teardown at all, and the consequence was not abstract: uninstalling — or
+   * merely re-registering, which a hot reload does — the call module during a call dropped the only
+   * reference to live `RTCPeerConnection`s and a `getUserMedia` stream, with nothing left able to
+   * close them. **The camera light stayed on.** Transcribe had the same shape over an `AudioContext`
+   * and a backend stream.
+   *
+   * Registered through the deps bag rather than returned as a `destroy` key on the store, and that
+   * placement is the whole design. A module's store keys are exposed to templates at
+   * `modules.<id>.<key>` — so a `destroy` on the store would be template-callable vocabulary, and
+   * any rendered schema could tear a running call down. Teardown is host business; the host is who
+   * lends this.
+   *
+   * Optional, like everything past `signal`: a host that never unregisters need not supply it, and a
+   * module holding nothing that needs closing need not call it.
+   */
+  onDispose?: (fn: () => void) => void;
+
+  /**
    * The dataset the module is currently scoped to, read reactively. `null` outside a space.
    *
    * A function rather than a value because the host re-scopes on navigation, and a module that
