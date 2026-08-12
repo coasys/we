@@ -1,7 +1,7 @@
 {
   "name": "@we/app-preview",
   "version": "0.1.0",
-  "description": "WE over an in-memory backend — the host the screenshot harness drives",
+  "description": "WE over an in-memory backend \u2014 the host the screenshot harness drives",
   "private": true,
   "license": "MIT",
   "type": "module",
@@ -15,9 +15,13 @@
     "@we/app-shell": "workspace:*",
     "@we/backend-inmemory": "workspace:*",
     "@we/backend-shared": "workspace:*",
+    "@we/components": "workspace:*",
+    "@we/models": "workspace:*",
+    "@we/template-fixtures": "workspace:*",
     "solid-js": "^1.9.5"
   },
   "devDependencies": {
+    "playwright-core": "^1.62.1",
     "typescript": "^5.7.2",
     "vite": "^6.0.7",
     "vite-plugin-solid": "^2.11.11"

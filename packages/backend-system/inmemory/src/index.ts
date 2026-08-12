@@ -102,5 +102,6 @@ export {
   type InMemoryBackendPortsOptions,
   type InMemoryDatasetSeed,
   type InMemoryLifecycle,
+  type SeededPeer,
 } from './lifecycle';
 export { inMemoryCapabilities, inMemoryQueryAdapter } from './queryAdapter';

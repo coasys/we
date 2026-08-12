@@ -13,6 +13,8 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { getModel } from '@we/models';
+
 import { createInMemoryBackendPorts } from '../src/lifecycle';
 
 const ME = 'did:test:me';
@@ -138,5 +140,34 @@ describe('seeded presence', () => {
     const { received } = await subscribe(ports);
     await vi.advanceTimersByTimeAsync(20_000);
     expect(received).toEqual([]);
+  });
+});
+
+describe('scope drill-down', () => {
+  it('returns one container\'s children, not the whole table', async () => {
+    const ports = makePorts();
+    const dataset = (await ports.lifecycle.get('ds-main'))!;
+    const handle = dataset.handle;
+
+    const CollectionBlock = getModel('CollectionBlock') as unknown as {
+      create(h: unknown, d: Record<string, unknown>): Promise<{ id: string; addChildren(x: unknown): Promise<void> }>;
+      findAll(h: unknown, q?: Record<string, unknown>): Promise<Array<{ id: string }>>;
+    };
+
+    const channelA = await CollectionBlock.create(handle, { id: 'a', kind: 'channel', title: 'a' });
+    const channelB = await CollectionBlock.create(handle, { id: 'b', kind: 'channel', title: 'b' });
+    const inA = await CollectionBlock.create(handle, { id: 'a1', kind: 'message' });
+    const inB = await CollectionBlock.create(handle, { id: 'b1', kind: 'message' });
+    await channelA.addChildren(inA);
+    await channelB.addChildren(inB);
+
+    const scoped = await CollectionBlock.findAll(handle, {
+      where: { kind: 'message' },
+      scope: { anchor: 'CollectionBlock', via: 'children', anchorId: 'a' },
+    });
+
+    // The adapter used to declare `scope: false`, so this query lowered without it and answered a
+    // different question — every message in the space, in every channel.
+    expect(scoped.map((r) => r.id)).toEqual(['a1']);
   });
 });

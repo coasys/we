@@ -133,15 +133,21 @@ export function compileEntities(manifest: ModelManifest, runtime: EntityRuntime)
         foreignKey: cardinality === 'one' ? relName : manyForeignKey(name, relName),
       };
       infos.push(info);
-      // An untyped relation (no declared target) has nothing to hydrate against, so it stays out
-      // of the engine's map rather than resolving to an empty table and reading as "no results".
-      if (info.target) {
-        engineRelations[name][relName] = {
-          target: info.target,
-          cardinality,
-          foreignKey: info.foreignKey,
-        } satisfies InMemoryRelation;
-      }
+      // Registered even when untyped (no declared target). It used to be omitted, on the grounds
+      // that there is nothing to *hydrate* against — true, and it also took `scope` down with it,
+      // because a drill-down needs only the foreign key and resolves through this same map. The
+      // engine fails a drill-down closed, so an unregistered relation meant "this container has no
+      // children" rather than an error, and `CollectionBlock.children` — untyped by design, since a
+      // collection holds any block type — is the relation every showcase template drills through.
+      //
+      // The cost is that an `include` over an untyped relation now resolves to `[]` rather than
+      // being absent. That case is already documented as unsupported (a relation with no declared
+      // target cannot say which table to read), and both spellings render as nothing.
+      engineRelations[name][relName] = {
+        target: info.target,
+        cardinality,
+        foreignKey: info.foreignKey,
+      } satisfies InMemoryRelation;
     }
     relationsByEntity[name] = infos;
   }
@@ -226,7 +232,7 @@ export function compileEntities(manifest: ModelManifest, runtime: EntityRuntime)
       }
 
       static rowsFor(dataset: DatasetEntry, query: Record<string, unknown> = {}): AnyRow[] {
-        const { where, order, limit, offset, include, ...rest } = query;
+        const { where, order, limit, offset, include, scope, ...rest } = query;
         void rest;
         const { ir, unsupported } = compileQuery({
           entity: name,
@@ -235,6 +241,10 @@ export function compileEntities(manifest: ModelManifest, runtime: EntityRuntime)
           ...(typeof limit === 'number' ? { limit } : {}),
           ...(typeof offset === 'number' ? { offset } : {}),
           ...(include ? { include: include as Record<string, unknown> } : {}),
+          // A drill-down the engine has always been able to execute (`scopeRows`) and this layer
+          // silently dropped into `rest` — so a scoped query answered as if it were unscoped,
+          // returning every row in the table rather than one container's children.
+          ...(scope ? { scope: scope as Parameters<typeof compileQuery>[0]['scope'] } : {}),
         });
         if (unsupported.length) {
           throw new Error(
@@ -333,9 +343,12 @@ export function compileEntities(manifest: ModelManifest, runtime: EntityRuntime)
           if (row) row[relation.foreignKey] = relatedId;
           this[relation.name] = relatedId;
         } else {
+          // An untyped relation does not say which table the child is in, so look in all of them.
+          // Without this the link was never written at all: `addChildren` updated the in-memory
+          // instance array and nothing else, so containment vanished on the next read.
           const targetRow = relation.target
             ? tableOf(dataset, relation.target).find((r) => r.id === relatedId)
-            : undefined;
+            : Object.values(dataset.tables).flatMap((rows) => rows as AnyRow[]).find((r) => r.id === relatedId);
           if (targetRow) targetRow[relation.foreignKey] = this.id;
           const current = Array.isArray(this[relation.name]) ? (this[relation.name] as unknown[]) : [];
           if (!current.includes(relatedId)) this[relation.name] = [...current, relatedId];

@@ -1,12 +1,15 @@
 /* @refresh reload */
 import '@we/app-shell/shared/index.scss';
 
-import { App, PlatformProvider, type WeSeedFile } from '@we/app-shell/solid';
+import { PlatformProvider, StoreProvider, TemplateProvider, type WeSeedFile } from '@we/app-shell/solid';
+import { ToastContainer } from '@we/components/solid';
+import { datasetIdFor, FIXTURES, pathFor } from '@we/template-fixtures';
 import { render } from 'solid-js/web';
 
 import rootSeed from '../../../we-seed.json';
-import { inMemoryConnector } from './platform/inMemoryConnector';
+import { inMemoryConnector, requestedFixture } from './platform/inMemoryConnector';
 import { previewPlatform } from './platform/previewPlatform';
+import { PreviewBootstrap } from './PreviewBootstrap';
 
 /**
  * The deployment this host runs, derived from the root seed rather than declared beside it.
@@ -33,10 +36,23 @@ const previewSeed: WeSeedFile = {
   ad4m: undefined,
 };
 
+const fixture = requestedFixture();
+
+/**
+ * The root, composed rather than the packaged `<App/>`.
+ *
+ * `<App/>` is exactly `StoreProvider > TemplateProvider + ToastContainer`; spelling it out is what
+ * lets {@link PreviewBootstrap} sit *inside* the store scope, which it has to, because selecting the
+ * fixture's dataset and route is store work. See its docstring for why a URL cannot do it.
+ */
 render(
   () => (
     <PlatformProvider seed={previewSeed} platform={previewPlatform} backend={inMemoryConnector}>
-      <App />
+      <StoreProvider>
+        <PreviewBootstrap datasetId={datasetIdFor(fixture)} route={pathFor(fixture)} />
+        <TemplateProvider />
+        <ToastContainer />
+      </StoreProvider>
     </PlatformProvider>
   ),
   document.getElementById('root')!,
