@@ -32,6 +32,11 @@ const SIZE_PROPS: Array<[string, string]> = [
   ['height', 'height'],
   ['minHeight', 'min-height'],
   ['maxHeight', 'max-height'],
+  // `flex` for the same reason and with a sharper edge: inside a Row or Column the *wrapper* is the
+  // flex item, so `flex: '1'` declared on the content had no effect at all — it was being read by
+  // an element that is not the one the parent is sizing. Nothing reported it; the node simply did
+  // not grow, which looks like a styling opinion rather than a dropped instruction.
+  ['flex', 'flex'],
 ];
 
 /** Which reveal axis each size prop belongs to — see the mirroring loop below. */
