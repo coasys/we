@@ -7,8 +7,12 @@ import { defineConfig } from 'tsup';
 // package.json `./*` exports map to dist/primitives/*.js, mirroring
 // src/primitives (the declaration generator emits the matching
 // dist/types/*/primitives/*.d.ts layout).
+// Tests excluded: the glob would otherwise make `select.test.ts` a build entry, and vitest then
+// picks the compiled copy back up out of `dist` and runs it against bundled code it cannot resolve.
 const primitiveEntries = Object.fromEntries(
-  globSync('src/primitives/*.ts').map((file) => [`primitives/${basename(file, '.ts')}`, file]),
+  globSync('src/primitives/*.ts')
+    .filter((file) => !file.endsWith('.test.ts'))
+    .map((file) => [`primitives/${basename(file, '.ts')}`, file]),
 );
 
 export default defineConfig({
