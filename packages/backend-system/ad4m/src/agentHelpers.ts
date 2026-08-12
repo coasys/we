@@ -29,7 +29,11 @@ async function resolveExpressionToDataUri(url: string, client: Ad4mClient): Prom
     // data_base64 may be a full data URI (WE format) or raw base64 (Flux format)
     if (data_base64.startsWith('data:')) return data_base64;
     return `data:${file_type};base64,${data_base64}`;
-  } catch {
+  } catch (cause) {
+    // Best-effort by design — a peer's avatar expression can be unfetched, offline, or malformed,
+    // and a missing picture must not fail the profile it decorates. Logged (unlike before) because
+    // a *broken* avatar was otherwise indistinguishable from an absent one.
+    console.warn('ad4m: could not resolve expression to data URI', url, cause);
     return undefined;
   }
 }

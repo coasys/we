@@ -145,11 +145,6 @@ export function TemplateStoreProvider(props: ParentProps) {
     builtInTemplates.find((t) => t.id === 'launcher') || builtInTemplates[0] || emptyTemplate,
   );
 
-  console.log(
-    'TemplateStore: Initializing with built-in templates:',
-    builtInTemplates.map((t) => t.id),
-  );
-
   // State
   const [allTemplates, setAllTemplates] = createSignal<TemplateSchema[]>([...builtInTemplates]);
   const [installedIds, setInstalledIds] = createSignal<Set<string>>(new Set());

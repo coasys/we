@@ -428,7 +428,6 @@ export interface SpaceStore {
   loadSpaces: () => Promise<void>;
 
   // Testing
-  test: () => Promise<void>;
 }
 
 const SpaceContext = createContext<SpaceStore>();
@@ -1053,14 +1052,6 @@ export function SpaceStoreProvider(props: ParentProps) {
       }
     })();
   });
-
-  async function test() {
-    const p = datasetStore.currentDataset()?.handle;
-    if (!p) return;
-    const spaces = await Space.findAll(p, { include: { location: true } });
-    console.log('Spaces in dataset:', spaces);
-    console.log('spaceId: ', p.uuid);
-  }
 
   async function createPost(json: unknown): Promise<void> {
     const p = datasetStore.currentDataset()?.handle;
@@ -1828,8 +1819,6 @@ export function SpaceStoreProvider(props: ParentProps) {
     updateSpaceInCache,
 
     loadSpaces,
-
-    test,
   };
 
   return <SpaceContext.Provider value={store}>{props.children}</SpaceContext.Provider>;

@@ -76,6 +76,7 @@ export {
   splitProps,
   REACTIVE_ACCESSOR,
   deepUnwrap,
+  setLocalWarningSink,
 } from './propResolvers';
 export type { LocalFieldMeta, LocalMetaMap, MapProp } from './propResolvers';
 export { hasToken } from './predicates';

@@ -834,12 +834,12 @@ export function EditorStoreProvider(props: ParentProps) {
             continue;
           }
 
-          console.log(`[EditorStore] Tool call ${tc.id} — ${patches.length} patch(es):`);
+          if (import.meta.env.DEV) console.log(`[EditorStore] Tool call ${tc.id} — ${patches.length} patch(es):`);
           for (const p of patches) {
             const op = p.node ? 'update' : p.insert ? 'insert' : 'remove';
-            console.log(`  targetId: "${p.targetId}", op: ${op}`);
+            if (import.meta.env.DEV) console.log(`  targetId: "${p.targetId}", op: ${op}`);
           }
-          console.log('[EditorStore] Patch detail:', JSON.stringify(patches, null, 2));
+          if (import.meta.env.DEV) console.log('[EditorStore] Patch detail:', JSON.stringify(patches, null, 2));
 
           // Apply ID-based patches to the accumulated schema (not to the store yet) — the
           // mechanics live in shared/ai/schemaPatches.
@@ -881,7 +881,7 @@ export function EditorStoreProvider(props: ParentProps) {
       // --- Atomic apply: validate + apply only if ALL tool calls succeeded ---
       if (allPatchesValid) {
         const mergedTemplate = accumulatedSchema as TemplateSchema;
-        console.log('[EditorStore] merged template:', JSON.stringify(mergedTemplate, null, 2));
+        if (import.meta.env.DEV) console.log('[EditorStore] merged template:', JSON.stringify(mergedTemplate, null, 2));
 
         // Step 1: Structural validation (Zod schema check)
         const structural = validateStructure(mergedTemplate);
@@ -901,7 +901,7 @@ export function EditorStoreProvider(props: ParentProps) {
             tr.is_error = true;
           }
         } else {
-          console.log('[EditorStore] Structural validation passed');
+          if (import.meta.env.DEV) console.log('[EditorStore] Structural validation passed');
 
           // Step 2: Semantic validation (component/prop/store checks)
           // Only fail on NEW issues introduced by the patch, not pre-existing ones
@@ -912,7 +912,8 @@ export function EditorStoreProvider(props: ParentProps) {
           const isClean = newIssues.length === 0;
 
           if (semantic.errors.length > 0 && newIssues.length === 0) {
-            console.log(`[EditorStore] Semantic validation: ${semantic.errors.length} pre-existing issue(s) ignored`);
+            if (import.meta.env.DEV)
+              console.log(`[EditorStore] Semantic validation: ${semantic.errors.length} pre-existing issue(s) ignored`);
           }
 
           if (!isClean) {
@@ -931,14 +932,15 @@ export function EditorStoreProvider(props: ParentProps) {
               tr.is_error = true;
             }
           } else if (isReadOnly()) {
-            console.log('[EditorStore] Semantic validation passed — buffering (read-only template)');
+            if (import.meta.env.DEV)
+              console.log('[EditorStore] Semantic validation passed — buffering (read-only template)');
             pushSnapshot();
             setPendingTemplate(stripNodeIds(mergedTemplate) as TemplateSchema);
             for (const tr of toolResults) {
               tr.content = 'Schema changes validated and buffered. Template is read-only — user must fork to apply.';
             }
           } else {
-            console.log('[EditorStore] Semantic validation passed — applying to store');
+            if (import.meta.env.DEV) console.log('[EditorStore] Semantic validation passed — applying to store');
             pushSnapshot();
             templateStore.updateTemplate({
               ...stripNodeIds(mergedTemplate),

@@ -759,8 +759,6 @@ div — not focusable, so there is no way to resize a panel from the keyboard. P
   Props: orientation: 'vertical' | 'horizontal' = 'vertical', align: 'start' | 'center' | 'end' = 'center', step: number = 16, dragging: boolean = false
 - we-scroll-area (DesignSystemElement)
   Props: maxHeight: string = '', maxWidth: string = ''
-- we-select (DesignSystemElement)
-  Props: options: SelectOption[] = [], value: string = '', placeholder: string = '', disabled: boolean = false, searchable: boolean = false, name: string = '', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md'
 - we-select (DesignSystemElement) — Pick a single value from a list of options. Custom-rendered dropdown.
 Use for form fields, settings, filters. Set searchable=true for type-to-filter.
   Props: options: SelectOption[] = [], value: string = '', placeholder: string = '', disabled: boolean = false, searchable: boolean = false, name: string = '', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md'
@@ -804,11 +802,11 @@ when `relative` is enabled.
 - AudioInput
   Props: title: string | undefined, artist: string | undefined, audioUrl: string | FileData | undefined, duration: number | undefined, albumArt: string | undefined, onChange: (property: string, value: unknown) => void, isSelected: () => boolean
 - BlockComposer (DesignSystemElement)
-  Props: editorState?: any, perspective?: PerspectiveProxy | null, onSave?: ((json: SerializedBlockNode) => void), onReady?: ((api: { save: () => void; }) => void)
+  Props: editorState?: SerializedBlockNode, perspective?: PerspectiveProxy | null, onSave?: ((json: SerializedBlockNode) => void), onReady?: ((api: { save: () => void; }) => void)
 - BlockPlaceholder
   Props: icon: string, label: string, hint?: string, accept?: string, onFileDrop?: ((file: File) => void), onClick?: (() => void)
 - BlockRenderer (DesignSystemElement)
-  Props: editorState?: any, perspective?: PerspectiveProxy | null, rootClass?: string
+  Props: editorState?: SerializedBlockNode, perspective?: PerspectiveProxy | null, rootClass?: string
 - BlockToolbar
   Props: placement?: BlockToolbarPlacement, children: JSX.Element, stopPropagation?: boolean
 - CalloutDisplay
@@ -820,9 +818,9 @@ when `relative` is enabled.
 - CodeInput
   Props: code: string | undefined, language: string | undefined, title: string | undefined, onChange: (property: string, value: unknown) => void, isSelected: () => boolean
 - CollectionDisplay
-  Props: layout?: string, columnCount?: number, gap?: string, childEditorState?: any
+  Props: layout?: string, columnCount?: number, gap?: string, childEditorState?: SerializedBlockNode
 - CollectionInput
-  Props: nodeKey: string, layout?: string, columnCount?: number, gap?: string, childEditorState?: any, onChange: (property: string, value: unknown) => void, isSelected: () => boolean
+  Props: nodeKey: string, layout?: string, columnCount?: number, gap?: string, childEditorState?: SerializedBlockNode, onChange: (property: string, value: unknown) => void, isSelected: () => boolean
 - DividerDisplay
   Props: style: "solid" | "dashed" | "dotted" | undefined
 - DividerInput
@@ -1197,8 +1195,6 @@ color.lightness: '0', '25', '50', '75', '100', '200', '300', '400', '500', '600'
 component.scrollbar: 'width', 'backgroundImage', 'background', 'cornerBackground', 'thumbBoxShadow', 'thumbBorderRadius', 'thumbBackground'
 
 componentHeight: 'xs', 'sm', 'md', 'lg', 'xl'
-
-effect.depth: '100', '200', '300', '400', '500', 'none'
 
 font.family: 'base', 'mozilla', 'boldonse'
 
@@ -1829,7 +1825,6 @@ SpaceStore:
   - removeSpaceFromGlobal(): unknown
   - updateSpaceInCache(): unknown
   - loadSpaces(): unknown
-  - test(): unknown
 
 TemplateStore:
 - State:
@@ -1915,6 +1910,7 @@ ThemeStore:
   - publishToMarketplace(): unknown
   - publishToSpace(): unknown
   - loadInstalledThemes(): unknown
+  - refreshSpaceThemes(): unknown
 
 Model:
 - State:
