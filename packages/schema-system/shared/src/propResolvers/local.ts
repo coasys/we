@@ -94,9 +94,25 @@ export function resolveLocalProp(value: { $local: string }, context: Props, memo
   return markReactive(memo(() => walkPath(accessor(), nestedPath)));
 }
 
-/** Resolves $setLocal tokens: { $setLocal: "name", from: "$event.target.value" }, { $setLocal: "name", value: <literal> }, or { $setLocal: "name", merge: { field: "$event.detail" } } → event handler */
+/**
+ * Resolves $setLocal tokens → event handler. Four forms:
+ * - `{ $setLocal: "name", from: "$event.target.value" }` — read a path off the event
+ * - `{ $setLocal: "name", value: <literal> }` — set outright
+ * - `{ $setLocal: "name", merge: { field: "$event.detail" } }` — shallow-merge into an object field
+ * - `{ $setLocal: "name", by: 20 }` — add to a number field
+ *
+ * The `by` form exists because the schema layer has **no arithmetic at all** — no `$add`, and no
+ * increment anywhere else — so "show 20 more" was not expressible, and a paginated list could not
+ * advance past its first page. Kept as a form of `$setLocal` rather than added as a general `$add`
+ * operator deliberately: the need is to bump a counter, and a general arithmetic operator invites
+ * computing layout values in schemas, which is what design tokens and DS props are for.
+ *
+ * Reads the current value and writes the sum, like `$toggleLocal` reads and negates. A
+ * non-numeric current value counts as 0, so a field that has not been initialised still advances
+ * rather than producing `NaN` and a list that silently empties.
+ */
 export function resolveSetLocalProp(
-  value: { $setLocal: string; from?: string; value?: unknown; merge?: Record<string, unknown> },
+  value: { $setLocal: string; from?: string; value?: unknown; merge?: Record<string, unknown>; by?: number },
   context: Props,
 ): (event: unknown) => void {
   const localSetters = context.$localSetters as Record<string, (v: unknown) => void> | undefined;
@@ -115,6 +131,14 @@ export function resolveSetLocalProp(
   if ('value' in value) {
     return () => {
       setter(value.value);
+    };
+  }
+  if (typeof value.by === 'number') {
+    const getter = localState?.[value.$setLocal];
+    const by = value.by;
+    return () => {
+      const current = getter?.();
+      setter((typeof current === 'number' ? current : 0) + by);
     };
   }
   if ('merge' in value && value.merge) {

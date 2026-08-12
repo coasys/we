@@ -207,7 +207,9 @@ export type LocalToken = { $local: string };
 export type SetLocalToken =
   | { $setLocal: string; from: string }
   | { $setLocal: string; value: unknown }
-  | { $setLocal: string; merge: Record<string, unknown> };
+  | { $setLocal: string; merge: Record<string, unknown> }
+  /** Add to a number field. The schema layer's only arithmetic — see `resolveSetLocalProp`. */
+  | { $setLocal: string; by: number };
 export type ErrorToken = { $error: string };
 export type ValidToken = { $valid: string };
 export type TouchedToken = { $touched: string };

@@ -420,6 +420,11 @@ export interface SpaceStore {
   createPost: (json: unknown, options?: CreatePostOptions) => Promise<void>;
   updatePost: (postId: string, json: unknown) => Promise<void>;
   /**
+   * Move a child between two collections — a card between kanban columns. A relink of the two
+   * `we://children` edges; the child itself is untouched.
+   */
+  moveChild: (childId: string, fromId: string, toId: string) => Promise<void>;
+  /**
    * DIDs this agent has muted, everywhere. Private, held in the root dataset.
    *
    * A feed filters on this before rendering — `{ $not: { $in: ['$post.author', …] } }`. Hiding on
@@ -432,12 +437,14 @@ export interface SpaceStore {
   /** Mute or unmute an agent. Positively phrased so a switch can pass `$event.detail` bare. */
   setAgentMuted: (did: string, muted: boolean, description?: string) => Promise<void>;
   /**
-   * When this agent last read each node, as `{ [nodeId]: ISO-8601 }`.
+   * When this agent last read each node, as `{ nodeId, lastReadAt }` rows.
    *
    * An unread indicator is "latest child newer than this" — the seen-half of the standing-query
-   * pattern notifications will generalise. Absent means never read, so everything is unread.
+   * pattern notifications will generalise. No row means never read, so everything is unread.
+   *
+   * Read it with `$find` on `nodeId`; a schema cannot index a keyed map by a context ref.
    */
-  readMarkers: Accessor<Record<string, string>>;
+  readMarkers: Accessor<{ nodeId: string; lastReadAt: string }[]>;
   /** Mark a node read as of now. Silent on failure — a lost marker is a stale dot, not an error. */
   markRead: (nodeId: string, spaceUuid?: string) => Promise<void>;
   /**
@@ -1135,6 +1142,39 @@ export function SpaceStoreProvider(props: ParentProps) {
     await reconcileBlocks(p, existingRoot, json as SerializedBlockNode);
   }
 
+  /**
+   * Move a child from one collection to another — a kanban card between columns, a post between
+   * channels.
+   *
+   * A relink, not an edit: the child is untouched and only the two `we://children` edges change.
+   * That is what makes containment a usable way to express status (see the `kanbanBoard`
+   * fragment) — the card carries no column field that could disagree with where it actually is.
+   *
+   * Add before remove, deliberately. Both writes are separate round trips, so a failure between
+   * them leaves the card in **two** columns rather than in none — visible and fixable by moving it
+   * again, where the other order loses it somewhere no view lists. Not atomic: `Ad4mModel`'s batch
+   * covers a transaction on one model's own writes, and this touches two.
+   *
+   * A no-op when the source and target are the same, so a menu listing every column including the
+   * current one cannot remove a card by "moving" it where it already is.
+   */
+  async function moveChild(childId: string, fromId: string, toId: string): Promise<void> {
+    const p = datasetStore.currentDataset()?.handle;
+    if (!p || !childId || !fromId || !toId || fromId === toId) return;
+    try {
+      const [from, to] = await Promise.all([
+        CollectionBlock.findOne(p, { where: { id: fromId } }),
+        CollectionBlock.findOne(p, { where: { id: toId } }),
+      ]);
+      if (!from || !to) return;
+      await to.addChildren(childId);
+      await from.removeChildren(childId);
+    } catch (error) {
+      console.error('SpaceStore: could not move child between collections', error);
+      toastService.error('Could not move that item');
+    }
+  }
+
   async function deleteCollection(collectionId: string): Promise<void> {
     const p = datasetStore.currentDataset()?.handle;
     if (!p) return;
@@ -1474,14 +1514,17 @@ export function SpaceStoreProvider(props: ParentProps) {
   const mutedDids = createMemo(() => mutedAgents().map((m) => m.did));
 
   /**
-   * Markers keyed by node id.
+   * Markers as `{ nodeId, lastReadAt }` rows.
    *
-   * A record rather than the array because the read is always "this node's marker" from inside a
-   * `$each` over channels: a schema can index an object but cannot `$find` cheaply per row, and the
-   * array form would be a linear scan per rendered channel.
+   * An array rather than a map keyed by node id, because **a schema cannot index a map
+   * dynamically**: `$store` resolves a static dot path, so `spaceStore.readMarkers.<some context
+   * ref>` is not expressible — the path would be taken literally. The read is always "this row's
+   * marker" from inside a `$each`, which means `$find` over an array with a context ref in `where`,
+   * the only form the resolver supports. Linear per rendered row, over a list the size of the
+   * channels one agent has opened.
    */
-  const readMarkerMap = createMemo(() =>
-    Object.fromEntries(readMarkers().map((m) => [m.nodeId, m.lastReadAt])),
+  const readMarkerRows = createMemo(() =>
+    readMarkers().map((m) => ({ nodeId: m.nodeId, lastReadAt: m.lastReadAt })),
   );
 
   async function setAgentMuted(did: string, muted: boolean, description = ''): Promise<void> {
@@ -1941,10 +1984,11 @@ export function SpaceStoreProvider(props: ParentProps) {
     removeSpace,
     createPost,
     updatePost,
+    moveChild,
     mutedDids,
     mutedAgents,
     setAgentMuted,
-    readMarkers: readMarkerMap,
+    readMarkers: readMarkerRows,
     markRead,
     deleteCollection,
     updateSpaceImage,

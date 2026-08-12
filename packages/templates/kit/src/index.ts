@@ -43,6 +43,21 @@ export type { GatePromptOptions } from './states/gatePrompt.ts';
 export { cardList, cardShell } from './lists/cards.ts';
 export type { CardListOptions, CardShellOptions } from './lists/cards.ts';
 
+// Collections — the container-shaped surfaces. All of these read `CollectionBlock.kind`, filter
+// muted authors, and gate their empty state on the query having answered.
+export { channelRail } from './lists/channelRail.ts';
+export type { ChannelRailOptions } from './lists/channelRail.ts';
+export { collectionFeed } from './lists/collectionFeed.ts';
+export type { CollectionFeedOptions } from './lists/collectionFeed.ts';
+export { commentThread, noReplies, replyCount } from './lists/commentThread.ts';
+export type { CommentThreadOptions } from './lists/commentThread.ts';
+export { kanbanBoard, moveCardMenu } from './lists/kanbanBoard.ts';
+export type { KanbanBoardOptions } from './lists/kanbanBoard.ts';
+export { loadMore } from './lists/loadMore.ts';
+export type { LoadMoreOptions } from './lists/loadMore.ts';
+export { mediaGrid } from './lists/mediaGrid.ts';
+export type { MediaGridOptions } from './lists/mediaGrid.ts';
+
 // Layout — the boxes a page is made of.
 export { attributeRow } from './layout/attributeRow.ts';
 export type { AttributeRowOptions } from './layout/attributeRow.ts';
