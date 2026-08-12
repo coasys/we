@@ -34,9 +34,7 @@ describe('global registry', () => {
 
   it('is keyed on globalThis, so a second copy of the module sees the same state', () => {
     registerModel('SharedThing', Native);
-    const other = (globalThis as never as Record<symbol, Record<string, unknown>>)[
-      Symbol.for('we.models.registry')
-    ];
+    const other = (globalThis as never as Record<symbol, Record<string, unknown>>)[Symbol.for('we.models.registry')];
     expect(other.SharedThing).toBe(Native);
     unregisterModel('SharedThing');
   });
