@@ -3,7 +3,7 @@ import '@we/app-shell/shared/index.scss';
 
 import { PlatformProvider, StoreProvider, TemplateProvider, type WeSeedFile } from '@we/app-shell/solid';
 import { ToastContainer } from '@we/components/solid';
-import { datasetIdFor, FIXTURES, pathFor } from '@we/template-fixtures';
+import { datasetIdFor, pathFor } from '@we/template-fixtures';
 import { render } from 'solid-js/web';
 
 import rootSeed from '../../../we-seed.json';

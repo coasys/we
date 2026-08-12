@@ -17,8 +17,8 @@ import { describe, expect, it, vi } from 'vitest';
 
 import type { RouteStore } from '../src/frameworks/solid/stores/RouteStore';
 import {
-  ShellRouteStoreProvider,
   ShellRouterRoot,
+  ShellRouteStoreProvider,
   useShellRouteStore,
 } from '../src/frameworks/solid/stores/ShellRouteStore';
 

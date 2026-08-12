@@ -12,8 +12,8 @@
  * load; without that property a screenshot script could not navigate to a route without first
  * loading the page to discover it, and the second load would produce different ids anyway.
  */
-import type { Fixture, FixtureNode } from './types';
 import { editorState, textContent } from './editorState';
+import type { Fixture, FixtureNode } from './types';
 
 /** The pieces of the host a fixture needs. Passed in rather than imported, so this stays neutral. */
 export interface ApplyDeps {
@@ -155,6 +155,19 @@ export async function applyFixture(deps: ApplyDeps, fixture: Fixture): Promise<A
     // Containment is a link, not a field: `we://children` is what a `scope` drill-down and the
     // `$latestChild` projection both traverse.
     if (parent?.addChildren) await parent.addChildren(instance);
+
+    for (const [index, image] of (node.images ?? []).entries()) {
+      const block = await getModel('ImageBlock').create(dataset, {
+        id: `${id}-image-${index + 1}`,
+        src: image.src,
+        ...(image.alt ? { altText: image.alt } : {}),
+        ...(image.width ? { width: image.width } : {}),
+        ...(image.height ? { height: image.height } : {}),
+        ...(node.author ? { author: node.author } : {}),
+        ...(node.createdAt ? { createdAt: node.createdAt, timestamp: node.createdAt } : {}),
+      });
+      await instance.addChildren?.(block);
+    }
 
     for (const signal of node.signals ?? []) {
       const signalTypeId = signalTypeIds.get(signal.slug);

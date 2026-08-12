@@ -348,7 +348,9 @@ export function compileEntities(manifest: ModelManifest, runtime: EntityRuntime)
           // instance array and nothing else, so containment vanished on the next read.
           const targetRow = relation.target
             ? tableOf(dataset, relation.target).find((r) => r.id === relatedId)
-            : Object.values(dataset.tables).flatMap((rows) => rows as AnyRow[]).find((r) => r.id === relatedId);
+            : Object.values(dataset.tables)
+                .flatMap((rows) => rows as AnyRow[])
+                .find((r) => r.id === relatedId);
           if (targetRow) targetRow[relation.foreignKey] = this.id;
           const current = Array.isArray(this[relation.name]) ? (this[relation.name] as unknown[]) : [];
           if (!current.includes(relatedId)) this[relation.name] = [...current, relatedId];

@@ -37,7 +37,10 @@ const styles = css`
   [part='base'] {
     position: absolute;
     overflow-y: auto;
-    box-shadow: var(--we-theme-shadow, var(--we-shadow-lg, 0 10px 40px color-mix(in srgb, var(--we-role-shadow-color) 15%, transparent)));
+    box-shadow: var(
+      --we-theme-shadow,
+      var(--we-shadow-lg, 0 10px 40px color-mix(in srgb, var(--we-role-shadow-color) 15%, transparent))
+    );
     transition: transform var(--we-transition-300, 250ms) ease;
   }
 

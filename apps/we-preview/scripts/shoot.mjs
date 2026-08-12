@@ -152,7 +152,10 @@ async function analyse(page, renderPath, targetPath) {
           .sort((a, b) => b.n - a.n)
           .slice(0, count)
           .map((b) => {
-            const hex = (v) => Math.round(v / b.n).toString(16).padStart(2, '0');
+            const hex = (v) =>
+              Math.round(v / b.n)
+                .toString(16)
+                .padStart(2, '0');
             return { hex: `#${hex(b.r)}${hex(b.g)}${hex(b.b)}`, share: +(b.n / total).toFixed(3) };
           });
       };

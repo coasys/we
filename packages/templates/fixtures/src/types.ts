@@ -80,6 +80,13 @@ export interface FixtureNode {
    * plausible and is the sort of thing you only notice after matching a screenshot against it.
    */
   createdAt?: string;
+  /**
+   * Images belonging to this node, written as `ImageBlock` children.
+   *
+   * A media grid drops posts with no image rather than showing blank tiles, so a photo-shaped
+   * template with none of these renders as an empty state no matter how much text it has.
+   */
+  images?: { src: string; alt?: string; width?: number; height?: number }[];
   /** Reactions, by signal-type slug, listing who reacted. */
   signals?: { slug: string; by: string[] }[];
   children?: FixtureNode[];

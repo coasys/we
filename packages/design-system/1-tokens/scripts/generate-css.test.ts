@@ -64,9 +64,7 @@ describe('token CSS generation', () => {
 
       // Either a scale position or an expression over the hue/saturation variables — never a
       // literal, which is what makes a role themeable at all.
-      expect(declaration![1], `role '${name}' hardcodes a colour`).toMatch(
-        /^(var\(--we-color-|hsl\(var\(--we-color-)/,
-      );
+      expect(declaration![1], `role '${name}' hardcodes a colour`).toMatch(/^(var\(--we-color-|hsl\(var\(--we-color-)/);
     }
   });
 

@@ -71,7 +71,11 @@ function relatedRows(
 ): { rows: Row[]; rel: InMemoryRelation } | undefined {
   const rel = data.relations?.[entity]?.[relName];
   if (!rel) return undefined;
-  const targetRows = data.tables[rel.target] ?? [];
+  // An untyped relation names no target table, which is not the same as having no targets: it means
+  // "of any type". A collection holding text, images and embeds is exactly that, and reading it as
+  // an empty table made every cover-image projection resolve to null — so a media grid, which drops
+  // posts with no image rather than showing blank tiles, rendered as nothing at all.
+  const targetRows = rel.target ? (data.tables[rel.target] ?? []) : Object.values(data.tables).flat();
   const rows =
     rel.cardinality === 'one'
       ? targetRows.filter((r) => r.id === row[rel.foreignKey])

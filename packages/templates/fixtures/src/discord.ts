@@ -9,12 +9,8 @@
  * Timestamps are fixed rather than relative to now. A fixture whose content ages produces a
  * different screenshot every day, and "3 minutes ago" versus "2 hours ago" is a different width.
  */
+import { ADA, BO, CAST, CY, DEE } from './cast';
 import type { Fixture } from './types';
-
-const ADA = 'did:preview:ada';
-const BO = 'did:preview:bo';
-const CY = 'did:preview:cy';
-const DEE = 'did:preview:dee';
 
 export const discordFixture: Fixture = {
   id: 'discord',
@@ -25,12 +21,7 @@ export const discordFixture: Fixture = {
     description: 'People who like maps more than is strictly reasonable.',
   },
 
-  agents: [
-    { did: ADA, firstName: 'Ada', lastName: 'Sørensen', handle: 'ada', bio: 'Contour lines enthusiast' },
-    { did: BO, firstName: 'Bo', lastName: 'Whitfield', handle: 'bo', bio: 'Mostly here for the projections' },
-    { did: CY, firstName: 'Cy', lastName: 'Mendez', handle: 'cy', bio: 'Surveyor' },
-    { did: DEE, firstName: 'Dee', lastName: 'Okonkwo', handle: 'dee', bio: 'Archivist' },
-  ],
+  agents: CAST,
 
   signalTypes: [
     { name: 'Heart', slug: 'heart', icon: 'heart', semantic: 'like', description: 'Appreciation' },
@@ -59,7 +50,9 @@ export const discordFixture: Fixture = {
               kind: 'message',
               author: ADA,
               createdAt: '2026-08-11T09:14:00.000Z',
-              body: ['Morning all. The 1897 survey sheets arrived and they are in much better shape than the listing suggested.'],
+              body: [
+                'Morning all. The 1897 survey sheets arrived and they are in much better shape than the listing suggested.',
+              ],
               signals: [{ slug: 'heart', by: [BO, CY, DEE] }],
             },
             {
@@ -134,7 +127,9 @@ export const discordFixture: Fixture = {
               kind: 'message',
               author: CY,
               createdAt: '2026-08-09T08:00:00.000Z',
-              body: ['Pencilling in the ridge walk for the 22nd. Bring something waterproof and something warm; last time was educational.'],
+              body: [
+                'Pencilling in the ridge walk for the 22nd. Bring something waterproof and something warm; last time was educational.',
+              ],
             },
           ],
         },
@@ -142,6 +137,6 @@ export const discordFixture: Fixture = {
     },
   ],
 
-  // `discord-general` is the deterministic id `general` gets — see FixtureNode.id.
+  // `discord-general` is the deterministic id `general` gets -- see FixtureNode.id.
   route: '/channel/discord-general',
 };

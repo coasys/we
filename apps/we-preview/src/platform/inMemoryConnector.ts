@@ -1,7 +1,7 @@
 import type { BackendConnector, BackendInitResult } from '@we/app-shell/shared';
 import { createInMemoryBackendPorts, type SeededPeer } from '@we/backend-inmemory';
 import { getModel } from '@we/models';
-import { applyFixture, datasetIdFor, FIXTURES, type Fixture, type FixtureId } from '@we/template-fixtures';
+import { applyFixture, datasetIdFor, type Fixture, type FixtureId, FIXTURES } from '@we/template-fixtures';
 
 /**
  * The whole difference between this host and we-web.

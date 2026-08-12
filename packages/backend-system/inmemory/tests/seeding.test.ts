@@ -11,9 +11,8 @@
  * Presence is a *message*, so it has to arrive over the bus the way a heartbeat would, and keep
  * arriving, because presence ages itself out on a TTL by design.
  */
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-
 import { getModel } from '@we/models';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createInMemoryBackendPorts } from '../src/lifecycle';
 
@@ -144,7 +143,7 @@ describe('seeded presence', () => {
 });
 
 describe('scope drill-down', () => {
-  it('returns one container\'s children, not the whole table', async () => {
+  it("returns one container's children, not the whole table", async () => {
     const ports = makePorts();
     const dataset = (await ports.lifecycle.get('ds-main'))!;
     const handle = dataset.handle;
