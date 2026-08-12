@@ -109,11 +109,13 @@ exactly the operator-language pressure named under the falsifiers. The full poli
 
 ```
 src/
-  states/     emptyState · emptyNote · gatePrompt
-  layout/     pageShell · sectionCard · attributeRow · statChip
-  lists/      gridWrapper · cardShell · cardList
-  overlays/   confirmModal
-  we/         agentByline · peopleRow · peopleTooltip · adminSection · marketplaceList
+  states/     emptyState · emptyNote · gatePrompt · skeletonList
+  layout/     pageShell · sectionCard · attributeRow · statChip · railShell · railGroup · railItem
+  lists/      gridWrapper · cardShell · cardList · channelRail · collectionFeed · commentThread ·
+              kanbanBoard · loadMore · mediaGrid
+  overlays/   composerModal · confirmModal
+  input/      field
+  we/         agentByline · peopleRow · peopleTooltip · adminSection · installedList · marketplaceList
 ```
 
 **Two tiers.** Everything outside `we/` names no store and is portable to any deployment. `we/` reads
@@ -128,13 +130,14 @@ fragments will work for them, and it is the reason the store contract (below) ma
 
 Fragments here are **not pure functions of their props**. They read up the tree and write into it:
 
-| Fragment                     | Requires in scope                      | Writes                                      |
-| ---------------------------- | -------------------------------------- | ------------------------------------------- |
-| `cardShell`, `gridWrapper`   | `$local: 'displayMode'`                | —                                           |
-| `cardList`                   | —                                      | `$local: '<as>Rows'`                        |
-| `emptyState({ searchable })` | `$local: 'searchText'`                 | —                                           |
-| `marketplaceList`            | —                                      | `$local: 'search'`, `'sort'`, `'<as>Items'` |
-| `confirmModal`               | the `openLocal` / `busyLocal` booleans | —                                           |
+| Fragment                     | Requires in scope                                                 | Writes                                      |
+| ---------------------------- | ----------------------------------------------------------------- | ------------------------------------------- |
+| `cardShell`, `gridWrapper`   | `$local: 'displayMode'`                                           | —                                           |
+| `railItem`, `railGroup`      | `$local: 'expanded'`, `'collapsedGroups'` (both from `railShell`) | `railGroup` writes `collapsedGroups`        |
+| `cardList`                   | —                                                                 | `$local: '<as>Rows'`                        |
+| `emptyState({ searchable })` | `$local: 'searchText'`                                            | —                                           |
+| `marketplaceList`            | —                                                                 | `$local: 'search'`, `'sort'`, `'<as>Items'` |
+| `confirmModal`               | the `openLocal` / `busyLocal` booleans                            | —                                           |
 
 Reading up rather than taking a prop is deliberate — the display toggle belongs to the page, and
 threading it through every list and card would add a prop to each whose only job is to be passed on.
