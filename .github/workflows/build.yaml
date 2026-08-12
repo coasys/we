@@ -148,6 +148,14 @@ jobs:
             packages/models/src/generated/coreManifest.ts \
             || { echo '::error::Generated files are stale — run `pnpm build` and commit the regenerated output.'; exit 1; }
 
+      # 12.6k LOC of template data that `tsc` cannot judge: an unknown component
+      # type, a misspelled prop, a `$routes` outlet with no `routes` array and an
+      # orphan `$local` all typecheck cleanly and then render nothing.  The
+      # validator has always existed and been thorough — it was reachable only
+      # from the AI editor and the CLI, so nothing ran it on the way in.
+      - name: Validate schemas
+        run: pnpm validate:schemas
+
       # Runs after Build so every package's dist types exist.  Only packages
       # that define a `typecheck` script participate; coverage is being grown
       # package by package.
