@@ -155,6 +155,15 @@ export type LocalStateField = {
   /** Literal seed value, or any schema expression token (e.g. { $store: '...' }) evaluated once at mount. */
   initial: string | boolean | number | null | Record<string, unknown>;
   validate?: ValidationRule[];
+  /**
+   * Persist this field on the device (localStorage) under the given key, so it survives a
+   * reload — a list's selected content type, sort settings, and the like. The key is explicit
+   * and global to the deployment (`'cards.contentType'`), so two views naming the same key
+   * deliberately share the setting; pick namespaced names. The stored value wins over
+   * `initial` on mount; `$resetLocal` clears it. Ignored for 'file' and 'function' fields,
+   * which have no JSON form.
+   */
+  persist?: string;
 };
 
 /** A single entry in $queries — a reactive subscription hoisted to the node root. */

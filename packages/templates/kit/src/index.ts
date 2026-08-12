@@ -33,6 +33,8 @@
 
 // States — what a surface shows when it has nothing to show.
 export { emptyNote, emptyState } from './states/emptyState.ts';
+export { skeletonList } from './states/skeletonList.ts';
+export type { SkeletonListOptions } from './states/skeletonList.ts';
 export type { EmptyStateOptions } from './states/emptyState.ts';
 export { gatePrompt } from './states/gatePrompt.ts';
 export type { GatePromptOptions } from './states/gatePrompt.ts';

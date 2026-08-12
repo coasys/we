@@ -36,10 +36,13 @@ export const cardsRoute: RouteSchema = {
   path: '/cards',
   $localState: {
     createPostOpen: { type: 'boolean', initial: false },
-    contentType: { type: 'string', initial: 'posts' },
-    sortDirection: { type: 'string', initial: 'DESC' },
-    sortField: { type: 'string', initial: 'date' },
-    displayMode: { type: 'string', initial: 'expanded' },
+    // View settings persist on the device, so a reload lands where you left it.
+    // Search stays ephemeral: a stale filter silently hiding content on return
+    // reads as missing data, not as a remembered preference.
+    contentType: { type: 'string', initial: 'posts', persist: 'cards.contentType' },
+    sortDirection: { type: 'string', initial: 'DESC', persist: 'cards.sortDirection' },
+    sortField: { type: 'string', initial: 'date', persist: 'cards.sortField' },
+    displayMode: { type: 'string', initial: 'expanded', persist: 'cards.displayMode' },
     searchText: { type: 'string', initial: '' },
   },
   ...pageShell({

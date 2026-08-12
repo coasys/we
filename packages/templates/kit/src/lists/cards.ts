@@ -16,6 +16,8 @@
  */
 import type { LocalStateField, QueryStateField, SchemaNode, SchemaProp } from '@we/schema-shared';
 
+import { skeletonList } from '../states/skeletonList.ts';
+
 export interface CardShellOptions {
   /** Nodes always visible regardless of display mode (compact header row) */
   header: SchemaNode[];
@@ -199,5 +201,18 @@ export function cardList(opts: CardListOptions): SchemaNode {
   };
 
   if (!opts.query) return list;
-  return { type: 'Column', props: { width: '100%' }, $queries: { [key]: opts.query }, children: [list] };
+  // A query-backed list holds a skeleton until `<key>Loaded` flips — before the
+  // first result set, "no rows yet" and "no rows" are different facts, and the
+  // empty state must only ever assert the second.
+  return {
+    type: 'Column',
+    props: { width: '100%' },
+    $queries: { [key]: opts.query },
+    children: [
+      {
+        type: '$if',
+        props: { condition: { $local: `${key}Loaded` }, then: list, else: skeletonList() },
+      },
+    ],
+  };
 }

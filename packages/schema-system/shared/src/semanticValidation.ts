@@ -589,7 +589,14 @@ function updateLocalScope(n: Record<string, unknown>, state: WalkState): WalkSta
   const newFields = new Set(state.localScope ?? []);
   if (hasState) for (const key of Object.keys(localState)) newFields.add(key);
   const newQueries = new Set(state.queryScope);
-  if (hasQueries) for (const key of Object.keys(queries)) newQueries.add(key);
+  if (hasQueries)
+    for (const key of Object.keys(queries)) {
+      newQueries.add(key);
+      // The renderer exposes a `<name>Loaded` flag beside each hoisted query —
+      // false until the first result set — so templates can hold a skeleton
+      // instead of flashing their empty state. Read-only, like the query itself.
+      newQueries.add(`${key}Loaded`);
+    }
   // A `$localState` field on the same node shadows the hoisted query of that name, so the write
   // check below must not treat it as read-only any more.
   if (hasState) for (const key of Object.keys(localState)) newQueries.delete(key);

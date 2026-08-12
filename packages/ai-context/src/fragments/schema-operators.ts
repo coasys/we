@@ -255,6 +255,11 @@ For external-app datasets, always add dataset: "$currentDataset".
 Local state (scoped ephemeral state):
 Declare on any node: "$localState": { "name": { "type": "string", "initial": "" } }
 Supported types: "string", "boolean", "number", "function", "object".
+Add "persist": "<key>" to keep a field on the device across reloads (localStorage) — for view
+settings like a selected content type or sort order: { "type": "string", "initial": "posts", "persist": "cards.contentType" }.
+The key is explicit and deployment-global (namespace it); the stored value wins over "initial" on
+mount, and $resetLocal clears it. Not supported for "file"/"function" fields. Keep search text and
+open-modal flags ephemeral — a persisted filter silently hiding content reads as missing data.
 Read:  { "$local": "name" } — returns the signal value (reactive).
        { "$local": "name.nested.path" } — dot-notation reads into object-typed fields (reactive).
 Write: { "$setLocal": "name", "from": "$event.target.value" } — event handler that updates the signal.
@@ -285,6 +290,10 @@ Solves two problems: avoids N duplicate subscriptions inside $each loops, and ma
 "$queries": { "signalTypes": { "entity": "SignalType", "subscribe": true } }
 Results are injected into $local as read-only reactive arrays, accessible via { "$local": "signalTypes" }.
 Query options are identical to $each's $query prop (entity, where, order, limit, include, dataset, subscribe).
+Each entry also exposes a read-only boolean { "$local": "<name>Loaded" } — false until the first
+result set (or error) arrives, then true for good. Gate a loading skeleton on it so the empty
+state only ever asserts "loaded and empty", never "not answered yet":
+{ "$if": { "condition": { "$local": "signalTypesLoaded" }, "then": <list-or-empty>, "else": <skeleton> } }
 $queries and $localState share the same $local namespace — avoid duplicate names across both.
 $setLocal will warn and no-op on $queries entries (they are read-only).
 Use with $count + $gt for conditional visibility:
