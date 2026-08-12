@@ -8,7 +8,9 @@
     "rootDir": "src",
     "strict": true,
     "skipLibCheck": true,
-    "isolatedModules": true
+    "isolatedModules": true,
+    // The theme-selector guard reads the primitives' source from disk.
+    "types": ["node"]
   },
   "include": ["src"]
 }

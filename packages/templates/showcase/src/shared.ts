@@ -219,12 +219,34 @@ export function signalRow(nodeRef: string): SchemaNode {
             props: { items: { $local: 'signalTypes' }, as: 'sig' },
             children: [
               {
-                type: 'SignalControl',
+                /*
+                  Only the signals somebody actually gave. A control per defined type on every row —
+                  "0" beside a heart, "0" beside a compass, all the way down a channel — is a lot of
+                  furniture asserting nothing, and it roughly doubled the height of a one-line
+                  message. Every chat client hides an empty reaction for the same reason.
+
+                  The cost is real and worth naming: with nothing to react *to*, there is no longer a
+                  control to react *with*, so a first reaction cannot be given from the feed. The
+                  usual answer is to reveal the controls when the row is hovered, and that is not
+                  expressible — `hoverProps` styles an element on its own `:hover`, and there is no
+                  way to say "when my ancestor is hovered". Worth having as a DS capability; until
+                  then this is the better of two wrong options, because the reference it is being
+                  matched against does exactly this.
+                */
+                type: '$if',
                 props: {
-                  signalType: '$sig',
-                  signals: { $filter: { items: `${nodeRef}.signals`, where: { signalTypeId: '$sig.id' } } },
-                  myDid: '$me.did',
-                  onSignal: { $action: 'spaceStore.upsertSignal', args: [`${nodeRef}.id`, '$sig.id', '$arg'] },
+                  condition: {
+                    $count: { items: { $filter: { items: `${nodeRef}.signals`, where: { signalTypeId: '$sig.id' } } } },
+                  },
+                  then: {
+                    type: 'SignalControl',
+                    props: {
+                      signalType: '$sig',
+                      signals: { $filter: { items: `${nodeRef}.signals`, where: { signalTypeId: '$sig.id' } } },
+                      myDid: '$me.did',
+                      onSignal: { $action: 'spaceStore.upsertSignal', args: [`${nodeRef}.id`, '$sig.id', '$arg'] },
+                    },
+                  },
                 },
               },
             ],

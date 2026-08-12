@@ -22,6 +22,7 @@ import type { Fixture } from './types';
 export const twitterFixture: Fixture = {
   id: 'twitter',
   templateId: 'twitter',
+  themeId: 'timeline',
   space: { name: 'The Timeline', description: 'Short thoughts, mostly about maps.' },
   agents: CAST,
   signalTypes: [LIKE, BOOST],

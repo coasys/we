@@ -10,7 +10,8 @@
     "build:css": "postcss 'src/**/index.css' --base src --dir dist",
     "build:steps": "pnpm run clean && pnpm run build:css && tsup",
     "build": "we-build",
-    "test": "vitest run"
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
   },
   "exports": {
     ".": "./dist/index.css",
@@ -31,14 +32,15 @@
     "@we/tokens": "workspace:*"
   },
   "devDependencies": {
+    "@types/node": "^24.10.0",
     "@we/cli": "workspace:*",
+    "@we/tokens": "workspace:*",
     "postcss": "^8.4.23",
     "postcss-cli": "^10.1.0",
     "postcss-import": "^15.1.0",
     "rimraf": "^6.1.0",
     "tsup": "^8.5.1",
     "typescript": "^5.7.2",
-    "@we/tokens": "workspace:*",
     "vitest": "^4.0.15"
   },
   "publishConfig": {

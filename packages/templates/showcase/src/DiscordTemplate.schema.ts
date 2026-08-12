@@ -27,11 +27,11 @@ import { composerModal, KIND, newContainerModal, signalRow, signalTypesQuery } f
 const rail: SchemaNode = {
   type: 'Column',
   props: {
-    width: '260px',
+    width: '240px',
     flex: '0 0 auto',
     height: '100%',
-    bg: 'neutral-100',
-    borderRight: '1px solid neutral-200',
+    bg: 'surface-sunken',
+    borderRight: '1px solid border',
     p: '300',
     gap: '400',
     overflow: 'auto',
@@ -92,27 +92,55 @@ const rail: SchemaNode = {
   ],
 };
 
-/** One message: who, when, the composed content, and whatever the community counts as a reaction. */
+/** The composed content plus whatever the community counts as a reaction — the part every row has. */
+const messageBody: SchemaNode[] = [
+  {
+    type: 'BlockRenderer',
+    props: {
+      editorState: '$message.editorState',
+      perspective: { $store: 'datasetStore.currentDataset.handle' },
+    },
+  },
+  signalRow('$message'),
+];
+
+/**
+ * One message — grouped under the one before it when the same person wrote both.
+ *
+ * This is where a chat log's density comes from, and it is worth being explicit about why: repeating
+ * an avatar and a byline above every line of a four-line thought turns one utterance into four
+ * blocks, and the eye reads four speakers. Collapsing them is not decoration, it is the difference
+ * between a transcript and a list.
+ *
+ * `$prev` is what makes it sayable at all — before it, a row could only ask about itself. Grouping
+ * on author alone, deliberately: a real client also breaks a group after a few minutes' silence,
+ * which needs date arithmetic the schema language does not have. Author-only over-groups a
+ * conversation that paused; the alternative under-groups every conversation, which is worse and is
+ * what we had.
+ *
+ * The gutter width is the avatar's, so a continuation line hangs under the text of the line above
+ * rather than sliding left — the column edge is what the eye follows down a group.
+ */
 const messageRow: SchemaNode = {
-  type: 'Row',
-  props: { gap: '300', width: '100%', py: '200', ay: 'start' },
-  children: [
-    {
-      type: 'Column',
-      props: { flex: '1', gap: '100', minWidth: '0' },
+  type: '$if',
+  props: {
+    condition: { $eq: ['$message.author', '$prev.author'] },
+    then: {
+      type: 'Row',
+      props: { width: '100%', gap: '300', py: '25', ay: 'start' },
       children: [
-        agentByline({ did: '$message.author', timestamp: '$message.createdAt' }),
-        {
-          type: 'BlockRenderer',
-          props: {
-            editorState: '$message.editorState',
-            perspective: { $store: 'datasetStore.currentDataset.handle' },
-          },
-        },
-        signalRow('$message'),
+        { type: 'Column', props: { width: '32px', flex: '0 0 auto' } },
+        { type: 'Column', props: { flex: '1', minWidth: '0', gap: '100' }, children: messageBody },
       ],
     },
-  ],
+    else: {
+      type: 'Column',
+      props: { width: '100%', gap: '100', pt: '300', pb: '25' },
+      children: [
+        agentByline({ did: '$message.author', timestamp: '$message.createdAt', stacked: true, children: messageBody }),
+      ],
+    },
+  },
 };
 
 const channelRoute: RouteSchema = {
@@ -145,14 +173,14 @@ const channelRoute: RouteSchema = {
             width: '100%',
             px: '400',
             py: '300',
-            borderBottom: '1px solid neutral-200',
+            borderBottom: '1px solid border',
           },
           children: [
             {
               type: 'Row',
               props: { gap: '200', ay: 'center' },
               children: [
-                { type: 'we-icon', props: { name: 'hash', color: 'neutral-400' } },
+                { type: 'we-icon', props: { name: 'hash', color: 'text-faint' } },
                 { type: 'we-text', props: { fontWeight: 'bold' }, children: ['$channel.title'] },
               ],
             },
@@ -187,14 +215,14 @@ const channelRoute: RouteSchema = {
 
     {
       type: 'Row',
-      props: { width: '100%', p: '300', gap: '200', borderTop: '1px solid neutral-200' },
+      props: { width: '100%', p: '300', gap: '200', borderTop: '1px solid border' },
       children: [
         {
           type: 'we-button',
           props: { variant: 'secondary', flex: '1', ax: 'start', onClick: { $setLocal: 'composeOpen', value: true } },
           children: [
             { type: 'we-icon', props: { name: 'chat-dots' } },
-            { type: 'we-text', props: { color: 'neutral-500' }, children: ['Write a message…'] },
+            { type: 'we-text', props: { color: 'text-faint' }, children: ['Write a message…'] },
           ],
         },
       ],
@@ -215,11 +243,12 @@ export const discordTemplate: TemplateSchema = {
     name: 'Channels',
     description: 'Categories, channels and messages — a Discord-shaped community space.',
     icon: 'hash',
-    // Dark, like the chat clients this shape comes from — and it keeps the unread dots legible.
-    themeId: 'dark',
+    // A theme built from measurements of a real chat client rather than the stock dark preset —
+    // near-neutral surfaces, and rails that sit *below* the page rather than above it.
+    themeId: 'channels',
   },
   type: 'Row',
-  props: { bg: 'neutral-50', width: '100%', minHeight: '100%', ay: 'stretch' },
+  props: { bg: 'page', width: '100%', minHeight: '100%', ay: 'stretch' },
   children: [rail, { type: '$routes' }],
   routes: [
     {
@@ -239,7 +268,7 @@ export const discordTemplate: TemplateSchema = {
       path: '*',
       type: 'Column',
       props: { flex: '1', ax: 'center', ay: 'center', p: '600' },
-      children: [{ type: 'we-text', props: { color: 'neutral-400' }, children: ['No such channel.'] }],
+      children: [{ type: 'we-text', props: { color: 'text-faint' }, children: ['No such channel.'] }],
     },
   ],
 };

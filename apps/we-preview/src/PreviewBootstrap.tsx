@@ -1,4 +1,4 @@
-import { useDatasetStore, useRouteStore, useSessionStore, useShellStore } from '@we/app-shell/solid';
+import { useDatasetStore, useRouteStore, useSessionStore, useShellStore, useThemeStore } from '@we/app-shell/solid';
 import { createEffect } from 'solid-js';
 
 /**
@@ -27,6 +27,7 @@ export function PreviewBootstrap(props: { datasetId: string; route: string }) {
   const datasetStore = useDatasetStore();
   const routeStore = useRouteStore();
   const shellStore = useShellStore();
+  const themeStore = useThemeStore();
 
   let done = false;
 
@@ -44,6 +45,12 @@ export function PreviewBootstrap(props: { datasetId: string; route: string }) {
       // Correct for the real app — a first-run user should meet the pitch, not an empty space — and
       // wrong for a host whose entire job is photographing what is underneath it.
       shellStore.closeShellView();
+      // A space's theme covers only the space's own content by default, which is right for the app —
+      // your chrome should not restyle itself every time you visit somebody's community. It is wrong
+      // for a host whose whole output is a photograph of one template: shell chrome in the *agent's*
+      // theme puts a second design in the frame, and the palette sampled off that frame then averages
+      // two themes together.
+      themeStore.setThemeScopeGlobal(true);
     })();
   });
 

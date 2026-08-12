@@ -37,6 +37,16 @@ export interface ThemePreset {
   parameters: ThemeOverrides;
 }
 
+/**
+ * A role pinned to one lightness, with the theme's own hue and saturation left variable.
+ *
+ * Pinning a role to a literal hex would freeze the whole colour, so changing `neutralHue` would move
+ * every surface *except* the pinned ones and the theme would come apart. This fixes only the number
+ * that is actually the design decision.
+ */
+const neutral = (lightness: number) =>
+  `hsl(var(--we-color-neutral-hue) var(--we-color-neutral-saturation) ${lightness}%)`;
+
 export const THEME_PRESETS = {
   light: {
     name: 'Light',
@@ -72,6 +82,101 @@ export const THEME_PRESETS = {
     name: 'Cyberpunk',
     icon: 'cpu',
     parameters: { multiplier: -1, subtractor: '110%', saturation: '60%', neutralSaturation: '10%' },
+  },
+
+  /**
+   * A near-neutral dark, for the channels template. Built from measurements of a real chat client
+   * rather than by eye — see `apps/we-preview/scripts/measure.mjs`.
+   *
+   * Two things it demonstrates about the theme system, one comfortable and one not.
+   *
+   * **The parameters carry most of it.** The reference's neutrals are barely tinted (about 5%
+   * saturation on a blue hue) where WE's dark preset runs 20% on whatever the primary hue is,
+   * which is why our render came out visibly purple against it. `neutralHue` + `neutralSaturation`
+   * fix that outright, and the accent is one more number.
+   *
+   * **The lightness ramp cannot.** The scale steps evenly — 100%, 95%, 90%, 80% — so with any
+   * single `subtractor` the gap from page to rail always equals the gap from page to raised
+   * surface. The reference's gaps are 3.5 and 6. No parameter can express an uneven ramp, so the
+   * three surfaces are pinned as roles instead. That is what roles are *for*, and this is the first
+   * theme to need them for it — but it is worth naming as a limit rather than a feature: a theme
+   * wanting a different rhythm between its surfaces has to leave the parametric system to get it.
+   *
+   * The pins stay parametric in hue and saturation, so changing `neutralHue` still moves the whole
+   * theme together. Only the lightnesses are fixed, because the lightnesses are the design.
+   */
+  channels: {
+    name: 'Channels',
+    icon: 'hash',
+    parameters: {
+      primaryHue: 235,
+      neutralHue: 240,
+      saturation: '85%',
+      neutralSaturation: '6%',
+      multiplier: -1,
+      subtractor: '106%',
+      roles: {
+        page: neutral(11),
+        surface: neutral(11),
+        surfaceSunken: neutral(7.5),
+        surfaceRaised: neutral(17),
+        surfaceHover: neutral(15),
+        surfaceActive: neutral(20),
+        border: neutral(20),
+        borderStrong: neutral(26),
+        text: neutral(100),
+        textMuted: neutral(72),
+        textFaint: neutral(53),
+        overlay: 'hsl(var(--we-color-neutral-hue) var(--we-color-neutral-saturation) 4% / 72%)',
+        shadowColor: neutral(2),
+      },
+      controlRadius: '4px',
+      surfaceRadius: '8px',
+      inputRadius: '8px',
+      shadowIntensity: 'subtle',
+    },
+  },
+
+  /**
+   * A light, quiet theme for the timeline template — the other reference, and the opposite problem.
+   *
+   * Almost the whole design is one flat white with hairline rules; there is no card, no elevation
+   * and no shadow anywhere in the column. What carries it is the *accent* and the type, so the only
+   * numbers that matter much are the blue and how faint a divider can get without vanishing.
+   *
+   * `shadowIntensity: 'flat'` is doing real work here: every surface primitive still wants to cast
+   * something, and a timeline that shadows its rows stops reading as a single sheet.
+   */
+  timeline: {
+    name: 'Timeline',
+    icon: 'list-dashes',
+    parameters: {
+      primaryHue: 203,
+      neutralHue: 210,
+      saturation: '89%',
+      neutralSaturation: '9%',
+      multiplier: 1,
+      subtractor: '0%',
+      roles: {
+        page: '#ffffff',
+        surface: '#ffffff',
+        surfaceSunken: neutral(97),
+        surfaceRaised: '#ffffff',
+        surfaceHover: neutral(97),
+        surfaceActive: neutral(94),
+        border: neutral(94),
+        borderStrong: neutral(85),
+        text: neutral(6),
+        textMuted: neutral(44),
+        textFaint: neutral(55),
+        accent: 'hsl(203 89% 53%)',
+        accentText: '#ffffff',
+      },
+      controlRadius: 'var(--we-radius-pill)',
+      surfaceRadius: '16px',
+      inputRadius: 'var(--we-radius-pill)',
+      shadowIntensity: 'flat',
+    },
   },
 } as const satisfies Record<string, ThemePreset>;
 

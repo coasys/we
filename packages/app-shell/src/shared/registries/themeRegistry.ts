@@ -30,6 +30,11 @@ export const themeRegistry: Record<string, ThemeRegistryEntry> = {
     css: cyberpunkCss || null,
     overrides: THEME_PRESETS.cyberpunk.parameters,
   },
+  // No stylesheet: both are entirely parameters and pinned roles. That is the point of them — a
+  // theme needing hand-written CSS is a theme the parametric system could not express, and these
+  // two were built to find out how far it stretches.
+  channels: { ...THEME_PRESETS.channels, css: null, overrides: THEME_PRESETS.channels.parameters },
+  timeline: { ...THEME_PRESETS.timeline, css: null, overrides: THEME_PRESETS.timeline.parameters },
 };
 
 export type ThemeKey = keyof typeof themeRegistry;

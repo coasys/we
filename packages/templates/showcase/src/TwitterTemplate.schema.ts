@@ -272,7 +272,7 @@ export const twitterTemplate: TemplateSchema = {
     icon: 'newspaper',
     // Shared with Photos and Videos deliberately: those three exist to show one space rendered three
     // ways, so the theme must not be a second variable moving at the same time.
-    themeId: 'dark',
+    themeId: 'timeline',
   },
   type: 'Row',
   props: { bg: 'neutral-50', width: '100%', minHeight: '100%', ax: 'center', ay: 'stretch' },

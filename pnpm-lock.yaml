@@ -700,6 +700,9 @@ importers:
 
   packages/design-system/2-themes:
     devDependencies:
+      '@types/node':
+        specifier: ^24.10.0
+        version: 24.13.2
       '@we/cli':
         specifier: workspace:*
         version: link:../../cli

@@ -172,9 +172,29 @@ export function channelRail(opts: ChannelRailOptions): SchemaNode {
       categoryRows: { entity: 'CollectionBlock', where: { kind: 'category' }, order: { createdAt: 'asc' } },
     },
     children: [
-      // Channels with no category, above the groups — otherwise creating a channel before any
-      // category exists makes it invisible.
-      flat,
+      /**
+       * The ungrouped list, shown only while no category exists.
+       *
+       * It used to render unconditionally, above the groups, to stop a channel created before any
+       * category from being invisible. The trouble is that its query has no scope, so it returns
+       * *every* channel — and once a category existed, every channel in one appeared twice: once
+       * loose at the top and again under its heading. Easy to miss reading the code and impossible
+       * to miss looking at it.
+       *
+       * The honest fix is a query for "channels with no parent category", and that cannot be
+       * written: it needs a filter on the *absence* of an incoming relation, which is
+       * `relationFilters` in `AdapterCapabilities` — declared false by both adapters. So the
+       * condition here is the closest expressible thing, and it covers the case the original
+       * comment was worried about, because a channel created before any category exists is a
+       * channel in a space with no categories.
+       *
+       * What it does not cover: a loose channel in a space that also has categories stays hidden.
+       * Worth fixing when relation filters land; not worth showing every channel twice until then.
+       */
+      {
+        type: '$if',
+        props: { condition: { $not: { $count: { items: { $local: 'categoryRows' } } } }, then: flat },
+      },
       {
         type: '$each',
         props: { items: { $local: 'categoryRows' }, as: 'category' },
@@ -186,7 +206,7 @@ export function channelRail(opts: ChannelRailOptions): SchemaNode {
             children: [
               {
                 type: 'we-text',
-                props: { variant: 'footnote', uppercase: true, color: 'neutral-400', letterSpacing: 'wide' },
+                props: { variant: 'footnote', uppercase: true, color: 'text-faint', letterSpacing: 'wide' },
                 children: ['$category.title'],
               },
               {
