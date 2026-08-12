@@ -15,7 +15,18 @@ const DEFAULT_PROPS: Partial<DesignSystemProps> = {
 
 const MODE_DEFAULTS: Record<'inline' | 'block', Partial<DesignSystemProps>> = {
   inline: { display: 'inline', bg: 'neutral-100', color: 'neutral-800', px: '100', py: '50' },
-  block: { display: 'block', bg: 'neutral-900', color: 'neutral-100', px: '400', py: '300' },
+  block: {
+    display: 'block',
+    // A block of code reads as a terminal: dark in every theme. Scale tokens can't say
+    // that — the parametric lightness ramp inverts with the theme, so `neutral-900`
+    // rendered this near-white in dark mode. Pinning the lightness and keeping only
+    // hue/saturation parametric holds the terminal look while still tinting with the
+    // theme (same move as the dark theme's tooltip inversion).
+    bg: 'hsl(var(--we-color-neutral-hue) var(--we-color-neutral-saturation) 14%)',
+    color: 'hsl(var(--we-color-neutral-hue) var(--we-color-neutral-saturation) 92%)',
+    px: '400',
+    py: '300',
+  },
 };
 
 const styles = css`
