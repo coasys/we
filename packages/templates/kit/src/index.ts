@@ -63,6 +63,8 @@ export { attributeRow } from './layout/attributeRow.ts';
 export type { AttributeRowOptions } from './layout/attributeRow.ts';
 export { pageShell } from './layout/pageShell.ts';
 export type { PageShellOptions } from './layout/pageShell.ts';
+export { railGroup, railItem, railShell } from './layout/rail.ts';
+export type { RailGroupOptions, RailItemOptions, RailShellOptions } from './layout/rail.ts';
 export { sectionCard } from './layout/sectionCard.ts';
 export type { SectionCardOptions } from './layout/sectionCard.ts';
 export { statChip } from './layout/statChip.ts';

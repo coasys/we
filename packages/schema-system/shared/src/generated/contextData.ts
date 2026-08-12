@@ -1140,6 +1140,7 @@ export const contextData: ContextData = {
         { name: 'template', type: 'string', optional: true },
         { name: 'columns', type: 'number', optional: true },
         { name: 'minChildWidth', type: 'string', optional: true },
+        { name: 'rows', type: 'string', optional: true },
       ],
       source: 'components',
     },

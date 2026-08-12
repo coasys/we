@@ -3143,6 +3143,11 @@
           "name": "minChildWidth",
           "type": "string",
           "optional": true
+        },
+        {
+          "name": "rows",
+          "type": "string",
+          "optional": true
         }
       ],
       "source": "components"

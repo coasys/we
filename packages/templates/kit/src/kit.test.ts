@@ -19,6 +19,9 @@ import {
   pageShell,
   peopleRow,
   peopleTooltip,
+  railGroup,
+  railItem,
+  railShell,
   sectionCard,
   statChip,
 } from './index.ts';
@@ -84,6 +87,25 @@ const portable: Record<string, SchemaNode> = {
   field: field({ name: 'name', label: 'Name', validated: true, touchOnBlur: true }),
   'field (select)': field({ name: 'mode', control: 'select', props: { options: [] } }),
   'field (textarea)': field({ name: 'bio', control: 'textarea' }),
+  railShell: railShell({
+    header: { type: 'we-image', props: { src: '/logo.svg' } },
+    footer: railItem({ icon: 'sign-out', label: 'Logout' }),
+    persistKey: 'test.rail',
+    children: [
+      railItem({ icon: 'user', label: 'Profile', active: true, tooltip: 'Profile' }),
+      railGroup({
+        id: 'spaces',
+        label: 'Spaces',
+        badge: '3',
+        reorderable: true,
+        onReorder: { $action: 'datasetStore.reorderDatasets', args: ['$arg.detail'] },
+        action: { icon: 'plus', label: 'Create a space', onClick: { $action: 'shellStore.setCreateSpaceOpen' } },
+        children: [
+          railItem({ id: '$space.uuid', avatar: { src: '$space.avatar', name: '$space.name' }, label: '$space.name' }),
+        ],
+      }),
+    ],
+  }),
 };
 
 const weDomain: Record<string, SchemaNode> = {
@@ -222,6 +244,41 @@ describe('contracts call sites depend on', () => {
       expect(avatarProps.image).toBe(`$${as}.avatar`);
       expect(avatarProps.hash).toBe(`$${as}.did`);
     }
+  });
+
+  it('the rail reveals its label sideways and its groups downward', () => {
+    // The two axes are not interchangeable: a label opening downward pushes the row below it, and
+    // a group opening sideways does nothing visible at all.
+    const axes: Array<string | undefined> = [];
+    walk(portable.railShell, (n) => {
+      if (n.type === 'reveal') axes.push(n.axis as string | undefined);
+    });
+    // Two per $if, enter and exit. Inline: the label on each of the three items. Block: the
+    // group's heading and its body.
+    expect(axes.filter((a) => a === 'inline')).toHaveLength(6);
+    expect(axes.filter((a) => a === undefined)).toHaveLength(4);
+  });
+
+  it('the rail holds collapsed groups as a set, so groups can come from data', () => {
+    // A boolean per group cannot be declared for groups the template has not seen yet — the whole
+    // reason $toggleLocalIn exists. If this reverts to $toggleLocal, that capability is gone.
+    const shell = portable.railShell;
+    expect((shell.$localState as Record<string, { type: string }>).collapsedGroups.type).toBe('array');
+    let writes = 0;
+    walk(shell, (n) => {
+      if (n.$toggleLocalIn === 'collapsedGroups') writes += 1;
+    });
+    expect(writes).toBe(1);
+  });
+
+  it('a reorderable rail item carries its id on a native element, not on the button', () => {
+    // we-sortable reads a DOM *attribute*; the renderer assigns a web component's props as
+    // properties, so the id on a we-button would silently never exist.
+    let carrier: Record<string, unknown> | undefined;
+    walk(portable.railShell, (n) => {
+      if (n.props && (n.props as Record<string, unknown>)['data-we-id'] !== undefined) carrier = n;
+    });
+    expect(carrier?.type).toBe('div');
   });
 
   it('emptyState mounts bare when delay is 0, wrapped in $animate otherwise', () => {
