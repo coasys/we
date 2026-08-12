@@ -17,4 +17,13 @@ export type GridProps = LayoutProps & {
    * Takes precedence over `columns`.
    */
   minChildWidth?: string;
+  /**
+   * Raw `grid-template-rows` value (e.g. `'20px 1fr 20px'`, `'0fr'`).
+   *
+   * The row axis had no prop at all, so every use of it reached for the `styles` escape hatch —
+   * three call sites had done so before this existed, none of them doing anything exotic. A grid
+   * with a fixed header and footer band is ordinary layout, and ordinary layout is what DS props
+   * are for.
+   */
+  rows?: string;
 };

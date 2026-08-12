@@ -1660,8 +1660,8 @@ function BoxModel(props: {
   const paddingBox = () => (
     <Grid
       template="28px 1fr 28px"
+      rows="20px 1fr 20px"
       minHeight="72px"
-      styles={{ 'grid-template-rows': '20px 1fr 20px' }}
       bg={BOX_PADDING.bg}
       border={`1px solid ${BOX_PADDING.border}`}
       r="100"
@@ -1794,7 +1794,7 @@ function BoxModel(props: {
         <Show when={hasMargin()} fallback={paddingBox()}>
           <Grid
             template="28px 1fr 28px"
-            styles={{ 'grid-template-rows': '20px 1fr 20px' }}
+            rows="20px 1fr 20px"
             bg={BOX_MARGIN.bg}
             border={`1px solid ${BOX_MARGIN.border}`}
             r="100"

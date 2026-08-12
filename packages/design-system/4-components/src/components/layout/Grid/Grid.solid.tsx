@@ -4,7 +4,7 @@ import type { GridProps } from './Grid.types';
 
 const render = createLayoutComponent<GridProps>({
   defaults: { display: 'grid', gap: '400' },
-  ownKeys: ['template', 'columns', 'minChildWidth'],
+  ownKeys: ['template', 'columns', 'minChildWidth', 'rows'],
   direction: 'column',
   finalizeStyle: (style, props) => {
     const gridTemplate = props.template
@@ -12,7 +12,11 @@ const render = createLayoutComponent<GridProps>({
       : props.minChildWidth
         ? `repeat(auto-fill, minmax(${props.minChildWidth}, 1fr))`
         : `repeat(${props.columns ?? 1}, 1fr)`;
-    return { ...style, 'grid-template-columns': gridTemplate };
+    return {
+      ...style,
+      'grid-template-columns': gridTemplate,
+      ...(props.rows !== undefined && { 'grid-template-rows': props.rows }),
+    };
   },
 });
 
