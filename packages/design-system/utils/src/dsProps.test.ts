@@ -165,3 +165,34 @@ describe('buildLayoutStyles', () => {
     expect(buildLayoutStyles({ reverse: true }, 'row')['flex-direction']).toBe('row-reverse');
   });
 });
+
+describe('semantic roles as colour prop values', () => {
+  /**
+   * A template could not name a role before this — only spell out its variable — so templates used
+   * scale positions, which cannot express a relationship that inverts between light and dark.
+   */
+  it('resolves a kebab-cased role name to its variable', () => {
+    expect(tokenVar('color', 'surface-sunken')).toBe('var(--we-role-surface-sunken)');
+    expect(tokenVar('color', 'surface-raised')).toBe('var(--we-role-surface-raised)');
+    expect(tokenVar('color', 'text-muted')).toBe('var(--we-role-text-muted)');
+    expect(tokenVar('color', 'overlay')).toBe('var(--we-role-overlay)');
+  });
+
+  it('leaves scale positions and raw CSS alone', () => {
+    expect(tokenVar('color', 'neutral-100')).toBe('var(--we-color-neutral-100)');
+    expect(tokenVar('color', 'primary-500')).toBe('var(--we-color-primary-500)');
+    expect(tokenVar('color', '#1a1a1e')).toBe('#1a1a1e');
+    expect(tokenVar('color', 'transparent')).toBe('transparent');
+  });
+
+  it('only applies to colour props', () => {
+    // `surface` is a role, and also not a space token — a space prop naming it is a mistake, and
+    // resolving it to a colour would hide that behind a plausible-looking variable.
+    expect(tokenVar('space', 'surface')).toBe('var(--we-space-surface)');
+  });
+
+  it('resolves a border shorthand naming a role', () => {
+    expect(parseBorder('1px solid border')).toBe('1px solid var(--we-role-border)');
+    expect(parseBorder('1px solid border-strong')).toBe('1px solid var(--we-role-border-strong)');
+  });
+});
