@@ -25,13 +25,7 @@ export default defineConfig({
       provider: 'v8',
       reporter: ['text', 'lcov'],
       reportsDirectory: './.coverage',
-      exclude: [
-        '**/node_modules/**',
-        'tests/**',
-        'src/**/index.ts',
-        'src/seed/cli.ts',
-        'src/seed/examples.ts',
-      ],
+      exclude: ['**/node_modules/**', 'tests/**', 'src/**/index.ts', 'src/seed/cli.ts', 'src/seed/examples.ts'],
       /*
         `src/frameworks/**` used to be excluded — all 9,380 lines of the stores, the largest and
         least-covered part of the biggest package in the repo. Every coverage number the project

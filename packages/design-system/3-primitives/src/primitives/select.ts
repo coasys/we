@@ -120,6 +120,15 @@ const styles = css`
     background: var(--we-color-primary-50);
   }
 
+  /*
+    Where the keyboard is, which is not the same question as which option is chosen — moving the
+    highlight with the arrows must be visible before Enter commits it, or the keys appear to do
+    nothing. Stronger than the selected tint so the two read apart when they are on the same row.
+  */
+  [part='option'][data-active='true'] {
+    background: var(--we-color-primary-100);
+  }
+
   [part='option'][aria-disabled='true'] {
     opacity: 0.5;
     cursor: default;
@@ -156,6 +165,15 @@ export default class Select extends DesignSystemElement {
 
   @state() private _open = false;
   @state() private _filter = '';
+  /**
+   * Which option the keyboard is on, as an index into the *filtered* list. `-1` is "none yet".
+   *
+   * Tracked rather than moving DOM focus, because the focused element must stay the combobox: a
+   * searchable select is typed into while the highlight moves, and moving focus into the listbox
+   * would take the caret with it. That is what `aria-activedescendant` is for, and why every option
+   * carries an id.
+   */
+  @state() private _active = -1;
 
   static getDefaultProps() {
     return DEFAULT_PROPS;
@@ -205,17 +223,125 @@ export default class Select extends DesignSystemElement {
     this.value = opt.value;
     this._filter = '';
     this._open = false;
+    this._active = -1;
     this.dispatchEvent(new CustomEvent('change', { detail: opt.value, bubbles: true, composed: true }));
   }
 
   private _toggle() {
     this._open = !this._open;
+    if (this._open) this._syncActive();
+    else this._active = -1;
+  }
+
+  /** Start the highlight on the current value, so opening and pressing Enter is a no-op. */
+  private _syncActive() {
+    const filtered = this._filtered;
+    const current = filtered.findIndex((o) => o.value === this.value && !o.disabled);
+    this._active = current >= 0 ? current : filtered.findIndex((o) => !o.disabled);
+  }
+
+  /** Move the highlight, skipping disabled options and stopping at the ends rather than wrapping. */
+  private _move(delta: number) {
+    const filtered = this._filtered;
+    if (!filtered.length) return;
+    let next = this._active;
+    for (let step = 0; step < filtered.length; step += 1) {
+      next += delta;
+      if (next < 0 || next >= filtered.length) return;
+      if (!filtered[next].disabled) {
+        this._active = next;
+        return;
+      }
+    }
+  }
+
+  /**
+   * The whole keyboard contract for a listbox, per the ARIA authoring practices.
+   *
+   * There was none at all: options were click-only non-focusable divs, so a keyboard user could open
+   * the listbox and was then stranded in it with no way to choose or to leave. This is the primary
+   * single-choice control — Settings, the marketplace, and every schema-authored form — so "stranded"
+   * meant those pages could not be completed without a mouse.
+   */
+  private _onKeyDown(e: KeyboardEvent) {
+    if (this.disabled) return;
+
+    switch (e.key) {
+      case 'ArrowDown':
+      case 'ArrowUp': {
+        e.preventDefault();
+        if (!this._open) {
+          this._open = true;
+          this._syncActive();
+          return;
+        }
+        this._move(e.key === 'ArrowDown' ? 1 : -1);
+        return;
+      }
+      case 'Home':
+      case 'End': {
+        if (!this._open) return;
+        e.preventDefault();
+        this._active = e.key === 'Home' ? -1 : this._filtered.length;
+        this._move(e.key === 'Home' ? 1 : -1);
+        return;
+      }
+      case 'Enter': {
+        if (!this._open) {
+          e.preventDefault();
+          this._open = true;
+          this._syncActive();
+          return;
+        }
+        const option = this._filtered[this._active];
+        if (option) {
+          e.preventDefault();
+          this._select(option);
+        }
+        return;
+      }
+      case ' ': {
+        // Only when not typing: a space is a character in a search box, and swallowing it would make
+        // the searchable variant unable to match anything with two words in it.
+        if (this.searchable && this._open) return;
+        e.preventDefault();
+        if (!this._open) {
+          this._open = true;
+          this._syncActive();
+        } else {
+          const option = this._filtered[this._active];
+          if (option) this._select(option);
+        }
+        return;
+      }
+      case 'Escape': {
+        if (!this._open) return;
+        e.preventDefault();
+        this._open = false;
+        this._active = -1;
+        this._filter = '';
+        return;
+      }
+      case 'Tab': {
+        // Leaving closes, without choosing. Not prevented — Tab must still move on.
+        this._open = false;
+        this._active = -1;
+        return;
+      }
+      default:
+    }
+  }
+
+  /** Stable per option so `aria-activedescendant` can name one. */
+  private _optionId(index: number) {
+    return `we-select-option-${index}`;
   }
 
   render() {
     const h = CONTROL_HEIGHT[this.size];
     const filtered = this._filtered;
     const displayVal = this._open ? this._filter : this._displayValue;
+    const activeId = this._open && filtered[this._active] ? this._optionId(this._active) : nothing;
 
     return html`
       <div part="base" style=${styleMap({ position: 'relative', ...this.styles })}>
@@ -232,8 +358,11 @@ export default class Select extends DesignSystemElement {
                     role="combobox"
                     aria-expanded=${this._open ? 'true' : 'false'}
                     aria-autocomplete="list"
+                    aria-controls="listbox"
+                    aria-activedescendant=${activeId}
                     @input=${this._onInput}
                     @focus=${() => (this._open = true)}
+                    @keydown=${this._onKeyDown}
                   />
                 `
               : html`
@@ -242,7 +371,10 @@ export default class Select extends DesignSystemElement {
                     ?disabled=${this.disabled}
                     role="combobox"
                     aria-expanded=${this._open ? 'true' : 'false'}
+                    aria-controls="listbox"
+                    aria-activedescendant=${activeId}
                     @click=${this._toggle}
+                    @keydown=${this._onKeyDown}
                   >
                     ${this._displayValue || this.placeholder || nothing}
                   </button>
@@ -255,14 +387,16 @@ export default class Select extends DesignSystemElement {
         ${
           this._open
             ? html`
-                <div part="listbox" role="listbox">
+                <div part="listbox" role="listbox" id="listbox">
                   ${
                     filtered.length > 0
                       ? filtered.map(
-                          (opt) => html`
+                          (opt, index) => html`
                             <div
                               part="option"
                               role="option"
+                              id=${this._optionId(index)}
+                              data-active=${index === this._active ? 'true' : nothing}
                               aria-selected=${opt.value === this.value ? 'true' : 'false'}
                               aria-disabled=${opt.disabled ? 'true' : nothing}
                               @click=${() => this._select(opt)}
