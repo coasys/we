@@ -2447,6 +2447,66 @@ Undeclared, `$setLocal` warns and no-ops: the button renders, takes the click, a
 If the action is slow (a recursive delete walks its whole collection), add a `busy` boolean set
 before it and cleared in `onFinally`, and bind the confirm button's `loading` and `disabled` to it.
 
+### Composing a post — the BlockComposer save handshake
+
+`BlockComposer` is **pull-based**. Its `onSave` does *not* fire when the user types or when a modal
+closes — it fires when somebody calls the composer's own `save()`, which it hands out exactly once
+through `onReady`. So the sequence is: `onReady` stores that function in a **`function`-typed**
+`$localState` field, the button calls it with `$callLocal`, `save()` serializes the tree, and
+`onSave` runs the action with the tree as `$arg`.
+
+```json
+{
+  "type": "we-modal",
+  "props": { "close": { "$setLocal": "composeOpen", "value": false } },
+  "$localState": {
+    "savePost": { "type": "function", "initial": null },
+    "submitting": { "type": "boolean", "initial": false }
+  },
+  "children": [
+    {
+      "type": "BlockComposer",
+      "props": {
+        "perspective": { "$store": "datasetStore.currentDataset.handle" },
+        "onReady": { "$setLocal": "savePost", "from": "$event.save" },
+        "onSave": [
+          { "$setLocal": "submitting", "value": true },
+          {
+            "$action": "spaceStore.createPost",
+            "args": ["$arg"],
+            "onSuccess": [{ "$setLocal": "composeOpen", "value": false }],
+            "onFinally": [{ "$setLocal": "submitting", "value": false }]
+          }
+        ]
+      }
+    },
+    {
+      "type": "we-button",
+      "props": {
+        "variant": "primary",
+        "loading": { "$local": "submitting" },
+        "disabled": { "$local": "submitting" },
+        "onClick": { "$callLocal": "savePost" }
+      },
+      "children": ["Post"]
+    }
+  ]
+}
+```
+
+**Do not** wire the button straight to the action against a `draft` local the composer was expected
+to fill in. That spelling typechecks, validates, renders — and posts `null`, surfacing as
+`Cannot read properties of null (reading 'type')` from inside `persistNode`, several frames from
+the cause. And because `onReady` is optional, omitting it makes the composer render a floppy-disk
+save button of its own, so the screen ends up with two buttons and only the unexpected one works.
+(`we-validate-schemas` rejects `onSave` without `onReady`.)
+
+`$arg` goes wherever the action wants it — first for `createPost(json, options)`, second for
+`updatePost(postId, json)`.
+
+**Prefer `composerModal` from `@we/template-kit`**, which owns all of the above; write it out by
+hand only when the modal itself needs a different shape.
+
 ### Form field
 
 ```json

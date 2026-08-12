@@ -11,6 +11,7 @@ import type {
 import {
   deepUnwrap,
   hasToken,
+  noMemo,
   pruneUnresolvedWhere,
   REACTIVE_ACCESSOR,
   resolveProp,
@@ -1048,7 +1049,13 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
         (...args: unknown[]) => {
           const callContext = args.length > 0 ? { ...effectiveContext, event: args[0] } : effectiveContext;
           for (const item of items) {
-            let fn = resolveProp(item, stores, callContext, createMemo);
+            /*
+              `noMemo`, not `createMemo`: this runs inside the event handler, where there is no
+              reactive owner, so a memo here is a computation created outside a root — Solid warns
+              and it is never disposed. A handler array is evaluated once per click against the
+              event that just happened; there is nothing for a memo to hold on to.
+            */
+            let fn = resolveProp(item, stores, callContext, noMemo);
             if (typeof fn === 'function' && REACTIVE_ACCESSOR in (fn as object)) fn = (fn as () => unknown)();
             if (typeof fn === 'function') fn(...args);
           }

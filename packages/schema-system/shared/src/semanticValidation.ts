@@ -604,6 +604,42 @@ function updateLocalScope(n: Record<string, unknown>, state: WalkState): WalkSta
   return { ...state, localScope: newFields, queryScope: newQueries };
 }
 
+/**
+ * `BlockComposer` given an `onSave` but no `onReady`.
+ *
+ * The composer is pull-based: `onSave` fires when somebody calls the `save()` it hands out through
+ * `onReady`, not when the user types. So this combination means the template has a save handler
+ * nothing will ever trigger — and because `onReady` is optional, the composer falls back to
+ * rendering a floppy-disk button of its own, leaving two buttons on screen of which only the
+ * unexpected one works. The template's own button, wired to a draft that was never filled in,
+ * submits `null` and fails inside `persistNode`, several frames from the cause.
+ *
+ * A hard-coded component rule rather than something derived, because the constraint is not
+ * expressible in the manifest: it is a relationship *between* two optional props. Kept next to the
+ * generic prop checks so the one component this applies to is visible rather than buried.
+ *
+ * The fix at a call site is almost always "use `composerModal` from `@we/template-kit`", which owns
+ * the handshake.
+ */
+function checkComposerHandshake(
+  props: Record<string, unknown>,
+  path: string,
+  componentType: string,
+  errors: ValidationError[],
+): void {
+  if (componentType !== 'BlockComposer') return;
+  if (props.onSave === undefined || props.onReady !== undefined) return;
+  errors.push({
+    path: `${path}.props.onSave`,
+    message:
+      'BlockComposer has "onSave" but no "onReady" — onSave only fires when the composer\'s own save() ' +
+      'is called, and save() is handed out through onReady. Without it this handler never runs, and the ' +
+      'composer renders its own save button instead. Use composerModal from @we/template-kit, or wire ' +
+      'onReady to a function-typed $localState field and call it with $callLocal.',
+    severity: 'error',
+  });
+}
+
 function checkProps(
   props: Record<string, unknown>,
   path: string,
@@ -614,6 +650,8 @@ function checkProps(
 ): void {
   const knownProps = ctx.componentProps.get(componentType);
   const propTypes = ctx.componentPropTypes.get(componentType);
+
+  checkComposerHandshake(props, path, componentType, errors);
 
   for (const [propName, propValue] of Object.entries(props)) {
     // Skip internal schema props
@@ -1390,9 +1428,31 @@ function walkChildren(
   if (Array.isArray(children)) {
     for (let i = 0; i < children.length; i++) {
       const child = children[i];
-      if (typeof child === 'object' && child !== null) {
-        walkNode(child, `${path}.children[${i}]`, ctx, childState, errors);
+      if (typeof child !== 'object' || child === null) continue;
+      const childPath = `${path}.children[${i}]`;
+
+      /*
+        A token sitting directly in `children` — `{ $plural: … }` beside a count, `{ $store: … }`
+        for a name, `{ $local: … }` for a label. Legal (the children union accepts tokens, which is
+        how a count-noun label is written at all) but *not a node*, so it must be checked as a token
+        rather than walked as one.
+
+        Walking it as a node is what used to happen, and since a token has no `type` it fell into
+        the grouping-node branch, which looks for routes and children and finds neither — so every
+        store path, action name and `$local` reference inside a token in a children array went
+        unexamined. The gap was invisible because the same expressions are checked everywhere else:
+        move `{ $local: 'signalTypes' }` from a prop into a children array and the validator stopped
+        having an opinion about it.
+
+        `type`/`children` still win, so a node carrying `$localState` or `$queries` stays a node.
+      */
+      const record = child as Record<string, unknown>;
+      if (!('type' in record) && !('children' in record) && isTokenObject(child)) {
+        checkTokenValue(child, childPath, ctx, childState, errors);
+        continue;
       }
+
+      walkNode(child, childPath, ctx, childState, errors);
     }
   }
 

@@ -200,3 +200,109 @@ describe('local scope across a route boundary', () => {
     expect(messages(node, 'error')).toEqual([]);
   });
 });
+
+describe('BlockComposer save handshake', () => {
+  /**
+   * The composer is pull-based: `onSave` fires when the `save()` handed out by `onReady` is called.
+   * `onSave` alone is a handler nothing triggers — and since `onReady` is optional, the composer
+   * quietly renders a save button of its own instead. The showcase templates shipped this once and
+   * it surfaced only on submit, as a null deref inside `persistNode`.
+   */
+  it('rejects onSave without onReady', () => {
+    const node: SchemaNode = {
+      type: 'BlockComposer',
+      props: { onSave: { $setLocal: 'draft', from: '$arg' } },
+    } as SchemaNode;
+    expect(messages(node, 'error').join(' ')).toMatch(/onSave.*but no "onReady"/);
+  });
+
+  it('accepts the pair', () => {
+    const node: SchemaNode = {
+      type: 'Column',
+      $localState: { savePost: { type: 'function', initial: null } },
+      children: [
+        {
+          type: 'BlockComposer',
+          props: {
+            onReady: { $setLocal: 'savePost', from: '$event.save' },
+            onSave: { $action: 'spaceStore.createPost', args: ['$arg'] },
+          },
+        },
+      ],
+    } as SchemaNode;
+    expect(messages(node, 'error')).toEqual([]);
+  });
+
+  it('leaves a composer with neither alone — read-only previews are legitimate', () => {
+    const node: SchemaNode = { type: 'BlockComposer', props: { width: '100%' } } as SchemaNode;
+    expect(messages(node, 'error')).toEqual([]);
+  });
+});
+
+describe('tokens sitting directly in a children array', () => {
+  /**
+   * `children` legitimately accepts tokens — a `$plural` count-noun label is written that way, and
+   * so is a `$store` name. But a token is not a node, and walking it as one dropped it into the
+   * grouping-node branch, which looks for routes and children and finds neither. So every store
+   * path, action name and `$local` reference inside a token in a children array went unexamined:
+   * move the same expression from a prop into children and the validator stopped having an opinion.
+   */
+  it('catches an unknown store member inside a children token', () => {
+    const node: SchemaNode = {
+      type: 'we-text',
+      children: [{ $store: 'spaceStore.noSuchMember' }],
+    } as SchemaNode;
+    expect(messages(node, 'error').concat(messages(node, 'warning')).join(' ')).toMatch(/noSuchMember/);
+  });
+
+  it('catches an undeclared $local inside a children token', () => {
+    const node: SchemaNode = {
+      type: 'Column',
+      $localState: { other: { type: 'string', initial: '' } },
+      children: [{ type: 'we-text', children: [{ $local: 'missing' }] }],
+    } as SchemaNode;
+    expect(messages(node, 'error').join(' ')).toMatch(/\$local references "missing"/);
+  });
+
+  it('catches a bad expression nested inside a $plural count', () => {
+    const node: SchemaNode = {
+      type: 'Column',
+      $localState: { rows: { type: 'object', initial: null } },
+      children: [
+        {
+          type: 'we-text',
+          children: [{ $plural: { count: { $local: 'notDeclared' }, one: 'reply', other: 'replies' } }],
+        },
+      ],
+    } as SchemaNode;
+    expect(messages(node, 'error').join(' ')).toMatch(/\$local references "notDeclared"/);
+  });
+
+  it('still accepts a well-formed token in children', () => {
+    const node: SchemaNode = {
+      type: 'Column',
+      $localState: { rows: { type: 'object', initial: null } },
+      children: [
+        {
+          type: 'we-text',
+          children: [{ $plural: { count: { $local: 'rows' }, one: 'reply', other: 'replies' } }],
+        },
+      ],
+    } as SchemaNode;
+    expect(messages(node, 'error')).toEqual([]);
+  });
+
+  it('does not mistake a node carrying $localState for a token', () => {
+    const node: SchemaNode = {
+      type: 'Column',
+      children: [
+        {
+          type: 'Column',
+          $localState: { open: { type: 'boolean', initial: false } },
+          children: [{ type: 'we-text', props: { text: { $local: 'open' } } }],
+        },
+      ],
+    } as SchemaNode;
+    expect(messages(node, 'error')).toEqual([]);
+  });
+});

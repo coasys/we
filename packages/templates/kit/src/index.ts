@@ -73,6 +73,8 @@ export { field } from './input/field.ts';
 export type { FieldOptions } from './input/field.ts';
 
 // Overlays.
+export { composerModal } from './overlays/composerModal.ts';
+export type { ComposerModalOptions } from './overlays/composerModal.ts';
 export { confirmModal } from './overlays/confirmModal.ts';
 export type { ConfirmModalOptions } from './overlays/confirmModal.ts';
 

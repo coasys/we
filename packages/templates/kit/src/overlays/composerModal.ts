@@ -1,0 +1,130 @@
+/**
+ * A block composer in a modal, saving through an action of the caller's choosing.
+ *
+ * Every composed artifact in WE is written this way — a post, an edit to one, a channel message, a
+ * reply, a kanban card — because they differ only in which action runs and what it is anchored to.
+ * The composer, the file-storage blob, the search index and the mention edges are identical.
+ *
+ * ## Why this is a fragment rather than something each template writes
+ *
+ * Because the save path is a **handshake**, and getting it wrong fails in the worst available way.
+ *
+ * `BlockComposer.onSave` does not fire when the user types, or when the modal closes. It fires when
+ * somebody calls the composer's own `save()`, which it hands out exactly once through `onReady`. So
+ * the sequence is: `onReady` stores that function in a `function`-typed local, the button calls it
+ * with `$callLocal`, `save()` serializes the Lexical tree, and `onSave` runs the action with the
+ * tree as `$arg`.
+ *
+ * Written the obvious way instead — a button that calls the action with a `draft` local the
+ * composer was expected to have filled in — it typechecks, validates, renders, and posts `null`,
+ * surfacing as `Cannot read properties of null (reading 'type')` from deep inside `persistNode`,
+ * several frames from the cause. **And `onReady` is optional**: omit it and the composer renders a
+ * floppy-disk save button of its own, so the screen ends up with two buttons, one of which works.
+ *
+ * The pull shape is right, to be clear — the tree is only wanted at submit, and pushing a
+ * serialization on every keystroke to keep a `draft` warm would be waste. What was wrong is that
+ * nothing told you. Now one fragment knows, and `semanticValidation` refuses a `BlockComposer` with
+ * `onSave` and no `onReady`.
+ */
+import type { SchemaNode, SchemaProp } from '@we/schema-shared';
+
+export interface ComposerModalOptions {
+  /**
+   * `$localState` boolean controlling visibility, declared on an ancestor of the **button that
+   * opens it** — not merely of this modal. Undeclared, `$setLocal` warns and no-ops: the button
+   * renders, takes the click, and does nothing.
+   */
+  openLocal: string;
+  /** Modal heading — "New post", "Edit post", "Reply". */
+  title: string;
+  /**
+   * The action to run, with `'$arg'` standing where the serialized tree goes.
+   *
+   * A placeholder the caller positions rather than an argument appended for them, because the tree
+   * is not always last: `updatePost(postId, json)` takes it second and `createPost(json, options)`
+   * takes it first. An implicit append would silently serve one and corrupt the other.
+   */
+  saveAction: { $action: string; args: SchemaProp[] };
+  /** Primary button label. Defaults to "Post". */
+  saveLabel?: string;
+  /** Content to prefill — `'$post.editorState'` for an edit. Omit for a blank composition. */
+  editorState?: SchemaProp;
+}
+
+export function composerModal(opts: ComposerModalOptions): SchemaNode {
+  return {
+    /*
+      Mounted only while open, rather than hidden. Remounting is what resets the composer between
+      uses — a modal left mounted keeps the last draft, so re-opening "New post" would show what was
+      cancelled a minute ago.
+    */
+    type: '$if',
+    props: {
+      condition: { $local: opts.openLocal },
+      then: {
+        type: 'we-modal',
+        props: {
+          close: { $setLocal: opts.openLocal, value: false },
+          maxWidth: 'var(--we-layout-md)',
+          width: '100%',
+          ax: 'center',
+        },
+        $localState: {
+          /** The composer's own `save()`, handed over by `onReady`. Read by `$callLocal`. */
+          savePost: { type: 'function', initial: null },
+          submitting: { type: 'boolean', initial: false },
+        },
+        children: [
+          { type: 'we-text', props: { variant: 'heading-md' }, children: [opts.title] },
+          {
+            type: 'Column',
+            // `pl` clears the composer's own left gutter, where the slash-command affordance sits.
+            props: { width: '100%', bg: 'neutral-25', p: '600', pl: '900', r: '400', overflow: 'auto' },
+            children: [
+              {
+                type: 'BlockComposer',
+                props: {
+                  ...(opts.editorState !== undefined && { editorState: opts.editorState }),
+                  perspective: { $store: 'datasetStore.currentDataset.handle' },
+                  onReady: { $setLocal: 'savePost', from: '$event.save' },
+                  onSave: [
+                    { $setLocal: 'submitting', value: true },
+                    {
+                      $action: opts.saveAction.$action,
+                      args: opts.saveAction.args,
+                      onSuccess: [{ $setLocal: opts.openLocal, value: false }],
+                      onFinally: [{ $setLocal: 'submitting', value: false }],
+                    },
+                  ],
+                },
+              },
+            ],
+          },
+          {
+            type: 'Row',
+            props: { gap: '300', ax: 'end', mt: '200', width: '100%' },
+            children: [
+              {
+                type: 'we-button',
+                props: { variant: 'ghost', onClick: { $setLocal: opts.openLocal, value: false } },
+                children: ['Cancel'],
+              },
+              {
+                type: 'we-button',
+                props: {
+                  variant: 'primary',
+                  loading: { $local: 'submitting' },
+                  // Disabled only while in flight, never on "nothing typed yet" — the house rule.
+                  // Nothing about a draft is locally judgeable anyway.
+                  disabled: { $local: 'submitting' },
+                  onClick: { $callLocal: 'savePost' },
+                },
+                children: [opts.saveLabel ?? 'Post'],
+              },
+            ],
+          },
+        ],
+      },
+    },
+  };
+}

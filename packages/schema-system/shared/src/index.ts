@@ -78,6 +78,7 @@ export {
   splitProps,
   REACTIVE_ACCESSOR,
   deepUnwrap,
+  noMemo,
   setLocalWarningSink,
 } from './propResolvers';
 export type { LocalFieldMeta, LocalMetaMap, MapProp } from './propResolvers';

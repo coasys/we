@@ -12,7 +12,8 @@
  * invented and nothing else has to know about, and a `mode` saying who owns its children. A channel
  * is `kind: 'channel', mode: 'feed'`. That is the whole extension mechanism.
  */
-import type { SchemaNode } from '@we/schema-shared';
+import type { SchemaNode, SchemaProp } from '@we/schema-shared';
+import { composerModal as kitComposerModal } from '@we/template-kit';
 
 /**
  * The kinds these templates use.
@@ -46,24 +47,12 @@ export const KIND = {
 export const MODE = { document: 'document', feed: 'feed' } as const;
 
 /**
- * A composer in a modal, saving through `spaceStore.createPost`.
+ * A composer modal that writes a composed artifact into this space.
  *
- * One fragment for posts, messages, replies and cards, because they differ only in `kind` and where
- * they anchor — the composer, the blob, the search index and the mention edges are identical. That
- * equivalence is the substrate's claim made concrete: if a reply needed its own composer, replies
- * would not really be compositions.
- *
- * ## The save handshake, which is not optional
- *
- * `BlockComposer.onSave` does **not** fire when the user types, or when the modal closes. It fires
- * when somebody calls the composer's own `save()`, which it hands out once through `onReady`. So the
- * wiring is: `onReady` stores that function in a `function`-typed local, the button calls it with
- * `$callLocal`, and the action runs *inside* `onSave` with the serialized tree as `$arg`.
- *
- * Written the obvious way instead — button calls the action with a `draft` local the composer was
- * expected to have filled in — it type-checks, validates, renders, and posts `null`, which surfaces
- * as `Cannot read properties of null (reading 'type')` from deep inside `persistNode`. Nothing about
- * the failure points at the missing handshake.
+ * A thin wrapper over the kit's `composerModal`, which owns the save handshake — see its docstring
+ * for why that handshake is not optional and how it fails when skipped. All this adds is the WE
+ * action and its arguments: one call for posts, messages, replies and cards, because they differ
+ * only in `kind` and where they anchor.
  */
 export function composerModal(opts: {
   /** `$localState` boolean on an ancestor of the *opening button*, not merely of this modal. */
@@ -71,89 +60,28 @@ export function composerModal(opts: {
   title: string;
   kind: string;
   /** Id of the node to attach to. Omit for a post, which sits loose in the space. */
-  parentId?: unknown;
+  parentId?: SchemaProp;
   /** `we://children` (inside a container) or `we://comment` (a reply). */
   predicate?: string;
   saveLabel?: string;
 }): SchemaNode {
-  return {
-    type: '$if',
-    props: {
-      condition: { $local: opts.openLocal },
-      then: {
-        type: 'we-modal',
-        props: {
-          close: { $setLocal: opts.openLocal, value: false },
-          maxWidth: 'var(--we-layout-md)',
-          width: '100%',
-          ax: 'center',
+  return kitComposerModal({
+    openLocal: opts.openLocal,
+    title: opts.title,
+    saveLabel: opts.saveLabel ?? 'Post',
+    saveAction: {
+      $action: 'spaceStore.createPost',
+      // `'$arg'` first: `createPost(json, options)`.
+      args: [
+        '$arg',
+        {
+          kind: opts.kind,
+          ...(opts.parentId !== undefined && { parentId: opts.parentId }),
+          ...(opts.predicate && { predicate: opts.predicate }),
         },
-        $localState: {
-          // The composer's own `save()`, handed over by `onReady`. A `function` field, which is
-          // what `$callLocal` reads.
-          savePost: { type: 'function', initial: null },
-          submitting: { type: 'boolean', initial: false },
-        },
-        children: [
-          { type: 'we-text', props: { variant: 'heading-md' }, children: [opts.title] },
-          {
-            type: 'Column',
-            props: { width: '100%', bg: 'neutral-25', p: '600', r: '400', overflow: 'auto' },
-            children: [
-              {
-                type: 'BlockComposer',
-                props: {
-                  perspective: { $store: 'datasetStore.currentDataset.handle' },
-                  onReady: { $setLocal: 'savePost', from: '$event.save' },
-                  onSave: [
-                    { $setLocal: 'submitting', value: true },
-                    {
-                      $action: 'spaceStore.createPost',
-                      // `$arg` is the serialized tree the composer just produced, and it goes
-                      // first: `createPost(json, options)`.
-                      args: [
-                        '$arg',
-                        {
-                          kind: opts.kind,
-                          ...(opts.parentId !== undefined && { parentId: opts.parentId }),
-                          ...(opts.predicate && { predicate: opts.predicate }),
-                        },
-                      ],
-                      onSuccess: [{ $setLocal: opts.openLocal, value: false }],
-                      onFinally: [{ $setLocal: 'submitting', value: false }],
-                    },
-                  ],
-                },
-              },
-            ],
-          },
-          {
-            type: 'Row',
-            props: { ax: 'end', gap: '300', mt: '200', width: '100%' },
-            children: [
-              {
-                type: 'we-button',
-                props: { variant: 'ghost', onClick: { $setLocal: opts.openLocal, value: false } },
-                children: ['Cancel'],
-              },
-              {
-                type: 'we-button',
-                props: {
-                  variant: 'primary',
-                  loading: { $local: 'submitting' },
-                  // Disabled only while in flight, never on "nothing typed yet" — the house rule,
-                  // and nothing about a draft is locally judgeable anyway.
-                  disabled: { $local: 'submitting' },
-                  onClick: { $callLocal: 'savePost' },
-                },
-                children: [opts.saveLabel ?? 'Post'],
-              },
-            ],
-          },
-        ],
-      },
+      ],
     },
-  };
+  });
 }
 
 /**

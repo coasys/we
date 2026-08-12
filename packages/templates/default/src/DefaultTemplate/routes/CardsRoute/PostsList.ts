@@ -1,7 +1,5 @@
 import type { SchemaNode } from '@we/schema-shared';
-import { agentByline, cardList, cardShell, confirmModal, emptyState } from '@we/template-kit';
-
-import { postComposerModal } from './PostComposerModal.ts';
+import { agentByline, cardList, cardShell, composerModal, confirmModal, emptyState } from '@we/template-kit';
 
 export const postsList: SchemaNode = {
   type: 'Column',
@@ -93,19 +91,16 @@ export const postsList: SchemaNode = {
                           },
                           children: [{ type: 'we-icon', props: { name: 'pencil-simple' } }],
                         },
-                        {
-                          type: '$if',
-                          props: {
-                            condition: { $local: 'editPostOpen' },
-                            then: postComposerModal({
-                              title: 'Edit Post',
-                              openLocal: 'editPostOpen',
-                              editorState: '$post.editorState',
-                              saveAction: { $action: 'spaceStore.updatePost', args: ['$post.id'] },
-                              saveLabel: 'Save',
-                            }),
-                          },
-                        },
+                        // No `$if` here: the fragment mounts only while `editPostOpen` is set,
+                        // which is what resets the composer between edits.
+                        composerModal({
+                          title: 'Edit Post',
+                          openLocal: 'editPostOpen',
+                          editorState: '$post.editorState',
+                          // `'$arg'` second: `updatePost(postId, json)`.
+                          saveAction: { $action: 'spaceStore.updatePost', args: ['$post.id', '$arg'] },
+                          saveLabel: 'Save',
+                        }),
                         {
                           type: 'we-button',
                           props: {
