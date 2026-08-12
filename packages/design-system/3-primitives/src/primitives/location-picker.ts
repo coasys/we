@@ -150,10 +150,8 @@ export default class LocationPicker extends DesignSystemElement {
   @state() private _pendingLng?: number;
   @state() private _geocoding = false;
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  private _map: any = null;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  private _marker: any = null;
+  private _map: import('leaflet').Map | null = null;
+  private _marker: import('leaflet').Marker | null = null;
   private _mapDiv: HTMLElement | null = null;
 
   static getDefaultProps() {

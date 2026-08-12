@@ -1,7 +1,7 @@
 {
   "name": "@we/ai-context",
   "version": "0.1.0",
-  "description": "Auto-extracted AI context for schema generation — instruction files + runtime constant",
+  "description": "Auto-extracted AI context for schema generation \u2014 instruction files + runtime constant",
   "type": "module",
   "scripts": {
     "build:steps": "tsx src/generate.ts && tsup",
@@ -21,12 +21,12 @@
     "@we/schema-shared": "workspace:*"
   },
   "devDependencies": {
-    "@types/node": "^22.10.2",
+    "@types/node": "^24.10.0",
     "@we/cli": "workspace:*",
     "prettier": "3.9.4",
     "ts-morph": "^25.0.1",
     "tsup": "^8.5.1",
-    "tsx": "^4.19.3",
+    "tsx": "^4.21.0",
     "vitest": "^4.0.15"
   },
   "sideEffects": false

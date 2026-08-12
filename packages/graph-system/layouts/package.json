@@ -1,7 +1,7 @@
 {
   "name": "@we/graph-layouts",
   "version": "0.1.0",
-  "description": "Layout strategies for the graph engine — force, radial, tree, grid and manual",
+  "description": "Layout strategies for the graph engine \u2014 force, radial, tree, grid and manual",
   "license": "MIT",
   "type": "module",
   "scripts": {
@@ -33,7 +33,7 @@
     "@we/cli": "workspace:*",
     "@we/graph-protocol": "workspace:*",
     "tsup": "^8.5.1",
-    "typescript": "^5.3.3",
+    "typescript": "^5.7.2",
     "vitest": "^4.0.15"
   },
   "sideEffects": false

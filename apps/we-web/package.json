@@ -12,15 +12,15 @@
   },
   "dependencies": {
     "@we/app-shell": "workspace:*",
-    "@coasys/ad4m": "0.11.0",
-    "@coasys/ad4m-connect": "0.11.0",
+    "@coasys/ad4m": "0.13.0-test-9",
+    "@coasys/ad4m-connect": "0.13.0-test-9",
     "solid-js": "^1.9.5",
     "@we/backend-ad4m": "workspace:*"
   },
   "devDependencies": {
     "@we/cli": "workspace:*",
     "typescript": "^5.7.2",
-    "vite": "^6.0.0",
-    "vite-plugin-solid": "^2.11.6"
+    "vite": "^6.0.7",
+    "vite-plugin-solid": "^2.11.11"
   }
 }

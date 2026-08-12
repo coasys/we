@@ -34,13 +34,12 @@
     }
   },
   "dependencies": {
-    "@coasys/ad4m": "0.11.0",
+    "@coasys/ad4m": "0.13.0-test-9",
     "@solidjs/router": "^0.15.3",
     "@we/ai-context": "workspace:*",
     "@we/block-shared": "workspace:*",
     "@we/block-solid": "workspace:*",
     "@we/components": "workspace:*",
-    "@we/design-types": "workspace:*",
     "@we/design-utils": "workspace:*",
     "@we/models": "workspace:*",
     "@we/module-call": "workspace:*",
@@ -56,7 +55,6 @@
     "gsap": "^3.13.0",
     "solid-js": "^1.9.5",
     "three": "^0.176.0",
-    "zod": "^4.1.11",
     "@we/backend-shared": "workspace:*",
     "@we/module-shared": "workspace:*",
     "@we/module-transcribe": "workspace:*",
@@ -69,7 +67,7 @@
     "@we/graph-solid": "workspace:*"
   },
   "devDependencies": {
-    "@types/node": "^22.10.2",
+    "@types/node": "^24.10.0",
     "@types/three": "^0.176.0",
     "@vitest/coverage-v8": "^4.0.15",
     "@we/cli": "workspace:*",
@@ -78,6 +76,6 @@
     "@solidjs/testing-library": "^0.8.10",
     "@we/backend-inmemory": "workspace:*",
     "jsdom": "^27.2.0",
-    "vite-plugin-solid": "^2.11.10"
+    "vite-plugin-solid": "^2.11.11"
   }
 }

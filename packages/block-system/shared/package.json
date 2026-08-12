@@ -20,7 +20,7 @@
     "@we/models": "workspace:*"
   },
   "peerDependencies": {
-    "@coasys/ad4m": "0.11.0"
+    "@coasys/ad4m": "0.13.0-test-9"
   },
   "devDependencies": {
     "@we/cli": "workspace:*",

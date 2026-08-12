@@ -1,7 +1,7 @@
 {
   "name": "@we/graph-expanders",
   "version": "0.1.0",
-  "description": "WE's first-party graph expanders and seed sources — entity relations, containment, properties, schema",
+  "description": "WE's first-party graph expanders and seed sources \u2014 entity relations, containment, properties, schema",
   "license": "MIT",
   "type": "module",
   "scripts": {
@@ -29,7 +29,7 @@
     "@we/cli": "workspace:*",
     "@we/graph-protocol": "workspace:*",
     "tsup": "^8.5.1",
-    "typescript": "^5.3.3",
+    "typescript": "^5.7.2",
     "vitest": "^4.0.15"
   },
   "sideEffects": false

@@ -46,9 +46,9 @@
     "sass": "^1.92.1",
     "solid-js": "^1.9.5",
     "tsup": "^8.5.1",
-    "typescript": "^5.3.3",
-    "vite": "^6.0.0",
-    "vite-plugin-solid": "^2.11.6",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.7",
+    "vite-plugin-solid": "^2.11.11",
     "vitest": "^4.0.15"
   },
   "context": {

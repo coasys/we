@@ -103,7 +103,7 @@
     "prettier": "3.9.4",
     "storybook": "8.4.6",
     "tsup": "^8.5.1",
-    "tsx": "^4.19.3",
+    "tsx": "^4.21.0",
     "vitest": "^4.0.15"
   },
   "publishConfig": {
