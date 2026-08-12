@@ -7,7 +7,7 @@ SolidJS block editor and renderer for the WE block system. Part of a two-package
 | `@we/block-shared` (`../shared/`) | Framework-agnostic registry, serialization, AD4M model bindings            |
 | `@we/block-solid` (this package)  | SolidJS `BlockComposer`, `BlockRenderer`, all block components and plugins |
 
-For architecture, conventions, and how to add new block types, see [`../CONVENTIONS.md`](../CONVENTIONS.md).
+For architecture, conventions, and how to add new block types, see [`CONVENTIONS.md`](./CONVENTIONS.md).
 
 ---
 

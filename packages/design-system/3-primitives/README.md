@@ -31,6 +31,12 @@ npm install @we/primitives
 <we-icon name="star" />
 ```
 
+### Per-component imports
+
+Each primitive is also a subpath entry — `import '@we/primitives/button'`
+registers just that element (typed per framework via
+`@we/primitives/solid/*` etc.).
+
 ### In a Framework (e.g., Solid, React, Vue)
 
 1. **Register the elements (once, at app startup):**
@@ -77,9 +83,9 @@ See the [Storybook](./.storybook/) for live demos and documentation.
 
 ## Contributing
 
-- Components are implemented in [`src/components/`](./src/components/).
+- Primitives are implemented in [`src/primitives/`](./src/primitives/) — one file per element, registered via `src/index.ts`.
 - Run `pnpm build` to build the package.
-- Run `pnpm storybook` to start the local Storybook.
+- Run `pnpm start` (in this package) to start the local Storybook.
 - See [`scripts/generate-framework-declarations.ts`](./scripts/generate-framework-declarations.ts) for type generation.
 
 ## License
