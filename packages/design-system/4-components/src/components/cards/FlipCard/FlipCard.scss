@@ -1,15 +1,28 @@
 /*
-  Prefixes are written by hand here, because this repo has no autoprefixer — the only PostCSS in it
-  is `postcss-import` for the themes package. Which is fine until a property needs one, and
-  `transform-style` is the property that needs one.
+  Why this does not rely on `backface-visibility`, having been written to.
 
-  WebKitGTK — the webview Tauri uses on Linux — honours `-webkit-transform-style` and ignores the
-  unprefixed form. Without it the 3D context flattens, and a flattened context takes
-  `backface-visibility` with it: the back face is no longer *behind* anything, it is simply drawn at
-  `rotateY(180deg)`, which is a mirror. So the cards opened showing the back face's colour with every
-  word reversed, and flipping them un-mirrored the *front* and painted it on top — the exact report.
-  Chromium (we-web, Electron) accepts the unprefixed property, which is why it looked fine there and
-  only Tauri showed it.
+  A flip card is conventionally built by putting two faces in the same place, rotating one of them
+  180°, and letting `backface-visibility: hidden` cull whichever is facing away. That works in
+  Chromium — we-web and Electron were always fine — and does nothing at all in WebKitGTK, the
+  webview Tauri uses on Linux. Measured rather than guessed: loading these exact rules in
+  WebKit2GTK 4.1 and sampling the rendered pixel shows the *back* face painted in both states, while
+  `getComputedStyle` cheerfully reports `transform-style: preserve-3d` and
+  `backface-visibility: hidden` on every element. The properties are accepted and not honoured.
+
+  So the cards opened showing the back face — its colour, its text, mirrored by the 180° rotation —
+  and flipping them turned that rotation into a double one, which reads the right way round again.
+  Exactly the report.
+
+  Nothing 3D fixes it, and each was tried in that engine: the `-webkit-` prefixes, a base
+  `rotateY(0deg)` to force a 3D context, separating the faces along Z so the depth order is
+  unambiguous, and removing the `overflow`/`border-radius` that can promote a face to its own layer.
+  All still painted the back face.
+
+  What works is to stop asking the renderer which face is toward us and say so ourselves: the flip
+  state already knows. `opacity` swaps the faces at the midpoint of the rotation — a zero-length
+  transition with half the duration as its delay — so the animation still reads as a flip, on every
+  engine. `backface-visibility` is kept underneath because it is the correct mechanism where it
+  works, and it costs nothing where it does not.
 */
 .we-flip-card {
   perspective: 1000px;
@@ -40,9 +53,23 @@
     -webkit-backface-visibility: hidden;
     border-radius: var(--we-theme-surface-radius, var(--we-radius-400));
     overflow: hidden;
+    // Swapped at the halfway point of the rotation, which is where a real card would change face.
+    // Zero-length, so it is a cut rather than a fade — a cross-fade would show both at once.
+    transition: opacity 0s linear calc(var(--we-flip-card-duration, 0.5s) / 2);
   }
 
   &__back {
     transform: rotateY(180deg);
+    opacity: 0;
+  }
+
+  &--flipped &__front,
+  &--hover-flip:hover &__front {
+    opacity: 0;
+  }
+
+  &--flipped &__back,
+  &--hover-flip:hover &__back {
+    opacity: 1;
   }
 }
