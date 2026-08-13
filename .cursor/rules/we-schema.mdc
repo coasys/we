@@ -1999,7 +1999,8 @@ ThemeStore:
   - createAndStartEditing(): unknown
   - saveEditingThemeAs(): unknown
   - deleteTheme(themeId: string): permanently deletes a custom theme
-  - installFromMarketplace(marketplaceThemeId: string): installs a marketplace theme into installedThemes
+  - installFromMarketplace(marketplaceThemeId: string): installs a marketplace theme into your own library (installedThemes). A personal act — use installToSpace to give the community a theme
+  - installToSpace(marketplaceThemeId: string): copies a marketplace theme into the current space, so every member of that community gets it. The counterpart to templateStore.installToSpace. Pair with themeStore.operationLoading to show progress on the row being installed
   - uninstallTheme(themeId: string): removes an installed theme (deletes the model)
   - deleteMarketplaceTheme(): unknown
   - publishToMarketplace(): unknown

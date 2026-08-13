@@ -2448,6 +2448,7 @@ export const contextData: ContextData = {
         'saveEditingThemeAs',
         'deleteTheme',
         'installFromMarketplace',
+        'installToSpace',
         'uninstallTheme',
         'deleteMarketplaceTheme',
         'publishToMarketplace',

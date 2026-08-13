@@ -14,7 +14,7 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 
 import {
   buildTemplateBag,
@@ -208,5 +208,53 @@ describe('destructive actions', () => {
     // method never runs — the template gets `undefined`, the same as any action it cannot reach.
     expect(asked).toEqual(['spaceStore.removeSpace']);
     expect(removed).toEqual(['post']);
+  });
+});
+
+describe('space-configuring actions are pinned to the space on screen', () => {
+  /*
+    Every one of these takes the space as a trailing optional argument, omitted meaning "here". The
+    default is right for a template and the argument is not: it is the difference between "this
+    community's template configures this community" and "any space you visit can rename every other
+    space you are in". The tier grants the action; this is what makes granting it safe.
+  */
+  const calls: unknown[][] = [];
+  const record =
+    (..._names: string[]) =>
+    (...args: unknown[]) => {
+      calls.push(args);
+    };
+
+  const bag = buildTemplateBag(
+    {
+      spaceStore: {
+        updateSpaceMeta: record(),
+        setSpaceDefaultTemplate: record(),
+        setModuleEnabled: record(),
+        updateSpaceImage: record(),
+      },
+    },
+    { grants: SPACE_TIER },
+  );
+  const spaceStore = bag.spaceStore as Record<string, (...args: unknown[]) => unknown>;
+
+  beforeEach(() => {
+    calls.length = 0;
+  });
+
+  it('drops a spaceUuid a template tries to name', () => {
+    spaceStore.updateSpaceMeta({ name: 'Renamed' }, 'someone-elses-space');
+    expect(calls).toEqual([[{ name: 'Renamed' }]]);
+  });
+
+  it('keeps every argument the action legitimately takes', () => {
+    spaceStore.setModuleEnabled('call', true, 'someone-elses-space');
+    expect(calls).toEqual([['call', true]]);
+  });
+
+  it('leaves an ordinary call untouched', () => {
+    spaceStore.setSpaceDefaultTemplate('gardening');
+    spaceStore.updateSpaceImage('avatar', 'a-file');
+    expect(calls).toEqual([['gardening'], ['avatar', 'a-file']]);
   });
 });

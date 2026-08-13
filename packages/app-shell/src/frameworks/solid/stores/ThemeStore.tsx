@@ -130,6 +130,11 @@ export interface ThemeStore {
   saveEditingThemeAs: (name: string, icon: string) => Promise<ThemeData | null>;
   deleteTheme: (themeId: string) => Promise<void>;
   installFromMarketplace: (marketplaceThemeId: string) => Promise<void>;
+  /**
+   * Copy a marketplace theme into the current space, so every member gets it — as opposed to
+   * installing it for yourself. The counterpart to `templateStore.installToSpace`.
+   */
+  installToSpace: (marketplaceThemeId: string) => Promise<void>;
   uninstallTheme: (themeId: string) => Promise<void>;
   deleteMarketplaceTheme: (themeId: string) => Promise<void>;
   publishToMarketplace: (options: {
@@ -1138,6 +1143,68 @@ export function ThemeStoreProvider(props: ParentProps) {
     }
   }
 
+  /**
+   * Copy a marketplace theme into the current space, so every member of that community gets it.
+   *
+   * The counterpart to `templateStore.installToSpace`, and it did not exist. The default template's
+   * space-settings page browsed marketplace *templates* and installed them into the space, then
+   * browsed marketplace *themes* and installed them into your personal library — the same button,
+   * on the same page, meaning two different things. Nobody chose that; the space-scoped half was
+   * simply missing, so the page reached for the account-scoped one.
+   *
+   * It matters beyond the inconsistency: writing to your root perspective is an act on your account,
+   * which is why `installFromMarketplace` sits at the chrome tier. A community template can offer
+   * "give this space a theme" and cannot offer "put this in your library".
+   */
+  async function installToSpace(marketplaceThemeId: string): Promise<void> {
+    const marketplacePerspective = datasetStore.marketplaceDataset()?.handle;
+    const spacePerspective = datasetStore.currentDataset()?.handle;
+    if (!marketplacePerspective || !spacePerspective) {
+      toastService.error('Cannot install: no active space or marketplace not connected');
+      return;
+    }
+
+    setOperationLoading(`space-install:${marketplaceThemeId}`);
+    try {
+      const source = await Theme.findOne(marketplacePerspective, { where: { id: marketplaceThemeId } });
+      if (!source) {
+        toastService.error('Theme not found in marketplace');
+        return;
+      }
+
+      const slug = source.slug || source.name.toLowerCase().replace(/\s+/g, '-');
+      const existing = await Theme.findOne(spacePerspective, { where: { slug } });
+      if (existing) {
+        toastService.error(`"${source.name}" is already in this space`);
+        return;
+      }
+
+      // Raw file-storage fields resolve to `data:<mime>;base64,...` strings, so they are decoded
+      // before re-encoding — otherwise the data URI itself becomes the new file's content.
+      const overrides = decodeFileAsString(source.overrides) || null;
+      const css = decodeFileAsString(source.css) || null;
+
+      await Theme.create(spacePerspective, {
+        name: source.name,
+        description: source.description,
+        icon: source.icon,
+        slug,
+        origin: 'shared',
+        version: source.version || 1,
+        overrides: overrides ? asFileField(encodeToFileData(overrides, 'overrides.json', 'application/json')) : null,
+        css: css ? asFileField(encodeToFileData(css, 'theme.css', 'text/css')) : null,
+      });
+
+      await loadSpaceThemes();
+      toastService.success(`"${source.name}" added to this space`);
+    } catch (error) {
+      console.error('ThemeStore: installToSpace error', error);
+      toastService.error(`Failed to add theme: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setOperationLoading(null);
+    }
+  }
+
   async function publishToSpace(perspectiveUuid: string, spaceName: string): Promise<boolean> {
     const perspective = datasetStore.datasets().find((d) => d.id === perspectiveUuid)?.handle;
     if (!perspective) {
@@ -1218,6 +1285,7 @@ export function ThemeStoreProvider(props: ParentProps) {
     saveEditingThemeAs,
     deleteTheme,
     installFromMarketplace,
+    installToSpace,
     uninstallTheme,
     deleteMarketplaceTheme,
     publishToMarketplace,

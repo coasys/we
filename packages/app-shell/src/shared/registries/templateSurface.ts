@@ -53,8 +53,10 @@ export const CAPABILITY_GROUPS = {
   signals: 'React to things, and define what a reaction means here',
   presence: 'See who else is here and say what you are doing',
   identity: 'Read profiles of people in this space',
-  'space-admin': 'Change settings every member of a space sees',
-  library: 'Install, publish and remove templates and themes',
+  'space-settings': 'Change the name, look and defaults of THIS space',
+  appearance: 'Choose which template and theme you are looking at',
+  'space-admin': 'Change settings in spaces other than this one',
+  library: 'Install, publish and remove templates and themes on your account',
   agent: 'Change your own profile, settings and preferences',
   session: 'Sign in and out, and manage local accounts',
   'runtime-admin': 'Administer the backend — trust, network, AI models, the database',
@@ -66,6 +68,20 @@ export type CapabilityGroup = keyof typeof CAPABILITY_GROUPS;
 /**
  * What an ordinary space template gets: everything needed to render a community and take part in
  * it, and nothing that changes the app, the account or the machine.
+ *
+ * `space-settings` and `appearance` are here because of what WE claims to be. A community's
+ * template offering "rename this space", "give it an avatar", "here are the templates and themes
+ * this space has, pick one" is not a privilege escalation — it is the product. Drawing the line
+ * beneath those would mean a community can shape everything about its space except how the space
+ * is configured, which would have to be done from host chrome that looks nothing like the rest of
+ * it. WE's own default template is the proof: it lands entirely inside this tier, and it has a
+ * complete settings surface.
+ *
+ * What keeps them safe is scope rather than exclusion. `space-settings` actions are pinned to the
+ * space on screen (see `arity` below), so a template cannot reconfigure a space you are not in;
+ * `appearance` changes which template and theme *you* are looking at, from what you already have,
+ * and cannot install, publish or delete anything. Those remain `space-admin` and `library`, at the
+ * chrome tier.
  */
 export const SPACE_TIER: readonly CapabilityGroup[] = [
   'content',
@@ -74,6 +90,8 @@ export const SPACE_TIER: readonly CapabilityGroup[] = [
   'signals',
   'presence',
   'identity',
+  'space-settings',
+  'appearance',
 ];
 
 /**
@@ -106,6 +124,21 @@ interface MemberSpec {
    * whether to demand confirmation it owns.
    */
   destructive?: true;
+  /**
+   * Arguments this action may be given; anything beyond is dropped.
+   *
+   * There is one thing this is for. Every space-configuring action takes the space as a trailing
+   * optional argument — `updateSpaceMeta(updates, spaceUuid?)`,
+   * `setSpaceDefaultTemplate(templateId, spaceUuid?)`, `setModuleEnabled(id, enabled, spaceUuid?)` —
+   * omitted meaning "the space on screen". That default is exactly right for a template and the
+   * argument is exactly wrong: it is the difference between "this community's template configures
+   * this community" and "any space you visit can rename every other space you are in".
+   *
+   * Truncating is better than validating the uuid, because there is nothing to validate against
+   * that a template could not also read. Removing the ability to name a space at all leaves only
+   * the default, which is the sentence the tier is trying to be.
+   */
+  arity?: number;
 }
 
 type Classification = MemberSpec | typeof WIRING;
@@ -113,6 +146,8 @@ type Classification = MemberSpec | typeof WIRING;
 const state = (group: CapabilityGroup): MemberSpec => ({ group, kind: 'state' });
 const action = (group: CapabilityGroup): MemberSpec => ({ group, kind: 'action' });
 const destructive = (group: CapabilityGroup): MemberSpec => ({ group, kind: 'action', destructive: true });
+/** An action pinned to the space on screen: its trailing `spaceUuid` argument is unreachable. */
+const hereOnly = (group: CapabilityGroup, arity: number): MemberSpec => ({ group, kind: 'action', arity });
 
 /**
  * Every member of every store, classified.
@@ -352,53 +387,53 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     missingModules: state('navigation'),
 
     // ── space-admin ──
-    spaceDefaultTemplateId: state('space-admin'),
-    spaceDefaultThemeId: state('space-admin'),
+    spaceDefaultTemplateId: state('space-settings'),
+    spaceDefaultThemeId: state('space-settings'),
     creatingSpace: state('space-admin'),
-    foreignSpacePrefill: state('space-admin'),
+    foreignSpacePrefill: state('space-settings'),
     enabledModules: state('space-admin'),
     templateOverrideOptions: state('space-admin'),
     themeOverrideOptions: state('space-admin'),
     moduleInstallSettings: state('space-admin'),
     createSpace: action('space-admin'),
-    initializeAsWeSpace: action('space-admin'),
+    initializeAsWeSpace: action('space-settings'),
     removeSpace: destructive('space-admin'),
-    updateSpaceImage: action('space-admin'),
-    updateSpaceMeta: action('space-admin'),
-    setSpaceDefaultTemplate: action('space-admin'),
-    setSpaceDefaultTheme: action('space-admin'),
-    setModuleEnabled: action('space-admin'),
+    updateSpaceImage: hereOnly('space-settings', 2),
+    updateSpaceMeta: hereOnly('space-settings', 1),
+    setSpaceDefaultTemplate: hereOnly('space-settings', 1),
+    setSpaceDefaultTheme: hereOnly('space-settings', 1),
+    setModuleEnabled: hereOnly('space-settings', 2),
     removeSpaceFromGlobal: destructive('space-admin'),
 
     // ── agent: this agent's own preferences, private to them ──
     installedModules: state('agent'),
     setModuleInstalled: action('agent'),
-    setModuleVisible: action('agent'),
-    setSpaceTemplateOverride: action('agent'),
-    setSpaceThemeOverride: action('agent'),
+    setModuleVisible: hereOnly('space-settings', 2),
+    setSpaceTemplateOverride: hereOnly('appearance', 1),
+    setSpaceThemeOverride: hereOnly('appearance', 1),
 
     updateSpaceInCache: WIRING,
     loadSpaces: WIRING,
   },
 
   themeStore: {
-    builtInThemes: state('library'),
-    installedThemes: state('library'),
-    spaceThemes: state('library'),
-    allThemes: state('library'),
+    builtInThemes: state('appearance'),
+    installedThemes: state('appearance'),
+    spaceThemes: state('appearance'),
+    allThemes: state('appearance'),
     currentThemeId: state('view-state'),
     currentTheme: state('view-state'),
     defaultThemeId: state('library'),
     themeManagementList: state('library'),
     editingTheme: state('editor'),
-    operationLoading: state('library'),
+    operationLoading: state('appearance'),
     themeScope: state('view-state'),
     themeScopePreference: state('view-state'),
     themeScopeGlobal: state('view-state'),
     themeScopePreviewing: state('editor'),
     useTemplateTheme: state('view-state'),
     activeTemplateTheme: state('view-state'),
-    setCurrentTheme: action('library'),
+    setCurrentTheme: action('appearance'),
     setDefaultTheme: action('library'),
     setThemeInstalled: action('library'),
     previewThemeScope: action('editor'),
@@ -417,6 +452,8 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     saveEditingThemeAs: action('editor'),
     deleteTheme: destructive('library'),
     installFromMarketplace: action('library'),
+    // Into the space rather than into your account, which is why it sits a tier below its neighbour.
+    installToSpace: action('space-settings'),
     uninstallTheme: destructive('library'),
     deleteMarketplaceTheme: destructive('library'),
     publishToMarketplace: action('library'),
@@ -426,28 +463,28 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     registerHistoryCallbacks: WIRING,
     applySnapshot: WIRING,
     loadInstalledThemes: WIRING,
-    refreshSpaceThemes: WIRING,
+    refreshSpaceThemes: action('appearance'),
   },
 
   templateStore: {
-    personalTemplates: state('library'),
-    spaceTemplates: state('library'),
-    builtInTemplates: state('library'),
+    personalTemplates: state('appearance'),
+    spaceTemplates: state('appearance'),
+    builtInTemplates: state('appearance'),
     myTemplates: state('library'),
-    allTemplates: state('library'),
+    allTemplates: state('appearance'),
     templateManagementList: state('library'),
-    switcherGroups: state('library'),
+    switcherGroups: state('appearance'),
     currentTemplate: state('view-state'),
     loading: state('library'),
     defaultTemplateId: state('library'),
-    operationLoading: state('library'),
-    switchTemplate: action('library'),
+    operationLoading: state('appearance'),
+    switchTemplate: action('appearance'),
     removeTemplate: destructive('library'),
     deleteTemplate: destructive('library'),
     installTemplate: action('library'),
     uninstallTemplate: action('library'),
     installFromMarketplace: action('library'),
-    installToSpace: action('space-admin'),
+    installToSpace: action('space-settings'),
     setDefaultTemplate: action('library'),
     saveTemplate: action('editor'),
     saveTemplateAs: action('editor'),
@@ -472,7 +509,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     provideSpaceLookup: WIRING,
     preloadSpaceTemplates: WIRING,
     loadSpaceTemplates: WIRING,
-    refreshSpaceTemplates: WIRING,
+    refreshSpaceTemplates: action('appearance'),
     clearSpaceTemplates: WIRING,
     getTemplateModel: WIRING,
   },
@@ -493,7 +530,14 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     openShellView: action('navigation'),
     closeShellView: action('navigation'),
     createSpaceOpen: state('space-admin'),
-    setCreateSpaceOpen: action('space-admin'),
+    /*
+      Opening the host's create-space dialog, which is not the same act as creating a space —
+      `spaceStore.createSpace` stays at `space-admin`. A template asks, chrome's own dialog appears,
+      and the user fills it in and presses the button. That indirection is what makes it navigation
+      rather than administration: the template can request a destination, never arrive at one on the
+      user's behalf.
+    */
+    setCreateSpaceOpen: action('navigation'),
     scrollToId: action('view-state'),
 
     // Dock geometry is the host's layout arithmetic, driven by a resize handle it owns.
@@ -726,18 +770,138 @@ export function buildTemplateBag<T extends Record<string, unknown>>(stores: T, o
         continue;
       }
 
-      if (spec.destructive && options.onDestructive) {
-        const path = `${key}.${name}`;
-        const guard = options.onDestructive;
-        const method = member as (...args: unknown[]) => unknown;
-        filtered[name] = (...args: unknown[]) => (guard(path) ? method(...args) : undefined);
-        continue;
+      const path = `${key}.${name}`;
+      let method = member as (...args: unknown[]) => unknown;
+
+      // Pinned to the space on screen: the trailing `spaceUuid` argument is dropped before the store
+      // ever sees it, so the default — "here" — is the only thing a template can express.
+      if (spec.arity !== undefined) {
+        const bound = method;
+        const arity = spec.arity;
+        method = (...args: unknown[]) => bound(...args.slice(0, arity));
       }
 
-      filtered[name] = member;
+      if (spec.destructive && options.onDestructive) {
+        const guard = options.onDestructive;
+        const bound = method;
+        method = (...args: unknown[]) => (guard(path) ? bound(...args) : undefined);
+      }
+
+      filtered[name] = method;
     }
     bag[key] = filtered;
   }
 
   return bag as T;
+}
+
+/**
+ * What a template asks for, and what it would not be given.
+ *
+ * `buildTemplateBag` is the enforcement: a reference outside the grant resolves to nothing, and
+ * that is true whatever this function says. So why read the schema at all?
+ *
+ * Because "resolves to nothing" is invisible. A synced space template referencing
+ * `sessionStore.logout` renders a Sign out button that takes the click and does nothing, and a
+ * `{ $store: 'runtimeStore.trustedAgents' }` renders an empty list rather than an error — a
+ * template that is quietly half-broken, in a way neither its author nor the person looking at it
+ * can see. Reading the references before accepting the template turns a silent hole into a
+ * sentence, at install time, naming what it wanted.
+ *
+ * It is also the honest place to *refuse*. A template arriving from a peer that asks to administer
+ * the backend is not a template with a bug in it.
+ */
+export interface SurfaceReference {
+  /** The store path as written — `sessionStore.logout`. */
+  path: string;
+  /** How it was reached: through `$store` or through `$action`. */
+  via: 'store' | 'action';
+  /** The group it belongs to, or null when the member is not classified at all. */
+  group: CapabilityGroup | null;
+}
+
+export interface SurfaceInspection {
+  /** References the grant covers. */
+  allowed: SurfaceReference[];
+  /** References that would resolve to nothing — the reason to refuse, or at least to say so. */
+  blocked: SurfaceReference[];
+  /** The distinct capability groups the template actually uses, for an install prompt. */
+  groups: CapabilityGroup[];
+}
+
+/** Store names the bag always provides, so a reference to one is never blocked. */
+const UNGATED_ROOTS = new Set([...ALWAYS_PRESENT, 'modules']);
+
+function classify(path: string): { store: string; member: string; spec: Classification | undefined } | null {
+  const [store, member] = path.split('.');
+  if (!store || !member) return null;
+  return { store, member, spec: TEMPLATE_SURFACE[store]?.[member] };
+}
+
+/**
+ * Walk any schema-shaped value, collecting every `$store` and `$action` reference.
+ *
+ * Structural rather than typed on `SchemaNode`, because references live in props, in nested
+ * operator objects, in `$each` items, in route trees and in handler arrays — everywhere. A walk
+ * that knew the node shape would have to be revised for every operator added, and the failure mode
+ * of missing one is a reference nobody inspected.
+ */
+function collectReferences(value: unknown, into: { path: string; via: 'store' | 'action' }[]): void {
+  if (Array.isArray(value)) {
+    for (const entry of value) collectReferences(entry, into);
+    return;
+  }
+  if (!value || typeof value !== 'object') return;
+
+  const node = value as Record<string, unknown>;
+  if (typeof node.$store === 'string') into.push({ path: node.$store, via: 'store' });
+  if (typeof node.$action === 'string') into.push({ path: node.$action, via: 'action' });
+
+  for (const entry of Object.values(node)) collectReferences(entry, into);
+}
+
+/**
+ * Inspect a template against a set of grants.
+ *
+ * A `$store` path may be deeper than `store.member` (`spaceStore.currentSpace.name`); only the
+ * first two segments decide access, which is exactly what the bag does — it filters members, and
+ * everything below one travels with it.
+ */
+export function inspectTemplateSurface(schema: unknown, grants: readonly CapabilityGroup[]): SurfaceInspection {
+  const granted = new Set(grants);
+  const references: { path: string; via: 'store' | 'action' }[] = [];
+  collectReferences(schema, references);
+
+  const allowed: SurfaceReference[] = [];
+  const blocked: SurfaceReference[] = [];
+  const groups = new Set<CapabilityGroup>();
+  const seen = new Set<string>();
+
+  for (const { path, via } of references) {
+    const key = `${via}:${path}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+
+    const root = path.split('.')[0];
+    if (UNGATED_ROOTS.has(root)) continue;
+
+    const parsed = classify(path);
+    if (!parsed || parsed.spec === undefined || parsed.spec === WIRING) {
+      // Unclassified or host wiring. Blocked either way — an undecided member is not an open one —
+      // but with a null group, so a caller can word "there is no such thing" differently from
+      // "you may not have that".
+      blocked.push({ path, via, group: null });
+      continue;
+    }
+
+    const reference: SurfaceReference = { path, via, group: parsed.spec.group };
+    if (granted.has(parsed.spec.group)) {
+      allowed.push(reference);
+      groups.add(parsed.spec.group);
+    } else {
+      blocked.push(reference);
+    }
+  }
+
+  return { allowed, blocked, groups: [...groups] };
 }
