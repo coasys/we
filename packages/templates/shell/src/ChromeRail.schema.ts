@@ -46,7 +46,7 @@
  */
 import type { SchemaNode } from '@we/schema-shared';
 
-import { templatePicker, themePicker } from './DesignControls.schema';
+import { TEMPLATE_PICKER_OPEN, templatePicker, THEME_PICKER_OPEN, themePicker } from './DesignControls.schema';
 
 /**
  * The width every docked module panel should clear. Exported so panels stay in step with the rail.
@@ -158,7 +158,13 @@ const designSection: SchemaNode = {
     then: {
       type: 'Column',
       props: { gap: '100', ay: 'center', width: '100%' },
-      children: [templatePicker, themePicker],
+      // Both flags live here, above either picker, so opening one can close the other. Held by the
+      // thing that knows they are a set — neither picker can see the other's state.
+      $localState: {
+        [TEMPLATE_PICKER_OPEN]: { type: 'boolean', initial: false },
+        [THEME_PICKER_OPEN]: { type: 'boolean', initial: false },
+      },
+      children: [templatePicker(), themePicker()],
     },
   },
 };

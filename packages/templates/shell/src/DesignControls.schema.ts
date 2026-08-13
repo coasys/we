@@ -32,8 +32,19 @@ const matching = (items: SchemaProp) => ({
   $filter: { items, where: { name: { contains: { $local: 'pickerSearch' } } } },
 });
 
+/**
+ * The flags that hold each picker open, declared together on the rail by `chromeRail`.
+ *
+ * Above both pickers rather than inside either, because only something holding the pair can close
+ * one when the other opens — and two independently-owned flags meant clicking the second left the
+ * first up and the two surfaces overlapped.
+ */
+export const TEMPLATE_PICKER_OPEN = 'templatePickerOpen';
+export const THEME_PICKER_OPEN = 'themePickerOpen';
+
 /** Choosing anything dismisses the picker — one left open over the change it just made reads as a miss. */
-const closePicker = { $setLocal: 'pickerOpen', value: false };
+const closeTemplatePicker = { $setLocal: TEMPLATE_PICKER_OPEN, value: false };
+const closeThemePicker = { $setLocal: THEME_PICKER_OPEN, value: false };
 
 /** A theme or template's own icon, falling back where a record has none. */
 const iconOr = (path: string, fallback: string) => ({
@@ -186,103 +197,112 @@ const templateRows = matching('$group.items');
 /**
  * The template picker.
  *
+ * **Ambient contract:** must be placed inside a node declaring {@link TEMPLATE_PICKER_OPEN} and
+ * {@link THEME_PICKER_OPEN} — `chromeRail` does. A function rather than a node for that reason: an
+ * exported node is validated on its own, where a reference to an ancestor's state has nothing to
+ * resolve against, and the composed rail is the only place the question is answerable.
+ *
  * "New" and "Fork" go through `editorStore`'s own picker state rather than local flags, because
  * that store already knows what a fork is seeded from and whether the destination question applies.
  * The theme side has no such state and carries its own — the asymmetry is in the stores, not here.
  */
-export const templatePicker: SchemaNode = {
-  type: 'Column',
-  children: [
-    pickerPopover({
-      icon: 'cube',
-      tooltip: 'Template',
-      searchPlaceholder: 'Search templates…',
-      body: {
-        type: '$each',
-        props: { items: { $store: 'templateStore.switcherGroups' }, as: 'group' },
-        children: [
-          section('$group.label', templateRows, {
-            type: '$each',
-            props: { items: templateRows, as: 'template' },
-            children: [
-              pickerRow({
-                icon: '$template.icon',
-                label: '$template.name',
-                selected: { $eq: ['$template.id', { $store: 'templateStore.currentSwitcherId' }] },
-                isDefault: { $eq: ['$template.id', { $store: 'spaceStore.spaceDefaultTemplateId' }] },
-                select: [{ $action: 'templateStore.switchTemplate', args: ['$template.id'] }, closePicker],
-                actions: [
-                  {
-                    icon: 'pencil-simple',
-                    tooltip: 'Edit this template',
-                    // Only the template actually on screen, and only where the session says it can be
-                    // edited — `enterTemplateEditing` has no guard of its own, so offering this on a
-                    // built-in would open an editing session over something that cannot be saved.
-                    when: {
-                      $and: [
-                        { $eq: ['$template.id', { $store: 'templateStore.currentSwitcherId' }] },
-                        { $not: { $store: 'editorStore.isReadOnly' } },
+export function templatePicker(): SchemaNode {
+  return {
+    type: 'Column',
+    children: [
+      pickerPopover({
+        openLocal: TEMPLATE_PICKER_OPEN,
+        closeOthers: [THEME_PICKER_OPEN],
+        icon: 'cube',
+        tooltip: 'Template',
+        searchPlaceholder: 'Search templates…',
+        body: {
+          type: '$each',
+          props: { items: { $store: 'templateStore.switcherGroups' }, as: 'group' },
+          children: [
+            section('$group.label', templateRows, {
+              type: '$each',
+              props: { items: templateRows, as: 'template' },
+              children: [
+                pickerRow({
+                  icon: '$template.icon',
+                  label: '$template.name',
+                  selected: { $eq: ['$template.id', { $store: 'templateStore.currentSwitcherId' }] },
+                  isDefault: { $eq: ['$template.id', { $store: 'spaceStore.spaceDefaultTemplateId' }] },
+                  select: [{ $action: 'templateStore.switchTemplate', args: ['$template.id'] }, closeTemplatePicker],
+                  actions: [
+                    {
+                      icon: 'pencil-simple',
+                      tooltip: 'Edit this template',
+                      // Only the template actually on screen, and only where the session says it can be
+                      // edited — `enterTemplateEditing` has no guard of its own, so offering this on a
+                      // built-in would open an editing session over something that cannot be saved.
+                      when: {
+                        $and: [
+                          { $eq: ['$template.id', { $store: 'templateStore.currentSwitcherId' }] },
+                          { $not: { $store: 'editorStore.isReadOnly' } },
+                        ],
+                      },
+                      onClick: [{ $action: 'editorStore.enterTemplateEditing', args: ['edit'] }, closeTemplatePicker],
+                    },
+                    {
+                      icon: 'git-fork',
+                      tooltip: 'Fork this template',
+                      // Switch first: a fork is seeded from whatever is current, so forking a row you
+                      // are not on has to make it current before asking for a name.
+                      onClick: [
+                        { $action: 'templateStore.switchTemplate', args: ['$template.id'] },
+                        { $action: 'editorStore.startFork' },
+                        closeTemplatePicker,
                       ],
                     },
-                    onClick: [{ $action: 'editorStore.enterTemplateEditing', args: ['edit'] }, closePicker],
-                  },
-                  {
-                    icon: 'git-fork',
-                    tooltip: 'Fork this template',
-                    // Switch first: a fork is seeded from whatever is current, so forking a row you
-                    // are not on has to make it current before asking for a name.
-                    onClick: [
-                      { $action: 'templateStore.switchTemplate', args: ['$template.id'] },
-                      { $action: 'editorStore.startFork' },
-                      closePicker,
-                    ],
-                  },
-                ],
-              }),
-            ],
-          }),
-        ],
-      },
-      footer: {
-        type: 'we-button',
-        props: {
-          variant: 'ghost',
-          width: '100%',
-          ax: 'start',
-          gap: '200',
-          onClick: [{ $action: 'editorStore.startFresh' }, closePicker],
+                  ],
+                }),
+              ],
+            }),
+          ],
         },
-        children: [
-          { type: 'we-icon', props: { name: 'plus' } },
-          { type: 'we-text', children: ['New template'] },
-        ],
-      },
-    }),
-
-    nameDialog({
-      open: { $store: 'editorStore.pickerOpen' },
-      close: { $action: 'editorStore.cancelPicker' },
-      title: {
-        $if: {
-          condition: { $eq: [{ $store: 'editorStore.pickerAction' }, 'fresh'] },
-          then: 'New template',
-          else: 'Fork template',
+        footer: {
+          type: 'we-button',
+          props: {
+            variant: 'ghost',
+            width: '100%',
+            ax: 'start',
+            gap: '200',
+            onClick: [{ $action: 'editorStore.startFresh' }, closeTemplatePicker],
+          },
+          children: [
+            { type: 'we-icon', props: { name: 'plus' } },
+            { type: 'we-text', children: ['New template'] },
+          ],
         },
-      },
-      initialName: { $store: 'editorStore.pickerDefaultName' },
-      initialIcon: { $store: 'editorStore.pickerDefaultIcon' },
-      showDestination: { $store: 'editorStore.pickerShowDestination' },
-      confirmLabel: {
-        $if: { condition: { $eq: [{ $store: 'editorStore.pickerAction' }, 'fresh'] }, then: 'Create', else: 'Fork' },
-      },
-      confirm: ({ name, icon, destination }) => ({
-        $action: 'editorStore.confirmPicker',
-        args: [name, icon, destination],
-        onFinally: [{ $setLocal: 'saving', value: false }],
       }),
-    }),
-  ],
-};
+
+      nameDialog({
+        open: { $store: 'editorStore.pickerOpen' },
+        close: { $action: 'editorStore.cancelPicker' },
+        title: {
+          $if: {
+            condition: { $eq: [{ $store: 'editorStore.pickerAction' }, 'fresh'] },
+            then: 'New template',
+            else: 'Fork template',
+          },
+        },
+        initialName: { $store: 'editorStore.pickerDefaultName' },
+        initialIcon: { $store: 'editorStore.pickerDefaultIcon' },
+        showDestination: { $store: 'editorStore.pickerShowDestination' },
+        confirmLabel: {
+          $if: { condition: { $eq: [{ $store: 'editorStore.pickerAction' }, 'fresh'] }, then: 'Create', else: 'Fork' },
+        },
+        confirm: ({ name, icon, destination }) => ({
+          $action: 'editorStore.confirmPicker',
+          args: [name, icon, destination],
+          onFinally: [{ $setLocal: 'saving', value: false }],
+        }),
+      }),
+    ],
+  };
+}
 
 // ── Themes ──────────────────────────────────────────────────────────────────────────────────────
 
@@ -299,7 +319,7 @@ function themeSection(label: string, storePath: string): SchemaNode {
         label: '$theme.name',
         selected: { $eq: ['$theme.id', { $store: 'themeStore.currentThemeId' }] },
         isDefault: { $eq: ['$theme.id', { $store: 'spaceStore.spaceDefaultThemeId' }] },
-        select: [{ $action: 'themeStore.setCurrentTheme', args: ['$theme.id'] }, closePicker],
+        select: [{ $action: 'themeStore.setCurrentTheme', args: ['$theme.id'] }, closeThemePicker],
         actions: [
           {
             icon: 'pencil-simple',
@@ -310,7 +330,7 @@ function themeSection(label: string, storePath: string): SchemaNode {
               { $action: 'themeStore.setCurrentTheme', args: ['$theme.id'] },
               { $action: 'themeStore.startEditing', args: ['$theme.id'] },
               { $action: 'editorStore.enterThemeEditing' },
-              closePicker,
+              closeThemePicker,
             ],
           },
           {
@@ -323,7 +343,7 @@ function themeSection(label: string, storePath: string): SchemaNode {
               { $setLocal: 'forkName', from: '$theme.name' },
               { $setLocal: 'forkIcon', from: '$theme.icon' },
               { $setLocal: 'forkOpen', value: true },
-              closePicker,
+              closeThemePicker,
             ],
           },
         ],
@@ -335,112 +355,118 @@ function themeSection(label: string, storePath: string): SchemaNode {
 /**
  * The theme picker.
  *
+ * **Ambient contract:** same as {@link templatePicker} — needs both open flags from an ancestor.
+ *
  * The scope control sits in the footer with words on it. It used to be a `globe`/`globe-x` button
  * in the chip strip, which was undecodable, and it wrote a *preview* that lasted the editing
  * session — so the setting it masked drifted from what was on screen. This is the setting itself.
  */
-export const themePicker: SchemaNode = {
-  type: 'Column',
-  $localState: {
-    forkOpen: { type: 'boolean', initial: false },
-    forkSource: { type: 'string', initial: '' },
-    forkName: { type: 'string', initial: '' },
-    forkIcon: { type: 'string', initial: 'paint-bucket' },
-  },
-  children: [
-    pickerPopover({
-      icon: 'paint-brush',
-      tooltip: 'Theme',
-      searchPlaceholder: 'Search themes…',
-      body: {
-        type: 'Column',
-        props: { gap: '100' },
-        children: [
-          themeSection('Space themes', 'themeStore.spaceThemes'),
-          themeSection('My themes', 'themeStore.installedThemes'),
-          themeSection('Built-in', 'themeStore.builtInThemes'),
-        ],
-      },
-      footer: {
-        type: 'Column',
-        props: { gap: '200' },
-        children: [
-          {
-            type: 'we-button',
-            props: {
-              variant: 'ghost',
-              width: '100%',
-              ax: 'start',
-              gap: '200',
-              onClick: [
-                { $setLocal: 'forkSource', value: '' },
-                { $setLocal: 'forkName', value: '' },
-                { $setLocal: 'forkIcon', value: 'paint-bucket' },
-                { $setLocal: 'forkOpen', value: true },
-                closePicker,
-              ],
-            },
-            children: [
-              { type: 'we-icon', props: { name: 'plus' } },
-              { type: 'we-text', children: ['New theme'] },
-            ],
-          },
-          { type: 'we-divider' },
-          {
-            type: 'Row',
-            props: { ay: 'center', ax: 'between', gap: '300', px: '200', pb: '100' },
-            children: [
-              {
-                type: 'Column',
-                props: { gap: '0', flex: '1' },
-                children: [
-                  { type: 'we-text', props: { variant: 'label' }, children: ['Apply across the whole app'] },
-                  {
-                    type: 'we-text',
-                    props: { variant: 'footnote', color: 'neutral-500' },
-                    children: ["Off, it themes only this space's content"],
-                  },
+export function themePicker(): SchemaNode {
+  return {
+    type: 'Column',
+    $localState: {
+      forkOpen: { type: 'boolean', initial: false },
+      forkSource: { type: 'string', initial: '' },
+      forkName: { type: 'string', initial: '' },
+      forkIcon: { type: 'string', initial: 'paint-bucket' },
+    },
+    children: [
+      pickerPopover({
+        openLocal: THEME_PICKER_OPEN,
+        closeOthers: [TEMPLATE_PICKER_OPEN],
+        icon: 'paint-brush',
+        tooltip: 'Theme',
+        searchPlaceholder: 'Search themes…',
+        body: {
+          type: 'Column',
+          props: { gap: '100' },
+          children: [
+            themeSection('Space themes', 'themeStore.spaceThemes'),
+            themeSection('My themes', 'themeStore.installedThemes'),
+            themeSection('Built-in', 'themeStore.builtInThemes'),
+          ],
+        },
+        footer: {
+          type: 'Column',
+          props: { gap: '200' },
+          children: [
+            {
+              type: 'we-button',
+              props: {
+                variant: 'ghost',
+                width: '100%',
+                ax: 'start',
+                gap: '200',
+                onClick: [
+                  { $setLocal: 'forkSource', value: '' },
+                  { $setLocal: 'forkName', value: '' },
+                  { $setLocal: 'forkIcon', value: 'paint-bucket' },
+                  { $setLocal: 'forkOpen', value: true },
+                  closeThemePicker,
                 ],
               },
-              {
-                type: 'we-switch',
-                props: {
-                  checked: { $store: 'themeStore.themeScopeGlobal' },
-                  // Passed bare: the switch emits the boolean, and wrapping it in an operator would
-                  // resolve at render time and send a constant.
-                  onChange: { $action: 'themeStore.setThemeScopeGlobal', args: ['$event.detail'] },
-                },
-              },
-            ],
-          },
-        ],
-      },
-    }),
-
-    nameDialog({
-      open: { $local: 'forkOpen' },
-      close: { $setLocal: 'forkOpen', value: false },
-      title: { $if: { condition: { $local: 'forkSource' }, then: 'Fork theme', else: 'New theme' } },
-      initialName: { $local: 'forkName' },
-      initialIcon: { $local: 'forkIcon' },
-      showDestination: true,
-      confirmLabel: { $if: { condition: { $local: 'forkSource' }, then: 'Fork', else: 'Create' } },
-      confirm: ({ name, icon, destination }) => ({
-        $action: 'themeStore.createAndStartEditing',
-        args: [name, icon, { $local: 'forkSource' }, destination],
-        // Resolves `false` when the create failed rather than rejecting, so the close and the mode
-        // switch are guarded on the result — otherwise a failed create closes over its own error.
-        onSuccess: [
-          {
-            $if: {
-              condition: '$result',
-              then: { $action: 'editorStore.enterThemeEditing' },
+              children: [
+                { type: 'we-icon', props: { name: 'plus' } },
+                { type: 'we-text', children: ['New theme'] },
+              ],
             },
-          },
-          { $if: { condition: '$result', then: { $setLocal: 'forkOpen', value: false } } },
-        ],
-        onFinally: [{ $setLocal: 'saving', value: false }],
+            { type: 'we-divider' },
+            {
+              type: 'Row',
+              props: { ay: 'center', ax: 'between', gap: '300', px: '200', pb: '100' },
+              children: [
+                {
+                  type: 'Column',
+                  props: { gap: '0', flex: '1' },
+                  children: [
+                    { type: 'we-text', props: { variant: 'label' }, children: ['Apply across the whole app'] },
+                    {
+                      type: 'we-text',
+                      props: { variant: 'footnote', color: 'neutral-500' },
+                      children: ["Off, it themes only this space's content"],
+                    },
+                  ],
+                },
+                {
+                  type: 'we-switch',
+                  props: {
+                    checked: { $store: 'themeStore.themeScopeGlobal' },
+                    // Passed bare: the switch emits the boolean, and wrapping it in an operator would
+                    // resolve at render time and send a constant.
+                    onChange: { $action: 'themeStore.setThemeScopeGlobal', args: ['$event.detail'] },
+                  },
+                },
+              ],
+            },
+          ],
+        },
       }),
-    }),
-  ],
-};
+
+      nameDialog({
+        open: { $local: 'forkOpen' },
+        close: { $setLocal: 'forkOpen', value: false },
+        title: { $if: { condition: { $local: 'forkSource' }, then: 'Fork theme', else: 'New theme' } },
+        initialName: { $local: 'forkName' },
+        initialIcon: { $local: 'forkIcon' },
+        showDestination: true,
+        confirmLabel: { $if: { condition: { $local: 'forkSource' }, then: 'Fork', else: 'Create' } },
+        confirm: ({ name, icon, destination }) => ({
+          $action: 'themeStore.createAndStartEditing',
+          args: [name, icon, { $local: 'forkSource' }, destination],
+          // Resolves `false` when the create failed rather than rejecting, so the close and the mode
+          // switch are guarded on the result — otherwise a failed create closes over its own error.
+          onSuccess: [
+            {
+              $if: {
+                condition: '$result',
+                then: { $action: 'editorStore.enterThemeEditing' },
+              },
+            },
+            { $if: { condition: '$result', then: { $setLocal: 'forkOpen', value: false } } },
+          ],
+          onFinally: [{ $setLocal: 'saving', value: false }],
+        }),
+      }),
+    ],
+  };
+}

@@ -30,6 +30,7 @@ import { CORE_MANIFEST } from '@we/models/generated/coreManifest';
 import type { TemplateSchema } from '@we/schema-shared';
 import type { VisualEditorContextValue } from '@we/schema-solid';
 import { RenderSchema, VisualEditorProvider } from '@we/schema-solid';
+import { CHROME_RAIL_WIDTH } from '@we/template-shell';
 import { createEffect, createMemo, createSignal, onMount, Show, untrack } from 'solid-js';
 
 import { PersistentAppFrames } from '../layouts/PersistentAppFrames';
@@ -52,10 +53,16 @@ export default function TemplateProvider() {
   const shellStore = useShellStore();
   const presenceStore = usePresenceStore();
 
-  // Set CSS custom property on :root so position:fixed elements (e.g. CesiumGlobe canvas)
-  // can consume the sidebar width without hard-coding it.
+  // Set CSS custom properties on :root so position:fixed elements (e.g. CesiumGlobe canvas)
+  // can consume the shell's own furniture without hard-coding it.
+  //
+  // The rail width goes out for the same reason the sidebar's does, and for one more: the editor is
+  // in a package that cannot import the shell's templates, so the editing bar has no other way to
+  // know how much of its edge the rail is holding. Its fallback is `0px`, which is the right answer
+  // for an editor embedded somewhere with no WE rail at all.
   onMount(() => {
     document.documentElement.style.setProperty('--we-sidebar-width', SHELL_SIDEBAR_WIDTH);
+    document.documentElement.style.setProperty('--we-chrome-rail-width', CHROME_RAIL_WIDTH);
   });
 
   // Console store for debugging $action calls in schema

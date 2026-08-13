@@ -69,7 +69,16 @@ export function EditingBar() {
     return query ? items.filter((space) => space.name.toLowerCase().includes(query)) : items;
   });
 
-  const right = () => `calc(${10 + editorOccupiedWidth(session)}px + var(--we-dock-right, 0px))`;
+  /**
+   * Clear of everything else holding this edge: a docked module panel, the editor's own panels, and
+   * the host's chrome rail.
+   *
+   * The rail arrives as a variable rather than a constant because it belongs to a package this one
+   * cannot import, and it defaults to `0px` — an editor embedded in somebody else's application has
+   * no WE rail to avoid. Without the term, the bar sits underneath the rail, which paints above it.
+   */
+  const right = () =>
+    `calc(${10 + editorOccupiedWidth(session)}px + var(--we-dock-right, 0px) + var(--we-chrome-rail-width, 0px))`;
 
   function exportJson() {
     const blob = new Blob([session.schemaJson()], { type: 'application/json' });
