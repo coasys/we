@@ -12,8 +12,23 @@
  *
  * This is deliberately backend-ecosystem-specific and isolated here: a deployment that embeds no
  * external apps simply doesn't start it.
+ *
+ * ## Which iframes count
+ *
+ * Everything below is gated on `isCredentialedOrigin`, and that gate is the whole security model of
+ * this file. Being a `we-iframe` is not evidence of anything: two of the three places that render
+ * one take their URL straight from post content — `EmbedDisplay` renders an EmbedBlock's `url`, and
+ * `VideoDisplay` an embed URL. So a post containing an embed pointing anywhere at all used to be
+ * enough: the page inside it sends `REQUEST_AD4M_CONFIG`, and the reply carried the executor token,
+ * which is unrestricted access to everything the agent has. A link in a post, for the whole node.
+ *
+ * The allowlist is the *registered* embeds — `moduleRegistry.embeds()`, which come from bundled
+ * feature modules and are therefore code rather than data. That is the distinction that matters:
+ * anything an attacker can author is on the wrong side of it.
  */
 import { createEffect } from 'solid-js';
+
+import { moduleRegistry } from '../../../shared/registries/moduleRegistry';
 
 export interface AppBridgeDeps {
   isDesktop: boolean;
@@ -30,6 +45,26 @@ export interface AppBridgeDeps {
    * state (onboarding, say) can't silently start withholding credentials.
    */
   agentUnlocked: () => boolean;
+  /**
+   * Origins allowed to receive credentials and use the proxies. Defaults to the registered embeds,
+   * which is what a real deployment wants; injectable so a test can state its own.
+   */
+  credentialedOrigins?: () => string[];
+}
+
+/** The stand-in origin an embedded app addresses the executor by. */
+const PROXY_PLACEHOLDER = /^http:\/\/proxy(?=\/|$)/;
+
+/** The origin of a URL, or null if it has none we could compare against. */
+function originOf(url: string | null | undefined): string | null {
+  if (!url) return null;
+  try {
+    // A relative embed URL resolves against this document, so its origin is our own — which is
+    // correct: an app served from WE's own origin is as trusted as WE.
+    return new URL(url, window.location.href).origin;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -45,6 +80,34 @@ export function startAppBridge(deps: AppBridgeDeps) {
   // Tracks whether an iframe requested AD4M_CONFIG while credentials weren't available yet
   // (or, on desktop, while the agent was still locked).
   let pendingConfigRequest = false;
+
+  const credentialedOrigins = () =>
+    deps.credentialedOrigins?.() ?? moduleRegistry.embeds().map((embed) => embed.url);
+
+  /** Whether an origin belongs to a registered embed — see the note at the top of this file. */
+  function isCredentialedOrigin(origin: string | null | undefined): boolean {
+    if (!origin) return false;
+    return credentialedOrigins().some((url) => originOf(url) === origin);
+  }
+
+  /**
+   * The `we-iframe` whose inner frame is this window, if it is one we would credential.
+   *
+   * Two conditions, and both are load-bearing. The contentWindow match says the sender is an iframe
+   * this document mounted rather than a page that embedded WE. The origin check says it is an
+   * iframe pointed at a registered app rather than at a URL out of a post — the check that was
+   * missing, and the reason an EmbedBlock could ask for the executor token.
+   *
+   * `we-iframe` is a Lit element, so the real `<iframe>` is in its shadow root, not on the element.
+   */
+  function credentialedFrameFor(source: Window | null, origin: string): Element | null {
+    if (!source || !isCredentialedOrigin(origin)) return null;
+    return (
+      Array.from(document.querySelectorAll('we-iframe')).find(
+        (el) => (el.shadowRoot?.querySelector('iframe') as HTMLIFrameElement | null)?.contentWindow === source,
+      ) ?? null
+    );
+  }
 
   function sendConfigToIframes() {
     const port = deps.port();
@@ -66,16 +129,19 @@ export function startAppBridge(deps: AppBridgeDeps) {
 
     let sent = 0;
     weIframes.forEach((el) => {
-      if (typeof el.postMessage === 'function') {
-        const rawSrc = el.getAttribute('src');
-        const iframeOrigin = rawSrc ? new URL(rawSrc).origin : '*';
-        el.postMessage(payload, iframeOrigin);
-        sent++;
-      }
+      if (typeof el.postMessage !== 'function') return;
+
+      // Never `'*'`. The payload is the executor token, so an unparseable or unregistered src means
+      // no send at all — not a broadcast to whoever happens to be in the frame.
+      const iframeOrigin = originOf(el.getAttribute('src'));
+      if (!isCredentialedOrigin(iframeOrigin)) return;
+
+      el.postMessage(payload, iframeOrigin!);
+      sent++;
     });
 
     if (sent === 0) {
-      console.warn('appBridge: no we-iframe elements found to send AD4M_CONFIG');
+      console.warn('appBridge: no registered-app we-iframe found to send AD4M_CONFIG');
     }
   }
 
@@ -102,19 +168,15 @@ export function startAppBridge(deps: AppBridgeDeps) {
     // instead they send these messages and we proxy frames via a real WebSocket.
 
     if (event.data?.type === 'AD4M_PROXY_WS_CONNECT' && source) {
-      // Gate: only serve requests from known we-iframe contentWindows.
-      // we-iframe is a Lit web component — the real <iframe> lives inside its
-      // shadow DOM, so we must look there rather than on the element itself.
-      // Without this, any child iframe in WE's page could use WE as a
-      // WebSocket proxy to the executor using WE's own auth token.
-      const weIframesForWsCheck = document.querySelectorAll('we-iframe');
-      const isKnownWsIframe = Array.from(weIframesForWsCheck).some(
-        (el) => (el.shadowRoot?.querySelector('iframe') as HTMLIFrameElement | null)?.contentWindow === source,
-      );
-      if (!isKnownWsIframe) {
-        console.warn('appBridge: rejected AD4M_PROXY_WS_CONNECT from unknown source');
+      // The proxy opens a WebSocket to the executor carrying WE's own auth token, so serving one is
+      // the same act as handing over the token. Gated identically: a frame this document mounted,
+      // pointed at a registered app. `event.origin` empty fails the check, which is what we want —
+      // a proxy frame carrying GraphQL responses must never be sent to '*'.
+      if (!credentialedFrameFor(source, event.origin)) {
+        console.warn('appBridge: rejected AD4M_PROXY_WS_CONNECT from an unregistered source');
         return;
       }
+      const iframeOrigin = event.origin;
 
       // Close any stale connection for this frame
       const existing = proxyConnections.get(source);
@@ -122,16 +184,6 @@ export function startAppBridge(deps: AppBridgeDeps) {
         existing.ws.close();
         proxyConnections.delete(source);
       }
-
-      // Pin to the verified origin of the requesting iframe so all proxy
-      // response frames are delivered only to that origin.
-      // Reject if origin is empty — we must never fall back to '*' for
-      // frames carrying sensitive GraphQL responses.
-      if (!event.origin) {
-        console.warn('appBridge: rejected AD4M_PROXY_WS_CONNECT with empty origin');
-        return;
-      }
-      const iframeOrigin = event.origin;
 
       const token = deps.token();
       const base = baseUrl();
@@ -179,15 +231,8 @@ export function startAppBridge(deps: AppBridgeDeps) {
     // to the executor (cross-origin / PNA). They send AD4M_PROXY_HTTP_REQUEST
     // and we make the real fetch from our privileged origin, then reply.
     if (event.data?.type === 'AD4M_PROXY_HTTP_REQUEST' && source) {
-      // Gate: only serve requests from known we-iframe contentWindows, not from
-      // arbitrary third-party pages that may have embedded WE as a child frame.
-      // we-iframe is a Lit web component — the real <iframe> lives inside its shadow DOM.
-      const weIframesForHttpCheck = document.querySelectorAll('we-iframe');
-      const isKnownIframe = Array.from(weIframesForHttpCheck).some(
-        (el) => (el.shadowRoot?.querySelector('iframe') as HTMLIFrameElement | null)?.contentWindow === source,
-      );
-      if (!isKnownIframe) {
-        console.warn('appBridge: rejected AD4M_PROXY_HTTP_REQUEST from unknown source');
+      if (!credentialedFrameFor(source, event.origin)) {
+        console.warn('appBridge: rejected AD4M_PROXY_HTTP_REQUEST from an unregistered source');
         return;
       }
 
@@ -198,10 +243,29 @@ export function startAppBridge(deps: AppBridgeDeps) {
         headers: Record<string, string>;
         body: ArrayBuffer | null;
       };
-      const iframeOrigin = event.origin || '*';
+      // Verified above, so never '*'.
+      const iframeOrigin = event.origin;
 
       if (typeof url !== 'string' || typeof method !== 'string') {
         console.warn('appBridge: rejected AD4M_PROXY_HTTP_REQUEST with invalid url/method type');
+        return;
+      }
+
+      /*
+        The URL must name the placeholder origin, and this is a rejection rather than a rewrite.
+
+        It used to be `url.replace(/^http:\/\/proxy/, base)` — and a `replace` that does not match
+        does nothing, so any other URL was fetched exactly as sent. From WE's origin, on the local
+        network, with the response body relayed back: `http://192.168.1.1/`, another service on
+        localhost, a metadata endpoint. A port scanner with a read channel, driven by the embedded
+        app. The proxy exists to reach the executor; nothing else is a valid destination.
+      */
+      if (!PROXY_PLACEHOLDER.test(url)) {
+        console.warn('appBridge: rejected AD4M_PROXY_HTTP_REQUEST for a non-proxy URL');
+        source.postMessage(
+          { type: 'AD4M_PROXY_HTTP_ERROR', id, message: 'Only http://proxy/... URLs may be proxied' },
+          iframeOrigin,
+        );
         return;
       }
 
@@ -212,7 +276,7 @@ export function startAppBridge(deps: AppBridgeDeps) {
       }
 
       // Replace the placeholder origin with the real executor base URL.
-      const realUrl = url.replace(/^http:\/\/proxy(?=\/|$)/, base);
+      const realUrl = url.replace(PROXY_PLACEHOLDER, base);
 
       (async () => {
         try {
@@ -245,9 +309,12 @@ export function startAppBridge(deps: AppBridgeDeps) {
       // Immediately acknowledge so the embedded app knows the parent window is alive and
       // its "parent not found" timeout can be safely cancelled. The actual AD4M_CONFIG
       // follows as soon as credentials are available (possibly much later, after auth).
-      if (source) {
-        source.postMessage({ type: 'AD4M_CONFIG_ACK' }, event.origin || '*');
-      }
+      //
+      // Gated like everything else, and the `|| '*'` is gone with it. The ack carries nothing, but
+      // an unregistered frame learning that WE is its parent and is listening is the first step of
+      // the attack rather than a courtesy — and it should be told nothing at all.
+      if (!credentialedFrameFor(source, event.origin)) return;
+      source!.postMessage({ type: 'AD4M_CONFIG_ACK' }, event.origin);
 
       const port = deps.port();
       const token = deps.token();
