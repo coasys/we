@@ -53,23 +53,49 @@
     -webkit-backface-visibility: hidden;
     border-radius: var(--we-theme-surface-radius, var(--we-radius-400));
     overflow: hidden;
-    // Swapped at the halfway point of the rotation, which is where a real card would change face.
-    // Zero-length, so it is a cut rather than a fade — a cross-fade would show both at once.
-    transition: opacity 0s linear calc(var(--we-flip-card-duration, 0.5s) / 2);
+    /*
+      Swapped around the instant the card is edge-on — which is `0.35` of the duration, not half.
+
+      Half is the obvious guess and it is wrong, because the rotation is eased. Solving
+      `cubic-bezier(0.4, 0, 0.2, 1)` for the input time at which its output reaches 0.5 — the
+      quarter-turn where a real card changes face — gives 0.35. Swapping at 0.5 left 70ms of the
+      default flip in which the card had already turned past edge-on while the front was still the
+      opaque one: on Chromium a *hole*, since `backface-visibility` culls the front and the back is
+      still transparent, and on WebKitGTK the wrong face lingering as the card widens again.
+
+      The two ends are staggered rather than simultaneous, and that is the part worth keeping. A
+      single instant cannot be hit exactly — the swap lands on a frame boundary — and *either* side
+      of it opens the same hole on Chromium, because whichever face is turned away is culled and the
+      other one is transparent. So the arriving face becomes opaque slightly before the leaving face
+      goes, and for those few frames both are paintable: Chromium culls one and draws the other, and
+      WebKitGTK draws the arriving one over a card that is a few percent of its width. There is no
+      instant at which nothing is drawn.
+    */
+    transition: opacity 0s linear calc(var(--we-flip-card-duration, 0.5s) * 0.32);
   }
+
+  /*
+    The delay comes from the state being transitioned *to*, which is what makes the stagger express
+    itself in two rules instead of four: a face on its way out reads `LEAVING`, a face on its way in
+    reads the base `0.32`, whichever direction the card is turning.
+  */
+  $flip-leave: calc(var(--we-flip-card-duration, 0.5s) * 0.38);
 
   &__back {
     transform: rotateY(180deg);
     opacity: 0;
+    transition-delay: $flip-leave;
   }
 
   &--flipped &__front,
   &--hover-flip:hover &__front {
     opacity: 0;
+    transition-delay: $flip-leave;
   }
 
   &--flipped &__back,
   &--hover-flip:hover &__back {
     opacity: 1;
+    transition-delay: calc(var(--we-flip-card-duration, 0.5s) * 0.32);
   }
 }
