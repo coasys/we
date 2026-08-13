@@ -212,6 +212,15 @@ export function createCallStore(deps: CallStoreDeps) {
    * app telling the user something it can plainly see is no longer so.
    */
   const MEDIA_BLOCKED = "WE could not reach your camera or microphone. Check this site's permissions in your browser.";
+
+  /**
+   * The camera specifically, refused when the user asked for it.
+   *
+   * Separate from `MEDIA_BLOCKED` because the two clear on different conditions: this one is still
+   * true while the microphone works perfectly well, so clearing it on "we have a stream" — which is
+   * what the other one wants — would make it flash and vanish in exactly the case it exists for.
+   */
+  const CAMERA_BLOCKED = "WE could not turn your camera on. Check this site's camera permission in your browser.";
   /**
    * The microphone this agent is sending, as a signal rather than a read through to the controller.
    *
@@ -477,8 +486,11 @@ export function createCallStore(deps: CallStoreDeps) {
       onStateChanged: (state) => {
         setMedia({ ...state });
         // Devices arrived after all — most likely the user granted the permission and pressed the
-        // camera button. Clear only our own message, so a structural problem is not swallowed.
-        if (controller?.localStream() && problem() === MEDIA_BLOCKED) setProblem(null);
+        // camera button. Each message clears on its own condition, and only its own, so neither a
+        // structural problem nor the other media one is swallowed.
+        const local = controller?.localStream();
+        if (problem() === MEDIA_BLOCKED && local) setProblem(null);
+        if (problem() === CAMERA_BLOCKED && local?.getVideoTracks().length) setProblem(null);
         // Fires once when devices are acquired, and on every mute after — the first is what tells a
         // listener the microphone exists at all.
         setLocalAudio(controller?.localStream() ?? null);
@@ -816,7 +828,18 @@ export function createCallStore(deps: CallStoreDeps) {
     leave: teardown,
 
     toggleAudio: () => controller?.setAudioEnabled(!media().audioEnabled),
-    toggleVideo: () => controller?.setVideoEnabled(!media().videoEnabled),
+    /**
+     * Turn the camera on or off — and say so when it refuses.
+     *
+     * Asked on the outcome rather than caught from an error, which keeps this free of matching on
+     * message text: wanting the camera and not having it afterwards is the whole condition. Until
+     * this, a refusal reached the console and nowhere else, so the button appeared to do nothing.
+     */
+    toggleVideo: async () => {
+      const wanted = !media().videoEnabled;
+      await controller?.setVideoEnabled(wanted);
+      if (wanted && !controller?.state().videoEnabled) setProblem(CAMERA_BLOCKED);
+    },
     toggleScreenShare: () => {
       if (media().screenShareEnabled) controller?.stopScreenShare();
       else void controller?.startScreenShare();

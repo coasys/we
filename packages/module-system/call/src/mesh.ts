@@ -187,15 +187,41 @@ export function createCallMesh(options: CallMeshOptions): CallMesh {
       options.onPeerStateChanged?.(peerId, pc.connectionState);
     };
 
-    // Send whatever we are already sending. A peer joining mid-call must receive our media without
-    // waiting for us to toggle something.
+    /*
+      Both m-lines, before there is anything to put in them.
+
+      A peer connection can only carry media of a kind it negotiated an m-section for, and
+      `addTrack` is what creates one. So an agent sending no video negotiated **no video m-line at
+      all** — and since the topology is agreed between the pair, that left the *other* peer's camera
+      with nowhere to arrive. Block your camera and their video never appeared, however healthy the
+      connection was; start a screen share and theirs would suddenly turn up, because adding a video
+      track of your own finally created the m-line their video had been waiting for. That is the
+      symptom this fixes, and it is worth stating plainly: it was never about their camera.
+
+      Declaring both up front makes the topology a constant rather than a consequence. Every
+      connection has one audio and one video section from the moment it exists, so what either side
+      happens to be sending is a question about tracks — answered by `replaceTrack` — instead of a
+      question about SDP. That also means muting, unmuting, and swapping camera for screen never
+      renegotiate at all.
+
+      `sendrecv` with no track attached is exactly right: it says "I will receive this kind, and I
+      may send it", which is the honest description of an agent whose camera is off.
+    */
+    for (const kind of ['audio', 'video'] as const) {
+      try {
+        slot.senders.set(kind, pc.addTransceiver(kind, { direction: 'sendrecv', streams: [outboundStream] }).sender);
+      } catch (error) {
+        fail(`preparing ${kind} for ${peerId}`, error);
+      }
+    }
+
+    // Attach whatever is already being sent. A peer joining mid-call must receive our media without
+    // waiting for us to toggle something — and this is now an attachment, not a topology change.
     for (const [kind, track] of outbound) {
       if (!track) continue;
-      try {
-        slot.senders.set(kind, pc.addTrack(track, outboundStream));
-      } catch (error) {
-        fail(`adding track for ${peerId}`, error);
-      }
+      const sender = slot.senders.get(kind);
+      if (!sender) continue;
+      void sender.replaceTrack(track).catch((error) => fail(`sending ${kind} to ${peerId}`, error));
     }
 
     return slot;
@@ -333,15 +359,15 @@ export function createCallMesh(options: CallMeshOptions): CallMesh {
       await Promise.all(
         [...slots.entries()].map(async ([peerId, slot]) => {
           try {
-            // The remembered sender, not one found by its current track — see `PeerSlot.senders`.
+            // The transceiver created with the connection — see the note in `connect`. Every track
+            // change is a `replaceTrack` on a section that already exists, so none of them
+            // renegotiate: not muting, not unmuting, not swapping camera for screen.
             const sender = slot.senders.get(kind);
             if (sender) {
-              // Does not renegotiate — this is why camera↔screen switching is instant, and why
-              // resuming a share the peer already has a transceiver for needs no handshake at all.
               await sender.replaceTrack(track);
             } else if (track) {
-              // First track of this kind: adding a sender *does* fire `negotiationneeded`, which
-              // perfect negotiation above resolves.
+              // Only reachable if `addTransceiver` failed above. Adding a sender here *does* fire
+              // `negotiationneeded`, which perfect negotiation resolves.
               slot.senders.set(kind, slot.pc.addTrack(track, outboundStream));
             }
           } catch (error) {
