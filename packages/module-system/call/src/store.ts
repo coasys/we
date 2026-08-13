@@ -231,6 +231,16 @@ export function createCallStore(deps: CallStoreDeps) {
    */
   const CAMERA_BLOCKED =
     'WE could not turn your camera on. Check that WE has permission to use it, and that no other app has it open.';
+
+  /**
+   * The machine cannot capture a screen — as distinct from the user closing the picker.
+   *
+   * Worth its own message because the remedy is not "try again": on Linux this is usually a desktop
+   * with no `org.freedesktop.portal.ScreenCast` interface, which is a missing portal backend rather
+   * than anything the user did in WE.
+   */
+  const SCREEN_UNAVAILABLE =
+    'WE could not capture a screen. This computer does not appear to offer screen sharing to apps.';
   /**
    * The microphone this agent is sending, as a signal rather than a read through to the controller.
    *
@@ -850,9 +860,13 @@ export function createCallStore(deps: CallStoreDeps) {
       await controller?.setVideoEnabled(wanted);
       if (wanted && !controller?.state().videoEnabled) setProblem(CAMERA_BLOCKED);
     },
-    toggleScreenShare: () => {
-      if (media().screenShareEnabled) controller?.stopScreenShare();
-      else void controller?.startScreenShare();
+    toggleScreenShare: async () => {
+      if (media().screenShareEnabled) {
+        controller?.stopScreenShare();
+        return;
+      }
+      // Only a genuine failure is worth a message. Closing the picker is an answer, not a fault.
+      if ((await controller?.startScreenShare()) === 'failed') setProblem(SCREEN_UNAVAILABLE);
     },
     /** Show the video, or put it away. The other half of what one button used to do alone. */
     toggleStage: () => setVisible(!visible()),

@@ -228,6 +228,45 @@ describe('media controller', () => {
   });
 });
 
+describe('starting a screen share', () => {
+  /*
+    Two very different outcomes used to arrive down one path and be treated alike, so a machine that
+    *cannot* share a screen behaved exactly like a user who changed their mind: nothing happened and
+    nothing was said. Found on Linux, where a desktop with no `org.freedesktop.portal.ScreenCast`
+    interface makes WebKitGTK report `OverconstrainedError` — a strange name for "there is nothing
+    here to capture", and unambiguously not the user declining.
+  */
+  const failing = (name: string) =>
+    setup({
+      getDisplayMedia: vi.fn(async () => {
+        const error = new Error('no');
+        error.name = name;
+        throw error;
+      }),
+    });
+
+  it('reports a machine that cannot capture a screen', async () => {
+    const { controller } = failing('OverconstrainedError');
+    expect(await controller.startScreenShare()).toBe('failed');
+  });
+
+  it('reports the user closing the picker as their decision, not a fault', async () => {
+    const { controller } = failing('NotAllowedError');
+    expect(await controller.startScreenShare()).toBe('cancelled');
+  });
+
+  it('reports a share that started', async () => {
+    const { controller } = setup();
+    expect(await controller.startScreenShare()).toBe('started');
+  });
+
+  it('leaves the state alone when it could not start', async () => {
+    const { controller } = failing('OverconstrainedError');
+    await controller.startScreenShare();
+    expect(controller.state().screenShareEnabled).toBe(false);
+  });
+});
+
 describe('when no device can be acquired at all', () => {
   /*
     Denying the prompt denies the *request*, so the audio-only retry is refused too without

@@ -61,7 +61,14 @@ export interface MediaController {
   start(constraints?: MediaStreamConstraints): Promise<void>;
   setAudioEnabled(enabled: boolean): void;
   setVideoEnabled(enabled: boolean): Promise<void>;
-  startScreenShare(): Promise<void>;
+  /**
+   * Begin sharing a screen. Reports which of the three things happened, rather than only failing.
+   *
+   * `'cancelled'` is the user closing the picker, which is not a problem and must stay silent.
+   * `'failed'` is the machine being unable to — no ScreenCast portal, no capture device — which is
+   * worth saying out loud, because otherwise the button appears to do nothing at all.
+   */
+  startScreenShare(): Promise<'started' | 'cancelled' | 'failed'>;
   stopScreenShare(): void;
   /** Release every device. The camera light must go out when the call ends. */
   stop(): void;
@@ -253,13 +260,24 @@ export function createMediaController(options: MediaControllerOptions = {}): Med
     },
 
     async startScreenShare() {
-      if (state.screenShareEnabled) return;
+      if (state.screenShareEnabled) return 'started';
       try {
         screenStream = await devices.getDisplayMedia({ video: true });
       } catch (error) {
-        // Cancelling the picker lands here and is not an error worth surfacing loudly.
         options.onError?.('starting screen share', error);
-        return;
+        /*
+          Two very different outcomes arrive down this one path, and treating them alike meant a
+          machine that *cannot* share a screen behaved exactly like a user who changed their mind:
+          nothing happened and nothing was said.
+
+          The spec gives the user's own refusal — closing the picker — as `NotAllowedError`, and
+          everything else to the machine: no capture device, no portal, an unsatisfiable constraint.
+          On a Linux desktop with no `org.freedesktop.portal.ScreenCast` interface, WebKitGTK reports
+          `OverconstrainedError`, which is a strange name for "there is nothing here to capture" but
+          is unambiguously not the user declining.
+        */
+        const declined = error instanceof Error && error.name === 'NotAllowedError';
+        return declined ? 'cancelled' : 'failed';
       }
 
       videoBeforeShare = state.videoEnabled;
@@ -273,6 +291,7 @@ export function createMediaController(options: MediaControllerOptions = {}): Med
 
       publishVideo();
       emitState();
+      return 'started';
     },
 
     stopScreenShare,
