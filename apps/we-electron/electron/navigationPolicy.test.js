@@ -138,6 +138,22 @@ describe('the content security policy', () => {
     expect(production.split('; ').find((d) => d.startsWith('style-src'))).toContain('https://cdn.jsdelivr.net');
   });
 
+  it('allows cleartext only to the map tile host, not in general', () => {
+    /*
+      Cesium's Bing provider takes the tile protocol from `document.location.protocol`, and WE is
+      served from http://localhost — so it asks Bing for `http://…tiles.virtualearth.net/…` and the
+      globe renders as a bare blue sphere without them. Verified against Chrome: this entry admits
+      that URL while cleartext to any other host, including a `…virtualearth.net.attacker.example`
+      lookalike, stays refused.
+    */
+    const connectSrc = production.split('; ').find((d) => d.startsWith('connect-src'));
+    expect(connectSrc).toContain('http://*.tiles.virtualearth.net');
+    expect(connectSrc).not.toMatch(/(^|\s)http:(\s|$)/);
+
+    // The tiles arrive as images as well as through fetch, so img-src needs the same entry.
+    expect(production.split('; ').find((d) => d.startsWith('img-src'))).toContain('http://*.tiles.virtualearth.net');
+  });
+
   it('shuts the doors nothing here needs', () => {
     expect(production).toContain("object-src 'none'");
     expect(production).toContain("base-uri 'self'");

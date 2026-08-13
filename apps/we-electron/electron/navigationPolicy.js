@@ -79,6 +79,30 @@ export function safeProtocol(url) {
 const CESIUM_CDN = 'https://cdn.jsdelivr.net';
 
 /**
+ * Map tiles, over cleartext, because Cesium asks for them that way.
+ *
+ * Cesium's Bing provider chooses the tile protocol from the page it is running in:
+ *
+ *     n = options.tileProtocol ?? (document.location.protocol === 'http:' ? 'http' : 'https')
+ *
+ * WE is served from `http://localhost`, and Cesium Ion's world-imagery asset resolves to Bing,
+ * forwarding its endpoint options (`key`, `url`, `mapStyle`) straight through — none of which is
+ * `tileProtocol`. So Cesium asks Bing's metadata endpoint for `http` URLs and gets
+ * `http://ecn.{subdomain}.tiles.virtualearth.net/…` back. Blocked, the globe renders as a blue
+ * sphere with no surface.
+ *
+ * Named narrowly rather than opening `http:` wholesale, because a blanket cleartext allowance is a
+ * general-purpose exfiltration channel and this is one vendor's tile CDN.
+ *
+ * **This entry is a symptom.** Requesting map tiles over cleartext leaks which tiles a user is
+ * looking at — where on Earth they are looking — to anyone on the network, and lets them replace
+ * what is shown. The CSP only made an existing defect visible. Two real fixes, either of which
+ * retires this line: serve the app over https so Cesium mirrors *that*, or give the globe a base
+ * layer built with `tileProtocol: 'https'` instead of Ion's default.
+ */
+const BING_TILES = 'http://*.tiles.virtualearth.net';
+
+/**
  * The Content-Security-Policy for WE's own documents.
  *
  * Defence in depth rather than the primary control: `sanitiseCss` already strips a theme's beacons
@@ -113,12 +137,13 @@ export function contentSecurityPolicy({ dev = false, origins = [] } = {}) {
     `worker-src 'self' blob: ${CESIUM_CDN}`,
     // `data:` covers the bundled icon set; `blob:` the object URL for a picked image before it is
     // uploaded; `https:` the avatars, thumbnails and map tiles a post or a template can point at.
-    "img-src 'self' data: blob: https:",
+    // Same story as `connect-src`: the tiles arrive as images too, over the protocol Cesium asked for.
+    `img-src 'self' data: blob: https: ${BING_TILES}`,
     // No font CDN: the three webfaces are vendored into `@we/tokens` and served from our own origin.
     // `data:` is for the retro theme, which carries VT323 inline.
     "font-src 'self' data:",
     "media-src 'self' data: blob:",
-    `connect-src 'self' blob: ${connect} ws://localhost:* http://localhost:* https:`,
+    `connect-src 'self' blob: ${connect} ws://localhost:* http://localhost:* https: ${BING_TILES}`,
     // Embedded apps, and the embeds a post can contain. Not 'none': `we-iframe` is a product
     // feature, and what makes an embed safe is the origin gate in `appBridge`, not this.
     "frame-src 'self' https: http://localhost:*",
