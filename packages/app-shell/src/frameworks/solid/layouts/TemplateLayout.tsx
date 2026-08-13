@@ -31,6 +31,7 @@ import { schemaMutationActions } from '@shared/schemas/shell/tests/SchemaMutatio
 import { createTestStore } from '@shared/schemas/shell/tests/testStore';
 import { deepClone } from '@shared/utils';
 import { componentRegistry as registry } from '@solid/registries/componentRegistry';
+import { TemplateBoundary } from '@solid/components/TemplateBoundary';
 import type { RouteStore } from '@solid/stores/RouteStore';
 import { ShellRouterRoot, ShellRouteStoreProvider, useShellRouteStore } from '@solid/stores/ShellRouteStore';
 import { THEME_SCOPE_ATTRIBUTE } from '@solid/stores/ThemeStore';
@@ -314,14 +315,33 @@ export function TemplateLayout(
           {...{ [THEME_SCOPE_ATTRIBUTE]: '' }}
           styles={spaceThemeStyle()}
         >
-          <Show when={stores.templateStore.currentTemplate.id || 'empty'} keyed>
-            <RenderSchema
-              node={stores.templateStore.currentTemplate}
-              stores={templateStores}
-              registry={registry}
-              children={props.children}
-            />
-          </Show>
+          {/*
+            The boundary that matters most, and note what is *outside* it: the sidebar, the shell
+            overlays and the template switcher. A template that throws becomes a panel with a
+            message in it, and the app is still an app — the user can switch template, leave the
+            space, or open settings. Without this, Solid unmounts the whole tree on any uncaught
+            throw, so somebody else's template blanked the window and took the way out with it.
+          */}
+          <TemplateBoundary
+            what="this space's template"
+            action={
+              <we-button
+                variant="ghost"
+                onClick={() => props.hostStores.shellStore.openShellView('settings', '/appearance')}
+              >
+                Choose another template
+              </we-button>
+            }
+          >
+            <Show when={stores.templateStore.currentTemplate.id || 'empty'} keyed>
+              <RenderSchema
+                node={stores.templateStore.currentTemplate}
+                stores={templateStores}
+                registry={registry}
+                children={props.children}
+              />
+            </Show>
+          </TemplateBoundary>
         </Column>
 
         {/* Code / visual editor overlay — sits above template (z:5), below shell (z:11).
@@ -351,9 +371,19 @@ export function TemplateLayout(
                 // affects any shell view with variable-length content.
                 scrollbarGutter="stable"
               >
-                <ShellRouteStoreProvider>
-                  <ShellOverlayInner stores={stores} chromeStores={props.chromeStores} view={view} />
-                </ShellRouteStoreProvider>
+                {/* A fault in settings or the marketplace must not take the space behind it down. */}
+                <TemplateBoundary
+                  what={shellViewId}
+                  action={
+                    <we-button variant="ghost" onClick={() => stores.shellStore.closeShellView()}>
+                      Close
+                    </we-button>
+                  }
+                >
+                  <ShellRouteStoreProvider>
+                    <ShellOverlayInner stores={stores} chromeStores={props.chromeStores} view={view} />
+                  </ShellRouteStoreProvider>
+                </TemplateBoundary>
               </Column>
             );
           }}
