@@ -135,3 +135,11 @@ export type {
   TokenizerSource,
 } from './runtimeAdmin';
 export type { TranscriptionModel, TranscriptionPort, TranscriptionStream, TranscriptionTuning } from './transcription';
+export type {
+  InterpretationPort,
+  InterpretationProposal,
+  InterpretationRequest,
+  InterpretationResult,
+  TranscriptTurn,
+  WatchRequest,
+} from './interpretation';
