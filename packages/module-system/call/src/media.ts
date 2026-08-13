@@ -60,7 +60,7 @@ export interface MediaController {
   /** Acquire mic and camera. Safe to call repeatedly; only the first acquires. */
   start(constraints?: MediaStreamConstraints): Promise<void>;
   setAudioEnabled(enabled: boolean): void;
-  setVideoEnabled(enabled: boolean): void;
+  setVideoEnabled(enabled: boolean): Promise<void>;
   startScreenShare(): Promise<void>;
   stopScreenShare(): void;
   /** Release every device. The camera light must go out when the call ends. */
@@ -113,8 +113,11 @@ export function createMediaController(options: MediaControllerOptions = {}): Med
     for (const track of screenStream.getTracks()) track.stop();
     screenStream = null;
     state.screenShareEnabled = false;
-    // Restore whatever the camera was doing before, rather than assuming it should come back on.
-    state.videoEnabled = videoBeforeShare;
+    // Restore whatever the camera was doing before, rather than assuming it should come back on —
+    // and only as far as there is a camera to restore. Without that second condition, stopping a
+    // share started from a call with no camera left `videoEnabled: true` with no track behind it,
+    // which is the stuck-on-Connecting state by another route.
+    state.videoEnabled = videoBeforeShare && !!cameraTrack();
     const camera = cameraTrack();
     if (camera) camera.enabled = videoBeforeShare;
     publishVideo();
@@ -187,11 +190,61 @@ export function createMediaController(options: MediaControllerOptions = {}): Med
       emitState();
     },
 
-    setVideoEnabled(enabled) {
-      state.videoEnabled = enabled;
+    async setVideoEnabled(enabled) {
       // While sharing, the camera is not what is being sent — remember the preference and apply it
       // when the share stops, rather than silently doing nothing.
       videoBeforeShare = enabled;
+
+      /*
+        Turning the camera on when there is no camera means *getting* one.
+
+        This used to set the flag and stop there. With no camera track to enable — the ordinary
+        state after joining with video blocked — the flag was the only thing that changed: the self
+        tile went to "wants a picture, has none" and stayed on **Connecting…**, and presence told
+        every peer `videoEnabled: true`, so their tile for this agent stayed there too. Nothing could
+        ever resolve it, because nothing was ever going to ask for a camera again.
+
+        Asking again is also the right behaviour on its own terms. "We failed once" is not an answer
+        to someone pressing the camera button: the usual reason they are pressing it is that they
+        have just changed the permission.
+      */
+      if (enabled && !state.screenShareEnabled && !cameraTrack()) {
+        const mine = generation;
+        let acquired: MediaStream;
+        try {
+          acquired = await devices.getUserMedia({ video: DEFAULT_CONSTRAINTS.video ?? true });
+        } catch (error) {
+          // Still refused. The flag goes back off rather than staying true with nothing behind it,
+          // which is the state that could not be recovered from.
+          options.onError?.('turning the camera on', error);
+          if (mine !== generation) return;
+          state.videoEnabled = false;
+          emitState();
+          return;
+        }
+
+        const track = acquired.getVideoTracks()[0] ?? null;
+        if (mine !== generation || !track) {
+          for (const orphan of acquired.getTracks()) orphan.stop();
+          if (mine === generation) {
+            state.videoEnabled = false;
+            emitState();
+          }
+          return;
+        }
+
+        // Merged into the stream already being sent rather than replacing it, so the microphone
+        // acquired earlier keeps running — and so `stop()` still closes everything from one place.
+        if (stream) stream.addTrack(track);
+        else stream = acquired;
+        track.enabled = true;
+        state.videoEnabled = true;
+        publishVideo();
+        emitState();
+        return;
+      }
+
+      state.videoEnabled = enabled;
       if (!state.screenShareEnabled) {
         const camera = cameraTrack();
         if (camera) camera.enabled = enabled;

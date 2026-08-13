@@ -28,11 +28,26 @@ function fakeTrack(kind: 'audio' | 'video') {
   };
 }
 
-function fakeStream(tracks: ReturnType<typeof fakeTrack>[]) {
+/**
+ * A `MediaStream` double with a *mutable* track list.
+ *
+ * Mutable because the real one is: turning the camera on mid-call merges the newly acquired track
+ * into the stream already being sent, so the microphone from join keeps running. A fixed array
+ * would have let that path pass a test it does not survive in a browser.
+ */
+function fakeStream(initial: ReturnType<typeof fakeTrack>[]) {
+  const tracks = [...initial];
   return {
-    getTracks: () => tracks,
+    getTracks: () => [...tracks],
     getAudioTracks: () => tracks.filter((t) => t.kind === 'audio'),
     getVideoTracks: () => tracks.filter((t) => t.kind === 'video'),
+    addTrack: (track: ReturnType<typeof fakeTrack>) => {
+      if (!tracks.includes(track)) tracks.push(track);
+    },
+    removeTrack: (track: ReturnType<typeof fakeTrack>) => {
+      const at = tracks.indexOf(track);
+      if (at >= 0) tracks.splice(at, 1);
+    },
   } as unknown as MediaStream;
 }
 
@@ -262,6 +277,76 @@ describe('when no device can be acquired at all', () => {
 
     expect(states).toHaveLength(1);
     expect(states[0].audioEnabled).toBe(true);
+  });
+});
+
+describe('turning the camera on when there is no camera', () => {
+  /*
+    Join with video blocked and audio allowed and there is no camera track — correctly, the fallback
+    acquired audio alone. Pressing the camera button then used to set `videoEnabled: true` and stop
+    there, which is the worst of both: the self tile went to "wants a picture, has none" and stayed
+    on **Connecting…**, presence told every peer the same, and nothing was ever going to ask for a
+    camera again. Reported from real testing, on both sides of the call.
+  */
+  const videoBlocked = () => {
+    const mic = fakeTrack('audio');
+    const camera = fakeTrack('video');
+    let allowVideo = false;
+    const getUserMedia = vi.fn(async (constraints: MediaStreamConstraints) => {
+      if (constraints.video && !allowVideo) throw new Error('NotAllowedError');
+      return fakeStream(constraints.video ? [camera] : [mic]);
+    });
+    return { ...setup({ getUserMedia }), camera, grant: () => (allowVideo = true) };
+  };
+
+  it('asks for one, and reports having it when the permission has since been granted', async () => {
+    const { controller, camera, grant, tracks } = videoBlocked();
+    await controller.start();
+    expect(controller.state().videoEnabled).toBe(false);
+
+    grant();
+    await controller.setVideoEnabled(true);
+
+    expect(controller.state().videoEnabled).toBe(true);
+    expect(sent(tracks, 'video')).toBe(camera);
+    // Merged into the stream already being sent, so the microphone acquired at join keeps running.
+    expect(controller.localStream()?.getAudioTracks()).toHaveLength(1);
+    expect(controller.localStream()?.getVideoTracks()).toHaveLength(1);
+  });
+
+  it('leaves the flag off when it is refused again, rather than true with nothing behind it', async () => {
+    const { controller, errors, states } = videoBlocked();
+    await controller.start();
+    await controller.setVideoEnabled(true);
+
+    // The whole point: `videoEnabled` must never be true with no track, because that is the state
+    // the tiles — this agent's and every peer's — cannot recover from.
+    expect(controller.state().videoEnabled).toBe(false);
+    expect(states.at(-1)?.videoEnabled).toBe(false);
+    expect(errors).toContain('turning the camera on');
+  });
+
+  it('does not go looking for a camera while a screen is being shared', async () => {
+    const { controller, devices } = videoBlocked();
+    await controller.start();
+    await controller.startScreenShare();
+    const before = (devices.getUserMedia as ReturnType<typeof vi.fn>).mock.calls.length;
+
+    await controller.setVideoEnabled(true);
+
+    expect((devices.getUserMedia as ReturnType<typeof vi.fn>).mock.calls).toHaveLength(before);
+  });
+
+  it('does not restore a camera that never existed when the share stops', async () => {
+    // `videoBeforeShare` remembers the preference; without also checking that a camera exists,
+    // stopping the share put `videoEnabled: true` back with no track — the stuck state again.
+    const { controller } = videoBlocked();
+    await controller.start();
+    await controller.setVideoEnabled(true);
+    await controller.startScreenShare();
+    controller.stopScreenShare();
+
+    expect(controller.state().videoEnabled).toBe(false);
   });
 });
 

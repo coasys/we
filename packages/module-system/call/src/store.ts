@@ -202,6 +202,16 @@ export function createCallStore(deps: CallStoreDeps) {
   });
   /** Surfaced rather than logged: "the call cannot start here" is something the user must see. */
   const [problem, setProblem] = signal<string | null>(null);
+
+  /**
+   * Named, because it is the one problem that can resolve itself.
+   *
+   * Every other message here describes something structural — no space, no transport — that stays
+   * true until the user does something elsewhere. This one is about a permission, and a permission
+   * can be granted a moment later; leaving it on screen after the camera starts working is the
+   * app telling the user something it can plainly see is no longer so.
+   */
+  const MEDIA_BLOCKED = "WE could not reach your camera or microphone. Check this site's permissions in your browser.";
   /**
    * The microphone this agent is sending, as a signal rather than a read through to the controller.
    *
@@ -466,6 +476,9 @@ export function createCallStore(deps: CallStoreDeps) {
       onTrackChanged: (kind, track) => void mesh?.setOutboundTrack(kind, track),
       onStateChanged: (state) => {
         setMedia({ ...state });
+        // Devices arrived after all — most likely the user granted the permission and pressed the
+        // camera button. Clear only our own message, so a structural problem is not swallowed.
+        if (controller?.localStream() && problem() === MEDIA_BLOCKED) setProblem(null);
         // Fires once when devices are acquired, and on every mute after — the first is what tells a
         // listener the microphone exists at all.
         setLocalAudio(controller?.localStream() ?? null);
@@ -491,9 +504,7 @@ export function createCallStore(deps: CallStoreDeps) {
       because a refused camera that fell back to audio is a different outcome from a refused
       *request*, and only the second one leaves nothing at all.
     */
-    if (!controller.localStream()) {
-      setProblem("WE could not reach your camera or microphone. Check this site's permissions in your browser.");
-    }
+    if (!controller.localStream()) setProblem(MEDIA_BLOCKED);
   }
 
   // Reconcile the mesh against the roster. This is the whole membership mechanism — see mesh.ts.
