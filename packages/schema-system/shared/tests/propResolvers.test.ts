@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { REACTIVE_ACCESSOR, resolveProp, resolveProps, splitProps } from '../src/propResolvers';
+import { noMemo, REACTIVE_ACCESSOR, resolveProp, resolveProps, splitProps } from '../src/propResolvers';
 import type { LocalFieldMeta } from '../src/propResolvers/local';
 import {
   extractFromPath,
@@ -90,11 +90,37 @@ describe('propResolvers (combined)', () => {
   });
 
   it('resolveProp with custom memo returns accessor for nested $store', () => {
-    const stores = { s: { nested: { val: () => 5 } } };
+    // Tagged, because that is what a store bag now contains: the host marks state accessors when it
+    // builds a template's bag, and `walkPath` calls only those.
+    const stores = { s: { nested: { val: markReactive(() => 5) } } };
     const memo = (fn: () => number) => () => fn();
     const res = resolveProp({ $store: 's.nested.val' }, stores, {}, memo as <T>(fn: () => T) => T) as () => number;
     expect(typeof res).toBe('function');
     expect(res()).toBe(5);
+  });
+
+  it('never calls an untagged function while resolving a $store path', () => {
+    /*
+      `$store` used to invoke any function it walked past, which made it an execution channel: a
+      template naming a zero-argument store method had it called during paint, with no click and no
+      user intent. `{ $store: 'sessionStore.logout' }` on any prop logged you out while the page was
+      drawing.
+
+      An action in the bag is now a function the resolver walks past without touching, and the path
+      resolves to nothing rather than to a side effect.
+    */
+    let called = false;
+    const stores = { sessionStore: { logout: () => (called = true) } };
+
+    expect(resolveProp({ $store: 'sessionStore.logout' }, stores, {}, noMemo)).toBeUndefined();
+    expect(called).toBe(false);
+  });
+
+  it('does not hand a bare function to a prop either', () => {
+    // Returning the function itself would put the channel straight back: a component receiving it
+    // could call it, and a template has no legitimate way to have produced a callable.
+    const stores = { s: { action: () => 'boom' } };
+    expect(resolveProp({ $store: 's.action' }, stores, {}, noMemo)).toBeUndefined();
   });
 
   it('resolveStoreProp returns undefined if path missing', () => {
@@ -285,7 +311,7 @@ describe('propResolvers (combined)', () => {
   it('$map transforms single object from store accessor', () => {
     const stores = {
       templateStore: {
-        currentTemplate: () => ({ id: 'default', meta: { name: 'Default', icon: 'home' } }),
+        currentTemplate: markReactive(() => ({ id: 'default', meta: { name: 'Default', icon: 'home' } })),
       },
     };
     const map = {
@@ -422,9 +448,9 @@ describe('propResolvers (combined)', () => {
   });
 
   it('$and works with $store operands', () => {
-    const stores = { s: { a: () => true, b: () => false } };
+    const stores = { s: { a: markReactive(() => true), b: markReactive(() => false) } };
     expect(resolveProp({ $and: [{ $store: 's.a' }, { $store: 's.b' }] }, stores, {})).toBe(false);
-    const stores2 = { s: { a: () => true, b: () => true } };
+    const stores2 = { s: { a: markReactive(() => true), b: markReactive(() => true) } };
     expect(resolveProp({ $and: [{ $store: 's.a' }, { $store: 's.b' }] }, stores2, {})).toBe(true);
   });
 
@@ -442,7 +468,7 @@ describe('propResolvers (combined)', () => {
   });
 
   it('$and/$or compose with $not and $store', () => {
-    const stores = { s: { isAdmin: () => true, isLocked: () => false } };
+    const stores = { s: { isAdmin: markReactive(() => true), isLocked: markReactive(() => false) } };
     // { $and: [{ $store: 's.isAdmin' }, { $not: { $store: 's.isLocked' } }] }
     const result = resolveProp({ $and: [{ $store: 's.isAdmin' }, { $not: { $store: 's.isLocked' } }] }, stores, {});
     expect(result).toBe(true);

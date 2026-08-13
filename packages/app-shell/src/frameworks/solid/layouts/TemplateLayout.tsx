@@ -151,10 +151,22 @@ const shellViews: Record<string, ShellViewEntry> = {
 // Shell overlay inner — rendered inside ShellRouteStoreProvider + MemoryRouter
 // ---------------------------------------------------------------------------
 
-function ShellOverlayInner({ stores, view }: { stores: Stores; view: ShellViewEntry }) {
+function ShellOverlayInner({
+  stores,
+  chromeStores,
+  view,
+}: {
+  /** The host's own handle. A view's store factory is host code and reads wiring through it. */
+  stores: Stores;
+  /** What the overlay's schema renders against — chrome tier, because these views are chrome. */
+  chromeStores: Stores;
+  view: ShellViewEntry;
+}) {
   const shellRouteStore = useShellRouteStore();
+  // Built from the raw stores (the schema-tests view reaches for `testDataset` and `backendPorts`,
+  // both host wiring), then merged into the *chrome* bag, which is what actually gets rendered.
   const { $schema: reactiveSchema, ...storeEntries } = view.stores?.(stores, shellRouteStore) ?? {};
-  const shellStores: Stores = { ...stores, routeStore: shellRouteStore, ...(storeEntries as Partial<Stores>) };
+  const shellStores: Stores = { ...chromeStores, routeStore: shellRouteStore, ...(storeEntries as Partial<Stores>) };
   const schema = reactiveSchema ?? view.schema;
 
   return (
@@ -175,8 +187,21 @@ function ShellOverlayInner({ stores, view }: { stores: Stores; view: ShellViewEn
 // TemplateLayout — mounted as root prop of the main <Router>
 // ---------------------------------------------------------------------------
 
-export function TemplateLayout(props: ParentProps & { stores: Stores }) {
-  const { stores } = props;
+export function TemplateLayout(
+  props: ParentProps & {
+    /** The space template's bag. This layout renders that template. */
+    stores: Stores;
+    /** The chrome bag, for the shell overlays this layout also mounts. */
+    chromeStores: Stores;
+    /** The host's own handle, for this layout's own wiring and layout arithmetic. */
+    hostStores: Stores;
+  },
+) {
+  // `stores` is the *template* bag and is used for exactly one thing: rendering the template.
+  // Everything else here — route wiring, panel geometry, theme resolution — is host work and reads
+  // `host`, which still has the members a bag deliberately withholds.
+  const stores = props.hostStores;
+  const templateStores = props.stores;
 
   // Wire useNavigate/useLocation (available here because we're inside <Router>) into routeStore
   const navigate = useNavigate();
@@ -287,7 +312,7 @@ export function TemplateLayout(props: ParentProps & { stores: Stores }) {
           <Show when={stores.templateStore.currentTemplate.id || 'empty'} keyed>
             <RenderSchema
               node={stores.templateStore.currentTemplate}
-              stores={stores}
+              stores={templateStores}
               registry={registry}
               children={props.children}
             />
@@ -322,7 +347,7 @@ export function TemplateLayout(props: ParentProps & { stores: Stores }) {
                 scrollbarGutter="stable"
               >
                 <ShellRouteStoreProvider>
-                  <ShellOverlayInner stores={stores} view={view} />
+                  <ShellOverlayInner stores={stores} chromeStores={props.chromeStores} view={view} />
                 </ShellRouteStoreProvider>
               </Column>
             );

@@ -2,6 +2,7 @@ import { queryIRFlag } from '@shared/queryIRFlag';
 import { provideModuleHostServices } from '@shared/registries/moduleHostServices';
 import { moduleStores } from '@shared/registries/moduleRegistry';
 import { slotRegistry } from '@shared/registries/slotRegistry';
+import { buildTemplateBag, CHROME_TIER, SPACE_TIER } from '@shared/registries/templateSurface';
 import { componentRegistry as registry } from '@solid/registries/componentRegistry';
 import {
   useAccountStore,
@@ -231,6 +232,21 @@ export default function TemplateProvider() {
     ] as const;
   }
 
+  /*
+    The two bags, built once from the one raw `stores` object.
+
+    `stores` itself is never handed to a renderer any more — it is the host's own handle, holding
+    wiring, credentials and backend ports. What a schema renders against is a filtered copy, and
+    which copy depends on who authored the schema: host chrome gets the chrome tier, a space's
+    template gets the space tier. See `templateSurface.ts` for what those mean.
+
+    Built here rather than inside `RenderSchema` because trust is a property of the *render site* —
+    who wrote this schema — and the renderer has no way to know that. It stays neutral and walks
+    whatever bag it is given, which is the same division that keeps `ModuleStoreDeps` honest.
+  */
+  const chromeBag = buildTemplateBag(stores, { grants: CHROME_TIER });
+  const templateBag = buildTemplateBag(stores, { grants: SPACE_TIER });
+
   // Shell chrome — host slots plus anything feature modules contribute.
   // Rendered once outside the keyed Router so it never remounts on template switches; that isolation
   // is why a template has no channel into the shell.
@@ -249,7 +265,13 @@ export default function TemplateProvider() {
 
   // TemplateLayout receives stores via closure — SolidJS Router requires `root` to be
   // a component type, so we wrap it to pass stores through.
-  const Layout = (props: { children?: unknown }) => TemplateLayout({ stores, children: props.children as never });
+  const Layout = (props: { children?: unknown }) =>
+    TemplateLayout({
+      stores: templateBag,
+      chromeStores: chromeBag,
+      hostStores: stores,
+      children: props.children as never,
+    });
 
   // Visual editor context — lives here (above the Router) so context is available to all
   /**
@@ -333,19 +355,21 @@ export default function TemplateProvider() {
   // 2. Shell chrome components like InspectorPanel (in templateEditor) get context too
   return (
     <VisualEditorProvider value={visualEditorCtx}>
-      {/* Shell chrome — stable, never remounts */}
-      <RenderSchema node={shellSchema} stores={stores} registry={registry} />
+      {/* Shell chrome — stable, never remounts. Chrome tier: this is host-authored. */}
+      <RenderSchema node={shellSchema} stores={chromeBag} registry={registry} />
 
       {/* Router — keyed on template ID so buildRoutes reruns when the template changes.
            Template switching is a rare intentional action; the full remount is acceptable. */}
       <Show when={templateSchema.id || 'empty'} keyed>
         {(_id) => (
           <Router root={Layout}>
-            {buildRoutes(stores, templateSchema.routes ?? [])}
+            {buildRoutes(templateBag, templateSchema.routes ?? [])}
             <Route
               path="*"
               component={() =>
-                templateSchema.routes?.length ? RenderSchema({ node: notFoundNode, stores, registry }) : null
+                templateSchema.routes?.length
+                  ? RenderSchema({ node: notFoundNode, stores: templateBag, registry })
+                  : null
               }
             />
           </Router>

@@ -76,6 +76,7 @@ export {
   pruneUnresolvedWhere,
   resolveQueryProp,
   splitProps,
+  markReactive,
   REACTIVE_ACCESSOR,
   deepUnwrap,
   noMemo,
