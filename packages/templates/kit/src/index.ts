@@ -57,6 +57,8 @@ export { loadMore } from './lists/loadMore.ts';
 export type { LoadMoreOptions } from './lists/loadMore.ts';
 export { mediaGrid } from './lists/mediaGrid.ts';
 export type { MediaGridOptions } from './lists/mediaGrid.ts';
+export { pickerRow } from './lists/pickerRow.ts';
+export type { PickerRowOptions } from './lists/pickerRow.ts';
 
 // Layout — the boxes a page is made of.
 export { attributeRow } from './layout/attributeRow.ts';
@@ -79,6 +81,8 @@ export { composerModal } from './overlays/composerModal.ts';
 export type { ComposerModalOptions } from './overlays/composerModal.ts';
 export { confirmModal } from './overlays/confirmModal.ts';
 export type { ConfirmModalOptions } from './overlays/confirmModal.ts';
+export { pickerPopover } from './overlays/pickerPopover.ts';
+export type { PickerPopoverOptions } from './overlays/pickerPopover.ts';
 
 // WE-domain — these name WE's stores or its agent machinery.
 export { adminSection } from './we/adminSection.ts';

@@ -60,6 +60,7 @@ export interface TemplateStore {
   allTemplates: Accessor<TemplateSchema[]>;
   templateManagementList: Accessor<TemplateManagementItem[]>;
   switcherGroups: Accessor<TemplateSwitcherGroup[]>;
+  currentSwitcherId: Accessor<string>;
   currentTemplate: TemplateSchema;
   loading: Accessor<boolean>;
   defaultTemplateId: Accessor<string>;
@@ -183,6 +184,18 @@ export function TemplateStoreProvider(props: ParentProps) {
     { label: 'My templates', items: toSwitcherItems(myTemplates()) },
     { label: 'Built-in', items: toSwitcherItems(builtInTemplatesAccessor()) },
   ];
+
+  /**
+   * The active template's id *as the switcher spells it* — `SPACE_PREFIX` and all.
+   *
+   * A switcher row is keyed by a prefixed id, because a space's copy of a template and your own can
+   * share an id and are still two different rows. Deciding which row is the current one therefore
+   * means re-applying that prefix, and a schema cannot: it has no string concatenation on a
+   * conditional, so a picker doing this by hand would have to compare against the unprefixed id and
+   * light up both rows. Derived here, next to the function that builds the ids.
+   */
+  const currentSwitcherId = (): string =>
+    currentTemplate._fromSpace ? SPACE_PREFIX + (currentTemplate.id || '') : currentTemplate.id || '';
 
   const defaultTemplateId = () => datasetStore.agentSettings()?.defaultTemplateId || 'default';
 
@@ -1286,6 +1299,7 @@ export function TemplateStoreProvider(props: ParentProps) {
     allTemplates,
     templateManagementList,
     switcherGroups,
+    currentSwitcherId,
     currentTemplate,
     loading,
     defaultTemplateId,

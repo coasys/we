@@ -29,10 +29,10 @@ import type { CoreSlotAnchor, SlotAnchor, SlotContribution } from '@we/module-sh
 import type { SchemaNode } from '@we/schema-shared';
 import {
   bootScreen,
+  chromeRail,
   consentPrompt,
   consentSecret,
   createSpaceModalMount,
-  moduleRail,
   removeAccountModal,
   sidebar,
   templateEditor,
@@ -254,8 +254,8 @@ export function registerCoreSlots(): void {
   slotRegistry.register({ id: 'core:sidebar', anchor: 'dock-left', node: sidebar, order: 0 });
   slotRegistry.register({ id: 'core:templateEditor', anchor: 'dock-right', node: templateEditor, order: 0 });
   // The one place feature modules are opened from. Core rather than a module contribution, because
-  // only the host can stop launchers colliding — see ModuleRail.schema.ts.
-  slotRegistry.register({ id: 'core:moduleRail', anchor: 'dock-right', node: moduleRail, order: 10 });
+  // only the host can stop launchers colliding — see ChromeRail.schema.ts.
+  slotRegistry.register({ id: 'core:chromeRail', anchor: 'dock-right', node: chromeRail, order: 10 });
 }
 
 registerCoreSlots();

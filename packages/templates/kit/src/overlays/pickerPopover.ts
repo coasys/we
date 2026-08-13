@@ -1,0 +1,158 @@
+import type { SchemaNode, SchemaProp } from '@we/schema-shared';
+
+import type { Content } from '../types.ts';
+
+export interface PickerPopoverOptions {
+  /**
+   * The boolean `$local` that holds this picker open. **An ancestor must declare it.**
+   *
+   * Deliberately not private to this fragment. Two pickers side by side each owning their own flag
+   * cannot see each other, so opening the second left the first up and the two overlapped. Whoever
+   * places them is the only thing that knows they are a set, so that is where the state lives.
+   */
+  openLocal: string;
+  /**
+   * Sibling flags to clear whenever this one is toggled — the rest of the set.
+   *
+   * Cleared unconditionally *after* this one toggles, which is what makes it a correct toggle in
+   * both directions. Doing it the other way round, or making either step conditional, runs into
+   * event-handler arrays being resolved one entry at a time at call time: a later condition would
+   * read the state an earlier entry had just written, and the button would only ever open.
+   */
+  closeOthers?: string[];
+  /** The rail button's icon. */
+  icon: SchemaProp;
+  tooltip: string;
+  searchPlaceholder: string;
+  /**
+   * The grouped rows, written by the caller.
+   *
+   * Deliberately not an option: templates arrive pre-grouped from one store array, themes as three
+   * separate ones, and a `groups` option able to describe both would be two shapes behind one name.
+   * The chrome around the list is what repeated, so the chrome is what this owns.
+   *
+   * Filter against `{ $local: 'pickerSearch' }` — declared here, readable from anywhere inside.
+   */
+  body: Content;
+  /** Actions below the list, off the end of the scroll area — "New", a scope toggle. */
+  footer?: Content;
+  /** Which side of the trigger the surface opens on. Defaults to `left`, for a right-edge rail. */
+  side?: 'left' | 'right';
+  width?: string;
+}
+
+/**
+ * A rail button, and the picker that opens beside it.
+ *
+ * Replaces the two dropdowns that hung off the old design toolbar's chips. They were the same
+ * surface written twice and had already diverged in a way that mattered: the template list scrolled
+ * with `we-scroll-area`, while the theme list set `overflowY`, which is not a design-system prop —
+ * so a long theme list simply overflowed its box. One surface, one scroll area, one bug fewer.
+ *
+ * ## State
+ *
+ * `openLocal` comes from above, so a rail full of these can keep only one of them up at a time.
+ * `pickerSearch` is declared here on the wrapper and is readable from `body` and `footer`; sibling
+ * pickers do not collide over it, because each call returns its own wrapper to scope it to.
+ *
+ * A caller's rows should clear `openLocal` themselves on select — a picker left up over the change
+ * it just made reads as a click that did not land.
+ *
+ * ## Why a backdrop rather than a document listener
+ *
+ * Dismissal has to be expressible as data. A full-bleed node that clears the flag on click is the
+ * data spelling of "click outside to close"; the alternative lives in a `createEffect`, which is
+ * what made this chrome code in the first place. The cost is that Escape does not close it —
+ * a key needs a listener, and that belongs in a primitive rather than here.
+ */
+export function pickerPopover(opts: PickerPopoverOptions): SchemaNode {
+  const open = { $local: opts.openLocal };
+  const close = { $setLocal: opts.openLocal, value: false };
+
+  return {
+    type: 'Column',
+    props: { position: 'relative' },
+    $localState: {
+      pickerSearch: { type: 'string', initial: '' },
+    },
+    children: [
+      {
+        type: 'we-tooltip',
+        props: { title: opts.tooltip, placement: opts.side === 'right' ? 'right' : 'left' },
+        children: [
+          {
+            type: 'we-button',
+            props: {
+              variant: { $if: { condition: open, then: 'secondary', else: 'ghost' } },
+              square: true,
+              onClick: [
+                { $toggleLocal: opts.openLocal },
+                ...(opts.closeOthers ?? []).map((field) => ({ $setLocal: field, value: false })),
+              ],
+            },
+            children: [{ type: 'we-icon', props: { name: opts.icon } }],
+          },
+        ],
+      },
+
+      // Catches the click that closes it. Fixed and full-bleed, and *before* the surface in document
+      // order so the surface paints over it — both are in this wrapper's stacking context, so order
+      // is the whole of the z-index story here.
+      {
+        type: '$if',
+        props: {
+          condition: open,
+          then: {
+            type: 'Column',
+            props: { position: 'fixed', top: '0', right: '0', bottom: '0', left: '0', onClick: close },
+          },
+        },
+      },
+
+      {
+        type: '$if',
+        props: {
+          condition: open,
+          enterTransition: [
+            { type: 'fade', duration: 120 },
+            { type: 'scale', duration: 120 },
+          ],
+          then: {
+            type: 'Column',
+            props: {
+              position: 'absolute',
+              top: '0',
+              ...(opts.side === 'right' ? { left: '100%', ml: '200' } : { right: '100%', mr: '200' }),
+              minWidth: opts.width ?? '300px',
+              bg: 'neutral-0',
+              border: '1px solid neutral-200',
+              r: 'var(--we-theme-surface-radius, var(--we-radius-400))',
+              shadow: 'md',
+              overflow: 'hidden',
+            },
+            children: [
+              {
+                type: 'Search',
+                props: {
+                  placeholder: opts.searchPlaceholder,
+                  value: { $local: 'pickerSearch' },
+                  onSearch: { $setLocal: 'pickerSearch', from: '$arg' },
+                  m: '200',
+                },
+              },
+              { type: 'we-divider' },
+              {
+                type: 'we-scroll-area',
+                props: { maxHeight: '320px' },
+                children: [{ type: 'Column', props: { p: '200', gap: '100' }, children: [opts.body] }],
+              },
+              ...(opts.footer
+                ? [{ type: 'we-divider' }, { type: 'Column', props: { p: '200', gap: '100' }, children: [opts.footer] }]
+                : []),
+            ],
+          },
+        },
+      },
+    ],
+  };
+}

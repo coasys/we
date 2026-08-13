@@ -1,6 +1,6 @@
 import { render } from 'solid-js/web';
 
-import { DesignToolbar } from './components/DesignToolbar';
+import { EditingBar } from './components/EditingBar';
 import { EditorOverlay } from './components/EditorOverlay';
 import { RightPanelContainer } from './components/RightPanelContainer';
 import { type EditorHost, EditorHostProvider } from './host';
@@ -13,12 +13,17 @@ export interface MountOptions {
    * Render the overlay that draws selection and resize handles over the live template.
    *
    * Off by default because it draws *over* the template — an application that mounts the editor
-   * beside its content rather than on top of it wants only the toolbar and panels. It is not off for
+   * beside its content rather than on top of it wants only the editing bar and panels. It is not off for
    * geometry reasons: the overlay normalises against its own root and is container-relative already.
    */
   overlay?: boolean;
-  /** Render the design toolbar. Default true. */
-  toolbar?: boolean;
+  /**
+   * Render the editing bar — undo/redo, mode, share, and the way out of a session. Default true.
+   *
+   * Named for what it is since the pickers left it: choosing a template or theme is the host's
+   * business now, and an embedding application supplies its own way of asking that question.
+   */
+  editingBar?: boolean;
   /** Render the right-hand panel dock. Default true. */
   panels?: boolean;
   /**
@@ -59,7 +64,7 @@ export interface MountOptions {
  * template. See `tests/geometry.test.ts`.
  */
 export function mountTemplateEditor(element: HTMLElement, options: MountOptions): () => void {
-  const { host, overlay = false, toolbar = true, panels = true, positioning = 'container' } = options;
+  const { host, overlay = false, editingBar = true, panels = true, positioning = 'container' } = options;
 
   // `absolute` chrome needs a positioned ancestor, and the element handed to us is the one the caller
   // means. Setting it here rather than documenting it removes the most likely way to mis-integrate:
@@ -73,7 +78,7 @@ export function mountTemplateEditor(element: HTMLElement, options: MountOptions)
       <EditorHostProvider value={host}>
         <EditorSurfaceProvider value={{ positioning }}>
           {overlay ? <EditorOverlay /> : null}
-          {toolbar ? <DesignToolbar /> : null}
+          {editingBar ? <EditingBar /> : null}
           {panels ? <RightPanelContainer /> : null}
         </EditorSurfaceProvider>
       </EditorHostProvider>

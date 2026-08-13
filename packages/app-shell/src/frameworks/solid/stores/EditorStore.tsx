@@ -562,6 +562,50 @@ export function EditorStoreProvider(props: ParentProps) {
     }
   }
 
+  /**
+   * Switching to a different theme ends the editing session on the old one.
+   *
+   * Untracks the guard so entering edit mode does not re-trigger this. The identity check matters:
+   * `saveEditingTheme` persists the theme and *then* makes it current, so a bare "the id changed"
+   * would tear down the session the user is still in the moment they saved.
+   *
+   * Lives here rather than in the chrome that used to own it because it is session logic, not a
+   * view concern — and the picker that replaced that chrome is a schema, which has no `createEffect`.
+   */
+  createEffect(() => {
+    const newId = themeStore.currentThemeId();
+    if (!untrack(() => isEditingTheme())) return;
+    if (newId !== untrack(() => themeStore.editingTheme()?.id)) exitThemeEditing();
+  });
+
+  /**
+   * Undo/redo from the keyboard, for as long as an editing session is open.
+   *
+   * Bound to the document rather than to a surface: the thing being edited is the template filling
+   * the window, so there is no element that usefully owns the shortcut. Fields are exempt — inside
+   * an input, Ctrl-Z means the text, and stealing it would make the name box in a fork dialog
+   * silently un-undoable.
+   */
+  createEffect(() => {
+    if (!isEditingTemplate() && !isEditingTheme()) return;
+
+    const handler = (event: KeyboardEvent) => {
+      if (!event.ctrlKey && !event.metaKey) return;
+      if (event.key !== 'z' && event.key !== 'Z') return;
+      const target = event.target as HTMLElement | null;
+      if (target?.tagName === 'INPUT' || target?.tagName === 'TEXTAREA' || target?.isContentEditable) return;
+      event.preventDefault();
+      if (event.shiftKey) {
+        if (canRedo()) void redo();
+      } else if (canUndo()) {
+        void undo();
+      }
+    };
+
+    document.addEventListener('keydown', handler);
+    onCleanup(() => document.removeEventListener('keydown', handler));
+  });
+
   // ----------------------------------------------------------------
   // Panel control
   // ----------------------------------------------------------------
