@@ -71,6 +71,34 @@ export const EXTRACT_CLASSES = ['TaskBlock', 'EventBlock'];
 export type ExtractStatus = 'idle' | 'running' | 'done' | 'error';
 
 /**
+ * One staged suggestion, flattened for display.
+ *
+ * `summary` rather than the raw value map, because a schema `$each` cannot iterate an object's
+ * entries and a person deciding whether to keep a suggestion needs to read it, not inspect it. Built
+ * here so the panel stays declarative — the alternative was a template that knew which field of a
+ * task to show first, which is knowledge about models rather than about layout.
+ */
+export interface ProposalView {
+  id: string;
+  /** `create` proposed a whole record; `update` proposed changes to one that exists. */
+  kind: string;
+  /** What it says, in the order a reader wants it: what it is, then the detail. */
+  summary: string;
+}
+
+/** Field names worth leading with, most identifying first. Anything else follows in map order. */
+const SUMMARY_FIELDS = ['title', 'text', 'name', 'startDate', 'dueDate', 'assignee', 'location'];
+
+/** Flatten a proposal's values into one readable line. */
+function summarise(values: Record<string, unknown>): string {
+  const named = SUMMARY_FIELDS.filter((field) => values[field] !== undefined && values[field] !== '');
+  const rest = Object.keys(values).filter((field) => !SUMMARY_FIELDS.includes(field));
+  return [...named, ...rest]
+    .map((field) => `${field}: ${String(values[field])}`)
+    .join(' · ');
+}
+
+/**
  * How long a non-elected agent will hold its first utterance waiting for the creator's record.
  *
  * The election needs a way out, because the agent it picks may simply never speak: whoever is
@@ -231,6 +259,14 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
   const [extractStatus, setExtractStatus] = signal<ExtractStatus>('idle');
   const [extractCount, setExtractCount] = signal(0);
   const [extractError, setExtractError] = signal('');
+  /**
+   * Suggestions the backend staged instead of writing, awaiting a person.
+   *
+   * Held rather than queried on render because resolving one is a round trip and the list has to
+   * update without a second: accepting the third of five should leave four, immediately, without
+   * re-reading the whole set and without the row a user is looking at jumping.
+   */
+  const [proposals, setProposals] = signal<ProposalView[]>([]);
   /**
    * The call the current collection belongs to.
    *
@@ -491,6 +527,27 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
   }
 
   /** Write what has accumulated, if anything. Safe to call at any point, including teardown. */
+  /**
+   * Re-read the staged suggestions.
+   *
+   * Reads the whole dataset's proposals rather than this call's. The port has no per-parent filter,
+   * and inventing one client-side would need each proposal's parent, which an overlay does not
+   * carry. In practice the two coincide — the only thing writing proposals here is this call's own
+   * extraction — and showing one more than expected is a much better failure than hiding one.
+   *
+   * Never throws: this runs after a pass that already succeeded, and turning a successful extraction
+   * into an error because the review list could not be fetched would be a lie about what happened.
+   */
+  async function loadProposals(): Promise<void> {
+    if (!interpretation) return;
+    try {
+      const staged = await interpretation.proposals();
+      setProposals(staged.map((p) => ({ id: p.id, kind: p.kind, summary: summarise(p.values) })));
+    } catch {
+      setProposals([]);
+    }
+  }
+
   async function flush(): Promise<void> {
     clearTimer();
     const text = buffer.trim();
@@ -894,6 +951,8 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
     canExtract: () => Boolean(collectionId()) && (interpretation?.available() ?? false),
     /** True when the backend could interpret but there is no transcript yet — a waiting state. */
     extractable: () => interpretation?.available() ?? false,
+    /** Suggestions staged for review. Empty is the ordinary case — see `refreshProposals`. */
+    proposals,
 
     // ── Actions ──────────────────────────────────────────────────────────────
     /**
@@ -981,10 +1040,33 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
         const result = await interpretation.runOnCollection(collection, { classes: EXTRACT_CLASSES });
         setExtractCount(result.ids.length);
         setExtractStatus('done');
+        // Only worth a round trip when the pass actually staged something. A backend with no
+        // provenance gate reports nothing proposed and never had a list to fetch.
+        if (result.proposed.length) await loadProposals();
       } catch (error) {
         setExtractError(error instanceof Error ? error.message : String(error));
         setExtractStatus('error');
       }
+    },
+    /** Re-read what is staged. Called after a pass; exposed so a panel can refresh on open. */
+    refreshProposals: () => loadProposals(),
+    /**
+     * Keep a suggestion, or drop it.
+     *
+     * Removed from the list on success rather than by re-reading it. A re-read is a second round
+     * trip during which the row a person is looking at can move, and the answer is already known:
+     * a resolved overlay is gone. `false` means somebody else resolved it first — the record is
+     * still out of the list either way, so it drops locally without complaint.
+     */
+    acceptProposal: async (id: string) => {
+      if (!interpretation) return;
+      await interpretation.accept(id);
+      setProposals(proposals().filter((p) => p.id !== id));
+    },
+    rejectProposal: async (id: string) => {
+      if (!interpretation) return;
+      await interpretation.reject(id);
+      setProposals(proposals().filter((p) => p.id !== id));
     },
     /** Write what has been heard so far without waiting for the buffer to fill. */
     flushNow: () => flush(),

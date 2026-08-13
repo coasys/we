@@ -680,3 +680,144 @@ describe('extraction', () => {
     expect(h.store.extractStatus()).toBe('idle');
   });
 });
+
+/**
+ * Resolving what the model proposed.
+ *
+ * Staging happens only where a human already owns a value, so this path is rare and correspondingly
+ * easy to get wrong without noticing — the list is usually empty, which looks identical to a list
+ * that never loads.
+ */
+describe('staged suggestions', () => {
+  let inCall: Peer[];
+
+  beforeEach(() => {
+    inCall = [peer(ME, { type: 'call', id: 'space:uri' })];
+  });
+
+  function interpreterWith(
+    staged: Array<{ id: string; kind: string; values: Record<string, unknown> }>,
+    proposed: string[] = staged.map((s) => s.id),
+  ) {
+    const resolved: Array<{ action: 'accept' | 'reject'; id: string }> = [];
+    let list = staged;
+    return {
+      resolved,
+      port: {
+        available: () => true,
+        runOnCollection: async () => ({ ids: proposed, proposed }),
+        proposals: async () => list,
+        accept: async (id: string) => {
+          resolved.push({ action: 'accept', id });
+          list = list.filter((s) => s.id !== id);
+          return true;
+        },
+        reject: async (id: string) => {
+          resolved.push({ action: 'reject', id });
+          list = list.filter((s) => s.id !== id);
+          return true;
+        },
+      },
+    };
+  }
+
+  it('does not go looking for a review list when nothing was staged', async () => {
+    // The ordinary case. A backend with no provenance gate reports nothing proposed and never had a
+    // list to fetch, so asking would be a round trip per pass for an empty array.
+    let asked = 0;
+    const h = harness(inCall, {
+      interpretation: {
+        available: () => true,
+        runOnCollection: async () => ({ ids: ['t1'], proposed: [] }),
+        proposals: async () => {
+          asked += 1;
+          return [];
+        },
+        accept: async () => true,
+        reject: async () => true,
+      },
+    });
+    await h.say('hello');
+
+    await h.store.extract();
+
+    expect(asked).toBe(0);
+    expect(h.store.proposals()).toEqual([]);
+  });
+
+  it('reads the list when a pass stages something', async () => {
+    const i = interpreterWith([{ id: 'task-1', kind: 'update', values: { title: 'Ship the docs' } }]);
+    const h = harness(inCall, { interpretation: i.port });
+    await h.say('hello');
+
+    await h.store.extract();
+
+    expect(h.store.proposals()).toHaveLength(1);
+    expect(h.store.proposals()[0].summary).toBe('title: Ship the docs');
+  });
+
+  it('leads a summary with the field that identifies the record', async () => {
+    // A person deciding whether to keep a suggestion reads it rather than inspecting it, and
+    // whichever key happened to come first is not a useful thing to lead with.
+    const i = interpreterWith([
+      { id: 'task-1', kind: 'create', values: { priority: 'high', title: 'Ship the docs' } },
+    ]);
+    const h = harness(inCall, { interpretation: i.port });
+    await h.say('hello');
+
+    await h.store.extract();
+
+    expect(h.store.proposals()[0].summary).toBe('title: Ship the docs · priority: high');
+  });
+
+  it('drops a resolved suggestion without re-reading the list', async () => {
+    // A re-read is a second round trip during which the row someone is looking at can move, and the
+    // answer is already known: a resolved overlay is gone.
+    const i = interpreterWith([
+      { id: 'task-1', kind: 'update', values: { title: 'One' } },
+      { id: 'task-2', kind: 'update', values: { title: 'Two' } },
+    ]);
+    const h = harness(inCall, { interpretation: i.port });
+    await h.say('hello');
+    await h.store.extract();
+
+    await h.store.acceptProposal('task-1');
+
+    expect(i.resolved).toEqual([{ action: 'accept', id: 'task-1' }]);
+    expect(h.store.proposals().map((p) => p.id)).toEqual(['task-2']);
+  });
+
+  it('discards on reject, and says so to the backend', async () => {
+    const i = interpreterWith([{ id: 'task-1', kind: 'create', values: { title: 'One' } }]);
+    const h = harness(inCall, { interpretation: i.port });
+    await h.say('hello');
+    await h.store.extract();
+
+    await h.store.rejectProposal('task-1');
+
+    expect(i.resolved).toEqual([{ action: 'reject', id: 'task-1' }]);
+    expect(h.store.proposals()).toEqual([]);
+  });
+
+  it('keeps a successful extraction successful when the review list cannot be read', async () => {
+    // The pass already wrote its records. Reporting an error because a follow-up read failed would
+    // be a lie about what happened, and would hide a result the user can see in the graph.
+    const h = harness(inCall, {
+      interpretation: {
+        available: () => true,
+        runOnCollection: async () => ({ ids: ['t1'], proposed: ['t1'] }),
+        proposals: async () => {
+          throw new Error('unreachable');
+        },
+        accept: async () => true,
+        reject: async () => true,
+      },
+    });
+    await h.say('hello');
+
+    await h.store.extract();
+
+    expect(h.store.extractStatus()).toBe('done');
+    expect(h.store.proposals()).toEqual([]);
+  });
+});

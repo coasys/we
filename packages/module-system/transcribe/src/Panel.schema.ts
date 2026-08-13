@@ -153,6 +153,73 @@ const meter: SchemaNode = {
 };
 
 /**
+ * Suggestions the backend staged instead of writing, and the two buttons that resolve them.
+ *
+ * Only appears when there are any, which is *not* the common case: a value is staged only where a
+ * human already owns one, so a first pass over a fresh transcript stages nothing and this stays
+ * invisible. That is the right default — a permanently empty "0 pending" box teaches people to stop
+ * looking at the place their attention is eventually needed.
+ *
+ * Accept and reject rather than an edit affordance. Editing a suggestion is authoring, and it
+ * belongs to whatever normally edits that record; the decision this list exists for is only whether
+ * the model's version survives contact with the person who owns the value.
+ */
+const proposals: SchemaNode = {
+  type: '$if',
+  props: {
+    condition: { $count: { items: { $store: 'modules.transcribe.proposals' } } },
+    then: {
+      type: 'Column',
+      props: { gap: '200' },
+      children: [
+        {
+          type: 'we-text',
+          props: { variant: 'footnote', color: 'neutral-500', uppercase: true },
+          children: ['Awaiting your call'],
+        },
+        {
+          type: '$each',
+          props: { items: { $store: 'modules.transcribe.proposals' }, as: 'proposal' },
+          children: [
+            {
+              type: 'Column',
+              props: { bg: 'warning-50', r: '300', p: '300', gap: '200' },
+              children: [
+                { type: 'we-text', props: { variant: 'footnote' }, children: ['$proposal.summary'] },
+                {
+                  type: 'Row',
+                  props: { gap: '200', ay: 'center' },
+                  children: [
+                    {
+                      type: 'we-button',
+                      props: {
+                        size: 'xs',
+                        variant: 'secondary',
+                        onClick: { $action: 'modules.transcribe.acceptProposal', args: ['$proposal.id'] },
+                      },
+                      children: ['Keep'],
+                    },
+                    {
+                      type: 'we-button',
+                      props: {
+                        size: 'xs',
+                        variant: 'ghost',
+                        onClick: { $action: 'modules.transcribe.rejectProposal', args: ['$proposal.id'] },
+                      },
+                      children: ['Discard'],
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    },
+  },
+};
+
+/**
  * Turning what was heard into tasks and events.
  *
  * Sits below the transcript rather than in the header, because it is a thing you do *to* what is
@@ -274,10 +341,12 @@ const extract: SchemaNode = {
             },
           },
         },
+        proposals,
       ],
     },
   },
 };
+
 
 export const panel: SchemaNode = {
   type: '$if',
