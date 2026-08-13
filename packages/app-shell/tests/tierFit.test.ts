@@ -22,9 +22,9 @@ import { templateRegistry } from '../src/shared/registries/templateRegistry';
 import { CHROME_TIER, inspectTemplateSurface, SPACE_TIER } from '../src/shared/registries/templateSurface';
 import {
   bootScreen,
+  chromeRail,
   landingPageTemplate,
   marketplaceTemplate,
-  moduleRail,
   profileTemplate,
   sidebar,
   templateEditor,
@@ -75,7 +75,7 @@ describe('the bundled templates', () => {
 describe('the chrome the shell renders', () => {
   const CHROME_SCHEMAS: Array<[string, unknown]> = [
     ['sidebar', sidebar],
-    ['moduleRail', moduleRail],
+    ['chromeRail', chromeRail],
     ['templateEditor', templateEditor],
     ['bootScreen', bootScreen],
     ['profile', profileTemplate],

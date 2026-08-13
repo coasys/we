@@ -486,6 +486,9 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     allTemplates: state('appearance'),
     templateManagementList: state('library'),
     switcherGroups: state('appearance'),
+    // Beside `switcherGroups` rather than with `currentTemplate`: it is the switcher's spelling of
+    // the current id, meaningless to anything not rendering those rows.
+    currentSwitcherId: state('appearance'),
     currentTemplate: state('view-state'),
     loading: state('library'),
     defaultTemplateId: state('library'),

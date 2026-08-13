@@ -64,7 +64,7 @@ const GraphViewOnDemand = lazy(() => import('../components/GraphHost'));
 const WeCubeOnDemand = lazy(() => import('../components/3d/WeCube'));
 
 /** The editing surface — CodeMirror and Prism arrive with it, once a template is being edited. */
-const DesignToolbar = lazy(() => import('@we/editor').then((m) => ({ default: m.DesignToolbar })));
+const EditingBar = lazy(() => import('@we/editor').then((m) => ({ default: m.EditingBar })));
 const RightPanelContainer = lazy(() => import('@we/editor').then((m) => ({ default: m.RightPanelContainer })));
 const TemplateCard = lazy(() => import('@we/editor').then((m) => ({ default: m.TemplateCard })));
 const AiPanel = lazy(() => import('@we/editor/ai').then((m) => ({ default: m.AiPanel })));
@@ -118,7 +118,7 @@ export const componentRegistry: ComponentRegistry = {
   TemplateCard,
 
   // Shell
-  DesignToolbar,
+  EditingBar,
 
   // Testing
   // A perf debugging tool — logging on every mount is its purpose, which is

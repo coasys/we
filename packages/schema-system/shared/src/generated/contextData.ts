@@ -2333,6 +2333,7 @@ export const contextData: ContextData = {
           properties: ['id', 'name', 'icon', 'description', 'isBuiltIn', 'isInstalled', 'isDefault'],
         },
         switcherGroups: { type: 'array', properties: ['label', 'items'] },
+        currentSwitcherId: { type: 'string' },
         currentTemplate: { type: 'object', properties: ['id', 'meta', 'type', 'props', 'children', 'routes'] },
         loading: { type: 'boolean' },
         defaultTemplateId: { type: 'string' },
@@ -2424,5 +2425,5 @@ export const contextData: ContextData = {
     },
     { name: 'model', state: {}, actions: ['create', 'update', 'delete'] },
   ],
-  shellComponents: ['AiPanel', 'CesiumGlobe', 'DesignToolbar', 'RightPanelContainer', 'TemplateCard', 'WeCube'],
+  shellComponents: ['AiPanel', 'CesiumGlobe', 'EditingBar', 'RightPanelContainer', 'TemplateCard', 'WeCube'],
 };

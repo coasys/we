@@ -5806,6 +5806,9 @@
           "type": "array",
           "properties": ["label", "items"]
         },
+        "currentSwitcherId": {
+          "type": "string"
+        },
         "currentTemplate": {
           "type": "object",
           "properties": ["id", "meta", "type", "props", "children", "routes"]
@@ -5947,5 +5950,5 @@
       "actions": ["create", "update", "delete"]
     }
   ],
-  "shellComponents": ["AiPanel", "CesiumGlobe", "DesignToolbar", "RightPanelContainer", "TemplateCard", "WeCube"]
+  "shellComponents": ["AiPanel", "CesiumGlobe", "EditingBar", "RightPanelContainer", "TemplateCard", "WeCube"]
 }

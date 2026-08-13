@@ -1948,6 +1948,7 @@ TemplateStore:
   - allTemplates: array of TemplateSchema objects — union of built-in + personal + space templates
   - templateManagementList: TemplateManagementItem[] — flat list of all templates with management metadata (id, name, icon, description, isBuiltIn, isInstalled, isDefault)
   - switcherGroups: TemplateSwitcherGroup[] — pre-grouped flat items for the template switcher UI; each group has { label: string, items: { id, name, icon }[] }. Groups: "Space templates", "My templates", "Built-in". Use $filter where: { name: { contains: ... } } for search since items have a flat name field.
+  - currentSwitcherId: unknown
   - currentTemplate: TemplateSchema (the active template)
   - loading: unknown
   - defaultTemplateId: unknown

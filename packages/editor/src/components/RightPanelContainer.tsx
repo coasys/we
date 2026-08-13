@@ -1,10 +1,17 @@
 import { Column, Row } from '@we/components/solid';
 import { tokenVar } from '@we/design-utils';
-import { createSignal, JSX, Show } from 'solid-js';
+import { createEffect, createSignal, JSX, onCleanup, Show } from 'solid-js';
 
 import { AiPanel } from '../ai/AiPanel';
 import { useEditorHost } from '../host';
-import { panelResizing, RAIL_STRIP_WIDTH, setPanelResizing, TOTAL_RAIL_WIDTH } from '../panelLayout';
+import {
+  EDITOR_WIDTH_VAR,
+  editorOccupiedWidth,
+  panelResizing,
+  RAIL_STRIP_WIDTH,
+  setPanelResizing,
+  TOTAL_RAIL_WIDTH,
+} from '../panelLayout';
 import { useEditorSurface } from '../surface';
 import { CodePanel } from './CodePanel';
 import { InspectorPanel } from './InspectorPanel';
@@ -180,6 +187,28 @@ export function RightPanelContainer() {
     if (session.themePanelOpen()) w += session.themePanelWidth();
     return `translateX(calc(${w}px + var(--we-dock-right, 0px)))`;
   };
+
+  /**
+   * Tell the rest of the app how much of the right edge this is taking.
+   *
+   * Published on the root element because that is the only channel this package and the shell share
+   * — the same reason `--we-dock-*` and `--we-sidebar-width` live there. Removed **by name** on
+   * unmount rather than by clearing the style: three other packages write properties to the same
+   * element and cannot see each other. See `app-shell/tests/rootStyleOwnership.test.ts`.
+   *
+   * Only when pinned to the window. An editor mounted inside somebody's container is not occupying
+   * the window's edge, and publishing a global width from it would push WE's own chrome around in
+   * response to a panel that is nowhere near it.
+   */
+  createEffect(() => {
+    if (typeof document === 'undefined' || surface.positioning !== 'viewport') return;
+    document.documentElement.style.setProperty(EDITOR_WIDTH_VAR, `${editorOccupiedWidth(session)}px`);
+  });
+
+  onCleanup(() => {
+    if (typeof document === 'undefined') return;
+    document.documentElement.style.removeProperty(EDITOR_WIDTH_VAR);
+  });
 
   return (
     <Row

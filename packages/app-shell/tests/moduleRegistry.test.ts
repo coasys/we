@@ -66,7 +66,7 @@ describe('slotRegistry — faithful generalisation of shellRegistry', () => {
       'core:createSpace',
       'core:sidebar',
       'core:templateEditor',
-      'core:moduleRail',
+      'core:chromeRail',
       'call',
     ]);
   });

@@ -13,7 +13,7 @@
 // dynamic imports, so a grep for static imports will NOT find these consumers;
 // trimming them broke the toolbar once already). Everything else (CodePanel,
 // InspectorPanel, ThemePanel, …) is internal to these four and stays unexported.
-export { DesignToolbar } from './components/DesignToolbar';
+export { EditingBar } from './components/EditingBar';
 export { EditorOverlay } from './components/EditorOverlay';
 export { RightPanelContainer } from './components/RightPanelContainer';
 export { TemplateCard } from './components/TemplateCard';
