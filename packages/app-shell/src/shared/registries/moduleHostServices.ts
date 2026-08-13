@@ -23,6 +23,7 @@ import type {
   DatasetHandle,
   EphemeralPort,
   InterpretationPort,
+  InterpretationResult,
   Peer,
   TranscriptionPort,
 } from '@we/backend-shared';
@@ -43,6 +44,15 @@ export interface ModuleHostServices {
   };
   transcription?: TranscriptionPort;
   interpretation?: InterpretationPort;
+  /**
+   * Gather a collection's children and interpret them, published by whichever store can read the
+   * dataset's models. Separate from `interpretation` because the port takes turns and only the host
+   * can produce them — see `shared/interpretation/transcriptTurns.ts`.
+   */
+  interpretCollection?: (
+    collectionId: string,
+    request: { classes: string[] },
+  ) => Promise<InterpretationResult>;
   /** The profile cache, so a module can put a face to an agent id. See `ModuleIdentityAccess`. */
   identities?: ModuleIdentityAccess;
   /** Write a record into the current dataset — the host's `model.create`, in imperative form. */
@@ -126,12 +136,10 @@ export function createModuleStoreDeps(framework: {
       // cannot interpret — the trap the transcription wrapper above still falls into. Delegating to
       // `available()` lets the forwarder answer for the backend actually connected.
       available: () => services.interpretation?.available?.() ?? services.interpretation !== undefined,
-      run: async (turns, request) => {
-        const port = services.interpretation;
-        if (!port) throw new Error('interpretation: this backend cannot interpret');
-        const dataset = services.dataset?.();
-        if (!dataset) throw new Error('interpretation: no dataset to interpret into');
-        return port.interpret(dataset, turns, request);
+      runOnCollection: async (collectionId, request) => {
+        const run = services.interpretCollection;
+        if (!run) throw new Error('interpretation: this backend cannot interpret');
+        return run(collectionId, request);
       },
       proposals: async () => {
         const dataset = services.dataset?.();

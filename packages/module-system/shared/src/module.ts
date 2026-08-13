@@ -30,7 +30,6 @@ import type {
   ModelManifest,
   Peer,
   TranscriptionPort,
-  TranscriptTurn as InterpretationTurn,
 } from '@we/backend-shared';
 import type { SchemaNode } from '@we/schema-shared';
 
@@ -599,14 +598,20 @@ export interface ModuleInterpretationAccess {
   /** Whether interpretation can run at all — false when the backend has no model configured. */
   available: () => boolean;
   /**
-   * Run one pass over turns the module supplies, attaching what is created to `parent`.
+   * Interpret a collection's children, attaching what is created back onto that same collection.
+   *
+   * Takes an id rather than the turns themselves, and that follows from the contract rather than
+   * from taste: `createEntity`/`linkEntity` are a module's entire data surface and there is no read,
+   * so a module can write utterances into a call and cannot read them back out. The host gathers
+   * them — which is also where the knowledge belongs, since assembling turns means knowing how a WE
+   * collection is laid out, and that is exactly the backend detail modules are kept away from.
    *
    * Rejects when there is no usable model, so a caller can tell "no LLM here" from "nothing worth
    * extracting was said" — the two are identical from an empty result and only one is worth saying.
    */
-  run: (
-    turns: InterpretationTurn[],
-    request: { classes: string[]; parent?: { id: string; predicate: string } },
+  runOnCollection: (
+    collectionId: string,
+    request: { classes: string[] },
   ) => Promise<InterpretationResult>;
   /** Suggestions staged in this dataset, awaiting a human. */
   proposals: () => Promise<InterpretationProposal[]>;
