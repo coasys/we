@@ -18,10 +18,11 @@ with one responsibility, layered bottom-up.
 - **4-components/** (`@we/components`): Solid layout and composite components
   (Column, Row, Grid, Card, block displays/inputs), built on the shared
   DS-props machinery.
-- **5-widgets/** (`@we/widgets`): Generic composite widgets (currently
-  `CollapsibleSidebar`) — the highest design-system layer; composition above
-  widgets is the schema system's job. Feature widgets live with their module
-  family (the globe widget, the graph view).
+- **5-widgets/** (`@we/widgets`): Generic composite widgets — the highest
+  design-system layer; composition above widgets is the schema system's job.
+  Currently empty (its one widget, `CollapsibleSidebar`, was retired once
+  `@we/template-kit`'s rail fragments replaced it). Feature widgets live with
+  their module family (the globe widget, the graph view).
 - **types/** (`@we/design-types`): The `DesignSystemProps` surface and shared
   type vocabulary.
 - **utils/** (`@we/design-utils`): The DS-props → CSS computation shared by

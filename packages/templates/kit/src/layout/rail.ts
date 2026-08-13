@@ -1,14 +1,14 @@
 /**
  * A rail that widens when you point at it — the shape of WE's shell sidebar, as nodes.
  *
- * ## Why this is a fragment and not the widget it replaces
+ * ## Why this is a fragment and not the widget it replaced
  *
- * `CollapsibleSidebar` was a layer-5 widget whose entire job was arrangement, and it was reached
- * through an `items` array: data in, but not structure. That is the distinction the project turns
- * on. A prop is a customisation somebody predicted and shipped; a node tree is every customisation,
- * including the ones nobody thought of. Asked to put a second line under a space's name, or a
- * progress bar in a group header, or a section that is neither an item nor a group, the widget's
- * answer was "wait for a release" and the follow-up had no answer at all.
+ * `CollapsibleSidebar` (`@we/widgets`, now deleted) was a layer-5 widget whose entire job was
+ * arrangement, and it was reached through an `items` array: data in, but not structure. That is the
+ * distinction the project turns on. A prop is a customisation somebody predicted and shipped; a node
+ * tree is every customisation, including the ones nobody thought of. Asked to put a second line
+ * under a space's name, or a progress bar in a group header, or a section that is neither an item
+ * nor a group, the widget's answer was "wait for a release" and the follow-up had no answer at all.
  *
  * Nothing in it needed code. Hover is two event handlers, the width is a transition, the group
  * collapse is a `reveal`, and the reorder is `we-sortable` — which is a primitive precisely because
@@ -35,7 +35,7 @@ import type { SchemaNode, SchemaProp } from '@we/schema-shared';
 import type { Content } from '../types.ts';
 
 /**
- * How long the rail takes to open, in ms, and the duration every part of it agrees on.
+ * How long the rail takes to open, in ms, and the duration its own reveals agree on.
  *
  * Deliberately the same number as the `300` animation token (250ms at the default theme), because
  * the shell's width uses the token — a theme's `animationSpeed` preset overrides those, so a
@@ -53,9 +53,19 @@ const revealInline = [
   { type: 'fade' as const, duration: FADE_MS },
 ];
 
+/**
+ * A group's own open/close (its caret, not the rail's hover-expand) has no width transition to
+ * stay in sync with, so it keeps the timing the widget always used rather than `DURATION_MS` —
+ * `CollapsibleSidebar`'s default `transitionDuration` (300) and its `* 0.6` opacity fraction, both
+ * `ease-in-out`. `reveal`/`fade` default to `ease`, which reads as visibly quicker off the start
+ * even at an equal duration, so the easing has to be named explicitly here too.
+ */
+const GROUP_DURATION_MS = 300;
+const GROUP_FADE_MS = 180;
+
 const revealBlock = [
-  { type: 'reveal' as const, duration: DURATION_MS },
-  { type: 'fade' as const, duration: FADE_MS },
+  { type: 'reveal' as const, duration: GROUP_DURATION_MS, easing: 'ease-in-out' },
+  { type: 'fade' as const, duration: GROUP_FADE_MS, easing: 'ease-in-out' },
 ];
 
 export interface RailShellOptions {
@@ -76,6 +86,12 @@ export interface RailShellOptions {
   zIndex?: number;
   /** Defaults to 'neutral-50'. */
   bg?: string;
+  /**
+   * Border shorthand on the rail's outer edge (right, for a `side: 'left'` rail; left otherwise).
+   * Defaults to '1px solid neutral-200'. Pass '0' to omit it — for a rail that shares its
+   * background with whatever sits beside it, where the seam only draws a line nothing else needs.
+   */
+  border?: string;
   /**
    * Open on hover. Defaults to true. With it off, nothing opens the rail by itself — put a control
    * in the `header` carrying `{ $toggleLocal: 'expanded' }`.
@@ -103,6 +119,7 @@ export interface RailShellOptions {
 export function railShell(opts: RailShellOptions): SchemaNode {
   const side = opts.side ?? 'left';
   const hoverExpand = opts.hoverExpand ?? true;
+  const border = opts.border ?? '1px solid neutral-200';
 
   return {
     type: 'Column',
@@ -124,7 +141,7 @@ export function railShell(opts: RailShellOptions): SchemaNode {
       // height from the bottom and shifts everything up.
       overflow: 'hidden',
       bg: opts.bg ?? 'neutral-50',
-      ...(side === 'left' ? { borderRight: '1px solid neutral-200' } : { borderLeft: '1px solid neutral-200' }),
+      ...(border !== '0' && (side === 'left' ? { borderRight: border } : { borderLeft: border })),
       position: opts.position ?? 'fixed',
       ...(opts.zIndex !== undefined && { zIndex: opts.zIndex }),
       ...(opts.position !== 'static' && { top: '0', [side]: '0' }),
@@ -145,7 +162,15 @@ export function railShell(opts: RailShellOptions): SchemaNode {
       ...(opts.header ? [opts.header] : []),
       {
         type: 'Column',
-        props: { flex: '1', width: '100%', gap: '200', p: '300', overflowY: 'auto', overflowX: 'hidden' },
+        props: {
+          flex: '1',
+          width: '100%',
+          gap: '200',
+          p: '300',
+          ay: 'center',
+          overflowY: 'auto',
+          overflowX: 'hidden',
+        },
         children: opts.children,
       },
       ...(opts.footer
@@ -221,7 +246,10 @@ export function railItem(opts: RailItemOptions): SchemaNode {
             type: 'Row',
             props: { gap: '200', ay: 'center', minWidth: '0' },
             children: [
-              { type: 'we-text', props: { truncate: true }, children: [opts.label] },
+              // `we-button size="lg"` sets a font-size of its own for slotted content to inherit —
+              // right for a label sat directly in the button, wrong for one this size. Pin it back
+              // to the body size rather than the button's.
+              { type: 'we-text', props: { truncate: true, fontSize: '300' }, children: [opts.label] },
               ...(opts.badge !== undefined
                 ? [
                     {
@@ -241,10 +269,15 @@ export function railItem(opts: RailItemOptions): SchemaNode {
   // A tooltip is worth having only while the rail is closed, but it wraps the button either way —
   // it takes its own trigger, so the alternative is two copies of the button in an $if, and a
   // duplicated subtree is exactly how two call sites drift apart.
+  //
+  // `we-tooltip`'s host is inline-flex and shrink-wraps its trigger by default, so without an
+  // explicit width the button's own `width: '100%'` has nothing definite to be 100% of and falls
+  // back to the label's own content width — every item a different width. Giving the tooltip host
+  // itself `width: '100%'` is what the button's 100% then resolves against.
   const withTooltip: SchemaNode = opts.tooltip
     ? {
         type: 'we-tooltip',
-        props: { title: opts.tooltip, placement: 'right' },
+        props: { title: opts.tooltip, placement: 'right', width: '100%' },
         children: [button],
       }
     : button;
@@ -256,9 +289,14 @@ export function railItem(opts: RailItemOptions): SchemaNode {
     the renderer, so the attribute `we-sortable` looks for would never exist; and a native element
     is the one node type the validator has no prop list for, so a data attribute on it is not
     reported as unknown.
+
+    `style: { width: '100%' }` is explicit rather than left to flex-stretch, because this div is
+    also the one thing `we-sortable`'s drag geometry measures (see `_resolveItem` in sortable.ts) —
+    worth keeping a definite, un-ambiguous width regardless of what its own parent's alignment
+    happens to compute.
   */
   return opts.id !== undefined
-    ? { type: 'div', props: { 'data-we-id': opts.id }, children: [withTooltip] }
+    ? { type: 'div', props: { 'data-we-id': opts.id, style: { width: '100%' } }, children: [withTooltip] }
     : withTooltip;
 }
 
@@ -285,6 +323,7 @@ export interface RailGroupOptions {
 
 export function railGroup(opts: RailGroupOptions): SchemaNode {
   const isCollapsed = { $in: [opts.id, { $local: 'collapsedGroups' }] };
+  const isExpanded = { $local: 'expanded' };
 
   const items: SchemaNode = opts.reorderable
     ? {
@@ -304,67 +343,77 @@ export function railGroup(opts: RailGroupOptions): SchemaNode {
     props: { width: '100%', gap: '200' },
     children: [
       /*
-        The heading exists only while the rail is open. The widget kept it in place at zero opacity,
-        which reserved a strip of nothing above each group at collapsed width and made the icons
-        below it sit lower than the ungrouped ones for no visible reason.
+        The heading stays mounted at all times, fading in place rather than opening and closing with
+        the rail. An $if here — as it once was — grows the heading from nothing on every expand,
+        which pushes this group's own items down while it does; a fixed-height heading never moves
+        them. `pointerEvents` follows the fade so a collapsed, invisible heading can't be clicked.
       */
       {
-        type: '$if',
+        type: 'Row',
         props: {
-          condition: { $local: 'expanded' },
-          enterTransition: revealBlock,
-          exitTransition: revealBlock,
-          then: {
-            type: 'Row',
-            props: { width: '100%', ay: 'center', gap: '100' },
+          width: '100%',
+          ay: 'center',
+          gap: '100',
+          opacity: { $if: { condition: isExpanded, then: 1, else: 0 } },
+          pointerEvents: { $if: { condition: isExpanded, then: 'auto', else: 'none' } },
+          transition: 'opacity 300 ease-in-out',
+        },
+        children: [
+          {
+            type: 'we-button',
+            props: {
+              variant: 'ghost',
+              size: 'sm',
+              flex: '1',
+              minWidth: '0',
+              ax: 'start',
+              ay: 'center',
+              gap: '200',
+              py: '200',
+              px: '300',
+              height: 'auto',
+              onClick: { $toggleLocalIn: 'collapsedGroups', value: opts.id },
+            },
             children: [
               {
-                type: 'we-button',
+                type: 'we-icon',
                 props: {
-                  variant: 'ghost',
-                  size: 'sm',
-                  flex: '1',
-                  minWidth: '0',
-                  ax: 'start',
-                  ay: 'center',
-                  gap: '200',
-                  py: '200',
-                  px: '300',
-                  height: 'auto',
-                  onClick: { $toggleLocalIn: 'collapsedGroups', value: opts.id },
+                  name: { $if: { condition: isCollapsed, then: 'caret-right', else: 'caret-down' } },
+                  size: 'xs',
+                  color: 'neutral-400',
                 },
-                children: [
-                  {
-                    type: 'we-icon',
-                    props: {
-                      name: { $if: { condition: isCollapsed, then: 'caret-right', else: 'caret-down' } },
-                      size: 'xs',
-                      color: 'neutral-400',
-                    },
-                  },
-                  {
-                    type: 'we-text',
-                    props: { fontSize: '200', fontWeight: '600', color: 'neutral-400', truncate: true },
-                    children: [opts.label],
-                  },
-                  ...(opts.badge !== undefined
-                    ? [
-                        {
-                          type: 'we-badge',
-                          props: { size: 'sm', bg: 'neutral-200', color: 'neutral-600' },
-                          children: [opts.badge],
-                        },
-                      ]
-                    : []),
-                ],
               },
-              /*
-                Beside the heading, never inside it: the heading is a button, and a button nested in
-                a button is invalid markup that would also collapse the group on the way past.
-              */
-              ...(opts.action
+              {
+                type: 'we-text',
+                props: { fontSize: '200', fontWeight: '600', color: 'neutral-400', truncate: true },
+                children: [opts.label],
+              },
+              ...(opts.badge !== undefined
                 ? [
                     {
+                      type: 'we-badge',
+                      props: { size: 'sm', bg: 'neutral-200', color: 'neutral-600' },
+                      children: [opts.badge],
+                    },
+                  ]
+                : []),
+            ],
+          },
+          /*
+            Beside the heading, never inside it: the heading is a button, and a button nested in
+            a button is invalid markup that would also collapse the group on the way past.
+
+            Unlike the heading, the action mounts and unmounts with the rail rather than fading in
+            place — it sits beside a heading whose height never changes, so unmounting it costs
+            nothing the heading's own fade doesn't already cover.
+          */
+          ...(opts.action
+            ? [
+                {
+                  type: '$if',
+                  props: {
+                    condition: isExpanded,
+                    then: {
                       type: 'we-tooltip',
                       props: { title: opts.action.label, placement: 'right' },
                       children: [
@@ -375,20 +424,27 @@ export function railGroup(opts: RailGroupOptions): SchemaNode {
                         },
                       ],
                     },
-                  ]
-                : []),
-            ],
-          },
-        },
+                  },
+                },
+              ]
+            : []),
+        ],
       },
+      /*
+        `$animate`, not `$if`: a collapsed group's rows still hold live store bindings (space
+        names, app icons) and, for Spaces, a `we-sortable` — none of which should tear down and
+        resubscribe every time somebody collapses a group. `$if` unmounted them, which also meant
+        remounting the whole row list synchronously the instant a group reopened, right before the
+        reveal could even start — a small but real hitch this avoids by never unmounting at all.
+      */
       {
-        type: '$if',
+        type: '$animate',
         props: {
           condition: { $not: isCollapsed },
           enterTransition: revealBlock,
           exitTransition: revealBlock,
-          then: items,
         },
+        children: [items],
       },
     ],
   };

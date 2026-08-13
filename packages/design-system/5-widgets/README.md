@@ -7,15 +7,16 @@ graph view in `graph-system/`), so this package stays small on purpose.
 
 ## Contents
 
-- **`CollapsibleSidebar`** (`src/widgets/sidebars/CollapsibleSidebar/`) — the
-  collapsible, hover-expandable sidebar the shell's rails are built from.
-  Props are documented in the generated registry (`CLAUDE.md`, `@we/widgets`
-  section) and in `CollapsibleSidebar.types.ts`.
+Currently empty. Its one widget, `CollapsibleSidebar`, was retired once
+`@we/template-kit`'s `railShell`/`railGroup`/`railItem` fragments (see
+`packages/templates/kit/src/layout/rail.ts`) fully replaced what it did — a
+node tree can express every customisation a props-in, arrangement-out widget
+cannot. The package stays, ready for the next widget that genuinely needs to
+be generic.
 
 ## Usage
 
 ```tsx
-import { CollapsibleSidebar } from '@we/widgets/solid';
 import '@we/widgets/styles';
 ```
 

@@ -7,7 +7,7 @@ Rules and patterns for building UI components (`4-components/`) and widgets (`5-
 | Package                           | Scope                                                    | Examples                               |
 | --------------------------------- | -------------------------------------------------------- | -------------------------------------- |
 | `4-components` (`@we/components`) | Single-purpose Solid components composed from primitives | AvatarStack, Column, Row, DropdownMenu |
-| `5-widgets` (`@we/widgets`)       | Composite blocks combining multiple components           | CollapsibleSidebar, CesiumGlobe        |
+| `5-widgets` (`@we/widgets`)       | Composite blocks combining multiple components           | currently empty — see its README      |
 
 Components are leaf-level building blocks. Widgets encapsulate higher-level features. Composition above widgets is handled by the schema system.
 

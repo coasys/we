@@ -496,12 +496,23 @@ the first frame reads as a jump, however smooth the size change is.
 A reveal in an exitTransition also decides when the node unmounts — the node stays mounted for the
 longest effect in the config, so the collapse finishes before the content is removed.
 
-Viewport / mount animation (child always in DOM):
-{ "type": "$animate", "props": { "scrollReveal"?: true | number, "scrollLeave"?: true | number, "scrollPast"?: string, "enterTransition"?: TransitionConfig, "exitTransition"?: TransitionConfig }, "children": [<node>] }
+Viewport / mount / condition animation (child always in DOM):
+{ "type": "$animate", "props": { "condition"?: SchemaProp, "scrollReveal"?: true | number, "scrollLeave"?: true | number, "scrollPast"?: string, "enterTransition"?: TransitionConfig, "exitTransition"?: TransitionConfig }, "children": [<node>] }
 The child is always mounted. fade/slide/scale are CSS transitions (opacity/transform); reveal animates the element's own size; pulse is a real CSS @keyframes loop — use this for scroll-reveal effects.
 Do NOT use $animate when the child should be absent from the DOM. Use $if for conditional DOM presence.
-For an open/close that must NOT destroy what is inside it — a section holding a scroll position or a
-half-typed field — use $animate with a reveal rather than $if, which unmounts the content when closed.
+For an open/close that must NOT destroy what is inside it — a section holding a scroll position, a
+half-typed field, or a live subscription a collapsed row shouldn't tear down — use $animate with
+condition rather than $if, which unmounts the content when closed.
+condition works like $if's condition (any resolvable prop — $store, $local, $eq, …), except the child
+is never unmounted: only enterTransition/exitTransition replay as it changes. The initial render
+already matches whatever the condition is at mount — a node that starts open does not flash
+closed-then-open, and one that starts closed does not briefly show its content first.
+When exitTransition is omitted, closing reuses enterTransition (mirrored), the same fallback $if uses.
+A reveal clips a closed section to zero size, so it is already unreachable; without one (a plain fade),
+the wrapper's pointer-events follow the condition too, so a fully transparent closed section can't be
+clicked through.
+condition is mutually exclusive with the scroll triggers below and, when present, takes over as the
+sole trigger — scrollReveal/scrollLeave/scrollPast are ignored on that node.
 scrollReveal: true fires enterTransition when the element enters the viewport.
 scrollReveal: -100 fires 100px before the element would enter (negative = earlier reveal).
 scrollLeave fires exitTransition when the element leaves the viewport.
@@ -511,8 +522,19 @@ scrollPast: "element-id" observes a sentinel element (by DOM id) instead of the 
   Use this for sticky headers: place a zero-height sentinel div at the bottom of the non-sticky header section,
   then wrap the mini-profile in $animate with scrollPast pointing to that sentinel's id.
   scrollPast is mutually exclusive with scrollReveal/scrollLeave.
-Without any scroll trigger, the enterTransition runs once on mount.
+Without condition or a scroll trigger, the enterTransition runs once on mount.
 Only one child node is supported.
+Example (condition-driven disclosure — a collapsible group whose rows hold live store bindings and
+must not resubscribe every time it opens):
+{
+  "type": "$animate",
+  "props": {
+    "condition": { "$not": { "$local": "sectionCollapsed" } },
+    "enterTransition": { "type": "reveal", "duration": 250 }
+  },
+  "children": [{ "type": "$each", "props": { "items": { "$store": "listStore.items" }, "as": "item" },
+    "children": [{ "type": "we-text", "children": ["$item.name"] }] }]
+}
 Example (scroll-reveal):
 {
   "type": "$animate",

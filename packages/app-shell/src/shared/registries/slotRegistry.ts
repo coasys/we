@@ -9,8 +9,8 @@
  * ## Anchors order and group; they do not position
  *
  * Deliberate, and it is what makes this a faithful generalisation rather than a rewrite. WE's existing
- * shell nodes **position themselves** — `bootScreen` is a full-bleed `$if`, `sidebar` is a
- * `CollapsibleSidebar` carrying its own `position` prop. Wrapping each anchor in a positioned
+ * shell nodes **position themselves** — `bootScreen` is a full-bleed `$if`, `sidebar` is a rail
+ * (`railShell`) carrying its own `position` prop. Wrapping each anchor in a positioned
  * container would change how all three render.
  *
  * So an anchor is semantic metadata: it groups contributions and fixes their order in the flat output.

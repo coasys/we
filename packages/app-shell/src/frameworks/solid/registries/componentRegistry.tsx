@@ -33,7 +33,6 @@ import {
   ToastContainer,
 } from '@we/components/solid';
 import type { ComponentRegistry } from '@we/schema-solid';
-import { CollapsibleSidebar } from '@we/widgets/solid';
 import { lazy } from 'solid-js';
 
 /**
@@ -87,10 +86,9 @@ export const componentRegistry: ComponentRegistry = {
   Select,
   ToastContainer,
 
-  // @we/widgets
+  // @we/editor
   AiPanel,
   RightPanelContainer,
-  CollapsibleSidebar,
   // Contributed by @we/module-globe — registered here rather than injected by the module registry so
   // the static registry stays the single source for what a template may name. When modules become
   // installable this entry comes from moduleRegistry.components() instead.
