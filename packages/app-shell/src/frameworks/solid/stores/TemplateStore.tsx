@@ -17,12 +17,11 @@ import {
 import type { SchemaNode, StoredTemplate, TemplateMeta, TemplateSchema } from '@we/schema-shared';
 import { createStoredTemplate, ensureNodeIds } from '@we/schema-shared';
 import { updateSchema } from '@we/schema-solid';
-
-import { CHROME_TIER, SPACE_TIER } from '../../../shared/registries/templateSurface';
-import { acceptTemplate, describeAcceptance } from '../../../shared/templateAcceptance';
 import { Accessor, createContext, createEffect, createSignal, ParentProps, useContext } from 'solid-js';
 import { createStore, reconcile } from 'solid-js/store';
 
+import { CHROME_TIER, SPACE_TIER } from '../../../shared/registries/templateSurface';
+import { acceptTemplate, describeAcceptance } from '../../../shared/templateAcceptance';
 import { type AppDataset, useDatasetStore } from './DatasetStore';
 import { useRouteStore } from './RouteStore';
 import { useSessionStore } from './SessionStore';

@@ -30,8 +30,8 @@ import {
 import { schemaMutationActions } from '@shared/schemas/shell/tests/SchemaMutations.actions';
 import { createTestStore } from '@shared/schemas/shell/tests/testStore';
 import { deepClone } from '@shared/utils';
-import { componentRegistry as registry } from '@solid/registries/componentRegistry';
 import { TemplateBoundary } from '@solid/components/TemplateBoundary';
+import { componentRegistry as registry } from '@solid/registries/componentRegistry';
 import type { RouteStore } from '@solid/stores/RouteStore';
 import { ShellRouterRoot, ShellRouteStoreProvider, useShellRouteStore } from '@solid/stores/ShellRouteStore';
 import { THEME_SCOPE_ATTRIBUTE } from '@solid/stores/ThemeStore';
