@@ -117,6 +117,27 @@ describe('the content security policy', () => {
     expect(connectSrc).toContain('http://localhost:*');
   });
 
+  it('needs no font CDN, because the webfaces are vendored', () => {
+    /*
+      The regression this pair of tests exists for. The first CSP blocked
+      `fonts.googleapis.com`, which is where `--we-font-family-base` (DM Sans) came from — so the
+      entire interface silently fell back to `sans-serif`. The fix was to vendor the faces into
+      `@we/tokens` rather than to open the policy, which is also what makes the app render correctly
+      with no network at all.
+    */
+    const fontSrc = production.split('; ').find((d) => d.startsWith('font-src'));
+    expect(fontSrc).toBe("font-src 'self' data:");
+  });
+
+  it('names the Cesium CDN, which the globe genuinely loads code from', () => {
+    // The other half of the same regression: `CESIUM_BASE_URL` points at jsDelivr and Cesium pulls
+    // its workers, wasm and widget CSS from there. Naming the host is the honest reading — the
+    // dependency is real — and it is far narrower than the blanket `https:` it would otherwise need.
+    expect(production.split('; ').find((d) => d.startsWith('script-src'))).toContain('https://cdn.jsdelivr.net');
+    expect(production.split('; ').find((d) => d.startsWith('worker-src'))).toContain('https://cdn.jsdelivr.net');
+    expect(production.split('; ').find((d) => d.startsWith('style-src'))).toContain('https://cdn.jsdelivr.net');
+  });
+
   it('shuts the doors nothing here needs', () => {
     expect(production).toContain("object-src 'none'");
     expect(production).toContain("base-uri 'self'");
