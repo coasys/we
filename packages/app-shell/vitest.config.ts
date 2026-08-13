@@ -21,6 +21,9 @@ const SOLID_TESTS = [
   // `MessageEvent`s — the DOM is what is under test.
   'tests/appBridge.test.ts',
   'tests/templateBoundary.test.tsx',
+  // Imports the shell's own schemas, which reach Solid modules that refuse to load outside a
+  // browser environment. Nothing here renders — the DOM is a condition of the import, not the test.
+  'tests/tierFit.test.ts',
 ];
 
 export default defineConfig({

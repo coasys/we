@@ -135,12 +135,25 @@ describe('what the space tier can reach', () => {
       'sessionStore.serverUrl',
       'sessionStore.backendPorts',
       'datasetStore.agentSettings',
-      'datasetStore.rootDataset',
       'editorStore.setApiKey',
     ]) {
       expect(reaches(spaceBag, path), `space: ${path}`).toBe(false);
       expect(reaches(chromeBag, path), `chrome: ${path}`).toBe(false);
     }
+  });
+
+  it('keeps the agent root dataset for chrome, and away from a space', () => {
+    /*
+      A handle to the agent's own perspective is what a `$query`'s `dataset` resolves against, and
+      `AgentSettings` — which lives there — carries the Claude API key. So a space's template must
+      not hold one.
+
+      Chrome must, though: the settings page marks which row in the datasets list is your root by
+      comparing ids against it. Grouping it with the credentials meant it was unreachable
+      everywhere, and that switch quietly stopped working.
+    */
+    expect(reaches(spaceBag, 'datasetStore.rootDataset')).toBe(false);
+    expect(reaches(chromeBag, 'datasetStore.rootDataset')).toBe(true);
   });
 
   it('can still render and take part in a space', () => {

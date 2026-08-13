@@ -61,6 +61,7 @@ export const CAPABILITY_GROUPS = {
   session: 'Sign in and out, and manage local accounts',
   'runtime-admin': 'Administer the backend — trust, network, AI models, the database',
   editor: 'Drive the template and theme editing surface',
+  'host-layout': "Move and resize the app's own panels and docks",
 } as const;
 
 export type CapabilityGroup = keyof typeof CAPABILITY_GROUPS;
@@ -104,6 +105,7 @@ export const SPACE_TIER: readonly CapabilityGroup[] = [
  */
 export const CHROME_TIER: readonly CapabilityGroup[] = [
   ...SPACE_TIER,
+  'host-layout',
   'space-admin',
   'library',
   'agent',
@@ -315,7 +317,12 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
       setting expose it as a named accessor rather than the whole record.
     */
     agentSettings: WIRING,
-    rootDataset: WIRING,
+    /*
+      The agent's own root dataset. Chrome tier, because settings genuinely needs it — the datasets
+      list marks which row is your root by comparing ids — and a space's template has no reason to
+      hold a handle to your private perspective.
+    */
+    rootDataset: state('agent'),
     testDataset: WIRING,
     globalDataset: WIRING,
     marketplaceDataset: WIRING,
@@ -510,7 +517,9 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     updateTemplate: WIRING,
     replaceTemplate: WIRING,
     persistCurrentTemplate: WIRING,
-    toggleInstalled: WIRING,
+    // Install or uninstall by id, which is what the settings list's switch calls. `library`, like
+    // the two actions it delegates to — marking it wiring left that switch inert.
+    toggleInstalled: action('library'),
     provideSpaceLookup: WIRING,
     preloadSpaceTemplates: WIRING,
     loadSpaceTemplates: WIRING,
@@ -545,14 +554,29 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     setCreateSpaceOpen: action('navigation'),
     scrollToId: action('view-state'),
 
-    // Dock geometry is the host's layout arithmetic, driven by a resize handle it owns.
     takePendingPath: WIRING,
-    dockGeometry: WIRING,
-    contentInset: WIRING,
-    dockResizing: WIRING,
-    beginDockResize: WIRING,
-    resizeDock: WIRING,
-    endDockResize: WIRING,
+
+    /*
+      The app's own furniture — and `host-layout` exists because of a wrong guess here.
+
+      These were `WIRING`, on the reasoning that dock geometry is "the host's layout arithmetic,
+      driven by a resize handle it owns". The arithmetic is the host's; the handle is not code. Docks
+      are built as *schema* by `dockRegistry.dockFrame` — the geometry arrives through
+      `{ $store: 'shellStore.dockGeometry.<id>.<field>' }` and the drag through
+      `{ $action: 'shellStore.beginDockResize' }` — so marking them wiring removed them from every
+      bag, chrome's included. Every docked panel rendered as empty space with no resize rail.
+
+      That is the gap `WIRING` had: it conflated "no schema may have this" with "no *template* may
+      have this". Chrome is schema too. So this is a group rather than an exemption, and it is
+      chrome-tier: a space's template has no business moving the app's panels around, and its own
+      view state is `view-state`.
+    */
+    dockGeometry: state('host-layout'),
+    contentInset: state('host-layout'),
+    dockResizing: state('host-layout'),
+    beginDockResize: action('host-layout'),
+    resizeDock: action('host-layout'),
+    endDockResize: action('host-layout'),
   },
 
   presenceStore: {
