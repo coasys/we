@@ -21208,6 +21208,7 @@ dependencies = [
  "tokio",
  "uuid 0.8.2",
  "warp",
+ "webkit2gtk",
 ]
 
 [[package]]
