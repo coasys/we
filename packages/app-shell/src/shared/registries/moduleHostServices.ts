@@ -18,7 +18,14 @@
  * registration into two phases with different capabilities, and "which phase am I in" is exactly the
  * kind of implicit state the last round of seam bugs came from.
  */
-import type { Activity, DatasetHandle, EphemeralPort, Peer, TranscriptionPort } from '@we/backend-shared';
+import type {
+  Activity,
+  DatasetHandle,
+  EphemeralPort,
+  InterpretationPort,
+  Peer,
+  TranscriptionPort,
+} from '@we/backend-shared';
 import type { CreateEntityOptions, ModuleIdentityAccess, ModuleStoreDeps } from '@we/module-shared';
 
 import { moduleRegistry, moduleStores } from './moduleRegistry';
@@ -35,6 +42,7 @@ export interface ModuleHostServices {
     clearActivity: (type: string, id?: string) => void;
   };
   transcription?: TranscriptionPort;
+  interpretation?: InterpretationPort;
   /** The profile cache, so a module can put a face to an agent id. See `ModuleIdentityAccess`. */
   identities?: ModuleIdentityAccess;
   /** Write a record into the current dataset — the host's `model.create`, in imperative form. */
@@ -105,6 +113,40 @@ export function createModuleStoreDeps(framework: {
         const port = services.transcription;
         if (!port) throw new Error('transcription: this backend cannot transcribe');
         return port.open(modelId, onText, tuning);
+      },
+    },
+
+    // Binds the dataset as well as forwarding, so a module never handles a dataset handle. The
+    // dataset is resolved per call rather than captured, for the same reason the port is: a module
+    // store outlives a space switch, and a captured handle would keep writing into the space the
+    // user has left.
+    interpretation: {
+      // Asks the port rather than testing for its presence. The host always publishes a forwarding
+      // wrapper so late binding works, which makes `!== undefined` true even on a backend that
+      // cannot interpret — the trap the transcription wrapper above still falls into. Delegating to
+      // `available()` lets the forwarder answer for the backend actually connected.
+      available: () => services.interpretation?.available?.() ?? services.interpretation !== undefined,
+      run: async (turns, request) => {
+        const port = services.interpretation;
+        if (!port) throw new Error('interpretation: this backend cannot interpret');
+        const dataset = services.dataset?.();
+        if (!dataset) throw new Error('interpretation: no dataset to interpret into');
+        return port.interpret(dataset, turns, request);
+      },
+      proposals: async () => {
+        const dataset = services.dataset?.();
+        if (!dataset || !services.interpretation) return [];
+        return services.interpretation.proposals(dataset);
+      },
+      accept: async (id, property) => {
+        const dataset = services.dataset?.();
+        if (!dataset || !services.interpretation) return false;
+        return services.interpretation.accept(dataset, id, property);
+      },
+      reject: async (id, property) => {
+        const dataset = services.dataset?.();
+        if (!dataset || !services.interpretation) return false;
+        return services.interpretation.reject(dataset, id, property);
       },
     },
 

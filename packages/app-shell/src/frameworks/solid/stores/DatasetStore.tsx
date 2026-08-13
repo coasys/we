@@ -133,6 +133,22 @@ export function DatasetStoreProvider(props: ParentProps) {
         return port.open(modelId, onText, tuning);
       },
     },
+    // Same late read as transcription, but this one answers `available()` honestly — the wrapper is
+    // always published, so a module asking "can this node interpret?" has to be told about the
+    // backend behind it rather than about the wrapper's own existence.
+    interpretation: {
+      available: () => session.backendPorts()?.interpretation !== undefined,
+      interpret: async (dataset, turns, request, ctl) => {
+        const port = session.backendPorts()?.interpretation;
+        if (!port) throw new Error('interpretation: this backend cannot interpret');
+        return port.interpret(dataset, turns, request, ctl);
+      },
+      proposals: async (dataset) => (await session.backendPorts()?.interpretation?.proposals(dataset)) ?? [],
+      accept: async (dataset, id, property) =>
+        (await session.backendPorts()?.interpretation?.accept(dataset, id, property)) ?? false,
+      reject: async (dataset, id, property) =>
+        (await session.backendPorts()?.interpretation?.reject(dataset, id, property)) ?? false,
+    },
   });
 
   // Converts null → undefined so that when JSON-serialised into an ORM WHERE clause,
