@@ -5888,6 +5888,13 @@
         },
         "readMarkers": {
           "type": "array"
+        },
+        "unreadNodeIds": {
+          "type": "array"
+        },
+        "myMentions": {
+          "type": "array",
+          "properties": ["id", "author", "createdAt"]
         }
       },
       "actions": [
@@ -5901,6 +5908,7 @@
         "setAttending",
         "setAgentMuted",
         "markRead",
+        "uploadFile",
         "deleteCollection",
         "updateSpaceImage",
         "updateSpaceMeta",
@@ -6062,7 +6070,7 @@
         "applySnapshot",
         "setCurrentTheme",
         "setDefaultTheme",
-        "toggleThemeInstalled",
+        "setThemeInstalled",
         "previewThemeScope",
         "setThemeScopeGlobal",
         "setUseTemplateTheme",
@@ -6079,12 +6087,14 @@
         "saveEditingThemeAs",
         "deleteTheme",
         "installFromMarketplace",
+        "installToSpace",
         "uninstallTheme",
         "deleteMarketplaceTheme",
         "publishToMarketplace",
         "publishToSpace",
         "loadInstalledThemes",
-        "refreshSpaceThemes"
+        "refreshSpaceThemes",
+        "requestNamedThemes"
       ]
     },
     {

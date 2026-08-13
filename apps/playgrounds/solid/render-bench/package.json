@@ -9,6 +9,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "test": "vitest run --config vitest.config.ts",
+    "typecheck": "tsc --noEmit",
     "bench": "vitest run --config vitest.bench.config.ts --reporter=verbose"
   },
   "dependencies": {

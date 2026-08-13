@@ -9,7 +9,8 @@
     "clean": "rimraf dist",
     "build:steps": "pnpm run clean && tsc",
     "build": "we-build",
-    "test": "vitest run --passWithNoTests"
+    "test": "vitest run --passWithNoTests",
+    "typecheck": "tsc --noEmit"
   },
   "main": "dist/index.js",
   "module": "dist/index.js",

@@ -157,3 +157,80 @@ describe('focus', () => {
     expect(store.tileCells()).toEqual([]);
   });
 });
+
+describe('transport and device lifetime', () => {
+  /**
+   * Two leaks with the same shape: something acquired on join that nothing gave back.
+   *
+   * `EphemeralScope` is refcounted, so ten joins left ten refs outstanding and the backend's signal
+   * handler for that perspective was never removed. And with no teardown in the module contract,
+   * unregistering during a call — which a hot reload does — dropped the only reference to the live
+   * peer connections and the media stream, leaving the camera on with nothing able to close it.
+   */
+  function callable() {
+    const signal = <T>(initial: T): [() => T, (next: T) => void] => {
+      let value = initial;
+      return [() => value, (next: T) => (value = next)];
+    };
+
+    let disposed = 0;
+    const scope = {
+      capabilities: { unicast: 'emulated', broadcast: true, coalesce: true, confidential: false },
+      channel: () => ({ publish: () => {}, onMessage: () => () => {} }),
+      dispose: () => (disposed += 1),
+    };
+
+    const disposers: Array<() => void> = [];
+    const store = createCallStore({
+      signal,
+      dataset: () => ({ id: 'ds' }),
+      datasetUri: () => 'inmemory://ds',
+      selfId: () => 'did:test:me',
+      ephemeral: () => scope,
+      presence: { peers: () => [], setActivity: () => {}, clearActivity: () => {} },
+      onDispose: (fn: () => void) => disposers.push(fn),
+      createPeerConnection: () => ({}) as RTCPeerConnection,
+    } as never) as ReturnType<typeof createCallStore> & Record<string, (...args: unknown[]) => unknown>;
+
+    return { store, scopeDisposals: () => disposed, disposers };
+  }
+
+  it('gives the transport scope back when the call ends', async () => {
+    const { store, scopeDisposals } = callable();
+
+    store.joinSpaceCall();
+    await Promise.resolve();
+    expect(scopeDisposals()).toBe(0);
+
+    store.leave();
+    expect(scopeDisposals()).toBe(1);
+  });
+
+  it('does not accumulate scopes across repeated joins', async () => {
+    const { store, scopeDisposals } = callable();
+
+    store.joinSpaceCall();
+    store.joinAnchoredCall('node-a');
+    store.joinAnchoredCall('node-b');
+    await Promise.resolve();
+    store.leave();
+
+    // Each join released the previous one's scope; without that, ten joins leak ten refs and the
+    // backend's handler for the perspective outlives every one of them.
+    expect(scopeDisposals()).toBe(3);
+  });
+
+  it('tears the call down when the module is disposed', async () => {
+    const { store, scopeDisposals, disposers } = callable();
+
+    store.joinSpaceCall();
+    await Promise.resolve();
+    expect(disposers).toHaveLength(1);
+
+    for (const dispose of disposers) dispose();
+
+    // The camera-stays-on case: unregistering during a call must close what the call holds.
+    expect(scopeDisposals()).toBe(1);
+    expect(store.callId()).toBeNull();
+  });
+});

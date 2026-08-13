@@ -454,6 +454,41 @@ export interface SpaceStore {
   /** Mark a node read as of now. Silent on failure — a lost marker is a stale dot, not an error. */
   markRead: (nodeId: string, spaceUuid?: string) => Promise<void>;
   /**
+   * Which containers in this space hold something newer than this agent's marker for them.
+   *
+   * The read side of `ReadMarker`, which every template that lists channels, boards or topics was
+   * recomputing inline — a `$latestChild` projection, a `$find` over the markers and a `$gt` on two
+   * ISO strings, repeated in each one. Written once here it is a `$in` in the template, and the
+   * comparison rule (lexicographic order is chronological, and *no marker* means unread rather than
+   * read) lives in one place instead of being restated correctly-or-not per template.
+   *
+   * Ids of unread containers rather than counts: a count needs every child's timestamp, which is a
+   * second query per container, and no template has yet wanted the number rather than the dot.
+   */
+  unreadNodeIds: Accessor<string[]>;
+  /**
+   * Nodes in this space that name this agent — the read side of `WeNode.mentions`.
+   *
+   * Mentions have been *written* since the composer learned to parse them, and never read: the
+   * model's own docstring says the edge exists precisely so that "posts mentioning me" can be a
+   * query, and no query existed. This is that query.
+   *
+   * Filtered here rather than pushed down, and that is a real limit worth naming: matching on the
+   * contents of a to-many relation is a relation filter, which both adapters declare they cannot do
+   * (`AdapterCapabilities.relationFilters`). So this reads the space's nodes and filters them, which
+   * is fine for a space and wrong for an inbox spanning many. Pushdown is the fix, not pagination.
+   */
+  myMentions: Accessor<{ id: string; author: string; createdAt: string }[]>;
+  /**
+   * Put a file somewhere the space can reference, and return the URL that points at it.
+   *
+   * The generic form of what the profile and space-image paths do privately. Without it a template
+   * doing its own media UI — a camera-first photo template, a file drop zone — had no way to get a
+   * file into the space at all: the composer could, and nothing else, so any layout that was not the
+   * block composer simply could not accept an upload.
+   */
+  uploadFile: (file: File, name?: string) => Promise<string | null>;
+  /**
    * Delete a `CollectionBlock` and everything inside it, recursively.
    *
    * Named for the collection rather than the post because the operation never knew the difference:
@@ -855,6 +890,11 @@ export function SpaceStoreProvider(props: ParentProps) {
       setMySpaces((prev) => [...prev, spaceModel]);
     } catch (error) {
       console.error('SpaceStore: createSpace error', error);
+      toastService.error('Could not create the space.');
+      // The clearest case of the whole class: the create modal chains `onSuccess` to close itself
+      // and navigate into the new space, so a swallowed failure closed the form, threw away what
+      // the user had typed, and navigated to a space that does not exist.
+      throw error;
     } finally {
       setCreatingSpace(false);
     }
@@ -1092,6 +1132,11 @@ export function SpaceStoreProvider(props: ParentProps) {
       await datasetStore.removeDataset(uuid);
     } catch (error) {
       console.error('SpaceStore: removeSpace error', error);
+      toastService.error('Could not remove this space.');
+      // Rethrown, for the reason `joinSpace` rethrows: callers chain `onSuccess` off this to close a
+      // confirmation and navigate away, and a swallowed failure ran all of it — leaving the user
+      // somewhere else, told the space was gone, while it was still there.
+      throw error;
     }
   }
 
@@ -1535,6 +1580,109 @@ export function SpaceStoreProvider(props: ParentProps) {
   }
 
   /**
+   * Containers holding something newer than this agent's marker for them.
+   *
+   * One subscription for the whole space rather than a projection per row: the rail asked the same
+   * question for every channel, so a space with thirty channels opened thirty of them.
+   *
+   * A container with *no* marker counts as unread — it has never been opened, so everything in it is
+   * new. That case has to be written down rather than falling out of the comparison, because `>`
+   * against `undefined` is false and would have read as "nothing new here".
+   */
+  const [unreadNodeIds, setUnreadNodeIds] = createSignal<string[]>([]);
+
+  createEffect(() => {
+    const ds = datasetStore.currentDataset();
+    const markers = readMarkers();
+    if (!ds) {
+      setUnreadNodeIds([]);
+      return;
+    }
+
+    void (async () => {
+      try {
+        const containers = await CollectionBlock.findAll(ds.handle, {
+          include: { $latestChild: { from: 'children', order: { createdAt: 'DESC' }, limit: 1 } },
+        });
+        const lastReadOf = new Map(markers.map((m) => [m.nodeId, m.lastReadAt]));
+        setUnreadNodeIds(
+          containers
+            .filter((container) => {
+              const latest = (container as unknown as { $latestChild?: { createdAt?: string } }).$latestChild;
+              if (!latest?.createdAt) return false;
+              const marker = lastReadOf.get(container.id);
+              // ISO-8601 UTC compares lexicographically in chronological order — see ReadMarker.
+              return marker === undefined || latest.createdAt > marker;
+            })
+            .map((container) => container.id),
+        );
+      } catch (error) {
+        console.error('SpaceStore: could not compute unread state', error);
+        setUnreadNodeIds([]);
+      }
+    })();
+  });
+
+  /** Nodes in this space naming this agent. See the interface for why the filter is not pushed down. */
+  const [myMentions, setMyMentions] = createSignal<{ id: string; author: string; createdAt: string }[]>([]);
+
+  createEffect(() => {
+    const ds = datasetStore.currentDataset();
+    const did = session.me()?.did;
+    if (!ds || !did) {
+      setMyMentions([]);
+      return;
+    }
+
+    void (async () => {
+      try {
+        const nodes = await CollectionBlock.findAll(ds.handle, { include: { mentions: true } });
+        setMyMentions(
+          nodes
+            .filter((node) => (Array.isArray(node.mentions) ? node.mentions : []).includes(did))
+            .map((node) => ({ id: node.id, author: node.author, createdAt: node.createdAt }))
+            .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1)),
+        );
+      } catch (error) {
+        console.error('SpaceStore: could not read mentions', error);
+        setMyMentions([]);
+      }
+    })();
+  });
+
+  /**
+   * Store a file and return the URL that points at it.
+   *
+   * Images are compressed on the way through, for the reason the profile and space-image paths
+   * already do it: a phone photo is several megabytes, and a space's content syncs to every member.
+   * Anything else is stored as-is.
+   */
+  const readAsDataURI = (file: File) =>
+    new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result));
+      reader.onerror = () => reject(reader.error);
+      reader.readAsDataURL(file);
+    });
+
+  async function uploadFile(file: File, name?: string): Promise<string | null> {
+    const profiles = session.backendPorts()?.profiles;
+    if (!profiles) return null;
+    try {
+      const fileData = file.type.startsWith('image/')
+        ? await compressImageToFileData(file, name ?? file.name)
+        : // Non-images go through unchanged. `dataURIToFileData` is the same decode the image path
+          // ends with, so both arrive at the port in one shape.
+          dataURIToFileData(await readAsDataURI(file), name ?? file.name);
+      return await profiles.uploadFile(JSON.stringify(fileData));
+    } catch (error) {
+      console.error('SpaceStore: upload failed', error);
+      toastService.error('Could not upload that file.');
+      return null;
+    }
+  }
+
+  /**
    * Mute or unmute an agent for this agent, everywhere.
    *
    * Phrased positively — `muted: boolean` — so a switch can pass `$event.detail` bare; the same
@@ -1815,7 +1963,10 @@ export function SpaceStoreProvider(props: ParentProps) {
       await Space.update(ds.handle, space.id, { enabledModules: enabledModulesJson });
     } catch (error) {
       console.error('SpaceStore: could not persist enabledModules', error);
-      return;
+      toastService.error('Could not save this change for the space.');
+      // A switch that reports success and does not persist is worse than one that fails visibly:
+      // the setting is a community decision, and the next member to open the page sees the old one.
+      throw error;
     }
     updateSpaceInCache(ds, { enabledModules: enabledModulesJson } as never);
     if (!isCurrent(ds)) return;
@@ -2097,6 +2248,9 @@ export function SpaceStoreProvider(props: ParentProps) {
     setAgentMuted,
     readMarkers: readMarkerRows,
     markRead,
+    unreadNodeIds,
+    myMentions,
+    uploadFile,
     deleteCollection,
     updateSpaceImage,
     updateSpaceMeta,

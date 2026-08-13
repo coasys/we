@@ -163,7 +163,8 @@ type CollectionSlot = { state: 'ready'; id: string } | { state: 'waiting' } | { 
  * are attached to a valid record) and dedupable on read. The simple version ships first.
  */
 export function createTranscribeStore(deps: ModuleStoreDeps) {
-  const { signal, effect, audioInput, transcription, createEntity, linkEntity, dataset, presence, selfId } = deps;
+  const { signal, effect, audioInput, transcription, createEntity, linkEntity, dataset, presence, selfId, onDispose } =
+    deps;
 
   const [status, setStatus] = signal<TranscribeStatus>('idle');
   /** Whether we are recording. Independent of the panel — see the two toggles at the bottom. */
@@ -510,7 +511,10 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
    * half-constructed pipeline.
    */
   async function start(audio: MediaStream): Promise<void> {
-    if (!transcription) {
+    // Asked at start rather than at construction: the host supplies a forwarding wrapper before the
+    // backend has bound, so `transcription` is an object either way and only it knows whether there
+    // is a port behind it yet.
+    if (!transcription || transcription.available?.() === false) {
       setStatus('no-backend');
       return;
     }
@@ -607,22 +611,34 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
    */
   async function stop(resting: TranscribeStatus = 'idle'): Promise<void> {
     // Bumped first: a start still in flight is now stale, and will discard rather than publish.
-    generation++;
+    const mine = ++generation;
 
-    // Flush before teardown: whatever was said before hanging up is still worth keeping.
-    await flush();
+    /*
+      Release the audio graph *before* awaiting anything, and null the handles in the same tick.
 
-    node?.port.close();
-    node?.disconnect();
-    source?.disconnect();
-    await context?.close().catch(() => {});
-    await stream?.close().catch(() => {});
+      It used to flush first and tear down after, which left `context` non-null across an await. The
+      start guard is `if (!context)`, so audio returning inside that window found a context that was
+      already on its way out, skipped, and then watched `stop` null it. Recording was dead with the
+      button lit and no dependency left to change, so nothing re-triggered the effect: the only way
+      back was to leave the space.
+
+      Flushing after closing the port is also the more correct order — `buffer` already holds what
+      was said, and a closed port cannot race it with one more message.
+    */
+    const closing = { node, source, context, stream };
     node = null;
     source = null;
     context = null;
     stream = null;
     setLevel(0);
     setSpeaking(false);
+
+    closing.node?.port.close();
+    closing.node?.disconnect();
+    closing.source?.disconnect();
+
+    // Neither waits on the other: the flush writes text, the closes release devices.
+    await Promise.all([flush(), closing.context?.close().catch(() => {}), closing.stream?.close().catch(() => {})]);
 
     // The record is deliberately *not* released here. Stopping the recording is not leaving the
     // call, and someone who switches it off and on again is still in the same meeting — dropping the
@@ -631,7 +647,10 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
     //
     // Releasing is the call ending's business, and the effect below owns it. `recent` stays either
     // way, so a session can be read after it stops.
-    if (status() !== 'error') setStatus(resting);
+    // Only if nothing started in the meantime. Releasing the graph early is what makes a restart
+    // during this window possible at all, and a late `setStatus('idle')` would then describe the
+    // session that replaced this one.
+    if (mine === generation && status() !== 'error') setStatus(resting);
   }
 
   /**
@@ -718,6 +737,18 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
     }
 
     if (!context) void start(audio);
+  });
+
+  /**
+   * Losing the module ends the session.
+   *
+   * Same class as the call module's camera: without teardown in the contract, unregistering — or
+   * re-registering, which a hot reload does — dropped the only reference to a live `AudioContext`
+   * and a backend transcription stream, with nothing able to close them.
+   */
+  onDispose?.(() => {
+    setEnabled(false);
+    void stop();
   });
 
   // Leaving the space ends the session — the blocks belong to the space that was being spoken in,
@@ -871,5 +902,7 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
     receiveText: (text: string) => onText(text),
     /** Write what has been heard so far without waiting for the buffer to fill. */
     flushNow: () => flush(),
+    /** End the session now, flushing and releasing the audio graph. Exposed for tests. */
+    stopNow: () => stop(),
   };
 }

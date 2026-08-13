@@ -12,6 +12,8 @@ import {
 } from '@we/models';
 import type { ThemeOverrides } from '@we/schema-shared';
 import { applyThemeVars } from '@we/schema-shared';
+import type { SanitiseCssOptions } from '@we/themes/sanitiseCss';
+import { sanitiseCss } from '@we/themes/sanitiseCss';
 import {
   Accessor,
   createContext,
@@ -60,7 +62,14 @@ export interface ThemeStore {
   // Actions
   setCurrentTheme: (themeId: string) => void;
   setDefaultTheme: (themeId: string) => void;
-  toggleThemeInstalled: (themeId: string) => Promise<void>;
+  /**
+   * Show or hide a custom theme in the pickers. Does not delete it.
+   *
+   * Takes the value rather than toggling, so a `we-switch` can pass `$event.detail` straight
+   * through — the rule `setModuleVisible` documents and this violated: a toggle discards what the
+   * switch actually emitted, so the two disagree the moment anything else changes the state.
+   */
+  setThemeInstalled: (themeId: string, visible: boolean) => Promise<void>;
   /** What actually applies: the session preview if one is active, else the agent's preference. */
   themeScope: Accessor<'global' | 'scoped'>;
   /** The agent's persisted choice, which a preview temporarily masks. */
@@ -121,6 +130,11 @@ export interface ThemeStore {
   saveEditingThemeAs: (name: string, icon: string) => Promise<ThemeData | null>;
   deleteTheme: (themeId: string) => Promise<void>;
   installFromMarketplace: (marketplaceThemeId: string) => Promise<void>;
+  /**
+   * Copy a marketplace theme into the current space, so every member gets it — as opposed to
+   * installing it for yourself. The counterpart to `templateStore.installToSpace`.
+   */
+  installToSpace: (marketplaceThemeId: string) => Promise<void>;
   uninstallTheme: (themeId: string) => Promise<void>;
   deleteMarketplaceTheme: (themeId: string) => Promise<void>;
   publishToMarketplace: (options: {
@@ -133,6 +147,12 @@ export interface ThemeStore {
   publishToSpace: (perspectiveUuid: string, spaceName: string) => Promise<boolean>;
   loadInstalledThemes: () => Promise<void>;
   refreshSpaceThemes: () => Promise<void>;
+  /**
+   * Make sure any theme a schema names by `theme: { themeName }` has its stylesheet in the document.
+   *
+   * Call with a schema before rendering it; idempotent, and safe to call repeatedly.
+   */
+  requestNamedThemes: (schema: unknown) => void;
 }
 
 const ThemeContext = createContext<ThemeStore>();
@@ -157,19 +177,91 @@ function encodeToFileData(content: string, name: string, mimeType: string) {
   return { data_base64: base64, name, file_type: mimeType };
 }
 
+/**
+ * Every theme a schema names, deduplicated.
+ *
+ * Structural rather than typed on `SchemaNode`, for the same reason `inspectTemplateSurface` walks
+ * structurally: a `theme` can sit on any node, including inside routes, slots and `$each` bodies,
+ * and a walk that knew the node shape would need revising for every container added. The failure
+ * mode of missing one is a section that renders with an attribute and no rules — which is exactly
+ * the bug this exists to fix.
+ */
+function collectThemeNames(value: unknown, into = new Set<string>()): Set<string> {
+  if (Array.isArray(value)) {
+    for (const entry of value) collectThemeNames(entry, into);
+    return into;
+  }
+  if (!value || typeof value !== 'object') return into;
+
+  const node = value as { theme?: { themeName?: unknown } };
+  const name = node.theme?.themeName;
+  if (typeof name === 'string' && name) into.add(name);
+
+  for (const entry of Object.values(value as Record<string, unknown>)) collectThemeNames(entry, into);
+  return into;
+}
+
+/**
+ * Theme ids that can be written into a DOM id and an attribute selector without escaping.
+ *
+ * A theme installed from a marketplace carries whatever id its author gave it. Rather than work out
+ * the CSS escaping rules for the rest, anything outside this set simply does not get injected — the
+ * section renders unthemed, which is the failure this feature already had and not a worse one.
+ */
+const SAFE_THEME_ID = /^[A-Za-z0-9_-]+$/;
+
 function getInitialThemeId(): string {
   const saved = typeof window !== 'undefined' ? localStorage.getItem(THEME_KEY) : null;
   return saved ?? 'dark';
 }
 
-function injectCssString(id: string, css: string) {
+/**
+ * The attribute marking the element a scoped theme is confined to — the template content wrapper in
+ * `TemplateLayout`, which is also the element carrying `data-we-theme` and painting the page.
+ *
+ * It is a mark of its own rather than a reuse of `data-we-theme`, because the two answer different
+ * questions: `data-we-theme` says *which* theme, and changes with it; this says *where the boundary
+ * is*, and must be there even for a theme with no name at all.
+ */
+export const THEME_SCOPE_ATTRIBUTE = 'data-we-theme-scope';
+export const THEME_SCOPE_SELECTOR = `[${THEME_SCOPE_ATTRIBUTE}]`;
+
+/**
+ * A CSS-identifier-safe prefix for a theme's `@keyframes`, so two themes cannot silently redefine
+ * each other's animations — the document theme and a space's scoped theme are both live at once.
+ */
+function cssNamespace(theme: ThemeData): string {
+  return `we-t-${String(theme.id ?? 'anon').replace(/[^a-zA-Z0-9_-]/g, '-')}`;
+}
+
+/**
+ * The one door a theme's CSS gets through, and so the one place it is filtered.
+ *
+ * Sanitising here rather than at install is deliberate. Themes arrive by more routes than the
+ * install dialog: they sync in through a shared perspective, so a peer can write a `Theme` model
+ * straight into a space and every member wears it without anybody clicking anything. Install is one
+ * door; injection is the choke point.
+ *
+ * `scope` confines the sheet to a container. Passed for a space's theme in scoped mode, so a
+ * community's theme cannot restyle the shell around it; omitted for the document theme, which is
+ * the agent's own choice about their own window. See `sanitiseCss` for what is removed and why.
+ *
+ * Built-in themes go through this too. They pass — that is the point of testing them against the
+ * same rule rather than exempting them, and it is why the retro theme now carries VT323 instead of
+ * importing it.
+ */
+function injectCssString(id: string, css: string, options: SanitiseCssOptions = {}) {
   let styleEl = document.getElementById(id) as HTMLStyleElement | null;
   if (!styleEl) {
     styleEl = document.createElement('style');
     styleEl.id = id;
     document.head.appendChild(styleEl);
   }
-  styleEl.textContent = css;
+  const { css: safe, removed } = css ? sanitiseCss(css, options) : { css: '', removed: [] };
+  if (removed.length && import.meta.env?.DEV) {
+    console.warn(`[theme] removed from ${id}:`, removed.join('; '));
+  }
+  styleEl.textContent = safe;
 }
 
 function applyThemeToDOM(theme: ThemeData) {
@@ -194,8 +286,10 @@ function applyThemeToDOM(theme: ThemeData) {
   */
   applyThemeVars(document.documentElement, overrides);
 
-  // Inject the theme's CSS string (component-level rules + any non-parametric vars)
-  injectCssString('we-custom-theme-css', theme.css ?? '');
+  // Inject the theme's CSS string (component-level rules + any non-parametric vars). Unscoped: this
+  // is the whole window, which is what the document theme is for. Namespaced all the same, so the
+  // document theme and a scoped space theme cannot redefine each other's animations.
+  injectCssString('we-custom-theme-css', theme.css ?? '', { namespace: cssNamespace(theme) });
 }
 
 const OVERRIDE_CSS_VARS: Partial<Record<keyof ThemeOverrides, string>> = {
@@ -466,12 +560,69 @@ export function ThemeStoreProvider(props: ParentProps) {
 
   createEffect(() => applyThemeToDOM(documentTheme()));
 
-  // In scoped mode, inject the space/editing theme's component-level CSS into a separate
-  // style tag so [data-we-theme='X'] selectors match inside the scoped wrapper div.
-  // The rules self-scope via their attribute selector, so they don't leak into the shell.
-  // Cleared when returning to global mode (we-custom-theme-css handles it there).
+  /*
+    In scoped mode, the space/editing theme's component-level CSS goes into its own style tag,
+    confined to the template wrapper by `THEME_SCOPE_SELECTOR`.
+
+    That confinement used to be incidental: the rules were left as written and happened to begin
+    `[data-we-theme='X']`, which only the wrapper carries — so a theme that simply omitted the
+    attribute selector styled the whole window, shell included. Scoping is now enforced rather than
+    relied upon, which is what makes a space theme safe to accept from a peer.
+
+    Cleared when returning to global mode (we-custom-theme-css handles it there).
+  */
   createEffect(() => {
-    injectCssString('we-scoped-theme-css', activeTemplateTheme()?.css ?? '');
+    const theme = activeTemplateTheme();
+    injectCssString('we-scoped-theme-css', theme?.css ?? '', {
+      scope: THEME_SCOPE_SELECTOR,
+      namespace: theme ? cssNamespace(theme) : undefined,
+    });
+  });
+
+  /*
+    Named themes, injected on demand.
+
+    A schema node carrying `theme: { themeName: 'cyberpunk' }` gets `data-we-theme="cyberpunk"`
+    stamped on its wrapper and its colour formulas re-declared — but until now *nothing put that
+    theme's stylesheet in the document*. Only two were ever injected: the active theme and the
+    space's. So unless the app already happened to be on cyberpunk, the wrapper carried an attribute
+    that zero rules in the document matched, and the section came out with the right colours and
+    none of the shape — no monospace, no clipped buttons. `CONVENTIONS` lists scoped
+    `theme.themeName` as supported, so it was unfinished rather than deliberate.
+
+    One `<style>` per named theme rather than all five at boot, which is what the audit's note ruled
+    out: `@keyframes` are global by name (two themes both defining `glitched` would silently
+    redefine each other), and a custom marketplace theme could never be handled that way at all.
+    Both objections are answered by going through the same sanitiser as everything else — it
+    namespaces keyframes per theme and confines the sheet to the elements carrying that attribute.
+
+    Reactive rather than one-shot because `allThemes()` fills in over time: a space's themes arrive
+    after the space does, so a name that resolves to nothing on the first pass resolves later.
+  */
+  const [requestedThemeNames, setRequestedThemeNames] = createSignal<string[]>([]);
+
+  function requestNamedThemes(schema: unknown) {
+    const names = collectThemeNames(schema);
+    if (!names.size) return;
+    setRequestedThemeNames((previous) => {
+      const next = new Set(previous);
+      const before = next.size;
+      for (const name of names) if (SAFE_THEME_ID.test(name)) next.add(name);
+      return next.size === before ? previous : [...next];
+    });
+  }
+
+  createEffect(() => {
+    const themes = allThemes();
+    for (const name of requestedThemeNames()) {
+      const theme = themes.find((candidate) => candidate.id === name || candidate.slug === name);
+      // Scoped to the attribute the renderer stamps, so a named theme reaches its own section and
+      // nothing else — including when the template naming it is a stranger's.
+      injectCssString(`we-named-theme-css-${name}`, theme?.css ?? '', {
+        scope: `[data-we-theme='${name}']`,
+        namespace: `we-t-${name}`,
+      });
+    }
   });
 
   // Apply initial theme immediately from localStorage — inject CSS string synchronously
@@ -550,20 +701,29 @@ export function ThemeStoreProvider(props: ParentProps) {
     datasetStore.updateAgentSettings({ defaultThemeId: themeId });
   }
 
-  async function toggleThemeInstalled(themeId: string) {
+  async function setThemeInstalled(themeId: string, visible: boolean) {
     const model = themeModelMap.get(themeId);
     const prefs = datasetStore.agentSettings();
     if (!model || !prefs) return;
-    if (visibleThemeIds().has(themeId)) {
-      await prefs.removeInstalledThemes(model).catch(() => {});
-      setVisibleThemeIds((prev) => {
-        const next = new Set(prev);
-        next.delete(themeId);
-        return next;
-      });
-    } else {
-      await prefs.addInstalledThemes(model).catch(() => {});
-      setVisibleThemeIds((prev) => new Set([...prev, themeId]));
+
+    try {
+      if (visible) {
+        await prefs.addInstalledThemes(model);
+        setVisibleThemeIds((prev) => new Set([...prev, themeId]));
+      } else {
+        await prefs.removeInstalledThemes(model);
+        setVisibleThemeIds((prev) => {
+          const next = new Set(prev);
+          next.delete(themeId);
+          return next;
+        });
+      }
+    } catch (error) {
+      // Was `.catch(() => {})`, which moved the switch and wrote nothing: the picker showed the new
+      // state until the next boot restored the old one.
+      console.error('ThemeStore: could not change theme visibility', error);
+      toastService.error('Could not save that change.');
+      throw error;
     }
   }
 
@@ -887,10 +1047,20 @@ export function ThemeStoreProvider(props: ParentProps) {
       const sourceOverrides = decodeFileAsString(source.overrides) || null;
       const sourceCss = decodeFileAsString(source.css) || null;
 
-      // Check if already installed by slug — update in place if so
+      /*
+        Check if already installed by slug — update in place if so.
+
+        Constrained to models that are actually *installed*, which means the ones living in the root
+        perspective. `themeModelMap` is also filled by `loadSpaceThemes`, from every space visited
+        this session and never pruned, so an unconstrained slug match could bind `existingModel` to a
+        theme belonging to a *space* — and `save()` would then publish marketplace content into that
+        space, for every member, while the toast said "updated" and the installed list showed nothing
+        new. Slugs are not unique across perspectives and were never meant to be.
+      */
+      const installedIds = new Set(installedThemes().map((theme) => theme.id));
       let existingModel: Theme | undefined;
       for (const model of themeModelMap.values()) {
-        if (model.slug === sourceSlug) {
+        if (installedIds.has(model.id) && model.slug === sourceSlug) {
           existingModel = model;
           break;
         }
@@ -1058,6 +1228,68 @@ export function ThemeStoreProvider(props: ParentProps) {
     }
   }
 
+  /**
+   * Copy a marketplace theme into the current space, so every member of that community gets it.
+   *
+   * The counterpart to `templateStore.installToSpace`, and it did not exist. The default template's
+   * space-settings page browsed marketplace *templates* and installed them into the space, then
+   * browsed marketplace *themes* and installed them into your personal library — the same button,
+   * on the same page, meaning two different things. Nobody chose that; the space-scoped half was
+   * simply missing, so the page reached for the account-scoped one.
+   *
+   * It matters beyond the inconsistency: writing to your root perspective is an act on your account,
+   * which is why `installFromMarketplace` sits at the chrome tier. A community template can offer
+   * "give this space a theme" and cannot offer "put this in your library".
+   */
+  async function installToSpace(marketplaceThemeId: string): Promise<void> {
+    const marketplacePerspective = datasetStore.marketplaceDataset()?.handle;
+    const spacePerspective = datasetStore.currentDataset()?.handle;
+    if (!marketplacePerspective || !spacePerspective) {
+      toastService.error('Cannot install: no active space or marketplace not connected');
+      return;
+    }
+
+    setOperationLoading(`space-install:${marketplaceThemeId}`);
+    try {
+      const source = await Theme.findOne(marketplacePerspective, { where: { id: marketplaceThemeId } });
+      if (!source) {
+        toastService.error('Theme not found in marketplace');
+        return;
+      }
+
+      const slug = source.slug || source.name.toLowerCase().replace(/\s+/g, '-');
+      const existing = await Theme.findOne(spacePerspective, { where: { slug } });
+      if (existing) {
+        toastService.error(`"${source.name}" is already in this space`);
+        return;
+      }
+
+      // Raw file-storage fields resolve to `data:<mime>;base64,...` strings, so they are decoded
+      // before re-encoding — otherwise the data URI itself becomes the new file's content.
+      const overrides = decodeFileAsString(source.overrides) || null;
+      const css = decodeFileAsString(source.css) || null;
+
+      await Theme.create(spacePerspective, {
+        name: source.name,
+        description: source.description,
+        icon: source.icon,
+        slug,
+        origin: 'shared',
+        version: source.version || 1,
+        overrides: overrides ? asFileField(encodeToFileData(overrides, 'overrides.json', 'application/json')) : null,
+        css: css ? asFileField(encodeToFileData(css, 'theme.css', 'text/css')) : null,
+      });
+
+      await loadSpaceThemes();
+      toastService.success(`"${source.name}" added to this space`);
+    } catch (error) {
+      console.error('ThemeStore: installToSpace error', error);
+      toastService.error(`Failed to add theme: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setOperationLoading(null);
+    }
+  }
+
   async function publishToSpace(perspectiveUuid: string, spaceName: string): Promise<boolean> {
     const perspective = datasetStore.datasets().find((d) => d.id === perspectiveUuid)?.handle;
     if (!perspective) {
@@ -1123,7 +1355,7 @@ export function ThemeStoreProvider(props: ParentProps) {
     applySnapshot,
     setCurrentTheme,
     setDefaultTheme,
-    toggleThemeInstalled,
+    setThemeInstalled,
     replaceTheme,
     restorePersonalTheme,
     clearSpaceTheme,
@@ -1138,6 +1370,7 @@ export function ThemeStoreProvider(props: ParentProps) {
     saveEditingThemeAs,
     deleteTheme,
     installFromMarketplace,
+    installToSpace,
     uninstallTheme,
     deleteMarketplaceTheme,
     publishToMarketplace,
@@ -1147,6 +1380,7 @@ export function ThemeStoreProvider(props: ParentProps) {
     // mutation they performed themselves (e.g. deleting a space theme),
     // mirroring templateStore.refreshSpaceTemplates.
     refreshSpaceThemes: loadSpaceThemes,
+    requestNamedThemes,
   };
 
   return <ThemeContext.Provider value={store}>{props.children}</ThemeContext.Provider>;

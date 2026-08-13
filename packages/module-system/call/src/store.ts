@@ -130,7 +130,17 @@ function hasLiveVideo(stream: MediaStream | null): boolean {
 }
 
 export function createCallStore(deps: CallStoreDeps) {
-  const { signal, effect, dataset, datasetUri, selfId, ephemeral, presence, identities } = deps;
+  const { signal, effect, dataset, datasetUri, selfId, ephemeral, presence, identities, onDispose } = deps;
+
+  /**
+   * The transport scope this call holds, so leaving can give it back.
+   *
+   * `EphemeralScope` is refcounted, and every join acquired one and never disposed it. Ten joins
+   * left ten refs outstanding, so the backend's signal handler for that perspective was never
+   * removed for the life of the app. `PresenceStore` has always done this correctly; this is the
+   * same discipline.
+   */
+  let scopeHandle: { dispose(): void } | null = null;
 
   /**
    * An agent id, joined to whatever the host knows about them, in the shape an avatar wants.
@@ -192,6 +202,45 @@ export function createCallStore(deps: CallStoreDeps) {
   });
   /** Surfaced rather than logged: "the call cannot start here" is something the user must see. */
   const [problem, setProblem] = signal<string | null>(null);
+
+  /**
+   * Named, because it is the one problem that can resolve itself.
+   *
+   * Every other message here describes something structural — no space, no transport — that stays
+   * true until the user does something elsewhere. This one is about a permission, and a permission
+   * can be granted a moment later; leaving it on screen after the camera starts working is the
+   * app telling the user something it can plainly see is no longer so.
+   */
+  /*
+    Worded for every host, which the first version was not.
+
+    "Check this site's permissions in your browser" is good advice in `we-web` and nonsense in
+    Electron and Tauri, where there is no browser and no site — so on two of the three hosts it told
+    the user to do something impossible. It also named only one of the two common causes: a device
+    another application already has open fails the same way, and is at least as frequent.
+  */
+  const MEDIA_BLOCKED =
+    'WE could not reach your camera or microphone. Check that WE has permission to use them, and that no other app has them open.';
+
+  /**
+   * The camera specifically, refused when the user asked for it.
+   *
+   * Separate from `MEDIA_BLOCKED` because the two clear on different conditions: this one is still
+   * true while the microphone works perfectly well, so clearing it on "we have a stream" — which is
+   * what the other one wants — would make it flash and vanish in exactly the case it exists for.
+   */
+  const CAMERA_BLOCKED =
+    'WE could not turn your camera on. Check that WE has permission to use it, and that no other app has it open.';
+
+  /**
+   * The machine cannot capture a screen — as distinct from the user closing the picker.
+   *
+   * Worth its own message because the remedy is not "try again": on Linux this is usually a desktop
+   * with no `org.freedesktop.portal.ScreenCast` interface, which is a missing portal backend rather
+   * than anything the user did in WE.
+   */
+  const SCREEN_UNAVAILABLE =
+    'WE could not capture a screen. This computer does not appear to offer screen sharing to apps.';
   /**
    * The microphone this agent is sending, as a signal rather than a read through to the controller.
    *
@@ -371,6 +420,8 @@ export function createCallStore(deps: CallStoreDeps) {
     mesh = null;
     controller?.stop();
     controller = null;
+    scopeHandle?.dispose();
+    scopeHandle = null;
     setLocalAudio(null);
     remoteStreams = new Map();
     peerStates = new Map();
@@ -404,6 +455,7 @@ export function createCallStore(deps: CallStoreDeps) {
     }
 
     const scope = ephemeral(handle);
+    scopeHandle = scope;
     if (!scope) {
       // A personal space has no neighbourhood — there is nobody to call. Say so rather than
       // presenting controls that will never connect.
@@ -453,6 +505,12 @@ export function createCallStore(deps: CallStoreDeps) {
       onTrackChanged: (kind, track) => void mesh?.setOutboundTrack(kind, track),
       onStateChanged: (state) => {
         setMedia({ ...state });
+        // Devices arrived after all — most likely the user granted the permission and pressed the
+        // camera button. Each message clears on its own condition, and only its own, so neither a
+        // structural problem nor the other media one is swallowed.
+        const local = controller?.localStream();
+        if (problem() === MEDIA_BLOCKED && local) setProblem(null);
+        if (problem() === CAMERA_BLOCKED && local?.getVideoTracks().length) setProblem(null);
         // Fires once when devices are acquired, and on every mute after — the first is what tells a
         // listener the microphone exists at all.
         setLocalAudio(controller?.localStream() ?? null);
@@ -468,6 +526,17 @@ export function createCallStore(deps: CallStoreDeps) {
     rebuildTiles();
 
     await controller.start();
+
+    /*
+      Say why there is no picture, rather than showing an avatar and leaving them to guess.
+
+      `problem` is a dismissible alert over the call, not a replacement for it — which is the right
+      shape here: a blocked camera does not stop you watching and hearing everyone else, so the call
+      carries on and the reason is stated once. Checked on the stream rather than on an error,
+      because a refused camera that fell back to audio is a different outcome from a refused
+      *request*, and only the second one leaves nothing at all.
+    */
+    if (!controller.localStream()) setProblem(MEDIA_BLOCKED);
   }
 
   // Reconcile the mesh against the roster. This is the whole membership mechanism — see mesh.ts.
@@ -484,6 +553,16 @@ export function createCallStore(deps: CallStoreDeps) {
     const handle = dataset?.();
     if (!handle && callId()) teardown();
   });
+
+  /**
+   * Losing the module leaves the call too.
+   *
+   * Until the contract had teardown, unregistering this module — or merely re-registering it, which
+   * a hot reload does — dropped the only reference to live `RTCPeerConnection`s and a
+   * `getUserMedia` stream. Nothing was left able to close them and the camera light stayed on. It is
+   * the same `teardown()` a deliberate hangup runs; the only new thing is that somebody now calls it.
+   */
+  onDispose?.(() => teardown());
 
   /**
    * How many columns the tiles pack into.
@@ -769,10 +848,25 @@ export function createCallStore(deps: CallStoreDeps) {
     leave: teardown,
 
     toggleAudio: () => controller?.setAudioEnabled(!media().audioEnabled),
-    toggleVideo: () => controller?.setVideoEnabled(!media().videoEnabled),
-    toggleScreenShare: () => {
-      if (media().screenShareEnabled) controller?.stopScreenShare();
-      else void controller?.startScreenShare();
+    /**
+     * Turn the camera on or off — and say so when it refuses.
+     *
+     * Asked on the outcome rather than caught from an error, which keeps this free of matching on
+     * message text: wanting the camera and not having it afterwards is the whole condition. Until
+     * this, a refusal reached the console and nowhere else, so the button appeared to do nothing.
+     */
+    toggleVideo: async () => {
+      const wanted = !media().videoEnabled;
+      await controller?.setVideoEnabled(wanted);
+      if (wanted && !controller?.state().videoEnabled) setProblem(CAMERA_BLOCKED);
+    },
+    toggleScreenShare: async () => {
+      if (media().screenShareEnabled) {
+        controller?.stopScreenShare();
+        return;
+      }
+      // Only a genuine failure is worth a message. Closing the picker is an answer, not a fault.
+      if ((await controller?.startScreenShare()) === 'failed') setProblem(SCREEN_UNAVAILABLE);
     },
     /** Show the video, or put it away. The other half of what one button used to do alone. */
     toggleStage: () => setVisible(!visible()),

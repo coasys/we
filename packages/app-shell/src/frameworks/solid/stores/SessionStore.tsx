@@ -78,6 +78,14 @@ export interface SessionStore {
   ephemeralPort: EphemeralPort;
 
   // Actions
+  /**
+   * Unlock the agent and load the session.
+   *
+   * **Rejects** when either half fails, so a schema's `onSuccess` means what it says — it used to
+   * swallow everything, and a sign-in form chaining a navigation off success navigated on failure
+   * too. `passwordError` is set only when the *unlock* was refused; a load failure after a password
+   * the executor accepted is a data failure and says so elsewhere.
+   */
   login: (password: string) => Promise<void>;
   /**
    * Create the agent under `password` and load the session, exactly as login does. Ends on
@@ -270,12 +278,22 @@ export function SessionStoreProvider(props: ParentProps) {
     setPasswordError(false);
 
     try {
-      await session.unlock(password);
-      // Same post-unlock load as the already-unlocked boot path.
+      // Only this can be wrong about the password. Everything after it has already been let in.
+      try {
+        await session.unlock(password);
+      } catch (err) {
+        console.error('SessionStore: agent unlock failed', err);
+        setPasswordError(true);
+        // Rethrown so the caller's `onSuccess` does not run. `login` used to swallow every failure,
+        // so a schema chaining a navigation off a successful sign-in navigated on a failed one.
+        throw err;
+      }
+
+      // Same post-unlock load as the already-unlocked boot path. A failure here is a data failure —
+      // a dataset that would not load, a space that would not resolve — and reporting it as
+      // "Incorrect password" about a password that was just accepted sends the user to change
+      // something that was never wrong.
       await runPostUnlockLoad();
-    } catch (err) {
-      console.error('SessionStore: agent unlock failed', err);
-      setPasswordError(true);
     } finally {
       setLoginLoading(false);
     }
@@ -303,15 +321,38 @@ export function SessionStoreProvider(props: ParentProps) {
     setCreateAgentError('');
 
     try {
-      await session.generate(password);
+      try {
+        await session.generate(password);
+      } catch (err) {
+        console.error('SessionStore: agent creation failed', err);
+        // Leave bootState on 'createAgent' so the user can retry against the same screen.
+        settingUp = false;
+        setCreateAgentError(err instanceof Error ? err.message : 'Could not create your agent');
+        throw err;
+      }
+
       sessionPassword = password;
       settingUp = true;
-      await runPostUnlockLoad();
-    } catch (err) {
-      console.error('SessionStore: agent creation failed', err);
-      // Leave bootState on 'createAgent' so the user can retry against the same screen.
-      settingUp = false;
-      setCreateAgentError(err instanceof Error ? err.message : 'Could not create your agent');
+
+      /*
+        The load is a separate failure with a separate answer. Sharing the catch above meant a
+        dataset that would not load reported "Could not create your agent" — about an agent that
+        had just been created — and left the user on the create screen, where retrying calls
+        `generate` again and the executor refuses, because an agent already exists. The only way out
+        was to give up.
+
+        The identity exists from here on, so a failure is a boot failure: `error` has a screen and a
+        retry, which is exactly the shape this needs.
+      */
+      try {
+        await runPostUnlockLoad();
+      } catch (err) {
+        console.error('SessionStore: post-creation load failed', err);
+        settingUp = false;
+        setBootError(err instanceof Error ? err.message : String(err));
+        setBootState('error');
+        throw err;
+      }
     } finally {
       setCreateAgentLoading(false);
     }

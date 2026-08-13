@@ -4,6 +4,7 @@ import { customElement, property } from 'lit/decorators.js';
 import { styleMap } from 'lit/directives/style-map.js';
 
 import { DesignSystemElement } from '../shared/design-system-element';
+import { safeHref } from '../shared/safe-href';
 import sharedStyles from '../shared/styles';
 
 const DEFAULT_PROPS: Partial<DesignSystemProps> = {
@@ -49,7 +50,7 @@ export default class Link extends DesignSystemElement {
     return html`
       <a
         part="base"
-        href=${this.href}
+        href=${safeHref(this.href) || nothing}
         target=${this.target || nothing}
         rel=${this.target === '_blank' ? this.rel || 'noopener noreferrer' : this.rel || nothing}
         download=${this.download || nothing}

@@ -6,7 +6,11 @@ import { dispatchPointer, dragNodeBehaviour, panZoomBehaviour, selectBehaviour }
 /** A behaviour context whose world is one node ('n1') at (100, 100) with radius 20. */
 function fakeContext(overrides: Partial<BehaviourContext> = {}): BehaviourContext {
   const positions = new Map([['n1', { x: 100, y: 100 }]]);
-  return {
+  // Annotated and merged rather than cast. Spreading a `Partial` into the literal makes every
+  // property possibly-undefined, which is what the `as unknown as` here used to paper over — and
+  // that cast also destroyed the contextual typing, so every callback parameter below was an
+  // implicit `any` and the fake was free to drift from the interface it stands in for.
+  const base: BehaviourContext = {
     hitTest: (at) => {
       for (const [id, p] of positions) {
         if (Math.hypot(p.x - at.x, p.y - at.y) <= 20) return [id];
@@ -23,12 +27,20 @@ function fakeContext(overrides: Partial<BehaviourContext> = {}): BehaviourContex
     expand: vi.fn(),
     emit: vi.fn(),
     locked: () => false,
-    ...overrides,
-  } as unknown as BehaviourContext;
+    // Three the fake had simply never implemented. Nothing complained, because the cast said the
+    // object was a `BehaviourContext` and TypeScript believed it; a behaviour reaching for any of
+    // them in a test would have thrown at the call rather than failed to compile.
+    selection: () => [],
+    collapse: vi.fn(),
+    toScreen: (p) => p,
+  };
+  return Object.assign(base, overrides);
 }
 
 function input(x: number, y: number, extra: Partial<PointerInput> = {}): PointerInput {
-  return { at: { x, y }, buttons: 1, shiftKey: false, ...extra } as PointerInput;
+  // `metaKey` was missing, which the cast hid: the fake did not satisfy the interface it claimed.
+  const base: PointerInput = { at: { x, y }, buttons: 1, shiftKey: false, metaKey: false };
+  return Object.assign(base, extra);
 }
 
 describe('panZoomBehaviour', () => {

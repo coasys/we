@@ -1,11 +1,12 @@
 {
   "name": "@we/globe-protocol",
   "version": "0.1.0",
-  "description": "The globe's layer contract — what a layer implements, with no dependency on the renderer",
+  "description": "The globe's layer contract \u2014 what a layer implements, with no dependency on the renderer",
   "type": "module",
   "scripts": {
     "build:steps": "tsup",
-    "build": "we-build"
+    "build": "we-build",
+    "typecheck": "tsc --noEmit"
   },
   "types": "dist/index.d.ts",
   "exports": {

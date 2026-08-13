@@ -178,7 +178,7 @@ function main() {
     fs.mkdirSync(OUTPUT_DIR, { recursive: true });
   }
 
-  // Write port map JSON (both in src-tauri/generated and src/generated for Vite access)
+  // Written twice: once for the Rust side to `include_str!`, once where Vite can reach it.
   fs.writeFileSync(PORT_MAP_FILE, JSON.stringify(portMap, null, 2) + '\n', 'utf8');
   console.log(`✅ Port map written to: ${path.relative(process.cwd(), PORT_MAP_FILE)}`);
 

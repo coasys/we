@@ -8,7 +8,8 @@
     "build:steps": "tsup && pnpm build:css",
     "build:css": "sass src/GraphView.scss dist/styles.css --no-source-map --style=compressed",
     "build": "we-build",
-    "test": "vitest run"
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
   },
   "types": "dist/index.d.ts",
   "exports": {
@@ -32,7 +33,7 @@
   "peerDependencies": {
     "@we/components": "^0.1.0",
     "@we/graph-protocol": "workspace:*",
-    "@we/primitives": "^1.0.0",
+    "@we/primitives": "workspace:*",
     "solid-js": "^1.9.5"
   },
   "devDependencies": {

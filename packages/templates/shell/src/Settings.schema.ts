@@ -409,8 +409,8 @@ const themesSection: SchemaNode = {
                             checked: '$theme.isInstalled',
                             size: 'sm',
                             onChange: {
-                              $action: 'themeStore.toggleThemeInstalled',
-                              args: ['$theme.id'],
+                              $action: 'themeStore.setThemeInstalled',
+                              args: ['$theme.id', '$event.detail'],
                             },
                           },
                         },

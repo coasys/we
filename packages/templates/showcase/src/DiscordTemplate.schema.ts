@@ -98,7 +98,6 @@ const messageBody: SchemaNode[] = [
     type: 'BlockRenderer',
     props: {
       editorState: '$message.editorState',
-      perspective: { $store: 'datasetStore.currentDataset.handle' },
     },
   },
   signalRow('$message'),

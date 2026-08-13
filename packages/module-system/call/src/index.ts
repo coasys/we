@@ -700,7 +700,16 @@ const problem: SchemaNode = {
       type: 'Row',
       props: {
         position: 'fixed',
-        top: CALL_BAR_TOP,
+        /*
+          The end the call bar is not at.
+
+          Both were pinned to `CALL_BAR_TOP`, so the alert opened underneath the controls — mostly
+          hidden, and with its dismiss button unreachable, which is a poor showing for the one piece
+          of UI whose entire job is to be read. `barAtBottom` already tracks which end the bar took;
+          taking the other one needs no new state and cannot collide by construction.
+        */
+        top: { $if: { condition: { $store: 'modules.call.barAtBottom' }, then: CALL_BAR_TOP, else: 'auto' } },
+        bottom: { $if: { condition: { $store: 'modules.call.barAtBottom' }, then: 'auto', else: CALL_BAR_TOP } },
         left: '50%',
         transform: 'translateX(-50%)',
         zIndex: 'sticky',

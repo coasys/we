@@ -53,6 +53,59 @@ fn resolve_ad4m_data_path(registry: &AccountRegistry, home: &std::path::Path) ->
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
+/// Let the webview reach the camera and microphone — and nothing else.
+///
+/// Calls did not work on Linux at all: both `getUserMedia` attempts failed with `NotAllowedError`,
+/// which is WebKitGTK's answer when either the media settings are off or nothing answers its
+/// permission request. Tauri leaves both to the application, and this application had not set them,
+/// so the answer was always no. Electron's equivalents are in `main.js`; this is the same decision
+/// for the other desktop host.
+///
+/// The permission handler is an allowlist for the same reason that one is: `UserMediaPermissionRequest`
+/// is granted and every other kind — geolocation, notifications, pointer lock, and whatever WebKit
+/// adds next — is refused rather than left to a default. Returning `true` from the callback means
+/// "handled", so a refusal is a decision rather than a timeout.
+///
+/// Linux only. macOS and Windows use their own webviews, which take their answer from the OS
+/// privacy settings and need nothing here.
+#[cfg(target_os = "linux")]
+fn enable_media(app: &tauri::App) {
+    use webkit2gtk::glib::object::Cast;
+    use webkit2gtk::{PermissionRequestExt, SettingsExt, UserMediaPermissionRequest, WebViewExt};
+
+    let Some(window) = app.get_webview_window("main") else {
+        eprintln!("we: no main window to enable media on");
+        return;
+    };
+
+    if let Err(error) = window.with_webview(|webview| {
+        let view = webview.inner();
+
+        if let Some(settings) = WebViewExt::settings(&view) {
+            // `enable_media_stream` is what `getUserMedia` itself is gated on; `enable_webrtc` is
+            // what the peer connection needs. Off by default in WebKitGTK, and independent — with
+            // only the first, devices open and no call connects.
+            settings.set_enable_media_stream(true);
+            settings.set_enable_webrtc(true);
+            settings.set_enable_media(true);
+        }
+
+        view.connect_permission_request(|_, request| {
+            let wants_media = request
+                .downcast_ref::<UserMediaPermissionRequest>()
+                .is_some();
+            if wants_media {
+                request.allow();
+            } else {
+                request.deny();
+            }
+            true
+        });
+    }) {
+        eprintln!("we: could not configure the webview for media: {error}");
+    }
+}
+
 pub fn run() {
     // Find a free port for the GraphQL server
     let graphql_port = find_port(12000, 13000)
@@ -161,6 +214,10 @@ pub fn run() {
                 rust_executor::run(config).await;
             });
             
+            // WebRTC needs the webview told it may have the devices — see `enable_media`.
+            #[cfg(target_os = "linux")]
+            enable_media(app);
+
             // Dev tools are hidden by default
             // Uncomment to enable in development:
             // #[cfg(debug_assertions)]

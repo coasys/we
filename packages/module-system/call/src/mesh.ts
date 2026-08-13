@@ -85,6 +85,20 @@ interface PeerSlot {
   makingOffer: boolean;
   ignoreOffer: boolean;
   stream: MediaStream;
+  /**
+   * The sender carrying each kind, remembered rather than looked up.
+   *
+   * `getSenders().find((s) => s.track?.kind === kind)` cannot find a sender whose track is `null`,
+   * and a sender's track *is* null for the whole time this agent is sending nothing of that kind —
+   * which is precisely what `replaceTrack(null)` leaves behind when a screen share stops with no
+   * camera to fall back to.
+   *
+   * The consequence was not a missing frame, it was a permanent one. Sharing again found no sender,
+   * took the `addTrack` branch, and gave the peer a *second* video track; their `<video>` renders
+   * the first one in the stream, which is the dead one. Their view froze on the last shared frame
+   * and never recovered, for the rest of the call.
+   */
+  senders: Map<'audio' | 'video', RTCRtpSender>;
 }
 
 export function createCallMesh(options: CallMeshOptions): CallMesh {
@@ -135,6 +149,7 @@ export function createCallMesh(options: CallMeshOptions): CallMesh {
       makingOffer: false,
       ignoreOffer: false,
       stream: new MediaStream(),
+      senders: new Map(),
     };
     slots.set(peerId, slot);
 
@@ -172,15 +187,41 @@ export function createCallMesh(options: CallMeshOptions): CallMesh {
       options.onPeerStateChanged?.(peerId, pc.connectionState);
     };
 
-    // Send whatever we are already sending. A peer joining mid-call must receive our media without
-    // waiting for us to toggle something.
-    for (const [, track] of outbound) {
-      if (!track) continue;
+    /*
+      Both m-lines, before there is anything to put in them.
+
+      A peer connection can only carry media of a kind it negotiated an m-section for, and
+      `addTrack` is what creates one. So an agent sending no video negotiated **no video m-line at
+      all** — and since the topology is agreed between the pair, that left the *other* peer's camera
+      with nowhere to arrive. Block your camera and their video never appeared, however healthy the
+      connection was; start a screen share and theirs would suddenly turn up, because adding a video
+      track of your own finally created the m-line their video had been waiting for. That is the
+      symptom this fixes, and it is worth stating plainly: it was never about their camera.
+
+      Declaring both up front makes the topology a constant rather than a consequence. Every
+      connection has one audio and one video section from the moment it exists, so what either side
+      happens to be sending is a question about tracks — answered by `replaceTrack` — instead of a
+      question about SDP. That also means muting, unmuting, and swapping camera for screen never
+      renegotiate at all.
+
+      `sendrecv` with no track attached is exactly right: it says "I will receive this kind, and I
+      may send it", which is the honest description of an agent whose camera is off.
+    */
+    for (const kind of ['audio', 'video'] as const) {
       try {
-        pc.addTrack(track, outboundStream);
+        slot.senders.set(kind, pc.addTransceiver(kind, { direction: 'sendrecv', streams: [outboundStream] }).sender);
       } catch (error) {
-        fail(`adding track for ${peerId}`, error);
+        fail(`preparing ${kind} for ${peerId}`, error);
       }
+    }
+
+    // Attach whatever is already being sent. A peer joining mid-call must receive our media without
+    // waiting for us to toggle something — and this is now an attachment, not a topology change.
+    for (const [kind, track] of outbound) {
+      if (!track) continue;
+      const sender = slot.senders.get(kind);
+      if (!sender) continue;
+      void sender.replaceTrack(track).catch((error) => fail(`sending ${kind} to ${peerId}`, error));
     }
 
     return slot;
@@ -216,10 +257,46 @@ export function createCallMesh(options: CallMeshOptions): CallMesh {
     // Only negotiate with peers the roster put in the call. Without this, anyone on the channel could
     // open a connection by sending an offer.
     const slot = slots.get(from);
-    if (!slot) return;
+    if (!slot) {
+      hold(from, message);
+      return;
+    }
 
     void handle(from, slot, message);
   });
+
+  /**
+   * Signalling that arrived before the roster had caught up, kept until it does.
+   *
+   * Dropping it was normally self-healing: both peers add tracks, so whoever's offer was discarded
+   * fires `negotiationneeded` again a moment later. **A peer who denied the microphone has no
+   * outbound tracks, so it never fires at all.** They joined, appeared on everyone's roster, and
+   * connected to nobody in either direction — showing "Connecting…" forever, since `connectionState`
+   * never reaches `failed` and the honest error badge never appears.
+   *
+   * Bounded on both axes, because this buffers messages from agents the roster has not vouched for
+   * and an unbounded one is a memory target for anybody on the channel. Overflow drops the oldest:
+   * a stale offer is worth less than the one behind it.
+   */
+  const pending = new Map<string, CallMessage[]>();
+  const MAX_PENDING_PEERS = 16;
+  const MAX_PENDING_PER_PEER = 8;
+
+  function hold(peerId: string, message: CallMessage): void {
+    if (!pending.has(peerId) && pending.size >= MAX_PENDING_PEERS) return;
+    const queue = pending.get(peerId) ?? [];
+    queue.push(message);
+    if (queue.length > MAX_PENDING_PER_PEER) queue.shift();
+    pending.set(peerId, queue);
+  }
+
+  /** Replay what this peer sent while we were still learning they were here. */
+  function release(peerId: string, slot: PeerSlot): void {
+    const queue = pending.get(peerId);
+    if (!queue) return;
+    pending.delete(peerId);
+    for (const message of queue) void handle(peerId, slot, message);
+  }
 
   async function handle(peerId: string, slot: PeerSlot, message: CallMessage) {
     try {
@@ -263,7 +340,11 @@ export function createCallMesh(options: CallMeshOptions): CallMesh {
         if (!wanted.has(peerId)) disconnect(peerId);
       }
       for (const peerId of wanted) {
-        if (!slots.has(peerId)) connect(peerId);
+        if (!slots.has(peerId)) release(peerId, connect(peerId));
+      }
+      // Anything held for an agent the roster does not list is not going to be wanted.
+      for (const peerId of pending.keys()) {
+        if (!wanted.has(peerId)) pending.delete(peerId);
       }
       emitStreams();
     },
@@ -278,14 +359,16 @@ export function createCallMesh(options: CallMeshOptions): CallMesh {
       await Promise.all(
         [...slots.entries()].map(async ([peerId, slot]) => {
           try {
-            const sender = slot.pc.getSenders().find((s) => s.track?.kind === kind);
+            // The transceiver created with the connection — see the note in `connect`. Every track
+            // change is a `replaceTrack` on a section that already exists, so none of them
+            // renegotiate: not muting, not unmuting, not swapping camera for screen.
+            const sender = slot.senders.get(kind);
             if (sender) {
-              // Does not renegotiate — this is why camera↔screen switching is instant.
               await sender.replaceTrack(track);
             } else if (track) {
-              // First track of this kind: adding a sender *does* fire `negotiationneeded`, which
-              // perfect negotiation above resolves.
-              slot.pc.addTrack(track, new MediaStream([track]));
+              // Only reachable if `addTransceiver` failed above. Adding a sender here *does* fire
+              // `negotiationneeded`, which perfect negotiation resolves.
+              slot.senders.set(kind, slot.pc.addTrack(track, outboundStream));
             }
           } catch (error) {
             fail(`setting ${kind} track for ${peerId}`, error);
@@ -307,6 +390,7 @@ export function createCallMesh(options: CallMeshOptions): CallMesh {
     close() {
       closed = true;
       unsubscribe();
+      pending.clear();
       for (const peerId of [...slots.keys()]) disconnect(peerId);
       emitStreams();
     },

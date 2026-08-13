@@ -7,7 +7,8 @@
   "scripts": {
     "build:steps": "tsup",
     "build": "we-build",
-    "test": "vitest run"
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
   },
   "types": "dist/index.d.ts",
   "exports": {
@@ -32,6 +33,7 @@
     }
   },
   "devDependencies": {
+    "@types/node": "^24.10.0",
     "@we/cli": "workspace:*",
     "@we/design-types": "workspace:*",
     "esbuild-plugin-solid": "^0.6.0",

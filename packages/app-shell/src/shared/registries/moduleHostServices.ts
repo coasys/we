@@ -96,6 +96,10 @@ export function createModuleStoreDeps(framework: {
     // construction still reaches whatever the host has bound by the time it calls — the same
     // late-binding contract as `ephemeral` above.
     transcription: {
+      // The wrapper is always present so late binding works; this is how a module asks whether
+      // there is anything behind it. Without it, `if (!transcription)` never fired and a backend
+      // that cannot transcribe at all told the user to go and install a model.
+      available: () => services.transcription !== undefined,
       models: async () => (await services.transcription?.models()) ?? [],
       open: async (modelId, onText, tuning) => {
         const port = services.transcription;

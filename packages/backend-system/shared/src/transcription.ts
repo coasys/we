@@ -62,6 +62,18 @@ export interface TranscriptionStream {
 }
 
 export interface TranscriptionPort {
+  /**
+   * Whether this backend can transcribe at all — as opposed to being able to, with no model
+   * installed. Two different sentences to a user: one is "this node cannot do that", the other is
+   * "install a model".
+   *
+   * Optional so an existing adapter keeps working; absent reads as "yes, ask me". It exists because
+   * a *host* may forward to a port that is not there — see `createModuleStoreDeps`, which always
+   * supplies a wrapper so a module built before the backend binds still reaches it later. That
+   * wrapper made the port itself non-optional from the module's side, which turned every
+   * "this backend cannot transcribe" branch into dead code.
+   */
+  available?(): boolean;
   /** Transcription models this backend can run. Empty when none is installed. */
   models(): Promise<TranscriptionModel[]>;
   /**

@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { render } from '@solidjs/testing-library';
-import type { SchemaNode } from '@we/schema-shared';
+import { markReactive, type SchemaNode } from '@we/schema-shared';
 import { describe, expect, it, vi } from 'vitest';
 
 import { RenderSchema } from '../src/SchemaRenderer';
@@ -204,7 +204,8 @@ describe('SchemaRenderer', () => {
     // per-space settings page needs: the space comes from the loop, not from a store path.
     const InputComp = (props: any) => <input data-testid="input" value={props.value} />;
     const registry: ComponentRegistry = { InputComp };
-    const stores = { spaceStore: { spaceList: () => [{ uuid: 'abc', name: 'My Space' }] } };
+    // Tagged, as a real bag's state accessors are — `$store` reads only tagged accessors now.
+    const stores = { spaceStore: { spaceList: markReactive(() => [{ uuid: 'abc', name: 'My Space' }]) } };
     const node: SchemaNode = {
       type: '$each',
       props: { items: { $store: 'spaceStore.spaceList' }, as: 'space' },

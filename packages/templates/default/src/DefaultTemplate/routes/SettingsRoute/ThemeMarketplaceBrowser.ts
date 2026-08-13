@@ -1,7 +1,14 @@
 import type { SchemaNode } from '@we/schema-shared';
 import { marketplaceList } from '@we/template-kit';
 
-/** The compact form, for the panel inside space settings. */
+/**
+ * The compact form, for the panel inside space settings.
+ *
+ * Installs into the *space*, matching the template browser beside it. It used to call
+ * `themeStore.installFromMarketplace`, which writes to your personal library — so the same button
+ * on the same page meant "give this community a theme" for templates and "put this in my account"
+ * for themes. The space-scoped counterpart simply did not exist until now.
+ */
 export const themeMarketplaceBrowser: SchemaNode = marketplaceList({
   entity: 'Theme',
   as: 'marketplaceTheme',
@@ -12,14 +19,14 @@ export const themeMarketplaceBrowser: SchemaNode = marketplaceList({
     mode: 'compact',
     installed: {
       $find: {
-        items: { $store: 'themeStore.installedThemes' },
+        items: { $store: 'themeStore.spaceThemes' },
         where: { name: '$marketplaceTheme.name' },
         select: 'version',
       },
     },
-    onInstall: { $action: 'themeStore.installFromMarketplace', args: ['$marketplaceTheme.id'] },
+    onInstall: { $action: 'themeStore.installToSpace', args: ['$marketplaceTheme.id'] },
     isLoading: {
-      $eq: [{ $store: 'themeStore.operationLoading' }, { $concat: ['marketplace-install:', '$marketplaceTheme.id'] }],
+      $eq: [{ $store: 'themeStore.operationLoading' }, { $concat: ['space-install:', '$marketplaceTheme.id'] }],
     },
   },
 });

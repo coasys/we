@@ -9,6 +9,7 @@
     "build:steps": "tsup",
     "build": "we-build",
     "test": "vitest run",
+    "typecheck": "tsc --noEmit",
     "generate:manifest": "node scripts/generateCoreManifest.mjs > src/generated/coreManifest.ts"
   },
   "types": "dist/index.d.ts",

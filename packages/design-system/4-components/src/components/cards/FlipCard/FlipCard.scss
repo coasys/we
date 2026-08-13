@@ -1,5 +1,32 @@
+/*
+  Why this does not rely on `backface-visibility`, having been written to.
+
+  A flip card is conventionally built by putting two faces in the same place, rotating one of them
+  180°, and letting `backface-visibility: hidden` cull whichever is facing away. That works in
+  Chromium — we-web and Electron were always fine — and does nothing at all in WebKitGTK, the
+  webview Tauri uses on Linux. Measured rather than guessed: loading these exact rules in
+  WebKit2GTK 4.1 and sampling the rendered pixel shows the *back* face painted in both states, while
+  `getComputedStyle` cheerfully reports `transform-style: preserve-3d` and
+  `backface-visibility: hidden` on every element. The properties are accepted and not honoured.
+
+  So the cards opened showing the back face — its colour, its text, mirrored by the 180° rotation —
+  and flipping them turned that rotation into a double one, which reads the right way round again.
+  Exactly the report.
+
+  Nothing 3D fixes it, and each was tried in that engine: the `-webkit-` prefixes, a base
+  `rotateY(0deg)` to force a 3D context, separating the faces along Z so the depth order is
+  unambiguous, and removing the `overflow`/`border-radius` that can promote a face to its own layer.
+  All still painted the back face.
+
+  What works is to stop asking the renderer which face is toward us and say so ourselves: the flip
+  state already knows. `opacity` swaps the faces at the midpoint of the rotation — a zero-length
+  transition with half the duration as its delay — so the animation still reads as a flip, on every
+  engine. `backface-visibility` is kept underneath because it is the correct mechanism where it
+  works, and it costs nothing where it does not.
+*/
 .we-flip-card {
   perspective: 1000px;
+  -webkit-perspective: 1000px;
   cursor: pointer;
   user-select: none;
 
@@ -8,6 +35,7 @@
     width: 100%;
     height: 100%;
     transition: transform var(--we-flip-card-duration, 0.5s) cubic-bezier(0.4, 0, 0.2, 1);
+    -webkit-transform-style: preserve-3d;
     transform-style: preserve-3d;
   }
 
@@ -25,9 +53,49 @@
     -webkit-backface-visibility: hidden;
     border-radius: var(--we-theme-surface-radius, var(--we-radius-400));
     overflow: hidden;
+    /*
+      Swapped around the instant the card is edge-on — which is `0.35` of the duration, not half.
+
+      Half is the obvious guess and it is wrong, because the rotation is eased. Solving
+      `cubic-bezier(0.4, 0, 0.2, 1)` for the input time at which its output reaches 0.5 — the
+      quarter-turn where a real card changes face — gives 0.35. Swapping at 0.5 left 70ms of the
+      default flip in which the card had already turned past edge-on while the front was still the
+      opaque one: on Chromium a *hole*, since `backface-visibility` culls the front and the back is
+      still transparent, and on WebKitGTK the wrong face lingering as the card widens again.
+
+      The two ends are staggered rather than simultaneous, and that is the part worth keeping. A
+      single instant cannot be hit exactly — the swap lands on a frame boundary — and *either* side
+      of it opens the same hole on Chromium, because whichever face is turned away is culled and the
+      other one is transparent. So the arriving face becomes opaque slightly before the leaving face
+      goes, and for those few frames both are paintable: Chromium culls one and draws the other, and
+      WebKitGTK draws the arriving one over a card that is a few percent of its width. There is no
+      instant at which nothing is drawn.
+    */
+    transition: opacity 0s linear calc(var(--we-flip-card-duration, 0.5s) * 0.32);
   }
+
+  /*
+    The delay comes from the state being transitioned *to*, which is what makes the stagger express
+    itself in two rules instead of four: a face on its way out reads `LEAVING`, a face on its way in
+    reads the base `0.32`, whichever direction the card is turning.
+  */
+  $flip-leave: calc(var(--we-flip-card-duration, 0.5s) * 0.38);
 
   &__back {
     transform: rotateY(180deg);
+    opacity: 0;
+    transition-delay: $flip-leave;
+  }
+
+  &--flipped &__front,
+  &--hover-flip:hover &__front {
+    opacity: 0;
+    transition-delay: $flip-leave;
+  }
+
+  &--flipped &__back,
+  &--hover-flip:hover &__back {
+    opacity: 1;
+    transition-delay: calc(var(--we-flip-card-duration, 0.5s) * 0.32);
   }
 }

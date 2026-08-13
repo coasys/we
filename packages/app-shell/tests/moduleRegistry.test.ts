@@ -329,3 +329,84 @@ describe('module-declared anchors', () => {
     expect(barChildren()).toHaveLength(3);
   });
 });
+
+describe('module teardown', () => {
+  /**
+   * The contract had no teardown, and the failure was a camera that stayed on: unregistering — or
+   * merely re-registering, which a hot reload does — dropped the only reference to a module's live
+   * peer connections and media stream with nothing left able to close them.
+   */
+  type Deps = { onDispose?: (fn: () => void) => void };
+  const teardownMod = (id: string, onCreate: (deps: Deps) => void) =>
+    mod({
+      id,
+      createStore: ((deps: Deps) => {
+        onCreate(deps);
+        return {};
+      }) as ModuleDefinition['createStore'],
+    });
+
+  const host = { backend: 'inmemory', framework: 'solid' };
+
+  it('runs a store’s disposers when the module is unregistered', () => {
+    const closed: string[] = [];
+    moduleRegistry.register(
+      teardownMod('tear-a', (deps) => {
+        deps.onDispose?.(() => closed.push('stream'));
+        deps.onDispose?.(() => closed.push('peers'));
+      }),
+      host,
+      storeDeps,
+    );
+
+    expect(closed).toEqual([]);
+    moduleRegistry.unregister('tear-a');
+    // Reverse order: later teardown generally depends on earlier setup.
+    expect(closed).toEqual(['peers', 'stream']);
+  });
+
+  it('runs them on re-registration, which is what a hot reload does', () => {
+    const closed: string[] = [];
+    const definition = teardownMod('tear-b', (deps) => deps.onDispose?.(() => closed.push('closed')));
+
+    moduleRegistry.register(definition, host, storeDeps);
+    moduleRegistry.register(definition, host, storeDeps);
+
+    // The replaced instance is torn down rather than abandoned holding a live device.
+    expect(closed).toEqual(['closed']);
+  });
+
+  it('keeps going when one disposer throws', () => {
+    const closed: string[] = [];
+    moduleRegistry.register(
+      teardownMod('tear-throw', (deps) => {
+        deps.onDispose?.(() => closed.push('first'));
+        deps.onDispose?.(() => {
+          throw new Error('nope');
+        });
+        deps.onDispose?.(() => closed.push('last'));
+      }),
+      host,
+      storeDeps,
+    );
+
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    expect(() => moduleRegistry.unregister('tear-throw')).not.toThrow();
+    // One throwing disposer must not be able to leave the camera on for the rest of them.
+    expect(closed).toEqual(['last', 'first']);
+    expect(error).toHaveBeenCalled();
+    error.mockRestore();
+  });
+
+  it('does not put teardown on the store, where a template could call it', () => {
+    moduleRegistry.register(
+      teardownMod('tear-a', (deps) => deps.onDispose?.(() => {})),
+      host,
+      storeDeps,
+    );
+    // Store keys are exposed to templates at `modules.<id>.<key>`; teardown is host business.
+    const keys = Object.keys(moduleRegistry.get('tear-a')?.store ?? {});
+    expect(keys).not.toContain('onDispose');
+    expect(keys).not.toContain('destroy');
+  });
+});

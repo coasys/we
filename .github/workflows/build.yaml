@@ -136,17 +136,24 @@ jobs:
       # `pnpm build` regenerates the AI-context outputs (CLAUDE.md et al.) and
       # the core manifest.  If a PR changed their inputs without committing the
       # regenerated files, fail here rather than drifting silently.
+      # Whole-tree rather than a hand-listed set of paths. The list named seven files and the build
+      # regenerates seventeen — `prebuild:steps` also writes ten tracked Tauri files — so editing
+      # `we-seed.json` without committing the regenerated output passed green. A path list is also
+      # blind to files the build *creates*, and it rots every time a generator is added.
+      #
+      # `--porcelain` covers modified, deleted and untracked in one check, and cannot go out of date.
       - name: Check generated files are committed
         run: |
-          git diff --exit-code -- \
-            CLAUDE.md \
-            .github/copilot-instructions.md \
-            .cursor/rules/we-schema.mdc \
-            packages/ai-context/src/schemaContext.ts \
-            packages/ai-context/context.json \
-            packages/schema-system/shared/src/generated/contextData.ts \
-            packages/models/src/generated/coreManifest.ts \
-            || { echo '::error::Generated files are stale — run `pnpm build` and commit the regenerated output.'; exit 1; }
+          # `package.json` and the lockfile are excluded because *this workflow* rewrites them a few
+          # steps up, pointing the AD4M overrides at the locally built copies. Everything else in the
+          # tree is fair game — which is the point, and why this cannot go stale the way the old list did.
+          DRIFT="$(git status --porcelain -- . ':(exclude)package.json' ':(exclude)pnpm-lock.yaml')"
+          if [ -n "$DRIFT" ]; then
+            echo '::error::The build changed tracked files — run `pnpm build` and commit the regenerated output.'
+            echo "$DRIFT"
+            git diff --stat
+            exit 1
+          fi
 
       # 12.6k LOC of template data that `tsc` cannot judge: an unknown component
       # type, a misspelled prop, a `$routes` outlet with no `routes` array and an

@@ -1,5 +1,5 @@
 import { execSync, spawn } from 'child_process';
-import { app, BrowserWindow, desktopCapturer, dialog, ipcMain } from 'electron';
+import { app, BrowserWindow, desktopCapturer, dialog, ipcMain, shell } from 'electron';
 import contextMenu from 'electron-context-menu';
 import express from 'express';
 import { existsSync, readdirSync, readFileSync, rmSync } from 'fs';
@@ -11,6 +11,16 @@ import { fileURLToPath } from 'url';
 import { v4 as uuidv4 } from 'uuid';
 
 import { createAccountRegistry, expandHome } from './accounts.js';
+import {
+  allowMediaPermission,
+  contentSecurityPolicy,
+  isExternallyOpenable,
+  isTrusted,
+  MEDIA_PERMISSIONS,
+  permissionOrigin,
+  safeOrigin,
+  trustedOrigins,
+} from './navigationPolicy.js';
 import { setupSeedServers } from './seed-servers.js';
 
 // Enable right-click context menu with inspect element in dev mode
@@ -366,6 +376,26 @@ function startAppServer() {
   }
 }
 
+/**
+ * What `navigationPolicy` needs to work out the trusted set: where the app is served from, and the
+ * ports the build assigned the seed's embedded apps.
+ *
+ * `readFileSync` rather than a JSON import, to match how `seedDataPath` already reads its generated
+ * runtime file and to avoid depending on import-attribute support in whichever Node the packaged
+ * Electron carries. A failed read yields an empty map — fewer trusted origins, never more.
+ */
+function policyOptions() {
+  let seedPorts = {};
+  try {
+    seedPorts = JSON.parse(readFileSync(join(__dirname, 'seed-port-map.json'), 'utf8'));
+  } catch {
+    // No port map means no embedded apps to trust, which is the safe reading.
+  }
+  return { appUrl: appUrl(), seedPorts };
+}
+
+const trusted = (url) => isTrusted(url, trustedOrigins(policyOptions()));
+
 function createWindow() {
   mainWindow = new BrowserWindow({
     show: false, // Don't show until ready
@@ -375,7 +405,21 @@ function createWindow() {
       preload: join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
-      webSecurity: false, // Allow cross-origin access for screen sharing in iframes
+      /*
+        Was `false`, "to allow cross-origin access for screen sharing in iframes".
+
+        That setting turns off the same-origin policy for the entire renderer, frames included. WE
+        renders `we-iframe` from post content — an EmbedBlock's URL, a video embed — so every page
+        anyone had ever linked in a post was running beside the app with no origin boundary at all:
+        able to read `parent.document`, to fetch `localhost:12000` with the executor's credentials,
+        and to read the responses. It made the app-bridge origin checks decorative, since a hostile
+        embed never needed to ask.
+
+        It also was not what screen sharing needed. `getDisplayMedia` in a subframe is gated by the
+        iframe's `allow="display-capture"` and, in Electron, by the display-media handler installed
+        below — neither of which has anything to do with the same-origin policy.
+      */
+      webSecurity: true,
     },
   });
 
@@ -385,23 +429,118 @@ function createWindow() {
     mainWindow.show();
   });
 
-  // Allow camera, microphone, and screen capture permissions
-  mainWindow.webContents.session.setPermissionRequestHandler((webContents, permission, callback) => {
-    const allowedPermissions = ['media', 'camera', 'microphone', 'display-capture', 'mediaKeySystem'];
-    if (allowedPermissions.includes(permission)) {
-      callback(true);
-    } else {
-      callback(false);
+  const session = mainWindow.webContents.session;
+
+  /*
+    Screen capture, through the mechanism that exists for it.
+
+    Electron will not satisfy `getDisplayMedia` without this handler, and the handler is where the
+    choice of what to share is actually made. `useSystemPicker` asks the OS to draw its own picker
+    where one exists (macOS 15+, Wayland portals), which is the right answer when it is available:
+    the source list never enters the renderer, so a page cannot enumerate the user's open windows
+    just by asking to share.
+  */
+  session.setDisplayMediaRequestHandler(
+    (request, callback) => {
+      desktopCapturer
+        .getSources({ types: ['screen', 'window'] })
+        .then((sources) => callback(sources.length ? { video: sources[0], audio: 'loopback' } : {}))
+        .catch(() => callback({}));
+    },
+    { useSystemPicker: true },
+  );
+
+  /*
+    Camera, microphone and screen capture — for the app and its embedded apps, not for a page
+    somebody linked in a post.
+
+    The decision and its reasoning live in `navigationPolicy.js`, where they are tested. What is
+    here is the wiring, and one thing the wiring owes: **a refusal says so.** Electron consults these
+    handlers silently, and the app's own error path for a denied camera is a fallback to audio-only
+    — so a wrong answer here surfaced as "no video, no errors", which is a bug report nobody can act
+    on. It is exactly the shape this audit spent its P2 section removing.
+  */
+  const decideMedia = (permission, details, webContentsUrl) => {
+    const origin = permissionOrigin(details, webContentsUrl);
+    const allowed = allowMediaPermission({
+      permission,
+      origin,
+      isMainFrame: details?.isMainFrame,
+      origins: trustedOrigins(policyOptions()),
+    });
+    if (!allowed && MEDIA_PERMISSIONS.includes(permission)) {
+      console.warn(`[we] refused ${permission} to ${origin ?? 'a frame with no identifiable origin'}`);
     }
+    return allowed;
+  };
+
+  session.setPermissionRequestHandler((webContents, permission, callback, details) => {
+    callback(decideMedia(permission, details, webContents?.getURL()));
   });
 
-  // Also handle permission checks (not just requests)
-  mainWindow.webContents.session.setPermissionCheckHandler((webContents, permission) => {
-    const allowedPermissions = ['media', 'camera', 'microphone', 'display-capture'];
-    return allowedPermissions.includes(permission);
+  session.setPermissionCheckHandler((webContents, permission, requestingOrigin, details) => {
+    return decideMedia(permission, { requestingUrl: requestingOrigin, ...details }, webContents?.getURL());
   });
+
+  /*
+    A link that opens a window opens it in the user's browser instead.
+
+    `window.open` and `target="_blank"` otherwise create a new BrowserWindow with *these*
+    webPreferences — the preload attached, the IPC channels live — showing a page WE did not write.
+    A template or a post is enough to trigger it. Denying and handing the URL to the OS is both
+    safer and what the user expects a link to do.
+  */
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    if (isExternallyOpenable(url)) shell.openExternal(url);
+    return { action: 'deny' };
+  });
+
+  /*
+    The top frame stays on the app.
+
+    Without this, anything that can set `location` — a template, an embedded app reaching `top` —
+    could navigate the main window to a page of its choosing, which would then be running *as* the
+    app: same window, same preload, same IPC. Nothing in WE navigates the top frame away, so this
+    forbids the whole class rather than trying to judge each case.
+  */
+  mainWindow.webContents.on('will-navigate', (event, url) => {
+    if (trusted(url)) return;
+    event.preventDefault();
+    if (isExternallyOpenable(url)) shell.openExternal(url);
+  });
+
+  // `<webview>` is a second renderer with its own settings and no reason to exist here.
+  mainWindow.webContents.on('will-attach-webview', (event) => event.preventDefault());
+
+  installContentSecurityPolicy(session);
 
   mainWindow.loadURL(appUrl());
+}
+
+/**
+ * Attach the Content-Security-Policy to WE's own documents.
+ *
+ * The policy itself lives in `navigationPolicy.js`, where it is tested. What is decided here is
+ * *which responses get it*: only WE's own main-frame documents.
+ *
+ * A CSP header governs the document it arrives on and everything that document loads, so setting it
+ * on every response in the session would impose WE's policy on Flux's page too — a policy written
+ * for a different app, breaking it in ways nobody would think to attribute to this file. An
+ * embedded app's own security headers stay its own.
+ */
+function installContentSecurityPolicy(session) {
+  const policy = contentSecurityPolicy({
+    dev: Boolean(process.env.VITE_DEV_SERVER_URL),
+    origins: trustedOrigins(policyOptions()),
+  });
+  const appOrigin = safeOrigin(appUrl());
+
+  session.webRequest.onHeadersReceived((details, callback) => {
+    const isOwnDocument = details.resourceType === 'mainFrame' && safeOrigin(details.url) === appOrigin;
+    if (!isOwnDocument) return callback({ responseHeaders: details.responseHeaders });
+
+    callback({ responseHeaders: { ...details.responseHeaders, 'Content-Security-Policy': [policy] } });
+  });
 }
 
 /**

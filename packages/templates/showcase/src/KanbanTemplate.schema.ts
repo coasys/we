@@ -190,7 +190,6 @@ const boardRoute: RouteSchema = {
               type: 'BlockRenderer',
               props: {
                 editorState: `$${as}.editorState`,
-                perspective: { $store: 'datasetStore.currentDataset.handle' },
               },
             },
             {

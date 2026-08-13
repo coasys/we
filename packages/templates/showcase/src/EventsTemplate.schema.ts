@@ -81,7 +81,6 @@ const eventCard: SchemaNode = {
       type: 'BlockRenderer',
       props: {
         editorState: '$event.editorState',
-        perspective: { $store: 'datasetStore.currentDataset.handle' },
       },
     },
     {

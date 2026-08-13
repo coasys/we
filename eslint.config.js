@@ -160,6 +160,9 @@ export default [
         __dirname: 'readonly',
         __filename: 'readonly',
         Buffer: 'readonly',
+        // Global in Node since 10 and in Electron's main process; it was simply missing.
+        URL: 'readonly',
+        URLSearchParams: 'readonly',
         module: 'readonly',
         require: 'readonly',
         setTimeout: 'readonly',

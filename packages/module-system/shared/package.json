@@ -1,12 +1,13 @@
 {
   "name": "@we/module-shared",
   "version": "0.1.0",
-  "description": "The feature-module contract — what a module declares, and what the host lends it",
+  "description": "The feature-module contract \u2014 what a module declares, and what the host lends it",
   "type": "module",
   "scripts": {
     "build:steps": "tsup",
     "build": "we-build",
-    "test": "vitest run"
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
   },
   "types": "dist/index.d.ts",
   "exports": {

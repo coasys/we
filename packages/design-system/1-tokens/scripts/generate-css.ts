@@ -347,16 +347,108 @@ export function generateZIndexCSS(zIndex: typeof zIndexTokens) {
   return css;
 }
 
-function generateCombinedCSS(outputDir: string) {
-  // The webfont fetches live in their own opt-in file: the token variables must
-  // work offline (local-first app), so the main entry makes no network requests.
-  // A host that wants the hosted faces imports '@we/tokens/css/fonts' alongside.
-  const fontsCSS = `/* @we/tokens webfonts — opt-in, network-fetching. Import alongside ./index.css. */
+/**
+ * Copy the woff2 files next to the stylesheet that names them.
+ *
+ * `fonts.css` refers to them relatively (`./fonts/dm-sans-latin.woff2`), so a bundler resolves them
+ * against the emitted stylesheet and serves them from the app's own origin — which is what lets the
+ * Electron host's CSP stay at `font-src 'self' data:` with no exception for a font CDN.
+ */
+function copyFontFiles(outputDir: string) {
+  const source = path.resolve(__dirname, '../src/fonts');
+  const target = path.join(outputDir, 'fonts');
+  if (!fs.existsSync(source)) return;
+  fs.mkdirSync(target, { recursive: true });
+  for (const file of fs.readdirSync(source)) {
+    fs.copyFileSync(path.join(source, file), path.join(target, file));
+  }
+}
 
-@import url('https://fonts.googleapis.com/css2?family=DM+Sans&display=swap');
-@import url('https://fonts.googleapis.com/css2?family=Mozilla+Text:wght@200..700&display=swap');
-@import url('https://fonts.googleapis.com/css2?family=Boldonse&family=Mozilla+Text:wght@200..700&display=swap');
+function generateCombinedCSS(outputDir: string) {
+  /*
+    The typefaces, carried rather than fetched.
+
+    These were three `@import url('https://fonts.googleapis.com/…')` lines, and the file's own
+    comment already knew why that was uncomfortable — "the token variables must work offline
+    (local-first app), so the main entry makes no network requests". The fonts were the exception,
+    and being opt-in did not make them optional: `@we/app-shell` imports this, so every WE user
+    fetched them, which meant every launch told Google who was starting the app and when.
+
+    It is also a correctness problem rather than only a privacy one. `DM Sans` is
+    `--we-font-family-base`, so a launch with no network — the ordinary case for a local-first
+    desktop app — rendered the entire interface in the fallback `sans-serif`.
+
+    Latin and Latin Extended subsets only, matching what Google served: about 92KB for all three,
+    against roughly 400KB for every subset including Cyrillic and Vietnamese. `unicode-range` is
+    kept verbatim so the browser still picks per character.
+
+    Licences: DM Sans (Colophon Foundry, Jonny Pinhorn) and Boldonse (Manuel Corradine) under the
+    SIL Open Font License 1.1; Mozilla Text (Mozilla) likewise.
+  */
+  const fontsCSS = `/* @we/tokens webfonts — vendored, no network. Import alongside ./index.css. */
+
+/* DM Sans — latin */
+@font-face {
+  font-family: 'DM Sans';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('./fonts/dm-sans-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+/* DM Sans — latin-ext */
+@font-face {
+  font-family: 'DM Sans';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('./fonts/dm-sans-latin-ext.woff2') format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+/* Mozilla Text — latin */
+@font-face {
+  font-family: 'Mozilla Text';
+  font-style: normal;
+  font-weight: 200 700;
+  font-display: swap;
+  src: url('./fonts/mozilla-text-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+/* Mozilla Text — latin-ext */
+@font-face {
+  font-family: 'Mozilla Text';
+  font-style: normal;
+  font-weight: 200 700;
+  font-display: swap;
+  src: url('./fonts/mozilla-text-latin-ext.woff2') format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+/* Boldonse — latin */
+@font-face {
+  font-family: 'Boldonse';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('./fonts/boldonse-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+/* Boldonse — latin-ext */
+@font-face {
+  font-family: 'Boldonse';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('./fonts/boldonse-latin-ext.woff2') format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
 `;
+  copyFontFiles(outputDir);
+
   fs.writeFileSync(path.join(outputDir, 'fonts.css'), fontsCSS);
 
   const indexCSS = `/* @we/tokens CSS variables - Main Entry Point */

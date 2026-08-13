@@ -103,7 +103,6 @@ const postCard = (opts: { clickable?: boolean }): SchemaNode => {
             type: 'BlockRenderer',
             props: {
               editorState: '$post.editorState',
-              perspective: { $store: 'datasetStore.currentDataset.handle' },
             },
           },
         ],
@@ -112,7 +111,6 @@ const postCard = (opts: { clickable?: boolean }): SchemaNode => {
         type: 'BlockRenderer',
         props: {
           editorState: '$post.editorState',
-          perspective: { $store: 'datasetStore.currentDataset.handle' },
         },
       };
 
@@ -267,7 +265,6 @@ const postDetail: RouteSchema = {
                       type: 'BlockRenderer',
                       props: {
                         editorState: `$${as}.editorState`,
-                        perspective: { $store: 'datasetStore.currentDataset.handle' },
                       },
                     },
                     signalRow(`$${as}`),

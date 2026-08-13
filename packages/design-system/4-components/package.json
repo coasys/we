@@ -8,14 +8,10 @@
   "scripts": {
     "build:steps": "tsup",
     "build": "we-build",
-    "test": "vitest run --passWithNoTests"
+    "test": "vitest run --passWithNoTests",
+    "typecheck": "tsc --noEmit"
   },
-  "types": "dist/index.d.ts",
   "exports": {
-    ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js"
-    },
     "./styles": {
       "import": "./dist/styles/index.css"
     },

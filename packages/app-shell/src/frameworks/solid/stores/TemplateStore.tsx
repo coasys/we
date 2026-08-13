@@ -20,6 +20,8 @@ import { updateSchema } from '@we/schema-solid';
 import { Accessor, createContext, createEffect, createSignal, ParentProps, useContext } from 'solid-js';
 import { createStore, reconcile } from 'solid-js/store';
 
+import { CHROME_TIER, SPACE_TIER } from '../../../shared/registries/templateSurface';
+import { acceptTemplate, describeAcceptance } from '../../../shared/templateAcceptance';
 import { type AppDataset, useDatasetStore } from './DatasetStore';
 import { useRouteStore } from './RouteStore';
 import { useSessionStore } from './SessionStore';
@@ -201,7 +203,19 @@ export function TemplateStoreProvider(props: ParentProps) {
 
         // The schema field stores a StoredTemplate { schema, sections }
         const stored = decoded as unknown as StoredTemplate;
-        const schema = 'schema' in stored && stored.schema ? stored.schema : (stored as unknown as TemplateSchema);
+        const raw = 'schema' in stored && stored.schema ? stored.schema : (stored as unknown as TemplateSchema);
+
+        // Your own installed templates, at the chrome tier — this is the agent's own library, and
+        // one of these may legitimately be a chrome template. Checked all the same: a template
+        // installed six months ago from a marketplace is not more trustworthy for having aged, and
+        // a structurally broken one blanks the app just as thoroughly.
+        const accepted = acceptTemplate(raw, { origin: 'your library', grants: CHROME_TIER });
+        if (!accepted.schema) {
+          console.warn(describeAcceptance(accepted, 'your library').join('\n'));
+          continue;
+        }
+        if (accepted.blocked.length) console.warn(describeAcceptance(accepted, 'your library').join('\n'));
+        const schema = accepted.schema;
         // Prefer the ID embedded in the schema (set during save) over deriving from name
         const templateId = schema.id || template.name?.toLowerCase().replace(/\s+/g, '-') || template.id;
 
@@ -272,7 +286,19 @@ export function TemplateStoreProvider(props: ParentProps) {
         const decoded = decodeFileAsJson(template.schema);
         if (!decoded || typeof decoded !== 'object') continue;
         const stored = decoded as unknown as StoredTemplate;
-        const schema = 'schema' in stored && stored.schema ? stored.schema : (stored as unknown as TemplateSchema);
+        const raw = 'schema' in stored && stored.schema ? stored.schema : (stored as unknown as TemplateSchema);
+
+        // The untrusted route, and the one nobody opted into: a shared space's templates arrive
+        // with the space, so merely visiting is enough to render one. Space tier, and a refusal
+        // skips the template rather than the space.
+        const origin = `space "${dataset.name ?? dataset.id}"`;
+        const accepted = acceptTemplate(raw, { origin, grants: SPACE_TIER });
+        if (!accepted.schema) {
+          console.warn(describeAcceptance(accepted, origin).join('\n'));
+          continue;
+        }
+        if (accepted.blocked.length) console.warn(describeAcceptance(accepted, origin).join('\n'));
+        const schema = accepted.schema;
         const templateId = schema.id || template.name?.toLowerCase().replace(/\s+/g, '-') || template.id;
 
         schemas.push({ ...schema, id: templateId, _fromSpace: true });
@@ -601,17 +627,24 @@ export function TemplateStoreProvider(props: ParentProps) {
     const template = savedTemplateMap.get(templateId)!;
 
     setOperationLoading(`install:${templateId}`);
-    const prefs = datasetStore.agentSettings();
-    if (prefs) {
-      await prefs.addInstalledTemplates(template).catch(() => {});
-    }
+    try {
+      const prefs = datasetStore.agentSettings();
+      // `.catch(() => {})` swallowed the only write this function makes, so the sidebar gained a
+      // template that the next boot would not have — the state moved and the record did not.
+      if (prefs) await prefs.addInstalledTemplates(template);
 
-    setInstalledIds((prev) => {
-      const next = new Set(prev);
-      next.add(templateId);
-      return next;
-    });
-    setOperationLoading(null);
+      setInstalledIds((prev) => {
+        const next = new Set(prev);
+        next.add(templateId);
+        return next;
+      });
+    } catch (error) {
+      console.error('TemplateStore: installTemplate error', error);
+      toastService.error('Could not install this template.');
+      throw error;
+    } finally {
+      setOperationLoading(null);
+    }
   }
 
   /** Remove a template from the installed set (hidden from sidebar, not deleted) */
@@ -620,17 +653,22 @@ export function TemplateStoreProvider(props: ParentProps) {
     const template = savedTemplateMap.get(templateId)!;
 
     setOperationLoading(`uninstall:${templateId}`);
-    const prefs = datasetStore.agentSettings();
-    if (prefs) {
-      await prefs.removeInstalledTemplates(template).catch(() => {});
-    }
+    try {
+      const prefs = datasetStore.agentSettings();
+      if (prefs) await prefs.removeInstalledTemplates(template);
 
-    setInstalledIds((prev) => {
-      const next = new Set(prev);
-      next.delete(templateId);
-      return next;
-    });
-    setOperationLoading(null);
+      setInstalledIds((prev) => {
+        const next = new Set(prev);
+        next.delete(templateId);
+        return next;
+      });
+    } catch (error) {
+      console.error('TemplateStore: uninstallTemplate error', error);
+      toastService.error('Could not uninstall this template.');
+      throw error;
+    } finally {
+      setOperationLoading(null);
+    }
   }
 
   /** Fetch a template from the marketplace perspective and save it to the user's root perspective */
@@ -659,7 +697,22 @@ export function TemplateStoreProvider(props: ParentProps) {
       }
 
       const stored = decoded as unknown as StoredTemplate;
-      const schema = 'schema' in stored && stored.schema ? stored.schema : (stored as unknown as TemplateSchema);
+      const raw = 'schema' in stored && stored.schema ? stored.schema : (stored as unknown as TemplateSchema);
+
+      // A deliberate install, so a refusal is worth a toast rather than a console line — the user
+      // pressed a button and is owed an answer. Space tier: a marketplace template is a stranger's,
+      // whatever it says about itself, and the tier is what makes it safe to press the button.
+      const accepted = acceptTemplate(raw, { origin: 'the marketplace', grants: SPACE_TIER });
+      if (!accepted.schema) {
+        console.warn(describeAcceptance(accepted, 'the marketplace').join('\n'));
+        toastService.error('That template is not a valid schema and was not installed');
+        return;
+      }
+      if (accepted.blocked.length) {
+        console.warn(describeAcceptance(accepted, 'the marketplace').join('\n'));
+        toastService.warning('Installed, but parts of this template are not allowed to run here');
+      }
+      const schema = accepted.schema;
       const templateId =
         schema.id || marketplaceTemplate.name?.toLowerCase().replace(/\s+/g, '-') || marketplaceTemplateId;
       const newVersion = marketplaceTemplate.version || 1;
@@ -745,7 +798,22 @@ export function TemplateStoreProvider(props: ParentProps) {
       }
 
       const stored = decoded as unknown as StoredTemplate;
-      const schema = 'schema' in stored && stored.schema ? stored.schema : (stored as unknown as TemplateSchema);
+      const raw = 'schema' in stored && stored.schema ? stored.schema : (stored as unknown as TemplateSchema);
+
+      // A deliberate install, so a refusal is worth a toast rather than a console line — the user
+      // pressed a button and is owed an answer. Space tier: a marketplace template is a stranger's,
+      // whatever it says about itself, and the tier is what makes it safe to press the button.
+      const accepted = acceptTemplate(raw, { origin: 'the marketplace', grants: SPACE_TIER });
+      if (!accepted.schema) {
+        console.warn(describeAcceptance(accepted, 'the marketplace').join('\n'));
+        toastService.error('That template is not a valid schema and was not installed');
+        return;
+      }
+      if (accepted.blocked.length) {
+        console.warn(describeAcceptance(accepted, 'the marketplace').join('\n'));
+        toastService.warning('Installed, but parts of this template are not allowed to run here');
+      }
+      const schema = accepted.schema;
       const templateId =
         schema.id || marketplaceTemplate.name?.toLowerCase().replace(/\s+/g, '-') || marketplaceTemplateId;
       const schemaToInstall: TemplateSchema = { ...deepClone(schema), id: templateId };

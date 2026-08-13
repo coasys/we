@@ -19,7 +19,8 @@
     "electron:dev": "node scripts/ensure-electron.cjs && concurrently \"vite\" \"wait-on http://localhost:3002 && VITE_DEV_SERVER_URL=http://localhost:3002 electron electron/main.js\"",
     "preelectron:build": "node scripts/generate-seed-config.cjs",
     "electron:build": "vite build && electron-builder --config electron-builder.config.js",
-    "test": "vitest run"
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
   },
   "main": "electron/main.js",
   "dependencies": {

@@ -85,7 +85,6 @@ export function composerModal(opts: ComposerModalOptions): SchemaNode {
                 type: 'BlockComposer',
                 props: {
                   ...(opts.editorState !== undefined && { editorState: opts.editorState }),
-                  perspective: { $store: 'datasetStore.currentDataset.handle' },
                   onReady: { $setLocal: 'savePost', from: '$event.save' },
                   onSave: [
                     { $setLocal: 'submitting', value: true },

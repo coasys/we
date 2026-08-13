@@ -17,6 +17,13 @@ const SOLID_TESTS = [
   'tests/profileStore.test.tsx',
   'tests/routeStore.test.tsx',
   'tests/shellRouteStore.test.tsx',
+  // Not a component test, but it drives real `we-iframe` elements with shadow roots and real
+  // `MessageEvent`s — the DOM is what is under test.
+  'tests/appBridge.test.ts',
+  'tests/templateBoundary.test.tsx',
+  // Imports the shell's own schemas, which reach Solid modules that refuse to load outside a
+  // browser environment. Nothing here renders — the DOM is a condition of the import, not the test.
+  'tests/tierFit.test.ts',
 ];
 
 export default defineConfig({
@@ -25,14 +32,17 @@ export default defineConfig({
       provider: 'v8',
       reporter: ['text', 'lcov'],
       reportsDirectory: './.coverage',
-      exclude: [
-        '**/node_modules/**',
-        'tests/**',
-        'src/**/index.ts',
-        'src/frameworks/**',
-        'src/seed/cli.ts',
-        'src/seed/examples.ts',
-      ],
+      exclude: ['**/node_modules/**', 'tests/**', 'src/**/index.ts', 'src/seed/cli.ts', 'src/seed/examples.ts'],
+      /*
+        `src/frameworks/**` used to be excluded — all 9,380 lines of the stores, the largest and
+        least-covered part of the biggest package in the repo. Every coverage number the project
+        produced was therefore measured over its safe half, which is precisely why the store gap
+        stayed invisible while the figure looked respectable.
+
+        Included now, with no threshold attached. A number nobody can see is not a gate, and a gate
+        set to today's number is a gate that only ever ratchets by accident; the first honest reading
+        is the input to deciding what to test, which is what the audit's P4-2 asks for.
+      */
     },
     projects: [
       {

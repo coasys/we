@@ -30,9 +30,11 @@ import {
 import { schemaMutationActions } from '@shared/schemas/shell/tests/SchemaMutations.actions';
 import { createTestStore } from '@shared/schemas/shell/tests/testStore';
 import { deepClone } from '@shared/utils';
+import { TemplateBoundary } from '@solid/components/TemplateBoundary';
 import { componentRegistry as registry } from '@solid/registries/componentRegistry';
 import type { RouteStore } from '@solid/stores/RouteStore';
 import { ShellRouterRoot, ShellRouteStoreProvider, useShellRouteStore } from '@solid/stores/ShellRouteStore';
+import { THEME_SCOPE_ATTRIBUTE } from '@solid/stores/ThemeStore';
 import type { Stores } from '@solid/types';
 import { MemoryRouter, Route, useLocation, useNavigate } from '@solidjs/router';
 import { Column } from '@we/components/solid';
@@ -151,10 +153,25 @@ const shellViews: Record<string, ShellViewEntry> = {
 // Shell overlay inner — rendered inside ShellRouteStoreProvider + MemoryRouter
 // ---------------------------------------------------------------------------
 
-function ShellOverlayInner({ stores, view }: { stores: Stores; view: ShellViewEntry }) {
+function ShellOverlayInner({
+  stores,
+  chromeStores,
+  view,
+}: {
+  /** The host's own handle. A view's store factory is host code and reads wiring through it. */
+  stores: Stores;
+  /** What the overlay's schema renders against — chrome tier, because these views are chrome. */
+  chromeStores: Stores;
+  view: ShellViewEntry;
+}) {
   const shellRouteStore = useShellRouteStore();
+  // Shell views name themes too — the schema-tests page demonstrates a scoped `cyberpunk` section —
+  // and they are mounted on demand, so the template's own pass never sees them.
+  stores.themeStore.requestNamedThemes(view.schema);
+  // Built from the raw stores (the schema-tests view reaches for `testDataset` and `backendPorts`,
+  // both host wiring), then merged into the *chrome* bag, which is what actually gets rendered.
   const { $schema: reactiveSchema, ...storeEntries } = view.stores?.(stores, shellRouteStore) ?? {};
-  const shellStores: Stores = { ...stores, routeStore: shellRouteStore, ...(storeEntries as Partial<Stores>) };
+  const shellStores: Stores = { ...chromeStores, routeStore: shellRouteStore, ...(storeEntries as Partial<Stores>) };
   const schema = reactiveSchema ?? view.schema;
 
   return (
@@ -175,8 +192,21 @@ function ShellOverlayInner({ stores, view }: { stores: Stores; view: ShellViewEn
 // TemplateLayout — mounted as root prop of the main <Router>
 // ---------------------------------------------------------------------------
 
-export function TemplateLayout(props: ParentProps & { stores: Stores }) {
-  const { stores } = props;
+export function TemplateLayout(
+  props: ParentProps & {
+    /** The space template's bag. This layout renders that template. */
+    stores: Stores;
+    /** The chrome bag, for the shell overlays this layout also mounts. */
+    chromeStores: Stores;
+    /** The host's own handle, for this layout's own wiring and layout arithmetic. */
+    hostStores: Stores;
+  },
+) {
+  // `stores` is the *template* bag and is used for exactly one thing: rendering the template.
+  // Everything else here — route wiring, panel geometry, theme resolution — is host work and reads
+  // `host`, which still has the members a bag deliberately withholds.
+  const stores = props.hostStores;
+  const templateStores = props.stores;
 
   // Wire useNavigate/useLocation (available here because we're inside <Router>) into routeStore
   const navigate = useNavigate();
@@ -282,16 +312,39 @@ export function TemplateLayout(props: ParentProps & { stores: Stores }) {
           // viewport. Defaults to `neutral-50`, exactly what was here.
           bg="page"
           data-we-theme={spaceThemeName()}
+          // The boundary a scoped theme's CSS is confined to — see THEME_SCOPE_ATTRIBUTE. Always
+          // present, not conditional on there being a scoped theme: it marks where the edge of the
+          // template content is, which is true whether or not anything is currently scoped to it.
+          {...{ [THEME_SCOPE_ATTRIBUTE]: '' }}
           styles={spaceThemeStyle()}
         >
-          <Show when={stores.templateStore.currentTemplate.id || 'empty'} keyed>
-            <RenderSchema
-              node={stores.templateStore.currentTemplate}
-              stores={stores}
-              registry={registry}
-              children={props.children}
-            />
-          </Show>
+          {/*
+            The boundary that matters most, and note what is *outside* it: the sidebar, the shell
+            overlays and the template switcher. A template that throws becomes a panel with a
+            message in it, and the app is still an app — the user can switch template, leave the
+            space, or open settings. Without this, Solid unmounts the whole tree on any uncaught
+            throw, so somebody else's template blanked the window and took the way out with it.
+          */}
+          <TemplateBoundary
+            what="this space's template"
+            action={
+              <we-button
+                variant="ghost"
+                onClick={() => props.hostStores.shellStore.openShellView('settings', '/appearance')}
+              >
+                Choose another template
+              </we-button>
+            }
+          >
+            <Show when={stores.templateStore.currentTemplate.id || 'empty'} keyed>
+              <RenderSchema
+                node={stores.templateStore.currentTemplate}
+                stores={templateStores}
+                registry={registry}
+                children={props.children}
+              />
+            </Show>
+          </TemplateBoundary>
         </Column>
 
         {/* Code / visual editor overlay — sits above template (z:5), below shell (z:11).
@@ -321,9 +374,19 @@ export function TemplateLayout(props: ParentProps & { stores: Stores }) {
                 // affects any shell view with variable-length content.
                 scrollbarGutter="stable"
               >
-                <ShellRouteStoreProvider>
-                  <ShellOverlayInner stores={stores} view={view} />
-                </ShellRouteStoreProvider>
+                {/* A fault in settings or the marketplace must not take the space behind it down. */}
+                <TemplateBoundary
+                  what={shellViewId}
+                  action={
+                    <we-button variant="ghost" onClick={() => stores.shellStore.closeShellView()}>
+                      Close
+                    </we-button>
+                  }
+                >
+                  <ShellRouteStoreProvider>
+                    <ShellOverlayInner stores={stores} chromeStores={props.chromeStores} view={view} />
+                  </ShellRouteStoreProvider>
+                </TemplateBoundary>
               </Column>
             );
           }}
