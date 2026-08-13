@@ -144,14 +144,19 @@ jobs:
       # `--porcelain` covers modified, deleted and untracked in one check, and cannot go out of date.
       - name: Check generated files are committed
         run: |
-          # `package.json` and the lockfile are excluded because *this workflow* rewrites them a few
-          # steps up, pointing the AD4M overrides at the locally built copies. Everything else in the
-          # tree is fair game — which is the point, and why this cannot go stale the way the old list did.
-          DRIFT="$(git status --porcelain -- . ':(exclude)package.json' ':(exclude)pnpm-lock.yaml')"
+          # Three exclusions, all of them things *this workflow* put there: `package.json` and the
+          # lockfile are rewritten a few steps up to point the AD4M overrides at the locally built
+          # copies, and `ad4m/` is the source clone itself, which is untracked by design. Everything
+          # else in the tree is fair game — which is the point, and why this cannot go stale the way
+          # the old list did.
+          EXCLUDES=(':(exclude)package.json' ':(exclude)pnpm-lock.yaml' ':(exclude)ad4m')
+          DRIFT="$(git status --porcelain -- . "${EXCLUDES[@]}")"
           if [ -n "$DRIFT" ]; then
             echo '::error::The build changed tracked files — run `pnpm build` and commit the regenerated output.'
             echo "$DRIFT"
-            git diff --stat
+            # Same exclusions as the check — otherwise the diff prints the workflow's own
+            # package.json/lockfile rewrite underneath the real finding and reads as the cause.
+            git diff --stat -- . "${EXCLUDES[@]}"
             exit 1
           fi
 
