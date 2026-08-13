@@ -153,3 +153,41 @@ export function contentSecurityPolicy({ dev = false, origins = [] } = {}) {
     "form-action 'self'",
   ].join('; ');
 }
+
+/** Permissions the app may hold: the camera, the microphone, the screen. Nothing else. */
+export const MEDIA_PERMISSIONS = ['media', 'camera', 'microphone', 'display-capture', 'mediaKeySystem'];
+
+/**
+ * Which origin a permission request is really coming from.
+ *
+ * Electron offers up to three answers and which are populated depends on the permission, the
+ * Electron version, and whether the frame is the main one — `securityOrigin` for media,
+ * `requestingUrl` generally, and the WebContents' own URL as a last resort. Taking the first
+ * *non-empty* one matters: `??` alone would accept an empty string and then judge it, and an empty
+ * origin is refused by every check here.
+ */
+export function permissionOrigin(details, webContentsUrl) {
+  const candidates = [details?.securityOrigin, details?.requestingUrl, webContentsUrl];
+  return candidates.find((value) => typeof value === 'string' && value.length > 0) ?? null;
+}
+
+/**
+ * Whether to grant a media permission.
+ *
+ * The origin check is what stops a page embedded from a post turning on the camera — `we-iframe`
+ * renders arbitrary embed URLs, and a permission granted to the window is granted to every frame in
+ * it. Everything outside `MEDIA_PERMISSIONS` is refused outright, so notifications, geolocation, MIDI
+ * and whatever Chromium adds next are denied by omission rather than by an ever-growing blocklist.
+ *
+ * The `isMainFrame` fallback is the part worth explaining. Chromium does not always attribute a
+ * permission *check* to a frame — `webContents` may be null and the origin empty — and refusing
+ * those outright means the app's own camera silently stops working with nothing logged, which is a
+ * worse failure than the one being prevented. The main frame is WE by construction: `will-navigate`
+ * forbids it becoming anything else, so an unattributed check there is ours. An unattributed
+ * *subframe* is still refused, which is where an embed would be.
+ */
+export function allowMediaPermission({ permission, origin, isMainFrame, origins }) {
+  if (!MEDIA_PERMISSIONS.includes(permission)) return false;
+  if (origin) return isTrusted(origin, origins);
+  return isMainFrame === true;
+}

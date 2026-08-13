@@ -12,9 +12,12 @@ import { v4 as uuidv4 } from 'uuid';
 
 import { createAccountRegistry, expandHome } from './accounts.js';
 import {
+  allowMediaPermission,
   contentSecurityPolicy,
   isExternallyOpenable,
   isTrusted,
+  MEDIA_PERMISSIONS,
+  permissionOrigin,
   safeOrigin,
   trustedOrigins,
 } from './navigationPolicy.js';
@@ -451,21 +454,32 @@ function createWindow() {
     Camera, microphone and screen capture — for the app and its embedded apps, not for a page
     somebody linked in a post.
 
-    The origin check is the part that was missing. `we-iframe` renders arbitrary embed URLs, and a
-    permission granted to the window was granted to every frame in it, so a page in a post could
-    turn on the camera. Everything else is still refused outright: notifications, geolocation, MIDI,
-    and whatever permission Chromium adds next, since the list is what is allowed rather than what
-    is denied.
+    The decision and its reasoning live in `navigationPolicy.js`, where they are tested. What is
+    here is the wiring, and one thing the wiring owes: **a refusal says so.** Electron consults these
+    handlers silently, and the app's own error path for a denied camera is a fallback to audio-only
+    — so a wrong answer here surfaced as "no video, no errors", which is a bug report nobody can act
+    on. It is exactly the shape this audit spent its P2 section removing.
   */
-  const MEDIA_PERMISSIONS = ['media', 'camera', 'microphone', 'display-capture', 'mediaKeySystem'];
+  const decideMedia = (permission, details, webContentsUrl) => {
+    const origin = permissionOrigin(details, webContentsUrl);
+    const allowed = allowMediaPermission({
+      permission,
+      origin,
+      isMainFrame: details?.isMainFrame,
+      origins: trustedOrigins(policyOptions()),
+    });
+    if (!allowed && MEDIA_PERMISSIONS.includes(permission)) {
+      console.warn(`[we] refused ${permission} to ${origin ?? 'a frame with no identifiable origin'}`);
+    }
+    return allowed;
+  };
 
   session.setPermissionRequestHandler((webContents, permission, callback, details) => {
-    const origin = details?.requestingUrl ?? webContents?.getURL();
-    callback(MEDIA_PERMISSIONS.includes(permission) && trusted(origin));
+    callback(decideMedia(permission, details, webContents?.getURL()));
   });
 
-  session.setPermissionCheckHandler((webContents, permission, requestingOrigin) => {
-    return MEDIA_PERMISSIONS.includes(permission) && trusted(requestingOrigin || webContents?.getURL());
+  session.setPermissionCheckHandler((webContents, permission, requestingOrigin, details) => {
+    return decideMedia(permission, { requestingUrl: requestingOrigin, ...details }, webContents?.getURL());
   });
 
   /*

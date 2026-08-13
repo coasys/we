@@ -9,9 +9,11 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  allowMediaPermission,
   contentSecurityPolicy,
   isExternallyOpenable,
   isTrusted,
+  permissionOrigin,
   safeOrigin,
   trustedOrigins,
 } from './navigationPolicy.js';
@@ -167,5 +169,62 @@ describe('safeOrigin', () => {
     expect(safeOrigin('')).toBeNull();
     expect(safeOrigin(undefined)).toBeNull();
     expect(safeOrigin('https://a.example/b?c#d')).toBe('https://a.example');
+  });
+});
+
+describe('media permissions', () => {
+  const origins = trustedOrigins({ appUrl: 'http://localhost:9080', seedPorts: { flux: 8080 } });
+  const decide = (over) =>
+    allowMediaPermission({ permission: 'media', origin: null, isMainFrame: false, origins, ...over });
+
+  it('grants the camera to the app', () => {
+    expect(decide({ origin: 'http://localhost:9080/space/abc' })).toBe(true);
+  });
+
+  it('grants it to a registered embedded app', () => {
+    expect(decide({ origin: 'http://localhost:8080/' })).toBe(true);
+  });
+
+  it('refuses a page embedded from a post', () => {
+    // The finding: a permission granted to the window is granted to every frame in it, and
+    // `we-iframe` renders arbitrary embed URLs out of post content.
+    expect(decide({ origin: 'https://attacker.example/' })).toBe(false);
+    expect(decide({ origin: 'https://attacker.example/', isMainFrame: true })).toBe(false);
+  });
+
+  it('refuses everything that is not camera, microphone or screen', () => {
+    for (const permission of ['notifications', 'geolocation', 'midi', 'clipboard-read', 'something-new']) {
+      expect(decide({ permission, origin: 'http://localhost:9080/' })).toBe(false);
+    }
+  });
+
+  it('grants an unattributable check on the main frame, and refuses one in a subframe', () => {
+    /*
+      Chromium does not always attribute a permission *check* to a frame: `webContents` can be null
+      and the origin empty. Refusing those outright means the app's own camera stops working with
+      nothing logged — a worse failure than the one being prevented — and the main frame is WE by
+      construction, since `will-navigate` forbids it becoming anything else. A subframe with no
+      origin is still refused, because that is where an embed would be.
+    */
+    expect(decide({ origin: null, isMainFrame: true })).toBe(true);
+    expect(decide({ origin: null, isMainFrame: false })).toBe(false);
+    expect(decide({ origin: null, isMainFrame: undefined })).toBe(false);
+  });
+});
+
+describe('which origin a permission request is attributed to', () => {
+  it('prefers the most specific answer Electron gives', () => {
+    expect(permissionOrigin({ securityOrigin: 'https://a.example', requestingUrl: 'https://b.example' })).toBe(
+      'https://a.example',
+    );
+    expect(permissionOrigin({ requestingUrl: 'https://b.example' }, 'https://c.example')).toBe('https://b.example');
+    expect(permissionOrigin({}, 'https://c.example')).toBe('https://c.example');
+  });
+
+  it('skips empty strings rather than judging them', () => {
+    // `??` alone would accept '' and then refuse it — which is how a working camera turns off.
+    expect(permissionOrigin({ securityOrigin: '', requestingUrl: '' }, 'https://c.example')).toBe('https://c.example');
+    expect(permissionOrigin({}, '')).toBeNull();
+    expect(permissionOrigin(undefined, undefined)).toBeNull();
   });
 });
