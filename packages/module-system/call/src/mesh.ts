@@ -85,6 +85,20 @@ interface PeerSlot {
   makingOffer: boolean;
   ignoreOffer: boolean;
   stream: MediaStream;
+  /**
+   * The sender carrying each kind, remembered rather than looked up.
+   *
+   * `getSenders().find((s) => s.track?.kind === kind)` cannot find a sender whose track is `null`,
+   * and a sender's track *is* null for the whole time this agent is sending nothing of that kind —
+   * which is precisely what `replaceTrack(null)` leaves behind when a screen share stops with no
+   * camera to fall back to.
+   *
+   * The consequence was not a missing frame, it was a permanent one. Sharing again found no sender,
+   * took the `addTrack` branch, and gave the peer a *second* video track; their `<video>` renders
+   * the first one in the stream, which is the dead one. Their view froze on the last shared frame
+   * and never recovered, for the rest of the call.
+   */
+  senders: Map<'audio' | 'video', RTCRtpSender>;
 }
 
 export function createCallMesh(options: CallMeshOptions): CallMesh {
@@ -135,6 +149,7 @@ export function createCallMesh(options: CallMeshOptions): CallMesh {
       makingOffer: false,
       ignoreOffer: false,
       stream: new MediaStream(),
+      senders: new Map(),
     };
     slots.set(peerId, slot);
 
@@ -174,10 +189,10 @@ export function createCallMesh(options: CallMeshOptions): CallMesh {
 
     // Send whatever we are already sending. A peer joining mid-call must receive our media without
     // waiting for us to toggle something.
-    for (const [, track] of outbound) {
+    for (const [kind, track] of outbound) {
       if (!track) continue;
       try {
-        pc.addTrack(track, outboundStream);
+        slot.senders.set(kind, pc.addTrack(track, outboundStream));
       } catch (error) {
         fail(`adding track for ${peerId}`, error);
       }
@@ -318,14 +333,16 @@ export function createCallMesh(options: CallMeshOptions): CallMesh {
       await Promise.all(
         [...slots.entries()].map(async ([peerId, slot]) => {
           try {
-            const sender = slot.pc.getSenders().find((s) => s.track?.kind === kind);
+            // The remembered sender, not one found by its current track — see `PeerSlot.senders`.
+            const sender = slot.senders.get(kind);
             if (sender) {
-              // Does not renegotiate — this is why camera↔screen switching is instant.
+              // Does not renegotiate — this is why camera↔screen switching is instant, and why
+              // resuming a share the peer already has a transceiver for needs no handshake at all.
               await sender.replaceTrack(track);
             } else if (track) {
               // First track of this kind: adding a sender *does* fire `negotiationneeded`, which
               // perfect negotiation above resolves.
-              slot.pc.addTrack(track, new MediaStream([track]));
+              slot.senders.set(kind, slot.pc.addTrack(track, outboundStream));
             }
           } catch (error) {
             fail(`setting ${kind} track for ${peerId}`, error);

@@ -481,6 +481,19 @@ export function createCallStore(deps: CallStoreDeps) {
     rebuildTiles();
 
     await controller.start();
+
+    /*
+      Say why there is no picture, rather than showing an avatar and leaving them to guess.
+
+      `problem` is a dismissible alert over the call, not a replacement for it — which is the right
+      shape here: a blocked camera does not stop you watching and hearing everyone else, so the call
+      carries on and the reason is stated once. Checked on the stream rather than on an error,
+      because a refused camera that fell back to audio is a different outcome from a refused
+      *request*, and only the second one leaves nothing at all.
+    */
+    if (!controller.localStream()) {
+      setProblem("WE could not reach your camera or microphone. Check this site's permissions in your browser.");
+    }
   }
 
   // Reconcile the mesh against the roster. This is the whole membership mechanism — see mesh.ts.

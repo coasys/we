@@ -149,7 +149,24 @@ export function createMediaController(options: MediaControllerOptions = {}): Med
           if (!claim(acquired)) return;
           state.videoEnabled = false;
         } catch (audioError) {
+          /*
+            Nothing was acquired — and saying so is the whole of this branch.
+
+            Denying the prompt denies the *request*, so the audio-only retry is refused too without
+            prompting again. This used to return here, leaving `state` claiming `videoEnabled: true`
+            and never calling `emitState()`. Both consequences were visible and neither was
+            recoverable: the self tile had already been built with "wants a picture, has none" and so
+            sat on **Connecting…** for the rest of the call, and `publishActivity` had already told
+            every peer `videoEnabled: true`, so their tile for this agent sat on it too.
+
+            The state is corrected to what is true — nothing is being sent — and emitted, which is
+            what republishes presence and rebuilds the tiles.
+          */
           options.onError?.('acquiring microphone', audioError);
+          if (mine !== generation) return;
+          state.videoEnabled = false;
+          state.audioEnabled = false;
+          emitState();
           return;
         }
       }

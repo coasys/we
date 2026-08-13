@@ -213,6 +213,58 @@ describe('media controller', () => {
   });
 });
 
+describe('when no device can be acquired at all', () => {
+  /*
+    Denying the prompt denies the *request*, so the audio-only retry is refused too without
+    prompting again — this is the ordinary outcome of clicking Block, not an exotic one.
+
+    It used to return without emitting, which left two things stuck and neither recoverable: the
+    self tile had already been built as "wants a picture, has none" and sat on **Connecting…** for
+    the rest of the call, and presence had already published `videoEnabled: true`, so every peer's
+    tile for this agent sat on it too. Both were reported from real testing.
+  */
+  const denied = () =>
+    setup({
+      getUserMedia: vi.fn(async () => {
+        throw new Error('NotAllowedError');
+      }),
+    });
+
+  it('says that nothing is being sent, rather than saying nothing', async () => {
+    const { controller, states } = denied();
+    await controller.start();
+
+    expect(controller.localStream()).toBeNull();
+    expect(states.at(-1)).toEqual({ audioEnabled: false, videoEnabled: false, screenShareEnabled: false });
+  });
+
+  it('reports both failures, so the reason is in the log', async () => {
+    const { controller, errors } = denied();
+    await controller.start();
+
+    expect(errors).toEqual(['acquiring camera and microphone', 'acquiring microphone']);
+  });
+
+  it('publishes no track, since there is none', async () => {
+    const { controller, tracks } = denied();
+    await controller.start();
+
+    expect(tracks).toEqual([]);
+  });
+
+  it('does not overwrite the state of whatever cancelled it', async () => {
+    // `stop()` emits once itself; what must not follow is the failure state, which would report a
+    // muted microphone for a controller that has already been torn down and may be starting again.
+    const { controller, states } = denied();
+    const starting = controller.start();
+    controller.stop();
+    await starting;
+
+    expect(states).toHaveLength(1);
+    expect(states[0].audioEnabled).toBe(true);
+  });
+});
+
 describe('acquisition cancelled mid-prompt', () => {
   /**
    * `getUserMedia` sits behind a permission prompt, so it can be outstanding for as long as the user

@@ -241,6 +241,46 @@ describe('call mesh', () => {
     expect(alice.connections[0].getSenders()[0].track).toBe(screen);
   });
 
+  it('reuses the sender after the outbound track is cleared, rather than adding a second one', async () => {
+    /*
+      The frozen-screen bug, in three calls.
+
+      Stopping a share from the browser's own "Stop sharing" bar with no camera to fall back to
+      publishes `null`, which becomes `replaceTrack(null)` — and a sender whose track is null cannot
+      be found by `getSenders().find((s) => s.track?.kind === 'video')`. Sharing again therefore took
+      the `addTrack` branch and gave the peer a *second* video track. Their `<video>` renders the
+      first one in the stream, which is the dead one, so their view stayed frozen on the last shared
+      frame for the rest of the call — restarting the share did not recover it.
+    */
+    const alice = makeMesh(bus, dataset, 'did:alice', callId);
+    alice.mesh.setRoster(['did:alice', 'did:bob']);
+    await settle();
+
+    const screen = { kind: 'video' } as MediaStreamTrack;
+    const screenAgain = { kind: 'video' } as MediaStreamTrack;
+
+    await alice.mesh.setOutboundTrack('video', screen);
+    await alice.mesh.setOutboundTrack('video', null);
+    await alice.mesh.setOutboundTrack('video', screenAgain);
+
+    // One `addTrack` for the whole sequence: the second share reuses the transceiver the peer
+    // already has, so it needs no renegotiation and their existing tile simply resumes.
+    expect(alice.connections[0].addedTracks).toEqual([screen]);
+    expect(alice.connections[0].getSenders()).toHaveLength(1);
+    expect(alice.connections[0].getSenders()[0].track).toBe(screenAgain);
+  });
+
+  it('stops sending when the outbound track is cleared', async () => {
+    const alice = makeMesh(bus, dataset, 'did:alice', callId);
+    alice.mesh.setRoster(['did:alice', 'did:bob']);
+    await settle();
+
+    await alice.mesh.setOutboundTrack('video', { kind: 'video' } as MediaStreamTrack);
+    await alice.mesh.setOutboundTrack('video', null);
+
+    expect(alice.connections[0].getSenders()[0].track).toBeNull();
+  });
+
   it('sends a peer joining mid-call the media already being sent', async () => {
     const alice = makeMesh(bus, dataset, 'did:alice', callId);
     alice.mesh.setRoster(['did:alice']);
