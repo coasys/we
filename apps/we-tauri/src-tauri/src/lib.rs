@@ -14,6 +14,7 @@ use app_state::AppState;
 use rust_executor::utils::find_port;
 use rust_executor::Ad4mConfig;
 use std::path::PathBuf;
+use tauri::Manager;
 use uuid::Uuid;
 
 /// The seed's data path — the deployment default, and the account the registry seeds itself with.
@@ -69,7 +70,6 @@ fn resolve_ad4m_data_path(registry: &AccountRegistry, home: &std::path::Path) ->
 /// privacy settings and need nothing here.
 #[cfg(target_os = "linux")]
 fn enable_media(app: &tauri::App) {
-    use tauri::Manager;
     use webkit2gtk::glib::object::Cast;
     use webkit2gtk::{PermissionRequestExt, SettingsExt, UserMediaPermissionRequest, WebViewExt};
 
