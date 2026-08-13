@@ -553,3 +553,130 @@ describe('a backend that cannot transcribe', () => {
     expect(h.store.status()).not.toBe('no-backend');
   });
 });
+
+/**
+ * Turning a transcript into records.
+ *
+ * The pass itself is an LLM call and is not what breaks. What breaks is everything around it: which
+ * collection gets read, whether the last sentence made it in, and whether a slow pass leaves the
+ * button looking dead. Each of those fails quietly.
+ */
+describe('extraction', () => {
+  let inCall: Peer[];
+
+  beforeEach(() => {
+    inCall = [peer(ME, { type: 'call', id: 'space:uri' })];
+  });
+
+  /** The host's half of the contract, recorded so a test can see what was asked of it. */
+  function interpreter(
+    result: { ids: string[]; proposed: string[] } | Error = { ids: ['task-1'], proposed: [] },
+    available = true,
+  ) {
+    const calls: Array<{ collectionId: string; classes: string[] }> = [];
+    return {
+      calls,
+      port: {
+        available: () => available,
+        runOnCollection: async (collectionId: string, request: { classes: string[] }) => {
+          calls.push({ collectionId, classes: request.classes });
+          if (result instanceof Error) throw result;
+          return result;
+        },
+        proposals: async () => [],
+        accept: async () => true,
+        reject: async () => true,
+      },
+    };
+  }
+
+  it('offers nothing to extract before anybody has spoken', () => {
+    // There is no collection until the first utterance, so there is nothing to read back. Offering
+    // the button here would spend an LLM call on an empty transcript.
+    const i = interpreter();
+    const h = harness(inCall, { interpretation: i.port });
+
+    expect(h.store.canExtract()).toBe(false);
+    expect(h.store.extractable()).toBe(true);
+  });
+
+  it('offers nothing when the node has no model, however much was said', async () => {
+    const i = interpreter(undefined, false);
+    const h = harness(inCall, { interpretation: i.port });
+    await h.say('hello');
+
+    expect(h.store.canExtract()).toBe(false);
+    // Distinguishable from the case above, because the two need different sentences: one is "say
+    // something first", the other is "this node cannot do that at all".
+    expect(h.store.extractable()).toBe(false);
+  });
+
+  it('reads back the collection this call is writing into', async () => {
+    const i = interpreter();
+    const h = harness(inCall, { interpretation: i.port });
+    await h.say('James will ship the docs on Friday');
+
+    await h.store.extract();
+
+    expect(i.calls).toHaveLength(1);
+    expect(i.calls[0].collectionId).toBe('id-1');
+    expect(i.calls[0].classes).toEqual(['TaskBlock', 'EventBlock']);
+  });
+
+  it('flushes what is still buffered before reading', async () => {
+    // The last thing said before pressing the button is usually the reason for pressing it, and the
+    // buffer holds up to three seconds of speech. Extracting without flushing would reliably miss it.
+    const i = interpreter();
+    const h = harness(inCall, { interpretation: i.port });
+    await h.say('first');
+
+    h.store.receiveText('and one more thing');
+    await h.store.extract();
+
+    const texts = h.created.filter((c) => c.entity === 'TextBlock').map((c) => c.fields.text);
+    expect(texts).toContain('and one more thing');
+  });
+
+  it('reports what it found, so a finished pass does not look like a dead button', async () => {
+    const i = interpreter({ ids: ['task-1', 'event-2'], proposed: ['event-2'] });
+    const h = harness(inCall, { interpretation: i.port });
+    await h.say('hello');
+
+    await h.store.extract();
+
+    expect(h.store.extractStatus()).toBe('done');
+    expect(h.store.extractCount()).toBe(2);
+  });
+
+  it('surfaces a failed pass rather than swallowing it', async () => {
+    const i = interpreter(new Error('no LLM configured'));
+    const h = harness(inCall, { interpretation: i.port });
+    await h.say('hello');
+
+    await h.store.extract();
+
+    expect(h.store.extractStatus()).toBe('error');
+    expect(h.store.extractError()).toBe('no LLM configured');
+  });
+
+  it('does not start a second pass over the first', async () => {
+    // An LLM pass takes seconds. Without this, an impatient second press runs the whole thing again
+    // concurrently — two bills, and two sets of writes racing into one collection.
+    const i = interpreter();
+    const h = harness(inCall, { interpretation: i.port });
+    await h.say('hello');
+
+    await Promise.all([h.store.extract(), h.store.extract()]);
+
+    expect(i.calls).toHaveLength(1);
+  });
+
+  it('does nothing at all on a backend that cannot interpret', async () => {
+    const h = harness(inCall);
+    await h.say('hello');
+
+    await h.store.extract();
+
+    expect(h.store.extractStatus()).toBe('idle');
+  });
+});

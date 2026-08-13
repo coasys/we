@@ -152,6 +152,133 @@ const meter: SchemaNode = {
   },
 };
 
+/**
+ * Turning what was heard into tasks and events.
+ *
+ * Sits below the transcript rather than in the header, because it is a thing you do *to* what is
+ * there — and it should not be reachable before there is anything to do it to. The whole block is
+ * absent on a node that cannot interpret: unlike a missing transcription model, there is nothing a
+ * user can install to fix it from here, so a disabled button explaining itself would be furniture.
+ *
+ * One press, one pass, and a count afterwards. An LLM call takes seconds, and the gap between press
+ * and result is exactly where a feature stops looking like it is working — so `running` says so, and
+ * `done` keeps its number until the next press rather than reverting to a blank button.
+ */
+const extract: SchemaNode = {
+  type: '$if',
+  props: {
+    condition: { $store: 'modules.transcribe.extractable' },
+    then: {
+      type: 'Column',
+      props: { gap: '200', bg: 'neutral-50', r: '300', p: '300' },
+      children: [
+        {
+          type: 'Row',
+          props: { ax: 'between', ay: 'center', gap: '300' },
+          children: [
+            {
+              type: 'Column',
+              props: { gap: '050' },
+              children: [
+                { type: 'we-text', props: { variant: 'footnote', fontWeight: '600' }, children: ['Extract'] },
+                {
+                  type: 'we-text',
+                  props: { variant: 'footnote', color: 'neutral-500' },
+                  children: ['Find the tasks and events in what was said.'],
+                },
+              ],
+            },
+            {
+              type: 'we-button',
+              props: {
+                size: 'sm',
+                variant: 'secondary',
+                // Disabled rather than hidden once the panel is showing the section: the reason is
+                // "nothing has been said yet", which resolves on its own and is worth waiting for.
+                disabled: {
+                  $or: [
+                    { $not: { $store: 'modules.transcribe.canExtract' } },
+                    { $eq: [{ $store: 'modules.transcribe.extractStatus' }, 'running'] },
+                  ],
+                },
+                onClick: { $action: 'modules.transcribe.extract' },
+              },
+              children: [
+                {
+                  $if: {
+                    condition: { $eq: [{ $store: 'modules.transcribe.extractStatus' }, 'running'] },
+                    then: 'Reading…',
+                    else: 'Extract',
+                  },
+                },
+              ],
+            },
+          ],
+        },
+        {
+          type: '$if',
+          props: {
+            condition: { $eq: [{ $store: 'modules.transcribe.extractStatus' }, 'running'] },
+            then: {
+              type: 'Row',
+              props: { gap: '200', ay: 'center' },
+              children: [
+                { type: 'we-spinner', props: { size: 'sm' } },
+                {
+                  type: 'we-text',
+                  props: { variant: 'footnote', color: 'neutral-500' },
+                  children: ['Reading the transcript…'],
+                },
+              ],
+            },
+          },
+        },
+        {
+          type: '$if',
+          props: {
+            condition: { $eq: [{ $store: 'modules.transcribe.extractStatus' }, 'done'] },
+            then: {
+              type: 'Row',
+              props: { gap: '200', ay: 'center' },
+              children: [
+                { type: 'we-icon', props: { name: 'check', color: 'success-600' } },
+                {
+                  type: 'we-text',
+                  props: { variant: 'footnote', color: 'neutral-500' },
+                  children: [
+                    // Zero is a real and common answer — a conversation with no commitments in it —
+                    // and saying so is the difference between "it worked, there was nothing" and
+                    // "it silently failed".
+                    {
+                      $if: {
+                        condition: { $store: 'modules.transcribe.extractCount' },
+                        then: { $store: 'modules.transcribe.extractCount' },
+                        else: 'No',
+                      },
+                    },
+                    ' records written. Open the graph to see them.',
+                  ],
+                },
+              ],
+            },
+          },
+        },
+        {
+          type: '$if',
+          props: {
+            condition: { $eq: [{ $store: 'modules.transcribe.extractStatus' }, 'error'] },
+            then: {
+              type: 'we-alert',
+              props: { variant: 'warning' },
+              children: [{ $store: 'modules.transcribe.extractError' }],
+            },
+          },
+        },
+      ],
+    },
+  },
+};
+
 export const panel: SchemaNode = {
   type: '$if',
   props: {
@@ -332,6 +459,9 @@ export const panel: SchemaNode = {
             },
           },
         },
+
+        // ── Turning it into records ──────────────────────────────────────────
+        extract,
 
         // ── What has been heard ──────────────────────────────────────────────
         {
