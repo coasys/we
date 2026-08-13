@@ -49,10 +49,7 @@ export interface ModuleHostServices {
    * dataset's models. Separate from `interpretation` because the port takes turns and only the host
    * can produce them — see `shared/interpretation/transcriptTurns.ts`.
    */
-  interpretCollection?: (
-    collectionId: string,
-    request: { classes: string[] },
-  ) => Promise<InterpretationResult>;
+  interpretCollection?: (collectionId: string, request: { classes: string[] }) => Promise<InterpretationResult>;
   /** The profile cache, so a module can put a face to an agent id. See `ModuleIdentityAccess`. */
   identities?: ModuleIdentityAccess;
   /** Write a record into the current dataset — the host's `model.create`, in imperative form. */

@@ -759,9 +759,7 @@ describe('staged suggestions', () => {
   it('leads a summary with the field that identifies the record', async () => {
     // A person deciding whether to keep a suggestion reads it rather than inspecting it, and
     // whichever key happened to come first is not a useful thing to lead with.
-    const i = interpreterWith([
-      { id: 'task-1', kind: 'create', values: { priority: 'high', title: 'Ship the docs' } },
-    ]);
+    const i = interpreterWith([{ id: 'task-1', kind: 'create', values: { priority: 'high', title: 'Ship the docs' } }]);
     const h = harness(inCall, { interpretation: i.port });
     await h.say('hello');
 

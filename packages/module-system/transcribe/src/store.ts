@@ -93,9 +93,7 @@ const SUMMARY_FIELDS = ['title', 'text', 'name', 'startDate', 'dueDate', 'assign
 function summarise(values: Record<string, unknown>): string {
   const named = SUMMARY_FIELDS.filter((field) => values[field] !== undefined && values[field] !== '');
   const rest = Object.keys(values).filter((field) => !SUMMARY_FIELDS.includes(field));
-  return [...named, ...rest]
-    .map((field) => `${field}: ${String(values[field])}`)
-    .join(' · ');
+  return [...named, ...rest].map((field) => `${field}: ${String(values[field])}`).join(' · ');
 }
 
 /**

@@ -347,7 +347,6 @@ const extract: SchemaNode = {
   },
 };
 
-
 export const panel: SchemaNode = {
   type: '$if',
   props: {

@@ -46,7 +46,8 @@ export class TaskBlock extends WeNode {
   @Property({
     through: 'we://status',
     initial: 'todo',
-    interpretationHint: 'Exactly one of: "todo", "in-progress", "done". Use "todo" unless the speaker says work has begun.',
+    interpretationHint:
+      'Exactly one of: "todo", "in-progress", "done". Use "todo" unless the speaker says work has begun.',
   })
   status: string = 'todo';
 

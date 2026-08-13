@@ -1,7 +1,6 @@
+import { gatherTranscriptTurns, type TurnModel } from '@shared/interpretation/transcriptTurns';
 import type { ModelManifestEntry } from '@we/backend-shared';
 import { describe, expect, it } from 'vitest';
-
-import { gatherTranscriptTurns, type TurnModel } from '@shared/interpretation/transcriptTurns';
 
 const manifest: ModelManifestEntry[] = [
   {
@@ -53,7 +52,10 @@ describe('gatherTranscriptTurns', () => {
   });
 
   it('normalises the epoch milliseconds the ORM parses timestamps into', async () => {
-    const turns = await gatherTranscriptTurns(deps([{ text: 'hi', author: 'did:a', createdAt: 1_700_000_000_000 }]), 'c');
+    const turns = await gatherTranscriptTurns(
+      deps([{ text: 'hi', author: 'did:a', createdAt: 1_700_000_000_000 }]),
+      'c',
+    );
     expect(turns).toEqual([{ speaker: 'did:a', text: 'hi', timestamp: '2023-11-14T22:13:20.000Z' }]);
   });
 

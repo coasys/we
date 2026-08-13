@@ -609,10 +609,7 @@ export interface ModuleInterpretationAccess {
    * Rejects when there is no usable model, so a caller can tell "no LLM here" from "nothing worth
    * extracting was said" — the two are identical from an empty result and only one is worth saying.
    */
-  runOnCollection: (
-    collectionId: string,
-    request: { classes: string[] },
-  ) => Promise<InterpretationResult>;
+  runOnCollection: (collectionId: string, request: { classes: string[] }) => Promise<InterpretationResult>;
   /** Suggestions staged in this dataset, awaiting a human. */
   proposals: () => Promise<InterpretationProposal[]>;
   /** Commit a staged suggestion — the whole record, or one property by name. */

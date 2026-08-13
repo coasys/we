@@ -75,8 +75,9 @@ async function predicateNames(perspective: PerspectiveProxy): Promise<Map<string
   const map = new Map<string, string>();
 
   for (const name of getRegisteredModelNames()) {
-    const shape = (getModel(name) as unknown as { generateSHACL?: () => { shape: { properties?: unknown[] } } })
-      .generateSHACL?.().shape;
+    const shape = (
+      getModel(name) as unknown as { generateSHACL?: () => { shape: { properties?: unknown[] } } }
+    ).generateSHACL?.().shape;
     for (const p of (shape?.properties ?? []) as { path?: string; name?: string }[]) {
       if (p.path && p.name && !map.has(p.path)) map.set(p.path, p.name);
     }
