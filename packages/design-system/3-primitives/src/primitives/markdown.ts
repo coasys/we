@@ -1,5 +1,6 @@
 import type { DesignSystemProps } from '@we/design-types';
 import { tokenVar } from '@we/design-utils';
+import DOMPurify from 'dompurify';
 import { css, html } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 import { unsafeHTML } from 'lit/directives/unsafe-html.js';
@@ -182,7 +183,18 @@ export default class Markdown extends DesignSystemElement {
   }
 
   render() {
+    /*
+      Markdown is not a safe subset of HTML — it is a superset of it. Every implementation passes raw
+      tags through by design, so `<img src=x onerror=…>` in any string rendered here executes, and
+      `[click](javascript:…)` becomes a link that runs script in the app's own origin. That string
+      is routinely somebody else's: a post body, a profile bio, a space description synced in from a
+      peer. Sanitising the *output* rather than restricting the input is what keeps the element's
+      contract simple — it renders markdown, all of it, minus what could run.
+
+      DOMPurify is the same pass `we-html` already makes, and its default URI allowlist covers the
+      `javascript:` half; `safeHref` covers the same ground for hrefs a template sets directly.
+    */
     const parsed = md.parse(this.content, { async: false }) as string;
-    return html`<div part="base">${unsafeHTML(parsed)}</div>`;
+    return html`<div part="base">${unsafeHTML(DOMPurify.sanitize(parsed))}</div>`;
   }
 }

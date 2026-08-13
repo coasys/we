@@ -5,6 +5,7 @@ import { customElement, property } from 'lit/decorators.js';
 import { styleMap } from 'lit/directives/style-map.js';
 
 import { DesignSystemElement } from '../shared/design-system-element';
+import { safeHref } from '../shared/safe-href';
 import sharedStyles from '../shared/styles';
 import type { ButtonVariant, ComponentSize } from '../types';
 
@@ -275,12 +276,13 @@ export default class Button extends DesignSystemElement {
   render() {
     const inline = this.styles || {};
 
-    if (this.href) {
+    const href = safeHref(this.href);
+    if (href) {
       return html`
         <a
           part="base"
           role="button"
-          href=${this.href}
+          href=${href}
           aria-disabled=${this.disabled || this.loading ? 'true' : 'false'}
           @click=${this._onClick}
           style=${styleMap(inline)}
