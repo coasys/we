@@ -32,7 +32,9 @@ export class TaskBlock extends WeNode {
   @Property({
     through: 'we://title',
     required: true,
-    interpretationHint: 'The task as a short imperative phrase, e.g. "Ship the docs". No trailing period.',
+    interpretationHint:
+      'The task as a short imperative phrase, e.g. "Ship the docs". No trailing period. ' +
+      'Never include the bracketed timestamp that starts each turn — it is metadata, not speech.',
   })
   title: string = '';
 
@@ -62,7 +64,8 @@ export class TaskBlock extends WeNode {
   @Property({
     through: 'we://due_date',
     interpretationHint:
-      'Due date as YYYY-MM-DD. Only when a date is actually stated — resolve "Friday" against the turn timestamp. Omit if vague.',
+      'Due date as YYYY-MM-DD. Only when a date is actually stated — resolve "Friday" against the ' +
+      'bracketed timestamp leading that turn. Omit if vague.',
   })
   dueDate: string = '';
 

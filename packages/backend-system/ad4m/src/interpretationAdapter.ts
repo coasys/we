@@ -28,7 +28,7 @@ import type {
   InterpretationResult,
   TranscriptTurn,
 } from '@we/backend-shared';
-import { getModel, getModelTargetClass, getRegisteredModelNames } from '@we/models';
+import { getModel, getRegisteredModelNames } from '@we/models';
 
 const proxy = (dataset: DatasetHandle) => dataset as PerspectiveProxy;
 
@@ -42,24 +42,47 @@ const proxy = (dataset: DatasetHandle) => dataset as PerspectiveProxy;
 const DEFAULT_BASE_PREFIX = 'we://interpreted/';
 
 /**
- * Resolve a WE entity name to the SHACL `targetClass` the executor filters on.
+ * Check that every requested class is a shape this perspective actually has.
  *
- * Native models answer from the in-process registry with no round trip. Anything else — a module's
- * declared entity, another app's schema synced into the space — is asked of the perspective, which
- * is the only place that knows. An unresolvable name throws rather than being skipped: a caller that
- * asked for `TaskBlock` and silently got nothing back cannot tell that from "nobody mentioned a
- * task", and would have no reason to look at its class list.
+ * The executor matches on the **shape name** (`get_shape("TaskBlock")`), not on the `targetClass`
+ * URI — a distinction worth stating because the two are one call apart and only one of them works.
+ * Passing `we://TaskBlock` gets logged server-side as "skipping class" and, if it was the only one
+ * requested, comes back as "perspective has no subject classes to extract into", which reads like a
+ * broken space rather than a wrong argument. So names go through untouched and this only validates.
+ *
+ * Validating at all, rather than letting the executor skip, is the same argument: a caller that
+ * asked for TaskBlock and silently got nothing back cannot tell that from "nobody mentioned a task",
+ * and would have no reason to go looking at its class list.
  */
-async function resolveTargetClass(perspective: PerspectiveProxy, name: string): Promise<string> {
-  if (getRegisteredModelNames().includes(name)) {
-    const native = getModelTargetClass(getModel(name));
-    if (native) return native;
+async function assertShapesInstalled(perspective: PerspectiveProxy, names: string[]): Promise<void> {
+  const installed = new Set(await perspective.getShaclNames());
+  const missing = names.filter((name) => !installed.has(name));
+  if (missing.length) {
+    throw new Error(
+      `interpretation: no schema named ${missing.map((n) => `"${n}"`).join(', ')} in this dataset — ` +
+        `it has ${[...installed].join(', ') || 'no shapes installed'}`,
+    );
   }
-  const fromPerspective = await perspective.getShaclTargetClass(name);
-  if (fromPerspective) return fromPerspective;
-  throw new Error(
-    `interpretation: no schema named "${name}" in this dataset — it is neither a WE model nor installed here`,
-  );
+}
+
+/**
+ * Fold each turn's time into the text the model sees.
+ *
+ * The one-shot WS turn carries `speaker` and `text` and nothing else — the executor's own comment
+ * says the timestamp "stays an AutoProcessor concern", because that path needs it to hash a turn for
+ * its cursor and a caller passing an explicit transcript has no cursor to keep. Sending one anyway
+ * would be silently dropped by serde.
+ *
+ * But the *model* needs it for a different reason: "ship the docs by Friday" has no resolvable due
+ * date without knowing when Friday was said. With no channel for it but the text, it goes in the
+ * text — bracketed and leading, so it reads as metadata rather than as something anybody said. The
+ * hints on the classes name this format so a title never comes back with the bracket in it.
+ */
+function withTime(turns: TranscriptTurn[]): { speaker: string; text: string }[] {
+  return turns.map(({ speaker, text, timestamp }) => ({
+    speaker,
+    text: `[${timestamp}] ${text}`,
+  }));
 }
 
 /**
@@ -133,7 +156,7 @@ export function createAd4mInterpretationPort(): InterpretationPort {
       // an empty transcript is a normal thing for a call with no speech in it.
       if (!turns.length) return { ids: [], proposed: [] };
 
-      const classes = await Promise.all(request.classes.map((c) => resolveTargetClass(perspective, c)));
+      await assertShapesInstalled(perspective, request.classes);
 
       // Confine what this pass mints to the node it belongs to, so two calls on one post do not
       // share a URI space and a later reader can tell where an instance came from.
@@ -141,7 +164,7 @@ export function createAd4mInterpretationPort(): InterpretationPort {
         request.basePrefix ??
         (request.parent ? `${DEFAULT_BASE_PREFIX}${encodeURIComponent(request.parent.id)}/` : DEFAULT_BASE_PREFIX);
 
-      const ids = await perspective.runInterpretation(turns, basePrefix, classes);
+      const ids = await perspective.runInterpretation(withTime(turns), basePrefix, request.classes);
       if (ctl?.signal?.aborted) return { ids: [], proposed: [] };
 
       // Parent *after* the pass, because the engine has no notion of one. Sequential rather than

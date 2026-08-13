@@ -16,7 +16,9 @@ export class EventBlock extends WeNode {
   @Property({
     through: 'we://title',
     required: true,
-    interpretationHint: 'What the occasion is called, e.g. "Design review". No trailing period.',
+    interpretationHint:
+      'What the occasion is called, e.g. "Design review". No trailing period. ' +
+      'Never include the bracketed timestamp that starts each turn — it is metadata, not speech.',
   })
   title: string = '';
 
@@ -31,7 +33,8 @@ export class EventBlock extends WeNode {
     required: true,
     interpretationHint:
       'Start as YYYY-MM-DDTHH:mm (local time, no timezone suffix). Resolve relative dates like ' +
-      '"next Tuesday at 3" against the turn timestamp. Required — do not invent an event without a stated time.',
+      '"next Tuesday at 3" against the bracketed timestamp leading that turn. ' +
+      'Required — do not invent an event without a stated time.',
   })
   startDate: string = '';
 
