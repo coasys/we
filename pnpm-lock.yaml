@@ -709,6 +709,9 @@ importers:
       '@we/tokens':
         specifier: workspace:*
         version: link:../1-tokens
+      jsdom:
+        specifier: ^28.0.0
+        version: 28.1.0
       postcss:
         specifier: ^8.4.23
         version: 8.5.16

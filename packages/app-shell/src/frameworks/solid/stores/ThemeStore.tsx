@@ -12,6 +12,8 @@ import {
 } from '@we/models';
 import type { ThemeOverrides } from '@we/schema-shared';
 import { applyThemeVars } from '@we/schema-shared';
+import type { SanitiseCssOptions } from '@we/themes/sanitiseCss';
+import { sanitiseCss } from '@we/themes/sanitiseCss';
 import {
   Accessor,
   createContext,
@@ -169,14 +171,53 @@ function getInitialThemeId(): string {
   return saved ?? 'dark';
 }
 
-function injectCssString(id: string, css: string) {
+/**
+ * The attribute marking the element a scoped theme is confined to — the template content wrapper in
+ * `TemplateLayout`, which is also the element carrying `data-we-theme` and painting the page.
+ *
+ * It is a mark of its own rather than a reuse of `data-we-theme`, because the two answer different
+ * questions: `data-we-theme` says *which* theme, and changes with it; this says *where the boundary
+ * is*, and must be there even for a theme with no name at all.
+ */
+export const THEME_SCOPE_ATTRIBUTE = 'data-we-theme-scope';
+export const THEME_SCOPE_SELECTOR = `[${THEME_SCOPE_ATTRIBUTE}]`;
+
+/**
+ * A CSS-identifier-safe prefix for a theme's `@keyframes`, so two themes cannot silently redefine
+ * each other's animations — the document theme and a space's scoped theme are both live at once.
+ */
+function cssNamespace(theme: ThemeData): string {
+  return `we-t-${String(theme.id ?? 'anon').replace(/[^a-zA-Z0-9_-]/g, '-')}`;
+}
+
+/**
+ * The one door a theme's CSS gets through, and so the one place it is filtered.
+ *
+ * Sanitising here rather than at install is deliberate. Themes arrive by more routes than the
+ * install dialog: they sync in through a shared perspective, so a peer can write a `Theme` model
+ * straight into a space and every member wears it without anybody clicking anything. Install is one
+ * door; injection is the choke point.
+ *
+ * `scope` confines the sheet to a container. Passed for a space's theme in scoped mode, so a
+ * community's theme cannot restyle the shell around it; omitted for the document theme, which is
+ * the agent's own choice about their own window. See `sanitiseCss` for what is removed and why.
+ *
+ * Built-in themes go through this too. They pass — that is the point of testing them against the
+ * same rule rather than exempting them, and it is why the retro theme now carries VT323 instead of
+ * importing it.
+ */
+function injectCssString(id: string, css: string, options: SanitiseCssOptions = {}) {
   let styleEl = document.getElementById(id) as HTMLStyleElement | null;
   if (!styleEl) {
     styleEl = document.createElement('style');
     styleEl.id = id;
     document.head.appendChild(styleEl);
   }
-  styleEl.textContent = css;
+  const { css: safe, removed } = css ? sanitiseCss(css, options) : { css: '', removed: [] };
+  if (removed.length && import.meta.env?.DEV) {
+    console.warn(`[theme] removed from ${id}:`, removed.join('; '));
+  }
+  styleEl.textContent = safe;
 }
 
 function applyThemeToDOM(theme: ThemeData) {
@@ -201,8 +242,10 @@ function applyThemeToDOM(theme: ThemeData) {
   */
   applyThemeVars(document.documentElement, overrides);
 
-  // Inject the theme's CSS string (component-level rules + any non-parametric vars)
-  injectCssString('we-custom-theme-css', theme.css ?? '');
+  // Inject the theme's CSS string (component-level rules + any non-parametric vars). Unscoped: this
+  // is the whole window, which is what the document theme is for. Namespaced all the same, so the
+  // document theme and a scoped space theme cannot redefine each other's animations.
+  injectCssString('we-custom-theme-css', theme.css ?? '', { namespace: cssNamespace(theme) });
 }
 
 const OVERRIDE_CSS_VARS: Partial<Record<keyof ThemeOverrides, string>> = {
@@ -473,12 +516,23 @@ export function ThemeStoreProvider(props: ParentProps) {
 
   createEffect(() => applyThemeToDOM(documentTheme()));
 
-  // In scoped mode, inject the space/editing theme's component-level CSS into a separate
-  // style tag so [data-we-theme='X'] selectors match inside the scoped wrapper div.
-  // The rules self-scope via their attribute selector, so they don't leak into the shell.
-  // Cleared when returning to global mode (we-custom-theme-css handles it there).
+  /*
+    In scoped mode, the space/editing theme's component-level CSS goes into its own style tag,
+    confined to the template wrapper by `THEME_SCOPE_SELECTOR`.
+
+    That confinement used to be incidental: the rules were left as written and happened to begin
+    `[data-we-theme='X']`, which only the wrapper carries — so a theme that simply omitted the
+    attribute selector styled the whole window, shell included. Scoping is now enforced rather than
+    relied upon, which is what makes a space theme safe to accept from a peer.
+
+    Cleared when returning to global mode (we-custom-theme-css handles it there).
+  */
   createEffect(() => {
-    injectCssString('we-scoped-theme-css', activeTemplateTheme()?.css ?? '');
+    const theme = activeTemplateTheme();
+    injectCssString('we-scoped-theme-css', theme?.css ?? '', {
+      scope: THEME_SCOPE_SELECTOR,
+      namespace: theme ? cssNamespace(theme) : undefined,
+    });
   });
 
   // Apply initial theme immediately from localStorage — inject CSS string synchronously

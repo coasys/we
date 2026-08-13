@@ -33,6 +33,7 @@ import { deepClone } from '@shared/utils';
 import { componentRegistry as registry } from '@solid/registries/componentRegistry';
 import type { RouteStore } from '@solid/stores/RouteStore';
 import { ShellRouterRoot, ShellRouteStoreProvider, useShellRouteStore } from '@solid/stores/ShellRouteStore';
+import { THEME_SCOPE_ATTRIBUTE } from '@solid/stores/ThemeStore';
 import type { Stores } from '@solid/types';
 import { MemoryRouter, Route, useLocation, useNavigate } from '@solidjs/router';
 import { Column } from '@we/components/solid';
@@ -307,6 +308,10 @@ export function TemplateLayout(
           // viewport. Defaults to `neutral-50`, exactly what was here.
           bg="page"
           data-we-theme={spaceThemeName()}
+          // The boundary a scoped theme's CSS is confined to — see THEME_SCOPE_ATTRIBUTE. Always
+          // present, not conditional on there being a scoped theme: it marks where the edge of the
+          // template content is, which is true whether or not anything is currently scoped to it.
+          {...{ [THEME_SCOPE_ATTRIBUTE]: '' }}
           styles={spaceThemeStyle()}
         >
           <Show when={stores.templateStore.currentTemplate.id || 'empty'} keyed>
