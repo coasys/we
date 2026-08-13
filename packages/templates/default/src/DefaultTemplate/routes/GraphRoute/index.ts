@@ -83,7 +83,14 @@ const knowledgeGraph: SchemaNode = {
   },
 };
 
-/** Collections and their children, drilling into nested collections as you open them. */
+/**
+ * Collections and their children, drilling into nested collections as you open them.
+ *
+ * Also where a call's extraction shows up. Opening a call now yields two visibly different kinds of
+ * child: the utterances somebody said, and the tasks and events a model found in them. Styling them
+ * apart is the whole point of looking at this as a graph rather than a list — you can see structure
+ * precipitating out of conversation, and see which node it came from.
+ */
 const contentGraph: SchemaNode = {
   type: 'GraphView',
   props: {
@@ -95,6 +102,12 @@ const contentGraph: SchemaNode = {
       { when: { type: 'CollectionBlock' }, style: { size: 18, color: 'primary-500' } },
       { when: { 'data.kind': 'call' }, style: { color: 'success-500' } },
       { when: { 'data.kind': 'notes' }, style: { color: 'warning-500' } },
+      // Extracted records, after the collection rules so a call keeps its own colour. Circles
+      // against the rectangles of composed blocks: the distinction that matters at a glance is
+      // "somebody wrote this" against "something was inferred from it", and shape carries that
+      // without depending on colour being legible in the viewer's theme.
+      { when: { type: 'TaskBlock' }, style: { shape: 'circle', size: 14, color: 'primary-600' } },
+      { when: { type: 'EventBlock' }, style: { shape: 'circle', size: 14, color: 'warning-600' } },
     ],
     edgeStyle: [{ style: { curve: 'step', color: 'neutral-200' } }],
     behaviours: ['pan-zoom', 'select', 'expand-on-double-click'],
