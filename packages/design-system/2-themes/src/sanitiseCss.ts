@@ -297,9 +297,10 @@ export function sanitiseCss(css: string, options: SanitiseCssOptions = {}): Sani
     const out: Collected = { scoped: [], hoisted: [] };
     for (const rule of [...sheet.cssRules]) sanitiseRule(rule, options, out, removed);
 
-    const body = options.scope && out.scoped.length
-      ? `@scope (${options.scope}) {\n${out.scoped.join('\n')}\n}`
-      : out.scoped.join('\n');
+    const body =
+      options.scope && out.scoped.length
+        ? `@scope (${options.scope}) {\n${out.scoped.join('\n')}\n}`
+        : out.scoped.join('\n');
 
     return { css: [...out.hoisted, body].filter(Boolean).join('\n'), removed: [...new Set(removed)] };
   } finally {

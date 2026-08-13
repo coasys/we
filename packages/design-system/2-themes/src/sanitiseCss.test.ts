@@ -34,7 +34,7 @@ describe('the network, which is the exfiltration channel', () => {
   });
 
   it('refuses a declaration that mixes a data URI with a remote one', () => {
-    const { css } = sanitiseCss(".a { background: url(data:image/png;base64,AA), url(https://attacker.example/x) }");
+    const { css } = sanitiseCss('.a { background: url(data:image/png;base64,AA), url(https://attacker.example/x) }');
     expect(css).not.toContain('attacker.example');
     expect(css).not.toContain('data:image/png');
   });

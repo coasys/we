@@ -83,9 +83,14 @@ describe('when a template throws', () => {
 
 describe('when nothing throws', () => {
   it('is invisible', () => {
-    dispose = render(() => <TemplateBoundary what="this space's template">
-      <div id="content">the template</div>
-    </TemplateBoundary>, host);
+    dispose = render(
+      () => (
+        <TemplateBoundary what="this space's template">
+          <div id="content">the template</div>
+        </TemplateBoundary>
+      ),
+      host,
+    );
 
     expect(host.querySelector('#content')?.textContent).toBe('the template');
     expect(host.textContent).not.toContain('Something went wrong');

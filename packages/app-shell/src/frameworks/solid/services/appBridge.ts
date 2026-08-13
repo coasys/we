@@ -81,8 +81,7 @@ export function startAppBridge(deps: AppBridgeDeps) {
   // (or, on desktop, while the agent was still locked).
   let pendingConfigRequest = false;
 
-  const credentialedOrigins = () =>
-    deps.credentialedOrigins?.() ?? moduleRegistry.embeds().map((embed) => embed.url);
+  const credentialedOrigins = () => deps.credentialedOrigins?.() ?? moduleRegistry.embeds().map((embed) => embed.url);
 
   /** Whether an origin belongs to a registered embed — see the note at the top of this file. */
   function isCredentialedOrigin(origin: string | null | undefined): boolean {

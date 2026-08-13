@@ -17,9 +17,12 @@ const wellFormed = (children: unknown[] = []) => ({ type: 'Column', meta, childr
 
 describe('a schema that would take the app down', () => {
   it('refuses a node whose children are not nodes', () => {
-    const { schema, refusals } = acceptTemplate({ type: 'Column', meta, children: 'not an array' }, {
-      origin: 'a space',
-    });
+    const { schema, refusals } = acceptTemplate(
+      { type: 'Column', meta, children: 'not an array' },
+      {
+        origin: 'a space',
+      },
+    );
 
     expect(schema).toBeNull();
     expect(refusals.length).toBeGreaterThan(0);
