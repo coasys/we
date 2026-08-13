@@ -211,7 +211,16 @@ export function createCallStore(deps: CallStoreDeps) {
    * can be granted a moment later; leaving it on screen after the camera starts working is the
    * app telling the user something it can plainly see is no longer so.
    */
-  const MEDIA_BLOCKED = "WE could not reach your camera or microphone. Check this site's permissions in your browser.";
+  /*
+    Worded for every host, which the first version was not.
+
+    "Check this site's permissions in your browser" is good advice in `we-web` and nonsense in
+    Electron and Tauri, where there is no browser and no site — so on two of the three hosts it told
+    the user to do something impossible. It also named only one of the two common causes: a device
+    another application already has open fails the same way, and is at least as frequent.
+  */
+  const MEDIA_BLOCKED =
+    'WE could not reach your camera or microphone. Check that WE has permission to use them, and that no other app has them open.';
 
   /**
    * The camera specifically, refused when the user asked for it.
@@ -220,7 +229,8 @@ export function createCallStore(deps: CallStoreDeps) {
    * true while the microphone works perfectly well, so clearing it on "we have a stream" — which is
    * what the other one wants — would make it flash and vanish in exactly the case it exists for.
    */
-  const CAMERA_BLOCKED = "WE could not turn your camera on. Check this site's camera permission in your browser.";
+  const CAMERA_BLOCKED =
+    'WE could not turn your camera on. Check that WE has permission to use it, and that no other app has it open.';
   /**
    * The microphone this agent is sending, as a signal rather than a read through to the controller.
    *

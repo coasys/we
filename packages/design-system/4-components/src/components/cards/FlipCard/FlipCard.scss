@@ -1,5 +1,19 @@
+/*
+  Prefixes are written by hand here, because this repo has no autoprefixer — the only PostCSS in it
+  is `postcss-import` for the themes package. Which is fine until a property needs one, and
+  `transform-style` is the property that needs one.
+
+  WebKitGTK — the webview Tauri uses on Linux — honours `-webkit-transform-style` and ignores the
+  unprefixed form. Without it the 3D context flattens, and a flattened context takes
+  `backface-visibility` with it: the back face is no longer *behind* anything, it is simply drawn at
+  `rotateY(180deg)`, which is a mirror. So the cards opened showing the back face's colour with every
+  word reversed, and flipping them un-mirrored the *front* and painted it on top — the exact report.
+  Chromium (we-web, Electron) accepts the unprefixed property, which is why it looked fine there and
+  only Tauri showed it.
+*/
 .we-flip-card {
   perspective: 1000px;
+  -webkit-perspective: 1000px;
   cursor: pointer;
   user-select: none;
 
@@ -8,6 +22,7 @@
     width: 100%;
     height: 100%;
     transition: transform var(--we-flip-card-duration, 0.5s) cubic-bezier(0.4, 0, 0.2, 1);
+    -webkit-transform-style: preserve-3d;
     transform-style: preserve-3d;
   }
 
