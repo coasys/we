@@ -2,6 +2,7 @@ import type { ColorHueToken, ColorLightnessToken } from '@we/tokens';
 import { color } from '@we/tokens';
 
 import type { ThemeOverrides, ThemeRole } from './overrides';
+import { isThemeName, THEME_PRESETS } from './presets';
 
 /**
  * Parametric keys that map 1:1 to a CSS custom property.
@@ -107,7 +108,30 @@ const COLOR_FAMILIES = Object.keys(color.hues) as ColorHueToken[];
  * variables via [data-we-theme] selectors. We unconditionally re-declare ALL
  * derived formulas so they resolve locally against whatever inputs the theme sets.
  */
-export function themeToStyle(theme: ThemeOverrides): Record<string, string> {
+/** Drop absent keys so a spread cannot blank a preset value with an explicit `undefined`. */
+function stripUndefined(theme: ThemeOverrides): ThemeOverrides {
+  return Object.fromEntries(Object.entries(theme).filter(([, value]) => value !== undefined)) as ThemeOverrides;
+}
+
+export function themeToStyle(overrides: ThemeOverrides): Record<string, string> {
+  /*
+    A named theme brings its own parameters.
+
+    `{ themeName: 'cyberpunk' }` used to re-declare the colour *formulas* while leaving their
+    *inputs* — multiplier, subtractor, saturation — inherited from whatever theme was ambient. So a
+    scoped cyberpunk inside a light app got cyberpunk's shapes over light's lightness curve: the
+    section looked wrong in a way that was hard to name, and right only when the app already
+    happened to be on that theme.
+
+    Resolving the preset here rather than duplicating the numbers into each theme's CSS keeps the
+    design system owning theme parameters as data — and it means every built-in works immediately,
+    with no per-theme edit. Explicit overrides still win, so `{ themeName: 'cyberpunk', primaryHue:
+    320 }` is cyberpunk with a different accent, which is what it reads as.
+  */
+  const preset =
+    overrides.themeName && isThemeName(overrides.themeName) ? THEME_PRESETS[overrides.themeName].parameters : undefined;
+  const theme: ThemeOverrides = preset ? { ...preset, ...stripUndefined(overrides) } : overrides;
+
   const style: Record<string, string> = {};
   const hasNamedTheme = !!theme.themeName;
 

@@ -147,6 +147,12 @@ export interface ThemeStore {
   publishToSpace: (perspectiveUuid: string, spaceName: string) => Promise<boolean>;
   loadInstalledThemes: () => Promise<void>;
   refreshSpaceThemes: () => Promise<void>;
+  /**
+   * Make sure any theme a schema names by `theme: { themeName }` has its stylesheet in the document.
+   *
+   * Call with a schema before rendering it; idempotent, and safe to call repeatedly.
+   */
+  requestNamedThemes: (schema: unknown) => void;
 }
 
 const ThemeContext = createContext<ThemeStore>();
@@ -170,6 +176,39 @@ function encodeToFileData(content: string, name: string, mimeType: string) {
   const base64 = btoa(String.fromCharCode(...bytes));
   return { data_base64: base64, name, file_type: mimeType };
 }
+
+/**
+ * Every theme a schema names, deduplicated.
+ *
+ * Structural rather than typed on `SchemaNode`, for the same reason `inspectTemplateSurface` walks
+ * structurally: a `theme` can sit on any node, including inside routes, slots and `$each` bodies,
+ * and a walk that knew the node shape would need revising for every container added. The failure
+ * mode of missing one is a section that renders with an attribute and no rules — which is exactly
+ * the bug this exists to fix.
+ */
+function collectThemeNames(value: unknown, into = new Set<string>()): Set<string> {
+  if (Array.isArray(value)) {
+    for (const entry of value) collectThemeNames(entry, into);
+    return into;
+  }
+  if (!value || typeof value !== 'object') return into;
+
+  const node = value as { theme?: { themeName?: unknown } };
+  const name = node.theme?.themeName;
+  if (typeof name === 'string' && name) into.add(name);
+
+  for (const entry of Object.values(value as Record<string, unknown>)) collectThemeNames(entry, into);
+  return into;
+}
+
+/**
+ * Theme ids that can be written into a DOM id and an attribute selector without escaping.
+ *
+ * A theme installed from a marketplace carries whatever id its author gave it. Rather than work out
+ * the CSS escaping rules for the rest, anything outside this set simply does not get injected — the
+ * section renders unthemed, which is the failure this feature already had and not a worse one.
+ */
+const SAFE_THEME_ID = /^[A-Za-z0-9_-]+$/;
 
 function getInitialThemeId(): string {
   const saved = typeof window !== 'undefined' ? localStorage.getItem(THEME_KEY) : null;
@@ -538,6 +577,52 @@ export function ThemeStoreProvider(props: ParentProps) {
       scope: THEME_SCOPE_SELECTOR,
       namespace: theme ? cssNamespace(theme) : undefined,
     });
+  });
+
+  /*
+    Named themes, injected on demand.
+
+    A schema node carrying `theme: { themeName: 'cyberpunk' }` gets `data-we-theme="cyberpunk"`
+    stamped on its wrapper and its colour formulas re-declared — but until now *nothing put that
+    theme's stylesheet in the document*. Only two were ever injected: the active theme and the
+    space's. So unless the app already happened to be on cyberpunk, the wrapper carried an attribute
+    that zero rules in the document matched, and the section came out with the right colours and
+    none of the shape — no monospace, no clipped buttons. `CONVENTIONS` lists scoped
+    `theme.themeName` as supported, so it was unfinished rather than deliberate.
+
+    One `<style>` per named theme rather than all five at boot, which is what the audit's note ruled
+    out: `@keyframes` are global by name (two themes both defining `glitched` would silently
+    redefine each other), and a custom marketplace theme could never be handled that way at all.
+    Both objections are answered by going through the same sanitiser as everything else — it
+    namespaces keyframes per theme and confines the sheet to the elements carrying that attribute.
+
+    Reactive rather than one-shot because `allThemes()` fills in over time: a space's themes arrive
+    after the space does, so a name that resolves to nothing on the first pass resolves later.
+  */
+  const [requestedThemeNames, setRequestedThemeNames] = createSignal<string[]>([]);
+
+  function requestNamedThemes(schema: unknown) {
+    const names = collectThemeNames(schema);
+    if (!names.size) return;
+    setRequestedThemeNames((previous) => {
+      const next = new Set(previous);
+      const before = next.size;
+      for (const name of names) if (SAFE_THEME_ID.test(name)) next.add(name);
+      return next.size === before ? previous : [...next];
+    });
+  }
+
+  createEffect(() => {
+    const themes = allThemes();
+    for (const name of requestedThemeNames()) {
+      const theme = themes.find((candidate) => candidate.id === name || candidate.slug === name);
+      // Scoped to the attribute the renderer stamps, so a named theme reaches its own section and
+      // nothing else — including when the template naming it is a stranger's.
+      injectCssString(`we-named-theme-css-${name}`, theme?.css ?? '', {
+        scope: `[data-we-theme='${name}']`,
+        namespace: `we-t-${name}`,
+      });
+    }
   });
 
   // Apply initial theme immediately from localStorage — inject CSS string synchronously
@@ -1295,6 +1380,7 @@ export function ThemeStoreProvider(props: ParentProps) {
     // mutation they performed themselves (e.g. deleting a space theme),
     // mirroring templateStore.refreshSpaceTemplates.
     refreshSpaceThemes: loadSpaceThemes,
+    requestNamedThemes,
   };
 
   return <ThemeContext.Provider value={store}>{props.children}</ThemeContext.Provider>;

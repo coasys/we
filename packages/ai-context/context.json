@@ -6093,7 +6093,8 @@
         "publishToMarketplace",
         "publishToSpace",
         "loadInstalledThemes",
-        "refreshSpaceThemes"
+        "refreshSpaceThemes",
+        "requestNamedThemes"
       ]
     },
     {

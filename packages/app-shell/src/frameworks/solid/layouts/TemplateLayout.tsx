@@ -165,6 +165,9 @@ function ShellOverlayInner({
   view: ShellViewEntry;
 }) {
   const shellRouteStore = useShellRouteStore();
+  // Shell views name themes too — the schema-tests page demonstrates a scoped `cyberpunk` section —
+  // and they are mounted on demand, so the template's own pass never sees them.
+  stores.themeStore.requestNamedThemes(view.schema);
   // Built from the raw stores (the schema-tests view reaches for `testDataset` and `backendPorts`,
   // both host wiring), then merged into the *chrome* bag, which is what actually gets rendered.
   const { $schema: reactiveSchema, ...storeEntries } = view.stores?.(stores, shellRouteStore) ?? {};

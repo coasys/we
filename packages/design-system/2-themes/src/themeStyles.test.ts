@@ -9,7 +9,8 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { applyThemeVars } from './themeStyles';
+import { THEME_PRESETS } from './presets';
+import { applyThemeVars, themeToStyle } from './themeStyles';
 
 /** A minimal stand-in for an element's inline style, so this needs no DOM. */
 function fakeRoot() {
@@ -137,5 +138,42 @@ describe('applyThemeVars cross-fade window', () => {
 
     expect(a.props.get(DURATION)).toBe('250ms');
     expect(b.props.has(DURATION)).toBe(false);
+  });
+});
+
+describe('a named theme brings its own parameters', () => {
+  /*
+    The second half of the scoped-named-theme gap. `{ themeName: 'cyberpunk' }` re-declared the
+    colour *formulas* but left their *inputs* — multiplier, subtractor, saturation — inherited from
+    whatever theme was ambient. A cyberpunk section inside a light app therefore got cyberpunk's
+    shapes over light's lightness curve, and only looked right when the app already happened to be
+    on that theme.
+  */
+  it('resolves a known name to its preset parameters', () => {
+    const style = themeToStyle({ themeName: 'cyberpunk' });
+    const preset = THEME_PRESETS.cyberpunk.parameters;
+
+    expect(style['--we-color-multiplier']).toBe(String(preset.multiplier));
+    expect(style['--we-color-subtractor']).toBe(String(preset.subtractor));
+    expect(style['--we-color-saturation']).toBe(String(preset.saturation));
+  });
+
+  it('lets an explicit override win over the preset', () => {
+    // `{ themeName: 'cyberpunk', primaryHue: 320 }` should read as "cyberpunk, different accent".
+    const style = themeToStyle({ themeName: 'cyberpunk', primaryHue: 320 });
+
+    expect(style['--we-color-primary-hue']).toBe('320');
+    expect(style['--we-color-multiplier']).toBe(String(THEME_PRESETS.cyberpunk.parameters.multiplier));
+  });
+
+  it('leaves an unknown name alone rather than inventing parameters', () => {
+    // A marketplace theme's id is not a preset key; its inputs come from its own CSS.
+    const style = themeToStyle({ themeName: 'some-installed-theme' });
+    expect(style['--we-color-multiplier']).toBeUndefined();
+  });
+
+  it('still re-declares the formulas, which is what it always did', () => {
+    const style = themeToStyle({ themeName: 'cyberpunk' });
+    expect(style['--we-color-lightness-500']).toContain('var(--we-color-subtractor)');
   });
 });

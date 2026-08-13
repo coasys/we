@@ -2007,6 +2007,7 @@ ThemeStore:
   - publishToSpace(): unknown
   - loadInstalledThemes(): unknown
   - refreshSpaceThemes(): unknown
+  - requestNamedThemes(): unknown
 
 Model:
 - State:

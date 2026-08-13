@@ -264,6 +264,10 @@ export default function TemplateProvider() {
 
   const templateSchema = templateStore.currentTemplate;
 
+  // Any theme the template names by `theme: { themeName }` needs its stylesheet present before the
+  // section that names it paints. Re-run on template switch, since the next one names different ones.
+  createEffect(() => themeStore.requestNamedThemes(templateStore.currentTemplate));
+
   // TemplateLayout receives stores via closure — SolidJS Router requires `root` to be
   // a component type, so we wrap it to pass stores through.
   const Layout = (props: { children?: unknown }) =>

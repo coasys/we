@@ -2455,6 +2455,7 @@ export const contextData: ContextData = {
         'publishToSpace',
         'loadInstalledThemes',
         'refreshSpaceThemes',
+        'requestNamedThemes',
       ],
     },
     { name: 'model', state: {}, actions: ['create', 'update', 'delete'] },

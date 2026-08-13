@@ -462,6 +462,11 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     replaceTheme: WIRING,
     registerHistoryCallbacks: WIRING,
     applySnapshot: WIRING,
+    // Host wiring, deliberately. A template's channel for a named theme is the declarative
+    // `theme: { themeName }` prop, which the renderer stamps and this store then satisfies. Exposing
+    // the injector itself would let a template pull any installed theme's stylesheet into the
+    // document whenever it liked, which is the surface the declarative form exists to bound.
+    requestNamedThemes: WIRING,
     loadInstalledThemes: WIRING,
     refreshSpaceThemes: action('appearance'),
   },
