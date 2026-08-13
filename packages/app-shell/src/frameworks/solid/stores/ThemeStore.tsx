@@ -60,7 +60,14 @@ export interface ThemeStore {
   // Actions
   setCurrentTheme: (themeId: string) => void;
   setDefaultTheme: (themeId: string) => void;
-  toggleThemeInstalled: (themeId: string) => Promise<void>;
+  /**
+   * Show or hide a custom theme in the pickers. Does not delete it.
+   *
+   * Takes the value rather than toggling, so a `we-switch` can pass `$event.detail` straight
+   * through — the rule `setModuleVisible` documents and this violated: a toggle discards what the
+   * switch actually emitted, so the two disagree the moment anything else changes the state.
+   */
+  setThemeInstalled: (themeId: string, visible: boolean) => Promise<void>;
   /** What actually applies: the session preview if one is active, else the agent's preference. */
   themeScope: Accessor<'global' | 'scoped'>;
   /** The agent's persisted choice, which a preview temporarily masks. */
@@ -550,20 +557,29 @@ export function ThemeStoreProvider(props: ParentProps) {
     datasetStore.updateAgentSettings({ defaultThemeId: themeId });
   }
 
-  async function toggleThemeInstalled(themeId: string) {
+  async function setThemeInstalled(themeId: string, visible: boolean) {
     const model = themeModelMap.get(themeId);
     const prefs = datasetStore.agentSettings();
     if (!model || !prefs) return;
-    if (visibleThemeIds().has(themeId)) {
-      await prefs.removeInstalledThemes(model).catch(() => {});
-      setVisibleThemeIds((prev) => {
-        const next = new Set(prev);
-        next.delete(themeId);
-        return next;
-      });
-    } else {
-      await prefs.addInstalledThemes(model).catch(() => {});
-      setVisibleThemeIds((prev) => new Set([...prev, themeId]));
+
+    try {
+      if (visible) {
+        await prefs.addInstalledThemes(model);
+        setVisibleThemeIds((prev) => new Set([...prev, themeId]));
+      } else {
+        await prefs.removeInstalledThemes(model);
+        setVisibleThemeIds((prev) => {
+          const next = new Set(prev);
+          next.delete(themeId);
+          return next;
+        });
+      }
+    } catch (error) {
+      // Was `.catch(() => {})`, which moved the switch and wrote nothing: the picker showed the new
+      // state until the next boot restored the old one.
+      console.error('ThemeStore: could not change theme visibility', error);
+      toastService.error('Could not save that change.');
+      throw error;
     }
   }
 
@@ -1133,7 +1149,7 @@ export function ThemeStoreProvider(props: ParentProps) {
     applySnapshot,
     setCurrentTheme,
     setDefaultTheme,
-    toggleThemeInstalled,
+    setThemeInstalled,
     replaceTheme,
     restorePersonalTheme,
     clearSpaceTheme,

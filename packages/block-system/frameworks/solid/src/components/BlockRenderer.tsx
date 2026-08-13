@@ -15,6 +15,7 @@ import {
 import { createEffect } from 'solid-js';
 
 import { blockNodeClasses } from '../nodes';
+import { useBlockDataset } from './BlockDataset';
 
 type Props = Omit<BlockRendererProps, 'ax' | 'ay'> & Pick<ColumnProps, 'ax' | 'ay'> & { rootClass?: string };
 
@@ -28,7 +29,9 @@ function LoadEditorState(props: { editorState?: SerializedBlockNode; perspective
   // is reused (reconcile({ key: 'id' }) deliberately keeps it mounted).
   createEffect(() => {
     const editorState = props.editorState;
-    const perspective = props.perspective;
+    // Read inside the effect, like everything else here: the host's current dataset changes when the
+    // user moves between spaces, and a block must not keep resolving against the one they left.
+    const perspective = useBlockDataset(props.perspective);
     if (!editorState || !editor) return;
 
     const rootNode: SerializedBlockNode | null =

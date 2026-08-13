@@ -29,6 +29,7 @@ import BlockKeyboardPlugin from '../plugins/BlockKeyboardPlugin';
 import IndentationPlugin from '../plugins/IndentationPlugin';
 import PlaceholdersPlugin from '../plugins/PlaceholdersPlugin';
 import SlashCommandPlugin from '../plugins/SlashCommandPlugin';
+import { useBlockDataset } from './BlockDataset';
 
 registerCoreBlocks();
 registerCoreBlockComponents();
@@ -157,6 +158,8 @@ type Props = Omit<BlockComposerProps, 'ax' | 'ay'> & Pick<ColumnProps, 'ax' | 'a
 
 /** @superclass DesignSystemElement */
 export function BlockComposer({ editorState, perspective, onSave, onReady, width = '100%', ...rest }: Props) {
+  // The space being composed in, unless the caller named a different one. See `BlockDataset`.
+  const dataset = useBlockDataset(perspective);
   const initialConfig = {
     namespace: 'BlockComposer',
     theme: { root: 'we-block-composer-editor we-block-content' },
@@ -167,7 +170,7 @@ export function BlockComposer({ editorState, perspective, onSave, onReady, width
   return (
     <Column class="we-block-composer-wrapper" width={width} {...rest}>
       <LexicalComposer initialConfig={initialConfig}>
-        <LoadEditorState editorState={editorState} perspective={perspective} />
+        <LoadEditorState editorState={editorState} perspective={dataset} />
         {onReady ? <OnReadyPlugin onSave={onSave} onReady={onReady} /> : <SaveButton onSave={onSave} />}
 
         {/* Lexical plugins */}

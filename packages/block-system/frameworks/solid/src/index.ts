@@ -1,5 +1,6 @@
 export * from './components';
 export * from './components/BlockComposer';
+export * from './components/BlockDataset';
 export * from './components/BlockDisplayOverrides';
 export * from './components/BlockRenderer';
 export * from './core-block-components';

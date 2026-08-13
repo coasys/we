@@ -22,6 +22,7 @@ import {
 import type { Stores } from '@solid/types';
 import { Route, Router } from '@solidjs/router';
 import { manifestEntries } from '@we/backend-shared';
+import { BlockDatasetProvider } from '@we/block-solid';
 import { toastService } from '@we/components/solid';
 import type { DatasetProxy } from '@we/models';
 import { getModel } from '@we/models';
@@ -354,32 +355,34 @@ export default function TemplateProvider() {
   // 1. Route components (called as direct functions in buildRoutes) get context via their reactive owner
   // 2. Shell chrome components like InspectorPanel (in templateEditor) get context too
   return (
-    <VisualEditorProvider value={visualEditorCtx}>
-      {/* Shell chrome — stable, never remounts. Chrome tier: this is host-authored. */}
-      <RenderSchema node={shellSchema} stores={chromeBag} registry={registry} />
+    <BlockDatasetProvider dataset={() => (datasetStore.currentDataset()?.handle as never) ?? null}>
+      <VisualEditorProvider value={visualEditorCtx}>
+        {/* Shell chrome — stable, never remounts. Chrome tier: this is host-authored. */}
+        <RenderSchema node={shellSchema} stores={chromeBag} registry={registry} />
 
-      {/* Router — keyed on template ID so buildRoutes reruns when the template changes.
+        {/* Router — keyed on template ID so buildRoutes reruns when the template changes.
            Template switching is a rare intentional action; the full remount is acceptable. */}
-      <Show when={templateSchema.id || 'empty'} keyed>
-        {(_id) => (
-          <Router root={Layout}>
-            {buildRoutes(templateBag, templateSchema.routes ?? [])}
-            <Route
-              path="*"
-              component={() =>
-                templateSchema.routes?.length
-                  ? RenderSchema({ node: notFoundNode, stores: templateBag, registry })
-                  : null
-              }
-            />
-          </Router>
-        )}
-      </Show>
+        <Show when={templateSchema.id || 'empty'} keyed>
+          {(_id) => (
+            <Router root={Layout}>
+              {buildRoutes(templateBag, templateSchema.routes ?? [])}
+              <Route
+                path="*"
+                component={() =>
+                  templateSchema.routes?.length
+                    ? RenderSchema({ node: notFoundNode, stores: templateBag, registry })
+                    : null
+                }
+              />
+            </Router>
+          )}
+        </Show>
 
-      {/* Persistent app iframes (e.g. Flux) — stable, never remounts. Rendered after the
+        {/* Persistent app iframes (e.g. Flux) — stable, never remounts. Rendered after the
            keyed Router (both are DOM order stacking, so this preserves the original
            on-top-of-template paint order) so switching templates doesn't reload embedded apps. */}
-      <PersistentAppFrames stores={stores} />
-    </VisualEditorProvider>
+        <PersistentAppFrames stores={stores} />
+      </VisualEditorProvider>
+    </BlockDatasetProvider>
   );
 }

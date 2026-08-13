@@ -147,7 +147,6 @@ const photoDetail: RouteSchema = {
                   type: 'BlockRenderer',
                   props: {
                     editorState: '$post.editorState',
-                    perspective: { $store: 'datasetStore.currentDataset.handle' },
                   },
                 },
                 {
@@ -187,7 +186,6 @@ const photoDetail: RouteSchema = {
                           type: 'BlockRenderer',
                           props: {
                             editorState: `$${as}.editorState`,
-                            perspective: { $store: 'datasetStore.currentDataset.handle' },
                           },
                         },
                       ],

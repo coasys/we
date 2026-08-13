@@ -247,7 +247,7 @@ export const storeEntries: StoreEntry[] = [
       'setDefaultTheme',
       'setThemeScopeGlobal',
       'previewThemeScope',
-      'toggleThemeInstalled',
+      'setThemeInstalled',
       'installFromMarketplace',
       'uninstallTheme',
       'deleteTheme',
@@ -339,9 +339,12 @@ export const storeEntries: StoreEntry[] = [
         type: 'array',
         properties: ['id', 'icon', 'label', 'active'],
       },
+      unreadNodeIds: { type: 'array' },
+      myMentions: { type: 'array', properties: ['id', 'author', 'createdAt'] },
     },
     actions: [
       'createSpace',
+      'uploadFile',
       'joinSpace',
       'initializeAsWeSpace',
       'removeSpace',
@@ -682,8 +685,8 @@ export function generateStoresText(entries: StoreEntry[]): string {
           "(global: boolean): persists whether a space's theme covers the whole window (true) or only the space's own content (false, the default). Takes a boolean because a switch emits one and a schema cannot map it to a string — `$if` in an action's args resolves at render time, before the event exists",
         previewThemeScope:
           "(scope: 'global' | 'scoped' | null): previews a scope for the current theme-editing session without writing the preference; null drops the preview. Cleared when editing ends",
-        toggleThemeInstalled:
-          '(themeId: string): toggles a custom theme visible/hidden in pickers; does not delete the theme',
+        setThemeInstalled:
+          '(themeId: string, visible: boolean): shows or hides a custom theme in the pickers; does not delete it. Takes the value rather than toggling, so a `we-switch` can pass `$event.detail` straight through',
         installFromMarketplace: '(marketplaceThemeId: string): installs a marketplace theme into installedThemes',
         uninstallTheme: '(themeId: string): removes an installed theme (deletes the model)',
         deleteTheme: '(themeId: string): permanently deletes a custom theme',
@@ -777,6 +780,12 @@ export function generateStoresText(entries: StoreEntry[]): string {
           '(field: "avatar" | "coverImage", imageFile: File, spaceUuid?): uploads and sets the space avatar or cover image',
         createSignalType:
           '(config: Partial<SignalType>): creates a new signal type in the community; slug auto-derived from name if blank',
+        unreadNodeIds:
+          'string[] — ids of containers in this space holding something newer than your read marker. The read side of `ReadMarker`: use it for unread dots with `{ "$in": ["$channel.id", { "$store": "spaceStore.unreadNodeIds" }] }` rather than recomputing a `$latestChild` projection and a `$gt` per row',
+        myMentions:
+          '{ id, author, createdAt }[] — nodes in this space that name you, newest first. The read side of `WeNode.mentions`, which the composer has always written and nothing could read',
+        uploadFile:
+          '(file: File, name?: string): stores a file and returns the URL to reference it by, or null. Images are compressed on the way through. For a template doing its own media UI — without it, only the block composer could accept an upload',
         upsertSignal:
           '(nodeId: string, signalTypeId: string, value: number): adds or updates a signal on a node; value=0 deletes it',
         navigateToSpace:

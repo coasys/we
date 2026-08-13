@@ -166,7 +166,6 @@ const watchRoute: RouteSchema = {
               type: 'BlockRenderer',
               props: {
                 editorState: '$post.editorState',
-                perspective: { $store: 'datasetStore.currentDataset.handle' },
               },
             },
             agentByline({ did: '$post.author', timestamp: '$post.createdAt' }),
@@ -206,7 +205,6 @@ const watchRoute: RouteSchema = {
                       type: 'BlockRenderer',
                       props: {
                         editorState: `$${as}.editorState`,
-                        perspective: { $store: 'datasetStore.currentDataset.handle' },
                       },
                     },
                   ],
