@@ -20,6 +20,7 @@ import { Space } from '@we/models/classes';
 import { createAd4mDataBindings } from './ad4mAdapter';
 import { createAd4mEphemeralPort } from './ad4mEphemeralAdapter';
 import { createFileExpression, getProfile, publishProfileToPublicPerspective } from './agentHelpers';
+import { createAd4mInterpretationPort } from './interpretationAdapter';
 import { createAd4mAgentSession, createAd4mDatasetLifecycle } from './lifecycleAdapter';
 import { compileManifest } from './manifestCompiler';
 import { buildModelClasses, buildModelManifest, getForeignShacl } from './perspectiveHelpers';
@@ -100,6 +101,9 @@ export function createAd4mBackendPorts(
     profiles: createAd4mProfileDirectory(backendClient),
     runtime: createAd4mRuntimeAdmin(backendClient, options),
     transcription: createAd4mTranscriptionPort(backendClient),
+    // Takes no client: interpretation is entirely a per-dataset operation, and every call already
+    // carries the dataset handle it needs.
+    interpretation: createAd4mInterpretationPort(),
     ephemeral,
     dataBindings: (deps: DataBindingDeps) =>
       createAd4mDataBindings({
