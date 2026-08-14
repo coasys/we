@@ -17,6 +17,66 @@ import { agentByline, cardList, cardShell, confirmModal, emptyState, field, peop
  * composes with `order` and `limit`. A tag relation would need a traversal in the direction the
  * query layer does not go.
  */
+/**
+ * One group of records extraction wrote onto this call.
+ *
+ * A drill-down through `children` for the same reason the transcript below uses one:
+ * `CollectionBlock.children` is an *untyped* `@HasMany`, so `include` has no target class to
+ * resolve and dies on it. `scope` is the supported traversal, and it takes the child type — which
+ * is exactly what makes this one helper serve both tasks and events.
+ *
+ * Rendered only when the group has members, so a call nobody extracted from looks the way it always
+ * did rather than growing two empty headings.
+ *
+ * `title` is the one field every extracted class has and the one the model is told to lead with, so
+ * it is all this shows. Anything richer belongs in the card for that type, not in a summary hanging
+ * off a call — the point here is "this came out of this conversation", not a task manager.
+ */
+function extracted(entity: string, label: string, icon: string, as: string): SchemaNode {
+  const query = {
+    $query: {
+      entity,
+      scope: { anchor: 'CollectionBlock', via: 'children', anchorId: '$call.id' },
+      order: { createdAt: 'asc' },
+    },
+  };
+  return {
+    type: '$if',
+    props: {
+      condition: { $count: { items: query } },
+      then: {
+        type: 'Column',
+        props: { gap: '200' },
+        children: [
+          {
+            type: 'Row',
+            props: { gap: '200', ay: 'center' },
+            children: [
+              { type: 'we-icon', props: { name: icon, color: 'primary-700' } },
+              {
+                type: 'we-text',
+                props: { variant: 'footnote', color: 'neutral-500', uppercase: true },
+                children: [label],
+              },
+            ],
+          },
+          {
+            type: '$each',
+            props: { items: query, as },
+            children: [
+              {
+                type: 'Row',
+                props: { gap: '200', ay: 'center', bg: 'neutral-50', r: '300', px: '300', py: '200' },
+                children: [{ type: 'we-text', children: [`$${as}.title`] }],
+              },
+            ],
+          },
+        ],
+      },
+    },
+  };
+}
+
 export const callsList: SchemaNode = {
   type: '$if',
   props: {
@@ -98,14 +158,52 @@ export const callsList: SchemaNode = {
                     // about how much was said, not about who was there, so it is not part of the
                     // same statement the way a member count is.
                     peopleRow({ items: '$call.participants', dids: true, as: 'participant' }),
+                    /*
+                        How much was said — counted from the utterances, not from the children.
+
+                        `children` used to be the count and stopped being the right one the moment
+                        extraction started parenting records onto the call: five utterances and
+                        three extracted records read as "8 utterances". That is not a cosmetic
+                        slip. This number exists to sit beside the faces and show *coverage* — the
+                        gap between who was present and how much of them was captured, which is the
+                        normal outcome of opt-in transcription and the thing a partial transcript
+                        most needs to admit. Inflating it with machine-written records destroys
+                        exactly that reading.
+
+                        A scoped drill-down rather than a filter over `children`, because children
+                        arrive as bare ids: the ids alone cannot tell you which are utterances.
+                      */
                     {
                       type: 'we-text',
                       props: { fontSize: '200', color: 'neutral-700' },
                       children: [
-                        { type: 'we-number', props: { value: { $count: { items: '$call.children' } } } },
+                        {
+                          type: 'we-number',
+                          props: {
+                            value: {
+                              $count: {
+                                items: {
+                                  $query: {
+                                    entity: 'TextBlock',
+                                    scope: { anchor: 'CollectionBlock', via: 'children', anchorId: '$call.id' },
+                                  },
+                                },
+                              },
+                            },
+                          },
+                        },
                         {
                           $plural: {
-                            count: { $count: { items: '$call.children' } },
+                            count: {
+                              $count: {
+                                items: {
+                                  $query: {
+                                    entity: 'TextBlock',
+                                    scope: { anchor: 'CollectionBlock', via: 'children', anchorId: '$call.id' },
+                                  },
+                                },
+                              },
+                            },
                             one: ' utterance',
                             other: ' utterances',
                           },
@@ -484,11 +582,25 @@ export const callsList: SchemaNode = {
                     },
                   },
                 },
+                /*
+                    What was found in the conversation, above what was said in it.
+
+                    Above, because it is the part someone opening a finished call actually wants —
+                    the transcript is the evidence, and evidence belongs under the finding. It is
+                    also the only place the result of pressing Extract is visible as *records*
+                    rather than as a count.
+
+                    Grouped by type rather than filtered by one, because two or three items make a
+                    filter more chrome than content. When a real meeting yields fifteen, this is the
+                    shape a filter grows out of.
+                  */
+                extracted('TaskBlock', 'Tasks', 'check-square', 'task'),
+                extracted('EventBlock', 'Events', 'calendar', 'event'),
                 {
                   type: '$each',
                   // Drilled down from the call rather than hydrated with `include` — see the note
-                  // on the outer query. `children` still arrives as an array of ids (which is what
-                  // the utterance count above reads), but the ids alone cannot render the text.
+                  // on the outer query. `children` still arrives as an array of ids, but the ids
+                  // alone cannot render the text.
                   // Oldest first, because a transcript read backwards is not a transcript.
                   props: {
                     items: {
