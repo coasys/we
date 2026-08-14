@@ -1421,6 +1421,7 @@ export const contextData: ContextData = {
       className: 'EventBlock',
       extends: 'WeNode',
       fields: [
+        { name: 'occurrence', type: 'string', predicate: 'we://occurrence', required: false },
         { name: 'title', type: 'string', predicate: 'we://title', required: true },
         { name: 'description', type: 'string', predicate: 'we://description', required: false },
         { name: 'startDate', type: 'string', predicate: 'we://start_date', required: true },

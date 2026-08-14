@@ -18,6 +18,19 @@ import { agentByline, cardList, cardShell, confirmModal, emptyState, field, peop
  * query layer does not go.
  */
 /**
+ * This call's utterances — the transcript, and nothing extraction wrote.
+ *
+ * A scoped drill-down rather than a filter over `children`, because children arrive as bare ids and
+ * the ids alone cannot say which are utterances.
+ */
+const utterances = {
+  $query: {
+    entity: 'TextBlock',
+    scope: { anchor: 'CollectionBlock', via: 'children', anchorId: '$call.id' },
+  },
+};
+
+/**
  * One group of records extraction wrote onto this call.
  *
  * A drill-down through `children` for the same reason the transcript below uses one:
@@ -174,41 +187,28 @@ export const callsList: SchemaNode = {
                         arrive as bare ids: the ids alone cannot tell you which are utterances.
                       */
                     {
+                      // The whole label in a **prop**, not split across children. A `$query` is a
+                      // subscription, so it is hoisted into a signal at component setup — which is
+                      // safe for a prop and not for a child, where rendering happens inside a memo.
+                      // Written as children, the count silently resolved to 0 and the card reported
+                      // no utterances with the transcript sitting directly beneath it.
                       type: 'we-text',
-                      props: { fontSize: '200', color: 'neutral-700' },
-                      children: [
-                        {
-                          type: 'we-number',
-                          props: {
-                            value: {
-                              $count: {
-                                items: {
-                                  $query: {
-                                    entity: 'TextBlock',
-                                    scope: { anchor: 'CollectionBlock', via: 'children', anchorId: '$call.id' },
-                                  },
-                                },
+                      props: {
+                        fontSize: '200',
+                        color: 'neutral-700',
+                        text: {
+                          $concat: [
+                            { $count: { items: utterances } },
+                            {
+                              $plural: {
+                                count: { $count: { items: utterances } },
+                                one: ' utterance',
+                                other: ' utterances',
                               },
                             },
-                          },
+                          ],
                         },
-                        {
-                          $plural: {
-                            count: {
-                              $count: {
-                                items: {
-                                  $query: {
-                                    entity: 'TextBlock',
-                                    scope: { anchor: 'CollectionBlock', via: 'children', anchorId: '$call.id' },
-                                  },
-                                },
-                              },
-                            },
-                            one: ' utterance',
-                            other: ' utterances',
-                          },
-                        },
-                      ],
+                      },
                     },
                     /*
                         Pick this call back up.

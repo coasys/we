@@ -11,6 +11,7 @@ import type {
 import {
   deepUnwrap,
   hasToken,
+  markReactive,
   noMemo,
   pruneUnresolvedWhere,
   REACTIVE_ACCESSOR,
@@ -336,7 +337,18 @@ function createQuerySignal(
     }
   });
 
-  return Object.assign(readItems, { loaded });
+  /*
+    Marked reactive, so a consumer that unwraps accessors gets rows rather than a function.
+
+    The two conventions in the resolvers differ, and the difference is invisible until it bites:
+    `$map` calls whatever it is handed (`typeof items === 'function' ? items() : items`), while
+    `$count` and `$find` only call it when `REACTIVE_ACCESSOR` is set — a deliberate distinction,
+    since a prop may legitimately hold a plain callable that must not be invoked. Unmarked, this
+    accessor satisfied the first and not the second, so hoisting a query into a `$count` produced a
+    function, `Array.isArray` said no, and the count came back 0 — the same value a genuinely empty
+    query returns, which is why it read as "this call has no utterances".
+  */
+  return markReactive(Object.assign(readItems, { loaded }));
 }
 
 /** Detect values with no schema tokens — can be passed through without reactive tracking. */
@@ -623,6 +635,18 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
                 );
               }
             }
+            /*
+              Deliberately *not* hoisted, unlike a prop.
+
+              Children render inside a memo, and hoisting means creating a subscription — an effect
+              inside a derivation, which is the one thing the hoist must not do. Doing it at setup
+              instead would mean walking the whole child tree, subscribing queries for nodes behind
+              conditions that are false and may never render.
+
+              So a `$query` in a children token resolves to nothing: `$count` reads 0. Put the token
+              in a **prop** instead — `we-text`'s `text`, say — where hoisting is safe and correct.
+              `tests/countOverQuery.test.tsx` pins this as a known limit rather than a bug.
+            */
             const resolved = resolveProp(child as unknown, stores, effectiveContext, createMemo);
             return (
               <>
