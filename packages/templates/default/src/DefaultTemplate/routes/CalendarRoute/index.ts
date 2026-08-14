@@ -43,24 +43,176 @@ const eventsOnDay = {
   },
 };
 
-/** The month grid, with a dot on every day something happens. */
+/**
+ * The month grid — a fragment, not a component.
+ *
+ * Every cell here is template-owned: the dot could be an event chip, a count, a heat-map square, and
+ * a community could fork this into a week view without touching code. That is the point of building
+ * it this way rather than reaching for the `Calendar` component, which owns its own grid and can
+ * only be styled from outside.
+ *
+ * The days come from `$source`, which is the one thing a schema cannot compute for itself — which
+ * weekday the 1st falls on, how long the month is, how many cells make whole weeks. Code answers
+ * that; the drawing is data. Same division the graph makes between an expander and a renderer.
+ *
+ * `Calendar` still exists and is still the right thing for *picking* a date — it is a form control.
+ * This is a data view that happens to be shaped like one.
+ */
 const monthGrid: SchemaNode = {
-  type: 'Calendar',
-  props: {
-    // `$map` over a `$query` is the one composition the renderer hoists into a live subscription,
-    // so the grid re-marks itself as events arrive rather than on a reload.
-    events: {
-      $map: {
-        items: eventsQuery,
-        select: { id: '$item.id', date: '$item.startDate', label: '$item.title' },
-      },
+  type: 'Column',
+  props: { width: '100%', gap: '300', bg: 'neutral-0', border: '1px solid neutral-200', r: '500', p: '400' },
+  children: [
+    // ── Month, and the way through them ──────────────────────────────────────
+    {
+      type: 'Row',
+      props: { width: '100%', ay: 'center', gap: '200' },
+      children: [
+        {
+          type: 'we-text',
+          props: {
+            fontWeight: 'semibold',
+            text: { $source: { name: 'monthLabel', options: { month: { $local: 'month' } } } },
+          },
+        },
+        {
+          type: 'we-button',
+          props: {
+            size: 'xs',
+            variant: 'ghost',
+            square: true,
+            ml: 'auto',
+            // Paging is arithmetic on an offset, which is the one calculation the schema layer can
+            // do — `$setLocal` cannot store a computed value, so the sources take the offset and
+            // the template only ever adds to it.
+            onClick: { $setLocal: 'monthOffset', by: -1 },
+          },
+          children: [{ type: 'we-icon', props: { name: 'caret-left' } }],
+        },
+        {
+          type: 'we-button',
+          props: { size: 'xs', variant: 'ghost', onClick: { $setLocal: 'monthOffset', value: 0 } },
+          children: ['Today'],
+        },
+        {
+          type: 'we-button',
+          props: {
+            size: 'xs',
+            variant: 'ghost',
+            square: true,
+            onClick: { $setLocal: 'monthOffset', by: 1 },
+          },
+          children: [{ type: 'we-icon', props: { name: 'caret-right' } }],
+        },
+      ],
     },
-    value: { $local: 'day' },
-    // Picking a day filters the list below it. A grid full of dots you cannot ask a question of is
-    // a picture of a month; this is the question it invites.
-    onSelect: { $setLocal: 'day', from: '$arg' },
-    styles: { width: '100%' },
-  },
+
+    // ── Weekday headings ─────────────────────────────────────────────────────
+    {
+      type: 'Row',
+      props: { width: '100%', gap: '100' },
+      children: [
+        {
+          type: '$each',
+          props: { items: ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'], as: 'weekday' },
+          children: [
+            {
+              type: 'Row',
+              props: { flex: '1', ax: 'center' },
+              children: [{ type: 'we-text', props: { variant: 'footnote', color: 'neutral-500', text: '$weekday' } }],
+            },
+          ],
+        },
+      ],
+    },
+
+    // ── The days ─────────────────────────────────────────────────────────────
+    {
+      type: 'Row',
+      props: { width: '100%', gap: '100', styles: { 'flex-wrap': 'wrap' } },
+      children: [
+        {
+          type: '$each',
+          props: {
+            items: { $source: { name: 'calendarMonth', options: { offset: { $local: 'monthOffset' } } } },
+            as: 'cell',
+          },
+          children: [
+            {
+              type: 'Column',
+              props: {
+                // Seven to a row, by width rather than by a grid the schema cannot express.
+                width: 'calc(14.28% - 6px)',
+                minHeight: '44px',
+                ax: 'center',
+                ay: 'center',
+                gap: '050',
+                r: '300',
+                cursor: 'pointer',
+                bg: { $if: { condition: { $eq: ['$cell.date', { $local: 'day' }] }, then: 'primary-500', else: '' } },
+                onClick: { $setLocal: 'day', from: '$cell.date' },
+              },
+              children: [
+                {
+                  type: 'we-text',
+                  props: {
+                    fontSize: '200',
+                    text: '$cell.day',
+                    // Three states, in order of precedence: selected, outside the month, today.
+                    color: {
+                      $if: {
+                        condition: { $eq: ['$cell.date', { $local: 'day' }] },
+                        then: 'neutral-0',
+                        else: {
+                          $if: {
+                            condition: '$cell.inMonth',
+                            then: { $if: { condition: '$cell.isToday', then: 'primary-600', else: 'neutral-900' } },
+                            else: 'neutral-400',
+                          },
+                        },
+                      },
+                    },
+                    fontWeight: { $if: { condition: '$cell.isToday', then: 'semibold', else: '' } },
+                  },
+                },
+                {
+                  // The mark that says "something happens here". A template could make this a count,
+                  // a stack of chips, or the event titles themselves — it is just a node.
+                  type: '$if',
+                  props: {
+                    condition: {
+                      $count: {
+                        items: {
+                          $filter: {
+                            items: eventsQuery,
+                            where: { startDate: { startsWith: '$cell.date' } },
+                          },
+                        },
+                      },
+                    },
+                    then: {
+                      type: 'Row',
+                      props: {
+                        width: '4px',
+                        height: '4px',
+                        r: 'pill',
+                        bg: {
+                          $if: {
+                            condition: { $eq: ['$cell.date', { $local: 'day' }] },
+                            then: 'neutral-0',
+                            else: 'primary-500',
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    },
+  ],
 };
 
 /**
@@ -179,6 +331,8 @@ export const calendarRoute: RouteSchema = {
   $localState: {
     /** The day the grid has selected, `YYYY-MM-DD`. Empty means "everything scheduled". */
     day: { type: 'string', initial: '' },
+    /** Months from today the grid is showing. Paged by `$setLocal … by`, reset by "Today". */
+    monthOffset: { type: 'number', initial: 0 },
     composerOpen: { type: 'boolean', initial: false },
     draftTitle: { type: 'string', initial: '' },
     draftStart: { type: 'string', initial: '' },

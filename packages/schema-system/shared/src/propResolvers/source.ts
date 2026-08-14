@@ -26,9 +26,9 @@
  * state is a store. Being pure, it needs no lifecycle and creates no effect — so unlike `$query` it
  * needs no hoisting to component setup, and works in props, conditions **and** children alike.
  *
- * A missing source resolves to `[]` and reports through `$onError`, rather than throwing: a template
- * naming a source this deployment did not register should degrade to an empty list, the same way a
- * query against an unreachable backend does.
+ * A missing source resolves to `undefined` and reports through `$onError`, rather than throwing: a
+ * template naming a source this deployment did not register should degrade to nothing rendered, the
+ * same way a query against an unreachable backend does.
  */
 import type { resolveProp } from './dispatcher';
 import { markReactive } from './reactive';
@@ -41,7 +41,7 @@ export interface SourceProp {
   options?: Record<string, unknown>;
 }
 
-type SourceFn = (options: Record<string, unknown>) => unknown[];
+type SourceFn = (options: Record<string, unknown>) => unknown;
 
 export function resolveSourceProp(
   token: SourceProp,
@@ -59,7 +59,7 @@ export function resolveSourceProp(
         const message = `Source "${token.name}" is not registered on this host.`;
         if (report) report(message);
         else console.error('[source]', message);
-        return [];
+        return undefined;
       }
 
       // Options resolved through the dispatcher, so a month can come from `$local` and the memo
@@ -72,14 +72,17 @@ export function resolveSourceProp(
       }
 
       try {
-        const rows = source(unwrapped);
-        return Array.isArray(rows) ? rows : [];
+        // Whatever the source returns, unchanged. Rows are the motivating case and not the only
+        // one: a month grid needs its days *and* a label for the month and a way to step to the
+        // next, and inventing a second token for computed scalars would be a worse answer than
+        // letting this one return what it computes. `$each` already ignores a non-list.
+        return source(unwrapped);
       } catch (error) {
         const report = stores.$onError as ((message: string) => void) | undefined;
         const message = `Source "${token.name}" failed: ${error instanceof Error ? error.message : String(error)}`;
         if (report) report(message);
         else console.error('[source]', message);
-        return [];
+        return undefined;
       }
     }),
   );

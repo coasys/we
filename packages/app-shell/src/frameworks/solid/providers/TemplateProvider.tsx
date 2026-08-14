@@ -3,6 +3,7 @@ import { provideModuleHostServices } from '@shared/registries/moduleHostServices
 import { moduleStores } from '@shared/registries/moduleRegistry';
 import { slotRegistry } from '@shared/registries/slotRegistry';
 import { buildTemplateBag, CHROME_TIER, SPACE_TIER } from '@shared/registries/templateSurface';
+import { calendarMonth, monthLabel } from '@shared/sources/calendarMonth';
 import { componentRegistry as registry } from '@solid/registries/componentRegistry';
 import {
   useAccountStore,
@@ -202,6 +203,15 @@ export default function TemplateProvider() {
       ephemeral: sessionStore.ephemeralPort,
     }),
   );
+  /*
+    Computed sources a template may iterate — the `$source` registry.
+
+    Registered by the host beside components, for the same reason components are: a deployment
+    decides what its templates can reach, and a module could contribute its own. Plain data rather
+    than a memo, because a source is a pure function and there is nothing here to react to.
+  */
+  stores.$sources = { calendarMonth, monthLabel };
+
   const BINDING_KEYS = [
     '$getModel',
     '$getModelForPerspective',

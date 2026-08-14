@@ -156,7 +156,7 @@ export interface RendererDataBindings {
    */
   $ephemeral?: EphemeralPort;
   /**
-   * Named functions a schema may iterate rows from — the `$source` token's registry.
+   * Named functions a schema may compute values from — the `$source` token's registry.
    *
    * The escape hatch in the form the rest of WE already uses: the authoring surface is JSON, so
    * anything genuinely computational is reachable *from* JSON by name, exactly as the graph does
@@ -171,10 +171,14 @@ export interface RendererDataBindings {
    * a source is a pure function of its options, resolving one is a memo rather than a subscription
    * — which is why `$source` works in props, conditions *and* children, where `$query` cannot.
    *
+   * Rows are the motivating case and not the only one: a month grid needs its days *and* a label for
+   * the month and a way to step to the next. A second token for computed scalars would be a worse
+   * answer than letting this one return whatever it computes.
+   *
    * Registered by the host alongside components, so a deployment decides what its templates can
    * reach and a module can contribute its own.
    */
-  $sources?: Record<string, (options: Record<string, unknown>) => unknown[]>;
+  $sources?: Record<string, (options: Record<string, unknown>) => unknown>;
 }
 
 /**

@@ -59,12 +59,12 @@ describe('$source', () => {
     expect(value).toBe(4);
   });
 
-  it('reports an unregistered source and degrades to empty', () => {
+  it('reports an unregistered source and degrades to nothing', () => {
     // A template naming a source this deployment did not register should render nothing, the way a
     // query against an unreachable backend does — not take the screen down.
     const errors: string[] = [];
     const result = rows({ $source: { name: 'nope' } }, {}, { ...stores, $onError: (m: string) => errors.push(m) });
-    expect(result).toEqual([]);
+    expect(result).toBeUndefined();
     expect(errors[0]).toContain('nope');
   });
 
@@ -82,22 +82,25 @@ describe('$source', () => {
         $onError: (m: string) => errors.push(m),
       },
     );
-    expect(result).toEqual([]);
+    expect(result).toBeUndefined();
     expect(errors[0]).toContain('bad options');
   });
 
-  it('degrades to empty when the host registered no sources at all', () => {
-    expect(rows({ $source: { name: 'days' } }, {}, {})).toEqual([]);
+  it('degrades to nothing when the host registered no sources at all', () => {
+    expect(rows({ $source: { name: 'days' } }, {}, {})).toBeUndefined();
   });
 
-  it('coerces a source that returns a non-array', () => {
+  it('returns a computed scalar unchanged, not only rows', () => {
+    // Rows are the motivating case and not the only one: a month grid needs its days *and* a label
+    // for the month and a way to step to the next. A second token for computed scalars would be a
+    // worse answer than letting this one return what it computes.
     const result = rows(
-      { $source: { name: 'wrong' } },
+      { $source: { name: 'label', options: { month: 8 } } },
       {},
       {
-        $sources: { wrong: () => ({ not: 'an array' }) as never },
+        $sources: { label: (o: Record<string, unknown>) => `Month ${o.month}` },
       },
     );
-    expect(result).toEqual([]);
+    expect(result).toBe('Month 8');
   });
 });
