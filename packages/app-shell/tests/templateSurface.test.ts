@@ -270,4 +270,27 @@ describe('space-configuring actions are pinned to the space on screen', () => {
     spaceStore.updateSpaceImage('avatar', 'a-file');
     expect(calls).toEqual([['gardening'], ['avatar', 'a-file']]);
   });
+
+  /*
+    The chrome tier holds `space-admin`, which is this restriction's own sentence negated: "change
+    settings in spaces other than this one". Settings' per-space page is what that grant is for — it
+    configures a space you are not standing in, naming it by the row that was clicked. Truncated
+    there, every control on the page wrote to whichever space was on screen instead, which is worse
+    than refusing: it silently renamed the wrong space and reported success.
+  */
+  it('lets a bag granted space-admin name the space it means', () => {
+    const chrome = buildTemplateBag(
+      { spaceStore: { updateSpaceMeta: record(), setModuleEnabled: record() } },
+      {
+        grants: CHROME_TIER,
+      },
+    ).spaceStore as Record<string, (...args: unknown[]) => unknown>;
+
+    chrome.updateSpaceMeta({ name: 'Renamed' }, 'another-space');
+    chrome.setModuleEnabled('call', true, 'another-space');
+    expect(calls).toEqual([
+      [{ name: 'Renamed' }, 'another-space'],
+      ['call', true, 'another-space'],
+    ]);
+  });
 });
