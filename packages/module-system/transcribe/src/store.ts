@@ -258,6 +258,16 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
   const [extractCount, setExtractCount] = signal(0);
   const [extractError, setExtractError] = signal('');
   /**
+   * Which collection a pass is running on, and which one the last result describes.
+   *
+   * Two ids rather than one, because extraction is now offered per card in a list: a single status
+   * flag would put "Reading…" on every call in the space while one of them is working, and would
+   * attribute a finished pass's count to whichever card the eye landed on. `extractingId` clears
+   * when the pass ends; `extractedId` persists so the card that asked can show what came back.
+   */
+  const [extractingId, setExtractingId] = signal('');
+  const [extractedId, setExtractedId] = signal('');
+  /**
    * Suggestions the backend staged instead of writing, awaiting a person.
    *
    * Held rather than queried on render because resolving one is a round trip and the list has to
@@ -543,6 +553,46 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
       setProposals(staged.map((p) => ({ id: p.id, kind: p.kind, summary: summarise(p.values) })));
     } catch {
       setProposals([]);
+    }
+  }
+
+  /**
+   * One extraction pass over a named collection.
+   *
+   * Flushes only when the named collection is the live one, which is exactly right: pressing
+   * Extract on this morning's call should not push a word said just now into it.
+   *
+   * One shot, driven by a press rather than a timer. A standing watch is a better *feature* and a
+   * worse thing to demonstrate — a button has a visible cause and a visible result, can be pressed
+   * again when a pass disappoints, and cannot quietly run up a bill while nobody is looking.
+   *
+   * Re-running is safe and expected: the engine dedups against instances already in the graph, so a
+   * second press over the same conversation updates what it found rather than duplicating it.
+   */
+  async function runExtraction(collection: string): Promise<void> {
+    if (!collection || !interpretation) return;
+    // One at a time across every surface. Two passes over one collection would race their writes,
+    // and two over different collections would make the shared status unreadable.
+    if (extractStatus() === 'running') return;
+
+    setExtractingId(collection);
+    setExtractStatus('running');
+    setExtractError('');
+    try {
+      if (collection === collectionId()) await flush();
+      const result = await interpretation.runOnCollection(collection, { classes: EXTRACT_CLASSES });
+      setExtractCount(result.ids.length);
+      setExtractedId(collection);
+      setExtractStatus('done');
+      // Only worth a round trip when the pass actually staged something. A backend with no
+      // provenance gate reports nothing proposed and never had a list to fetch.
+      if (result.proposed.length) await loadProposals();
+    } catch (error) {
+      setExtractError(error instanceof Error ? error.message : String(error));
+      setExtractedId(collection);
+      setExtractStatus('error');
+    } finally {
+      setExtractingId('');
     }
   }
 
@@ -939,6 +989,8 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
     extractStatus,
     extractCount,
     extractError,
+    extractingId,
+    extractedId,
     /**
      * Whether there is anything to extract *from* and anything to extract *with*.
      *
@@ -1026,26 +1078,17 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
      * Re-running is safe and expected. The engine dedups against instances already in the graph, so
      * a second press over the same conversation updates what it found rather than duplicating it.
      */
-    extract: async () => {
-      const collection = collectionId();
-      if (!collection || !interpretation) return;
-      if (extractStatus() === 'running') return;
-
-      setExtractStatus('running');
-      setExtractError('');
-      try {
-        await flush();
-        const result = await interpretation.runOnCollection(collection, { classes: EXTRACT_CLASSES });
-        setExtractCount(result.ids.length);
-        setExtractStatus('done');
-        // Only worth a round trip when the pass actually staged something. A backend with no
-        // provenance gate reports nothing proposed and never had a list to fetch.
-        if (result.proposed.length) await loadProposals();
-      } catch (error) {
-        setExtractError(error instanceof Error ? error.message : String(error));
-        setExtractStatus('error');
-      }
-    },
+    extract: () => runExtraction(collectionId() ?? ''),
+    /**
+     * The same pass over any call's record, named by id.
+     *
+     * The reachable form, and the one the calls list uses. {@link extract} can only ever mean "the
+     * call I am in and transcribing", because `collectionId` is cleared the moment the call ends —
+     * so a finished call, or one somebody else recorded, had no way to be extracted at all. The
+     * gathering was never the limit: it drills down through the collection's children and so has
+     * always read every agent's utterances, not only this one's.
+     */
+    extractCollection: (collection: string) => runExtraction(collection),
     /** Re-read what is staged. Called after a pass; exposed so a panel can refresh on open. */
     refreshProposals: () => loadProposals(),
     /**

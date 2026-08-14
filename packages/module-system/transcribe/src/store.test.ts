@@ -819,3 +819,89 @@ describe('staged suggestions', () => {
     expect(h.store.proposals()).toEqual([]);
   });
 });
+
+/**
+ * Extracting a call you are not in.
+ *
+ * The reachable path, and the one the calls list uses. Everything here is about *which* collection a
+ * pass runs on — the failure mode is silent, because extracting the wrong call still succeeds.
+ */
+describe('extracting by id', () => {
+  let inCall: Peer[];
+
+  beforeEach(() => {
+    inCall = [peer(ME, { type: 'call', id: 'space:uri' })];
+  });
+
+  function interpreter() {
+    const calls: string[] = [];
+    return {
+      calls,
+      port: {
+        available: () => true,
+        runOnCollection: async (collectionId: string) => {
+          calls.push(collectionId);
+          return { ids: ['task-1'], proposed: [] };
+        },
+        proposals: async () => [],
+        accept: async () => true,
+        reject: async () => true,
+      },
+    };
+  }
+
+  it('runs on a collection this agent never transcribed into', async () => {
+    // No call, no live collection — the case the panel's button cannot reach at all.
+    const i = interpreter();
+    const h = harness([], { interpretation: i.port });
+
+    await h.store.extractCollection('someone-elses-call');
+
+    expect(i.calls).toEqual(['someone-elses-call']);
+  });
+
+  it('does not flush the live buffer into a different call', async () => {
+    // Pressing Extract on this morning's call must not push a word said just now into it.
+    const i = interpreter();
+    const h = harness(inCall, { interpretation: i.port });
+    await h.say('hello');
+
+    h.store.receiveText('said during a later call');
+    await h.store.extractCollection('an-older-call');
+
+    const texts = h.created.filter((c) => c.entity === 'TextBlock').map((c) => c.fields.text);
+    expect(texts).not.toContain('said during a later call');
+  });
+
+  it('flushes when the named collection is the live one', async () => {
+    const i = interpreter();
+    const h = harness(inCall, { interpretation: i.port });
+    await h.say('hello');
+
+    h.store.receiveText('and one more thing');
+    await h.store.extractCollection('id-1');
+
+    const texts = h.created.filter((c) => c.entity === 'TextBlock').map((c) => c.fields.text);
+    expect(texts).toContain('and one more thing');
+  });
+
+  it('names which call a result belongs to, so a list cannot show it on the wrong card', async () => {
+    const i = interpreter();
+    const h = harness([], { interpretation: i.port });
+
+    await h.store.extractCollection('call-7');
+
+    expect(h.store.extractedId()).toBe('call-7');
+    // Cleared when the pass ends — it marks what is in flight, not what was done.
+    expect(h.store.extractingId()).toBe('');
+  });
+
+  it('refuses a second pass while one is running, whichever call it names', async () => {
+    const i = interpreter();
+    const h = harness([], { interpretation: i.port });
+
+    await Promise.all([h.store.extractCollection('call-a'), h.store.extractCollection('call-b')]);
+
+    expect(i.calls).toEqual(['call-a']);
+  });
+});

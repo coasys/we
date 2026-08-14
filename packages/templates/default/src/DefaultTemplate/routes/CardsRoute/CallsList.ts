@@ -164,6 +164,91 @@ export const callsList: SchemaNode = {
                       },
                     },
                     /*
+                        Read this call and write down what was decided in it.
+
+                        On the card rather than only in the transcript panel, and that is what makes
+                        it reach anything. The panel's button can only ever mean "the call I am in
+                        and transcribing" — the live collection id is cleared the moment the call
+                        ends — so a finished call, or one somebody else recorded, had no way to be
+                        extracted. Here the id comes from the card, so any record in the space can be
+                        picked up, by anyone, whenever.
+
+                        Offered to everyone rather than to the author, on the same reasoning as
+                        rejoining: extraction adds to a shared record of a shared event, it does not
+                        edit somebody's account of one.
+
+                        Hidden rather than disabled when the node has no LLM. Unlike a missing
+                        transcription model there is nothing a user can install from here, so a
+                        disabled button explaining itself would be permanent furniture on every card.
+                      */
+                    {
+                      type: '$if',
+                      props: {
+                        condition: { $store: 'modules.transcribe.extractable' },
+                        then: {
+                          type: 'we-tooltip',
+                          props: { title: 'Find the tasks and events in this call', placement: 'top' },
+                          children: [
+                            {
+                              type: 'we-button',
+                              props: {
+                                variant: 'ghost',
+                                size: 'sm',
+                                square: true,
+                                // Keyed on *this* card's id, not on a global flag. A shared status
+                                // would spin every call in the list while one of them worked, and
+                                // would hang the finished count on whichever card the eye landed on.
+                                loading: {
+                                  $eq: [{ $store: 'modules.transcribe.extractingId' }, '$call.id'],
+                                },
+                                disabled: {
+                                  $eq: [{ $store: 'modules.transcribe.extractStatus' }, 'running'],
+                                },
+                                onClick: {
+                                  $action: 'modules.transcribe.extractCollection',
+                                  args: ['$call.id'],
+                                },
+                              },
+                              children: [{ type: 'we-icon', props: { name: 'sparkle' } }],
+                            },
+                          ],
+                        },
+                      },
+                    },
+                    /*
+                        What the last pass on *this* call found.
+
+                        Zero is a real and common answer — a conversation with nothing decided in it
+                        — and saying so is the difference between "it worked, there was nothing" and
+                        "it silently failed". Scoped by `extractedId` so the count never appears on a
+                        card that did not ask for it.
+                      */
+                    {
+                      type: '$if',
+                      props: {
+                        condition: {
+                          $and: [
+                            { $eq: [{ $store: 'modules.transcribe.extractedId' }, '$call.id'] },
+                            { $eq: [{ $store: 'modules.transcribe.extractStatus' }, 'done'] },
+                          ],
+                        },
+                        then: {
+                          type: 'we-text',
+                          props: { fontSize: '200', color: 'neutral-700' },
+                          children: [
+                            {
+                              $if: {
+                                condition: { $store: 'modules.transcribe.extractCount' },
+                                then: { $store: 'modules.transcribe.extractCount' },
+                                else: 'no',
+                              },
+                            },
+                            ' found',
+                          ],
+                        },
+                      },
+                    },
+                    /*
                         Naming the record, and deleting it — both for whoever made it.
 
                         Gated on authorship the same way a post is. It is a weaker claim here than
