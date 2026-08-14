@@ -153,6 +153,24 @@ const zQuery = z.object({
 
 const zQueryToken = z.object({ $query: zQuery }).strict();
 
+/**
+ * `$source` — rows from a registered pure function rather than from a backend.
+ *
+ * `options` is deliberately open: a source names its own arguments, and they may themselves be
+ * tokens (`{ month: { $local: 'month' } }`), which is what makes "next month" a `$setLocal` rather
+ * than state hidden inside a component.
+ */
+const zSourceToken = z
+  .object({
+    $source: z
+      .object({
+        name: z.string(),
+        options: z.record(z.string(), z.unknown()).optional(),
+      })
+      .strict(),
+  })
+  .strict();
+
 const zLocalToken = z.object({ $local: z.string().min(1) }).strict();
 const zSetLocalToken = z.union([
   z.object({ $setLocal: z.string().min(1), from: z.string().min(1) }).strict(),
@@ -214,6 +232,7 @@ const zPropToken = z.union([
   zAndToken,
   zOrToken,
   zQueryToken,
+  zSourceToken,
   zLocalToken,
   zSetLocalToken,
   zErrorToken,

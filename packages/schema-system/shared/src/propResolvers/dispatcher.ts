@@ -30,6 +30,7 @@ import { resolveMapProp } from './map';
 import { resolvePickProp } from './pick';
 import { resolvePluralProp } from './plural';
 import { REACTIVE_ACCESSOR } from './reactive';
+import { resolveSourceProp, type SourceProp } from './source';
 import { resolveStoreProp } from './store';
 import type { ConcatProp, CountProp, FilterProp, FindProp, MapProp, Memo, PickProp, PluralProp, Props } from './types';
 import { noMemo } from './types';
@@ -102,6 +103,8 @@ export function resolveProp(value: unknown, stores: Props, context: Props, memo:
       return resolveCountProp((value as { $count: CountProp }).$count, stores, context, memo, resolveProp);
     if (hasToken(value, '$find', 'object'))
       return resolveFindProp((value as { $find: FindProp }).$find, stores, context, memo, resolveProp);
+    if (hasToken(value, '$source', 'object'))
+      return resolveSourceProp((value as { $source: SourceProp }).$source, stores, context, memo, resolveProp);
     if (hasToken(value, '$plural', 'object'))
       return resolvePluralProp((value as { $plural: PluralProp }).$plural, stores, context, memo, resolveProp);
   }

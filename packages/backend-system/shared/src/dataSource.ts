@@ -155,6 +155,26 @@ export interface RendererDataBindings {
    * needs it, so it can stay a host store.)
    */
   $ephemeral?: EphemeralPort;
+  /**
+   * Named functions a schema may iterate rows from — the `$source` token's registry.
+   *
+   * The escape hatch in the form the rest of WE already uses: the authoring surface is JSON, so
+   * anything genuinely computational is reachable *from* JSON by name, exactly as the graph does
+   * for expanders, layouts and seed sources. It exists because a month of days cannot be written as
+   * data — the operator set has no arithmetic, no date maths and no way to generate a sequence — so
+   * without this, every sequence-shaped view (a calendar grid, a set of time slots, a recurring
+   * series, a page range) has to be a bespoke component, and everything inside it stops being
+   * template-owned.
+   *
+   * **Synchronous and pure**, and that constraint is what keeps `$source` from becoming a second
+   * data layer. Anything that fetches is a `$query`; anything that holds state is a store. Because
+   * a source is a pure function of its options, resolving one is a memo rather than a subscription
+   * — which is why `$source` works in props, conditions *and* children, where `$query` cannot.
+   *
+   * Registered by the host alongside components, so a deployment decides what its templates can
+   * reach and a module can contribute its own.
+   */
+  $sources?: Record<string, (options: Record<string, unknown>) => unknown[]>;
 }
 
 /**
