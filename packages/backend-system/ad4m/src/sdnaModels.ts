@@ -73,27 +73,45 @@ async function hasSubjectClassLink(p: PerspectiveProxy, targetClass: string | un
 }
 
 /**
- * Which stored shapes carry an interpretation hint.
+ * The interpretation hint each stored shape currently carries, by target class.
+ *
+ * The **value**, not merely whether one exists. Presence was the first version of this and it was
+ * wrong in a way that took a live debugging session to see: the first hints registered fine, and
+ * every subsequent edit to their wording was then invisible, because a hint was present so nothing
+ * looked stale. The executor reads shapes from the perspective, so the space went on prompting with
+ * the original wording no matter what the models said — and since the symptom is "the model
+ * extracted nothing", it reads as a bad prompt rather than as a stale one.
  *
  * A second query rather than an `OPTIONAL` on the first, because the hint hangs off the *shape*
  * node while paths hang off its property shapes — joined in one query, a class with six properties
  * and one hint returns six identical hint rows, and a class with a hint and no properties returns
  * none at all.
  */
-async function storedShapeHints(p: PerspectiveProxy): Promise<Set<string>> {
-  const hinted = new Set<string>();
+async function storedShapeHints(p: PerspectiveProxy): Promise<Map<string, string>> {
+  const hinted = new Map<string, string>();
   const rows = await p.querySparql(
-    `SELECT ?targetClass WHERE {
+    `SELECT ?targetClass ?hint WHERE {
       ?targetClass <rdf://type> <ad4m://SubjectClass> .
       ?targetClass <ad4m://shape> ?shapeUri .
       ?shapeUri <ad4m://interpretation_hint> ?hint .
     }`,
   );
   if (!Array.isArray(rows)) return hinted;
-  for (const row of rows as { targetClass?: string }[]) {
-    if (row.targetClass) hinted.add(row.targetClass);
+  for (const row of rows as { targetClass?: string; hint?: string }[]) {
+    if (!row.targetClass || row.hint === undefined) continue;
+    hinted.set(row.targetClass, decodeHint(row.hint));
   }
   return hinted;
+}
+
+/** Hints are stored literal-encoded; compare decoded so an encoding change is not a content change. */
+function decodeHint(value: string): string {
+  if (!value.startsWith('literal:')) return value;
+  try {
+    return String(Literal.fromUrl(value).get());
+  } catch {
+    return value;
+  }
 }
 
 /**
@@ -150,34 +168,49 @@ async function storedShapePredicates(p: PerspectiveProxy): Promise<Map<string, S
  * every shape in the space on the strength of data that simply had not arrived. A genuinely stale
  * shape always carries its old properties, so it is still caught.
  */
-function shapeIsStale(model: typeof Ad4mModel, stored: Map<string, Set<string>>, hinted: ReadonlySet<string>): boolean {
+function shapeIsStale(
+  model: typeof Ad4mModel,
+  stored: Map<string, Set<string>>,
+  hinted: ReadonlyMap<string, string>,
+): boolean {
   const targetClass = getModelTargetClass(model);
   if (!targetClass) return false;
   const storedPaths = stored.get(targetClass);
   if (!storedPaths?.size) return false;
   if (getModelPredicates(model).some((predicate) => !storedPaths.has(predicate))) return true;
-  // A hint added to a model that already had every predicate. Invisible to the predicate diff —
-  // hints are their own links, and adding one changes no `sh://path` — but it is the entire input
-  // the interpretation engine steers on, so a space that missed it extracts unguided while looking
-  // perfectly healthy. Checked only once the shape has stored paths, so the replication-lag guard
-  // above still holds: a shape that has not arrived yet is not a shape missing its hints.
-  return declaresHint(model) && !hinted.has(targetClass);
+  // Hints are their own links, so adding or *rewording* one changes no `sh://path` and the predicate
+  // diff above cannot see it. They are also the entire input the interpretation engine steers on, and
+  // the executor reads them from the perspective rather than from the models — so a space holding an
+  // older wording keeps prompting with it, and the symptom is "the model extracted nothing", which
+  // reads as a bad prompt rather than a stale one. Compared by value for exactly that reason:
+  // presence-only was the first version and it made every edit after the first invisible.
+  //
+  // Checked only once the shape has stored paths, so the replication-lag guard above still holds:
+  // a shape that has not arrived yet is not a shape with the wrong hints.
+  const declared = declaredHint(model);
+  return declared !== undefined && hinted.get(targetClass) !== declared;
 }
 
 /** Every target class in a model list — the "assume nothing is stale" fallback for a failed read. */
-function allTargetClasses(models: readonly (typeof Ad4mModel)[]): Set<string> {
-  return new Set(models.map((m) => getModelTargetClass(m)).filter((c): c is string => Boolean(c)));
+function allTargetClasses(models: readonly (typeof Ad4mModel)[]): Map<string, string> {
+  const out = new Map<string, string>();
+  for (const m of models) {
+    const targetClass = getModelTargetClass(m);
+    const hint = declaredHint(m);
+    if (targetClass && hint !== undefined) out.set(targetClass, hint);
+  }
+  return out;
 }
 
-/** Whether this model declares a class-level interpretation hint. */
-function declaresHint(model: typeof Ad4mModel): boolean {
+/** The class-level interpretation hint this model declares, or `undefined` if it declares none. */
+function declaredHint(model: typeof Ad4mModel): string | undefined {
   const generate = (model as unknown as { generateSHACL?: () => { shape?: { interpretationHint?: string } } })
     .generateSHACL;
-  if (typeof generate !== 'function') return false;
+  if (typeof generate !== 'function') return undefined;
   try {
-    return Boolean(generate.call(model).shape?.interpretationHint);
+    return generate.call(model).shape?.interpretationHint || undefined;
   } catch {
-    return false;
+    return undefined;
   }
 }
 
