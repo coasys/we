@@ -79,7 +79,7 @@ export const spaceSidebar: SchemaNode = {
           props: {
             items: [
               { label: 'Globe', icon: 'globe-hemisphere-west', segment: 'globe', path: './globe' },
-              // { label: 'Graph', icon: 'graph', segment: 'graph', path: './graph' },
+              { label: 'Graph', icon: 'graph', segment: 'graph', path: './graph' },
               { label: 'Cards', icon: 'cards-three', segment: 'cards', path: './cards' },
               { label: 'Flux', icon: 'chat-circle', segment: 'flux', path: './flux' },
             ],
