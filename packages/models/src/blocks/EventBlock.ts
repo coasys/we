@@ -15,6 +15,47 @@ export class EventBlock extends WeNode {
   @Flag({ through: 'we://flag', value: 'we://event_block' })
   flag: string = '';
 
+  /**
+   * What makes two mentions the same *occasion* — the title and the day, joined.
+   *
+   * A dedup key rather than something to display, and it exists because interpretation allows a
+   * class exactly one identity property (see {@link TaskBlock.title}). Title alone is the obvious
+   * choice and is wrong here in a way that only shows up over time: a weekly standup is the same
+   * title every week and a different occasion every week, so a title key silently collapses every
+   * occurrence into one record. A date alone is worse — two unrelated things on one afternoon.
+   *
+   * So the key is composite, and since the mechanism keys on a single property, "composite" has to
+   * mean a property whose *value* is composite. Written by the model rather than derived, because
+   * machine-written instances go through `create_subject` server-side and never pass WE's own write
+   * path, so there is nowhere for us to compute it.
+   *
+   * **It is denormalised and nothing recomputes it.** Rename the event or move the date and this
+   * still says what it said, so the next pass sees a different occasion and writes a new record.
+   * That is the accepted cost of a single-property key, and it degrades in the safe direction — a
+   * duplicate a human deletes, rather than two real occasions silently merged. It also stays useful
+   * once stale: later prompts show it under `properties`, so the model can see what this instance
+   * was originally taken to be.
+   *
+   * Not `required`, deliberately. Required would mean the constructor writing `uninitialized` for
+   * every event created by hand through the composer — and then two hand-made events would share a
+   * key and dedup into each other, which is the exact failure this field exists to prevent. Left
+   * unset, an instance is simply invisible to dedup, which is the right answer for a record no
+   * machine is managing.
+   *
+   * `@Property` rather than `@Optional` even though it is optional: properties are already optional
+   * by default, and `@Optional` does not default `resolveLanguage` the way `@Property` does, so the
+   * class and its compiled manifest disagree about storage and the round-trip test fails.
+   */
+  @Property({
+    through: 'we://occurrence',
+    identity: true,
+    interpretationHint:
+      'A dedup key, not a display value: the title and the start date joined, e.g. ' +
+      '"Design review 2026-08-20". Always set it when you create an event. Reuse an existing ' +
+      "event's exact value only when this is the same occasion on the same day.",
+  })
+  occurrence: string = '';
+
   @Property({
     through: 'we://title',
     required: true,

@@ -43,12 +43,35 @@ export class TaskBlock extends WeNode {
   @Flag({ through: 'we://flag', value: 'we://task_block' })
   flag: string = '';
 
+  /**
+   * The task, and its dedup key.
+   *
+   * `identity` is the flag that makes a class visible to interpretation at all: a class that
+   * declares none is skipped entirely when the executor assembles the "instances that already
+   * exist" block, so the model is never shown it, the deterministic dedup net has nothing to
+   * compare against, and every pass mints fresh copies of everything it finds. Without this,
+   * pressing Extract twice on one call produced two of every task.
+   *
+   * It does three jobs at once, which is why the name reads oddly: it selects the human-readable
+   * label the model matches against, it is the value compared for equality, and its presence is
+   * what admits the class to the prompt. Matching is normalised — trimmed, whitespace-collapsed,
+   * lowercased — so "Ship  the docs " and "ship the docs" are one task, but "Ship the docs" and
+   * "Send the docs" are two. Semantic (embedding) matching exists upstream as a strategy and is
+   * the better default here eventually.
+   *
+   * Title is the right key for a task because a task *is* its statement of work: two calls both
+   * saying "finish the model API" mean one task, and that convergence across conversations is the
+   * whole point. Contrast {@link EventBlock}, where the same title recurs weekly and means
+   * different occasions.
+   */
   @Property({
     through: 'we://title',
     required: true,
+    identity: true,
     interpretationHint:
       'The task as a short imperative phrase, e.g. "Ship the docs". No trailing period. ' +
-      'Never include the bracketed timestamp that starts each turn — it is metadata, not speech.',
+      'Never include the bracketed timestamp that starts each turn — it is metadata, not speech. ' +
+      'Reuse the wording of an existing task when this is the same piece of work said again.',
   })
   title: string = '';
 
