@@ -73,6 +73,30 @@ async function hasSubjectClassLink(p: PerspectiveProxy, targetClass: string | un
 }
 
 /**
+ * Which stored shapes carry an interpretation hint.
+ *
+ * A second query rather than an `OPTIONAL` on the first, because the hint hangs off the *shape*
+ * node while paths hang off its property shapes — joined in one query, a class with six properties
+ * and one hint returns six identical hint rows, and a class with a hint and no properties returns
+ * none at all.
+ */
+async function storedShapeHints(p: PerspectiveProxy): Promise<Set<string>> {
+  const hinted = new Set<string>();
+  const rows = await p.querySparql(
+    `SELECT ?targetClass WHERE {
+      ?targetClass <rdf://type> <ad4m://SubjectClass> .
+      ?targetClass <ad4m://shape> ?shapeUri .
+      ?shapeUri <ad4m://interpretation_hint> ?hint .
+    }`,
+  );
+  if (!Array.isArray(rows)) return hinted;
+  for (const row of rows as { targetClass?: string }[]) {
+    if (row.targetClass) hinted.add(row.targetClass);
+  }
+  return hinted;
+}
+
+/**
  * Every property predicate each stored shape actually declares, keyed by target class.
  *
  * One SPARQL query for the whole perspective rather than `getClassShape()` per model: this runs on
@@ -82,6 +106,9 @@ async function hasSubjectClassLink(p: PerspectiveProxy, targetClass: string | un
  * Walks the `targetClass -[ad4m://shape]-> shape -[sh://property]-> prop -[sh://path]-> predicate`
  * chain, which `parse_shacl_to_links` writes in the same call as the `rdf://type -> SubjectClass`
  * marker `hasSubjectClassLink` reads.
+ *
+ * (Defined below its companion {@link storedShapeHints}, which reads the other half of the same
+ * stored shape.)
  */
 async function storedShapePredicates(p: PerspectiveProxy): Promise<Map<string, Set<string>>> {
   const byClass = new Map<string, Set<string>>();
@@ -123,12 +150,35 @@ async function storedShapePredicates(p: PerspectiveProxy): Promise<Map<string, S
  * every shape in the space on the strength of data that simply had not arrived. A genuinely stale
  * shape always carries its old properties, so it is still caught.
  */
-function shapeIsStale(model: typeof Ad4mModel, stored: Map<string, Set<string>>): boolean {
+function shapeIsStale(model: typeof Ad4mModel, stored: Map<string, Set<string>>, hinted: ReadonlySet<string>): boolean {
   const targetClass = getModelTargetClass(model);
   if (!targetClass) return false;
   const storedPaths = stored.get(targetClass);
   if (!storedPaths?.size) return false;
-  return getModelPredicates(model).some((predicate) => !storedPaths.has(predicate));
+  if (getModelPredicates(model).some((predicate) => !storedPaths.has(predicate))) return true;
+  // A hint added to a model that already had every predicate. Invisible to the predicate diff —
+  // hints are their own links, and adding one changes no `sh://path` — but it is the entire input
+  // the interpretation engine steers on, so a space that missed it extracts unguided while looking
+  // perfectly healthy. Checked only once the shape has stored paths, so the replication-lag guard
+  // above still holds: a shape that has not arrived yet is not a shape missing its hints.
+  return declaresHint(model) && !hinted.has(targetClass);
+}
+
+/** Every target class in a model list — the "assume nothing is stale" fallback for a failed read. */
+function allTargetClasses(models: readonly (typeof Ad4mModel)[]): Set<string> {
+  return new Set(models.map((m) => getModelTargetClass(m)).filter((c): c is string => Boolean(c)));
+}
+
+/** Whether this model declares a class-level interpretation hint. */
+function declaresHint(model: typeof Ad4mModel): boolean {
+  const generate = (model as unknown as { generateSHACL?: () => { shape?: { interpretationHint?: string } } })
+    .generateSHACL;
+  if (typeof generate !== 'function') return false;
+  try {
+    return Boolean(generate.call(model).shape?.interpretationHint);
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -145,12 +195,16 @@ function shapeIsStale(model: typeof Ad4mModel, stored: Map<string, Set<string>>)
  * {@link shapeIsStale}. Without that, adding a property to a model reaches new spaces only.
  */
 async function ensureModelsRegistered(p: PerspectiveProxy, models: readonly (typeof Ad4mModel)[]): Promise<void> {
-  const [present, stored] = await Promise.all([
+  const [present, stored, hinted] = await Promise.all([
     Promise.all(models.map((m) => hasSubjectClassLink(p, getModelTargetClass(m)))),
     storedShapePredicates(p).catch(() => new Map<string, Set<string>>()),
+    // Failing this read must not make every hinted model look stale and rewrite the space's SDNA.
+    // An empty set reads as "no hints stored", so the fallback is the *whole* set of target classes
+    // the models declare — i.e. nothing is stale on this axis.
+    storedShapeHints(p).catch(() => null),
   ]);
   const missing = models.filter((_, i) => !present[i]);
-  const stale = models.filter((m, i) => present[i] && shapeIsStale(m, stored));
+  const stale = models.filter((m, i) => present[i] && shapeIsStale(m, stored, hinted ?? allTargetClasses(models)));
   await registerModels(p, missing, stale);
 }
 
@@ -320,11 +374,14 @@ export async function installModuleSdna(p: PerspectiveProxy, moduleModels: reado
  * Returns the target classes it refreshed, for logging.
  */
 export async function refreshSpaceSdna(p: PerspectiveProxy): Promise<string[]> {
-  const stored = await storedShapePredicates(p).catch(() => new Map<string, Set<string>>());
+  const [stored, hinted] = await Promise.all([
+    storedShapePredicates(p).catch(() => new Map<string, Set<string>>()),
+    storedShapeHints(p).catch(() => null),
+  ]);
   return registerModels(
     p,
     [],
-    SPACE_MODELS.filter((m) => shapeIsStale(m, stored)),
+    SPACE_MODELS.filter((m) => shapeIsStale(m, stored, hinted ?? allTargetClasses(SPACE_MODELS))),
   );
 }
 
