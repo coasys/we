@@ -15,5 +15,14 @@ export interface CalendarEvent {
 export interface CalendarProps {
   value?: string; // ISO YYYY-MM-DD
   events?: CalendarEvent[];
+  /**
+   * The day that was clicked, as `YYYY-MM-DD`.
+   *
+   * Part of the public contract rather than a Solid-only extra: a grid you cannot pick a day in is
+   * a picture of a month, and the obvious thing to do with a calendar full of dots is to ask what
+   * is on one of them. It was already implemented and reachable only from framework code, so no
+   * schema could wire it.
+   */
+  onSelect?: (date: string) => void;
   styles?: Record<string, string | number>;
 }

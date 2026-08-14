@@ -1,4 +1,8 @@
 .we-calendar {
+  // The DS face and scale, stated rather than inherited. Two of the elements below `all: unset`
+  // themselves to drop button chrome, and `all` takes `font-family` with it — so the nav arrows and
+  // every day cell fell back to the browser's default face while the text around them did not.
+  font-family: var(--we-font-family);
   display: flex;
   flex-direction: column;
   gap: var(--we-space-200);
@@ -17,6 +21,7 @@
 
   &__nav {
     all: unset;
+    font-family: inherit;
     cursor: pointer;
     display: flex;
     align-items: center;
@@ -39,7 +44,7 @@
   }
 
   &__day-header {
-    font-size: 0.75rem;
+    font-size: var(--we-font-size-200);
     color: var(--we-color-neutral-500);
     padding: var(--we-space-100);
     font-weight: 500;
@@ -47,6 +52,7 @@
 
   &__day {
     all: unset;
+    font-family: inherit;
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -54,7 +60,7 @@
     min-height: 36px;
     cursor: pointer;
     border-radius: var(--we-radius-400);
-    font-size: 0.875rem;
+    font-size: var(--we-font-size-300);
     transition: background 0.1s ease;
     position: relative;
 

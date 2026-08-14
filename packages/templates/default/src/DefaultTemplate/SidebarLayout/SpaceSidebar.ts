@@ -78,9 +78,9 @@ export const spaceSidebar: SchemaNode = {
           type: '$each',
           props: {
             items: [
-              { label: 'Globe', icon: 'globe-hemisphere-west', segment: 'globe', path: './globe' },
               { label: 'Graph', icon: 'graph', segment: 'graph', path: './graph' },
-              { label: 'Board', icon: 'check-square', segment: 'board', path: './board' },
+              { label: 'Globe', icon: 'globe-hemisphere-west', segment: 'globe', path: './globe' },
+              { label: 'Tasks', icon: 'check-square', segment: 'tasks', path: './tasks' },
               { label: 'Calendar', icon: 'calendar', segment: 'calendar', path: './calendar' },
               { label: 'Cards', icon: 'cards-three', segment: 'cards', path: './cards' },
               { label: 'Flux', icon: 'chat-circle', segment: 'flux', path: './flux' },

@@ -5,11 +5,7 @@ import type { CalendarProps } from './Calendar.types';
 
 const DAYS = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
 
-interface SolidCalendarProps extends CalendarProps {
-  onSelect?: (date: string) => void;
-}
-
-export function Calendar(props: SolidCalendarProps) {
+export function Calendar(props: CalendarProps) {
   const today = new Date();
   const todayStr = formatDate(today.getFullYear(), today.getMonth(), today.getDate());
 

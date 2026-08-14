@@ -1,5 +1,5 @@
 import type { RouteSchema, SchemaNode } from '@we/schema-shared';
-import { emptyState } from '@we/template-kit';
+import { emptyState, field } from '@we/template-kit';
 
 /**
  * The space's tasks, as a board.
@@ -132,7 +132,19 @@ const card: SchemaNode = {
 /** One column: a heading with a count, and the cards in that state. */
 const column = (spec: (typeof COLUMNS)[number]): SchemaNode => ({
   type: 'Column',
-  props: { width: '300px', gap: '300', bg: 'neutral-50', r: '400', p: '300', ay: 'start' },
+  props: {
+    // A column has to read as a surface even when it is empty, or a board with one card in it looks
+    // like a card with a stray heading. Hence the minimum height and the border: `neutral-100`
+    // alone is nearly invisible against the page, which is what made the columns disappear.
+    width: '300px',
+    minHeight: '200px',
+    gap: '300',
+    bg: 'neutral-100',
+    border: '1px solid neutral-200',
+    r: '400',
+    p: '300',
+    ay: 'start',
+  },
   children: [
     {
       type: 'Row',
@@ -161,16 +173,91 @@ const column = (spec: (typeof COLUMNS)[number]): SchemaNode => ({
   ],
 });
 
-export const boardRoute: RouteSchema = {
-  path: '/board',
+/** Creating a task by hand — the other way work gets onto this board, beside extraction. */
+const composer: SchemaNode = {
+  type: '$if',
+  props: {
+    condition: { $local: 'composerOpen' },
+    then: {
+      type: 'we-modal',
+      props: { close: { $setLocal: 'composerOpen', value: false } },
+      children: [
+        { type: 'we-text', props: { fontWeight: 'semibold' }, children: ['New task'] },
+        field({ name: 'draftTitle', label: 'What needs doing?', placeholder: 'Ship the docs' }),
+        field({ name: 'draftDescription', label: 'Notes', control: 'textarea', placeholder: 'Optional' }),
+        field({
+          name: 'draftStatus',
+          label: 'Status',
+          control: 'select',
+          props: { options: COLUMNS.map((spec) => ({ label: spec.label, value: spec.status })) },
+        }),
+        {
+          type: 'Row',
+          props: { ax: 'end', gap: '200' },
+          children: [
+            {
+              type: 'we-button',
+              props: { variant: 'ghost', onClick: { $setLocal: 'composerOpen', value: false } },
+              children: ['Cancel'],
+            },
+            {
+              type: 'we-button',
+              props: {
+                disabled: { $not: { $local: 'draftTitle' } },
+                onClick: {
+                  $action: 'model.create',
+                  args: [
+                    'TaskBlock',
+                    {
+                      title: { $local: 'draftTitle' },
+                      description: { $local: 'draftDescription' },
+                      status: { $local: 'draftStatus' },
+                    },
+                  ],
+                  onSuccess: [
+                    { $setLocal: 'composerOpen', value: false },
+                    { $setLocal: 'draftTitle', value: '' },
+                    { $setLocal: 'draftDescription', value: '' },
+                  ],
+                },
+              },
+              children: ['Add task'],
+            },
+          ],
+        },
+      ],
+    },
+  },
+};
+
+export const tasksRoute: RouteSchema = {
+  path: '/tasks',
   type: 'Column',
   props: { width: '100%', ax: 'center', p: '500' },
+  $localState: {
+    composerOpen: { type: 'boolean', initial: false },
+    draftTitle: { type: 'string', initial: '' },
+    draftDescription: { type: 'string', initial: '' },
+    draftStatus: { type: 'string', initial: 'todo' },
+  },
   children: [
     {
       type: 'Column',
       props: { width: '100%', maxWidth: 'var(--we-layout-lg)', gap: '400' },
       children: [
-        { type: 'we-text', props: { variant: 'heading-sm' }, children: ['Board'] },
+        {
+          type: 'Row',
+          props: { width: '100%', ay: 'center', gap: '300' },
+          children: [
+            { type: 'we-text', props: { variant: 'heading-sm' }, children: ['Tasks'] },
+            {
+              type: 'we-button',
+              props: { size: 'sm', ml: 'auto', onClick: { $setLocal: 'composerOpen', value: true } },
+              children: ['New task'],
+            },
+          ],
+        },
+        composer,
         {
           type: '$if',
           props: {
