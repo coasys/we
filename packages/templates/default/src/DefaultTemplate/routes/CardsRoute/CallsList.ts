@@ -209,20 +209,49 @@ export const callsList: SchemaNode = {
                                   args: ['$call.id'],
                                 },
                               },
-                              children: [{ type: 'we-icon', props: { name: 'sparkle' } }],
+                              // The icon steps aside while the spinner is up. `loading` renders the
+                              // spinner *alongside* the slot content, and on a square icon button
+                              // the two together are a cramped smudge rather than a clear state.
+                              children: [
+                                {
+                                  type: '$if',
+                                  props: {
+                                    condition: {
+                                      $not: { $eq: [{ $store: 'modules.transcribe.extractingId' }, '$call.id'] },
+                                    },
+                                    then: { type: 'we-icon', props: { name: 'sparkle' } },
+                                  },
+                                },
+                              ],
                             },
                           ],
                         },
                       },
                     },
                     /*
-                        What the last pass on *this* call found.
+                        What this call's pass is doing, or found.
+
+                        A spinner inside a 32px button is not, on its own, an answer to "did my click
+                        land" — the run takes tens of seconds against a remote model, which is long
+                        enough to press again, or to conclude it is broken. So the state is also said
+                        in words beside it.
 
                         Zero is a real and common answer — a conversation with nothing decided in it
                         — and saying so is the difference between "it worked, there was nothing" and
-                        "it silently failed". Scoped by `extractedId` so the count never appears on a
-                        card that did not ask for it.
+                        "it silently failed". All three states are scoped to this card's id, so
+                        nothing ever appears on a card that did not ask for it.
                       */
+                    {
+                      type: '$if',
+                      props: {
+                        condition: { $eq: [{ $store: 'modules.transcribe.extractingId' }, '$call.id'] },
+                        then: {
+                          type: 'we-text',
+                          props: { fontSize: '200', color: 'neutral-700' },
+                          children: ['Reading…'],
+                        },
+                      },
+                    },
                     {
                       type: '$if',
                       props: {
@@ -237,13 +266,48 @@ export const callsList: SchemaNode = {
                           props: { fontSize: '200', color: 'neutral-700' },
                           children: [
                             {
+                              // Whole sentences per branch rather than a count glued to a suffix.
+                              // Sharing the tail gave "no found" for the empty case, which is the
+                              // sort of thing that reads as a placeholder somebody forgot.
                               $if: {
                                 condition: { $store: 'modules.transcribe.extractCount' },
-                                then: { $store: 'modules.transcribe.extractCount' },
-                                else: 'no',
+                                then: {
+                                  $concat: [{ $store: 'modules.transcribe.extractCount' }, ' found'],
+                                },
+                                else: 'Nothing found',
                               },
                             },
-                            ' found',
+                          ],
+                        },
+                      },
+                    },
+                    /*
+                        A pass that failed says so here rather than only in the transcript panel.
+
+                        Without this the card had two outcomes and three states: a count, or silence
+                        that meant either "still running" or "it threw" — and a run against a backend
+                        that cannot answer looks exactly like one that has not finished. The message
+                        is the backend's own, because at this distance a rewritten one would only be
+                        vaguer.
+                      */
+                    {
+                      type: '$if',
+                      props: {
+                        condition: {
+                          $and: [
+                            { $eq: [{ $store: 'modules.transcribe.extractedId' }, '$call.id'] },
+                            { $eq: [{ $store: 'modules.transcribe.extractStatus' }, 'error'] },
+                          ],
+                        },
+                        then: {
+                          type: 'we-tooltip',
+                          props: { title: { $store: 'modules.transcribe.extractError' }, placement: 'top' },
+                          children: [
+                            {
+                              type: 'we-text',
+                              props: { fontSize: '200', color: 'danger-600' },
+                              children: ['Extraction failed'],
+                            },
                           ],
                         },
                       },
