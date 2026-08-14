@@ -856,19 +856,40 @@ Use for form fields, settings, filters. Set searchable=true for type-to-filter.
   Props: width: string = '100%', height: string = '20px', animation: 'pulse' | 'wave' = 'pulse'
 - we-slider (DesignSystemElement)
   Props: value: number = 0, min: number = 0, max: number = 100, step: number = 1, disabled: boolean = false, name: string = '', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md', showValue: boolean = false
-- we-sortable (DesignSystemElement) — Drag-to-reorder container primitive.
+- we-sortable (DesignSystemElement) — A drop zone whose items can be picked up, reordered, and moved to other zones.
 
-Usage: wrap a list of elements that each have a `data-we-id` attribute.
-Fires a `reorder` CustomEvent<string[]> on drop with the new ordered array
-of IDs — the event name is unprefixed, like every other primitive's
-(`change`, `select`, `toggle`). In Solid, listen with `on:reorder`; a
-listener for `we-reorder` never fires and the drop silently does nothing.
-From a schema the same event is `onReorder`, which Solid lowercases to a
-direct `reorder` listener.
+## One element, not two
 
-The `data-we-id` may sit on the slotted child or on something inside it —
-see `_resolveItem` for why the second case exists.
-  Props: direction: 'vertical' | 'horizontal' = 'vertical', gap: string = ''
+A zone *is* the container and its children *are* the items, which is what makes nesting free: a
+sortable inside an item of another sortable is simply a zone inside a zone, with no special case
+anywhere. A separate `we-drag-item` would buy nothing and cost boilerplate at every call site.
+
+## It emits intent, it never mutates
+
+A drop fires SortableMoveDetail — "this item moved from there to here, at this index" —
+and nothing else. What that *means* is the consumer's business, and it differs: a kanban route
+keyed on `status` writes a scalar, a board built from containment relinks two `children` edges, an
+outline reparents a node. A primitive that assumed one of those would be useless to the others.
+
+This is also why the element does not reorder its own DOM. The list is rendered from data; the
+data changes; the list re-renders. A primitive that moved nodes itself would fight whatever
+renders them.
+
+## Nesting, and why cycles are not a problem
+
+The hard part of nested drag-and-drop is refusing to drop a container into its own descendant.
+Because nesting here is expressed *in the DOM*, that check is `dragged.contains(zone)` — correct
+by construction, needing no knowledge of the consumer's data shape. The innermost matching zone
+under the pointer wins, so dropping into a nested list does not also count as dropping into its
+parent.
+
+## Keyboard
+
+Space or Enter picks up the focused item; the arrow keys move it, along the list and across
+zones; Space drops and Escape cancels. Built in rather than added later, because a board that can
+only be operated by dragging is a board some people cannot operate at all — and because the
+events are identical, a consumer gets it for nothing.
+  Props: direction: 'vertical' | 'horizontal' = 'vertical', gap: string = '', zone: string = '', group: string = '', locked: boolean = false
 - we-spinner (LayoutElement)
   Props: size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' | (string & {}) = 'md', color: string = ''
 - we-switch (DesignSystemElement)
@@ -961,7 +982,7 @@ when `relative` is enabled.
 - AvatarStack
   Props: avatars: AvatarInfo[], max?: number, size?: "xs" | "sm" | "md" | "lg" | "xl" | "xxs" | "xxl", overlap?: number, ring?: string, styles?: Record<string, string | number>
 - Calendar
-  Props: onSelect?: ((date: string) => void), value?: string, events?: CalendarEvent[], styles?: Record<string, string | number>
+  Props: value?: string, events?: CalendarEvent[], onSelect?: ((date: string) => void), styles?: Record<string, string | number>
 - Card (DesignSystemElement)
 - CodeEditor
   Props: code: string, language?: CodeEditorLanguage, readOnly?: boolean, onChange?: ((code: string) => void), onSave?: ((code: string) => void), styles?: Record<string, string | number>
@@ -1399,6 +1420,7 @@ EmbedBlock extends WeNode:
 
 EventBlock extends WeNode:
   Fields:
+  - occurrence: string [we://occurrence]
   - title: string (required) [we://title]
   - description: string [we://description]
   - startDate: string (required) [we://start_date]
