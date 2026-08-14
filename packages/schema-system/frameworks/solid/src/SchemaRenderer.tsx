@@ -25,56 +25,13 @@ import { Dynamic } from 'solid-js/web';
 
 import { AnimateRenderer } from './AnimateRenderer';
 import { ConditionalRenderer } from './ConditionalRenderer';
+import { hoistQueryItems } from './queryHoist';
 import type { RendererOutput, RenderProps, SchemaNode } from './types';
 import { useVisualEditor } from './VisualEditorContext';
 
 /** Check if a prop key is an event handler name (e.g. onClick, onInput, onKeyDown) */
 function isEventProp(key: string): boolean {
   return key.length > 2 && key.startsWith('on') && key[2] === key[2].toUpperCase();
-}
-
-/**
- * Recursively scan a raw prop value for { $map: { items: { $query: ... } } } patterns.
- * For each found, create a reactive query signal and substitute it in place.
- * This "hoists" signal creation to component-init time (before any createMemo/createEffect),
- * ensuring the subscription lifecycle is managed correctly even when the $map+$query is
- * nested inside a complex structure like planetLayers[0].options.locations.
- *
- * Must be called during component setup, not inside a createMemo or createEffect.
- */
-function hoistMapQuerySignals(value: unknown, stores: RendererStores, context: Record<string, unknown> = {}): unknown {
-  if (!value || typeof value !== 'object') return value;
-
-  // Found $map with $query items — replace items with a live reactive signal
-  if (hasToken(value, '$map', 'object')) {
-    const mapSpec = (value as { $map: MapProp }).$map;
-    if (hasToken(mapSpec.items, '$query', 'object')) {
-      const descriptor = resolveQueryProp(mapSpec.items);
-      const signal = createQuerySignal(descriptor, stores, context);
-      return { $map: { ...mapSpec, items: signal } };
-    }
-    return value;
-  }
-
-  if (Array.isArray(value)) {
-    let changed = false;
-    const mapped = value.map((item) => {
-      const h = hoistMapQuerySignals(item, stores, context);
-      if (h !== item) changed = true;
-      return h;
-    });
-    return changed ? mapped : value;
-  }
-
-  // Plain object — recurse into all values
-  let changed = false;
-  const result: Record<string, unknown> = {};
-  for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
-    const h = hoistMapQuerySignals(v, stores, context);
-    result[k] = h;
-    if (h !== v) changed = true;
-  }
-  return changed ? result : value;
 }
 
 /**
@@ -661,6 +618,7 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
                     stores={stores}
                     context={effectiveContext}
                     renderNode={renderNode}
+                    createQuerySignal={createQuerySignal}
                   />
                 );
               }
@@ -704,7 +662,15 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
 
   // Handle conditional rendering
   if (node.type === '$if') {
-    return <ConditionalRenderer node={node} stores={stores} context={effectiveContext} renderNode={renderNode} />;
+    return (
+      <ConditionalRenderer
+        node={node}
+        stores={stores}
+        context={effectiveContext}
+        renderNode={renderNode}
+        createQuerySignal={createQuerySignal}
+      />
+    );
   }
 
   // Handle viewport-driven animations (child always mounted)
@@ -1082,7 +1048,7 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
           }
         };
     } else {
-      const raw = hoistMapQuerySignals(rawValue, stores, effectiveContext);
+      const raw = hoistQueryItems(rawValue, stores, effectiveContext, createQuerySignal);
       propMemos[key] = createMemo(() => {
         const resolved = resolveProp(raw, stores, effectiveContext, createMemo);
         return deepUnwrap(resolved);
