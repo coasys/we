@@ -6,8 +6,10 @@ import { WeNode } from '../WeNode';
 @Model({
   name: 'EventBlock',
   interpretationHint:
-    'A meeting or occasion scheduled for a specific future time that participants agreed on. ' +
-    'Not the conversation currently happening, and not a vague intention to meet "sometime".',
+    'Something happening at a identifiable future time — a meeting, a trip, a deadline event, ' +
+    'an occasion. A day is enough; it does not need a time of day, an agreement between the ' +
+    'speakers, or other attendees. "Visiting my grandma this weekend" is an event. ' +
+    'Exclude only the conversation currently happening, and intentions with no when at all.',
 })
 export class EventBlock extends WeNode {
   @Flag({ through: 'we://flag', value: 'we://event_block' })
@@ -33,8 +35,9 @@ export class EventBlock extends WeNode {
     required: true,
     interpretationHint:
       'Start as YYYY-MM-DDTHH:mm (local time, no timezone suffix). Resolve relative dates like ' +
-      '"next Tuesday at 3" against the bracketed timestamp leading that turn. ' +
-      'Required — do not invent an event without a stated time.',
+      '"next Tuesday at 3", "this weekend" or "on Friday" against the bracketed timestamp leading ' +
+      'that turn — pick the nearest matching future date. When only a day was said, use T00:00 and ' +
+      'set allDay true. Required, so give your best resolution rather than omitting the event.',
   })
   startDate: string = '';
 
@@ -52,7 +55,7 @@ export class EventBlock extends WeNode {
 
   @Property({
     through: 'we://all_day',
-    interpretationHint: 'True only when a date was given with no time of day.',
+    interpretationHint: 'True whenever only a day was said and no time of day — the common case in speech.',
   })
   allDay: boolean = false;
 

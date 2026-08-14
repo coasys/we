@@ -17,13 +17,27 @@ import { WeNode } from '../WeNode';
  * `dueDate` feeds an `<input type="date">` and `EventBlock`'s dates feed `datetime-local`, which
  * are different formats; a value the model formats its own way survives the write and then fails to
  * load into the edit form, which looks like data loss rather than a formatting slip.
+ *
+ * ## Written permissively, on evidence
+ *
+ * The first version of these hints was tuned against false positives — a task only if somebody
+ * *took it on*, an event only at a *specific agreed time*. Run against a real transcript containing
+ * "one task we need to complete is finishing up the model API" and "an event coming up this weekend,
+ * going to visit my grandma", it extracted **nothing**, and was right to: neither sentence clears
+ * those bars, and speech almost never does.
+ *
+ * The lesson is about which error is recoverable. A missed task is invisible — nobody knows to look
+ * for it, and the transcript scrolls away. An over-eager one is a row a human deletes in a second,
+ * and the §4 provenance gate already exists to hold anything contentious for review. So these lean
+ * permissive, and the exclusions are only for things that are definitely not the class at all.
  */
 @Model({
   name: 'TaskBlock',
   interpretationHint:
-    'Something a participant committed to doing, or was asked to do, that is not done yet. ' +
-    'Only extract a task when someone actually takes it on or assigns it — not for work merely ' +
-    'discussed, considered, or described as already finished.',
+    'A piece of work the speakers say needs doing and that is not done yet. ' +
+    'Includes anything phrased as "we need to…", "one task is…", "someone should…", or a ' +
+    'commitment like "I\'ll do X" — an owner is not required, and neither is a deadline. ' +
+    'Exclude only work described as already finished, or raised purely to rule it out.',
 })
 export class TaskBlock extends WeNode {
   @Flag({ through: 'we://flag', value: 'we://task_block' })
