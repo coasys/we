@@ -188,6 +188,8 @@ export const spaceNavBar: SchemaNode = {
                       { label: 'About', icon: 'book-open', segment: 'about', path: './about' },
                       { label: 'Cards', icon: 'cards-three', segment: 'cards', path: './cards' },
                       { label: 'Graph', icon: 'graph', segment: 'graph', path: './graph' },
+                      { label: 'Board', icon: 'check-square', segment: 'board', path: './board' },
+                      { label: 'Calendar', icon: 'calendar', segment: 'calendar', path: './calendar' },
                       { label: 'Globe', icon: 'globe-hemisphere-west', segment: 'globe', path: './globe' },
                       { label: 'Settings', icon: 'gear', segment: 'settings', path: './settings' },
                       // { label: 'Flux', icon: 'chat-circle', segment: 'flux', path: './flux' },

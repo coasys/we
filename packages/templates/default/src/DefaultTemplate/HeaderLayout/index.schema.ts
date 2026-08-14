@@ -2,6 +2,8 @@ import type { TemplateSchema } from '@we/schema-shared';
 
 import { initializeSpaceGate } from '../InitializeSpaceGate.ts';
 import { aboutRoute } from '../routes/AboutRoute/index.ts';
+import { boardRoute } from '../routes/BoardRoute/index.ts';
+import { calendarRoute } from '../routes/CalendarRoute/index.ts';
 import { cardsRoute } from '../routes/CardsRoute/index.ts';
 import { fluxRoute } from '../routes/FluxRoute/index.ts';
 import { globeRoute } from '../routes/GlobeRoute/index.ts';
@@ -77,6 +79,8 @@ export const headerLayout: TemplateSchema = {
         cardsRoute,
         fluxRoute,
         graphRoute,
+        boardRoute,
+        calendarRoute,
         settingsRoute,
       ],
     },

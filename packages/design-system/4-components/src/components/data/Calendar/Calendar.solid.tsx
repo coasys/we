@@ -39,9 +39,18 @@ export function Calendar(props: SolidCalendarProps) {
     props.onSelect?.(date);
   };
 
+  /**
+   * The days that have something on them.
+   *
+   * Dates are truncated to `YYYY-MM-DD` before comparing, so an event may carry either a date or a
+   * full ISO datetime. Grid cells are date-only, so an exact match against `2026-08-15T14:00` never
+   * fired — and the caller could not fix it either, since a schema has no string operator to slice
+   * with. Every model in this system stores event times as datetimes, so accepting only date-only
+   * strings made the component unusable by exactly the data it exists to draw.
+   */
   const eventDates = () => {
     const set = new Set<string>();
-    (props.events || []).forEach((e) => set.add(e.date));
+    (props.events || []).forEach((e) => e.date && set.add(e.date.slice(0, 10)));
     return set;
   };
 
