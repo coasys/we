@@ -28,16 +28,54 @@ export interface GatherTurnsDeps {
   modelFor(entity: string): TurnModel | undefined;
   /** The dataset handle the models take. */
   handle: unknown;
-  /** The dataset's schema, used to find the containment predicate rather than assuming it. */
-  manifest: ModelManifestEntry[];
+  /**
+   * The predicate holding the container's children, resolved by the caller.
+   *
+   * Passed in rather than looked up here, and the reason is a bug worth remembering: this used to
+   * read it from the dataset's manifest, which carries **foreign** schemas only — everything WE
+   * already knows natively is deliberately absent from it. So the lookup for `CollectionBlock`
+   * always missed, the gather returned nothing, and extraction reported "0 records" without ever
+   * reaching the model. Silent, and indistinguishable from a conversation with nothing in it.
+   *
+   * The caller knows whether a container is native or foreign and can answer from either.
+   */
+  containmentPredicate: string;
 }
 
 /** Entities whose instances can be a turn. Only TextBlock today; a list so a caller can widen it. */
 const DEFAULT_TURN_ENTITIES = ['TextBlock'];
 
-/** The container entity and the relation holding its children. */
-const CONTAINER = 'CollectionBlock';
-const CHILDREN = 'children';
+/** The shape statics this reads off a model class, narrowed so a caller passes an ORM class as-is. */
+interface ShapeBearing {
+  generateSHACL?: () => { shape?: { properties?: { name?: string; path?: string }[] } };
+}
+
+/**
+ * The predicate holding a `CollectionBlock`'s children, from whichever side knows it.
+ *
+ * **The native model first, and that ordering is the whole point.** A dataset's manifest carries
+ * *foreign* schemas only — everything the host knows natively is deliberately absent from it — so
+ * resolving a core model's predicate from the manifest always misses. Doing exactly that made
+ * extraction gather zero turns and report "0 records found" without ever reaching the model, which
+ * is indistinguishable from a conversation with nothing worth extracting in it. It also left the
+ * `parent` link unset, so anything that *had* been written would have been invisible in every view.
+ *
+ * The manifest stays as the fallback for a container that is genuinely foreign — another app's,
+ * synced into the space, which the native registry has never heard of.
+ */
+export function containmentPredicate(
+  modelFor: (entity: string) => unknown,
+  manifest: ModelManifestEntry[],
+  container = 'CollectionBlock',
+  relation = 'children',
+): string | undefined {
+  const shape = (modelFor(container) as ShapeBearing | undefined)?.generateSHACL?.().shape;
+  const native = shape?.properties?.find((property) => property.name === relation)?.path;
+  if (native) return native;
+
+  return manifest.find((entry) => entry.name === container)?.properties.find((property) => property.name === relation)
+    ?.predicate;
+}
 
 /**
  * Normalise whatever the model layer hands back for `createdAt` into ISO-8601.
@@ -69,11 +107,9 @@ export async function gatherTranscriptTurns(
   collectionId: string,
   options: { entities?: string[]; limit?: number } = {},
 ): Promise<TranscriptTurn[]> {
-  const predicate = deps.manifest
-    .find((entry) => entry.name === CONTAINER)
-    ?.properties.find((property) => property.name === CHILDREN)?.predicate;
-  // No containment predicate means this dataset has no WE collection schema installed, which is a
-  // real state (a foreign space) rather than a bug — there is simply nothing to gather.
+  const predicate = deps.containmentPredicate;
+  // No containment predicate means the caller could not resolve the collection schema — a foreign
+  // space with no WE collections is a real state rather than a bug, so there is nothing to gather.
   if (!predicate) return [];
 
   const turns: TranscriptTurn[] = [];

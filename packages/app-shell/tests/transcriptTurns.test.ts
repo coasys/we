@@ -1,23 +1,7 @@
 import { gatherTranscriptTurns, type TurnModel } from '@shared/interpretation/transcriptTurns';
+import { containmentPredicate } from '@shared/interpretation/transcriptTurns';
 import type { ModelManifestEntry } from '@we/backend-shared';
 import { describe, expect, it } from 'vitest';
-
-const manifest: ModelManifestEntry[] = [
-  {
-    name: 'CollectionBlock',
-    targetClass: 'we://CollectionBlock',
-    properties: [
-      {
-        name: 'children',
-        predicate: 'we://children',
-        type: 'uri',
-        isCollection: true,
-        required: false,
-        writable: true,
-      },
-    ],
-  },
-];
 
 function model(rows: Record<string, unknown>[], spy?: (options: Record<string, unknown>) => void): TurnModel {
   return {
@@ -31,11 +15,11 @@ function model(rows: Record<string, unknown>[], spy?: (options: Record<string, u
 const deps = (rows: Record<string, unknown>[], spy?: (o: Record<string, unknown>) => void) => ({
   modelFor: (entity: string) => (entity === 'TextBlock' ? model(rows, spy) : undefined),
   handle: {},
-  manifest,
+  containmentPredicate: 'we://children',
 });
 
 describe('gatherTranscriptTurns', () => {
-  it('reads children through the containment predicate the manifest declares', async () => {
+  it('reads children through the containment predicate the caller resolved', async () => {
     let seen: Record<string, unknown> | undefined;
     await gatherTranscriptTurns(
       deps([], (options) => {
@@ -46,8 +30,8 @@ describe('gatherTranscriptTurns', () => {
     expect(seen?.parent).toEqual({ id: 'call-1', predicate: 'we://children' });
   });
 
-  it('returns nothing when the dataset has no collection schema — a foreign space, not a bug', async () => {
-    const turns = await gatherTranscriptTurns({ ...deps([{ text: 'hi' }]), manifest: [] }, 'call-1');
+  it('returns nothing when the caller could not resolve one — a foreign space, not a bug', async () => {
+    const turns = await gatherTranscriptTurns({ ...deps([{ text: 'hi' }]), containmentPredicate: '' }, 'call-1');
     expect(turns).toEqual([]);
   });
 
@@ -97,5 +81,54 @@ describe('gatherTranscriptTurns', () => {
   it('trims, so leading whitespace from a flush does not reach the prompt', async () => {
     const turns = await gatherTranscriptTurns(deps([{ text: '  hello  ', author: 'did:a', createdAt: 1 }]), 'c');
     expect(turns[0]?.text).toBe('hello');
+  });
+});
+
+/**
+ * Resolving the containment predicate.
+ *
+ * The regression this exists for: reading a *native* model's predicate from the dataset manifest,
+ * which carries foreign schemas only. It always missed, so extraction gathered nothing and reported
+ * "0 records found" — indistinguishable from a conversation with nothing in it — and left the parent
+ * link unset, so anything written would have been invisible everywhere.
+ */
+describe('containmentPredicate', () => {
+  const nativeCollection = {
+    generateSHACL: () => ({ shape: { properties: [{ name: 'children', path: 'we://children' }] } }),
+  };
+
+  const foreignManifest: ModelManifestEntry[] = [
+    {
+      name: 'CollectionBlock',
+      targetClass: 'other://CollectionBlock',
+      properties: [
+        {
+          name: 'children',
+          predicate: 'other://children',
+          type: 'uri',
+          isCollection: true,
+          required: false,
+          writable: true,
+        },
+      ],
+    },
+  ];
+
+  it('answers from the native model, which the manifest never carries', () => {
+    // The manifest is empty here exactly as it is in a real WE space: native schemas are
+    // deliberately absent from it, so this is the only source that can answer.
+    expect(containmentPredicate(() => nativeCollection, [])).toBe('we://children');
+  });
+
+  it('falls back to the manifest for a container the native registry never heard of', () => {
+    expect(containmentPredicate(() => undefined, foreignManifest)).toBe('other://children');
+  });
+
+  it('prefers the native model when both could answer', () => {
+    expect(containmentPredicate(() => nativeCollection, foreignManifest)).toBe('we://children');
+  });
+
+  it('gives up rather than guessing when neither knows', () => {
+    expect(containmentPredicate(() => undefined, [])).toBeUndefined();
   });
 });

@@ -15,7 +15,7 @@
  * which layers on top of this store and reacts to dataset changes via `onDatasetRemoved` and the
  * `currentDataset` signal.
  */
-import { gatherTranscriptTurns, type TurnModel } from '@shared/interpretation/transcriptTurns';
+import { containmentPredicate, gatherTranscriptTurns, type TurnModel } from '@shared/interpretation/transcriptTurns';
 import { provideModuleHostServices } from '@shared/registries/moduleHostServices';
 import { moduleRegistry } from '@shared/registries/moduleRegistry';
 import { getSeed } from '@shared/seedRegistry';
@@ -161,23 +161,22 @@ export function DatasetStoreProvider(props: ParentProps) {
       const dataset = currentDataset();
       if (!dataset) throw new Error('interpretation: no dataset to interpret into');
 
-      const manifest = currentDatasetModels();
+      const modelFor = (entity: string) => getModelForPerspective(entity, dataset.handle);
+      const predicate = containmentPredicate(modelFor, currentDatasetModels());
+      if (!predicate) throw new Error('interpretation: this space has no collection schema to read a transcript from');
+
       const turns = await gatherTranscriptTurns(
         {
-          modelFor: (entity) => getModelForPerspective(entity, dataset.handle) as TurnModel | undefined,
+          modelFor: (entity) => modelFor(entity) as TurnModel | undefined,
           handle: dataset.handle,
-          manifest,
+          containmentPredicate: predicate,
         },
         collectionId,
       );
 
-      const predicate = manifest
-        .find((entry) => entry.name === 'CollectionBlock')
-        ?.properties.find((property) => property.name === 'children')?.predicate;
-
       return port.interpret(dataset.handle, turns, {
         classes: request.classes,
-        ...(predicate ? { parent: { id: collectionId, predicate } } : {}),
+        parent: { id: collectionId, predicate },
       });
     },
   });
