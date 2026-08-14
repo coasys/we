@@ -158,6 +158,12 @@ export type FilterToken = { $filter: { items: unknown; where: Record<string, unk
 export type CountToken = { $count: { items: unknown } };
 export type FindToken = { $find: { items: unknown; where?: Record<string, unknown>; select?: string } };
 export type PluralToken = { $plural: { count: unknown; one: string; other: string } };
+/**
+ * Rows from a registered pure function — see `propResolvers/source.ts`.
+ *
+ * `options` is open because a source names its own arguments, and they may themselves be tokens.
+ */
+export type SourceToken = { $source: { name: string; options?: Record<string, unknown> } };
 export type QueryToken = {
   $query: {
     /** The entity to query (neutral). */
@@ -286,6 +292,7 @@ export type OperatorToken =
   | AndToken
   | OrToken
   | QueryToken
+  | SourceToken
   | LocalToken
   | SetLocalToken
   | ErrorToken
