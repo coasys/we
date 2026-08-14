@@ -1,3 +1,4 @@
 {
-  "ad4mDataPath": "~/.ad4m"
+  "ad4mDataPath": "~/.ad4m",
+  "ad4mExecutorPath": "/home/james/Desktop/Coding/ad4m-interp/target/release/ad4m-executor"
 }

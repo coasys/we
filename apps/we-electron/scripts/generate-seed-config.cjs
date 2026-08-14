@@ -134,10 +134,26 @@ function main() {
 
   // Write runtime settings. Separate from the port map because the main process needs these
   // before any window (or renderer, or seed loader) exists — it starts the executor first.
-  const runtime = { ad4mDataPath: seed.ad4m?.dataPath || DEFAULT_AD4M_DATA_PATH };
+  const runtime = {
+    ad4mDataPath: seed.ad4m?.dataPath || DEFAULT_AD4M_DATA_PATH,
+    // Carried through for **development** runs. Packaged builds get the binary copied in as an
+    // extraResource above and read it from `resourcesPath`, but an unpackaged run has to find it in
+    // the workspace — and until this was here it did so from a path hardcoded in `main.js`, so a
+    // seed pointing `executorPath` at a different checkout was silently ignored and the app went on
+    // running whichever executor happened to be built next door. Absolute, because the main process
+    // resolves it relative to nothing it can rely on.
+    ...(seed.ad4m?.executorPath
+      ? {
+          ad4mExecutorPath: path.isAbsolute(seed.ad4m.executorPath)
+            ? seed.ad4m.executorPath
+            : path.join(WORKSPACE_ROOT, seed.ad4m.executorPath),
+        }
+      : {}),
+  };
   fs.writeFileSync(RUNTIME_FILE, JSON.stringify(runtime, null, 2) + '\n', 'utf8');
   console.log(`✅ Runtime settings written to: ${path.relative(process.cwd(), RUNTIME_FILE)}`);
   console.log(`   AD4M data path: ${runtime.ad4mDataPath}`);
+  if (runtime.ad4mExecutorPath) console.log(`   AD4M executor:  ${runtime.ad4mExecutorPath}`);
 
   // Generate Express server setup code (only if there are apps)
   const serverSetupCode = hasApps ? generateServerSetupCode(seed.apps, portMap) : generateEmptyServerSetupCode();
