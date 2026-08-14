@@ -63,16 +63,27 @@ const schemaGraph: SchemaNode = {
   },
 };
 
-/** Posts and what they connect to, one hop out, expandable by double-click. */
+/**
+ * The things people made, and what they connect to — one hop out, expandable by double-click.
+ *
+ * Seeded on `CollectionBlock`, because **there is no `Post` entity in WE.** A post is a
+ * `CollectionBlock` with `type: 'root'`, which is exactly what the cards route queries. The seed
+ * named `Post` for as long as this route existed and failed the only way it could — the registry
+ * had nothing under that name, so the mode showed a toast and no graph.
+ *
+ * Worth noticing that the toast was right and the route was wrong. A seed naming an entity that
+ * does not exist is an authoring error, and the query layer surfacing it rather than rendering an
+ * empty canvas is what let it be found at all.
+ */
 const knowledgeGraph: SchemaNode = {
   type: 'GraphView',
   props: {
-    seeds: { source: 'query', options: { entity: 'Post', limit: 40 } },
+    seeds: { source: 'query', options: { entity: 'CollectionBlock', limit: 40 } },
     expansion: { defaultDepth: 1, direction: 'out', limit: 20, maxNodes: 500 },
     layout: layoutSpec,
     nodeStyle: [
       { style: { size: 12, color: 'neutral-400' } },
-      { when: { type: 'Post' }, style: { size: 20, color: 'primary-500' } },
+      { when: { type: 'CollectionBlock' }, style: { size: 20, color: 'primary-500' } },
       { when: { kind: 'literal' }, style: { shape: 'rect', size: 10, color: 'neutral-300' } },
       { when: { unresolved: true }, style: { color: 'neutral-200' } },
     ],

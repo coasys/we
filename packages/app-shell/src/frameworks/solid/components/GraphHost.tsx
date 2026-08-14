@@ -7,9 +7,24 @@
  * a graph package: the graph should be portable, and the knowledge of how *this* deployment reads data
  * is exactly what must not travel with it.
  */
+/*
+  The graph's own stylesheet, imported here because this is the only place the app mounts a graph.
+
+  `@we/graph-solid` ships it as a separate entry rather than injecting it, which is right for a
+  package that must not assume a bundler — but it means a host that forgets the import gets a graph
+  that *renders and is invisible*. Every element is in the DOM with the right classes and the right
+  CSS custom properties on it, and none of them mean anything: no `position: absolute`, so nodes
+  stack in flow instead of at their coordinates; no size or background on the dot, so marks vanish
+  and only their labels survive; no stroke on the edges. It reads as a broken layout engine rather
+  than a missing file. The graph-explorer playground had the import and the app never did.
+*/
+import '@we/graph-solid/styles';
+
 import type { ModelClass, ModelManifestEntry, QueryOptions } from '@we/backend-shared';
+import { manifestEntries } from '@we/backend-shared';
 import type { EntityShape } from '@we/graph-protocol';
 import { GraphView, type GraphViewProps } from '@we/graph-solid';
+import { CORE_MANIFEST } from '@we/models/generated/coreManifest';
 import { createMemo } from 'solid-js';
 
 import { useDatasetStore } from '../stores/DatasetStore';
@@ -84,7 +99,25 @@ export function GraphHost(props: Omit<GraphViewProps, 'host'>) {
     }),
   );
 
-  const manifest = () => datasetStore.currentDatasetModels();
+  /**
+   * Every entity the graph may draw or traverse — WE's own vocabulary *and* whatever else the
+   * dataset holds.
+   *
+   * `currentDatasetModels` is **foreign schemas only**: everything WE knows natively is deliberately
+   * absent from it, because a native model is already registered globally and re-fetching its shape
+   * would be wasted work. Reading it as "the dataset's models" is a mistake this codebase has now
+   * made three times, and here it broke two things at once. The schema map showed only the classes
+   * some *other* app had written into the space — in a space with a call in it, exactly
+   * `InterpretationOverlay` and `InterpretationRun` — and `parentFor` could not resolve
+   * `CollectionBlock.children`, so no container would open into anything.
+   *
+   * Core first, so a foreign schema that happens to share a name cannot shadow WE's own.
+   */
+  const manifest = createMemo(() => {
+    const core = manifestEntries(CORE_MANIFEST);
+    const known = new Set(core.map((entry) => entry.name));
+    return [...core, ...datasetStore.currentDatasetModels().filter((entry) => !known.has(entry.name))];
+  });
 
   function modelFor(entity: string, dataset?: string): ModelClass | undefined {
     const bound = bindings();
