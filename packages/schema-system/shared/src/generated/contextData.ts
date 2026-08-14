@@ -489,11 +489,14 @@ export const contextData: ContextData = {
       tagName: 'we-sortable',
       className: 'Sortable',
       description:
-        "Drag-to-reorder container primitive.\n\nUsage: wrap a list of elements that each have a `data-we-id` attribute.\nFires a `reorder` CustomEvent<string[]> on drop with the new ordered array\nof IDs — the event name is unprefixed, like every other primitive's\n(`change`, `select`, `toggle`). In Solid, listen with `on:reorder`; a\nlistener for `we-reorder` never fires and the drop silently does nothing.\nFrom a schema the same event is `onReorder`, which Solid lowercases to a\ndirect `reorder` listener.\n\nThe `data-we-id` may sit on the slotted child or on something inside it —\nsee `_resolveItem` for why the second case exists.",
+        'A drop zone whose items can be picked up, reordered, and moved to other zones.\n\n## One element, not two\n\nA zone *is* the container and its children *are* the items, which is what makes nesting free: a\nsortable inside an item of another sortable is simply a zone inside a zone, with no special case\nanywhere. A separate `we-drag-item` would buy nothing and cost boilerplate at every call site.\n\n## It emits intent, it never mutates\n\nA drop fires SortableMoveDetail — "this item moved from there to here, at this index" —\nand nothing else. What that *means* is the consumer\'s business, and it differs: a kanban route\nkeyed on `status` writes a scalar, a board built from containment relinks two `children` edges, an\noutline reparents a node. A primitive that assumed one of those would be useless to the others.\n\nThis is also why the element does not reorder its own DOM. The list is rendered from data; the\ndata changes; the list re-renders. A primitive that moved nodes itself would fight whatever\nrenders them.\n\n## Nesting, and why cycles are not a problem\n\nThe hard part of nested drag-and-drop is refusing to drop a container into its own descendant.\nBecause nesting here is expressed *in the DOM*, that check is `dragged.contains(zone)` — correct\nby construction, needing no knowledge of the consumer\'s data shape. The innermost matching zone\nunder the pointer wins, so dropping into a nested list does not also count as dropping into its\nparent.\n\n## Keyboard\n\nSpace or Enter picks up the focused item; the arrow keys move it, along the list and across\nzones; Space drops and Escape cancels. Built in rather than added later, because a board that can\nonly be operated by dragging is a board some people cannot operate at all — and because the\nevents are identical, a consumer gets it for nothing.',
       superclass: 'DesignSystemElement',
       ownProps: [
         { name: 'direction', type: "'vertical' | 'horizontal'", optional: false, default: "'vertical'" },
         { name: 'gap', type: 'string', optional: false, default: "''" },
+        { name: 'zone', type: 'string', optional: false, default: "''" },
+        { name: 'group', type: 'string', optional: false, default: "''" },
+        { name: 'locked', type: 'boolean', optional: false, default: 'false' },
       ],
     },
     {
@@ -1036,9 +1039,9 @@ export const contextData: ContextData = {
     {
       name: 'Calendar',
       props: [
-        { name: 'onSelect', type: '((date: string) => void)', optional: true },
         { name: 'value', type: 'string', optional: true },
         { name: 'events', type: 'CalendarEvent[]', optional: true },
+        { name: 'onSelect', type: '((date: string) => void)', optional: true },
         { name: 'styles', type: 'Record<string, string | number>', optional: true },
       ],
       source: 'components',
