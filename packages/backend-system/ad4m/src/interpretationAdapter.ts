@@ -154,7 +154,7 @@ export function createAd4mInterpretationPort(): InterpretationPort {
       if (!request.classes.length) throw new Error('interpretation: no classes given');
       // Nothing was said. Returning early keeps a caller that polls from paying for an LLM call, and
       // an empty transcript is a normal thing for a call with no speech in it.
-      if (!turns.length) return { ids: [], proposed: [] };
+      if (!turns.length) return { turns: 0, ids: [], proposed: [] };
 
       await assertShapesInstalled(perspective, request.classes);
 
@@ -165,7 +165,7 @@ export function createAd4mInterpretationPort(): InterpretationPort {
         (request.parent ? `${DEFAULT_BASE_PREFIX}${encodeURIComponent(request.parent.id)}/` : DEFAULT_BASE_PREFIX);
 
       const ids = await perspective.runInterpretation(withTime(turns), basePrefix, request.classes);
-      if (ctl?.signal?.aborted) return { ids: [], proposed: [] };
+      if (ctl?.signal?.aborted) return { turns: turns.length, ids: [], proposed: [] };
 
       // Parent *after* the pass, because the engine has no notion of one. Sequential rather than
       // Promise.all: these are writes to one perspective, and a burst of concurrent link adds buys
@@ -181,7 +181,7 @@ export function createAd4mInterpretationPort(): InterpretationPort {
       // Which of these are staged rather than committed. Read back rather than inferred: the
       // divergence gate decides per property, and only the executor knows what it did.
       const staged = new Set((await perspective.interpretationOverlays()).map((o) => o.base));
-      return { ids, proposed: ids.filter((id) => staged.has(id)) };
+      return { turns: turns.length, ids, proposed: ids.filter((id) => staged.has(id)) };
     },
 
     async proposals(dataset: DatasetHandle): Promise<InterpretationProposal[]> {

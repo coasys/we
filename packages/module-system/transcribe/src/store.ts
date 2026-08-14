@@ -268,6 +268,16 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
   const [extractingId, setExtractingId] = signal('');
   const [extractedId, setExtractedId] = signal('');
   /**
+   * How many turns the last pass actually read.
+   *
+   * Without it, "the model found nothing in this conversation" and "no transcript reached the model"
+   * are the same empty result — and they need opposite responses. The first is a fact about the
+   * meeting; the second means something between the collection and the prompt is dropping turns, and
+   * every one of those failures (a wrong containment predicate, an unreadable timestamp, the wrong
+   * collection) looks exactly like a quiet meeting.
+   */
+  const [extractTurns, setExtractTurns] = signal(0);
+  /**
    * Suggestions the backend staged instead of writing, awaiting a person.
    *
    * Held rather than queried on render because resolving one is a round trip and the list has to
@@ -582,6 +592,7 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
       if (collection === collectionId()) await flush();
       const result = await interpretation.runOnCollection(collection, { classes: EXTRACT_CLASSES });
       setExtractCount(result.ids.length);
+      setExtractTurns(result.turns);
       setExtractedId(collection);
       setExtractStatus('done');
       // Only worth a round trip when the pass actually staged something. A backend with no
@@ -991,6 +1002,7 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
     extractError,
     extractingId,
     extractedId,
+    extractTurns,
     /**
      * Whether there is anything to extract *from* and anything to extract *with*.
      *

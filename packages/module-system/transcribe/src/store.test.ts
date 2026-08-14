@@ -570,7 +570,7 @@ describe('extraction', () => {
 
   /** The host's half of the contract, recorded so a test can see what was asked of it. */
   function interpreter(
-    result: { ids: string[]; proposed: string[] } | Error = { ids: ['task-1'], proposed: [] },
+    result: { turns: number; ids: string[]; proposed: string[] } | Error = { turns: 5, ids: ['task-1'], proposed: [] },
     available = true,
   ) {
     const calls: Array<{ collectionId: string; classes: string[] }> = [];
@@ -638,7 +638,7 @@ describe('extraction', () => {
   });
 
   it('reports what it found, so a finished pass does not look like a dead button', async () => {
-    const i = interpreter({ ids: ['task-1', 'event-2'], proposed: ['event-2'] });
+    const i = interpreter({ turns: 5, ids: ['task-1', 'event-2'], proposed: ['event-2'] });
     const h = harness(inCall, { interpretation: i.port });
     await h.say('hello');
 
@@ -705,7 +705,7 @@ describe('staged suggestions', () => {
       resolved,
       port: {
         available: () => true,
-        runOnCollection: async () => ({ ids: proposed, proposed }),
+        runOnCollection: async () => ({ turns: 5, ids: proposed, proposed }),
         proposals: async () => list,
         accept: async (id: string) => {
           resolved.push({ action: 'accept', id });
@@ -728,7 +728,7 @@ describe('staged suggestions', () => {
     const h = harness(inCall, {
       interpretation: {
         available: () => true,
-        runOnCollection: async () => ({ ids: ['t1'], proposed: [] }),
+        runOnCollection: async () => ({ turns: 5, ids: ['t1'], proposed: [] }),
         proposals: async () => {
           asked += 1;
           return [];
@@ -803,7 +803,7 @@ describe('staged suggestions', () => {
     const h = harness(inCall, {
       interpretation: {
         available: () => true,
-        runOnCollection: async () => ({ ids: ['t1'], proposed: ['t1'] }),
+        runOnCollection: async () => ({ turns: 5, ids: ['t1'], proposed: ['t1'] }),
         proposals: async () => {
           throw new Error('unreachable');
         },
@@ -841,7 +841,7 @@ describe('extracting by id', () => {
         available: () => true,
         runOnCollection: async (collectionId: string) => {
           calls.push(collectionId);
-          return { ids: ['task-1'], proposed: [] };
+          return { turns: 5, ids: ['task-1'], proposed: [] };
         },
         proposals: async () => [],
         accept: async () => true,

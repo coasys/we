@@ -79,6 +79,17 @@ export interface InterpretationRequest {
 }
 
 export interface InterpretationResult {
+  /**
+   * How many turns the pass actually read.
+   *
+   * Reported because without it "nothing was extracted" and "there was nothing to extract from" are
+   * the same empty result, and they need opposite responses from a user: one means the conversation
+   * had no commitments in it, the other means the transcript never arrived. Every layer between the
+   * transcript and the model can drop turns silently — a wrong containment predicate, an unreadable
+   * timestamp, a collection that is not the one being displayed — and each of those failures looks
+   * exactly like a quiet meeting.
+   */
+  turns: number;
   /** Ids of the instances created or updated by this pass. Empty is a valid, common answer. */
   ids: string[];
   /**

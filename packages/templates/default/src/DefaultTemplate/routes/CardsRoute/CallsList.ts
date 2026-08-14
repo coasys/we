@@ -269,12 +269,30 @@ export const callsList: SchemaNode = {
                               // Whole sentences per branch rather than a count glued to a suffix.
                               // Sharing the tail gave "no found" for the empty case, which is the
                               // sort of thing that reads as a placeholder somebody forgot.
+                              //
+                              // Three outcomes, not two. "Nothing found" is a fact about the
+                              // conversation; "no transcript" means nothing reached the model at
+                              // all, and every way that happens — a wrong containment predicate, an
+                              // unreadable timestamp, the wrong collection — looks identical to a
+                              // quiet meeting unless the turn count is said out loud.
                               $if: {
-                                condition: { $store: 'modules.transcribe.extractCount' },
+                                condition: { $store: 'modules.transcribe.extractTurns' },
                                 then: {
-                                  $concat: [{ $store: 'modules.transcribe.extractCount' }, ' found'],
+                                  $if: {
+                                    condition: { $store: 'modules.transcribe.extractCount' },
+                                    then: {
+                                      $concat: [{ $store: 'modules.transcribe.extractCount' }, ' found'],
+                                    },
+                                    else: {
+                                      $concat: [
+                                        'Nothing found in ',
+                                        { $store: 'modules.transcribe.extractTurns' },
+                                        ' turns',
+                                      ],
+                                    },
+                                  },
                                 },
-                                else: 'Nothing found',
+                                else: 'No transcript to read',
                               },
                             },
                           ],
