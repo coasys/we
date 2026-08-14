@@ -154,24 +154,46 @@ export const graphRoute: RouteSchema = {
     selected: { type: 'object', initial: null },
   },
   children: [
+    /*
+        Chrome inside the template's column, canvas edge to edge.
+
+        The graph fills the viewport because a map wants every pixel, but its *controls* are reading
+        matter and belong on the same measure as everything else in this template — the globe route
+        already does exactly this with its overlaid controls. Without it the mode picker sits hard
+        against the left edge and the detail strip against the right, which reads as a different
+        application rather than another route.
+      */
     {
       type: 'Row',
       props: {
         width: '100%',
-        ax: 'between',
-        ay: 'center',
-        px: '400',
+        ax: 'center',
         py: '300',
-        gap: '300',
         borderBottom: '1px solid neutral-200',
       },
       children: [
         {
           type: 'Row',
-          props: { gap: '300', ay: 'center' },
-          children: [{ type: 'we-text', props: { variant: 'heading-sm' }, children: ['Graph'] }, picker('mode', MODES)],
+          props: {
+            width: '100%',
+            maxWidth: 'var(--we-layout-lg)',
+            ax: 'between',
+            ay: 'center',
+            px: '400',
+            gap: '300',
+          },
+          children: [
+            {
+              type: 'Row',
+              props: { gap: '300', ay: 'center' },
+              children: [
+                { type: 'we-text', props: { variant: 'heading-sm' }, children: ['Graph'] },
+                picker('mode', MODES),
+              ],
+            },
+            picker('layout', LAYOUTS),
+          ],
         },
-        picker('layout', LAYOUTS),
       ],
     },
 
@@ -198,24 +220,35 @@ export const graphRoute: RouteSchema = {
       type: '$if',
       props: {
         condition: { $local: 'selected' },
+        // The strip spans the window so its background and rule reach the edges; its contents sit on
+        // the template's measure, like the header above. Same reasoning, same numbers.
         then: {
           type: 'Row',
           props: {
             width: '100%',
-            gap: '300',
-            ay: 'center',
-            px: '400',
+            ax: 'center',
             py: '300',
             bg: 'neutral-50',
             borderTop: '1px solid neutral-200',
           },
           children: [
-            { type: 'we-badge', children: [{ $local: 'selected.type' }] },
-            { type: 'we-text', props: { fontWeight: '600' }, children: [{ $local: 'selected.label' }] },
             {
-              type: 'we-button',
-              props: { size: 'xs', variant: 'ghost', onClick: { $setLocal: 'selected', value: null } },
-              children: [{ type: 'we-icon', props: { name: 'x' } }],
+              type: 'Row',
+              props: { width: '100%', maxWidth: 'var(--we-layout-lg)', gap: '300', ay: 'center', px: '400' },
+              children: [
+                { type: 'we-badge', children: [{ $local: 'selected.type' }] },
+                { type: 'we-text', props: { fontWeight: '600' }, children: [{ $local: 'selected.label' }] },
+                {
+                  type: 'we-button',
+                  props: {
+                    size: 'xs',
+                    variant: 'ghost',
+                    ml: 'auto',
+                    onClick: { $setLocal: 'selected', value: null },
+                  },
+                  children: [{ type: 'we-icon', props: { name: 'x' } }],
+                },
+              ],
             },
           ],
         },

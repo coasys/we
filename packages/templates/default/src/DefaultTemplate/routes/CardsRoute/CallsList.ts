@@ -30,6 +30,29 @@ const utterances = {
   },
 };
 
+/** Records of one kind that extraction wrote onto this call. */
+const findingsOf = (entity: string) => ({
+  $query: {
+    entity,
+    scope: { anchor: 'CollectionBlock', via: 'children', anchorId: '$call.id' },
+    order: { createdAt: 'asc' },
+  },
+});
+
+const taskFindings = findingsOf('TaskBlock');
+const eventFindings = findingsOf('EventBlock');
+
+/** `" · 2 tasks"`, or nothing at all when the count is zero. */
+const countOf = (query: object, one: string, other: string) => ({
+  $if: {
+    condition: { $count: { items: query } },
+    then: {
+      $concat: [' · ', { $count: { items: query } }, { $plural: { count: { $count: { items: query } }, one, other } }],
+    },
+    else: '',
+  },
+});
+
 /**
  * One group of records extraction wrote onto this call.
  *
@@ -45,14 +68,7 @@ const utterances = {
  * it is all this shows. Anything richer belongs in the card for that type, not in a summary hanging
  * off a call — the point here is "this came out of this conversation", not a task manager.
  */
-function extracted(entity: string, label: string, icon: string, as: string): SchemaNode {
-  const query = {
-    $query: {
-      entity,
-      scope: { anchor: 'CollectionBlock', via: 'children', anchorId: '$call.id' },
-      order: { createdAt: 'asc' },
-    },
-  };
+function extracted(query: object, label: string, icon: string, as: string): SchemaNode {
   return {
     type: '$if',
     props: {
@@ -124,6 +140,19 @@ export const callsList: SchemaNode = {
             editOpen: { type: 'boolean', initial: false },
             titleDraft: { type: 'string', initial: '$call.title' },
             descriptionDraft: { type: 'string', initial: '$call.description' },
+            /*
+              Two folds inside the card, both closed.
+
+              A recorded meeting is long: rendering every utterance and every finding makes a card
+              nobody scrolls past, and the two halves are wanted at different moments — the findings
+              when you are catching up, the transcript when you doubt one of them.
+
+              Closed by default, and that is a judgement rather than a default: what a finished call
+              owes a reader at a glance is who was in it, how much was said and what came out — all
+              of which the header already carries.
+            */
+            findingsOpen: { type: 'boolean', initial: false },
+            transcriptOpen: { type: 'boolean', initial: false },
           },
           header: [
             {
@@ -206,6 +235,20 @@ export const callsList: SchemaNode = {
                                 other: ' utterances',
                               },
                             },
+                            /*
+                                What the model found, beside what was said.
+
+                                Named by kind rather than totalled, and that is not only a
+                                workaround for there being no arithmetic operator to add two counts
+                                with. "2 tasks · 1 event" says what came out of the conversation;
+                                "3 extracted" says only that the button worked.
+
+                                Each part disappears at zero, so a call nobody has run extraction on
+                                reads exactly as it did before — no permanent reminder of a feature
+                                on every card.
+                              */
+                            countOf(taskFindings, ' task', ' tasks'),
+                            countOf(eventFindings, ' event', ' events'),
                           ],
                         },
                       },
@@ -594,26 +637,103 @@ export const callsList: SchemaNode = {
                     filter more chrome than content. When a real meeting yields fifteen, this is the
                     shape a filter grows out of.
                   */
-                extracted('TaskBlock', 'Tasks', 'check-square', 'task'),
-                extracted('EventBlock', 'Events', 'calendar', 'event'),
+                /*
+                    The findings, behind their own fold.
+
+                    A disclosure rather than `CollapsedContent`: this is a short list that is either
+                    wanted whole or not at all, and a height-clipped fade over three rows reads as a
+                    rendering accident. The trigger carries the counts, so the fold still says what
+                    is inside it — which is the thing that makes a closed section worth opening.
+
+                    Hidden entirely when there is nothing, so a call nobody has extracted from looks
+                    exactly as it did before.
+                  */
                 {
-                  type: '$each',
-                  // Drilled down from the call rather than hydrated with `include` — see the note
-                  // on the outer query. `children` still arrives as an array of ids, but the ids
-                  // alone cannot render the text.
-                  // Oldest first, because a transcript read backwards is not a transcript.
+                  type: '$if',
                   props: {
-                    items: {
-                      $query: {
-                        entity: 'TextBlock',
-                        scope: { anchor: 'CollectionBlock', via: 'children', anchorId: '$call.id' },
-                        order: { createdAt: 'asc' },
-                      },
+                    condition: {
+                      $or: [{ $count: { items: taskFindings } }, { $count: { items: eventFindings } }],
                     },
-                    as: 'utterance',
+                    then: {
+                      type: 'Column',
+                      props: { gap: '200' },
+                      children: [
+                        {
+                          type: 'we-button',
+                          props: {
+                            variant: 'ghost',
+                            size: 'sm',
+                            onClick: { $toggleLocal: 'findingsOpen' },
+                            text: {
+                              $concat: [
+                                { $if: { condition: { $local: 'findingsOpen' }, then: 'Hide', else: 'Show' } },
+                                ' what was found',
+                                countOf(taskFindings, ' task', ' tasks'),
+                                countOf(eventFindings, ' event', ' events'),
+                              ],
+                            },
+                          },
+                        },
+                        {
+                          type: '$if',
+                          props: {
+                            condition: { $local: 'findingsOpen' },
+                            then: {
+                              type: 'Column',
+                              props: { gap: '300' },
+                              children: [
+                                extracted(taskFindings, 'Tasks', 'check-square', 'task'),
+                                extracted(eventFindings, 'Events', 'calendar', 'event'),
+                              ],
+                            },
+                          },
+                        },
+                      ],
+                    },
+                  },
+                },
+                /*
+                    The transcript, behind a fold.
+
+                    A recorded meeting is long, and a card that renders every utterance is a card
+                    nobody scrolls past. `CollapsedContent` is the same primitive `cardShell` uses to
+                    fold a whole card, applied one level in — so the gesture is the one this route
+                    already teaches, and the fade tells you there is more without a count nobody
+                    reads.
+
+                    Open by default would defeat the point; the findings above it are the summary,
+                    and this is what they were drawn from.
+                  */
+                {
+                  type: 'CollapsedContent',
+                  props: {
+                    collapsed: { $not: { $local: 'transcriptOpen' } },
+                    onExpandClick: { $toggleLocal: 'transcriptOpen' },
+                    maxHeight: '160px',
                   },
                   children: [
-                    /*
+                    {
+                      type: 'Column',
+                      props: { gap: '300' },
+                      children: [
+                        {
+                          type: '$each',
+                          // Drilled down from the call rather than hydrated with `include` — see the note
+                          // on the outer query. `children` still arrives as an array of ids, but the ids
+                          // alone cannot render the text.
+                          // Oldest first, because a transcript read backwards is not a transcript.
+                          props: {
+                            items: {
+                              $query: {
+                                entity: 'TextBlock',
+                                scope: { anchor: 'CollectionBlock', via: 'children', anchorId: '$call.id' },
+                                order: { createdAt: 'asc' },
+                              },
+                            },
+                            as: 'utterance',
+                          },
+                          children: [
+                            /*
                         Attribution is free here and needs no diarization: each agent transcribes only
                         their own microphone, so the block's author *is* the speaker.
 
@@ -622,16 +742,22 @@ export const callsList: SchemaNode = {
                         same idiom `PostsList` uses for a post's author — and it reaches anyone, not
                         only the current space's members.
                       */
-                    agentByline({
-                      did: '$utterance.author',
-                      as: 'speaker',
-                      stacked: true,
-                      nameColor: 'neutral-600',
-                      // When each utterance was written — which is when it was *said*, since a
-                      // block is flushed as the speaker finishes.
-                      timestamp: '$utterance.createdAt',
-                      children: [{ type: 'we-text', props: { color: 'neutral-900' }, children: ['$utterance.text'] }],
-                    }),
+                            agentByline({
+                              did: '$utterance.author',
+                              as: 'speaker',
+                              stacked: true,
+                              nameColor: 'neutral-600',
+                              // When each utterance was written — which is when it was *said*, since a
+                              // block is flushed as the speaker finishes.
+                              timestamp: '$utterance.createdAt',
+                              children: [
+                                { type: 'we-text', props: { color: 'neutral-900' }, children: ['$utterance.text'] },
+                              ],
+                            }),
+                          ],
+                        },
+                      ],
+                    },
                   ],
                 },
               ],
