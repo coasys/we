@@ -66,9 +66,16 @@ const moveMenu: SchemaNode = {
 };
 
 /** One card. Shows only what a board needs to triage; the detail belongs on the task itself. */
-const card: SchemaNode = {
+const cardBody: SchemaNode = {
   type: 'Column',
-  props: { width: '100%', gap: '200', bg: 'neutral-0', r: '300', p: '300', border: '1px solid neutral-200' },
+  props: {
+    width: '100%',
+    gap: '200',
+    bg: 'neutral-0',
+    r: '300',
+    p: '300',
+    border: '1px solid neutral-200',
+  },
   children: [
     { type: 'we-text', props: { fontWeight: 'semibold' }, children: ['$task.title'] },
     {
@@ -129,6 +136,23 @@ const card: SchemaNode = {
   ],
 };
 
+/**
+ * One card, wrapped in the native div the sortable drags by.
+ *
+ * `data-we-id` goes on a plain `div` rather than on the `Column`, for the reason `rail.ts` documents
+ * at length: a component's non-event props are assigned as DOM *properties*, so the attribute
+ * `we-sortable` looks for would never exist — and a native element is the one node type the prop
+ * validator has no list for, so a data attribute on it is not reported as unknown.
+ *
+ * The explicit width matters for the same reason it does there: this div is the box the drag
+ * geometry measures.
+ */
+const card: SchemaNode = {
+  type: 'div',
+  props: { 'data-we-id': '$task.id', style: { width: '100%', cursor: 'grab' } },
+  children: [cardBody],
+};
+
 /** One column: a heading with a count, and the cards in that state. */
 const column = (spec: (typeof COLUMNS)[number]): SchemaNode => ({
   type: 'Column',
@@ -165,10 +189,36 @@ const column = (spec: (typeof COLUMNS)[number]): SchemaNode => ({
         },
       ],
     },
+    /*
+        The cards, in a drop zone.
+
+        `zone` is the status, which is what makes the drop handler a one-line `model.update`: the
+        event says which zone an item landed in, and here a zone *is* a status. A containment board
+        would read the same event and relink instead — the primitive reports intent and stays out of
+        it.
+
+        `group` is what lets the three columns exchange cards while leaving every other sortable on
+        the page — the space sidebar, for one — out of it.
+
+        `index` is deliberately ignored. Ordering within a column needs a conflict-free position
+        (the AD4M CRDT work), and a `position` scalar written now is a shape that design supersedes.
+        So a drag across columns persists and a drag within one is visual until then.
+      */
     {
-      type: '$each',
-      props: { items: tasksIn(spec.status), as: 'task' },
-      children: [card],
+      type: 'we-sortable',
+      props: {
+        zone: spec.status,
+        group: 'tasks',
+        gap: 'var(--we-space-300)',
+        onMoved: { $action: 'model.update', args: ['TaskBlock', '$arg.detail.id', { status: '$arg.detail.to' }] },
+      },
+      children: [
+        {
+          type: '$each',
+          props: { items: tasksIn(spec.status), as: 'task' },
+          children: [card],
+        },
+      ],
     },
   ],
 });
