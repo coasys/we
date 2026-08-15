@@ -48,8 +48,17 @@ export function hoistQueryItems(
   for (const token of QUERY_ITEMS_TOKENS) {
     if (!hasToken(value, token, 'object')) continue;
     const spec = (value as Record<string, { items?: unknown }>)[token];
-    if (!hasToken(spec.items, '$query', 'object')) return value;
-    return { [token]: { ...spec, items: createSignal(resolveQueryProp(spec.items), stores, context) } };
+    if (hasToken(spec.items, '$query', 'object')) {
+      return { [token]: { ...spec, items: createSignal(resolveQueryProp(spec.items), stores, context) } };
+    }
+    /*
+      `items` is something else — most usefully another items-taking token, as in
+      `{ $count: { items: { $filter: { items: { $query } } } } }`, which is how a cell asks "are any
+      of these on my day". Fall through to the generic walk below rather than returning: stopping
+      here leaves the inner query unhoisted, and an unhoisted query reads as an empty list, so the
+      count comes back 0 and the cell decides nothing happens that day.
+    */
+    break;
   }
 
   if (Array.isArray(value)) {

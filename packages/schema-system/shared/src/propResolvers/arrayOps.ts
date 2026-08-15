@@ -90,6 +90,29 @@ function matchesWhere(
         continue;
       }
 
+      /*
+        { startsWith: … } / { endsWith: … } — anchored, case-sensitive.
+
+        Case-sensitive where `contains` above is not, because these two exist to match structured
+        strings against a known prefix: an ISO date out of a datetime, an id out of a URI. Folding
+        case there would be wrong in a way nobody would notice until it matched something it should
+        not have. `contains` is a search over prose, which is a different question.
+
+        Their absence is what made `$filter` and `$query` disagree despite the docs promising the
+        same operator set — a day cell asking "any events here" through `$filter` matched nothing
+        while the same clause pushed down to the backend worked.
+      */
+      for (const anchor of ['startsWith', 'endsWith'] as const) {
+        if (!(anchor in op)) continue;
+        let prefix = resolvePropFn(op[anchor], stores, context, memo);
+        if (typeof prefix === 'function' && REACTIVE_ACCESSOR in (prefix as object))
+          prefix = (prefix as () => unknown)();
+        const haystack = String(actual ?? '');
+        const needle = String(prefix ?? '');
+        if (anchor === 'startsWith' ? !haystack.startsWith(needle) : !haystack.endsWith(needle)) return false;
+      }
+      if ('startsWith' in op || 'endsWith' in op) continue;
+
       // { not: <resolvable value | array> }
       if ('not' in op) {
         let notVal = resolvePropFn(op['not'], stores, context, memo);

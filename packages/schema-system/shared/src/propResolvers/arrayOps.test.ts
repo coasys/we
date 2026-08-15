@@ -56,3 +56,40 @@ describe('$filter where combinators', () => {
     expect(filter({ name: { contains: 'ADA' } })).toEqual([members[0]]);
   });
 });
+
+/*
+  `startsWith` / `endsWith` — anchored matches, which `$filter` was documented as supporting and did
+  not. A clause it did not recognise fell through to equality against the operator *object*, so it
+  matched nothing and reported that as "no results": a calendar cell asking whether any event's
+  `startDate` began with its own date drew no marker on a month full of events.
+*/
+describe('$filter anchored string matches', () => {
+  const events = [
+    { title: 'Standup', startDate: '2026-08-15T09:00' },
+    { title: 'Review', startDate: '2026-08-15T14:30' },
+    { title: 'Retro', startDate: '2026-08-16T11:00' },
+  ];
+
+  it('matches a date prefix out of a datetime', () => {
+    expect(filter({ startDate: { startsWith: '2026-08-15' } }, events)).toEqual([events[0], events[1]]);
+    expect(filter({ startDate: { startsWith: '2026-08-17' } }, events)).toEqual([]);
+  });
+
+  it('matches a suffix', () => {
+    expect(filter({ startDate: { endsWith: '09:00' } }, events)).toEqual([events[0]]);
+  });
+
+  it('is case-sensitive, unlike contains', () => {
+    // These two exist to match structured strings against a known prefix — an ISO date, an id out
+    // of a URI — where folding case would match things it should not. `contains` searches prose,
+    // which is a different question and stays insensitive.
+    const rows = [{ id: 'we://Task' }];
+    expect(filter({ id: { startsWith: 'we://task' } }, rows)).toEqual([]);
+    expect(filter({ id: { contains: 'WE://TASK' } }, rows)).toEqual(rows);
+  });
+
+  it('still ANDs with a sibling condition', () => {
+    expect(filter({ startDate: { startsWith: '2026-08-15' }, title: 'Retro' }, events)).toEqual([]);
+    expect(filter({ startDate: { startsWith: '2026-08-15' }, title: 'Review' }, events)).toEqual([events[1]]);
+  });
+});

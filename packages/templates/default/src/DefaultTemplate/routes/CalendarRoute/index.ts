@@ -43,6 +43,200 @@ const eventsOnDay = {
   },
 };
 
+/** Step a month. The carets flank the label rather than sitting off to one side. */
+const step = (by: number, icon: string): SchemaNode => ({
+  type: 'we-button',
+  props: {
+    size: 'sm',
+    variant: 'ghost',
+    square: true,
+    // Paging is arithmetic on an offset, which is the one calculation the schema layer can do —
+    // `$setLocal` sets a literal and adds a constant, nothing else — so every source reads the same
+    // offset and the template only ever adds to it.
+    onClick: { $setLocal: 'monthOffset', by },
+  },
+  children: [{ type: 'we-icon', props: { name: icon } }],
+});
+
+/**
+ * Jump to any month, without a permanent second row of chrome.
+ *
+ * The alternative considered was a year line above the month line, each with its own carets. It
+ * reads well in a mockup and costs more than it looks: four controls and a doubled header height,
+ * permanently, on a view whose entire job is showing days — and it still only moves a year at a
+ * time, so "next March" is two gestures rather than one.
+ *
+ * Opening it on the label instead keeps the resting state to one line, and lets a jump be a jump:
+ * pick the year, pick the month, done. It is also where people already click.
+ */
+const monthPicker: SchemaNode = {
+  type: '$if',
+  props: {
+    condition: { $local: 'pickerOpen' },
+    then: {
+      type: 'Column',
+      props: {
+        position: 'absolute',
+        zIndex: 20,
+        width: '260px',
+        gap: '200',
+        bg: 'neutral-0',
+        border: '1px solid neutral-200',
+        r: '400',
+        p: '300',
+        shadow: 'lg',
+        // Centred under the label it belongs to. `styles` rather than DS props because centring by
+        // transform has no token, and `top` as a percentage is not a space value.
+        styles: { top: 'calc(100% + 4px)', left: '50%', transform: 'translateX(-50%)' },
+      },
+      children: [
+        {
+          type: 'Row',
+          props: { width: '100%', ay: 'center' },
+          children: [
+            // A year is twelve months, which the schema can add on its own.
+            step(-12, 'caret-left'),
+            {
+              type: 'we-text',
+              props: {
+                flex: '1',
+                textAlign: 'center',
+                fontWeight: 'semibold',
+                text: { $source: { name: 'yearLabel', options: { offset: { $local: 'monthOffset' } } } },
+              },
+            },
+            step(12, 'caret-right'),
+          ],
+        },
+        {
+          type: 'Row',
+          props: { width: '100%', gap: '100', wrap: true },
+          children: [
+            {
+              type: '$each',
+              props: {
+                items: { $source: { name: 'calendarMonths', options: { offset: { $local: 'monthOffset' } } } },
+                as: 'month',
+              },
+              children: [
+                {
+                  type: 'we-button',
+                  props: {
+                    size: 'sm',
+                    width: 'calc(33.33% - 6px)',
+                    variant: { $if: { condition: '$month.isShown', then: 'secondary', else: 'ghost' } },
+                    // The offset is computed by the source and read off the row, because
+                    // `$setLocal` cannot work out how far away a month is. `from` takes a context
+                    // path, so the arithmetic arrives as data.
+                    onClick: [
+                      { $setLocal: 'monthOffset', from: '$month.offset' },
+                      { $setLocal: 'pickerOpen', value: false },
+                    ],
+                    // The real current month stays marked even while another year is on screen,
+                    // so "where am I relative to now" survives paging away.
+                    color: { $if: { condition: '$month.isThisMonth', then: 'primary-600', else: '' } },
+                  },
+                  children: ['$month.label'],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    },
+  },
+};
+
+/**
+ * The month, centred, with the way through them either side.
+ *
+ * Centring is done with equal-width flanks rather than `ax: 'center'` on the row: with "Today"
+ * present on one side only, a centred row would push the month off-centre exactly when the button
+ * appears — so the heading would shift sideways as you paged away from now, which is the one thing
+ * a fixed heading must not do.
+ */
+const monthNav: SchemaNode = {
+  type: 'Row',
+  props: { width: '100%', ay: 'center', position: 'relative' },
+  children: [
+    { type: 'Row', props: { width: '84px' } },
+    {
+      type: 'Row',
+      props: { flex: '1', ax: 'center', ay: 'center', gap: '100' },
+      children: [
+        step(-1, 'caret-left'),
+        {
+          type: 'we-button',
+          props: {
+            variant: 'bare',
+            px: '200',
+            py: '100',
+            r: '300',
+            hoverProps: { bg: 'neutral-100' },
+            onClick: { $toggleLocal: 'pickerOpen' },
+          },
+          children: [
+            {
+              type: 'we-text',
+              props: {
+                fontWeight: 'semibold',
+                text: { $source: { name: 'monthLabel', options: { offset: { $local: 'monthOffset' } } } },
+              },
+            },
+          ],
+        },
+        step(1, 'caret-right'),
+      ],
+    },
+    {
+      type: 'Row',
+      props: { width: '84px', ax: 'end' },
+      children: [
+        {
+          /*
+            Only when it would do something.
+
+            "Today" on a calendar already showing today is a button that cannot be pressed to any
+            effect, and one sitting there permanently reads as a label for the month beside it —
+            which is what made the old header ambiguous: "Today" next to "August 2026" looks like
+            it is naming what you are looking at.
+          */
+          type: '$if',
+          props: {
+            condition: { $local: 'monthOffset' },
+            then: {
+              type: 'we-button',
+              props: { size: 'xs', variant: 'ghost', onClick: { $setLocal: 'monthOffset', value: 0 } },
+              children: ['Today'],
+            },
+          },
+        },
+      ],
+    },
+    /*
+      Clicking away closes the picker.
+
+      A full-viewport catcher behind the panel, because the schema layer has no click-outside and a
+      popover that only closes via the control that opened it is a trap on touch. Transparent and
+      beneath the panel in the stack, so it swallows the next click anywhere else and nothing more.
+    */
+    {
+      type: '$if',
+      props: {
+        condition: { $local: 'pickerOpen' },
+        then: {
+          type: 'div',
+          props: {
+            style: { position: 'fixed', inset: '0', zIndex: 10 },
+            onClick: { $setLocal: 'pickerOpen', value: false },
+          },
+        },
+      },
+    },
+    monthPicker,
+  ],
+};
+
 /**
  * The month grid — a fragment, not a component.
  *
@@ -62,49 +256,7 @@ const monthGrid: SchemaNode = {
   type: 'Column',
   props: { width: '100%', gap: '300', bg: 'neutral-0', border: '1px solid neutral-200', r: '500', p: '400' },
   children: [
-    // ── Month, and the way through them ──────────────────────────────────────
-    {
-      type: 'Row',
-      props: { width: '100%', ay: 'center', gap: '200' },
-      children: [
-        {
-          type: 'we-text',
-          props: {
-            fontWeight: 'semibold',
-            text: { $source: { name: 'monthLabel', options: { month: { $local: 'month' } } } },
-          },
-        },
-        {
-          type: 'we-button',
-          props: {
-            size: 'xs',
-            variant: 'ghost',
-            square: true,
-            ml: 'auto',
-            // Paging is arithmetic on an offset, which is the one calculation the schema layer can
-            // do — `$setLocal` cannot store a computed value, so the sources take the offset and
-            // the template only ever adds to it.
-            onClick: { $setLocal: 'monthOffset', by: -1 },
-          },
-          children: [{ type: 'we-icon', props: { name: 'caret-left' } }],
-        },
-        {
-          type: 'we-button',
-          props: { size: 'xs', variant: 'ghost', onClick: { $setLocal: 'monthOffset', value: 0 } },
-          children: ['Today'],
-        },
-        {
-          type: 'we-button',
-          props: {
-            size: 'xs',
-            variant: 'ghost',
-            square: true,
-            onClick: { $setLocal: 'monthOffset', by: 1 },
-          },
-          children: [{ type: 'we-icon', props: { name: 'caret-right' } }],
-        },
-      ],
-    },
+    monthNav,
 
     // ── Weekday headings ─────────────────────────────────────────────────────
     {
@@ -175,36 +327,48 @@ const monthGrid: SchemaNode = {
                   },
                 },
                 {
-                  // The mark that says "something happens here". A template could make this a count,
-                  // a stack of chips, or the event titles themselves — it is just a node.
-                  type: '$if',
-                  props: {
-                    condition: {
-                      $count: {
-                        items: {
-                          $filter: {
-                            items: eventsQuery,
-                            where: { startDate: { startsWith: '$cell.date' } },
-                          },
-                        },
-                      },
-                    },
-                    then: {
-                      type: 'Row',
+                  /*
+                    The mark that says "something happens here".
+
+                    One dot, whatever the day holds — the count belongs in the list below, where
+                    there is room to say what the events actually are. A template could make this a
+                    number, a stack of chips, or the titles themselves; it is just a node.
+
+                    The row keeps its height whether or not the day has anything on it, so paging
+                    between a busy month and a quiet one does not move every date up and down by
+                    five pixels.
+                  */
+                  type: 'Row',
+                  props: { height: '5px', ay: 'center' },
+                  children: [
+                    {
+                      type: '$if',
                       props: {
-                        width: '4px',
-                        height: '4px',
-                        r: 'pill',
-                        bg: {
-                          $if: {
-                            condition: { $eq: ['$cell.date', { $local: 'day' }] },
-                            then: 'neutral-0',
-                            else: 'primary-500',
+                        condition: {
+                          $count: {
+                            items: {
+                              $filter: { items: eventsQuery, where: { startDate: { startsWith: '$cell.date' } } },
+                            },
+                          },
+                        },
+                        then: {
+                          type: 'Row',
+                          props: {
+                            width: '5px',
+                            height: '5px',
+                            r: 'pill',
+                            bg: {
+                              $if: {
+                                condition: { $eq: ['$cell.date', { $local: 'day' }] },
+                                then: 'neutral-0',
+                                else: { $if: { condition: '$cell.inMonth', then: 'primary-500', else: 'neutral-300' } },
+                              },
+                            },
                           },
                         },
                       },
                     },
-                  },
+                  ],
                 },
               ],
             },
@@ -333,6 +497,8 @@ export const calendarRoute: RouteSchema = {
     day: { type: 'string', initial: '' },
     /** Months from today the grid is showing. Paged by `$setLocal … by`, reset by "Today". */
     monthOffset: { type: 'number', initial: 0 },
+    /** The jump-to-month panel under the heading. */
+    pickerOpen: { type: 'boolean', initial: false },
     composerOpen: { type: 'boolean', initial: false },
     draftTitle: { type: 'string', initial: '' },
     draftStart: { type: 'string', initial: '' },
@@ -372,8 +538,20 @@ export const calendarRoute: RouteSchema = {
                   props: { width: '100%', ay: 'center', gap: '200' },
                   children: [
                     {
-                      type: 'we-text',
-                      props: { variant: 'footnote', color: 'neutral-500', uppercase: true, text: { $local: 'day' } },
+                      // The date as a person would say it. `we-timestamp` parses the cell's own
+                      // `YYYY-MM-DD` and formats it in the reader's locale, so the heading is not
+                      // the machine-readable key the grid matches on.
+                      type: 'we-timestamp',
+                      props: {
+                        value: { $local: 'day' },
+                        dateStyle: 'full',
+                        // The typography props rather than `we-text`'s `variant`/`uppercase`
+                        // shorthands, which are that element's own and not part of the DS layers a
+                        // timestamp inherits.
+                        fontSize: '100',
+                        textTransform: 'uppercase',
+                        color: 'neutral-500',
+                      },
                     },
                     {
                       // Getting back to everything, without hunting for the selected cell.
@@ -392,10 +570,41 @@ export const calendarRoute: RouteSchema = {
                       props: { items: eventsOnDay, as: 'event' },
                       children: [eventRow],
                     },
+                    /*
+                      An empty day says so, and offers the thing you are most likely here to do.
+
+                      Worth a real branch rather than rendering nothing: a day with no events and a
+                      day whose events have not loaded look identical otherwise, and picking a date
+                      to find the panel silently empty reads as the click having failed.
+                    */
                     else: {
-                      type: 'we-text',
-                      props: { color: 'neutral-500', italic: true },
-                      children: ['Nothing on this day.'],
+                      type: 'Column',
+                      props: { width: '100%', gap: '300', ay: 'start', bg: 'neutral-50', r: '300', p: '400' },
+                      children: [
+                        {
+                          type: 'we-text',
+                          props: { color: 'neutral-500' },
+                          children: ['Nothing scheduled on this day.'],
+                        },
+                        {
+                          type: 'we-button',
+                          props: {
+                            size: 'sm',
+                            variant: 'secondary',
+                            /*
+                              Opens the composer, without prefilling the date — which it should do,
+                              and cannot. `$setLocal` sets a literal (`value`) or reads a path off
+                              the event or context (`from`); the selected day is a `$local`, which
+                              is neither, and `datetime-local` needs a time appended to it anyway.
+                              Closing that gap means letting `value` resolve through the prop
+                              system, which is a change to every existing `$setLocal` and wants
+                              deciding on its own rather than in passing here.
+                            */
+                            onClick: { $setLocal: 'composerOpen', value: true },
+                          },
+                          children: ['Add an event'],
+                        },
+                      ],
                     },
                   },
                 },

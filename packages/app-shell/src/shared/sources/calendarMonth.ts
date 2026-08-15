@@ -135,3 +135,53 @@ export function calendarMonth(options: CalendarMonthOptions = {}): CalendarDay[]
 export function monthLabel(options: CalendarMonthOptions = {}): string {
   return anchorOf(options).toLocaleString(undefined, { month: 'long', year: 'numeric' });
 }
+
+/** The year a grid is showing, on its own — for a picker that steps years separately. */
+export function yearLabel(options: CalendarMonthOptions = {}): string {
+  return String(anchorOf(options).getFullYear());
+}
+
+/** One month in the jump picker. */
+export interface CalendarMonthOption {
+  /** Short name, e.g. "Aug". */
+  label: string;
+  /** 0–11. */
+  month: number;
+  year: number;
+  /**
+   * Months from today — what a template writes back to its offset field.
+   *
+   * The whole reason this source exists. `$setLocal` sets a **literal** value and can only otherwise
+   * add a constant, so a picker cannot compute "how far is March 2027 from now". What it *can* do is
+   * read a value out of the row it is rendering (`from: '$month.offset'`), so the arithmetic is done
+   * here and arrives as data. No new token, and the same trick works for any jump-to control.
+   */
+  offset: number;
+  /** The real current month — worth marking even when the grid is showing a different year. */
+  isThisMonth: boolean;
+  /** The month the grid is currently on. */
+  isShown: boolean;
+}
+
+/**
+ * The twelve months of whichever year an offset lands in, each carrying its own offset from today.
+ *
+ * Paired with `yearLabel` and a pair of `by: ±12` buttons, this is a whole jump-to-month picker with
+ * no new schema machinery: the year steps by arithmetic the schema already has, and the month is
+ * chosen by reading a number out of the row.
+ */
+export function calendarMonths(options: CalendarMonthOptions = {}): CalendarMonthOption[] {
+  const anchor = anchorOf(options);
+  const year = anchor.getFullYear();
+  const today = new Date();
+  const fromToday = (month: number) => (year - today.getFullYear()) * 12 + (month - today.getMonth());
+
+  return Array.from({ length: 12 }, (_, month) => ({
+    label: new Date(year, month, 1).toLocaleString(undefined, { month: 'short' }),
+    month,
+    year,
+    offset: fromToday(month),
+    isThisMonth: month === today.getMonth() && year === today.getFullYear(),
+    isShown: month === anchor.getMonth(),
+  }));
+}

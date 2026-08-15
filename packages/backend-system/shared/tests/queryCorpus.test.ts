@@ -91,3 +91,32 @@ describe('real template $query corpus', () => {
     });
   }
 });
+
+/*
+  `startsWith` / `endsWith` reached the IR and the engine from the start but had no way in from a
+  flat where clause: `fieldCondition` knew `contains`, `exists` and `not`, and everything else fell
+  through to equality — comparing the field against the operator object itself, which matches
+  nothing. The calendar reads a day out of a datetime this way and found every day empty.
+*/
+describe('anchored string operators', () => {
+  it('compiles startsWith and endsWith rather than falling through to equality', () => {
+    const { ir, unsupported } = compileQuery({
+      entity: 'EventBlock',
+      where: { startDate: { startsWith: '2026-08-15' } },
+    } as FlatQuery);
+
+    expect(unsupported).toEqual([]);
+    expect(ir.filter).toMatchObject({ field: 'startDate', op: 'startsWith', value: '2026-08-15' });
+
+    const ends = compileQuery({ entity: 'EventBlock', where: { url: { endsWith: '.png' } } } as FlatQuery).ir;
+    expect(ends.filter).toMatchObject({ field: 'url', op: 'endsWith', value: '.png' });
+  });
+
+  it('survives the round trip back to a flat query', () => {
+    // Without a reverse mapping `irToFlatQuery` throws on its own output, which is what the corpus
+    // above checks for every other operator.
+    const query = { entity: 'EventBlock', where: { startDate: { startsWith: '2026-08-15' } } } as FlatQuery;
+    const ir = compileQuery(query).ir;
+    expect(compileQuery(irToFlatQuery(ir)).ir).toEqual(ir);
+  });
+});

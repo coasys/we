@@ -84,3 +84,31 @@ describe('hoistQueryItems', () => {
     expect(hoist(7).result).toBe(7);
   });
 });
+
+describe('composed items-taking tokens', () => {
+  /*
+    The calendar's day cell, exactly: "are any of this month's events on my date". Two items-taking
+    tokens nested, with the query at the bottom.
+
+    The walk used to stop at the outer token the moment its own `items` was not a query, so the
+    inner one was never reached and the count came back 0 — every cell deciding nothing happened
+    that day, on a month with events in it.
+  */
+  it('hoists a query nested one items-token deeper', () => {
+    const { result, f } = hoist({
+      $count: { items: { $filter: { items: QUERY, where: { startDate: { startsWith: '2026-08-15' } } } } },
+    });
+
+    expect(f.seen).toHaveLength(1);
+    const inner = (result as { $count: { items: { $filter: { items: unknown; where: unknown } } } }).$count.items;
+    expect(inner.$filter.items).toBe(f.signal);
+    // The rest of the spec survives the rebuild — a filter that lost its `where` would match
+    // everything and dot every day of the month.
+    expect(inner.$filter.where).toEqual({ startDate: { startsWith: '2026-08-15' } });
+  });
+
+  it('leaves a token alone when there is no query anywhere beneath it', () => {
+    const value = { $count: { items: { $filter: { items: { $local: 'rows' } } } } };
+    expect(hoist(value).result).toBe(value);
+  });
+});

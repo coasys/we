@@ -6,7 +6,7 @@
  * starts on the week's first day (so no leading cells at all), and January reaching back into the
  * previous December.
  */
-import { calendarMonth, monthLabel } from '@shared/sources/calendarMonth';
+import { calendarMonth, calendarMonths, monthLabel, yearLabel } from '@shared/sources/calendarMonth';
 import { describe, expect, it } from 'vitest';
 
 const dates = (options: Parameters<typeof calendarMonth>[0]) => calendarMonth(options).map((cell) => cell.date);
@@ -103,5 +103,64 @@ describe('paging by offset', () => {
   it('labels the month it is showing, offset included', () => {
     expect(monthLabel({ month: '2026-01-15', offset: 1 })).toContain('February');
     expect(monthLabel({ month: '2026-01-15', offset: -1 })).toContain('December');
+  });
+});
+
+/*
+  The jump picker.
+
+  `calendarMonths` exists for one reason: `$setLocal` sets a literal or adds a constant, so a
+  template cannot work out how far away March 2027 is. Each row carries its own offset from today,
+  and the picker reads it back with `from: '$month.offset'` — arithmetic done here, arriving as
+  data. So the offsets are the whole contract, and they are what these test.
+*/
+describe('calendarMonths', () => {
+  /** Today, resolved the way the source does, so the expectations move with the clock. */
+  const now = new Date();
+  const thisYear = now.getFullYear();
+  const thisMonth = now.getMonth();
+
+  it('returns the twelve months of the year the offset lands in', () => {
+    const months = calendarMonths({ month: '2026-08-14' });
+    expect(months).toHaveLength(12);
+    expect(months.map((m) => m.month)).toEqual([...Array(12).keys()]);
+    expect(months.every((m) => m.year === 2026)).toBe(true);
+  });
+
+  it('carries each month offset from today, so a jump is a single write', () => {
+    const months = calendarMonths({});
+    // Every row round-trips: stepping by a row's own offset must land on that row's month.
+    for (const row of months) {
+      expect(calendarMonth({ offset: row.offset }).find((c) => c.inMonth)?.date).toBe(
+        `${row.year}-${String(row.month + 1).padStart(2, '0')}-01`,
+      );
+    }
+    expect(months[thisMonth].offset).toBe(0);
+  });
+
+  it('keeps the offsets right a year out, where a naive month subtraction breaks', () => {
+    const next = calendarMonths({ offset: 12 });
+    expect(next[0].year).toBe(thisYear + 1);
+    expect(next[thisMonth].offset).toBe(12);
+    const back = calendarMonths({ offset: -12 });
+    expect(back[thisMonth].offset).toBe(-12);
+  });
+
+  it('marks the real current month even while another year is on screen', () => {
+    // What keeps "where am I relative to now" legible after paging away.
+    const away = calendarMonths({ offset: 12 });
+    expect(away.some((m) => m.isThisMonth)).toBe(false);
+    const here = calendarMonths({});
+    expect(here.filter((m) => m.isThisMonth).map((m) => m.month)).toEqual([thisMonth]);
+  });
+
+  it('marks exactly one month as the one being shown', () => {
+    const shown = calendarMonths({ month: '2026-08-14' }).filter((m) => m.isShown);
+    expect(shown.map((m) => m.month)).toEqual([7]);
+  });
+
+  it('labels the year on its own, for a picker that steps years separately', () => {
+    expect(yearLabel({ month: '2026-08-14' })).toBe('2026');
+    expect(yearLabel({ month: '2026-12-15', offset: 1 })).toBe('2027');
   });
 });
