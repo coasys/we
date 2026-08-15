@@ -137,6 +137,10 @@ export default [
       // Machine-generated sources (e.g. packages/models/src/generated/coreManifest.ts,
       // written by generateCoreManifest.mjs) — emitted JSON-style, not prettier-style.
       '**/src/generated/**',
+      // Same, from we-seed.json via apps/we-electron/scripts/generate-seed-config.cjs. The
+      // generator's output has never been prettier-clean; the copy in the tree was hand-fixed once
+      // and stayed that way only because nothing regenerated it in the root build.
+      'apps/we-electron/electron/seed-*',
       // The branch-aware ad4m build (scripts/build-with-ad4m-link.sh) and
       // its CI counterpart clone the matching ad4m branch into ./ad4m and
       // link it via pnpm.overrides.  ESLint must not walk into that

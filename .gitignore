@@ -19,3 +19,13 @@ packages/design-system/3-primitives/src/generated/
 # never part of the repo (see CLAUDE.md, "PR summary convention").
 PR_*.md
 template-bundle.json
+
+# Generated from we-seed.json by apps/we-electron/scripts/generate-seed-config.cjs, on every build
+# and every electron dev run. Tracking them meant one developer's absolute executor path — home
+# directory and all — was committed and then handed to everybody else, and that every build left the
+# tree dirty with paths nobody chose. They regenerate from nothing, and main.js falls back sensibly
+# when they are absent.
+apps/we-electron/electron/seed-port-map.json
+apps/we-electron/electron/seed-extra-resources.json
+apps/we-electron/electron/seed-runtime.json
+apps/we-electron/electron/seed-servers.js
