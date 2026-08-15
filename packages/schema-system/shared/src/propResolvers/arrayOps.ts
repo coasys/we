@@ -152,7 +152,17 @@ export function resolveFilterProp(
     arr = (arr as () => unknown)();
   }
   if (!Array.isArray(arr)) return [];
-  return (arr as unknown[]).filter((item) => matchesWhere(item, token.where, stores, context, memo, resolvePropFn));
+  const matched = (arr as unknown[]).filter((item) =>
+    matchesWhere(item, token.where, stores, context, memo, resolvePropFn),
+  );
+
+  if (token.limit === undefined) return matched;
+  let limit = resolvePropFn(token.limit, stores, context, memo);
+  if (typeof limit === 'function' && REACTIVE_ACCESSOR in (limit as object)) limit = (limit as () => unknown)();
+  // A limit that did not resolve to a number is a template bug, and silently returning nothing
+  // would read as "no matches" — the failure this whole file's operators are prone to. Keep them
+  // all instead, so the mistake is visible as too much rather than invisible as too little.
+  return typeof limit === 'number' && limit >= 0 ? matched.slice(0, limit) : matched;
 }
 
 /**

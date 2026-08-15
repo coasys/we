@@ -12,8 +12,8 @@
   "templates": ["default", "discord", "twitter", "instagram", "youtube", "kanban", "events"],
   "ad4m": {
     "dataPath": "~/.ad4m",
-    "executorPath": "../ad4m/target/release/ad4m-executor",
-    "repoPath": "../ad4m"
+    "executorPath": "../ad4m-interp/target/release/ad4m-executor",
+    "repoPath": "../ad4m-interp"
   },
   "globalSpaceUrl": "neighbourhood://QmzSYwdd8UEtprCh5vuRWrM3FLsWMSqVNrou1dwqTMCrrf2iFS7",
   "marketplaceUrl": "neighbourhood://QmzSYwdjBtfHQgMBAFCi5nX1fxS3SQ7prh5CcysSrc2yngqL51H",

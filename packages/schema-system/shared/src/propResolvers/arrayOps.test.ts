@@ -93,3 +93,41 @@ describe('$filter anchored string matches', () => {
     expect(filter({ startDate: { startsWith: '2026-08-15' }, title: 'Review' }, events)).toEqual([events[1]]);
   });
 });
+
+/*
+  `limit` — "the first few", which nothing else in the operator set can say. Without it a month
+  cell wanting two of a day's events had to render all of them and clip, cutting a row through the
+  middle of whichever happened to be last.
+*/
+describe('$filter limit', () => {
+  const rows = [{ n: 1 }, { n: 2 }, { n: 3 }, { n: 4 }];
+  const limited = (limit: unknown, where: Record<string, unknown> = {}) =>
+    resolveProp({ $filter: { items: rows, where, limit } }, {}, {}) as unknown[];
+
+  it('keeps the first N matches, applied after the where', () => {
+    expect(limited(2)).toEqual([rows[0], rows[1]]);
+    expect(limited(2, { n: { not: 1 } })).toEqual([rows[1], rows[2]]);
+  });
+
+  it('is a ceiling, not a requirement', () => {
+    expect(limited(10)).toEqual(rows);
+    expect(limited(0)).toEqual([]);
+  });
+
+  it('resolves through the prop system, so it can come from state', () => {
+    const context = { $local: { shown: () => 3 } };
+    expect(resolveProp({ $filter: { items: rows, where: {}, limit: { $local: 'shown' } } }, {}, context)).toEqual([
+      rows[0],
+      rows[1],
+      rows[2],
+    ]);
+  });
+
+  it('keeps everything when the limit is nonsense, rather than nothing', () => {
+    // The failure mode these operators are prone to is reporting a mistake as an empty result,
+    // which reads as "no matches" and hides itself. Too many rows is at least visible.
+    expect(limited('two')).toEqual(rows);
+    expect(limited(-1)).toEqual(rows);
+    expect(limited(undefined)).toEqual(rows);
+  });
+});

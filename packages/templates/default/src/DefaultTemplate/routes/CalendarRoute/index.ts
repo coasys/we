@@ -309,81 +309,164 @@ const monthGrid: SchemaNode = {
               props: {
                 // Seven to a row, by width rather than by a grid the schema cannot express.
                 width: 'calc(14.28% - 6px)',
-                minHeight: '44px',
-                ax: 'center',
-                ay: 'center',
+                minHeight: '92px',
                 gap: '050',
+                p: '100',
                 r: '300',
                 cursor: 'pointer',
-                bg: { $if: { condition: { $eq: ['$cell.date', { $local: 'day' }] }, then: 'primary-500', else: '' } },
-                onClick: { $setLocal: 'day', from: '$cell.date' },
+                overflow: 'hidden',
+                /*
+                  Selection is a tint and an outline rather than a solid fill.
+
+                  A filled cell was right when the cell held one number; with titles in it the fill
+                  wins every contrast fight against its own contents, and the chips have to be
+                  restyled to survive it. The outline says "this one" just as clearly and leaves
+                  what is inside legible.
+                */
+                bg: {
+                  $if: {
+                    condition: { $eq: ['$cell.date', { $local: 'day' }] },
+                    then: 'primary-50',
+                    else: { $if: { condition: '$cell.inMonth', then: '', else: 'neutral-50' } },
+                  },
+                },
+                border: {
+                  $if: {
+                    condition: { $eq: ['$cell.date', { $local: 'day' }] },
+                    then: '1px solid primary-500',
+                    else: '1px solid transparent',
+                  },
+                },
+                hoverProps: {
+                  bg: {
+                    $if: {
+                      condition: { $eq: ['$cell.date', { $local: 'day' }] },
+                      then: 'primary-50',
+                      else: 'neutral-100',
+                    },
+                  },
+                },
+                /*
+                  Clicking the selected day again clears the selection.
+
+                  The `$if` sits *inside* the handler array so it is evaluated when the click
+                  happens rather than when the cell renders — entries resolve lazily, which is what
+                  lets one handler read the state it is about to change.
+
+                  Worth having even though "Show all" does the same job: pressing a thing again to
+                  undo it is the first thing anyone tries, and a selection that can only be
+                  released from a control somewhere else reads as stuck rather than as filtered.
+                */
+                onClick: [
+                  {
+                    $if: {
+                      condition: { $eq: ['$cell.date', { $local: 'day' }] },
+                      then: { $setLocal: 'day', value: '' },
+                      else: { $setLocal: 'day', from: '$cell.date' },
+                    },
+                  },
+                ],
               },
               children: [
                 {
-                  type: 'we-text',
+                  // The date, top-left, the way every month view puts it — and today's in a filled
+                  // disc, which is the one convention people read without being taught.
+                  type: 'Row',
                   props: {
-                    fontSize: '200',
-                    text: '$cell.day',
-                    // Three states, in order of precedence: selected, outside the month, today.
-                    color: {
-                      $if: {
-                        condition: { $eq: ['$cell.date', { $local: 'day' }] },
-                        then: 'neutral-0',
-                        else: {
+                    width: '20px',
+                    height: '20px',
+                    ax: 'center',
+                    ay: 'center',
+                    r: 'pill',
+                    bg: { $if: { condition: '$cell.isToday', then: 'primary-500', else: '' } },
+                  },
+                  children: [
+                    {
+                      type: 'we-text',
+                      props: {
+                        fontSize: '100',
+                        text: '$cell.day',
+                        // Today first — its disc decides the colour. Then the neighbouring months,
+                        // which stay visible but recede.
+                        color: {
                           $if: {
-                            condition: '$cell.inMonth',
-                            then: { $if: { condition: '$cell.isToday', then: 'primary-600', else: 'neutral-900' } },
-                            else: 'neutral-400',
+                            condition: '$cell.isToday',
+                            then: 'neutral-0',
+                            else: { $if: { condition: '$cell.inMonth', then: 'neutral-900', else: 'neutral-400' } },
                           },
                         },
+                        fontWeight: { $if: { condition: '$cell.isToday', then: 'semibold', else: '' } },
                       },
                     },
-                    fontWeight: { $if: { condition: '$cell.isToday', then: 'semibold', else: '' } },
+                  ],
+                },
+                /*
+                  What is actually on that day.
+
+                  Two titles, then a marker if there are more — the shape every month view uses,
+                  and the reason is that a month view answers "what kind of week is this" at a
+                  glance and hands the detail to the day panel below. A dot could say only that
+                  *something* was there; a title says whether it is worth clicking.
+
+                  `$filter` rather than a per-cell `$query`: one subscription for the month is
+                  hoisted once and sifted 42 times, where 42 queries would be 42 subscriptions for
+                  data the grid already holds.
+                */
+                {
+                  type: '$each',
+                  props: {
+                    items: {
+                      $filter: {
+                        items: eventsQuery,
+                        where: { startDate: { startsWith: '$cell.date' } },
+                        limit: 2,
+                      },
+                    },
+                    as: 'mark',
                   },
+                  children: [
+                    {
+                      type: 'we-text',
+                      props: {
+                        width: '100%',
+                        fontSize: '100',
+                        truncate: true,
+                        px: '100',
+                        r: '200',
+                        text: '$mark.title',
+                        // Faded for the neighbouring months, so a busy 1st of next month does not
+                        // read as part of the month being looked at.
+                        bg: { $if: { condition: '$cell.inMonth', then: 'primary-100', else: 'neutral-100' } },
+                        color: { $if: { condition: '$cell.inMonth', then: 'primary-800', else: 'neutral-500' } },
+                      },
+                    },
+                  ],
                 },
                 {
                   /*
-                    The mark that says "something happens here".
-
-                    One dot, whatever the day holds — the count belongs in the list below, where
-                    there is room to say what the events actually are. A template could make this a
-                    number, a stack of chips, or the titles themselves; it is just a node.
-
-                    The row keeps its height whether or not the day has anything on it, so paging
-                    between a busy month and a quiet one does not move every date up and down by
-                    five pixels.
+                    "more" without a number, because the schema layer has no arithmetic — the count
+                    of what is *not* shown is a subtraction it cannot do. The number matters less
+                    than the fact that the cell is not the whole story, and clicking gives the rest.
                   */
-                  type: 'Row',
-                  props: { height: '5px', ay: 'center' },
-                  children: [
-                    {
-                      type: '$if',
-                      props: {
-                        condition: {
+                  type: '$if',
+                  props: {
+                    condition: {
+                      $gt: [
+                        {
                           $count: {
                             items: {
                               $filter: { items: eventsQuery, where: { startDate: { startsWith: '$cell.date' } } },
                             },
                           },
                         },
-                        then: {
-                          type: 'Row',
-                          props: {
-                            width: '5px',
-                            height: '5px',
-                            r: 'pill',
-                            bg: {
-                              $if: {
-                                condition: { $eq: ['$cell.date', { $local: 'day' }] },
-                                then: 'neutral-0',
-                                else: { $if: { condition: '$cell.inMonth', then: 'primary-500', else: 'neutral-300' } },
-                              },
-                            },
-                          },
-                        },
-                      },
+                        2,
+                      ],
                     },
-                  ],
+                    then: {
+                      type: 'we-text',
+                      props: { fontSize: '100', color: 'neutral-500', px: '100', text: 'more…' },
+                    },
+                  },
                 },
               ],
             },
