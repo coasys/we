@@ -44,7 +44,7 @@
   },
   "pnpm": {
     "overrides": {
-      "@coasys/ad4m": "link:../ad4m-interp/core",
+      "@coasys/ad4m": "0.13.0-test-9",
       "@coasys/ad4m-connect": "0.13.0-test-9",
       "prettier": "3.9.4"
     }
