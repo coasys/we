@@ -1,5 +1,5 @@
 /**
- * The two decorator options interpretation needs, declared here until the runtime ships them.
+ * The interpretation surface, declared here until the runtime ships it.
  *
  * ## Why this file exists
  *
@@ -49,5 +49,37 @@ declare module '@coasys/ad4m' {
      * allows exactly one identity property.
      */
     identity?: boolean;
+  }
+
+  /** A pending overlay: values a pass proposed but has not committed. */
+  interface InterpretationOverlayInfo {
+    /** The base instance the overlay sits on. */
+    base: string;
+    /** Whether the model authored the whole instance or proposed changes to an existing one. */
+    kind: 'create' | 'update';
+    /** The run that last wrote it, if present. */
+    run: string | null;
+    /** `[predicate, stagedValue]` pairs — the model's proposed values. */
+    inferred: [string, unknown][];
+  }
+
+  /**
+   * Merged into the class declaration, which adds these to the instance type.
+   *
+   * **These are declared, not guaranteed.** A runtime without them is a live possibility — it is
+   * the published build at time of writing — so `interpretationAdapter` checks for
+   * `runInterpretation` before offering the port at all, and the whole surface goes quiet rather
+   * than failing at the press of a button. Declaring without that check would trade a compile error
+   * for a `not a function` stack trace, which is the worse of the two.
+   */
+  interface PerspectiveProxy {
+    runInterpretation(
+      transcript: { speaker: string; text: string }[],
+      basePrefix: string,
+      classes?: string[],
+    ): Promise<string[]>;
+    interpretationOverlays(): Promise<InterpretationOverlayInfo[]>;
+    acceptInterpretation(base: string, property?: string): Promise<boolean>;
+    rejectInterpretation(base: string, property?: string): Promise<boolean>;
   }
 }

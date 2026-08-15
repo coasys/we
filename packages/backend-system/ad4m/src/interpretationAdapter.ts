@@ -142,6 +142,26 @@ function decode(value: unknown): unknown {
   }
 }
 
+/**
+ * Whether the connected runtime actually implements interpretation.
+ *
+ * The methods are declared as part of `PerspectiveProxy` (see `interpretationOptions.d.ts` in
+ * `@we/models`) so the repo builds against a runtime that predates them — which means the type
+ * system can no longer answer this and something has to ask at run time. One probe is enough:
+ * the four arrived together.
+ *
+ * Checked rather than assumed because the alternative is a `runInterpretation is not a function`
+ * stack trace at the moment somebody presses Extract, several layers from anything that explains
+ * it. A capability this host does not have should read like a capability this host does not have.
+ */
+export function runtimeSupportsInterpretation(dataset: DatasetHandle): boolean {
+  return typeof (proxy(dataset) as Partial<PerspectiveProxy>).runInterpretation === 'function';
+}
+
+const UNSUPPORTED =
+  'This runtime does not support interpretation. It needs an AD4M build with the generic ' +
+  'extraction stack; everything else in the app works normally without it.';
+
 export function createAd4mInterpretationPort(): InterpretationPort {
   return {
     async interpret(
@@ -151,6 +171,7 @@ export function createAd4mInterpretationPort(): InterpretationPort {
       ctl?: { signal?: AbortSignal },
     ): Promise<InterpretationResult> {
       const perspective = proxy(dataset);
+      if (!runtimeSupportsInterpretation(dataset)) throw new Error(UNSUPPORTED);
       if (!request.classes.length) throw new Error('interpretation: no classes given');
       // Nothing was said. Returning early keeps a caller that polls from paying for an LLM call, and
       // an empty transcript is a normal thing for a call with no speech in it.
@@ -185,6 +206,10 @@ export function createAd4mInterpretationPort(): InterpretationPort {
     },
 
     async proposals(dataset: DatasetHandle): Promise<InterpretationProposal[]> {
+      // Empty rather than thrown: a review surface asking "anything pending?" on a runtime that
+      // cannot propose anything has its answer, and it is "no" — not an error worth a toast on
+      // every render.
+      if (!runtimeSupportsInterpretation(dataset)) return [];
       const perspective = proxy(dataset);
       const overlays = await perspective.interpretationOverlays();
       if (!overlays.length) return [];
@@ -201,11 +226,13 @@ export function createAd4mInterpretationPort(): InterpretationPort {
     },
 
     async accept(dataset: DatasetHandle, id: string, property?: string): Promise<boolean> {
+      if (!runtimeSupportsInterpretation(dataset)) throw new Error(UNSUPPORTED);
       const perspective = proxy(dataset);
       return perspective.acceptInterpretation(id, property ? await toPredicate(perspective, property) : undefined);
     },
 
     async reject(dataset: DatasetHandle, id: string, property?: string): Promise<boolean> {
+      if (!runtimeSupportsInterpretation(dataset)) throw new Error(UNSUPPORTED);
       const perspective = proxy(dataset);
       return perspective.rejectInterpretation(id, property ? await toPredicate(perspective, property) : undefined);
     },

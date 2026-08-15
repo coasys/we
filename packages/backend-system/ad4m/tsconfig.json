@@ -16,6 +16,6 @@
     "isolatedModules": true,
     "types": ["node"]
   },
-  "include": ["src"],
+  "include": ["src", "../../../types/ad4m-interpretation.d.ts"],
   "exclude": ["node_modules", "dist", "tests"]
 }
