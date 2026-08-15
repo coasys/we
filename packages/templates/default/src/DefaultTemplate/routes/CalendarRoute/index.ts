@@ -30,14 +30,29 @@ const eventsQuery = {
 /**
  * The same events, narrowed to the selected day.
  *
- * `startsWith` over `startDate` rather than an equality on a date field, because the model stores a
- * datetime and the grid selects a day — the prefix *is* the day. It pushes down to the backend like
- * any other filter, so picking a date does not read the month and sift it here.
+ * A substring match over `startDate` rather than an equality on a date field, because the model
+ * stores a datetime and the grid selects a day. It pushes down to the backend like any other filter,
+ * so picking a date does not read the month and sift it here.
+ *
+ * ## Why `contains` and not `startsWith`, which is what this means
+ *
+ * `startsWith` is the honest spelling, and the AD4M adapter declares it non-native: its `where` has
+ * no prefix operator, so the plan comes back with a `compute-up` gap and the renderer refuses the
+ * query outright. The compute-up fallback the adapter's own comment promises is not wired into the
+ * render path — a query that needs it fails loud rather than being run broadly and filtered here,
+ * which is the correct conservative choice and also means the operator is unusable against AD4M
+ * today. (In-memory it is native, and the dot below uses it through `$filter`, which is evaluated
+ * client-side and has no such limit.)
+ *
+ * `contains` is exact for this data rather than an approximation of it: `startDate` is
+ * `YYYY-MM-DDTHH:mm`, and a `YYYY-MM-DD` substring can only occur at position 0 — there is nowhere
+ * else in a fixed-width datetime for a date to hide. It stops being exact the moment the format
+ * does, which is why this comment exists.
  */
 const eventsOnDay = {
   $query: {
     entity: 'EventBlock',
-    where: { startDate: { startsWith: { $local: 'day' } } },
+    where: { startDate: { contains: { $local: 'day' } } },
     order: { startDate: 'asc' },
     limit: 100,
   },
