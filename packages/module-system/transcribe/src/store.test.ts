@@ -553,3 +553,355 @@ describe('a backend that cannot transcribe', () => {
     expect(h.store.status()).not.toBe('no-backend');
   });
 });
+
+/**
+ * Turning a transcript into records.
+ *
+ * The pass itself is an LLM call and is not what breaks. What breaks is everything around it: which
+ * collection gets read, whether the last sentence made it in, and whether a slow pass leaves the
+ * button looking dead. Each of those fails quietly.
+ */
+describe('extraction', () => {
+  let inCall: Peer[];
+
+  beforeEach(() => {
+    inCall = [peer(ME, { type: 'call', id: 'space:uri' })];
+  });
+
+  /** The host's half of the contract, recorded so a test can see what was asked of it. */
+  function interpreter(
+    result: { turns: number; ids: string[]; proposed: string[] } | Error = { turns: 5, ids: ['task-1'], proposed: [] },
+    available = true,
+  ) {
+    const calls: Array<{ collectionId: string; classes: string[] }> = [];
+    return {
+      calls,
+      port: {
+        available: () => available,
+        runOnCollection: async (collectionId: string, request: { classes: string[] }) => {
+          calls.push({ collectionId, classes: request.classes });
+          if (result instanceof Error) throw result;
+          return result;
+        },
+        proposals: async () => [],
+        accept: async () => true,
+        reject: async () => true,
+      },
+    };
+  }
+
+  it('offers nothing to extract before anybody has spoken', () => {
+    // There is no collection until the first utterance, so there is nothing to read back. Offering
+    // the button here would spend an LLM call on an empty transcript.
+    const i = interpreter();
+    const h = harness(inCall, { interpretation: i.port });
+
+    expect(h.store.canExtract()).toBe(false);
+    expect(h.store.extractable()).toBe(true);
+  });
+
+  it('offers nothing when the node has no model, however much was said', async () => {
+    const i = interpreter(undefined, false);
+    const h = harness(inCall, { interpretation: i.port });
+    await h.say('hello');
+
+    expect(h.store.canExtract()).toBe(false);
+    // Distinguishable from the case above, because the two need different sentences: one is "say
+    // something first", the other is "this node cannot do that at all".
+    expect(h.store.extractable()).toBe(false);
+  });
+
+  it('reads back the collection this call is writing into', async () => {
+    const i = interpreter();
+    const h = harness(inCall, { interpretation: i.port });
+    await h.say('James will ship the docs on Friday');
+
+    await h.store.extract();
+
+    expect(i.calls).toHaveLength(1);
+    expect(i.calls[0].collectionId).toBe('id-1');
+    expect(i.calls[0].classes).toEqual(['TaskBlock', 'EventBlock']);
+  });
+
+  it('flushes what is still buffered before reading', async () => {
+    // The last thing said before pressing the button is usually the reason for pressing it, and the
+    // buffer holds up to three seconds of speech. Extracting without flushing would reliably miss it.
+    const i = interpreter();
+    const h = harness(inCall, { interpretation: i.port });
+    await h.say('first');
+
+    h.store.receiveText('and one more thing');
+    await h.store.extract();
+
+    const texts = h.created.filter((c) => c.entity === 'TextBlock').map((c) => c.fields.text);
+    expect(texts).toContain('and one more thing');
+  });
+
+  it('reports what it found, so a finished pass does not look like a dead button', async () => {
+    const i = interpreter({ turns: 5, ids: ['task-1', 'event-2'], proposed: ['event-2'] });
+    const h = harness(inCall, { interpretation: i.port });
+    await h.say('hello');
+
+    await h.store.extract();
+
+    expect(h.store.extractStatus()).toBe('done');
+    expect(h.store.extractCount()).toBe(2);
+  });
+
+  it('surfaces a failed pass rather than swallowing it', async () => {
+    const i = interpreter(new Error('no LLM configured'));
+    const h = harness(inCall, { interpretation: i.port });
+    await h.say('hello');
+
+    await h.store.extract();
+
+    expect(h.store.extractStatus()).toBe('error');
+    expect(h.store.extractError()).toBe('no LLM configured');
+  });
+
+  it('does not start a second pass over the first', async () => {
+    // An LLM pass takes seconds. Without this, an impatient second press runs the whole thing again
+    // concurrently — two bills, and two sets of writes racing into one collection.
+    const i = interpreter();
+    const h = harness(inCall, { interpretation: i.port });
+    await h.say('hello');
+
+    await Promise.all([h.store.extract(), h.store.extract()]);
+
+    expect(i.calls).toHaveLength(1);
+  });
+
+  it('does nothing at all on a backend that cannot interpret', async () => {
+    const h = harness(inCall);
+    await h.say('hello');
+
+    await h.store.extract();
+
+    expect(h.store.extractStatus()).toBe('idle');
+  });
+});
+
+/**
+ * Resolving what the model proposed.
+ *
+ * Staging happens only where a human already owns a value, so this path is rare and correspondingly
+ * easy to get wrong without noticing — the list is usually empty, which looks identical to a list
+ * that never loads.
+ */
+describe('staged suggestions', () => {
+  let inCall: Peer[];
+
+  beforeEach(() => {
+    inCall = [peer(ME, { type: 'call', id: 'space:uri' })];
+  });
+
+  function interpreterWith(
+    staged: Array<{ id: string; kind: string; values: Record<string, unknown> }>,
+    proposed: string[] = staged.map((s) => s.id),
+  ) {
+    const resolved: Array<{ action: 'accept' | 'reject'; id: string }> = [];
+    let list = staged;
+    return {
+      resolved,
+      port: {
+        available: () => true,
+        runOnCollection: async () => ({ turns: 5, ids: proposed, proposed }),
+        proposals: async () => list,
+        accept: async (id: string) => {
+          resolved.push({ action: 'accept', id });
+          list = list.filter((s) => s.id !== id);
+          return true;
+        },
+        reject: async (id: string) => {
+          resolved.push({ action: 'reject', id });
+          list = list.filter((s) => s.id !== id);
+          return true;
+        },
+      },
+    };
+  }
+
+  it('does not go looking for a review list when nothing was staged', async () => {
+    // The ordinary case. A backend with no provenance gate reports nothing proposed and never had a
+    // list to fetch, so asking would be a round trip per pass for an empty array.
+    let asked = 0;
+    const h = harness(inCall, {
+      interpretation: {
+        available: () => true,
+        runOnCollection: async () => ({ turns: 5, ids: ['t1'], proposed: [] }),
+        proposals: async () => {
+          asked += 1;
+          return [];
+        },
+        accept: async () => true,
+        reject: async () => true,
+      },
+    });
+    await h.say('hello');
+
+    await h.store.extract();
+
+    expect(asked).toBe(0);
+    expect(h.store.proposals()).toEqual([]);
+  });
+
+  it('reads the list when a pass stages something', async () => {
+    const i = interpreterWith([{ id: 'task-1', kind: 'update', values: { title: 'Ship the docs' } }]);
+    const h = harness(inCall, { interpretation: i.port });
+    await h.say('hello');
+
+    await h.store.extract();
+
+    expect(h.store.proposals()).toHaveLength(1);
+    expect(h.store.proposals()[0].summary).toBe('title: Ship the docs');
+  });
+
+  it('leads a summary with the field that identifies the record', async () => {
+    // A person deciding whether to keep a suggestion reads it rather than inspecting it, and
+    // whichever key happened to come first is not a useful thing to lead with.
+    const i = interpreterWith([{ id: 'task-1', kind: 'create', values: { priority: 'high', title: 'Ship the docs' } }]);
+    const h = harness(inCall, { interpretation: i.port });
+    await h.say('hello');
+
+    await h.store.extract();
+
+    expect(h.store.proposals()[0].summary).toBe('title: Ship the docs · priority: high');
+  });
+
+  it('drops a resolved suggestion without re-reading the list', async () => {
+    // A re-read is a second round trip during which the row someone is looking at can move, and the
+    // answer is already known: a resolved overlay is gone.
+    const i = interpreterWith([
+      { id: 'task-1', kind: 'update', values: { title: 'One' } },
+      { id: 'task-2', kind: 'update', values: { title: 'Two' } },
+    ]);
+    const h = harness(inCall, { interpretation: i.port });
+    await h.say('hello');
+    await h.store.extract();
+
+    await h.store.acceptProposal('task-1');
+
+    expect(i.resolved).toEqual([{ action: 'accept', id: 'task-1' }]);
+    expect(h.store.proposals().map((p) => p.id)).toEqual(['task-2']);
+  });
+
+  it('discards on reject, and says so to the backend', async () => {
+    const i = interpreterWith([{ id: 'task-1', kind: 'create', values: { title: 'One' } }]);
+    const h = harness(inCall, { interpretation: i.port });
+    await h.say('hello');
+    await h.store.extract();
+
+    await h.store.rejectProposal('task-1');
+
+    expect(i.resolved).toEqual([{ action: 'reject', id: 'task-1' }]);
+    expect(h.store.proposals()).toEqual([]);
+  });
+
+  it('keeps a successful extraction successful when the review list cannot be read', async () => {
+    // The pass already wrote its records. Reporting an error because a follow-up read failed would
+    // be a lie about what happened, and would hide a result the user can see in the graph.
+    const h = harness(inCall, {
+      interpretation: {
+        available: () => true,
+        runOnCollection: async () => ({ turns: 5, ids: ['t1'], proposed: ['t1'] }),
+        proposals: async () => {
+          throw new Error('unreachable');
+        },
+        accept: async () => true,
+        reject: async () => true,
+      },
+    });
+    await h.say('hello');
+
+    await h.store.extract();
+
+    expect(h.store.extractStatus()).toBe('done');
+    expect(h.store.proposals()).toEqual([]);
+  });
+});
+
+/**
+ * Extracting a call you are not in.
+ *
+ * The reachable path, and the one the calls list uses. Everything here is about *which* collection a
+ * pass runs on — the failure mode is silent, because extracting the wrong call still succeeds.
+ */
+describe('extracting by id', () => {
+  let inCall: Peer[];
+
+  beforeEach(() => {
+    inCall = [peer(ME, { type: 'call', id: 'space:uri' })];
+  });
+
+  function interpreter() {
+    const calls: string[] = [];
+    return {
+      calls,
+      port: {
+        available: () => true,
+        runOnCollection: async (collectionId: string) => {
+          calls.push(collectionId);
+          return { turns: 5, ids: ['task-1'], proposed: [] };
+        },
+        proposals: async () => [],
+        accept: async () => true,
+        reject: async () => true,
+      },
+    };
+  }
+
+  it('runs on a collection this agent never transcribed into', async () => {
+    // No call, no live collection — the case the panel's button cannot reach at all.
+    const i = interpreter();
+    const h = harness([], { interpretation: i.port });
+
+    await h.store.extractCollection('someone-elses-call');
+
+    expect(i.calls).toEqual(['someone-elses-call']);
+  });
+
+  it('does not flush the live buffer into a different call', async () => {
+    // Pressing Extract on this morning's call must not push a word said just now into it.
+    const i = interpreter();
+    const h = harness(inCall, { interpretation: i.port });
+    await h.say('hello');
+
+    h.store.receiveText('said during a later call');
+    await h.store.extractCollection('an-older-call');
+
+    const texts = h.created.filter((c) => c.entity === 'TextBlock').map((c) => c.fields.text);
+    expect(texts).not.toContain('said during a later call');
+  });
+
+  it('flushes when the named collection is the live one', async () => {
+    const i = interpreter();
+    const h = harness(inCall, { interpretation: i.port });
+    await h.say('hello');
+
+    h.store.receiveText('and one more thing');
+    await h.store.extractCollection('id-1');
+
+    const texts = h.created.filter((c) => c.entity === 'TextBlock').map((c) => c.fields.text);
+    expect(texts).toContain('and one more thing');
+  });
+
+  it('names which call a result belongs to, so a list cannot show it on the wrong card', async () => {
+    const i = interpreter();
+    const h = harness([], { interpretation: i.port });
+
+    await h.store.extractCollection('call-7');
+
+    expect(h.store.extractedId()).toBe('call-7');
+    // Cleared when the pass ends — it marks what is in flight, not what was done.
+    expect(h.store.extractingId()).toBe('');
+  });
+
+  it('refuses a second pass while one is running, whichever call it names', async () => {
+    const i = interpreter();
+    const h = harness([], { interpretation: i.port });
+
+    await Promise.all([h.store.extractCollection('call-a'), h.store.extractCollection('call-b')]);
+
+    expect(i.calls).toEqual(['call-a']);
+  });
+});

@@ -139,6 +139,13 @@ interface MemberSpec {
    * Truncating is better than validating the uuid, because there is nothing to validate against
    * that a template could not also read. Removing the ability to name a space at all leaves only
    * the default, which is the sentence the tier is trying to be.
+   *
+   * Lifted by the `space-admin` grant, which is that same sentence negated — "change settings in
+   * spaces other than this one" — and which only the chrome tier holds. Settings' per-space page
+   * exists to configure a space you are *not* standing in, and reaches every one of these actions
+   * with the uuid of the row that was clicked; truncated there, each control silently wrote to
+   * whichever space was on screen instead. A grant that names the capability and a mechanism that
+   * refuses it regardless is not two safeguards, it is one of them being wrong.
    */
   arity?: number;
 }
@@ -148,7 +155,10 @@ type Classification = MemberSpec | typeof WIRING;
 const state = (group: CapabilityGroup): MemberSpec => ({ group, kind: 'state' });
 const action = (group: CapabilityGroup): MemberSpec => ({ group, kind: 'action' });
 const destructive = (group: CapabilityGroup): MemberSpec => ({ group, kind: 'action', destructive: true });
-/** An action pinned to the space on screen: its trailing `spaceUuid` argument is unreachable. */
+/**
+ * An action pinned to the space on screen: its trailing `spaceUuid` argument is unreachable, unless
+ * the bag holds `space-admin` — see {@link MemberSpec.arity}.
+ */
 const hereOnly = (group: CapabilityGroup, arity: number): MemberSpec => ({ group, kind: 'action', arity });
 
 /**
@@ -700,6 +710,19 @@ const ALWAYS_PRESENT = new Set([
   '$queryAdapter',
   '$identities',
   '$ephemeral',
+  /*
+    The `$source` registry — computed rows and values a template may draw on.
+
+    Present in every bag for the same reason `$getModel` is: it is a host-provided capability that
+    templates are meant to reach, not store state anyone needs protecting from. Its members are pure
+    synchronous functions the host chose to register, so there is nothing here to gate — a template
+    that can call `calendarMonth` can compute a month, which is the entire point of registering it.
+
+    Left unclassified it was simply dropped, silently, exactly as this file's own rule says an
+    undecided store should be: the calendar rendered and reported "Source not registered on this
+    host", which reads as a missing registration rather than a withheld one.
+  */
+  '$sources',
 ]);
 
 /**
@@ -748,6 +771,9 @@ export interface BuildBagOptions {
  */
 export function buildTemplateBag<T extends Record<string, unknown>>(stores: T, options: BuildBagOptions): T {
   const granted = new Set(options.grants);
+  // The grant that says "change settings in spaces other than this one" — so the bag holding it is
+  // the bag where naming a space is the point rather than the danger. See `MemberSpec.arity`.
+  const mayNameASpace = granted.has('space-admin');
   const bag: Record<string, unknown> = {};
 
   for (const key of Object.keys(stores)) {
@@ -807,7 +833,7 @@ export function buildTemplateBag<T extends Record<string, unknown>>(stores: T, o
 
       // Pinned to the space on screen: the trailing `spaceUuid` argument is dropped before the store
       // ever sees it, so the default — "here" — is the only thing a template can express.
-      if (spec.arity !== undefined) {
+      if (spec.arity !== undefined && !mayNameASpace) {
         const bound = method;
         const arity = spec.arity;
         method = (...args: unknown[]) => bound(...args.slice(0, arity));

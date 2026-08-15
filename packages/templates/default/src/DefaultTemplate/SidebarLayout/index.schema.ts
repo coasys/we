@@ -1,11 +1,13 @@
 import type { TemplateSchema } from '@we/schema-shared';
 
 import { initializeSpaceGate } from '../InitializeSpaceGate.ts';
+import { calendarRoute } from '../routes/CalendarRoute/index.ts';
 import { cardsRoute } from '../routes/CardsRoute/index.ts';
 import { fluxRoute } from '../routes/FluxRoute/index.ts';
 import { globeRoute } from '../routes/GlobeRoute/index.ts';
-// import { graphRoute } from '../routes/GraphRoute/index.ts';
+import { graphRoute } from '../routes/GraphRoute/index.ts';
 import { homeRoute } from '../routes/HomeRoute/index.ts';
+import { tasksRoute } from '../routes/TasksRoute/index.ts';
 import { spaceGate } from '../SpaceGate.ts';
 import { spaceSidebar } from './SpaceSidebar.ts';
 
@@ -54,7 +56,18 @@ export const sidebarLayout: TemplateSchema = {
           },
         },
       ],
-      routes: [{ path: '/', redirect: './globe' }, globeRoute, cardsRoute, fluxRoute],
+      // The graph sits beside the cards rather than replacing them: the same space, read as a map
+      // instead of a list. It matters more now that a call's extraction hangs records off the call
+      // it came from — that structure is a shape, and a list is the one view that cannot show it.
+      routes: [
+        { path: '/', redirect: './globe' },
+        globeRoute,
+        cardsRoute,
+        fluxRoute,
+        graphRoute,
+        tasksRoute,
+        calendarRoute,
+      ],
     },
   ],
 };

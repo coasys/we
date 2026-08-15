@@ -10,6 +10,7 @@
  */
 import type { DatasetHandle, RendererDataBindings } from './dataSource';
 import type { EphemeralPort } from './ephemeral';
+import type { InterpretationPort } from './interpretation';
 import type { AgentSessionPort, DatasetLifecyclePort } from './lifecycle';
 import type { ModelManifest } from './manifest';
 import type { ModelManifestEntry } from './manifestEntry';
@@ -122,4 +123,9 @@ export interface BackendPorts {
    * and anything that wanted to listen says so rather than failing silently.
    */
   transcription?: TranscriptionPort;
+  /**
+   * Turning what was said into typed records. Optional on the same terms as transcription — the two
+   * are a pair, and a backend that can hear but not interpret is a normal thing to be.
+   */
+  interpretation?: InterpretationPort;
 }

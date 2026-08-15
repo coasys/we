@@ -42,6 +42,12 @@ function fieldCondition(field: string, cond: unknown): Filter {
   if (cond !== null && typeof cond === 'object' && !Array.isArray(cond)) {
     const c = cond as Record<string, unknown>;
     if ('contains' in c) return { field, op: 'contains', value: c.contains as Scalar };
+    // `startsWith`/`endsWith` were in the IR and the engine from the start and unreachable from a
+    // flat where clause, so a prefix match fell through to the equality below and compared a field
+    // against the operator *object* — matching nothing, silently. A calendar reads a day out of a
+    // datetime this way (`startDate startsWith '2026-08-15'`), and read "no events" every time.
+    if ('startsWith' in c) return { field, op: 'startsWith', value: c.startsWith as Scalar };
+    if ('endsWith' in c) return { field, op: 'endsWith', value: c.endsWith as Scalar };
     if ('exists' in c) return { field, op: 'exists', value: c.exists as Scalar };
     if ('not' in c) {
       const v = c.not;
@@ -186,6 +192,10 @@ function conditionFromLeaf(op: Op, value: Scalar | Scalar[]): unknown {
       return { not: value };
     case 'contains':
       return { contains: value };
+    case 'startsWith':
+      return { startsWith: value };
+    case 'endsWith':
+      return { endsWith: value };
     case 'exists':
       return { exists: value };
     default:

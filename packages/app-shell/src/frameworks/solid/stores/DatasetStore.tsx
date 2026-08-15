@@ -15,11 +15,12 @@
  * which layers on top of this store and reacts to dataset changes via `onDatasetRemoved` and the
  * `currentDataset` signal.
  */
+import { containmentPredicate, gatherTranscriptTurns, type TurnModel } from '@shared/interpretation/transcriptTurns';
 import { provideModuleHostServices } from '@shared/registries/moduleHostServices';
 import { moduleRegistry } from '@shared/registries/moduleRegistry';
 import { getSeed } from '@shared/seedRegistry';
 import type { DatasetRef, ModelManifestEntry } from '@we/backend-shared';
-import { AgentSettings, type DatasetProxy } from '@we/models';
+import { AgentSettings, type DatasetProxy, getModelForPerspective } from '@we/models';
 import { Accessor, batch, createContext, createMemo, createSignal, ParentProps, useContext } from 'solid-js';
 
 import { useSessionStore } from './SessionStore';
@@ -132,6 +133,51 @@ export function DatasetStoreProvider(props: ParentProps) {
         if (!port) throw new Error('transcription: this backend cannot transcribe');
         return port.open(modelId, onText, tuning);
       },
+    },
+    // Same late read as transcription, but this one answers `available()` honestly — the wrapper is
+    // always published, so a module asking "can this node interpret?" has to be told about the
+    // backend behind it rather than about the wrapper's own existence.
+    interpretation: {
+      available: () => session.backendPorts()?.interpretation !== undefined,
+      interpret: async (dataset, turns, request, ctl) => {
+        const port = session.backendPorts()?.interpretation;
+        if (!port) throw new Error('interpretation: this backend cannot interpret');
+        return port.interpret(dataset, turns, request, ctl);
+      },
+      proposals: async (dataset) => (await session.backendPorts()?.interpretation?.proposals(dataset)) ?? [],
+      accept: async (dataset, id, property) =>
+        (await session.backendPorts()?.interpretation?.accept(dataset, id, property)) ?? false,
+      reject: async (dataset, id, property) =>
+        (await session.backendPorts()?.interpretation?.reject(dataset, id, property)) ?? false,
+    },
+
+    // Gathering the turns is the host's half of the job: the port takes turns, and a module has no
+    // read with which to produce them. Parenting what comes back onto the same collection is not
+    // optional dressing — an unparented TaskBlock is a real record that no route lists, so an
+    // extraction that skipped it would look exactly like one that found nothing.
+    interpretCollection: async (collectionId, request) => {
+      const port = session.backendPorts()?.interpretation;
+      if (!port) throw new Error('interpretation: this backend cannot interpret');
+      const dataset = currentDataset();
+      if (!dataset) throw new Error('interpretation: no dataset to interpret into');
+
+      const modelFor = (entity: string) => getModelForPerspective(entity, dataset.handle);
+      const predicate = containmentPredicate(modelFor, currentDatasetModels());
+      if (!predicate) throw new Error('interpretation: this space has no collection schema to read a transcript from');
+
+      const turns = await gatherTranscriptTurns(
+        {
+          modelFor: (entity) => modelFor(entity) as TurnModel | undefined,
+          handle: dataset.handle,
+          containmentPredicate: predicate,
+        },
+        collectionId,
+      );
+
+      return port.interpret(dataset.handle, turns, {
+        classes: request.classes,
+        parent: { id: collectionId, predicate },
+      });
     },
   });
 

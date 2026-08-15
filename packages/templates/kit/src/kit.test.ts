@@ -253,10 +253,11 @@ describe('contracts call sites depend on', () => {
     walk(portable.railShell, (n) => {
       if (n.type === 'reveal') axes.push(n.axis as string | undefined);
     });
-    // Two per $if, enter and exit. Inline: the label on each of the three items. Block: the
-    // group's heading and its body.
+    // Two per node, enter and exit. Inline: the label on each of the three items. Block: the
+    // group's body, and only its body — the heading fades in place on `opacity` instead, because
+    // revealing it grew it from nothing on every expand and pushed that group's own items down.
     expect(axes.filter((a) => a === 'inline')).toHaveLength(6);
-    expect(axes.filter((a) => a === undefined)).toHaveLength(4);
+    expect(axes.filter((a) => a === undefined)).toHaveLength(2);
   });
 
   it('the rail holds collapsed groups as a set, so groups can come from data', () => {

@@ -52,6 +52,51 @@ export const CHILDREN_PREDICATE = 'we://children';
 export const TRANSCRIBE_ACTIVITY = 'transcribe';
 
 /**
+ * What extraction is allowed to produce from a transcript.
+ *
+ * Two classes, and short on purpose. Every class named here puts its whole shape into the model's
+ * prompt, so the list is the cost *and* the quality control — a longer one is slower, dearer and
+ * vaguer, not more capable. These two also survive the test that matters: every field on them is
+ * something a person says out loud, so there is nothing the model has to invent to fill them.
+ *
+ * `TextBlock` is deliberately absent despite being what a transcript is made of. Its shape is mostly
+ * Lexical serialization — `indent`, `textFormat`, `listType` — and offering those to a model is
+ * offering it a dozen fields it can only fill with noise. `CollectionBlock` is absent for a stronger
+ * reason: it carries `mode`, and a machine-written collection with no mode reads as legacy, which
+ * makes `reconcileBlocks` willing to delete children it did not author — other agents' utterances.
+ */
+export const EXTRACT_CLASSES = ['TaskBlock', 'EventBlock'];
+
+/** How an extraction pass is going. `done` holds until the next run, so the result stays readable. */
+export type ExtractStatus = 'idle' | 'running' | 'done' | 'error';
+
+/**
+ * One staged suggestion, flattened for display.
+ *
+ * `summary` rather than the raw value map, because a schema `$each` cannot iterate an object's
+ * entries and a person deciding whether to keep a suggestion needs to read it, not inspect it. Built
+ * here so the panel stays declarative — the alternative was a template that knew which field of a
+ * task to show first, which is knowledge about models rather than about layout.
+ */
+export interface ProposalView {
+  id: string;
+  /** `create` proposed a whole record; `update` proposed changes to one that exists. */
+  kind: string;
+  /** What it says, in the order a reader wants it: what it is, then the detail. */
+  summary: string;
+}
+
+/** Field names worth leading with, most identifying first. Anything else follows in map order. */
+const SUMMARY_FIELDS = ['title', 'text', 'name', 'startDate', 'dueDate', 'assignee', 'location'];
+
+/** Flatten a proposal's values into one readable line. */
+function summarise(values: Record<string, unknown>): string {
+  const named = SUMMARY_FIELDS.filter((field) => values[field] !== undefined && values[field] !== '');
+  const rest = Object.keys(values).filter((field) => !SUMMARY_FIELDS.includes(field));
+  return [...named, ...rest].map((field) => `${field}: ${String(values[field])}`).join(' · ');
+}
+
+/**
  * How long a non-elected agent will hold its first utterance waiting for the creator's record.
  *
  * The election needs a way out, because the agent it picks may simply never speak: whoever is
@@ -163,8 +208,19 @@ type CollectionSlot = { state: 'ready'; id: string } | { state: 'waiting' } | { 
  * are attached to a valid record) and dedupable on read. The simple version ships first.
  */
 export function createTranscribeStore(deps: ModuleStoreDeps) {
-  const { signal, effect, audioInput, transcription, createEntity, linkEntity, dataset, presence, selfId, onDispose } =
-    deps;
+  const {
+    signal,
+    effect,
+    audioInput,
+    transcription,
+    interpretation,
+    createEntity,
+    linkEntity,
+    dataset,
+    presence,
+    selfId,
+    onDispose,
+  } = deps;
 
   const [status, setStatus] = signal<TranscribeStatus>('idle');
   /** Whether we are recording. Independent of the panel — see the two toggles at the bottom. */
@@ -191,6 +247,44 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
    * starts a new record rather than appending to the last one.
    */
   const [collectionId, setCollectionId] = signal<string | null>(null);
+  /**
+   * The last extraction pass, if there has been one.
+   *
+   * Kept as state rather than fired and forgotten because an LLM pass takes seconds, and a button
+   * that does nothing visible for that long reads as broken. `count` survives into `done` so the
+   * panel can say what happened rather than just stopping.
+   */
+  const [extractStatus, setExtractStatus] = signal<ExtractStatus>('idle');
+  const [extractCount, setExtractCount] = signal(0);
+  const [extractError, setExtractError] = signal('');
+  /**
+   * Which collection a pass is running on, and which one the last result describes.
+   *
+   * Two ids rather than one, because extraction is now offered per card in a list: a single status
+   * flag would put "Reading…" on every call in the space while one of them is working, and would
+   * attribute a finished pass's count to whichever card the eye landed on. `extractingId` clears
+   * when the pass ends; `extractedId` persists so the card that asked can show what came back.
+   */
+  const [extractingId, setExtractingId] = signal('');
+  const [extractedId, setExtractedId] = signal('');
+  /**
+   * How many turns the last pass actually read.
+   *
+   * Without it, "the model found nothing in this conversation" and "no transcript reached the model"
+   * are the same empty result — and they need opposite responses. The first is a fact about the
+   * meeting; the second means something between the collection and the prompt is dropping turns, and
+   * every one of those failures (a wrong containment predicate, an unreadable timestamp, the wrong
+   * collection) looks exactly like a quiet meeting.
+   */
+  const [extractTurns, setExtractTurns] = signal(0);
+  /**
+   * Suggestions the backend staged instead of writing, awaiting a person.
+   *
+   * Held rather than queried on render because resolving one is a round trip and the list has to
+   * update without a second: accepting the third of five should leave four, immediately, without
+   * re-reading the whole set and without the row a user is looking at jumping.
+   */
+  const [proposals, setProposals] = signal<ProposalView[]>([]);
   /**
    * The call the current collection belongs to.
    *
@@ -451,6 +545,68 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
   }
 
   /** Write what has accumulated, if anything. Safe to call at any point, including teardown. */
+  /**
+   * Re-read the staged suggestions.
+   *
+   * Reads the whole dataset's proposals rather than this call's. The port has no per-parent filter,
+   * and inventing one client-side would need each proposal's parent, which an overlay does not
+   * carry. In practice the two coincide — the only thing writing proposals here is this call's own
+   * extraction — and showing one more than expected is a much better failure than hiding one.
+   *
+   * Never throws: this runs after a pass that already succeeded, and turning a successful extraction
+   * into an error because the review list could not be fetched would be a lie about what happened.
+   */
+  async function loadProposals(): Promise<void> {
+    if (!interpretation) return;
+    try {
+      const staged = await interpretation.proposals();
+      setProposals(staged.map((p) => ({ id: p.id, kind: p.kind, summary: summarise(p.values) })));
+    } catch {
+      setProposals([]);
+    }
+  }
+
+  /**
+   * One extraction pass over a named collection.
+   *
+   * Flushes only when the named collection is the live one, which is exactly right: pressing
+   * Extract on this morning's call should not push a word said just now into it.
+   *
+   * One shot, driven by a press rather than a timer. A standing watch is a better *feature* and a
+   * worse thing to demonstrate — a button has a visible cause and a visible result, can be pressed
+   * again when a pass disappoints, and cannot quietly run up a bill while nobody is looking.
+   *
+   * Re-running is safe and expected: the engine dedups against instances already in the graph, so a
+   * second press over the same conversation updates what it found rather than duplicating it.
+   */
+  async function runExtraction(collection: string): Promise<void> {
+    if (!collection || !interpretation) return;
+    // One at a time across every surface. Two passes over one collection would race their writes,
+    // and two over different collections would make the shared status unreadable.
+    if (extractStatus() === 'running') return;
+
+    setExtractingId(collection);
+    setExtractStatus('running');
+    setExtractError('');
+    try {
+      if (collection === collectionId()) await flush();
+      const result = await interpretation.runOnCollection(collection, { classes: EXTRACT_CLASSES });
+      setExtractCount(result.ids.length);
+      setExtractTurns(result.turns);
+      setExtractedId(collection);
+      setExtractStatus('done');
+      // Only worth a round trip when the pass actually staged something. A backend with no
+      // provenance gate reports nothing proposed and never had a list to fetch.
+      if (result.proposed.length) await loadProposals();
+    } catch (error) {
+      setExtractError(error instanceof Error ? error.message : String(error));
+      setExtractedId(collection);
+      setExtractStatus('error');
+    } finally {
+      setExtractingId('');
+    }
+  }
+
   async function flush(): Promise<void> {
     clearTimer();
     const text = buffer.trim();
@@ -840,6 +996,26 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
     /** There is audio to listen to. Without it, offering to record is offering nothing. */
     available: () => (audioInput?.() ?? null) !== null,
 
+    // ── Extraction ───────────────────────────────────────────────────────────
+    extractStatus,
+    extractCount,
+    extractError,
+    extractingId,
+    extractedId,
+    extractTurns,
+    /**
+     * Whether there is anything to extract *from* and anything to extract *with*.
+     *
+     * Both halves matter and they fail differently: no collection means nothing has been said yet,
+     * no port means this node has no LLM. The panel tells those apart; this is the guard that stops
+     * the button being offered when neither can be fixed by pressing it.
+     */
+    canExtract: () => Boolean(collectionId()) && (interpretation?.available() ?? false),
+    /** True when the backend could interpret but there is no transcript yet — a waiting state. */
+    extractable: () => interpretation?.available() ?? false,
+    /** Suggestions staged for review. Empty is the ordinary case — see `refreshProposals`. */
+    proposals,
+
     // ── Actions ──────────────────────────────────────────────────────────────
     /**
      * Start or stop recording.
@@ -900,6 +1076,51 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
      * words having come from Whisper — a different recogniser, or a test, feeds the same door.
      */
     receiveText: (text: string) => onText(text),
+    /**
+     * Read this call's transcript back and turn it into typed records.
+     *
+     * Flushes first, deliberately. The buffer holds up to a thousand characters or three seconds of
+     * speech, and the last thing said before pressing the button is usually the reason for pressing
+     * it — extracting without flushing would reliably miss it.
+     *
+     * One shot, driven by a press rather than a timer. A standing watch is a better *feature* and a
+     * worse thing to demonstrate: a button has a visible cause and a visible result, can be pressed
+     * again when a pass disappoints, and cannot quietly run up a bill while nobody is looking.
+     *
+     * Re-running is safe and expected. The engine dedups against instances already in the graph, so
+     * a second press over the same conversation updates what it found rather than duplicating it.
+     */
+    extract: () => runExtraction(collectionId() ?? ''),
+    /**
+     * The same pass over any call's record, named by id.
+     *
+     * The reachable form, and the one the calls list uses. {@link extract} can only ever mean "the
+     * call I am in and transcribing", because `collectionId` is cleared the moment the call ends —
+     * so a finished call, or one somebody else recorded, had no way to be extracted at all. The
+     * gathering was never the limit: it drills down through the collection's children and so has
+     * always read every agent's utterances, not only this one's.
+     */
+    extractCollection: (collection: string) => runExtraction(collection),
+    /** Re-read what is staged. Called after a pass; exposed so a panel can refresh on open. */
+    refreshProposals: () => loadProposals(),
+    /**
+     * Keep a suggestion, or drop it.
+     *
+     * Removed from the list on success rather than by re-reading it. A re-read is a second round
+     * trip during which the row a person is looking at can move, and the answer is already known:
+     * a resolved overlay is gone. `false` means somebody else resolved it first — the record is
+     * still out of the list either way, so it drops locally without complaint.
+     */
+    acceptProposal: async (id: string) => {
+      if (!interpretation) return;
+      await interpretation.accept(id);
+      setProposals(proposals().filter((p) => p.id !== id));
+    },
+    rejectProposal: async (id: string) => {
+      if (!interpretation) return;
+      await interpretation.reject(id);
+      setProposals(proposals().filter((p) => p.id !== id));
+    },
     /** Write what has been heard so far without waiting for the buffer to fill. */
     flushNow: () => flush(),
     /** End the session now, flushing and releasing the audio graph. Exposed for tests. */

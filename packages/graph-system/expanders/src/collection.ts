@@ -30,9 +30,26 @@ export interface CollectionExpanderOptions {
 
 const ID = 'collection';
 
+/**
+ * Child types looked for when a template does not say.
+ *
+ * Each entry is one drill-down query per expansion, so this is a real cost and not a free "list
+ * everything" — which is why it is the block types a collection actually tends to hold rather than
+ * every entity WE declares.
+ *
+ * `TaskBlock` and `EventBlock` are here because a collection can now acquire them without anyone
+ * composing them: interpretation writes what it finds in a call transcript straight onto the call's
+ * collection. Leaving them out made a successful extraction look like nothing had happened — the
+ * records existed and the one view built to show a collection's contents did not draw them.
+ *
+ * A type absent from the dataset's schema is skipped rather than queried, so listing one a given
+ * space has never installed costs nothing.
+ */
+const DEFAULT_CHILDREN = ['CollectionBlock', 'TextBlock', 'ImageBlock', 'TaskBlock', 'EventBlock'];
+
 export function collectionExpander(options: CollectionExpanderOptions = {}): Expander {
   const via = options.via ?? 'children';
-  const childEntities = options.children ?? ['CollectionBlock', 'TextBlock', 'ImageBlock'];
+  const childEntities = options.children ?? DEFAULT_CHILDREN;
   const edgeType = options.edgeType ?? 'contains';
 
   return {

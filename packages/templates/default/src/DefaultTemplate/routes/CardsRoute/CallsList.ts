@@ -17,6 +17,95 @@ import { agentByline, cardList, cardShell, confirmModal, emptyState, field, peop
  * composes with `order` and `limit`. A tag relation would need a traversal in the direction the
  * query layer does not go.
  */
+/**
+ * This call's utterances — the transcript, and nothing extraction wrote.
+ *
+ * A scoped drill-down rather than a filter over `children`, because children arrive as bare ids and
+ * the ids alone cannot say which are utterances.
+ */
+const utterances = {
+  $query: {
+    entity: 'TextBlock',
+    scope: { anchor: 'CollectionBlock', via: 'children', anchorId: '$call.id' },
+  },
+};
+
+/** Records of one kind that extraction wrote onto this call. */
+const findingsOf = (entity: string) => ({
+  $query: {
+    entity,
+    scope: { anchor: 'CollectionBlock', via: 'children', anchorId: '$call.id' },
+    order: { createdAt: 'asc' },
+  },
+});
+
+const taskFindings = findingsOf('TaskBlock');
+const eventFindings = findingsOf('EventBlock');
+
+/** `" · 2 tasks"`, or nothing at all when the count is zero. */
+const countOf = (query: object, one: string, other: string) => ({
+  $if: {
+    condition: { $count: { items: query } },
+    then: {
+      $concat: [' · ', { $count: { items: query } }, { $plural: { count: { $count: { items: query } }, one, other } }],
+    },
+    else: '',
+  },
+});
+
+/**
+ * One group of records extraction wrote onto this call.
+ *
+ * A drill-down through `children` for the same reason the transcript below uses one:
+ * `CollectionBlock.children` is an *untyped* `@HasMany`, so `include` has no target class to
+ * resolve and dies on it. `scope` is the supported traversal, and it takes the child type — which
+ * is exactly what makes this one helper serve both tasks and events.
+ *
+ * Rendered only when the group has members, so a call nobody extracted from looks the way it always
+ * did rather than growing two empty headings.
+ *
+ * `title` is the one field every extracted class has and the one the model is told to lead with, so
+ * it is all this shows. Anything richer belongs in the card for that type, not in a summary hanging
+ * off a call — the point here is "this came out of this conversation", not a task manager.
+ */
+function extracted(query: object, label: string, icon: string, as: string): SchemaNode {
+  return {
+    type: '$if',
+    props: {
+      condition: { $count: { items: query } },
+      then: {
+        type: 'Column',
+        props: { gap: '200' },
+        children: [
+          {
+            type: 'Row',
+            props: { gap: '200', ay: 'center' },
+            children: [
+              { type: 'we-icon', props: { name: icon, color: 'primary-700' } },
+              {
+                type: 'we-text',
+                props: { variant: 'footnote', color: 'neutral-500', uppercase: true },
+                children: [label],
+              },
+            ],
+          },
+          {
+            type: '$each',
+            props: { items: query, as },
+            children: [
+              {
+                type: 'Row',
+                props: { gap: '200', ay: 'center', bg: 'neutral-50', r: '300', px: '300', py: '200' },
+                children: [{ type: 'we-text', children: [`$${as}.title`] }],
+              },
+            ],
+          },
+        ],
+      },
+    },
+  };
+}
+
 export const callsList: SchemaNode = {
   type: '$if',
   props: {
@@ -51,6 +140,19 @@ export const callsList: SchemaNode = {
             editOpen: { type: 'boolean', initial: false },
             titleDraft: { type: 'string', initial: '$call.title' },
             descriptionDraft: { type: 'string', initial: '$call.description' },
+            /*
+              Two folds inside the card, both closed.
+
+              A recorded meeting is long: rendering every utterance and every finding makes a card
+              nobody scrolls past, and the two halves are wanted at different moments — the findings
+              when you are catching up, the transcript when you doubt one of them.
+
+              Closed by default, and that is a judgement rather than a default: what a finished call
+              owes a reader at a glance is who was in it, how much was said and what came out — all
+              of which the header already carries.
+            */
+            findingsOpen: { type: 'boolean', initial: false },
+            transcriptOpen: { type: 'boolean', initial: false },
           },
           header: [
             {
@@ -98,19 +200,58 @@ export const callsList: SchemaNode = {
                     // about how much was said, not about who was there, so it is not part of the
                     // same statement the way a member count is.
                     peopleRow({ items: '$call.participants', dids: true, as: 'participant' }),
+                    /*
+                        How much was said — counted from the utterances, not from the children.
+
+                        `children` used to be the count and stopped being the right one the moment
+                        extraction started parenting records onto the call: five utterances and
+                        three extracted records read as "8 utterances". That is not a cosmetic
+                        slip. This number exists to sit beside the faces and show *coverage* — the
+                        gap between who was present and how much of them was captured, which is the
+                        normal outcome of opt-in transcription and the thing a partial transcript
+                        most needs to admit. Inflating it with machine-written records destroys
+                        exactly that reading.
+
+                        A scoped drill-down rather than a filter over `children`, because children
+                        arrive as bare ids: the ids alone cannot tell you which are utterances.
+                      */
                     {
+                      // The whole label in a **prop**, not split across children. A `$query` is a
+                      // subscription, so it is hoisted into a signal at component setup — which is
+                      // safe for a prop and not for a child, where rendering happens inside a memo.
+                      // Written as children, the count silently resolved to 0 and the card reported
+                      // no utterances with the transcript sitting directly beneath it.
                       type: 'we-text',
-                      props: { fontSize: '200', color: 'neutral-700' },
-                      children: [
-                        { type: 'we-number', props: { value: { $count: { items: '$call.children' } } } },
-                        {
-                          $plural: {
-                            count: { $count: { items: '$call.children' } },
-                            one: ' utterance',
-                            other: ' utterances',
-                          },
+                      props: {
+                        fontSize: '200',
+                        color: 'neutral-700',
+                        text: {
+                          $concat: [
+                            { $count: { items: utterances } },
+                            {
+                              $plural: {
+                                count: { $count: { items: utterances } },
+                                one: ' utterance',
+                                other: ' utterances',
+                              },
+                            },
+                            /*
+                                What the model found, beside what was said.
+
+                                Named by kind rather than totalled, and that is not only a
+                                workaround for there being no arithmetic operator to add two counts
+                                with. "2 tasks · 1 event" says what came out of the conversation;
+                                "3 extracted" says only that the button worked.
+
+                                Each part disappears at zero, so a call nobody has run extraction on
+                                reads exactly as it did before — no permanent reminder of a feature
+                                on every card.
+                              */
+                            countOf(taskFindings, ' task', ' tasks'),
+                            countOf(eventFindings, ' event', ' events'),
+                          ],
                         },
-                      ],
+                      },
                     },
                     /*
                         Pick this call back up.
@@ -158,6 +299,173 @@ export const callsList: SchemaNode = {
                               // edit and delete beside it act on the record, this one takes you
                               // into the call.
                               children: [{ type: 'we-icon', props: { name: 'phone-call', size: '20px' } }],
+                            },
+                          ],
+                        },
+                      },
+                    },
+                    /*
+                        Read this call and write down what was decided in it.
+
+                        On the card rather than only in the transcript panel, and that is what makes
+                        it reach anything. The panel's button can only ever mean "the call I am in
+                        and transcribing" — the live collection id is cleared the moment the call
+                        ends — so a finished call, or one somebody else recorded, had no way to be
+                        extracted. Here the id comes from the card, so any record in the space can be
+                        picked up, by anyone, whenever.
+
+                        Offered to everyone rather than to the author, on the same reasoning as
+                        rejoining: extraction adds to a shared record of a shared event, it does not
+                        edit somebody's account of one.
+
+                        Hidden rather than disabled when the node has no LLM. Unlike a missing
+                        transcription model there is nothing a user can install from here, so a
+                        disabled button explaining itself would be permanent furniture on every card.
+                      */
+                    {
+                      type: '$if',
+                      props: {
+                        condition: { $store: 'modules.transcribe.extractable' },
+                        then: {
+                          type: 'we-tooltip',
+                          props: { title: 'Find the tasks and events in this call', placement: 'top' },
+                          children: [
+                            {
+                              type: 'we-button',
+                              props: {
+                                variant: 'ghost',
+                                size: 'sm',
+                                square: true,
+                                // Keyed on *this* card's id, not on a global flag. A shared status
+                                // would spin every call in the list while one of them worked, and
+                                // would hang the finished count on whichever card the eye landed on.
+                                loading: {
+                                  $eq: [{ $store: 'modules.transcribe.extractingId' }, '$call.id'],
+                                },
+                                disabled: {
+                                  $eq: [{ $store: 'modules.transcribe.extractStatus' }, 'running'],
+                                },
+                                onClick: {
+                                  $action: 'modules.transcribe.extractCollection',
+                                  args: ['$call.id'],
+                                },
+                              },
+                              // The icon steps aside while the spinner is up. `loading` renders the
+                              // spinner *alongside* the slot content, and on a square icon button
+                              // the two together are a cramped smudge rather than a clear state.
+                              children: [
+                                {
+                                  type: '$if',
+                                  props: {
+                                    condition: {
+                                      $not: { $eq: [{ $store: 'modules.transcribe.extractingId' }, '$call.id'] },
+                                    },
+                                    then: { type: 'we-icon', props: { name: 'sparkle' } },
+                                  },
+                                },
+                              ],
+                            },
+                          ],
+                        },
+                      },
+                    },
+                    /*
+                        What this call's pass is doing, or found.
+
+                        A spinner inside a 32px button is not, on its own, an answer to "did my click
+                        land" — the run takes tens of seconds against a remote model, which is long
+                        enough to press again, or to conclude it is broken. So the state is also said
+                        in words beside it.
+
+                        Zero is a real and common answer — a conversation with nothing decided in it
+                        — and saying so is the difference between "it worked, there was nothing" and
+                        "it silently failed". All three states are scoped to this card's id, so
+                        nothing ever appears on a card that did not ask for it.
+                      */
+                    {
+                      type: '$if',
+                      props: {
+                        condition: { $eq: [{ $store: 'modules.transcribe.extractingId' }, '$call.id'] },
+                        then: {
+                          type: 'we-text',
+                          props: { fontSize: '200', color: 'neutral-700' },
+                          children: ['Reading…'],
+                        },
+                      },
+                    },
+                    {
+                      type: '$if',
+                      props: {
+                        condition: {
+                          $and: [
+                            { $eq: [{ $store: 'modules.transcribe.extractedId' }, '$call.id'] },
+                            { $eq: [{ $store: 'modules.transcribe.extractStatus' }, 'done'] },
+                          ],
+                        },
+                        then: {
+                          type: 'we-text',
+                          props: { fontSize: '200', color: 'neutral-700' },
+                          children: [
+                            {
+                              // Whole sentences per branch rather than a count glued to a suffix.
+                              // Sharing the tail gave "no found" for the empty case, which is the
+                              // sort of thing that reads as a placeholder somebody forgot.
+                              //
+                              // Three outcomes, not two. "Nothing found" is a fact about the
+                              // conversation; "no transcript" means nothing reached the model at
+                              // all, and every way that happens — a wrong containment predicate, an
+                              // unreadable timestamp, the wrong collection — looks identical to a
+                              // quiet meeting unless the turn count is said out loud.
+                              $if: {
+                                condition: { $store: 'modules.transcribe.extractTurns' },
+                                then: {
+                                  $if: {
+                                    condition: { $store: 'modules.transcribe.extractCount' },
+                                    then: {
+                                      $concat: [{ $store: 'modules.transcribe.extractCount' }, ' found'],
+                                    },
+                                    else: {
+                                      $concat: [
+                                        'Nothing found in ',
+                                        { $store: 'modules.transcribe.extractTurns' },
+                                        ' turns',
+                                      ],
+                                    },
+                                  },
+                                },
+                                else: 'No transcript to read',
+                              },
+                            },
+                          ],
+                        },
+                      },
+                    },
+                    /*
+                        A pass that failed says so here rather than only in the transcript panel.
+
+                        Without this the card had two outcomes and three states: a count, or silence
+                        that meant either "still running" or "it threw" — and a run against a backend
+                        that cannot answer looks exactly like one that has not finished. The message
+                        is the backend's own, because at this distance a rewritten one would only be
+                        vaguer.
+                      */
+                    {
+                      type: '$if',
+                      props: {
+                        condition: {
+                          $and: [
+                            { $eq: [{ $store: 'modules.transcribe.extractedId' }, '$call.id'] },
+                            { $eq: [{ $store: 'modules.transcribe.extractStatus' }, 'error'] },
+                          ],
+                        },
+                        then: {
+                          type: 'we-tooltip',
+                          props: { title: { $store: 'modules.transcribe.extractError' }, placement: 'top' },
+                          children: [
+                            {
+                              type: 'we-text',
+                              props: { fontSize: '200', color: 'danger-600' },
+                              children: ['Extraction failed'],
                             },
                           ],
                         },
@@ -317,24 +625,115 @@ export const callsList: SchemaNode = {
                     },
                   },
                 },
+                /*
+                    What was found in the conversation, above what was said in it.
+
+                    Above, because it is the part someone opening a finished call actually wants —
+                    the transcript is the evidence, and evidence belongs under the finding. It is
+                    also the only place the result of pressing Extract is visible as *records*
+                    rather than as a count.
+
+                    Grouped by type rather than filtered by one, because two or three items make a
+                    filter more chrome than content. When a real meeting yields fifteen, this is the
+                    shape a filter grows out of.
+                  */
+                /*
+                    The findings, behind their own fold.
+
+                    A disclosure rather than `CollapsedContent`: this is a short list that is either
+                    wanted whole or not at all, and a height-clipped fade over three rows reads as a
+                    rendering accident. The trigger carries the counts, so the fold still says what
+                    is inside it — which is the thing that makes a closed section worth opening.
+
+                    Hidden entirely when there is nothing, so a call nobody has extracted from looks
+                    exactly as it did before.
+                  */
                 {
-                  type: '$each',
-                  // Drilled down from the call rather than hydrated with `include` — see the note
-                  // on the outer query. `children` still arrives as an array of ids (which is what
-                  // the utterance count above reads), but the ids alone cannot render the text.
-                  // Oldest first, because a transcript read backwards is not a transcript.
+                  type: '$if',
                   props: {
-                    items: {
-                      $query: {
-                        entity: 'TextBlock',
-                        scope: { anchor: 'CollectionBlock', via: 'children', anchorId: '$call.id' },
-                        order: { createdAt: 'asc' },
-                      },
+                    condition: {
+                      $or: [{ $count: { items: taskFindings } }, { $count: { items: eventFindings } }],
                     },
-                    as: 'utterance',
+                    then: {
+                      type: 'Column',
+                      props: { gap: '200' },
+                      children: [
+                        {
+                          type: 'we-button',
+                          props: {
+                            variant: 'ghost',
+                            size: 'sm',
+                            onClick: { $toggleLocal: 'findingsOpen' },
+                            text: {
+                              $concat: [
+                                { $if: { condition: { $local: 'findingsOpen' }, then: 'Hide', else: 'Show' } },
+                                ' what was found',
+                                countOf(taskFindings, ' task', ' tasks'),
+                                countOf(eventFindings, ' event', ' events'),
+                              ],
+                            },
+                          },
+                        },
+                        {
+                          type: '$if',
+                          props: {
+                            condition: { $local: 'findingsOpen' },
+                            then: {
+                              type: 'Column',
+                              props: { gap: '300' },
+                              children: [
+                                extracted(taskFindings, 'Tasks', 'check-square', 'task'),
+                                extracted(eventFindings, 'Events', 'calendar', 'event'),
+                              ],
+                            },
+                          },
+                        },
+                      ],
+                    },
+                  },
+                },
+                /*
+                    The transcript, behind a fold.
+
+                    A recorded meeting is long, and a card that renders every utterance is a card
+                    nobody scrolls past. `CollapsedContent` is the same primitive `cardShell` uses to
+                    fold a whole card, applied one level in — so the gesture is the one this route
+                    already teaches, and the fade tells you there is more without a count nobody
+                    reads.
+
+                    Open by default would defeat the point; the findings above it are the summary,
+                    and this is what they were drawn from.
+                  */
+                {
+                  type: 'CollapsedContent',
+                  props: {
+                    collapsed: { $not: { $local: 'transcriptOpen' } },
+                    onExpandClick: { $toggleLocal: 'transcriptOpen' },
+                    maxHeight: '160px',
                   },
                   children: [
-                    /*
+                    {
+                      type: 'Column',
+                      props: { gap: '300' },
+                      children: [
+                        {
+                          type: '$each',
+                          // Drilled down from the call rather than hydrated with `include` — see the note
+                          // on the outer query. `children` still arrives as an array of ids, but the ids
+                          // alone cannot render the text.
+                          // Oldest first, because a transcript read backwards is not a transcript.
+                          props: {
+                            items: {
+                              $query: {
+                                entity: 'TextBlock',
+                                scope: { anchor: 'CollectionBlock', via: 'children', anchorId: '$call.id' },
+                                order: { createdAt: 'asc' },
+                              },
+                            },
+                            as: 'utterance',
+                          },
+                          children: [
+                            /*
                         Attribution is free here and needs no diarization: each agent transcribes only
                         their own microphone, so the block's author *is* the speaker.
 
@@ -343,16 +742,22 @@ export const callsList: SchemaNode = {
                         same idiom `PostsList` uses for a post's author — and it reaches anyone, not
                         only the current space's members.
                       */
-                    agentByline({
-                      did: '$utterance.author',
-                      as: 'speaker',
-                      stacked: true,
-                      nameColor: 'neutral-600',
-                      // When each utterance was written — which is when it was *said*, since a
-                      // block is flushed as the speaker finishes.
-                      timestamp: '$utterance.createdAt',
-                      children: [{ type: 'we-text', props: { color: 'neutral-900' }, children: ['$utterance.text'] }],
-                    }),
+                            agentByline({
+                              did: '$utterance.author',
+                              as: 'speaker',
+                              stacked: true,
+                              nameColor: 'neutral-600',
+                              // When each utterance was written — which is when it was *said*, since a
+                              // block is flushed as the speaker finishes.
+                              timestamp: '$utterance.createdAt',
+                              children: [
+                                { type: 'we-text', props: { color: 'neutral-900' }, children: ['$utterance.text'] },
+                              ],
+                            }),
+                          ],
+                        },
+                      ],
+                    },
                   ],
                 },
               ],

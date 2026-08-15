@@ -25,6 +25,8 @@ import type {
   Activity,
   DatasetHandle,
   EphemeralPort,
+  InterpretationProposal,
+  InterpretationResult,
   ModelManifest,
   Peer,
   TranscriptionPort,
@@ -451,6 +453,18 @@ export interface ModuleStoreDeps {
   transcription?: TranscriptionPort;
 
   /**
+   * Turning what was said into typed records. Absent when the backend cannot interpret.
+   *
+   * The companion to {@link transcription} and degraded on the same terms — a module that offers
+   * extraction should hide or disable the affordance rather than fail when the port is missing,
+   * because "this node has no LLM" is a true and useful sentence and a thrown error is not.
+   *
+   * Scoped to the dataset by the host, so a module never handles a dataset handle: every call here
+   * applies to the space the module is running in.
+   */
+  interpretation?: ModuleInterpretationAccess;
+
+  /**
    * Audio the host is currently capturing, or `null` when nothing is.
    *
    * The stream itself, deliberately, rather than a copy: a module that transcribes a call must hear
@@ -566,6 +580,42 @@ export interface ModulePresenceAccess {
   /** Publish an activity of this agent's own. */
   setActivity: (activity: Activity) => void;
   clearActivity: (type: string, id?: string) => void;
+}
+
+/**
+ * The slice of interpretation a module may reach, with the dataset already bound.
+ *
+ * Narrowed the same way {@link ModulePresenceAccess} is: the host knows which space the module is
+ * running in, so a module that had to pass a dataset handle could only get it wrong. What is left is
+ * the two things a feature actually does — run a pass, and resolve what a pass proposed.
+ *
+ * `watch` is deliberately absent. A standing watch is a *dataset-level* registration that outlives
+ * the module instance that made it and coordinates across peers; handing that to a module store
+ * whose lifetime is a panel being open invites a watch per mount. It belongs to the host, whenever
+ * something needs it.
+ */
+export interface ModuleInterpretationAccess {
+  /** Whether interpretation can run at all — false when the backend has no model configured. */
+  available: () => boolean;
+  /**
+   * Interpret a collection's children, attaching what is created back onto that same collection.
+   *
+   * Takes an id rather than the turns themselves, and that follows from the contract rather than
+   * from taste: `createEntity`/`linkEntity` are a module's entire data surface and there is no read,
+   * so a module can write utterances into a call and cannot read them back out. The host gathers
+   * them — which is also where the knowledge belongs, since assembling turns means knowing how a WE
+   * collection is laid out, and that is exactly the backend detail modules are kept away from.
+   *
+   * Rejects when there is no usable model, so a caller can tell "no LLM here" from "nothing worth
+   * extracting was said" — the two are identical from an empty result and only one is worth saying.
+   */
+  runOnCollection: (collectionId: string, request: { classes: string[] }) => Promise<InterpretationResult>;
+  /** Suggestions staged in this dataset, awaiting a human. */
+  proposals: () => Promise<InterpretationProposal[]>;
+  /** Commit a staged suggestion — the whole record, or one property by name. */
+  accept: (id: string, property?: string) => Promise<boolean>;
+  /** Drop a staged suggestion. */
+  reject: (id: string, property?: string) => Promise<boolean>;
 }
 
 /**

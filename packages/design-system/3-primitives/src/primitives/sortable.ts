@@ -15,23 +15,81 @@ const CSS_STYLES = css`
     width: 100%;
     user-select: none;
   }
+
+  /* The zone a drop would land in. Subtle on purpose: the indicator says *where*, this says
+     *which* — and on a nested board both are on screen at once. */
+  :host([data-drop-target]) [part='container'] {
+    outline: 2px solid var(--we-color-primary-400, #93c5fd);
+    outline-offset: 2px;
+    border-radius: var(--we-radius-400, 8px);
+  }
 `;
 
 /**
- * Drag-to-reorder container primitive.
+ * Every connected sortable, so a drag can find the zone under the pointer.
  *
- * Usage: wrap a list of elements that each have a `data-we-id` attribute.
- * Fires a `reorder` CustomEvent<string[]> on drop with the new ordered array
- * of IDs — the event name is unprefixed, like every other primitive's
- * (`change`, `select`, `toggle`). In Solid, listen with `on:reorder`; a
- * listener for `we-reorder` never fires and the drop silently does nothing.
- * From a schema the same event is `onReorder`, which Solid lowercases to a
- * direct `reorder` listener.
+ * Module-level rather than passed in, because the whole point is that a drag crosses elements that
+ * do not know about each other: a card leaving one column has no reference to the column it lands
+ * in, and threading one through every template that composes a board would defeat the purpose.
  *
- * The `data-we-id` may sit on the slotted child or on something inside it —
- * see `_resolveItem` for why the second case exists.
+ * Membership is tied to connect/disconnect, so a zone removed mid-drag simply stops being a
+ * candidate rather than leaving a stale rectangle behind.
+ */
+const zones = new Set<Sortable>();
+
+/** What a drop is: an item, the zone it left, the zone it landed in, and where. */
+export interface SortableMoveDetail {
+  /** `data-we-id` of the item that moved. */
+  id: string;
+  /** `zone` of the sortable it came from. */
+  from: string;
+  /** `zone` of the sortable it landed in. */
+  to: string;
+  /** Position within the destination, after the move. */
+  index: number;
+  /** The destination's full order after the move — what a same-zone reorder needs. */
+  ids: string[];
+}
+
+/**
+ * A drop zone whose items can be picked up, reordered, and moved to other zones.
  *
- * @fires reorder - detail: string[] — new ordered array of `data-we-id` values
+ * ## One element, not two
+ *
+ * A zone *is* the container and its children *are* the items, which is what makes nesting free: a
+ * sortable inside an item of another sortable is simply a zone inside a zone, with no special case
+ * anywhere. A separate `we-drag-item` would buy nothing and cost boilerplate at every call site.
+ *
+ * ## It emits intent, it never mutates
+ *
+ * A drop fires {@link SortableMoveDetail} — "this item moved from there to here, at this index" —
+ * and nothing else. What that *means* is the consumer's business, and it differs: a kanban route
+ * keyed on `status` writes a scalar, a board built from containment relinks two `children` edges, an
+ * outline reparents a node. A primitive that assumed one of those would be useless to the others.
+ *
+ * This is also why the element does not reorder its own DOM. The list is rendered from data; the
+ * data changes; the list re-renders. A primitive that moved nodes itself would fight whatever
+ * renders them.
+ *
+ * ## Nesting, and why cycles are not a problem
+ *
+ * The hard part of nested drag-and-drop is refusing to drop a container into its own descendant.
+ * Because nesting here is expressed *in the DOM*, that check is `dragged.contains(zone)` — correct
+ * by construction, needing no knowledge of the consumer's data shape. The innermost matching zone
+ * under the pointer wins, so dropping into a nested list does not also count as dropping into its
+ * parent.
+ *
+ * ## Keyboard
+ *
+ * Space or Enter picks up the focused item; the arrow keys move it, along the list and across
+ * zones; Space drops and Escape cancels. Built in rather than added later, because a board that can
+ * only be operated by dragging is a board some people cannot operate at all — and because the
+ * events are identical, a consumer gets it for nothing.
+ *
+ * @fires moved - detail: {@link SortableMoveDetail}, on every completed move
+ * @fires reorder - detail: string[] — the destination's order, fired only when an item stayed in
+ *   its own zone. A specialisation of `moved` for the common single-list case, kept because that is
+ *   what a reorderable sidebar wants and it would otherwise have to filter every cross-zone move.
  */
 @customElement('we-sortable')
 export default class Sortable extends DesignSystemElement {
@@ -43,25 +101,38 @@ export default class Sortable extends DesignSystemElement {
   /** Gap between items — any valid CSS length, e.g. `'8px'` or `'var(--sidebar-gap)'`. */
   @property({ type: String, reflect: true }) gap: string = '';
 
-  // ── Drag state (plain vars — not signals, don't drive rendering) ──────────
+  /**
+   * This zone's identity, reported as `from`/`to` on a move.
+   *
+   * Defaults to empty, which is right for a lone list: a single-zone consumer never reads it.
+   */
+  @property({ type: String, reflect: true }) zone: string = '';
 
-  /** The element being dragged, once a drag has started. */
+  /**
+   * Which zones exchange items. Only zones sharing a group accept each other's.
+   *
+   * Empty means "this zone alone" — items can be reordered but never leave, which keeps a lone
+   * sortable from silently becoming a drop target for an unrelated list on the same page.
+   */
+  @property({ type: String, reflect: true }) group: string = '';
+
+  /** Refuse incoming items while still allowing its own to be dragged out. */
+  @property({ type: Boolean, reflect: true }) locked = false;
+
+  // ── Drag state (plain vars — not reactive, they don't drive rendering) ─────
+
   private _dragging: Element | null = null;
-
-  /** Clone of the dragged element following the pointer. */
   private _ghost: HTMLElement | null = null;
-
-  /** Drop position indicator line. */
   private _indicator: HTMLElement | null = null;
-
-  /** Current computed drop index in the full items array. */
+  /** The zone the pointer is currently over — may not be this one. */
+  private _target: Sortable | null = null;
   private _dropIndex = -1;
-
   private _ghostOffsetX = 0;
   private _ghostOffsetY = 0;
-
-  /** Pre-drag state while waiting for the movement threshold. */
   private _pending: { pointerId: number; startX: number; startY: number; dragged: Element } | null = null;
+
+  /** Keyboard drag: the item picked up, and where it currently sits. */
+  private _held: { item: Element; zone: Sortable; index: number } | null = null;
 
   // ── Slot helpers ──────────────────────────────────────────────────────────
 
@@ -79,16 +150,11 @@ export default class Sortable extends DesignSystemElement {
    * Needed because this primitive was unusable from a template. The schema renderer wraps every
    * node in a `display: contents` div, so `assignedElements()` hands back wrappers rather than the
    * nodes an author wrote: no `data-we-id` on them, and — having no box — a zero rect, which broke
-   * both halves of a drag at once. Every id came out empty and every drop index computed against
-   * 0x0 rectangles stacked at the origin.
+   * both halves of a drag at once.
    *
    * Resolving to the identified descendant fixes both, because `display: contents` promotes its
    * children to be the container's real flex items: the element carrying the id is also the element
-   * carrying the geometry. Everything downstream — hit testing, rects, the ghost clone, the dimming
-   * of the original — then works on a real box.
-   *
-   * A child that identifies itself is returned untouched, so a hand-written consumer that puts the
-   * attribute on the slotted element (which is what TSX callers do) is unaffected.
+   * carrying the geometry.
    */
   private _resolveItem(el: Element): Element {
     if (el.hasAttribute('data-we-id')) return el;
@@ -101,26 +167,68 @@ export default class Sortable extends DesignSystemElement {
 
   // ── Lifecycle ─────────────────────────────────────────────────────────────
 
+  connectedCallback() {
+    super.connectedCallback();
+    zones.add(this);
+  }
+
   firstUpdated() {
     this.addEventListener('pointerdown', this._onPointerDown);
+    this.addEventListener('keydown', this._onKeyDown);
+    // Items are focusable so a keyboard user can reach one to pick it up. Done here rather than
+    // asked of every consumer, since an unfocusable item is an inaccessible list by default.
+    this._markItemsFocusable();
+    this._slot?.addEventListener('slotchange', () => this._markItemsFocusable());
   }
 
   disconnectedCallback() {
     super.disconnectedCallback();
+    zones.delete(this);
     this._endDrag();
   }
 
-  // ── Pointer event handlers ────────────────────────────────────────────────
+  private _markItemsFocusable() {
+    for (const item of this._getItems()) {
+      if (!item.hasAttribute('tabindex')) item.setAttribute('tabindex', '0');
+    }
+  }
+
+  // ── Zone matching ─────────────────────────────────────────────────────────
+
+  /** Whether this zone will take that item, given where it came from. */
+  private _accepts(origin: Sortable, dragged: Element): boolean {
+    if (this.locked) return false;
+    if (this === origin) return true;
+    // An empty group is a closed list: reorderable, but never a destination for anything else.
+    if (!this.group || this.group !== origin.group) return false;
+    // Never into its own subtree. Because nesting is DOM containment, this is the whole of cycle
+    // prevention — no knowledge of the consumer's data required.
+    return !dragged.contains(this);
+  }
+
+  /**
+   * The zone under a point, innermost first.
+   *
+   * Innermost matters for nesting: a nested list sits inside its parent's rectangle, so both
+   * contain the pointer and only the deeper one is the intended target.
+   */
+  private _zoneAt(x: number, y: number, dragged: Element): Sortable | null {
+    let best: Sortable | null = null;
+    for (const zone of zones) {
+      if (!zone.isConnected || !zone._accepts(this, dragged)) continue;
+      const rect = zone.getBoundingClientRect();
+      if (x < rect.left || x > rect.right || y < rect.top || y > rect.bottom) continue;
+      if (!best || best.contains(zone)) best = zone;
+    }
+    return best;
+  }
+
+  // ── Pointer ───────────────────────────────────────────────────────────────
 
   private _onPointerDown = (e: PointerEvent) => {
     if (e.button !== 0) return;
-
-    // Walk the composed path to find which slotted direct child was hit.
-    // composedPath() includes slotted light-DOM elements so this works across
-    // the Shadow DOM boundary.
     const path = e.composedPath();
-    const items = this._getItems();
-    const dragged = items.find((item) => path.includes(item));
+    const dragged = this._getItems().find((item) => path.includes(item));
     if (!dragged) return;
 
     this._pending = { pointerId: e.pointerId, startX: e.clientX, startY: e.clientY, dragged };
@@ -130,10 +238,13 @@ export default class Sortable extends DesignSystemElement {
   };
 
   private _startDrag(dragged: Element, e: PointerEvent) {
-    // Route all subsequent pointer events here even if the pointer leaves the element.
+    // Capture on the origin, so moves keep arriving after the pointer leaves it — which is exactly
+    // what a cross-zone drag does, and why hit-testing is done against coordinates rather than by
+    // listening on each zone.
     this.setPointerCapture(e.pointerId);
 
     this._dragging = dragged;
+    this._target = this;
     this._dropIndex = this._getItems().indexOf(dragged);
 
     const rect = (dragged as HTMLElement).getBoundingClientRect();
@@ -181,80 +292,80 @@ export default class Sortable extends DesignSystemElement {
   }
 
   private _onPointerMove = (e: PointerEvent) => {
-    // Threshold check — don't start a drag until the pointer has moved > 4px.
     if (this._pending) {
       const dx = e.clientX - this._pending.startX;
       const dy = e.clientY - this._pending.startY;
-      if (Math.sqrt(dx * dx + dy * dy) > 4) {
-        this._startDrag(this._pending.dragged, e);
-      } else {
-        return;
-      }
+      if (Math.sqrt(dx * dx + dy * dy) > 4) this._startDrag(this._pending.dragged, e);
+      else return;
     }
-
     if (!this._dragging || !this._ghost) return;
 
-    // Move ghost
     this._ghost.style.left = `${e.clientX - this._ghostOffsetX}px`;
     this._ghost.style.top = `${e.clientY - this._ghostOffsetY}px`;
 
-    // Compute new drop index by comparing pointer position to each item's centre.
-    // We skip the dragged item (it stays in-place at reduced opacity) so its
-    // own rect doesn't confuse the target calculation.
-    const items = this._getItems();
-    const isVertical = this.direction === 'vertical';
-    let newDrop = items.length; // default: after last item
-
-    for (let i = 0; i < items.length; i++) {
-      if (items[i] === this._dragging) continue;
-      const rect = items[i].getBoundingClientRect();
-      const center = isVertical ? (rect.top + rect.bottom) / 2 : (rect.left + rect.right) / 2;
-      if ((isVertical ? e.clientY : e.clientX) < center) {
-        newDrop = i;
-        break;
-      }
+    // Falling back to the origin when the pointer is over nothing keeps a drag that wanders off the
+    // board from silently becoming a drop into whatever it last touched.
+    const target = this._zoneAt(e.clientX, e.clientY, this._dragging) ?? this;
+    if (target !== this._target) {
+      this._target?.removeAttribute('data-drop-target');
+      this._target = target;
+      if (target !== this) target.setAttribute('data-drop-target', '');
     }
 
-    this._dropIndex = newDrop;
-    this._updateIndicator(items, newDrop);
+    this._dropIndex = target._indexAt(e.clientX, e.clientY, this._dragging);
+    target._updateIndicator(this._indicator, this._dropIndex, this._dragging);
   };
 
-  private _updateIndicator(items: Element[], dropIndex: number) {
-    if (!this._indicator || items.length === 0) return;
+  /** Where in this zone a pointer at (x, y) would drop, by comparing against each item's centre. */
+  private _indexAt(x: number, y: number, dragged: Element): number {
+    const items = this._getItems();
+    const isVertical = this.direction === 'vertical';
+    for (let i = 0; i < items.length; i++) {
+      if (items[i] === dragged) continue;
+      const rect = items[i].getBoundingClientRect();
+      const centre = isVertical ? (rect.top + rect.bottom) / 2 : (rect.left + rect.right) / 2;
+      if ((isVertical ? y : x) < centre) return i;
+    }
+    return items.length;
+  }
 
+  private _updateIndicator(indicator: HTMLElement | null, dropIndex: number, dragged: Element) {
+    if (!indicator) return;
+    const items = this._getItems().filter((item) => item !== dragged);
     const isVertical = this.direction === 'vertical';
     const containerRect = this.getBoundingClientRect();
 
-    let pivotEl: Element;
-    let edge: 'start' | 'end';
-
-    if (dropIndex <= 0) {
-      pivotEl = items[0];
-      edge = 'start';
-    } else if (dropIndex >= items.length) {
-      pivotEl = items[items.length - 1];
-      edge = 'end';
-    } else {
-      pivotEl = items[dropIndex];
-      edge = 'start';
+    // An empty zone has no item to hang the line off, so it draws across the zone itself —
+    // otherwise dropping into an empty column shows no feedback at all, which reads as "not
+    // allowed" rather than "allowed and empty".
+    if (items.length === 0) {
+      Object.assign(indicator.style, {
+        left: `${containerRect.left + 8}px`,
+        top: `${containerRect.top + 8}px`,
+        width: `${Math.max(containerRect.width - 16, 0)}px`,
+        height: '2px',
+        opacity: '1',
+      });
+      return;
     }
 
-    const r = pivotEl.getBoundingClientRect();
+    const clamped = Math.min(dropIndex, items.length);
+    const atEnd = clamped >= items.length;
+    const pivot = atEnd ? items[items.length - 1] : items[clamped];
+    const r = pivot.getBoundingClientRect();
 
     if (isVertical) {
-      const y = edge === 'start' ? r.top : r.bottom;
-      Object.assign(this._indicator.style, {
+      Object.assign(indicator.style, {
         left: `${containerRect.left}px`,
-        top: `${y - 1}px`,
+        top: `${(atEnd ? r.bottom : r.top) - 1}px`,
         width: `${containerRect.width}px`,
         height: '2px',
         opacity: '1',
       });
     } else {
-      const x = edge === 'start' ? r.left : r.right;
-      Object.assign(this._indicator.style, {
+      Object.assign(indicator.style, {
         top: `${containerRect.top}px`,
-        left: `${x - 1}px`,
+        left: `${(atEnd ? r.right : r.left) - 1}px`,
         height: `${containerRect.height}px`,
         width: '2px',
         opacity: '1',
@@ -264,39 +375,146 @@ export default class Sortable extends DesignSystemElement {
 
   private _onPointerUp = () => {
     if (!this._dragging) {
-      // Tap without drag — just clean up the pending state
       this._endDrag();
       return;
     }
+    const dragged = this._dragging;
+    const target = this._target ?? this;
+    /*
+      Two index spaces meet here, and conflating them is the bug this conversion exists to avoid.
 
-    const items = this._getItems();
-    const dragIndex = items.indexOf(this._dragging);
-    const dropIndex = this._dropIndex;
+      `_indexAt` counts insertion points in the list *including* the item being dragged — "before
+      items[i]" — because that is what the pointer is actually between. `_commit` wants a position
+      among the *other* items, since the dragged one is removed first. Within one zone those differ
+      by one for every drop below the item's own place.
 
+      The keyboard path already speaks the second space, which is why it passes its index straight
+      through and this one does not.
+    */
+    const fromIndex = this._getItems().indexOf(dragged);
+    const position = target === this && this._dropIndex > fromIndex ? this._dropIndex - 1 : this._dropIndex;
     this._endDrag();
-
-    // No-op: pointer released at the original position
-    if (dragIndex === -1 || dropIndex === dragIndex || dropIndex === dragIndex + 1) return;
-
-    // Compute new order: remove the dragged item from its original position and
-    // insert it at the (adjusted) drop index.
-    const ids = items.map((el) => this._getItemId(el));
-    const [removed] = ids.splice(dragIndex, 1);
-    const insertAt = dropIndex > dragIndex ? dropIndex - 1 : dropIndex;
-    ids.splice(insertAt, 0, removed);
-
-    this.dispatchEvent(new CustomEvent('reorder', { detail: ids, bubbles: true, composed: true }));
+    this._commit(dragged, target, position);
   };
 
-  private _onPointerCancel = () => {
-    this._endDrag();
+  private _onPointerCancel = () => this._endDrag();
+
+  // ── Keyboard ──────────────────────────────────────────────────────────────
+
+  private _onKeyDown = (e: KeyboardEvent) => {
+    const path = e.composedPath();
+    const focused = this._getItems().find((item) => path.includes(item));
+
+    if (e.key === 'Escape' && this._held) {
+      this._releaseHold();
+      e.preventDefault();
+      return;
+    }
+
+    if (e.key === ' ' || e.key === 'Enter') {
+      if (this._held) {
+        const { item, zone, index } = this._held;
+        this._releaseHold();
+        this._commit(item, zone, index);
+      } else if (focused) {
+        this._held = { item: focused, zone: this, index: this._getItems().indexOf(focused) };
+        (focused as HTMLElement).style.opacity = '0.3';
+        this.setAttribute('data-drop-target', '');
+      } else {
+        return;
+      }
+      e.preventDefault();
+      return;
+    }
+
+    if (!this._held) return;
+
+    const isVertical = this.direction === 'vertical';
+    const along = isVertical ? ['ArrowUp', 'ArrowDown'] : ['ArrowLeft', 'ArrowRight'];
+    const across = isVertical ? ['ArrowLeft', 'ArrowRight'] : ['ArrowUp', 'ArrowDown'];
+
+    if (along.includes(e.key)) {
+      const delta = e.key === along[0] ? -1 : 1;
+      // Positions among the *other* items — the space `_commit` takes. In its own zone the item is
+      // one of them, so the last position is one less than the count.
+      const others = this._held.zone._getItems().length - (this._held.zone === this ? 1 : 0);
+      this._held.index = Math.max(0, Math.min(others, this._held.index + delta));
+      e.preventDefault();
+    } else if (across.includes(e.key)) {
+      // Across zones in registry order — the order they connected, which for a board is the order
+      // its columns were rendered.
+      const compatible = [...zones].filter((zone) => zone._accepts(this, this._held!.item));
+      const at = compatible.indexOf(this._held.zone);
+      const next = compatible[at + (e.key === across[0] ? -1 : 1)];
+      if (next) {
+        this._held.zone.removeAttribute('data-drop-target');
+        this._held.zone = next;
+        this._held.index = Math.min(this._held.index, next._getItems().length - (next === this ? 1 : 0));
+        next.setAttribute('data-drop-target', '');
+      }
+      e.preventDefault();
+    }
   };
+
+  private _releaseHold() {
+    if (!this._held) return;
+    (this._held.item as HTMLElement).style.opacity = '';
+    this._held.zone.removeAttribute('data-drop-target');
+    this.removeAttribute('data-drop-target');
+    this._held = null;
+  }
+
+  // ── Commit ────────────────────────────────────────────────────────────────
+
+  /**
+   * Turn a completed gesture into an event.
+   *
+   * Both the pointer and keyboard paths end here, so the two produce identical events and a
+   * consumer never learns which was used.
+   */
+  private _commit(dragged: Element, target: Sortable, position: number) {
+    const id = this._getItemId(dragged);
+    if (!id) return;
+
+    const sameZone = target === this;
+    const fromIndex = this._getItems().indexOf(dragged);
+
+    // Destination order after the move, computed from ids rather than by moving DOM — the list is
+    // rendered from data, and the data has not changed yet.
+    const ids = target
+      ._getItems()
+      .filter((item) => item !== dragged)
+      .map((item) => this._getItemId(item));
+    const insertAt = Math.max(0, Math.min(position, ids.length));
+    ids.splice(insertAt, 0, id);
+
+    // A drop back where it started is not a move. Worth catching here rather than in every
+    // consumer, since a click that drifts four pixels would otherwise write to the backend.
+    if (sameZone && insertAt === fromIndex) return;
+
+    const detail: SortableMoveDetail = {
+      id,
+      from: this.zone,
+      to: target.zone,
+      index: insertAt,
+      ids,
+    };
+    this.dispatchEvent(new CustomEvent('moved', { detail, bubbles: true, composed: true }));
+
+    // The single-list specialisation. A reorderable sidebar wants the new order and nothing else,
+    // and would otherwise have to filter out every cross-zone move to get it.
+    if (sameZone) {
+      this.dispatchEvent(new CustomEvent('reorder', { detail: ids, bubbles: true, composed: true }));
+    }
+  }
 
   private _endDrag() {
     if (this._dragging) {
       (this._dragging as HTMLElement).style.opacity = '';
       this._dragging = null;
     }
+    this._target?.removeAttribute('data-drop-target');
+    this._target = null;
     this._ghost?.remove();
     this._ghost = null;
     this._indicator?.remove();
@@ -307,8 +525,6 @@ export default class Sortable extends DesignSystemElement {
     this.removeEventListener('pointerup', this._onPointerUp);
     this.removeEventListener('pointercancel', this._onPointerCancel);
   }
-
-  // ── Render ────────────────────────────────────────────────────────────────
 
   render() {
     const dir = this.direction === 'vertical' ? 'column' : 'row';

@@ -14,10 +14,16 @@ const repoRoot = resolve(__dirname, '../../../..');
 const designSystemRoot = resolve(repoRoot, 'packages/design-system');
 
 // Resolve paths explicitly (same as generate.ts does)
+//
+// `widgets` is a context *type*, not one package: generate.ts walks every package declaring
+// `context.type` and merges what it finds. Two declare 'widgets' — @we/widgets, which has held no
+// components since CollapsibleSidebar was retired, and @we/graph-solid, which holds GraphView. So
+// the widget path here is the graph one; pointing it at 5-widgets asserted a component count that
+// deleting the last widget was supposed to take to zero.
 const paths = {
   cem: resolve(designSystemRoot, '3-primitives/custom-elements.json'),
   components: resolve(designSystemRoot, '4-components/src'),
-  widgets: resolve(designSystemRoot, '5-widgets/src'),
+  widgets: resolve(repoRoot, 'packages/graph-system/frameworks/solid/src'),
   tokens: resolve(designSystemRoot, '1-tokens/src'),
   models: resolve(repoRoot, 'packages/models/src'),
 };

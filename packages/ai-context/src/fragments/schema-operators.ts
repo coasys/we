@@ -105,14 +105,27 @@ Boolean logic:
 { "$not": a } — negation
 
 Array operators:
-{ "$filter": { "items": <array>, "where": { "field": "value", ... } } }
+{ "$filter": { "items": <array>, "where": { "field": "value", ... }, "limit": <number> } }
 Filters an array to items where all where conditions match. Mirrors the $query where operator set:
 
   { "field": "value" }                                   — strict equality
   { "field": { "not": "value" } }                        — inequality; array form excludes multiple values
   { "field": { "contains": "text" } }                    — case-insensitive substring match (strings only)
+  { "field": { "startsWith": "text" } }                  — anchored prefix match, case-SENSITIVE
+  { "field": { "endsWith": "text" } }                    — anchored suffix match, case-SENSITIVE
   { "field": { "exists": true } }                        — non-null / non-undefined presence check
   { "field": { "exists": false } }                       — null or undefined check
+
+startsWith/endsWith are case-sensitive where contains is not: they exist to match structured strings
+against a known prefix (an ISO date out of a datetime, an id out of a URI), where folding case would
+match things it should not. contains searches prose, which is a different question.
+Note they are NOT native to the AD4M backend, so a $query using one is refused outright — use
+contains there. Inside $filter they are evaluated client-side and always available.
+
+"limit" keeps only the first N matches — the only way to express "the first few", since the operator
+set has no arithmetic and no slice. Use it for a cell showing two of a day's events with a "more"
+marker; without it the only option is rendering all of them and clipping, which cuts a row through
+the middle of the last one. It is resolved through the prop system, so it can come from $local.
 
 Where values (including those inside operator objects) are resolved through the prop system,
 so $store, $local, and context refs like { "$local": "searchText" } all work.
@@ -145,6 +158,7 @@ same query's where clause, because the fallback sort runs before the projection/
 Examples:
 { "$filter": { "items": { "$store": "spaceStore.members" }, "where": { "role": "admin" } } }
 { "$filter": { "items": { "$store": "spaceStore.members" }, "where": { "location": { "exists": true }, "handle": { "contains": { "$local": "searchText" } } } } }
+{ "$filter": { "items": { "$local": "dayEvents" }, "where": { "startDate": { "startsWith": "$cell.date" } }, "limit": 2 } }
 
 { "$count": { "items": <array> } }
 Returns the length of an array.

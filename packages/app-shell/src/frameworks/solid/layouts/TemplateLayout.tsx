@@ -19,6 +19,7 @@
  * The shell overlay uses ShellRouteStoreProvider + <MemoryRouter> so shell schema
  * $routes outlets work with a real router context, without touching the browser URL.
  */
+import { buildTemplateBag, CHROME_TIER } from '@shared/registries/templateSurface';
 import { isValidThemeKey } from '@shared/registries/themeRegistry';
 import {
   landingPageTemplate,
@@ -171,7 +172,18 @@ function ShellOverlayInner({
   // Built from the raw stores (the schema-tests view reaches for `testDataset` and `backendPorts`,
   // both host wiring), then merged into the *chrome* bag, which is what actually gets rendered.
   const { $schema: reactiveSchema, ...storeEntries } = view.stores?.(stores, shellRouteStore) ?? {};
-  const shellStores: Stores = { ...chromeStores, routeStore: shellRouteStore, ...(storeEntries as Partial<Stores>) };
+  /*
+    The overlay's router, put through the same bag as everything else it renders against.
+
+    Substituting the raw store here would hand the schema untagged accessors, and `walkPath` calls
+    only tagged ones — so `currentPath`, `segments` and `params` would all read as absent, silently.
+    That is not cosmetic: `/spaces/:uuid` in Settings filters the spaces list on
+    `routeStore.segments.1`, so an untagged read empties the filter and the page draws nothing at
+    all. The bag also drops `setCurrentPath`/`setNavigateFunction`, which are ShellRouterRoot's to
+    call and no schema's.
+  */
+  const shellRouteBag = buildTemplateBag({ routeStore: shellRouteStore }, { grants: CHROME_TIER }).routeStore;
+  const shellStores: Stores = { ...chromeStores, routeStore: shellRouteBag, ...(storeEntries as Partial<Stores>) };
   const schema = reactiveSchema ?? view.schema;
 
   return (

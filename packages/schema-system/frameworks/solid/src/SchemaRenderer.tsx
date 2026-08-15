@@ -11,6 +11,7 @@ import type {
 import {
   deepUnwrap,
   hasToken,
+  markReactive,
   noMemo,
   pruneUnresolvedWhere,
   REACTIVE_ACCESSOR,
@@ -25,56 +26,13 @@ import { Dynamic } from 'solid-js/web';
 
 import { AnimateRenderer } from './AnimateRenderer';
 import { ConditionalRenderer } from './ConditionalRenderer';
+import { hoistQueryItems } from './queryHoist';
 import type { RendererOutput, RenderProps, SchemaNode } from './types';
 import { useVisualEditor } from './VisualEditorContext';
 
 /** Check if a prop key is an event handler name (e.g. onClick, onInput, onKeyDown) */
 function isEventProp(key: string): boolean {
   return key.length > 2 && key.startsWith('on') && key[2] === key[2].toUpperCase();
-}
-
-/**
- * Recursively scan a raw prop value for { $map: { items: { $query: ... } } } patterns.
- * For each found, create a reactive query signal and substitute it in place.
- * This "hoists" signal creation to component-init time (before any createMemo/createEffect),
- * ensuring the subscription lifecycle is managed correctly even when the $map+$query is
- * nested inside a complex structure like planetLayers[0].options.locations.
- *
- * Must be called during component setup, not inside a createMemo or createEffect.
- */
-function hoistMapQuerySignals(value: unknown, stores: RendererStores, context: Record<string, unknown> = {}): unknown {
-  if (!value || typeof value !== 'object') return value;
-
-  // Found $map with $query items — replace items with a live reactive signal
-  if (hasToken(value, '$map', 'object')) {
-    const mapSpec = (value as { $map: MapProp }).$map;
-    if (hasToken(mapSpec.items, '$query', 'object')) {
-      const descriptor = resolveQueryProp(mapSpec.items);
-      const signal = createQuerySignal(descriptor, stores, context);
-      return { $map: { ...mapSpec, items: signal } };
-    }
-    return value;
-  }
-
-  if (Array.isArray(value)) {
-    let changed = false;
-    const mapped = value.map((item) => {
-      const h = hoistMapQuerySignals(item, stores, context);
-      if (h !== item) changed = true;
-      return h;
-    });
-    return changed ? mapped : value;
-  }
-
-  // Plain object — recurse into all values
-  let changed = false;
-  const result: Record<string, unknown> = {};
-  for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
-    const h = hoistMapQuerySignals(v, stores, context);
-    result[k] = h;
-    if (h !== v) changed = true;
-  }
-  return changed ? result : value;
 }
 
 /**
@@ -379,7 +337,18 @@ function createQuerySignal(
     }
   });
 
-  return Object.assign(readItems, { loaded });
+  /*
+    Marked reactive, so a consumer that unwraps accessors gets rows rather than a function.
+
+    The two conventions in the resolvers differ, and the difference is invisible until it bites:
+    `$map` calls whatever it is handed (`typeof items === 'function' ? items() : items`), while
+    `$count` and `$find` only call it when `REACTIVE_ACCESSOR` is set — a deliberate distinction,
+    since a prop may legitimately hold a plain callable that must not be invoked. Unmarked, this
+    accessor satisfied the first and not the second, so hoisting a query into a `$count` produced a
+    function, `Array.isArray` said no, and the count came back 0 — the same value a genuinely empty
+    query returns, which is why it read as "this call has no utterances".
+  */
+  return markReactive(Object.assign(readItems, { loaded }));
 }
 
 /** Detect values with no schema tokens — can be passed through without reactive tracking. */
@@ -661,10 +630,23 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
                     stores={stores}
                     context={effectiveContext}
                     renderNode={renderNode}
+                    createQuerySignal={createQuerySignal}
                   />
                 );
               }
             }
+            /*
+              Deliberately *not* hoisted, unlike a prop.
+
+              Children render inside a memo, and hoisting means creating a subscription — an effect
+              inside a derivation, which is the one thing the hoist must not do. Doing it at setup
+              instead would mean walking the whole child tree, subscribing queries for nodes behind
+              conditions that are false and may never render.
+
+              So a `$query` in a children token resolves to nothing: `$count` reads 0. Put the token
+              in a **prop** instead — `we-text`'s `text`, say — where hoisting is safe and correct.
+              `tests/countOverQuery.test.tsx` pins this as a known limit rather than a bug.
+            */
             const resolved = resolveProp(child as unknown, stores, effectiveContext, createMemo);
             return (
               <>
@@ -704,7 +686,15 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
 
   // Handle conditional rendering
   if (node.type === '$if') {
-    return <ConditionalRenderer node={node} stores={stores} context={effectiveContext} renderNode={renderNode} />;
+    return (
+      <ConditionalRenderer
+        node={node}
+        stores={stores}
+        context={effectiveContext}
+        renderNode={renderNode}
+        createQuerySignal={createQuerySignal}
+      />
+    );
   }
 
   // Handle viewport-driven animations (child always mounted)
@@ -1082,7 +1072,7 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
           }
         };
     } else {
-      const raw = hoistMapQuerySignals(rawValue, stores, effectiveContext);
+      const raw = hoistQueryItems(rawValue, stores, effectiveContext, createQuerySignal);
       propMemos[key] = createMemo(() => {
         const resolved = resolveProp(raw, stores, effectiveContext, createMemo);
         return deepUnwrap(resolved);

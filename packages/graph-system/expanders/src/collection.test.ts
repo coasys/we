@@ -33,6 +33,16 @@ const SHAPES: EntityShape[] = [
     relations: [],
     identityProperty: 'title',
   },
+  {
+    name: 'TaskBlock',
+    properties: [{ name: 'title', type: 'string' }],
+    relations: [],
+  },
+  {
+    name: 'EventBlock',
+    properties: [{ name: 'title', type: 'string' }],
+    relations: [],
+  },
 ];
 
 function contextWith(rows: (query: ExpanderQuery) => Record<string, unknown>[]) {
@@ -155,5 +165,36 @@ describe('propertyExpander', () => {
     );
     expect(result.nodes).toHaveLength(1);
     expect(result.nodes[0].label).toBe('status: open');
+  });
+});
+
+describe('what a collection is opened into by default', () => {
+  it('looks for the block types interpretation writes, not only composed ones', async () => {
+    // A call's collection acquires tasks and events without anyone composing them — the extraction
+    // pass parents them straight onto it. Before these were in the default list the records existed
+    // and the one view built to show a collection's contents did not draw them, so a successful
+    // extraction was indistinguishable from one that found nothing.
+    const { context, query } = contextWith(() => []);
+
+    await collectionExpander().expand({ id: COLLECTION, direction: 'out' }, context);
+
+    const asked = query.mock.calls.map(([request]) => (request as ExpanderQuery).entity);
+    expect(asked).toContain('TaskBlock');
+    expect(asked).toContain('EventBlock');
+  });
+
+  it('skips a type this dataset has never installed rather than querying it', async () => {
+    // The default list is shared across every space, so it names types a given space may not have.
+    // Each entry costs a drill-down query, and asking for a shape that is not there would spend one
+    // to get an error back.
+    const { context, query } = contextWith(() => []);
+
+    await collectionExpander({ children: ['TaskBlock', 'NotInstalledBlock'] }).expand(
+      { id: COLLECTION, direction: 'out' },
+      context,
+    );
+
+    const asked = query.mock.calls.map(([request]) => (request as ExpanderQuery).entity);
+    expect(asked).toEqual(['TaskBlock']);
   });
 });

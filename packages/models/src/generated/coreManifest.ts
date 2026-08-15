@@ -558,6 +558,11 @@ export const CORE_MANIFEST: ModelManifest = {
     },
     "EventBlock": {
       "properties": {
+        "occurrence": {
+          "type": "string",
+          "predicate": "we://occurrence",
+          "default": ""
+        },
         "title": {
           "type": "string",
           "predicate": "we://title",

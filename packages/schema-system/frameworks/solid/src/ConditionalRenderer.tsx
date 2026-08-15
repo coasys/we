@@ -1,7 +1,9 @@
+import type { RendererStores } from '@we/backend-shared';
 import type { TransitionConfig } from '@we/schema-shared';
 import { resolveProp } from '@we/schema-shared';
 import { createEffect, createMemo, createSignal, onCleanup, Show } from 'solid-js';
 
+import { hoistQueryItems, type QuerySignalFactory } from './queryHoist';
 import {
   buildTransitionCSS,
   hiddenOpacity,
@@ -17,6 +19,13 @@ type ConditionalRendererProps = {
   stores: Record<string, unknown>;
   context: Record<string, unknown>;
   renderNode: (node?: SchemaNode, nodeContext?: Record<string, unknown>) => RendererOutput;
+  /**
+   * How to turn a `$query` in the condition into a live subscription.
+   *
+   * Passed in rather than imported: it lives in `SchemaRenderer`, which imports this module, so
+   * importing it back would close a cycle.
+   */
+  createQuerySignal: QuerySignalFactory;
 };
 
 /**
@@ -49,14 +58,32 @@ const AXIS_OF_SIZE_PROP: Record<string, 'block' | 'inline'> = {
   maxHeight: 'block',
 };
 
-export function ConditionalRenderer({ node, stores, context, renderNode }: ConditionalRendererProps): RendererOutput {
+export function ConditionalRenderer({
+  node,
+  stores,
+  context,
+  renderNode,
+  createQuerySignal,
+}: ConditionalRendererProps): RendererOutput {
   const enterTransition = node.props?.enterTransition as TransitionConfig | undefined;
   const exitTransition = node.props?.exitTransition as TransitionConfig | undefined;
   const hasTransitions = enterTransition || exitTransition;
 
+  /*
+    Hoisted at setup, not inside the memo below, so a condition may ask a question of the backend:
+    `{ $count: { items: { $query: … } } }` is how "render this section only when there is something
+    in it" is written, and without hoisting the `$query` is never subscribed — `$count` receives the
+    raw token, reads it as a non-list, and returns 0. The section then never appears, and nothing
+    anywhere says why.
+
+    Identity-preserving when there is no query to hoist, which is almost every condition, so this
+    costs a walk of a small object and no extra reactivity.
+  */
+  const condition = hoistQueryItems(node.props?.condition, stores as RendererStores, context, createQuerySignal);
+
   const conditionMet = createMemo(() => {
-    const condition = resolveProp(node.props?.condition, stores, context, createMemo);
-    return typeof condition === 'function' ? condition() : condition;
+    const resolved = resolveProp(condition, stores, context, createMemo);
+    return typeof resolved === 'function' ? resolved() : resolved;
   });
 
   // If no transitions, use standard Show component

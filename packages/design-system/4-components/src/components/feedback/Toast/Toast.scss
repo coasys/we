@@ -1,4 +1,18 @@
+/*
+  Right-anchored toasts clear the chrome rail.
+
+  The shell publishes its rail width on `:root` as `--we-chrome-rail-width` precisely so things it
+  does not own can get out of the way — the editor's bar already reads it. Without this a toast
+  lands under the rail: still visible, but with its dismiss button unreachable, which is the worst
+  of both.
+
+  The `0px` fallback is what keeps this a design-system component rather than a shell one. Embedded
+  anywhere with no rail — a playground, a host that lays its chrome out differently — the variable
+  is unset and the toast sits where it always did.
+*/
 .we-toast-container {
+  --we-toast-inset-right: calc(var(--we-chrome-rail-width, 0px) + var(--we-space-400));
+
   position: fixed;
   z-index: var(--we-z-toast);
   display: flex;
@@ -8,7 +22,7 @@
 
   &--top-right {
     top: var(--we-space-400);
-    right: var(--we-space-400);
+    right: var(--we-toast-inset-right);
   }
 
   &--top-left {
@@ -18,7 +32,7 @@
 
   &--bottom-right {
     bottom: var(--we-space-400);
-    right: var(--we-space-400);
+    right: var(--we-toast-inset-right);
   }
 
   &--bottom-left {

@@ -152,6 +152,201 @@ const meter: SchemaNode = {
   },
 };
 
+/**
+ * Suggestions the backend staged instead of writing, and the two buttons that resolve them.
+ *
+ * Only appears when there are any, which is *not* the common case: a value is staged only where a
+ * human already owns one, so a first pass over a fresh transcript stages nothing and this stays
+ * invisible. That is the right default — a permanently empty "0 pending" box teaches people to stop
+ * looking at the place their attention is eventually needed.
+ *
+ * Accept and reject rather than an edit affordance. Editing a suggestion is authoring, and it
+ * belongs to whatever normally edits that record; the decision this list exists for is only whether
+ * the model's version survives contact with the person who owns the value.
+ */
+const proposals: SchemaNode = {
+  type: '$if',
+  props: {
+    condition: { $count: { items: { $store: 'modules.transcribe.proposals' } } },
+    then: {
+      type: 'Column',
+      props: { gap: '200' },
+      children: [
+        {
+          type: 'we-text',
+          props: { variant: 'footnote', color: 'neutral-500', uppercase: true },
+          children: ['Awaiting your call'],
+        },
+        {
+          type: '$each',
+          props: { items: { $store: 'modules.transcribe.proposals' }, as: 'proposal' },
+          children: [
+            {
+              type: 'Column',
+              props: { bg: 'warning-50', r: '300', p: '300', gap: '200' },
+              children: [
+                { type: 'we-text', props: { variant: 'footnote' }, children: ['$proposal.summary'] },
+                {
+                  type: 'Row',
+                  props: { gap: '200', ay: 'center' },
+                  children: [
+                    {
+                      type: 'we-button',
+                      props: {
+                        size: 'xs',
+                        variant: 'secondary',
+                        onClick: { $action: 'modules.transcribe.acceptProposal', args: ['$proposal.id'] },
+                      },
+                      children: ['Keep'],
+                    },
+                    {
+                      type: 'we-button',
+                      props: {
+                        size: 'xs',
+                        variant: 'ghost',
+                        onClick: { $action: 'modules.transcribe.rejectProposal', args: ['$proposal.id'] },
+                      },
+                      children: ['Discard'],
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    },
+  },
+};
+
+/**
+ * Turning what was heard into tasks and events.
+ *
+ * Sits below the transcript rather than in the header, because it is a thing you do *to* what is
+ * there — and it should not be reachable before there is anything to do it to. The whole block is
+ * absent on a node that cannot interpret: unlike a missing transcription model, there is nothing a
+ * user can install to fix it from here, so a disabled button explaining itself would be furniture.
+ *
+ * One press, one pass, and a count afterwards. An LLM call takes seconds, and the gap between press
+ * and result is exactly where a feature stops looking like it is working — so `running` says so, and
+ * `done` keeps its number until the next press rather than reverting to a blank button.
+ */
+const extract: SchemaNode = {
+  type: '$if',
+  props: {
+    condition: { $store: 'modules.transcribe.extractable' },
+    then: {
+      type: 'Column',
+      props: { gap: '200', bg: 'neutral-50', r: '300', p: '300' },
+      children: [
+        {
+          type: 'Row',
+          props: { ax: 'between', ay: 'center', gap: '300' },
+          children: [
+            {
+              type: 'Column',
+              props: { gap: '050' },
+              children: [
+                { type: 'we-text', props: { variant: 'footnote', fontWeight: '600' }, children: ['Extract'] },
+                {
+                  type: 'we-text',
+                  props: { variant: 'footnote', color: 'neutral-500' },
+                  children: ['Find the tasks and events in what was said.'],
+                },
+              ],
+            },
+            {
+              type: 'we-button',
+              props: {
+                size: 'sm',
+                variant: 'secondary',
+                // Disabled rather than hidden once the panel is showing the section: the reason is
+                // "nothing has been said yet", which resolves on its own and is worth waiting for.
+                disabled: {
+                  $or: [
+                    { $not: { $store: 'modules.transcribe.canExtract' } },
+                    { $eq: [{ $store: 'modules.transcribe.extractStatus' }, 'running'] },
+                  ],
+                },
+                onClick: { $action: 'modules.transcribe.extract' },
+              },
+              children: [
+                {
+                  $if: {
+                    condition: { $eq: [{ $store: 'modules.transcribe.extractStatus' }, 'running'] },
+                    then: 'Reading…',
+                    else: 'Extract',
+                  },
+                },
+              ],
+            },
+          ],
+        },
+        {
+          type: '$if',
+          props: {
+            condition: { $eq: [{ $store: 'modules.transcribe.extractStatus' }, 'running'] },
+            then: {
+              type: 'Row',
+              props: { gap: '200', ay: 'center' },
+              children: [
+                { type: 'we-spinner', props: { size: 'sm' } },
+                {
+                  type: 'we-text',
+                  props: { variant: 'footnote', color: 'neutral-500' },
+                  children: ['Reading the transcript…'],
+                },
+              ],
+            },
+          },
+        },
+        {
+          type: '$if',
+          props: {
+            condition: { $eq: [{ $store: 'modules.transcribe.extractStatus' }, 'done'] },
+            then: {
+              type: 'Row',
+              props: { gap: '200', ay: 'center' },
+              children: [
+                { type: 'we-icon', props: { name: 'check', color: 'success-600' } },
+                {
+                  type: 'we-text',
+                  props: { variant: 'footnote', color: 'neutral-500' },
+                  children: [
+                    // Zero is a real and common answer — a conversation with no commitments in it —
+                    // and saying so is the difference between "it worked, there was nothing" and
+                    // "it silently failed".
+                    {
+                      $if: {
+                        condition: { $store: 'modules.transcribe.extractCount' },
+                        then: { $store: 'modules.transcribe.extractCount' },
+                        else: 'No',
+                      },
+                    },
+                    ' records written. Open the graph to see them.',
+                  ],
+                },
+              ],
+            },
+          },
+        },
+        {
+          type: '$if',
+          props: {
+            condition: { $eq: [{ $store: 'modules.transcribe.extractStatus' }, 'error'] },
+            then: {
+              type: 'we-alert',
+              props: { variant: 'warning' },
+              children: [{ $store: 'modules.transcribe.extractError' }],
+            },
+          },
+        },
+        proposals,
+      ],
+    },
+  },
+};
+
 export const panel: SchemaNode = {
   type: '$if',
   props: {
@@ -332,6 +527,9 @@ export const panel: SchemaNode = {
             },
           },
         },
+
+        // ── Turning it into records ──────────────────────────────────────────
+        extract,
 
         // ── What has been heard ──────────────────────────────────────────────
         {

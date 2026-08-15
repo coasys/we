@@ -24,7 +24,11 @@ import {
 // carried across the flat form instead of being lost. Declaring it unsupported cost the showcase
 // templates every drill-down they have: a channel's messages, a board column's cards.
 export const inMemoryCapabilities: AdapterCapabilities = {
-  operators: ['eq', 'ne', 'lt', 'lte', 'gt', 'gte', 'in', 'nin', 'contains', 'exists'],
+  // `startsWith`/`endsWith` are declared because `matchesFilter` in the shared engine has always
+  // executed them — this adapter *is* that engine, so anything it can evaluate is native here by
+  // definition. They were missing only because nothing could reach them from a flat where clause
+  // until the compiler learned to translate them.
+  operators: ['eq', 'ne', 'lt', 'lte', 'gt', 'gte', 'in', 'nin', 'contains', 'startsWith', 'endsWith', 'exists'],
   booleanCombinators: true,
   relationFilters: false,
   scope: true,

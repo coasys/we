@@ -60,6 +60,28 @@ function seedDataPath() {
   return join(homedir(), '.ad4m');
 }
 
+/**
+ * The executor binary to run in development, from the seed.
+ *
+ * A packaged build has the binary copied in beside it and reads it from `resourcesPath`; an
+ * unpackaged run has to find it in the workspace. That path used to be hardcoded here, which meant
+ * a seed pointing `executorPath` at a different checkout was silently ignored — the app went on
+ * running whichever executor happened to be built next door, and every symptom of that appears
+ * somewhere else entirely: a WS method that does not exist, a call that hangs, a feature that is
+ * present in the code and absent at runtime.
+ *
+ * Falls back to the historical location, so a workspace with no `executorPath` behaves as before.
+ */
+function seedExecutorPath() {
+  try {
+    const runtime = JSON.parse(readFileSync(join(__dirname, 'seed-runtime.json'), 'utf8'));
+    if (runtime.ad4mExecutorPath) return expandHome(runtime.ad4mExecutorPath);
+  } catch {
+    // Same reasoning as `seedDataPath`: a missing generated file is not worth refusing to start.
+  }
+  return join(__dirname, '..', '..', '..', '..', 'ad4m', 'target', 'release', 'ad4m-executor');
+}
+
 // The registry needs the app's config directory, which is available before `ready`.
 const accounts = createAccountRegistry({
   configDir: app.getPath('userData'),
@@ -252,9 +274,7 @@ async function startExecutor() {
     // Path to the executor binary
     // In production, this will be bundled with the app
     // In development, we need to point to the built executor from ad4m repo
-    const executorPath = app.isPackaged
-      ? join(process.resourcesPath, 'ad4m-executor')
-      : join(__dirname, '..', '..', '..', '..', 'ad4m', 'target', 'release', 'ad4m-executor');
+    const executorPath = app.isPackaged ? join(process.resourcesPath, 'ad4m-executor') : seedExecutorPath();
 
     console.log('Executor path:', executorPath);
 
