@@ -710,6 +710,19 @@ const ALWAYS_PRESENT = new Set([
   '$queryAdapter',
   '$identities',
   '$ephemeral',
+  /*
+    The `$source` registry — computed rows and values a template may draw on.
+
+    Present in every bag for the same reason `$getModel` is: it is a host-provided capability that
+    templates are meant to reach, not store state anyone needs protecting from. Its members are pure
+    synchronous functions the host chose to register, so there is nothing here to gate — a template
+    that can call `calendarMonth` can compute a month, which is the entire point of registering it.
+
+    Left unclassified it was simply dropped, silently, exactly as this file's own rule says an
+    undecided store should be: the calendar rendered and reported "Source not registered on this
+    host", which reads as a missing registration rather than a withheld one.
+  */
+  '$sources',
 ]);
 
 /**
