@@ -10,5 +10,5 @@
     // Experimental decorators needed for models
     "experimentalDecorators": true
   },
-  "include": ["src", "../../types/ad4m-interpretation.d.ts"]
+  "include": ["src"]
 }
