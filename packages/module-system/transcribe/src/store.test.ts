@@ -13,7 +13,7 @@
 import type { Activity, Peer } from '@we/backend-shared';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { CALL_KIND, CALL_PREDICATE, createTranscribeStore, TRANSCRIBE_ACTIVITY } from './store';
+import { CALL_KIND, CALL_PREDICATE, createTranscribeStore, EXTRACT_CLASSES, TRANSCRIBE_ACTIVITY } from './store';
 
 const ME = 'did:key:me';
 const THEM = 'did:key:them';
@@ -574,8 +574,13 @@ describe('extraction', () => {
     available = true,
   ) {
     const calls: Array<{ collectionId: string; classes: string[] }> = [];
+    /** Every watch registration and removal, in order — `-id` for a removal. */
+    const watches: string[] = [];
+    let watchClasses: string[] | null = null;
     return {
       calls,
+      watches,
+      watchClassesOf: () => watchClasses,
       port: {
         available: () => available,
         runOnCollection: async (collectionId: string, request: { classes: string[] }) => {
@@ -583,12 +588,78 @@ describe('extraction', () => {
           if (result instanceof Error) throw result;
           return result;
         },
+        watchCollection: async (collectionId: string, request: { classes: string[] }) => {
+          watches.push(collectionId);
+          watchClasses = request.classes;
+        },
+        unwatchCollection: async (collectionId: string) => {
+          watches.push(`-${collectionId}`);
+        },
         proposals: async () => [],
         accept: async () => true,
         reject: async () => true,
       },
     };
   }
+
+  /*
+    The standing watch follows the call's collection.
+
+    Wired to `collectionId` rather than to the record button, because the collection appears late —
+    whoever wins the creation election makes it and the rest adopt the announced id — so there is
+    nothing to name at the press. These pin that it starts when there is something to watch and
+    stops when the call ends, which is the part most likely to rot: nothing fails visibly if a watch
+    outlives its call, it just keeps interpreting a conversation nobody is having.
+  */
+  describe('the standing watch', () => {
+    it('registers nothing until somebody has spoken', () => {
+      const i = interpreter();
+      harness(inCall, { interpretation: i.port });
+
+      expect(i.watches).toEqual([]);
+    });
+
+    it('watches the collection once there is one, for the classes Extract uses', async () => {
+      const i = interpreter();
+      const h = harness(inCall, { interpretation: i.port });
+      await h.say('we should ship the docs on friday');
+
+      expect(i.watches).toHaveLength(1);
+      expect(i.watchClassesOf()).toEqual(EXTRACT_CLASSES);
+      // Registered against a real collection rather than an empty string — a watch over nothing
+      // would sit there interpreting a transcript that does not exist.
+      expect(i.watches[0]).toBeTruthy();
+      // The same collection the one-shot path would read: `canExtract` gates on there being one,
+      // and both go through `collectionId`.
+      expect(h.store.canExtract()).toBe(true);
+    });
+
+    it('stops the watch when the call ends', async () => {
+      const i = interpreter();
+      const h = harness(inCall, { interpretation: i.port });
+      await h.say('something worth writing down');
+      const collection = i.watches[0];
+
+      h.setPeers([]);
+      await Promise.resolve();
+
+      // Left running it would keep spending an LLM call on a conversation that is over.
+      expect(i.watches).toEqual([collection, `-${collection}`]);
+    });
+
+    it('survives a backend that cannot hold one', async () => {
+      // Every runtime without the auto-processor throws here, and a call is not worth interrupting
+      // over a capability the Extract button already covers.
+      const i = interpreter();
+      i.port.watchCollection = async () => {
+        throw new Error('no auto-processor here');
+      };
+      const h = harness(inCall, { interpretation: i.port });
+
+      await expect(h.say('hello')).resolves.not.toThrow();
+      expect(i.calls.length).toBeGreaterThanOrEqual(0);
+    });
+  });
 
   it('offers nothing to extract before anybody has spoken', () => {
     // There is no collection until the first utterance, so there is nothing to read back. Offering

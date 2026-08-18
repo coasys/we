@@ -610,6 +610,23 @@ export interface ModuleInterpretationAccess {
    * extracting was said" — the two are identical from an empty result and only one is worth saying.
    */
   runOnCollection: (collectionId: string, request: { classes: string[] }) => Promise<InterpretationResult>;
+  /**
+   * Keep interpreting a collection as it grows, without anyone pressing anything.
+   *
+   * The standing counterpart to {@link runOnCollection}, and it does **not** contradict the note
+   * above about `watch` being absent: a module names a collection worth watching and holds nothing.
+   * The watch id, the dataset, the containment predicate and the lifetime are all the host's, which
+   * is what keeps a panel closing from leaving a registration behind.
+   *
+   * Registering twice for one collection is one registration, not two — the engine keeps its
+   * processors in the perspective's own graph, so peers converge on the same row.
+   *
+   * Rejects on a backend that can interpret but cannot coordinate a shared watch, so a module can
+   * offer the affordance only where it means something.
+   */
+  watchCollection: (collectionId: string, request: { classes: string[] }) => Promise<void>;
+  /** Stop the watch on a collection. Safe to call when none was registered. */
+  unwatchCollection: (collectionId: string) => Promise<void>;
   /** Suggestions staged in this dataset, awaiting a human. */
   proposals: () => Promise<InterpretationProposal[]>;
   /** Commit a staged suggestion — the whole record, or one property by name. */

@@ -179,7 +179,57 @@ export function DatasetStoreProvider(props: ParentProps) {
         parent: { id: collectionId, predicate },
       });
     },
+
+    /*
+      The standing version of the same thing, and the reason it lives here rather than on the module
+      surface.
+
+      A module names a collection worth watching; everything else is the host's — the watch id, the
+      dataset, the containment predicate, and the lifetime. That split is what keeps this from being
+      "a module holding a watch", which the module contract refuses: a watch is a *dataset-level*
+      registration shared with every peer, and a module store whose lifetime is a panel being open
+      would leave one behind every time somebody closed it.
+
+      Keyed on the collection id, so registering twice for one call is the same registration rather
+      than two. The engine reads its processors out of the perspective graph, so this is idempotent
+      in the place it matters: whichever peer registers first wins and the rest write the same row.
+    */
+    watchCollection: async (collectionId, request) => {
+      const port = session.backendPorts()?.interpretation;
+      if (!port?.watch) throw new Error('interpretation: this backend cannot run a standing watch');
+      const dataset = currentDataset();
+      if (!dataset) throw new Error('interpretation: no dataset to interpret into');
+
+      const modelFor = (entity: string) => getModelForPerspective(entity, dataset.handle);
+      const predicate = containmentPredicate(modelFor, currentDatasetModels());
+      if (!predicate) throw new Error('interpretation: this space has no collection schema to read a transcript from');
+
+      await port.watch(dataset.handle, {
+        watchId: watchIdFor(collectionId),
+        classes: request.classes,
+        parent: { id: collectionId, predicate },
+      });
+    },
+
+    unwatchCollection: async (collectionId) => {
+      const port = session.backendPorts()?.interpretation;
+      const dataset = currentDataset();
+      // Silent rather than thrown: this runs while tearing a call down, and a host that never
+      // registered anything is not a failure worth interrupting that with.
+      if (!port?.unwatch || !dataset) return;
+      await port.unwatch(dataset.handle, watchIdFor(collectionId));
+    },
   });
+
+  /*
+  One collection, one watch.
+
+  Derived rather than stored so that any peer computing it lands on the same string: the engine
+  keys its processors by this id inside the shared perspective, so two members starting the same
+  call must agree on it or they register two watches over one transcript and every utterance is
+  interpreted twice.
+*/
+  const watchIdFor = (collectionId: string) => `we-call:${collectionId}`;
 
   // Converts null → undefined so that when JSON-serialised into an ORM WHERE clause,
   // personal datasets (no shared uri) produce {} rather than {"url":null}.
