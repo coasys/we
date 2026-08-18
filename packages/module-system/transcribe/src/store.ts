@@ -891,25 +891,38 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
     if (watched === next) return;
     const previous = watched;
     watched = next;
-    try {
-      // Feature-tested per method, not per object. The host publishes a forwarding wrapper that is
-      // always present, so `interpretation?.` only answers "is there a wrapper" — an older host
-      // whose wrapper predates the watch would sail past that and throw on the call.
-      if (previous && typeof interpretation?.unwatchCollection === 'function') {
+
+    /*
+      Two independent attempts, and that separation is the whole point.
+
+      They were one `try` block, which meant a teardown that threw took the next registration with
+      it — so the first failed `unwatch` silently stopped every later call from ever being watched.
+      The two have nothing to do with each other: stopping a watch on a call that ended and starting
+      one on the call that just began are different operations on different collections, and either
+      is worth doing when the other cannot be.
+
+      Feature-tested per method rather than per object: the host publishes a forwarding wrapper that
+      is always present, so `interpretation?.` only answers "is there a wrapper".
+    */
+    if (previous && typeof interpretation?.unwatchCollection === 'function') {
+      try {
         await interpretation.unwatchCollection(previous);
+      } catch (error) {
+        // A watch left running keeps interpreting a call that is over, which costs an LLM call per
+        // pass — worth a warning, and worth not letting it block what comes next.
+        console.warn('[transcribe] could not stop the watch on the previous call', error);
       }
-      if (next && typeof interpretation?.watchCollection === 'function') {
+    }
+
+    if (next && typeof interpretation?.watchCollection === 'function') {
+      try {
         await interpretation.watchCollection(next, { classes: EXTRACT_CLASSES });
-        // Says the module-side half ran, which silence alone cannot: no log at all is equally
-        // consistent with "this never executed" and "it executed and threw nothing".
         console.info('[transcribe] watching collection for auto-extraction', next);
-      } else if (next) {
-        console.info('[transcribe] host has no watchCollection — auto-extraction unavailable');
+      } catch (error) {
+        console.info('[transcribe] auto-extraction unavailable', error);
       }
-    } catch (error) {
-      // Left at debug: on a runtime without the auto-processor this throws on every call, and a
-      // warning would train people to ignore the console rather than tell them anything.
-      console.debug('[transcribe] auto-extraction unavailable', error);
+    } else if (next) {
+      console.info('[transcribe] host has no watchCollection — auto-extraction unavailable');
     }
   }
 

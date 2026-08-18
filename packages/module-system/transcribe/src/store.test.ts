@@ -664,6 +664,33 @@ describe('extraction', () => {
       expect(i.reconciled).toEqual([i.watches[0]]);
     });
 
+    it('still watches the new call when stopping the old one fails', async () => {
+      /*
+        The two were one `try` block, so a teardown that threw took the next registration with it —
+        one failed `unwatch` and nothing was ever watched again for the rest of the session. It
+        happened for real: the engine registers the config class as `AutoProcessor` and the ORM
+        class is `AutoProcessorConfig`, so the delete threw on a name lookup.
+      */
+      const i = interpreter();
+      i.port.unwatchCollection = async () => {
+        throw new Error('No SHACL shape stored for class AutoProcessorConfig');
+      };
+      const h = harness(inCall, { interpretation: i.port });
+      await h.say('first call');
+      const first = i.watches[0];
+      expect(first).toBeTruthy();
+
+      // End that call and start another, the way clicking "new call" does.
+      h.setPeers([]);
+      await Promise.resolve();
+      h.setPeers(inCall);
+      await h.say('second call');
+
+      const registrations = i.watches.filter((w) => !w.startsWith('-'));
+      expect(registrations).toHaveLength(2);
+      expect(registrations[1]).not.toBe(first);
+    });
+
     it('survives a backend that cannot hold one', async () => {
       // Every runtime without the auto-processor throws here, and a call is not worth interrupting
       // over a capability the Extract button already covers.

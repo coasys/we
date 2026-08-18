@@ -437,6 +437,21 @@ export function createAd4mInterpretationPort(selfId?: () => string | undefined):
         whoever pressed stop — which is what a shared watch has to mean.
       */
       watchParents.delete(watchId);
+      /*
+        Register the client's own shape before querying through it.
+
+        The engine registers this class under the name **`AutoProcessor`**; the ORM class is named
+        `AutoProcessorConfig`, and `findAll` resolves a shape *by name* — so without this it fails
+        with "No SHACL shape stored for class 'AutoProcessorConfig'". Two names over one set of
+        instances, which the model's own docs anticipate by telling callers to register it first.
+
+        The same disagreement about how a class is named that `targetClasses` exists for, one layer
+        along. Both are worth reading as one symptom.
+      */
+      await (AutoProcessorConfig as unknown as { register(p: PerspectiveProxy): Promise<unknown> }).register(
+        perspective,
+      );
+
       const configs = (await AutoProcessorConfig.findAll(perspective, {
         where: { processorId: watchId },
       })) as unknown as { delete(): Promise<unknown> }[];
