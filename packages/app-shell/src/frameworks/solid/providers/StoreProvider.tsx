@@ -8,6 +8,7 @@ import {
   RouteStoreProvider,
   RuntimeStoreProvider,
   SessionStoreProvider,
+  ShapeStoreProvider,
   ShellStoreProvider,
   SpaceStoreProvider,
   TemplateStoreProvider,
@@ -32,6 +33,9 @@ export default function StoreProvider(props: ParentProps) {
               credentials. */}
             <RuntimeStoreProvider>
               <DatasetStoreProvider>
+                {/* Directly beneath Dataset: the shape adoption rail follows the current dataset,
+                    and everything below that renders a space may query the entities it registers. */}
+                <ShapeStoreProvider>
                 <ProfileStoreProvider>
                   <ThemeStoreProvider>
                     <TemplateStoreProvider>
@@ -58,6 +62,7 @@ export default function StoreProvider(props: ParentProps) {
                     </TemplateStoreProvider>
                   </ThemeStoreProvider>
                 </ProfileStoreProvider>
+                </ShapeStoreProvider>
               </DatasetStoreProvider>
             </RuntimeStoreProvider>
           </SessionStoreProvider>

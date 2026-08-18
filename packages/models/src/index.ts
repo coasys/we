@@ -90,7 +90,7 @@ export {
 export type { FileData } from './utils/imageHelpers';
 export { normalizeSignal, denormalizeSignal } from './utils/signalNormalize';
 export { aggregateSignals } from './utils/signalAggregate';
-export { decodeFileAsString, decodeFileAsJson } from './utils/fileTransforms';
+export { decodeFileAsString, decodeFileAsJson, encodeJsonFileData } from './utils/fileTransforms';
 
 // The model layer's dataset type — what every generated model's static methods accept. Re-exported
 // under a neutral name so the app shell can type dataset handles without importing the backend SDK

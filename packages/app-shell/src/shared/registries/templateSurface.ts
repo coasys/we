@@ -448,6 +448,37 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     loadSpaces: WIRING,
   },
 
+  shapeStore: {
+    // ── the models this space carries, and both editing surfaces over them ──
+    // All 'space-settings': defining what a "Sighting" is in this community is the same act as
+    // renaming the space — the community shaping its own container, pinned to the space on screen.
+    spaceShapes: state('space-settings'),
+    shapesLoaded: state('space-settings'),
+    shapeDraft: state('space-settings'),
+    editingShapeId: state('space-settings'),
+    draftErrors: state('space-settings'),
+    savingShape: state('space-settings'),
+    hintEntities: state('space-settings'),
+    hintEditor: state('space-settings'),
+    hintBusy: state('space-settings'),
+    openShapeWizard: action('space-settings'),
+    cancelShapeWizard: action('space-settings'),
+    setShapeField: action('space-settings'),
+    addDraftProperty: action('space-settings'),
+    removeDraftProperty: action('space-settings'),
+    setDraftProperty: action('space-settings'),
+    replaceDraft: action('space-settings'),
+    saveShapeDraft: action('space-settings'),
+    // Destructive in the "expensive to reverse" sense: the record goes, and although data and SDNA
+    // remain, re-creating the model needs its definition re-authored.
+    deleteShape: destructive('space-settings'),
+    openHintEditor: action('space-settings'),
+    closeHintEditor: action('space-settings'),
+    setHintDraft: action('space-settings'),
+    saveHintEditor: action('space-settings'),
+    resetHintEditor: action('space-settings'),
+  },
+
   themeStore: {
     builtInThemes: state('appearance'),
     installedThemes: state('appearance'),
