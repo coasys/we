@@ -57,6 +57,32 @@ export interface PropertySchema {
    * subtree is the default precisely so nothing is shared by accident.
    */
   predicate?: string;
+
+  /**
+   * What an LLM is told about this property when the entity is an interpretation/extraction
+   * target. Prompt payload, not documentation (see TaskBlock's rationale in `@we/models`): the two
+   * things it must carry that the type cannot are closed vocabularies and exact value formats.
+   * Declared here so a hint survives the definition being data rather than a decorated class —
+   * without this field, the one path that makes an entity *declarable* was also the one path that
+   * silently dropped its hints.
+   */
+  interpretationHint?: string;
+
+  /**
+   * Marks this property as the entity's dedup key for interpretation. Its presence is what admits
+   * the entity to the "instances that already exist" prompt block at all — an entity declaring no
+   * identity property is never shown its existing instances, so every extraction pass duplicates.
+   * At most one property per entity may carry it.
+   */
+  identity?: boolean;
+
+  /**
+   * Closed set of allowed values, for a property whose vocabulary is fixed ("todo" | "in-progress"
+   * | "done"). Manifest-level metadata: derived forms render it as a select, and authoring surfaces
+   * fold it into interpretation hints. Backends do not enforce it (v1) — the stored value remains
+   * the scalar type.
+   */
+  options?: (string | number)[];
 }
 
 export interface RelationSchema {
@@ -104,6 +130,12 @@ export interface EntitySchema {
    * everything.
    */
   abstract?: boolean;
+
+  /**
+   * What an LLM is told this entity *is* when it is an interpretation/extraction target — the
+   * class-level counterpart of `PropertySchema.interpretationHint`.
+   */
+  interpretationHint?: string;
 }
 
 export interface ModelManifest {
@@ -124,6 +156,9 @@ const propertySchema = z.object({
   readAs: z.literal('dataUri').optional(),
   default: z.union([z.string(), z.number(), z.boolean()]).optional(),
   predicate: z.string().optional(),
+  interpretationHint: z.string().optional(),
+  identity: z.boolean().optional(),
+  options: z.array(z.union([z.string(), z.number()])).optional(),
 });
 const relationSchema = z.object({
   target: z.string(),
@@ -136,6 +171,8 @@ const entitySchema = z.object({
   relations: z.record(z.string(), relationSchema),
   flag: z.object({ predicate: z.string(), value: z.string() }).optional(),
   extends: z.string().optional(),
+  abstract: z.boolean().optional(),
+  interpretationHint: z.string().optional(),
 });
 
 export const modelManifestSchema = z.object({
@@ -172,6 +209,33 @@ export function validateManifest(
   for (const [entityName, entity] of Object.entries(manifest.entities)) {
     if (entity.extends && !entityNames.has(entity.extends)) {
       errors.push({ path: `entities.${entityName}.extends`, message: `unknown entity "${entity.extends}"` });
+    }
+    // Exactly-one-at-most is part of what `identity` means (it is THE dedup key), and a manifest
+    // author has no other way to find out — the compiler would happily decorate both and the
+    // failure would surface as duplicated extractions much later.
+    const identityProps = Object.entries(entity.properties)
+      .filter(([, spec]) => spec.identity)
+      .map(([propName]) => propName);
+    if (identityProps.length > 1) {
+      errors.push({
+        path: `entities.${entityName}.properties`,
+        message: `more than one identity property (${identityProps.join(', ')}) — an entity has at most one dedup key`,
+      });
+    }
+    for (const [propName, spec] of Object.entries(entity.properties)) {
+      if (!spec.options) continue;
+      const base = `entities.${entityName}.properties.${propName}.options`;
+      if (spec.options.length === 0) {
+        errors.push({ path: base, message: 'options must not be empty — omit the field for an open value' });
+      }
+      const expected = spec.type === 'number' ? 'number' : spec.type === 'string' ? 'string' : null;
+      if (!expected) {
+        errors.push({ path: base, message: `options are only meaningful on string/number properties, not "${spec.type}"` });
+      } else if (spec.options.some((o) => typeof o !== expected)) {
+        errors.push({ path: base, message: `every option must be a ${expected} to match the property type` });
+      } else if (spec.default !== undefined && !spec.options.includes(spec.default as string | number)) {
+        errors.push({ path: base, message: `default "${spec.default}" is not one of the declared options` });
+      }
     }
     for (const [relName, rel] of Object.entries(entity.relations)) {
       const base = `entities.${entityName}.relations.${relName}`;

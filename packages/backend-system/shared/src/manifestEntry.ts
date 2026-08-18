@@ -15,12 +15,18 @@ export type ModelManifestProperty = {
   writable: boolean;
   resolveLanguage?: string;
   relatedModel?: string;
+  /** LLM guidance for this property when the entity is an interpretation target. */
+  interpretationHint?: string;
+  /** This property is the entity's interpretation dedup key — see `PropertySchema.identity`. */
+  identity?: boolean;
 };
 
 export type ModelManifestEntry = {
   name: string;
   targetClass: string;
   properties: ModelManifestProperty[];
+  /** Class-level LLM guidance — see `EntitySchema.interpretationHint`. */
+  interpretationHint?: string;
 };
 
 /**
@@ -62,6 +68,7 @@ export function manifestEntries(manifest: ModelManifest): ModelManifestEntry[] {
       // The graph marker, where the entity declares one. Empty is legitimate — a backend that keeps
       // entities in their own container has no use for it.
       targetClass: entity.flag?.value ?? '',
+      ...(entity.interpretationHint ? { interpretationHint: entity.interpretationHint } : {}),
       properties: [
         ...Object.entries(entity.properties)
           .filter(([, spec]) => spec.predicate)
@@ -73,6 +80,8 @@ export function manifestEntries(manifest: ModelManifest): ModelManifestEntry[] {
             isCollection: false,
             required: spec.required ?? false,
             writable: true,
+            ...(spec.interpretationHint ? { interpretationHint: spec.interpretationHint } : {}),
+            ...(spec.identity ? { identity: true } : {}),
           })),
         ...Object.entries(entity.relations)
           .filter(([, spec]) => spec.predicate)
