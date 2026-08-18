@@ -458,6 +458,8 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     editingShapeId: state('space-settings'),
     draftErrors: state('space-settings'),
     savingShape: state('space-settings'),
+    aiAvailable: state('space-settings'),
+    generating: state('space-settings'),
     hintEntities: state('space-settings'),
     referenceTargets: state('space-settings'),
     hintEditor: state('space-settings'),
@@ -469,6 +471,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     removeDraftProperty: action('space-settings'),
     setDraftProperty: action('space-settings'),
     replaceDraft: action('space-settings'),
+    generateShapeDraft: action('space-settings'),
     saveShapeDraft: action('space-settings'),
     // Destructive in the "expensive to reverse" sense: the record goes, and although data and SDNA
     // remain, re-creating the model needs its definition re-authored.

@@ -1913,6 +1913,8 @@ ShapeStore:
   - editingShapeId: string | null — the Shape record being edited; null means the draft is a new model
   - draftErrors: string[] — wizard-facing validation errors from the last save attempt
   - savingShape: boolean — a save is in flight
+  - aiAvailable: boolean — AI model generation is available (the agent has a Claude API key configured)
+  - generating: boolean — an AI generation is in flight
   - hintEntities: { entity, source: 'core' | 'shape' }[] — entities offering AI-hint tuning in this space: core interpretable vocabulary (TaskBlock, EventBlock) plus the space's own shapes
   - referenceTargets: string[] — entity names a reference property may target here, sorted for the picker
   - hintEditor: the hint editor state ({ entity, classHint, defaultClassHint, rows: { name, predicate, hint, defaultHint }[], customized }) or null while closed — non-nullness mounts the hint editor modal
@@ -1925,6 +1927,7 @@ ShapeStore:
   - removeDraftProperty(index): removes one property row
   - setDraftProperty(index, field, value): sets one field of one property row. 'options' takes the comma-separated string as typed
   - replaceDraft(draft): replaces the whole draft — how the LLM flow hands a generated model to the same review path
+  - generateShapeDraft(description: string): generates a draft from a plain-language description and lands it in the open wizard for review. Proposes only — nothing is stored until the user saves. Gate the control on aiAvailable
   - saveShapeDraft(): validates, stores and adopts the draft. Errors land in draftErrors; success closes the wizard and the new entity becomes queryable via $query in this space
   - deleteShape(shapeRecordId): removes a model definition from the space. Existing entries keep their data; only the definition goes
   - openHintEditor(entity): opens per-space AI-hint tuning for an entity (core or space-defined)

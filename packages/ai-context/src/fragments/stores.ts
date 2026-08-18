@@ -382,6 +382,8 @@ export const storeEntries: StoreEntry[] = [
       editingShapeId: { type: 'string' },
       draftErrors: { type: 'array' },
       savingShape: { type: 'boolean' },
+      aiAvailable: { type: 'boolean' },
+      generating: { type: 'boolean' },
       hintEntities: { type: 'array', properties: ['entity', 'source'] },
       referenceTargets: { type: 'array' },
       hintEditor: {
@@ -398,6 +400,7 @@ export const storeEntries: StoreEntry[] = [
       'removeDraftProperty',
       'setDraftProperty',
       'replaceDraft',
+      'generateShapeDraft',
       'saveShapeDraft',
       'deleteShape',
       'openHintEditor',
@@ -867,6 +870,8 @@ export function generateStoresText(entries: StoreEntry[]): string {
         editingShapeId: 'string | null — the Shape record being edited; null means the draft is a new model',
         draftErrors: 'string[] — wizard-facing validation errors from the last save attempt',
         savingShape: 'boolean — a save is in flight',
+        aiAvailable: 'boolean — AI model generation is available (the agent has a Claude API key configured)',
+        generating: 'boolean — an AI generation is in flight',
         hintEntities:
           "{ entity, source: 'core' | 'shape' }[] — entities offering AI-hint tuning in this space: core interpretable vocabulary (TaskBlock, EventBlock) plus the space's own shapes",
         referenceTargets: 'string[] — entity names a reference property may target here, sorted for the picker',
@@ -884,6 +889,8 @@ export function generateStoresText(entries: StoreEntry[]): string {
         setDraftProperty:
           "(index, field, value): sets one field of one property row. 'options' takes the comma-separated string as typed",
         replaceDraft: '(draft): replaces the whole draft — how the LLM flow hands a generated model to the same review path',
+        generateShapeDraft:
+          '(description: string): generates a draft from a plain-language description and lands it in the open wizard for review. Proposes only — nothing is stored until the user saves. Gate the control on aiAvailable',
         saveShapeDraft:
           '(): validates, stores and adopts the draft. Errors land in draftErrors; success closes the wizard and the new entity becomes queryable via $query in this space',
         deleteShape:

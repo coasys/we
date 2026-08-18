@@ -184,10 +184,74 @@ const propertyRow: SchemaNode = {
   ],
 };
 
+/**
+ * The "describe it instead" box — the LLM frontend. Offered for new models only: on an edit a
+ * generated draft would replace the stored predicates wholesale, which is exactly what the
+ * additive guard exists to prevent. Fills the same draft the rows below edit; nothing is stored
+ * until the user saves.
+ */
+const describeItBox: SchemaNode = {
+  type: '$if',
+  props: {
+    condition: {
+      $and: [{ $not: { $store: 'shapeStore.editingShapeId' } }, { $store: 'shapeStore.aiAvailable' }],
+    },
+    then: {
+      type: 'Column',
+      props: { gap: '200', p: '300', bg: 'primary-50', r: '300', border: '1px solid primary-100' },
+      children: [
+        {
+          type: 'Row',
+          props: { gap: '200', ay: 'center' },
+          children: [
+            { type: 'we-icon', props: { name: 'sparkle', color: 'primary-600' } },
+            { type: 'we-text', props: { variant: 'label' }, children: ['Describe it instead'] },
+          ],
+        },
+        {
+          type: 'we-textarea',
+          props: {
+            rows: 2,
+            placeholder:
+              'e.g. "We log bird sightings — species, when and where we saw it, how certain we are, and notes"',
+            value: { $local: 'aiDescription' },
+            onInput: { $setLocal: 'aiDescription', from: '$event.detail' },
+          },
+        },
+        {
+          type: 'Row',
+          props: { ax: 'end' },
+          children: [
+            {
+              type: 'we-button',
+              props: {
+                variant: 'secondary',
+                size: 'sm',
+                loading: { $store: 'shapeStore.generating' },
+                disabled: {
+                  $or: [{ $store: 'shapeStore.generating' }, { $not: { $local: 'aiDescription' } }],
+                },
+                onClick: { $action: 'shapeStore.generateShapeDraft', args: [{ $local: 'aiDescription' }] },
+              },
+              children: [
+                { type: 'we-icon', props: { name: 'sparkle' } },
+                { type: 'we-text', children: ['Generate'] },
+              ],
+            },
+          ],
+        },
+      ],
+    },
+  },
+};
+
 /** The wizard: create or edit one model. Mounted while `shapeStore.shapeDraft` is non-null. */
 const shapeWizardModal: SchemaNode = {
   type: 'we-modal',
   props: { close: { $action: 'shapeStore.cancelShapeWizard' } },
+  $localState: {
+    aiDescription: { type: 'string', initial: '' },
+  },
   children: [
     {
       type: 'Column',
@@ -206,6 +270,7 @@ const shapeWizardModal: SchemaNode = {
             },
           ],
         },
+        describeItBox,
         {
           type: 'Row',
           props: { gap: '200', ay: 'center', wrap: true },

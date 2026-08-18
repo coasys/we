@@ -26,6 +26,7 @@ import { asFileField, decodeFileAsJson, encodeJsonFileData, Shape } from '@we/mo
 import { CORE_MANIFEST } from '@we/models/generated/coreManifest';
 import { Accessor, createContext, createEffect, createMemo, createSignal, ParentProps, useContext } from 'solid-js';
 
+import { generateShapeDraft as runShapeGeneration } from '../../../shared/ai/shapeGeneration';
 import {
   additiveViolations,
   draftToManifest,
@@ -90,6 +91,10 @@ export interface ShapeStore {
   draftErrors: Accessor<string[]>;
   /** A save is in flight. */
   savingShape: Accessor<boolean>;
+  /** AI generation is available — the agent has a Claude API key configured. */
+  aiAvailable: Accessor<boolean>;
+  /** A generation is in flight. */
+  generating: Accessor<boolean>;
   /** Entities offering hint tuning here: core interpretable vocabulary plus this space's shapes. */
   hintEntities: Accessor<HintEntityView[]>;
   /** Entity names a reference property may target here, sorted — the wizard's target picker. */
@@ -111,6 +116,11 @@ export interface ShapeStore {
   setDraftProperty: (index: number, field: keyof ShapeDraftProperty, value: string | boolean) => void;
   /** Replace the whole draft — the LLM flow's entry point into the shared review path. */
   replaceDraft: (draft: ShapeDraft) => void;
+  /**
+   * Generate a draft from a plain-language description and land it in the open wizard for review.
+   * Never adopts anything itself: generation proposes, the human saves.
+   */
+  generateShapeDraft: (description: string) => Promise<void>;
   /** Validate, store and adopt the draft. Errors land in `draftErrors`; success closes the wizard. */
   saveShapeDraft: () => Promise<void>;
   /** Delete a shape record. Its SDNA and data remain in the space (uninstall semantics are deliberate). */
@@ -140,6 +150,9 @@ export function ShapeStoreProvider(props: ParentProps) {
   const [savingShape, setSavingShape] = createSignal(false);
   const [hintEditor, setHintEditor] = createSignal<HintEditorState | null>(null);
   const [hintBusy, setHintBusy] = createSignal(false);
+  const [generating, setGenerating] = createSignal(false);
+
+  const aiAvailable = createMemo(() => Boolean(datasetStore.agentSettings()?.claudeApiKey));
 
   const schemas = () => session.backendPorts()?.schemas;
   const handle = () => datasetStore.currentDataset()?.handle;
@@ -326,6 +339,30 @@ export function ShapeStoreProvider(props: ParentProps) {
   function replaceDraft(draft: ShapeDraft): void {
     setShapeDraft(draft);
     setDraftErrors([]);
+  }
+
+  async function generateShapeDraft(description: string): Promise<void> {
+    const apiKey = datasetStore.agentSettings()?.claudeApiKey;
+    if (!apiKey || !description.trim()) return;
+    setGenerating(true);
+    setDraftErrors([]);
+    try {
+      const existing = knownEntityNames(editingShapeId() ?? undefined);
+      const { draft, remainingProblems } = await runShapeGeneration(description, {
+        apiKey,
+        existingEntities: existing,
+        referenceTargets: referenceTargets(),
+      });
+      // Editing keeps the record's name and predicates — generation only replaces a NEW draft
+      // wholesale; on an edit it would orphan storage keys, so it is offered only for new models.
+      replaceDraft(draft);
+      if (remainingProblems.length) setDraftErrors(remainingProblems);
+    } catch (err) {
+      console.error('ShapeStore: shape generation failed', err);
+      setDraftErrors([`Generation failed: ${err instanceof Error ? err.message : String(err)}`]);
+    } finally {
+      setGenerating(false);
+    }
   }
 
   async function saveShapeDraft(): Promise<void> {
@@ -518,6 +555,8 @@ export function ShapeStoreProvider(props: ParentProps) {
     editingShapeId,
     draftErrors,
     savingShape,
+    aiAvailable,
+    generating,
     hintEntities,
     referenceTargets,
     hintEditor,
@@ -529,6 +568,7 @@ export function ShapeStoreProvider(props: ParentProps) {
     removeDraftProperty,
     setDraftProperty,
     replaceDraft,
+    generateShapeDraft,
     saveShapeDraft,
     deleteShape,
     openHintEditor,

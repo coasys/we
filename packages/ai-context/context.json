@@ -5703,6 +5703,12 @@
         "savingShape": {
           "type": "boolean"
         },
+        "aiAvailable": {
+          "type": "boolean"
+        },
+        "generating": {
+          "type": "boolean"
+        },
         "hintEntities": {
           "type": "array",
           "properties": ["entity", "source"]
@@ -5726,6 +5732,7 @@
         "removeDraftProperty",
         "setDraftProperty",
         "replaceDraft",
+        "generateShapeDraft",
         "saveShapeDraft",
         "deleteShape",
         "openHintEditor",
