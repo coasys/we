@@ -268,8 +268,14 @@ export function DatasetStoreProvider(props: ParentProps) {
   keys its processors by this id inside the shared perspective, so two members starting the same
   call must agree on it or they register two watches over one transcript and every utterance is
   interpreted twice.
+
+  Reduced to letters, digits and dashes because the id becomes part of a URI — the engine mints its
+  processor node at `ad4m://autoprocessor/<id>`. A WE collection id is itself a `literal:string:…`
+  URL, so passing it through raw produced `ad4m://autoprocessor/we-call:literal:string:…`: a URI
+  with `literal:` inside it, on a layer that decides literal-from-URI by exactly that prefix. Not
+  proven to be the problem, but not worth leaving in the picture while diagnosing one.
 */
-  const watchIdFor = (collectionId: string) => `we-call:${collectionId}`;
+  const watchIdFor = (collectionId: string) => `we-call-${collectionId.replace(/[^a-zA-Z0-9]+/g, '-')}`;
 
   // Converts null → undefined so that when JSON-serialised into an ORM WHERE clause,
   // personal datasets (no shared uri) produce {} rather than {"url":null}.
