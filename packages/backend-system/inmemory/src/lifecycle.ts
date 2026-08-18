@@ -201,6 +201,14 @@ export function createInMemoryAgentSession(opts: InMemoryAgentOptions = {}): Age
  * one here without knowing either backend exists.
  */
 export function createInMemorySchemaPort(runtime: EntityRuntime): SchemaPort {
+  // Declared hint defaults by entity, captured at declare time; customizations by dataset+entity.
+  // Same observable contract as the AD4M port: reads answer the declared hints until a set() marks
+  // them customized, and reset() returns to the declared ones.
+  const declaredHints = new Map<string, { classHint?: string; propHints: Record<string, string> }>();
+  const customized = new Map<string, { classHint?: string; propHints: Record<string, string> }>();
+  const key = (dataset: unknown, entity: string) =>
+    `${(dataset as { id?: string } | undefined)?.id ?? 'default'}::${entity}`;
+
   return {
     installRoot: async () => {},
     installSpace: async () => {},
@@ -213,9 +221,54 @@ export function createInMemorySchemaPort(runtime: EntityRuntime): SchemaPort {
     hasAnySchema: async () => true,
     foreignSchemas: async () => [],
     declare: (manifest) => {
+      for (const [name, entity] of Object.entries(manifest.entities)) {
+        const propHints: Record<string, string> = {};
+        for (const [propName, spec] of Object.entries(entity.properties)) {
+          // Keyed by predicate to match the port contract; a declaration without one has no
+          // stable storage key, so its hint is unreachable through this surface — as on AD4M,
+          // where the minted predicate is the key.
+          if (spec.interpretationHint && spec.predicate) propHints[spec.predicate] = spec.interpretationHint;
+        }
+        declaredHints.set(name, {
+          ...(entity.interpretationHint ? { classHint: entity.interpretationHint } : {}),
+          propHints,
+        });
+      }
       const compiled = compileEntities(manifest, runtime);
       for (const [name, cls] of Object.entries(compiled)) registerModel(name, cls as never);
       return compiled;
+    },
+
+    async interpretationHints(dataset, entity) {
+      const declared = declaredHints.get(entity);
+      if (!declared) return null;
+      const custom = customized.get(key(dataset, entity));
+      return custom
+        ? { ...(custom.classHint !== undefined ? { classHint: custom.classHint } : {}), propHints: custom.propHints, customized: true }
+        : { ...(declared.classHint !== undefined ? { classHint: declared.classHint } : {}), propHints: { ...declared.propHints }, customized: false };
+    },
+
+    async setInterpretationHints(dataset, entity, hints) {
+      const declared = declaredHints.get(entity);
+      if (!declared) throw new Error(`setInterpretationHints: no declared entity "${entity}"`);
+      const k = key(dataset, entity);
+      const current = customized.get(k) ?? {
+        ...(declared.classHint !== undefined ? { classHint: declared.classHint } : {}),
+        propHints: { ...declared.propHints },
+      };
+      if (hints.classHint !== undefined) {
+        if (hints.classHint) current.classHint = hints.classHint;
+        else delete current.classHint;
+      }
+      for (const [predicate, hint] of Object.entries(hints.propHints ?? {})) {
+        if (hint) current.propHints[predicate] = hint;
+        else delete current.propHints[predicate];
+      }
+      customized.set(k, current);
+    },
+
+    async resetInterpretationHints(dataset, entity) {
+      customized.delete(key(dataset, entity));
     },
   };
 }

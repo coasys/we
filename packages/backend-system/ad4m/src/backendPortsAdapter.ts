@@ -21,6 +21,7 @@ import { createAd4mDataBindings } from './ad4mAdapter';
 import { createAd4mEphemeralPort } from './ad4mEphemeralAdapter';
 import { createFileExpression, getProfile, publishProfileToPublicPerspective } from './agentHelpers';
 import { createAd4mInterpretationPort } from './interpretationAdapter';
+import { readInterpretationHints, resetInterpretationHints, writeInterpretationHints } from './interpretationHints';
 import { createAd4mAgentSession, createAd4mDatasetLifecycle } from './lifecycleAdapter';
 import { compileManifest } from './manifestCompiler';
 import { buildModelClasses, buildModelManifest, getForeignShacl } from './perspectiveHelpers';
@@ -65,6 +66,10 @@ export function createAd4mSchemaPort(backendClient: unknown): SchemaPort {
       for (const [name, cls] of Object.entries(classes)) registerModel(name, cls as ModelClass);
       return classes;
     },
+
+    interpretationHints: (dataset, entity) => readInterpretationHints(proxy(dataset), entity),
+    setInterpretationHints: (dataset, entity, hints) => writeInterpretationHints(proxy(dataset), entity, hints),
+    resetInterpretationHints: (dataset, entity) => resetInterpretationHints(proxy(dataset), entity),
 
     dedupe: (dataset) => deduplicateSpaceSdna(proxy(dataset)),
   };

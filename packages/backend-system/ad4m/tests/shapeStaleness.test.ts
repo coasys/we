@@ -119,6 +119,43 @@ describe('shapeIsStale', () => {
     // Absent entirely is `missing`, handled by the caller's `hasSubjectClassLink` pass — not stale.
     expect(shapeIsStale(TaskBlock as never, new Map())).toBe(false);
   });
+
+  describe('space-owned hints (the customized marker)', () => {
+    // The yield rule: once a space customizes an entity's hints, a stored hint that differs from
+    // the declaration is the community's tuning, not staleness — reverting it on every space
+    // switch would silently erase their work. Structure stays code-owned regardless.
+
+    it('yields on a reworded class hint when the space customized it', () => {
+      expect(isStale({ ...current(), classHint: 'the community tuned this', hintsCustomized: true })).toBe(false);
+    });
+
+    it('yields on a customized property hint', () => {
+      const shape = current();
+      shape.propHints.set('we://title', 'the community tuned this');
+      shape.hintsCustomized = true;
+      expect(isStale(shape)).toBe(false);
+    });
+
+    it('yields on a hint the space removed entirely', () => {
+      const shape = current();
+      shape.propHints.delete('we://title');
+      shape.hintsCustomized = true;
+      expect(isStale(shape)).toBe(false);
+    });
+
+    it('still catches a gained property on a hint-customized shape', () => {
+      const shape = current();
+      shape.paths.delete('we://due_date');
+      shape.hintsCustomized = true;
+      expect(isStale(shape)).toBe(true);
+    });
+
+    it('still catches identity changes on a hint-customized shape', () => {
+      // Identity is the dedup key — structural, not prompt tuning. Yielding on it would let a
+      // release's dedup fix silently never arrive in any space that ever touched a hint.
+      expect(isStale({ ...current(), identityPath: undefined, hintsCustomized: true })).toBe(true);
+    });
+  });
 });
 
 describe('declaredShape against the real models', () => {

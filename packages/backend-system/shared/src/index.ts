@@ -118,6 +118,7 @@ export type {
   BackendPorts,
   BackendPortsContext,
   DataBindingDeps,
+  EntityHintState,
   ProfileDirectoryPort,
   SchemaPort,
 } from './backendPorts';

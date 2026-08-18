@@ -61,8 +61,39 @@ export interface SchemaPort {
     manifest: ModelManifest,
     opts: { moduleId: string; predicates?: Record<string, string> },
   ): Record<string, unknown>;
+  /**
+   * The interpretation hints a dataset currently stores for one entity, or null when the entity
+   * has no installed schema there. Property hints are keyed by predicate — the stable storage
+   * key; hosts map display names to predicates through the manifest entries they already hold.
+   */
+  interpretationHints(dataset: DatasetHandle, entity: string): Promise<EntityHintState | null>;
+  /**
+   * Customize an entity's interpretation hints in one dataset — a partial update (only the keys
+   * given are touched; an empty-string hint removes that hint), marking the entity's hints as
+   * space-owned so schema refreshes stop reverting them. Rejects when the entity has no schema
+   * installed in the dataset.
+   */
+  setInterpretationHints(
+    dataset: DatasetHandle,
+    entity: string,
+    hints: { classHint?: string; propHints?: Record<string, string> },
+  ): Promise<void>;
+  /**
+   * Reset an entity's hints in one dataset to what its declaration ships, clearing the
+   * space-owned marker — after which release improvements flow again.
+   */
+  resetInterpretationHints(dataset: DatasetHandle, entity: string): Promise<void>;
   /** Optional remediation for duplicated schema installs (backend-specific failure mode). */
   dedupe?(dataset: DatasetHandle): Promise<{ removed: number; authors: string[] }>;
+}
+
+/** What `SchemaPort.interpretationHints` answers — one entity's stored hint state in one dataset. */
+export interface EntityHintState {
+  classHint?: string;
+  /** Property hints keyed by predicate (the storage key, not the display name). */
+  propHints: Record<string, string>;
+  /** Whether this dataset has customized the hints (they are space-owned there). */
+  customized: boolean;
 }
 
 /**

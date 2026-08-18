@@ -35,6 +35,7 @@ export {
   unregisterModel,
 } from '@we/models';
 export { type NeutralManifestResult, toNeutralManifest } from './neutralManifest';
+export * from './interpretationHints';
 export * from './perspectiveHelpers';
 export * from './sdnaModels';
 export * from './syncHelpers';
