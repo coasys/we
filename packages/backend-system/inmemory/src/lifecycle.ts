@@ -209,6 +209,22 @@ export function createInMemorySchemaPort(runtime: EntityRuntime): SchemaPort {
   const key = (dataset: unknown, entity: string) =>
     `${(dataset as { id?: string } | undefined)?.id ?? 'default'}::${entity}`;
 
+  const seedDeclaredHints = (manifest: Parameters<SchemaPort['declare']>[0]) => {
+    for (const [name, entity] of Object.entries(manifest.entities)) {
+      const propHints: Record<string, string> = {};
+      for (const spec of Object.values(entity.properties)) {
+        // Keyed by predicate to match the port contract; a declaration without one has no stable
+        // storage key, so its hint is unreachable through this surface — as on AD4M, where the
+        // minted predicate is the key.
+        if (spec.interpretationHint && spec.predicate) propHints[spec.predicate] = spec.interpretationHint;
+      }
+      declaredHints.set(name, {
+        ...(entity.interpretationHint ? { classHint: entity.interpretationHint } : {}),
+        propHints,
+      });
+    }
+  };
+
   return {
     installRoot: async () => {},
     installSpace: async () => {},
@@ -221,19 +237,17 @@ export function createInMemorySchemaPort(runtime: EntityRuntime): SchemaPort {
     hasAnySchema: async () => true,
     foreignSchemas: async () => [],
     declare: (manifest) => {
-      for (const [name, entity] of Object.entries(manifest.entities)) {
-        const propHints: Record<string, string> = {};
-        for (const [propName, spec] of Object.entries(entity.properties)) {
-          // Keyed by predicate to match the port contract; a declaration without one has no
-          // stable storage key, so its hint is unreachable through this surface — as on AD4M,
-          // where the minted predicate is the key.
-          if (spec.interpretationHint && spec.predicate) propHints[spec.predicate] = spec.interpretationHint;
-        }
-        declaredHints.set(name, {
-          ...(entity.interpretationHint ? { classHint: entity.interpretationHint } : {}),
-          propHints,
-        });
-      }
+      seedDeclaredHints(manifest);
+      const compiled = compileEntities(manifest, runtime);
+      for (const [name, cls] of Object.entries(compiled)) registerModel(name, cls as never);
+      return compiled;
+    },
+
+    declareInDataset(dataset, manifest) {
+      // Rows need no per-dataset schema separation here — the runtime resolves entities by name at
+      // query time — so dataset-scoped declaration degrades to a plain declare.
+      void dataset;
+      seedDeclaredHints(manifest);
       const compiled = compileEntities(manifest, runtime);
       for (const [name, cls] of Object.entries(compiled)) registerModel(name, cls as never);
       return compiled;

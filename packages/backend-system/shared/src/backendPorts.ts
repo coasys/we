@@ -55,12 +55,22 @@ export interface SchemaPort {
   foreignSchemas(dataset: DatasetHandle): Promise<ModelManifestEntry[]>;
   /**
    * Compile a declared manifest into this backend's installable schema payloads, registered for
-   * name-based query resolution. Keys are entity names.
+   * name-based query resolution. Keys are entity names. `resolveExternal` resolves relation
+   * targets defined outside the manifest (core vocabulary, sibling shapes) to this backend's own
+   * payloads — pass through what the backend previously minted, never construct one.
    */
   declare(
     manifest: ModelManifest,
-    opts: { moduleId: string; predicates?: Record<string, string> },
+    opts: { moduleId: string; predicates?: Record<string, string>; resolveExternal?: (name: string) => unknown },
   ): Record<string, unknown>;
+  /**
+   * Compile a declared manifest and register its entities for name-based query resolution *in one
+   * dataset only* — the space-shape path. A shape a space carries must resolve there and nowhere
+   * else, which is exactly what module `declare` (global by design) must not do. Relation targets
+   * outside the manifest resolve against what the dataset already knows (host vocabulary plus its
+   * other dynamic entities). Does not install anything — pass the returned payloads to `ensure`.
+   */
+  declareInDataset(dataset: DatasetHandle, manifest: ModelManifest, opts: { moduleId: string }): Record<string, unknown>;
   /**
    * The interpretation hints a dataset currently stores for one entity, or null when the entity
    * has no installed schema there. Property hints are keyed by predicate — the stable storage

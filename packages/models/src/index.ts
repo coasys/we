@@ -37,6 +37,8 @@ export type SpaceTemplatePreference = C.SpaceTemplatePreference;
 export const SpaceTemplatePreference = defineEntity(
   'SpaceTemplatePreference',
 ) as unknown as typeof C.SpaceTemplatePreference;
+export type Shape = C.Shape;
+export const Shape = defineEntity('Shape') as unknown as typeof C.Shape;
 export type Template = C.Template;
 export const Template = defineEntity('Template') as unknown as typeof C.Template;
 export type Theme = C.Theme;

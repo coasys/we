@@ -1004,6 +1004,78 @@ export const CORE_MANIFEST: ModelManifest = {
         "value": "we://read_marker"
       }
     },
+    "Shape": {
+      "properties": {
+        "name": {
+          "type": "string",
+          "predicate": "we://name",
+          "required": true,
+          "default": ""
+        },
+        "description": {
+          "type": "string",
+          "predicate": "we://description",
+          "default": ""
+        },
+        "icon": {
+          "type": "string",
+          "predicate": "we://icon",
+          "default": ""
+        },
+        "shapeId": {
+          "type": "string",
+          "predicate": "we://shape_id",
+          "default": ""
+        },
+        "version": {
+          "type": "number",
+          "predicate": "we://version",
+          "default": 1
+        },
+        "forkedFrom": {
+          "type": "string",
+          "predicate": "we://forked_from",
+          "default": ""
+        },
+        "definition": {
+          "type": "string",
+          "predicate": "we://shape_definition",
+          "format": "file",
+          "default": null
+        }
+      },
+      "relations": {
+        "comments": {
+          "target": "",
+          "cardinality": "many",
+          "predicate": "we://comment"
+        },
+        "signals": {
+          "target": "Signal",
+          "cardinality": "many",
+          "predicate": "we://signal"
+        },
+        "participants": {
+          "target": "",
+          "cardinality": "many",
+          "predicate": "we://participants"
+        },
+        "calls": {
+          "target": "",
+          "cardinality": "many",
+          "predicate": "we://call"
+        },
+        "mentions": {
+          "target": "",
+          "cardinality": "many",
+          "predicate": "we://mention"
+        }
+      },
+      "flag": {
+        "predicate": "we://flag",
+        "value": "we://shape"
+      }
+    },
     "Signal": {
       "properties": {
         "signalTypeId": {

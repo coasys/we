@@ -191,9 +191,15 @@ export interface ManifestError {
  * Validate a manifest: structure (via Zod) plus referential integrity that Zod can't express —
  * every relation `target` names a real entity, and every `reverseOf` names a real relation on that
  * target. Returns the typed manifest when valid.
+ *
+ * `opts.externalEntities` names entities defined *outside* this manifest that targets and
+ * `extends` may legitimately reference — a space shape relating to `LocationBlock` (core
+ * vocabulary) or to a sibling shape stored separately. `reverseOf` cannot be checked against an
+ * external target (its relations are not in view), so it is refused there rather than guessed at.
  */
 export function validateManifest(
   input: unknown,
+  opts?: { externalEntities?: Iterable<string> },
 ): { valid: true; manifest: ModelManifest } | { valid: false; errors: ManifestError[] } {
   const parsed = modelManifestSchema.safeParse(input);
   if (!parsed.success) {
@@ -205,9 +211,11 @@ export function validateManifest(
   const manifest = parsed.data as ModelManifest;
   const errors: ManifestError[] = [];
   const entityNames = new Set(Object.keys(manifest.entities));
+  const external = new Set(opts?.externalEntities ?? []);
+  const known = (name: string) => entityNames.has(name) || external.has(name);
 
   for (const [entityName, entity] of Object.entries(manifest.entities)) {
-    if (entity.extends && !entityNames.has(entity.extends)) {
+    if (entity.extends && !known(entity.extends)) {
       errors.push({ path: `entities.${entityName}.extends`, message: `unknown entity "${entity.extends}"` });
     }
     // Exactly-one-at-most is part of what `identity` means (it is THE dedup key), and a manifest
@@ -241,8 +249,16 @@ export function validateManifest(
       const base = `entities.${entityName}.relations.${relName}`;
       // An empty target is an untyped reference, not a broken one.
       if (rel.target === '') continue;
-      if (!entityNames.has(rel.target)) {
+      if (!known(rel.target)) {
         errors.push({ path: `${base}.target`, message: `unknown target entity "${rel.target}"` });
+        continue;
+      }
+      if (rel.reverseOf && !entityNames.has(rel.target)) {
+        // The target is external, so its relations are not in view — refusing beats guessing.
+        errors.push({
+          path: `${base}.reverseOf`,
+          message: `cannot declare reverseOf against external entity "${rel.target}"`,
+        });
         continue;
       }
       if (rel.reverseOf && !(rel.reverseOf in manifest.entities[rel.target].relations)) {

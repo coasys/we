@@ -17,6 +17,7 @@ import {
   LocationBlock,
   MutedAgent,
   ReadMarker,
+  Shape,
   Signal,
   SignalType,
   Space,
@@ -369,6 +370,9 @@ export async function installRootSdna(p: PerspectiveProxy): Promise<void> {
  */
 export const SPACE_MODELS = [
   Space,
+  // The shape *catalogue* — Shape records are how a space carries its own content models, so the
+  // entity that holds them installs into every space alongside Space itself.
+  Shape,
   Template,
   Theme,
   WeNode,

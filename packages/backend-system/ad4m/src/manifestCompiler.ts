@@ -60,6 +60,12 @@ export interface CompileManifestOptions {
   moduleId: string;
   /** Explicit predicate overrides, keyed `"Entity.property"`. Wins over minting and core vocabulary. */
   predicates?: Record<string, string>;
+  /**
+   * Resolve a relation target defined outside this manifest — a space shape relating to core
+   * vocabulary (`LocationBlock`) or to a sibling shape compiled separately. Consulted only after
+   * the manifest's own entities; validated with the matching `externalEntities` beforehand.
+   */
+  resolveExternal?: (name: string) => typeof Ad4mModel | undefined;
 }
 
 /**
@@ -226,7 +232,7 @@ export function compileManifest(
   opts: CompileManifestOptions,
 ): Record<string, typeof Ad4mModel> {
   const classes: Record<string, typeof Ad4mModel> = {};
-  const resolver = (name: string) => classes[name];
+  const resolver = (name: string) => classes[name] ?? opts.resolveExternal?.(name);
   const prefix = `we://module/${opts.moduleId}/`;
 
   for (const entry of manifestToEntries(manifest, opts)) {

@@ -14,7 +14,7 @@ import type {
   ProfileDirectoryPort,
   SchemaPort,
 } from '@we/backend-shared';
-import { type ModelClass, registerDynamicModels, registerModel } from '@we/models';
+import { getModelForPerspective, mergeDynamicModels, type ModelClass, registerDynamicModels, registerModel } from '@we/models';
 import { Space } from '@we/models/classes';
 
 import { createAd4mDataBindings } from './ad4mAdapter';
@@ -62,8 +62,20 @@ export function createAd4mSchemaPort(backendClient: unknown): SchemaPort {
     },
 
     declare(manifest: ModelManifest, opts) {
-      const classes = compileManifest(manifest, opts);
+      const classes = compileManifest(manifest, opts as Parameters<typeof compileManifest>[1]);
       for (const [name, cls] of Object.entries(classes)) registerModel(name, cls as ModelClass);
+      return classes;
+    },
+
+    declareInDataset(dataset, manifest: ModelManifest, opts) {
+      const classes = compileManifest(manifest, {
+        ...opts,
+        // Core vocabulary and the dataset's other dynamic entities are legitimate relation
+        // targets; getModelForPerspective already prefers native classes, so a shape cannot
+        // resolve a target to a shadowed core name.
+        resolveExternal: (name) => getModelForPerspective(name, dataset),
+      });
+      mergeDynamicModels(proxy(dataset).uuid, classes as Record<string, ModelClass>);
       return classes;
     },
 
