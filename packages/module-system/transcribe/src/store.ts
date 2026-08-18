@@ -900,6 +900,11 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
       }
       if (next && typeof interpretation?.watchCollection === 'function') {
         await interpretation.watchCollection(next, { classes: EXTRACT_CLASSES });
+        // Says the module-side half ran, which silence alone cannot: no log at all is equally
+        // consistent with "this never executed" and "it executed and threw nothing".
+        console.info('[transcribe] watching collection for auto-extraction', next);
+      } else if (next) {
+        console.info('[transcribe] host has no watchCollection — auto-extraction unavailable');
       }
     } catch (error) {
       // Left at debug: on a runtime without the auto-processor this throws on every call, and a

@@ -232,6 +232,23 @@ export function createAd4mInterpretationPort(selfId?: () => string | undefined):
     if (listening) return;
     listening = true;
     await perspective.addAutoProcessorEventListener(async (event) => {
+      /*
+        Every step, not only the one this listener acts on.
+
+        The engine names precisely what it is doing — `emptyTranscript` when the scope query
+        returned nothing, `shapesMissing` when a class did not resolve, `backedOff` when another
+        peer holds the claim — and a watch that produces no records is otherwise completely silent,
+        which makes those the only evidence there is. Filtering them out at the listener was the
+        difference between a diagnosable failure and a shrug.
+      */
+      console.info('[interpretation]', event.step, {
+        processor: event.processorId,
+        agent: event.agentDid,
+        items: event.itemIds?.length ?? 0,
+        bases: event.bases?.length ?? 0,
+        detail: event.detail,
+      });
+
       if (event.step !== 'processed') return;
       const parent = watchParents.get(event.processorId);
       const me = selfId?.();
@@ -336,11 +353,18 @@ export function createAd4mInterpretationPort(selfId?: () => string | undefined):
       watchParents.set(request.watchId, request.parent);
       await attachListener(perspective);
 
+      const sourceScopeQuery = transcriptScopeQuery(request.parent.id, request.parent.predicate);
+      const interpretationClasses = targetClasses(request.classes);
+      // The query is the one part of this that cannot be checked by reading, and a gather that
+      // binds nothing fails silently — so it is logged where it can be copied and run by hand.
+      console.info('[interpretation] registering watch', { watchId: request.watchId, interpretationClasses });
+      console.debug('[interpretation] scope query\n%s', sourceScopeQuery);
+
       await perspective.addAutoProcessor({
         processorId: request.watchId,
-        sourceScopeQuery: transcriptScopeQuery(request.parent.id, request.parent.predicate),
+        sourceScopeQuery,
         basePrefix: request.basePrefix ?? `${DEFAULT_BASE_PREFIX}${encodeURIComponent(request.parent.id)}/`,
-        interpretationClasses: targetClasses(request.classes),
+        interpretationClasses,
         debounceMs: request.debounceMs ?? WATCH_DEFAULTS.debounceMs,
         batchMin: request.batchMin ?? WATCH_DEFAULTS.batchMin,
         batchMax: request.batchMax ?? WATCH_DEFAULTS.batchMax,
