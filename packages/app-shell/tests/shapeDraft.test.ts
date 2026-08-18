@@ -27,9 +27,22 @@ const sightingDraft = (): ShapeDraft => ({
   icon: 'binoculars',
   classHint: 'A specific observation of a bird.',
   properties: [
-    { ...emptyDraftProperty(), name: 'species', type: 'text', required: true, identity: true, hint: 'The common name.' },
+    {
+      ...emptyDraftProperty(),
+      name: 'species',
+      type: 'text',
+      required: true,
+      identity: true,
+      hint: 'The common name.',
+    },
     { ...emptyDraftProperty(), name: 'seenAt', type: 'date', required: true },
-    { ...emptyDraftProperty(), name: 'certainty', type: 'select', options: 'certain, probable, unsure', defaultValue: 'certain' },
+    {
+      ...emptyDraftProperty(),
+      name: 'certainty',
+      type: 'select',
+      options: 'certain, probable, unsure',
+      defaultValue: 'certain',
+    },
     { ...emptyDraftProperty(), name: 'count', type: 'number', defaultValue: '1' },
     { ...emptyDraftProperty(), name: 'location', type: 'reference', target: 'LocationBlock' },
   ],
@@ -54,7 +67,10 @@ describe('draftToManifest', () => {
       predicate: 'we://shape/abc-123/species',
     });
     expect(entity.properties.seenAt).toMatchObject({ type: 'datetime', predicate: 'we://shape/abc-123/seen_at' });
-    expect(entity.properties.certainty).toMatchObject({ options: ['certain', 'probable', 'unsure'], default: 'certain' });
+    expect(entity.properties.certainty).toMatchObject({
+      options: ['certain', 'probable', 'unsure'],
+      default: 'certain',
+    });
     expect(entity.properties.count).toMatchObject({ type: 'number', default: 1 });
     expect(entity.relations.location).toEqual({
       target: 'LocationBlock',

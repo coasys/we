@@ -18,8 +18,7 @@ import { draftToManifest, emptyDraftProperty, type ShapeDraft } from '../shapes/
 /** The tool the model must call — mirrors the wizard draft, not the stored manifest. */
 const defineModelTool = {
   name: 'define_model',
-  description:
-    'Define a content model (a record type) for a community space: its name, what it means, and its fields.',
+  description: 'Define a content model (a record type) for a community space: its name, what it means, and its fields.',
   input_schema: {
     type: 'object' as const,
     properties: {

@@ -375,7 +375,17 @@ export const storeEntries: StoreEntry[] = [
     state: {
       spaceShapes: {
         type: 'array',
-        properties: ['id', 'name', 'description', 'icon', 'shapeId', 'version', 'forkedFrom', 'propertyCount', 'problems'],
+        properties: [
+          'id',
+          'name',
+          'description',
+          'icon',
+          'shapeId',
+          'version',
+          'forkedFrom',
+          'propertyCount',
+          'problems',
+        ],
       },
       shapesLoaded: { type: 'boolean' },
       shapeDraft: { type: 'object', properties: ['name', 'description', 'icon', 'classHint', 'properties'] },
@@ -888,14 +898,15 @@ export function generateStoresText(entries: StoreEntry[]): string {
         removeDraftProperty: '(index): removes one property row',
         setDraftProperty:
           "(index, field, value): sets one field of one property row. 'options' takes the comma-separated string as typed",
-        replaceDraft: '(draft): replaces the whole draft — how the LLM flow hands a generated model to the same review path',
+        replaceDraft:
+          '(draft): replaces the whole draft — how the LLM flow hands a generated model to the same review path',
         generateShapeDraft:
           '(description: string): generates a draft from a plain-language description and lands it in the open wizard for review. Proposes only — nothing is stored until the user saves. Gate the control on aiAvailable',
         saveShapeDraft:
           '(): validates, stores and adopts the draft. Errors land in draftErrors; success closes the wizard and the new entity becomes queryable via $query in this space',
         deleteShape:
           '(shapeRecordId): removes a model definition from the space. Existing entries keep their data; only the definition goes',
-        openHintEditor: "(entity): opens per-space AI-hint tuning for an entity (core or space-defined)",
+        openHintEditor: '(entity): opens per-space AI-hint tuning for an entity (core or space-defined)',
         closeHintEditor: '(): closes the hint editor, discarding unsaved edits',
         setHintDraft: "(key, value): sets one hint in the open editor — key is 'class' or a property predicate",
         saveHintEditor:

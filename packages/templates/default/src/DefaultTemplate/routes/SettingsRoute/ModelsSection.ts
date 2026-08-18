@@ -590,7 +590,10 @@ const shapeRow: SchemaNode = {
                 size: 'sm',
                 onClick: { $action: 'shapeStore.openHintEditor', args: ['$shape.name'] },
               },
-              children: [{ type: 'we-icon', props: { name: 'sparkle' } }, { type: 'we-text', children: ['AI hints'] }],
+              children: [
+                { type: 'we-icon', props: { name: 'sparkle' } },
+                { type: 'we-text', children: ['AI hints'] },
+              ],
             },
             {
               type: 'we-button',
@@ -649,7 +652,10 @@ const hintEntityRow: SchemaNode = {
         size: 'sm',
         onClick: { $action: 'shapeStore.openHintEditor', args: ['$entity.entity'] },
       },
-      children: [{ type: 'we-icon', props: { name: 'sparkle' } }, { type: 'we-text', children: ['AI hints'] }],
+      children: [
+        { type: 'we-icon', props: { name: 'sparkle' } },
+        { type: 'we-text', children: ['AI hints'] },
+      ],
     },
   ],
 };

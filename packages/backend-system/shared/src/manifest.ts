@@ -238,7 +238,10 @@ export function validateManifest(
       }
       const expected = spec.type === 'number' ? 'number' : spec.type === 'string' ? 'string' : null;
       if (!expected) {
-        errors.push({ path: base, message: `options are only meaningful on string/number properties, not "${spec.type}"` });
+        errors.push({
+          path: base,
+          message: `options are only meaningful on string/number properties, not "${spec.type}"`,
+        });
       } else if (spec.options.some((o) => typeof o !== expected)) {
         errors.push({ path: base, message: `every option must be a ${expected} to match the property type` });
       } else if (spec.default !== undefined && !spec.options.includes(spec.default as string | number)) {

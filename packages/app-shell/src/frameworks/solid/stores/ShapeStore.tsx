@@ -160,8 +160,7 @@ export function ShapeStoreProvider(props: ParentProps) {
   /** Core entities worth offering the hint editor: the ones whose declaration carries any hint. */
   const coreHintEntities = Object.entries(CORE_MANIFEST.entities)
     .filter(
-      ([, entity]) =>
-        entity.interpretationHint || Object.values(entity.properties).some((p) => p.interpretationHint),
+      ([, entity]) => entity.interpretationHint || Object.values(entity.properties).some((p) => p.interpretationHint),
     )
     .map(([name]) => name);
 
@@ -258,9 +257,7 @@ export function ShapeStoreProvider(props: ParentProps) {
         }
         view.manifest = gate.manifest;
         const entity = gate.manifest.entities[record.name];
-        view.propertyCount = entity
-          ? Object.keys(entity.properties).length + Object.keys(entity.relations).length
-          : 0;
+        view.propertyCount = entity ? Object.keys(entity.properties).length + Object.keys(entity.relations).length : 0;
         if (!entity) view.problems = [`definition does not declare an entity named "${record.name}"`];
         views.push(view);
       }
@@ -452,7 +449,10 @@ export function ShapeStoreProvider(props: ParentProps) {
   // ── Hint editor actions ───────────────────────────────────────────────────────
 
   /** The declared (shipped) hints for an entity, from whichever manifest declares it. */
-  function declaredHintSource(entity: string): { classHint: string; rows: { name: string; predicate: string; hint: string }[] } {
+  function declaredHintSource(entity: string): {
+    classHint: string;
+    rows: { name: string; predicate: string; hint: string }[];
+  } {
     const shape = spaceShapes().find((s) => s.name === entity && s.manifest);
     const manifest = shape?.manifest ?? CORE_MANIFEST;
     const entry = manifestEntries(manifest).find((e) => e.name === entity);

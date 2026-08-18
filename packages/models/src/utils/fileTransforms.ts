@@ -27,7 +27,10 @@ export function decodeFileAsJson(data: string | null | undefined): Record<string
  * Encode a JSON value as the FileData a file-storage property is written with — the inverse of
  * {@link decodeFileAsJson}, UTF-8-safe (TextEncoder before btoa, so non-ASCII survives).
  */
-export function encodeJsonFileData(value: unknown, name: string): { data_base64: string; name: string; file_type: string } {
+export function encodeJsonFileData(
+  value: unknown,
+  name: string,
+): { data_base64: string; name: string; file_type: string } {
   const bytes = new TextEncoder().encode(JSON.stringify(value));
   let binary = '';
   for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);

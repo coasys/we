@@ -14,7 +14,13 @@ import type {
   ProfileDirectoryPort,
   SchemaPort,
 } from '@we/backend-shared';
-import { getModelForPerspective, mergeDynamicModels, type ModelClass, registerDynamicModels, registerModel } from '@we/models';
+import {
+  getModelForPerspective,
+  mergeDynamicModels,
+  type ModelClass,
+  registerDynamicModels,
+  registerModel,
+} from '@we/models';
 import { Space } from '@we/models/classes';
 
 import { createAd4mDataBindings } from './ad4mAdapter';

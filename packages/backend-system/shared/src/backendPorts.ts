@@ -70,7 +70,11 @@ export interface SchemaPort {
    * outside the manifest resolve against what the dataset already knows (host vocabulary plus its
    * other dynamic entities). Does not install anything — pass the returned payloads to `ensure`.
    */
-  declareInDataset(dataset: DatasetHandle, manifest: ModelManifest, opts: { moduleId: string }): Record<string, unknown>;
+  declareInDataset(
+    dataset: DatasetHandle,
+    manifest: ModelManifest,
+    opts: { moduleId: string },
+  ): Record<string, unknown>;
   /**
    * The interpretation hints a dataset currently stores for one entity, or null when the entity
    * has no installed schema there. Property hints are keyed by predicate — the stable storage

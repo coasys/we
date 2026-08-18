@@ -258,8 +258,16 @@ export function createInMemorySchemaPort(runtime: EntityRuntime): SchemaPort {
       if (!declared) return null;
       const custom = customized.get(key(dataset, entity));
       return custom
-        ? { ...(custom.classHint !== undefined ? { classHint: custom.classHint } : {}), propHints: custom.propHints, customized: true }
-        : { ...(declared.classHint !== undefined ? { classHint: declared.classHint } : {}), propHints: { ...declared.propHints }, customized: false };
+        ? {
+            ...(custom.classHint !== undefined ? { classHint: custom.classHint } : {}),
+            propHints: custom.propHints,
+            customized: true,
+          }
+        : {
+            ...(declared.classHint !== undefined ? { classHint: declared.classHint } : {}),
+            propHints: { ...declared.propHints },
+            customized: false,
+          };
     },
 
     async setInterpretationHints(dataset, entity, hints) {

@@ -120,7 +120,9 @@ export function draftToManifest(draft: ShapeDraft, shapeUuid: string): DraftLowe
   const errors: string[] = [];
   const name = draft.name.trim();
   if (!IDENTIFIER.test(name)) {
-    errors.push('Model name must be a single identifier, e.g. "Sighting" — letters and digits, starting with a letter.');
+    errors.push(
+      'Model name must be a single identifier, e.g. "Sighting" — letters and digits, starting with a letter.',
+    );
   }
   const rows = draft.properties.filter((p) => p.name.trim() || p.hint || p.options.trim() || p.target);
   if (rows.length === 0) errors.push('A model needs at least one property.');
@@ -202,7 +204,15 @@ export function manifestToDraft(
     properties.push({
       ...emptyDraftProperty(),
       name,
-      type: spec.options ? 'select' : spec.type === 'number' ? 'number' : spec.type === 'boolean' ? 'boolean' : spec.type === 'datetime' ? 'date' : 'text',
+      type: spec.options
+        ? 'select'
+        : spec.type === 'number'
+          ? 'number'
+          : spec.type === 'boolean'
+            ? 'boolean'
+            : spec.type === 'datetime'
+              ? 'date'
+              : 'text',
       required: spec.required ?? false,
       identity: spec.identity ?? false,
       hint: spec.interpretationHint ?? '',
