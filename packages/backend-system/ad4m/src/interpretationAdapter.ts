@@ -19,7 +19,7 @@
  * Predicates that map to nothing are dropped rather than shown raw: a reviewer cannot make a good
  * accept/reject decision about `we://x_7` and should not be asked to.
  */
-import { AutoProcessorConfig, Link, Literal, type PerspectiveProxy } from '@coasys/ad4m';
+import { AutoProcessorConfig, Link, LinkQuery, Literal, type PerspectiveProxy } from '@coasys/ad4m';
 import type {
   DatasetHandle,
   InterpretationPort,
@@ -200,7 +200,54 @@ export function runtimeSupportsAutoProcessing(dataset: DatasetHandle): boolean {
 const UNSUPPORTED_WATCH =
   'This runtime cannot run a standing interpretation watch. Extraction still works when somebody ' + 'presses Extract.';
 
-export function createAd4mInterpretationPort(): InterpretationPort {
+export function createAd4mInterpretationPort(selfId?: () => string | undefined): InterpretationPort {
+  /*
+    What each watch is hanging its results on, so the listener below can finish the job the engine
+    does not do.
+
+    In memory, and therefore lost on reload — which is exactly what the reconciliation sweep exists
+    to cover. Persisting it would only move the problem: a pass can complete on a peer's node while
+    this client has never run at all, so *some* path has to repair unparented records after the
+    fact, and once that path exists this map is only an optimisation on the common case.
+  */
+  const watchParents = new Map<string, { id: string; predicate: string }>();
+  let listening = false;
+
+  /*
+    Parent what a standing pass minted.
+
+    `addAutoProcessor` has no `parent` option — `basePrefix` decides the URI a new instance is
+    minted under, which confines a pass to a subtree but creates no edge — so nothing links the
+    result to the call it came from. A `TaskBlock` with no parent is a real, queryable record that
+    no traversal-shaped route lists, so the call card and the graph would show a successful pass as
+    nothing having happened. (The board and the calendar find them regardless: those read `status`
+    and `startDate`, not containment.)
+
+    Guarded on the agent, and that is not defensive: the event stream carries *other peers'* passes
+    too — `agentDid` is documented as "which peer claimed/processed/backed off" — so without it
+    every online member would link the same records and the call would collect one duplicate edge
+    per participant.
+  */
+  async function attachListener(perspective: PerspectiveProxy): Promise<void> {
+    if (listening) return;
+    listening = true;
+    await perspective.addAutoProcessorEventListener(async (event) => {
+      if (event.step !== 'processed') return;
+      const parent = watchParents.get(event.processorId);
+      const me = selfId?.();
+      if (!parent || !me || event.agentDid !== me) return;
+
+      for (const base of event.bases ?? []) {
+        try {
+          await perspective.add(new Link({ source: parent.id, predicate: parent.predicate, target: base }));
+        } catch (error) {
+          // One failed link should not cost the rest of the batch its parent.
+          console.warn('[interpretation] could not parent an auto-extracted record', base, error);
+        }
+      }
+    });
+  }
+
   return {
     async interpret(
       dataset: DatasetHandle,
@@ -286,6 +333,9 @@ export function createAd4mInterpretationPort(): InterpretationPort {
       // finds nothing.
       await assertShapesInstalled(perspective, request.classes);
 
+      watchParents.set(request.watchId, request.parent);
+      await attachListener(perspective);
+
       await perspective.addAutoProcessor({
         processorId: request.watchId,
         sourceScopeQuery: transcriptScopeQuery(request.parent.id, request.parent.predicate),
@@ -297,6 +347,49 @@ export function createAd4mInterpretationPort(): InterpretationPort {
         maxWaitMs: WATCH_DEFAULTS.maxWaitMs,
         claimTtlMs: WATCH_DEFAULTS.claimTtlMs,
       });
+    },
+
+    /*
+      Link up whatever a pass minted while nobody was listening.
+
+      The listener above only fires on the client whose node ran the pass, and only while that
+      client is open. On desktop the executor is a separate process, so it can win an election and
+      complete a pass with the app closed — and those records stay unparented for good, because
+      nothing revisits them.
+
+      So this runs when a call is opened: every instance minted under that call's `basePrefix` that
+      the call does not already contain gets its edge. Both halves are forward traversal — the
+      call's children, and instances by URI prefix — so no reverse scan is involved, which is what
+      keeps it cheap enough to run on open rather than on a schedule.
+
+      Deletes itself the day `AddAutoProcessorConfig` grows a `parent`: with the edge written
+      server-side there is no window in which a record exists without one.
+    */
+    async reconcile(dataset: DatasetHandle, request: InterpretationRequest): Promise<number> {
+      if (!request.parent || !runtimeSupportsInterpretation(dataset)) return 0;
+      const perspective = proxy(dataset);
+      const prefix = request.basePrefix ?? `${DEFAULT_BASE_PREFIX}${encodeURIComponent(request.parent.id)}/`;
+
+      const contained = new Set(
+        (await perspective.get(new LinkQuery({ source: request.parent.id, predicate: request.parent.predicate }))).map(
+          (link) => link.data.target,
+        ),
+      );
+
+      let linked = 0;
+      for (const name of request.classes) {
+        const model = getModel(name) as unknown as
+          { findAll(p: PerspectiveProxy, o?: unknown): Promise<{ id: string }[]> } | undefined;
+        if (!model) continue;
+        for (const instance of await model.findAll(perspective)) {
+          if (!instance.id?.startsWith(prefix) || contained.has(instance.id)) continue;
+          await perspective.add(
+            new Link({ source: request.parent.id, predicate: request.parent.predicate, target: instance.id }),
+          );
+          linked += 1;
+        }
+      }
+      return linked;
     },
 
     async unwatch(dataset: DatasetHandle, watchId: string): Promise<void> {
@@ -319,6 +412,7 @@ export function createAd4mInterpretationPort(): InterpretationPort {
         every peer, so removing it stops the watch for the neighbourhood rather than only for
         whoever pressed stop — which is what a shared watch has to mean.
       */
+      watchParents.delete(watchId);
       const configs = (await AutoProcessorConfig.findAll(perspective, {
         where: { processorId: watchId },
       })) as unknown as { delete(): Promise<unknown> }[];

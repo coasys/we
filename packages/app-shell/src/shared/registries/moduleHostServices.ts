@@ -52,6 +52,7 @@ export interface ModuleHostServices {
   interpretCollection?: (collectionId: string, request: { classes: string[] }) => Promise<InterpretationResult>;
   watchCollection?: (collectionId: string, request: { classes: string[] }) => Promise<void>;
   unwatchCollection?: (collectionId: string) => Promise<void>;
+  reconcileCollection?: (collectionId: string, request: { classes: string[] }) => Promise<number>;
   /** The profile cache, so a module can put a face to an agent id. See `ModuleIdentityAccess`. */
   identities?: ModuleIdentityAccess;
   /** Write a record into the current dataset — the host's `model.create`, in imperative form. */
@@ -160,6 +161,8 @@ export function createModuleStoreDeps(framework: {
       unwatchCollection: async (collectionId) => {
         await services.unwatchCollection?.(collectionId);
       },
+      reconcileCollection: async (collectionId, request) =>
+        (await services.reconcileCollection?.(collectionId, request)) ?? 0,
       proposals: async () => {
         const dataset = services.dataset?.();
         if (!dataset || !services.interpretation) return [];

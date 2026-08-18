@@ -577,9 +577,12 @@ describe('extraction', () => {
     /** Every watch registration and removal, in order — `-id` for a removal. */
     const watches: string[] = [];
     let watchClasses: string[] | null = null;
+    /** Collections a repair sweep was asked for. */
+    const reconciled: string[] = [];
     return {
       calls,
       watches,
+      reconciled,
       watchClassesOf: () => watchClasses,
       port: {
         available: () => available,
@@ -594,6 +597,10 @@ describe('extraction', () => {
         },
         unwatchCollection: async (collectionId: string) => {
           watches.push(`-${collectionId}`);
+        },
+        reconcileCollection: async (collectionId: string) => {
+          reconciled.push(collectionId);
+          return 0;
         },
         proposals: async () => [],
         accept: async () => true,
@@ -645,6 +652,16 @@ describe('extraction', () => {
 
       // Left running it would keep spending an LLM call on a conversation that is over.
       expect(i.watches).toEqual([collection, `-${collection}`]);
+    });
+
+    it('repairs unattached records when it adopts a collection', async () => {
+      // A pass can finish with nobody listening — on desktop the executor outlives the app — and
+      // those records would otherwise never get their place in the call.
+      const i = interpreter();
+      const h = harness(inCall, { interpretation: i.port });
+      await h.say('worth writing down');
+
+      expect(i.reconciled).toEqual([i.watches[0]]);
     });
 
     it('survives a backend that cannot hold one', async () => {

@@ -627,6 +627,14 @@ export interface ModuleInterpretationAccess {
   watchCollection: (collectionId: string, request: { classes: string[] }) => Promise<void>;
   /** Stop the watch on a collection. Safe to call when none was registered. */
   unwatchCollection: (collectionId: string) => Promise<void>;
+  /**
+   * Attach anything a standing pass produced but did not attach, and report how many.
+   *
+   * A pass can complete with nobody there to finish it — the engine mints instances and a client
+   * writes the edge, and the client that would have done it may not have been running. Returns 0
+   * where there was nothing to repair, including on a backend that parents its own results.
+   */
+  reconcileCollection: (collectionId: string, request: { classes: string[] }) => Promise<number>;
   /** Suggestions staged in this dataset, awaiting a human. */
   proposals: () => Promise<InterpretationProposal[]>;
   /** Commit a staged suggestion — the whole record, or one property by name. */

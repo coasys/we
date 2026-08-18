@@ -211,6 +211,28 @@ export function DatasetStoreProvider(props: ParentProps) {
       });
     },
 
+    /*
+      Repair anything a standing pass minted without an edge.
+
+      Runs when a call is opened rather than on a timer, because that is the moment somebody is
+      about to look: the records exist either way, and what is missing is only their place in the
+      call. Returns the count so a caller can say nothing when there was nothing to do.
+    */
+    reconcileCollection: async (collectionId, request) => {
+      const port = session.backendPorts()?.interpretation;
+      const dataset = currentDataset();
+      if (!port?.reconcile || !dataset) return 0;
+
+      const modelFor = (entity: string) => getModelForPerspective(entity, dataset.handle);
+      const predicate = containmentPredicate(modelFor, currentDatasetModels());
+      if (!predicate) return 0;
+
+      return port.reconcile(dataset.handle, {
+        classes: request.classes,
+        parent: { id: collectionId, predicate },
+      });
+    },
+
     unwatchCollection: async (collectionId) => {
       const port = session.backendPorts()?.interpretation;
       const dataset = currentDataset();

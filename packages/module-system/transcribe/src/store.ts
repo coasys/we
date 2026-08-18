@@ -880,6 +880,11 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
   function useCollection(next: string | null): void {
     setCollectionId(next);
     void syncWatch(next);
+    // Repair anything a standing pass minted while nobody was here to attach it — see
+    // `reconcileCollection`. Adopting a collection is the moment somebody is about to look at it.
+    if (next && typeof interpretation?.reconcileCollection === 'function') {
+      void interpretation.reconcileCollection(next, { classes: EXTRACT_CLASSES }).catch(() => 0);
+    }
   }
 
   async function syncWatch(next: string | null): Promise<void> {
@@ -887,8 +892,15 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
     const previous = watched;
     watched = next;
     try {
-      if (previous) await interpretation?.unwatchCollection(previous);
-      if (next) await interpretation?.watchCollection(next, { classes: EXTRACT_CLASSES });
+      // Feature-tested per method, not per object. The host publishes a forwarding wrapper that is
+      // always present, so `interpretation?.` only answers "is there a wrapper" — an older host
+      // whose wrapper predates the watch would sail past that and throw on the call.
+      if (previous && typeof interpretation?.unwatchCollection === 'function') {
+        await interpretation.unwatchCollection(previous);
+      }
+      if (next && typeof interpretation?.watchCollection === 'function') {
+        await interpretation.watchCollection(next, { classes: EXTRACT_CLASSES });
+      }
     } catch (error) {
       // Left at debug: on a runtime without the auto-processor this throws on every call, and a
       // warning would train people to ignore the console rather than tell them anything.

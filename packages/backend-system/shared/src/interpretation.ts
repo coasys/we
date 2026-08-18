@@ -175,4 +175,13 @@ export interface InterpretationPort {
   watch?(dataset: DatasetHandle, request: WatchRequest): Promise<void>;
   /** Stop a watch registered with {@link watch}. */
   unwatch?(dataset: DatasetHandle, watchId: string): Promise<void>;
+  /**
+   * Attach anything a watch produced that is not attached yet, and report how many were.
+   *
+   * Exists because a standing pass can complete with nobody there to finish it: a backend whose
+   * engine mints instances without linking them relies on a client to write the edge, and the
+   * client that would have done it may simply not have been running. Optional, because a backend
+   * that parents server-side has nothing to reconcile.
+   */
+  reconcile?(dataset: DatasetHandle, request: InterpretationRequest): Promise<number>;
 }

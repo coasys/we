@@ -103,7 +103,7 @@ export function createAd4mBackendPorts(
     transcription: createAd4mTranscriptionPort(backendClient),
     // Takes no client: interpretation is entirely a per-dataset operation, and every call already
     // carries the dataset handle it needs.
-    interpretation: createAd4mInterpretationPort(),
+    interpretation: createAd4mInterpretationPort(ctx.selfId),
     ephemeral,
     dataBindings: (deps: DataBindingDeps) =>
       createAd4mDataBindings({
