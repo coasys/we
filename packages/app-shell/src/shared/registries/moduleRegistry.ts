@@ -23,7 +23,7 @@
  * registers. That is exactly what makes `{ $if: { condition: { $store: 'modules.notes' } } }` the
  * supported way for a template to depend on an optional module.
  */
-import type { SchemaPort } from '@we/backend-shared';
+import { type SchemaPort, validateManifest } from '@we/backend-shared';
 import { getModelPredicates, type ModelClass, registerModel, unregisterModel } from '@we/models';
 import {
   checkModuleCompatibility,
@@ -173,6 +173,19 @@ export const moduleRegistry = {
       ];
       console.warn(`module "${definition.id}" not registered: ${problems[0]}`);
       return { registered: false, problems };
+    }
+
+    // A declared manifest is validated here, not when it is eventually compiled: `declare` runs on
+    // the first dataset switch, so a malformed manifest would otherwise register fine and fail far
+    // from the module that shipped it — and once user-authored manifests share this compile path,
+    // an unvalidated one is data corruption waiting on a typo.
+    if (definition.entities) {
+      const result = validateManifest(definition.entities.manifest);
+      if (!result.valid) {
+        const problems = result.errors.map((e) => `invalid entities manifest at ${e.path}: ${e.message}`);
+        console.warn(`module "${definition.id}" not registered: ${problems.join('; ')}`);
+        return { registered: false, problems };
+      }
     }
 
     const compatibility = checkModuleCompatibility(definition, host);
