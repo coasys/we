@@ -24,8 +24,12 @@ export interface ShapeDraftProperty {
   identity: boolean;
   /** LLM guidance when this shape is an extraction target. Empty = none. */
   hint: string;
-  /** `select` only: the closed value set. */
-  options: string[];
+  /**
+   * `select` only: the closed value set, comma-separated as typed. A raw string rather than an
+   * array because it is bound directly to one input — the schema layer has no join operator, and
+   * two representations of one field is how a form drifts from what it saves.
+   */
+  options: string;
   /** Initial value, as typed — coerced by `type` at lowering. Empty = none. */
   defaultValue: string;
   /** `reference` only: the target entity name (core vocabulary or another shape). */
@@ -63,11 +67,18 @@ export const emptyDraftProperty = (): ShapeDraftProperty => ({
   required: false,
   identity: false,
   hint: '',
-  options: [],
+  options: '',
   defaultValue: '',
   target: '',
   many: false,
 });
+
+/** The declared option list a draft row's comma-separated `options` means. */
+export const parseOptions = (raw: string): string[] =>
+  raw
+    .split(',')
+    .map((o) => o.trim())
+    .filter(Boolean);
 
 /** camelCase / PascalCase → snake_case, matching WE's predicate style (mirrors the compiler's rule). */
 export function snakeCase(name: string): string {
@@ -111,7 +122,7 @@ export function draftToManifest(draft: ShapeDraft, shapeUuid: string): DraftLowe
   if (!IDENTIFIER.test(name)) {
     errors.push('Model name must be a single identifier, e.g. "Sighting" — letters and digits, starting with a letter.');
   }
-  const rows = draft.properties.filter((p) => p.name.trim() || p.hint || p.options.length || p.target);
+  const rows = draft.properties.filter((p) => p.name.trim() || p.hint || p.options.trim() || p.target);
   if (rows.length === 0) errors.push('A model needs at least one property.');
 
   const seen = new Set<string>();
@@ -121,6 +132,7 @@ export function draftToManifest(draft: ShapeDraft, shapeUuid: string): DraftLowe
 
   for (const row of rows) {
     const propName = row.name.trim();
+    const rowOptions = parseOptions(row.options);
     if (!IDENTIFIER.test(propName)) {
       errors.push(`Property "${propName || '(unnamed)'}" must be a single identifier, e.g. "dueDate".`);
       continue;
@@ -142,7 +154,7 @@ export function draftToManifest(draft: ShapeDraft, shapeUuid: string): DraftLowe
       continue;
     }
 
-    if (row.type === 'select' && row.options.length === 0) {
+    if (row.type === 'select' && rowOptions.length === 0) {
       errors.push(`Select property "${propName}" needs at least one option.`);
       continue;
     }
@@ -150,7 +162,7 @@ export function draftToManifest(draft: ShapeDraft, shapeUuid: string): DraftLowe
     if (row.required) spec.required = true;
     if (row.identity) spec.identity = true;
     if (row.hint.trim()) spec.interpretationHint = row.hint.trim();
-    if (row.type === 'select') spec.options = [...row.options];
+    if (row.type === 'select') spec.options = rowOptions;
     if (row.defaultValue !== '') {
       const value = coerceDefault(row.type, row.defaultValue);
       if (value === null) {
@@ -194,7 +206,7 @@ export function manifestToDraft(
       required: spec.required ?? false,
       identity: spec.identity ?? false,
       hint: spec.interpretationHint ?? '',
-      options: (spec.options ?? []).map(String),
+      options: (spec.options ?? []).map(String).join(', '),
       defaultValue: spec.default === undefined || spec.default === null ? '' : String(spec.default),
       predicate: spec.predicate,
     });

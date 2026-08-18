@@ -4149,6 +4149,58 @@
       "relations": []
     },
     {
+      "name": "Shape",
+      "className": "Shape",
+      "extends": "WeNode",
+      "fields": [
+        {
+          "name": "name",
+          "type": "string",
+          "predicate": "we://name",
+          "required": true
+        },
+        {
+          "name": "description",
+          "type": "string",
+          "predicate": "we://description",
+          "required": false
+        },
+        {
+          "name": "icon",
+          "type": "string",
+          "predicate": "we://icon",
+          "required": false
+        },
+        {
+          "name": "shapeId",
+          "type": "string",
+          "predicate": "we://shape_id",
+          "required": false
+        },
+        {
+          "name": "version",
+          "type": "number",
+          "predicate": "we://version",
+          "required": false,
+          "default": "1"
+        },
+        {
+          "name": "forkedFrom",
+          "type": "string",
+          "predicate": "we://forked_from",
+          "required": false
+        },
+        {
+          "name": "definition",
+          "type": "string",
+          "predicate": "we://shape_definition",
+          "required": false,
+          "default": "null"
+        }
+      ],
+      "relations": []
+    },
+    {
       "name": "Signal",
       "className": "Signal",
       "extends": "Ad4mModel",
@@ -5616,6 +5668,71 @@
         "refreshMe",
         "markReady",
         "onSessionUnlocked"
+      ]
+    },
+    {
+      "name": "shapeStore",
+      "state": {
+        "spaceShapes": {
+          "type": "array",
+          "properties": [
+            "id",
+            "name",
+            "description",
+            "icon",
+            "shapeId",
+            "version",
+            "forkedFrom",
+            "propertyCount",
+            "problems"
+          ]
+        },
+        "shapesLoaded": {
+          "type": "boolean"
+        },
+        "shapeDraft": {
+          "type": "object",
+          "properties": ["name", "description", "icon", "classHint", "properties"]
+        },
+        "editingShapeId": {
+          "type": "string"
+        },
+        "draftErrors": {
+          "type": "array"
+        },
+        "savingShape": {
+          "type": "boolean"
+        },
+        "hintEntities": {
+          "type": "array",
+          "properties": ["entity", "source"]
+        },
+        "referenceTargets": {
+          "type": "array"
+        },
+        "hintEditor": {
+          "type": "object",
+          "properties": ["entity", "classHint", "defaultClassHint", "rows", "customized"]
+        },
+        "hintBusy": {
+          "type": "boolean"
+        }
+      },
+      "actions": [
+        "openShapeWizard",
+        "cancelShapeWizard",
+        "setShapeField",
+        "addDraftProperty",
+        "removeDraftProperty",
+        "setDraftProperty",
+        "replaceDraft",
+        "saveShapeDraft",
+        "deleteShape",
+        "openHintEditor",
+        "closeHintEditor",
+        "setHintDraft",
+        "saveHintEditor",
+        "resetHintEditor"
       ]
     },
     {

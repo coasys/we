@@ -29,7 +29,7 @@ const sightingDraft = (): ShapeDraft => ({
   properties: [
     { ...emptyDraftProperty(), name: 'species', type: 'text', required: true, identity: true, hint: 'The common name.' },
     { ...emptyDraftProperty(), name: 'seenAt', type: 'date', required: true },
-    { ...emptyDraftProperty(), name: 'certainty', type: 'select', options: ['certain', 'probable', 'unsure'], defaultValue: 'certain' },
+    { ...emptyDraftProperty(), name: 'certainty', type: 'select', options: 'certain, probable, unsure', defaultValue: 'certain' },
     { ...emptyDraftProperty(), name: 'count', type: 'number', defaultValue: '1' },
     { ...emptyDraftProperty(), name: 'location', type: 'reference', target: 'LocationBlock' },
   ],

@@ -92,6 +92,8 @@ export interface ShapeStore {
   savingShape: Accessor<boolean>;
   /** Entities offering hint tuning here: core interpretable vocabulary plus this space's shapes. */
   hintEntities: Accessor<HintEntityView[]>;
+  /** Entity names a reference property may target here, sorted — the wizard's target picker. */
+  referenceTargets: Accessor<string[]>;
   /** The hint editor's state, null while closed. */
   hintEditor: Accessor<HintEditorState | null>;
   /** The hint editor is loading or saving. */
@@ -156,6 +158,19 @@ export function ShapeStoreProvider(props: ParentProps) {
       .filter((s) => s.manifest)
       .map((s) => ({ entity: s.name, source: 'shape' as const })),
   ]);
+
+  /** What a reference property may point at here — concrete entities only, sorted for the picker. */
+  const referenceTargets = createMemo<string[]>(() =>
+    [
+      ...Object.entries(CORE_MANIFEST.entities)
+        .filter(([, entity]) => !entity.abstract)
+        .map(([name]) => name),
+      ...datasetStore.currentDatasetModels().map((m) => m.name),
+      ...spaceShapes()
+        .filter((s) => s.manifest)
+        .map((s) => s.name),
+    ].sort(),
+  );
 
   /** Entity names a shape may legitimately reference: core + foreign + this space's other shapes. */
   const knownEntityNames = (excludeShapeRecordId?: string) => [
@@ -304,13 +319,7 @@ export function ShapeStoreProvider(props: ParentProps) {
   function setDraftProperty(index: number, field: keyof ShapeDraftProperty, value: string | boolean): void {
     const draft = shapeDraft();
     if (!draft) return;
-    const properties = draft.properties.map((row, i) => {
-      if (i !== index) return row;
-      if (field === 'options' && typeof value === 'string') {
-        return { ...row, options: value.split(',').map((o) => o.trim()).filter(Boolean) };
-      }
-      return { ...row, [field]: value };
-    });
+    const properties = draft.properties.map((row, i) => (i === index ? { ...row, [field]: value } : row));
     setShapeDraft({ ...draft, properties });
   }
 
@@ -510,6 +519,7 @@ export function ShapeStoreProvider(props: ParentProps) {
     draftErrors,
     savingShape,
     hintEntities,
+    referenceTargets,
     hintEditor,
     hintBusy,
     openShapeWizard,

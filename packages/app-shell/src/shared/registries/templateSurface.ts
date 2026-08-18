@@ -459,6 +459,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     draftErrors: state('space-settings'),
     savingShape: state('space-settings'),
     hintEntities: state('space-settings'),
+    referenceTargets: state('space-settings'),
     hintEditor: state('space-settings'),
     hintBusy: state('space-settings'),
     openShapeWizard: action('space-settings'),
