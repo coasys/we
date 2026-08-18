@@ -917,7 +917,7 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
     if (next && typeof interpretation?.watchCollection === 'function') {
       try {
         await interpretation.watchCollection(next, { classes: EXTRACT_CLASSES });
-        console.info('[transcribe] watching collection for auto-extraction', next);
+        console.debug('[transcribe] watching collection for auto-extraction', next);
       } catch (error) {
         console.info('[transcribe] auto-extraction unavailable', error);
       }

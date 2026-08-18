@@ -410,10 +410,19 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     creatingSpace: state('space-admin'),
     foreignSpacePrefill: state('space-settings'),
     enabledModules: state('space-admin'),
-    // Reading whether a space extracts automatically is part of administering it, and writing it
-    // takes the same grant as the module switches beside it — same page, same decision, same cost
-    // to the community if a template could flip it unasked.
-    autoInterpret: state('space-admin'),
+    /*
+      Reading it is `space-settings`, writing it is still admin-gated below.
+
+      Not `space-admin` like `enabledModules` beside it, and the difference is the audience: a card
+      showing "extracting automatically" is for every member, not only whoever may change it. The
+      results are written into everyone's copy of the space, so whether it is on is not an
+      administrator's secret — it is a fact about the space, like its name.
+
+      Caught by `tierFit`, which refused the default template's read when this was `space-admin`.
+      Exactly the check working: an unreadable member fell out as a failing test rather than as an
+      indicator that silently never rendered.
+    */
+    autoInterpret: state('space-settings'),
     templateOverrideOptions: state('space-admin'),
     themeOverrideOptions: state('space-admin'),
     moduleInstallSettings: state('space-admin'),

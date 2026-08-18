@@ -241,7 +241,7 @@ export function createAd4mInterpretationPort(selfId?: () => string | undefined):
         which makes those the only evidence there is. Filtering them out at the listener was the
         difference between a diagnosable failure and a shrug.
       */
-      console.info('[interpretation]', event.step, {
+      console.debug('[interpretation]', event.step, {
         processor: event.processorId,
         agent: event.agentDid,
         items: event.itemIds?.length ?? 0,
@@ -355,12 +355,17 @@ export function createAd4mInterpretationPort(selfId?: () => string | undefined):
 
       const sourceScopeQuery = transcriptScopeQuery(request.parent.id, request.parent.predicate);
       const interpretationClasses = targetClasses(request.classes);
-      // The query is the one part of this that cannot be checked by reading, and a gather that
-      // binds nothing fails silently — so it is logged where it can be copied and run by hand.
-      console.info('[interpretation] registering watch', { watchId: request.watchId, interpretationClasses });
+      /*
+        Both at debug, and the query included deliberately.
+
+        A gather that binds nothing fails silently — the engine reports an empty transcript, which
+        reads exactly like a conversation with nothing in it. That cost a day to find once. Keeping
+        the query one console-filter away means the next person can copy it and run it by hand.
+      */
+      console.debug('[interpretation] registering watch', { watchId: request.watchId, interpretationClasses });
       console.debug('[interpretation] scope query\n%s', sourceScopeQuery);
 
-      const processorId = await perspective.addAutoProcessor({
+      await perspective.addAutoProcessor({
         processorId: request.watchId,
         sourceScopeQuery,
         basePrefix: request.basePrefix ?? `${DEFAULT_BASE_PREFIX}${encodeURIComponent(request.parent.id)}/`,
@@ -371,51 +376,8 @@ export function createAd4mInterpretationPort(selfId?: () => string | undefined):
         maxWaitMs: WATCH_DEFAULTS.maxWaitMs,
         claimTtlMs: WATCH_DEFAULTS.claimTtlMs,
       });
-
-      /*
-        Read the registration back, because "the call resolved" is not the same claim as "the
-        config is in the perspective".
-
-        The watch loop polls `load_processors`, which reads `AutoProcessorConfig` instances out of
-        the graph — so if the write did not land, or landed in a shape the loop cannot parse, the
-        loop has nothing to do and says nothing about it. From outside that is indistinguishable
-        from a loop that is not running at all, and the two want completely different people
-        looking at them.
-
-        Diagnostic only, and it costs one query per call start.
-      */
-      try {
-        await (AutoProcessorConfig as unknown as { register(p: PerspectiveProxy): Promise<unknown> }).register(
-          perspective,
-        );
-        const stored = (await AutoProcessorConfig.findAll(perspective)) as unknown as {
-          processorId?: string;
-        }[];
-        console.info('[interpretation] registered as', processorId, '— configs now in perspective:', {
-          count: stored.length,
-          ids: stored.map((c) => c.processorId),
-        });
-      } catch (error) {
-        console.warn('[interpretation] could not read the watch config back', error);
-      }
     },
 
-    /*
-      Link up whatever a pass minted while nobody was listening.
-
-      The listener above only fires on the client whose node ran the pass, and only while that
-      client is open. On desktop the executor is a separate process, so it can win an election and
-      complete a pass with the app closed — and those records stay unparented for good, because
-      nothing revisits them.
-
-      So this runs when a call is opened: every instance minted under that call's `basePrefix` that
-      the call does not already contain gets its edge. Both halves are forward traversal — the
-      call's children, and instances by URI prefix — so no reverse scan is involved, which is what
-      keeps it cheap enough to run on open rather than on a schedule.
-
-      Deletes itself the day `AddAutoProcessorConfig` grows a `parent`: with the edge written
-      server-side there is no window in which a record exists without one.
-    */
     async reconcile(dataset: DatasetHandle, request: InterpretationRequest): Promise<number> {
       if (!request.parent || !runtimeSupportsInterpretation(dataset)) return 0;
       const perspective = proxy(dataset);
