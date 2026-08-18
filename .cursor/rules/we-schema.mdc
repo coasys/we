@@ -1524,6 +1524,7 @@ Space extends WeNode:
   - defaultTemplateId: string [we://default_template_id]
   - defaultThemeId: string [we://default_theme_id]
   - enabledModules: string [we://enabled_modules]
+  - autoInterpret: boolean = false [we://auto_interpret]
   Relations:
   - location: HasOne [we://location]
 
@@ -1689,6 +1690,7 @@ DatasetStore:
   - initSystemDatasets(): unknown
   - loadDatasets(): unknown
   - subscribeToChanges(): unknown
+  - provideAutoInterpretGate(): unknown
 
 EditorStore:
 - State:
@@ -1942,6 +1944,7 @@ SpaceStore:
   - readMarkers: unknown
   - unreadNodeIds: unknown
   - myMentions: unknown
+  - autoInterpret: unknown
 - Actions:
   - createSpace(name, description, access: 'personal' | 'shared', discovery: 'hidden' | 'listed', avatarFile?, coverImageFile?, location?): creates a new space with full setup
   - joinSpace(id: string, focus = true): joins a shared space by share link, neighbourhood URL or CID, or focuses it if already joined. Pass focus: false to join without navigating there — for a caller that needs the dataset present rather than open, which is how the marketplace reads its own dataset without moving you out of the space you are in. Rejects when the join could not be completed, so onSuccess means what it says; watch joiningSpace/joinSlow/joinError for what to show while it runs. A join whose network call times out keeps going: the backend usually finishes anyway, and this waits for that before believing the failure
@@ -1960,6 +1963,7 @@ SpaceStore:
   - setSpaceDefaultTemplate(templateId: string, spaceUuid?): sets the template members see when they enter that space. Only repaints the app when the target is the space currently on screen
   - setSpaceDefaultTheme(themeId: string, spaceUuid?): sets the theme members see when they enter that space
   - setModuleEnabled(moduleId: string, enabled: boolean, spaceUuid?): turns a feature module on or off for a space; writes the resolved list, so the first toggle also pins whatever was on by fallback. Omit spaceUuid for the space on screen
+  - setAutoInterpret(): unknown
   - setModuleInstalled(moduleId: string, installed: boolean): turns a module on or off for this agent in every space. Personal — writes AgentSettings.installedModules in the root dataset, so no other member sees it
   - setModuleVisible(moduleId: string, visible: boolean, spaceUuid?): shows or hides a module for this agent in one space, without changing what the community runs. Private: written to the root dataset, never to the space. Phrased positively so a switch can pass `$event.detail` bare — wrapping it in an operator such as `$not` would evaluate at render time and send a constant
   - setSpaceTemplateOverride(templateId: string, spaceUuid?): sets the template THIS AGENT sees in one space, overriding the community's default. Three values: 'space-default' follows the space, 'agent-default' follows your own global default (tracking later changes to it), or a concrete template id pins that one. Private, and applied immediately when that space is the one on screen. Note the sentinels are named values, not '' — the ORM skips empty strings on update, so '' cannot clear a property

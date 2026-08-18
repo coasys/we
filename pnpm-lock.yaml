@@ -5,8 +5,8 @@ settings:
   excludeLinksFromLockfile: false
 
 overrides:
-  '@coasys/ad4m': 0.13.0-test-9
-  '@coasys/ad4m-connect': 0.13.0-test-9
+  '@coasys/ad4m': 0.13.0-test-interpretation-1
+  '@coasys/ad4m-connect': 0.13.0-test-interpretation-1
   prettier: 3.9.4
 
 importers:
@@ -204,8 +204,8 @@ importers:
   apps/we-electron:
     dependencies:
       '@coasys/ad4m':
-        specifier: 0.13.0-test-9
-        version: 0.13.0-test-9
+        specifier: 0.13.0-test-interpretation-1
+        version: 0.13.0-test-interpretation-1
       '@we/app-shell':
         specifier: workspace:*
         version: link:../../packages/app-shell
@@ -299,8 +299,8 @@ importers:
   apps/we-tauri:
     dependencies:
       '@coasys/ad4m':
-        specifier: 0.13.0-test-9
-        version: 0.13.0-test-9
+        specifier: 0.13.0-test-interpretation-1
+        version: 0.13.0-test-interpretation-1
       '@tauri-apps/api':
         specifier: 2.7.0
         version: 2.7.0
@@ -342,11 +342,11 @@ importers:
   apps/we-web:
     dependencies:
       '@coasys/ad4m':
-        specifier: 0.13.0-test-9
-        version: 0.13.0-test-9
+        specifier: 0.13.0-test-interpretation-1
+        version: 0.13.0-test-interpretation-1
       '@coasys/ad4m-connect':
-        specifier: 0.13.0-test-9
-        version: 0.13.0-test-9
+        specifier: 0.13.0-test-interpretation-1
+        version: 0.13.0-test-interpretation-1
       '@we/app-shell':
         specifier: workspace:*
         version: link:../../packages/app-shell
@@ -404,8 +404,8 @@ importers:
   packages/app-shell:
     dependencies:
       '@coasys/ad4m':
-        specifier: 0.13.0-test-9
-        version: 0.13.0-test-9
+        specifier: 0.13.0-test-interpretation-1
+        version: 0.13.0-test-interpretation-1
       '@solidjs/router':
         specifier: ^0.15.3
         version: 0.15.4(solid-js@1.9.14)
@@ -541,8 +541,8 @@ importers:
         version: link:../../models
     devDependencies:
       '@coasys/ad4m':
-        specifier: 0.13.0-test-9
-        version: 0.13.0-test-9
+        specifier: 0.13.0-test-interpretation-1
+        version: 0.13.0-test-interpretation-1
       '@types/node':
         specifier: ^24.10.0
         version: 24.13.2
@@ -603,8 +603,8 @@ importers:
   packages/block-system/frameworks/solid:
     dependencies:
       '@coasys/ad4m':
-        specifier: 0.13.0-test-9
-        version: 0.13.0-test-9
+        specifier: 0.13.0-test-interpretation-1
+        version: 0.13.0-test-interpretation-1
       '@lexical/list':
         specifier: ^0.30.0
         version: 0.30.0
@@ -655,8 +655,8 @@ importers:
   packages/block-system/shared:
     dependencies:
       '@coasys/ad4m':
-        specifier: 0.13.0-test-9
-        version: 0.13.0-test-9
+        specifier: 0.13.0-test-interpretation-1
+        version: 0.13.0-test-interpretation-1
       '@we/design-types':
         specifier: workspace:*
         version: link:../../design-system/types
@@ -1116,8 +1116,8 @@ importers:
   packages/models:
     dependencies:
       '@coasys/ad4m':
-        specifier: 0.13.0-test-9
-        version: 0.13.0-test-9
+        specifier: 0.13.0-test-interpretation-1
+        version: 0.13.0-test-interpretation-1
       '@we/backend-shared':
         specifier: workspace:*
         version: link:../backend-system/shared
@@ -1654,11 +1654,11 @@ packages:
     resolution: {integrity: sha512-c+jt8F3YIZs2x6+X+HS4q0S9nd2jVcbPVShUmlrDK1s+C7IlEvXceDGrkjivHRElAVCzfaWEEwY1g7Lg5HCGmA==}
     engines: {node: '>=22.0.0'}
 
-  '@coasys/ad4m-connect@0.13.0-test-9':
-    resolution: {integrity: sha512-LM/LsATZeZkyNkbrGJeIVdXppFl27YMxffGnuT9vaqZxGbxoKNcuk30dCG/Gu9Ul851TSnt9CKoFThiJqtA6Jg==}
+  '@coasys/ad4m-connect@0.13.0-test-interpretation-1':
+    resolution: {integrity: sha512-qpPqGwSDnvk8ql2mUfd21JbV3WTFpporZjchcvEEwUNDstRxerbl2z6Pr2cMOHUuEcPHI700lYd4FMgwWM5G6g==}
 
-  '@coasys/ad4m@0.13.0-test-9':
-    resolution: {integrity: sha512-AaHbiV8sAd9/akptihL4vBP97deL97n9fuMBmboSnR+seX+Ad/TTTnQsJ5RruOikgbI/YtE1igqVVVX9zfPqhw==}
+  '@coasys/ad4m@0.13.0-test-interpretation-1':
+    resolution: {integrity: sha512-QHGi7hGLQO2TjP70fbLjObLzORHbKrbcaQROOXHaZ8+jsBMvY51DkcZ1TMb/gSrl1yTJFHgj+G3s8mFHrPtZtA==}
 
   '@codemirror/autocomplete@6.20.3':
     resolution: {integrity: sha512-tlosUqb+3BbxCxZdu4tKeRghPFC+QM7q4X5YhKV2eCmPG+1r2F3f4AaSz5sCrFqUtX4Jh20VFTKecl16MgiV9g==}
@@ -4892,8 +4892,8 @@ packages:
     resolution: {integrity: sha512-34wB/Y7MW7bzjKRjUKTa46I2Z7eV62Rkhva+KkopW7Qvv/OSWBqvkSY7vusOPrNuZcUG3tApvdVgNB8POj3SPw==}
     engines: {node: '>=10'}
 
-  js-base64@3.8.0:
-    resolution: {integrity: sha512-65kvbemyZhj+ExQt1PEFyBEjL5vAHysu1lJdW1AwhhChkO8ZBPizYk/m9GVrpbS2Je1hF+UYZ+6KywqtZV8mHw==}
+  js-base64@3.9.3:
+    resolution: {integrity: sha512-uwYQp+VJ38FVvtim6qNbit6e9uT6dwWQ4Y1+H9TxhW5hcHjpHwoxlR0nMpqUmIFOmu4VqMxwdJA88gIVuZJQ/g==}
 
   js-tokens@10.0.0:
     resolution: {integrity: sha512-lM/UBzQmfJRo9ABXbPWemivdCW8V2G8FHaHdypQaIy523snUjog0W71ayWXTjiR+ixeMyVHN2XcpnTd/liPg/Q==}
@@ -6937,14 +6937,14 @@ snapshots:
       '@cesium/engine': 26.1.0
       nosleep.js: 0.12.0
 
-  '@coasys/ad4m-connect@0.13.0-test-9':
+  '@coasys/ad4m-connect@0.13.0-test-interpretation-1':
     dependencies:
       '@undecaf/barcode-detector-polyfill': 0.9.23
       '@undecaf/zbar-wasm': 0.9.16
       auto-bind: 5.0.1
       lit: 2.8.0
 
-  '@coasys/ad4m@0.13.0-test-9':
+  '@coasys/ad4m@0.13.0-test-interpretation-1':
     dependencies:
       '@holochain/client': 0.16.0
       base64-js: 1.5.1
@@ -7544,7 +7544,7 @@ snapshots:
       '@tauri-apps/api': 1.6.0
       emittery: 1.2.1
       isomorphic-ws: 5.0.0(ws@8.21.0)
-      js-base64: 3.8.0
+      js-base64: 3.9.3
       libsodium-wrappers: 0.7.16
       lodash-es: 4.18.1
       ws: 8.21.0
@@ -10308,7 +10308,7 @@ snapshots:
 
   joycon@3.1.1: {}
 
-  js-base64@3.8.0: {}
+  js-base64@3.9.3: {}
 
   js-tokens@10.0.0: {}
 

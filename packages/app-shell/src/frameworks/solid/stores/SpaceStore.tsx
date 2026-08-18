@@ -503,6 +503,9 @@ export interface SpaceStore {
   setSpaceDefaultTemplate: (templateId: string, spaceUuid?: string) => Promise<void>;
   setSpaceDefaultTheme: (themeId: string, spaceUuid?: string) => Promise<void>;
   setModuleEnabled: (moduleId: string, enabled: boolean, spaceUuid?: string) => Promise<void>;
+  /** Whether this space has calls interpreted as they happen. A community decision; defaults off. */
+  autoInterpret: Accessor<boolean>;
+  setAutoInterpret: (enabled: boolean, spaceUuid?: string) => Promise<void>;
   /** Turn a module on or off for this agent everywhere. */
   setModuleInstalled: (moduleId: string, installed: boolean) => Promise<void>;
   /** Show or hide a module for this agent in one space. Private to this agent. */
@@ -1458,6 +1461,17 @@ export function SpaceStoreProvider(props: ParentProps) {
    */
   const enabledModules = createMemo<string[]>(() => resolveEnabledModules(currentSpace()?.enabledModules));
 
+  /*
+    Does this space want its calls interpreted as they happen.
+
+    Read off the space rather than stored here, so it answers for whichever space is on screen, and
+    handed down to DatasetStore — which owns the watch registration and sits below this store, so it
+    cannot reach a `Space` itself. Absent space reads false: a decision nobody has made is not a
+    decision to spend somebody's LLM budget.
+  */
+  const autoInterpret = createMemo<boolean>(() => currentSpace()?.autoInterpret === true);
+  datasetStore.provideAutoInterpretGate(() => autoInterpret());
+
   /**
    * What actually renders here, for this agent: the three layers intersected, minus personal mutes.
    *
@@ -1946,6 +1960,34 @@ export function SpaceStoreProvider(props: ParentProps) {
     else console.warn(`module "${moduleId}" declares launcher action "${action}" but its store has no such method`);
   }
 
+  /**
+   * Turn automatic extraction on or off for a space.
+   *
+   * Takes the value rather than toggling, so a `we-switch` can pass `$event.detail` straight
+   * through — the same reason `setThemeScopeGlobal` does. Same failure handling as
+   * `setModuleEnabled`: a switch that reports success without persisting is worse than one that
+   * fails visibly, because the next member to open the page sees the old decision.
+   */
+  async function setAutoInterpret(enabled: boolean, spaceUuid?: string) {
+    const ds = targetDataset(spaceUuid);
+    const space = ds ? mySpaces().find((s) => isSpaceSelf(s, ds)) : undefined;
+    if (!ds || !space) return;
+    try {
+      await Space.update(ds.handle, space.id, { autoInterpret: enabled });
+    } catch (error) {
+      console.error('SpaceStore: could not persist autoInterpret', error);
+      toastService.error('Could not save this change for the space.');
+      throw error;
+    }
+    updateSpaceInCache(ds, { autoInterpret: enabled } as never);
+    if (!isCurrent(ds)) return;
+    setCurrentSpace((prev) =>
+      prev
+        ? (Object.assign(Object.create(Object.getPrototypeOf(prev)), prev, { autoInterpret: enabled }) as Space)
+        : prev,
+    );
+  }
+
   async function setModuleEnabled(moduleId: string, enabled: boolean, spaceUuid?: string) {
     const ds = targetDataset(spaceUuid);
     // Read the space from the cache rather than `currentSpace`, so this answers for a space being
@@ -2257,6 +2299,8 @@ export function SpaceStoreProvider(props: ParentProps) {
     setSpaceDefaultTemplate,
     setSpaceDefaultTheme,
     setModuleEnabled,
+    autoInterpret,
+    setAutoInterpret,
     setModuleInstalled,
     setModuleVisible,
     setSpaceTemplateOverride,

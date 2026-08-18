@@ -512,7 +512,7 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
 
       const adopted = announcedCollection(call.id);
       if (adopted) {
-        setCollectionId(adopted);
+        useCollection(adopted);
         collectionCallId = call.id;
         announce(call.id, enabled(), adopted);
         return adopted;
@@ -529,7 +529,7 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
         call.anchorNodeId ? { parent: { id: call.anchorNodeId, predicate: CALL_PREDICATE } } : undefined,
       );
       if (created) {
-        setCollectionId(created);
+        useCollection(created);
         collectionCallId = call.id;
         announce(call.id, enabled(), created);
       }
@@ -851,12 +851,87 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
     if (collection) void recordSelfParticipation(collection);
   });
 
+  /*
+    Keep a standing interpretation watch on whatever collection this call is writing into.
+
+    Driven off `collectionId` rather than off the record button, because the collection is what a
+    watch is *about* and it appears late: whoever wins the creation election makes it, and everyone
+    else adopts the announced id. Registering on the button press would mean registering before
+    there is anything to name.
+
+    Every recorder runs this, and that is intended rather than tolerated — the registration is one
+    row in the shared perspective keyed by collection id, so peers converge on it instead of
+    stacking up watches. Whoever gets there first writes it; the rest write the same thing.
+
+    Best-effort throughout. A backend that cannot hold a watch, a space with the setting off, a
+    node that is simply offline — none of those are worth interrupting a call for, and the Extract
+    button remains the whole feature without them.
+  */
+  let watched: string | null = null;
+
+  /**
+   * Set the collection, and move the watch with it.
+   *
+   * One function rather than an effect over the signal, because the watch has to follow every
+   * assignment — adopting somebody else's collection, creating one, resuming, and the call ending
+   * are four separate paths, and an effect that missed any of them would leave a watch pointed at a
+   * call that is over. Pairing the two here makes that structural rather than remembered.
+   */
+  function useCollection(next: string | null): void {
+    setCollectionId(next);
+    void syncWatch(next);
+    // Repair anything a standing pass minted while nobody was here to attach it — see
+    // `reconcileCollection`. Adopting a collection is the moment somebody is about to look at it.
+    if (next && typeof interpretation?.reconcileCollection === 'function') {
+      void interpretation.reconcileCollection(next, { classes: EXTRACT_CLASSES }).catch(() => 0);
+    }
+  }
+
+  async function syncWatch(next: string | null): Promise<void> {
+    if (watched === next) return;
+    const previous = watched;
+    watched = next;
+
+    /*
+      Two independent attempts, and that separation is the whole point.
+
+      They were one `try` block, which meant a teardown that threw took the next registration with
+      it — so the first failed `unwatch` silently stopped every later call from ever being watched.
+      The two have nothing to do with each other: stopping a watch on a call that ended and starting
+      one on the call that just began are different operations on different collections, and either
+      is worth doing when the other cannot be.
+
+      Feature-tested per method rather than per object: the host publishes a forwarding wrapper that
+      is always present, so `interpretation?.` only answers "is there a wrapper".
+    */
+    if (previous && typeof interpretation?.unwatchCollection === 'function') {
+      try {
+        await interpretation.unwatchCollection(previous);
+      } catch (error) {
+        // A watch left running keeps interpreting a call that is over, which costs an LLM call per
+        // pass — worth a warning, and worth not letting it block what comes next.
+        console.warn('[transcribe] could not stop the watch on the previous call', error);
+      }
+    }
+
+    if (next && typeof interpretation?.watchCollection === 'function') {
+      try {
+        await interpretation.watchCollection(next, { classes: EXTRACT_CLASSES });
+        console.debug('[transcribe] watching collection for auto-extraction', next);
+      } catch (error) {
+        console.info('[transcribe] auto-extraction unavailable', error);
+      }
+    } else if (next) {
+      console.info('[transcribe] host has no watchCollection — auto-extraction unavailable');
+    }
+  }
+
   effect?.(() => {
     const wanted = pendingResume();
     const call = myCall();
     if (!wanted || !call) return;
     setPendingResume('');
-    setCollectionId(wanted);
+    useCollection(wanted);
     collectionCallId = call.id;
     deferredSince = null;
     announce(call.id, enabled(), wanted);
@@ -866,7 +941,7 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
     const current = myCall()?.id ?? null;
     if (!collectionCallId || current === collectionCallId) return;
     presence?.clearActivity(TRANSCRIBE_ACTIVITY);
-    setCollectionId(null);
+    useCollection(null);
     collectionCallId = null;
     // Both belong to the call that just ended: an election deferred in it must not bound the wait in
     // the next one, and a prompt dismissed in it should not silence the next call's.

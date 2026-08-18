@@ -1571,6 +1571,7 @@ export const contextData: ContextData = {
         { name: 'defaultTemplateId', type: 'string', predicate: 'we://default_template_id', required: false },
         { name: 'defaultThemeId', type: 'string', predicate: 'we://default_theme_id', required: false },
         { name: 'enabledModules', type: 'string', predicate: 'we://enabled_modules', required: false },
+        { name: 'autoInterpret', type: 'boolean', predicate: 'we://auto_interpret', required: false, default: 'false' },
       ],
       relations: [{ name: 'location', kind: 'HasOne', predicate: 'we://location' }],
     },
@@ -1961,6 +1962,7 @@ export const contextData: ContextData = {
         'initSystemDatasets',
         'loadDatasets',
         'subscribeToChanges',
+        'provideAutoInterpretGate',
       ],
     },
     {
@@ -2289,6 +2291,7 @@ export const contextData: ContextData = {
         readMarkers: { type: 'array' },
         unreadNodeIds: { type: 'array' },
         myMentions: { type: 'array', properties: ['id', 'author', 'createdAt'] },
+        autoInterpret: { type: 'boolean' },
       },
       actions: [
         'createSpace',
@@ -2308,6 +2311,7 @@ export const contextData: ContextData = {
         'setSpaceDefaultTemplate',
         'setSpaceDefaultTheme',
         'setModuleEnabled',
+        'setAutoInterpret',
         'setModuleInstalled',
         'setModuleVisible',
         'setSpaceTemplateOverride',

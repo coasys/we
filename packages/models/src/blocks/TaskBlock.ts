@@ -37,7 +37,10 @@ import { WeNode } from '../WeNode';
     'A piece of work the speakers say needs doing and that is not done yet. ' +
     'Includes anything phrased as "we need to…", "one task is…", "someone should…", or a ' +
     'commitment like "I\'ll do X" — an owner is not required, and neither is a deadline. ' +
-    'Exclude only work described as already finished, or raised purely to rule it out.',
+    'It must be work in the world that outlives this conversation. Exclude work described as ' +
+    'already finished, work raised purely to rule it out, and anything about the act of talking ' +
+    'or testing itself — "let me add another one", "I need to say more to trigger this" and the ' +
+    'like are about the conversation, not work anybody committed to.',
 })
 export class TaskBlock extends WeNode {
   @Flag({ through: 'we://flag', value: 'we://task_block' })

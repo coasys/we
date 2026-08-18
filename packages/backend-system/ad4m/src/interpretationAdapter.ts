@@ -19,7 +19,7 @@
  * Predicates that map to nothing are dropped rather than shown raw: a reviewer cannot make a good
  * accept/reject decision about `we://x_7` and should not be asked to.
  */
-import { Link, Literal, type PerspectiveProxy } from '@coasys/ad4m';
+import { AutoProcessorConfig, Link, LinkQuery, Literal, type PerspectiveProxy } from '@coasys/ad4m';
 import type {
   DatasetHandle,
   InterpretationPort,
@@ -27,8 +27,9 @@ import type {
   InterpretationRequest,
   InterpretationResult,
   TranscriptTurn,
+  WatchRequest,
 } from '@we/backend-shared';
-import { getModel, getRegisteredModelNames } from '@we/models';
+import { getModel, getModelTargetClass, getRegisteredModelNames } from '@we/models';
 
 const proxy = (dataset: DatasetHandle) => dataset as PerspectiveProxy;
 
@@ -40,6 +41,28 @@ const proxy = (dataset: DatasetHandle) => dataset as PerspectiveProxy;
  * that away for the sake of tidiness.
  */
 const DEFAULT_BASE_PREFIX = 'we://interpreted/';
+
+/** Where a turn's words live, and what marks a child as one rather than any other block. */
+const TEXT_PREDICATE = 'we://text';
+const TEXT_BLOCK_FLAG = { predicate: 'we://flag', value: 'we://text_block' } as const;
+
+/**
+ * How a watch paces itself, where the caller says nothing.
+ *
+ * Tuned for a conversation rather than a feed. `debounceMs` is a *quiet window*, so it wants to be
+ * longer than the gap between two sentences and shorter than the gap between two topics — 15s is a
+ * pause somebody has finished a thought in. `batchMin` keeps a pass from running on "morning
+ * everyone", and `maxWaitMs` is what stops a call that never reaches three utterances from being
+ * silently dropped: without it a sub-`batchMin` batch waits indefinitely.
+ */
+const WATCH_DEFAULTS = {
+  debounceMs: 15_000,
+  batchMin: 3,
+  batchMax: 100,
+  maxWaitMs: 120_000,
+  /** How long a won claim is authoritative before another peer may take it — a pass, plus slack. */
+  claimTtlMs: 60_000,
+} as const;
 
 /**
  * Check that every requested class is a shape this perspective actually has.
@@ -162,7 +185,86 @@ const UNSUPPORTED =
   'This runtime does not support interpretation. It needs an AD4M build with the generic ' +
   'extraction stack; everything else in the app works normally without it.';
 
-export function createAd4mInterpretationPort(): InterpretationPort {
+/**
+ * Whether the runtime can hold a standing watch, probed separately from `interpret`.
+ *
+ * Separately because the port declares them separately, and that is not a formality: one-shot
+ * interpretation is a function call, while a watch is coordination — deciding which peer runs a
+ * pass and not running it twice. A backend can plausibly have the first and not the second, and a
+ * caller that assumed otherwise would register a watch that never fires and report nothing wrong.
+ */
+export function runtimeSupportsAutoProcessing(dataset: DatasetHandle): boolean {
+  return typeof (proxy(dataset) as Partial<PerspectiveProxy>).addAutoProcessor === 'function';
+}
+
+const UNSUPPORTED_WATCH =
+  'This runtime cannot run a standing interpretation watch. Extraction still works when somebody ' + 'presses Extract.';
+
+export function createAd4mInterpretationPort(selfId?: () => string | undefined): InterpretationPort {
+  /*
+    What each watch is hanging its results on, so the listener below can finish the job the engine
+    does not do.
+
+    In memory, and therefore lost on reload — which is exactly what the reconciliation sweep exists
+    to cover. Persisting it would only move the problem: a pass can complete on a peer's node while
+    this client has never run at all, so *some* path has to repair unparented records after the
+    fact, and once that path exists this map is only an optimisation on the common case.
+  */
+  const watchParents = new Map<string, { id: string; predicate: string }>();
+  let listening = false;
+
+  /*
+    Parent what a standing pass minted.
+
+    `addAutoProcessor` has no `parent` option — `basePrefix` decides the URI a new instance is
+    minted under, which confines a pass to a subtree but creates no edge — so nothing links the
+    result to the call it came from. A `TaskBlock` with no parent is a real, queryable record that
+    no traversal-shaped route lists, so the call card and the graph would show a successful pass as
+    nothing having happened. (The board and the calendar find them regardless: those read `status`
+    and `startDate`, not containment.)
+
+    Guarded on the agent, and that is not defensive: the event stream carries *other peers'* passes
+    too — `agentDid` is documented as "which peer claimed/processed/backed off" — so without it
+    every online member would link the same records and the call would collect one duplicate edge
+    per participant.
+  */
+  async function attachListener(perspective: PerspectiveProxy): Promise<void> {
+    if (listening) return;
+    listening = true;
+    await perspective.addAutoProcessorEventListener(async (event) => {
+      /*
+        Every step, not only the one this listener acts on.
+
+        The engine names precisely what it is doing — `emptyTranscript` when the scope query
+        returned nothing, `shapesMissing` when a class did not resolve, `backedOff` when another
+        peer holds the claim — and a watch that produces no records is otherwise completely silent,
+        which makes those the only evidence there is. Filtering them out at the listener was the
+        difference between a diagnosable failure and a shrug.
+      */
+      console.debug('[interpretation]', event.step, {
+        processor: event.processorId,
+        agent: event.agentDid,
+        items: event.itemIds?.length ?? 0,
+        bases: event.bases?.length ?? 0,
+        detail: event.detail,
+      });
+
+      if (event.step !== 'processed') return;
+      const parent = watchParents.get(event.processorId);
+      const me = selfId?.();
+      if (!parent || !me || event.agentDid !== me) return;
+
+      for (const base of event.bases ?? []) {
+        try {
+          await perspective.add(new Link({ source: parent.id, predicate: parent.predicate, target: base }));
+        } catch (error) {
+          // One failed link should not cost the rest of the batch its parent.
+          console.warn('[interpretation] could not parent an auto-extracted record', base, error);
+        }
+      }
+    });
+  }
+
   return {
     async interpret(
       dataset: DatasetHandle,
@@ -236,7 +338,171 @@ export function createAd4mInterpretationPort(): InterpretationPort {
       const perspective = proxy(dataset);
       return perspective.rejectInterpretation(id, property ? await toPredicate(perspective, property) : undefined);
     },
+
+    async watch(dataset: DatasetHandle, request: WatchRequest): Promise<void> {
+      const perspective = proxy(dataset);
+      if (!runtimeSupportsAutoProcessing(dataset)) throw new Error(UNSUPPORTED_WATCH);
+      if (!request.classes.length) throw new Error('interpretation: no classes given');
+      if (!request.parent) throw new Error('interpretation: a watch needs a parent to read turns from');
+
+      // Same validation the one-shot path does, and for the same reason: a class the perspective
+      // does not have is skipped server-side, so a watch registered against one runs forever and
+      // finds nothing.
+      await assertShapesInstalled(perspective, request.classes);
+
+      watchParents.set(request.watchId, request.parent);
+      await attachListener(perspective);
+
+      const sourceScopeQuery = transcriptScopeQuery(request.parent.id, request.parent.predicate);
+      const interpretationClasses = targetClasses(request.classes);
+      /*
+        Both at debug, and the query included deliberately.
+
+        A gather that binds nothing fails silently — the engine reports an empty transcript, which
+        reads exactly like a conversation with nothing in it. That cost a day to find once. Keeping
+        the query one console-filter away means the next person can copy it and run it by hand.
+      */
+      console.debug('[interpretation] registering watch', { watchId: request.watchId, interpretationClasses });
+      console.debug('[interpretation] scope query\n%s', sourceScopeQuery);
+
+      await perspective.addAutoProcessor({
+        processorId: request.watchId,
+        sourceScopeQuery,
+        basePrefix: request.basePrefix ?? `${DEFAULT_BASE_PREFIX}${encodeURIComponent(request.parent.id)}/`,
+        interpretationClasses,
+        debounceMs: request.debounceMs ?? WATCH_DEFAULTS.debounceMs,
+        batchMin: request.batchMin ?? WATCH_DEFAULTS.batchMin,
+        batchMax: request.batchMax ?? WATCH_DEFAULTS.batchMax,
+        maxWaitMs: WATCH_DEFAULTS.maxWaitMs,
+        claimTtlMs: WATCH_DEFAULTS.claimTtlMs,
+      });
+    },
+
+    async reconcile(dataset: DatasetHandle, request: InterpretationRequest): Promise<number> {
+      if (!request.parent || !runtimeSupportsInterpretation(dataset)) return 0;
+      const perspective = proxy(dataset);
+      const prefix = request.basePrefix ?? `${DEFAULT_BASE_PREFIX}${encodeURIComponent(request.parent.id)}/`;
+
+      const contained = new Set(
+        (await perspective.get(new LinkQuery({ source: request.parent.id, predicate: request.parent.predicate }))).map(
+          (link) => link.data.target,
+        ),
+      );
+
+      let linked = 0;
+      for (const name of request.classes) {
+        const model = getModel(name) as unknown as
+          { findAll(p: PerspectiveProxy, o?: unknown): Promise<{ id: string }[]> } | undefined;
+        if (!model) continue;
+        for (const instance of await model.findAll(perspective)) {
+          if (!instance.id?.startsWith(prefix) || contained.has(instance.id)) continue;
+          await perspective.add(
+            new Link({ source: request.parent.id, predicate: request.parent.predicate, target: instance.id }),
+          );
+          linked += 1;
+        }
+      }
+      return linked;
+    },
+
+    async unwatch(dataset: DatasetHandle, watchId: string): Promise<void> {
+      // Silent when the runtime cannot watch at all: `unwatch` is what a caller runs while tidying
+      // up, and a call ending on a host that never registered anything is not a failure worth
+      // throwing into a teardown path.
+      if (!runtimeSupportsAutoProcessing(dataset)) return;
+      const perspective = proxy(dataset);
+
+      /*
+        Deleting the config *is* the removal, because there is no other.
+
+        `addAutoProcessor` has no counterpart — not on `PerspectiveProxy`, not in the WS handler
+        map, not in the engine. What it does is `write_processor`, which puts an
+        `AutoProcessorConfig` instance into the perspective's own graph, and the watch loop reads
+        its processors back out of that graph on every tick. So the registration is data, and
+        deleting the record is what stops the loop seeing it.
+
+        That also makes this the right shape rather than a workaround: the config is shared with
+        every peer, so removing it stops the watch for the neighbourhood rather than only for
+        whoever pressed stop — which is what a shared watch has to mean.
+      */
+      watchParents.delete(watchId);
+      /*
+        Register the client's own shape before querying through it.
+
+        The engine registers this class under the name **`AutoProcessor`**; the ORM class is named
+        `AutoProcessorConfig`, and `findAll` resolves a shape *by name* — so without this it fails
+        with "No SHACL shape stored for class 'AutoProcessorConfig'". Two names over one set of
+        instances, which the model's own docs anticipate by telling callers to register it first.
+
+        The same disagreement about how a class is named that `targetClasses` exists for, one layer
+        along. Both are worth reading as one symptom.
+      */
+      await (AutoProcessorConfig as unknown as { register(p: PerspectiveProxy): Promise<unknown> }).register(
+        perspective,
+      );
+
+      const configs = (await AutoProcessorConfig.findAll(perspective, {
+        where: { processorId: watchId },
+      })) as unknown as { delete(): Promise<unknown> }[];
+      for (const config of configs) await config.delete();
+    },
   };
+}
+
+/**
+ * Turns to read, as a query over the graph rather than a list the host gathered.
+ *
+ * The one-shot path hands the engine turns the *host* read out of the collection; a watch cannot
+ * work that way, because the whole point is that it runs with nobody there to read anything. So the
+ * scope is a query, and this is where WE's layout gets written in SPARQL.
+ *
+ * That is uncomfortable — dialect in a string is exactly what the port exists to avoid — but it is
+ * the adapter's own file, which is the one place backend vocabulary is allowed. The alternative is
+ * a query IR that can express reification, which is a much larger thing to want for one call site.
+ *
+ * ## What the shape has to be
+ *
+ * `?speaker`, `?text` and `?timestamp` are all three required; a query binding only speaker and
+ * text fails the gather. `?timestamp` is what makes a turn *identifiable* — the processed-turn
+ * cursor uses it to tell a re-gathered turn from the same words said again later — so it is load
+ * bearing rather than decoration.
+ *
+ * Author and timestamp come off the **reifier of the body link**, not from properties on the block.
+ * That is AD4M's own convention (`ad4m://ontology/author`, `ad4m://ontology/timestamp`, keyed by
+ * `rdf:reifies`), and it is why a WE `TextBlock` needs no author field for this to work: every
+ * agent transcribes their own microphone, so the link's author *is* the speaker.
+ */
+export function transcriptScopeQuery(parentId: string, childPredicate: string): string {
+  return `SELECT ?speaker ?text ?timestamp WHERE {
+  <${parentId}> <${childPredicate}> ?m .
+  ?m <${TEXT_BLOCK_FLAG.predicate}> <${TEXT_BLOCK_FLAG.value}> .
+  ?m <${TEXT_PREDICATE}> ?text .
+  ?r <http://www.w3.org/1999/02/22-rdf-syntax-ns#reifies> <<( ?m <${TEXT_PREDICATE}> ?text )>> .
+  ?r <ad4m://ontology/author> ?speaker .
+  ?r <ad4m://ontology/timestamp> ?timestamp .
+}
+ORDER BY ?timestamp`;
+}
+
+/**
+ * Entity names → SHACL target-class URIs.
+ *
+ * `runInterpretation` matches on the shape *name*; `addAutoProcessor` takes target-class URIs. Two
+ * entry points to one engine that disagree about how a class is named, which is exactly the shape
+ * of the mistake that cost a day on the one-shot path — passing the wrong one is logged server-side
+ * as "skipping class" and surfaces, if it was the only one, as "perspective has no subject classes
+ * to extract into". A wrong argument reading as a broken space.
+ *
+ * So the conversion is explicit and it throws rather than dropping: a name with no registered model
+ * behind it would otherwise silently narrow what a watch extracts.
+ */
+function targetClasses(names: readonly string[]): string[] {
+  return names.map((name) => {
+    const model = getModel(name);
+    const targetClass = model ? getModelTargetClass(model as never) : undefined;
+    if (!targetClass) throw new Error(`interpretation: no target class for "${name}" — is the model registered?`);
+    return targetClass;
+  });
 }
 
 /**

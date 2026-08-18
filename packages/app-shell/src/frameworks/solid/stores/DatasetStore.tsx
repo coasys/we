@@ -96,6 +96,8 @@ export interface DatasetStore {
   loadDatasets: () => Promise<void>;
   subscribeToChanges: () => void;
   getDatasetOrder: () => string[];
+  /** SpaceStore supplies "does this space want calls interpreted automatically". Unset reads off. */
+  provideAutoInterpretGate: (gate: () => boolean) => void;
 }
 
 const DatasetContext = createContext<DatasetStore>();
@@ -113,6 +115,18 @@ export function DatasetStoreProvider(props: ParentProps) {
   const [agentSettings, setAgentSettings] = createSignal<AgentSettings | null>(null, { equals: false });
 
   const removedCallbacks: Array<(uuid: string) => void> = [];
+
+  /*
+    Whether the current space wants its calls interpreted as they happen.
+
+    Injected rather than read, for the same reason `TemplateStore.provideSpaceLookup` exists: the
+    setting lives on a `Space`, SpaceStore layers on top of this store, and the dependency only
+    points one way. Unset means off.
+  */
+  let autoInterpretGate: (() => boolean) | null = null;
+  const provideAutoInterpretGate = (gate: () => boolean) => {
+    autoInterpretGate = gate;
+  };
 
   // Lend feature modules the neutral ports the host owns. Published rather than imported so a
   // module never reaches into host stores — what it receives is `EphemeralPort` and dataset
@@ -179,7 +193,89 @@ export function DatasetStoreProvider(props: ParentProps) {
         parent: { id: collectionId, predicate },
       });
     },
+
+    /*
+      The standing version of the same thing, and the reason it lives here rather than on the module
+      surface.
+
+      A module names a collection worth watching; everything else is the host's — the watch id, the
+      dataset, the containment predicate, and the lifetime. That split is what keeps this from being
+      "a module holding a watch", which the module contract refuses: a watch is a *dataset-level*
+      registration shared with every peer, and a module store whose lifetime is a panel being open
+      would leave one behind every time somebody closed it.
+
+      Keyed on the collection id, so registering twice for one call is the same registration rather
+      than two. The engine reads its processors out of the perspective graph, so this is idempotent
+      in the place it matters: whichever peer registers first wins and the rest write the same row.
+    */
+    watchCollection: async (collectionId, request) => {
+      const port = session.backendPorts()?.interpretation;
+      if (!port?.watch) throw new Error('interpretation: this backend cannot run a standing watch');
+      // The community's decision, read through a gate SpaceStore supplies — this store sits below
+      // it and cannot reach a Space. Absent (no gate provided yet, or no space) reads as off, which
+      // is the right way round for something that spends somebody's LLM budget.
+      if (!autoInterpretGate?.()) throw new Error('interpretation: automatic extraction is off for this space');
+      const dataset = currentDataset();
+      if (!dataset) throw new Error('interpretation: no dataset to interpret into');
+
+      const modelFor = (entity: string) => getModelForPerspective(entity, dataset.handle);
+      const predicate = containmentPredicate(modelFor, currentDatasetModels());
+      if (!predicate) throw new Error('interpretation: this space has no collection schema to read a transcript from');
+
+      await port.watch(dataset.handle, {
+        watchId: watchIdFor(collectionId),
+        classes: request.classes,
+        parent: { id: collectionId, predicate },
+      });
+    },
+
+    /*
+      Repair anything a standing pass minted without an edge.
+
+      Runs when a call is opened rather than on a timer, because that is the moment somebody is
+      about to look: the records exist either way, and what is missing is only their place in the
+      call. Returns the count so a caller can say nothing when there was nothing to do.
+    */
+    reconcileCollection: async (collectionId, request) => {
+      const port = session.backendPorts()?.interpretation;
+      const dataset = currentDataset();
+      if (!port?.reconcile || !dataset) return 0;
+
+      const modelFor = (entity: string) => getModelForPerspective(entity, dataset.handle);
+      const predicate = containmentPredicate(modelFor, currentDatasetModels());
+      if (!predicate) return 0;
+
+      return port.reconcile(dataset.handle, {
+        classes: request.classes,
+        parent: { id: collectionId, predicate },
+      });
+    },
+
+    unwatchCollection: async (collectionId) => {
+      const port = session.backendPorts()?.interpretation;
+      const dataset = currentDataset();
+      // Silent rather than thrown: this runs while tearing a call down, and a host that never
+      // registered anything is not a failure worth interrupting that with.
+      if (!port?.unwatch || !dataset) return;
+      await port.unwatch(dataset.handle, watchIdFor(collectionId));
+    },
   });
+
+  /*
+  One collection, one watch.
+
+  Derived rather than stored so that any peer computing it lands on the same string: the engine
+  keys its processors by this id inside the shared perspective, so two members starting the same
+  call must agree on it or they register two watches over one transcript and every utterance is
+  interpreted twice.
+
+  Reduced to letters, digits and dashes because the id becomes part of a URI — the engine mints its
+  processor node at `ad4m://autoprocessor/<id>`. A WE collection id is itself a `literal:string:…`
+  URL, so passing it through raw produced `ad4m://autoprocessor/we-call:literal:string:…`: a URI
+  with `literal:` inside it, on a layer that decides literal-from-URI by exactly that prefix. Not
+  proven to be the problem, but not worth leaving in the picture while diagnosing one.
+*/
+  const watchIdFor = (collectionId: string) => `we-call-${collectionId.replace(/[^a-zA-Z0-9]+/g, '-')}`;
 
   // Converts null → undefined so that when JSON-serialised into an ORM WHERE clause,
   // personal datasets (no shared uri) produce {} rather than {"url":null}.
@@ -564,6 +660,7 @@ export function DatasetStoreProvider(props: ParentProps) {
     loadDatasets,
     subscribeToChanges,
     getDatasetOrder,
+    provideAutoInterpretGate,
   };
 
   return <DatasetContext.Provider value={store}>{props.children}</DatasetContext.Provider>;

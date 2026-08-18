@@ -50,6 +50,21 @@ export class Space extends WeNode {
   @Property({ through: 'we://enabled_modules' })
   enabledModules: string = '';
 
+  /**
+   * Whether calls in this space are interpreted as they happen, rather than only when somebody
+   * presses Extract.
+   *
+   * A property of the *space* rather than of the agent, because the consequences are the
+   * community's: a standing watch spends an LLM call on whichever member's node wins the election,
+   * and writes what it finds into everyone's copy. Left to each agent, one member could sign the
+   * rest up to both.
+   *
+   * Defaults off, and that default is the point — joining a space should never be the same act as
+   * volunteering to run its extraction.
+   */
+  @Property({ through: 'we://auto_interpret' })
+  autoInterpret: boolean = false;
+
   @HasOne(() => LocationBlock, { through: 'we://location' })
   location?: LocationBlock;
 }

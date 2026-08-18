@@ -442,6 +442,61 @@ const modulesSection: SchemaNode = {
 };
 
 /**
+ * Automatic extraction — a community decision, and priced like one.
+ *
+ * Its own section rather than a row in Modules, because it is not a module: it is what one of them
+ * is allowed to do while nobody is watching. Worded to say who pays, since the cost is the part
+ * that is easy to miss — a standing watch spends an LLM call on whichever member's node wins the
+ * election, and writes what it finds into everyone's copy of the space.
+ *
+ * Administer-only for the same reason the right-hand module switch is, and off by default: joining
+ * a space should not be the same act as volunteering to run its extraction.
+ */
+const autoInterpretSection: SchemaNode = {
+  type: 'Column',
+  props: { gap: '200', p: '400', bg: 'neutral-0', r: '300', border: '1px solid neutral-200' },
+  children: [
+    {
+      type: 'Row',
+      props: { width: '100%', gap: '400', ay: 'center' },
+      children: [
+        {
+          type: 'Column',
+          props: { gap: '100', flex: '1' },
+          children: [
+            { type: 'we-text', props: { variant: 'label' }, children: ['Extract from calls automatically'] },
+            {
+              type: 'we-text',
+              props: { variant: 'footnote', color: 'neutral-400' },
+              children: [
+                {
+                  $if: {
+                    condition: '$space.canAdminister',
+                    then: 'Tasks and events are written down as a call happens, without anyone pressing Extract. Runs on a member’s node and costs them an AI call each time.',
+                    else: 'Tasks and events are written down as a call happens. Changing this needs someone who administers the space.',
+                  },
+                },
+              ],
+            },
+          ],
+        },
+        {
+          type: 'we-switch',
+          props: {
+            size: 'sm',
+            checked: { $store: 'spaceStore.autoInterpret' },
+            disabled: { $not: '$space.canAdminister' },
+            // Bare `$event.detail` — an operator around it would resolve at render time, before
+            // the event exists. Same reason as the module switches above.
+            onChange: { $action: 'spaceStore.setAutoInterpret', args: ['$event.detail', '$space.uuid'] },
+          },
+        },
+      ],
+    },
+  ],
+};
+
+/**
  * The page body, rendered per matching row.
  *
  * `$each` over a one-item filter rather than a `$find`, because it is the context variable that is
@@ -467,7 +522,13 @@ export const spaceSettingsPage: SchemaNode = {
             then: {
               type: 'Column',
               props: { gap: '400' },
-              children: [shareSection, personalAppearanceSection, communitySection, modulesSection],
+              children: [
+                shareSection,
+                personalAppearanceSection,
+                communitySection,
+                modulesSection,
+                autoInterpretSection,
+              ],
             },
             else: notAWeSpaceNotice,
           },

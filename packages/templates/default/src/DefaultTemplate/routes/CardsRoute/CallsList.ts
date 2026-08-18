@@ -254,6 +254,39 @@ export const callsList: SchemaNode = {
                       },
                     },
                     /*
+                        That extraction is running by itself, when it is.
+
+                        Auto-extraction is otherwise completely invisible: a pass runs on somebody's
+                        node, writes records, and announces nothing — so a call with nothing found
+                        yet looks identical to a space where the setting was never turned on. That
+                        ambiguity cost a full day of debugging, and it would cost a user the same
+                        question with no way to answer it.
+
+                        Reads the space setting rather than the engine's own progress. The engine
+                        does emit per-pass steps, and surfacing those ("last pass 2 minutes ago")
+                        would be better — but they arrive on the backend port, and carrying them to a
+                        template means new port surface, so it stays a follow-up. What this answers
+                        is the question people actually have: is this on?
+                      */
+                    {
+                      type: '$if',
+                      props: {
+                        condition: { $store: 'spaceStore.autoInterpret' },
+                        then: {
+                          type: 'Row',
+                          props: { gap: '100', ay: 'center' },
+                          children: [
+                            { type: 'we-icon', props: { name: 'sparkle', color: 'neutral-400', size: 'xs' } },
+                            {
+                              type: 'we-text',
+                              props: { variant: 'footnote', color: 'neutral-400' },
+                              children: ['Extracting automatically'],
+                            },
+                          ],
+                        },
+                      },
+                    },
+                    /*
                         Pick this call back up.
 
                         A transcript's record is reachable only while somebody who was in the call

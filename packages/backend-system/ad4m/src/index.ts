@@ -50,5 +50,10 @@ export { type Ad4mRuntimeOptions, createAd4mRuntimeAdmin } from './runtimeAdminA
 export { createAd4mBackendPorts, createAd4mProfileDirectory, createAd4mSchemaPort } from './backendPortsAdapter';
 export { connectToLocalExecutor, createLocalAd4mConnector, type LocalExecutorConnection } from './localExecutor';
 export { createAd4mTranscriptionPort } from './transcriptionAdapter';
-export { createAd4mInterpretationPort } from './interpretationAdapter';
+export {
+  createAd4mInterpretationPort,
+  runtimeSupportsAutoProcessing,
+  runtimeSupportsInterpretation,
+  transcriptScopeQuery,
+} from './interpretationAdapter';
 export { type Ad4mCapability, capabilitiesFromToken, createCapabilityCheck } from './capabilities';

@@ -50,6 +50,9 @@ export interface ModuleHostServices {
    * can produce them — see `shared/interpretation/transcriptTurns.ts`.
    */
   interpretCollection?: (collectionId: string, request: { classes: string[] }) => Promise<InterpretationResult>;
+  watchCollection?: (collectionId: string, request: { classes: string[] }) => Promise<void>;
+  unwatchCollection?: (collectionId: string) => Promise<void>;
+  reconcileCollection?: (collectionId: string, request: { classes: string[] }) => Promise<number>;
   /** The profile cache, so a module can put a face to an agent id. See `ModuleIdentityAccess`. */
   identities?: ModuleIdentityAccess;
   /** Write a record into the current dataset — the host's `model.create`, in imperative form. */
@@ -138,6 +141,28 @@ export function createModuleStoreDeps(framework: {
         if (!run) throw new Error('interpretation: this backend cannot interpret');
         return run(collectionId, request);
       },
+      /*
+        Keep interpreting this collection as it grows — the standing counterpart to
+        `runOnCollection`.
+
+        A module names a collection and nothing else: no watch id, no dataset, no classes→URI
+        conversion, no SPARQL. That is what makes this consistent with the contract's refusal to
+        hand a module a watch rather than a hole in it — the registration is the host's, shared with
+        every peer, and outlives the module store that asked for it.
+
+        Rejects on a backend that cannot hold one, so a module can offer the affordance only where
+        it means something instead of silently doing nothing.
+      */
+      watchCollection: async (collectionId, request) => {
+        const start = services.watchCollection;
+        if (!start) throw new Error('interpretation: this backend cannot run a standing watch');
+        return start(collectionId, request);
+      },
+      unwatchCollection: async (collectionId) => {
+        await services.unwatchCollection?.(collectionId);
+      },
+      reconcileCollection: async (collectionId, request) =>
+        (await services.reconcileCollection?.(collectionId, request)) ?? 0,
       proposals: async () => {
         const dataset = services.dataset?.();
         if (!dataset || !services.interpretation) return [];
