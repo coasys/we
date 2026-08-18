@@ -339,6 +339,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     updateAgentSettings: WIRING,
     clearCurrentDataset: WIRING,
     trackDataset: WIRING,
+    provideAutoInterpretGate: WIRING,
     onDatasetRemoved: WIRING,
     initSystemDatasets: WIRING,
     loadDatasets: WIRING,
@@ -409,6 +410,10 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     creatingSpace: state('space-admin'),
     foreignSpacePrefill: state('space-settings'),
     enabledModules: state('space-admin'),
+    // Reading whether a space extracts automatically is part of administering it, and writing it
+    // takes the same grant as the module switches beside it — same page, same decision, same cost
+    // to the community if a template could flip it unasked.
+    autoInterpret: state('space-admin'),
     templateOverrideOptions: state('space-admin'),
     themeOverrideOptions: state('space-admin'),
     moduleInstallSettings: state('space-admin'),
@@ -420,6 +425,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     setSpaceDefaultTemplate: hereOnly('space-settings', 1),
     setSpaceDefaultTheme: hereOnly('space-settings', 1),
     setModuleEnabled: hereOnly('space-settings', 2),
+    setAutoInterpret: hereOnly('space-settings', 1),
     removeSpaceFromGlobal: destructive('space-admin'),
 
     // ── agent: this agent's own preferences, private to them ──

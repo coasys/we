@@ -96,6 +96,8 @@ export interface DatasetStore {
   loadDatasets: () => Promise<void>;
   subscribeToChanges: () => void;
   getDatasetOrder: () => string[];
+  /** SpaceStore supplies "does this space want calls interpreted automatically". Unset reads off. */
+  provideAutoInterpretGate: (gate: () => boolean) => void;
 }
 
 const DatasetContext = createContext<DatasetStore>();
@@ -113,6 +115,18 @@ export function DatasetStoreProvider(props: ParentProps) {
   const [agentSettings, setAgentSettings] = createSignal<AgentSettings | null>(null, { equals: false });
 
   const removedCallbacks: Array<(uuid: string) => void> = [];
+
+  /*
+    Whether the current space wants its calls interpreted as they happen.
+
+    Injected rather than read, for the same reason `TemplateStore.provideSpaceLookup` exists: the
+    setting lives on a `Space`, SpaceStore layers on top of this store, and the dependency only
+    points one way. Unset means off.
+  */
+  let autoInterpretGate: (() => boolean) | null = null;
+  const provideAutoInterpretGate = (gate: () => boolean) => {
+    autoInterpretGate = gate;
+  };
 
   // Lend feature modules the neutral ports the host owns. Published rather than imported so a
   // module never reaches into host stores — what it receives is `EphemeralPort` and dataset
@@ -197,6 +211,10 @@ export function DatasetStoreProvider(props: ParentProps) {
     watchCollection: async (collectionId, request) => {
       const port = session.backendPorts()?.interpretation;
       if (!port?.watch) throw new Error('interpretation: this backend cannot run a standing watch');
+      // The community's decision, read through a gate SpaceStore supplies — this store sits below
+      // it and cannot reach a Space. Absent (no gate provided yet, or no space) reads as off, which
+      // is the right way round for something that spends somebody's LLM budget.
+      if (!autoInterpretGate?.()) throw new Error('interpretation: automatic extraction is off for this space');
       const dataset = currentDataset();
       if (!dataset) throw new Error('interpretation: no dataset to interpret into');
 
@@ -636,6 +654,7 @@ export function DatasetStoreProvider(props: ParentProps) {
     loadDatasets,
     subscribeToChanges,
     getDatasetOrder,
+    provideAutoInterpretGate,
   };
 
   return <DatasetContext.Provider value={store}>{props.children}</DatasetContext.Provider>;

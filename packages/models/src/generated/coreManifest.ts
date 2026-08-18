@@ -1173,6 +1173,11 @@ export const CORE_MANIFEST: ModelManifest = {
           "type": "string",
           "predicate": "we://enabled_modules",
           "default": ""
+        },
+        "autoInterpret": {
+          "type": "boolean",
+          "predicate": "we://auto_interpret",
+          "default": false
         }
       },
       "relations": {
