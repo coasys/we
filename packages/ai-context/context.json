@@ -287,6 +287,12 @@
           "default": "''"
         },
         {
+          "name": "showTime",
+          "type": "boolean",
+          "optional": false,
+          "default": "false"
+        },
+        {
           "name": "placeholder",
           "type": "string",
           "optional": false,

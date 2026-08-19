@@ -23,10 +23,13 @@ const DEFAULT_CONTROL_WIDTH = '220px';
 
 const PROPERTY_TYPE_OPTIONS = [
   { label: 'Text', value: 'text' },
+  { label: 'Long text', value: 'longtext' },
   { label: 'Number', value: 'number' },
   { label: 'Boolean', value: 'boolean' },
   { label: 'Date', value: 'date' },
+  { label: 'Date & time', value: 'datetime' },
   { label: 'Select', value: 'select' },
+  { label: 'Image', value: 'image' },
 ];
 
 /**
@@ -135,12 +138,13 @@ const defaultValueControl: SchemaNode = {
     else: {
       type: '$if',
       props: {
-        condition: { $eq: ['$member.type', 'date'] },
+        condition: { $or: [{ $eq: ['$member.type', 'date'] }, { $eq: ['$member.type', 'datetime'] }] },
         then: {
           type: 'we-date-picker',
           props: {
             size: 'sm',
             width: DEFAULT_CONTROL_WIDTH,
+            showTime: { $eq: ['$member.type', 'datetime'] },
             value: '$member.defaultValue',
             onChange: { $action: 'shapeStore.setMemberField', args: ['$member.rowId', 'defaultValue', '$arg.detail'] },
           },
@@ -179,15 +183,34 @@ const defaultValueControl: SchemaNode = {
               },
             },
             else: {
-              type: 'we-input',
+              type: '$if',
               props: {
-                size: 'sm',
-                width: DEFAULT_CONTROL_WIDTH,
-                placeholder: 'None',
-                value: '$member.defaultValue',
-                onInput: {
-                  $action: 'shapeStore.setMemberField',
-                  args: ['$member.rowId', 'defaultValue', '$arg.detail'],
+                condition: { $eq: ['$member.type', 'longtext'] },
+                then: {
+                  type: 'we-textarea',
+                  props: {
+                    rows: 2,
+                    size: 'sm',
+                    placeholder: 'None',
+                    value: '$member.defaultValue',
+                    onInput: {
+                      $action: 'shapeStore.setMemberField',
+                      args: ['$member.rowId', 'defaultValue', '$arg.detail'],
+                    },
+                  },
+                },
+                else: {
+                  type: 'we-input',
+                  props: {
+                    size: 'sm',
+                    width: DEFAULT_CONTROL_WIDTH,
+                    placeholder: 'None',
+                    value: '$member.defaultValue',
+                    onInput: {
+                      $action: 'shapeStore.setMemberField',
+                      args: ['$member.rowId', 'defaultValue', '$arg.detail'],
+                    },
+                  },
                 },
               },
             },
@@ -247,10 +270,19 @@ const propertyDetail: SchemaNode = {
         },
         // Default before hint: the panel then reads as allowed values → the value picked from them
         // → the prose about the field, shortest to longest, structure before guidance.
+        //
+        // An image is the exception: its value is a file somebody uploads, so there is nothing to
+        // type here, and an empty box labelled "Default value" only invites the attempt.
         {
-          type: 'we-form-field',
-          props: { label: 'Default value', description: 'What a new entry starts with.' },
-          children: [defaultValueControl],
+          type: '$if',
+          props: {
+            condition: { $ne: ['$member.type', 'image'] },
+            then: {
+              type: 'we-form-field',
+              props: { label: 'Default value', description: 'What a new entry starts with.' },
+              children: [defaultValueControl],
+            },
+          },
         },
         {
           type: 'we-form-field',

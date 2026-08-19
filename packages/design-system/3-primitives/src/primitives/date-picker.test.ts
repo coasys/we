@@ -50,3 +50,79 @@ describe('clearing', () => {
     expect(el.shadowRoot?.querySelector('[part="calendar"]')).toBeNull();
   });
 });
+
+describe('asking for a time as well', () => {
+  /*
+    A calendar day and an instant are different facts. Without this the picker captured the day and
+    silently dropped the rest, so a shift start or a session time could not be expressed at all.
+  */
+  type TimedEl = PickerEl & { showTime: boolean };
+
+  async function makeTimed(value = ''): Promise<TimedEl> {
+    const el = document.createElement('we-date-picker') as TimedEl;
+    el.showTime = true;
+    el.value = value;
+    document.body.appendChild(el);
+    await el.updateComplete;
+    return el;
+  }
+
+  const open = async (el: TimedEl) => {
+    (el.shadowRoot?.querySelector('[part="input-wrapper"]') as HTMLElement).click();
+    await el.updateComplete;
+  };
+  const timeField = (el: TimedEl) => el.shadowRoot?.querySelector('input[part="time"]') as HTMLInputElement | null;
+  const firstDay = (el: TimedEl) =>
+    [...el.shadowRoot!.querySelectorAll('[part="day"]')].find((d) => !d.hasAttribute('data-other-month')) as HTMLElement;
+
+  it('offers no time field unless asked', async () => {
+    const el = (await makePicker()) as TimedEl;
+    await open(el);
+    expect(timeField(el)).toBeNull();
+  });
+
+  it('offers one when asked', async () => {
+    const el = await makeTimed();
+    await open(el);
+    expect(timeField(el)).toBeTruthy();
+  });
+
+  it('starts a chosen day at midnight rather than at a guessed hour', async () => {
+    const el = await makeTimed();
+    await open(el);
+    firstDay(el).click();
+    expect(el.value).toMatch(/^\d{4}-\d{2}-\d{2}T00:00$/);
+  });
+
+  it('stays open on the day, so the time is still reachable', async () => {
+    const el = await makeTimed();
+    await open(el);
+    firstDay(el).click();
+    await el.updateComplete;
+    expect(timeField(el)).toBeTruthy();
+  });
+
+  it('keeps the time when the day changes', async () => {
+    const el = await makeTimed('2026-08-19T14:30');
+    await open(el);
+    firstDay(el).click();
+    expect(el.value.slice(11)).toBe('14:30');
+  });
+
+  it('takes a time before a day, and dates it today', async () => {
+    const el = await makeTimed();
+    await open(el);
+    const field = timeField(el)!;
+    field.value = '09:15';
+    field.dispatchEvent(new Event('change', { bubbles: true }));
+    expect(el.value).toBe(`${new Date().toISOString().slice(0, 10)}T09:15`);
+  });
+
+  it('closes on the day when there is no time to set', async () => {
+    const el = (await makePicker()) as TimedEl;
+    await open(el);
+    firstDay(el).click();
+    await el.updateComplete;
+    expect(el.shadowRoot?.querySelector('[part="calendar"]')).toBeNull();
+  });
+});

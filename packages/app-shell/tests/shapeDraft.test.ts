@@ -68,7 +68,7 @@ describe('draftToManifest', () => {
       interpretationHint: 'The common name.',
       predicate: 'we://shape/abc-123/species',
     });
-    expect(entity.properties.seenAt).toMatchObject({ type: 'datetime', predicate: 'we://shape/abc-123/seen_at' });
+    expect(entity.properties.seenAt).toMatchObject({ type: 'date', predicate: 'we://shape/abc-123/seen_at' });
     expect(entity.properties.certainty).toMatchObject({
       options: ['certain', 'probable', 'unsure'],
       default: 'certain',
@@ -311,5 +311,58 @@ describe('additiveViolations', () => {
     const after = sightingDraft();
     after.members = [...after.members].reverse();
     expect(diff(sightingDraft(), after)).toEqual([]);
+  });
+});
+
+describe('the property types beyond the first five', () => {
+  /*
+    Each of these is told apart in the IR by a real fact about the property rather than a UI note,
+    so a model reopened for editing comes back as the one its author built: long text by
+    `multiline`, an image by `format: 'file'`, a day by the `date` scalar an instant does not share.
+  */
+  const lower = (type: ShapeDraft['members'][number]['type'], name: string) => {
+    const draft: ShapeDraft = {
+      ...emptyShapeDraft(),
+      name: 'Note',
+      members: [syncDerived({ ...emptyDraftProperty(), name, type })],
+    };
+    const result = draftToManifest(draft, UUID);
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error(result.errors.join('; '));
+    return result.manifest.entities.Note.properties[name];
+  };
+
+  it('stores long text as a string that says it is prose', () => {
+    expect(lower('longtext', 'summary')).toMatchObject({ type: 'string', multiline: true });
+  });
+
+  it('keeps a day and an instant apart', () => {
+    expect(lower('date', 'published')).toMatchObject({ type: 'date' });
+    expect(lower('datetime', 'startsAt')).toMatchObject({ type: 'datetime' });
+  });
+
+  it('sends an image through file storage, readable by an img tag', () => {
+    expect(lower('image', 'cover')).toMatchObject({ type: 'string', format: 'file', readAs: 'dataUri' });
+  });
+
+  it('lifts every one of them back to the type it was authored as', () => {
+    for (const [type, name] of [
+      ['longtext', 'summary'],
+      ['date', 'published'],
+      ['datetime', 'startsAt'],
+      ['image', 'cover'],
+      ['text', 'title'],
+    ] as const) {
+      const draft: ShapeDraft = {
+        ...emptyShapeDraft(),
+        name: 'Note',
+        members: [syncDerived({ ...emptyDraftProperty(), name, type })],
+      };
+      const lowered = draftToManifest(draft, UUID);
+      expect(lowered.ok).toBe(true);
+      if (!lowered.ok) return;
+      const lifted = manifestToDraft('Note', lowered.manifest, { description: '', icon: '' });
+      expect(lifted.members[0]).toMatchObject({ name, type });
+    }
   });
 });

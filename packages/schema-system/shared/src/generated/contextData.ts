@@ -126,6 +126,7 @@ export const contextData: ContextData = {
       superclass: 'DesignSystemElement',
       ownProps: [
         { name: 'value', type: 'string', optional: false, default: "''" },
+        { name: 'showTime', type: 'boolean', optional: false, default: 'false' },
         { name: 'placeholder', type: 'string', optional: false, default: "'Select date'" },
         { name: 'disabled', type: 'boolean', optional: false, default: 'false' },
         { name: 'name', type: 'string', optional: false, default: "''" },

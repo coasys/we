@@ -146,6 +146,24 @@ const styles = css`
     color: var(--we-color-neutral-400);
   }
 
+  [part='time-row'] {
+    display: flex;
+    align-items: center;
+    gap: var(--we-space-200);
+    margin-top: var(--we-space-200);
+    padding-top: var(--we-space-200);
+    border-top: 1px solid var(--we-color-neutral-200);
+    color: var(--we-color-neutral-500);
+  }
+
+  input[part='time'] {
+    all: unset;
+    flex: 1;
+    font: inherit;
+    color: var(--we-color-neutral-900);
+    cursor: pointer;
+  }
+
   :host([disabled]) {
     opacity: 0.5;
     pointer-events: none;
@@ -156,7 +174,16 @@ const styles = css`
 export default class DatePicker extends DesignSystemElement {
   static styles = [sharedStyles, styles];
 
-  @property({ type: String }) value = ''; // ISO date string YYYY-MM-DD
+  /** ISO: `YYYY-MM-DD`, or `YYYY-MM-DDTHH:mm` while {@link showTime} is on. */
+  @property({ type: String }) value = '';
+  /**
+   * Also ask for a time of day.
+   *
+   * A calendar day and an instant are different facts — a birthday has no time, a shift start is
+   * meaningless without one — and a picker that only ever captured the day quietly discarded half
+   * of the second kind. Off by default: most dates are days.
+   */
+  @property({ type: Boolean, reflect: true }) showTime = false;
   @property({ type: String }) placeholder = 'Select date';
   @property({ type: Boolean, reflect: true }) disabled = false;
   @property({ type: String }) name = '';
@@ -187,7 +214,7 @@ export default class DatePicker extends DesignSystemElement {
     this._onDocClick = this._onDocClick.bind(this);
     document.addEventListener('click', this._onDocClick);
     if (this.value) {
-      const d = new Date(this.value);
+      const d = new Date(`${this._datePart}T00:00:00`);
       this._viewYear = d.getFullYear();
       this._viewMonth = d.getMonth();
     }
@@ -252,13 +279,39 @@ export default class DatePicker extends DesignSystemElement {
     this.dispatchEvent(new CustomEvent('change', { detail: this.value, bubbles: true, composed: true }));
   };
 
+  /** The `YYYY-MM-DD` half of the value, whether or not a time follows it. */
+  private get _datePart() {
+    return this.value.slice(0, 10);
+  }
+
+  /** The `HH:mm` half, or empty when the value carries no time. */
+  private get _timePart() {
+    return this.value.length > 10 ? this.value.slice(11, 16) : '';
+  }
+
+  private _emit() {
+    this.dispatchEvent(new CustomEvent('change', { detail: this.value, bubbles: true, composed: true }));
+  }
+
   private _selectDate(year: number, month: number, day: number) {
     const m = String(month + 1).padStart(2, '0');
     const d = String(day).padStart(2, '0');
-    this.value = `${year}-${m}-${d}`;
-    this._open = false;
-    this.dispatchEvent(new CustomEvent('change', { detail: this.value, bubbles: true, composed: true }));
+    const date = `${year}-${m}-${d}`;
+    // Midnight rather than a guessed hour: inventing 09:00 would be a claim about the value that
+    // nobody made, and it reads as deliberate to whoever sees it later.
+    this.value = this.showTime ? `${date}T${this._timePart || '00:00'}` : date;
+    // Closing on the day would put the time field out of reach the moment it became relevant.
+    if (!this.showTime) this._open = false;
+    this._emit();
   }
+
+  private _selectTime = (e: Event) => {
+    const time = (e.target as HTMLInputElement).value;
+    // A time chosen before a day is still an answer; today is the only day it can mean.
+    const date = this._datePart || new Date().toISOString().slice(0, 10);
+    this.value = time ? `${date}T${time}` : date;
+    this._emit();
+  };
 
   private _getDays() {
     const firstDay = new Date(this._viewYear, this._viewMonth, 1).getDay();
@@ -294,13 +347,18 @@ export default class DatePicker extends DesignSystemElement {
     if (!this.value) return false;
     const m = String(month + 1).padStart(2, '0');
     const d = String(day).padStart(2, '0');
-    return this.value === `${year}-${m}-${d}`;
+    return this._datePart === `${year}-${m}-${d}`;
   }
 
   private get _displayValue() {
     if (!this.value) return '';
-    const d = new Date(this.value + 'T00:00:00');
-    return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+    // Parsed at a local midnight, not through Date's bare-ISO path, which reads YYYY-MM-DD as UTC
+    // and lands on the day before for anybody west of it.
+    const d = new Date(`${this._datePart}T${this._timePart || '00:00'}:00`);
+    const day = { year: 'numeric', month: 'short', day: 'numeric' } as const;
+    return this.showTime
+      ? d.toLocaleString(undefined, { ...day, hour: '2-digit', minute: '2-digit' })
+      : d.toLocaleDateString(undefined, day);
   }
 
   render() {
@@ -354,6 +412,24 @@ export default class DatePicker extends DesignSystemElement {
                       `,
                     )}
                   </div>
+                  ${
+                    this.showTime
+                      ? html`
+                          <label part="time-row">
+                            <!-- No leading icon: the native time input brings its own picker
+                                 indicator, and the row then reads like the field above it —
+                                 value on the left, the control's icon on the right. -->
+                            <input
+                              part="time"
+                              type="time"
+                              .value=${this._timePart}
+                              @change=${this._selectTime}
+                              aria-label="Time"
+                            />
+                          </label>
+                        `
+                      : nothing
+                  }
                 </div>
               `
             : nothing
