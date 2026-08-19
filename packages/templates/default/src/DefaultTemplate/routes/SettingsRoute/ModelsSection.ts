@@ -117,7 +117,7 @@ const propertyRow: SchemaNode = {
           type: 'we-input',
           props: {
             size: 'sm',
-            placeholder: 'Options, comma-separated — e.g. certain, probable, unsure',
+            placeholder: 'Options, comma-separated — e.g. fiction, non-fiction, poetry',
             value: '$member.options',
             onInput: { $action: 'shapeStore.setMemberField', args: ['$member.rowId', 'options', '$arg.detail'] },
           },
@@ -260,7 +260,7 @@ const describeItBox: SchemaNode = {
           props: {
             rows: 2,
             placeholder:
-              'e.g. "We log bird sightings — species, when and where we saw it, how certain we are, and notes"',
+              'e.g. "We share book recommendations — the title, who wrote it, why it is worth reading, and a rating"',
             value: { $local: 'aiDescription' },
             onInput: { $setLocal: 'aiDescription', from: '$event.detail' },
           },
@@ -306,7 +306,7 @@ const shapeWizardModal: SchemaNode = {
       children: [
         {
           type: 'we-text',
-          props: { variant: 'heading-sm' },
+          props: { variant: 'heading-md', textAlign: 'center' },
           children: [
             {
               $if: {
@@ -320,24 +320,29 @@ const shapeWizardModal: SchemaNode = {
         describeItBox,
         {
           type: 'Row',
-          props: { gap: '200', ay: 'center', wrap: true },
+          props: { gap: '300', ay: 'center', wrap: true },
           children: [
             {
-              type: 'we-icon-picker',
-              props: {
-                size: 'sm',
-                value: { $store: 'shapeStore.shapeDraft.icon' },
-                onChange: { $action: 'shapeStore.setShapeField', args: ['icon', '$arg.detail'] },
-              },
+              type: 'we-form-field',
+              props: { label: 'Icon' },
+              children: [
+                {
+                  type: 'we-icon-picker',
+                  props: {
+                    value: { $store: 'shapeStore.shapeDraft.icon' },
+                    onChange: { $action: 'shapeStore.setShapeField', args: ['icon', '$arg.detail'] },
+                  },
+                },
+              ],
             },
             {
               type: 'we-form-field',
-              props: { label: 'Name' },
+              props: { label: 'Name', flex: '1' },
               children: [
                 {
                   type: 'we-input',
                   props: {
-                    placeholder: 'Sighting',
+                    placeholder: 'Recommendation',
                     value: { $store: 'shapeStore.shapeDraft.name' },
                     // Renaming changes what queries resolve, so an existing model's name is fixed.
                     disabled: { $store: 'shapeStore.editingShapeId' },
@@ -346,19 +351,20 @@ const shapeWizardModal: SchemaNode = {
                 },
               ],
             },
+          ],
+        },
+        {
+          type: 'we-form-field',
+          props: { label: 'Description', description: "Shown to people browsing this space's models." },
+          children: [
             {
-              type: 'we-form-field',
-              props: { label: 'Description', flex: '1', minWidth: '200px' },
-              children: [
-                {
-                  type: 'we-input',
-                  props: {
-                    placeholder: 'What one of these is',
-                    value: { $store: 'shapeStore.shapeDraft.description' },
-                    onInput: { $action: 'shapeStore.setShapeField', args: ['description', '$arg.detail'] },
-                  },
-                },
-              ],
+              type: 'we-textarea',
+              props: {
+                rows: 1,
+                placeholder: 'A book someone in the group recommended',
+                value: { $store: 'shapeStore.shapeDraft.description' },
+                onInput: { $action: 'shapeStore.setShapeField', args: ['description', '$arg.detail'] },
+              },
             },
           ],
         },
@@ -366,13 +372,18 @@ const shapeWizardModal: SchemaNode = {
           type: 'we-form-field',
           props: {
             label: 'AI hint',
-            description: 'What this model means, for AI extraction — when should something count as one of these?',
+            description:
+              'Used when AI extracts records from conversations here. Leave empty if this model is not extracted.',
           },
           children: [
             {
               type: 'we-textarea',
               props: {
-                rows: 2,
+                rows: 1,
+                // Shows the include-then-exclude shape a workable hint needs, which is easier to
+                // copy than to explain (see TaskBlock's rationale in @we/models).
+                placeholder:
+                  'Someone recommending a book to the group — include the title, and the author if said. Not books merely mentioned in passing.',
                 value: { $store: 'shapeStore.shapeDraft.classHint' },
                 onInput: { $action: 'shapeStore.setShapeField', args: ['classHint', '$arg.detail'] },
               },
