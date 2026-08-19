@@ -1,10 +1,11 @@
 import type { DesignSystemProps } from '@we/design-types';
 import { type DSLayer, filterProps, getKeysForLayers, mergeProps } from '@we/design-utils';
-import { css, html, nothing } from 'lit';
+import { css, html, nothing, type PropertyValues } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { styleMap } from 'lit/directives/style-map.js';
 
 import { DesignSystemElement } from '../shared/design-system-element';
+import { openFloatingPanel } from '../shared/floating-panel';
 import sharedStyles from '../shared/styles';
 import type { ComponentSize } from '../types';
 
@@ -68,10 +69,9 @@ const styles = css`
     cursor: pointer;
   }
 
+  /* Placed by openFloatingPanel — top layer, so no ancestor's overflow clips it. */
   [part='calendar'] {
-    position: absolute;
-    top: 100%;
-    left: 0;
+    position: fixed;
     z-index: var(--we-z-dropdown);
     background: var(--we-role-surface-raised);
     border: 1px solid var(--we-role-border);
@@ -159,6 +159,9 @@ export default class DatePicker extends DesignSystemElement {
   @property({ type: Object }) styles?: Record<string, string | number | undefined>;
 
   @state() private _open = false;
+
+  /** Teardown for the open calendar: stops the position watcher and leaves the top layer. */
+  private _closeFloating?: () => void;
   @state() private _viewYear = new Date().getFullYear();
   @state() private _viewMonth = new Date().getMonth();
 
@@ -185,8 +188,24 @@ export default class DatePicker extends DesignSystemElement {
     }
   }
 
+  /** Float the calendar while it is open — see the note on `openFloatingPanel`. */
+  updated(changed: PropertyValues) {
+    super.updated(changed);
+    if (!changed.has('_open')) return;
+    if (this._open) {
+      this._closeFloating = openFloatingPanel(
+        this.shadowRoot?.querySelector('[part="input-wrapper"]') as HTMLElement | null,
+        this.shadowRoot?.querySelector('[part="calendar"]') as HTMLElement | null,
+      );
+    } else {
+      this._closeFloating?.();
+      this._closeFloating = undefined;
+    }
+  }
+
   disconnectedCallback() {
     super.disconnectedCallback();
+    this._closeFloating?.();
     document.removeEventListener('click', this._onDocClick);
   }
 

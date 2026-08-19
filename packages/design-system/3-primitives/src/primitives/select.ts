@@ -1,10 +1,11 @@
 import type { DesignSystemProps } from '@we/design-types';
 import { type DSLayer, filterProps, getKeysForLayers, mergeProps } from '@we/design-utils';
-import { css, html, nothing } from 'lit';
+import { css, html, nothing, type PropertyValues } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { styleMap } from 'lit/directives/style-map.js';
 
 import { DesignSystemElement } from '../shared/design-system-element';
+import { openFloatingPanel } from '../shared/floating-panel';
 import sharedStyles from '../shared/styles';
 import type { ComponentSize } from '../types';
 
@@ -103,11 +104,14 @@ const styles = css`
     color: var(--we-color-neutral-400);
   }
 
+  /*
+    Positioned by openFloatingPanel, which promotes it into the top layer — so no ancestor's
+    overflow can clip it and no z-index has to compete. The width still tracks the trigger, which
+    is why that is set from script rather than with a percentage: the panel is no longer laid out
+    inside the control.
+  */
   [part='listbox'] {
-    position: absolute;
-    top: 100%;
-    left: 0;
-    min-width: 100%;
+    position: fixed;
     width: max-content;
     z-index: var(--we-z-dropdown);
     max-height: 200px;
@@ -176,6 +180,9 @@ export default class Select extends DesignSystemElement {
   @property({ type: Object }) styles?: Record<string, string | number | undefined>;
 
   @state() private _open = false;
+
+  /** Teardown for the open panel: stops the position watcher and leaves the top layer. */
+  private _closeFloating?: () => void;
   @state() private _filter = '';
   /**
    * Which option the keyboard is on, as an index into the *filtered* list. `-1` is "none yet".
@@ -205,8 +212,32 @@ export default class Select extends DesignSystemElement {
     document.addEventListener('click', this._onDocClick);
   }
 
+  /**
+   * Float the listbox while it is open.
+   *
+   * `updated` rather than the click handlers, because every path that opens this — pointer,
+   * keyboard, focus on a searchable select — runs through `_open`, and one of them would otherwise
+   * be forgotten.
+   */
+  updated(changed: PropertyValues) {
+    super.updated(changed);
+    if (!changed.has('_open')) return;
+    if (this._open) {
+      const trigger = this.shadowRoot?.querySelector('[part="input-wrapper"]') as HTMLElement | null;
+      const listbox = this.shadowRoot?.querySelector('[part="listbox"]') as HTMLElement | null;
+      // Matching the trigger's width is what keeps it looking like part of the control now that it
+      // is no longer inside it.
+      if (trigger && listbox) listbox.style.minWidth = `${trigger.getBoundingClientRect().width}px`;
+      this._closeFloating = openFloatingPanel(trigger, listbox);
+    } else {
+      this._closeFloating?.();
+      this._closeFloating = undefined;
+    }
+  }
+
   disconnectedCallback() {
     super.disconnectedCallback();
+    this._closeFloating?.();
     document.removeEventListener('click', this._onDocClick);
   }
 

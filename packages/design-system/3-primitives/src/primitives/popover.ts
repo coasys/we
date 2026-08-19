@@ -1,9 +1,9 @@
-import { autoUpdate, computePosition, flip, offset, shift } from '@floating-ui/dom';
 import type { Placement } from '@we/design-types';
 import { css, html, type PropertyValues } from 'lit';
 import { customElement, property, query } from 'lit/decorators.js';
 
 import { LayoutElement } from '../shared/design-system-element';
+import { openFloatingPanel } from '../shared/floating-panel';
 
 const CSS_STYLES = css`
   [popover] {
@@ -48,41 +48,25 @@ export default class Popover extends LayoutElement {
     }
   };
 
-  private async updatePosition() {
-    if (!this.triggerElement || !this.popoverElement) return;
+  /*
+    The positioning this component pioneered now lives in `openFloatingPanel`, because three other
+    components needed it and grew their own versions instead — one of which drifted on scroll and
+    two of which were clipped by any overflow. Calling the shared one keeps this the reference
+    implementation rather than a fourth variant of it.
 
-    const { x, y } = await computePosition(this.triggerElement, this.popoverElement, {
-      placement: this.placement,
-      middleware: [offset(8), flip(), shift({ padding: 8 })],
-    });
-
-    Object.assign(this.popoverElement.style, { left: `${x}px`, top: `${y}px` });
-  }
-
+    `gap: 8` preserves the offset this element has always used; the markup's `popover="auto"` is
+    left alone, so light dismiss still belongs to the popover rather than to the helper.
+  */
   private openPopover() {
-    if (!this.triggerElement || !this.popoverElement) return;
-
-    try {
-      this.popoverElement.showPopover();
-      this.cleanup = autoUpdate(this.triggerElement, this.popoverElement, () => this.updatePosition());
-    } catch (err) {
-      console.warn('Popover error:', err);
-    }
+    this.cleanup = openFloatingPanel(this.triggerElement, this.popoverElement, {
+      placement: this.placement,
+      gap: 8,
+    });
   }
 
   private closePopover() {
-    if (this.cleanup) {
-      this.cleanup();
-      this.cleanup = undefined;
-    }
-
-    if (this.popoverElement?.matches(':popover-open')) {
-      try {
-        this.popoverElement.hidePopover();
-      } catch (err) {
-        console.warn('Popover hide error:', err);
-      }
-    }
+    this.cleanup?.();
+    this.cleanup = undefined;
   }
 
   // `super.updated` first — the design system writes its custom properties there, so an override

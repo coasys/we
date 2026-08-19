@@ -4,6 +4,7 @@ import { css, html, nothing } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 
 import { DesignSystemElement } from '../shared/design-system-element';
+import { openFloatingPanel } from '../shared/floating-panel';
 import sharedStyles from '../shared/styles';
 import type { ComponentSize } from '../types';
 
@@ -393,8 +394,8 @@ export default class IconPicker extends DesignSystemElement {
   @state() private _search = '';
   @state() private _page = 1;
   @state() private _emojiInput = '';
-  @state() private _popoverTop = 0;
-  @state() private _popoverLeft = 0;
+  /** Teardown for the open panel: stops the position watcher and leaves the top layer. */
+  private _closeFloating?: () => void;
 
   static getDefaultProps() {
     return DEFAULT_PROPS;
@@ -416,6 +417,7 @@ export default class IconPicker extends DesignSystemElement {
 
   disconnectedCallback() {
     super.disconnectedCallback();
+    this._closeFloating?.();
     document.removeEventListener('click', this._onDocClick);
   }
 
@@ -438,29 +440,26 @@ export default class IconPicker extends DesignSystemElement {
       }
       this._search = '';
       this._page = 1;
-      // Position the fixed popover below the trigger
-      const trigger = this.renderRoot.querySelector<HTMLElement>('[part="trigger"]');
-      if (trigger) {
-        const rect = trigger.getBoundingClientRect();
-        this._popoverTop = rect.bottom + 4;
-        this._popoverLeft = rect.left;
-      }
-      // Promote to browser top layer after Lit renders the popover div, so
-      // position:fixed resolves to the viewport instead of an ancestor
-      // backdrop-filter containing block.
+      // After Lit has rendered the panel: promoted into the top layer and anchored to the trigger,
+      // by the same helper the select and the date picker use. It used to be placed once from a
+      // rect read here, which meant it stayed where the trigger *was* as soon as anything scrolled.
       requestAnimationFrame(() => {
-        const popoverEl = this.renderRoot.querySelector<HTMLElement>('[part="popover"]');
-        if (popoverEl && 'showPopover' in popoverEl) {
-          popoverEl.setAttribute('popover', 'manual');
-          (popoverEl as HTMLElement & { showPopover(): void }).showPopover();
-        }
+        this._closeFloating = openFloatingPanel(
+          this.renderRoot.querySelector<HTMLElement>('[part="trigger"]'),
+          this.renderRoot.querySelector<HTMLElement>('[part="popover"]'),
+        );
       });
+    } else {
+      this._closeFloating?.();
+      this._closeFloating = undefined;
     }
   }
 
   private _select(val: string) {
     this.value = val;
     this._open = false;
+    this._closeFloating?.();
+    this._closeFloating = undefined;
     this.dispatchEvent(new CustomEvent('change', { detail: val, bubbles: true, composed: true }));
   }
 
@@ -592,7 +591,7 @@ export default class IconPicker extends DesignSystemElement {
       ${
         this._open
           ? html`
-              <div part="popover" role="dialog" style="top:${this._popoverTop}px;left:${this._popoverLeft}px">
+              <div part="popover" role="dialog">
                 <div part="tabs" role="tablist">
                   <button
                     part="tab"

@@ -22,6 +22,11 @@
  * be raised over one by picking a bigger token. It has to join the top layer too, by being shown as
  * a popover itself (see `promoteToTopLayer` in `we-sortable`, where a drag ghost and drop indicator
  * were painting behind the dialog they were dragging in).
+ *
+ * The panels that used to depend on these tokens no longer do: `we-select`, `we-date-picker`,
+ * `we-icon-picker` and `we-popover` all float through `openFloatingPanel`, which promotes them the
+ * same way. Their `dropdown` values are a fallback for runtimes without the Popover API, not the
+ * mechanism. Reach for a token here only for something that genuinely stacks *within* the page.
  */
 
 export type ZIndexLayer = 'dropdown' | 'sticky' | 'modal' | 'popover' | 'toast' | 'tooltip';

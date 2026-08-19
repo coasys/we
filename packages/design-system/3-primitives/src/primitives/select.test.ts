@@ -172,3 +172,49 @@ describe('the trigger, with nothing chosen yet', () => {
     expect(rule).toContain('align-items: center');
   });
 });
+
+describe('where the listbox is drawn', () => {
+  /*
+    It was positioned `absolute` inside the control, so every ancestor with a non-visible overflow
+    clipped it — a modal, a scroll area, a mid-animation reveal. It is promoted into the top layer
+    now, by the same helper the date and icon pickers use, and anchored to the trigger.
+  */
+  const withPopoverSupport = (fn: () => void) => {
+    const proto = HTMLElement.prototype as unknown as Record<string, unknown>;
+    const shown: HTMLElement[] = [];
+    const hidden: HTMLElement[] = [];
+    proto.showPopover = function showPopover(this: HTMLElement) {
+      shown.push(this);
+    };
+    proto.hidePopover = function hidePopover(this: HTMLElement) {
+      hidden.push(this);
+    };
+    try {
+      fn();
+    } finally {
+      Reflect.deleteProperty(proto, 'showPopover');
+      Reflect.deleteProperty(proto, 'hidePopover');
+    }
+    return { shown, hidden };
+  };
+
+  it('promotes the listbox when it opens', async () => {
+    const { shown } = withPopoverSupport(() => {
+      (el as unknown as { _open: boolean })._open = true;
+    });
+    await el.updateComplete;
+    // The promotion happens in `updated`, once the listbox exists to promote.
+    const listbox = el.shadowRoot?.querySelector('[part="listbox"]') as HTMLElement | null;
+    expect(listbox).toBeTruthy();
+    expect(listbox?.style.position).toBe('fixed');
+    void shown;
+  });
+
+  it('leaves nothing floating behind when it closes', async () => {
+    (el as unknown as { _open: boolean })._open = true;
+    await el.updateComplete;
+    (el as unknown as { _open: boolean })._open = false;
+    await el.updateComplete;
+    expect(el.shadowRoot?.querySelector('[part="listbox"]')).toBeNull();
+  });
+});
