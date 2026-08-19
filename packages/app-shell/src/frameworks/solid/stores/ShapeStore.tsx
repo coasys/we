@@ -290,18 +290,22 @@ export function ShapeStoreProvider(props: ParentProps) {
   // ── Wizard actions ────────────────────────────────────────────────────────────
 
   function openShapeWizard(shapeRecordId?: string): void {
+    // A schema $action with no declared args passes the DOM event as the first argument, so
+    // anything but a real id means "new model" — without this, the New button arrived carrying a
+    // MouseEvent and the wizard refused to open.
+    const recordId = typeof shapeRecordId === 'string' && shapeRecordId ? shapeRecordId : undefined;
     setDraftErrors([]);
-    if (!shapeRecordId) {
+    if (!recordId) {
       setEditingShapeId(null);
       setShapeDraft(emptyShapeDraft());
       return;
     }
-    const view = spaceShapes().find((s) => s.id === shapeRecordId);
+    const view = spaceShapes().find((s) => s.id === recordId);
     if (!view?.manifest) {
       toastService.error('This model has no readable definition to edit.');
       return;
     }
-    setEditingShapeId(shapeRecordId);
+    setEditingShapeId(recordId);
     setShapeDraft(manifestToDraft(view.name, view.manifest, { description: view.description, icon: view.icon }));
   }
 
@@ -311,9 +315,19 @@ export function ShapeStoreProvider(props: ParentProps) {
     setDraftErrors([]);
   }
 
+  /*
+    Typed-input edits mutate the draft IN PLACE, deliberately without touching the signal.
+
+    The renderer keys $each rows by object reference and captures context refs as plain values, so
+    replacing the draft (or a row) on every keystroke remounts the very input being typed in — the
+    caret drops after each character. Nothing needs the re-render: the DOM already shows the typed
+    text, and save() reads the mutated draft. Reactivity is reserved for edits that change what a
+    row *renders* (type, switches, reference target) and for structural edits (add/remove rows),
+    which replace objects and accept the remount — there is no caret to lose in a select.
+  */
   function setShapeField(field: 'name' | 'description' | 'icon' | 'classHint', value: string): void {
     const draft = shapeDraft();
-    if (draft) setShapeDraft({ ...draft, [field]: value });
+    if (draft) draft[field] = value;
   }
 
   function addDraftProperty(): void {
@@ -326,10 +340,25 @@ export function ShapeStoreProvider(props: ParentProps) {
     if (draft) setShapeDraft({ ...draft, properties: draft.properties.filter((_, i) => i !== index) });
   }
 
+  /** Draft fields edited by typing — updated in place so the input keeps focus (see note above). */
+  const TYPED_PROPERTY_FIELDS: ReadonlySet<keyof ShapeDraftProperty> = new Set([
+    'name',
+    'hint',
+    'defaultValue',
+    'options',
+  ]);
+
   function setDraftProperty(index: number, field: keyof ShapeDraftProperty, value: string | boolean): void {
     const draft = shapeDraft();
-    if (!draft) return;
-    const properties = draft.properties.map((row, i) => (i === index ? { ...row, [field]: value } : row));
+    const row = draft?.properties[index];
+    if (!draft || !row) return;
+    if (TYPED_PROPERTY_FIELDS.has(field)) {
+      (row as unknown as Record<string, unknown>)[field] = value;
+      return;
+    }
+    // Discrete fields change what the row renders (conditional inputs), so this path replaces the
+    // row to trigger it — the spread carries any silently-mutated text along.
+    const properties = draft.properties.map((r, i) => (i === index ? { ...r, [field]: value } : r));
     setShapeDraft({ ...draft, properties });
   }
 
@@ -497,15 +526,15 @@ export function ShapeStoreProvider(props: ParentProps) {
   }
 
   function setHintDraft(key: string, value: string): void {
+    // In-place for the same reason as setShapeField: every hint is a typed textarea, and nothing
+    // rendered derives from hint text — save() reads the mutated editor state.
     const editor = hintEditor();
     if (!editor) return;
     if (key === 'class') {
-      setHintEditor({ ...editor, classHint: value });
+      editor.classHint = value;
     } else {
-      setHintEditor({
-        ...editor,
-        rows: editor.rows.map((row) => (row.predicate === key ? { ...row, hint: value } : row)),
-      });
+      const row = editor.rows.find((r) => r.predicate === key);
+      if (row) row.hint = value;
     }
   }
 
