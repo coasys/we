@@ -47,9 +47,17 @@ const styles = css`
   input[part='native'] {
     all: unset;
     text-align: center;
-    /* Compact by default, growing when the control is given room. */
-    flex: 1;
-    min-width: 3em;
+    /*
+      Three characters wide, growing only into space the control was actually given.
+
+      The basis has to be stated. A bare flex:1 leaves the field's intrinsic width to the input
+      itself, and an input's is its size attribute — twenty characters by default, about 180px —
+      which the host then shrink-wrapped around, so a control needing ~100px drew at 249px. A
+      definite basis is what the surrounding box measures instead; min-width:0 keeps the input's
+      own min-content from putting it back.
+    */
+    flex: 1 1 3em;
+    min-width: 0;
     font: inherit;
     color: inherit;
     -moz-appearance: textfield;
