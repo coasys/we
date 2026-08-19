@@ -405,6 +405,7 @@ export const storeEntries: StoreEntry[] = [
         properties: ['entity', 'classHint', 'defaultClassHint', 'rows', 'customized'],
       },
       hintBusy: { type: 'boolean' },
+      expandedMembers: { type: 'array' },
     },
     actions: [
       'openShapeWizard',
@@ -416,6 +417,8 @@ export const storeEntries: StoreEntry[] = [
       'removeMember',
       'setMemberField',
       'reorderMembers',
+      'toggleMemberExpanded',
+      'commitDraft',
       'replaceDraft',
       'generateShapeDraft',
       'saveShapeDraft',
@@ -898,6 +901,8 @@ export function generateStoresText(entries: StoreEntry[]): string {
         hintEditor:
           'the hint editor state ({ entity, classHint, defaultClassHint, rows: { name, predicate, hint, defaultHint }[], customized }) or null while closed — non-nullness mounts the hint editor modal',
         hintBusy: 'boolean — the hint editor is loading or saving',
+        expandedMembers:
+          "string[] — rowIds whose detail panel is open. Read with { $in: ['$member.rowId', { $store: 'shapeStore.expandedMembers' }] }; a new row and any row an error names open themselves",
       },
       actions: {
         openShapeWizard:
@@ -911,6 +916,9 @@ export function generateStoresText(entries: StoreEntry[]): string {
         removeMember: '(rowId): removes one member row',
         setMemberField:
           "(rowId, field, value): sets one field of one member row. 'options' takes the comma-separated string as typed",
+        toggleMemberExpanded: "(rowId): opens or closes one member's detail panel (hint, default, allowed values)",
+        commitDraft:
+          '(): publishes in-place edits to the draft signal. Typed fields are mutated without touching it so inputs keep focus, which leaves derived values stale — pair with onBlur on a field something else is computed from',
         reorderMembers:
           '(rowIds: string[]): applies a drag-reorder. Pair with we-sortable\'s onReorder and pass "$arg.detail" — order is the stored declaration order, not decoration',
         replaceDraft:

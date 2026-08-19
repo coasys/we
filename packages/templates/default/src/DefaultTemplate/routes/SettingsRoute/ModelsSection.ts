@@ -15,7 +15,7 @@ import { sectionCard } from '@we/template-kit';
 const PROPERTY_TYPE_OPTIONS = [
   { label: 'Text', value: 'text' },
   { label: 'Number', value: 'number' },
-  { label: 'Yes / no', value: 'boolean' },
+  { label: 'Boolean', value: 'boolean' },
   { label: 'Date', value: 'date' },
   { label: 'Select', value: 'select' },
 ];
@@ -45,7 +45,7 @@ const dragHandle: SchemaNode = {
       cursor: 'grab',
     },
   },
-  children: [{ type: 'we-icon', props: { name: 'dots-six-vertical', color: 'neutral-400' } }],
+  children: [{ type: 'we-icon', props: { size: 'sm', name: 'dots-six-vertical', color: 'neutral-400' } }],
 };
 
 /** Remove this member. Pinned top-right of the row rather than trailing its last input, which moves. */
@@ -68,6 +68,178 @@ const memberNameInput: SchemaNode = {
     size: 'sm',
     value: '$member.name',
     onInput: { $action: 'shapeStore.setMemberField', args: ['$member.rowId', 'name', '$arg.detail'] },
+  },
+};
+
+/** Opens and closes a property's detail panel. Caret direction is the only state it shows. */
+const expandToggle: SchemaNode = {
+  type: 'we-button',
+  props: {
+    variant: 'ghost',
+    size: 'sm',
+    title: 'Show hint, default and options',
+    onClick: { $action: 'shapeStore.toggleMemberExpanded', args: ['$member.rowId'] },
+  },
+  children: [
+    {
+      type: 'we-icon',
+      props: {
+        name: {
+          $if: {
+            condition: { $in: ['$member.rowId', { $store: 'shapeStore.expandedMembers' }] },
+            then: 'caret-up',
+            else: 'caret-down',
+          },
+        },
+      },
+    },
+  ],
+};
+
+/**
+ * The default-value control, chosen by the property's type.
+ *
+ * Each branch exists to delete a validation rule rather than to decorate: a number input cannot
+ * produce "not a valid number", a date picker emits the `YYYY-MM-DD` the rest of the system reads,
+ * and picking from a select's own declared options cannot produce a default that is not one of
+ * them. What the manifest stores is unchanged — the draft holds text either way, coerced once at
+ * lowering by the declared type.
+ */
+const defaultValueControl: SchemaNode = {
+  type: '$if',
+  props: {
+    condition: { $eq: ['$member.type', 'number'] },
+    then: {
+      type: 'we-number-input',
+      props: {
+        size: 'sm',
+        value: '$member.defaultValue',
+        onChange: { $action: 'shapeStore.setMemberField', args: ['$member.rowId', 'defaultValue', '$arg.detail'] },
+      },
+    },
+    else: {
+      type: '$if',
+      props: {
+        condition: { $eq: ['$member.type', 'date'] },
+        then: {
+          type: 'we-date-picker',
+          props: {
+            size: 'sm',
+            value: '$member.defaultValue',
+            onChange: { $action: 'shapeStore.setMemberField', args: ['$member.rowId', 'defaultValue', '$arg.detail'] },
+          },
+        },
+        else: {
+          type: '$if',
+          props: {
+            // Both the closed vocabularies: a select's declared options, and a boolean's yes/no.
+            // Each list carries its own "No default" entry, since unset is a third answer the
+            // manifest distinguishes from false.
+            condition: { $or: [{ $eq: ['$member.type', 'select'] }, { $eq: ['$member.type', 'boolean'] }] },
+            then: {
+              type: 'we-select',
+              props: {
+                size: 'sm',
+                options: '$member.defaultOptions',
+                value: '$member.defaultValue',
+                onChange: {
+                  $action: 'shapeStore.setMemberField',
+                  args: ['$member.rowId', 'defaultValue', '$arg.detail'],
+                },
+              },
+            },
+            else: {
+              type: 'we-input',
+              props: {
+                size: 'sm',
+                placeholder: 'No default',
+                value: '$member.defaultValue',
+                onInput: {
+                  $action: 'shapeStore.setMemberField',
+                  args: ['$member.rowId', 'defaultValue', '$arg.detail'],
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  },
+};
+
+/**
+ * What a property carries beyond its structure, behind a caret.
+ *
+ * Split out because the six inputs were never equally important: a name, a type and whether it is
+ * required are structural and always relevant, while a hint, a default and a value list are
+ * secondary and usually empty. Left on one line they competed for the same space, which is what
+ * made a six-field model unreadable. Labelled here, where there is room for labels.
+ */
+const propertyDetail: SchemaNode = {
+  type: '$if',
+  props: {
+    condition: { $in: ['$member.rowId', { $store: 'shapeStore.expandedMembers' }] },
+    enterTransition: [
+      { type: 'reveal', duration: 200 },
+      { type: 'fade', duration: 150 },
+    ],
+    then: {
+      type: 'Column',
+      props: { gap: '300', pt: '200' },
+      children: [
+        {
+          type: '$if',
+          props: {
+            condition: { $eq: ['$member.type', 'select'] },
+            then: {
+              type: 'we-form-field',
+              props: { label: 'Allowed values', description: 'Comma-separated. The only values this field accepts.' },
+              children: [
+                {
+                  type: 'we-input',
+                  props: {
+                    size: 'sm',
+                    placeholder: 'fiction, non-fiction, poetry',
+                    value: '$member.options',
+                    onInput: {
+                      $action: 'shapeStore.setMemberField',
+                      args: ['$member.rowId', 'options', '$arg.detail'],
+                    },
+                    // The default picker below is built from these, so the edit is published when
+                    // it is finished rather than on every keystroke.
+                    onBlur: { $action: 'shapeStore.commitDraft' },
+                  },
+                },
+              ],
+            },
+          },
+        },
+        {
+          type: 'we-form-field',
+          props: {
+            label: 'AI hint',
+            description: 'What goes in this field: allowed values, formats, what to leave out.',
+          },
+          children: [
+            {
+              type: 'we-textarea',
+              props: {
+                rows: 2,
+                size: 'sm',
+                placeholder: 'The title as spoken, without a subtitle.',
+                value: '$member.hint',
+                onInput: { $action: 'shapeStore.setMemberField', args: ['$member.rowId', 'hint', '$arg.detail'] },
+              },
+            },
+          ],
+        },
+        {
+          type: 'we-form-field',
+          props: { label: 'Default value', description: 'What a new entry starts with.' },
+          children: [defaultValueControl],
+        },
+      ],
+    },
   },
 };
 
@@ -124,55 +296,10 @@ const propertyRow: SchemaNode = {
                 },
               ],
             },
-            removeMemberButton,
+            { type: 'Row', props: { gap: '100', ay: 'center' }, children: [expandToggle, removeMemberButton] },
           ],
         },
-        {
-          type: '$if',
-          props: {
-            condition: { $eq: ['$member.type', 'select'] },
-            then: {
-              type: 'we-input',
-              props: {
-                size: 'sm',
-                placeholder: 'Options, comma-separated — e.g. fiction, non-fiction, poetry',
-                value: '$member.options',
-                onInput: { $action: 'shapeStore.setMemberField', args: ['$member.rowId', 'options', '$arg.detail'] },
-              },
-            },
-          },
-        },
-        {
-          type: 'Row',
-          props: { gap: '200', wrap: true },
-          children: [
-            {
-              type: 'we-input',
-              props: {
-                size: 'sm',
-                flex: '2',
-                minWidth: '220px',
-                placeholder: 'AI hint — what goes in this field, allowed values, format…',
-                value: '$member.hint',
-                onInput: { $action: 'shapeStore.setMemberField', args: ['$member.rowId', 'hint', '$arg.detail'] },
-              },
-            },
-            {
-              type: 'we-input',
-              props: {
-                size: 'sm',
-                flex: '1',
-                minWidth: '120px',
-                placeholder: 'Default value',
-                value: '$member.defaultValue',
-                onInput: {
-                  $action: 'shapeStore.setMemberField',
-                  args: ['$member.rowId', 'defaultValue', '$arg.detail'],
-                },
-              },
-            },
-          ],
-        },
+        propertyDetail,
       ],
     },
   ],

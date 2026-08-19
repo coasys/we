@@ -46,6 +46,15 @@ export interface ShapeDraftMember {
   options: string;
   /** Initial value, as typed — coerced by `type` at lowering. Empty = none. */
   defaultValue: string;
+  /**
+   * `options` parsed into picker entries, with a leading "no default" — derived, never authored.
+   *
+   * Kept on the row rather than computed in a memo over the whole list because the list is keyed by
+   * row identity: a memo would hand back new objects on every recompute and remount every row,
+   * which is the focus bug that made typed edits mutate in place to begin with. Maintained by
+   * whoever edits `options` or `type`; ignored entirely by {@link draftToManifest}.
+   */
+  defaultOptions: { label: string; value: string }[];
 
   // ── relationship only ──
   /** The target entity name (a block type, another shape, or a foreign model). */
@@ -85,8 +94,27 @@ export interface ShapeDraft {
 let rowSeq = 0;
 const nextRowId = () => `m${++rowSeq}`;
 
+/** The "leave it unset" entry every default picker opens with. Sentinel, never a stored value. */
+export const NO_DEFAULT = '__none__';
+
+/**
+ * Rebuild a row's derived picker entries from what it currently declares. Call after any edit to
+ * `options` or `type`; safe to call at any time.
+ */
+export function syncDerived(row: ShapeDraftMember): ShapeDraftMember {
+  const none = { label: 'No default', value: NO_DEFAULT };
+  // A boolean's picker is three-valued on purpose: a switch could only say true or false, and
+  // "unset" is a third thing the manifest genuinely distinguishes (no `default` key at all).
+  row.defaultOptions =
+    row.type === 'boolean'
+      ? [none, { label: 'Yes', value: 'true' }, { label: 'No', value: 'false' }]
+      : [none, ...parseOptions(row.options).map((o) => ({ label: o, value: o }))];
+  return row;
+}
+
 export const emptyDraftProperty = (): ShapeDraftMember => ({
   rowId: nextRowId(),
+  defaultOptions: [{ label: 'No default', value: NO_DEFAULT }],
   kind: 'property',
   name: '',
   type: 'text',
@@ -176,9 +204,18 @@ function coerceDefault(type: ShapeDraftPropertyType, raw: string): string | numb
 
 /** A row the author has actually started filling in — a pristine trailing row is not an error. */
 const isTouched = (m: ShapeDraftMember) =>
-  Boolean(m.name.trim() || m.hint.trim() || m.options.trim() || m.target || m.defaultValue);
+  Boolean(m.name.trim() || m.hint.trim() || m.options.trim() || m.target || hasDefault(m));
 
-export type DraftLowering = { ok: true; manifest: ModelManifest } | { ok: false; errors: string[] };
+/** Whether a row declares an initial value — the sentinel and the empty string both mean "no". */
+const hasDefault = (m: ShapeDraftMember) => m.defaultValue !== '' && m.defaultValue !== NO_DEFAULT;
+
+export type DraftLowering =
+  | { ok: true; manifest: ModelManifest }
+  /**
+   * `rows` names the members an error was raised against, so a collapsed row carrying a mistake can
+   * be opened rather than leaving its message pointing at something the reader cannot see.
+   */
+  | { ok: false; errors: string[]; rows: string[] };
 
 /**
  * Lower a draft onto the stored form: a single-entity `ModelManifest` with every predicate and the
@@ -188,10 +225,17 @@ export type DraftLowering = { ok: true; manifest: ModelManifest } | { ok: false;
  */
 export function draftToManifest(draft: ShapeDraft, shapeUuid: string): DraftLowering {
   const errors: string[] = [];
+  const errorRows = new Set<string>();
+  /** Record a message, and which row (if any) the reader has to open to act on it. */
+  const fail = (message: string, rowId?: string) => {
+    errors.push(message);
+    if (rowId) errorRows.add(rowId);
+  };
+
   const name = draft.name.trim();
-  if (!IDENTIFIER.test(name)) errors.push(badNameMessage('Model', draft.name, 'Pascal', 'BookRecommendation'));
+  if (!IDENTIFIER.test(name)) fail(badNameMessage('Model', draft.name, 'Pascal', 'BookRecommendation'));
   const rows = draft.members.filter(isTouched);
-  if (rows.length === 0) errors.push('A model needs at least one property.');
+  if (rows.length === 0) fail('A model needs at least one property.');
 
   const seen = new Set<string>();
   const prefix = `we://shape/${shapeUuid}/`;
@@ -202,12 +246,12 @@ export function draftToManifest(draft: ShapeDraft, shapeUuid: string): DraftLowe
     const memberName = row.name.trim();
     const label = row.kind === 'relationship' ? 'Relationship' : 'Property';
     if (!IDENTIFIER.test(memberName)) {
-      errors.push(badNameMessage(label, row.name, 'camel', 'dueDate'));
+      fail(badNameMessage(label, row.name, 'camel', 'dueDate'), row.rowId);
       continue;
     }
     const lower = memberName.toLowerCase();
     if (seen.has(lower)) {
-      errors.push(`Duplicate name "${memberName}" — properties and relationships share one namespace.`);
+      fail(`Duplicate name "${memberName}" — properties and relationships share one namespace.`, row.rowId);
       continue;
     }
     seen.add(lower);
@@ -215,7 +259,7 @@ export function draftToManifest(draft: ShapeDraft, shapeUuid: string): DraftLowe
 
     if (row.kind === 'relationship') {
       if (!row.target) {
-        errors.push(`Relationship "${memberName}" needs something to point at.`);
+        fail(`Relationship "${memberName}" needs something to point at.`, row.rowId);
         continue;
       }
       relations[memberName] = { target: row.target, cardinality: row.many ? 'many' : 'one', predicate };
@@ -224,7 +268,7 @@ export function draftToManifest(draft: ShapeDraft, shapeUuid: string): DraftLowe
 
     const rowOptions = parseOptions(row.options);
     if (row.type === 'select' && rowOptions.length === 0) {
-      errors.push(`Select property "${memberName}" needs at least one option.`);
+      fail(`Select property "${memberName}" needs at least one option.`, row.rowId);
       continue;
     }
     const spec: PropertySchema = { type: SCALAR_OF[row.type], predicate };
@@ -232,10 +276,10 @@ export function draftToManifest(draft: ShapeDraft, shapeUuid: string): DraftLowe
     if (draft.identityMember === row.rowId) spec.identity = true;
     if (row.hint.trim()) spec.interpretationHint = row.hint.trim();
     if (row.type === 'select') spec.options = rowOptions;
-    if (row.defaultValue !== '') {
+    if (hasDefault(row)) {
       const value = coerceDefault(row.type, row.defaultValue);
       if (value === null) {
-        errors.push(`Default for "${memberName}" is not a valid ${row.type}.`);
+        fail(`Default for "${memberName}" is not a valid ${row.type}.`, row.rowId);
         continue;
       }
       spec.default = value;
@@ -248,13 +292,13 @@ export function draftToManifest(draft: ShapeDraft, shapeUuid: string): DraftLowe
   if (draft.identityMember) {
     const chosen = rows.find((r) => r.rowId === draft.identityMember);
     if (!chosen) {
-      errors.push('The field chosen to identify duplicates no longer exists — pick another, or None.');
+      fail('The field chosen to identify duplicates no longer exists — pick another, or None.');
     } else if (chosen.kind !== 'property') {
-      errors.push(`"${chosen.name}" is a relationship, so it cannot be the field that identifies duplicates.`);
+      fail(`"${chosen.name}" is a relationship, so it cannot be the field that identifies duplicates.`, chosen.rowId);
     }
   }
 
-  if (errors.length) return { ok: false, errors };
+  if (errors.length) return { ok: false, errors, rows: [...errorRows] };
 
   const entity: EntitySchema = {
     properties,
@@ -295,7 +339,7 @@ export function manifestToDraft(
       predicate: spec.predicate,
     };
     if (spec.identity) identityMember = row.rowId;
-    members.push(row);
+    members.push(syncDerived(row));
   }
 
   for (const [name, spec] of Object.entries(entity?.relations ?? {})) {

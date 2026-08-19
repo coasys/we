@@ -1940,6 +1940,7 @@ ShapeStore:
   - identityOptions: { label, value }[] — "None" plus every named property of the open draft, for the identity picker. Built in the store because a schema can $map options but cannot prepend one
   - hintEditor: the hint editor state ({ entity, classHint, defaultClassHint, rows: { name, predicate, hint, defaultHint }[], customized }) or null while closed — non-nullness mounts the hint editor modal
   - hintBusy: boolean — the hint editor is loading or saving
+  - expandedMembers: string[] — rowIds whose detail panel is open. Read with { $in: ['$member.rowId', { $store: 'shapeStore.expandedMembers' }] }; a new row and any row an error names open themselves
 - Actions:
   - openShapeWizard(shapeRecordId?): opens the model wizard — empty for a new model, or pre-filled from a stored shape to edit it
   - cancelShapeWizard(): closes the wizard, discarding the draft
@@ -1950,6 +1951,8 @@ ShapeStore:
   - removeMember(rowId): removes one member row
   - setMemberField(rowId, field, value): sets one field of one member row. 'options' takes the comma-separated string as typed
   - reorderMembers(rowIds: string[]): applies a drag-reorder. Pair with we-sortable's onReorder and pass "$arg.detail" — order is the stored declaration order, not decoration
+  - toggleMemberExpanded(rowId): opens or closes one member's detail panel (hint, default, allowed values)
+  - commitDraft(): publishes in-place edits to the draft signal. Typed fields are mutated without touching it so inputs keep focus, which leaves derived values stale — pair with onBlur on a field something else is computed from
   - replaceDraft(draft): replaces the whole draft — how the LLM flow hands a generated model to the same review path
   - generateShapeDraft(description: string): generates a draft from a plain-language description and lands it in the open wizard for review. Proposes only — nothing is stored until the user saves. Gate the control on aiAvailable
   - saveShapeDraft(): validates, stores and adopts the draft. Errors land in draftErrors; success closes the wizard and the new entity becomes queryable via $query in this space

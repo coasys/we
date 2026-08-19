@@ -36,6 +36,7 @@ import {
   manifestToDraft,
   type ShapeDraft,
   type ShapeDraftMember,
+  syncDerived,
 } from '../../../shared/shapes/shapeDraft';
 import { useDatasetStore } from './DatasetStore';
 import { useSessionStore } from './SessionStore';
@@ -128,6 +129,18 @@ export interface ShapeStore {
   setMemberField: (rowId: string, field: keyof ShapeDraftMember, value: string | boolean) => void;
   /** Apply a drag-reorder from the row ids in their new order. */
   reorderMembers: (rowIds: string[]) => void;
+  /** Row ids whose detail panel is open — hints, defaults and options live behind it. */
+  expandedMembers: Accessor<string[]>;
+  /** Open or close one member's detail panel. */
+  toggleMemberExpanded: (rowId: string) => void;
+  /**
+   * Publish in-place edits to the draft signal.
+   *
+   * Typed fields are mutated without touching the signal so the input keeps focus, which leaves
+   * anything *derived* from them stale — the default picker for a `select` reads the options being
+   * typed a field away. Call this where an edit is finished (a blur) rather than on every keystroke.
+   */
+  commitDraft: () => void;
   /** Replace the whole draft — the LLM flow's entry point into the shared review path. */
   replaceDraft: (draft: ShapeDraft) => void;
   /**
@@ -165,6 +178,7 @@ export function ShapeStoreProvider(props: ParentProps) {
   const [hintEditor, setHintEditor] = createSignal<HintEditorState | null>(null);
   const [hintBusy, setHintBusy] = createSignal(false);
   const [generating, setGenerating] = createSignal(false);
+  const [expandedMembers, setExpandedMembers] = createSignal<string[]>([]);
 
   const aiAvailable = createMemo(() => Boolean(datasetStore.agentSettings()?.claudeApiKey));
 
@@ -337,8 +351,11 @@ export function ShapeStoreProvider(props: ParentProps) {
     const recordId = typeof shapeRecordId === 'string' && shapeRecordId ? shapeRecordId : undefined;
     setDraftErrors([]);
     if (!recordId) {
+      const draft = emptyShapeDraft();
       setEditingShapeId(null);
-      setShapeDraft(emptyShapeDraft());
+      setShapeDraft(draft);
+      // The one starter row opens: it is about to be filled in.
+      setExpandedMembers(draft.members.map((m) => m.rowId));
       return;
     }
     const view = spaceShapes().find((s) => s.id === recordId);
@@ -348,12 +365,15 @@ export function ShapeStoreProvider(props: ParentProps) {
     }
     setEditingShapeId(recordId);
     setShapeDraft(manifestToDraft(view.name, view.manifest, { description: view.description, icon: view.icon }));
+    // A stored model opens collapsed — the list is there to be read before it is edited.
+    setExpandedMembers([]);
   }
 
   function cancelShapeWizard(): void {
     setShapeDraft(null);
     setEditingShapeId(null);
     setDraftErrors([]);
+    setExpandedMembers([]);
   }
 
   /*
@@ -377,14 +397,30 @@ export function ShapeStoreProvider(props: ParentProps) {
     if (draft) setShapeDraft({ ...draft, identityMember: rowId === 'none' ? '' : rowId });
   }
 
-  function addProperty(): void {
+  /** Append a row and open it — you added it in order to fill it in. */
+  function appendMember(row: ShapeDraftMember): void {
     const draft = shapeDraft();
-    if (draft) setShapeDraft({ ...draft, members: [...draft.members, emptyDraftProperty()] });
+    if (!draft) return;
+    setShapeDraft({ ...draft, members: [...draft.members, row] });
+    setExpandedMembers([...expandedMembers(), row.rowId]);
+  }
+
+  function addProperty(): void {
+    appendMember(emptyDraftProperty());
   }
 
   function addRelationship(): void {
+    appendMember(emptyDraftRelationship());
+  }
+
+  function toggleMemberExpanded(rowId: string): void {
+    const open = expandedMembers();
+    setExpandedMembers(open.includes(rowId) ? open.filter((id) => id !== rowId) : [...open, rowId]);
+  }
+
+  function commitDraft(): void {
     const draft = shapeDraft();
-    if (draft) setShapeDraft({ ...draft, members: [...draft.members, emptyDraftRelationship()] });
+    if (draft) setShapeDraft({ ...draft });
   }
 
   function removeMember(rowId: string): void {
@@ -397,24 +433,32 @@ export function ShapeStoreProvider(props: ParentProps) {
       // on screen, which reads as a bug rather than a consequence.
       identityMember: draft.identityMember === rowId ? '' : draft.identityMember,
     });
+    setExpandedMembers(expandedMembers().filter((id) => id !== rowId));
   }
 
   /** Member fields edited by typing — updated in place so the input keeps focus (see note above). */
   const TYPED_MEMBER_FIELDS: ReadonlySet<keyof ShapeDraftMember> = new Set(['name', 'hint', 'defaultValue', 'options']);
 
-  function setMemberField(rowId: string, field: keyof ShapeDraftMember, value: string | boolean): void {
+  function setMemberField(rowId: string, field: keyof ShapeDraftMember, value: string | boolean | number): void {
     const draft = shapeDraft();
     const row = draft?.members.find((m) => m.rowId === rowId);
     if (!draft || !row) return;
+    // `we-number-input` reports a number where the draft holds text — every default is stored as
+    // typed and coerced once, at lowering, by the property's declared type.
+    const next = typeof value === 'number' ? String(value) : value;
+
     if (TYPED_MEMBER_FIELDS.has(field)) {
-      (row as unknown as Record<string, unknown>)[field] = value;
+      (row as unknown as Record<string, unknown>)[field] = next;
+      // Options are typed in place like any other text, but the default picker is built from them,
+      // so the derived list is kept in step here and published on blur (see `commitDraft`).
+      if (field === 'options') syncDerived(row);
       return;
     }
     // Discrete fields change what the row renders (conditional inputs), so this path replaces the
     // row to trigger it — the spread carries any silently-mutated text along.
     setShapeDraft({
       ...draft,
-      members: draft.members.map((m) => (m.rowId === rowId ? { ...m, [field]: value } : m)),
+      members: draft.members.map((m) => (m.rowId === rowId ? syncDerived({ ...m, [field]: next }) : m)),
     });
   }
 
@@ -454,6 +498,9 @@ export function ShapeStoreProvider(props: ParentProps) {
       // Editing keeps the record's name and predicates — generation only replaces a NEW draft
       // wholesale; on an edit it would orphan storage keys, so it is offered only for new models.
       replaceDraft(draft);
+      // Everything a model wrote is opened: the point of the flow is that it gets read before it
+      // is adopted, and hints are the part most worth checking.
+      setExpandedMembers(draft.members.map((m) => m.rowId));
       if (remainingProblems.length) setDraftErrors(remainingProblems);
     } catch (err) {
       console.error('ShapeStore: shape generation failed', err);
@@ -477,6 +524,9 @@ export function ShapeStoreProvider(props: ParentProps) {
       const lowered = draftToManifest(draft, shapeUuid);
       if (!lowered.ok) {
         setDraftErrors(lowered.errors);
+        // Open whatever the complaint is about: a message naming a field the reader cannot see
+        // reads as a bug in the form rather than a mistake in the model.
+        setExpandedMembers([...new Set([...expandedMembers(), ...lowered.rows])]);
         return;
       }
       const entityName = Object.keys(lowered.manifest.entities)[0];
@@ -672,6 +722,9 @@ export function ShapeStoreProvider(props: ParentProps) {
     removeMember,
     setMemberField,
     reorderMembers,
+    expandedMembers,
+    toggleMemberExpanded,
+    commitDraft,
     replaceDraft,
     generateShapeDraft,
     saveShapeDraft,

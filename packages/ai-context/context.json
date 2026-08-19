@@ -5727,6 +5727,9 @@
         },
         "hintBusy": {
           "type": "boolean"
+        },
+        "expandedMembers": {
+          "type": "array"
         }
       },
       "actions": [
@@ -5739,6 +5742,8 @@
         "removeMember",
         "setMemberField",
         "reorderMembers",
+        "toggleMemberExpanded",
+        "commitDraft",
         "replaceDraft",
         "generateShapeDraft",
         "saveShapeDraft",

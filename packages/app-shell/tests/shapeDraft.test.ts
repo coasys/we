@@ -18,7 +18,9 @@ import {
   emptyDraftRelationship,
   emptyShapeDraft,
   manifestToDraft,
+  NO_DEFAULT,
   type ShapeDraft,
+  syncDerived,
 } from '../src/shared/shapes/shapeDraft';
 
 const UUID = 'abc-123';
@@ -175,6 +177,52 @@ describe('draftToManifest', () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.manifest.entities.Sighting.properties.speciesName.predicate).toBe('we://shape/abc-123/species');
+  });
+});
+
+describe('typed defaults', () => {
+  it('treats the picker sentinel as no default at all', () => {
+    // The default pickers open on "No default", which must not reach the manifest as a value.
+    const draft = sightingDraft();
+    draft.members[3] = { ...draft.members[3], defaultValue: NO_DEFAULT };
+    const result = draftToManifest(draft, UUID);
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.manifest.entities.Sighting.properties.count).not.toHaveProperty('default');
+  });
+
+  it('builds a three-valued picker for a boolean, since unset is not false', () => {
+    const row = syncDerived({ ...emptyDraftProperty(), type: 'boolean' });
+    expect(row.defaultOptions.map((o) => o.value)).toEqual([NO_DEFAULT, 'true', 'false']);
+  });
+
+  it("builds a select's picker from the values it declares", () => {
+    const row = syncDerived({ ...emptyDraftProperty(), type: 'select', options: 'fiction, poetry' });
+    expect(row.defaultOptions.map((o) => o.value)).toEqual([NO_DEFAULT, 'fiction', 'poetry']);
+  });
+
+  it('lowers a picked boolean to a real boolean', () => {
+    const draft = sightingDraft();
+    draft.members.push({ ...emptyDraftProperty(), name: 'signed', type: 'boolean', defaultValue: 'false' });
+    const result = draftToManifest(draft, UUID);
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.manifest.entities.Sighting.properties.signed.default).toBe(false);
+  });
+});
+
+describe('error attribution', () => {
+  it('names the rows a refusal is about, so a collapsed one can be opened', () => {
+    const bad = { ...emptyDraftProperty(), name: 'due date' };
+    const fine = { ...emptyDraftProperty(), name: 'notes' };
+    const result = draftToManifest({ ...emptyShapeDraft(), name: 'Thing', members: [fine, bad] }, UUID);
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.rows).toEqual([bad.rowId]);
+  });
+
+  it('attributes nothing to a row for a model-level complaint', () => {
+    const result = draftToManifest({ ...emptyShapeDraft(), name: 'bad name' }, UUID);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.rows).toEqual([]);
   });
 });
 
