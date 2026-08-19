@@ -136,3 +136,60 @@ describe('asking for a time as well', () => {
     expect(el.shadowRoot?.querySelector('[part="calendar"]')).toBeNull();
   });
 });
+
+describe('the themed time list', () => {
+  /*
+    Half-hour steps behind the clock button, styled as the design system's own listbox. The native
+    popup it replaces was drawn by the browser for the OS scheme, not the theme — the calendar half
+    of this control was custom for exactly that reason, and the time half now follows it. The field
+    itself stays a native time input: typing an exact value keeps working, and touch devices keep
+    the OS wheel.
+  */
+  type TimedEl = PickerEl & { showTime: boolean };
+
+  async function openTimeList(value = ''): Promise<TimedEl> {
+    const el = document.createElement('we-date-picker') as TimedEl;
+    el.showTime = true;
+    el.value = value;
+    document.body.appendChild(el);
+    await el.updateComplete;
+    (el.shadowRoot?.querySelector('[part="input-wrapper"]') as HTMLElement).click();
+    await el.updateComplete;
+    (el.shadowRoot?.querySelector('[part="time-toggle"]') as HTMLElement).click();
+    await el.updateComplete;
+    return el;
+  }
+
+  const options = (el: TimedEl) => [...el.shadowRoot!.querySelectorAll('[part="time-option"]')] as HTMLElement[];
+
+  it('offers every half hour of the day', async () => {
+    const el = await openTimeList('2026-08-19');
+    expect(options(el)).toHaveLength(48);
+  });
+
+  it('marks the chosen time, and the nearest one for a value typed off-grid', async () => {
+    const exact = await openTimeList('2026-08-19T14:30');
+    expect(options(exact).find((o) => o.getAttribute('aria-selected') === 'true')?.textContent?.trim()).toMatch(/2:30|14:30/);
+
+    const offGrid = await openTimeList('2026-08-19T14:37');
+    const nearest = options(offGrid).find((o) => o.hasAttribute('data-nearest'));
+    expect(nearest?.textContent?.trim()).toMatch(/2:30|14:30/);
+  });
+
+  it('commits a picked time onto the day and closes the list', async () => {
+    const el = await openTimeList('2026-08-19');
+    const changes: string[] = [];
+    el.addEventListener('change', (e) => changes.push((e as CustomEvent).detail));
+    options(el)[29].click(); // 14:30
+    await el.updateComplete;
+    expect(el.value).toBe('2026-08-19T14:30');
+    expect(changes).toEqual(['2026-08-19T14:30']);
+    expect(el.shadowRoot?.querySelector('[part="time-list"]')).toBeNull();
+  });
+
+  it('dates a time picked before any day as today', async () => {
+    const el = await openTimeList();
+    options(el)[1].click(); // 00:30
+    expect(el.value).toBe(`${new Date().toISOString().slice(0, 10)}T00:30`);
+  });
+});

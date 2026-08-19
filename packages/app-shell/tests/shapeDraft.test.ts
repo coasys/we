@@ -313,3 +313,15 @@ describe('additiveViolations', () => {
     expect(diff(sightingDraft(), after)).toEqual([]);
   });
 });
+
+describe('a new draft', () => {
+  it('opens with no members — the empty state, not a presumed blank property, is the starting point', () => {
+    expect(emptyShapeDraft().members).toEqual([]);
+  });
+
+  it('still refuses to save without at least one', () => {
+    const result = draftToManifest({ ...emptyShapeDraft(), name: 'Note' }, UUID);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.errors.join(' ')).toMatch(/at least one property/);
+  });
+});

@@ -128,13 +128,19 @@ export const emptyDraftProperty = (): ShapeDraftMember => ({
 
 export const emptyDraftRelationship = (): ShapeDraftMember => ({ ...emptyDraftProperty(), kind: 'relationship' });
 
+/**
+ * A new draft opens with no members. A pre-added blank row asserted the shape of the model before
+ * its author said anything — and it put a property first when the right first move may be a
+ * relationship, or generating the fields from the description. The wizard shows an empty state in
+ * its place, and saving with nothing still fails with "a model needs at least one property".
+ */
 export const emptyShapeDraft = (): ShapeDraft => ({
   name: '',
   description: '',
   icon: '',
   classHint: '',
   identityMember: '',
-  members: [emptyDraftProperty()],
+  members: [],
 });
 
 /** The declared option list a draft row's comma-separated `options` means. */
@@ -203,7 +209,7 @@ function coerceDefault(type: ShapeDraftPropertyType, raw: string): string | numb
 }
 
 /** A row the author has actually started filling in — a pristine trailing row is not an error. */
-const isTouched = (m: ShapeDraftMember) =>
+export const isTouched = (m: ShapeDraftMember) =>
   Boolean(m.name.trim() || m.hint.trim() || m.options.trim() || m.target || hasDefault(m));
 
 /** Whether a row declares an initial value — the sentinel and the empty string both mean "no". */

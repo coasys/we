@@ -76,11 +76,23 @@ const removeMemberButton: SchemaNode = {
   children: [{ type: 'we-icon', props: { name: 'trash' } }],
 };
 
-/** The shared name input — the one control both kinds of member row open with. */
+/**
+ * The shared name input — the one control both kinds of member row open with.
+ *
+ * The placeholder names the row's kind rather than teaching the camelCase spelling ("fieldName"):
+ * these inputs carry no label, so the placeholder is doing label duty, and the identifier
+ * validation already teaches the spelling at the moment it matters.
+ */
 const memberNameInput: SchemaNode = {
   type: 'we-input',
   props: {
-    placeholder: 'fieldName',
+    placeholder: {
+      $if: {
+        condition: { $eq: ['$member.kind', 'relationship'] },
+        then: 'Relationship name…',
+        else: 'Property name…',
+      },
+    },
     width: '160px',
     size: 'sm',
     value: '$member.name',
@@ -610,7 +622,66 @@ const shapeWizardModal: SchemaNode = {
           type: 'Column',
           props: { gap: '200' },
           children: [
-            { type: 'we-text', props: { variant: 'label' }, children: ['Fields'] },
+            {
+              type: 'Row',
+              props: { ay: 'center', ax: 'between', gap: '200' },
+              children: [
+                { type: 'we-text', props: { variant: 'label' }, children: ['Fields'] },
+                {
+                  type: '$if',
+                  props: {
+                    // Same gate as the describe-it box: generation replaces the member list, which
+                    // is only safe on a new model.
+                    condition: {
+                      $and: [{ $not: { $store: 'shapeStore.editingShapeId' } }, { $store: 'shapeStore.aiAvailable' }],
+                    },
+                    then: {
+                      type: 'we-button',
+                      props: {
+                        variant: 'ghost',
+                        size: 'sm',
+                        title: 'Generate properties and relationships from the name, description and AI hint',
+                        loading: { $store: 'shapeStore.generating' },
+                        disabled: {
+                          $or: [
+                            { $store: 'shapeStore.generating' },
+                            { $not: { $store: 'shapeStore.canAutoGenerateFields' } },
+                          ],
+                        },
+                        onClick: { $action: 'shapeStore.generateShapeFields' },
+                      },
+                      children: [
+                        { type: 'we-icon', props: { name: 'sparkle' } },
+                        { type: 'we-text', children: ['Auto-generate fields'] },
+                      ],
+                    },
+                  },
+                },
+              ],
+            },
+            {
+              type: '$if',
+              props: {
+                condition: { $not: { $count: { items: { $store: 'shapeStore.shapeDraft.members' } } } },
+                then: {
+                  type: 'Column',
+                  props: {
+                    ax: 'center',
+                    py: '400',
+                    r: '300',
+                    border: '1px dashed neutral-300',
+                    gap: '100',
+                  },
+                  children: [
+                    {
+                      type: 'we-text',
+                      props: { color: 'neutral-400' },
+                      children: ['No properties or relationships yet.'],
+                    },
+                  ],
+                },
+              },
+            },
             {
               type: 'we-sortable',
               props: {

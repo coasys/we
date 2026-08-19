@@ -389,7 +389,16 @@ export default class Sortable extends DesignSystemElement {
     }
 
     this._dropIndex = target._indexAt(e.clientX, e.clientY, this._dragging);
-    target._updateIndicator(this._indicator, this._dropIndex, this._dragging);
+    /*
+      The indicator draws against the list *without* the dragged item, so it needs the same
+      dragged-inclusive → dragged-exclusive conversion the drop itself gets in _onPointerUp.
+      Unconverted, the two spaces agree when dragging up and differ by one when dragging down —
+      the line sat one row below where the drop would actually land, so a downward drag had to be
+      taken a row too far before the line reached the place already meant.
+    */
+    const fromIndex = this._getItems().indexOf(this._dragging);
+    const shownIndex = target === this && this._dropIndex > fromIndex ? this._dropIndex - 1 : this._dropIndex;
+    target._updateIndicator(this._indicator, shownIndex, this._dragging);
   };
 
   /** Where in this zone a pointer at (x, y) would drop, by comparing against each item's centre. */

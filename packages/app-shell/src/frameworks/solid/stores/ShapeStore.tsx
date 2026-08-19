@@ -46,6 +46,7 @@ import {
   type ShapeDraft,
   type ShapeDraftMember,
   syncDerived,
+  isTouched,
 } from '../../../shared/shapes/shapeDraft';
 import { useDatasetStore } from './DatasetStore';
 import { useSessionStore } from './SessionStore';
@@ -196,6 +197,19 @@ export interface ShapeStore {
    * Never adopts anything itself: generation proposes, the human saves.
    */
   generateShapeDraft: (description: string) => Promise<void>;
+  /**
+   * Generate the draft's members from what its author already wrote — name, description, AI hint.
+   * The complement of {@link generateShapeDraft}: that flow starts from prose and replaces the
+   * whole draft; this one respects the fields the author typed and fills in the structure.
+   */
+  generateShapeFields: () => Promise<void>;
+  /**
+   * The auto-generate button has something to work from and nothing to destroy: some context is
+   * written (name, description or hint) and no member row has been started. False once a member is
+   * touched — generation replaces the member list wholesale, and quietly discarding typed rows is
+   * how a click becomes a loss.
+   */
+  canAutoGenerateFields: Accessor<boolean>;
   /**
    * Close the wizard, asking first when there is work to lose.
    *
@@ -620,6 +634,61 @@ export function ShapeStoreProvider(props: ParentProps) {
     }
   }
 
+  const canAutoGenerateFields = createMemo<boolean>(() => {
+    const draft = shapeDraft();
+    if (!draft) return false;
+    const hasContext = Boolean(draft.name.trim() || draft.description.trim() || draft.classHint.trim());
+    return hasContext && !draft.members.some(isTouched);
+  });
+
+  async function generateShapeFields(): Promise<void> {
+    const draft = shapeDraft();
+    const apiKey = datasetStore.agentSettings()?.claudeApiKey;
+    if (!draft || !apiKey || !canAutoGenerateFields()) return;
+    // The same generation as the describe-it flow, prompted by what the author already wrote.
+    const context = [
+      draft.name.trim() && `The model is called "${draft.name.trim()}".`,
+      draft.description.trim() && `Description: ${draft.description.trim()}`,
+      draft.classHint.trim() && `Guidance for AI extraction: ${draft.classHint.trim()}`,
+    ]
+      .filter(Boolean)
+      .join('\n');
+    setGenerating(true);
+    setDraftErrors([]);
+    try {
+      const existing = knownEntityNames(editingShapeId() ?? undefined);
+      const { draft: generated, remainingProblems } = await runShapeGeneration(context, {
+        apiKey,
+        existingEntities: existing,
+        referenceTargets: relationshipTargets().map((t) => t.value),
+      });
+      batch(() => {
+        const current = shapeDraft();
+        if (!current) return;
+        // The author's words survive; the generation contributes the structure — plus an answer
+        // for anything they left blank.
+        replaceDraft({
+          ...current,
+          name: current.name.trim() || generated.name,
+          description: current.description.trim() ? current.description : generated.description,
+          icon: current.icon || generated.icon,
+          classHint: current.classHint.trim() ? current.classHint : generated.classHint,
+          members: generated.members,
+          identityMember: generated.identityMember,
+        });
+        // Opened for the same reason the describe-it flow opens them: generated fields are a
+        // proposal, and the hints are the part most worth reading before adopting.
+        setExpandedMembers(generated.members.map((m) => m.rowId));
+      });
+      if (remainingProblems.length) setDraftErrors(remainingProblems);
+    } catch (err) {
+      console.error('ShapeStore: field generation failed', err);
+      setDraftErrors([`Generation failed: ${err instanceof Error ? err.message : String(err)}`]);
+    } finally {
+      setGenerating(false);
+    }
+  }
+
   async function saveShapeDraft(): Promise<void> {
     const draft = shapeDraft();
     const dataset = handle();
@@ -838,6 +907,8 @@ export function ShapeStoreProvider(props: ParentProps) {
     commitDraft,
     replaceDraft,
     generateShapeDraft,
+    generateShapeFields,
+    canAutoGenerateFields,
     requestCloseWizard,
     confirmDiscard,
     cancelDiscard,

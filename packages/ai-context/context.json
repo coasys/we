@@ -5753,6 +5753,9 @@
         "expandedMembers": {
           "type": "array"
         },
+        "canAutoGenerateFields": {
+          "type": "boolean"
+        },
         "confirmDiscard": {
           "type": "boolean"
         }
@@ -5771,6 +5774,7 @@
         "commitDraft",
         "replaceDraft",
         "generateShapeDraft",
+        "generateShapeFields",
         "requestCloseWizard",
         "cancelDiscard",
         "saveShapeDraft",

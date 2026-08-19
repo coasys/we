@@ -202,11 +202,44 @@ const styles = css`
     draws it and colours it for the OS scheme rather than the theme, so on a dark theme it was a
     black clock on a dark panel, and no amount of CSS reaches it.
 
-    The button below replaces it and opens the same picker through showPicker(), so the affordance
-    is themed without the control losing anything.
+    The button below replaces it and opens the themed time list, so the affordance is ours end to
+    end. The field itself stays a native time input on purpose: typing an exact time keeps working,
+    and on a touch device focusing it still raises the OS wheel, which no web dropdown improves on.
   */
   input[part='time']::-webkit-calendar-picker-indicator {
     display: none;
+  }
+
+  /* The time list, dressed exactly as we-select's listbox — it is the same kind of thing. */
+  [part='time-list'] {
+    position: fixed;
+    width: max-content;
+    min-width: 110px;
+    z-index: var(--we-z-dropdown);
+    max-height: 200px;
+    overflow-y: auto;
+    background: var(--we-role-surface-raised);
+    border: 1px solid var(--we-role-border);
+    border-radius: var(--we-theme-surface-radius, var(--we-radius-400));
+    box-shadow: 0 4px 12px color-mix(in srgb, var(--we-role-shadow-color) 10%, transparent);
+    padding: var(--we-space-100) 0;
+  }
+
+  [part='time-option'] {
+    all: unset;
+    display: block;
+    box-sizing: border-box;
+    width: 100%;
+    padding: var(--we-space-200) var(--we-space-300);
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background var(--we-transition-200, 150ms) ease;
+  }
+
+  [part='time-option']:hover,
+  [part='time-option']:focus-visible,
+  [part='time-option'][aria-selected='true'] {
+    background: var(--we-color-primary-50);
   }
 
   [part='time-toggle'] {
@@ -254,9 +287,12 @@ export default class DatePicker extends DesignSystemElement {
   @property({ type: Object }) styles?: Record<string, string | number | undefined>;
 
   @state() private _open = false;
+  @state() private _timeOpen = false;
 
   /** Teardown for the open calendar: stops the position watcher and leaves the top layer. */
   private _closeFloating?: () => void;
+  /** Teardown for the open time list — a second floating panel, anchored to the time field. */
+  private _closeTimeFloating?: () => void;
   @state() private _viewYear = new Date().getFullYear();
   @state() private _viewMonth = new Date().getMonth();
 
@@ -286,21 +322,45 @@ export default class DatePicker extends DesignSystemElement {
   /** Float the calendar while it is open — see the note on `openFloatingPanel`. */
   updated(changed: PropertyValues) {
     super.updated(changed);
-    if (!changed.has('_open')) return;
-    if (this._open) {
-      this._closeFloating = openFloatingPanel(
-        this.shadowRoot?.querySelector('[part="input-wrapper"]') as HTMLElement | null,
-        this.shadowRoot?.querySelector('[part="calendar"]') as HTMLElement | null,
-      );
-    } else {
-      this._closeFloating?.();
-      this._closeFloating = undefined;
+    if (changed.has('_open')) {
+      if (this._open) {
+        this._closeFloating = openFloatingPanel(
+          this.shadowRoot?.querySelector('[part="input-wrapper"]') as HTMLElement | null,
+          this.shadowRoot?.querySelector('[part="calendar"]') as HTMLElement | null,
+        );
+      } else {
+        this._closeFloating?.();
+        this._closeFloating = undefined;
+        // The list is anchored inside the calendar; it has nothing to be open against.
+        this._timeOpen = false;
+      }
+    }
+    if (changed.has('_timeOpen')) {
+      if (this._timeOpen) {
+        const list = this.shadowRoot?.querySelector('[part="time-list"]') as HTMLElement | null;
+        this._closeTimeFloating = openFloatingPanel(
+          this.shadowRoot?.querySelector('[part="time-row"]') as HTMLElement | null,
+          list,
+        );
+        // Opened onto the value rather than 00:00 — recognition is the list's whole job, and the
+        // nearest half hour is the right anchor for a value typed off-grid.
+        const anchor = list?.querySelector('[aria-selected="true"], [data-nearest]');
+        // Scroll the list itself rather than scrollIntoView, which would also scroll every
+        // scrollable ancestor toward the panel — and which test DOMs do not implement.
+        if (list && anchor instanceof HTMLElement) {
+          list.scrollTop = anchor.offsetTop - list.clientHeight / 2 + anchor.offsetHeight / 2;
+        }
+      } else {
+        this._closeTimeFloating?.();
+        this._closeTimeFloating = undefined;
+      }
     }
   }
 
   disconnectedCallback() {
     super.disconnectedCallback();
     this._closeFloating?.();
+    this._closeTimeFloating?.();
     document.removeEventListener('click', this._onDocClick);
   }
 
@@ -370,13 +430,49 @@ export default class DatePicker extends DesignSystemElement {
     this._emit();
   }
 
-  /** Opens the browser's own time picker, which the themed button replaces the native glyph for. */
-  private _openTimePicker = () => {
-    const input = this.shadowRoot?.querySelector('input[part="time"]') as
-      | (HTMLInputElement & { showPicker?: () => void })
-      | null;
-    input?.showPicker?.();
+  /**
+   * The list behind the clock button: half-hour steps, labelled for the locale.
+   *
+   * A combobox rather than wheels or a clock face — time-picking is two tasks with different
+   * tools: common times want recognition (a glance and a click at a list), exact times want
+   * typing, which the field beside it already does. Half-hour steps because this is enough for
+   * picking, and anything finer belongs to the keyboard.
+   */
+  private get _timeOptions(): { value: string; label: string }[] {
+    const out: { value: string; label: string }[] = [];
+    for (let h = 0; h < 24; h++) {
+      for (const m of [0, 30]) {
+        const value = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+        // Formatted through the locale, so a 12-hour user reads "2:30 PM" while "14:30" is stored.
+        const label = new Date(2000, 0, 1, h, m).toLocaleTimeString(undefined, {
+          hour: 'numeric',
+          minute: '2-digit',
+        });
+        out.push({ value, label });
+      }
+    }
+    return out;
+  }
+
+  /** The list entry an off-grid value opens beside — "14:37" lands the view at 14:30. */
+  private get _nearestTimeValue(): string {
+    const time = this._timePart;
+    if (!time) return '';
+    const minutes = Number(time.slice(0, 2)) * 60 + Number(time.slice(3, 5));
+    const snapped = Math.min(Math.round(minutes / 30) * 30, 23 * 60 + 30);
+    return `${String(Math.floor(snapped / 60)).padStart(2, '0')}:${String(snapped % 60).padStart(2, '0')}`;
+  }
+
+  private _toggleTimeList = () => {
+    this._timeOpen = !this._timeOpen;
   };
+
+  private _pickTime(value: string) {
+    const date = this._datePart || new Date().toISOString().slice(0, 10);
+    this.value = `${date}T${value}`;
+    this._timeOpen = false;
+    this._emit();
+  }
 
   private _selectTime = (e: Event) => {
     const time = (e.target as HTMLInputElement).value;
@@ -499,10 +595,36 @@ export default class DatePicker extends DesignSystemElement {
                               @change=${this._selectTime}
                               aria-label="Time"
                             />
-                            <button part="time-toggle" @click=${this._openTimePicker} aria-label="Choose time">
+                            <button
+                              part="time-toggle"
+                              @click=${this._toggleTimeList}
+                              aria-label="Choose time"
+                              aria-expanded=${this._timeOpen ? 'true' : 'false'}
+                            >
                               <we-icon name="clock" size="14px"></we-icon>
                             </button>
                           </div>
+                          ${
+                            this._timeOpen
+                              ? html`
+                                  <div part="time-list" role="listbox" aria-label="Times">
+                                    ${this._timeOptions.map(
+                                      (t) => html`
+                                        <button
+                                          part="time-option"
+                                          role="option"
+                                          aria-selected=${t.value === this._timePart ? 'true' : 'false'}
+                                          ?data-nearest=${t.value === this._nearestTimeValue}
+                                          @click=${() => this._pickTime(t.value)}
+                                        >
+                                          ${t.label}
+                                        </button>
+                                      `,
+                                    )}
+                                  </div>
+                                `
+                              : nothing
+                          }
                         `
                       : nothing
                   }
