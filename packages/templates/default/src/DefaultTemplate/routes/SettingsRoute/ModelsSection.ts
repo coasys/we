@@ -450,93 +450,6 @@ const memberRow: SchemaNode = {
   ],
 };
 
-/**
- * The "describe it instead" box — the LLM frontend. Offered for new models only: on an edit a
- * generated draft would replace the stored predicates wholesale, which is exactly what the
- * additive guard exists to prevent. Fills the same draft the rows below edit; nothing is stored
- * until the user saves.
- */
-/** The hint shown in the box's place while no AI key is configured — see the gate below. */
-const aiUnavailableHint: SchemaNode = {
-  type: 'Row',
-  props: { gap: '200', ay: 'center' },
-  children: [
-    { type: 'we-icon', props: { name: 'sparkle', size: 'sm', color: 'neutral-400' } },
-    {
-      type: 'we-text',
-      props: { variant: 'footnote', color: 'neutral-400' },
-      children: [
-        'AI can draft this model from a description — configure a language model in Settings \u2192 AI to enable it.',
-      ],
-    },
-  ],
-};
-
-const describeItBoxAvailable: SchemaNode = {
-  type: '$if',
-  props: {
-    // Without AI configured the box explains itself instead of vanishing: it was gated on the key
-    // outright once, and its own author could not find it.
-    condition: { $store: 'shapeStore.aiAvailable' },
-    else: aiUnavailableHint,
-    then: {
-      type: 'Column',
-      props: { gap: '200', p: '300', bg: 'primary-50', r: '300', border: '1px solid primary-100' },
-      children: [
-        {
-          type: 'Row',
-          props: { gap: '200', ay: 'center' },
-          children: [
-            { type: 'we-icon', props: { name: 'sparkle', color: 'primary-600' } },
-            { type: 'we-text', props: { variant: 'label' }, children: ['Describe it instead'] },
-          ],
-        },
-        {
-          type: 'we-textarea',
-          props: {
-            rows: 2,
-            placeholder:
-              'e.g. "We share book recommendations — the title, who wrote it, why it is worth reading, and a rating"',
-            value: { $local: 'aiDescription' },
-            onInput: { $setLocal: 'aiDescription', from: '$event.detail' },
-          },
-        },
-        {
-          type: 'Row',
-          props: { ax: 'end' },
-          children: [
-            {
-              type: 'we-button',
-              props: {
-                variant: 'secondary',
-                size: 'sm',
-                loading: { $store: 'shapeStore.generating' },
-                disabled: {
-                  $or: [{ $store: 'shapeStore.generating' }, { $not: { $local: 'aiDescription' } }],
-                },
-                onClick: { $action: 'shapeStore.generateShapeDraft', args: [{ $local: 'aiDescription' }] },
-              },
-              children: [
-                { type: 'we-icon', props: { name: 'sparkle' } },
-                { type: 'we-text', children: ['Generate'] },
-              ],
-            },
-          ],
-        },
-      ],
-    },
-  },
-};
-
-/** New models only — generation replaces the draft, which would orphan an existing model's keys. */
-const describeItBox: SchemaNode = {
-  type: '$if',
-  props: {
-    condition: { $not: { $store: 'shapeStore.editingShapeId' } },
-    then: describeItBoxAvailable,
-  },
-};
-
 /** The wizard: create or edit one model. Mounted while `shapeStore.shapeDraft` is non-null. */
 const shapeWizardModal: SchemaNode = {
   type: 'we-modal',
@@ -548,9 +461,6 @@ const shapeWizardModal: SchemaNode = {
   // own padding (space-900 each side), since this width now includes it — at 720px total the
   // member rows lost 128px of room and wrapped.
   props: { close: { $action: 'shapeStore.requestCloseWizard' }, width: 'min(850px, 92vw)' },
-  $localState: {
-    aiDescription: { type: 'string', initial: '' },
-  },
   children: [
     {
       type: 'we-text',
@@ -570,7 +480,6 @@ const shapeWizardModal: SchemaNode = {
       type: 'Column',
       props: { gap: '400' },
       children: [
-        describeItBox,
         {
           type: 'Row',
           props: { gap: '300', ay: 'center', wrap: true },
@@ -678,7 +587,7 @@ const shapeWizardModal: SchemaNode = {
                       },
                       children: [
                         { type: 'we-icon', props: { name: 'sparkle' } },
-                        { type: 'we-text', children: ['Auto-generate fields'] },
+                        { type: 'we-text', children: ['Generate fields'] },
                       ],
                     },
                   },
@@ -694,6 +603,7 @@ const shapeWizardModal: SchemaNode = {
                   props: {
                     ax: 'center',
                     py: '400',
+                    px: '400',
                     r: '300',
                     border: '1px dashed neutral-300',
                     gap: '100',
@@ -703,6 +613,29 @@ const shapeWizardModal: SchemaNode = {
                       type: 'we-text',
                       props: { color: 'neutral-400' },
                       children: ['No properties or relationships yet.'],
+                    },
+                    /*
+                      Discoverability lives here, at the moment it is relevant, rather than as a
+                      permanent panel at the top of the form: the generate route when there is one,
+                      and where to configure a model when there is not.
+                    */
+                    {
+                      type: '$if',
+                      props: {
+                        condition: { $store: 'shapeStore.aiAvailable' },
+                        then: {
+                          type: 'we-text',
+                          props: { variant: 'footnote', color: 'neutral-400', textAlign: 'center' },
+                          children: ['Add one below, or fill in the name and description and generate them.'],
+                        },
+                        else: {
+                          type: 'we-text',
+                          props: { variant: 'footnote', color: 'neutral-400', textAlign: 'center' },
+                          children: [
+                            'Configure a language model in Settings \u2192 AI to generate fields from a description.',
+                          ],
+                        },
+                      },
                     },
                   ],
                 },

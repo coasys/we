@@ -199,6 +199,11 @@ export interface ShapeStore {
    * Generate a draft from a plain-language description and land it in the open wizard for review.
    * Never adopts anything itself: generation proposes, the human saves.
    */
+  /**
+   * Generate a whole draft from free prose — every field, name and hints included. No wizard
+   * control is wired to this any more (the typed route is {@link generateShapeFields}); it stays
+   * because it is the engine a spoken route needs: transcription in, the same review form out.
+   */
   generateShapeDraft: (description: string) => Promise<void>;
   /**
    * Generate the draft's members from what its author already wrote — name, description, AI hint.
