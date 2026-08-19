@@ -69,12 +69,28 @@ const styles = css`
 export default class NumberInput extends DesignSystemElement {
   static styles = [sharedStyles, styles];
 
-  @property({ type: Number }) value = 0;
+  /**
+   * The number, or `''` for no number at all.
+   *
+   * Empty is not zero, and the difference is load-bearing wherever a numeric field is optional: a
+   * default that is unset, a filter nobody has set yet. Typed as a number by default so existing
+   * consumers are unaffected; a converter is used rather than `type: Number` because that one turns
+   * an empty attribute into 0 and the distinction is lost before this component sees it.
+   */
+  @property({
+    converter: {
+      fromAttribute: (v: string | null) => (v === null || v === '' ? '' : Number(v)),
+      toAttribute: (v: number | '') => (v === '' ? null : String(v)),
+    },
+  })
+  value: number | '' = 0;
   @property({ type: Number }) min = -Infinity;
   @property({ type: Number }) max = Infinity;
   @property({ type: Number }) step = 1;
   @property({ type: Boolean, reflect: true }) disabled = false;
   @property({ type: String }) name = '';
+  /** Shown when there is no number — worth setting wherever empty is a legitimate answer. */
+  @property({ type: String }) placeholder = '';
   @property({ type: String, reflect: true }) size: ComponentSize = 'md';
   @property({ type: Object }) styles?: Record<string, string | number | undefined>;
 
@@ -104,23 +120,38 @@ export default class NumberInput extends DesignSystemElement {
     return parseFloat(val.toFixed(dp));
   }
 
-  private _emit(val: number) {
-    const clamped = this._clamp(this._round(val));
-    this.value = clamped;
-    this.dispatchEvent(new CustomEvent('change', { detail: clamped, bubbles: true, composed: true }));
+  private _emit(val: number | '') {
+    const next = val === '' ? '' : this._clamp(this._round(val));
+    this.value = next;
+    this.dispatchEvent(new CustomEvent('change', { detail: next, bubbles: true, composed: true }));
+  }
+
+  /**
+   * Where a step starts from when there is no number yet.
+   *
+   * Without this, stepping an empty field did arithmetic on `''`: one direction produced a number
+   * and the other did nothing, so the buttons appeared broken until you happened to press the one
+   * that worked. A bounded field starts at its own floor, an unbounded one at zero.
+   */
+  private _base(): number {
+    if (this.value !== '') return this.value;
+    return Number.isFinite(this.min) ? this.min : 0;
   }
 
   private _decrement() {
-    this._emit(this.value - this.step);
+    this._emit(this.value === '' ? this._base() : this._base() - this.step);
   }
 
   private _increment() {
-    this._emit(this.value + this.step);
+    this._emit(this.value === '' ? this._base() : this._base() + this.step);
   }
 
   private _onInput(e: Event) {
     e.stopPropagation();
-    const val = Number((e.target as HTMLInputElement).value);
+    const raw = (e.target as HTMLInputElement).value;
+    // Emptying the field is a real edit — it is how a value is taken back.
+    if (raw === '') return this._emit('');
+    const val = Number(raw);
     if (!Number.isNaN(val)) this._emit(val);
   }
 
@@ -133,7 +164,8 @@ export default class NumberInput extends DesignSystemElement {
         <input
           part="native"
           type="number"
-          .value=${String(this.value)}
+          .value=${this.value === '' ? '' : String(this.value)}
+          placeholder=${this.placeholder}
           min=${this.min}
           max=${this.max}
           step=${this.step}

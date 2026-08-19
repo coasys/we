@@ -918,7 +918,7 @@
       "ownProps": [
         {
           "name": "value",
-          "type": "number",
+          "type": "number | ''",
           "optional": false,
           "default": "0"
         },
@@ -948,6 +948,12 @@
         },
         {
           "name": "name",
+          "type": "string",
+          "optional": false,
+          "default": "''"
+        },
+        {
+          "name": "placeholder",
           "type": "string",
           "optional": false,
           "default": "''"

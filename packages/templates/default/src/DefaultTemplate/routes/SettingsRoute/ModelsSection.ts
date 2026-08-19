@@ -118,14 +118,13 @@ const defaultValueControl: SchemaNode = {
   props: {
     condition: { $eq: ['$member.type', 'number'] },
     then: {
-      type: 'we-input',
+      type: 'we-number-input',
       props: {
         size: 'sm',
-        type: 'number',
         width: DEFAULT_CONTROL_WIDTH,
         placeholder: 'No default',
         value: '$member.defaultValue',
-        onInput: { $action: 'shapeStore.setMemberField', args: ['$member.rowId', 'defaultValue', '$arg.detail'] },
+        onChange: { $action: 'shapeStore.setMemberField', args: ['$member.rowId', 'defaultValue', '$arg.detail'] },
       },
     },
     else: {

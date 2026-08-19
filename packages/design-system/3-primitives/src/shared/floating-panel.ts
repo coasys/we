@@ -57,6 +57,18 @@ export function openFloatingPanel(
   panel.style.position = 'fixed';
   panel.style.margin = '0';
 
+  /*
+    Undo the UA's own [popover] rules.
+
+    They are author-level-beating in one specific way that matters: a panel inheriting its text
+    colour from the component around it suddenly gets `color: CanvasText` instead, because any
+    declaration beats inheritance. Every one of these panels sets its own background and none set a
+    colour, so promoting them turned themed text black on a themed surface. `inset` matters for the
+    same reason — the UA anchors a popover to all four edges, which fights the coordinates below.
+  */
+  panel.style.inset = 'auto';
+  panel.style.color = 'inherit';
+
   const supportsPopover = typeof (panel as HTMLElement & { showPopover?: () => void }).showPopover === 'function';
   if (supportsPopover && !panel.hasAttribute('popover')) panel.setAttribute('popover', 'manual');
 

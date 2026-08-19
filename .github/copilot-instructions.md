@@ -828,7 +828,7 @@ Supports selected, active, and danger states.
 - we-number (DesignSystemElement) — Displays a number, optionally abbreviated (1 200 → 1.2K, 1 500 000 → 1.5M).
   Props: value: number = 0, shorten: boolean = false, precision: number = 1, locale: string = 'en', formattedValue: string
 - we-number-input (DesignSystemElement)
-  Props: value: number = 0, min: number = -Infinity, max: unknown = Infinity, step: number = 1, disabled: boolean = false, name: string = '', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md'
+  Props: value: number | '' = 0, min: number = -Infinity, max: unknown = Infinity, step: number = 1, disabled: boolean = false, name: string = '', placeholder: string = '', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md'
 - we-pagination (DesignSystemElement)
   Props: page: number = 1, total: number = 1, siblings: number = 1, size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md'
 - we-popover (LayoutElement) — Low-level floating panel anchored to a trigger element.
