@@ -258,6 +258,47 @@ describe('keyboard', () => {
   });
 });
 
+describe('drag feedback inside a modal', () => {
+  /*
+    The ghost and the drop line are appended to document.body and stacked with a z-index, which no
+    modal can be beaten with: `we-modal` promotes itself into the browser's top layer via
+    `popover="manual"`, and the top layer is above every z-index there is. Dragging inside a dialog
+    therefore showed neither, which read as "reordering gives no feedback".
+
+    jsdom has no Popover API, so the stub below is what makes the promotion path reachable at all —
+    which is also the fallback being asserted in the last case.
+  */
+  const withPopoverSupport = (fn: () => void) => {
+    // `lib.dom` declares showPopover whether or not the runtime has it, so this is a plain property
+    // write and removal rather than anything typed — hence Reflect over `delete`.
+    const proto = HTMLElement.prototype as unknown as Record<string, unknown>;
+    const shown: HTMLElement[] = [];
+    proto.showPopover = function showPopover(this: HTMLElement) {
+      shown.push(this);
+    };
+    try {
+      fn();
+    } finally {
+      Reflect.deleteProperty(proto, 'showPopover');
+    }
+    return shown;
+  };
+
+  it('promotes both the ghost and the drop line to the top layer', async () => {
+    const zone = await makeZone({ zone: 'todo', items: ['a', 'b', 'c'] });
+    const shown = withPopoverSupport(() => drag(zone, itemsOf(zone)[0], { x: 100, y: 260 }));
+
+    expect(shown).toHaveLength(2);
+    for (const el of shown) expect(el.getAttribute('popover')).toBe('manual');
+  });
+
+  it('still drags where the Popover API is missing', async () => {
+    const zone = await makeZone({ zone: 'todo', items: ['a', 'b', 'c'] });
+    const { reorder } = drag(zone, itemsOf(zone)[0], { x: 100, y: 260 });
+    expect(reorder).toEqual(['b', 'c', 'a']);
+  });
+});
+
 describe('items containing form controls', () => {
   /*
     Both cases here are what made a form row unusable inside a sortable: a drag begun in a text

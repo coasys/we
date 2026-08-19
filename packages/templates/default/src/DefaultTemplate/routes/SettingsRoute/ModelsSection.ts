@@ -35,7 +35,15 @@ const dragHandle: SchemaNode = {
     'data-we-handle': '',
     tabindex: '0',
     title: 'Drag to reorder',
-    style: { display: 'flex', alignItems: 'center', cursor: 'grab' },
+    // Given the height of one control rather than centred on the card: it grips the whole row, and
+    // a property card grows and shrinks as its conditional inputs appear, so a centred handle would
+    // drift up and down as you change a field's type. This keeps it level with the first line.
+    style: {
+      display: 'flex',
+      alignItems: 'center',
+      height: 'var(--we-component-height-sm)',
+      cursor: 'grab',
+    },
   },
   children: [{ type: 'we-icon', props: { name: 'dots-six-vertical', color: 'neutral-400' } }],
 };
@@ -71,87 +79,99 @@ const memberNameInput: SchemaNode = {
  * input happens to come last (which moves as the type changes, and reads as "clear this field").
  */
 const propertyRow: SchemaNode = {
-  type: 'Column',
-  props: { gap: '200', p: '300', bg: 'neutral-50', r: '300', border: '1px solid neutral-200' },
+  type: 'Row',
+  // neutral-0, not neutral-50: neutral-50 is what `we-input` fills itself with, so a card painted
+  // in it made every field disappear into its own container. Surfaces take the surface step and
+  // controls keep their recessed one — see the note on `relationshipRow` for the tinted case.
+  props: { gap: '200', p: '300', bg: 'neutral-0', r: '300', border: '1px solid neutral-200', ay: 'start' },
   children: [
+    dragHandle,
     {
-      type: 'Row',
-      props: { gap: '200', ay: 'center', ax: 'between', wrap: true },
+      type: 'Column',
+      props: { gap: '200', flex: '1', minWidth: '0' },
       children: [
         {
           type: 'Row',
-          props: { gap: '200', ay: 'center', wrap: true },
+          props: { gap: '200', ay: 'center', ax: 'between', wrap: true },
           children: [
-            dragHandle,
-            memberNameInput,
             {
-              type: 'we-select',
+              type: 'Row',
+              props: { gap: '300', ay: 'center', wrap: true },
+              children: [
+                memberNameInput,
+                {
+                  type: 'we-select',
+                  props: {
+                    size: 'sm',
+                    width: '130px',
+                    options: PROPERTY_TYPE_OPTIONS,
+                    value: '$member.type',
+                    onChange: { $action: 'shapeStore.setMemberField', args: ['$member.rowId', 'type', '$arg.detail'] },
+                  },
+                },
+                {
+                  type: 'we-switch',
+                  props: {
+                    size: 'sm',
+                    labelOff: 'Optional',
+                    labelOn: 'Required',
+                    checked: '$member.required',
+                    onChange: {
+                      $action: 'shapeStore.setMemberField',
+                      args: ['$member.rowId', 'required', '$arg.detail'],
+                    },
+                  },
+                },
+              ],
+            },
+            removeMemberButton,
+          ],
+        },
+        {
+          type: '$if',
+          props: {
+            condition: { $eq: ['$member.type', 'select'] },
+            then: {
+              type: 'we-input',
               props: {
                 size: 'sm',
-                width: '130px',
-                options: PROPERTY_TYPE_OPTIONS,
-                value: '$member.type',
-                onChange: { $action: 'shapeStore.setMemberField', args: ['$member.rowId', 'type', '$arg.detail'] },
+                placeholder: 'Options, comma-separated — e.g. fiction, non-fiction, poetry',
+                value: '$member.options',
+                onInput: { $action: 'shapeStore.setMemberField', args: ['$member.rowId', 'options', '$arg.detail'] },
+              },
+            },
+          },
+        },
+        {
+          type: 'Row',
+          props: { gap: '200', wrap: true },
+          children: [
+            {
+              type: 'we-input',
+              props: {
+                size: 'sm',
+                flex: '2',
+                minWidth: '220px',
+                placeholder: 'AI hint — what goes in this field, allowed values, format…',
+                value: '$member.hint',
+                onInput: { $action: 'shapeStore.setMemberField', args: ['$member.rowId', 'hint', '$arg.detail'] },
               },
             },
             {
-              type: 'we-switch',
+              type: 'we-input',
               props: {
                 size: 'sm',
-                labelOff: 'Optional',
-                labelOn: 'Required',
-                checked: '$member.required',
-                onChange: { $action: 'shapeStore.setMemberField', args: ['$member.rowId', 'required', '$arg.detail'] },
+                flex: '1',
+                minWidth: '120px',
+                placeholder: 'Default value',
+                value: '$member.defaultValue',
+                onInput: {
+                  $action: 'shapeStore.setMemberField',
+                  args: ['$member.rowId', 'defaultValue', '$arg.detail'],
+                },
               },
             },
           ],
-        },
-        removeMemberButton,
-      ],
-    },
-    {
-      type: '$if',
-      props: {
-        condition: { $eq: ['$member.type', 'select'] },
-        then: {
-          type: 'we-input',
-          props: {
-            size: 'sm',
-            placeholder: 'Options, comma-separated — e.g. fiction, non-fiction, poetry',
-            value: '$member.options',
-            onInput: { $action: 'shapeStore.setMemberField', args: ['$member.rowId', 'options', '$arg.detail'] },
-          },
-        },
-      },
-    },
-    {
-      type: 'Row',
-      props: { gap: '200', wrap: true },
-      children: [
-        {
-          type: 'we-input',
-          props: {
-            size: 'sm',
-            flex: '2',
-            minWidth: '220px',
-            placeholder: 'AI hint — what goes in this field, allowed values, format…',
-            value: '$member.hint',
-            onInput: { $action: 'shapeStore.setMemberField', args: ['$member.rowId', 'hint', '$arg.detail'] },
-          },
-        },
-        {
-          type: 'we-input',
-          props: {
-            size: 'sm',
-            flex: '1',
-            minWidth: '120px',
-            placeholder: 'Default value',
-            value: '$member.defaultValue',
-            onInput: {
-              $action: 'shapeStore.setMemberField',
-              args: ['$member.rowId', 'defaultValue', '$arg.detail'],
-            },
-          },
         },
       ],
     },
@@ -166,45 +186,56 @@ const propertyRow: SchemaNode = {
  * and no hint to show. That asymmetry is why the two are separate rows at all.
  */
 const relationshipRow: SchemaNode = {
-  type: 'Column',
-  props: { gap: '200', p: '300', bg: 'primary-50', r: '300', border: '1px solid primary-100' },
+  type: 'Row',
+  // A tint is fine where a fill is not: primary-50 is a different step from the neutral-50 that
+  // `we-input` paints itself, so the fields still read as recessed against it.
+  props: { gap: '200', p: '300', bg: 'primary-50', r: '300', border: '1px solid primary-100', ay: 'start' },
   children: [
+    dragHandle,
     {
-      type: 'Row',
-      props: { gap: '200', ay: 'center', ax: 'between', wrap: true },
+      type: 'Column',
+      props: { gap: '200', flex: '1', minWidth: '0' },
       children: [
         {
           type: 'Row',
-          props: { gap: '200', ay: 'center', wrap: true },
+          props: { gap: '200', ay: 'center', ax: 'between', wrap: true },
           children: [
-            dragHandle,
-            memberNameInput,
-            { type: 'we-icon', props: { name: 'arrow-right', color: 'neutral-400' } },
             {
-              type: 'we-select',
-              props: {
-                size: 'sm',
-                width: '260px',
-                searchable: true,
-                placeholder: 'Points at…',
-                options: { $store: 'shapeStore.relationshipTargets' },
-                value: '$member.target',
-                onChange: { $action: 'shapeStore.setMemberField', args: ['$member.rowId', 'target', '$arg.detail'] },
-              },
+              type: 'Row',
+              props: { gap: '300', ay: 'center', wrap: true },
+              children: [
+                memberNameInput,
+                { type: 'we-icon', props: { name: 'arrow-right', color: 'neutral-400' } },
+                {
+                  type: 'we-select',
+                  props: {
+                    size: 'sm',
+                    width: '260px',
+                    searchable: true,
+                    placeholder: 'Points at…',
+                    options: { $store: 'shapeStore.relationshipTargets' },
+                    value: '$member.target',
+                    onChange: {
+                      $action: 'shapeStore.setMemberField',
+                      args: ['$member.rowId', 'target', '$arg.detail'],
+                    },
+                  },
+                },
+                {
+                  type: 'we-switch',
+                  props: {
+                    size: 'sm',
+                    labelOff: 'One',
+                    labelOn: 'Many',
+                    checked: '$member.many',
+                    onChange: { $action: 'shapeStore.setMemberField', args: ['$member.rowId', 'many', '$arg.detail'] },
+                  },
+                },
+              ],
             },
-            {
-              type: 'we-switch',
-              props: {
-                size: 'sm',
-                labelOff: 'One',
-                labelOn: 'Many',
-                checked: '$member.many',
-                onChange: { $action: 'shapeStore.setMemberField', args: ['$member.rowId', 'many', '$arg.detail'] },
-              },
-            },
+            removeMemberButton,
           ],
         },
-        removeMemberButton,
       ],
     },
   ],
@@ -324,19 +355,6 @@ const shapeWizardModal: SchemaNode = {
           children: [
             {
               type: 'we-form-field',
-              props: { label: 'Icon' },
-              children: [
-                {
-                  type: 'we-icon-picker',
-                  props: {
-                    value: { $store: 'shapeStore.shapeDraft.icon' },
-                    onChange: { $action: 'shapeStore.setShapeField', args: ['icon', '$arg.detail'] },
-                  },
-                },
-              ],
-            },
-            {
-              type: 'we-form-field',
               props: { label: 'Name', flex: '1' },
               children: [
                 {
@@ -353,11 +371,24 @@ const shapeWizardModal: SchemaNode = {
                 },
               ],
             },
+            {
+              type: 'we-form-field',
+              props: { label: 'Icon' },
+              children: [
+                {
+                  type: 'we-icon-picker',
+                  props: {
+                    value: { $store: 'shapeStore.shapeDraft.icon' },
+                    onChange: { $action: 'shapeStore.setShapeField', args: ['icon', '$arg.detail'] },
+                  },
+                },
+              ],
+            },
           ],
         },
         {
           type: 'we-form-field',
-          props: { label: 'Description', description: "Shown to people browsing this space's models." },
+          props: { label: 'Description' },
           children: [
             {
               type: 'we-textarea',
@@ -374,8 +405,7 @@ const shapeWizardModal: SchemaNode = {
           type: 'we-form-field',
           props: {
             label: 'AI hint',
-            description:
-              'Used when AI extracts records from conversations here. Leave empty if this model is not extracted.',
+            description: 'Helps AI recognise these entries in conversations and create them automatically.',
           },
           children: [
             {
@@ -385,7 +415,7 @@ const shapeWizardModal: SchemaNode = {
                 // Shows the include-then-exclude shape a workable hint needs, which is easier to
                 // copy than to explain (see TaskBlock's rationale in @we/models).
                 placeholder:
-                  'Someone recommending a book to the group — include the title, and the author if said. Not books merely mentioned in passing.',
+                  'Only counts when someone is actually recommending it, not books merely mentioned. Use the title as spoken, and the author if said.',
                 value: { $store: 'shapeStore.shapeDraft.classHint' },
                 onInput: { $action: 'shapeStore.setShapeField', args: ['classHint', '$arg.detail'] },
               },

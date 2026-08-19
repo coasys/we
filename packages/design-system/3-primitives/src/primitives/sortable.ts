@@ -37,6 +37,34 @@ const CSS_STYLES = css`
  */
 const zones = new Set<Sortable>();
 
+/**
+ * Put a body-appended overlay into the browser's top layer.
+ *
+ * The drag ghost and the drop indicator are appended to `document.body` and stacked with a large
+ * `z-index`, which is enough on an ordinary page and worth nothing inside a modal: `we-modal`
+ * (through `OverlayElement`) promotes itself with `popover="manual"`, and **no z-index can raise an
+ * element above the top layer**. So both were painting behind the dialog they were dragging in —
+ * a drag inside a modal showed no ghost and no drop line at all, which read as "reordering has no
+ * feedback" rather than "the feedback is underneath this".
+ *
+ * Promoting them the same way fixes it, because the top layer stacks by promotion order and these
+ * are always promoted after the modal that contains them. Feature-detected: where the Popover API
+ * is missing, the z-index behaviour it falls back to is exactly what shipped before.
+ */
+function promoteToTopLayer(el: HTMLElement): void {
+  const showPopover = (el as HTMLElement & { showPopover?: () => void }).showPopover;
+  if (typeof showPopover !== 'function') return;
+  el.setAttribute('popover', 'manual');
+  try {
+    showPopover.call(el);
+  } catch {
+    // A popover that cannot be shown (already open, detached) simply stays where it was.
+  }
+}
+
+/** UA `[popover]` defaults that would otherwise leak in — the same set `OverlayElement` undoes. */
+const POPOVER_RESETS = ['inset:auto', 'margin:0', 'border:none', 'padding:0', 'overflow:visible', 'color:inherit'];
+
 /** What a drop is: an item, the zone it left, the zone it landed in, and where. */
 export interface SortableMoveDetail {
   /** `data-we-id` of the item that moved. */
@@ -313,8 +341,13 @@ export default class Sortable extends DesignSystemElement {
       `box-shadow:0 4px 16px color-mix(in srgb, var(--we-role-shadow-color) 20%, transparent)`,
       `border-radius:6px`,
       `margin:0`,
+      // Transparent rather than unset: the UA's own `[popover]` background would otherwise paint an
+      // opaque card behind the clone once it is promoted.
+      `background:transparent`,
+      ...POPOVER_RESETS,
     ].join(';');
     document.body.appendChild(ghost);
+    promoteToTopLayer(ghost);
     this._ghost = ghost;
   }
 
@@ -327,8 +360,10 @@ export default class Sortable extends DesignSystemElement {
       `background:var(--we-color-primary-500,#3b82f6)`,
       `border-radius:2px`,
       `opacity:0`,
+      ...POPOVER_RESETS,
     ].join(';');
     document.body.appendChild(el);
+    promoteToTopLayer(el);
     this._indicator = el;
   }
 
