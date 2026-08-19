@@ -144,7 +144,7 @@ const defaultValueControl: SchemaNode = {
         else: {
           type: '$if',
           props: {
-            // Both the closed vocabularies: a select's declared options, and a boolean's yes/no.
+            // Both the closed vocabularies: a select's declared options, and a boolean's true/false.
             // Each list carries its own "No default" entry, since unset is a third answer the
             // manifest distinguishes from false.
             condition: { $or: [{ $eq: ['$member.type', 'select'] }, { $eq: ['$member.type', 'boolean'] }] },
@@ -555,7 +555,7 @@ const shapeWizardModal: SchemaNode = {
             {
               type: 'we-textarea',
               props: {
-                rows: 1,
+                rows: 2,
                 // Shows the include-then-exclude shape a workable hint needs, which is easier to
                 // copy than to explain (see TaskBlock's rationale in @we/models).
                 placeholder:

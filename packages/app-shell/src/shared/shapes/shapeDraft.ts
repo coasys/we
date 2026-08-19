@@ -107,7 +107,7 @@ export function syncDerived(row: ShapeDraftMember): ShapeDraftMember {
   // "unset" is a third thing the manifest genuinely distinguishes (no `default` key at all).
   row.defaultOptions =
     row.type === 'boolean'
-      ? [none, { label: 'Yes', value: 'true' }, { label: 'No', value: 'false' }]
+      ? [none, { label: 'True', value: 'true' }, { label: 'False', value: 'false' }]
       : [none, ...parseOptions(row.options).map((o) => ({ label: o, value: o }))];
   return row;
 }
