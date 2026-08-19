@@ -27,10 +27,26 @@ const SIZE_DEFAULTS: Record<ComponentSize, Partial<DesignSystemProps>> = {
 };
 
 const styles = css`
+  /*
+    The inner row fills the host.
+
+    The host carries the border and takes any width prop; this sized itself to its content, so a
+    number input given a width drew its box at that width and left the space after the + button
+    empty. The field takes the slack, which is what a wider control is being asked for.
+  */
+  [part='base'] {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    min-width: 0;
+  }
+
   input[part='native'] {
     all: unset;
     text-align: center;
-    width: 3em;
+    /* Compact by default, growing when the control is given room. */
+    flex: 1;
+    min-width: 3em;
     font: inherit;
     color: inherit;
     -moz-appearance: textfield;

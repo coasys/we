@@ -102,7 +102,7 @@ export const NO_DEFAULT = '__none__';
  * `options` or `type`; safe to call at any time.
  */
 export function syncDerived(row: ShapeDraftMember): ShapeDraftMember {
-  const none = { label: 'No default', value: NO_DEFAULT };
+  const none = { label: 'None', value: NO_DEFAULT };
   // A boolean's picker is three-valued on purpose: a switch could only say true or false, and
   // "unset" is a third thing the manifest genuinely distinguishes (no `default` key at all).
   row.defaultOptions =
@@ -114,7 +114,7 @@ export function syncDerived(row: ShapeDraftMember): ShapeDraftMember {
 
 export const emptyDraftProperty = (): ShapeDraftMember => ({
   rowId: nextRowId(),
-  defaultOptions: [{ label: 'No default', value: NO_DEFAULT }],
+  defaultOptions: [{ label: 'None', value: NO_DEFAULT }],
   kind: 'property',
   name: '',
   type: 'text',

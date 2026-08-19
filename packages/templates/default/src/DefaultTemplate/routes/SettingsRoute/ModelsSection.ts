@@ -122,7 +122,7 @@ const defaultValueControl: SchemaNode = {
       props: {
         size: 'sm',
         width: DEFAULT_CONTROL_WIDTH,
-        placeholder: 'No default',
+        placeholder: 'None',
         value: '$member.defaultValue',
         onChange: { $action: 'shapeStore.setMemberField', args: ['$member.rowId', 'defaultValue', '$arg.detail'] },
       },
@@ -144,7 +144,7 @@ const defaultValueControl: SchemaNode = {
           type: '$if',
           props: {
             // Both the closed vocabularies: a select's declared options, and a boolean's true/false.
-            // Each list carries its own "No default" entry, since unset is a third answer the
+            // Each list carries its own "None" entry, since unset is a third answer the
             // manifest distinguishes from false.
             condition: { $or: [{ $eq: ['$member.type', 'select'] }, { $eq: ['$member.type', 'boolean'] }] },
             then: {
@@ -152,7 +152,7 @@ const defaultValueControl: SchemaNode = {
               props: {
                 size: 'sm',
                 width: DEFAULT_CONTROL_WIDTH,
-                placeholder: 'No default',
+                placeholder: 'None',
                 // Through the store rather than off `$member`: the row is mutated in place while
                 // its values are typed, so anything read from the row itself cannot update.
                 options: {
@@ -174,7 +174,7 @@ const defaultValueControl: SchemaNode = {
               props: {
                 size: 'sm',
                 width: DEFAULT_CONTROL_WIDTH,
-                placeholder: 'No default',
+                placeholder: 'None',
                 value: '$member.defaultValue',
                 onInput: {
                   $action: 'shapeStore.setMemberField',
