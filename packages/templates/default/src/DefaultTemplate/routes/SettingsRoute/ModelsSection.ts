@@ -12,6 +12,14 @@ import { sectionCard } from '@we/template-kit';
  * here is the delete confirmation, which is genuinely view-local.
  */
 
+/**
+ * How wide a default-value control is.
+ *
+ * Fixed rather than filling the panel: a default is a short value — a number, a date, one of a
+ * handful of words — and a full-width control reads as though a paragraph were expected.
+ */
+const DEFAULT_CONTROL_WIDTH = '220px';
+
 const PROPERTY_TYPE_OPTIONS = [
   { label: 'Text', value: 'text' },
   { label: 'Number', value: 'number' },
@@ -110,11 +118,14 @@ const defaultValueControl: SchemaNode = {
   props: {
     condition: { $eq: ['$member.type', 'number'] },
     then: {
-      type: 'we-number-input',
+      type: 'we-input',
       props: {
         size: 'sm',
+        type: 'number',
+        width: DEFAULT_CONTROL_WIDTH,
+        placeholder: 'No default',
         value: '$member.defaultValue',
-        onChange: { $action: 'shapeStore.setMemberField', args: ['$member.rowId', 'defaultValue', '$arg.detail'] },
+        onInput: { $action: 'shapeStore.setMemberField', args: ['$member.rowId', 'defaultValue', '$arg.detail'] },
       },
     },
     else: {
@@ -125,6 +136,7 @@ const defaultValueControl: SchemaNode = {
           type: 'we-date-picker',
           props: {
             size: 'sm',
+            width: DEFAULT_CONTROL_WIDTH,
             value: '$member.defaultValue',
             onChange: { $action: 'shapeStore.setMemberField', args: ['$member.rowId', 'defaultValue', '$arg.detail'] },
           },
@@ -140,6 +152,8 @@ const defaultValueControl: SchemaNode = {
               type: 'we-select',
               props: {
                 size: 'sm',
+                width: DEFAULT_CONTROL_WIDTH,
+                placeholder: 'No default',
                 options: '$member.defaultOptions',
                 value: '$member.defaultValue',
                 onChange: {
@@ -152,6 +166,7 @@ const defaultValueControl: SchemaNode = {
               type: 'we-input',
               props: {
                 size: 'sm',
+                width: DEFAULT_CONTROL_WIDTH,
                 placeholder: 'No default',
                 value: '$member.defaultValue',
                 onInput: {
@@ -214,6 +229,13 @@ const propertyDetail: SchemaNode = {
             },
           },
         },
+        // Default before hint: the panel then reads as allowed values → the value picked from them
+        // → the prose about the field, shortest to longest, structure before guidance.
+        {
+          type: 'we-form-field',
+          props: { label: 'Default value', description: 'What a new entry starts with.' },
+          children: [defaultValueControl],
+        },
         {
           type: 'we-form-field',
           props: {
@@ -232,11 +254,6 @@ const propertyDetail: SchemaNode = {
               },
             },
           ],
-        },
-        {
-          type: 'we-form-field',
-          props: { label: 'Default value', description: 'What a new entry starts with.' },
-          children: [defaultValueControl],
         },
       ],
     },

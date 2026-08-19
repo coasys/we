@@ -77,6 +77,18 @@ const styles = css`
   [part='native-button'] {
     all: unset;
     flex: 1;
+    /*
+      Stretched and centred rather than shrink-wrapped around its label.
+
+      The all:unset above leaves the button with no height of its own, so a select with no value
+      *and* no placeholder had nothing but the caret to click: the trigger was full width and zero
+      height. The :empty::before rule below was meant to cover that and never fired, because
+      placeholder is a property on the host and attr() reads attributes — it is mirrored onto the
+      button element now.
+    */
+    align-self: stretch;
+    display: flex;
+    align-items: center;
     padding: 0 var(--we-space-300);
     font: inherit;
     color: inherit;
@@ -368,6 +380,7 @@ export default class Select extends DesignSystemElement {
               : html`
                   <button
                     part="native-button"
+                    placeholder=${this.placeholder}
                     ?disabled=${this.disabled}
                     role="combobox"
                     aria-expanded=${this._open ? 'true' : 'false'}

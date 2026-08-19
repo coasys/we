@@ -148,3 +148,27 @@ describe('what a screen reader is told', () => {
     expect(el.shadowRoot!.querySelector(`#${activeId}`)?.textContent?.trim()).toBe('Alpha');
   });
 });
+
+describe('the trigger, with nothing chosen yet', () => {
+  /*
+    A select with no value and no placeholder rendered a button with no content, and `all: unset`
+    leaves a button no height of its own — so the trigger was full width and zero tall, and the
+    caret was the only thing on the row that could be clicked.
+  */
+  it('mirrors the placeholder onto the button, where attr() can reach it', async () => {
+    el.value = '';
+    (el as unknown as { placeholder: string }).placeholder = 'Pick one';
+    await el.updateComplete;
+    const button = el.shadowRoot?.querySelector('[part="native-button"]');
+    expect(button?.getAttribute('placeholder')).toBe('Pick one');
+  });
+
+  it('stretches the trigger so it is clickable when it has nothing to show', () => {
+    const sheet = ((el.constructor as unknown as { styles: { cssText: string }[] }).styles ?? [])
+      .map((style) => style.cssText)
+      .join('\n');
+    const rule = /\[part='native-button'\]\s*\{([^}]*)\}/.exec(sheet)?.[1] ?? '';
+    expect(rule).toContain('align-self: stretch');
+    expect(rule).toContain('align-items: center');
+  });
+});
