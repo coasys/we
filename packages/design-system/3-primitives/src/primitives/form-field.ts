@@ -24,9 +24,20 @@ const SIZE_DEFAULTS: Record<ComponentSize, Partial<DesignSystemProps>> = {
   xl: { fontSize: '400' },
 };
 
+/*
+  The type ramp, taken from `we-text`'s own variants rather than invented here: a label is
+  `label` (200 + medium), and both messages are `footnote` (100).
+
+  All three parts were 300 — `body` — so a field's label rendered at the same size as its help text
+  and only colour separated them, and a form-field label rendered a step larger than the
+  `we-text variant="label"` sitting beside it in the same view (both spellings are used ~45 times
+  each across the templates, frequently in one screen). Matching the semantics settles both.
+
+  Weights are literal numbers here, as everywhere else in these shadow styles; 500 is `medium`.
+*/
 const styles = css`
   [part='label'] {
-    font-size: var(--we-font-size-300);
+    font-size: var(--we-font-size-200);
     font-weight: 500;
     color: var(--we-color-neutral-700);
     cursor: default;
@@ -38,12 +49,14 @@ const styles = css`
   }
 
   [part='description'] {
-    font-size: var(--we-font-size-300);
+    font-size: var(--we-font-size-100);
     color: var(--we-color-neutral-500);
   }
 
+  /* Footnote-sized like the description, but weighted: it has to carry at the smaller size. */
   [part='error'] {
-    font-size: var(--we-font-size-300);
+    font-size: var(--we-font-size-100);
+    font-weight: 500;
     color: var(--we-color-danger-500);
   }
 
