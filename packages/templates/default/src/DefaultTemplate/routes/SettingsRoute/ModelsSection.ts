@@ -21,15 +21,20 @@ import { sectionCard } from '@we/template-kit';
  */
 const DEFAULT_CONTROL_WIDTH = '220px';
 
+/*
+  Properties are scalars; content is a relation to a block.
+
+  Which is why there is no Image or File here, and no Location: an image belongs to an ImageBlock,
+  which carries alt text and dimensions and can be signalled on, commented on and drawn in the
+  graph — none of which a URL in a string can do. The relationship picker already offers every
+  block type, so those models are expressible today, by the route that makes them first-class.
+*/
 const PROPERTY_TYPE_OPTIONS = [
   { label: 'Text', value: 'text' },
-  { label: 'Long text', value: 'longtext' },
   { label: 'Number', value: 'number' },
   { label: 'Boolean', value: 'boolean' },
   { label: 'Date', value: 'date' },
-  { label: 'Date & time', value: 'datetime' },
   { label: 'Select', value: 'select' },
-  { label: 'Image', value: 'image' },
 ];
 
 /**
@@ -138,13 +143,17 @@ const defaultValueControl: SchemaNode = {
     else: {
       type: '$if',
       props: {
-        condition: { $or: [{ $eq: ['$member.type', 'date'] }, { $eq: ['$member.type', 'datetime'] }] },
+        condition: { $eq: ['$member.type', 'date'] },
         then: {
           type: 'we-date-picker',
           props: {
             size: 'sm',
             width: DEFAULT_CONTROL_WIDTH,
-            showTime: { $eq: ['$member.type', 'datetime'] },
+            // One timestamp type rather than two. The time is optional — a day with none given
+            // stays a bare date — so the same field serves a birthday and a shift start, and the
+            // value records which was meant. Splitting them would buy nothing: nothing enforces a
+            // scalar type, since the compiler never reads one.
+            showTime: true,
             value: '$member.defaultValue',
             onChange: { $action: 'shapeStore.setMemberField', args: ['$member.rowId', 'defaultValue', '$arg.detail'] },
           },
@@ -183,34 +192,15 @@ const defaultValueControl: SchemaNode = {
               },
             },
             else: {
-              type: '$if',
+              type: 'we-input',
               props: {
-                condition: { $eq: ['$member.type', 'longtext'] },
-                then: {
-                  type: 'we-textarea',
-                  props: {
-                    rows: 2,
-                    size: 'sm',
-                    placeholder: 'None',
-                    value: '$member.defaultValue',
-                    onInput: {
-                      $action: 'shapeStore.setMemberField',
-                      args: ['$member.rowId', 'defaultValue', '$arg.detail'],
-                    },
-                  },
-                },
-                else: {
-                  type: 'we-input',
-                  props: {
-                    size: 'sm',
-                    width: DEFAULT_CONTROL_WIDTH,
-                    placeholder: 'None',
-                    value: '$member.defaultValue',
-                    onInput: {
-                      $action: 'shapeStore.setMemberField',
-                      args: ['$member.rowId', 'defaultValue', '$arg.detail'],
-                    },
-                  },
+                size: 'sm',
+                width: DEFAULT_CONTROL_WIDTH,
+                placeholder: 'None',
+                value: '$member.defaultValue',
+                onInput: {
+                  $action: 'shapeStore.setMemberField',
+                  args: ['$member.rowId', 'defaultValue', '$arg.detail'],
                 },
               },
             },
@@ -270,19 +260,10 @@ const propertyDetail: SchemaNode = {
         },
         // Default before hint: the panel then reads as allowed values → the value picked from them
         // → the prose about the field, shortest to longest, structure before guidance.
-        //
-        // An image is the exception: its value is a file somebody uploads, so there is nothing to
-        // type here, and an empty box labelled "Default value" only invites the attempt.
         {
-          type: '$if',
-          props: {
-            condition: { $ne: ['$member.type', 'image'] },
-            then: {
-              type: 'we-form-field',
-              props: { label: 'Default value', description: 'What a new entry starts with.' },
-              children: [defaultValueControl],
-            },
-          },
+          type: 'we-form-field',
+          props: { label: 'Default value', description: 'What a new entry starts with.' },
+          children: [defaultValueControl],
         },
         {
           type: 'we-form-field',

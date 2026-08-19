@@ -15,13 +15,7 @@
  */
 import { z } from 'zod';
 
-/**
- * `'date'` and `'datetime'` are separate because a calendar day and an instant are different facts,
- * not two renderings of one — a birthday has no time and a shift start is meaningless without one.
- * RDF draws the same line (xsd:date vs xsd:dateTime). AD4M stores both as a string, so this reaches
- * the backend only as description; what it decides is validation and which control an author gets.
- */
-export type ScalarType = 'string' | 'number' | 'boolean' | 'date' | 'datetime' | 'json';
+export type ScalarType = 'string' | 'number' | 'boolean' | 'datetime' | 'json';
 export type Cardinality = 'one' | 'many';
 
 export interface PropertySchema {
@@ -35,15 +29,6 @@ export interface PropertySchema {
    * and each adapter supplies the mechanism.
    */
   format?: 'file';
-
-  /**
-   * This string holds prose rather than a label — a description, a summary, notes.
-   *
-   * A fact about the property, in the same way `type` is: paragraph-length text is not the same
-   * kind of value as a title, whatever both compile to. It is declared rather than guessed from the
-   * property's name, and an author who reopens their model gets back the field they built.
-   */
-  multiline?: boolean;
 
   /**
    * How a file property reads back. `'dataUri'` means callers get something directly renderable
@@ -161,14 +146,13 @@ export interface ModelManifest {
 
 // ─── Zod schema (structural validation) ────────────────────────────────────────
 
-const scalarType = z.enum(['string', 'number', 'boolean', 'date', 'datetime', 'json']);
+const scalarType = z.enum(['string', 'number', 'boolean', 'datetime', 'json']);
 const cardinality = z.enum(['one', 'many']);
 
 const propertySchema = z.object({
   type: scalarType,
   required: z.boolean().optional(),
   format: z.literal('file').optional(),
-  multiline: z.boolean().optional(),
   readAs: z.literal('dataUri').optional(),
   default: z.union([z.string(), z.number(), z.boolean()]).optional(),
   predicate: z.string().optional(),

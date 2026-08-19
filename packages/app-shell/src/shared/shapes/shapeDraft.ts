@@ -17,15 +17,7 @@
 import type { Cardinality, EntitySchema, ModelManifest, PropertySchema } from '@we/backend-shared';
 
 /** UI-level scalar types — what the property row's type dropdown offers. */
-export type ShapeDraftPropertyType =
-  | 'text'
-  | 'longtext'
-  | 'number'
-  | 'boolean'
-  | 'date'
-  | 'datetime'
-  | 'select'
-  | 'image';
+export type ShapeDraftPropertyType = 'text' | 'number' | 'boolean' | 'date' | 'select';
 
 export interface ShapeDraftMember {
   /**
@@ -192,34 +184,13 @@ function badNameMessage(subject: string, raw: string, style: 'Pascal' | 'camel',
     : `${subject} names must start with a letter and use only letters and digits, e.g. "${example}".`;
 }
 
-/*
-  Several author-facing types share one scalar, and are told apart in the IR by a second fact:
-  long text by `multiline`, an image by `format: 'file'`, a select by carrying `options`. Only
-  `date` and `datetime` differ by scalar alone, which is why the IR distinguishes them at all — a
-  day and an instant are different facts, and a model reopened for editing has to come back as
-  the one it was built as.
-*/
 const SCALAR_OF: Record<ShapeDraftPropertyType, PropertySchema['type']> = {
   text: 'string',
-  longtext: 'string',
   number: 'number',
   boolean: 'boolean',
-  date: 'date',
-  datetime: 'datetime',
+  date: 'datetime',
   select: 'string',
-  image: 'string',
 };
-
-/** Which author-facing type a stored property came from — the inverse of {@link SCALAR_OF}. */
-function propertyTypeOf(spec: PropertySchema): ShapeDraftPropertyType {
-  if (spec.format === 'file') return 'image';
-  if (spec.options) return 'select';
-  if (spec.type === 'number') return 'number';
-  if (spec.type === 'boolean') return 'boolean';
-  if (spec.type === 'date') return 'date';
-  if (spec.type === 'datetime') return 'datetime';
-  return spec.multiline ? 'longtext' : 'text';
-}
 
 /** Coerce the draft's string default onto the property's scalar type; null = not expressible. */
 function coerceDefault(type: ShapeDraftPropertyType, raw: string): string | number | boolean | null {
@@ -301,12 +272,6 @@ export function draftToManifest(draft: ShapeDraft, shapeUuid: string): DraftLowe
       continue;
     }
     const spec: PropertySchema = { type: SCALAR_OF[row.type], predicate };
-    if (row.type === 'longtext') spec.multiline = true;
-    if (row.type === 'image') {
-      // Binary through the host's file storage, read back as something an <img> can take.
-      spec.format = 'file';
-      spec.readAs = 'dataUri';
-    }
     if (row.required) spec.required = true;
     if (draft.identityMember === row.rowId) spec.identity = true;
     if (row.hint.trim()) spec.interpretationHint = row.hint.trim();
@@ -358,7 +323,15 @@ export function manifestToDraft(
     const row: ShapeDraftMember = {
       ...emptyDraftProperty(),
       name,
-      type: propertyTypeOf(spec),
+      type: spec.options
+        ? 'select'
+        : spec.type === 'number'
+          ? 'number'
+          : spec.type === 'boolean'
+            ? 'boolean'
+            : spec.type === 'datetime'
+              ? 'date'
+              : 'text',
       required: spec.required ?? false,
       hint: spec.interpretationHint ?? '',
       options: (spec.options ?? []).map(String).join(', '),

@@ -87,11 +87,21 @@ describe('asking for a time as well', () => {
     expect(timeField(el)).toBeTruthy();
   });
 
-  it('starts a chosen day at midnight rather than at a guessed hour', async () => {
+  it('leaves a chosen day without a time until one is given', async () => {
+    // The time is optional, which is what lets one field hold both a birthday and a shift start.
     const el = await makeTimed();
     await open(el);
     firstDay(el).click();
-    expect(el.value).toMatch(/^\d{4}-\d{2}-\d{2}T00:00$/);
+    expect(el.value).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  });
+
+  it('shows no time in the field until the value has one', async () => {
+    const el = await makeTimed('2026-08-19');
+    const shown = () => (el.shadowRoot?.querySelector('input[part="display"]') as HTMLInputElement).value;
+    expect(shown()).not.toMatch(/00:00/);
+    el.value = '2026-08-19T14:30';
+    await el.updateComplete;
+    expect(shown()).toMatch(/14:30/);
   });
 
   it('stays open on the day, so the time is still reachable', async () => {

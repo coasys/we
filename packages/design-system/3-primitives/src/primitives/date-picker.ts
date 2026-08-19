@@ -177,11 +177,14 @@ export default class DatePicker extends DesignSystemElement {
   /** ISO: `YYYY-MM-DD`, or `YYYY-MM-DDTHH:mm` while {@link showTime} is on. */
   @property({ type: String }) value = '';
   /**
-   * Also ask for a time of day.
+   * Also offer a time of day.
    *
-   * A calendar day and an instant are different facts — a birthday has no time, a shift start is
-   * meaningless without one — and a picker that only ever captured the day quietly discarded half
-   * of the second kind. Off by default: most dates are days.
+   * The time stays optional: a day chosen with no time given is stored as a bare `YYYY-MM-DD`, and
+   * only becomes an instant once somebody says which one. That is what lets a single field serve
+   * both a birthday and a shift start — the *value* records whether a time was meant, rather than
+   * the field forcing an answer and every date acquiring a midnight nobody chose.
+   *
+   * Off by default: most dates are days.
    */
   @property({ type: Boolean, reflect: true }) showTime = false;
   @property({ type: String }) placeholder = 'Select date';
@@ -297,9 +300,11 @@ export default class DatePicker extends DesignSystemElement {
     const m = String(month + 1).padStart(2, '0');
     const d = String(day).padStart(2, '0');
     const date = `${year}-${m}-${d}`;
-    // Midnight rather than a guessed hour: inventing 09:00 would be a claim about the value that
-    // nobody made, and it reads as deliberate to whoever sees it later.
-    this.value = this.showTime ? `${date}T${this._timePart || '00:00'}` : date;
+    // An existing time survives changing the day; an absent one is not invented. Defaulting to
+    // midnight would be a claim about the value that nobody made, and it reads as deliberate to
+    // whoever sees it later.
+    const time = this._timePart;
+    this.value = this.showTime && time ? `${date}T${time}` : date;
     // Closing on the day would put the time field out of reach the moment it became relevant.
     if (!this.showTime) this._open = false;
     this._emit();
@@ -354,9 +359,12 @@ export default class DatePicker extends DesignSystemElement {
     if (!this.value) return '';
     // Parsed at a local midnight, not through Date's bare-ISO path, which reads YYYY-MM-DD as UTC
     // and lands on the day before for anybody west of it.
-    const d = new Date(`${this._datePart}T${this._timePart || '00:00'}:00`);
+    const time = this._timePart;
+    const d = new Date(`${this._datePart}T${time || '00:00'}:00`);
     const day = { year: 'numeric', month: 'short', day: 'numeric' } as const;
-    return this.showTime
+    // Shown only when the value carries one — a date displayed as "00:00" asserts a precision the
+    // value does not have.
+    return time
       ? d.toLocaleString(undefined, { ...day, hour: '2-digit', minute: '2-digit' })
       : d.toLocaleDateString(undefined, day);
   }
