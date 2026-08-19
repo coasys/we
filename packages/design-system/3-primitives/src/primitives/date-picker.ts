@@ -72,6 +72,21 @@ const styles = css`
     font: inherit;
     color: inherit;
     cursor: pointer;
+    /*
+      A flex item's automatic minimum size is its content, so without this the field refused to
+      shrink below the date it was showing and pushed the buttons beside it clean out of the
+      control — the calendar icon ended up outside the border. Long text truncates instead.
+    */
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* Neither icon is what should give way when the field runs out of room. */
+  [part='clear'],
+  [part='input-wrapper'] > we-icon {
+    flex: none;
   }
 
   /* Placed by openFloatingPanel — top layer, so no ancestor's overflow clips it. */
@@ -152,16 +167,61 @@ const styles = css`
     gap: var(--we-space-200);
     margin-top: var(--we-space-200);
     padding-top: var(--we-space-200);
-    border-top: 1px solid var(--we-color-neutral-200);
-    color: var(--we-color-neutral-500);
+    /* Role tokens, like the panel around it — the raw ramp does not follow a theme. */
+    border-top: 1px solid var(--we-role-border);
+    color: var(--we-role-text);
   }
 
+  /* Built the way we-input builds its own field, rather than resetting with all: unset — same
+     border, padding and focus ring, so the time reads as a control in this design system rather
+     than as a browser one. */
   input[part='time'] {
-    all: unset;
     flex: 1;
+    min-width: 0;
+    border: 1px solid var(--we-role-border);
+    border-radius: var(--we-radius-400);
+    background: var(--we-role-surface);
+    color: var(--we-role-text);
     font: inherit;
-    color: var(--we-color-neutral-900);
+    outline: none;
+    padding: var(--we-space-100) var(--we-space-200);
     cursor: pointer;
+    transition: border-color var(--we-transition-200, 150ms) ease;
+  }
+
+  input[part='time']:hover {
+    border-color: var(--we-role-border-strong);
+  }
+
+  input[part='time']:focus-visible {
+    border-color: var(--we-role-focus);
+  }
+
+  /*
+    No native picker glyph, for the reason we-input hides the native number spinners: the browser
+    draws it and colours it for the OS scheme rather than the theme, so on a dark theme it was a
+    black clock on a dark panel, and no amount of CSS reaches it.
+
+    The button below replaces it and opens the same picker through showPicker(), so the affordance
+    is themed without the control losing anything.
+  */
+  input[part='time']::-webkit-calendar-picker-indicator {
+    display: none;
+  }
+
+  [part='time-toggle'] {
+    all: unset;
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+    color: var(--we-role-text-muted);
+    border-radius: var(--we-radius-full);
+    padding: var(--we-space-100);
+  }
+
+  [part='time-toggle']:hover {
+    color: var(--we-role-text);
+    background: var(--we-role-surface-hover);
   }
 
   :host([disabled]) {
@@ -310,6 +370,14 @@ export default class DatePicker extends DesignSystemElement {
     this._emit();
   }
 
+  /** Opens the browser's own time picker, which the themed button replaces the native glyph for. */
+  private _openTimePicker = () => {
+    const input = this.shadowRoot?.querySelector('input[part="time"]') as
+      | (HTMLInputElement & { showPicker?: () => void })
+      | null;
+    input?.showPicker?.();
+  };
+
   private _selectTime = (e: Event) => {
     const time = (e.target as HTMLInputElement).value;
     // A time chosen before a day is still an answer; today is the only day it can mean.
@@ -423,10 +491,7 @@ export default class DatePicker extends DesignSystemElement {
                   ${
                     this.showTime
                       ? html`
-                          <label part="time-row">
-                            <!-- No leading icon: the native time input brings its own picker
-                                 indicator, and the row then reads like the field above it —
-                                 value on the left, the control's icon on the right. -->
+                          <div part="time-row">
                             <input
                               part="time"
                               type="time"
@@ -434,7 +499,10 @@ export default class DatePicker extends DesignSystemElement {
                               @change=${this._selectTime}
                               aria-label="Time"
                             />
-                          </label>
+                            <button part="time-toggle" @click=${this._openTimePicker} aria-label="Choose time">
+                              <we-icon name="clock" size="14px"></we-icon>
+                            </button>
+                          </div>
                         `
                       : nothing
                   }
