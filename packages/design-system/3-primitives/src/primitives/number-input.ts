@@ -28,16 +28,19 @@ const SIZE_DEFAULTS: Record<ComponentSize, Partial<DesignSystemProps>> = {
 
 const styles = css`
   /*
-    The inner row fills the host.
+    The inner row follows the host, in both directions.
 
-    The host carries the border and takes any width prop; this sized itself to its content, so a
-    number input given a width drew its box at that width and left the space after the + button
-    empty. The field takes the slack, which is what a wider control is being asked for.
+    The host carries the border and takes any width prop, and this row has to match it — otherwise a
+    number input given a width draws its box at that width and leaves the space after the + button
+    empty. Flex rather than width:100%: the host is an inline-flex box that shrink-wraps when no
+    width is given, and a percentage width against a shrink-to-fit parent resolves from the
+    *available* space instead, so the control claimed a whole row it did not need. As a flex item it
+    grows into a width when there is one and reports its own content width when there is not.
   */
   [part='base'] {
     display: flex;
     align-items: center;
-    width: 100%;
+    flex: 1;
     min-width: 0;
   }
 
