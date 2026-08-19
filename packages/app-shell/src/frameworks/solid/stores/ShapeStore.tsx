@@ -50,6 +50,36 @@ import {
 import { useDatasetStore } from './DatasetStore';
 import { useSessionStore } from './SessionStore';
 
+/** A we-select option row: icon drawn beside the label, group rendered once as a heading. */
+export interface RelationshipTargetOption {
+  label: string;
+  value: string;
+  icon?: string;
+  group?: string;
+}
+
+/**
+ * The block composer's own iconography (BlockMenu.tsx), so a block is drawn the same way wherever
+ * it is named. Blocks the composer has no insert entry for get the nearest documented icon.
+ */
+const BLOCK_ICONS: Record<string, string> = {
+  AudioBlock: 'speaker-high',
+  CalloutBlock: 'megaphone',
+  CodeBlock: 'code',
+  CollectionBlock: 'squares-four',
+  DividerBlock: 'minus',
+  EmbedBlock: 'browser',
+  EventBlock: 'calendar',
+  FileBlock: 'paperclip',
+  ImageBlock: 'image',
+  LinkBlock: 'link',
+  LocationBlock: 'map-pin',
+  TagBlock: 'tag',
+  TaskBlock: 'check-square',
+  TextBlock: 'text-t',
+  VideoBlock: 'youtube-logo',
+};
+
 export interface SpaceShapeView {
   /** The Shape record's id. */
   id: string;
@@ -109,7 +139,7 @@ export interface ShapeStore {
   /** Entities offering hint tuning here: core interpretable vocabulary plus this space's shapes. */
   hintEntities: Accessor<HintEntityView[]>;
   /** Options for the relationship target picker — `{ label, value }`, grouped and labelled. */
-  relationshipTargets: Accessor<{ label: string; value: string }[]>;
+  relationshipTargets: Accessor<RelationshipTargetOption[]>;
   /**
    * Options for the identity picker: "None" plus every named property of the open draft.
    *
@@ -245,24 +275,33 @@ export function ShapeStoreProvider(props: ParentProps) {
    * (`blocks/` holds exactly the `*Block` classes), and it fails safe: a new block type appears
    * here automatically, a new infrastructure entity stays out.
    */
-  const relationshipTargets = createMemo<{ label: string; value: string }[]>(() => {
-    const group = (names: string[], suffix: string) =>
-      [...new Set(names)].sort().map((name) => ({ label: `${name} — ${suffix}`, value: name }));
+  /*
+    Grouped rather than suffixed. "ImageBlock — block" said the name twice, and the suffixes were
+    inconsistent between groups — worst of all "— another app", which asserted an origin nothing
+    established: getForeignShacl returns every SHACL shape in the dataset that is not WE's own,
+    whoever put it there. The heading claims only where the model lives, which is all that is known.
+
+    Block icons are the block composer's own (BlockMenu.tsx), so the two surfaces name a block the
+    same way; a space shape brings the icon its author picked in this wizard.
+  */
+  const relationshipTargets = createMemo<RelationshipTargetOption[]>(() => {
+    const entry = (name: string, group: string, icon?: string) => ({ label: name, value: name, group, icon });
+    const dedupeSort = <T extends { value: string }>(rows: T[]) => {
+      const seen = new Set<string>();
+      return rows.filter((r) => !seen.has(r.value) && seen.add(r.value)).sort((a, b) => a.value.localeCompare(b.value));
+    };
     return [
-      ...group(
+      ...dedupeSort(
         spaceShapes()
           .filter((s) => s.manifest)
-          .map((s) => s.name),
-        'this space',
+          .map((s) => ({ ...entry(s.name, 'This space', s.icon || 'cube'), icon: s.icon || 'cube' })),
       ),
-      ...group(
-        Object.keys(CORE_MANIFEST.entities).filter((name) => name.endsWith('Block')),
-        'block',
+      ...dedupeSort(
+        Object.keys(CORE_MANIFEST.entities)
+          .filter((name) => name.endsWith('Block'))
+          .map((name) => entry(name, 'Blocks', BLOCK_ICONS[name] ?? 'cube')),
       ),
-      ...group(
-        datasetStore.currentDatasetModels().map((m) => m.name),
-        'another app',
-      ),
+      ...dedupeSort(datasetStore.currentDatasetModels().map((m) => entry(m.name, 'Other models in this space'))),
     ];
   });
 

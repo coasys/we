@@ -13,6 +13,15 @@ export interface SelectOption {
   label: string;
   value: string;
   disabled?: boolean;
+  /** Phosphor icon shown before the label, in the list and on the chosen value. */
+  icon?: string;
+  /**
+   * Heading this option sits under. Consecutive options sharing one render below a single
+   * non-interactive heading row — how a list says "these come from this space, those are blocks"
+   * without every label carrying a suffix. Keyboard navigation and filtering see only the options;
+   * a group whose options are all filtered out brings no heading with it.
+   */
+  group?: string;
 }
 
 const DEFAULT_PROPS: Partial<DesignSystemProps> = {
@@ -64,6 +73,9 @@ const styles = css`
 
   [part='sizer'] > span {
     grid-area: 1 / 1;
+    display: inline-flex;
+    align-items: center;
+    gap: var(--we-space-200);
     white-space: nowrap;
     font: inherit;
   }
@@ -136,6 +148,14 @@ const styles = css`
   }
 
   [part='value'] {
+    display: flex;
+    align-items: center;
+    gap: var(--we-space-200);
+    overflow: hidden;
+  }
+
+  /* Truncation lives on the label span: an icon beside the text must never be what gets clipped. */
+  [part='value-label'] {
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -167,10 +187,27 @@ const styles = css`
   }
 
   [part='option'] {
+    display: flex;
+    align-items: center;
+    gap: var(--we-space-200);
     padding: var(--we-space-200) var(--we-space-300);
     cursor: pointer;
     white-space: nowrap;
     transition: background var(--we-transition-200, 150ms) ease;
+  }
+
+  [part='group-heading'] {
+    padding: var(--we-space-200) var(--we-space-300) var(--we-space-100);
+    font-size: 0.75em;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--we-color-neutral-400);
+    pointer-events: none;
+  }
+
+  [part='group-heading']:not(:first-child) {
+    margin-top: var(--we-space-100);
+    border-top: 1px solid var(--we-color-neutral-100);
   }
 
   [part='option']:hover,
@@ -312,6 +349,10 @@ export default class Select extends DesignSystemElement {
 
   private get _displayValue() {
     return this.options.find((o) => o.value === this.value)?.label ?? '';
+  }
+
+  private get _selectedIcon() {
+    return this.options.find((o) => o.value === this.value)?.icon;
   }
 
   private _onInput(e: Event) {
@@ -479,14 +520,22 @@ export default class Select extends DesignSystemElement {
                     @click=${this._toggle}
                     @keydown=${this._onKeyDown}
                   >
-                    <span part="value" ?data-placeholder=${!this._displayValue}
-                      >${this._displayValue || this.placeholder || nothing}</span
-                    >
+                    <span part="value" ?data-placeholder=${!this._displayValue}>
+                      ${this._selectedIcon ? html`<we-icon name=${this._selectedIcon} size="14px"></we-icon>` : nothing}
+                      <span part="value-label">${this._displayValue || this.placeholder || nothing}</span>
+                    </span>
                     ${
                       this.fit
                         ? html`
                             <span part="sizer" aria-hidden="true">
-                              ${this.options.map((o) => html`<span>${o.label}</span>`)}
+                              ${this.options.map(
+                                // Markup kept tight: this span is a measurement, and stray template
+                                // whitespace inside it would be part of what gets measured.
+                                (o) =>
+                                  html`<span
+                                    >${o.icon ? html`<we-icon name=${o.icon} size="14px"></we-icon>` : nothing}${o.label}</span
+                                  >`,
+                              )}
                               <span>${this.placeholder}</span>
                             </span>
                           `
@@ -507,6 +556,15 @@ export default class Select extends DesignSystemElement {
                     filtered.length > 0
                       ? filtered.map(
                           (opt, index) => html`
+                            ${
+                              opt.group && opt.group !== filtered[index - 1]?.group
+                                ? html`
+                                    <div part="group-heading" role="presentation" aria-hidden="true">
+                                      ${opt.group}
+                                    </div>
+                                  `
+                                : nothing
+                            }
                             <div
                               part="option"
                               role="option"
@@ -516,6 +574,7 @@ export default class Select extends DesignSystemElement {
                               aria-disabled=${opt.disabled ? 'true' : nothing}
                               @click=${() => this._select(opt)}
                             >
+                              ${opt.icon ? html`<we-icon name=${opt.icon} size="14px"></we-icon>` : nothing}
                               ${opt.label}
                             </div>
                           `,

@@ -289,3 +289,58 @@ describe('fitting to its options', () => {
     expect(el.style.width).toBe('');
   });
 });
+
+describe('grouped options', () => {
+  /*
+    Groups replaced per-option suffixes ("ImageBlock — block"), which were simultaneously redundant
+    with the name, inconsistent between groups, and in one case untrue about the options' origin.
+    A heading states the group once; the options under it are just their names.
+  */
+  const GROUPED = [
+    { label: 'Recipe', value: 'r', group: 'This space', icon: 'cooking-pot' },
+    { label: 'ImageBlock', value: 'i', group: 'Blocks', icon: 'image' },
+    { label: 'TaskBlock', value: 't', group: 'Blocks', icon: 'check-square' },
+  ];
+
+  beforeEach(async () => {
+    el.options = GROUPED;
+    await el.updateComplete;
+    await press('ArrowDown');
+  });
+
+  const headings = () => [...el.shadowRoot!.querySelectorAll('[part="group-heading"]')].map((h) => h.textContent?.trim());
+
+  it('renders one heading per run of options, not one per option', () => {
+    expect(headings()).toEqual(['This space', 'Blocks']);
+  });
+
+  it('keeps headings out of the keyboard path and the accessibility tree', async () => {
+    // Three options, two headings: arrowing from the first lands on the second option, never a heading.
+    await press('ArrowDown');
+    expect(active()).toBe('ImageBlock');
+    for (const h of el.shadowRoot!.querySelectorAll('[part="group-heading"]')) {
+      expect(h.getAttribute('role')).toBe('presentation');
+      expect(h.getAttribute('aria-hidden')).toBe('true');
+    }
+  });
+
+  it('drops a heading whose options are all filtered out', async () => {
+    el.searchable = true;
+    await el.updateComplete;
+    const input = el.shadowRoot!.querySelector('input') as HTMLInputElement;
+    input.value = 'Task';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    await el.updateComplete;
+    expect(headings()).toEqual(['Blocks']);
+  });
+
+  it('shows each option its icon, and the trigger the chosen one', async () => {
+    const optionIcons = [...el.shadowRoot!.querySelectorAll('[part="option"] we-icon')].map((i) =>
+      i.getAttribute('name'),
+    );
+    expect(optionIcons).toEqual(['cooking-pot', 'image', 'check-square']);
+    el.value = 'i';
+    await press('Escape');
+    expect(el.shadowRoot!.querySelector('[part="value"] we-icon')?.getAttribute('name')).toBe('image');
+  });
+});
