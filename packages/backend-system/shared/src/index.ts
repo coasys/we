@@ -135,6 +135,7 @@ export type {
   RuntimeAdminPort,
   TokenizerSource,
 } from './runtimeAdmin';
+export type { LanguageModelPort } from './languageModel';
 export type { TranscriptionModel, TranscriptionPort, TranscriptionStream, TranscriptionTuning } from './transcription';
 export type {
   InterpretationPort,

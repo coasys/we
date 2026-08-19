@@ -44,6 +44,7 @@ import {
   SPACE_MODELS,
 } from './sdnaModels';
 import { getFluxSubgroupMessages } from './syncHelpers';
+import { createAd4mLanguageModelPort } from './languageModelPort';
 import { createAd4mTranscriptionPort } from './transcriptionAdapter';
 
 const proxy = (dataset: DatasetHandle) => dataset as PerspectiveProxy;
@@ -124,6 +125,7 @@ export function createAd4mBackendPorts(
     profiles: createAd4mProfileDirectory(backendClient),
     runtime: createAd4mRuntimeAdmin(backendClient, options),
     transcription: createAd4mTranscriptionPort(backendClient),
+    languageModel: createAd4mLanguageModelPort(backendClient),
     // Takes no client: interpretation is entirely a per-dataset operation, and every call already
     // carries the dataset handle it needs.
     interpretation: createAd4mInterpretationPort(ctx.selfId),

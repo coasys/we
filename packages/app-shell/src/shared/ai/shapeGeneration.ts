@@ -187,6 +187,84 @@ Design rules:
 - Write interpretation hints the way a careful prompt engineer would: exact allowed values, exact
   formats, what to omit. Hints are prompt payload for AI extraction, not documentation.`;
 
+/** One exchange in the repair loop, in provider-neutral form. */
+interface ChatTurn {
+  role: 'user' | 'assistant';
+  text: string;
+}
+
+/**
+ * Where the generation runs. `backend` prompts the node's own language model through the port —
+ * the default, and the same place transcription and extraction already run. `anthropic` calls the
+ * API directly with the agent's stored key, kept as the fallback for a node with no model.
+ */
+export type ShapeGenerationTransport =
+  | { kind: 'backend'; port: { prompt(system: string, input: string): Promise<string> } }
+  | { kind: 'anthropic'; apiKey: string };
+
+/** One turn against the Anthropic API: history in, the forced tool call's input out. */
+async function anthropicTurn(apiKey: string, history: ChatTurn[]): Promise<ToolInput> {
+  const response = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01',
+      'anthropic-dangerous-direct-browser-access': 'true',
+    },
+    body: JSON.stringify({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 4096,
+      system: SYSTEM,
+      tools: [defineModelTool],
+      tool_choice: { type: 'tool', name: 'define_model' },
+      messages: history.map((t) => ({ role: t.role, content: t.text })),
+    }),
+  });
+  if (!response.ok) {
+    const body = await response.text().catch(() => '');
+    throw new Error(`Claude API error ${response.status}: ${body}`);
+  }
+  const result = (await response.json()) as {
+    content: Array<{ type: string; input?: unknown }>;
+  };
+  const toolUse = result.content.find((c) => c.type === 'tool_use');
+  if (!toolUse?.input) throw new Error('The model returned no tool call.');
+  return toolUse.input as ToolInput;
+}
+
+/**
+ * One turn against the backend's model: history packed into a single prompt, JSON parsed back out.
+ *
+ * The executor's prompt API takes text and returns text — no tool calls, no forced schemas — so
+ * the output contract lives in the system prompt and the parsing forgives what models actually do
+ * with such instructions: code fences, or prose around the object.
+ */
+async function backendTurn(
+  port: { prompt(system: string, input: string): Promise<string> },
+  history: ChatTurn[],
+): Promise<ToolInput> {
+  const system =
+    `${SYSTEM}\n\nRespond with ONLY a JSON object — no code fences, no commentary — matching this JSON Schema:\n` +
+    JSON.stringify(defineModelTool.input_schema);
+  const input = history.map((t) => `${t.role === 'user' ? 'USER' : 'YOUR PREVIOUS ANSWER'}:\n${t.text}`).join('\n\n');
+  const raw = await port.prompt(system, input);
+  return parseJsonObject(raw);
+}
+
+/** The first `{…}` in a reply, fences and prose tolerated. Throws when there is none. */
+function parseJsonObject(raw: string): ToolInput {
+  const unfenced = raw.replace(/```(?:json)?/g, '');
+  const start = unfenced.indexOf('{');
+  const end = unfenced.lastIndexOf('}');
+  if (start === -1 || end <= start) throw new Error('The model returned no JSON object.');
+  try {
+    return JSON.parse(unfenced.slice(start, end + 1)) as ToolInput;
+  } catch {
+    throw new Error('The model returned unparseable JSON.');
+  }
+}
+
 /**
  * Generate a wizard draft from a plain-language description, with up to `maxRepairTurns` rounds of
  * validation-error feedback. Always resolves with a draft (the best candidate seen) — a generation
@@ -196,7 +274,7 @@ Design rules:
 export async function generateShapeDraft(
   description: string,
   opts: {
-    apiKey: string;
+    transport: ShapeGenerationTransport;
     /** Entity names already taken in this space. */
     existingEntities: string[];
     /** Entity names a reference may target here. */
@@ -204,10 +282,10 @@ export async function generateShapeDraft(
     maxRepairTurns?: number;
   },
 ): Promise<GenerateShapeResult> {
-  const messages: Array<{ role: string; content: unknown }> = [
+  const history: ChatTurn[] = [
     {
       role: 'user',
-      content:
+      text:
         `Models already defined in this space (their names are taken): ${opts.existingEntities.join(', ') || '(none)'}\n` +
         `Models a reference field may target: ${opts.referenceTargets.join(', ') || '(none)'}\n\n` +
         `Define this model:\n${description}`,
@@ -218,49 +296,20 @@ export async function generateShapeDraft(
   const turns = 1 + (opts.maxRepairTurns ?? 2);
 
   for (let turn = 0; turn < turns; turn++) {
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': opts.apiKey,
-        'anthropic-version': '2023-06-01',
-        'anthropic-dangerous-direct-browser-access': 'true',
-      },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-6',
-        max_tokens: 4096,
-        system: SYSTEM,
-        tools: [defineModelTool],
-        tool_choice: { type: 'tool', name: 'define_model' },
-        messages,
-      }),
-    });
-    if (!response.ok) {
-      const body = await response.text().catch(() => '');
-      throw new Error(`Claude API error ${response.status}: ${body}`);
-    }
-    const result = (await response.json()) as {
-      content: Array<{ type: string; id?: string; name?: string; input?: unknown }>;
-    };
-    const toolUse = result.content.find((c) => c.type === 'tool_use');
-    if (!toolUse?.input) throw new Error('The model returned no tool call.');
+    const input =
+      opts.transport.kind === 'anthropic'
+        ? await anthropicTurn(opts.transport.apiKey, history)
+        : await backendTurn(opts.transport.port, history);
 
-    const draft = toolInputToDraft(toolUse.input as ToolInput);
+    const draft = toolInputToDraft(input);
     const problems = draftProblems(draft, opts.existingEntities, opts.referenceTargets);
     if (!best || problems.length < best.problems.length) best = { draft, problems };
     if (problems.length === 0) break;
 
-    messages.push({ role: 'assistant', content: result.content });
-    messages.push({
+    history.push({ role: 'assistant', text: JSON.stringify(input) });
+    history.push({
       role: 'user',
-      content: [
-        {
-          type: 'tool_result',
-          tool_use_id: toolUse.id,
-          is_error: true,
-          content: `The model definition was refused:\n- ${problems.join('\n- ')}\nCall define_model again with these fixed.`,
-        },
-      ],
+      text: `That definition was refused:\n- ${problems.join('\n- ')}\nReturn a corrected definition with these fixed.`,
     });
   }
 

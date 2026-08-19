@@ -456,12 +456,29 @@ const memberRow: SchemaNode = {
  * additive guard exists to prevent. Fills the same draft the rows below edit; nothing is stored
  * until the user saves.
  */
-const describeItBox: SchemaNode = {
+/** The hint shown in the box's place while no AI key is configured — see the gate below. */
+const aiUnavailableHint: SchemaNode = {
+  type: 'Row',
+  props: { gap: '200', ay: 'center' },
+  children: [
+    { type: 'we-icon', props: { name: 'sparkle', size: 'sm', color: 'neutral-400' } },
+    {
+      type: 'we-text',
+      props: { variant: 'footnote', color: 'neutral-400' },
+      children: [
+        'AI can draft this model from a description — configure a language model in Settings \u2192 AI to enable it.',
+      ],
+    },
+  ],
+};
+
+const describeItBoxAvailable: SchemaNode = {
   type: '$if',
   props: {
-    condition: {
-      $and: [{ $not: { $store: 'shapeStore.editingShapeId' } }, { $store: 'shapeStore.aiAvailable' }],
-    },
+    // Without AI configured the box explains itself instead of vanishing: it was gated on the key
+    // outright once, and its own author could not find it.
+    condition: { $store: 'shapeStore.aiAvailable' },
+    else: aiUnavailableHint,
     then: {
       type: 'Column',
       props: { gap: '200', p: '300', bg: 'primary-50', r: '300', border: '1px solid primary-100' },
@@ -508,6 +525,15 @@ const describeItBox: SchemaNode = {
         },
       ],
     },
+  },
+};
+
+/** New models only — generation replaces the draft, which would orphan an existing model's keys. */
+const describeItBox: SchemaNode = {
+  type: '$if',
+  props: {
+    condition: { $not: { $store: 'shapeStore.editingShapeId' } },
+    then: describeItBoxAvailable,
   },
 };
 

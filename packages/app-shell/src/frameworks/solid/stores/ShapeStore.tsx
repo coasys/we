@@ -35,7 +35,10 @@ import {
   useContext,
 } from 'solid-js';
 
-import { generateShapeDraft as runShapeGeneration } from '../../../shared/ai/shapeGeneration';
+import {
+  generateShapeDraft as runShapeGeneration,
+  type ShapeGenerationTransport,
+} from '../../../shared/ai/shapeGeneration';
 import {
   additiveViolations,
   draftToManifest,
@@ -258,7 +261,32 @@ export function ShapeStoreProvider(props: ParentProps) {
     (shapeDraft()?.members ?? []).map((m) => ({ rowId: m.rowId, options: m.defaultOptions })),
   );
 
-  const aiAvailable = createMemo(() => Boolean(datasetStore.agentSettings()?.claudeApiKey));
+  /*
+    The backend's own model first — the node the community runs on, same as transcription and
+    extraction — with the agent's Anthropic key as fallback. Gating on the key alone hid the whole
+    AI surface from anyone who had not used the template editor, however capable their node was.
+  */
+  const [backendLlm, setBackendLlm] = createSignal(false);
+  createEffect(() => {
+    const port = session.backendPorts()?.languageModel;
+    if (!port) {
+      setBackendLlm(false);
+      return;
+    }
+    void port
+      .available()
+      .then(setBackendLlm)
+      .catch(() => setBackendLlm(false));
+  });
+  const aiAvailable = createMemo(() => backendLlm() || Boolean(datasetStore.agentSettings()?.claudeApiKey));
+
+  /** The transport a generation should run on right now, or null when neither is configured. */
+  function generationTransport(): ShapeGenerationTransport | null {
+    const port = session.backendPorts()?.languageModel;
+    if (backendLlm() && port) return { kind: 'backend', port };
+    const apiKey = datasetStore.agentSettings()?.claudeApiKey;
+    return apiKey ? { kind: 'anthropic', apiKey } : null;
+  }
 
   const schemas = () => session.backendPorts()?.schemas;
   const handle = () => datasetStore.currentDataset()?.handle;
@@ -606,14 +634,14 @@ export function ShapeStoreProvider(props: ParentProps) {
   }
 
   async function generateShapeDraft(description: string): Promise<void> {
-    const apiKey = datasetStore.agentSettings()?.claudeApiKey;
-    if (!apiKey || !description.trim()) return;
+    const transport = generationTransport();
+    if (!transport || !description.trim()) return;
     setGenerating(true);
     setDraftErrors([]);
     try {
       const existing = knownEntityNames(editingShapeId() ?? undefined);
       const { draft, remainingProblems } = await runShapeGeneration(description, {
-        apiKey,
+        transport,
         existingEntities: existing,
         referenceTargets: relationshipTargets().map((t) => t.value),
       });
@@ -643,8 +671,8 @@ export function ShapeStoreProvider(props: ParentProps) {
 
   async function generateShapeFields(): Promise<void> {
     const draft = shapeDraft();
-    const apiKey = datasetStore.agentSettings()?.claudeApiKey;
-    if (!draft || !apiKey || !canAutoGenerateFields()) return;
+    const transport = generationTransport();
+    if (!draft || !transport || !canAutoGenerateFields()) return;
     // The same generation as the describe-it flow, prompted by what the author already wrote.
     const context = [
       draft.name.trim() && `The model is called "${draft.name.trim()}".`,
@@ -658,7 +686,7 @@ export function ShapeStoreProvider(props: ParentProps) {
     try {
       const existing = knownEntityNames(editingShapeId() ?? undefined);
       const { draft: generated, remainingProblems } = await runShapeGeneration(context, {
-        apiKey,
+        transport,
         existingEntities: existing,
         referenceTargets: relationshipTargets().map((t) => t.value),
       });

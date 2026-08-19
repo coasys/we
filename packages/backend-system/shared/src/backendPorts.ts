@@ -16,6 +16,7 @@ import type { ModelManifest } from './manifest';
 import type { ModelManifestEntry } from './manifestEntry';
 import type { AgentProfileSummary, PublishProfileFields } from './profileTypes';
 import type { RuntimeAdminPort } from './runtimeAdmin';
+import type { LanguageModelPort } from './languageModel';
 import type { TranscriptionPort } from './transcription';
 
 /**
@@ -168,6 +169,11 @@ export interface BackendPorts {
    * and anything that wanted to listen says so rather than failing silently.
    */
   transcription?: TranscriptionPort;
+  /**
+   * Text generation on the backend's own model. Optional on the same terms as transcription: a
+   * node with no language model omits it, and anything that wanted to generate says so.
+   */
+  languageModel?: LanguageModelPort;
   /**
    * Turning what was said into typed records. Optional on the same terms as transcription — the two
    * are a pair, and a backend that can hear but not interpret is a normal thing to be.
