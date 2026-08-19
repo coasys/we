@@ -257,3 +257,35 @@ describe('fit', () => {
     expect(value?.hasAttribute('data-placeholder')).toBe(true);
   });
 });
+
+describe('fitting to its options', () => {
+  /*
+    The width is set inline rather than by a :host rule in the component's own stylesheet, because
+    the design system's generated sheet re-declares width in its interaction rules and wins there.
+    The reported symptom was a fitted select sitting at its option width until the pointer arrived
+    and then jumping to the full width of its container.
+  */
+  const fit = async (fitting: boolean) => {
+    (el as unknown as { fit: boolean }).fit = fitting;
+    await el.updateComplete;
+  };
+
+  it('sets its own width inline, where the generated sheet cannot override it', async () => {
+    await fit(true);
+    expect(el.style.width).toBe('fit-content');
+  });
+
+  it('leaves width alone when not fitting', async () => {
+    await fit(false);
+    expect(el.style.width).toBe('');
+  });
+
+  it('defers to an explicit width', async () => {
+    // A consumer that asked for a width means it; fit is only the default-sizing opinion.
+    await fit(true);
+    (el as unknown as { width: string }).width = '200px';
+    (el as unknown as { requestUpdate: () => void }).requestUpdate();
+    await el.updateComplete;
+    expect(el.style.width).toBe('');
+  });
+});

@@ -48,11 +48,12 @@ const styles = css`
     contributes its width — which is the widest of them — while painting nothing and staying out of
     the accessibility tree. Sizing this way rather than from the current value is what keeps the
     control from resizing every time somebody picks something.
+
+    The width itself is set inline, in the updated() hook — not here. The design system's generated sheet
+    re-declares width in its own interaction rules, so a :host rule held until the pointer arrived
+    and then lost: the control sat at its fitted width and jumped to full width on hover. Measured,
+    not guessed; the same cascade is why an equivalent rule on we-number-input never applied at all.
   */
-  :host([fit]) {
-    min-width: 0;
-    width: fit-content;
-  }
 
   [part='sizer'] {
     display: grid;
@@ -271,6 +272,14 @@ export default class Select extends DesignSystemElement {
    */
   updated(changed: PropertyValues) {
     super.updated(changed);
+
+    // Read through the design system rather than off the element: `width` is assigned by whoever
+    // mounts this, not declared here. A consumer asking for a width means it, and `fit` is only the
+    // default-sizing opinion, so an explicit one wins.
+    const fitting = this.fit && !(this.getInstanceProps() as { width?: string }).width;
+    this.style.width = fitting ? 'fit-content' : '';
+    this.style.minWidth = fitting ? '0' : '';
+
     if (!changed.has('_open')) return;
     if (this._open) {
       const trigger = this.shadowRoot?.querySelector('[part="input-wrapper"]') as HTMLElement | null;
