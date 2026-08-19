@@ -501,28 +501,32 @@ const shapeWizardModal: SchemaNode = {
   type: 'we-modal',
   // Backdrop and close button both route through the guard — that click was the way a half-written
   // model got thrown away.
-  props: { close: { $action: 'shapeStore.requestCloseWizard' } },
+  // Width on the modal itself rather than an inner Column: the title and buttons are slotted out
+  // of the scroll region (a long draft scrolls its members, not its own name or its Save button),
+  // so no single child spans the modal any more.
+  props: { close: { $action: 'shapeStore.requestCloseWizard' }, width: 'min(720px, 85vw)' },
   $localState: {
     aiDescription: { type: 'string', initial: '' },
   },
   children: [
     {
-      type: 'Column',
-      props: { gap: '400', width: 'min(720px, 85vw)' },
+      type: 'we-text',
+      slot: 'header',
+      props: { variant: 'heading-md', textAlign: 'center' },
       children: [
         {
-          type: 'we-text',
-          props: { variant: 'heading-md', textAlign: 'center' },
-          children: [
-            {
-              $if: {
-                condition: { $store: 'shapeStore.editingShapeId' },
-                then: 'Edit model',
-                else: 'New model',
-              },
-            },
-          ],
+          $if: {
+            condition: { $store: 'shapeStore.editingShapeId' },
+            then: 'Edit model',
+            else: 'New model',
+          },
         },
+      ],
+    },
+    {
+      type: 'Column',
+      props: { gap: '400' },
+      children: [
         describeItBox,
         {
           type: 'Row',
@@ -687,32 +691,33 @@ const shapeWizardModal: SchemaNode = {
             },
           },
         },
+      ],
+    },
+    {
+      type: 'Row',
+      slot: 'footer',
+      props: { ax: 'end', gap: '200' },
+      children: [
         {
-          type: 'Row',
-          props: { ax: 'end', gap: '200' },
+          type: 'we-button',
+          props: { variant: 'ghost', onClick: { $action: 'shapeStore.requestCloseWizard' } },
+          children: ['Cancel'],
+        },
+        {
+          type: 'we-button',
+          props: {
+            variant: 'primary',
+            loading: { $store: 'shapeStore.savingShape' },
+            disabled: { $store: 'shapeStore.savingShape' },
+            onClick: { $action: 'shapeStore.saveShapeDraft' },
+          },
           children: [
             {
-              type: 'we-button',
-              props: { variant: 'ghost', onClick: { $action: 'shapeStore.requestCloseWizard' } },
-              children: ['Cancel'],
-            },
-            {
-              type: 'we-button',
-              props: {
-                variant: 'primary',
-                loading: { $store: 'shapeStore.savingShape' },
-                disabled: { $store: 'shapeStore.savingShape' },
-                onClick: { $action: 'shapeStore.saveShapeDraft' },
+              $if: {
+                condition: { $store: 'shapeStore.editingShapeId' },
+                then: 'Save changes',
+                else: 'Create model',
               },
-              children: [
-                {
-                  $if: {
-                    condition: { $store: 'shapeStore.editingShapeId' },
-                    then: 'Save changes',
-                    else: 'Create model',
-                  },
-                },
-              ],
             },
           ],
         },
@@ -724,31 +729,34 @@ const shapeWizardModal: SchemaNode = {
 /** Per-space hint tuning for one entity. Mounted while `shapeStore.hintEditor` is non-null. */
 const hintEditorModal: SchemaNode = {
   type: 'we-modal',
-  props: { close: { $action: 'shapeStore.closeHintEditor' } },
+  // Width on the modal, title and actions slotted: a model with many properties scrolls its hint
+  // rows, never the heading that says whose hints these are or the buttons that save them.
+  props: { close: { $action: 'shapeStore.closeHintEditor' }, width: 'min(640px, 85vw)' },
   children: [
     {
-      type: 'Column',
-      props: { gap: '400', width: 'min(640px, 85vw)' },
+      type: 'Row',
+      slot: 'header',
+      props: { gap: '200', ay: 'center', ax: 'between' },
       children: [
         {
-          type: 'Row',
-          props: { gap: '200', ay: 'center', ax: 'between' },
-          children: [
-            {
-              type: 'we-text',
-              props: { variant: 'heading-sm' },
-              children: [{ $concat: ['AI hints — ', { $store: 'shapeStore.hintEditor.entity' }] }],
-            },
-            {
-              type: '$if',
-              props: {
-                condition: { $store: 'shapeStore.hintEditor.customized' },
-                then: { type: 'we-badge', props: { variant: 'primary' }, children: ['Customized for this space'] },
-                else: { type: 'we-badge', props: { variant: 'neutral' }, children: ['Using defaults'] },
-              },
-            },
-          ],
+          type: 'we-text',
+          props: { variant: 'heading-sm' },
+          children: [{ $concat: ['AI hints — ', { $store: 'shapeStore.hintEditor.entity' }] }],
         },
+        {
+          type: '$if',
+          props: {
+            condition: { $store: 'shapeStore.hintEditor.customized' },
+            then: { type: 'we-badge', props: { variant: 'primary' }, children: ['Customized for this space'] },
+            else: { type: 'we-badge', props: { variant: 'neutral' }, children: ['Using defaults'] },
+          },
+        },
+      ],
+    },
+    {
+      type: 'Column',
+      props: { gap: '400' },
+      children: [
         {
           type: 'we-text',
           props: { variant: 'footnote', color: 'neutral-400' },
@@ -791,49 +799,50 @@ const hintEditorModal: SchemaNode = {
             },
           ],
         },
+      ],
+    },
+    {
+      type: 'Row',
+      slot: 'footer',
+      props: { ax: 'between', gap: '200', ay: 'center' },
+      children: [
+        {
+          type: '$if',
+          props: {
+            condition: { $store: 'shapeStore.hintEditor.customized' },
+            then: {
+              type: 'we-button',
+              props: {
+                variant: 'ghost',
+                loading: { $store: 'shapeStore.hintBusy' },
+                onClick: { $action: 'shapeStore.resetHintEditor' },
+              },
+              children: [
+                { type: 'we-icon', props: { name: 'arrows-clockwise' } },
+                { type: 'we-text', children: ['Reset to defaults'] },
+              ],
+            },
+            else: { type: 'div' },
+          },
+        },
         {
           type: 'Row',
-          props: { ax: 'between', gap: '200', ay: 'center' },
+          props: { gap: '200' },
           children: [
             {
-              type: '$if',
-              props: {
-                condition: { $store: 'shapeStore.hintEditor.customized' },
-                then: {
-                  type: 'we-button',
-                  props: {
-                    variant: 'ghost',
-                    loading: { $store: 'shapeStore.hintBusy' },
-                    onClick: { $action: 'shapeStore.resetHintEditor' },
-                  },
-                  children: [
-                    { type: 'we-icon', props: { name: 'arrows-clockwise' } },
-                    { type: 'we-text', children: ['Reset to defaults'] },
-                  ],
-                },
-                else: { type: 'div' },
-              },
+              type: 'we-button',
+              props: { variant: 'ghost', onClick: { $action: 'shapeStore.closeHintEditor' } },
+              children: ['Cancel'],
             },
             {
-              type: 'Row',
-              props: { gap: '200' },
-              children: [
-                {
-                  type: 'we-button',
-                  props: { variant: 'ghost', onClick: { $action: 'shapeStore.closeHintEditor' } },
-                  children: ['Cancel'],
-                },
-                {
-                  type: 'we-button',
-                  props: {
-                    variant: 'primary',
-                    loading: { $store: 'shapeStore.hintBusy' },
-                    disabled: { $store: 'shapeStore.hintBusy' },
-                    onClick: { $action: 'shapeStore.saveHintEditor' },
-                  },
-                  children: ['Save for this space'],
-                },
-              ],
+              type: 'we-button',
+              props: {
+                variant: 'primary',
+                loading: { $store: 'shapeStore.hintBusy' },
+                disabled: { $store: 'shapeStore.hintBusy' },
+                onClick: { $action: 'shapeStore.saveHintEditor' },
+              },
+              children: ['Save for this space'],
             },
           ],
         },

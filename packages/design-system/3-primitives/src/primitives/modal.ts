@@ -21,16 +21,18 @@ const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   direction: 'column',
   maxHeight: 'calc(100vh - 64px)',
   /*
-    Scroll rather than spill.
+    Scroll rather than spill — but one level in.
 
-    maxHeight lands on [part='base'] (see OverlayElement), but nothing bounded what happened when
-    the content exceeded it: a modal that grew — a form gaining rows — pushed its content out past
-    its own edge and off the screen, with no way to reach the buttons at the bottom.
+    maxHeight lands on [part='base'] (see OverlayElement), and nothing bounded what happened when
+    the content exceeded it: a form gaining rows pushed its content off the screen. Scrolling base
+    itself was the first fix, and wrong by one element: the close button is anchored to base, so it
+    rode away with the content. base clips, and [part='content'] below is what scrolls — the close
+    button stays put, and anything slotted as header or footer is pinned outside the scroll.
 
-    This has to be a default prop rather than a rule in the stylesheet below. The generated sheet
-    declares overflow on [part='base'] itself, and wins there whatever a component writes.
+    A default prop rather than a stylesheet rule, because the generated sheet declares overflow on
+    [part='base'] itself and wins there whatever a component writes.
   */
-  overflow: 'auto',
+  overflow: 'hidden',
 };
 
 const CSS_STYLES = css`
@@ -48,6 +50,25 @@ const CSS_STYLES = css`
 
   [part='base'] {
     position: relative;
+  }
+
+  /*
+    The scroll region: the default slot only. Named header/footer slots are left as slots — an
+    unfilled slot is display: contents and costs the layout nothing, and a filled one makes the
+    slotted node a flex row of base itself, pinned above or below the scroll and sharing its gap.
+
+    Safe to style directly: the generated sheet touches :host and [part='base'] only.
+  */
+  [part='content'] {
+    display: flex;
+    flex-direction: column;
+    /* base's own gap and alignment, so nodes inside and outside the scroller line up the same. */
+    gap: inherit;
+    align-items: inherit;
+    overflow: auto;
+    /* A flex item's automatic minimum size is its content — without this nothing ever shrinks,
+       so nothing ever scrolls. */
+    min-height: 0;
   }
 
   [part='close-button-wrapper'] {
@@ -123,7 +144,9 @@ export default class Modal extends OverlayElement {
               `
             : null
         }
-        <slot></slot>
+        <slot name="header"></slot>
+        <div part="content"><slot></slot></div>
+        <slot name="footer"></slot>
       </div>
     `;
   }

@@ -154,6 +154,13 @@ Undeclared, \`$setLocal\` warns and no-ops: the button renders, takes the click,
 If the action is slow (a recursive delete walks its whole collection), add a \`busy\` boolean set
 before it and cleared in \`onFinally\`, and bind the confirm button's \`loading\` and \`disabled\` to it.
 
+**Tall modals — pin the title and buttons.** A modal whose content can outgrow the viewport (a
+long form, a settings editor) scrolls its *content*, never its own title or its action buttons.
+Give the title node \`"slot": "header"\` and the button row \`"slot": "footer"\`: both are pinned
+outside the scroll region, sharing the modal's padding and gap, while the default slot scrolls.
+Put a \`width\` on the \`we-modal\` itself when using these slots — no single child spans it any
+more. A short confirm dialog like the one above needs none of this; the default slot alone is right.
+
 ### Composing a post — the BlockComposer save handshake
 
 \`BlockComposer\` is **pull-based**. Its \`onSave\` does *not* fire when the user types or when a modal
