@@ -406,6 +406,8 @@ export const storeEntries: StoreEntry[] = [
       },
       hintBusy: { type: 'boolean' },
       expandedMembers: { type: 'array' },
+      memberOptions: { type: 'array', properties: ['rowId', 'options'] },
+      confirmDiscard: { type: 'boolean' },
     },
     actions: [
       'openShapeWizard',
@@ -419,6 +421,8 @@ export const storeEntries: StoreEntry[] = [
       'reorderMembers',
       'toggleMemberExpanded',
       'commitDraft',
+      'requestCloseWizard',
+      'cancelDiscard',
       'replaceDraft',
       'generateShapeDraft',
       'saveShapeDraft',
@@ -901,6 +905,9 @@ export function generateStoresText(entries: StoreEntry[]): string {
         hintEditor:
           'the hint editor state ({ entity, classHint, defaultClassHint, rows: { name, predicate, hint, defaultHint }[], customized }) or null while closed — non-nullness mounts the hint editor modal',
         hintBusy: 'boolean — the hint editor is loading or saving',
+        memberOptions:
+          "{ rowId, options }[] — each member's default-value picker entries. Read with $find on rowId rather than off $member: rows are mutated in place while typing, so values hanging off the row cannot be reactive",
+        confirmDiscard: 'boolean — the "discard this model?" confirmation is showing',
         expandedMembers:
           "string[] — rowIds whose detail panel is open. Read with { $in: ['$member.rowId', { $store: 'shapeStore.expandedMembers' }] }; a new row and any row an error names open themselves",
       },
@@ -917,6 +924,9 @@ export function generateStoresText(entries: StoreEntry[]): string {
         setMemberField:
           "(rowId, field, value): sets one field of one member row. 'options' takes the comma-separated string as typed",
         toggleMemberExpanded: "(rowId): opens or closes one member's detail panel (hint, default, allowed values)",
+        requestCloseWizard:
+          "(): closes the wizard, asking first when there is work to lose. Wire the modal's own close to this so a backdrop click is guarded too",
+        cancelDiscard: '(): dismisses the discard confirmation and keeps the wizard open',
         commitDraft:
           '(): publishes in-place edits to the draft signal. Typed fields are mutated without touching it so inputs keep focus, which leaves derived values stale — pair with onBlur on a field something else is computed from',
         reorderMembers:

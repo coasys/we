@@ -32,6 +32,15 @@ const CSS_STYLES = css`
 
   [part='base'] {
     position: relative;
+    /*
+      Scroll rather than spill.
+
+      The maxHeight prop lands on this element (see OverlayElement), but nothing bounded what
+      happened when the content exceeded it: a modal that grew — a form gaining rows — pushed its
+      content out past its own edge and off the screen, with no way to reach the buttons at the
+      bottom.
+    */
+    overflow: auto;
   }
 
   [part='close-button-wrapper'] {

@@ -2265,7 +2265,9 @@ export const contextData: ContextData = {
         identityOptions: { type: 'array', properties: ['label', 'value'] },
         hintEditor: { type: 'object', properties: ['entity', 'classHint', 'defaultClassHint', 'rows', 'customized'] },
         hintBusy: { type: 'boolean' },
+        memberOptions: { type: 'array', properties: ['rowId', 'options'] },
         expandedMembers: { type: 'array' },
+        confirmDiscard: { type: 'boolean' },
       },
       actions: [
         'openShapeWizard',
@@ -2281,6 +2283,8 @@ export const contextData: ContextData = {
         'commitDraft',
         'replaceDraft',
         'generateShapeDraft',
+        'requestCloseWizard',
+        'cancelDiscard',
         'saveShapeDraft',
         'deleteShape',
         'openHintEditor',

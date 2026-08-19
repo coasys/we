@@ -154,7 +154,15 @@ const defaultValueControl: SchemaNode = {
                 size: 'sm',
                 width: DEFAULT_CONTROL_WIDTH,
                 placeholder: 'No default',
-                options: '$member.defaultOptions',
+                // Through the store rather than off `$member`: the row is mutated in place while
+                // its values are typed, so anything read from the row itself cannot update.
+                options: {
+                  $find: {
+                    items: { $store: 'shapeStore.memberOptions' },
+                    where: { rowId: '$member.rowId' },
+                    select: 'options',
+                  },
+                },
                 value: '$member.defaultValue',
                 onChange: {
                   $action: 'shapeStore.setMemberField',
@@ -470,7 +478,9 @@ const describeItBox: SchemaNode = {
 /** The wizard: create or edit one model. Mounted while `shapeStore.shapeDraft` is non-null. */
 const shapeWizardModal: SchemaNode = {
   type: 'we-modal',
-  props: { close: { $action: 'shapeStore.cancelShapeWizard' } },
+  // Backdrop and close button both route through the guard — that click was the way a half-written
+  // model got thrown away.
+  props: { close: { $action: 'shapeStore.requestCloseWizard' } },
   $localState: {
     aiDescription: { type: 'string', initial: '' },
   },
@@ -662,7 +672,7 @@ const shapeWizardModal: SchemaNode = {
           children: [
             {
               type: 'we-button',
-              props: { variant: 'ghost', onClick: { $action: 'shapeStore.cancelShapeWizard' } },
+              props: { variant: 'ghost', onClick: { $action: 'shapeStore.requestCloseWizard' } },
               children: ['Cancel'],
             },
             {
@@ -947,6 +957,52 @@ const hintEntityRow: SchemaNode = {
   ],
 };
 
+/**
+ * "Discard this?" — the guard on closing the wizard.
+ *
+ * Mounted beside the wizard rather than inside it, so it survives the modal it is asking about and
+ * is not itself dismissed by the backdrop click that raised the question.
+ */
+const discardConfirmModal: SchemaNode = {
+  type: '$if',
+  props: {
+    condition: { $store: 'shapeStore.confirmDiscard' },
+    then: {
+      type: 'we-modal',
+      props: { close: { $action: 'shapeStore.cancelDiscard' } },
+      children: [
+        {
+          type: 'Column',
+          props: { gap: '300', maxWidth: '380px' },
+          children: [
+            { type: 'we-text', props: { fontWeight: 'semibold' }, children: ['Discard this model?'] },
+            {
+              type: 'we-text',
+              children: ['What you have filled in will be lost. Nothing has been saved to the space yet.'],
+            },
+            {
+              type: 'Row',
+              props: { ax: 'end', gap: '200' },
+              children: [
+                {
+                  type: 'we-button',
+                  props: { variant: 'ghost', onClick: { $action: 'shapeStore.cancelDiscard' } },
+                  children: ['Keep editing'],
+                },
+                {
+                  type: 'we-button',
+                  props: { variant: 'danger', onClick: { $action: 'shapeStore.cancelShapeWizard' } },
+                  children: ['Discard'],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    },
+  },
+};
+
 const deleteConfirmModal: SchemaNode = {
   type: '$if',
   props: {
@@ -1070,6 +1126,7 @@ export const modelsSection: SchemaNode = {
       },
       { type: '$if', props: { condition: { $store: 'shapeStore.shapeDraft' }, then: shapeWizardModal } },
       { type: '$if', props: { condition: { $store: 'shapeStore.hintEditor' }, then: hintEditorModal } },
+      discardConfirmModal,
       deleteConfirmModal,
     ],
   }),

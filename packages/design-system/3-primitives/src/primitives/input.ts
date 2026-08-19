@@ -78,6 +78,25 @@ const styles = css`
     min-width: 0;
   }
 
+  /*
+    No native spinner on a number field.
+
+    Its arrows are drawn by the browser and cannot be themed, so a number input was the one control
+    in a form that did not look like the others. Hiding them leaves the field typed and validated —
+    which is what it is here for — and we-number-input remains the control to reach for when
+    stepping is the point.
+  */
+  [part='input'][type='number'] {
+    -moz-appearance: textfield;
+    appearance: textfield;
+  }
+
+  [part='input'][type='number']::-webkit-outer-spin-button,
+  [part='input'][type='number']::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+
   [part='input']::placeholder {
     color: var(--we-color-neutral-400);
   }

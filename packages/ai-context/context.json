@@ -5728,8 +5728,15 @@
         "hintBusy": {
           "type": "boolean"
         },
+        "memberOptions": {
+          "type": "array",
+          "properties": ["rowId", "options"]
+        },
         "expandedMembers": {
           "type": "array"
+        },
+        "confirmDiscard": {
+          "type": "boolean"
         }
       },
       "actions": [
@@ -5746,6 +5753,8 @@
         "commitDraft",
         "replaceDraft",
         "generateShapeDraft",
+        "requestCloseWizard",
+        "cancelDiscard",
         "saveShapeDraft",
         "deleteShape",
         "openHintEditor",

@@ -24,7 +24,16 @@ import { manifestEntries, type ModelManifest, validateManifest } from '@we/backe
 import { toastService } from '@we/components/solid';
 import { asFileField, decodeFileAsJson, encodeJsonFileData, Shape } from '@we/models';
 import { CORE_MANIFEST } from '@we/models/generated/coreManifest';
-import { Accessor, createContext, createEffect, createMemo, createSignal, ParentProps, useContext } from 'solid-js';
+import {
+  Accessor,
+  batch,
+  createContext,
+  createEffect,
+  createMemo,
+  createSignal,
+  ParentProps,
+  useContext,
+} from 'solid-js';
 
 import { generateShapeDraft as runShapeGeneration } from '../../../shared/ai/shapeGeneration';
 import {
@@ -129,6 +138,15 @@ export interface ShapeStore {
   setMemberField: (rowId: string, field: keyof ShapeDraftMember, value: string | boolean) => void;
   /** Apply a drag-reorder from the row ids in their new order. */
   reorderMembers: (rowIds: string[]) => void;
+  /**
+   * Each member's default-value picker entries, keyed by row.
+   *
+   * Read with `$find` on `rowId` rather than off `$member` itself: the row object is deliberately
+   * mutated in place while typing (so the input keeps focus), which means anything hanging off it
+   * cannot be reactive. Reading through the store is, so the picker follows the values as they are
+   * committed without the row having to re-render.
+   */
+  memberOptions: Accessor<{ rowId: string; options: { label: string; value: string }[] }[]>;
   /** Row ids whose detail panel is open — hints, defaults and options live behind it. */
   expandedMembers: Accessor<string[]>;
   /** Open or close one member's detail panel. */
@@ -148,6 +166,17 @@ export interface ShapeStore {
    * Never adopts anything itself: generation proposes, the human saves.
    */
   generateShapeDraft: (description: string) => Promise<void>;
+  /**
+   * Close the wizard, asking first when there is work to lose.
+   *
+   * Wired to the modal's own `close`, so a click on the backdrop goes through it too — that being
+   * the way a half-written model actually got thrown away.
+   */
+  requestCloseWizard: () => void;
+  /** Whether the "discard this?" confirmation is showing. */
+  confirmDiscard: Accessor<boolean>;
+  /** Keep editing — dismiss the confirmation without closing. */
+  cancelDiscard: () => void;
   /** Validate, store and adopt the draft. Errors land in `draftErrors`; success closes the wizard. */
   saveShapeDraft: () => Promise<void>;
   /** Delete a shape record. Its SDNA and data remain in the space (uninstall semantics are deliberate). */
@@ -179,6 +208,11 @@ export function ShapeStoreProvider(props: ParentProps) {
   const [hintBusy, setHintBusy] = createSignal(false);
   const [generating, setGenerating] = createSignal(false);
   const [expandedMembers, setExpandedMembers] = createSignal<string[]>([]);
+  const [confirmDiscard, setConfirmDiscard] = createSignal(false);
+
+  const memberOptions = createMemo(() =>
+    (shapeDraft()?.members ?? []).map((m) => ({ rowId: m.rowId, options: m.defaultOptions })),
+  );
 
   const aiAvailable = createMemo(() => Boolean(datasetStore.agentSettings()?.claudeApiKey));
 
@@ -352,10 +386,15 @@ export function ShapeStoreProvider(props: ParentProps) {
     setDraftErrors([]);
     if (!recordId) {
       const draft = emptyShapeDraft();
-      setEditingShapeId(null);
-      setShapeDraft(draft);
-      // The one starter row opens: it is about to be filled in.
-      setExpandedMembers(draft.members.map((m) => m.rowId));
+      // Batched: two separate writes mount the wizard with nothing expanded and then expand it, so
+      // the starter row played its opening animation every time the modal was opened. Together they
+      // are one update, and the row is simply open from the first frame.
+      batch(() => {
+        setEditingShapeId(null);
+        setShapeDraft(draft);
+        // The one starter row opens: it is about to be filled in.
+        setExpandedMembers(draft.members.map((m) => m.rowId));
+      });
       return;
     }
     const view = spaceShapes().find((s) => s.id === recordId);
@@ -363,13 +402,43 @@ export function ShapeStoreProvider(props: ParentProps) {
       toastService.error('This model has no readable definition to edit.');
       return;
     }
-    setEditingShapeId(recordId);
-    setShapeDraft(manifestToDraft(view.name, view.manifest, { description: view.description, icon: view.icon }));
-    // A stored model opens collapsed — the list is there to be read before it is edited.
-    setExpandedMembers([]);
+    // Lifted out of the batch: a property narrowing does not survive into a callback, and the
+    // lowering is pure anyway.
+    const draft = manifestToDraft(view.name, view.manifest, { description: view.description, icon: view.icon });
+    batch(() => {
+      setEditingShapeId(recordId);
+      setShapeDraft(draft);
+      // A stored model opens collapsed — the list is there to be read before it is edited.
+      setExpandedMembers([]);
+    });
+  }
+
+  /**
+   * Whether closing would throw anything away.
+   *
+   * A pristine wizard — opened and not typed in — closes without ceremony; asking there would train
+   * the answer out of anyone. Editing an existing model counts as having something to lose from the
+   * moment it opens, since its content came from the space.
+   */
+  function draftHasWork(): boolean {
+    const draft = shapeDraft();
+    if (!draft) return false;
+    if (editingShapeId()) return true;
+    if (draft.name.trim() || draft.description.trim() || draft.classHint.trim() || draft.icon) return true;
+    return draft.members.some((m) => m.name.trim() || m.hint.trim() || m.options.trim() || m.target || m.defaultValue);
+  }
+
+  function requestCloseWizard(): void {
+    if (draftHasWork()) setConfirmDiscard(true);
+    else cancelShapeWizard();
+  }
+
+  function cancelDiscard(): void {
+    setConfirmDiscard(false);
   }
 
   function cancelShapeWizard(): void {
+    setConfirmDiscard(false);
     setShapeDraft(null);
     setEditingShapeId(null);
     setDraftErrors([]);
@@ -497,10 +566,12 @@ export function ShapeStoreProvider(props: ParentProps) {
       });
       // Editing keeps the record's name and predicates — generation only replaces a NEW draft
       // wholesale; on an edit it would orphan storage keys, so it is offered only for new models.
-      replaceDraft(draft);
-      // Everything a model wrote is opened: the point of the flow is that it gets read before it
-      // is adopted, and hints are the part most worth checking.
-      setExpandedMembers(draft.members.map((m) => m.rowId));
+      batch(() => {
+        replaceDraft(draft);
+        // Everything a model wrote is opened: the point of the flow is that it gets read before it
+        // is adopted, and hints are the part most worth checking.
+        setExpandedMembers(draft.members.map((m) => m.rowId));
+      });
       if (remainingProblems.length) setDraftErrors(remainingProblems);
     } catch (err) {
       console.error('ShapeStore: shape generation failed', err);
@@ -722,11 +793,15 @@ export function ShapeStoreProvider(props: ParentProps) {
     removeMember,
     setMemberField,
     reorderMembers,
+    memberOptions,
     expandedMembers,
     toggleMemberExpanded,
     commitDraft,
     replaceDraft,
     generateShapeDraft,
+    requestCloseWizard,
+    confirmDiscard,
+    cancelDiscard,
     saveShapeDraft,
     deleteShape,
     openHintEditor,

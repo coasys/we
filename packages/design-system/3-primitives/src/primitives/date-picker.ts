@@ -47,6 +47,19 @@ const styles = css`
     border-color: var(--we-color-primary-500);
   }
 
+  [part='clear'] {
+    all: unset;
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+    color: var(--we-color-neutral-400);
+    border-radius: var(--we-radius-full);
+  }
+
+  [part='clear']:hover {
+    color: var(--we-color-neutral-700);
+  }
+
   input[part='display'] {
     all: unset;
     flex: 1;
@@ -199,6 +212,22 @@ export default class DatePicker extends DesignSystemElement {
     }
   }
 
+  /**
+   * Empty the field.
+   *
+   * A date picker could set a value and never take it back, so any optional date was a one-way
+   * door: choose once by accident and the only way out was to delete the record. Emits the same
+   * `change` every other path does, with an empty string — which is what "unset" is everywhere
+   * this value is read.
+   */
+  private _clear = (e: Event) => {
+    // The wrapper opens the calendar on click; clearing must not also open it.
+    e.stopPropagation();
+    this.value = '';
+    this._open = false;
+    this.dispatchEvent(new CustomEvent('change', { detail: this.value, bubbles: true, composed: true }));
+  };
+
   private _selectDate(year: number, month: number, day: number) {
     const m = String(month + 1).padStart(2, '0');
     const d = String(day).padStart(2, '0');
@@ -261,6 +290,15 @@ export default class DatePicker extends DesignSystemElement {
       <div part="base" style=${styleMap({ position: 'relative', ...this.styles })}>
         <div part="input-wrapper" style=${styleMap({ height: h })} @click=${() => (this._open = !this._open)}>
           <input part="display" readonly .value=${this._displayValue} placeholder=${this.placeholder} />
+          ${
+            this.value
+              ? html`
+                  <button part="clear" @click=${this._clear} aria-label="Clear date" title="Clear date">
+                    <we-icon name="x" size="14px"></we-icon>
+                  </button>
+                `
+              : nothing
+          }
           <we-icon name="calendar-blank" size="16px"></we-icon>
         </div>
 
