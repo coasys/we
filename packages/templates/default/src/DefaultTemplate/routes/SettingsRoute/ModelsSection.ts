@@ -15,8 +15,9 @@ import { sectionCard } from '@we/template-kit';
 /**
  * How wide a default-value control is.
  *
- * Fixed rather than filling the panel: a default is a short value — a number, a date, one of a
- * handful of words — and a full-width control reads as though a paragraph were expected.
+ * Fixed rather than filling the panel: a default is a short value — a date, one of a handful of
+ * words — and a full-width control reads as though a paragraph were expected. The number input opts
+ * out and keeps its natural size, since it carries its own steppers and a few digits need no more.
  */
 const DEFAULT_CONTROL_WIDTH = '220px';
 
@@ -121,7 +122,9 @@ const defaultValueControl: SchemaNode = {
       type: 'we-number-input',
       props: {
         size: 'sm',
-        width: DEFAULT_CONTROL_WIDTH,
+        // The one default control with no width: it already shrink-wraps to its steppers and a few
+        // digits, and stretching it to the width the others need only pushes the buttons away from
+        // the number they belong to.
         placeholder: 'None',
         value: '$member.defaultValue',
         onChange: { $action: 'shapeStore.setMemberField', args: ['$member.rowId', 'defaultValue', '$arg.detail'] },
