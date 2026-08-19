@@ -41,6 +41,32 @@ const styles = css`
     min-width: 120px;
   }
 
+  /*
+    Fitted: the control is as wide as its widest option, and no wider.
+
+    The sizer stacks every label in one grid cell and is hidden without being removed, so it still
+    contributes its width — which is the widest of them — while painting nothing and staying out of
+    the accessibility tree. Sizing this way rather than from the current value is what keeps the
+    control from resizing every time somebody picks something.
+  */
+  :host([fit]) {
+    min-width: 0;
+    width: fit-content;
+  }
+
+  [part='sizer'] {
+    display: grid;
+    height: 0;
+    overflow: hidden;
+    visibility: hidden;
+  }
+
+  [part='sizer'] > span {
+    grid-area: 1 / 1;
+    white-space: nowrap;
+    font: inherit;
+  }
+
   [part='input-wrapper'] {
     position: relative;
     display: flex;
@@ -88,7 +114,12 @@ const styles = css`
       button element now.
     */
     align-self: stretch;
-    display: flex;
+    /*
+      A one-cell grid, so the value and the width-holding sizer occupy the same space rather than
+      sitting side by side — beside each other the button collapsed to nothing and the label was
+      clipped by the very thing meant to size it.
+    */
+    display: grid;
     align-items: center;
     padding: 0 var(--we-space-300);
     font: inherit;
@@ -99,8 +130,18 @@ const styles = css`
     text-overflow: ellipsis;
   }
 
-  [part='native-button']:empty::before {
-    content: attr(placeholder);
+  [part='native-button'] > * {
+    grid-area: 1 / 1;
+  }
+
+  [part='value'] {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* A placeholder reads as absent text, not as a value. */
+  [part='value'][data-placeholder] {
     color: var(--we-color-neutral-400);
   }
 
@@ -175,6 +216,15 @@ export default class Select extends DesignSystemElement {
   @property({ type: String }) placeholder = '';
   @property({ type: Boolean, reflect: true }) disabled = false;
   @property({ type: Boolean, reflect: true }) searchable = false;
+  /**
+   * Size the control to its widest option instead of filling its container.
+   *
+   * Opt-in, and measured against the *widest* option rather than the current one: a control that
+   * resized as the selection changed would shift everything beside it on every pick. Right where the
+   * options are short and known — true/false, a handful of declared values — and wrong where they
+   * carry user text, which is why filling the container stays the default.
+   */
+  @property({ type: Boolean, reflect: true }) fit = false;
   @property({ type: String }) name = '';
   @property({ type: String, reflect: true }) size: ComponentSize = 'md';
   @property({ type: Object }) styles?: Record<string, string | number | undefined>;
@@ -420,7 +470,19 @@ export default class Select extends DesignSystemElement {
                     @click=${this._toggle}
                     @keydown=${this._onKeyDown}
                   >
-                    ${this._displayValue || this.placeholder || nothing}
+                    <span part="value" ?data-placeholder=${!this._displayValue}
+                      >${this._displayValue || this.placeholder || nothing}</span
+                    >
+                    ${
+                      this.fit
+                        ? html`
+                            <span part="sizer" aria-hidden="true">
+                              ${this.options.map((o) => html`<span>${o.label}</span>`)}
+                              <span>${this.placeholder}</span>
+                            </span>
+                          `
+                        : nothing
+                    }
                   </button>
                 `
           }

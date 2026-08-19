@@ -457,6 +457,7 @@ export const contextData: ContextData = {
         { name: 'placeholder', type: 'string', optional: false, default: "''" },
         { name: 'disabled', type: 'boolean', optional: false, default: 'false' },
         { name: 'searchable', type: 'boolean', optional: false, default: 'false' },
+        { name: 'fit', type: 'boolean', optional: false, default: 'false' },
         { name: 'name', type: 'string', optional: false, default: "''" },
         { name: 'size', type: "'xs' | 'sm' | 'md' | 'lg' | 'xl'", optional: false, default: "'md'" },
       ],

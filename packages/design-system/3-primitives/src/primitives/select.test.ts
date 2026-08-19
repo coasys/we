@@ -218,3 +218,42 @@ describe('where the listbox is drawn', () => {
     expect(el.shadowRoot?.querySelector('[part="listbox"]')).toBeNull();
   });
 });
+
+describe('fit', () => {
+  /*
+    A select fills its container by default, because option text is usually somebody's data and a
+    control that hugs it would be as wide as the longest name in the space. `fit` is for the other
+    case — a few short, known words — and measures the *widest option* rather than the current one,
+    so choosing never resizes the row.
+  */
+  it('keeps every option in a hidden sizer, so the width cannot follow the selection', async () => {
+    (el as unknown as { fit: boolean }).fit = true;
+    el.value = 'a';
+    await el.updateComplete;
+
+    const sizer = el.shadowRoot?.querySelector('[part="sizer"]');
+    expect(sizer).toBeTruthy();
+    expect(sizer?.getAttribute('aria-hidden')).toBe('true');
+    // Every label is present regardless of which one is selected.
+    expect([...(sizer?.querySelectorAll('span') ?? [])].map((s) => s.textContent)).toEqual([
+      'Alpha',
+      'Beta',
+      'Gamma',
+      '',
+    ]);
+  });
+
+  it('carries no sizer when it is not fitting', async () => {
+    await el.updateComplete;
+    expect(el.shadowRoot?.querySelector('[part="sizer"]')).toBeNull();
+  });
+
+  it('shows the placeholder as absent text rather than as a value', async () => {
+    el.value = '';
+    (el as unknown as { placeholder: string }).placeholder = 'Pick one';
+    await el.updateComplete;
+    const value = el.shadowRoot?.querySelector('[part="value"]');
+    expect(value?.textContent?.trim()).toBe('Pick one');
+    expect(value?.hasAttribute('data-placeholder')).toBe(true);
+  });
+});

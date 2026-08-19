@@ -1183,6 +1183,12 @@
           "default": "false"
         },
         {
+          "name": "fit",
+          "type": "boolean",
+          "optional": false,
+          "default": "false"
+        },
+        {
           "name": "name",
           "type": "string",
           "optional": false,

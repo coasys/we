@@ -156,7 +156,11 @@ const defaultValueControl: SchemaNode = {
               type: 'we-select',
               props: {
                 size: 'sm',
-                width: DEFAULT_CONTROL_WIDTH,
+                // Fitted, not fixed: these options are a handful of short words — true/false, or
+                // the values this very field declares — so a control sized for user text would be
+                // mostly empty. `fit` measures the widest option rather than the current one, so
+                // picking one never resizes the row.
+                fit: true,
                 placeholder: 'None',
                 // Through the store rather than off `$member`: the row is mutated in place while
                 // its values are typed, so anything read from the row itself cannot update.
