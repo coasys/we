@@ -60,7 +60,14 @@ function indentDoc(doc, pad) {
 
 const q = (s) => `'${String(s).replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\n/g, '\\n')}'`;
 
-const TS_TYPE = { string: 'string', number: 'number', boolean: 'boolean', date: 'string', datetime: 'string', json: 'string' };
+const TS_TYPE = {
+  string: 'string',
+  number: 'number',
+  boolean: 'boolean',
+  date: 'string',
+  datetime: 'string',
+  json: 'string',
+};
 
 function propertyDecorator(spec) {
   const opts = [`through: ${q(spec.predicate)}`];
@@ -101,7 +108,8 @@ function emitEntity(name, def) {
   else ad4mImports.add('Ad4mModel');
   if (e.flag) ad4mImports.add('Flag');
   if (Object.keys(e.properties).length) ad4mImports.add('Property');
-  if (Object.values(e.properties).some((p) => p.format === 'file')) addRelative('../constants', 'FILE_STORAGE_LANGUAGE');
+  if (Object.values(e.properties).some((p) => p.format === 'file'))
+    addRelative('../constants', 'FILE_STORAGE_LANGUAGE');
   if (Object.values(e.properties).some((p) => p.readAs === 'dataUri')) ad4mImports.add('fileToDataUri');
 
   const relations = Object.entries(e.relations);

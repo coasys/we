@@ -32,8 +32,9 @@ import type { CoreEntityDef } from '../defs';
 export const TaskBlock: CoreEntityDef = {
   base: 'WeNode',
   entity: {
-    interpretationHint: "A piece of work the speakers say needs doing and that is not done yet. Includes anything phrased as \"we need to…\", \"one task is…\", \"someone should…\", or a commitment like \"I'll do X\" — an owner is not required, and neither is a deadline. It must be work in the world that outlives this conversation. Exclude work described as already finished, work raised purely to rule it out, and anything about the act of talking or testing itself — \"let me add another one\", \"I need to say more to trigger this\" and the like are about the conversation, not work anybody committed to.",
-    flag: {"predicate": "we://flag", "value": "we://task_block"},
+    interpretationHint:
+      'A piece of work the speakers say needs doing and that is not done yet. Includes anything phrased as "we need to…", "one task is…", "someone should…", or a commitment like "I\'ll do X" — an owner is not required, and neither is a deadline. It must be work in the world that outlives this conversation. Exclude work described as already finished, work raised purely to rule it out, and anything about the act of talking or testing itself — "let me add another one", "I need to say more to trigger this" and the like are about the conversation, not work anybody committed to.',
+    flag: { predicate: 'we://flag', value: 'we://task_block' },
     properties: {
       /**
        * The task, and its dedup key.
@@ -56,15 +57,52 @@ export const TaskBlock: CoreEntityDef = {
        * whole point. Contrast {@link EventBlock}, where the same title recurs weekly and means
        * different occasions.
        */
-      title: { type: "string", predicate: "we://title", required: true, interpretationHint: "The task as a short imperative phrase, e.g. \"Ship the docs\". No trailing period. Never include the bracketed timestamp that starts each turn — it is metadata, not speech. Reuse the wording of an existing task when this is the same piece of work said again.", identity: true, default: "" },
-      description: { type: "string", predicate: "we://description", interpretationHint: "Extra context from the conversation that the title alone loses. Omit rather than restate the title.", default: "" },
-      status: { type: "string", predicate: "we://status", interpretationHint: "Exactly one of: \"todo\", \"in-progress\", \"done\". Use \"todo\" unless the speaker says work has begun.", default: "todo" },
-      priority: { type: "string", predicate: "we://priority", interpretationHint: "Exactly one of: \"low\", \"medium\", \"high\". Use \"medium\" unless urgency is stated; do not infer it from tone.", default: "medium" },
-      dueDate: { type: "string", predicate: "we://due_date", interpretationHint: "Due date as YYYY-MM-DD. Only when a date is actually stated — resolve \"Friday\" against the bracketed timestamp leading that turn. Omit if vague.", default: "" },
-      assignee: { type: "string", predicate: "we://assignee", interpretationHint: "Who took the task on, as the name used in conversation (\"James\"), not a DID. Omit if nobody was named.", default: "" },
-      version: { type: "number", predicate: "we://version", default: 0 },
+      title: {
+        type: 'string',
+        predicate: 'we://title',
+        required: true,
+        interpretationHint:
+          'The task as a short imperative phrase, e.g. "Ship the docs". No trailing period. Never include the bracketed timestamp that starts each turn — it is metadata, not speech. Reuse the wording of an existing task when this is the same piece of work said again.',
+        identity: true,
+        default: '',
+      },
+      description: {
+        type: 'string',
+        predicate: 'we://description',
+        interpretationHint:
+          'Extra context from the conversation that the title alone loses. Omit rather than restate the title.',
+        default: '',
+      },
+      status: {
+        type: 'string',
+        predicate: 'we://status',
+        interpretationHint:
+          'Exactly one of: "todo", "in-progress", "done". Use "todo" unless the speaker says work has begun.',
+        default: 'todo',
+      },
+      priority: {
+        type: 'string',
+        predicate: 'we://priority',
+        interpretationHint:
+          'Exactly one of: "low", "medium", "high". Use "medium" unless urgency is stated; do not infer it from tone.',
+        default: 'medium',
+      },
+      dueDate: {
+        type: 'string',
+        predicate: 'we://due_date',
+        interpretationHint:
+          'Due date as YYYY-MM-DD. Only when a date is actually stated — resolve "Friday" against the bracketed timestamp leading that turn. Omit if vague.',
+        default: '',
+      },
+      assignee: {
+        type: 'string',
+        predicate: 'we://assignee',
+        interpretationHint:
+          'Who took the task on, as the name used in conversation ("James"), not a DID. Omit if nobody was named.',
+        default: '',
+      },
+      version: { type: 'number', predicate: 'we://version', default: 0 },
     },
-    relations: {
-    },
+    relations: {},
   },
 };

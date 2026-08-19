@@ -2,20 +2,20 @@ import type { CoreEntityDef } from '../defs';
 
 export const AgentSettings: CoreEntityDef = {
   base: 'Ad4mModel',
-  methodRelations: ["installedTemplates", "installedThemes", "spaceTemplatePreferences"],
-  typedArrays: ["installedTemplates", "installedThemes", "spaceTemplatePreferences"],
+  methodRelations: ['installedTemplates', 'installedThemes', 'spaceTemplatePreferences'],
+  typedArrays: ['installedTemplates', 'installedThemes', 'spaceTemplatePreferences'],
   entity: {
-    flag: {"predicate": "we://flag", "value": "we://root"},
+    flag: { predicate: 'we://flag', value: 'we://root' },
     properties: {
-      currentTemplateId: { type: "string", predicate: "we://current_template", default: "default" },
-      defaultTemplateId: { type: "string", predicate: "we://default_template", default: "default" },
-      currentThemeId: { type: "string", predicate: "we://current_theme", default: "default" },
-      defaultThemeId: { type: "string", predicate: "we://default_theme", default: "default" },
-      claudeApiKey: { type: "string", predicate: "we://claude_api_key", default: "" },
-      datasetOrder: { type: "string", predicate: "we://dataset_order", default: "" },
-      globalSpaceJoined: { type: "boolean", predicate: "we://global_space_joined", default: false },
-      globalSpaceUrl: { type: "string", predicate: "we://global_space_url", default: "" },
-      useSpaceTemplate: { type: "boolean", predicate: "we://use_space_template", default: true },
+      currentTemplateId: { type: 'string', predicate: 'we://current_template', default: 'default' },
+      defaultTemplateId: { type: 'string', predicate: 'we://default_template', default: 'default' },
+      currentThemeId: { type: 'string', predicate: 'we://current_theme', default: 'default' },
+      defaultThemeId: { type: 'string', predicate: 'we://default_theme', default: 'default' },
+      claudeApiKey: { type: 'string', predicate: 'we://claude_api_key', default: '' },
+      datasetOrder: { type: 'string', predicate: 'we://dataset_order', default: '' },
+      globalSpaceJoined: { type: 'boolean', predicate: 'we://global_space_joined', default: false },
+      globalSpaceUrl: { type: 'string', predicate: 'we://global_space_url', default: '' },
+      useSpaceTemplate: { type: 'boolean', predicate: 'we://use_space_template', default: true },
       /**
        * Whether a template may bring its own theme.
        *
@@ -29,7 +29,7 @@ export const AgentSettings: CoreEntityDef = {
        * deliberately settled on a look turns it off once, or pins a theme per space, and template
        * switching stops touching it.
        */
-      useTemplateTheme: { type: "boolean", predicate: "we://use_template_theme", default: true },
+      useTemplateTheme: { type: 'boolean', predicate: 'we://use_template_theme', default: true },
       /**
        * Whether a space's theme covers the whole window, or only the space's own content.
        *
@@ -46,7 +46,7 @@ export const AgentSettings: CoreEntityDef = {
        * Read as "not `'global'`" rather than compared against `'scoped'`, so an agent whose record
        * predates this field gets the safe answer rather than an empty string.
        */
-      themeScope: { type: "string", predicate: "we://theme_scope", default: "" },
+      themeScope: { type: 'string', predicate: 'we://theme_scope', default: '' },
       /**
        * Which feature modules this agent wants available to them, anywhere, as a JSON array of ids.
        *
@@ -61,12 +61,16 @@ export const AgentSettings: CoreEntityDef = {
        * Mine, so it lives in the root dataset rather than in any space. Writing it into a shared space
        * would broadcast which modules I have turned off to every other member.
        */
-      installedModules: { type: "string", predicate: "we://installed_modules", default: "" },
+      installedModules: { type: 'string', predicate: 'we://installed_modules', default: '' },
     },
     relations: {
-      installedTemplates: { target: "Template", cardinality: "many", predicate: "we://installed_template" },
-      installedThemes: { target: "Theme", cardinality: "many", predicate: "we://installed_theme" },
-      spaceTemplatePreferences: { target: "SpaceTemplatePreference", cardinality: "many", predicate: "we://space_template_preference" },
+      installedTemplates: { target: 'Template', cardinality: 'many', predicate: 'we://installed_template' },
+      installedThemes: { target: 'Theme', cardinality: 'many', predicate: 'we://installed_theme' },
+      spaceTemplatePreferences: {
+        target: 'SpaceTemplatePreference',
+        cardinality: 'many',
+        predicate: 'we://space_template_preference',
+      },
     },
   },
 };

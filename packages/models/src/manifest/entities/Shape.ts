@@ -19,31 +19,30 @@ import type { CoreEntityDef } from '../defs';
 export const Shape: CoreEntityDef = {
   base: 'WeNode',
   entity: {
-    flag: {"predicate": "we://flag", "value": "we://shape"},
+    flag: { predicate: 'we://flag', value: 'we://shape' },
     properties: {
       /** The entity name (PascalCase, e.g. "Sighting") — the class name queries resolve. */
-      name: { type: "string", predicate: "we://name", required: true, default: "" },
-      description: { type: "string", predicate: "we://description", default: "" },
-      icon: { type: "string", predicate: "we://icon", default: "" },
+      name: { type: 'string', predicate: 'we://name', required: true, default: '' },
+      description: { type: 'string', predicate: 'we://description', default: '' },
+      icon: { type: 'string', predicate: 'we://icon', default: '' },
       /**
        * Stable identity URI (`we://shapes/<uuid>`), minted once at creation and never changed. The
        * convergence mechanism for the emerging ecosystem: two spaces holding the same `shapeId` hold
        * *the same shape*, whatever they renamed it to — which is what lets a calendar recognize a
        * fork of "event" (via `forkedFrom` lineage) without a central registry.
        */
-      shapeId: { type: "string", predicate: "we://shape_id", default: "" },
+      shapeId: { type: 'string', predicate: 'we://shape_id', default: '' },
       /**
        * Definition version, bumped on every accepted edit. Instances do not record which version
        * wrote them (v1 keeps edits additive, so every version reads all data); the field exists so
        * versioning strategies stay open — see the migration discussion in the model-authoring plan.
        */
-      version: { type: "number", predicate: "we://version", default: 1 },
+      version: { type: 'number', predicate: 'we://version', default: 1 },
       /** Lineage: the `shapeId@version` this shape was copied or forked from, empty for an original. */
-      forkedFrom: { type: "string", predicate: "we://forked_from", default: "" },
+      forkedFrom: { type: 'string', predicate: 'we://forked_from', default: '' },
       /** The `ModelManifest` JSON document — read raw and decoded by the caller, like `Template.schema`. */
-      definition: { type: "string", predicate: "we://shape_definition", format: "file", default: null },
+      definition: { type: 'string', predicate: 'we://shape_definition', format: 'file', default: null },
     },
-    relations: {
-    },
+    relations: {},
   },
 };

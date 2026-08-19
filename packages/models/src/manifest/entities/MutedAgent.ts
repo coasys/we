@@ -33,19 +33,18 @@ import type { CoreEntityDef } from '../defs';
 export const MutedAgent: CoreEntityDef = {
   base: 'WeNode',
   entity: {
-    flag: {"predicate": "we://flag", "value": "we://muted_agent"},
+    flag: { predicate: 'we://flag', value: 'we://muted_agent' },
     properties: {
       /** DID of the muted agent. */
-      did: { type: "string", predicate: "we://did", default: "" },
+      did: { type: 'string', predicate: 'we://did', default: '' },
       /**
        * Optional note to self — why.
        *
        * Present because an unexplained mute list is one nobody prunes: six months on, the reason is
        * gone and the only safe action is to leave it, so the list only ever grows.
        */
-      description: { type: "string", predicate: "we://description", default: "" },
+      description: { type: 'string', predicate: 'we://description', default: '' },
     },
-    relations: {
-    },
+    relations: {},
   },
 };

@@ -2,12 +2,12 @@ import type { CoreEntityDef } from '../defs';
 
 export const CollectionBlock: CoreEntityDef = {
   base: 'WeNode',
-  methodRelations: ["children"],
+  methodRelations: ['children'],
   entity: {
-    flag: {"predicate": "we://flag", "value": "we://collection_block"},
+    flag: { predicate: 'we://flag', value: 'we://collection_block' },
     properties: {
-      editorState: { type: "string", predicate: "we://editor_state", format: "file", default: null },
-      type: { type: "string", predicate: "we://type", default: "" },
+      editorState: { type: 'string', predicate: 'we://editor_state', format: 'file', default: null },
+      type: { type: 'string', predicate: 'we://type', default: '' },
       /**
        * What this collection *is* — `'call'`, `'notes'`, later `'board'`. Semantic, and deliberately
        * separate from `type`.
@@ -29,7 +29,7 @@ export const CollectionBlock: CoreEntityDef = {
        * `kind: 'post'` so new posts carry both, and the read side can switch once the legacy set stops
        * mattering. **A `CollectionBlock` with `type: 'root'` and no `kind` is a post.**
        */
-      kind: { type: "string", predicate: "we://kind", default: "" },
+      kind: { type: 'string', predicate: 'we://kind', default: '' },
       /**
        * Who owns this collection's children — `'document'` (one agent authored the whole artifact) or
        * `'feed'` (many agents append independently). See `CollectionMode` in `@we/block-shared`.
@@ -54,7 +54,7 @@ export const CollectionBlock: CoreEntityDef = {
        * Unset means legacy: collections written before this field existed. Treated as reconcilable,
        * since every pre-existing post is one and refusing them would break editing everywhere.
        */
-      mode: { type: "string", predicate: "we://mode", default: "" },
+      mode: { type: 'string', predicate: 'we://mode', default: '' },
       /**
        * What this collection is called, and what it is about — set by whoever owns it, not derived.
        *
@@ -75,13 +75,13 @@ export const CollectionBlock: CoreEntityDef = {
        * Unset costs nothing — an AD4M property is a link that exists only once written — so collections
        * that never get named carry no storage, and no migration was needed to add these.
        */
-      title: { type: "string", predicate: "we://title", default: "" },
-      description: { type: "string", predicate: "we://description", default: "" },
-      version: { type: "number", predicate: "we://version", default: 0 },
-      textContent: { type: "string", predicate: "we://text_content", default: "" },
+      title: { type: 'string', predicate: 'we://title', default: '' },
+      description: { type: 'string', predicate: 'we://description', default: '' },
+      version: { type: 'number', predicate: 'we://version', default: 0 },
+      textContent: { type: 'string', predicate: 'we://text_content', default: '' },
     },
     relations: {
-      children: { target: "", cardinality: "many", predicate: "we://children" },
+      children: { target: '', cardinality: 'many', predicate: 'we://children' },
     },
   },
 };

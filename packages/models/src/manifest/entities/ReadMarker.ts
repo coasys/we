@@ -34,7 +34,7 @@ import type { CoreEntityDef } from '../defs';
 export const ReadMarker: CoreEntityDef = {
   base: 'WeNode',
   entity: {
-    flag: {"predicate": "we://flag", "value": "we://read_marker"},
+    flag: { predicate: 'we://flag', value: 'we://read_marker' },
     properties: {
       /**
        * The node this marks a position in — a channel, a board, a post with replies.
@@ -43,9 +43,9 @@ export const ReadMarker: CoreEntityDef = {
        * question about anything with children or comments, and narrowing it would mean a second model
        * the first time someone wants it on a thread.
        */
-      nodeId: { type: "string", predicate: "we://node_id", default: "" },
+      nodeId: { type: 'string', predicate: 'we://node_id', default: '' },
       /** The dataset id of the space the node lives in, so markers can be fetched per space. */
-      spaceUuid: { type: "string", predicate: "we://space_uuid", default: "" },
+      spaceUuid: { type: 'string', predicate: 'we://space_uuid', default: '' },
       /**
        * When this agent last read it, as an ISO-8601 UTC string.
        *
@@ -58,9 +58,8 @@ export const ReadMarker: CoreEntityDef = {
        * compare, and ISO-8601 UTC is the format where lexicographic order *is* chronological order.
        * A local-offset or non-padded variant would sort wrongly and the failure would be quiet.
        */
-      lastReadAt: { type: "string", predicate: "we://last_read_at", default: "" },
+      lastReadAt: { type: 'string', predicate: 'we://last_read_at', default: '' },
     },
-    relations: {
-    },
+    relations: {},
   },
 };

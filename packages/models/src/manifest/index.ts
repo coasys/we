@@ -1,10 +1,7 @@
 import type { ModelManifest } from '@we/backend-shared';
 
-import { AgentSettings } from './entities/AgentSettings';
 import { AudioBlock } from './blocks/AudioBlock';
 import { CalloutBlock } from './blocks/CalloutBlock';
-import { ChatMessage } from './entities/ChatMessage';
-import { ChatSession } from './entities/ChatSession';
 import { CodeBlock } from './blocks/CodeBlock';
 import { CollectionBlock } from './blocks/CollectionBlock';
 import { DividerBlock } from './blocks/DividerBlock';
@@ -14,6 +11,14 @@ import { FileBlock } from './blocks/FileBlock';
 import { ImageBlock } from './blocks/ImageBlock';
 import { LinkBlock } from './blocks/LinkBlock';
 import { LocationBlock } from './blocks/LocationBlock';
+import { TagBlock } from './blocks/TagBlock';
+import { TaskBlock } from './blocks/TaskBlock';
+import { TextBlock } from './blocks/TextBlock';
+import { VideoBlock } from './blocks/VideoBlock';
+import type { CoreEntityDef } from './defs';
+import { AgentSettings } from './entities/AgentSettings';
+import { ChatMessage } from './entities/ChatMessage';
+import { ChatSession } from './entities/ChatSession';
 import { MutedAgent } from './entities/MutedAgent';
 import { ReadMarker } from './entities/ReadMarker';
 import { Shape } from './entities/Shape';
@@ -22,14 +27,8 @@ import { SignalType } from './entities/SignalType';
 import { Space } from './entities/Space';
 import { SpacePreference } from './entities/SpacePreference';
 import { SpaceTemplatePreference } from './entities/SpaceTemplatePreference';
-import { TagBlock } from './blocks/TagBlock';
-import { TaskBlock } from './blocks/TaskBlock';
 import { Template } from './entities/Template';
-import { TextBlock } from './blocks/TextBlock';
 import { Theme } from './entities/Theme';
-import { VideoBlock } from './blocks/VideoBlock';
-
-import type { CoreEntityDef } from './defs';
 import { WE_NODE_ENTITY, WE_NODE_RELATIONS } from './shared';
 
 /**

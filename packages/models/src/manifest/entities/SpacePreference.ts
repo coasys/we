@@ -23,7 +23,6 @@ export const AGENT_DEFAULT = 'agent-default';
  */
 export const FOLLOW_SPACE = 'space-default';
 
-
 /**
  * One agent's personal choices for one space.
  *
@@ -48,21 +47,19 @@ export const FOLLOW_SPACE = 'space-default';
  */
 export const SpacePreference: CoreEntityDef = {
   base: 'WeNode',
-  passthrough: [
-    "export { AGENT_DEFAULT, FOLLOW_SPACE } from '../manifest/entities/SpacePreference';",
-  ],
+  passthrough: ["export { AGENT_DEFAULT, FOLLOW_SPACE } from '../manifest/entities/SpacePreference';"],
   entity: {
-    flag: {"predicate": "we://flag", "value": "we://space_preference"},
+    flag: { predicate: 'we://flag', value: 'we://space_preference' },
     properties: {
       /** The dataset id of the space these choices apply to. */
-      spaceUuid: { type: "string", predicate: "we://space_uuid", default: "" },
+      spaceUuid: { type: 'string', predicate: 'we://space_uuid', default: '' },
       /**
        * Module ids this agent has muted here, as a JSON array.
        *
        * A list of exclusions rather than of inclusions, so a module the community enables later still
        * appears — silence about a module means "no opinion", not "no".
        */
-      mutedModules: { type: "string", predicate: "we://muted_modules", default: "" },
+      mutedModules: { type: 'string', predicate: 'we://muted_modules', default: '' },
       /**
        * The template this agent wants when they open this space, overriding the space's default.
        *
@@ -70,11 +67,10 @@ export const SpacePreference: CoreEntityDef = {
        * "use my own": which template is a richer answer than whether, and it lets someone pick a third
        * template that is neither the space's choice nor their global default.
        */
-      templateId: { type: "string", predicate: "we://template_id", default: "" },
+      templateId: { type: 'string', predicate: 'we://template_id', default: '' },
       /** The theme this agent wants in this space. Same three-way value as `templateId`. */
-      themeId: { type: "string", predicate: "we://theme_id", default: "" },
+      themeId: { type: 'string', predicate: 'we://theme_id', default: '' },
     },
-    relations: {
-    },
+    relations: {},
   },
 };
