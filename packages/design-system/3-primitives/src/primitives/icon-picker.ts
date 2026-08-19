@@ -1,4 +1,5 @@
 import type { DesignSystemProps } from '@we/design-types';
+import { type DSLayer, filterProps, getKeysForLayers, mergeProps } from '@we/design-utils';
 import { css, html, nothing } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 
@@ -75,6 +76,19 @@ const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   gap: '200',
 };
 
+/**
+ * Type scale per size, applied to the host so the trigger's own text inherits it — the same map
+ * `we-select`, `we-input` and `we-date-picker` carry. Without it `size` set the control's height
+ * and nothing else, so a small picker held full-size text.
+ */
+const SIZE_DEFAULTS: Record<ComponentSize, Partial<DesignSystemProps>> = {
+  xs: { fontSize: '100' },
+  sm: { fontSize: '200' },
+  md: { fontSize: '300' },
+  lg: { fontSize: '400' },
+  xl: { fontSize: '400' },
+};
+
 const CONTROL_HEIGHT: Record<ComponentSize, string> = {
   xs: 'calc(var(--we-component-height-xs) + var(--we-theme-control-height-offset, 0px))',
   sm: 'calc(var(--we-component-height-sm) + var(--we-theme-control-height-offset, 0px))',
@@ -87,6 +101,23 @@ const styles = css`
   :host {
     position: relative;
     min-width: 0;
+  }
+
+  /* Icon sizing context, so the trigger's own icons scale with the control (see we-textarea). */
+  :host([size='xs']) {
+    --we-context-icon-size: var(--we-size-xxs);
+  }
+  :host([size='sm']) {
+    --we-context-icon-size: var(--we-size-xs);
+  }
+  :host([size='md']) {
+    --we-context-icon-size: var(--we-size-sm);
+  }
+  :host([size='lg']) {
+    --we-context-icon-size: var(--we-size-md);
+  }
+  :host([size='xl']) {
+    --we-context-icon-size: var(--we-size-lg);
   }
 
   [part='trigger'] {
@@ -123,15 +154,14 @@ const styles = css`
     line-height: 1;
   }
 
+  /* Both inherit the host's type size (see SIZE_DEFAULTS) rather than pinning one of their own. */
   [part='placeholder'] {
     color: var(--we-color-neutral-400);
-    font-size: var(--we-font-size-400);
     flex: 1;
   }
 
   [part='label'] {
     color: var(--we-color-neutral-700);
-    font-size: var(--we-font-size-400);
     flex: 1;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -354,7 +384,8 @@ export default class IconPicker extends DesignSystemElement {
   @property({ type: String }) value = '';
   @property({ type: Boolean, reflect: true }) disabled = false;
   @property({ type: String }) name = '';
-  @property({ type: String }) size: ComponentSize = 'md';
+  // Reflected so the `:host([size=…])` rules above can see it — they are what scales the icons.
+  @property({ type: String, reflect: true }) size: ComponentSize = 'md';
   @property({ type: String }) placeholder = 'Pick icon';
 
   @state() private _open = false;
@@ -367,6 +398,14 @@ export default class IconPicker extends DesignSystemElement {
 
   static getDefaultProps() {
     return DEFAULT_PROPS;
+  }
+
+  override getInstanceProps() {
+    const ctor = this.constructor as typeof IconPicker & { __dsLayers: readonly DSLayer[] };
+    const activeKeys = getKeysForLayers([...ctor.__dsLayers]);
+    const usedProps = filterProps(this as unknown as Record<string, unknown>, activeKeys);
+    const sizeDefaults = SIZE_DEFAULTS[this.size] ?? {};
+    return mergeProps(usedProps, mergeProps(sizeDefaults, DEFAULT_PROPS)) as Partial<DesignSystemProps>;
   }
 
   connectedCallback() {
@@ -459,13 +498,13 @@ export default class IconPicker extends DesignSystemElement {
           hasValue
             ? html`
                 <span part="preview-icon">
-                  <we-icon name=${this.value} size="sm" color="black"></we-icon>
+                  <we-icon name=${this.value} color="black"></we-icon>
                 </span>
                 ${isPhosphorName(this.value) ? html`<span part="label">${this.value}</span>` : nothing}
               `
             : html`<span part="placeholder">${this.placeholder}</span>`
         }
-        <span part="caret"><we-icon name="caret-down" size="sm" color="black"></we-icon></span>
+        <span part="caret"><we-icon name="caret-down" color="black"></we-icon></span>
       </button>
     `;
   }
