@@ -88,6 +88,16 @@ export default class FormField extends DesignSystemElement {
     const errorId = this.error ? `${this._fieldId}-error` : undefined;
     const describedBy = [errorId, descId].filter(Boolean).join(' ') || undefined;
 
+    /*
+      Description above the control, error below it.
+
+      The two are different kinds of message and belong on opposite sides: a description tells you
+      how to fill the field in, so it has to be read *before* you do, while an error is a reaction
+      to what you already did. They shared one slot once — `error ? error : description` — which
+      meant a field carrying both lost its instructions at exactly the moment the reader had got it
+      wrong. `aria-describedby` already named both ids, so the markup was the only thing insisting
+      they were alternatives.
+    */
     return html`
       <div part="base" style=${styleMap(inline)}>
         ${
@@ -97,6 +107,7 @@ export default class FormField extends DesignSystemElement {
               >`
             : nothing
         }
+        ${this.description ? html`<div part="description" id=${descId!}>${this.description}</div>` : nothing}
         <div
           part="control"
           role="group"
@@ -106,13 +117,7 @@ export default class FormField extends DesignSystemElement {
         >
           <slot></slot>
         </div>
-        ${
-          this.error
-            ? html`<div part="error" id=${errorId!} role="alert">${this.error}</div>`
-            : this.description
-              ? html`<div part="description" id=${descId!}>${this.description}</div>`
-              : nothing
-        }
+        ${this.error ? html`<div part="error" id=${errorId!} role="alert">${this.error}</div>` : nothing}
       </div>
     `;
   }
