@@ -257,3 +257,75 @@ describe('keyboard', () => {
     expect(itemsOf(zone).every((item) => item.getAttribute('tabindex') === '0')).toBe(true);
   });
 });
+
+describe('items containing form controls', () => {
+  /*
+    Both cases here are what made a form row unusable inside a sortable: a drag begun in a text
+    field, and — the worse one — a space typed into a field being read as "pick this up", which
+    stopped the field accepting spaces at all.
+  */
+  const key = (el: Element, k: string) =>
+    el.dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true, composed: true }));
+
+  /** A zone whose items each hold a text input, and optionally a declared drag handle. */
+  async function makeFormZone(withHandle: boolean): Promise<{ zone: SortableEl; inputs: HTMLInputElement[] }> {
+    const zone = await makeZone({ zone: 'rows', items: ['a', 'b', 'c'] });
+    const inputs: HTMLInputElement[] = [];
+    itemsOf(zone).forEach((item) => {
+      if (withHandle) {
+        const handle = document.createElement('button');
+        handle.setAttribute('data-we-handle', '');
+        item.appendChild(handle);
+      }
+      const input = document.createElement('input');
+      item.appendChild(input);
+      inputs.push(input);
+    });
+    return { zone, inputs };
+  }
+
+  it('drags from anywhere when the item declares no handle', async () => {
+    const { zone } = await makeFormZone(false);
+    const { reorder } = drag(zone, itemsOf(zone)[0], { x: 100, y: 260 });
+    expect(reorder).toEqual(['b', 'c', 'a']);
+  });
+
+  it('refuses a drag begun in a text field once a handle is declared', async () => {
+    const { zone, inputs } = await makeFormZone(true);
+    // The press starts on the input rather than the handle: this is text selection, not a drag.
+    const { moves } = drag(zone, inputs[0], { x: 100, y: 260 });
+    expect(moves).toHaveLength(0);
+  });
+
+  it('still drags when the press begins on the handle', async () => {
+    const { zone } = await makeFormZone(true);
+    const handle = itemsOf(zone)[0].querySelector('[data-we-handle]') as HTMLElement;
+    const { reorder } = drag(zone, handle, { x: 100, y: 260 });
+    expect(reorder).toEqual(['b', 'c', 'a']);
+  });
+
+  it('never reads a space typed into a field as a pickup', async () => {
+    const { zone, inputs } = await makeFormZone(false);
+    const moved: CustomEvent[] = [];
+    zone.addEventListener('moved', (e) => moved.push(e as CustomEvent));
+
+    key(inputs[0], ' ');
+    key(inputs[0], 'ArrowDown');
+    key(inputs[0], ' ');
+
+    expect(moved).toHaveLength(0);
+  });
+
+  it('keeps the keyboard path open through the handle', async () => {
+    const { zone } = await makeFormZone(true);
+    const moved: CustomEvent[] = [];
+    zone.addEventListener('moved', (e) => moved.push(e as CustomEvent));
+    const handle = itemsOf(zone)[0].querySelector('[data-we-handle]') as HTMLElement;
+
+    key(handle, ' ');
+    key(handle, 'ArrowDown');
+    key(handle, ' ');
+
+    expect(moved[0].detail.ids).toEqual(['b', 'a', 'c']);
+  });
+});

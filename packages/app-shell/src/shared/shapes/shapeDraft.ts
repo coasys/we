@@ -3,25 +3,39 @@
  * `ModelManifest` — pure data logic, shared by the structured editor and the LLM flow (both
  * produce a draft; everything downstream of the draft is one code path).
  *
- * A draft is deliberately flatter than the manifest: one property row per line the wizard shows,
- * with UI-level types (`select` is a string with declared options, `reference` is a relation)
- * that `draftToManifest` lowers onto the IR. The lowering also does the two things a stored
- * definition must have that a form needn't: resolved predicates (minted under the shape's own
- * `we://shape/<uuid>/` subtree, preserved verbatim when editing so a rename can never re-mint the
- * storage key existing data lives under) and the type flag.
+ * A draft holds one **member** per row the wizard shows, of one of two kinds mirroring the IR's own
+ * split: a `property` (a scalar field — `PropertySchema`) or a `relationship` (an edge to another
+ * model — `RelationSchema`). They were one row type with a `reference` pseudo-type once; that
+ * flattened two genuinely different records into one form whose fields half-applied, which is the
+ * shape of a tagged union pretending not to be one.
+ *
+ * The lowering does the two things a stored definition must have that a form needn't: resolved
+ * predicates (minted under the shape's own `we://shape/<uuid>/` subtree, and preserved verbatim
+ * when editing so a rename can never re-mint the storage key existing data lives under) and the
+ * type flag.
  */
-import type { EntitySchema, ModelManifest, PropertySchema } from '@we/backend-shared';
+import type { Cardinality, EntitySchema, ModelManifest, PropertySchema } from '@we/backend-shared';
 
-/** UI-level property types — what the wizard's type dropdown offers. */
-export type ShapeDraftPropertyType = 'text' | 'number' | 'boolean' | 'date' | 'select' | 'reference';
+/** UI-level scalar types — what the property row's type dropdown offers. */
+export type ShapeDraftPropertyType = 'text' | 'number' | 'boolean' | 'date' | 'select';
 
-export interface ShapeDraftProperty {
+export interface ShapeDraftMember {
+  /**
+   * Stable within one editing session, and never stored.
+   *
+   * Two things need to name a row without using its name or its position: the identity picker
+   * (which must survive both a rename and a reorder) and drag-to-reorder (`we-sortable` reports the
+   * new order as `data-we-id` values).
+   */
+  rowId: string;
+  /** Which of the IR's two member kinds this row becomes. */
+  kind: 'property' | 'relationship';
   /** Field name, camelCase identifier. */
   name: string;
+
+  // ── property only ──
   type: ShapeDraftPropertyType;
   required: boolean;
-  /** The dedup key for interpretation — at most one per shape. */
-  identity: boolean;
   /** LLM guidance when this shape is an extraction target. Empty = none. */
   hint: string;
   /**
@@ -32,13 +46,16 @@ export interface ShapeDraftProperty {
   options: string;
   /** Initial value, as typed — coerced by `type` at lowering. Empty = none. */
   defaultValue: string;
-  /** `reference` only: the target entity name (core vocabulary or another shape). */
+
+  // ── relationship only ──
+  /** The target entity name (a block type, another shape, or a foreign model). */
   target: string;
-  /** `reference` only: to-many when true. */
+  /** To-many when true. */
   many: boolean;
+
   /**
    * The storage key, present when this row came from a stored definition. Never edited and never
-   * re-minted: data written under it stays findable whatever the property is displayed as.
+   * re-minted: data written under it stays findable whatever the member is displayed as.
    */
   predicate?: string;
 }
@@ -50,27 +67,46 @@ export interface ShapeDraft {
   icon: string;
   /** Class-level LLM guidance. Empty = none. */
   classHint: string;
-  properties: ShapeDraftProperty[];
+  /**
+   * `rowId` of the member that is the interpretation dedup key, or '' for none.
+   *
+   * At the draft level rather than a flag per row because "at most one" is the whole rule: N
+   * independent switches can express a violation the save then has to refuse, where one picker
+   * cannot. Keyed by `rowId` so renaming or reordering the chosen field keeps the choice.
+   */
+  identityMember: string;
+  members: ShapeDraftMember[];
 }
+
+/**
+ * Draft-local row ids. A counter rather than a uuid: these never persist, never cross a process,
+ * and a deterministic sequence keeps tests readable.
+ */
+let rowSeq = 0;
+const nextRowId = () => `m${++rowSeq}`;
+
+export const emptyDraftProperty = (): ShapeDraftMember => ({
+  rowId: nextRowId(),
+  kind: 'property',
+  name: '',
+  type: 'text',
+  required: false,
+  hint: '',
+  options: '',
+  defaultValue: '',
+  target: '',
+  many: false,
+});
+
+export const emptyDraftRelationship = (): ShapeDraftMember => ({ ...emptyDraftProperty(), kind: 'relationship' });
 
 export const emptyShapeDraft = (): ShapeDraft => ({
   name: '',
   description: '',
   icon: '',
   classHint: '',
-  properties: [emptyDraftProperty()],
-});
-
-export const emptyDraftProperty = (): ShapeDraftProperty => ({
-  name: '',
-  type: 'text',
-  required: false,
-  identity: false,
-  hint: '',
-  options: '',
-  defaultValue: '',
-  target: '',
-  many: false,
+  identityMember: '',
+  members: [emptyDraftProperty()],
 });
 
 /** The declared option list a draft row's comma-separated `options` means. */
@@ -90,7 +126,7 @@ export function snakeCase(name: string): string {
 
 const IDENTIFIER = /^[A-Za-z][A-Za-z0-9]*$/;
 
-const SCALAR_OF: Record<Exclude<ShapeDraftPropertyType, 'reference'>, PropertySchema['type']> = {
+const SCALAR_OF: Record<ShapeDraftPropertyType, PropertySchema['type']> = {
   text: 'string',
   number: 'number',
   boolean: 'boolean',
@@ -108,11 +144,15 @@ function coerceDefault(type: ShapeDraftPropertyType, raw: string): string | numb
   return raw;
 }
 
+/** A row the author has actually started filling in — a pristine trailing row is not an error. */
+const isTouched = (m: ShapeDraftMember) =>
+  Boolean(m.name.trim() || m.hint.trim() || m.options.trim() || m.target || m.defaultValue);
+
 export type DraftLowering = { ok: true; manifest: ModelManifest } | { ok: false; errors: string[] };
 
 /**
  * Lower a draft onto the stored form: a single-entity `ModelManifest` with every predicate and the
- * type flag resolved. Form-level validation (identifier rules, duplicates, per-type requirements)
+ * type flag resolved. Form-level validation (identifier rules, duplicates, per-kind requirements)
  * happens here with wizard-facing messages; the structural/referential gate (`validateManifest`)
  * still runs on the result — this cannot replace it, only precede it.
  */
@@ -124,7 +164,7 @@ export function draftToManifest(draft: ShapeDraft, shapeUuid: string): DraftLowe
       'Model name must be a single identifier, e.g. "Sighting" — letters and digits, starting with a letter.',
     );
   }
-  const rows = draft.properties.filter((p) => p.name.trim() || p.hint || p.options.trim() || p.target);
+  const rows = draft.members.filter(isTouched);
   if (rows.length === 0) errors.push('A model needs at least one property.');
 
   const seen = new Set<string>();
@@ -133,52 +173,59 @@ export function draftToManifest(draft: ShapeDraft, shapeUuid: string): DraftLowe
   const relations: EntitySchema['relations'] = {};
 
   for (const row of rows) {
-    const propName = row.name.trim();
-    const rowOptions = parseOptions(row.options);
-    if (!IDENTIFIER.test(propName)) {
-      errors.push(`Property "${propName || '(unnamed)'}" must be a single identifier, e.g. "dueDate".`);
+    const memberName = row.name.trim();
+    const label = row.kind === 'relationship' ? 'Relationship' : 'Property';
+    if (!IDENTIFIER.test(memberName)) {
+      errors.push(`${label} "${memberName || '(unnamed)'}" must be a single identifier, e.g. "dueDate".`);
       continue;
     }
-    const lower = propName.toLowerCase();
+    const lower = memberName.toLowerCase();
     if (seen.has(lower)) {
-      errors.push(`Duplicate property name "${propName}".`);
+      errors.push(`Duplicate name "${memberName}" — properties and relationships share one namespace.`);
       continue;
     }
     seen.add(lower);
-    const predicate = row.predicate ?? `${prefix}${snakeCase(propName)}`;
+    const predicate = row.predicate ?? `${prefix}${snakeCase(memberName)}`;
 
-    if (row.type === 'reference') {
+    if (row.kind === 'relationship') {
       if (!row.target) {
-        errors.push(`Reference property "${propName}" needs a target model.`);
+        errors.push(`Relationship "${memberName}" needs something to point at.`);
         continue;
       }
-      relations[propName] = { target: row.target, cardinality: row.many ? 'many' : 'one', predicate };
+      relations[memberName] = { target: row.target, cardinality: row.many ? 'many' : 'one', predicate };
       continue;
     }
 
+    const rowOptions = parseOptions(row.options);
     if (row.type === 'select' && rowOptions.length === 0) {
-      errors.push(`Select property "${propName}" needs at least one option.`);
+      errors.push(`Select property "${memberName}" needs at least one option.`);
       continue;
     }
     const spec: PropertySchema = { type: SCALAR_OF[row.type], predicate };
     if (row.required) spec.required = true;
-    if (row.identity) spec.identity = true;
+    if (draft.identityMember === row.rowId) spec.identity = true;
     if (row.hint.trim()) spec.interpretationHint = row.hint.trim();
     if (row.type === 'select') spec.options = rowOptions;
     if (row.defaultValue !== '') {
       const value = coerceDefault(row.type, row.defaultValue);
       if (value === null) {
-        errors.push(`Default for "${propName}" is not a valid ${row.type}.`);
+        errors.push(`Default for "${memberName}" is not a valid ${row.type}.`);
         continue;
       }
       spec.default = value;
     }
-    properties[propName] = spec;
+    properties[memberName] = spec;
   }
 
-  const identityRows = rows.filter((r) => r.identity);
-  if (identityRows.length > 1) {
-    errors.push(`Only one property can be the identity (found: ${identityRows.map((r) => r.name).join(', ')}).`);
+  // An identity pointing at a relationship (or at a row since deleted) would silently vanish at
+  // lowering, leaving a model that looks identity-keyed in the form and is not in the space.
+  if (draft.identityMember) {
+    const chosen = rows.find((r) => r.rowId === draft.identityMember);
+    if (!chosen) {
+      errors.push('The field chosen to identify duplicates no longer exists — pick another, or None.');
+    } else if (chosen.kind !== 'property') {
+      errors.push(`"${chosen.name}" is a relationship, so it cannot be the field that identifies duplicates.`);
+    }
   }
 
   if (errors.length) return { ok: false, errors };
@@ -199,9 +246,11 @@ export function manifestToDraft(
   meta: { description?: string; icon?: string } = {},
 ): ShapeDraft {
   const entity = manifest.entities[entityName];
-  const properties: ShapeDraftProperty[] = [];
+  const members: ShapeDraftMember[] = [];
+  let identityMember = '';
+
   for (const [name, spec] of Object.entries(entity?.properties ?? {})) {
-    properties.push({
+    const row: ShapeDraftMember = {
       ...emptyDraftProperty(),
       name,
       type: spec.options
@@ -214,56 +263,107 @@ export function manifestToDraft(
               ? 'date'
               : 'text',
       required: spec.required ?? false,
-      identity: spec.identity ?? false,
       hint: spec.interpretationHint ?? '',
       options: (spec.options ?? []).map(String).join(', '),
       defaultValue: spec.default === undefined || spec.default === null ? '' : String(spec.default),
       predicate: spec.predicate,
-    });
+    };
+    if (spec.identity) identityMember = row.rowId;
+    members.push(row);
   }
+
   for (const [name, spec] of Object.entries(entity?.relations ?? {})) {
-    properties.push({
-      ...emptyDraftProperty(),
+    members.push({
+      ...emptyDraftRelationship(),
       name,
-      type: 'reference',
       target: spec.target,
       many: spec.cardinality === 'many',
       predicate: spec.predicate,
     });
   }
+
   return {
     name: entityName,
     description: meta.description ?? '',
     icon: meta.icon ?? '',
     classHint: entity?.interpretationHint ?? '',
-    properties: properties.length ? properties : [emptyDraftProperty()],
+    identityMember,
+    members: members.length ? members : [emptyDraftProperty()],
   };
 }
 
+/** What a predicate held in a stored definition, for comparing one version against the next. */
+type MemberFacts =
+  | { kind: 'property'; where: string; type: PropertySchema['type'] }
+  | { kind: 'relationship'; where: string; target: string; cardinality: Cardinality };
+
+function factsByPredicate(manifest: ModelManifest): Map<string, MemberFacts> {
+  const facts = new Map<string, MemberFacts>();
+  for (const [entityName, entity] of Object.entries(manifest.entities)) {
+    for (const [name, spec] of Object.entries(entity.properties)) {
+      if (spec.predicate)
+        facts.set(spec.predicate, { kind: 'property', where: `${entityName}.${name}`, type: spec.type });
+    }
+    for (const [name, spec] of Object.entries(entity.relations)) {
+      if (spec.predicate) {
+        facts.set(spec.predicate, {
+          kind: 'relationship',
+          where: `${entityName}.${name}`,
+          target: spec.target,
+          cardinality: spec.cardinality,
+        });
+      }
+    }
+  }
+  return facts;
+}
+
 /**
- * The v1 edit guard: every storage key the old definition wrote must survive into the new one.
- * Predicates are how existing data is found — a removal or rename orphans every value written
- * under it, silently, on every peer. Renaming/removing waits on the migration design; until then
- * edits are additive and this refuses the rest with the property named.
+ * The v1 edit guard: an edit may add, and may not change the meaning of what is already stored.
+ *
+ * Predicates are how existing data is found, so a removal or rename orphans every value written
+ * under one — silently, on every peer. Less obviously, a predicate that *survives* can still be
+ * redefined out from under its data: `count: number` edited to `count: text` keeps the storage key
+ * and changes how every stored value is read, which no amount of predicate-checking catches.
+ *
+ * So this compares what each surviving predicate *means*, and refuses anything a migration would
+ * have to perform. The one widening allowed is `one` → `many`: an existing single link is already
+ * a valid member of a to-many set.
  */
 export function additiveViolations(previous: ModelManifest, next: ModelManifest): string[] {
-  const nextPredicates = new Set<string>();
-  for (const entity of Object.values(next.entities)) {
-    for (const spec of Object.values(entity.properties)) if (spec.predicate) nextPredicates.add(spec.predicate);
-    for (const spec of Object.values(entity.relations)) if (spec.predicate) nextPredicates.add(spec.predicate);
-  }
+  const before = factsByPredicate(previous);
+  const after = factsByPredicate(next);
   const violations: string[] = [];
-  for (const [entityName, entity] of Object.entries(previous.entities)) {
-    const check = (kind: string, name: string, predicate?: string) => {
-      if (predicate && !nextPredicates.has(predicate)) {
+
+  for (const [predicate, was] of before) {
+    const now = after.get(predicate);
+    if (!now) {
+      violations.push(
+        `${was.where} (${predicate}) was removed or renamed — edits are additive for now; existing data would be orphaned`,
+      );
+      continue;
+    }
+    if (was.kind !== now.kind) {
+      violations.push(`${was.where} changed from a ${was.kind} to a ${now.kind} — existing data is stored the old way`);
+      continue;
+    }
+    if (was.kind === 'property' && now.kind === 'property' && was.type !== now.type) {
+      violations.push(
+        `${was.where} changed type from ${was.type} to ${now.type} — values already stored would be read as the new type`,
+      );
+      continue;
+    }
+    if (was.kind === 'relationship' && now.kind === 'relationship') {
+      if (was.target !== now.target) {
         violations.push(
-          `${entityName}.${name} (${predicate}) was removed or renamed — edits are additive for now; existing data would be orphaned`,
+          `${was.where} now points at ${now.target || 'anything'} instead of ${was.target || 'anything'} — existing links point at the old kind`,
+        );
+      } else if (was.cardinality === 'many' && now.cardinality === 'one') {
+        violations.push(
+          `${was.where} changed from many to one — records already holding several would stop conforming`,
         );
       }
-      void kind;
-    };
-    for (const [name, spec] of Object.entries(entity.properties)) check('property', name, spec.predicate);
-    for (const [name, spec] of Object.entries(entity.relations)) check('relation', name, spec.predicate);
+    }
   }
   return violations;
 }

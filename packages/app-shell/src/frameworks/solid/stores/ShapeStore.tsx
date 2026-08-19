@@ -31,10 +31,11 @@ import {
   additiveViolations,
   draftToManifest,
   emptyDraftProperty,
+  emptyDraftRelationship,
   emptyShapeDraft,
   manifestToDraft,
   type ShapeDraft,
-  type ShapeDraftProperty,
+  type ShapeDraftMember,
 } from '../../../shared/shapes/shapeDraft';
 import { useDatasetStore } from './DatasetStore';
 import { useSessionStore } from './SessionStore';
@@ -97,8 +98,16 @@ export interface ShapeStore {
   generating: Accessor<boolean>;
   /** Entities offering hint tuning here: core interpretable vocabulary plus this space's shapes. */
   hintEntities: Accessor<HintEntityView[]>;
-  /** Entity names a reference property may target here, sorted — the wizard's target picker. */
-  referenceTargets: Accessor<string[]>;
+  /** Options for the relationship target picker — `{ label, value }`, grouped and labelled. */
+  relationshipTargets: Accessor<{ label: string; value: string }[]>;
+  /**
+   * Options for the identity picker: "None" plus every named property of the open draft.
+   *
+   * Built here rather than `$map`-ped in the schema for the same reason as
+   * `spaceStore.templateOverrideOptions` — a schema can map a store array into options but cannot
+   * prepend one, and without the "None" entry the choice would be one-way.
+   */
+  identityOptions: Accessor<{ label: string; value: string }[]>;
   /** The hint editor's state, null while closed. */
   hintEditor: Accessor<HintEditorState | null>;
   /** The hint editor is loading or saving. */
@@ -110,10 +119,15 @@ export interface ShapeStore {
   cancelShapeWizard: () => void;
   /** Set a top-level draft field: 'name' | 'description' | 'icon' | 'classHint'. */
   setShapeField: (field: 'name' | 'description' | 'icon' | 'classHint', value: string) => void;
-  addDraftProperty: () => void;
-  removeDraftProperty: (index: number) => void;
-  /** Set one field of one property row; `options` accepts a comma-separated string. */
-  setDraftProperty: (index: number, field: keyof ShapeDraftProperty, value: string | boolean) => void;
+  /** Choose which member is the interpretation dedup key; 'none' (or '') clears it. */
+  setIdentityMember: (rowId: string) => void;
+  addProperty: () => void;
+  addRelationship: () => void;
+  removeMember: (rowId: string) => void;
+  /** Set one field of one member row; `options` accepts a comma-separated string. */
+  setMemberField: (rowId: string, field: keyof ShapeDraftMember, value: string | boolean) => void;
+  /** Apply a drag-reorder from the row ids in their new order. */
+  reorderMembers: (rowIds: string[]) => void;
   /** Replace the whole draft — the LLM flow's entry point into the shared review path. */
   replaceDraft: (draft: ShapeDraft) => void;
   /**
@@ -171,18 +185,45 @@ export function ShapeStoreProvider(props: ParentProps) {
       .map((s) => ({ entity: s.name, source: 'shape' as const })),
   ]);
 
-  /** What a reference property may point at here — concrete entities only, sorted for the picker. */
-  const referenceTargets = createMemo<string[]>(() =>
-    [
-      ...Object.entries(CORE_MANIFEST.entities)
-        .filter(([, entity]) => !entity.abstract)
-        .map(([name]) => name),
-      ...datasetStore.currentDatasetModels().map((m) => m.name),
-      ...spaceShapes()
-        .filter((s) => s.manifest)
-        .map((s) => s.name),
-    ].sort(),
-  );
+  /**
+   * What a relationship may point at here, grouped by where it comes from and labelled for the
+   * picker: this space's own models first (the interesting case when modelling), then the block
+   * vocabulary (attaching content — a photo, a place), then any foreign app's models.
+   *
+   * Core entities are offered **only** where they are block types. The rest of core is
+   * infrastructure — `Template`, `Theme`, `AgentSettings`, `SpacePreference` — which no community
+   * shape should point at, and offering them made the picker read as a dump of everything the app
+   * happens to define. The block-suffix rule is the one WE's own model conventions already enforce
+   * (`blocks/` holds exactly the `*Block` classes), and it fails safe: a new block type appears
+   * here automatically, a new infrastructure entity stays out.
+   */
+  const relationshipTargets = createMemo<{ label: string; value: string }[]>(() => {
+    const group = (names: string[], suffix: string) =>
+      [...new Set(names)].sort().map((name) => ({ label: `${name} — ${suffix}`, value: name }));
+    return [
+      ...group(
+        spaceShapes()
+          .filter((s) => s.manifest)
+          .map((s) => s.name),
+        'this space',
+      ),
+      ...group(
+        Object.keys(CORE_MANIFEST.entities).filter((name) => name.endsWith('Block')),
+        'block',
+      ),
+      ...group(
+        datasetStore.currentDatasetModels().map((m) => m.name),
+        'another app',
+      ),
+    ];
+  });
+
+  const identityOptions = createMemo<{ label: string; value: string }[]>(() => [
+    { label: 'None', value: 'none' },
+    ...(shapeDraft()?.members ?? [])
+      .filter((m) => m.kind === 'property' && m.name.trim())
+      .map((m) => ({ label: m.name, value: m.rowId })),
+  ]);
 
   /** Entity names a shape may legitimately reference: core + foreign + this space's other shapes. */
   const knownEntityNames = (excludeShapeRecordId?: string) => [
@@ -330,36 +371,67 @@ export function ShapeStoreProvider(props: ParentProps) {
     if (draft) draft[field] = value;
   }
 
-  function addDraftProperty(): void {
+  function setIdentityMember(rowId: string): void {
     const draft = shapeDraft();
-    if (draft) setShapeDraft({ ...draft, properties: [...draft.properties, emptyDraftProperty()] });
+    // '' is the "None" option, and the only way to clear it.
+    if (draft) setShapeDraft({ ...draft, identityMember: rowId === 'none' ? '' : rowId });
   }
 
-  function removeDraftProperty(index: number): void {
+  function addProperty(): void {
     const draft = shapeDraft();
-    if (draft) setShapeDraft({ ...draft, properties: draft.properties.filter((_, i) => i !== index) });
+    if (draft) setShapeDraft({ ...draft, members: [...draft.members, emptyDraftProperty()] });
   }
 
-  /** Draft fields edited by typing — updated in place so the input keeps focus (see note above). */
-  const TYPED_PROPERTY_FIELDS: ReadonlySet<keyof ShapeDraftProperty> = new Set([
-    'name',
-    'hint',
-    'defaultValue',
-    'options',
-  ]);
-
-  function setDraftProperty(index: number, field: keyof ShapeDraftProperty, value: string | boolean): void {
+  function addRelationship(): void {
     const draft = shapeDraft();
-    const row = draft?.properties[index];
+    if (draft) setShapeDraft({ ...draft, members: [...draft.members, emptyDraftRelationship()] });
+  }
+
+  function removeMember(rowId: string): void {
+    const draft = shapeDraft();
+    if (!draft) return;
+    setShapeDraft({
+      ...draft,
+      members: draft.members.filter((m) => m.rowId !== rowId),
+      // A dangling identity would be refused at save with an error about a row that is no longer
+      // on screen, which reads as a bug rather than a consequence.
+      identityMember: draft.identityMember === rowId ? '' : draft.identityMember,
+    });
+  }
+
+  /** Member fields edited by typing — updated in place so the input keeps focus (see note above). */
+  const TYPED_MEMBER_FIELDS: ReadonlySet<keyof ShapeDraftMember> = new Set(['name', 'hint', 'defaultValue', 'options']);
+
+  function setMemberField(rowId: string, field: keyof ShapeDraftMember, value: string | boolean): void {
+    const draft = shapeDraft();
+    const row = draft?.members.find((m) => m.rowId === rowId);
     if (!draft || !row) return;
-    if (TYPED_PROPERTY_FIELDS.has(field)) {
+    if (TYPED_MEMBER_FIELDS.has(field)) {
       (row as unknown as Record<string, unknown>)[field] = value;
       return;
     }
     // Discrete fields change what the row renders (conditional inputs), so this path replaces the
     // row to trigger it — the spread carries any silently-mutated text along.
-    const properties = draft.properties.map((r, i) => (i === index ? { ...r, [field]: value } : r));
-    setShapeDraft({ ...draft, properties });
+    setShapeDraft({
+      ...draft,
+      members: draft.members.map((m) => (m.rowId === rowId ? { ...m, [field]: value } : m)),
+    });
+  }
+
+  /**
+   * Apply a drag-reorder, given the row ids in their new order (what `we-sortable` reports).
+   *
+   * Order is not cosmetic: it is the declaration order the stored manifest carries, and it will be
+   * the field order of the derived creation form. Ids the event does not mention keep their relative
+   * position at the end, so a partial or stale report can never drop a row.
+   */
+  function reorderMembers(rowIds: string[]): void {
+    const draft = shapeDraft();
+    if (!draft || !Array.isArray(rowIds)) return;
+    const byId = new Map(draft.members.map((m) => [m.rowId, m]));
+    const ordered = rowIds.map((id) => byId.get(id)).filter((m): m is ShapeDraftMember => Boolean(m));
+    const missing = draft.members.filter((m) => !rowIds.includes(m.rowId));
+    setShapeDraft({ ...draft, members: [...ordered, ...missing] });
   }
 
   function replaceDraft(draft: ShapeDraft): void {
@@ -377,7 +449,7 @@ export function ShapeStoreProvider(props: ParentProps) {
       const { draft, remainingProblems } = await runShapeGeneration(description, {
         apiKey,
         existingEntities: existing,
-        referenceTargets: referenceTargets(),
+        referenceTargets: relationshipTargets().map((t) => t.value),
       });
       // Editing keeps the record's name and predicates — generation only replaces a NEW draft
       // wholesale; on an edit it would orphan storage keys, so it is offered only for new models.
@@ -587,15 +659,19 @@ export function ShapeStoreProvider(props: ParentProps) {
     aiAvailable,
     generating,
     hintEntities,
-    referenceTargets,
+    relationshipTargets,
+    identityOptions,
     hintEditor,
     hintBusy,
     openShapeWizard,
     cancelShapeWizard,
     setShapeField,
-    addDraftProperty,
-    removeDraftProperty,
-    setDraftProperty,
+    setIdentityMember,
+    addProperty,
+    addRelationship,
+    removeMember,
+    setMemberField,
+    reorderMembers,
     replaceDraft,
     generateShapeDraft,
     saveShapeDraft,

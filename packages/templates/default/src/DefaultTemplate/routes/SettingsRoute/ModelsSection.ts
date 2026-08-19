@@ -18,167 +18,214 @@ const PROPERTY_TYPE_OPTIONS = [
   { label: 'Yes / no', value: 'boolean' },
   { label: 'Date', value: 'date' },
   { label: 'Select', value: 'select' },
-  { label: 'Reference', value: 'reference' },
 ];
 
-/** One property row of the wizard — everything about one field of the model being defined. */
+/**
+ * The grab area of a member row.
+ *
+ * A native element, twice over: the renderer assigns a web component's props as DOM *properties*,
+ * so the `data-we-handle` attribute `we-sortable` looks for would never exist on a `we-button`;
+ * and a native element is the one node type the validator has no prop list for, so the data
+ * attribute is not reported as unknown. `tabindex` keeps the keyboard path open — Space on a
+ * focused handle picks the row up, which is the whole reason the handle is focusable at all.
+ */
+const dragHandle: SchemaNode = {
+  type: 'div',
+  props: {
+    'data-we-handle': '',
+    tabindex: '0',
+    title: 'Drag to reorder',
+    style: { display: 'flex', alignItems: 'center', cursor: 'grab' },
+  },
+  children: [{ type: 'we-icon', props: { name: 'dots-six-vertical', color: 'neutral-400' } }],
+};
+
+/** Remove this member. Pinned top-right of the row rather than trailing its last input, which moves. */
+const removeMemberButton: SchemaNode = {
+  type: 'we-button',
+  props: {
+    variant: 'ghost',
+    size: 'sm',
+    onClick: { $action: 'shapeStore.removeMember', args: ['$member.rowId'] },
+  },
+  children: [{ type: 'we-icon', props: { name: 'trash' } }],
+};
+
+/** The shared name input — the one control both kinds of member row open with. */
+const memberNameInput: SchemaNode = {
+  type: 'we-input',
+  props: {
+    placeholder: 'fieldName',
+    width: '160px',
+    size: 'sm',
+    value: '$member.name',
+    onInput: { $action: 'shapeStore.setMemberField', args: ['$member.rowId', 'name', '$arg.detail'] },
+  },
+};
+
+/**
+ * One property row — a scalar field of the model being defined.
+ *
+ * The header line is `ax: 'between'` rather than a wrapping run of controls: the delete button
+ * belongs to the row as a whole, so it is pinned to the corner rather than trailing whichever
+ * input happens to come last (which moves as the type changes, and reads as "clear this field").
+ */
 const propertyRow: SchemaNode = {
   type: 'Column',
   props: { gap: '200', p: '300', bg: 'neutral-50', r: '300', border: '1px solid neutral-200' },
   children: [
     {
       type: 'Row',
-      props: { gap: '200', ay: 'center', wrap: true },
+      props: { gap: '200', ay: 'center', ax: 'between', wrap: true },
       children: [
         {
-          type: 'we-input',
-          props: {
-            placeholder: 'fieldName',
-            width: '180px',
-            size: 'sm',
-            value: '$prop.name',
-            onInput: { $action: 'shapeStore.setDraftProperty', args: ['$index', 'name', '$arg.detail'] },
-          },
-        },
-        {
-          type: 'we-select',
-          props: {
-            size: 'sm',
-            width: '140px',
-            options: PROPERTY_TYPE_OPTIONS,
-            value: '$prop.type',
-            onChange: { $action: 'shapeStore.setDraftProperty', args: ['$index', 'type', '$arg.detail'] },
-          },
-        },
-        {
           type: 'Row',
-          props: { gap: '300', ay: 'center', flex: '1' },
+          props: { gap: '200', ay: 'center', wrap: true },
           children: [
+            dragHandle,
+            memberNameInput,
+            {
+              type: 'we-select',
+              props: {
+                size: 'sm',
+                width: '130px',
+                options: PROPERTY_TYPE_OPTIONS,
+                value: '$member.type',
+                onChange: { $action: 'shapeStore.setMemberField', args: ['$member.rowId', 'type', '$arg.detail'] },
+              },
+            },
             {
               type: 'we-switch',
               props: {
                 size: 'sm',
+                labelOff: 'Optional',
                 labelOn: 'Required',
-                labelOff: 'Required',
-                checked: '$prop.required',
-                onChange: { $action: 'shapeStore.setDraftProperty', args: ['$index', 'required', '$arg.detail'] },
+                checked: '$member.required',
+                onChange: { $action: 'shapeStore.setMemberField', args: ['$member.rowId', 'required', '$arg.detail'] },
               },
-            },
-            {
-              type: 'we-tooltip',
-              props: { title: 'The field used to recognize “the same one again” — deduplication for AI extraction' },
-              children: [
-                {
-                  type: 'we-switch',
-                  props: {
-                    size: 'sm',
-                    labelOn: 'Identity',
-                    labelOff: 'Identity',
-                    checked: '$prop.identity',
-                    onChange: { $action: 'shapeStore.setDraftProperty', args: ['$index', 'identity', '$arg.detail'] },
-                  },
-                },
-              ],
             },
           ],
         },
-        {
-          type: 'we-button',
-          props: {
-            variant: 'ghost',
-            size: 'sm',
-            onClick: { $action: 'shapeStore.removeDraftProperty', args: ['$index'] },
-          },
-          children: [{ type: 'we-icon', props: { name: 'trash' } }],
-        },
+        removeMemberButton,
       ],
     },
     {
       type: '$if',
       props: {
-        condition: { $eq: ['$prop.type', 'select'] },
+        condition: { $eq: ['$member.type', 'select'] },
         then: {
           type: 'we-input',
           props: {
             size: 'sm',
             placeholder: 'Options, comma-separated — e.g. certain, probable, unsure',
-            value: '$prop.options',
-            onInput: { $action: 'shapeStore.setDraftProperty', args: ['$index', 'options', '$arg.detail'] },
+            value: '$member.options',
+            onInput: { $action: 'shapeStore.setMemberField', args: ['$member.rowId', 'options', '$arg.detail'] },
           },
         },
       },
     },
     {
-      type: '$if',
-      props: {
-        condition: { $eq: ['$prop.type', 'reference'] },
-        then: {
+      type: 'Row',
+      props: { gap: '200', wrap: true },
+      children: [
+        {
+          type: 'we-input',
+          props: {
+            size: 'sm',
+            flex: '2',
+            minWidth: '220px',
+            placeholder: 'AI hint — what goes in this field, allowed values, format…',
+            value: '$member.hint',
+            onInput: { $action: 'shapeStore.setMemberField', args: ['$member.rowId', 'hint', '$arg.detail'] },
+          },
+        },
+        {
+          type: 'we-input',
+          props: {
+            size: 'sm',
+            flex: '1',
+            minWidth: '120px',
+            placeholder: 'Default value',
+            value: '$member.defaultValue',
+            onInput: {
+              $action: 'shapeStore.setMemberField',
+              args: ['$member.rowId', 'defaultValue', '$arg.detail'],
+            },
+          },
+        },
+      ],
+    },
+  ],
+};
+
+/**
+ * One relationship row — an edge to another model.
+ *
+ * Deliberately shorter than a property row rather than a property row with half its inputs hidden:
+ * a relation carries a target and a cardinality and nothing else, so there is no type, no default,
+ * and no hint to show. That asymmetry is why the two are separate rows at all.
+ */
+const relationshipRow: SchemaNode = {
+  type: 'Column',
+  props: { gap: '200', p: '300', bg: 'primary-50', r: '300', border: '1px solid primary-100' },
+  children: [
+    {
+      type: 'Row',
+      props: { gap: '200', ay: 'center', ax: 'between', wrap: true },
+      children: [
+        {
           type: 'Row',
-          props: { gap: '200', ay: 'center' },
+          props: { gap: '200', ay: 'center', wrap: true },
           children: [
+            dragHandle,
+            memberNameInput,
+            { type: 'we-icon', props: { name: 'arrow-right', color: 'neutral-400' } },
             {
               type: 'we-select',
               props: {
                 size: 'sm',
-                width: '220px',
+                width: '260px',
                 searchable: true,
                 placeholder: 'Points at…',
-                options: {
-                  $map: {
-                    items: { $store: 'shapeStore.referenceTargets' },
-                    select: { label: { $concat: ['$item'] }, value: { $concat: ['$item'] } },
-                  },
-                },
-                value: '$prop.target',
-                onChange: { $action: 'shapeStore.setDraftProperty', args: ['$index', 'target', '$arg.detail'] },
+                options: { $store: 'shapeStore.relationshipTargets' },
+                value: '$member.target',
+                onChange: { $action: 'shapeStore.setMemberField', args: ['$member.rowId', 'target', '$arg.detail'] },
               },
             },
             {
               type: 'we-switch',
               props: {
                 size: 'sm',
-                labelOn: 'Many',
                 labelOff: 'One',
-                checked: '$prop.many',
-                onChange: { $action: 'shapeStore.setDraftProperty', args: ['$index', 'many', '$arg.detail'] },
+                labelOn: 'Many',
+                checked: '$member.many',
+                onChange: { $action: 'shapeStore.setMemberField', args: ['$member.rowId', 'many', '$arg.detail'] },
               },
             },
           ],
         },
-      },
+        removeMemberButton,
+      ],
     },
+  ],
+};
+
+/**
+ * One row of the members list, wrapped for drag-to-reorder.
+ *
+ * `data-we-id` goes on a native div for the same two reasons the handle does — a web component
+ * would never carry the attribute, and the validator has no prop list for a native element.
+ */
+const memberRow: SchemaNode = {
+  type: 'div',
+  props: { 'data-we-id': '$member.rowId', style: { width: '100%' } },
+  children: [
     {
       type: '$if',
       props: {
-        condition: { $ne: ['$prop.type', 'reference'] },
-        then: {
-          type: 'Row',
-          props: { gap: '200', wrap: true },
-          children: [
-            {
-              type: 'we-input',
-              props: {
-                size: 'sm',
-                flex: '2',
-                minWidth: '220px',
-                placeholder: 'AI hint — what should be put in this field, allowed values, format…',
-                value: '$prop.hint',
-                onInput: { $action: 'shapeStore.setDraftProperty', args: ['$index', 'hint', '$arg.detail'] },
-              },
-            },
-            {
-              type: 'we-input',
-              props: {
-                size: 'sm',
-                flex: '1',
-                minWidth: '120px',
-                placeholder: 'Default value',
-                value: '$prop.defaultValue',
-                onInput: { $action: 'shapeStore.setDraftProperty', args: ['$index', 'defaultValue', '$arg.detail'] },
-              },
-            },
-          ],
-        },
+        condition: { $eq: ['$member.kind', 'relationship'] },
+        then: relationshipRow,
+        else: propertyRow,
       },
     },
   ],
@@ -336,19 +383,72 @@ const shapeWizardModal: SchemaNode = {
           type: 'Column',
           props: { gap: '200' },
           children: [
-            { type: 'we-text', props: { variant: 'label' }, children: ['Properties'] },
+            { type: 'we-text', props: { variant: 'label' }, children: ['Fields'] },
             {
-              type: '$each',
-              props: { items: { $store: 'shapeStore.shapeDraft.properties' }, as: 'prop' },
-              children: [propertyRow],
+              type: 'we-sortable',
+              props: {
+                direction: 'vertical',
+                gap: 'var(--we-space-200)',
+                width: '100%',
+                // Order is the declaration order the manifest stores, and will be the field order
+                // of the derived creation form — so reordering is data, not decoration.
+                onReorder: { $action: 'shapeStore.reorderMembers', args: ['$arg.detail'] },
+              },
+              children: [
+                {
+                  type: '$each',
+                  props: { items: { $store: 'shapeStore.shapeDraft.members' }, as: 'member' },
+                  children: [memberRow],
+                },
+              ],
             },
             {
-              type: 'we-button',
-              props: { variant: 'ghost', size: 'sm', ax: 'start', onClick: { $action: 'shapeStore.addDraftProperty' } },
+              type: 'Row',
+              props: { gap: '200', wrap: true },
               children: [
-                { type: 'we-icon', props: { name: 'plus' } },
-                { type: 'we-text', children: ['Add property'] },
+                {
+                  type: 'we-button',
+                  props: { variant: 'ghost', size: 'sm', onClick: { $action: 'shapeStore.addProperty' } },
+                  children: [
+                    { type: 'we-icon', props: { name: 'plus' } },
+                    { type: 'we-text', children: ['Add property'] },
+                  ],
+                },
+                {
+                  type: 'we-button',
+                  props: { variant: 'ghost', size: 'sm', onClick: { $action: 'shapeStore.addRelationship' } },
+                  children: [
+                    { type: 'we-icon', props: { name: 'arrow-right' } },
+                    { type: 'we-text', children: ['Add relationship'] },
+                  ],
+                },
               ],
+            },
+          ],
+        },
+        {
+          type: 'we-form-field',
+          props: {
+            label: 'Identifies duplicates',
+            description:
+              'The field AI extraction compares to recognise “the same one again”. Leave as None if this model has no natural identifier.',
+          },
+          children: [
+            {
+              type: 'we-select',
+              props: {
+                size: 'sm',
+                width: '240px',
+                options: { $store: 'shapeStore.identityOptions' },
+                value: {
+                  $if: {
+                    condition: { $store: 'shapeStore.shapeDraft.identityMember' },
+                    then: { $store: 'shapeStore.shapeDraft.identityMember' },
+                    else: 'none',
+                  },
+                },
+                onChange: { $action: 'shapeStore.setIdentityMember', args: ['$arg.detail'] },
+              },
             },
           ],
         },

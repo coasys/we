@@ -903,6 +903,26 @@ Space or Enter picks up the focused item; the arrow keys move it, along the list
 zones; Space drops and Escape cancels. Built in rather than added later, because a board that can
 only be operated by dragging is a board some people cannot operate at all — and because the
 events are identical, a consumer gets it for nothing.
+
+## Items that contain form controls: `[data-we-handle]`
+
+By default the whole item is the grab area, which is right for a card or a nav row. It is wrong
+the moment an item contains a text field: dragging to select text would start a drag, and — worse
+— the keyboard pickup would read a **space typed into an input** as "pick this up", so the field
+could not accept spaces at all.
+
+So two rules, both no-ops for an item without form controls:
+
+- Mark one or more descendants `data-we-handle`, and only a press that begins inside a handle
+  starts a drag. An item with no handle keeps dragging from anywhere, so existing consumers are
+  unaffected.
+- A Space or Enter that originates in a text-entry element (`input`, `textarea`, `select`,
+  `contenteditable`, including inside a component's shadow root) is typing, never a pickup. This
+  applies whether or not the item declares handles, because an unfocusable-by-design input that
+  swallows spaces is a bug in every consumer that could hit it.
+
+Make the handle itself focusable (a `we-button` will do) so the keyboard path stays open: Space
+on a focused handle picks the row up exactly as it does on a plain item.
   Props: direction: 'vertical' | 'horizontal' = 'vertical', gap: string = '', zone: string = '', group: string = '', locked: boolean = false
 - we-spinner (LayoutElement)
   Props: size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' | (string & {}) = 'md', color: string = ''
@@ -1909,23 +1929,27 @@ ShapeStore:
 - State:
   - spaceShapes: SpaceShapeView[] — the content models THIS SPACE defines (id, name, description, icon, shapeId, version, forkedFrom, propertyCount, problems). A shape with a non-empty problems array failed validation or adoption and its entity is not queryable; render the problems rather than hiding the row
   - shapesLoaded: boolean — the space has been asked for its shapes. An empty list is otherwise indistinguishable from "not fetched yet"; gate empty states on it
-  - shapeDraft: the model wizard's draft (name, description, icon, classHint, properties[]) or null while the wizard is closed — its non-nullness is what mounts the wizard modal. Form state lives here rather than $localState because rows are structured and validated as a whole, and the LLM flow fills the same draft
+  - shapeDraft: the model wizard's draft (name, description, icon, classHint, identityMember, members[]) or null while the wizard is closed — its non-nullness is what mounts the wizard modal. Each member is { rowId, kind: 'property' | 'relationship', name, … }: a property carries type/required/hint/options/defaultValue, a relationship carries target/many. Form state lives here rather than $localState because rows are structured and validated as a whole, and the LLM flow fills the same draft
   - editingShapeId: string | null — the Shape record being edited; null means the draft is a new model
   - draftErrors: string[] — wizard-facing validation errors from the last save attempt
   - savingShape: boolean — a save is in flight
   - aiAvailable: boolean — AI model generation is available (the agent has a Claude API key configured)
   - generating: boolean — an AI generation is in flight
   - hintEntities: { entity, source: 'core' | 'shape' }[] — entities offering AI-hint tuning in this space: core interpretable vocabulary (TaskBlock, EventBlock) plus the space's own shapes
-  - referenceTargets: string[] — entity names a reference property may target here, sorted for the picker
+  - relationshipTargets: { label, value }[] — what a relationship may point at here, ready for a we-select: this space's own models, then block types, then other apps' models. Core infrastructure entities are deliberately absent
+  - identityOptions: { label, value }[] — "None" plus every named property of the open draft, for the identity picker. Built in the store because a schema can $map options but cannot prepend one
   - hintEditor: the hint editor state ({ entity, classHint, defaultClassHint, rows: { name, predicate, hint, defaultHint }[], customized }) or null while closed — non-nullness mounts the hint editor modal
   - hintBusy: boolean — the hint editor is loading or saving
 - Actions:
   - openShapeWizard(shapeRecordId?): opens the model wizard — empty for a new model, or pre-filled from a stored shape to edit it
   - cancelShapeWizard(): closes the wizard, discarding the draft
   - setShapeField(field: 'name' | 'description' | 'icon' | 'classHint', value): sets one top-level draft field
-  - addDraftProperty(): appends an empty property row to the draft
-  - removeDraftProperty(index): removes one property row
-  - setDraftProperty(index, field, value): sets one field of one property row. 'options' takes the comma-separated string as typed
+  - setIdentityMember(rowId): chooses which member identifies duplicates for AI extraction; 'none' clears it. At most one, which is why it is a picker rather than a per-row flag
+  - addProperty(): appends an empty property (scalar field) row to the draft
+  - addRelationship(): appends an empty relationship (edge to another model) row to the draft
+  - removeMember(rowId): removes one member row
+  - setMemberField(rowId, field, value): sets one field of one member row. 'options' takes the comma-separated string as typed
+  - reorderMembers(rowIds: string[]): applies a drag-reorder. Pair with we-sortable's onReorder and pass "$arg.detail" — order is the stored declaration order, not decoration
   - replaceDraft(draft): replaces the whole draft — how the LLM flow hands a generated model to the same review path
   - generateShapeDraft(description: string): generates a draft from a plain-language description and lands it in the open wizard for review. Proposes only — nothing is stored until the user saves. Gate the control on aiAvailable
   - saveShapeDraft(): validates, stores and adopts the draft. Errors land in draftErrors; success closes the wizard and the new entity becomes queryable via $query in this space

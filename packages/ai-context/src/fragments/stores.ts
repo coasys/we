@@ -388,14 +388,18 @@ export const storeEntries: StoreEntry[] = [
         ],
       },
       shapesLoaded: { type: 'boolean' },
-      shapeDraft: { type: 'object', properties: ['name', 'description', 'icon', 'classHint', 'properties'] },
+      shapeDraft: {
+        type: 'object',
+        properties: ['name', 'description', 'icon', 'classHint', 'identityMember', 'members'],
+      },
       editingShapeId: { type: 'string' },
       draftErrors: { type: 'array' },
       savingShape: { type: 'boolean' },
       aiAvailable: { type: 'boolean' },
       generating: { type: 'boolean' },
       hintEntities: { type: 'array', properties: ['entity', 'source'] },
-      referenceTargets: { type: 'array' },
+      relationshipTargets: { type: 'array', properties: ['label', 'value'] },
+      identityOptions: { type: 'array', properties: ['label', 'value'] },
       hintEditor: {
         type: 'object',
         properties: ['entity', 'classHint', 'defaultClassHint', 'rows', 'customized'],
@@ -406,9 +410,12 @@ export const storeEntries: StoreEntry[] = [
       'openShapeWizard',
       'cancelShapeWizard',
       'setShapeField',
-      'addDraftProperty',
-      'removeDraftProperty',
-      'setDraftProperty',
+      'setIdentityMember',
+      'addProperty',
+      'addRelationship',
+      'removeMember',
+      'setMemberField',
+      'reorderMembers',
       'replaceDraft',
       'generateShapeDraft',
       'saveShapeDraft',
@@ -876,7 +883,7 @@ export function generateStoresText(entries: StoreEntry[]): string {
         shapesLoaded:
           'boolean — the space has been asked for its shapes. An empty list is otherwise indistinguishable from "not fetched yet"; gate empty states on it',
         shapeDraft:
-          "the model wizard's draft (name, description, icon, classHint, properties[]) or null while the wizard is closed — its non-nullness is what mounts the wizard modal. Form state lives here rather than $localState because rows are structured and validated as a whole, and the LLM flow fills the same draft",
+          "the model wizard's draft (name, description, icon, classHint, identityMember, members[]) or null while the wizard is closed — its non-nullness is what mounts the wizard modal. Each member is { rowId, kind: 'property' | 'relationship', name, … }: a property carries type/required/hint/options/defaultValue, a relationship carries target/many. Form state lives here rather than $localState because rows are structured and validated as a whole, and the LLM flow fills the same draft",
         editingShapeId: 'string | null — the Shape record being edited; null means the draft is a new model',
         draftErrors: 'string[] — wizard-facing validation errors from the last save attempt',
         savingShape: 'boolean — a save is in flight',
@@ -884,7 +891,10 @@ export function generateStoresText(entries: StoreEntry[]): string {
         generating: 'boolean — an AI generation is in flight',
         hintEntities:
           "{ entity, source: 'core' | 'shape' }[] — entities offering AI-hint tuning in this space: core interpretable vocabulary (TaskBlock, EventBlock) plus the space's own shapes",
-        referenceTargets: 'string[] — entity names a reference property may target here, sorted for the picker',
+        relationshipTargets:
+          "{ label, value }[] — what a relationship may point at here, ready for a we-select: this space's own models, then block types, then other apps' models. Core infrastructure entities are deliberately absent",
+        identityOptions:
+          '{ label, value }[] — "None" plus every named property of the open draft, for the identity picker. Built in the store because a schema can $map options but cannot prepend one',
         hintEditor:
           'the hint editor state ({ entity, classHint, defaultClassHint, rows: { name, predicate, hint, defaultHint }[], customized }) or null while closed — non-nullness mounts the hint editor modal',
         hintBusy: 'boolean — the hint editor is loading or saving',
@@ -894,10 +904,15 @@ export function generateStoresText(entries: StoreEntry[]): string {
           '(shapeRecordId?): opens the model wizard — empty for a new model, or pre-filled from a stored shape to edit it',
         cancelShapeWizard: '(): closes the wizard, discarding the draft',
         setShapeField: "(field: 'name' | 'description' | 'icon' | 'classHint', value): sets one top-level draft field",
-        addDraftProperty: '(): appends an empty property row to the draft',
-        removeDraftProperty: '(index): removes one property row',
-        setDraftProperty:
-          "(index, field, value): sets one field of one property row. 'options' takes the comma-separated string as typed",
+        setIdentityMember:
+          "(rowId): chooses which member identifies duplicates for AI extraction; 'none' clears it. At most one, which is why it is a picker rather than a per-row flag",
+        addProperty: '(): appends an empty property (scalar field) row to the draft',
+        addRelationship: '(): appends an empty relationship (edge to another model) row to the draft',
+        removeMember: '(rowId): removes one member row',
+        setMemberField:
+          "(rowId, field, value): sets one field of one member row. 'options' takes the comma-separated string as typed",
+        reorderMembers:
+          '(rowIds: string[]): applies a drag-reorder. Pair with we-sortable\'s onReorder and pass "$arg.detail" — order is the stored declaration order, not decoration',
         replaceDraft:
           '(draft): replaces the whole draft — how the LLM flow hands a generated model to the same review path',
         generateShapeDraft:

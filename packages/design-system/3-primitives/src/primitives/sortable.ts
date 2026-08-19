@@ -86,6 +86,26 @@ export interface SortableMoveDetail {
  * only be operated by dragging is a board some people cannot operate at all — and because the
  * events are identical, a consumer gets it for nothing.
  *
+ * ## Items that contain form controls: `[data-we-handle]`
+ *
+ * By default the whole item is the grab area, which is right for a card or a nav row. It is wrong
+ * the moment an item contains a text field: dragging to select text would start a drag, and — worse
+ * — the keyboard pickup would read a **space typed into an input** as "pick this up", so the field
+ * could not accept spaces at all.
+ *
+ * So two rules, both no-ops for an item without form controls:
+ *
+ * - Mark one or more descendants `data-we-handle`, and only a press that begins inside a handle
+ *   starts a drag. An item with no handle keeps dragging from anywhere, so existing consumers are
+ *   unaffected.
+ * - A Space or Enter that originates in a text-entry element (`input`, `textarea`, `select`,
+ *   `contenteditable`, including inside a component's shadow root) is typing, never a pickup. This
+ *   applies whether or not the item declares handles, because an unfocusable-by-design input that
+ *   swallows spaces is a bug in every consumer that could hit it.
+ *
+ * Make the handle itself focusable (a `we-button` will do) so the keyboard path stays open: Space
+ * on a focused handle picks the row up exactly as it does on a plain item.
+ *
  * @fires moved - detail: {@link SortableMoveDetail}, on every completed move
  * @fires reorder - detail: string[] — the destination's order, fired only when an item stayed in
  *   its own zone. A specialisation of `moved` for the common single-list case, kept because that is
@@ -165,6 +185,27 @@ export default class Sortable extends DesignSystemElement {
     return el.getAttribute('data-we-id') ?? '';
   }
 
+  // ── Grab areas (see the `[data-we-handle]` note in the class doc) ──────────
+
+  /**
+   * Whether a gesture that arrived through `path` is allowed to drag `item`.
+   *
+   * An item declaring no handle drags from anywhere — the default, and what every consumer written
+   * before handles existed relies on. One that declares handles drags only from them.
+   */
+  private _mayDrag(item: Element, path: EventTarget[]): boolean {
+    if (!item.querySelector('[data-we-handle]')) return true;
+    return path.some((node) => node instanceof Element && node.hasAttribute('data-we-handle'));
+  }
+
+  /** An element that owns its own text input: a space keypress there is typing, never a pickup. */
+  private _isTextEntry(node: EventTarget): boolean {
+    if (!(node instanceof HTMLElement)) return false;
+    return (
+      node.tagName === 'INPUT' || node.tagName === 'TEXTAREA' || node.tagName === 'SELECT' || node.isContentEditable
+    );
+  }
+
   // ── Lifecycle ─────────────────────────────────────────────────────────────
 
   connectedCallback() {
@@ -229,7 +270,7 @@ export default class Sortable extends DesignSystemElement {
     if (e.button !== 0) return;
     const path = e.composedPath();
     const dragged = this._getItems().find((item) => path.includes(item));
-    if (!dragged) return;
+    if (!dragged || !this._mayDrag(dragged, path)) return;
 
     this._pending = { pointerId: e.pointerId, startX: e.clientX, startY: e.clientY, dragged };
     this.addEventListener('pointermove', this._onPointerMove);
@@ -416,7 +457,7 @@ export default class Sortable extends DesignSystemElement {
         const { item, zone, index } = this._held;
         this._releaseHold();
         this._commit(item, zone, index);
-      } else if (focused) {
+      } else if (focused && !path.some((node) => this._isTextEntry(node)) && this._mayDrag(focused, path)) {
         this._held = { item: focused, zone: this, index: this._getItems().indexOf(focused) };
         (focused as HTMLElement).style.opacity = '0.3';
         this.setAttribute('data-drop-target', '');

@@ -13,7 +13,13 @@
  */
 import { validateManifest } from '@we/backend-shared';
 
-import { draftToManifest, emptyDraftProperty, type ShapeDraft } from '../shapes/shapeDraft';
+import {
+  draftToManifest,
+  emptyDraftProperty,
+  emptyDraftRelationship,
+  type ShapeDraft,
+  type ShapeDraftMember,
+} from '../shapes/shapeDraft';
 
 /** The tool the model must call — mirrors the wizard draft, not the stored manifest. */
 const defineModelTool = {
@@ -36,25 +42,25 @@ const defineModelTool = {
         description:
           'Guidance for AI extraction: when should something in a conversation count as one of these? One to three sentences.',
       },
+      identityField: {
+        type: 'string' as const,
+        description:
+          'Name of the ONE property that identifies "the same one again" for AI dedup — usually the title-like field. Omit when the model has no natural identifier.',
+      },
       properties: {
         type: 'array' as const,
-        description: 'The fields, in display order.',
+        description: 'The scalar fields, in display order.',
         items: {
           type: 'object' as const,
           properties: {
             name: { type: 'string' as const, description: 'camelCase identifier, e.g. "dueDate".' },
             type: {
               type: 'string' as const,
-              enum: ['text', 'number', 'boolean', 'date', 'select', 'reference'],
+              enum: ['text', 'number', 'boolean', 'date', 'select'],
               description:
-                '"select" is a text field with a fixed set of allowed values (declare them in options); "reference" points at another model (declare target).',
+                '"select" is a text field with a fixed set of allowed values — declare them in options. To point at another model, use a relationship instead of a property.',
             },
             required: { type: 'boolean' as const },
-            identity: {
-              type: 'boolean' as const,
-              description:
-                'True on AT MOST ONE property: the field that identifies "the same one again" for AI dedup. Usually the title-like field.',
-            },
             hint: {
               type: 'string' as const,
               description:
@@ -66,10 +72,22 @@ const defineModelTool = {
               description: 'For type "select" only: the allowed values.',
             },
             defaultValue: { type: 'string' as const, description: 'Initial value, if any, as a string.' },
-            target: { type: 'string' as const, description: 'For type "reference" only: the target model name.' },
-            many: { type: 'boolean' as const, description: 'For type "reference" only: true for a to-many reference.' },
           },
           required: ['name', 'type'],
+        },
+      },
+      relationships: {
+        type: 'array' as const,
+        description:
+          'Edges to other models — a photo, a location, a set of tags. Only when the description calls for one; the target must be a model listed as available.',
+        items: {
+          type: 'object' as const,
+          properties: {
+            name: { type: 'string' as const, description: 'camelCase identifier, e.g. "coverPhoto".' },
+            target: { type: 'string' as const, description: 'The model this points at, exactly as listed.' },
+            many: { type: 'boolean' as const, description: 'True for a to-many relationship (a set of them).' },
+          },
+          required: ['name', 'target'],
         },
       },
     },
@@ -79,13 +97,16 @@ const defineModelTool = {
 
 interface ToolProperty {
   name: string;
-  type: ShapeDraft['properties'][number]['type'];
+  type: ShapeDraftMember['type'];
   required?: boolean;
-  identity?: boolean;
   hint?: string;
   options?: string[];
   defaultValue?: string;
-  target?: string;
+}
+
+interface ToolRelationship {
+  name: string;
+  target: string;
   many?: boolean;
 }
 
@@ -94,27 +115,40 @@ interface ToolInput {
   description: string;
   icon?: string;
   classHint?: string;
+  identityField?: string;
   properties: ToolProperty[];
+  relationships?: ToolRelationship[];
 }
 
 function toolInputToDraft(input: ToolInput): ShapeDraft {
+  const members: ShapeDraftMember[] = [
+    ...(input.properties ?? []).map((p) => ({
+      ...emptyDraftProperty(),
+      name: p.name ?? '',
+      type: p.type ?? 'text',
+      required: p.required ?? false,
+      hint: p.hint ?? '',
+      options: (p.options ?? []).join(', '),
+      defaultValue: p.defaultValue ?? '',
+    })),
+    ...(input.relationships ?? []).map((r) => ({
+      ...emptyDraftRelationship(),
+      name: r.name ?? '',
+      target: r.target ?? '',
+      many: r.many ?? false,
+    })),
+  ];
+  // The model names the identity by field name (it has never seen a row id); the draft keys it by
+  // row so a later rename or reorder in the wizard keeps the choice.
+  const identity = members.find((m) => m.kind === 'property' && m.name === input.identityField);
+
   return {
     name: input.name ?? '',
     description: input.description ?? '',
     icon: input.icon ?? '',
     classHint: input.classHint ?? '',
-    properties: (input.properties ?? []).map((p) => ({
-      ...emptyDraftProperty(),
-      name: p.name ?? '',
-      type: p.type ?? 'text',
-      required: p.required ?? false,
-      identity: p.identity ?? false,
-      hint: p.hint ?? '',
-      options: (p.options ?? []).join(', '),
-      defaultValue: p.defaultValue ?? '',
-      target: p.target ?? '',
-      many: p.many ?? false,
-    })),
+    identityMember: identity?.rowId ?? '',
+    members,
   };
 }
 
@@ -144,11 +178,12 @@ well-designed model.
 
 Design rules:
 - Prefer few, clearly useful fields over many speculative ones.
-- Exactly one identity field where the model has a natural title or name — it is the AI dedup key.
+- Name one identityField where the model has a natural title or name — it is the AI dedup key.
 - Fields whose values come from a fixed vocabulary are "select" with the options declared.
 - Dates are type "date". Quantities are "number". Free prose is "text".
-- A "reference" field is only right when the description names another model to point at; its
-  target must be one of the models listed as available.
+- Use a relationship — not a property — for anything that points at another model, including
+  attached content: a photo is a relationship to ImageBlock, a place is one to LocationBlock. Only
+  when the description calls for it, and only to a target listed as available.
 - Write interpretation hints the way a careful prompt engineer would: exact allowed values, exact
   formats, what to omit. Hints are prompt payload for AI extraction, not documentation.`;
 

@@ -1273,7 +1273,7 @@
     {
       "tagName": "we-sortable",
       "className": "Sortable",
-      "description": "A drop zone whose items can be picked up, reordered, and moved to other zones.\n\n## One element, not two\n\nA zone *is* the container and its children *are* the items, which is what makes nesting free: a\nsortable inside an item of another sortable is simply a zone inside a zone, with no special case\nanywhere. A separate `we-drag-item` would buy nothing and cost boilerplate at every call site.\n\n## It emits intent, it never mutates\n\nA drop fires SortableMoveDetail — \"this item moved from there to here, at this index\" —\nand nothing else. What that *means* is the consumer's business, and it differs: a kanban route\nkeyed on `status` writes a scalar, a board built from containment relinks two `children` edges, an\noutline reparents a node. A primitive that assumed one of those would be useless to the others.\n\nThis is also why the element does not reorder its own DOM. The list is rendered from data; the\ndata changes; the list re-renders. A primitive that moved nodes itself would fight whatever\nrenders them.\n\n## Nesting, and why cycles are not a problem\n\nThe hard part of nested drag-and-drop is refusing to drop a container into its own descendant.\nBecause nesting here is expressed *in the DOM*, that check is `dragged.contains(zone)` — correct\nby construction, needing no knowledge of the consumer's data shape. The innermost matching zone\nunder the pointer wins, so dropping into a nested list does not also count as dropping into its\nparent.\n\n## Keyboard\n\nSpace or Enter picks up the focused item; the arrow keys move it, along the list and across\nzones; Space drops and Escape cancels. Built in rather than added later, because a board that can\nonly be operated by dragging is a board some people cannot operate at all — and because the\nevents are identical, a consumer gets it for nothing.",
+      "description": "A drop zone whose items can be picked up, reordered, and moved to other zones.\n\n## One element, not two\n\nA zone *is* the container and its children *are* the items, which is what makes nesting free: a\nsortable inside an item of another sortable is simply a zone inside a zone, with no special case\nanywhere. A separate `we-drag-item` would buy nothing and cost boilerplate at every call site.\n\n## It emits intent, it never mutates\n\nA drop fires SortableMoveDetail — \"this item moved from there to here, at this index\" —\nand nothing else. What that *means* is the consumer's business, and it differs: a kanban route\nkeyed on `status` writes a scalar, a board built from containment relinks two `children` edges, an\noutline reparents a node. A primitive that assumed one of those would be useless to the others.\n\nThis is also why the element does not reorder its own DOM. The list is rendered from data; the\ndata changes; the list re-renders. A primitive that moved nodes itself would fight whatever\nrenders them.\n\n## Nesting, and why cycles are not a problem\n\nThe hard part of nested drag-and-drop is refusing to drop a container into its own descendant.\nBecause nesting here is expressed *in the DOM*, that check is `dragged.contains(zone)` — correct\nby construction, needing no knowledge of the consumer's data shape. The innermost matching zone\nunder the pointer wins, so dropping into a nested list does not also count as dropping into its\nparent.\n\n## Keyboard\n\nSpace or Enter picks up the focused item; the arrow keys move it, along the list and across\nzones; Space drops and Escape cancels. Built in rather than added later, because a board that can\nonly be operated by dragging is a board some people cannot operate at all — and because the\nevents are identical, a consumer gets it for nothing.\n\n## Items that contain form controls: `[data-we-handle]`\n\nBy default the whole item is the grab area, which is right for a card or a nav row. It is wrong\nthe moment an item contains a text field: dragging to select text would start a drag, and — worse\n— the keyboard pickup would read a **space typed into an input** as \"pick this up\", so the field\ncould not accept spaces at all.\n\nSo two rules, both no-ops for an item without form controls:\n\n- Mark one or more descendants `data-we-handle`, and only a press that begins inside a handle\n  starts a drag. An item with no handle keeps dragging from anywhere, so existing consumers are\n  unaffected.\n- A Space or Enter that originates in a text-entry element (`input`, `textarea`, `select`,\n  `contenteditable`, including inside a component's shadow root) is typing, never a pickup. This\n  applies whether or not the item declares handles, because an unfocusable-by-design input that\n  swallows spaces is a bug in every consumer that could hit it.\n\nMake the handle itself focusable (a `we-button` will do) so the keyboard path stays open: Space\non a focused handle picks the row up exactly as it does on a plain item.",
       "superclass": "DesignSystemElement",
       "ownProps": [
         {
@@ -5692,7 +5692,7 @@
         },
         "shapeDraft": {
           "type": "object",
-          "properties": ["name", "description", "icon", "classHint", "properties"]
+          "properties": ["name", "description", "icon", "classHint", "identityMember", "members"]
         },
         "editingShapeId": {
           "type": "string"
@@ -5713,8 +5713,13 @@
           "type": "array",
           "properties": ["entity", "source"]
         },
-        "referenceTargets": {
-          "type": "array"
+        "relationshipTargets": {
+          "type": "array",
+          "properties": ["label", "value"]
+        },
+        "identityOptions": {
+          "type": "array",
+          "properties": ["label", "value"]
         },
         "hintEditor": {
           "type": "object",
@@ -5728,9 +5733,12 @@
         "openShapeWizard",
         "cancelShapeWizard",
         "setShapeField",
-        "addDraftProperty",
-        "removeDraftProperty",
-        "setDraftProperty",
+        "setIdentityMember",
+        "addProperty",
+        "addRelationship",
+        "removeMember",
+        "setMemberField",
+        "reorderMembers",
         "replaceDraft",
         "generateShapeDraft",
         "saveShapeDraft",
