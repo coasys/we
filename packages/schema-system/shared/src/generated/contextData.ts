@@ -1345,7 +1345,7 @@ export const contextData: ContextData = {
       extends: 'WeNode',
       fields: [
         { name: 'text', type: 'string', predicate: 'we://text', required: false },
-        { name: 'variant', type: 'string', predicate: 'we://variant', required: false, default: 'info' },
+        { name: 'variant', type: 'string', predicate: 'we://variant', required: false, default: "'info'" },
         { name: 'icon', type: 'string', predicate: 'we://icon', required: false },
         { name: 'version', type: 'number', predicate: 'we://version', required: false },
       ],
@@ -1404,7 +1404,7 @@ export const contextData: ContextData = {
       className: 'DividerBlock',
       extends: 'WeNode',
       fields: [
-        { name: 'style', type: 'string', predicate: 'we://style', required: false, default: 'solid' },
+        { name: 'style', type: 'string', predicate: 'we://style', required: false, default: "'solid'" },
         { name: 'version', type: 'number', predicate: 'we://version', required: false },
       ],
       relations: [],
@@ -1417,7 +1417,7 @@ export const contextData: ContextData = {
         { name: 'url', type: 'string', predicate: 'we://url', required: false },
         { name: 'target', type: 'string', predicate: 'we://target', required: false },
         { name: 'targetType', type: 'string', predicate: 'we://target_type', required: false },
-        { name: 'displayMode', type: 'string', predicate: 'we://display_mode', required: false, default: 'card' },
+        { name: 'displayMode', type: 'string', predicate: 'we://display_mode', required: false, default: "'card'" },
         { name: 'version', type: 'number', predicate: 'we://version', required: false },
       ],
       relations: [],
@@ -1633,8 +1633,8 @@ export const contextData: ContextData = {
       fields: [
         { name: 'title', type: 'string', predicate: 'we://title', required: true },
         { name: 'description', type: 'string', predicate: 'we://description', required: false },
-        { name: 'status', type: 'string', predicate: 'we://status', required: false, default: 'todo' },
-        { name: 'priority', type: 'string', predicate: 'we://priority', required: false, default: 'medium' },
+        { name: 'status', type: 'string', predicate: 'we://status', required: false, default: "'todo'" },
+        { name: 'priority', type: 'string', predicate: 'we://priority', required: false, default: "'medium'" },
         { name: 'dueDate', type: 'string', predicate: 'we://due_date', required: false },
         { name: 'assignee', type: 'string', predicate: 'we://assignee', required: false },
         { name: 'version', type: 'number', predicate: 'we://version', required: false },

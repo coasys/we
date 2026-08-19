@@ -1,3 +1,9 @@
+/**
+ * GENERATED from src/manifest/entities/Shape.ts — do not edit here.
+ *
+ * The manifest module is the source of truth: its schema, hints and prose. Rebuild with
+ * `pnpm --filter @we/models generate:classes` after changing it.
+ */
 import { Flag, Model, Property } from '@coasys/ad4m';
 
 import { FILE_STORAGE_LANGUAGE } from '../constants';
@@ -56,9 +62,6 @@ export class Shape extends WeNode {
   forkedFrom: string = '';
 
   /** The `ModelManifest` JSON document — read raw and decoded by the caller, like `Template.schema`. */
-  @Property({
-    through: 'we://shape_definition',
-    resolveLanguage: FILE_STORAGE_LANGUAGE,
-  })
+  @Property({ through: 'we://shape_definition', resolveLanguage: FILE_STORAGE_LANGUAGE })
   definition: string | null = null;
 }

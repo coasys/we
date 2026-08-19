@@ -24,7 +24,7 @@ import type { ModelClass, ModelManifestEntry, QueryOptions } from '@we/backend-s
 import { manifestEntries } from '@we/backend-shared';
 import type { EntityShape } from '@we/graph-protocol';
 import { GraphView, type GraphViewProps } from '@we/graph-solid';
-import { CORE_MANIFEST } from '@we/models/generated/coreManifest';
+import { CORE_MANIFEST } from '@we/models/manifest';
 import { createMemo } from 'solid-js';
 
 import { useDatasetStore } from '../stores/DatasetStore';

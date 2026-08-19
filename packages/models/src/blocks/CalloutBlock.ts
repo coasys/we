@@ -1,3 +1,9 @@
+/**
+ * GENERATED from src/manifest/blocks/CalloutBlock.ts — do not edit here.
+ *
+ * The manifest module is the source of truth: its schema, hints and prose. Rebuild with
+ * `pnpm --filter @we/models generate:classes` after changing it.
+ */
 import { Flag, Model, Property } from '@coasys/ad4m';
 
 import { WeNode } from '../WeNode';
@@ -10,7 +16,7 @@ export class CalloutBlock extends WeNode {
   @Property({ through: 'we://text' })
   text: string = '';
 
-  @Property({ through: 'we://variant', initial: 'info' })
+  @Property({ through: 'we://variant' })
   variant: string = 'info';
 
   @Property({ through: 'we://icon' })

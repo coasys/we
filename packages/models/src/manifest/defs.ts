@@ -36,6 +36,13 @@ export interface CoreEntityDef {
    * methods nothing has ever exercised.
    */
   methodRelations?: string[];
+  /**
+   * Typed HasMany relations whose class field is declared `Target[]` rather than `string[]`.
+   * Cosmetic at runtime — AD4M stores URIs either way and `include` hydrates by metadata — but
+   * consumers type against the hydrated shape, and the generated class must keep their code
+   * compiling exactly as the hand-written one did.
+   */
+  typedArrays?: string[];
   /** Verbatim lines appended to the generated file — type re-exports that live beside a class. */
   passthrough?: string[];
   /** The neutral schema: own properties and own relations only. */

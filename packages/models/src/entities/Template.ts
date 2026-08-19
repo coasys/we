@@ -1,3 +1,9 @@
+/**
+ * GENERATED from src/manifest/entities/Template.ts — do not edit here.
+ *
+ * The manifest module is the source of truth: its schema, hints and prose. Rebuild with
+ * `pnpm --filter @we/models generate:classes` after changing it.
+ */
 import { Flag, HasMany, HasManyMethods, Model, Property } from '@coasys/ad4m';
 
 import { ImageBlock } from '../blocks/ImageBlock';
@@ -19,7 +25,7 @@ export class Template extends WeNode {
   icon: string = '';
 
   @Property({ through: 'we://origin' })
-  origin: string = ''; // 'built-in' | 'shared' | 'custom' | 'marketplace'
+  origin: string = '';
 
   @Property({ through: 'we://version' })
   version: number = 1;
@@ -27,10 +33,7 @@ export class Template extends WeNode {
   @Property({ through: 'we://slug' })
   slug: string = '';
 
-  @Property({
-    through: 'we://template_schema',
-    resolveLanguage: FILE_STORAGE_LANGUAGE,
-  })
+  @Property({ through: 'we://template_schema', resolveLanguage: FILE_STORAGE_LANGUAGE })
   schema: string | null = null;
 
   @Property({ through: 'we://theme_id' })

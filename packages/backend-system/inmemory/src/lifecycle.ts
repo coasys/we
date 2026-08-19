@@ -27,7 +27,7 @@ import type {
 } from '@we/backend-shared';
 import { createInMemoryEphemeralPort, InMemoryBus } from '@we/backend-shared';
 import { getModel, getModelForPerspective, registerModel } from '@we/models';
-import { CORE_MANIFEST } from '@we/models/generated/coreManifest';
+import { CORE_MANIFEST } from '@we/models/manifest';
 
 import { compileEntities, type EntityRuntime } from './entities';
 import { inMemoryQueryAdapter } from './queryAdapter';

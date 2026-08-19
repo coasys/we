@@ -6,12 +6,37 @@ Rules and patterns for authoring AD4M data models in this package.
 
 ```
 src/
-├── WeNode.ts        ← base class for all models
+├── manifest/        ← THE SOURCE OF TRUTH — authored, per-entity neutral schemas
+│   ├── entities/    ← one module per entity: schema + prose + codegen facts
+│   ├── blocks/      ← one module per block
+│   ├── shared.ts    ← WeNode's shared relations, declared once
+│   ├── defs.ts      ← the CoreEntityDef shape a module exports
+│   └── index.ts     ← assembles CORE_MANIFEST (imported as '@we/models/manifest')
+├── WeNode.ts        ← hand-written base class carrying the shared behaviour
 ├── constants.ts     ← shared URIs and constants
-├── entities/        ← first-class application objects
-├── blocks/          ← composable content nodes
+├── entities/        ← GENERATED AD4M classes — do not edit; artifacts of manifest/
+├── blocks/          ← GENERATED AD4M classes — do not edit
 └── utils/           ← helper functions (transforms, normalisation)
 ```
+
+## Authoring a model — edit the manifest, generate the class
+
+The decorated classes under `entities/` and `blocks/` are build artifacts. To add or change a
+model, edit its module under `src/manifest/` — schema, defaults, interpretation hints and the
+design prose all live there — then run:
+
+```sh
+pnpm --filter @we/models generate:classes
+```
+
+Doc comments in the manifest module are lifted into the generated class, so IDE hovers keep
+working. `coreManifest.test.ts` (backend-ad4m) holds the generated classes and the manifest's
+*runtime* compilation in exhaustive agreement — a stale or wrong generation fails there, with
+predicates, hints, defaults and storage behaviour all compared.
+
+Codegen-only facts (TypeScript optionality, union aliases, accessor-method interfaces, typed
+relation arrays) ride beside the schema in each module's `CoreEntityDef` — see `manifest/defs.ts`.
+They shape the generated class; the neutral schema itself stays free of TypeScript.
 
 ## The Core Distinction: Entities vs Blocks
 

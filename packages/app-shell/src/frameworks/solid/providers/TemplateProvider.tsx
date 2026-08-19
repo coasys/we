@@ -28,7 +28,7 @@ import { BlockDatasetProvider } from '@we/block-solid';
 import { toastService } from '@we/components/solid';
 import type { DatasetProxy } from '@we/models';
 import { getModel } from '@we/models';
-import { CORE_MANIFEST } from '@we/models/generated/coreManifest';
+import { CORE_MANIFEST } from '@we/models/manifest';
 import type { TemplateSchema } from '@we/schema-shared';
 import type { VisualEditorContextValue } from '@we/schema-solid';
 import { RenderSchema, VisualEditorProvider } from '@we/schema-solid';

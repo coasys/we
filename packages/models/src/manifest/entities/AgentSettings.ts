@@ -3,6 +3,7 @@ import type { CoreEntityDef } from '../defs';
 export const AgentSettings: CoreEntityDef = {
   base: 'Ad4mModel',
   methodRelations: ["installedTemplates", "installedThemes", "spaceTemplatePreferences"],
+  typedArrays: ["installedTemplates", "installedThemes", "spaceTemplatePreferences"],
   entity: {
     flag: {"predicate": "we://flag", "value": "we://root"},
     properties: {

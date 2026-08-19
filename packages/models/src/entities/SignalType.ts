@@ -1,3 +1,9 @@
+/**
+ * GENERATED from src/manifest/entities/SignalType.ts — do not edit here.
+ *
+ * The manifest module is the source of truth: its schema, hints and prose. Rebuild with
+ * `pnpm --filter @we/models generate:classes` after changing it.
+ */
 import { Flag, Model, Property } from '@coasys/ad4m';
 
 import { WeNode } from '../WeNode';
@@ -49,7 +55,7 @@ export class SignalType extends WeNode {
 
   /** Reserved for future categorical signal support */
   @Property({ through: 'we://signal_value_type' })
-  valueType: string = 'numeric'; // 'numeric' | 'categorical' (future)
+  valueType: string = 'numeric';
 
   @Property({ through: 'we://schema_version' })
   schemaVersion: number = 1;

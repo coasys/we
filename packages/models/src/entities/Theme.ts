@@ -1,3 +1,9 @@
+/**
+ * GENERATED from src/manifest/entities/Theme.ts — do not edit here.
+ *
+ * The manifest module is the source of truth: its schema, hints and prose. Rebuild with
+ * `pnpm --filter @we/models generate:classes` after changing it.
+ */
 import { Flag, HasMany, HasManyMethods, Model, Property } from '@coasys/ad4m';
 
 import { ImageBlock } from '../blocks/ImageBlock';
@@ -19,7 +25,7 @@ export class Theme extends WeNode {
   icon: string = '';
 
   @Property({ through: 'we://origin' })
-  origin: string = ''; // 'built-in' | 'shared' | 'custom'
+  origin: string = '';
 
   @Property({ through: 'we://slug' })
   slug: string = '';
@@ -28,17 +34,11 @@ export class Theme extends WeNode {
   version: number = 1;
 
   /** Raw CSS string (e.g. [data-we-theme='x'] { ... } rules, ::part() selectors, etc.) */
-  @Property({
-    through: 'we://stylesheet',
-    resolveLanguage: FILE_STORAGE_LANGUAGE,
-  })
+  @Property({ through: 'we://stylesheet', resolveLanguage: FILE_STORAGE_LANGUAGE })
   css: string | null = null;
 
   /** Structured token overrides (primaryHue, saturation, neutralSaturation, etc.) */
-  @Property({
-    through: 'we://token_overrides',
-    resolveLanguage: FILE_STORAGE_LANGUAGE,
-  })
+  @Property({ through: 'we://token_overrides', resolveLanguage: FILE_STORAGE_LANGUAGE })
   overrides: string | null = null;
 
   @HasMany(() => ImageBlock, { through: 'we://screenshot' })
@@ -47,11 +47,4 @@ export class Theme extends WeNode {
 
 export interface Theme extends HasManyMethods<'screenshots'> {}
 
-/**
- * The decoded, UI-ready projection of a Theme lives in `utils/themeData` and is re-exported here
- * for callers holding the class. It moved because it is a projection over a theme-*shaped* value,
- * and because a single value export from this file would pull the decorators — and with them the
- * backend SDK — into every consumer of the package root.
- */
-export { modelToThemeData } from '../utils/themeData';
 export type { ThemeData } from '../utils/themeData';

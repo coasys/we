@@ -1,3 +1,9 @@
+/**
+ * GENERATED from src/manifest/blocks/TaskBlock.ts — do not edit here.
+ *
+ * The manifest module is the source of truth: its schema, hints and prose. Rebuild with
+ * `pnpm --filter @we/models generate:classes` after changing it.
+ */
 import { Flag, Model, Property } from '@coasys/ad4m';
 
 import { WeNode } from '../WeNode';
@@ -34,13 +40,7 @@ import { WeNode } from '../WeNode';
 @Model({
   name: 'TaskBlock',
   interpretationHint:
-    'A piece of work the speakers say needs doing and that is not done yet. ' +
-    'Includes anything phrased as "we need to…", "one task is…", "someone should…", or a ' +
-    'commitment like "I\'ll do X" — an owner is not required, and neither is a deadline. ' +
-    'It must be work in the world that outlives this conversation. Exclude work described as ' +
-    'already finished, work raised purely to rule it out, and anything about the act of talking ' +
-    'or testing itself — "let me add another one", "I need to say more to trigger this" and the ' +
-    'like are about the conversation, not work anybody committed to.',
+    'A piece of work the speakers say needs doing and that is not done yet. Includes anything phrased as "we need to…", "one task is…", "someone should…", or a commitment like "I\'ll do X" — an owner is not required, and neither is a deadline. It must be work in the world that outlives this conversation. Exclude work described as already finished, work raised purely to rule it out, and anything about the act of talking or testing itself — "let me add another one", "I need to say more to trigger this" and the like are about the conversation, not work anybody committed to.',
 })
 export class TaskBlock extends WeNode {
   @Flag({ through: 'we://flag', value: 'we://task_block' })
@@ -72,9 +72,7 @@ export class TaskBlock extends WeNode {
     required: true,
     identity: true,
     interpretationHint:
-      'The task as a short imperative phrase, e.g. "Ship the docs". No trailing period. ' +
-      'Never include the bracketed timestamp that starts each turn — it is metadata, not speech. ' +
-      'Reuse the wording of an existing task when this is the same piece of work said again.',
+      'The task as a short imperative phrase, e.g. "Ship the docs". No trailing period. Never include the bracketed timestamp that starts each turn — it is metadata, not speech. Reuse the wording of an existing task when this is the same piece of work said again.',
   })
   title: string = '';
 
@@ -87,7 +85,6 @@ export class TaskBlock extends WeNode {
 
   @Property({
     through: 'we://status',
-    initial: 'todo',
     interpretationHint:
       'Exactly one of: "todo", "in-progress", "done". Use "todo" unless the speaker says work has begun.',
   })
@@ -95,7 +92,6 @@ export class TaskBlock extends WeNode {
 
   @Property({
     through: 'we://priority',
-    initial: 'medium',
     interpretationHint:
       'Exactly one of: "low", "medium", "high". Use "medium" unless urgency is stated; do not infer it from tone.',
   })
@@ -104,8 +100,7 @@ export class TaskBlock extends WeNode {
   @Property({
     through: 'we://due_date',
     interpretationHint:
-      'Due date as YYYY-MM-DD. Only when a date is actually stated — resolve "Friday" against the ' +
-      'bracketed timestamp leading that turn. Omit if vague.',
+      'Due date as YYYY-MM-DD. Only when a date is actually stated — resolve "Friday" against the bracketed timestamp leading that turn. Omit if vague.',
   })
   dueDate: string = '';
 

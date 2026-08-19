@@ -1,3 +1,9 @@
+/**
+ * GENERATED from src/manifest/entities/AgentSettings.ts — do not edit here.
+ *
+ * The manifest module is the source of truth: its schema, hints and prose. Rebuild with
+ * `pnpm --filter @we/models generate:classes` after changing it.
+ */
 import { Ad4mModel, Flag, HasMany, HasManyMethods, Model, Property } from '@coasys/ad4m';
 
 import { SpaceTemplatePreference } from './SpaceTemplatePreference';

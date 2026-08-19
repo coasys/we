@@ -1403,7 +1403,7 @@ AudioBlock extends WeNode:
 CalloutBlock extends WeNode:
   Fields:
   - text: string [we://text]
-  - variant: string = info [we://variant]
+  - variant: string = 'info' [we://variant]
   - icon: string [we://icon]
   - version: number [we://version]
 
@@ -1441,7 +1441,7 @@ CollectionBlock extends WeNode:
 
 DividerBlock extends WeNode:
   Fields:
-  - style: string = solid [we://style]
+  - style: string = 'solid' [we://style]
   - version: number [we://version]
 
 EmbedBlock extends WeNode:
@@ -1449,7 +1449,7 @@ EmbedBlock extends WeNode:
   - url: string [we://url]
   - target: string [we://target]
   - targetType: string [we://target_type]
-  - displayMode: string = card [we://display_mode]
+  - displayMode: string = 'card' [we://display_mode]
   - version: number [we://version]
 
 EventBlock extends WeNode:
@@ -1580,8 +1580,8 @@ TaskBlock extends WeNode:
   Fields:
   - title: string (required) [we://title]
   - description: string [we://description]
-  - status: string = todo [we://status]
-  - priority: string = medium [we://priority]
+  - status: string = 'todo' [we://status]
+  - priority: string = 'medium' [we://priority]
   - dueDate: string [we://due_date]
   - assignee: string [we://assignee]
   - version: number [we://version]

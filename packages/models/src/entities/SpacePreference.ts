@@ -1,3 +1,9 @@
+/**
+ * GENERATED from src/manifest/entities/SpacePreference.ts — do not edit here.
+ *
+ * The manifest module is the source of truth: its schema, hints and prose. Rebuild with
+ * `pnpm --filter @we/models generate:classes` after changing it.
+ */
 import { Flag, Model, Property } from '@coasys/ad4m';
 
 import { WeNode } from '../WeNode';
@@ -24,29 +30,6 @@ import { WeNode } from '../WeNode';
  * that `templateId` here subsumes — an empty override means "follow the space", so migrating it is a
  * later, separable step.
  */
-/**
- * `templateId` / `themeId` value meaning "whatever my own default is", read live.
- *
- * Distinct from naming that default concretely: change the global default later and the spaces set
- * to follow it move with you, while the ones pinned to a specific id stay put. It is also exactly
- * what the retired `SpaceTemplatePreference.preference = 'user'` meant.
- *
- * Deliberately not `$`-prefixed. A `$`-string is a context reference to the schema dispatcher, and
- * while this one only ever reaches the UI through a store rather than as a schema literal, leaving
- * that trap for whoever writes the next picker is not worth the two characters.
- */
-export const AGENT_DEFAULT = 'agent-default';
-
-/**
- * `templateId` / `themeId` value meaning "follow whatever the community set".
- *
- * A named value rather than the empty string, because **the ORM cannot store an empty string**:
- * `Ad4mModel.innerUpdate` skips any property whose new value is `''`, so writing one leaves the old
- * link in place. Clearing an override that way looks like it works and then silently reverts on the
- * next read. Anything falsy — including a record written before this field existed — is read as this.
- */
-export const FOLLOW_SPACE = 'space-default';
-
 @Model({ name: 'SpacePreference' })
 export class SpacePreference extends WeNode {
   @Flag({ through: 'we://flag', value: 'we://space_preference' })
@@ -79,3 +62,5 @@ export class SpacePreference extends WeNode {
   @Property({ through: 'we://theme_id' })
   themeId: string = '';
 }
+
+export { AGENT_DEFAULT, FOLLOW_SPACE } from '../manifest/entities/SpacePreference';

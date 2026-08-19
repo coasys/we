@@ -3,6 +3,7 @@ import type { CoreEntityDef } from '../defs';
 export const ChatSession: CoreEntityDef = {
   base: 'WeNode',
   methodRelations: ["messages"],
+  typedArrays: ["messages"],
   entity: {
     flag: {"predicate": "we://flag", "value": "we://chat_session"},
     properties: {

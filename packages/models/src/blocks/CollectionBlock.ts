@@ -1,3 +1,9 @@
+/**
+ * GENERATED from src/manifest/blocks/CollectionBlock.ts — do not edit here.
+ *
+ * The manifest module is the source of truth: its schema, hints and prose. Rebuild with
+ * `pnpm --filter @we/models generate:classes` after changing it.
+ */
 import { Flag, HasMany, HasManyMethods, Model, Property } from '@coasys/ad4m';
 
 import { FILE_STORAGE_LANGUAGE } from '../constants';
@@ -7,9 +13,6 @@ import { WeNode } from '../WeNode';
 export class CollectionBlock extends WeNode {
   @Flag({ through: 'we://flag', value: 'we://collection_block' })
   flag: string = '';
-
-  @HasMany({ through: 'we://children' })
-  children: string[] = [];
 
   @Property({ through: 'we://editor_state', resolveLanguage: FILE_STORAGE_LANGUAGE })
   editorState: string | null = null;
@@ -94,39 +97,14 @@ export class CollectionBlock extends WeNode {
   @Property({ through: 'we://description' })
   description: string = '';
 
-  /*
-   * `display`, `columns`, `gap`, `direction`, `format` and `indent` used to sit here and were
-   * removed (2026-08-12) as dead weight — a cleanup worth recording, because the shape of the
-   * mistake is easy to repeat.
-   *
-   * They looked like a collection's layout, and they were not. `BlockRenderer` renders a document
-   * purely from the `editorState` blob — it parses the serialized tree into Lexical and never reads
-   * a model scalar — so the layout a user authored has always lived in the blob, and these were a
-   * partial, redundant projection of it that nothing consumed.
-   *
-   * Two of them had never held a value at all. `extractBlockData` copies serialized-node properties
-   * onto a model **by matching name**, and the Lexical collection node calls them `layout` and
-   * `columnCount`, so `display` and `columns` were never written by anything. That silence is the
-   * lesson: a name-matched copy makes an unused property indistinguishable from a misspelled one,
-   * and neither the compiler nor a test can tell you which you have.
-   *
-   * What remains is deliberately two groups and no more. **Container** — `children`, `kind`, `mode`,
-   * `title`, `description`, `textContent` — is true of a channel, a board, a playlist and a post
-   * alike. **Document** — `editorState`, `type` — is true only of a composed artifact, and both have
-   * exits: a CRDT replaces `editorState`, and `type` retires once the `kind` backfill lands.
-   *
-   * The rule that keeps it this size: nothing new joins the document group, and kind-specific
-   * configuration — a board's column settings, the case that will push first — does not go on this
-   * model at all. It waits for content-model shapes (`content-models-plan.md` stage A), which is
-   * the mechanism for "this kind has these fields". Adding scalars here instead is how a universal
-   * container stops being universal.
-   */
-
   @Property({ through: 'we://version' })
   version: number = 0;
 
   @Property({ through: 'we://text_content' })
   textContent: string = '';
+
+  @HasMany({ through: 'we://children' })
+  children: string[] = [];
 }
 
 export interface CollectionBlock extends HasManyMethods<'children'> {}

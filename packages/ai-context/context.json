@@ -3668,7 +3668,7 @@
           "type": "string",
           "predicate": "we://variant",
           "required": false,
-          "default": "info"
+          "default": "'info'"
         },
         {
           "name": "icon",
@@ -3837,7 +3837,7 @@
           "type": "string",
           "predicate": "we://style",
           "required": false,
-          "default": "solid"
+          "default": "'solid'"
         },
         {
           "name": "version",
@@ -3876,7 +3876,7 @@
           "type": "string",
           "predicate": "we://display_mode",
           "required": false,
-          "default": "card"
+          "default": "'card'"
         },
         {
           "name": "version",
@@ -4520,14 +4520,14 @@
           "type": "string",
           "predicate": "we://status",
           "required": false,
-          "default": "todo"
+          "default": "'todo'"
         },
         {
           "name": "priority",
           "type": "string",
           "predicate": "we://priority",
           "required": false,
-          "default": "medium"
+          "default": "'medium'"
         },
         {
           "name": "dueDate",

@@ -1,3 +1,9 @@
+/**
+ * GENERATED from src/manifest/blocks/EventBlock.ts — do not edit here.
+ *
+ * The manifest module is the source of truth: its schema, hints and prose. Rebuild with
+ * `pnpm --filter @we/models generate:classes` after changing it.
+ */
 import { Flag, Model, Property } from '@coasys/ad4m';
 
 import { WeNode } from '../WeNode';
@@ -6,10 +12,7 @@ import { WeNode } from '../WeNode';
 @Model({
   name: 'EventBlock',
   interpretationHint:
-    'Something happening at a identifiable future time — a meeting, a trip, a deadline event, ' +
-    'an occasion. A day is enough; it does not need a time of day, an agreement between the ' +
-    'speakers, or other attendees. "Visiting my grandma this weekend" is an event. ' +
-    'Exclude only the conversation currently happening, and intentions with no when at all.',
+    'Something happening at a identifiable future time — a meeting, a trip, a deadline event, an occasion. A day is enough; it does not need a time of day, an agreement between the speakers, or other attendees. "Visiting my grandma this weekend" is an event. Exclude only the conversation currently happening, and intentions with no when at all.',
 })
 export class EventBlock extends WeNode {
   @Flag({ through: 'we://flag', value: 'we://event_block' })
@@ -50,9 +53,7 @@ export class EventBlock extends WeNode {
     through: 'we://occurrence',
     identity: true,
     interpretationHint:
-      'A dedup key, not a display value: the title and the start date joined, e.g. ' +
-      '"Design review 2026-08-20". Always set it when you create an event. Reuse an existing ' +
-      "event's exact value only when this is the same occasion on the same day.",
+      'A dedup key, not a display value: the title and the start date joined, e.g. "Design review 2026-08-20". Always set it when you create an event. Reuse an existing event\'s exact value only when this is the same occasion on the same day.',
   })
   occurrence: string = '';
 
@@ -60,8 +61,7 @@ export class EventBlock extends WeNode {
     through: 'we://title',
     required: true,
     interpretationHint:
-      'What the occasion is called, e.g. "Design review". No trailing period. ' +
-      'Never include the bracketed timestamp that starts each turn — it is metadata, not speech.',
+      'What the occasion is called, e.g. "Design review". No trailing period. Never include the bracketed timestamp that starts each turn — it is metadata, not speech.',
   })
   title: string = '';
 
@@ -75,10 +75,7 @@ export class EventBlock extends WeNode {
     through: 'we://start_date',
     required: true,
     interpretationHint:
-      'Start as YYYY-MM-DDTHH:mm (local time, no timezone suffix). Resolve relative dates like ' +
-      '"next Tuesday at 3", "this weekend" or "on Friday" against the bracketed timestamp leading ' +
-      'that turn — pick the nearest matching future date. When only a day was said, use T00:00 and ' +
-      'set allDay true. Required, so give your best resolution rather than omitting the event.',
+      'Start as YYYY-MM-DDTHH:mm (local time, no timezone suffix). Resolve relative dates like "next Tuesday at 3", "this weekend" or "on Friday" against the bracketed timestamp leading that turn — pick the nearest matching future date. When only a day was said, use T00:00 and set allDay true. Required, so give your best resolution rather than omitting the event.',
   })
   startDate: string = '';
 
