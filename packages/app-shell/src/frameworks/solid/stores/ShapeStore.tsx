@@ -543,7 +543,14 @@ export function ShapeStoreProvider(props: ParentProps) {
   */
   function setShapeField(field: 'name' | 'description' | 'icon' | 'classHint', value: string): void {
     const draft = shapeDraft();
-    if (draft) draft[field] = value;
+    /*
+      Published, not mutated in place. In-place mutation is the *member rows'* concession — they
+      live in an $each keyed by object identity, where replacing a row remounts it and drops input
+      focus. These fields are ordinary controlled inputs outside any keyed loop, and mutating
+      silently left every reactive reader stale: the generate button stayed disabled after a name
+      was typed, then enabled when adding a row happened to republish the signal.
+    */
+    if (draft) setShapeDraft({ ...draft, [field]: value });
   }
 
   function setIdentityMember(rowId: string): void {
@@ -667,17 +674,22 @@ export function ShapeStoreProvider(props: ParentProps) {
     }
   }
 
-  const canAutoGenerateFields = createMemo<boolean>(() => {
-    const draft = shapeDraft();
+  /** The guard itself, over a live draft — the memo below tracks it, the action re-checks it fresh. */
+  function computeCanAutoGenerate(draft: ShapeDraft | null): boolean {
     if (!draft) return false;
     const hasContext = Boolean(draft.name.trim() || draft.description.trim() || draft.classHint.trim());
     return hasContext && !draft.members.some(isTouched);
-  });
+  }
+
+  const canAutoGenerateFields = createMemo<boolean>(() => computeCanAutoGenerate(shapeDraft()));
 
   async function generateShapeFields(): Promise<void> {
     const draft = shapeDraft();
     const transport = generationTransport();
-    if (!draft || !transport || !canAutoGenerateFields()) return;
+    // Computed fresh rather than read from the memo: member rows mutate in place (the focus
+    // concession), so the memo can be a keystroke stale — and stale-true here replaces rows
+    // somebody just typed.
+    if (!draft || !transport || !computeCanAutoGenerate(draft)) return;
     // The same generation as the describe-it flow, prompted by what the author already wrote.
     const context = [
       draft.name.trim() && `The model is called "${draft.name.trim()}".`,

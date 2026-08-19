@@ -97,6 +97,9 @@ const memberNameInput: SchemaNode = {
     size: 'sm',
     value: '$member.name',
     onInput: { $action: 'shapeStore.setMemberField', args: ['$member.rowId', 'name', '$arg.detail'] },
+    // Typed member fields mutate in place (the focus concession), so reactive readers — the
+    // generate button's guard among them — only learn a row was touched when the edit is published.
+    onBlur: { $action: 'shapeStore.commitDraft' },
   },
 };
 
@@ -292,6 +295,7 @@ const propertyDetail: SchemaNode = {
                 placeholder: 'The title as spoken, without a subtitle.',
                 value: '$member.hint',
                 onInput: { $action: 'shapeStore.setMemberField', args: ['$member.rowId', 'hint', '$arg.detail'] },
+                onBlur: { $action: 'shapeStore.commitDraft' },
               },
             },
           ],
