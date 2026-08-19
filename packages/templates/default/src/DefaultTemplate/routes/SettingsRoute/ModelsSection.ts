@@ -342,7 +342,9 @@ const shapeWizardModal: SchemaNode = {
                 {
                   type: 'we-input',
                   props: {
-                    placeholder: 'Recommendation',
+                    // Runs the words together on purpose: it is the spelling the field accepts, and
+                    // the placeholder is the first place anyone learns that multi-word names are fine.
+                    placeholder: 'BookRecommendation',
                     value: { $store: 'shapeStore.shapeDraft.name' },
                     // Renaming changes what queries resolve, so an existing model's name is fixed.
                     disabled: { $store: 'shapeStore.editingShapeId' },

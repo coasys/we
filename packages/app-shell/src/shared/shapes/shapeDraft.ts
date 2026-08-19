@@ -126,6 +126,36 @@ export function snakeCase(name: string): string {
 
 const IDENTIFIER = /^[A-Za-z][A-Za-z0-9]*$/;
 
+/**
+ * What the author probably meant, as a valid identifier: `"Book Recommendation"` →
+ * `BookRecommendation`, `"due date"` → `dueDate`. Empty when nothing salvageable comes out.
+ *
+ * Worth doing rather than restating the rule, because the rule is what misleads: "must be a single
+ * identifier" reads as "one word", when multi-word names are the normal case and only need their
+ * spaces closed up. An error that names the fixed spelling teaches that in one line, and can be
+ * copied.
+ */
+export function toIdentifier(raw: string, style: 'Pascal' | 'camel'): string {
+  const parts = raw.split(/[^A-Za-z0-9]+/).filter(Boolean);
+  if (!parts.length) return '';
+  const joined = parts.map((p) => p[0].toUpperCase() + p.slice(1)).join('');
+  const suggestion = style === 'camel' ? joined[0].toLowerCase() + joined.slice(1) : joined;
+  // A name starting with a digit cannot be rescued by joining words, so offer nothing rather than
+  // something that would be refused again.
+  return IDENTIFIER.test(suggestion) ? suggestion : '';
+}
+
+/** The message for a name that is not an identifier — naming the fix where there is one. */
+function badNameMessage(subject: string, raw: string, style: 'Pascal' | 'camel', example: string): string {
+  const name = raw.trim();
+  if (!name) return `${subject} needs a name, e.g. "${example}".`;
+  const suggestion = toIdentifier(name, style);
+  const run = style === 'camel' ? 'run words together, starting lowercase' : 'run words together, each capitalised';
+  return suggestion
+    ? `${subject} names ${run} — try "${suggestion}" instead of "${name}".`
+    : `${subject} names must start with a letter and use only letters and digits, e.g. "${example}".`;
+}
+
 const SCALAR_OF: Record<ShapeDraftPropertyType, PropertySchema['type']> = {
   text: 'string',
   number: 'number',
@@ -159,11 +189,7 @@ export type DraftLowering = { ok: true; manifest: ModelManifest } | { ok: false;
 export function draftToManifest(draft: ShapeDraft, shapeUuid: string): DraftLowering {
   const errors: string[] = [];
   const name = draft.name.trim();
-  if (!IDENTIFIER.test(name)) {
-    errors.push(
-      'Model name must be a single identifier, e.g. "Sighting" — letters and digits, starting with a letter.',
-    );
-  }
+  if (!IDENTIFIER.test(name)) errors.push(badNameMessage('Model', draft.name, 'Pascal', 'BookRecommendation'));
   const rows = draft.members.filter(isTouched);
   if (rows.length === 0) errors.push('A model needs at least one property.');
 
@@ -176,7 +202,7 @@ export function draftToManifest(draft: ShapeDraft, shapeUuid: string): DraftLowe
     const memberName = row.name.trim();
     const label = row.kind === 'relationship' ? 'Relationship' : 'Property';
     if (!IDENTIFIER.test(memberName)) {
-      errors.push(`${label} "${memberName || '(unnamed)'}" must be a single identifier, e.g. "dueDate".`);
+      errors.push(badNameMessage(label, row.name, 'camel', 'dueDate'));
       continue;
     }
     const lower = memberName.toLowerCase();

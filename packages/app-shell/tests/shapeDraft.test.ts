@@ -106,13 +106,46 @@ describe('draftToManifest', () => {
     expect(result.ok).toBe(false);
     if (result.ok) return;
     const all = result.errors.join('\n');
-    expect(all).toContain('Model name');
+    expect(all).toContain('Model');
     expect(all).toContain('"due date"');
     expect(all).toContain('Select property "status"');
     expect(all).toContain('Default for "count"');
     // Properties and relationships share one namespace, since both become predicates.
     expect(all).toContain('Duplicate name "dupe"');
     expect(all).toContain('Relationship "orphan" needs something to point at');
+  });
+
+  it('names the fixed spelling rather than restating the rule', () => {
+    // "must be a single identifier" read as "one word only", when multi-word names are the normal
+    // case and need only their spaces closing up. The message now does that transformation.
+    const draft: ShapeDraft = {
+      ...emptyShapeDraft(),
+      name: 'Book Recommendation',
+      members: [{ ...emptyDraftProperty(), name: 'due date' }],
+    };
+    const result = draftToManifest(draft, UUID);
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    const all = result.errors.join('\n');
+    expect(all).toContain('try "BookRecommendation" instead of "Book Recommendation"');
+    expect(all).toContain('try "dueDate" instead of "due date"');
+  });
+
+  it('asks for a name rather than suggesting one when the field is empty', () => {
+    const result = draftToManifest({ ...emptyShapeDraft(), members: [{ ...emptyDraftProperty(), hint: 'x' }] }, UUID);
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.errors.join('\n')).toContain('Model needs a name');
+  });
+
+  it('offers no suggestion it would refuse again', () => {
+    // Joining words cannot rescue a name that starts with a digit, so the rule is stated instead.
+    const result = draftToManifest({ ...emptyShapeDraft(), name: '2 good things' }, UUID);
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    const message = result.errors.find((e) => e.startsWith('Model')) ?? '';
+    expect(message).toContain('must start with a letter');
+    expect(message).not.toContain('try "');
   });
 
   it('refuses an identity pointing at a relationship, or at a deleted row', () => {
