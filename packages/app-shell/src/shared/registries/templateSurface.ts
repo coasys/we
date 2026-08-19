@@ -379,6 +379,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     mutedAgents: state('content'),
     setAgentMuted: action('content'),
     getSubgroupMessages: action('content'),
+    exportCallTranscript: action('content'),
 
     // ── signals ──
     createSignalType: action('signals'),

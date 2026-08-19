@@ -8,6 +8,7 @@ import {
 } from '@shared/spaceSync';
 import { resolveSpaceTheme } from '@shared/themeResolution';
 import { deriveSlug } from '@shared/utils';
+import { displayName } from '@we/backend-shared';
 import type { AgentProfileSummary, DatasetRef } from '@we/backend-shared';
 import type { SerializedBlockNode } from '@we/block-shared';
 import { createBlocks, deleteBlocks, reconcileBlocks } from '@we/block-shared';
@@ -16,6 +17,7 @@ import {
   AGENT_DEFAULT,
   CollectionBlock,
   compressImageToFileData,
+  TextBlock,
   type DatasetProxy,
   dataURIToFileData,
   type FileData,
@@ -524,6 +526,15 @@ export interface SpaceStore {
   /** Copy a space's share link to the clipboard. No-op for a space that has none. */
   copyShareLink: (uuid: string) => Promise<void>;
   getSubgroupMessages: (subgroupId: string) => Promise<FluxSubgroupMessage[]>;
+  /**
+   * Write a call's transcript to a `.txt` file and download it.
+   *
+   * One line per utterance: `name, ISO timestamp: text`, where the name is the speaker's display
+   * name and their DID when they have none. Read-only and client-side — it builds the blob and
+   * triggers a download rather than writing anywhere the space can see, which is why it is an
+   * imperative action instead of something a template can express.
+   */
+  exportCallTranscript: (callId: string) => Promise<void>;
   removeSpaceFromGlobal: (spaceUuid: string) => Promise<void>;
   updateSpaceInCache: (dataset: AppDataset, updates: Partial<Space>) => void;
 
@@ -1451,6 +1462,69 @@ export function SpaceStoreProvider(props: ParentProps) {
     }
   }
 
+  async function exportCallTranscript(callId: string): Promise<void> {
+    const p = datasetStore.currentDataset()?.handle;
+    if (!p) return;
+    try {
+      const utterances = await TextBlock.findAll(p, {
+        parent: { id: callId, predicate: PREDICATES.CHILDREN },
+      });
+
+      // A speaker's label the way the byline renders it: their display name, else their DID.
+      const nameFor = (did: string): string => {
+        const profile = profileStore.profiles().find((entry) => entry.did === did);
+        return (profile && displayName(profile)) || did;
+      };
+
+      // The order rows come back is a storage artefact; the order they were said is what the
+      // transcript is, so sort here rather than trust the read.
+      const timeOf = (value: unknown): number =>
+        typeof value === 'number' ? value : new Date(value as string).getTime();
+
+      const lines = [...utterances]
+        .sort((a, b) => (timeOf(a.createdAt) || 0) - (timeOf(b.createdAt) || 0))
+        .map((utterance) => {
+          const text = typeof utterance.text === 'string' ? utterance.text.trim() : '';
+          const speaker = typeof utterance.author === 'string' ? utterance.author : '';
+          const when = timeOf(utterance.createdAt);
+          if (!text || !speaker || Number.isNaN(when)) return null;
+          return `${nameFor(speaker)}, ${new Date(when).toISOString()}: ${text}`;
+        })
+        .filter((line): line is string => Boolean(line));
+
+      if (!lines.length) {
+        toastService.warning('This call has no transcript to export.');
+        return;
+      }
+
+      // Name the file after the call, falling back to a generic name, then stamp it with the export
+      // time so successive exports of the same call don't overwrite each other.
+      const call = await CollectionBlock.findOne(p, { where: { id: callId } });
+      const rawName = (call?.title ?? '').trim();
+      const slug =
+        rawName
+          .replace(/[^\p{L}\p{N}\-_ ]/gu, '')
+          .trim()
+          .replace(/\s+/g, '-') || 'call-transcript';
+      const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+      const filename = `${slug}-${stamp}.txt`;
+
+      const blob = new Blob([`${lines.join('\n')}\n`], { type: 'text/plain;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = filename;
+      document.body.appendChild(anchor);
+      anchor.click();
+      document.body.removeChild(anchor);
+      URL.revokeObjectURL(url);
+      toastService.success('Transcript exported.');
+    } catch (error) {
+      console.error('SpaceStore: exportCallTranscript failed', error);
+      toastService.error('Could not export the transcript.');
+    }
+  }
+
   const [currentSpace, setCurrentSpace] = createSignal<Space | null>(null);
 
   /**
@@ -2317,6 +2391,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     canAdministerSpace,
     copyShareLink,
     getSubgroupMessages,
+    exportCallTranscript,
     removeSpaceFromGlobal,
     updateSpaceInCache,
 

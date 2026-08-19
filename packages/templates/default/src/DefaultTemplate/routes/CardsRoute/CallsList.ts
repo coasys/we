@@ -403,6 +403,31 @@ export const callsList: SchemaNode = {
                       },
                     },
                     /*
+                        Take the transcript with you.
+
+                        A read-only copy of what was said — one line per utterance, name, timestamp
+                        and text — downloaded as a plain text file. Offered to everyone rather than
+                        gated on authorship: it reads the shared record and writes to the reader's own
+                        device, so there is no one else's account being edited the way there is with
+                        the edit and delete beside it.
+                      */
+                    {
+                      type: 'we-tooltip',
+                      props: { title: 'Export the transcript', placement: 'top' },
+                      children: [
+                        {
+                          type: 'we-button',
+                          props: {
+                            variant: 'ghost',
+                            size: 'sm',
+                            square: true,
+                            onClick: { $action: 'spaceStore.exportCallTranscript', args: ['$call.id'] },
+                          },
+                          children: [{ type: 'we-icon', props: { name: 'download' } }],
+                        },
+                      ],
+                    },
+                    /*
                         What this call's pass is doing, or found.
 
                         A spinner inside a 32px button is not, on its own, an answer to "did my click
