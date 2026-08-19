@@ -117,10 +117,35 @@ export function ConditionalRenderer({
     one frame closed before it opens, or the browser has no start value to interpolate from and the
     element simply appears.
   */
+  /*
+    An omitted `exitTransition` mirrors the enter, which is what the operator documentation has
+    always promised and what `$animate` already did. Without it a section that eased open vanished
+    on close — the asymmetry read as a bug in the transition rather than an absent prop, and the
+    fix in a template was to restate the same config twice.
+  */
+  const effectiveExit = exitTransition ?? enterTransition;
+
   const enterReveal = enterTransition ? revealEffect(enterTransition) : undefined;
-  const exitReveal = exitTransition ? revealEffect(exitTransition) : undefined;
+  const exitReveal = effectiveExit ? revealEffect(effectiveExit) : undefined;
   const hasReveal = enterReveal ?? exitReveal;
   const [open, setOpen] = createSignal(startVisible);
+
+  /*
+    Whether the size is currently moving.
+
+    The clip a reveal needs is a property of the *animation*, not of the element: while the track
+    grows, content taller than it has to be hidden. Left on afterwards it silently clips anything
+    that paints outside its own box — a focus ring, a shadow, a select's dropdown — which is what
+    it did, permanently, for every consumer of `reveal`.
+  */
+  const [animating, setAnimating] = createSignal(false);
+  let settleTimer: ReturnType<typeof setTimeout> | undefined;
+  const beginMotion = (config: TransitionConfig) => {
+    clearTimeout(settleTimer);
+    setAnimating(true);
+    settleTimer = setTimeout(() => setAnimating(false), transitionSpan(config));
+  };
+  onCleanup(() => clearTimeout(settleTimer));
 
   /** True when a reveal is animating this axis — so nothing else may size the wrapper along it. */
   const revealsAxis = (axis: 'block' | 'inline') => !!hasReveal && (hasReveal.axis ?? 'block') === axis;
@@ -159,6 +184,7 @@ export function ConditionalRenderer({
             setOpacity(1);
             setTransform('');
             setOpen(true);
+            beginMotion(enterTransition);
           }, firstEffect?.delay ?? 0);
         });
       } else {
@@ -169,16 +195,17 @@ export function ConditionalRenderer({
     } else if (!newCondition && isVisible()) {
       setIsVisible(false);
 
-      if (exitTransition) {
-        const firstEffect = Array.isArray(exitTransition) ? exitTransition[0] : exitTransition;
+      if (effectiveExit) {
+        const firstEffect = Array.isArray(effectiveExit) ? effectiveExit[0] : effectiveExit;
         // The longest effect, not the first — see transitionSpan.
-        const duration = transitionSpan(exitTransition);
+        const duration = transitionSpan(effectiveExit);
         const delay = firstEffect?.delay ?? 0;
 
         exitTimerOuter = setTimeout(() => {
-          setOpacity(hiddenOpacity(exitTransition));
-          setTransform(hiddenTransform(exitTransition));
+          setOpacity(hiddenOpacity(effectiveExit));
+          setTransform(hiddenTransform(effectiveExit));
           if (exitReveal) setOpen(false);
+          beginMotion(effectiveExit);
 
           exitTimerInner = setTimeout(() => setShouldRender(false), duration);
         }, delay);
@@ -194,7 +221,7 @@ export function ConditionalRenderer({
   // ── CSS transition string ─────────────────────────────────────────────────────
   const transitionCSS = createMemo(() => {
     const current = isVisible();
-    const config = current ? (enterTransition ?? exitTransition) : (exitTransition ?? enterTransition);
+    const config = current ? (enterTransition ?? effectiveExit) : effectiveExit;
     return config ? buildTransitionCSS(config) : '';
   });
 
@@ -275,7 +302,9 @@ export function ConditionalRenderer({
   const innerStyle = createMemo(() => {
     const style: Record<string, string> = { 'pointer-events': 'auto' };
     if (hasReveal) {
-      style.overflow = 'hidden';
+      // Clipped while closed and while the track is moving; released once it has settled open, so a
+      // ring or a dropdown inside is not cut off for the rest of the section's life.
+      if (!open() || animating()) style.overflow = 'hidden';
       style[revealsAxis('inline') ? 'min-width' : 'min-height'] = '0';
     }
     return style;
