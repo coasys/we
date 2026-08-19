@@ -613,7 +613,7 @@ const shapeWizardModal: SchemaNode = {
               children: [
                 {
                   type: 'we-button',
-                  props: { variant: 'ghost', size: 'sm', onClick: { $action: 'shapeStore.addProperty' } },
+                  props: { variant: 'outline', size: 'sm', onClick: { $action: 'shapeStore.addProperty' } },
                   children: [
                     { type: 'we-icon', props: { name: 'plus' } },
                     { type: 'we-text', children: ['Add property'] },
@@ -621,7 +621,7 @@ const shapeWizardModal: SchemaNode = {
                 },
                 {
                   type: 'we-button',
-                  props: { variant: 'ghost', size: 'sm', onClick: { $action: 'shapeStore.addRelationship' } },
+                  props: { variant: 'outline', size: 'sm', onClick: { $action: 'shapeStore.addRelationship' } },
                   children: [
                     { type: 'we-icon', props: { name: 'arrow-right' } },
                     { type: 'we-text', children: ['Add relationship'] },

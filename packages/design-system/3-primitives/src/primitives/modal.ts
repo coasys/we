@@ -10,11 +10,27 @@ const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   r: '600',
   p: '900',
   ax: 'stretch',
-  ay: 'center',
+  /*
+    Start, not centre. The base grows with its content, so centring on the main axis does nothing
+    until maxHeight clamps it — and at that point it centres the *overflow* too, pushing the first
+    field up past the top edge where no amount of scrolling reaches it. The host still centres the
+    modal itself in the viewport, which is the centring anybody actually sees.
+  */
+  ay: 'start',
   gap: '500',
   direction: 'column',
   maxHeight: 'calc(100vh - 64px)',
-  overflow: 'hidden',
+  /*
+    Scroll rather than spill.
+
+    maxHeight lands on [part='base'] (see OverlayElement), but nothing bounded what happened when
+    the content exceeded it: a modal that grew — a form gaining rows — pushed its content out past
+    its own edge and off the screen, with no way to reach the buttons at the bottom.
+
+    This has to be a default prop rather than a rule in the stylesheet below. The generated sheet
+    declares overflow on [part='base'] itself, and wins there whatever a component writes.
+  */
+  overflow: 'auto',
 };
 
 const CSS_STYLES = css`
@@ -32,15 +48,6 @@ const CSS_STYLES = css`
 
   [part='base'] {
     position: relative;
-    /*
-      Scroll rather than spill.
-
-      The maxHeight prop lands on this element (see OverlayElement), but nothing bounded what
-      happened when the content exceeded it: a modal that grew — a form gaining rows — pushed its
-      content out past its own edge and off the screen, with no way to reach the buttons at the
-      bottom.
-    */
-    overflow: auto;
   }
 
   [part='close-button-wrapper'] {
