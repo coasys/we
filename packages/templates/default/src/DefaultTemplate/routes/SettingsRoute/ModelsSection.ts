@@ -122,9 +122,11 @@ const defaultValueControl: SchemaNode = {
       type: 'we-number-input',
       props: {
         size: 'sm',
-        // The one default control with no width: it already shrink-wraps to its steppers and a few
-        // digits, and stretching it to the width the others need only pushes the buttons away from
-        // the number they belong to.
+        // Natural width, not the width the other controls take: it already shrink-wraps to its
+        // steppers and a few digits, and stretching it only puts a gap between the number and the
+        // buttons that belong to it. `alignSelf` is what stops that happening — a form field lays
+        // its control out in a column, and a column stretches its children across by default.
+        alignSelf: 'start',
         placeholder: 'None',
         value: '$member.defaultValue',
         onChange: { $action: 'shapeStore.setMemberField', args: ['$member.rowId', 'defaultValue', '$arg.detail'] },
