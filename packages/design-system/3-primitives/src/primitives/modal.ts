@@ -69,6 +69,14 @@ const CSS_STYLES = css`
     /* A flex item's automatic minimum size is its content — without this nothing ever shrinks,
        so nothing ever scrolls. */
     min-height: 0;
+    /*
+      Room for focus rings. A field stretches to this box's full width, and its ring paints just
+      outside itself — which the overflow clipping kills dead. The padding is the ring's room and the
+      negative margin gives it back, so nothing else moves: content stays aligned with the header
+      and footer, and the ring has 4px of scroller to paint into (the widest ring is 2px).
+    */
+    padding: var(--we-space-100);
+    margin: calc(-1 * var(--we-space-100));
   }
 
   [part='close-button-wrapper'] {

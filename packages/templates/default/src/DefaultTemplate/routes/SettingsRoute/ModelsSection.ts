@@ -506,8 +506,10 @@ const shapeWizardModal: SchemaNode = {
   // model got thrown away.
   // Width on the modal itself rather than an inner Column: the title and buttons are slotted out
   // of the scroll region (a long draft scrolls its members, not its own name or its Save button),
-  // so no single child spans the modal any more.
-  props: { close: { $action: 'shapeStore.requestCloseWizard' }, width: 'min(720px, 85vw)' },
+  // so no single child spans the modal any more. Wider than the Column's old 720px by the modal's
+  // own padding (space-900 each side), since this width now includes it — at 720px total the
+  // member rows lost 128px of room and wrapped.
+  props: { close: { $action: 'shapeStore.requestCloseWizard' }, width: 'min(850px, 92vw)' },
   $localState: {
     aiDescription: { type: 'string', initial: '' },
   },
@@ -734,7 +736,8 @@ const hintEditorModal: SchemaNode = {
   type: 'we-modal',
   // Width on the modal, title and actions slotted: a model with many properties scrolls its hint
   // rows, never the heading that says whose hints these are or the buttons that save them.
-  props: { close: { $action: 'shapeStore.closeHintEditor' }, width: 'min(640px, 85vw)' },
+  // 640px of content plus the modal's own padding — see the wizard modal above.
+  props: { close: { $action: 'shapeStore.closeHintEditor' }, width: 'min(770px, 92vw)' },
   children: [
     {
       type: 'Row',

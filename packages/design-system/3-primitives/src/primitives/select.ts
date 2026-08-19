@@ -196,6 +196,13 @@ const styles = css`
     transition: background var(--we-transition-200, 150ms) ease;
   }
 
+  /* Option icons are wayfinding, not content — tinted toward the accent so they read as a system
+     of markers rather than a column of dark glyphs. */
+  [part='option'] we-icon,
+  [part='value'] we-icon {
+    color: var(--we-color-primary-700);
+  }
+
   [part='group-heading'] {
     padding: var(--we-space-200) var(--we-space-300) var(--we-space-100);
     font-size: 0.75em;
@@ -521,7 +528,7 @@ export default class Select extends DesignSystemElement {
                     @keydown=${this._onKeyDown}
                   >
                     <span part="value" ?data-placeholder=${!this._displayValue}>
-                      ${this._selectedIcon ? html`<we-icon name=${this._selectedIcon} size="14px"></we-icon>` : nothing}
+                      ${this._selectedIcon ? html`<we-icon name=${this._selectedIcon} size="16px"></we-icon>` : nothing}
                       <span part="value-label">${this._displayValue || this.placeholder || nothing}</span>
                     </span>
                     ${
@@ -533,7 +540,7 @@ export default class Select extends DesignSystemElement {
                                 // whitespace inside it would be part of what gets measured.
                                 (o) =>
                                   html`<span
-                                    >${o.icon ? html`<we-icon name=${o.icon} size="14px"></we-icon>` : nothing}${o.label}</span
+                                    >${o.icon ? html`<we-icon name=${o.icon} size="16px"></we-icon>` : nothing}${o.label}</span
                                   >`,
                               )}
                               <span>${this.placeholder}</span>
@@ -574,7 +581,7 @@ export default class Select extends DesignSystemElement {
                               aria-disabled=${opt.disabled ? 'true' : nothing}
                               @click=${() => this._select(opt)}
                             >
-                              ${opt.icon ? html`<we-icon name=${opt.icon} size="14px"></we-icon>` : nothing}
+                              ${opt.icon ? html`<we-icon name=${opt.icon} size="16px"></we-icon>` : nothing}
                               ${opt.label}
                             </div>
                           `,
