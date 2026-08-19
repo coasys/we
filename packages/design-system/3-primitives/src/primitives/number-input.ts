@@ -48,15 +48,16 @@ const styles = css`
     all: unset;
     text-align: center;
     /*
-      Three characters wide, growing only into space the control was actually given.
+      Sized from what it holds, in ch — the width of a digit.
 
-      The basis has to be stated. A bare flex:1 leaves the field's intrinsic width to the input
-      itself, and an input's is its size attribute — twenty characters by default, about 180px —
-      which the host then shrink-wrapped around, so a control needing ~100px drew at 249px. A
-      definite basis is what the surrounding box measures instead; min-width:0 keeps the input's
-      own min-content from putting it back.
+      Measured in a browser rather than reasoned about: an input's intrinsic width is twenty
+      characters (~180px) and that is what a shrink-to-fit ancestor measures, so the control drew at
+      249px however it was styled from outside. A flex basis did not help, because a growable item
+      still contributes its *max-content* width. Nor did the size attribute, which the all:unset
+      above leaves without effect. An explicit width does, and taking it from the value means the
+      field hugs a short number and widens for a long one instead of hiding it.
     */
-    flex: 1 1 3em;
+    flex: 1 1 auto;
     min-width: 0;
     font: inherit;
     color: inherit;
@@ -160,6 +161,16 @@ export default class NumberInput extends DesignSystemElement {
    * and the other did nothing, so the buttons appeared broken until you happened to press the one
    * that worked. A bounded field starts at its own floor, an unbounded one at zero.
    */
+  /**
+   * How many characters wide the field should be: what it holds, or what its placeholder says,
+   * whichever is longer — with a floor so an empty field is still a field, and one extra so a
+   * caret at the end of the number has somewhere to sit.
+   */
+  private _displayWidth(): number {
+    const content = Math.max(String(this.value).length, this.placeholder.length);
+    return Math.max(4, content + 1);
+  }
+
   private _base(): number {
     if (this.value !== '') return this.value;
     return Number.isFinite(this.min) ? this.min : 0;
@@ -193,6 +204,7 @@ export default class NumberInput extends DesignSystemElement {
           type="number"
           .value=${this.value === '' ? '' : String(this.value)}
           placeholder=${this.placeholder}
+          style=${styleMap({ width: `${this._displayWidth()}ch` })}
           min=${this.min}
           max=${this.max}
           step=${this.step}

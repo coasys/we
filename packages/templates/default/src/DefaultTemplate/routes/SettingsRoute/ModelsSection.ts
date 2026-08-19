@@ -21,9 +21,6 @@ import { sectionCard } from '@we/template-kit';
  */
 const DEFAULT_CONTROL_WIDTH = '220px';
 
-/** A number needs its two steppers and a few digits, and nothing like the width of a value list. */
-const NUMBER_CONTROL_WIDTH = '124px';
-
 const PROPERTY_TYPE_OPTIONS = [
   { label: 'Text', value: 'text' },
   { label: 'Number', value: 'number' },
@@ -125,11 +122,11 @@ const defaultValueControl: SchemaNode = {
       type: 'we-number-input',
       props: {
         size: 'sm',
-        // Stated outright rather than left to shrink-wrap. Neither `alignSelf: 'start'` nor a
-        // definite flex basis inside the component stopped this stretching to the panel's width,
-        // and an explicit width is the one thing that reliably does — a number wants roughly its
-        // steppers plus a few digits, so that is what it gets.
-        width: NUMBER_CONTROL_WIDTH,
+        // Content width, measured in a browser rather than guessed at: the host is block-level, so
+        // in a form field's column it fills the row unless told not to, and only an inline style —
+        // which a DS prop becomes — beats the design system's own sheet. The field inside sizes
+        // itself from the number, so this grows for a long one instead of clipping it.
+        width: 'fit-content',
         placeholder: 'None',
         value: '$member.defaultValue',
         onChange: { $action: 'shapeStore.setMemberField', args: ['$member.rowId', 'defaultValue', '$arg.detail'] },
