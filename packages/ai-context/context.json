@@ -3454,6 +3454,11 @@
           "optional": true
         },
         {
+          "name": "revision",
+          "type": "string | number",
+          "optional": true
+        },
+        {
           "name": "layout",
           "type": "LayoutSpec",
           "optional": true

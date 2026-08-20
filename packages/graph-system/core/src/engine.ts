@@ -12,7 +12,9 @@ import type {
   EdgeGeometry,
   ExpandDirection,
   ExpanderContext,
+  GraphEdge,
   GraphEvent,
+  GraphFragment,
   GraphNode,
   GraphSpec,
   Layout,
@@ -94,6 +96,9 @@ export class GraphEngine {
   private status: EngineStatus = { loading: false, budgetReached: false, warnings: [] };
   private inFlight = 0;
   private disposed = false;
+  /** A refresh is running. See {@link refresh} for why a second one queues rather than joining in. */
+  private refreshing = false;
+  private refreshPending = false;
   /** A fit was asked for before there was a surface to fit into. Applied on the next real resize. */
   private pendingFit = false;
   /** Whether the user may move nodes. See `isLocked`. */
@@ -246,10 +251,110 @@ export class GraphEngine {
     this.selected.clear();
     this.status = { loading: false, budgetReached: false, warnings: [] };
 
-    const seeds = this.spec.seeds ? (Array.isArray(this.spec.seeds) ? this.spec.seeds : [this.spec.seeds]) : [];
+    const fragment = await this.loadSeeds();
+    this.store.merge(fragment);
+    this.expansion.attribute(
+      SEED_OPENER,
+      fragment.nodes.map((n) => n.id),
+      fragment.edges.map((e) => e.id),
+    );
+
+    await this.runAutoExpansion();
+    this.recomputeMetrics();
+    this.relayout({ fit: true });
+    this.notify('graph');
+  }
+
+  /**
+   * Re-run the seed sources and reconcile the result into the graph already on screen.
+   *
+   * The counterpart to {@link start}, and the difference is the entire point: `start` says "this is a
+   * different graph now" and resets everything, while this says "the same graph, with newer data".
+   * Positions, pins, the selection, the camera and every open node survive — so a record created in a
+   * modal appears as one more node among the ones the user arranged, and a peer's edit arriving over
+   * the network does not rearrange a board somebody is working on.
+   *
+   * Rows that have gone are removed, but only where the seeds were the *only* thing holding them:
+   * a node the user reached by expanding something else is theirs, not the seed query's, and it stays
+   * until they close what opened it.
+   *
+   * Deliberately does **not** fit the camera. A refresh is usually not something the user asked for —
+   * it can arrive from a subscription while they are reading — and a viewport that jumps whenever a
+   * peer writes something would make a shared graph unusable.
+   */
+  async refresh(): Promise<void> {
+    if (this.disposed) return;
+    // A second request while one is running becomes one more pass at the end, rather than a
+    // concurrent pair racing to reconcile against each other's half-applied state.
+    if (this.refreshing) {
+      this.refreshPending = true;
+      return;
+    }
+    this.refreshing = true;
+    try {
+      do {
+        this.refreshPending = false;
+        await this.refreshOnce();
+      } while (this.refreshPending && !this.disposed);
+    } finally {
+      this.refreshing = false;
+    }
+  }
+
+  private async refreshOnce(): Promise<void> {
+    const fragment = await this.loadSeeds();
+    if (this.disposed) return;
+
+    const nodes = this.trimToBudget(fragment.nodes);
+    const seedNodes = new Set(nodes.map((n) => n.id));
+    const seedEdges = new Set(fragment.edges.map((e) => e.id));
+
+    // Claimed before anything is released, so a node that was previously held only by an expansion
+    // and now also answers the seed query is not briefly unheld.
+    const change = this.store.merge({ nodes, edges: fragment.edges });
+    this.expansion.attribute(SEED_OPENER, seedNodes, seedEdges);
+
+    const released = this.expansion.releaseFrom(SEED_OPENER, seedNodes, seedEdges);
+    if (released.edges.length) this.store.removeEdges(released.edges);
+    if (released.nodes.length) {
+      this.store.removeNodes(released.nodes);
+      for (const id of released.nodes) {
+        this.positions.delete(id);
+        this.selected.delete(id);
+        this.pinnedIds.delete(id);
+      }
+    }
+
+    // Only the arrivals are auto-expanded. Running the rules over the whole graph would re-open every
+    // node the user had deliberately collapsed, on every refresh — the map would keep growing back.
+    if (change.addedNodes.length) await this.runAutoExpansion(change.addedNodes);
+
+    // Rows going away can bring a blocked graph back under the ceiling; leaving the flag set would
+    // make the next expansion refuse with no visible reason.
+    if (this.status.budgetReached && !this.atBudget()) {
+      this.status = { ...this.status, budgetReached: false };
+      this.notify('status');
+    }
+
+    this.recomputeMetrics();
+    this.relayout();
+    this.notify('graph');
+  }
+
+  /**
+   * Run every seed source and return what they produced as one fragment.
+   *
+   * Shared by {@link start} and {@link refresh} so the two can never disagree about what the seeds
+   * *are* — the difference between them is entirely what happens to the result.
+   */
+  private async loadSeeds(): Promise<GraphFragment> {
+    const specs = this.spec.seeds ? (Array.isArray(this.spec.seeds) ? this.spec.seeds : [this.spec.seeds]) : [];
+    const nodes: GraphNode[] = [];
+    const edges: GraphEdge[] = [];
+
     this.beginLoading();
     try {
-      for (const seed of seeds) {
+      for (const seed of specs) {
         const fragment =
           'literal' in seed
             ? { nodes: seed.nodes, edges: seed.edges }
@@ -266,21 +371,14 @@ export class GraphEngine {
           }
           continue;
         }
-        this.store.merge(fragment);
-        this.expansion.attribute(
-          SEED_OPENER,
-          fragment.nodes.map((n) => n.id),
-          fragment.edges.map((e) => e.id),
-        );
+        nodes.push(...fragment.nodes);
+        edges.push(...fragment.edges);
       }
     } finally {
       this.endLoading();
     }
 
-    await this.runAutoExpansion();
-    this.recomputeMetrics();
-    this.relayout({ fit: true });
-    this.notify('graph');
+    return { nodes, edges };
   }
 
   dispose(): void {
@@ -397,7 +495,14 @@ export class GraphEngine {
     else void this.expand(id, direction);
   }
 
-  private async runAutoExpansion(): Promise<void> {
+  /**
+   * Open what the depth and the auto rules ask for.
+   *
+   * `from` narrows the starting frontier, which is what a refresh passes: the rules should reach the
+   * nodes that have just arrived and nothing else. Omitted — the case `start` uses — it begins at
+   * every node in the store.
+   */
+  private async runAutoExpansion(from?: string[]): Promise<void> {
     const spec = this.spec.expansion;
     const depth = spec?.defaultDepth ?? 0;
     const rules = spec?.auto ?? [];
@@ -405,7 +510,7 @@ export class GraphEngine {
 
     // Breadth-first by depth, so a shallow rule never gets starved by a deep one, and each level is
     // fully open before the next begins — otherwise the graph grows down one arm while the user waits.
-    let frontier = [...this.store.nodes()].map((n) => n.id);
+    let frontier = from ?? [...this.store.nodes()].map((n) => n.id);
     for (let level = 0; level < Math.max(depth, ...rules.map((r) => r.depth), 0); level += 1) {
       const next: string[] = [];
       for (const id of frontier) {

@@ -66,12 +66,21 @@ function engineWith(spec: Parameters<typeof GraphEngine.prototype.setSpec>[0], p
 }
 
 const layouts = {
-  // A trivial deterministic layout: the engine's behaviour under test is expansion, not positioning.
+  /*
+    A trivial deterministic layout: the engine's behaviour under test is expansion, not positioning.
+
+    It honours `previous` for anything it has already placed, which is not decoration — every real
+    layout warm-starts, and a fake that re-derived every position from scratch would let the engine
+    lose placements no shipped layout would lose, so a test written against it would pass while the
+    app moved every node on every update.
+  */
   grid: () => ({
     id: 'grid',
-    init(input: { nodes: { id: string }[] }) {
+    init(input: { nodes: { id: string }[]; previous?: ReadonlyMap<string, { x: number; y: number }> }) {
       return {
-        positions: new Map(input.nodes.map((node, index) => [node.id, { x: index * 10, y: 0 }])),
+        positions: new Map(
+          input.nodes.map((node, index) => [node.id, input.previous?.get(node.id) ?? { x: index * 10, y: 0 }]),
+        ),
       };
     },
   }),
@@ -200,6 +209,150 @@ describe('GraphEngine', () => {
 
     ctx.select(['seed-0'], 'toggle');
     expect(ctx.selection()).toEqual(['seed-1']);
+  });
+});
+
+/**
+ * A seed source whose rows can change between runs — what a live query looks like from the engine's
+ * side, and the only way to test that a refresh reconciles rather than restarts.
+ */
+function mutableSeed(initial: string[]): SeedSource & { rows: string[] } {
+  const source = {
+    id: 'test',
+    rows: [...initial],
+    async seed() {
+      return {
+        nodes: source.rows.map((id) => ({ id, kind: 'entity' as const, type: 'Thing', label: id })),
+        edges: [],
+      };
+    },
+  };
+  return source;
+}
+
+describe('refreshing keeps the graph the user is looking at', () => {
+  it('adds a new row without disturbing what is already placed', async () => {
+    const seed = mutableSeed(['seed-0', 'seed-1']);
+    const registry = new PluginRegistry({ seeds: [seed], layouts });
+    const engine = engineWith({ seeds: { source: 'test' }, layout: { type: 'grid' } }, registry);
+    await engine.start();
+    engine.resize(800, 600);
+    engine.pin('seed-0', { x: 123, y: 456 });
+
+    seed.rows.push('seed-2');
+    await engine.refresh();
+
+    expect(engine.store.nodeCount).toBe(3);
+    expect(engine.store.hasNode('seed-2')).toBe(true);
+    // The whole reason `refresh` exists rather than a second `start`: a position somebody chose has
+    // to survive somebody else's write.
+    expect(engine.getPositions().get('seed-0')).toMatchObject({ x: 123, y: 456 });
+    expect(engine.isPinned('seed-0')).toBe(true);
+  });
+
+  it('drops a row the seeds no longer return, with its position and selection', async () => {
+    const seed = mutableSeed(['seed-0', 'seed-1']);
+    const registry = new PluginRegistry({ seeds: [seed], layouts });
+    const engine = engineWith({ seeds: { source: 'test' }, layout: { type: 'grid' } }, registry);
+    await engine.start();
+    engine.select(['seed-1']);
+
+    seed.rows = ['seed-0'];
+    await engine.refresh();
+
+    expect(engine.store.hasNode('seed-1')).toBe(false);
+    expect(engine.getPositions().has('seed-1')).toBe(false);
+    expect(engine.getSelection()).toEqual([]);
+  });
+
+  it('keeps a vanished seed row that an expansion is still holding open', async () => {
+    // Two openers on one node is the ordinary case, and the reason release is reference-counted
+    // rather than a set difference: the seed query no longer returns it, but the user opened the
+    // node it hangs off, and deleting it would take a node off screen that they put there.
+    const seed = mutableSeed(['seed-0']);
+    const registry = new PluginRegistry({
+      seeds: [seed],
+      expanders: [
+        {
+          id: 'to-shared',
+          kinds: ['entity'],
+          async expand(request) {
+            return {
+              nodes: [{ id: 'shared', kind: 'entity' as const, type: 'Thing', label: 'shared' }],
+              edges: [{ id: `${request.id}->shared`, source: request.id, target: 'shared', type: 'rel' }],
+            };
+          },
+        },
+      ],
+      layouts,
+    });
+    const engine = engineWith({ seeds: { source: 'test' }, layout: { type: 'grid' } }, registry);
+    await engine.start();
+    await engine.expand('seed-0');
+    seed.rows = ['seed-0', 'shared'];
+    await engine.refresh();
+
+    seed.rows = ['seed-0'];
+    await engine.refresh();
+
+    expect(engine.store.hasNode('shared')).toBe(true);
+  });
+
+  it('does not re-open a node the user collapsed', async () => {
+    // Auto-expansion over the whole store on every refresh would make a collapsed node spring back
+    // the next time anything changed, which reads as the graph refusing to be closed.
+    const seed = mutableSeed(['seed-0']);
+    const registry = new PluginRegistry({ seeds: [seed], expanders: [fanoutExpander(2)], layouts });
+    const engine = engineWith(
+      { seeds: { source: 'test' }, layout: { type: 'grid' }, expansion: { defaultDepth: 1 } },
+      registry,
+    );
+    await engine.start();
+    expect(engine.store.nodeCount).toBe(3);
+
+    engine.collapse('seed-0');
+    expect(engine.store.nodeCount).toBe(1);
+
+    await engine.refresh();
+
+    expect(engine.store.nodeCount).toBe(1);
+  });
+
+  it('auto-expands rows that arrive, so a new node opens like the ones loaded with it', async () => {
+    const seed = mutableSeed(['seed-0']);
+    const registry = new PluginRegistry({ seeds: [seed], expanders: [fanoutExpander(2)], layouts });
+    const engine = engineWith(
+      { seeds: { source: 'test' }, layout: { type: 'grid' }, expansion: { defaultDepth: 1 } },
+      registry,
+    );
+    await engine.start();
+
+    seed.rows.push('seed-1');
+    await engine.refresh();
+
+    // 2 seeds, each with 2 children.
+    expect(engine.store.nodeCount).toBe(6);
+  });
+
+  it('collapses concurrent refreshes into one more pass rather than racing', async () => {
+    const seed = mutableSeed(['seed-0']);
+    let runs = 0;
+    const counted: SeedSource = {
+      id: 'test',
+      async seed() {
+        runs += 1;
+        return seed.seed();
+      },
+    };
+    const registry = new PluginRegistry({ seeds: [counted], layouts });
+    const engine = engineWith({ seeds: { source: 'test' }, layout: { type: 'grid' } }, registry);
+    await engine.start();
+    runs = 0;
+
+    await Promise.all([engine.refresh(), engine.refresh(), engine.refresh()]);
+
+    // One in flight plus one pass for everything that arrived while it ran — not three.
+    expect(runs).toBe(2);
   });
 });
 

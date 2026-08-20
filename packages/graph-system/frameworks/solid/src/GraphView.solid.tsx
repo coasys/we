@@ -228,6 +228,23 @@ export function GraphView(props: GraphViewProps) {
     return next;
   });
 
+  /*
+    A revision bump re-reads the data and merges it in.
+
+    Separate from the seeds effect above because the two mean different things: that one fires when
+    the graph *becomes a different graph* and resets, while this one fires when the same graph has
+    newer data behind it. Sharing a path would make creating a record throw away the arrangement the
+    user was working in, which is exactly the failure that made a board impossible to build on.
+
+    The first run only records the value — the seeds effect has already loaded, and refreshing on
+    mount would run every seed query twice.
+  */
+  createEffect((previous: string | undefined) => {
+    const next = String(props.revision ?? '');
+    if (previous !== undefined && previous !== next) void engine.refresh();
+    return next;
+  });
+
   // A layout swap rearranges what is already loaded rather than reloading it — the whole point of
   // offering several layouts is to see the same graph differently.
   createEffect((previous: string | undefined) => {

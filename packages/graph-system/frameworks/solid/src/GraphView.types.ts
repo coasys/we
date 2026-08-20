@@ -40,6 +40,21 @@ export interface GraphViewProps {
   seeds?: SeedSpec | SeedSpec[];
   /** How much opens automatically, how far a click reaches, and the node ceiling. */
   expansion?: ExpansionSpec;
+  /**
+   * Change this to re-run the seed queries and reconcile the result into the graph on screen.
+   *
+   * The graph reads its data once, when it mounts. That is right for a map you explore and wrong the
+   * moment the same page can *write* — create a record in a modal and nothing appears, because
+   * nothing told the graph to look again. Bumping this is that telling.
+   *
+   * A merge, not a reload: positions, pins, the selection, the camera and every open node survive, so
+   * the new record turns up as one more node among the ones the user arranged. Rows that have gone
+   * are dropped, unless an expansion is still holding them.
+   *
+   * Any value works — a counter, a timestamp, an id. Only the fact that it changed matters. The usual
+   * shape is a `$localState` number bumped from a create action's `onSuccess`.
+   */
+  revision?: number | string;
   /** Which layout arranges it. Defaults to `force`. */
   layout?: LayoutSpec;
   /** Ordered node style rules; later matches win per property. */
