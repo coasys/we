@@ -1066,7 +1066,7 @@ Common recipes:
 the relations between them. Picks up model types added later with no template change.
 - **Hierarchy** — `layout: { type: 'tree' }` with a `collection` expansion for nested content.
 - **Static diagram** — `seeds: { literal: true, nodes: [...], edges: [...] }` and no expansion at all.
-  Props: seeds?: SeedSpec | SeedSpec[], expansion?: ExpansionSpec, revision?: string | number | boolean, live?: boolean, layout?: LayoutSpec, nodeStyle?: NodeStyleRules, edgeStyle?: EdgeStyleRules, behaviours?: BehaviourSpec[], reified?: Record<string, { source: string; target: string; type?: string; }>, width?: string, height?: string, bg?: string, showStatus?: boolean, showControls?: boolean, controls?: string[], onNodeClick?: ((node: GraphNode) => void), onNodeDoubleClick?: ((node: GraphNode) => void), onEdgeClick?: ((edge: GraphEdge) => void), onSelectionChange?: ((ids: string[]) => void), onNodeDragEnd?: ((payload: { id: string; x: number; y: number; }) => void), host?: GraphHostBindings
+  Props: seeds?: SeedSpec | SeedSpec[], expansion?: ExpansionSpec, revision?: string | number | boolean, live?: boolean, layout?: LayoutSpec, nodeStyle?: NodeStyleRules, edgeStyle?: EdgeStyleRules, behaviours?: BehaviourSpec[], reified?: Record<string, { source: string; target: string; type?: string; sourceType?: string; targetType?: string; }>, width?: string, height?: string, bg?: string, showStatus?: boolean, showControls?: boolean, controls?: string[], onNodeClick?: ((node: GraphNode) => void), onNodeDoubleClick?: ((node: GraphNode) => void), onEdgeClick?: ((edge: GraphEdge) => void), onEdgeCreate?: ((payload: { source: GraphNode; target: GraphNode; }) => void), onSelectionChange?: ((ids: string[]) => void), onNodeDragEnd?: ((payload: { id: string; x: number; y: number; }) => void), host?: GraphHostBindings
 
 ---
 
@@ -1181,6 +1181,9 @@ Names resolvable inside GraphView props: seed sources (seeds.source), expanders 
 - `drag-node` — Drag a node to move it. Releases on drop by default so the layout stays in charge; pass { pin: true } on a board.
   - pin: boolean — Leave the node pinned where it was dropped.
   - Example: `{ "type": "drag-node", "options": { "pin": true } }`
+- `connect-nodes` — Drag from one node to another to connect them, emitting onEdgeCreate with both ends. Writes nothing — what a connection means is the template's decision, so it answers by creating whatever record it thinks the connection is. List it BEFORE drag-node: both claim a press on a node and the first wins. Arm it from a control the user can see rather than a modifier key, which is undiscoverable and absent on a touchscreen.
+  - armed: boolean — Whether the gesture is live. Default true. Disarmed, the press falls through to drag-node.
+  - Example: `"behaviours": [{ "type": "connect-nodes", "options": { "armed": { "$local": "connecting" } } }, "pan-zoom", "select", { "type": "drag-node" }]`
 - `expand-on-double-click` — Double-click a node to expand it. The usual gesture on a map you also want to select on.
   - direction: "in" | "out" | "both"
 - `expand-on-click` — Single click expands — for maps meant purely for exploring, where selection is not needed.

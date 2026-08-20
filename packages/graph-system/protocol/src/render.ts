@@ -92,6 +92,16 @@ export interface BehaviourContext {
   /** Screen ↔ world conversion, since pointer events arrive in screen space. */
   toWorld(at: Point): Point;
   toScreen(at: Point): Point;
+  /**
+   * Show a line being drawn from a node to a point in world space; `null` clears it.
+   *
+   * The one piece of *transient* scene state a behaviour is allowed to set, and it is here rather
+   * than owned by the behaviour because the renderer has to draw it and behaviours never touch the
+   * DOM. A drag with nothing following the pointer is the difference between a gesture and a guess:
+   * without it, connecting two nodes means pressing on one, moving across a graph that looks
+   * completely inert, and hoping.
+   */
+  drawConnection(from: string | null, to?: Point): void;
   /** Emit a graph event to the host — what a template binds `onNodeClick` and friends to. */
   emit(event: GraphEvent): void;
 }
@@ -104,6 +114,16 @@ export type GraphEvent =
   | { type: 'edgeClick'; edge: GraphEdge }
   | { type: 'selectionChange'; ids: string[] }
   | { type: 'nodeDragEnd'; node: GraphNode; position: Point }
+  /**
+   * The user drew a line from one node to another.
+   *
+   * Intent, never a mutation — the same rule `we-sortable` follows. What connecting two things
+   * *means* is the consumer's business and differs completely: a knowledge map creates a
+   * relationship record somebody can argue with, a board might draw an arrow that is only ever
+   * decoration, an outline would reparent. A gesture that wrote one of those would be useless to the
+   * others, and the engine has no write path anyway.
+   */
+  | { type: 'edgeCreate'; source: GraphNode; target: GraphNode }
   | { type: 'expanded'; id: string; added: number; total?: number }
   | { type: 'budgetReached'; limit: number };
 

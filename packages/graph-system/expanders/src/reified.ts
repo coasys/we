@@ -30,14 +30,36 @@ export interface ReifiedEdgeSpec {
   target: string;
   /** Edge type drawn. Defaults to the entity name. */
   type?: string;
+  /**
+   * Property naming the source's entity type, where the relation is untyped.
+   *
+   * A schema-declared relation names its target class, which is where an endpoint's type normally
+   * comes from — and it is exactly what a relationship somebody *drew* cannot have, since the point
+   * is connecting whatever two things a member found worth connecting. A node address needs the
+   * type, so the record carries it beside the reference and this names the property holding it.
+   */
+  sourceType?: string;
+  /** The same, for the target end. */
+  targetType?: string;
 }
 
 /** Entity name → how to read it as an edge. */
 export type ReifiedEdgeMap = Record<string, ReifiedEdgeSpec>;
 
-/** Flux's and interpretation's shape, ready to use — the two this engine will actually meet first. */
+/** The shapes this engine will actually meet: WE's own, interpretation's, and Flux's. */
 export const DEFAULT_REIFIED_EDGES: ReifiedEdgeMap = {
   SemanticRelationship: { source: 'expression', target: 'tag', type: 'tagged' },
+  // WE's own hand-drawn connection. Its `type` is deliberately not the entity name: what the edge
+  // *means* is whatever the author typed into `label`, and `rowToNode`'s label rules already pick
+  // that up — so the type stays a stable category ("this is a relationship somebody asserted") and
+  // the label carries the meaning.
+  Relationship: {
+    source: 'source',
+    target: 'target',
+    type: 'relates',
+    sourceType: 'sourceType',
+    targetType: 'targetType',
+  },
 };
 
 export function isReified(entity: string, map: ReifiedEdgeMap | undefined): boolean {
@@ -53,6 +75,13 @@ export function endpointRelations(entity: string, map: ReifiedEdgeMap): string[]
 interface Endpoint {
   node: GraphNode;
   id: string;
+}
+
+/** Read an endpoint's entity name off the row, where the spec says a property holds it. */
+function readType(row: Record<string, unknown>, property: string | undefined): string {
+  if (!property) return '';
+  const value = row[property];
+  return typeof value === 'string' ? value : '';
 }
 
 /** Resolve one endpoint, hydrated or as a bare id. Returns null when the relation is empty. */
@@ -103,8 +132,21 @@ export function reifiedEdgeFrom(
   const targetRelation = shape?.relations.find((r) => r.name === spec.target);
   if (!sourceRelation || !targetRelation) return null;
 
-  const from = endpoint(row[spec.source], sourceRelation.target, dataset, shapes, sourceId);
-  const to = endpoint(row[spec.target], targetRelation.target, dataset, shapes, sourceId);
+  /*
+    An endpoint's type comes from the relation's declared target, or — where the relation is
+    untyped — from a property on the row.
+
+    Both are needed and neither is a fallback for the other. A schema-declared relationship
+    (`SemanticRelationship.tag` → `Topic`) knows its target class and stores no copy of it, which is
+    right: the schema is the authority and a stored duplicate could drift from it. A drawn one has
+    no declared target at all, so the row is the only place the type can live.
+  */
+  const sourceEntity = sourceRelation.target || readType(row, spec.sourceType);
+  const targetEntity = targetRelation.target || readType(row, spec.targetType);
+  if (!sourceEntity || !targetEntity) return null;
+
+  const from = endpoint(row[spec.source], sourceEntity, dataset, shapes, sourceId);
+  const to = endpoint(row[spec.target], targetEntity, dataset, shapes, sourceId);
   if (!from || !to) return null;
 
   // Scalars only — the edge's own data, which is the entire reason the relationship was reified.

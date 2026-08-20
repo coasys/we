@@ -1,7 +1,7 @@
 {
   "name": "@we/graph-solid",
   "version": "0.1.0",
-  "description": "SolidJS renderer for the graph engine \u2014 DOM nodes, SVG edges, behaviour wiring",
+  "description": "SolidJS renderer for the graph engine — DOM nodes, SVG edges, behaviour wiring",
   "license": "MIT",
   "type": "module",
   "scripts": {

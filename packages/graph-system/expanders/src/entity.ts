@@ -193,9 +193,29 @@ async function expandBackward({
   nodes,
   edges,
 }: Work & { shapes: EntityShape[] }): Promise<void> {
+  /*
+    Which relations could be pointing at this node.
+
+    A declared target is the ordinary answer: a relation that names our type might hold us, and one
+    that names another type cannot. An **untyped** relation could hold anything, so it is always a
+    candidate — but only where the class is reified, and that restriction is doing real work.
+
+    Reification is a declaration: the template has said this class *is* an edge and named the two
+    relations that are its ends. Following those backwards is the only way a drawn connection is
+    ever found, since the whole point is that it can join any two records and so declares no target.
+
+    An untyped relation on an ordinary class carries no such statement. `CollectionBlock.children`
+    is untyped for its own reasons, and treating it as a candidate here would make every node in
+    the graph run a reverse scan for every container in the space — for an answer the `collection`
+    expander already gives, in the direction it was built for.
+  */
   const candidates = shapes.flatMap((source) =>
     source.relations
-      .filter((relation) => relation.target === address.type && wanted(relation.name, request, options))
+      .filter((relation) => {
+        if (!wanted(relation.name, request, options)) return false;
+        if (relation.target) return relation.target === address.type;
+        return isReified(source.name, options.reified);
+      })
       .map((relation) => ({ source, relation })),
   );
 

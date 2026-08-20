@@ -1,7 +1,7 @@
 {
   "name": "@we/graph-core",
   "version": "0.1.0",
-  "description": "The graph engine \u2014 store, expansion state, viewport, hit-testing and styling, with no framework or backend",
+  "description": "The graph engine — store, expansion state, viewport, hit-testing and styling, with no framework or backend",
   "license": "MIT",
   "type": "module",
   "scripts": {

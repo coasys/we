@@ -182,6 +182,86 @@ export function selectBehaviour(rawOptions?: Record<string, unknown>): Behaviour
   };
 }
 
+export interface ConnectNodesOptions {
+  /**
+   * Whether the gesture is live. Defaults to true.
+   *
+   * An option rather than a modifier key, because the modifiers are taken and the ones left do not
+   * travel. Shift already extends the selection; `PointerInput` carries no `ctrlKey`; and `metaKey`
+   * is Command on a Mac and Super on Linux, where it is usually the window manager's. More
+   * importantly a modifier-only gesture is invisible — nobody discovers it, and a touchscreen has
+   * no modifiers at all.
+   *
+   * So a template arms it from its own control, which also gives the user somewhere to see that
+   * dragging currently means connecting rather than moving. Disarmed, this claims nothing and the
+   * press falls through to whatever handles nodes next — normally `drag-node`.
+   */
+  armed?: boolean;
+}
+
+/**
+ * Drag from one node to another to connect them.
+ *
+ * Emits `edgeCreate` and writes nothing. What connecting two things *means* is the consumer's —
+ * a knowledge map creates a relationship record, an outline would reparent — and a behaviour that
+ * assumed one would be useless to the others. The same rule `we-sortable` follows.
+ *
+ * Must be listed **before** `drag-node`: both claim a press on a node, and whichever comes first
+ * wins. After it, arming the gesture would do nothing at all and look like a broken toggle.
+ */
+export function connectNodesBehaviour(rawOptions?: Record<string, unknown>): Behaviour {
+  const options = { armed: true, ...(rawOptions as ConnectNodesOptions) };
+  let from: string | null = null;
+
+  /** End the gesture and take down the line, whatever the outcome. */
+  function reset(ctx: BehaviourContext): void {
+    from = null;
+    ctx.drawConnection(null);
+  }
+
+  return {
+    id: 'connect-nodes',
+    description: 'Drag from one node to another to connect them.',
+    onPointerDown(input, ctx) {
+      if (!options.armed) return;
+      const [hit] = ctx.hitTest(ctx.toWorld(input.at));
+      if (!hit) return;
+      from = hit;
+      return true;
+    },
+    onPointerMove(input, ctx) {
+      if (!from) return;
+      // Same guard as the drag behaviour: no button held means no gesture, whatever this thinks.
+      // Without it a dropped pointer-up leaves a line following the cursor around the canvas.
+      if (input.buttons === 0) {
+        reset(ctx);
+        return;
+      }
+      ctx.drawConnection(from, ctx.toWorld(input.at));
+      return true;
+    },
+    onPointerCancel(_input, ctx) {
+      reset(ctx);
+    },
+    onPointerUp(input, ctx) {
+      if (!from) return;
+      const source = from;
+      const [target] = ctx.hitTest(ctx.toWorld(input.at));
+      reset(ctx);
+      // A node cannot be connected to itself, and a release on empty canvas is an abandoned
+      // gesture rather than a connection to nothing. Both end quietly: the line goes and no event
+      // is emitted, so nothing opens a dialog about a connection the user did not make.
+      if (!target || target === source) return;
+      ctx.emit({
+        type: 'edgeCreate',
+        source: { id: source, kind: 'entity', type: '' },
+        target: { id: target, kind: 'entity', type: '' },
+      });
+      return true;
+    },
+  };
+}
+
 /** Double-click a node to open or close it — the gesture that drives resolution. */
 export function expandOnDoubleClickBehaviour(rawOptions?: Record<string, unknown>): Behaviour {
   const options = (rawOptions ?? {}) as { direction?: 'in' | 'out' | 'both' };
@@ -223,6 +303,7 @@ export function defaultBehaviours() {
   return {
     'pan-zoom': panZoomBehaviour,
     'drag-node': dragNodeBehaviour,
+    'connect-nodes': connectNodesBehaviour,
     select: selectBehaviour,
     'expand-on-click': expandOnClickBehaviour,
     'expand-on-double-click': expandOnDoubleClickBehaviour,

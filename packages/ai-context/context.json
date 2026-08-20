@@ -3485,7 +3485,7 @@
         },
         {
           "name": "reified",
-          "type": "Record<string, { source: string; target: string; type?: string; }>",
+          "type": "Record<string, { source: string; target: string; type?: string; sourceType?: string; targetType?: string; }>",
           "optional": true
         },
         {
@@ -3531,6 +3531,11 @@
         {
           "name": "onEdgeClick",
           "type": "((edge: GraphEdge) => void)",
+          "optional": true
+        },
+        {
+          "name": "onEdgeCreate",
+          "type": "((payload: { source: GraphNode; target: GraphNode; }) => void)",
           "optional": true
         },
         {

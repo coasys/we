@@ -1,11 +1,20 @@
 import type { BehaviourContext, PointerInput } from '@we/graph-protocol';
 import { describe, expect, it, vi } from 'vitest';
 
-import { dispatchPointer, dragNodeBehaviour, panZoomBehaviour, selectBehaviour } from './behaviours';
+import {
+  connectNodesBehaviour,
+  dispatchPointer,
+  dragNodeBehaviour,
+  panZoomBehaviour,
+  selectBehaviour,
+} from './behaviours';
 
 /** A behaviour context whose world is one node ('n1') at (100, 100) with radius 20. */
 function fakeContext(overrides: Partial<BehaviourContext> = {}): BehaviourContext {
-  const positions = new Map([['n1', { x: 100, y: 100 }]]);
+  const positions = new Map([
+    ['n1', { x: 100, y: 100 }],
+    ['n2', { x: 300, y: 100 }],
+  ]);
   // Annotated and merged rather than cast. Spreading a `Partial` into the literal makes every
   // property possibly-undefined, which is what the `as unknown as` here used to paper over — and
   // that cast also destroyed the contextual typing, so every callback parameter below was an
@@ -33,6 +42,7 @@ function fakeContext(overrides: Partial<BehaviourContext> = {}): BehaviourContex
     selection: () => [],
     collapse: vi.fn(),
     toScreen: (p) => p,
+    drawConnection: vi.fn(),
   };
   return Object.assign(base, overrides);
 }
@@ -147,6 +157,92 @@ describe('selectBehaviour', () => {
     behaviour.onPointerDown!(input(100, 100), ctx);
     behaviour.onPointerUp!(input(160, 100), ctx); // travelled 60px
     expect(ctx.select).not.toHaveBeenCalled();
+  });
+});
+
+describe('connectNodesBehaviour', () => {
+  it('emits both ends when a drag lands on another node', () => {
+    const ctx = fakeContext();
+    const behaviour = connectNodesBehaviour();
+
+    behaviour.onPointerDown?.(input(100, 100), ctx);
+    behaviour.onPointerMove?.(input(200, 100), ctx);
+    behaviour.onPointerUp?.(input(300, 100), ctx);
+
+    expect(ctx.emit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'edgeCreate',
+        source: expect.objectContaining({ id: 'n1' }),
+        target: expect.objectContaining({ id: 'n2' }),
+      }),
+    );
+  });
+
+  it('follows the pointer while dragging, and takes the line down at the end', () => {
+    // A drag with nothing following the pointer is the difference between a gesture and a guess.
+    const ctx = fakeContext();
+    const behaviour = connectNodesBehaviour();
+
+    behaviour.onPointerDown?.(input(100, 100), ctx);
+    behaviour.onPointerMove?.(input(220, 140), ctx);
+    expect(ctx.drawConnection).toHaveBeenCalledWith('n1', { x: 220, y: 140 });
+
+    behaviour.onPointerUp?.(input(300, 100), ctx);
+    expect(ctx.drawConnection).toHaveBeenLastCalledWith(null);
+  });
+
+  it('says nothing when the drag ends on empty canvas', () => {
+    // An abandoned gesture must not open a dialog about a connection nobody made.
+    const ctx = fakeContext();
+    const behaviour = connectNodesBehaviour();
+
+    behaviour.onPointerDown?.(input(100, 100), ctx);
+    behaviour.onPointerUp?.(input(700, 700), ctx);
+
+    expect(ctx.emit).not.toHaveBeenCalled();
+    expect(ctx.drawConnection).toHaveBeenLastCalledWith(null);
+  });
+
+  it('refuses to connect a node to itself', () => {
+    const ctx = fakeContext();
+    const behaviour = connectNodesBehaviour();
+
+    behaviour.onPointerDown?.(input(100, 100), ctx);
+    behaviour.onPointerUp?.(input(105, 105), ctx);
+
+    expect(ctx.emit).not.toHaveBeenCalled();
+  });
+
+  it('claims nothing when disarmed, so the press reaches drag-node', () => {
+    const ctx = fakeContext();
+    const behaviour = connectNodesBehaviour({ armed: false });
+
+    expect(behaviour.onPointerDown?.(input(100, 100), ctx)).toBeUndefined();
+  });
+
+  it('drops the gesture when no button is held', () => {
+    // A dropped pointer-up otherwise leaves a line following the cursor around the canvas.
+    const ctx = fakeContext();
+    const behaviour = connectNodesBehaviour();
+
+    behaviour.onPointerDown?.(input(100, 100), ctx);
+    behaviour.onPointerMove?.(input(200, 100, { buttons: 0 }), ctx);
+    behaviour.onPointerUp?.(input(300, 100), ctx);
+
+    expect(ctx.emit).not.toHaveBeenCalled();
+  });
+
+  it('takes the press before drag-node, so an armed graph connects rather than moves', () => {
+    // Ordering is the whole of arming: listed after drag-node the toggle would do nothing at all.
+    const ctx = fakeContext();
+    const connect = connectNodesBehaviour();
+    const drag = dragNodeBehaviour();
+
+    dispatchPointer([connect, drag], 'onPointerDown', input(100, 100), ctx);
+    dispatchPointer([connect, drag], 'onPointerMove', input(200, 100), ctx);
+
+    expect(ctx.drawConnection).toHaveBeenCalled();
+    expect(ctx.pin).not.toHaveBeenCalled();
   });
 });
 

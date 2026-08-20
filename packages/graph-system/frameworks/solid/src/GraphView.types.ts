@@ -82,8 +82,12 @@ export interface GraphViewProps {
    * work and Flux already produce; pass `{}` to switch it off.
    *
    * Read once when the graph mounts, since expanders are constructed with it.
+   *
+   * `sourceType`/`targetType` name properties holding each end's entity type, for a relationship
+   * whose endpoints are untyped — a connection somebody drew can point at anything, so there is no
+   * declared target class to read the type from.
    */
-  reified?: Record<string, { source: string; target: string; type?: string }>;
+  reified?: Record<string, { source: string; target: string; type?: string; sourceType?: string; targetType?: string }>;
 
   width?: string;
   height?: string;
@@ -104,6 +108,15 @@ export interface GraphViewProps {
   onNodeClick?: (node: GraphNode) => void;
   onNodeDoubleClick?: (node: GraphNode) => void;
   onEdgeClick?: (edge: GraphEdge) => void;
+  /**
+   * The user dragged a line from one node to another, with the `connect-nodes` behaviour armed.
+   *
+   * Intent, not a mutation: the graph has no write path, and what connecting two things means
+   * differs completely between a knowledge map, a board and an outline. A template answers by
+   * creating whatever record it thinks the connection is — for WE's own knowledge map, a
+   * `Relationship`, whose fields are the two ends' ids and types.
+   */
+  onEdgeCreate?: (payload: { source: GraphNode; target: GraphNode }) => void;
   onSelectionChange?: (ids: string[]) => void;
   /** Fired when a drag ends, with the world position — what a board persists. */
   onNodeDragEnd?: (payload: { id: string; x: number; y: number }) => void;

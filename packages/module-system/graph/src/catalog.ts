@@ -262,6 +262,20 @@ export const GRAPH_PLUGIN_CATALOG: PluginCatalog = {
       example: `{ "type": "drag-node", "options": { "pin": true } }`,
     },
     {
+      id: 'connect-nodes',
+      category: 'behaviour',
+      description:
+        "Drag from one node to another to connect them, emitting onEdgeCreate with both ends. Writes nothing — what a connection means is the template's decision, so it answers by creating whatever record it thinks the connection is. List it BEFORE drag-node: both claim a press on a node and the first wins. Arm it from a control the user can see rather than a modifier key, which is undiscoverable and absent on a touchscreen.",
+      options: [
+        {
+          name: 'armed',
+          type: 'boolean',
+          description: 'Whether the gesture is live. Default true. Disarmed, the press falls through to drag-node.',
+        },
+      ],
+      example: `"behaviours": [{ "type": "connect-nodes", "options": { "armed": { "$local": "connecting" } } }, "pan-zoom", "select", { "type": "drag-node" }]`,
+    },
+    {
       id: 'expand-on-double-click',
       category: 'behaviour',
       description: 'Double-click a node to expand it. The usual gesture on a map you also want to select on.',

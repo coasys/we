@@ -41,7 +41,22 @@ export interface EngineOptions {
 }
 
 /** What changed, so a renderer can decide how much to redo. */
-export type ChangeReason = 'graph' | 'positions' | 'viewport' | 'selection' | 'status';
+export type ChangeReason =
+  | 'graph'
+  | 'positions'
+  | 'viewport'
+  | 'selection'
+  | 'status'
+  /**
+   * The line being drawn during a connect gesture moved.
+   *
+   * Its own reason rather than `positions`, which is the channel it looks most like. `positions`
+   * legitimately re-runs the node and edge projections — the nodes have moved — and this changes
+   * one straight segment while every node stays exactly where it was. Sharing the channel would
+   * make dragging a connection across a settled graph re-derive the whole scene on every pointer
+   * move, which is the most expensive way to draw a line anybody has thought of.
+   */
+  | 'connection';
 
 export interface EngineStatus {
   loading: boolean;
@@ -152,6 +167,8 @@ export class GraphEngine {
   private edgeGeometry = new Map<string, EdgeGeometry>();
   /** Bounds per edge, so picking rejects most edges without measuring them. */
   private edgeBoxes = new Map<string, { minX: number; minY: number; maxX: number; maxY: number }>();
+  /** The connect gesture in progress — see {@link getPendingConnection}. */
+  private pendingConnection: { from: string; to: Point } | null = null;
 
   constructor(options: EngineOptions) {
     this.spec = options.spec;
@@ -1084,8 +1101,29 @@ export class GraphEngine {
       },
       toWorld: (at) => this.viewport.toWorld(at),
       toScreen: (at) => this.viewport.toScreen(at),
+      drawConnection: (from, to) => this.drawConnection(from, to),
       emit: (event) => this.emit(event),
     };
+  }
+
+  /**
+   * The line currently being drawn, or null.
+   *
+   * Read by the renderer each frame of a connect gesture. Not an edge in the store, deliberately:
+   * it stands for nothing yet, it must not be laid out, routed, hit-tested, counted against the
+   * budget or seen by a metric — and putting it there would mean every one of those had to learn to
+   * skip it.
+   */
+  getPendingConnection(): { from: Point; to: Point } | null {
+    if (!this.pendingConnection) return null;
+    const from = this.positions.get(this.pendingConnection.from);
+    if (!from) return null;
+    return { from: { x: from.x, y: from.y }, to: this.pendingConnection.to };
+  }
+
+  private drawConnection(from: string | null, to?: Point): void {
+    this.pendingConnection = from && to ? { from, to } : null;
+    this.notify('connection');
   }
 
   emit(event: GraphEvent): void {

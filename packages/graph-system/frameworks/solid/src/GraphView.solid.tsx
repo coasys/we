@@ -117,6 +117,7 @@ export function GraphView(props: GraphViewProps) {
   const [version, setVersion] = createSignal(0);
   const [viewportVersion, setViewportVersion] = createSignal(0);
   const [statusVersion, setStatusVersion] = createSignal(0);
+  const [connectionVersion, setConnectionVersion] = createSignal(0);
   const [hovered, setHovered] = createSignal<string | null>(null);
 
   // Read once: expanders are constructed with their options, so changing `reified` needs a remount —
@@ -167,6 +168,14 @@ export function GraphView(props: GraphViewProps) {
           if (edge) props.onEdgeClick?.(edge);
           break;
         }
+        case 'edgeCreate': {
+          // Both ends resolved from the store, as `nodeClick` does: the behaviour only ever held
+          // addresses, and a template answering this needs each end's type to write the record.
+          const source = engine.store.node(event.source.id);
+          const target = engine.store.node(event.target.id);
+          if (source && target) props.onEdgeCreate?.({ source, target });
+          break;
+        }
         case 'selectionChange':
           props.onSelectionChange?.(event.ids);
           break;
@@ -183,6 +192,7 @@ export function GraphView(props: GraphViewProps) {
     batch(() => {
       if (reason === 'viewport') setViewportVersion((n) => n + 1);
       else if (reason === 'status') setStatusVersion((n) => n + 1);
+      else if (reason === 'connection') setConnectionVersion((n) => n + 1);
       else setVersion((n) => n + 1);
     });
   });
@@ -331,6 +341,19 @@ export function GraphView(props: GraphViewProps) {
       const gap = visual.arrow === 'none' ? 0 : ARROW_LENGTH * visual.width;
       return [{ edge, route, path: pathFrom(route, gap), visual }];
     });
+  });
+
+  /*
+    The connect gesture's line, tracked on the positions channel.
+
+    Its own channel rather than the one positions use: the line moves with the pointer, and
+    re-running the node and edge projections on every pointer move — to draw one straight segment
+    while every node stays exactly where it was — would make the gesture the most expensive thing
+    on the canvas.
+  */
+  const pending = createMemo(() => {
+    connectionVersion();
+    return engine.getPendingConnection();
   });
 
   const transform = createMemo(() => {
@@ -488,6 +511,28 @@ export function GraphView(props: GraphViewProps) {
               </g>
             )}
           </For>
+          {/*
+            The line being drawn during a connect gesture.
+
+            Dashed, so it reads as a proposal rather than as an edge that already exists, and drawn
+            straight rather than through the curve machinery: it has no endpoints to bow apart from
+            and no direction worth stating until it lands somewhere. It is not in the store — see
+            `getPendingConnection` — so nothing lays it out, routes it, or counts it.
+          */}
+          <Show when={pending()}>
+            {(line) => (
+              <line
+                x1={line().from.x}
+                y1={line().from.y}
+                x2={line().to.x}
+                y2={line().to.y}
+                stroke="var(--we-color-primary-500)"
+                stroke-width="2"
+                stroke-dasharray="6 4"
+                vector-effect="non-scaling-stroke"
+              />
+            )}
+          </Show>
           <defs>
             <marker
               id="we-graph-arrow"

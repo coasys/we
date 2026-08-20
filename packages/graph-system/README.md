@@ -7,21 +7,21 @@ diagrams — and, later, free-positioned boards. One engine, configured as data.
 
 "Show the whole perspective", "map these query results", "open this collection's children", "zoom a
 model out into its properties" and "explore spaces and neighbourhoods" are not five features. They
-are one: **a lazily-explored frontier over a heterogeneous source space**, where each *kind* of node
+are one: **a lazily-explored frontier over a heterogeneous source space**, where each _kind_ of node
 knows what is adjacent to it. An **expander** answers that question for the kinds it claims, and the
 engine does the rest — dedup, expansion state, collapse, layout, rendering. A module adding a new
 source of nodes writes an expander and nothing in the core changes.
 
 ## Packages
 
-| Package | Role | Depends on |
-|---|---|---|
-| `@we/graph-protocol` | Contracts only — addressing, expanders, layouts, renderers, behaviours, style rules, the JSON spec. Erases at build time. | nothing |
-| `@we/graph-core` | The engine: store, expansion state, viewport, spatial index, styling, behaviours. No framework, no backend. | protocol |
-| `@we/graph-expanders` | First-party expanders and seed sources. | protocol |
-| `@we/graph-layouts` | Force (d3-force), tree, radial, grid, manual. | protocol, d3-force |
-| `@we/graph-solid` | The Solid adapter — DOM nodes, SVG edges, pointer plumbing. | core, expanders, layouts |
-| `@we/module-graph` | The feature module: placeable fragments and the plugin catalog. | module-shared, schema-shared |
+| Package               | Role                                                                                                                      | Depends on                   |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------- | ---------------------------- |
+| `@we/graph-protocol`  | Contracts only — addressing, expanders, layouts, renderers, behaviours, style rules, the JSON spec. Erases at build time. | nothing                      |
+| `@we/graph-core`      | The engine: store, expansion state, viewport, spatial index, styling, behaviours. No framework, no backend.               | protocol                     |
+| `@we/graph-expanders` | First-party expanders and seed sources.                                                                                   | protocol                     |
+| `@we/graph-layouts`   | Force (d3-force), tree, radial, grid, manual.                                                                             | protocol, d3-force           |
+| `@we/graph-solid`     | The Solid adapter — DOM nodes, SVG edges, pointer plumbing.                                                               | core, expanders, layouts     |
+| `@we/module-graph`    | The feature module: placeable fragments and the plugin catalog.                                                           | module-shared, schema-shared |
 
 Data reaches the graph through a three-function port the host supplies
 (`query` / `defaultDataset` / `models`), bound in `app-shell`'s `GraphHost`. Nothing in these packages
@@ -80,7 +80,7 @@ difference between "not here yet" and "nothing there", and without it every expa
 
 - **Boards.** The engine supports manual layout and a board is the obvious next mode, but a freeform
   canvas is its own project — undo, marquee, snapping, z-order, text editing on a transformed surface
-   — and it needs durable entities this module does not yet declare.
+  — and it needs durable entities this module does not yet declare.
 - **A dense canvas renderer.** The node-renderer registry and core-owned hit-testing exist so it can
   be added without touching the plugins; nothing needs it yet.
 - **Graph algorithms.** Community detection and centrality are what `MetricRef` points at. They should
