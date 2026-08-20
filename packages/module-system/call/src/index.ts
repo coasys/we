@@ -24,6 +24,16 @@
  * - **No camera *and* screen at once.** Sharing replaces the camera track — see `media.ts`.
  */
 import { defineModule, type ModuleStoreDeps } from '@we/module-shared';
+/*
+  A compile-time dependency, and the only kind a module may have on a shape.
+
+  `@we/schema-kit` is the portable half of the fragment kit — nothing in it names a store, so it
+  carries no assumption about the deployment this module lands in. The functions run during this
+  package's build and what ships in `dist` is the data they returned, so there is no runtime
+  coupling, nothing for the host to provide, and no version for the two to agree on. That is why it
+  is a devDependency here rather than a peer, unlike `@we/module-shared` and `@we/schema-shared`.
+*/
+import { peopleTooltip } from '@we/schema-kit';
 import { type SchemaNode } from '@we/schema-shared';
 
 import { createCallStore } from './store';
@@ -528,19 +538,37 @@ const stage: SchemaNode = {
  * padding it holds for a label — 16px a side at `md` — so a 24px glyph sat in a 56px box, and three
  * toggles in a row read as three wide slabs rather than a set of buttons. Square sizes both axes
  * from the component height instead, which is also what the module rail's launchers do.
+ *
+ * The tooltip is required rather than optional, and names the **move** rather than the state — "Mute"
+ * while unmuted, not "Unmuted". An icon-only control has no other way to say what it does, and a
+ * microphone with a line through it is genuinely ambiguous about whether it reports a state or offers
+ * one. The show/hide toggle beside these already phrased its tooltip that way; this makes the whole
+ * bar agree.
  */
-function mediaToggle(opts: { on: string; off: string; enabled: string; action: string; danger?: boolean }): SchemaNode {
+function mediaToggle(opts: {
+  on: string;
+  off: string;
+  enabled: string;
+  action: string;
+  /** What pressing it does while it is on, and while it is off. */
+  tip: { on: string; off: string };
+}): SchemaNode {
+  const toggled = (then: string, otherwise: string) => ({
+    $if: { condition: { $store: opts.enabled }, then, else: otherwise },
+  });
+
   return {
-    type: 'we-button',
-    props: {
-      square: true,
-      variant: { $if: { condition: { $store: opts.enabled }, then: 'secondary', else: 'ghost' } },
-      onClick: { $action: opts.action },
-    },
+    type: 'we-tooltip',
+    props: { title: toggled(opts.tip.on, opts.tip.off), placement: 'bottom' },
     children: [
       {
-        type: 'we-icon',
-        props: { name: { $if: { condition: { $store: opts.enabled }, then: opts.on, else: opts.off } } },
+        type: 'we-button',
+        props: {
+          square: true,
+          variant: toggled('secondary', 'ghost'),
+          onClick: { $action: opts.action },
+        },
+        children: [{ type: 'we-icon', props: { name: toggled(opts.on, opts.off) } }],
       },
     ],
   };
@@ -593,14 +621,85 @@ const placementMenu: SchemaNode = {
 };
 
 /**
+ * Who is here — a readout, not a control.
+ *
+ * The count used to be a number sitting inside the show/hide button, which made that button the one
+ * thing in the bar that could not be square and put a fact inside a switch: the digit changed when
+ * somebody joined, which looks like the control changing state.
+ *
+ * Separated, it also says the same thing the same way in both halves of this file. The bar you see
+ * when you are *not* in the call is faces and "3 in a call"; this is faces and "3 in the call". One
+ * sentence, two tenses.
+ *
+ * Faces come from `tileFaces` rather than from the roster, so a profile arriving fills them in
+ * without touching `tiles` — which is what keeps a late avatar from remounting somebody's video.
+ * Three, because past that the stack is a smudge at this size and the number is doing the work.
+ *
+ * ## The roster on hover
+ *
+ * Three faces and a number answer "how many"; only the list answers "who". It hangs off the whole
+ * readout rather than off the avatars, because what a reader points at is the faces *and* the words
+ * beside them — a tooltip owned by the stack alone produces nothing when you hover "5 in the call".
+ *
+ * It lists everyone, not the three that were drawn: the people the stack had to hide are exactly the
+ * ones there is no other way to find out about.
+ *
+ * `peopleTooltip` is the kit's, not this module's. It was written out by hand here first — the kit
+ * lived under `templates/` and `modules → templates` is the sideways edge the dependency rules
+ * forbid — and that copy is what made the packaging wrong rather than the module unusual, so the
+ * portable tier moved to `@we/schema-kit` and this reaches for it like a template would.
+ */
+const participants: SchemaNode = peopleTooltip({
+  items: { $store: 'modules.call.tileFaces' },
+  image: '$person.image',
+  hash: '$person.hash',
+  name: '$person.name',
+  placement: 'bottom',
+  children: [
+    {
+      type: 'Row',
+      props: { gap: '200', ay: 'center', pl: '100' },
+      children: [
+        {
+          type: 'AvatarStack',
+          props: {
+            avatars: {
+              $map: {
+                items: { $store: 'modules.call.tileFaces' },
+                // `hash` always, never as a fallback for a missing picture: it seeds a generated
+                // avatar that is stable per agent, so two people whose profiles have not arrived are
+                // still two distinguishable faces rather than the same grey glyph twice.
+                select: { image: '$item.image', hash: '$item.hash', initials: '$item.name' },
+              },
+            },
+            max: 3,
+            size: 'sm',
+            // The faces overlap, so each needs the surface behind it to show between them.
+            ring: '0 0 0 2px var(--we-ring-color)',
+          },
+        },
+        {
+          type: 'we-text',
+          props: { color: 'neutral-600' },
+          children: [
+            { type: 'we-number', props: { value: { $count: { items: { $store: 'modules.call.tiles' } } } } },
+            ' in the call',
+          ],
+        },
+      ],
+    },
+  ],
+});
+
+/**
  * Show the video, or put it away.
  *
  * The other half of what one button used to do alone, and the reason that button could not have a
  * clear icon: it was cycling visibility, placement and size together, so a caret pointed in a
  * direction that meant nothing once the panel was docked to the right.
  *
- * Reads as "N people — click to see them", and follows the same active-variant convention as the
- * mute and camera toggles beside it, so the bar has one idea of what "on" looks like.
+ * Follows the same active-variant convention as the mute and camera toggles beside it, so the bar
+ * has one idea of what "on" looks like.
  */
 const participantsToggle: SchemaNode = {
   type: 'we-tooltip',
@@ -612,6 +711,7 @@ const participantsToggle: SchemaNode = {
     {
       type: 'we-button',
       props: {
+        square: true,
         variant: { $if: { condition: { $store: 'modules.call.stageOpen' }, then: 'secondary', else: 'ghost' } },
         onClick: { $action: 'modules.call.toggleStage' },
       },
@@ -620,17 +720,20 @@ const participantsToggle: SchemaNode = {
           type: 'we-icon',
           props: {
             /**
-             * The action, not the subject.
+             * The subject, with the state carried by the variant.
              *
-             * A person glyph says what the button is *about* and nothing about what pressing it
-             * does — and since the count beside it already names the subject, the icon was spending
-             * the only other slot repeating it. Expanding and contracting arrows say the one thing
-             * left to say, and swap so the button always shows the move it is offering.
+             * This was `arrows-out`/`arrows-in` — the action rather than the subject — on the
+             * grounds that the count beside it already named what the button was about. The count
+             * is its own readout now, so the arrows were left saying "expand" with no stated object
+             * in a bar where two other buttons also open things.
+             *
+             * One glyph rather than a pair, like the screen-share button: `secondary` versus `ghost`
+             * says whether the video is showing, which is the same answer every other toggle here
+             * gives, and the tooltip names the move.
              */
-            name: { $if: { condition: { $store: 'modules.call.stageOpen' }, then: 'arrows-in', else: 'arrows-out' } },
+            name: 'video-conference',
           },
         },
-        { type: 'we-number', props: { value: { $count: { items: { $store: 'modules.call.tiles' } } } } },
       ],
     },
   ],
@@ -724,18 +827,25 @@ const bar: SchemaNode = {
           off: 'microphone-slash',
           enabled: 'modules.call.media.audioEnabled',
           action: 'modules.call.toggleAudio',
+          tip: { on: 'Mute', off: 'Unmute' },
         }),
         mediaToggle({
           on: 'video-camera',
           off: 'video-camera-slash',
           enabled: 'modules.call.media.videoEnabled',
           action: 'modules.call.toggleVideo',
+          tip: { on: 'Turn camera off', off: 'Turn camera on' },
         }),
         mediaToggle({
           on: 'monitor',
-          off: 'monitor',
+          // The only toggle here whose two states are not one glyph and its slash, because sharing
+          // has no "off" — you are either sending a screen or you are not sending anything. The
+          // arrow is the offer to send one; a bare monitor is the screen already going out. Both
+          // glyphs were `monitor` before, which left the variant as the only thing saying which.
+          off: 'monitor-arrow-up',
           enabled: 'modules.call.media.screenShareEnabled',
           action: 'modules.call.toggleScreenShare',
+          tip: { on: 'Stop sharing your screen', off: 'Share your screen' },
         }),
         {
           // Where other modules put their call controls — see `anchors` below. The marker is replaced
@@ -748,13 +858,23 @@ const bar: SchemaNode = {
         // a rule drawn down the whole bar. It moved with the buttons: at 20px against `sm` it was
         // that already, and left alone against `md` it would have been half.
         { type: 'we-divider', props: { orientation: 'vertical', height: '26px' } },
+        // What the call *is*, then what to do about looking at it. The divider separates the controls
+        // over your own devices from everything about the call itself, which is why the readout goes
+        // on this side of it rather than beside the microphone.
+        participants,
         participantsToggle,
         placementMenu,
         {
-          // Square like the toggles at the other end, being an icon and nothing else.
-          type: 'we-button',
-          props: { square: true, variant: 'danger', onClick: { $action: 'modules.call.leave' } },
-          children: [{ type: 'we-icon', props: { name: 'phone-x' } }],
+          type: 'we-tooltip',
+          props: { title: 'Leave the call', placement: 'bottom' },
+          children: [
+            {
+              // Square like the toggles at the other end, being an icon and nothing else.
+              type: 'we-button',
+              props: { square: true, variant: 'danger', onClick: { $action: 'modules.call.leave' } },
+              children: [{ type: 'we-icon', props: { name: 'phone-x' } }],
+            },
+          ],
         },
       ],
     },

@@ -1,7 +1,5 @@
+import { cardList, cardShell, emptyState } from '@we/schema-kit';
 import type { SchemaNode, SchemaProp } from '@we/schema-shared';
-
-import { cardList, cardShell } from '../lists/cards.ts';
-import { emptyState } from '../states/emptyState.ts';
 
 export interface InstalledListOptions {
   /** What the space holds — `Template` or `Theme`. */

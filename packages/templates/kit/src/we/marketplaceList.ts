@@ -1,6 +1,5 @@
+import { gatePrompt } from '@we/schema-kit';
 import type { SchemaNode, SchemaProp } from '@we/schema-shared';
-
-import { gatePrompt } from '../states/gatePrompt.ts';
 
 export interface MarketplaceListOptions {
   /** What to list out of the marketplace dataset — `Template` or `Theme`. */

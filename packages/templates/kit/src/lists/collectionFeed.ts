@@ -23,10 +23,9 @@
  * an empty state rendered without gating asserts "nothing here" about a list that has not answered
  * yet. Same reasoning as `cardList`'s skeleton branch.
  */
+import type { AnchorId } from '@we/schema-kit';
+import { loadMore } from '@we/schema-kit';
 import type { QueryStateField, SchemaNode } from '@we/schema-shared';
-
-import type { AnchorId } from '../types.ts';
-import { loadMore } from './loadMore.ts';
 
 export interface CollectionFeedOptions {
   /** `CollectionBlock.kind` to list — `'message'`, `'post'`, `'channel'`, whatever the template minted. */

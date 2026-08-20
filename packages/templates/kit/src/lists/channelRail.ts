@@ -24,9 +24,8 @@
  * The newest child comes from a `$latest` projection on the query rather than a second fetch — one
  * query answers the whole rail, including the dots.
  */
+import type { AnchorId } from '@we/schema-kit';
 import type { SchemaNode } from '@we/schema-shared';
-
-import type { AnchorId } from '../types.ts';
 
 export interface ChannelRailOptions {
   /** Route to navigate to, with `:id` replaced by the channel id. E.g. `'/channel/'`. */

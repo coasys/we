@@ -11,17 +11,17 @@ The question the old version of this document never asked, which is how `@we/uti
 A package boundary buys exactly three things. **Independence is not one of them** — almost everything
 here is coupled to something, and that is fine so long as the coupling is directional and declared.
 
-| | Test |
-| --- | --- |
-| **Optionality** | Someone can install it without its siblings |
-| **Enforcement** | It makes a boundary violation impossible rather than merely discouraged |
-| **Reuse** | It has more than one consumer, or is meant for consumers outside this repo |
+|                 | Test                                                                       |
+| --------------- | -------------------------------------------------------------------------- |
+| **Optionality** | Someone can install it without its siblings                                |
+| **Enforcement** | It makes a boundary violation impossible rather than merely discouraged    |
+| **Reuse**       | It has more than one consumer, or is meant for consumers outside this repo |
 
 **A package earns its existence if at least one holds.** If none do, it is a directory.
 
 Worked examples:
 
-- `@we/backend-ad4m` — all three. A non-AD4M host omits it; the renderer *cannot* import
+- `@we/backend-ad4m` — all three. A non-AD4M host omits it; the renderer _cannot_ import
   `@coasys/ad4m` through it; the shell and the modules both consume it.
 - `@we/module-shared` — optionality and reuse. It is the module author's SDK: one install instead of
   three.
@@ -48,8 +48,8 @@ packages/
 ```
 
 **Platform systems live at the top level; feature domains live in `module-system/`.** The top level
-is the machinery WE is *made of* — how templates render, where data lives, how features install. A
-feature is a thing WE *has*, and the module system is the feature-packaging mechanism, so features
+is the machinery WE is _made of_ — how templates render, where data lives, how features install. A
+feature is a thing WE _has_, and the module system is the feature-packaging mechanism, so features
 live under it: one package while simple, a **family** when the feature grows its own extension
 point:
 
@@ -67,7 +67,7 @@ module-system/
 ```
 
 When `GraphWidget` grows plugins it becomes `module-system/graph/` the same way. This is also why
-`design-system/5-widgets` holds only *generic* widgets — a feature's widget belongs to its family,
+`design-system/5-widgets` holds only _generic_ widgets — a feature's widget belongs to its family,
 and moving the globe out of the design system is what took `cesium` out of the design system's
 dependency graph.
 
@@ -84,7 +84,7 @@ Two consequences worth stating:
 **`templates/` is deliberately not `template-system/`.** A `-system` holds a contract plus its
 implementations; `templates/` holds **content** — its contract (`TemplateSchema`) lives in
 `schema-system`. Same category of exception as `apps/`. The distinction to preserve: systems vary by
-*implementation*, content directories vary by *what they say*.
+_implementation_, content directories vary by _what they say_.
 
 **Directory names drop the kind prefix; package names carry it.** `@we/backend-ad4m` lives in
 `backend-system/ad4m/`, `@we/template-default` in `templates/default/` — the parent directory
@@ -97,13 +97,13 @@ the one navigation rule worth memorising.
 
 Use the **shortest unambiguous** name within the `@we/` scope.
 
-| Package | Name | Rationale |
-| --- | --- | --- |
-| `schema-system/shared` | `@we/schema-shared` | Needs prefix — "shared" alone is ambiguous |
-| `backend-system/ad4m` | `@we/backend-ad4m` | Needs prefix — "ad4m" alone says nothing about its role |
-| `design-system/1-tokens` | `@we/tokens` | Standalone identity — unambiguous without prefix |
-| `design-system/3-primitives` | `@we/primitives` | Standalone identity |
-| `models` | `@we/models` | Standalone package |
+| Package                      | Name                | Rationale                                               |
+| ---------------------------- | ------------------- | ------------------------------------------------------- |
+| `schema-system/shared`       | `@we/schema-shared` | Needs prefix — "shared" alone is ambiguous              |
+| `backend-system/ad4m`        | `@we/backend-ad4m`  | Needs prefix — "ad4m" alone says nothing about its role |
+| `design-system/1-tokens`     | `@we/tokens`        | Standalone identity — unambiguous without prefix        |
+| `design-system/3-primitives` | `@we/primitives`    | Standalone identity                                     |
+| `models`                     | `@we/models`        | Standalone package                                      |
 
 ## Grouping directories
 
@@ -114,12 +114,12 @@ not (`backend-system/ad4m`). That is not inconsistency; it follows a rule:
 
 - `backend-system/ad4m` — "ad4m" under a parent called `backend-system` is unambiguously a backend.
   A `backends/` level would stutter and add nothing.
-- `schema-system/solid` — "solid" beside "shared" says nothing about *what kind of thing* it is.
+- `schema-system/solid` — "solid" beside "shared" says nothing about _what kind of thing_ it is.
   `frameworks/solid` does.
 
 It sharpens as the list grows. `{shared, solid, react, vue}` reads as four peers with `shared`
-accidentally alphabetised among them; `{shared, frameworks/}` reads as *the contract* and *its
-bindings*. It also survives a future non-framework sibling — add `codegen/` to a flat list and the
+accidentally alphabetised among them; `{shared, frameworks/}` reads as _the contract_ and _its
+bindings_. It also survives a future non-framework sibling — add `codegen/` to a flat list and the
 directory becomes a grab-bag.
 
 The cost is one extra `pnpm-workspace.yaml` glob per grouped system. Legibility while reading beats
@@ -172,14 +172,19 @@ The invariant everything else rests on, and the one a lint rule can enforce.
 ```
 templates ──▶ shell ──▶ backend-shared ◀── backend-ad4m
 modules ──▶ shell ──▶ backend-shared ◀── backend-inmemory
-                          ▲
-                    schema-shared
+     │                    ▲
+     └──▶ schema-kit ──▶ schema-shared
 ```
 
 - **Dependencies point inward** toward the contract packages.
 - **No sideways edges.** No `templates → modules`, no `modules → modules`, no `backend-* → shell`.
-  Where such an edge existed it was inverted rather than tolerated: `installSpaceSdna` takes the
-  module-owned models as an argument instead of reading the host's registry.
+  `@we/schema-kit` exists because of this rule rather than despite it: a module wanting a fragment the
+  kit already had could only reach it through `modules → templates`, so the portable half moved inward
+  to where both families point instead of an exception being carved for one of them. Its WE-store half
+  stays in `@we/template-kit`, where a module reaching for it would be taking on the host's store
+  surface — which is the coupling the edge was protecting against in the first place. Where such an
+  edge existed it was inverted rather than tolerated: `installSpaceSdna` takes the module-owned models
+  as an argument instead of reading the host's registry.
 - `@we/shell-*`, `@we/schema-shared`, `@we/backend-shared`, `@we/module-shared` and `@we/*-solid`
   **must not import `@coasys/*`**. A package under `module-system/` may, **iff** its `defineModule`
   declares `backends: ['ad4m']` — that enforces the documented escape hatch rather than pretending it
@@ -193,7 +198,7 @@ modules ──▶ shell ──▶ backend-shared ◀── backend-inmemory
 A package whose source imports assets (`.jpg`, `.glb`, `.svg`) must export `src/` and have **no build
 step** — the two packages under `templates/` are the current examples.
 
-Pre-bundling such a package resolves its asset imports at *package* build time, emitting the files
+Pre-bundling such a package resolves its asset imports at _package_ build time, emitting the files
 into that package's `dist/` and freezing plain relative strings into the JS. The consuming app's
 bundler cannot rewrite a plain string, so the URLs ship unchanged and 404 at runtime — a failure that
 is silent, because nothing errors and the images are simply absent.
@@ -211,7 +216,7 @@ Load-bearing, and previously written nowhere.
 `@we/module-globe` peer-depends on `@we/widgets` and takes `CesiumGlobe` as a constructor argument;
 `@we/models` peer-depends on `@coasys/ad4m`; every module peer-depends on `@we/module-shared`. The
 failure this prevents is documented in `bundledModules.ts`: a bundle carrying its own reactive
-runtime gets a *second* one, and reactivity silently stops crossing the boundary.
+runtime gets a _second_ one, and reactivity silently stops crossing the boundary.
 
 ## Adding a new package
 

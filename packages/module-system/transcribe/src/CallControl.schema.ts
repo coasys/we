@@ -104,21 +104,17 @@ export const callControl: SchemaNode = {
       children: [
         joinPrompt,
         {
-          type: 'we-button',
+          /*
+            A `we-tooltip`, not the `title` attribute this used to carry.
+
+            Same words, and they arrived either way — but the browser's own tooltip appears after its
+            own delay, in its own typeface, at the pointer rather than under the control, and follows
+            no theme. Beside four call buttons that answer immediately in the app's own box, the one
+            contributed button was the one that felt like a different program. `placement: 'bottom'`
+            for the same reason they use it: this bar lives at the top of the window.
+          */
+          type: 'we-tooltip',
           props: {
-            // No `size`, matching the bar's own controls — which take `we-button`'s `md` default for
-            // the same reason. A contributed button is only "one set of controls" while it is the
-            // same size as the set, so this follows the bar rather than holding a size of its own.
-            // `square` for the same reason: the bar's icon-only buttons are squares, and a label's
-            // worth of side padding around a lone glyph is what would give this one away.
-            square: true,
-            //
-            // Matches how the call's own mute and camera buttons read their state, so the row behaves
-            // as one set of controls rather than one module's chrome sitting next to another's.
-            variant: {
-              $if: { condition: { $store: 'modules.transcribe.enabled' }, then: 'secondary', else: 'ghost' },
-            },
-            onClick: { $action: 'modules.transcribe.toggle' },
             title: {
               $if: {
                 condition: { $store: 'modules.transcribe.enabled' },
@@ -126,29 +122,49 @@ export const callControl: SchemaNode = {
                 else: 'Transcribe this call',
               },
             },
+            placement: 'bottom',
           },
           children: [
             {
-              /*
-                What it makes, rather than the act of capturing it.
-
-                A record dot is the universal "this is capturing" glyph and says nothing about what
-                comes out; beside a microphone button that already means "capture", it read as a
-                second, redder mute. Text is the thing this module produces.
-
-                Red while listening carries the live state on its own now. It used to be carried by
-                `weight: 'fill'` as well, which quietly reached for `record-fill` — and only the
-                `regular` weight of any icon is bundled, so every other weight is a CDN fetch. That
-                one fired at the moment recording started, and on a machine that is offline (which
-                this app is designed to be) the icon simply vanished as you pressed it.
-              */
-              type: 'we-icon',
+              type: 'we-button',
               props: {
-                name: 'text-aa',
-                color: {
-                  $if: { condition: { $store: 'modules.transcribe.listening' }, then: 'danger-500', else: '' },
+                // No `size`, matching the bar's own controls — which take `we-button`'s `md` default
+                // for the same reason. A contributed button is only "one set of controls" while it is
+                // the same size as the set, so this follows the bar rather than holding a size of its
+                // own. `square` for the same reason: the bar's icon-only buttons are squares, and a
+                // label's worth of side padding around a lone glyph is what would give this one away.
+                square: true,
+                // Matches how the call's own mute and camera buttons read their state, so the row
+                // behaves as one set of controls rather than one module's chrome next to another's.
+                variant: {
+                  $if: { condition: { $store: 'modules.transcribe.enabled' }, then: 'secondary', else: 'ghost' },
                 },
+                onClick: { $action: 'modules.transcribe.toggle' },
               },
+              children: [
+                {
+                  /*
+                    What it makes, rather than the act of capturing it.
+
+                    A record dot is the universal "this is capturing" glyph and says nothing about
+                    what comes out; beside a microphone button that already means "capture", it read
+                    as a second, redder mute. Text is the thing this module produces.
+
+                    Red while listening carries the live state on its own now. It used to be carried
+                    by `weight: 'fill'` as well, which quietly reached for `record-fill` — and only
+                    the `regular` weight of any icon is bundled, so every other weight is a CDN fetch.
+                    That one fired at the moment recording started, and on a machine that is offline
+                    (which this app is designed to be) the icon vanished as you pressed it.
+                  */
+                  type: 'we-icon',
+                  props: {
+                    name: 'text-aa',
+                    color: {
+                      $if: { condition: { $store: 'modules.transcribe.listening' }, then: 'danger-500', else: '' },
+                    },
+                  },
+                },
+              ],
             },
           ],
         },

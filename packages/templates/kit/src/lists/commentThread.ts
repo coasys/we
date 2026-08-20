@@ -22,10 +22,9 @@
  * not appear to end. Three is the default for the same reason every threaded UI picks something
  * near it: the indent budget runs out before the conversation does.
  */
+import type { AnchorId } from '@we/schema-kit';
+import { emptyNote } from '@we/schema-kit';
 import type { SchemaNode } from '@we/schema-shared';
-
-import { emptyNote } from '../states/emptyState.ts';
-import type { AnchorId } from '../types.ts';
 
 export interface CommentThreadOptions {
   /** Id of the node being replied to — a post, a block, or a reply one level up. */

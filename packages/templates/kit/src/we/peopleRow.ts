@@ -1,6 +1,5 @@
+import { peopleTooltip } from '@we/schema-kit';
 import type { SchemaNode, SchemaProp } from '@we/schema-shared';
-
-import { peopleTooltip } from './peopleTooltip.ts';
 
 export interface PeopleRowOptions {
   /** The people. Profile objects by default; bare DIDs when `dids` is set. */
