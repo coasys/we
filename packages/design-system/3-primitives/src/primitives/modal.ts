@@ -65,6 +65,18 @@ const CSS_STYLES = css`
     /* base's own gap and alignment, so nodes inside and outside the scroller line up the same. */
     gap: inherit;
     align-items: inherit;
+    /*
+      The scroller spans the modal whatever base aligns its children to. It is structure, not one of
+      the slotted nodes: ax is the author saying where their *content* sits, and inheriting it here
+      would apply it twice — once collapsing the scroll region, once positioning inside it.
+
+      Left to align-items, ax: 'center' shrink-wraps this box to its content, and every child sized
+      width: '100%' then measures 100% of that. That is what happened to the composer modal — the
+      only one in the codebase that centres — which came out as wide as its longest line of text,
+      with its own overflow: auto turned into a horizontal scrollbar. Children still centre, because
+      align-items above still reaches them.
+    */
+    align-self: stretch;
     overflow: auto;
     /* A flex item's automatic minimum size is its content — without this nothing ever shrinks,
        so nothing ever scrolls. */
