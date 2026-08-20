@@ -15,7 +15,7 @@ import type {
   ThemeStore,
 } from '@solid/stores';
 import type { RendererStores } from '@we/backend-shared';
-import type { Ad4mModel } from '@we/models';
+import type { ModelInstance } from '@we/backend-shared';
 
 export type ModelStoreOptions = {
   perspective?: string;
@@ -24,13 +24,13 @@ export type ModelStoreOptions = {
 };
 
 export type ModelStore = {
-  create: (modelName: string, data?: Record<string, unknown>, options?: ModelStoreOptions) => Promise<Ad4mModel>;
+  create: (modelName: string, data?: Record<string, unknown>, options?: ModelStoreOptions) => Promise<ModelInstance>;
   update: (
     modelName: string,
     id: string,
     data: Record<string, unknown>,
     options?: { perspective?: string },
-  ) => Promise<Ad4mModel>;
+  ) => Promise<ModelInstance>;
   delete: (modelName: string, id: string, options?: { perspective?: string }) => Promise<void>;
 };
 

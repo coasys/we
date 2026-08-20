@@ -1,7 +1,10 @@
-import type { Ad4mModel } from '@coasys/ad4m';
-
+/**
+ * A registered model implementation — whatever the connected backend hands over. Structural and
+ * loose on purpose: the registry stores and returns them; the contract they satisfy is asserted
+ * where they are built (each backend's own conformance), not re-checked here.
+ */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export type ModelClass = typeof Ad4mModel & (new (...args: any[]) => Ad4mModel);
+export type ModelClass = { new (...args: any[]): unknown } & Record<string, any>;
 
 // ─── Global registry (populated by whichever backend connects) ────────────────
 
@@ -111,7 +114,7 @@ export function getModelForPerspective(name: string, dataset?: unknown): ModelCl
  * actually written to the dataset — if a property is declared but doesn't reach the shape, it
  * isn't a predicate anyone will find data under, and shouldn't be judged as one.
  */
-export function getModelPredicates(m: typeof Ad4mModel): string[] {
+export function getModelPredicates(m: ModelClass): string[] {
   const shaped = m as unknown as {
     generateSHACL: () => { shape: { properties?: { path?: string }[] } | null };
   };
@@ -119,7 +122,7 @@ export function getModelPredicates(m: typeof Ad4mModel): string[] {
   return properties.map((p) => p.path).filter((p): p is string => typeof p === 'string');
 }
 
-export function getModelTargetClass(m: typeof Ad4mModel): string | undefined {
+export function getModelTargetClass(m: ModelClass): string | undefined {
   const anyClass = m as unknown as { generateSHACL: () => { shape: { targetClass?: string } | null } };
   return anyClass.generateSHACL().shape?.targetClass;
 }

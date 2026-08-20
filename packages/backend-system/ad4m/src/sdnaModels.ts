@@ -1,5 +1,6 @@
 import { Ad4mModel, type LinkExpression, LinkQuery, Literal, PerspectiveProxy } from '@coasys/ad4m';
-import { getModelPredicates, getModelTargetClass } from '@we/models';
+import { getModelPredicates, getModelTargetClass, type ModelClass } from '@we/models';
+
 import {
   AgentSettings,
   AudioBlock,
@@ -30,7 +31,7 @@ import {
   Theme,
   VideoBlock,
   WeNode,
-} from '@we/models/classes';
+} from './models';
 
 /**
  * All SDNA models that belong to the we-root system perspective.
@@ -178,7 +179,7 @@ async function storedShapes(p: PerspectiveProxy): Promise<Map<string, StoredShap
  * three times in three different ways, each shipping as a silent failure somewhere else, which is
  * worth more than the tidiness of a narrow export surface.
  */
-export function declaredShape(model: typeof Ad4mModel): StoredShape {
+export function declaredShape(model: ModelClass): StoredShape {
   const out: StoredShape = { paths: new Set(getModelPredicates(model)), propHints: new Map() };
   const generate = (
     model as unknown as {

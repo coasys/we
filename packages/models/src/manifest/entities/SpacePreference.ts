@@ -47,7 +47,6 @@ export const FOLLOW_SPACE = 'space-default';
  */
 export const SpacePreference: CoreEntityDef = {
   base: 'WeNode',
-  passthrough: ["export { AGENT_DEFAULT, FOLLOW_SPACE } from '../manifest/entities/SpacePreference';"],
   entity: {
     flag: { predicate: 'we://flag', value: 'we://space_preference' },
     properties: {

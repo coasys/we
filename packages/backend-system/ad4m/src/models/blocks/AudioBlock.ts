@@ -5,8 +5,8 @@
  * `pnpm --filter @we/models generate:classes` after changing it.
  */
 import { fileToDataUri, Flag, Model, Property } from '@coasys/ad4m';
+import { FILE_STORAGE_LANGUAGE } from '@we/models';
 
-import { FILE_STORAGE_LANGUAGE } from '../constants';
 import { WeNode } from '../WeNode';
 
 @Model({ name: 'AudioBlock' })

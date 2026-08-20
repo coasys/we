@@ -1591,7 +1591,7 @@ export const contextData: ContextData = {
         { name: 'enabledModules', type: 'string', predicate: 'we://enabled_modules', required: false },
         { name: 'autoInterpret', type: 'boolean', predicate: 'we://auto_interpret', required: false, default: 'false' },
       ],
-      relations: [{ name: 'location', kind: 'HasOne', predicate: 'we://location' }],
+      relations: [{ name: 'location', kind: 'HasOne', predicate: 'we://location', target: 'LocationBlock' }],
     },
     {
       name: 'SpacePreference',

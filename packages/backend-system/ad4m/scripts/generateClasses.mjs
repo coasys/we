@@ -24,11 +24,11 @@ import { fileURLToPath } from 'node:url';
 
 // Run via tsx (`pnpm generate:classes`), which resolves the manifest's TS modules directly.
 const here = dirname(fileURLToPath(import.meta.url));
-const { CORE_DEFS } = await import(resolve(here, '../src/manifest/index.ts'));
+const { CORE_DEFS } = await import(resolve(here, '../../../models/src/manifest/index.ts'));
 
-const ENTITY_DIR = resolve(here, '../src/entities');
-const BLOCK_DIR = resolve(here, '../src/blocks');
-const MANIFEST_DIR = resolve(here, '../src/manifest');
+const ENTITY_DIR = resolve(here, '../src/models/entities');
+const BLOCK_DIR = resolve(here, '../src/models/blocks');
+const MANIFEST_DIR = resolve(here, '../../../models/src/manifest');
 
 const isBlockModule = (name) => {
   try {
@@ -113,8 +113,7 @@ function emitEntity(name, def) {
   else ad4mImports.add('Ad4mModel');
   if (e.flag) ad4mImports.add('Flag');
   if (Object.keys(e.properties).length) ad4mImports.add('Property');
-  if (Object.values(e.properties).some((p) => p.format === 'file'))
-    addRelative('../constants', 'FILE_STORAGE_LANGUAGE');
+  if (Object.values(e.properties).some((p) => p.format === 'file')) addRelative('@we/models', 'FILE_STORAGE_LANGUAGE');
   if (Object.values(e.properties).some((p) => p.readAs === 'dataUri')) ad4mImports.add('fileToDataUri');
 
   const relations = Object.entries(e.relations);
@@ -136,12 +135,17 @@ function emitEntity(name, def) {
   L.push(' * The manifest module is the source of truth: its schema, hints and prose. Rebuild with');
   L.push(' * `pnpm --filter @we/models generate:classes` after changing it.');
   L.push(' */');
+  // One package-import group (the sorter keeps @coasys and @we lines adjacent), a blank line,
+  // then the relative imports — so the file lints clean exactly as generated.
   const ci = [...ad4mImports].sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
-  L.push(`import { ${ci.join(', ')} } from '@coasys/ad4m';`);
-  L.push('');
   const rels = [...relativeImports.entries()].sort(([a], [b]) => a.toLowerCase().localeCompare(b.toLowerCase()));
-  for (const [path, names] of rels) L.push(`import { ${[...names].join(', ')} } from '${path}';`);
-  if (rels.length) L.push('');
+  const pkgRels = rels.filter(([path]) => !path.startsWith('.'));
+  const localRels = rels.filter(([path]) => path.startsWith('.'));
+  L.push(`import { ${ci.join(', ')} } from '@coasys/ad4m';`);
+  for (const [path, names] of pkgRels) L.push(`import { ${[...names].join(', ')} } from '${path}';`);
+  L.push('');
+  for (const [path, names] of localRels) L.push(`import { ${[...names].join(', ')} } from '${path}';`);
+  if (localRels.length) L.push('');
 
   for (const [field, u] of Object.entries(def.unions ?? {})) {
     void field;
@@ -201,76 +205,11 @@ function emitEntity(name, def) {
     }
   }
 
-  for (const line of def.passthrough ?? []) {
-    L.push('');
-    L.push(line);
-  }
   L.push('');
 
   const outDir = kind === 'blocks' ? BLOCK_DIR : ENTITY_DIR;
   writeFileSync(resolve(outDir, `${name}.ts`), L.join('\n'));
   return `${kind}/${name}.ts`;
-}
-
-// ── The neutral type surface ───────────────────────────────────────────────────────────────────
-
-/** The interface field for one property — same optional/default rules the class emission uses. */
-function interfaceFieldLine(name, spec, def) {
-  const union = def.unions?.[name];
-  const base = union ? union.values.map(q).join(' | ') : TS_TYPE[spec.type];
-  if (def.optional?.includes(name)) return `${name}?: ${base};`;
-  if (spec.default === null) return `${name}: ${base} | null;`;
-  const hasDefault = spec.default !== undefined || TS_TYPE[spec.type] === 'string';
-  return hasDefault ? `${name}: ${base};` : `${name}?: ${base};`;
-}
-
-function emitTypes(defs) {
-  const L = [];
-  L.push('/**');
-  L.push(' * GENERATED from the manifest definitions — do not edit here.');
-  L.push(' *');
-  L.push(' * The neutral model contract: one interface per core entity, defining the fields any backend');
-  L.push(" * must present for it. The AD4M classes are held to these in conformance.ts; another backend's");
-  L.push(' * implementations (runtime-compiled like backend-inmemory, or generated like the AD4M lane)');
-  L.push(' * are what these interfaces exist to type. Fields only, deliberately: relation accessor');
-  L.push(' * methods and query sugar are backend ergonomics, not the contract.');
-  L.push(' *');
-  L.push(' * Rebuild with `pnpm --filter @we/models generate:classes`.');
-  L.push(' */');
-  L.push("import type { ModelInstance, WeNodeModel } from './base';");
-  L.push('');
-  L.push('export type { ModelInstance, WeNodeModel };');
-  L.push('');
-  for (const [name, def] of Object.entries(defs)) {
-    const e = def.entity;
-    L.push(`export interface ${name}Model extends ${def.base === 'WeNode' ? 'WeNodeModel' : 'ModelInstance'} {`);
-    for (const [pname, spec] of Object.entries(e.properties)) {
-      L.push(`  ${interfaceFieldLine(pname, spec, def)}`);
-    }
-    for (const [rname, spec] of Object.entries(e.relations)) {
-      if (spec.cardinality === 'one') L.push(`  ${rname}?: ${spec.target}Model;`);
-      else L.push(`  ${rname}: ${def.typedArrays?.includes(rname) ? `${spec.target}Model[]` : 'string[]'};`);
-    }
-    // Accessor methods are contract where consumers call them: every relation listed in
-    // methodRelations, and every to-one's setter. Loosely-typed parameters — how a backend
-    // addresses the related record is its own business.
-    for (const [rname, spec] of Object.entries(e.relations)) {
-      const cap = rname[0].toUpperCase() + rname.slice(1);
-      if (spec.cardinality === 'one') {
-        L.push(`  set${cap}(value: ${spec.target}Model): Promise<unknown>;`);
-      } else if (def.methodRelations?.includes(rname)) {
-        // Mirrors the accessor trio the AD4M lane generates: add/remove one, set the whole list —
-        // addressed by id or by a record carrying one. There is deliberately no get: reading
-        // relations is the query layer's job (include), not an accessor's.
-        L.push(`  add${cap}(value: string | { id: string }, batch?: string): Promise<unknown>;`);
-        L.push(`  remove${cap}(value: string | { id: string }, batch?: string): Promise<unknown>;`);
-        L.push(`  set${cap}(values: (string | { id: string })[], batch?: string): Promise<unknown>;`);
-      }
-    }
-    L.push('}');
-    L.push('');
-  }
-  writeFileSync(resolve(MANIFEST_DIR, 'types.ts'), L.join('\n'));
 }
 
 function emitConformance(defs) {
@@ -285,8 +224,9 @@ function emitConformance(defs) {
   L.push(' */');
   // One import group, no blank line — matching the repo's import sorter so the file lints clean
   // exactly as generated.
-  L.push("import type * as C from '../classes';");
-  L.push("import type * as M from './types';");
+  L.push("import type * as M from '@we/models/manifest';");
+  L.push('');
+  L.push("import type * as C from './index';");
   L.push('');
   L.push('type Satisfies<A extends B, B> = A;');
   L.push('');
@@ -306,19 +246,27 @@ function emitConformance(defs) {
   L.push(' * statics through the same proxies production uses.');
   L.push(' */');
   L.push('');
-  writeFileSync(resolve(MANIFEST_DIR, 'conformance.ts'), L.join('\n'));
+  writeFileSync(resolve(here, '../src/models/conformance.ts'), L.join('\n'));
 }
 
 const written = Object.entries(CORE_DEFS).map(([name, def]) => emitEntity(name, def));
-emitTypes(CORE_DEFS);
 emitConformance(CORE_DEFS);
-written.push('manifest/types.ts', 'manifest/conformance.ts');
+written.push('models/conformance.ts');
 console.log(`generated ${written.length - 2} classes + the neutral type surface`);
 try {
-  execFileSync('pnpm', ['exec', 'prettier', '--write', ...written.map((f) => resolve(here, '../src', f))], {
-    cwd: resolve(here, '..'),
-    stdio: 'inherit',
-  });
+  execFileSync(
+    'pnpm',
+    [
+      'exec',
+      'prettier',
+      '--write',
+      ...written.map((f) => resolve(here, '../src', f.startsWith('models/') ? f : `models/${f}`)),
+    ],
+    {
+      cwd: resolve(here, '..'),
+      stdio: 'inherit',
+    },
+  );
 } catch {
   console.warn('prettier not available — emitted unformatted');
 }

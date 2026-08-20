@@ -19,7 +19,8 @@
   },
   "dependencies": {
     "@we/design-utils": "workspace:*",
-    "@we/schema-shared": "workspace:*"
+    "@we/schema-shared": "workspace:*",
+    "@we/models": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^24.10.0",

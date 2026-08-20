@@ -43,8 +43,6 @@ export interface CoreEntityDef {
    * compiling exactly as the hand-written one did.
    */
   typedArrays?: string[];
-  /** Verbatim lines appended to the generated file — type re-exports that live beside a class. */
-  passthrough?: string[];
   /** The neutral schema: own properties and own relations only. */
   entity: EntitySchema;
 }

@@ -10,11 +10,11 @@
  * is exhaustive rather than a spot check.
  */
 import type { SHACLShape } from '@coasys/ad4m';
-import * as Classes from '@we/models/classes';
 import { CORE_MANIFEST } from '@we/models/manifest';
 import { describe, expect, it } from 'vitest';
 
 import { compileManifest } from '../src/manifestCompiler';
+import * as Classes from '../src/models';
 
 type Shaped = { generateSHACL: () => { shape: SHACLShape | null } };
 
@@ -56,7 +56,7 @@ const entityNames = Object.keys(CORE_MANIFEST.entities);
  * The classes are generated, so any failure below usually means they are stale rather than wrong —
  * say so, because the fix is one command and the diff alone doesn't suggest it.
  */
-const REGENERATE = 'The classes are out of date: run `pnpm --filter @we/models generate:classes`.';
+const REGENERATE = 'The classes are out of date: run `pnpm --filter @we/backend-ad4m generate:classes`.';
 
 describe('core manifest ↔ hand-written classes', () => {
   it('declares every entity the model layer ships', () => {

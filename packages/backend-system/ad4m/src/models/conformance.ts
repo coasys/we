@@ -6,8 +6,9 @@
  * ships. Reached from the manifest entry point as a type export, which is what places this
  * file in the build's type graph — an unimported assertion checks nothing.
  */
-import type * as C from '../classes';
-import type * as M from './types';
+import type * as M from '@we/models/manifest';
+
+import type * as C from './index';
 
 type Satisfies<A extends B, B> = A;
 

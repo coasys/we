@@ -11,22 +11,30 @@ src/
 │   ├── blocks/      ← one module per block
 │   ├── shared.ts    ← WeNode's shared relations, declared once
 │   ├── defs.ts      ← the CoreEntityDef shape a module exports
+│   ├── types.ts     ← GENERATED neutral interfaces — the model contract (generate:types)
+│   ├── base.ts      ← WeNodeModel over @we/backend-shared's ModelInstance
 │   └── index.ts     ← assembles CORE_MANIFEST (imported as '@we/models/manifest')
-├── WeNode.ts        ← hand-written base class carrying the shared behaviour
+├── index.ts         ← entity proxies, typed by the contract — never by any backend's classes
+├── modelRegistry.ts ← where backends register implementations, transactions, file storage
 ├── constants.ts     ← shared URIs and constants
-├── entities/        ← GENERATED AD4M classes — do not edit; artifacts of manifest/
-├── blocks/          ← GENERATED AD4M classes — do not edit
 └── utils/           ← helper functions (transforms, normalisation)
+```
+
+This package has **no `@coasys` dependency**. The AD4M classes generated from this manifest live in
+`@we/backend-ad4m` (`src/models/`, rebuilt with `pnpm --filter @we/backend-ad4m generate:classes`),
+beside the adapter that registers them — as any backend's implementations live beside their
+adapter. The conformance assertions holding them to `manifest/types.ts` live there too.
 ```
 
 ## Authoring a model — edit the manifest, generate the class
 
-The decorated classes under `entities/` and `blocks/` are build artifacts. To add or change a
+The decorated classes in `@we/backend-ad4m/src/models` are build artifacts. To add or change a
 model, edit its module under `src/manifest/` — schema, defaults, interpretation hints and the
-design prose all live there — then run:
+design prose all live there — then run both generators:
 
 ```sh
-pnpm --filter @we/models generate:classes
+pnpm --filter @we/models generate:types
+pnpm --filter @we/backend-ad4m generate:classes
 ```
 
 Doc comments in the manifest module are lifted into the generated class, so IDE hovers keep

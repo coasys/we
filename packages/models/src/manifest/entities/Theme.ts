@@ -3,7 +3,6 @@ import type { CoreEntityDef } from '../defs';
 export const Theme: CoreEntityDef = {
   base: 'WeNode',
   methodRelations: ['screenshots'],
-  passthrough: ["export type { ThemeData } from '../utils/themeData';"],
   entity: {
     flag: { predicate: 'we://flag', value: 'we://theme' },
     properties: {

@@ -2,16 +2,21 @@
  * GENERATED from the manifest definitions — do not edit here.
  *
  * The neutral model contract: one interface per core entity, defining the fields any backend
- * must present for it. The AD4M classes are held to these in conformance.ts; another backend's
- * implementations (runtime-compiled like backend-inmemory, or generated like the AD4M lane)
- * are what these interfaces exist to type. Fields only, deliberately: relation accessor
- * methods and query sugar are backend ergonomics, not the contract.
+ * must present for it. The AD4M lane's generated classes are held to these by the conformance
+ * assertions beside them (@we/backend-ad4m src/models/conformance.ts); another backend's
+ * implementations (runtime-compiled like backend-inmemory, or generated) are what these
+ * interfaces exist to type. Fields and the accessor methods consumers call — query sugar is
+ * backend ergonomics, not contract.
  *
- * Rebuild with `pnpm --filter @we/models generate:classes`.
+ * Rebuild with `pnpm --filter @we/models generate:types`.
  */
 import type { ModelInstance, WeNodeModel } from './base';
 
 export type { ModelInstance, WeNodeModel };
+
+export type SignalMode = 'toggle' | 'vote' | 'rating' | 'slider';
+export type SignalAggregate = 'count' | 'mean' | 'sum' | 'median';
+export type SignalSemantic = 'approval' | 'quality' | 'relevance' | 'agreement' | 'custom';
 
 export interface AgentSettingsModel extends ModelInstance {
   currentTemplateId: string;

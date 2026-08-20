@@ -5,9 +5,9 @@
  * `pnpm --filter @we/models generate:classes` after changing it.
  */
 import { fileToDataUri, Flag, HasOne, Model, Property } from '@coasys/ad4m';
+import { FILE_STORAGE_LANGUAGE } from '@we/models';
 
 import { LocationBlock } from '../blocks/LocationBlock';
-import { FILE_STORAGE_LANGUAGE } from '../constants';
 import { WeNode } from '../WeNode';
 
 @Model({ name: 'Space' })

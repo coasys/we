@@ -13,10 +13,10 @@ import { resolve } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
-const MANIFEST = resolve(__dirname, '../src/manifest');
-const SRC = resolve(__dirname, '../src');
+const MANIFEST = resolve(__dirname, '../../../models/src/manifest');
+const SRC = resolve(__dirname, '../src/models');
 
-const REGENERATE = 'Generated classes are stale: run `pnpm --filter @we/models generate:classes`.';
+const REGENERATE = 'Generated classes are stale: run `pnpm --filter @we/backend-ad4m generate:classes`.';
 
 const normalise = (doc: string) =>
   doc

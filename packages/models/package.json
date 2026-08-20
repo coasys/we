@@ -10,17 +10,13 @@
     "build": "we-build",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "generate:classes": "tsx scripts/generateClasses.mjs"
+    "generate:types": "tsx scripts/generateTypes.mjs"
   },
   "types": "dist/index.d.ts",
   "exports": {
     ".": {
       "import": "./dist/index.js",
       "require": "./dist/index.js"
-    },
-    "./classes": {
-      "import": "./dist/classes.js",
-      "require": "./dist/classes.js"
     },
     "./manifest": {
       "import": "./dist/manifest/index.js",
@@ -30,9 +26,7 @@
   "files": [
     "dist"
   ],
-  "peerDependencies": {
-    "@coasys/ad4m": "0.13.0-test-9"
-  },
+  "peerDependencies": {},
   "devDependencies": {
     "@we/cli": "workspace:*",
     "tsup": "^8.5.1",

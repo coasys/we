@@ -26,8 +26,9 @@
  * genuinely are about the runtime are marked as such below.
  */
 import { declaredShape, shapeIsStale, type StoredShape } from '@we/backend-ad4m';
-import { TaskBlock } from '@we/models/classes';
 import { describe, expect, it } from 'vitest';
+
+import { TaskBlock } from '../src/models';
 
 const TARGET = 'we://TaskBlock';
 

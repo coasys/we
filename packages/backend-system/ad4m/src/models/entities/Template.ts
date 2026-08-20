@@ -5,9 +5,9 @@
  * `pnpm --filter @we/models generate:classes` after changing it.
  */
 import { Flag, HasMany, HasManyMethods, Model, Property } from '@coasys/ad4m';
+import { FILE_STORAGE_LANGUAGE } from '@we/models';
 
 import { ImageBlock } from '../blocks/ImageBlock';
-import { FILE_STORAGE_LANGUAGE } from '../constants';
 import { WeNode } from '../WeNode';
 
 @Model({ name: 'Template' })

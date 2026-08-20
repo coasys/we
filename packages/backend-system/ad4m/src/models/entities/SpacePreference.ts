@@ -62,5 +62,3 @@ export class SpacePreference extends WeNode {
   @Property({ through: 'we://theme_id' })
   themeId: string = '';
 }
-
-export { AGENT_DEFAULT, FOLLOW_SPACE } from '../manifest/entities/SpacePreference';

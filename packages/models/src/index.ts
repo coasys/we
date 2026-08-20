@@ -6,8 +6,9 @@
  * consumer writes `Space.findAll(dataset, …)` and never names a backend; the AD4M adapter
  * registers decorated classes at connect time, and another backend registers its own.
  *
- * The implementations themselves live behind `@we/models/classes`, which only a backend adapter
- * should import.
+ * The implementations live in each backend's own package — the AD4M classes in
+ * `@we/backend-ad4m/src/models`, generated from this package's manifest — and are registered here
+ * at connect time. Nothing outside a backend adapter can even name them.
  *
  * Both exports are typed by the NEUTRAL contract — the generated interfaces in
  * `manifest/types.ts` and the `ModelStatic` surface from `@we/backend-shared` — not by the AD4M
@@ -38,7 +39,7 @@ export type SignalType = M.SignalTypeModel;
 export const SignalType = defineEntity('SignalType') as unknown as ModelStatic<M.SignalTypeModel>;
 export type Space = M.SpaceModel;
 export const Space = defineEntity('Space') as unknown as ModelStatic<M.SpaceModel>;
-export { AGENT_DEFAULT, FOLLOW_SPACE } from './entities';
+export { AGENT_DEFAULT, FOLLOW_SPACE } from './manifest/entities/SpacePreference';
 export type SpacePreference = M.SpacePreferenceModel;
 export const SpacePreference = defineEntity('SpacePreference') as unknown as ModelStatic<M.SpacePreferenceModel>;
 export type SpaceTemplatePreference = M.SpaceTemplatePreferenceModel;
@@ -53,7 +54,7 @@ export type Theme = M.ThemeModel;
 export const Theme = defineEntity('Theme') as unknown as ModelStatic<M.ThemeModel>;
 export { modelToThemeData } from './utils/themeData';
 export type { ThemeData, ThemeLike } from './utils/themeData';
-export type { SignalMode, SignalAggregate, SignalSemantic } from './entities';
+export type { SignalAggregate, SignalMode, SignalSemantic } from './manifest/types';
 export type AudioBlock = M.AudioBlockModel;
 export const AudioBlock = defineEntity('AudioBlock') as unknown as ModelStatic<M.AudioBlockModel>;
 export type CalloutBlock = M.CalloutBlockModel;
@@ -100,9 +101,11 @@ export { normalizeSignal, denormalizeSignal } from './utils/signalNormalize';
 export { aggregateSignals } from './utils/signalAggregate';
 export { decodeFileAsString, decodeFileAsJson, encodeJsonFileData } from './utils/fileTransforms';
 
-// The model layer's dataset type — what every generated model's static methods accept. Re-exported
-// under a neutral name so the app shell can type dataset handles without importing the backend SDK
-// directly (@coasys imports are confined to this package, backend-ad4m, and ad4m-declaring modules).
-export type { PerspectiveProxy as DatasetProxy } from '@coasys/ad4m';
-export type { Ad4mModel } from '@coasys/ad4m';
+/**
+ * The dataset handle model statics accept — opaque on purpose. Which kind of handle "a dataset"
+ * is (an AD4M PerspectiveProxy, an in-memory store, a connection) is the connected backend's
+ * business; consumers hold one and pass it along. This used to alias PerspectiveProxy, which was
+ * the last `@coasys` edge on this package's public face.
+ */
+export type DatasetProxy = unknown;
 export * from './modelRegistry';

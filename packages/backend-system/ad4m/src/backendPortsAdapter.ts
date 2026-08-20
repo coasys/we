@@ -25,7 +25,6 @@ import {
   registerModel,
   registerTransactionRunner,
 } from '@we/models';
-import { Space } from '@we/models/classes';
 
 import { createAd4mDataBindings } from './ad4mAdapter';
 import { createAd4mEphemeralPort } from './ad4mEphemeralAdapter';
@@ -35,6 +34,7 @@ import { readInterpretationHints, resetInterpretationHints, writeInterpretationH
 import { createAd4mLanguageModelPort } from './languageModelPort';
 import { createAd4mAgentSession, createAd4mDatasetLifecycle } from './lifecycleAdapter';
 import { compileManifest } from './manifestCompiler';
+import { Space } from './models';
 import { buildModelClasses, buildModelManifest, getForeignShacl } from './perspectiveHelpers';
 import { type Ad4mRuntimeOptions, createAd4mRuntimeAdmin } from './runtimeAdminAdapter';
 import {
@@ -84,7 +84,9 @@ export function createAd4mSchemaPort(backendClient: unknown): SchemaPort {
         // Core vocabulary and the dataset's other dynamic entities are legitimate relation
         // targets; getModelForPerspective already prefers native classes, so a shape cannot
         // resolve a target to a shadowed core name.
-        resolveExternal: (name) => getModelForPerspective(name, dataset),
+        // The registry hands back the neutral class handle; this compiler is AD4M's own, so the
+        // narrowing is definitionally sound here — everything registered on this backend IS one.
+        resolveExternal: (name) => getModelForPerspective(name, dataset) as typeof Ad4mModel | undefined,
       });
       mergeDynamicModels(proxy(dataset).uuid, classes as Record<string, ModelClass>);
       return classes;

@@ -17,12 +17,8 @@ import { TextBlock } from './blocks/TextBlock';
 import { VideoBlock } from './blocks/VideoBlock';
 import type { CoreEntityDef } from './defs';
 
-/*
-  Exporting these places types.ts (the neutral contract) on the package's public surface and pulls
-  conformance.ts into the build's type graph — the dts build typechecks what it reaches, so a class
-  drifting from its interface fails the build rather than waiting to be noticed.
-*/
-export type { AssertClassesSatisfyContract } from './conformance';
+// The neutral contract, on the package's public surface. The conformance assertions that hold the
+// AD4M lane to it live beside that lane's generated classes (@we/backend-ad4m src/models).
 export * from './types';
 import { AgentSettings } from './entities/AgentSettings';
 import { ChatMessage } from './entities/ChatMessage';
@@ -38,6 +34,8 @@ import { SpaceTemplatePreference } from './entities/SpaceTemplatePreference';
 import { Template } from './entities/Template';
 import { Theme } from './entities/Theme';
 import { WE_NODE_ENTITY, WE_NODE_RELATIONS } from './shared';
+
+export { WE_NODE_ENTITY, WE_NODE_RELATIONS };
 
 /**
  * Every core definition, in the order the manifest publishes them. This file is the assembly

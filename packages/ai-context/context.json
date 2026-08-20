@@ -4416,7 +4416,8 @@
         {
           "name": "location",
           "kind": "HasOne",
-          "predicate": "we://location"
+          "predicate": "we://location",
+          "target": "LocationBlock"
         }
       ]
     },
