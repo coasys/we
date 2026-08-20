@@ -166,6 +166,13 @@ export function createCallStore(deps: CallStoreDeps) {
   const [callId, setCallId] = signal<string | null>(null);
   const [tiles, setTiles] = signal<CallTile[]>([]);
   const [tileStates, setTileStates] = signal<CallTileState[]>([]);
+  /**
+   * Whether the stage is on screen. False between calls, and set by `join` — see there.
+   *
+   * The initial value is the state of a module that is not in a call, which is the only state this
+   * is ever read in before one starts: `dockEdge` is null while `callId` is, so nothing is placed
+   * either way.
+   */
   const [visible, setVisible] = signal(false);
   /**
    * Floating by default, because the first press of a button should not reshape the workspace.
@@ -479,6 +486,21 @@ export function createCallStore(deps: CallStoreDeps) {
     }
 
     setCallId(id);
+    /*
+      Starting a call shows the call.
+
+      Nothing did this, so the first thing that happened when you pressed the call button was that
+      the bar appeared and the video did not: `dockEdge` returns null while `visible` is false, and
+      the host renders no dock for a null edge. The only ways to a visible stage were the expand
+      toggle and the placement menu, both of which read as ways to *change* something already on
+      screen — so the call looked like it had failed to start any picture at all.
+
+      Placing it is a separate question from showing it, and `placement` already answers that one
+      with `float`: it overlays rather than insetting, so this takes no room from the space behind
+      it. Leaving a call sets this back off, so it means "this call is showing" rather than a
+      preference that outlives the call it was made in.
+    */
+    setVisible(true);
 
     // coalesce: false, emphatically. Presence heartbeats are last-write-wins so a dropped one costs
     // nothing; an SDP offer dropped because the previous send was slow is simply lost, and that peer

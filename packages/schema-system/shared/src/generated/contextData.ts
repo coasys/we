@@ -29,6 +29,7 @@ export const contextData: ContextData = {
         { name: 'autoplay', type: 'boolean', optional: false, default: 'false' },
         { name: 'loop', type: 'boolean', optional: false, default: 'false' },
         { name: 'muted', type: 'boolean', optional: false, default: 'false' },
+        { name: 'stream', type: 'MediaStream | null | undefined', optional: true },
       ],
     },
     {

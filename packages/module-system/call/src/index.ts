@@ -172,9 +172,19 @@ const tile: SchemaNode = {
                 stream: '$tile.stream',
                 autoplay: true,
                 playsinline: true,
-                // Never hear yourself. The self tile plays the same microphone the mesh is sending, and
-                // unmuted it is an immediate feedback loop.
-                muted: '$tile.isSelf',
+                /**
+                 * Every tile is silent. The picture is here; the sound is in `audioSink`.
+                 *
+                 * The self tile always had to be — it plays the microphone the mesh is sending, and
+                 * unmuted that is an immediate feedback loop. The peers were unmuted, and that was
+                 * the whole of the call's audio path, which is why it kept disappearing: this
+                 * element exists only while there is a picture to show, so a peer turning their
+                 * camera off, or you putting the stage away, silenced them.
+                 *
+                 * With the sink carrying the audio, an unmuted tile would be a second decoder on the
+                 * same stream — the same voice twice, slightly apart.
+                 */
+                muted: true,
                 /**
                  * Pinned to the tile's four edges rather than sized `100%` × `100%`.
                  *
@@ -690,6 +700,51 @@ const bar: SchemaNode = {
   },
 };
 
+/**
+ * The call's audio, attached to the document independently of anything you can see.
+ *
+ * ## Why this exists at all
+ *
+ * Because sound and picture were one decision, and the picture is conditional in three separate
+ * places. A tile renders `we-video` only while that peer `hasPicture`; the stage renders tiles only
+ * while it is open; and the host unmounts a dock whose edge is null — deliberately, so a stage
+ * nobody is watching stops decoding video. Each of those is right on its own terms, and each one
+ * silenced the call, because a `<video>` element was the only thing a remote stream was ever
+ * attached to. Turn your camera off and nobody could hear you. Put the video away and the call went
+ * quiet — which is a valid thing to want and was the fastest way to break it.
+ *
+ * A call is audio first. So the audio hangs off `active` and nothing else: it is mounted from the
+ * moment you are in a call until you leave, at the same anchor as the control bar, whatever the
+ * stage is doing. One `we-audio` per remote participant, playing that peer's stream.
+ *
+ * ## Why not one element for everyone
+ *
+ * A `MediaStream` per peer is what the mesh produces — `ontrack` adds each arriving track to that
+ * peer's own stream — and mixing them into one would mean a `WebAudio` graph this module has no
+ * other use for. Per-peer also means a peer leaving takes their element with them, which is exactly
+ * what `$each` over the tiles already expresses.
+ *
+ * Remote tiles only: your own tile is your own microphone, and playing that back is a feedback loop.
+ *
+ * Nothing is visible. `we-audio` without `controls` draws nothing, and an audio element plays
+ * whether or not anything is painted for it — visibility and playback are unrelated for media
+ * elements, which is the whole property being relied on here.
+ */
+const audioSink: SchemaNode = {
+  type: '$if',
+  props: {
+    condition: { $store: 'modules.call.active' },
+    then: {
+      type: '$each',
+      props: {
+        items: { $filter: { items: { $store: 'modules.call.tiles' }, where: { isSelf: false } } },
+        as: 'tile',
+      },
+      children: [{ type: 'we-audio', props: { stream: '$tile.stream', autoplay: true } }],
+    },
+  },
+};
+
 /** Whatever went wrong, said out loud. A call that silently fails to start is indistinguishable from
  *  one nobody has joined. */
 const problem: SchemaNode = {
@@ -781,6 +836,14 @@ export const callModule = defineModule({
   slots: [
     { anchor: 'dock-bottom', node: bar, order: 100 },
     { anchor: 'dock-bottom', node: problem, order: 80 },
+    /*
+      The audio, at the same anchor as the bar rather than in the dock.
+
+      Chrome, not a panel: it renders nothing and takes no room, and it has to outlive every state
+      the stage can be in — including not existing. A slot contribution is mounted for as long as the
+      shell is, which is the property the sound needs and the dock deliberately does not have.
+    */
+    { anchor: 'dock-bottom', node: audioSink, order: 60 },
   ],
 
   /**

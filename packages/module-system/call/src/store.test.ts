@@ -195,6 +195,33 @@ describe('transport and device lifetime', () => {
     return { store, scopeDisposals: () => disposed, disposers };
   }
 
+  it('shows the video when the call starts', async () => {
+    // Nothing did this, so pressing the call button produced a control bar and no picture: `dockEdge`
+    // is null while the stage is closed and the host renders no dock for a null edge, so the only
+    // routes to a visible stage were controls that read as ways to change something already there.
+    const { store } = callable();
+
+    store.joinSpaceCall();
+    await Promise.resolve();
+
+    expect(store.stageOpen()).toBe(true);
+    // Floating, so showing it costs the space behind it nothing — the two questions stay separate.
+    expect(store.dockFloat()).toBe(true);
+    expect(store.dockEdge()).not.toBeNull();
+  });
+
+  it('stops showing it when the call ends', async () => {
+    // "This call is showing", not a preference that outlives the call it was made in.
+    const { store } = callable();
+
+    store.joinSpaceCall();
+    await Promise.resolve();
+    store.leave();
+
+    expect(store.stageOpen()).toBe(false);
+    expect(store.dockEdge()).toBeNull();
+  });
+
   it('gives the transport scope back when the call ends', async () => {
     const { store, scopeDisposals } = callable();
 
