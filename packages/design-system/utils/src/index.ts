@@ -477,16 +477,24 @@ export const BASE_TYPOGRAPHY_SPECS: PropSpec[] = [
   ['white-space', 'white-space'],
 ];
 
+/**
+ * The `{p}` placeholder a fallback chain uses to name the prefix it resolves against.
+ *
+ * A regex rather than `String.replaceAll`, which is ES2021 — the workspace targets ES2020, so the
+ * method typechecks nowhere except by accident of a package's own `lib`.
+ */
+const PREFIX_PLACEHOLDER = /\{p\}/g;
+
 export function declCSS(prefix: string, [cssProp, varSuffix, fallback]: PropSpec): string {
   if (!fallback) return `${cssProp}: var(${prefix}${varSuffix});`;
-  return `${cssProp}: var(${prefix}${varSuffix}, ${fallback.replaceAll('{p}', prefix)});`;
+  return `${cssProp}: var(${prefix}${varSuffix}, ${fallback.replace(PREFIX_PLACEHOLDER, prefix)});`;
 }
 
 export function stateDeclCSS(statePrefix: string, defaultPrefix: string, spec: PropSpec): string {
   const [cssProp, varSuffix, fallback] = spec;
   // {p} resolves against the default prefix here: a state's own shorthand (--x-hover-overflow) is
   // not a thing anybody sets, and the chain still ends at the plain shorthand either way.
-  const resolved = fallback?.replaceAll('{p}', defaultPrefix);
+  const resolved = fallback?.replace(PREFIX_PLACEHOLDER, defaultPrefix);
   const defaultRef = resolved ? `var(${defaultPrefix}${varSuffix}, ${resolved})` : `var(${defaultPrefix}${varSuffix})`;
   return `${cssProp}: var(${statePrefix}${varSuffix}, ${defaultRef});`;
 }
