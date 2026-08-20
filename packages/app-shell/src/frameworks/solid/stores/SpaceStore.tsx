@@ -8,8 +8,8 @@ import {
 } from '@shared/spaceSync';
 import { resolveSpaceTheme } from '@shared/themeResolution';
 import { deriveSlug } from '@shared/utils';
-import { displayName } from '@we/backend-shared';
 import type { AgentProfileSummary, DatasetRef } from '@we/backend-shared';
+import { displayName } from '@we/backend-shared';
 import type { SerializedBlockNode } from '@we/block-shared';
 import { createBlocks, deleteBlocks, reconcileBlocks } from '@we/block-shared';
 import { toastService } from '@we/components/solid';
@@ -17,7 +17,6 @@ import {
   AGENT_DEFAULT,
   CollectionBlock,
   compressImageToFileData,
-  TextBlock,
   type DatasetProxy,
   dataURIToFileData,
   type FileData,
@@ -31,6 +30,7 @@ import {
   SignalType,
   Space,
   SpacePreference,
+  TextBlock,
 } from '@we/models';
 import {
   Accessor,
