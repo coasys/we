@@ -51,8 +51,7 @@ export function CollapsedContent(props: CollapsedContentProps) {
     resize, so a late image, a streamed reply or another utterance arriving mid-call widens the
     cap with it rather than being cut off by a stale number.
   */
-  const maxHeightStyle = () =>
-    effectivelyCollapsed() ? maxH() : contentHeight() ? `${contentHeight()}px` : 'none';
+  const maxHeightStyle = () => (effectivelyCollapsed() ? maxH() : contentHeight() ? `${contentHeight()}px` : 'none');
 
   return (
     <div class={`we-collapsed-content${props.class ? ' ' + props.class : ''}`}>
