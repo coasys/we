@@ -38,6 +38,7 @@ import {
 import { DEFAULT_REIFIED_EDGES, defaultExpanders } from '@we/graph-expanders';
 import { defaultLayouts } from '@we/graph-layouts';
 import type { Behaviour, ControlContext, EdgeGeometry, GraphNode, Point, PointerInput } from '@we/graph-protocol';
+import { parseAddress } from '@we/graph-protocol';
 import { batch, createEffect, createMemo, createSignal, For, onCleanup, onMount, Show, untrack } from 'solid-js';
 
 import type { GraphViewProps } from './GraphView.types';
@@ -165,7 +166,15 @@ export function GraphView(props: GraphViewProps) {
         case 'edgeClick': {
           // The behaviour only knows an id — picking is geometric now, so it never held the edge.
           const edge = engine.store.edge(event.edge.id);
-          if (edge) props.onEdgeClick?.(edge);
+          if (!edge) break;
+          // A reified edge is a view of a record, and a consumer that wants to open it needs the
+          // record rather than the address. Absent on an ordinary edge, which stands for a declared
+          // relation and has no record of its own.
+          const behind = edge.reifiedAs ? parseAddress(edge.reifiedAs) : null;
+          props.onEdgeClick?.({
+            ...edge,
+            ...(behind?.kind === 'entity' && { recordId: behind.id, recordType: behind.type }),
+          });
           break;
         }
         case 'edgeCreate': {
@@ -173,7 +182,23 @@ export function GraphView(props: GraphViewProps) {
           // addresses, and a template answering this needs each end's type to write the record.
           const source = engine.store.node(event.source.id);
           const target = engine.store.node(event.target.id);
-          if (source && target) props.onEdgeCreate?.({ source, target });
+          if (!source || !target) break;
+          // Only entity nodes stand for records. A property, a literal or a synthetic cluster has
+          // no id to write a connection against, and offering to connect one would raise a dialog
+          // whose save could not succeed.
+          const from = parseAddress(source.id);
+          const to = parseAddress(target.id);
+          if (from?.kind !== 'entity' || to?.kind !== 'entity') break;
+          props.onEdgeCreate?.({
+            source,
+            target,
+            sourceId: from.id ?? '',
+            sourceType: from.type ?? source.type,
+            sourceLabel: source.label ?? source.type,
+            targetId: to.id ?? '',
+            targetType: to.type ?? target.type,
+            targetLabel: target.label ?? target.type,
+          });
           break;
         }
         case 'selectionChange':

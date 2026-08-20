@@ -45,6 +45,20 @@ export interface CreatableEntity {
   group: string;
 }
 
+/** The two records a connection joins, exactly as the graph's `onEdgeCreate` reports them. */
+export interface PendingLink {
+  sourceId: string;
+  sourceType: string;
+  targetId: string;
+  targetType: string;
+  /** Display labels for the two ends, so the form can say what is being connected. */
+  sourceLabel?: string;
+  targetLabel?: string;
+}
+
+/** The model a drawn connection is written as. Named once, so the store and the form agree. */
+const RELATIONSHIP = 'Relationship';
+
 export interface RecordStore {
   /**
    * Models a person can create an instance of here — this space's own first, then WE's own.
@@ -71,8 +85,25 @@ export interface RecordStore {
    */
   lastCreatedId: Accessor<string>;
 
+  /**
+   * The two records a pending connection joins, or null when the open form is an ordinary one.
+   *
+   * Read by a form that wants to name what is being connected — "Post → Sighting" above the label
+   * field is the difference between filling in a form and knowing what you are asserting.
+   */
+  pendingLink: Accessor<PendingLink | null>;
+
   /** Open the form. With an entity, on that model; without, on the picker. */
   openRecordForm: (entity?: string) => void;
+  /**
+   * Open the form on a `Relationship` joining these two records.
+   *
+   * Takes the `onEdgeCreate` payload as it arrives. The same form and the same save path as any
+   * other record — a relationship is one, and its `authoring` declaration already names the two
+   * fields a person fills in — with the endpoints held here rather than in the draft, because they
+   * came from a gesture rather than from typing and nothing should offer to edit them.
+   */
+  connectNodes: (link: PendingLink) => void;
   /** Switch which model is being created, discarding the values typed against the last one. */
   setRecordEntity: (entity: string) => void;
   /** Set one field's value. Takes the field name, so one action serves every control. */
@@ -92,6 +123,7 @@ export function RecordStoreProvider(props: ParentProps) {
   const [recordErrors, setRecordErrors] = createSignal<string[]>([]);
   const [savingRecord, setSavingRecord] = createSignal(false);
   const [lastCreatedId, setLastCreatedId] = createSignal('');
+  const [pendingLink, setPendingLink] = createSignal<PendingLink | null>(null);
 
   /**
    * WE's own authorable models, read straight off the core manifest.
@@ -102,7 +134,7 @@ export function RecordStoreProvider(props: ParentProps) {
    */
   const coreEntities = createMemo<CreatableEntity[]>(() =>
     Object.entries(CORE_MANIFEST.entities)
-      .filter(([, entity]) => entity.authoring?.fields.length)
+      .filter(([name, entity]) => entity.authoring?.fields.length && name !== RELATIONSHIP)
       .map(([name]) => ({ label: name, value: name, icon: BLOCK_ICONS[name] ?? 'cube', group: 'Built in' }))
       .sort((a, b) => a.label.localeCompare(b.label)),
   );
@@ -147,6 +179,10 @@ export function RecordStoreProvider(props: ParentProps) {
     batch(() => {
       setRecordErrors([]);
       setRecordDraft(null);
+      // A form opened from a button is not a connection, whatever the last one was. Left set, the
+      // next ordinary record created would silently be linked to two nodes somebody connected
+      // earlier — a wrong write with nothing on screen to suggest it happened.
+      setPendingLink(null);
     });
     // Opening on the first offered model rather than on an empty picker: in a space with one
     // vocabulary that is the only answer, and in a space with several it is still a better start
@@ -187,10 +223,19 @@ export function RecordStoreProvider(props: ParentProps) {
     );
   }
 
+  function connectNodes(link: PendingLink): void {
+    if (!link.sourceId || !link.targetId) return;
+    batch(() => {
+      setPendingLink(link);
+      setRecordEntity(RELATIONSHIP);
+    });
+  }
+
   function cancelRecordForm(): void {
     batch(() => {
       setRecordDraft(null);
       setRecordErrors([]);
+      setPendingLink(null);
     });
   }
 
@@ -208,11 +253,35 @@ export function RecordStoreProvider(props: ParentProps) {
     setSavingRecord(true);
     try {
       const Model = getModel(draft.entity);
-      const created = (await Model.create(dataset.handle, recordDraftFields(draft))) as { id?: string };
+      const link = pendingLink();
+      /*
+        The endpoint *types* go in with the fields; the endpoints themselves are linked after.
+
+        They are two different kinds of write. `sourceType` is an ordinary property, and the ORM
+        writes those from the create payload. A relation is not: `innerUpdate` explicitly skips a
+        relation field holding a plain value, so `create(p, { source: uri })` typechecks, runs, and
+        writes no link at all — which would leave a relationship record with no ends, drawn nowhere
+        and findable only by looking for it.
+      */
+      const fields = recordDraftFields(draft);
+      if (link) Object.assign(fields, { sourceType: link.sourceType, targetType: link.targetType });
+
+      const created = (await Model.create(dataset.handle, fields)) as {
+        id?: string;
+        setSource?: (value: string) => Promise<unknown>;
+        setTarget?: (value: string) => Promise<unknown>;
+      };
+
+      if (link) {
+        await created.setSource?.(link.sourceId);
+        await created.setTarget?.(link.targetId);
+      }
+
       batch(() => {
         setLastCreatedId(created?.id ?? '');
         setRecordDraft(null);
         setRecordErrors([]);
+        setPendingLink(null);
       });
       toastService.success(`${draft.label} created.`);
     } catch (error) {
@@ -232,7 +301,9 @@ export function RecordStoreProvider(props: ParentProps) {
     recordErrors,
     savingRecord,
     lastCreatedId,
+    pendingLink,
     openRecordForm,
+    connectNodes,
     setRecordEntity,
     setRecordField,
     cancelRecordForm,

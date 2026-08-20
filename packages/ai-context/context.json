@@ -3530,12 +3530,12 @@
         },
         {
           "name": "onEdgeClick",
-          "type": "((edge: GraphEdge) => void)",
+          "type": "((edge: GraphEdge & { recordId?: string; recordType?: string; }) => void)",
           "optional": true
         },
         {
           "name": "onEdgeCreate",
-          "type": "((payload: { source: GraphNode; target: GraphNode; }) => void)",
+          "type": "((payload: { source: GraphNode; target: GraphNode; sourceId: string; sourceType: string; targetId: string; targetType: string; sourceLabel: string; targetLabel: string; }) => void)",
           "optional": true
         },
         {
@@ -5550,9 +5550,19 @@
         },
         "lastCreatedId": {
           "type": "string"
+        },
+        "pendingLink": {
+          "type": "object"
         }
       },
-      "actions": ["openRecordForm", "setRecordEntity", "setRecordField", "cancelRecordForm", "saveRecord"]
+      "actions": [
+        "openRecordForm",
+        "connectNodes",
+        "setRecordEntity",
+        "setRecordField",
+        "cancelRecordForm",
+        "saveRecord"
+      ]
     },
     {
       "name": "routeStore",

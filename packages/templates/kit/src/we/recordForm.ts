@@ -124,6 +124,47 @@ export function recordFormModal(opts: RecordFormModalOptions = {}): SchemaNode {
           },
 
           /*
+            What is being connected, when this form was opened by drawing a line.
+
+            Not editable, and not a field: the endpoints came from a gesture, not from typing, and
+            offering to change them here would be offering to redo the gesture in a worse way. It is
+            here to be *read* — "Post → Sighting" above the label box is the difference between
+            filling in a form and knowing what you are asserting.
+          */
+          {
+            type: '$if',
+            props: {
+              condition: { $store: 'recordStore.pendingLink' },
+              then: {
+                type: 'Row',
+                props: {
+                  gap: '200',
+                  ay: 'center',
+                  wrap: true,
+                  width: '100%',
+                  bg: 'neutral-50',
+                  r: '300',
+                  px: '300',
+                  py: '200',
+                },
+                children: [
+                  {
+                    type: 'we-text',
+                    props: { variant: 'label', truncate: true },
+                    children: [{ $store: 'recordStore.pendingLink.sourceLabel' }],
+                  },
+                  { type: 'we-icon', props: { name: 'arrow-right', size: 'xs', color: 'neutral-400' } },
+                  {
+                    type: 'we-text',
+                    props: { variant: 'label', truncate: true },
+                    children: [{ $store: 'recordStore.pendingLink.targetLabel' }],
+                  },
+                ],
+              },
+            },
+          },
+
+          /*
             The model picker, shown only where there is a choice.
 
             A space with one vocabulary has one answer, and offering a select with a single option
@@ -133,7 +174,10 @@ export function recordFormModal(opts: RecordFormModalOptions = {}): SchemaNode {
             type: '$if',
             props: {
               condition: {
-                $gt: [{ $count: { items: { $store: 'recordStore.creatableEntities' } } }, 1],
+                $and: [
+                  { $not: { $store: 'recordStore.pendingLink' } },
+                  { $gt: [{ $count: { items: { $store: 'recordStore.creatableEntities' } } }, 1] },
+                ],
               },
               then: {
                 type: 'we-form-field',

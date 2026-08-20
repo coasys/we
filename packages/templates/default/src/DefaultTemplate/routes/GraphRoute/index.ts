@@ -1,6 +1,8 @@
 import type { RouteSchema, SchemaNode } from '@we/schema-shared';
 import { recordFormModal } from '@we/template-kit';
 
+import { edgeDetailModal } from './EdgeDetail';
+
 /**
  * The graph route — three graphs over the same space, switchable.
  *
@@ -80,7 +82,19 @@ const schemaGraph: SchemaNode = {
 const knowledgeGraph: SchemaNode = {
   type: 'GraphView',
   props: {
-    seeds: { source: 'query', options: { entity: 'CollectionBlock', limit: 40 } },
+    /*
+      Two seeds: what people made, and what they have said about how it relates.
+
+      `Relationship` is seeded rather than only expanded into, because a connection nobody has
+      opened a node to find is still a thing the community asserted, and a knowledge map that only
+      showed connections you had gone looking for would hide exactly the ones you did not know about.
+      It draws as an edge rather than a node — see `reified` on GraphView — so seeding it adds lines,
+      not dots.
+    */
+    seeds: [
+      { source: 'query', options: { entity: 'CollectionBlock', limit: 40 } },
+      { source: 'query', options: { entity: 'Relationship', limit: 60 } },
+    ],
     expansion: { defaultDepth: 1, direction: 'out', limit: 20, maxNodes: 500 },
     layout: layoutSpec,
     nodeStyle: [
@@ -89,11 +103,28 @@ const knowledgeGraph: SchemaNode = {
       { when: { kind: 'literal' }, style: { shape: 'rect', size: 10, color: 'neutral-300' } },
       { when: { unresolved: true }, style: { color: 'neutral-200' } },
     ],
-    edgeStyle: [{ style: { curve: 'arc', arrow: 'target' } }],
-    behaviours: ['pan-zoom', 'select', 'expand-on-double-click', { type: 'drag-node' }],
+    edgeStyle: [
+      { style: { curve: 'arc', arrow: 'target' } },
+      // A drawn connection carries somebody's own words, so it says them. Heavier and coloured
+      // because the distinction that matters on this map is "a schema says so" against "a person
+      // says so", and the second is the one worth arguing with.
+      { when: { type: 'relates' }, style: { showLabel: true, color: 'primary-500', width: 2 } },
+    ],
+    behaviours: [
+      // Before drag-node, which is what makes arming mean anything: both claim a press on a node.
+      { type: 'connect-nodes', options: { armed: { $local: 'connecting' } } },
+      'pan-zoom',
+      'select',
+      'expand-on-double-click',
+      { type: 'drag-node' },
+    ],
     height: '100%',
     revision: { $local: 'revision' },
     onNodeClick: { $setLocal: 'selected', from: '$event' },
+    onEdgeClick: { $setLocal: 'selectedEdge', from: '$event' },
+    // Straight to the store: it opens the same record form every other model uses, on
+    // `Relationship`, holding the two ends the gesture produced.
+    onEdgeCreate: { $action: 'recordStore.connectNodes', args: ['$event'] },
   },
 };
 
@@ -156,6 +187,17 @@ export const graphRoute: RouteSchema = {
     // Holds the last clicked node so the detail strip has something to read. An object rather than
     // scalars because it is one thing that arrives whole from the event.
     selected: { type: 'object', initial: null },
+    /** The last clicked edge, for the strip that reads a drawn connection back. */
+    selectedEdge: { type: 'object', initial: null },
+    /*
+      Whether dragging a node means connecting it rather than moving it.
+
+      A mode with a visible control rather than a modifier key. The modifiers are taken or do not
+      travel — shift extends the selection, and there are none at all on a touchscreen — and a
+      gesture nobody can discover is a gesture nobody uses. It also gives the reader somewhere to
+      see which of the two things a drag is about to do.
+    */
+    connecting: { type: 'boolean', initial: false },
     /*
       Flipped after a record is created, which tells the graph to re-read and merge.
 
@@ -211,6 +253,29 @@ export const graphRoute: RouteSchema = {
               type: 'Row',
               props: { gap: '300', ay: 'center' },
               children: [
+                /*
+                  Connect mode, on the knowledge map only.
+
+                  The schema map draws types rather than records, and the content tree draws
+                  containment somebody else's data already states — neither has anything a person's
+                  own connection would attach to. Offering the toggle there would arm a gesture whose
+                  save could not succeed.
+                */
+                {
+                  type: '$if',
+                  props: {
+                    condition: { $eq: [{ $local: 'mode' }, 'knowledge'] },
+                    then: {
+                      type: 'we-button',
+                      props: {
+                        size: 'sm',
+                        variant: { $if: { condition: { $local: 'connecting' }, then: 'primary', else: 'ghost' } },
+                        onClick: { $toggleLocal: 'connecting' },
+                      },
+                      children: [{ type: 'we-icon', props: { name: 'flow-arrow' } }, 'Connect'],
+                    },
+                  },
+                },
                 picker('layout', LAYOUTS),
                 /*
                   Creating a record, from the map of what is in the space.
@@ -308,5 +373,7 @@ export const graphRoute: RouteSchema = {
         },
       },
     },
+
+    edgeDetailModal,
   ],
 };

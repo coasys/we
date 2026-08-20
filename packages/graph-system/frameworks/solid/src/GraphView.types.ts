@@ -107,7 +107,15 @@ export interface GraphViewProps {
 
   onNodeClick?: (node: GraphNode) => void;
   onNodeDoubleClick?: (node: GraphNode) => void;
-  onEdgeClick?: (edge: GraphEdge) => void;
+  /**
+   * A click on an edge, with the record behind it resolved where there is one.
+   *
+   * `recordId`/`recordType` are present only for a **reified** edge — one that stands for an entity
+   * rather than for a declared relation — and they are the whole reason `reifiedAs` exists: the edge
+   * carries a graph address, and a template has no operator that could take one apart to fetch the
+   * record and show its comments.
+   */
+  onEdgeClick?: (edge: GraphEdge & { recordId?: string; recordType?: string }) => void;
   /**
    * The user dragged a line from one node to another, with the `connect-nodes` behaviour armed.
    *
@@ -116,7 +124,25 @@ export interface GraphViewProps {
    * creating whatever record it thinks the connection is — for WE's own knowledge map, a
    * `Relationship`, whose fields are the two ends' ids and types.
    */
-  onEdgeCreate?: (payload: { source: GraphNode; target: GraphNode }) => void;
+  onEdgeCreate?: (payload: {
+    source: GraphNode;
+    target: GraphNode;
+    /**
+     * Each end's *record* id and entity name, parsed out of its address.
+     *
+     * The nodes carry graph addresses (`we-graph://entity/<dataset>/<type>/<id>`), and a template
+     * has no operator that could take one apart. These are the four values writing a connection
+     * actually needs, so the event answers the question it raises rather than handing over
+     * something the reader then has to decode.
+     */
+    sourceId: string;
+    sourceType: string;
+    targetId: string;
+    targetType: string;
+    /** Each end as it is drawn on the map, so a form can name what is being connected. */
+    sourceLabel: string;
+    targetLabel: string;
+  }) => void;
   onSelectionChange?: (ids: string[]) => void;
   /** Fired when a drag ends, with the world position — what a board persists. */
   onNodeDragEnd?: (payload: { id: string; x: number; y: number }) => void;
