@@ -5868,6 +5868,12 @@
         },
         "snapTargets": {
           "type": "array"
+        },
+        "insertSlots": {
+          "type": "array"
+        },
+        "activeInsert": {
+          "type": "string"
         }
       },
       "actions": [
@@ -5884,6 +5890,7 @@
         "moveDock",
         "endDockMove",
         "snapDock",
+        "insertDock",
         "toggleMaximiseDock",
         "toggleDockDisplace"
       ]
@@ -5974,6 +5981,9 @@
           "type": "array",
           "properties": ["label", "value"]
         },
+        "spaceThemePinned": {
+          "type": "boolean"
+        },
         "installedModules": {
           "type": "array"
         },
@@ -6037,6 +6047,8 @@
         "setModuleVisible",
         "setSpaceTemplateOverride",
         "setSpaceThemeOverride",
+        "applyTheme",
+        "clearSpaceThemePin",
         "launchModule",
         "createSignalType",
         "upsertSignal",

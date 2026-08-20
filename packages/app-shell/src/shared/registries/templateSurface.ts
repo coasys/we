@@ -426,6 +426,13 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     autoInterpret: state('space-settings'),
     templateOverrideOptions: state('space-admin'),
     themeOverrideOptions: state('space-admin'),
+    /*
+      `appearance`, not `space-admin` beside its options list: this answers "is the theme you are
+      looking at one you chose here", which is a fact about the current view rather than about
+      configuring some other space. The theme picker in the rail needs it to know whether to offer
+      a reset, and that picker lives in the appearance tier.
+    */
+    spaceThemePinned: state('appearance'),
     moduleInstallSettings: state('space-admin'),
     createSpace: action('space-admin'),
     initializeAsWeSpace: action('space-settings'),
@@ -444,6 +451,13 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     setModuleVisible: hereOnly('space-settings', 2),
     setSpaceTemplateOverride: hereOnly('appearance', 1),
     setSpaceThemeOverride: hereOnly('appearance', 1),
+    /*
+      Both are `setSpaceThemeOverride` aimed at the space on screen and nowhere else, so they sit in
+      the same tier — and take no space argument at all, which is why they need no `hereOnly` arity
+      guard: there is no parameter through which a template could name somebody else's space.
+    */
+    applyTheme: action('appearance'),
+    clearSpaceThemePin: action('appearance'),
 
     updateSpaceInCache: WIRING,
     loadSpaces: WIRING,

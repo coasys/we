@@ -21,6 +21,15 @@ export interface PickerRowOptions {
    */
   actions?: {
     icon: string;
+    /**
+     * The icon's weight. Defaults to regular, which is right for a verb — "edit this", "fork this".
+     *
+     * `fill` is for the other kind of action: one whose presence reports a state that is currently
+     * true and whose click turns it off. Filled is already how this row says "true" — the star on
+     * the space's default is filled — so a solid glyph beside a hollow one reads as a state rather
+     * than as an offer, which is the difference between "unpin this" and "pin this".
+     */
+    weight?: 'thin' | 'light' | 'regular' | 'bold' | 'fill' | 'duotone';
     tooltip: string;
     onClick: SchemaProp;
     /**
@@ -107,7 +116,7 @@ export function pickerRow(opts: PickerRowOptions): SchemaNode {
                 hoverProps: { color: 'neutral-700' },
                 onClick: action.onClick,
               },
-              children: [{ type: 'we-icon', props: { name: action.icon } }],
+              children: [{ type: 'we-icon', props: { name: action.icon, weight: action.weight ?? 'regular' } }],
             },
           ],
         };

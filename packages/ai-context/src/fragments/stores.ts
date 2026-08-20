@@ -332,6 +332,7 @@ export const storeEntries: StoreEntry[] = [
       },
       templateOverrideOptions: { type: 'array', properties: ['label', 'value'] },
       themeOverrideOptions: { type: 'array', properties: ['label', 'value'] },
+      spaceThemePinned: { type: 'boolean' },
       moduleInstallSettings: {
         type: 'array',
         properties: ['id', 'name', 'description', 'icon', 'installed'],
@@ -368,6 +369,8 @@ export const storeEntries: StoreEntry[] = [
       'setModuleVisible',
       'setSpaceTemplateOverride',
       'setSpaceThemeOverride',
+      'applyTheme',
+      'clearSpaceThemePin',
       'launchModule',
     ],
   },
@@ -825,6 +828,8 @@ export function generateStoresText(entries: StoreEntry[]): string {
         templateOverrideOptions:
           '{ label, value }[] — options for the per-space template override picker: "Use the space\u2019s default" (space-default), "Use my default" (agent-default), then every template. Each of the first two names what it resolves to. Pre-built because a schema can $map a store array into options but cannot prepend one, and without those entries overriding would be one-way',
         themeOverrideOptions: '{ label, value }[] — the same, for themes',
+        spaceThemePinned:
+          'boolean — this agent has pinned a theme for the space on screen that differs from what would otherwise apply, so there is something for a reset to undo. False outside a space, and false for a pin that happens to name what the space resolves to anyway. Gate a "pinned here / reset" affordance on it rather than on the pin merely existing',
         requiredModules:
           'string[] — module ids the template on screen mounts components from, derived by walking the schema rather than read from meta.components (which no template fills in). What makes uninstalling a capability module refusable',
         missingModules:
@@ -885,6 +890,10 @@ export function generateStoresText(entries: StoreEntry[]): string {
           "(templateId: string, spaceUuid?): sets the template THIS AGENT sees in one space, overriding the community's default. Three values: 'space-default' follows the space, 'agent-default' follows your own global default (tracking later changes to it), or a concrete template id pins that one. Private, and applied immediately when that space is the one on screen. Note the sentinels are named values, not '' — the ORM skips empty strings on update, so '' cannot clear a property",
         setSpaceThemeOverride:
           '(themeId: string, spaceUuid?): sets the theme THIS AGENT sees in one space. Same three values as setSpaceTemplateOverride. Private',
+        applyTheme:
+          '(themeId: string): applies a theme where the agent is — pinned to the space on screen, or set as their global default when there is no space. What a theme picker in chrome should call: it persists, where setCurrentTheme only sets a signal that the next resolution overwrites. Which of the two it does is decided at click time, so a schema cannot express it with $if (whose args resolve at render time)',
+        clearSpaceThemePin:
+          '(): drops this agent\u2019s theme pin for the space on screen, returning it to whatever would otherwise apply. The way back out of applyTheme, so the picker need not spell the FOLLOW_SPACE sentinel as a literal. Pair with spaceThemePinned',
         setModuleEnabled:
           '(moduleId: string, enabled: boolean, spaceUuid?): turns a feature module on or off for a space; writes the resolved list, so the first toggle also pins whatever was on by fallback. Omit spaceUuid for the space on screen',
         launchModule:
