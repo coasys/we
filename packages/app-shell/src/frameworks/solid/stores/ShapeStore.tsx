@@ -39,17 +39,21 @@ import {
   generateShapeDraft as runShapeGeneration,
   type ShapeGenerationTransport,
 } from '../../../shared/ai/shapeGeneration';
+import { hintToDisplay } from '../../../shared/shapes/hintEditor';
 import {
   additiveViolations,
+  authoredFields,
   draftToManifest,
   emptyDraftProperty,
   emptyDraftRelationship,
   emptyShapeDraft,
+  type GeneratedOutput,
+  isTouched,
   manifestToDraft,
+  memberSignature,
   type ShapeDraft,
   type ShapeDraftMember,
   syncDerived,
-  isTouched,
 } from '../../../shared/shapes/shapeDraft';
 import { useDatasetStore } from './DatasetStore';
 import { useSessionStore } from './SessionStore';
@@ -99,6 +103,16 @@ export interface SpaceShapeView {
   problems: string[];
   manifest: ModelManifest | null;
 }
+
+/**
+ * What clicking the wizard's generate button would do, given what the draft currently holds.
+ *
+ * Generation replaces the member list wholesale, so the interesting distinction is what stands to
+ * be lost: `generate` (nothing yet), `regenerate` (a proposal nobody has touched — the "try again"
+ * that must stay one click), `replace` (rows somebody wrote, so it asks first), `none` (there is
+ * nothing to generate from).
+ */
+export type GenerateIntent = 'none' | 'generate' | 'regenerate' | 'replace';
 
 export interface HintEntityView {
   entity: string;
@@ -212,12 +226,19 @@ export interface ShapeStore {
    */
   generateShapeFields: () => Promise<void>;
   /**
-   * The auto-generate button has something to work from and nothing to destroy: some context is
-   * written (name, description or hint) and no member row has been started. False once a member is
-   * touched — generation replaces the member list wholesale, and quietly discarding typed rows is
-   * how a click becomes a loss.
+   * What the generate button would do right now — label it from this, and disable it on 'none'.
+   *
+   * 'generate' and 'regenerate' run immediately; 'replace' would discard hand-written rows, so it
+   * raises {@link confirmReplaceFields} instead. Route the button through
+   * {@link requestGenerateFields}, which makes that choice itself.
    */
-  canAutoGenerateFields: Accessor<boolean>;
+  generateIntent: Accessor<GenerateIntent>;
+  /** Generate, or ask first when the click would discard work. The button's own entry point. */
+  requestGenerateFields: () => void;
+  /** Whether the "replace the fields below?" confirmation is showing. */
+  confirmReplaceFields: Accessor<boolean>;
+  /** Dismiss that confirmation, keeping the fields as they are. */
+  cancelReplaceFields: () => void;
   /**
    * Close the wizard, asking first when there is work to lose.
    *
@@ -261,6 +282,18 @@ export function ShapeStoreProvider(props: ParentProps) {
   const [generating, setGenerating] = createSignal(false);
   const [expandedMembers, setExpandedMembers] = createSignal<string[]>([]);
   const [confirmDiscard, setConfirmDiscard] = createSignal(false);
+  const [confirmReplaceFields, setConfirmReplaceFields] = createSignal(false);
+  /**
+   * What generation last put into the draft, or null if it never has: its own words for each
+   * top-level field it answered (empty where the author's own survived), and a signature of the rows.
+   *
+   * This is what separates the author's intent from the machine's output, and both halves of the
+   * generate flow turn on it. The rows decide whether a re-run is "try again" or "throw away what I
+   * wrote". The words decide what a re-run is even *about*: prompting with a description generation
+   * wrote itself feeds the last answer back in as though it were a request, which is how renaming a
+   * model and pressing Regenerate returned something half about the old subject.
+   */
+  const [lastGenerated, setLastGenerated] = createSignal<GeneratedOutput | null>(null);
 
   const memberOptions = createMemo(() =>
     (shapeDraft()?.members ?? []).map((m) => ({ rowId: m.rowId, options: m.defaultOptions })),
@@ -470,6 +503,10 @@ export function ShapeStoreProvider(props: ParentProps) {
     // MouseEvent and the wizard refused to open.
     const recordId = typeof shapeRecordId === 'string' && shapeRecordId ? shapeRecordId : undefined;
     setDraftErrors([]);
+    // Nothing here was generated yet, whatever the last draft did — so every word in it is the
+    // author's, including a stored model's own description.
+    setLastGenerated(null);
+    setConfirmReplaceFields(false);
     if (!recordId) {
       const draft = emptyShapeDraft();
       // Batched: two separate writes mount the wizard with nothing expanded and then expand it, so
@@ -525,10 +562,12 @@ export function ShapeStoreProvider(props: ParentProps) {
 
   function cancelShapeWizard(): void {
     setConfirmDiscard(false);
+    setConfirmReplaceFields(false);
     setShapeDraft(null);
     setEditingShapeId(null);
     setDraftErrors([]);
     setExpandedMembers([]);
+    setLastGenerated(null);
   }
 
   /*
@@ -661,9 +700,18 @@ export function ShapeStoreProvider(props: ParentProps) {
       // wholesale; on an edit it would orphan storage keys, so it is offered only for new models.
       batch(() => {
         replaceDraft(draft);
-        // Everything a model wrote is opened: the point of the flow is that it gets read before it
-        // is adopted, and hints are the part most worth checking.
-        setExpandedMembers(draft.members.map((m) => m.rowId));
+        // Closed, like the typed route: a collapsed row shows its hint, so what was generated can
+        // be read without every card standing open.
+        setExpandedMembers([]);
+        // Every word of it is the machine's — this route replaces the draft outright, so there is
+        // no authored field to protect from the next run.
+        setLastGenerated({
+          name: draft.name,
+          description: draft.description,
+          icon: draft.icon,
+          classHint: draft.classHint,
+          members: memberSignature(draft.members),
+        });
       });
       if (remainingProblems.length) setDraftErrors(remainingProblems);
     } catch (err) {
@@ -674,30 +722,82 @@ export function ShapeStoreProvider(props: ParentProps) {
     }
   }
 
-  /** The guard itself, over a live draft — the memo below tracks it, the action re-checks it fresh. */
-  function computeCanAutoGenerate(draft: ShapeDraft | null): boolean {
-    if (!draft) return false;
+  /**
+   * The guard itself, over a live draft — the memo below tracks it, the action re-checks it fresh.
+   *
+   * Generation replaces the member list wholesale, so what the button may do depends entirely on
+   * what would be lost: nothing (`generate`), a proposal nobody has touched (`regenerate` — the
+   * "try again" that must not cost a dialog), or somebody's own work (`replace`, which asks first).
+   *
+   * The context test is deliberately over everything present, the author's words or not: a draft
+   * carrying a generated description has something to re-run from, and greying the button there
+   * would be refusing to act on a form that visibly has writing in it.
+   */
+  function computeGenerateIntent(draft: ShapeDraft | null): GenerateIntent {
+    if (!draft) return 'none';
     const hasContext = Boolean(draft.name.trim() || draft.description.trim() || draft.classHint.trim());
-    return hasContext && !draft.members.some(isTouched);
+    if (!hasContext) return 'none';
+    if (!draft.members.some(isTouched)) return 'generate';
+    return memberSignature(draft.members) === lastGenerated()?.members ? 'regenerate' : 'replace';
   }
 
-  const canAutoGenerateFields = createMemo<boolean>(() => computeCanAutoGenerate(shapeDraft()));
+  const generateIntent = createMemo<GenerateIntent>(() => computeGenerateIntent(shapeDraft()));
+
+  /**
+   * The button's own entry point: generate now, or ask first when the click would discard work.
+   *
+   * The question is asked here rather than in the template because only the store can tell a
+   * proposal nobody has touched from rows somebody typed — and asking about the former would train
+   * the answer out of anyone before they met the latter.
+   */
+  function requestGenerateFields(): void {
+    if (computeGenerateIntent(shapeDraft()) === 'replace') setConfirmReplaceFields(true);
+    else void generateShapeFields();
+  }
+
+  function cancelReplaceFields(): void {
+    setConfirmReplaceFields(false);
+  }
 
   async function generateShapeFields(): Promise<void> {
     const draft = shapeDraft();
     const transport = generationTransport();
     // Computed fresh rather than read from the memo: member rows mutate in place (the focus
-    // concession), so the memo can be a keystroke stale — and stale-true here replaces rows
-    // somebody just typed.
-    if (!draft || !transport || !computeCanAutoGenerate(draft)) return;
-    // The same generation as the describe-it flow, prompted by what the author already wrote.
-    const context = [
-      draft.name.trim() && `The model is called "${draft.name.trim()}".`,
-      draft.description.trim() && `Description: ${draft.description.trim()}`,
-      draft.classHint.trim() && `Guidance for AI extraction: ${draft.classHint.trim()}`,
-    ]
-      .filter(Boolean)
-      .join('\n');
+    // concession), so the memo can be a keystroke stale — and a stale intent here decides whether
+    // rows somebody just typed are replaced without asking.
+    if (!draft || !transport || computeGenerateIntent(draft) === 'none') return;
+    setConfirmReplaceFields(false);
+
+    /*
+      Prompted by what the author wrote, and only that.
+
+      A previous generation's own description and hint are still sitting in the form, and feeding
+      them back would quote the last answer as part of the next question: renaming a model to
+      "MovieNight" while its generated description still discussed books returned a model about
+      both. Fields generation wrote are dropped here and re-answered below, so a re-run follows the
+      rename — and pressing Regenerate twice over an untouched draft is a fresh attempt rather than
+      a slow convergence on the first one.
+    */
+    const authored = authoredFields(draft, lastGenerated());
+    const askedFor = [
+      authored.name && `The model is called "${authored.name}".`,
+      authored.description && `Description: ${authored.description}`,
+      authored.classHint && `Guidance for AI extraction: ${authored.classHint}`,
+    ].filter(Boolean);
+    /*
+      Nothing of the author's left to go on — they generated a model and then deleted the name they
+      started from. What remains is the machine's, but it is all there is, and a prompt built from
+      it beats refusing a button the form gives every reason to expect to work.
+    */
+    const context = askedFor.length
+      ? askedFor.join('\n')
+      : [
+          draft.name.trim() && `The model is called "${draft.name.trim()}".`,
+          draft.description.trim() && `Description: ${draft.description.trim()}`,
+          draft.classHint.trim() && `Guidance for AI extraction: ${draft.classHint.trim()}`,
+        ]
+          .filter(Boolean)
+          .join('\n');
     setGenerating(true);
     setDraftErrors([]);
     try {
@@ -710,20 +810,28 @@ export function ShapeStoreProvider(props: ParentProps) {
       batch(() => {
         const current = shapeDraft();
         if (!current) return;
-        // The author's words survive; the generation contributes the structure — plus an answer
-        // for anything they left blank.
-        replaceDraft({
-          ...current,
-          name: current.name.trim() || generated.name,
-          description: current.description.trim() ? current.description : generated.description,
-          icon: current.icon || generated.icon,
-          classHint: current.classHint.trim() ? current.classHint : generated.classHint,
-          members: generated.members,
-          identityMember: generated.identityMember,
+        // The author's words survive; the generation answers everything else — the fields, and any
+        // top-level blank, including the ones its own last run had filled.
+        const settled = {
+          name: authored.name || generated.name,
+          description: authored.description || generated.description,
+          icon: authored.icon || generated.icon,
+          classHint: authored.classHint || generated.classHint,
+        };
+        replaceDraft({ ...current, ...settled, members: generated.members, identityMember: generated.identityMember });
+        // Left closed. Generated hints are the part most worth reading before adopting, which is
+        // why every row used to be opened — but a collapsed row shows its hint now, so the reading
+        // is available without eight expanded cards standing between the author and the Save button.
+        setExpandedMembers([]);
+        // '' for anything the author owns, so their words can never be mistaken for the machine's
+        // on the next run — the record is of what generation contributed, not of what is on screen.
+        setLastGenerated({
+          name: authored.name ? '' : settled.name,
+          description: authored.description ? '' : settled.description,
+          icon: authored.icon ? '' : settled.icon,
+          classHint: authored.classHint ? '' : settled.classHint,
+          members: memberSignature(generated.members),
         });
-        // Opened for the same reason the describe-it flow opens them: generated fields are a
-        // proposal, and the hints are the part most worth reading before adopting.
-        setExpandedMembers(generated.members.map((m) => m.rowId));
       });
       if (remainingProblems.length) setDraftErrors(remainingProblems);
     } catch (err) {
@@ -847,17 +955,20 @@ export function ShapeStoreProvider(props: ParentProps) {
     try {
       const declared = declaredHintSource(entity);
       const stored = await ports.interpretationHints(dataset, entity);
+      // One rule for every hint on the entity, class and properties alike — they disagreed before,
+      // and the properties had it wrong. See {@link hintToDisplay} for what an absent hint means.
+      const customized = stored?.customized ?? false;
       setHintEditor({
         entity,
-        classHint: stored?.classHint ?? declared.classHint,
+        classHint: hintToDisplay({ stored: stored?.classHint, declared: declared.classHint, customized }),
         defaultClassHint: declared.classHint,
         rows: declared.rows.map((row) => ({
           name: row.name,
           predicate: row.predicate,
-          hint: stored ? (stored.propHints[row.predicate] ?? '') : row.hint,
+          hint: hintToDisplay({ stored: stored?.propHints[row.predicate], declared: row.hint, customized }),
           defaultHint: row.hint,
         })),
-        customized: stored?.customized ?? false,
+        customized,
       });
     } catch (err) {
       console.error('ShapeStore: reading hints failed', err);
@@ -953,7 +1064,10 @@ export function ShapeStoreProvider(props: ParentProps) {
     replaceDraft,
     generateShapeDraft,
     generateShapeFields,
-    canAutoGenerateFields,
+    generateIntent,
+    requestGenerateFields,
+    confirmReplaceFields,
+    cancelReplaceFields,
     requestCloseWizard,
     confirmDiscard,
     cancelDiscard,

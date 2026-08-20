@@ -484,7 +484,10 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     replaceDraft: action('space-settings'),
     generateShapeDraft: action('space-settings'),
     generateShapeFields: action('space-settings'),
-    canAutoGenerateFields: state('space-settings'),
+    generateIntent: state('space-settings'),
+    requestGenerateFields: action('space-settings'),
+    confirmReplaceFields: state('space-settings'),
+    cancelReplaceFields: action('space-settings'),
     saveShapeDraft: action('space-settings'),
     // Destructive in the "expensive to reverse" sense: the record goes, and although data and SDNA
     // remain, re-creating the model needs its definition re-authored.

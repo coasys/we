@@ -5753,7 +5753,10 @@
         "expandedMembers": {
           "type": "array"
         },
-        "canAutoGenerateFields": {
+        "generateIntent": {
+          "type": "string"
+        },
+        "confirmReplaceFields": {
           "type": "boolean"
         },
         "confirmDiscard": {
@@ -5775,6 +5778,8 @@
         "replaceDraft",
         "generateShapeDraft",
         "generateShapeFields",
+        "requestGenerateFields",
+        "cancelReplaceFields",
         "requestCloseWizard",
         "cancelDiscard",
         "saveShapeDraft",

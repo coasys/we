@@ -1941,8 +1941,9 @@ ShapeStore:
   - hintEditor: the hint editor state ({ entity, classHint, defaultClassHint, rows: { name, predicate, hint, defaultHint }[], customized }) or null while closed — non-nullness mounts the hint editor modal
   - hintBusy: boolean — the hint editor is loading or saving
   - memberOptions: { rowId, options }[] — each member's default-value picker entries. Read with $find on rowId rather than off $member: rows are mutated in place while typing, so values hanging off the row cannot be reactive
-  - expandedMembers: string[] — rowIds whose detail panel is open. Read with { $in: ['$member.rowId', { $store: 'shapeStore.expandedMembers' }] }; a new row and any row an error names open themselves
-  - canAutoGenerateFields: unknown
+  - expandedMembers: string[] — rowIds whose detail panel is open. Read with { $in: ['$member.rowId', { $store: 'shapeStore.expandedMembers' }] }; a new row and any row an error names open themselves. Generation leaves rows closed — a collapsed row shows its hint, so what was generated is readable without opening anything
+  - generateIntent: 'none' | 'generate' | 'regenerate' | 'replace' — what the generate button would do right now, given what the draft holds. Label it "Regenerate" on 'regenerate' and 'replace' and "Generate" otherwise — 'none' is an empty draft, which has nothing to re-run, so testing for 'generate' alone labels a fresh form wrongly. Disable only on 'none', and route the click through requestGenerateFields, which decides whether to ask first
+  - confirmReplaceFields: boolean — the "replace the fields below?" confirmation is showing. Only ever raised for a generation over hand-written rows; a generated proposal nobody touched re-runs on the click
   - confirmDiscard: boolean — the "discard this model?" confirmation is showing
 - Actions:
   - openShapeWizard(shapeRecordId?): opens the model wizard — empty for a new model, or pre-filled from a stored shape to edit it
@@ -1958,7 +1959,9 @@ ShapeStore:
   - commitDraft(): publishes in-place edits to the draft signal. Typed fields are mutated without touching it so inputs keep focus, which leaves derived values stale — pair with onBlur on a field something else is computed from
   - replaceDraft(draft): replaces the whole draft — how the LLM flow hands a generated model to the same review path
   - generateShapeDraft(description: string): generates a draft from a plain-language description and lands it in the open wizard for review. Proposes only — nothing is stored until the user saves. Gate the control on aiAvailable
-  - generateShapeFields(): unknown
+  - generateShapeFields(): generates the draft's fields from what the author actually wrote — the name, description and AI hint they typed — and answers whatever they left blank, including anything a previous run had filled in (that being the machine's own output, which would otherwise steer the next prompt and return a model half about the last subject). Replaces the member list wholesale, so call requestGenerateFields from a button instead, and this from the confirmation it raises
+  - requestGenerateFields(): the generate button's own entry point — generates now, or raises confirmReplaceFields when the click would discard hand-written rows. The store makes that choice because only it can tell a proposal nobody touched from rows somebody wrote
+  - cancelReplaceFields(): dismisses the replace confirmation, keeping the fields as they are
   - requestCloseWizard(): closes the wizard, asking first when there is work to lose. Wire the modal's own close to this so a backdrop click is guarded too
   - cancelDiscard(): dismisses the discard confirmation and keeps the wizard open
   - saveShapeDraft(): validates, stores and adopts the draft. Errors land in draftErrors; success closes the wizard and the new entity becomes queryable via $query in this space

@@ -2270,7 +2270,8 @@ export const contextData: ContextData = {
         hintBusy: { type: 'boolean' },
         memberOptions: { type: 'array', properties: ['rowId', 'options'] },
         expandedMembers: { type: 'array' },
-        canAutoGenerateFields: { type: 'boolean' },
+        generateIntent: { type: 'string' },
+        confirmReplaceFields: { type: 'boolean' },
         confirmDiscard: { type: 'boolean' },
       },
       actions: [
@@ -2288,6 +2289,8 @@ export const contextData: ContextData = {
         'replaceDraft',
         'generateShapeDraft',
         'generateShapeFields',
+        'requestGenerateFields',
+        'cancelReplaceFields',
         'requestCloseWizard',
         'cancelDiscard',
         'saveShapeDraft',

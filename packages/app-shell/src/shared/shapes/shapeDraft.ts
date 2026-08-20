@@ -112,21 +112,37 @@ export function syncDerived(row: ShapeDraftMember): ShapeDraftMember {
   return row;
 }
 
-export const emptyDraftProperty = (): ShapeDraftMember => ({
-  rowId: nextRowId(),
-  defaultOptions: [{ label: 'None', value: NO_DEFAULT }],
-  kind: 'property',
-  name: '',
-  type: 'text',
-  required: false,
-  hint: '',
-  options: '',
-  defaultValue: '',
-  target: '',
-  many: false,
-});
+/**
+ * A member row from what its author declares, with every derived field computed. The one supported
+ * way to build one.
+ *
+ * Spreading a blank row and assigning over it — what each construction site used to do — leaves
+ * `defaultOptions` describing the blank rather than the row: a generated `select` arrived carrying
+ * its allowed values and a default picker offering only "None", and only an edit to those values
+ * (which routes through {@link syncDerived}) ever put the two in step. Deriving here makes that
+ * unrepresentable instead of something every new caller has to remember.
+ */
+export function draftMember(declared: Partial<ShapeDraftMember> = {}): ShapeDraftMember {
+  return syncDerived({
+    rowId: nextRowId(),
+    // Placeholder — syncDerived computes the real list from `type` and `options` below.
+    defaultOptions: [],
+    kind: 'property',
+    name: '',
+    type: 'text',
+    required: false,
+    hint: '',
+    options: '',
+    defaultValue: '',
+    target: '',
+    many: false,
+    ...declared,
+  });
+}
 
-export const emptyDraftRelationship = (): ShapeDraftMember => ({ ...emptyDraftProperty(), kind: 'relationship' });
+export const emptyDraftProperty = (): ShapeDraftMember => draftMember();
+
+export const emptyDraftRelationship = (): ShapeDraftMember => draftMember({ kind: 'relationship' });
 
 /**
  * A new draft opens with no members. A pre-added blank row asserted the shape of the model before
@@ -214,6 +230,67 @@ export const isTouched = (m: ShapeDraftMember) =>
 
 /** Whether a row declares an initial value — the sentinel and the empty string both mean "no". */
 const hasDefault = (m: ShapeDraftMember) => m.defaultValue !== '' && m.defaultValue !== NO_DEFAULT;
+
+// ── Telling the author's intent from the machine's output ─────────────────────────────────────
+
+/** The top-level draft fields a generation can answer for itself. */
+export type GeneratedField = 'name' | 'description' | 'icon' | 'classHint';
+
+/**
+ * What a generation last contributed to a draft.
+ *
+ * Each field holds the words generation put there, or '' where the author's own were kept — so a
+ * field still equal to this one is the machine's, and anything else is the author's.
+ */
+export interface GeneratedOutput extends Record<GeneratedField, string> {
+  /** {@link memberSignature} of the rows it produced. */
+  members: string;
+}
+
+/**
+ * Everything a member row declares, as one comparable string — how a generation's own rows are told
+ * apart from rows somebody has since edited. Order is included because reordering is a deliberate
+ * edit (declaration order is what the manifest stores), not decoration.
+ *
+ * Joined on control characters rather than anything typeable: every field here holds user text, and
+ * a delimiter somebody can type is one two different field lists can collide on — which would read
+ * as "nobody touched this" and replace their work without asking.
+ *
+ * Blank rows are left out, so adding a property and then thinking better of it does not turn a
+ * one-click re-run into a dialog about discarding a row with nothing in it.
+ */
+export function memberSignature(members: ShapeDraftMember[]): string {
+  return members
+    .filter(isTouched)
+    .map((m) =>
+      [m.kind, m.name, m.type, m.required, m.hint, m.options, m.defaultValue, m.target, m.many].join('\u0000'),
+    )
+    .join('\u0001');
+}
+
+/**
+ * The author's own words for each top-level field — '' where the field is blank, or where it still
+ * holds exactly what the last generation put there.
+ *
+ * This is the line between a request and an answer, and a re-run needs it in both directions. A
+ * description generation wrote is not evidence of what the author wants: prompting with it quotes
+ * the previous answer as part of the next question, which is how renaming a model and regenerating
+ * returned something half about the old subject. Keeping it would then leave that stale text on
+ * screen beside the new fields. So it neither steers the next generation nor survives it — while
+ * anything the author typed does both.
+ */
+export function authoredFields(draft: ShapeDraft, last: GeneratedOutput | null): Record<GeneratedField, string> {
+  const authored = (field: GeneratedField): string => {
+    const value = draft[field].trim();
+    return value && value !== last?.[field].trim() ? value : '';
+  };
+  return {
+    name: authored('name'),
+    description: authored('description'),
+    icon: authored('icon'),
+    classHint: authored('classHint'),
+  };
+}
 
 export type DraftLowering =
   | { ok: true; manifest: ModelManifest }
@@ -326,8 +403,7 @@ export function manifestToDraft(
   let identityMember = '';
 
   for (const [name, spec] of Object.entries(entity?.properties ?? {})) {
-    const row: ShapeDraftMember = {
-      ...emptyDraftProperty(),
+    const row = draftMember({
       name,
       type: spec.options
         ? 'select'
@@ -343,19 +419,21 @@ export function manifestToDraft(
       options: (spec.options ?? []).map(String).join(', '),
       defaultValue: spec.default === undefined || spec.default === null ? '' : String(spec.default),
       predicate: spec.predicate,
-    };
+    });
     if (spec.identity) identityMember = row.rowId;
-    members.push(syncDerived(row));
+    members.push(row);
   }
 
   for (const [name, spec] of Object.entries(entity?.relations ?? {})) {
-    members.push({
-      ...emptyDraftRelationship(),
-      name,
-      target: spec.target,
-      many: spec.cardinality === 'many',
-      predicate: spec.predicate,
-    });
+    members.push(
+      draftMember({
+        kind: 'relationship',
+        name,
+        target: spec.target,
+        many: spec.cardinality === 'many',
+        predicate: spec.predicate,
+      }),
+    );
   }
 
   return {

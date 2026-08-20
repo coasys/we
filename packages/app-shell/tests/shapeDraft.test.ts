@@ -13,11 +13,15 @@ import { describe, expect, it } from 'vitest';
 
 import {
   additiveViolations,
+  authoredFields,
+  draftMember,
   draftToManifest,
   emptyDraftProperty,
   emptyDraftRelationship,
   emptyShapeDraft,
+  type GeneratedOutput,
   manifestToDraft,
+  memberSignature,
   NO_DEFAULT,
   type ShapeDraft,
   syncDerived,
@@ -200,12 +204,101 @@ describe('typed defaults', () => {
     expect(row.defaultOptions.map((o) => o.value)).toEqual([NO_DEFAULT, 'fiction', 'poetry']);
   });
 
+  /*
+    The factory derives; a spread does not. Building a row by spreading a blank one and assigning
+    over it left the picker describing the blank until the values were edited — a select arrived
+    with its allowed values and a default picker offering only "None".
+  */
+  it('derives the picker when the row is built, not when it is first edited', () => {
+    const row = draftMember({ type: 'select', options: 'fiction, poetry' });
+    expect(row.defaultOptions.map((o) => o.value)).toEqual([NO_DEFAULT, 'fiction', 'poetry']);
+    expect(draftMember({ type: 'boolean' }).defaultOptions.map((o) => o.value)).toEqual([NO_DEFAULT, 'true', 'false']);
+  });
+
+  it('carries a stored select back into the wizard with its picker already built', () => {
+    const stored = draftToManifest(
+      {
+        ...emptyShapeDraft(),
+        name: 'Book',
+        members: [draftMember({ name: 'genre', type: 'select', options: 'a, b' })],
+      },
+      UUID,
+    );
+    expect(stored.ok).toBe(true);
+    if (!stored.ok) return;
+    const [row] = manifestToDraft('Book', stored.manifest).members;
+    expect(row.defaultOptions.map((o) => o.value)).toEqual([NO_DEFAULT, 'a', 'b']);
+  });
+
   it('lowers a picked boolean to a real boolean', () => {
     const draft = sightingDraft();
     draft.members.push({ ...emptyDraftProperty(), name: 'signed', type: 'boolean', defaultValue: 'false' });
     const result = draftToManifest(draft, UUID);
     expect(result.ok).toBe(true);
     if (result.ok) expect(result.manifest.entities.Sighting.properties.signed.default).toBe(false);
+  });
+});
+
+/*
+  The line between what the author asked for and what a generation answered.
+
+  Both halves of the re-run turn on it: what the next prompt is built from, and what survives the
+  answer. Getting it wrong is not a subtle failure — feeding a generated description back in
+  returned a model half about the previous subject.
+*/
+describe('authored fields', () => {
+  const generated = (over: Partial<GeneratedOutput> = {}): GeneratedOutput => ({
+    name: '',
+    description: '',
+    icon: '',
+    classHint: '',
+    members: '',
+    ...over,
+  });
+
+  it('treats a field still holding the last generation as the machine, not the author', () => {
+    const draft = { ...emptyShapeDraft(), name: 'MovieNight', description: 'A book someone recommended' };
+    const authored = authoredFields(draft, generated({ description: 'A book someone recommended' }));
+    // The name was typed, so it asks the next question; the description was answered, so it does not.
+    expect(authored.name).toBe('MovieNight');
+    expect(authored.description).toBe('');
+  });
+
+  it('hands a field back the moment the author edits it', () => {
+    const last = generated({ description: 'A book someone recommended' });
+    const edited = { ...emptyShapeDraft(), description: 'A film the group wants to watch' };
+    expect(authoredFields(edited, last).description).toBe('A film the group wants to watch');
+  });
+
+  it('claims everything when no generation has run — a stored model is all its own', () => {
+    const draft = { ...emptyShapeDraft(), name: 'Sighting', description: 'A bird sighting', icon: 'binoculars' };
+    expect(authoredFields(draft, null)).toEqual({
+      name: 'Sighting',
+      description: 'A bird sighting',
+      icon: 'binoculars',
+      classHint: '',
+    });
+  });
+});
+
+describe('member signature', () => {
+  it('ignores a blank row, so adding one and stopping is not an edit', () => {
+    const rows = [draftMember({ name: 'species' })];
+    expect(memberSignature([...rows, draftMember()])).toBe(memberSignature(rows));
+  });
+
+  it('changes when a row is edited, and when rows are reordered', () => {
+    const a = draftMember({ name: 'species' });
+    const b = draftMember({ name: 'count', type: 'number' });
+    expect(memberSignature([b, a])).not.toBe(memberSignature([a, b]));
+    expect(memberSignature([{ ...a, hint: 'The common name.' }, b])).not.toBe(memberSignature([a, b]));
+  });
+
+  it('does not collide when a field contains the text of its neighbours', () => {
+    // The delimiters are control characters precisely so no typed value can imitate the join.
+    const split = [draftMember({ name: 'a' }), draftMember({ name: 'b' })];
+    const merged = [draftMember({ name: 'a b' })];
+    expect(memberSignature(split)).not.toBe(memberSignature(merged));
   });
 });
 

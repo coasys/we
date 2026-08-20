@@ -53,10 +53,7 @@ describe('generation through the backend model', () => {
 
   it('sends the validation errors back and takes the corrected answer', async () => {
     // First reply claims a taken name; the loop must complain and accept the fix.
-    const { port, calls } = scriptedPort([
-      JSON.stringify({ ...VALID, name: 'TaskBlock' }),
-      JSON.stringify(VALID),
-    ]);
+    const { port, calls } = scriptedPort([JSON.stringify({ ...VALID, name: 'TaskBlock' }), JSON.stringify(VALID)]);
     const result = await generateShapeDraft('birds', { transport: { kind: 'backend', port }, ...OPTS });
     expect(result.draft.name).toBe('Sighting');
     expect(result.remainingProblems).toEqual([]);
@@ -70,6 +67,30 @@ describe('generation through the backend model', () => {
     await generateShapeDraft('birds', { transport: { kind: 'backend', port }, ...OPTS });
     expect(calls[0].system).toMatch(/ONLY a JSON object/);
     expect(calls[0].system).toMatch(/"properties"/);
+  });
+
+  /*
+    The wizard's default picker is built from `defaultOptions`, which is derived. A generated row
+    used to arrive with its allowed values and a picker offering only "None" — the derivation ran
+    on edit, so the values only appeared once the author retyped them.
+  */
+  it('hands over rows whose default pickers are already built', async () => {
+    const withVocabulary = {
+      ...VALID,
+      properties: [
+        { name: 'species', type: 'text', required: true, hint: 'The common name.' },
+        { name: 'certainty', type: 'select', options: ['certain', 'probable'] },
+        { name: 'ringed', type: 'boolean' },
+      ],
+    };
+    const { port } = scriptedPort([JSON.stringify(withVocabulary)]);
+    const { draft } = await generateShapeDraft('birds', { transport: { kind: 'backend', port }, ...OPTS });
+    const picker = (name: string) =>
+      draft.members.find((m) => m.name === name)?.defaultOptions.map((o) => o.label) ?? [];
+    expect(picker('certainty')).toEqual(['None', 'certain', 'probable']);
+    expect(picker('ringed')).toEqual(['None', 'True', 'False']);
+    // A field with no closed vocabulary has nothing to offer but "leave it unset".
+    expect(picker('species')).toEqual(['None']);
   });
 
   it('returns its best candidate with the surviving problems when repairs run out', async () => {

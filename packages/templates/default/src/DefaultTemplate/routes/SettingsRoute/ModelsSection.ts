@@ -65,12 +65,32 @@ const dragHandle: SchemaNode = {
   children: [{ type: 'we-icon', props: { size: 'sm', name: 'dots-six-vertical', color: 'neutral-400' } }],
 };
 
+/**
+ * A row's own buttons, held in its top-right corner — the drag handle's counterpart.
+ *
+ * A sibling of the content column rather than the last item inside it, for the reason the handle is
+ * one: the controls wrap, and anything sharing a line with them wraps too. These buttons act on the
+ * row as a whole, so a narrow modal that folded them underneath the fields made them read as
+ * belonging to whichever field they had landed beside.
+ *
+ * Given the height of one control, like the handle, so both corners sit level with the first line
+ * rather than drifting as the card grows.
+ */
+const rowActions = (buttons: SchemaNode[]): SchemaNode => ({
+  type: 'Row',
+  props: { gap: '100', ay: 'center', height: 'var(--we-component-height-sm)' },
+  children: buttons,
+});
+
 /** Remove this member. Pinned top-right of the row rather than trailing its last input, which moves. */
 const removeMemberButton: SchemaNode = {
   type: 'we-button',
   props: {
     variant: 'ghost',
     size: 'sm',
+    // Square, like every icon-only button: the default's horizontal padding is sized for a word
+    // beside the icon, which leaves a lozenge around a single glyph.
+    square: true,
     onClick: { $action: 'shapeStore.removeMember', args: ['$member.rowId'] },
   },
   children: [{ type: 'we-icon', props: { name: 'trash' } }],
@@ -109,6 +129,7 @@ const expandToggle: SchemaNode = {
   props: {
     variant: 'ghost',
     size: 'sm',
+    square: true,
     title: 'Show hint, default and options',
     onClick: { $action: 'shapeStore.toggleMemberExpanded', args: ['$member.rowId'] },
   },
@@ -308,9 +329,10 @@ const propertyDetail: SchemaNode = {
 /**
  * One property row — a scalar field of the model being defined.
  *
- * The header line is `ax: 'between'` rather than a wrapping run of controls: the delete button
- * belongs to the row as a whole, so it is pinned to the corner rather than trailing whichever
- * input happens to come last (which moves as the type changes, and reads as "clear this field").
+ * Three columns, and the outer one never wraps: the handle, everything the row declares, and the
+ * buttons that act on the row as a whole. The buttons sat inside the content column once, held
+ * right by `ax: 'between'` — which pins them only while the fields beside them fit, and folded them
+ * underneath at any width where they did not.
  */
 const propertyRow: SchemaNode = {
   type: 'Row',
@@ -322,48 +344,122 @@ const propertyRow: SchemaNode = {
     dragHandle,
     {
       type: 'Column',
-      props: { gap: '200', flex: '1', minWidth: '0' },
+      /*
+        No `gap` — the two children below the header animate their own height, and a flex gap cannot.
+
+        Gap is a step function of how many children are mounted: expanding mounts the detail panel,
+        adding 8px in the frame before either reveal has moved, and unmounting the hint preview takes
+        8px back in a single frame 200ms later. A smooth animation bracketed by two instant 8px steps
+        is the jolt. Each child carries that spacing as its own top padding instead, which sits
+        inside the revealed box and so animates with it.
+      */
+      props: { flex: '1', minWidth: '0' },
       children: [
         {
           type: 'Row',
-          props: { gap: '200', ay: 'center', ax: 'between', wrap: true },
+          props: { gap: '300', ay: 'center', wrap: true },
           children: [
+            memberNameInput,
             {
-              type: 'Row',
-              props: { gap: '300', ay: 'center', wrap: true },
-              children: [
-                memberNameInput,
-                {
-                  type: 'we-select',
-                  props: {
-                    size: 'sm',
-                    width: '130px',
-                    options: PROPERTY_TYPE_OPTIONS,
-                    value: '$member.type',
-                    onChange: { $action: 'shapeStore.setMemberField', args: ['$member.rowId', 'type', '$arg.detail'] },
-                  },
-                },
-                {
-                  type: 'we-switch',
-                  props: {
-                    size: 'sm',
-                    labelOff: 'Optional',
-                    labelOn: 'Required',
-                    checked: '$member.required',
-                    onChange: {
-                      $action: 'shapeStore.setMemberField',
-                      args: ['$member.rowId', 'required', '$arg.detail'],
-                    },
-                  },
-                },
-              ],
+              type: 'we-select',
+              props: {
+                size: 'sm',
+                width: '130px',
+                options: PROPERTY_TYPE_OPTIONS,
+                value: '$member.type',
+                onChange: { $action: 'shapeStore.setMemberField', args: ['$member.rowId', 'type', '$arg.detail'] },
+              },
             },
-            { type: 'Row', props: { gap: '100', ay: 'center' }, children: [expandToggle, removeMemberButton] },
+            /*
+                  A checkbox, not a switch.
+
+                  A switch says "this takes effect now", which is a setting; required-ness is a
+                  property of a record being filled in, which is a form control. It is also narrower
+                  and — unlike a switch labelled Optional on one side and Required on the other — a
+                  fixed width, so toggling it cannot shift where this wrapping row breaks. The
+                  unchecked state needs no word of its own: an unticked "Required" says it.
+                */
+            {
+              type: 'we-checkbox',
+              props: {
+                size: 'sm',
+                checked: '$member.required',
+                onChange: {
+                  $action: 'shapeStore.setMemberField',
+                  args: ['$member.rowId', 'required', '$arg.detail'],
+                },
+              },
+              children: [{ type: 'we-text', props: { variant: 'label' }, children: ['Required'] }],
+            },
           ],
+        },
+        /*
+          The hint, readable without opening the row.
+
+          A generated model's hints are the part most worth checking before it is adopted, which is
+          why generation used to expand every row it produced — eight tall cards between the author
+          and the Save button, to show one line each. Shown here, the same reading is available in
+          the list itself, and expanding goes back to meaning "I want to edit this".
+
+          Hidden while the row is open, because the editor below is then showing the same text.
+
+          **The expansion check comes first, and must.** `$and` short-circuits, and only the
+          expansion is reactive — `$member.hint` is a plain read off a row that mutates in place.
+          Written the other way round, a row that mounts *without* a hint (every hand-added one)
+          fails on the first operand, never reaches the store read, and so ends up a condition with
+          no reactive dependency at all: it never re-evaluates, and the line can never appear however
+          much is typed. Leading with the store read makes every toggle re-run this, which re-reads
+          the hint as it now stands.
+
+          Both transitions match `propertyDetail`'s: the two heights change in opposite directions on
+          the same click, so without them the line vanishes in one frame while the panel eases open
+          — the row jerks down, then grows. Moving together, it just grows.
+        */
+        {
+          type: '$if',
+          props: {
+            condition: {
+              $and: [{ $not: { $in: ['$member.rowId', { $store: 'shapeStore.expandedMembers' }] } }, '$member.hint'],
+            },
+            enterTransition: [
+              { type: 'reveal', duration: 200 },
+              { type: 'fade', duration: 150 },
+            ],
+            exitTransition: [
+              { type: 'reveal', duration: 200 },
+              { type: 'fade', duration: 150 },
+            ],
+            then: {
+              type: 'we-text',
+              props: {
+                variant: 'footnote',
+                color: 'neutral-400',
+                // Its own spacing, since the Column has no gap to give it — see the note there.
+                pt: '200',
+                truncate: true,
+                /*
+                  `truncate` says the intent; this pins it.
+
+                  Something in the running app relaxes the truncation on hover — a long hint reflowed
+                  to two lines under the pointer, so a cursor travelling down the list grew and shrank
+                  each row it crossed. It survived a search of every `:hover` rule in the design
+                  system, the interop stylesheet (which needs `hoverProps` to apply at all, and none
+                  are set here), `we-sortable` and the themes, so the rule was never found by reading.
+
+                  `styles` lands inline on [part='base'], which no stylesheet :hover rule can outrank
+                  without `!important`. That makes the fix independent of a cause I could not name —
+                  the honest trade for chasing it further through a surface this large.
+                */
+                styles: { 'white-space': 'nowrap', overflow: 'hidden', 'text-overflow': 'ellipsis' },
+              },
+              children: ['$member.hint'],
+            },
+          },
         },
         propertyDetail,
       ],
     },
+    rowActions([expandToggle, removeMemberButton]),
   ],
 };
 
@@ -387,49 +483,43 @@ const relationshipRow: SchemaNode = {
       children: [
         {
           type: 'Row',
-          props: { gap: '200', ay: 'center', ax: 'between', wrap: true },
+          props: { gap: '300', ay: 'center', wrap: true },
           children: [
+            memberNameInput,
+            { type: 'we-icon', props: { name: 'arrow-right', color: 'neutral-400' } },
             {
-              type: 'Row',
-              props: { gap: '300', ay: 'center', wrap: true },
-              children: [
-                memberNameInput,
-                { type: 'we-icon', props: { name: 'arrow-right', color: 'neutral-400' } },
-                {
-                  type: 'we-select',
-                  props: {
-                    size: 'sm',
-                    width: '260px',
-                    searchable: true,
-                    // "Links to", because that is literally what it is here — a perspective is made
-                    // of links. No persistent label: the arrow icon beside the picker carries the
-                    // direction once a target is chosen.
-                    placeholder: 'Links to…',
-                    options: { $store: 'shapeStore.relationshipTargets' },
-                    value: '$member.target',
-                    onChange: {
-                      $action: 'shapeStore.setMemberField',
-                      args: ['$member.rowId', 'target', '$arg.detail'],
-                    },
-                  },
+              type: 'we-select',
+              props: {
+                size: 'sm',
+                width: '260px',
+                searchable: true,
+                // "Links to", because that is literally what it is here — a perspective is made
+                // of links. No persistent label: the arrow icon beside the picker carries the
+                // direction once a target is chosen.
+                placeholder: 'Links to…',
+                options: { $store: 'shapeStore.relationshipTargets' },
+                value: '$member.target',
+                onChange: {
+                  $action: 'shapeStore.setMemberField',
+                  args: ['$member.rowId', 'target', '$arg.detail'],
                 },
-                {
-                  type: 'we-switch',
-                  props: {
-                    size: 'sm',
-                    labelOff: 'One',
-                    labelOn: 'Many',
-                    checked: '$member.many',
-                    onChange: { $action: 'shapeStore.setMemberField', args: ['$member.rowId', 'many', '$arg.detail'] },
-                  },
-                },
-              ],
+              },
             },
-            removeMemberButton,
+            {
+              type: 'we-switch',
+              props: {
+                size: 'sm',
+                labelOff: 'One',
+                labelOn: 'Many',
+                checked: '$member.many',
+                onChange: { $action: 'shapeStore.setMemberField', args: ['$member.rowId', 'many', '$arg.detail'] },
+              },
+            },
           ],
         },
       ],
     },
+    rowActions([removeMemberButton]),
   ],
 };
 
@@ -452,6 +542,56 @@ const memberRow: SchemaNode = {
       },
     },
   ],
+};
+
+/**
+ * Fill in what has not been written yet — the model's fields, and any of its description, hint and
+ * icon left blank.
+ *
+ * Offered on new models only: generation replaces the member list wholesale, which on a stored model
+ * would orphan the predicates its data lives under (the additive guard refuses it at save anyway).
+ *
+ * The label names what the press would do, and the store has already worked that out — 'none' and
+ * 'generate' both read "Generate", since a disabled button and an enabled one should describe the
+ * same act; the two re-run states read "Regenerate", because there is something there to replace.
+ */
+const generateButton: SchemaNode = {
+  type: '$if',
+  props: {
+    condition: {
+      $and: [{ $not: { $store: 'shapeStore.editingShapeId' } }, { $store: 'shapeStore.aiAvailable' }],
+    },
+    then: {
+      type: 'we-button',
+      props: {
+        variant: 'secondary',
+        title: 'Fill in the fields from the name and description — and anything above still left blank',
+        loading: { $store: 'shapeStore.generating' },
+        // 'none' is the only state with nothing to work from. A generation that would discard
+        // written rows stays clickable and asks instead — refusing the click outright is what made
+        // the first attempt the only attempt.
+        disabled: {
+          $or: [{ $store: 'shapeStore.generating' }, { $eq: [{ $store: 'shapeStore.generateIntent' }, 'none'] }],
+        },
+        onClick: { $action: 'shapeStore.requestGenerateFields' },
+      },
+      children: [
+        { type: 'we-icon', props: { name: 'sparkle' } },
+        {
+          type: 'we-text',
+          children: [
+            {
+              $if: {
+                condition: { $in: [{ $store: 'shapeStore.generateIntent' }, ['regenerate', 'replace']] },
+                then: 'Regenerate',
+                else: 'Generate',
+              },
+            },
+          ],
+        },
+      ],
+    },
+  },
 };
 
 /** The wizard: create or edit one model. Mounted while `shapeStore.shapeDraft` is non-null. */
@@ -484,10 +624,41 @@ const shapeWizardModal: SchemaNode = {
       type: 'Column',
       props: { gap: '400' },
       children: [
+        /*
+          Identity, and the one-click route out of filling the rest in by hand.
+
+          The generate button lives here rather than over the field list it produces, because what it
+          produces is not only fields: it answers the description, the AI hint and the icon too, for
+          anything left blank. Beside the name it is reachable the moment there is a name to work
+          from — type "BookRecommendation", press it, review what comes back — which is the flow this
+          form is actually for. It could not sit here while generation was one-shot, since spending
+          the only attempt on a bare name was a trap; it re-runs freely now, so an early press costs
+          nothing.
+
+          Icon first, name second: they are one identity pair (the models list below draws a shape
+          the same way), and generation fills the icon — so it appears right beside the name that
+          produced it, where the press happened.
+
+          `ay: 'end'` because a `we-form-field` stacks its label above its control: centred, a bare
+          button aligns to the middle of label-plus-input and floats above the line it belongs to.
+        */
         {
           type: 'Row',
-          props: { gap: '300', ay: 'center', wrap: true },
+          props: { gap: '300', ay: 'end', wrap: true },
           children: [
+            {
+              type: 'we-form-field',
+              props: { label: 'Icon' },
+              children: [
+                {
+                  type: 'we-icon-picker',
+                  props: {
+                    value: { $store: 'shapeStore.shapeDraft.icon' },
+                    onChange: { $action: 'shapeStore.setShapeField', args: ['icon', '$arg.detail'] },
+                  },
+                },
+              ],
+            },
             {
               type: 'we-form-field',
               props: { label: 'Name', flex: '1' },
@@ -506,19 +677,7 @@ const shapeWizardModal: SchemaNode = {
                 },
               ],
             },
-            {
-              type: 'we-form-field',
-              props: { label: 'Icon' },
-              children: [
-                {
-                  type: 'we-icon-picker',
-                  props: {
-                    value: { $store: 'shapeStore.shapeDraft.icon' },
-                    onChange: { $action: 'shapeStore.setShapeField', args: ['icon', '$arg.detail'] },
-                  },
-                },
-              ],
-            },
+            generateButton,
           ],
         },
         {
@@ -561,43 +720,7 @@ const shapeWizardModal: SchemaNode = {
           type: 'Column',
           props: { gap: '200' },
           children: [
-            {
-              type: 'Row',
-              props: { ay: 'center', ax: 'between', gap: '200' },
-              children: [
-                { type: 'we-text', props: { variant: 'label' }, children: ['Fields'] },
-                {
-                  type: '$if',
-                  props: {
-                    // Same gate as the describe-it box: generation replaces the member list, which
-                    // is only safe on a new model.
-                    condition: {
-                      $and: [{ $not: { $store: 'shapeStore.editingShapeId' } }, { $store: 'shapeStore.aiAvailable' }],
-                    },
-                    then: {
-                      type: 'we-button',
-                      props: {
-                        variant: 'ghost',
-                        size: 'sm',
-                        title: 'Generate properties and relationships from the name, description and AI hint',
-                        loading: { $store: 'shapeStore.generating' },
-                        disabled: {
-                          $or: [
-                            { $store: 'shapeStore.generating' },
-                            { $not: { $store: 'shapeStore.canAutoGenerateFields' } },
-                          ],
-                        },
-                        onClick: { $action: 'shapeStore.generateShapeFields' },
-                      },
-                      children: [
-                        { type: 'we-icon', props: { name: 'sparkle' } },
-                        { type: 'we-text', children: ['Generate fields'] },
-                      ],
-                    },
-                  },
-                },
-              ],
-            },
+            { type: 'we-text', props: { variant: 'label' }, children: ['Fields'] },
             {
               type: '$if',
               props: {
@@ -619,9 +742,11 @@ const shapeWizardModal: SchemaNode = {
                       children: ['No properties or relationships yet.'],
                     },
                     /*
-                      Discoverability lives here, at the moment it is relevant, rather than as a
-                      permanent panel at the top of the form: the generate route when there is one,
-                      and where to configure a model when there is not.
+                      The one place the greyed-out Generate button can be explained.
+
+                      A disabled control does not reliably raise its own tooltip — browsers drop
+                      pointer events on it — so "why can I not press that?" has nowhere else to be
+                      answered. Said here, where an empty field list is already being remarked on.
                     */
                     {
                       type: '$if',
@@ -630,7 +755,7 @@ const shapeWizardModal: SchemaNode = {
                         then: {
                           type: 'we-text',
                           props: { variant: 'footnote', color: 'neutral-400', textAlign: 'center' },
-                          children: ['Add one below, or fill in the name and description and generate them.'],
+                          children: ['Add one below, or name the model above and press Generate.'],
                         },
                         else: {
                           type: 'we-text',
@@ -689,10 +814,16 @@ const shapeWizardModal: SchemaNode = {
         },
         {
           type: 'we-form-field',
+          /*
+            Not "Unique field", tempting as it is: nothing enforces uniqueness here, and that name
+            promises a save will be refused for a repeat. "Identifying field" names the role the
+            field plays without claiming a constraint — and stays a short noun phrase, like every
+            other label in this form.
+          */
           props: {
-            label: 'Identifies duplicates',
+            label: 'Identifying field',
             description:
-              'The field AI extraction compares to recognise “the same one again”. Leave as None if this model has no natural identifier.',
+              'When AI extraction finds one of these, it compares this field to decide whether it has seen it before. Leave as None if nothing about these names one uniquely.',
           },
           children: [
             {
@@ -964,9 +1095,12 @@ const shapeRow: SchemaNode = {
             },
             {
               type: 'we-button',
+              // Square for the same reason as the wizard's row buttons — an icon with no word
+              // beside it should not sit in padding meant for one.
               props: {
                 variant: 'ghost',
                 size: 'sm',
+                square: true,
                 onClick: { $action: 'shapeStore.openShapeWizard', args: ['$shape.id'] },
               },
               children: [{ type: 'we-icon', props: { name: 'pencil-simple' } }],
@@ -976,6 +1110,7 @@ const shapeRow: SchemaNode = {
               props: {
                 variant: 'ghost',
                 size: 'sm',
+                square: true,
                 onClick: { $setLocal: 'confirmDeleteShapeId', value: '$shape.id' },
               },
               children: [{ type: 'we-icon', props: { name: 'trash' } }],
@@ -1063,6 +1198,55 @@ const discardConfirmModal: SchemaNode = {
                   type: 'we-button',
                   props: { variant: 'danger', onClick: { $action: 'shapeStore.cancelShapeWizard' } },
                   children: ['Discard'],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    },
+  },
+};
+
+/**
+ * "Replace these?" — the guard on regenerating over fields somebody wrote.
+ *
+ * Only raised for that case: a generation the author has not touched re-runs on the click, since a
+ * dialog asking to discard a proposal nobody wrote is a dialog that teaches people to dismiss
+ * dialogs. Beside the wizard rather than inside it, like the discard confirmation.
+ */
+const replaceFieldsConfirmModal: SchemaNode = {
+  type: '$if',
+  props: {
+    condition: { $store: 'shapeStore.confirmReplaceFields' },
+    then: {
+      type: 'we-modal',
+      props: { close: { $action: 'shapeStore.cancelReplaceFields' } },
+      children: [
+        {
+          type: 'Column',
+          props: { gap: '300', maxWidth: '380px' },
+          children: [
+            { type: 'we-text', props: { fontWeight: 'semibold' }, children: ['Replace the fields below?'] },
+            {
+              type: 'we-text',
+              children: [
+                'Generating starts the field list again from the name, description and AI hint. The fields you have written will be replaced.',
+              ],
+            },
+            {
+              type: 'Row',
+              props: { ax: 'end', gap: '200' },
+              children: [
+                {
+                  type: 'we-button',
+                  props: { variant: 'ghost', onClick: { $action: 'shapeStore.cancelReplaceFields' } },
+                  children: ['Keep them'],
+                },
+                {
+                  type: 'we-button',
+                  props: { variant: 'danger', onClick: { $action: 'shapeStore.generateShapeFields' } },
+                  children: ['Replace'],
                 },
               ],
             },
@@ -1197,6 +1381,7 @@ export const modelsSection: SchemaNode = {
       { type: '$if', props: { condition: { $store: 'shapeStore.shapeDraft' }, then: shapeWizardModal } },
       { type: '$if', props: { condition: { $store: 'shapeStore.hintEditor' }, then: hintEditorModal } },
       discardConfirmModal,
+      replaceFieldsConfirmModal,
       deleteConfirmModal,
     ],
   }),

@@ -13,13 +13,7 @@
  */
 import { validateManifest } from '@we/backend-shared';
 
-import {
-  draftToManifest,
-  emptyDraftProperty,
-  emptyDraftRelationship,
-  type ShapeDraft,
-  type ShapeDraftMember,
-} from '../shapes/shapeDraft';
+import { draftMember, draftToManifest, type ShapeDraft, type ShapeDraftMember } from '../shapes/shapeDraft';
 
 /** The tool the model must call — mirrors the wizard draft, not the stored manifest. */
 const defineModelTool = {
@@ -121,22 +115,27 @@ interface ToolInput {
 }
 
 function toolInputToDraft(input: ToolInput): ShapeDraft {
+  // Through the factory, not a spread over a blank row: a generated `select` carries its allowed
+  // values, and its default picker is derived from them at construction rather than at first edit.
   const members: ShapeDraftMember[] = [
-    ...(input.properties ?? []).map((p) => ({
-      ...emptyDraftProperty(),
-      name: p.name ?? '',
-      type: p.type ?? 'text',
-      required: p.required ?? false,
-      hint: p.hint ?? '',
-      options: (p.options ?? []).join(', '),
-      defaultValue: p.defaultValue ?? '',
-    })),
-    ...(input.relationships ?? []).map((r) => ({
-      ...emptyDraftRelationship(),
-      name: r.name ?? '',
-      target: r.target ?? '',
-      many: r.many ?? false,
-    })),
+    ...(input.properties ?? []).map((p) =>
+      draftMember({
+        name: p.name ?? '',
+        type: p.type ?? 'text',
+        required: p.required ?? false,
+        hint: p.hint ?? '',
+        options: (p.options ?? []).join(', '),
+        defaultValue: p.defaultValue ?? '',
+      }),
+    ),
+    ...(input.relationships ?? []).map((r) =>
+      draftMember({
+        kind: 'relationship',
+        name: r.name ?? '',
+        target: r.target ?? '',
+        many: r.many ?? false,
+      }),
+    ),
   ];
   // The model names the identity by field name (it has never seen a row id); the draft keys it by
   // row so a later rename or reorder in the wizard keeps the choice.
