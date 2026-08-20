@@ -240,7 +240,8 @@ export interface ModelStatic<T extends ModelInstance> {
     dataset: unknown,
     query?: Q,
   ): Promise<(T & IncludeExtras<T, IncludeOf<Q>>) | null>;
-  update(dataset: unknown, id: string, properties: WriteProperties<T>): Promise<T>;
+  /** Null for an id nothing holds — an update is a statement about a record that must exist. */
+  update(dataset: unknown, id: string, properties: WriteProperties<T>): Promise<T | null>;
   delete(dataset: unknown, id: string): Promise<unknown>;
   count(dataset: unknown, query?: TypedModelQuery<T>): Promise<number>;
 }
