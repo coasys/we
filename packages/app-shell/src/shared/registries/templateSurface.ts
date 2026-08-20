@@ -426,6 +426,13 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     autoInterpret: state('space-settings'),
     templateOverrideOptions: state('space-admin'),
     themeOverrideOptions: state('space-admin'),
+    /*
+      `appearance`, not `space-admin` beside its options list: this answers "is the theme you are
+      looking at one you chose here", which is a fact about the current view rather than about
+      configuring some other space. The theme picker in the rail needs it to know whether to offer
+      a reset, and that picker lives in the appearance tier.
+    */
+    spaceThemePinned: state('appearance'),
     moduleInstallSettings: state('space-admin'),
     createSpace: action('space-admin'),
     initializeAsWeSpace: action('space-settings'),
@@ -444,6 +451,13 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     setModuleVisible: hereOnly('space-settings', 2),
     setSpaceTemplateOverride: hereOnly('appearance', 1),
     setSpaceThemeOverride: hereOnly('appearance', 1),
+    /*
+      Both are `setSpaceThemeOverride` aimed at the space on screen and nowhere else, so they sit in
+      the same tier — and take no space argument at all, which is why they need no `hereOnly` arity
+      guard: there is no parameter through which a template could name somebody else's space.
+    */
+    applyTheme: action('appearance'),
+    clearSpaceThemePin: action('appearance'),
 
     updateSpaceInCache: WIRING,
     loadSpaces: WIRING,
@@ -654,9 +668,34 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     dockGeometry: state('host-layout'),
     contentInset: state('host-layout'),
     dockResizing: state('host-layout'),
+    // Written by the host layout, which can see the editor's widths — never by a template.
+    setChromeInset: action('host-layout'),
     beginDockResize: action('host-layout'),
     resizeDock: action('host-layout'),
     endDockResize: action('host-layout'),
+    /*
+      Moving a panel, which is the same capability as resizing one and is listed for the same reason.
+
+      The frame reads `dockPlacement` to tick the position menu and to light the displace toggle, and
+      drives the drag through `beginDockMove`/`moveDock`/`endDockMove` — plus `movingDock`,
+      `activeSnap` and `snapTargets`, which are what make the eight landing spots appear under a panel
+      while it is being dragged and nowhere else.
+    */
+    dockPlacement: state('host-layout'),
+    movingDock: state('host-layout'),
+    activeSnap: state('host-layout'),
+    snapTargets: state('host-layout'),
+    // The gaps in a strip, and which one a drop would take — what makes reordering a dock possible.
+    insertSlots: state('host-layout'),
+    activeInsert: state('host-layout'),
+    insertDock: action('host-layout'),
+    beginDockMove: action('host-layout'),
+    moveDock: action('host-layout'),
+    endDockMove: action('host-layout'),
+    snapDock: action('host-layout'),
+    toggleMaximiseDock: action('host-layout'),
+    fitDock: action('host-layout'),
+    toggleDockDisplace: action('host-layout'),
   },
 
   presenceStore: {
@@ -709,10 +748,19 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     codePanelOpen: state('editor'),
     themePanelOpen: state('editor'),
     visualPanelOpen: state('editor'),
-    aiPanelWidth: state('editor'),
-    codePanelWidth: state('editor'),
-    themePanelWidth: state('editor'),
-    visualPanelWidth: state('editor'),
+    /*
+      Where each panel opens, and how — read by the *host's* dock system rather than by a template.
+
+      These replaced four widths and four setters. A panel's size is dragged from any edge or corner
+      now and remembered by the shell beside its position, so the editor no longer holds a number for
+      it — the keys left say only "open, at this edge, as this kind of panel".
+    */
+    aiDockEdge: state('editor'),
+    codeDockEdge: state('editor'),
+    themeDockEdge: state('editor'),
+    visualDockEdge: state('editor'),
+    editorDockSize: state('editor'),
+    editorDockFloat: state('editor'),
     newChat: action('editor'),
     switchSession: action('editor'),
     deleteSession: destructive('editor'),
@@ -738,10 +786,6 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     enterThemeEditing: action('editor'),
     exitThemeEditing: action('editor'),
     toggleThemeEditing: action('editor'),
-    setAiPanelWidth: action('editor'),
-    setCodePanelWidth: action('editor'),
-    setThemePanelWidth: action('editor'),
-    setVisualPanelWidth: action('editor'),
     sendMessage: action('editor'),
     clearHistory: destructive('editor'),
 

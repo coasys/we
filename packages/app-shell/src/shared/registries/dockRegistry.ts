@@ -28,12 +28,28 @@
 import type { DockContribution } from '@we/module-shared';
 import type { SchemaNode } from '@we/schema-shared';
 
+import type { SnapPoint } from '../dockGeometry';
+
 export interface DockEntry extends DockContribution {
   /** Unique — `<moduleId>:<index>`, so one module can contribute more than one panel. */
   id: string;
   /** The module whose store the `edge` / `size` / `float` keys are read from. */
   moduleId: string;
 }
+
+/**
+ * Stores a dock may read its keys from that are not a module's.
+ *
+ * The editor's panels are docks now, and the editor is not a module: its open flags live in
+ * `editorStore`, which the shell holds. Registered by whatever mounts that store, under the id its
+ * dock entries name — so `readDockKey` resolves against one place whether the panel came from a
+ * module or from the host itself.
+ *
+ * Deliberately not merged into `moduleStores`: a module's store is installable, sandboxed and gone
+ * when it is uninstalled, and putting host state in the same bag would make "which of these can the
+ * user remove" an unanswerable question.
+ */
+export const hostDockStores: Record<string, Record<string, unknown>> = {};
 
 const entries = new Map<string, DockEntry>();
 
@@ -73,102 +89,537 @@ export function dockGeometryPath(id: string, field: string): string {
 }
 
 /**
- * Wrap a dock's node in the box the host has decided it occupies.
+ * Wrap a panel in the box the host has decided it occupies, and in the controls that move it.
  *
- * Every geometric prop is a `$store` reference rather than a literal, which is what keeps a dock
- * *moving* rather than being rebuilt: changing edge, size or float rewrites props on a container
- * that stays mounted. Rebuilding it would remount the panel's whole subtree, and a subtree holding
- * live `<video>` elements loses its streams when that happens — the same reference-identity hazard
- * the call module's tile cache exists for, one layer up.
+ * Every geometric prop is a `$store` reference rather than a literal, which is what keeps a panel
+ * *moving* rather than being rebuilt: changing snap, size or displacement rewrites props on a
+ * container that stays mounted. Rebuilding it would remount the panel's whole subtree, and a subtree
+ * holding live `<video>` elements loses its streams when that happens — the same reference-identity
+ * hazard the call module's tile cache exists for, one layer up.
  *
- * The outer `$if` is the exception, and it is the right one: no edge means the panel is closed, and
- * a closed panel genuinely should be gone rather than hidden — a call stage nobody has open must
- * not keep decoding video.
+ * The outer `$if` is the exception, and it is the right one: no edge means the panel is closed, and a
+ * closed panel genuinely should be gone rather than hidden — a call stage nobody has open must not
+ * keep decoding video.
+ *
+ * The snap targets sit *outside* that box, because they cover the window while the panel is being
+ * dragged across it. Hence the transparent `display: contents` wrapper holding both: two fixed-position
+ * siblings, neither of which is inside the other.
  */
 export function dockFrame(entry: DockEntry, node: SchemaNode): SchemaNode {
   const geo = (field: string) => ({ $store: dockGeometryPath(entry.id, field) });
 
   return {
+    type: 'Column',
+    // Transparent: both children position themselves, and a box around them would be one more thing
+    // in the flow for no reason.
+    props: { styles: { display: 'contents' } },
+    children: [
+      snapTargets(entry.id),
+      insertLines(entry.id),
+      {
+        type: '$if',
+        props: {
+          condition: geo('edge'),
+          then: {
+            type: 'Column',
+            props: {
+              position: 'fixed',
+              top: geo('top'),
+              right: geo('right'),
+              bottom: geo('bottom'),
+              left: geo('left'),
+              width: geo('width'),
+              height: geo('height'),
+              // The panel's own surface. A module's node fills it and need not paint a background, a
+              // border or a radius of its own — which is what stops two docked modules from looking
+              // like two different applications.
+              bg: 'neutral-0',
+              border: '1px solid neutral-200',
+              // Rounded and lifted only while floating. A card over the app should read as being on
+              // top; a panel that has taken room *from* the app meets it edge to edge, where a radius
+              // would leave slivers of background in the corners and a shadow would fall on content
+              // that is beside it rather than beneath it.
+              r: { $if: { condition: geo('floating'), then: '500' } },
+              shadow: { $if: { condition: geo('floating'), then: 'xl' } },
+              overflow: 'hidden',
+              zIndex: 'sticky',
+            },
+            children: [
+              ...grips(entry.id),
+              titleBar(entry),
+              /*
+                The panel gets what is left, and no more.
+
+                Its own root is `height: 100%` — of the frame, not of the frame *minus the titlebar* —
+                so slotted straight in it overflows by exactly the bar's height and the last 32px of
+                every panel disappear behind the frame's `overflow: hidden`. A flex child with
+                `flex: 1` and a zero minimum takes the remainder instead, which is the same pair the
+                modal's scroll region needs and for the same reason.
+              */
+              {
+                type: 'Column',
+                props: { flex: '1', minHeight: '0', width: '100%', overflow: 'hidden' },
+                children: [node],
+              },
+            ],
+          },
+        },
+      },
+    ],
+  };
+}
+
+/**
+ * The strip a panel is dragged by, and the controls that place it.
+ *
+ * In flow above the panel's content rather than floating over it, which is the difference between a
+ * titlebar and an obstruction: panels here carry their own headers and close buttons, and a grip
+ * overlaid in a corner would sooner or later land on one of them.
+ *
+ * It is also the whole keyboard story. The grip is focusable and moves the panel by arrow key, and
+ * the menu names all eight positions outright — so nothing about placing a panel requires a pointer,
+ * which a drag-only design would have quietly made true.
+ *
+ * Padded, and taller than the controls inside it. A 24px bar holding a 24px button put that button's
+ * corner exactly where the panel's own 16px radius clips, so the menu trigger came out shaved on two
+ * sides; 4px of vertical padding and 8px of horizontal is enough to clear the curve at the height the
+ * button actually occupies.
+ */
+function titleBar(entry: DockEntry): SchemaNode {
+  return {
+    type: 'Row',
+    props: {
+      width: '100%',
+      flex: '0 0 auto',
+      ay: 'center',
+      gap: '100',
+      px: '200',
+      py: '100',
+      bg: 'neutral-50',
+      borderBottom: '1px solid neutral-200',
+      /*
+        Double-click to maximise, the other half of the convention the grip completes.
+
+        On the bar rather than on the grip, so the empty space beside the buttons works too — which is
+        where people aim, since the grip is a thin strip and the target for a double-click is
+        "the titlebar". The button stays: this is a second route, not the only one.
+      */
+      onDblclick: { $action: 'shellStore.toggleMaximiseDock', args: [entry.id] },
+    },
+    children: [
+      {
+        type: 'we-move-handle',
+        props: {
+          flex: '1',
+          height: '100%',
+          label: 'Move panel',
+          // `onXxx`, not `on:xxx`: the schema renderer recognises an event prop by a capital after
+          // "on" and Solid lowercases the rest, so these bind `movestart`, `move` and `moveend`.
+          onMovestart: { $action: 'shellStore.beginDockMove', args: [entry.id, '$arg.detail.x', '$arg.detail.y'] },
+          onMove: { $action: 'shellStore.moveDock', args: [entry.id, '$arg.detail.dx', '$arg.detail.dy'] },
+          onMoveend: { $action: 'shellStore.endDockMove', args: [entry.id] },
+        },
+      },
+      ...(entry.aspect ? [fitButton(entry.id)] : []),
+      displaceButton(entry.id),
+      maximiseButton(entry.id),
+      positionMenu(entry),
+    ],
+  };
+}
+
+/**
+ * Shrink the panel to the shape its content wants.
+ *
+ * A button rather than a menu item, because of how it is used: resizing by hand overshoots, and this
+ * is the correction — pressed straight after a drag, often twice while settling on a width. Behind a
+ * menu that is three actions for one adjustment.
+ *
+ * Only where the module publishes an aspect. Without one there is nothing to solve for, and a
+ * control that did nothing would be worse than one that is not there.
+ */
+function fitButton(id: string): SchemaNode {
+  return {
+    type: 'we-tooltip',
+    props: { title: 'Fit to content', placement: 'bottom' },
+    children: [
+      {
+        type: 'we-button',
+        props: { size: 'xs', square: true, variant: 'ghost', onClick: { $action: 'shellStore.fitDock', args: [id] } },
+        children: [{ type: 'we-icon', props: { name: 'crop' } }],
+      },
+    ],
+  };
+}
+
+/**
+ * Push the content aside, or stop — out of the menu for the same reason, and greyed out where it
+ * cannot work.
+ *
+ * Disabled rather than hidden on a corner. A control that vanishes when you move a panel is one you
+ * stop looking for, and the disabled state carries the actual rule: displacing needs an edge, because
+ * a rectangular layout cannot flow around a box in a corner. The store refuses it there anyway —
+ * this is the same answer, made visible before the click rather than after it.
+ */
+function displaceButton(id: string): SchemaNode {
+  const place = (field: string) => ({ $store: `shellStore.dockPlacement.${id}.${field}` });
+
+  return {
+    type: 'we-tooltip',
+    props: {
+      title: {
+        $if: {
+          condition: place('canDisplace'),
+          then: 'Push content aside',
+          else: 'Snap to an edge to push content aside',
+        },
+      },
+      placement: 'bottom',
+    },
+    children: [
+      {
+        type: 'we-button',
+        props: {
+          size: 'xs',
+          square: true,
+          variant: { $if: { condition: place('displace'), then: 'secondary', else: 'ghost' } },
+          disabled: { $not: place('canDisplace') },
+          onClick: { $action: 'shellStore.toggleDockDisplace', args: [id] },
+        },
+        children: [{ type: 'we-icon', props: { name: 'columns' } }],
+      },
+    ],
+  };
+}
+
+/**
+ * Cover the screen, or go back to being a card.
+ *
+ * Here rather than in the module's own controls, which is where the call module had it — the only
+ * module that could do it, in a bar that has nothing to do with layout. It sits with the other three
+ * things you can do to a panel's shape, and every panel has it now.
+ *
+ * The glyph swaps, unlike the two beside it: this control's states are opposite *moves* rather than a
+ * capability being on or off, so "expand" and "contract" say more than a highlight would.
+ */
+function maximiseButton(id: string): SchemaNode {
+  const maximised = { $store: `shellStore.dockPlacement.${id}.maximised` };
+
+  return {
+    type: 'we-tooltip',
+    props: {
+      title: { $if: { condition: maximised, then: 'Exit full screen', else: 'Full screen' } },
+      placement: 'bottom',
+    },
+    children: [
+      {
+        type: 'we-button',
+        props: {
+          size: 'xs',
+          square: true,
+          variant: { $if: { condition: maximised, then: 'secondary', else: 'ghost' } },
+          onClick: { $action: 'shellStore.toggleMaximiseDock', args: [id] },
+        },
+        children: [
+          {
+            type: 'we-icon',
+            props: { name: { $if: { condition: maximised, then: 'arrows-in', else: 'arrows-out' } } },
+          },
+        ],
+      },
+    ],
+  };
+}
+
+/**
+ * The eight positions, and nothing else.
+ *
+ * It held the fit and displace controls too, which made it a menu about three unrelated things and
+ * buried the two that are pressed most. They are buttons beside it now, and this is a position
+ * picker — one question, eight answers, each ticked when it is the current one.
+ */
+function positionMenu(entry: DockEntry): SchemaNode {
+  const id = entry.id;
+  const place = (field: string) => ({ $store: `shellStore.dockPlacement.${id}.${field}` });
+
+  /*
+    An options object, not three positional arguments — and the reason is the icon bundler.
+
+    `collect-icons` reads icon names out of source, and a name passed positionally into a helper is
+    invisible to it: it looks for `icon: '…'`, or a name beside a `we-icon`. Written the short way,
+    all eight of these fell through to the CDN and would have been blank squares on an offline
+    desktop build. The kit's own conventions ask for options objects anyway; this is the case where
+    the convention has teeth.
+  */
+  const at = (opts: { snap: SnapPoint; label: string; icon: string }) => ({
+    id: opts.snap,
+    type: 'toggle',
+    label: opts.label,
+    icon: opts.icon,
+    checked: { $eq: [place('snap'), opts.snap] },
+    onToggle: { $action: 'shellStore.snapDock', args: [id, opts.snap] },
+  });
+
+  return {
+    type: 'DropdownMenu',
+    props: {
+      triggerIcon: 'dots-three',
+      // Explicitly empty: the trigger is a 24px chip in a titlebar, and `DropdownMenu` otherwise
+      // falls back to the word "Options", which would be wider than the panel on a small float.
+      triggerLabel: '',
+      size: 'xs',
+      /*
+        A size larger than the trigger, and the reason the two are separate props.
+
+        The trigger has to fit the titlebar; the list has to be read. At `xs` the items came out at
+        12px beside a panel whose own controls are larger, which is the wrong way round for the thing
+        you are reading rather than the thing you are aiming at.
+      */
+      itemSize: 'sm',
+      placement: 'bottom-end',
+      items: [
+        at({ snap: 'top-left', label: 'Top left', icon: 'arrow-up-left' }),
+        at({ snap: 'top', label: 'Top', icon: 'arrow-line-up' }),
+        at({ snap: 'top-right', label: 'Top right', icon: 'arrow-up-right' }),
+        at({ snap: 'left', label: 'Left', icon: 'arrow-line-left' }),
+        at({ snap: 'right', label: 'Right', icon: 'arrow-line-right' }),
+        at({ snap: 'bottom-left', label: 'Bottom left', icon: 'arrow-down-left' }),
+        at({ snap: 'bottom', label: 'Bottom', icon: 'arrow-line-down' }),
+        at({ snap: 'bottom-right', label: 'Bottom right', icon: 'arrow-down-right' }),
+      ],
+    },
+  };
+}
+
+/**
+ * The gaps in a strip, drawn as lines while a panel is over them.
+ *
+ * The convention every application with dockable panels shares: a drop that could only report an
+ * *edge* can only ever return a panel to where the registry put it, so the gaps between the panels
+ * already there become targets, and the one you are over is drawn as a line. Photoshop draws it
+ * between groups, VS Code highlights the gap, and both mean the same thing — "let go and it goes
+ * here, in this position".
+ *
+ * Thin, and only lit when active: eight dashed boxes plus four dashed lines would be more decoration
+ * than the screen can carry. The line says *between these two*, which a box cannot.
+ */
+function insertLines(id: string): SchemaNode {
+  return {
     type: '$if',
     props: {
-      condition: geo('edge'),
+      condition: { $eq: [{ $store: 'shellStore.movingDock' }, id] },
       then: {
-        type: 'Column',
-        props: {
-          position: 'fixed',
-          top: geo('top'),
-          right: geo('right'),
-          bottom: geo('bottom'),
-          left: geo('left'),
-          width: geo('width'),
-          height: geo('height'),
-          transform: geo('transform'),
-          // The panel's own surface. A module's node fills it and need not paint a background, a
-          // border or a radius of its own — which is what stops two docked modules from looking
-          // like two different applications.
-          bg: 'neutral-0',
-          border: '1px solid neutral-200',
-          // Rounded and lifted only while floating. A card over the app should read as being on top;
-          // a docked panel has taken room *from* the app and meets it edge to edge, where a radius
-          // would leave slivers of background in the corners and a shadow would fall on content that
-          // is beside it rather than beneath it.
-          r: { $if: { condition: geo('floating'), then: '500' } },
-          shadow: { $if: { condition: geo('floating'), then: 'xl' } },
-          overflow: 'hidden',
-          zIndex: 'sticky',
-        },
-        children: [resizeHandle(entry.id), node],
+        type: '$each',
+        props: { items: { $store: 'shellStore.insertSlots' }, as: 'slot' },
+        children: [
+          {
+            /*
+              The line, drawn where the store says — which is *on* the boundary, not centred in the
+              target measured against it. Those are two different boxes for a reason: see
+              `insertionSlots`.
+            */
+            type: 'Column',
+            props: {
+              position: 'fixed',
+              top: '$slot.top',
+              left: '$slot.left',
+              width: '$slot.width',
+              height: '$slot.height',
+              r: 'pill',
+              // The drag is a pointer capture on the grip; a target that could swallow a pointer event
+              // would end the drag it exists to guide.
+              pointerEvents: 'none',
+              // Above every panel, for the reason the snap targets are — see there.
+              zIndex: 'chrome',
+              bg: {
+                $if: {
+                  condition: {
+                    $eq: [{ $store: 'shellStore.activeInsert' }, { $concat: ['$slot.edge', ':', '$slot.index'] }],
+                  },
+                  then: 'primary-500',
+                  else: 'neutral-300',
+                },
+              },
+              opacity: {
+                $if: {
+                  condition: {
+                    $eq: [{ $store: 'shellStore.activeInsert' }, { $concat: ['$slot.edge', ':', '$slot.index'] }],
+                  },
+                  then: 1,
+                  else: 0.4,
+                },
+              },
+            },
+          },
+        ],
       },
     },
   };
 }
 
 /**
- * The edge of a docked panel you can drag.
+ * Where a dragged panel can land, shown only while one is being dragged.
  *
- * Rendered by the host rather than by the module, for the same reason placement is: a module cannot
- * see the sidebar, the rail, or the window, so it cannot say what a sensible size would be — and
- * three preset buttons in a module's own chrome were what stood in for this. Putting it here means
- * every docked panel gets dragging, and the ones that come later get it without asking.
+ * Eight boxes, with the one it would take right now lit up. Drawn from the host's own `snapTargets`
+ * rather than from the panel's size, because what a target has to communicate is *where*, not how
+ * big — a target the size of the panel would be invisible for a small one and would cover the screen
+ * for a large one.
  *
- * Absent while floating: `handle` is undefined for a panel that takes no room, and a `$if` on it is
- * what keeps a strip from sprouting a divider it could not act on.
+ * `pointerEvents: 'none'` throughout: the drag is a pointer capture on the grip, and a target that
+ * could swallow a pointer event would end the drag it exists to guide.
  */
-function resizeHandle(id: string): SchemaNode {
-  const geo = (field: string) => ({ $store: dockGeometryPath(id, field) });
-  const on = (side: string) => ({ $eq: [geo('handle'), side] });
-
+function snapTargets(id: string): SchemaNode {
   return {
     type: '$if',
     props: {
-      condition: geo('handle'),
+      condition: { $eq: [{ $store: 'shellStore.movingDock' }, id] },
       then: {
-        type: 'we-resize-handle',
-        props: {
-          // Vertical bar for a panel whose handle is on its left or right; horizontal otherwise.
-          orientation: { $if: { condition: { $or: [on('left'), on('right')] }, then: 'vertical', else: 'horizontal' } },
-          // Flush with the panel's own border, so dragging thickens the line that is already there
-          // rather than revealing a second one a few pixels inside it.
-          align: { $if: { condition: { $or: [on('left'), on('top')] }, then: 'start', else: 'end' } },
-          styles: { '--we-resize-handle-thickness': '3px' },
-          position: 'absolute',
-          zIndex: 'sticky',
-          // Pinned to the named side and stretched along the other axis, so one node serves all four
-          // edges rather than four nodes each knowing about one.
-          top: { $if: { condition: on('bottom'), then: 'auto', else: '0' } },
-          bottom: { $if: { condition: on('top'), then: 'auto', else: '0' } },
-          left: { $if: { condition: on('right'), then: 'auto', else: '0' } },
-          right: { $if: { condition: on('left'), then: 'auto', else: '0' } },
-          width: { $if: { condition: { $or: [on('left'), on('right')] }, then: '8px', else: 'auto' } },
-          height: { $if: { condition: { $or: [on('top'), on('bottom')] }, then: '8px', else: 'auto' } },
-          // `onXxx`, not `on:xxx`: the schema renderer recognises an event prop by a capital after
-          // "on", and Solid lowercases the rest to the event name — so these bind `resizestart`,
-          // `resize` and `resizeend`. The `on:` form is for hand-written TSX and is inert here.
-          onResizestart: { $action: 'shellStore.beginDockResize', args: [id] },
-          onResize: { $action: 'shellStore.resizeDock', args: [id, '$arg.detail.delta'] },
-          onResizeend: { $action: 'shellStore.endDockResize' },
-        },
+        type: '$each',
+        props: { items: { $store: 'shellStore.snapTargets' }, as: 'target' },
+        children: [
+          {
+            type: 'Column',
+            props: {
+              position: 'fixed',
+              top: '$target.top',
+              left: '$target.left',
+              width: '$target.width',
+              height: '$target.height',
+              r: '500',
+              pointerEvents: 'none',
+              /*
+                Above the panels, not beside them.
+
+                These belong to the frame of the panel being dragged, which is one entry among several
+                at the same `sticky` layer — so whether a guide was visible depended on where its own
+                panel happened to sit in the slot order. A guide you can only sometimes see is worse
+                than none, since the rule it is teaching looks intermittent.
+              */
+              zIndex: 'chrome',
+              border: {
+                $if: {
+                  condition: { $eq: [{ $store: 'shellStore.activeSnap' }, '$target.id'] },
+                  then: '2px solid primary-500',
+                  else: '2px dashed neutral-300',
+                },
+              },
+              bg: {
+                $if: {
+                  condition: { $eq: [{ $store: 'shellStore.activeSnap' }, '$target.id'] },
+                  then: 'primary-100',
+                  else: 'transparent',
+                },
+              },
+              opacity: {
+                $if: { condition: { $eq: [{ $store: 'shellStore.activeSnap' }, '$target.id'] }, then: 0.9, else: 0.5 },
+              },
+            },
+          },
+        ],
       },
     },
+  };
+}
+
+/**
+ * Every edge and corner you can pull, for a floating panel; the one that faces the content, for a
+ * panel that displaces it.
+ *
+ * A floating panel takes room from nothing, so all four sides are free to move and the corners move
+ * two at once — which is what a window does, and what people try before they try anything else. A
+ * displacing panel spans its edge by definition: three of its sides are pinned to the region and only
+ * the inner one is a size at all, so it gets exactly one handle and the geometry hands back only that
+ * side (see `handleX` / `handleY`).
+ *
+ * The corners are `we-move-handle`s rather than resize handles, because a corner is a two-axis drag
+ * and `we-resize-handle` reports one number along one axis. Same gesture, same pointer capture; only
+ * the arithmetic at the other end differs.
+ */
+function grips(id: string): SchemaNode[] {
+  const geo = (field: string) => ({ $store: dockGeometryPath(id, field) });
+  const floating = geo('floating');
+
+  const edges: SchemaNode[] = (['left', 'right', 'top', 'bottom'] as const).map((side) => ({
+    type: '$if',
+    props: {
+      // Shown when the panel floats, or when this is the single side a displacing panel can trade.
+      condition: { $or: [floating, { $eq: [geo(side === 'left' || side === 'right' ? 'handleX' : 'handleY'), side] }] },
+      then: resizeEdge(id, side),
+    },
+  }));
+
+  const corners: SchemaNode[] = (['top-left', 'top-right', 'bottom-left', 'bottom-right'] as const).map((corner) => ({
+    type: '$if',
+    props: { condition: floating, then: resizeCorner(id, corner) },
+  }));
+
+  return [...edges, ...corners];
+}
+
+/** One side, dragged along its own axis. */
+function resizeEdge(id: string, side: 'left' | 'right' | 'top' | 'bottom'): SchemaNode {
+  const vertical = side === 'left' || side === 'right';
+  const geo = (field: string) => ({ $store: dockGeometryPath(id, field) });
+
+  return {
+    type: 'we-resize-handle',
+    props: {
+      orientation: vertical ? 'vertical' : 'horizontal',
+      // Flush with the panel's own border, so dragging thickens the line that is already there
+      // rather than revealing a second one a few pixels inside it.
+      align: side === 'left' || side === 'top' ? 'start' : 'end',
+      /*
+        A line to thicken only where there is a boundary to thicken.
+
+        A displacing panel's edge *is* the seam between it and the content it pushed aside, and the
+        3px bar under the pointer reads as that seam answering. A floating panel has no seam — the bar
+        becomes a coloured stripe stuck to the side of a card, and it disagrees with the corner grips,
+        which draw nothing and feel cleaner for it. The cursor is the affordance there, as it is for
+        every window corner anybody has dragged. Keyboard focus still shows: see `line` on the
+        primitive.
+      */
+      line: { $if: { condition: geo('floating'), then: 'none', else: 'auto' } },
+      styles: { '--we-resize-handle-thickness': '3px' },
+      position: 'absolute',
+      zIndex: 'sticky',
+      // Pinned to its own side and stretched along the other axis, so one node serves all four.
+      ...(vertical
+        ? { top: '0', bottom: '0', [side]: '0', width: '8px' }
+        : { left: '0', right: '0', [side]: '0', height: '8px' }),
+      onResizestart: { $action: 'shellStore.beginDockResize', args: [id] },
+      onResize: {
+        $action: 'shellStore.resizeDock',
+        // The axis this side does not own is passed as zero rather than omitted: one action signature
+        // serves edges and corners, and an edge simply contributes nothing on the axis it is pinned to.
+        args: vertical ? [id, side, '$arg.detail.delta', 0] : [id, side, 0, '$arg.detail.delta'],
+      },
+      onResizeend: { $action: 'shellStore.endDockResize' },
+    },
+  };
+}
+
+/** One corner, dragged in both axes at once. */
+function resizeCorner(id: string, corner: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right'): SchemaNode {
+  const [vertical, horizontal] = corner.split('-') as ['top' | 'bottom', 'left' | 'right'];
+
+  return {
+    type: 'we-move-handle',
+    props: {
+      position: 'absolute',
+      zIndex: 'sticky',
+      width: '14px',
+      height: '14px',
+      [vertical]: '0',
+      [horizontal]: '0',
+      label: `Resize from the ${corner.replace('-', ' ')}`,
+      // Diagonal both ways, so the cursor names the axis pair rather than a direction of travel.
+      styles: { cursor: corner === 'top-left' || corner === 'bottom-right' ? 'nwse-resize' : 'nesw-resize' },
+      onMovestart: { $action: 'shellStore.beginDockResize', args: [id] },
+      onMove: { $action: 'shellStore.resizeDock', args: [id, corner, '$arg.detail.dx', '$arg.detail.dy'] },
+      onMoveend: { $action: 'shellStore.endDockResize' },
+    },
+    // No glyph: a corner grip is read from the cursor and from the corner it sits in, and a visible
+    // handle in all four corners of a video tile is four things covering the picture.
+    children: [{ type: 'Column' }],
   };
 }

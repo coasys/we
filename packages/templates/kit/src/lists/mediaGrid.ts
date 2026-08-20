@@ -17,9 +17,8 @@
  * every cell is a picture. They remain visible in any feed over the same data, which is the honest
  * behaviour: the template is a lens, not a filter on what exists.
  */
+import type { AnchorId } from '@we/schema-kit';
 import type { QueryStateField, SchemaNode, SchemaProp } from '@we/schema-shared';
-
-import type { AnchorId } from '../types.ts';
 
 export interface MediaGridOptions {
   /** `CollectionBlock.kind` to draw from. Usually `'post'`. */

@@ -59,6 +59,11 @@
           "type": "boolean",
           "optional": false,
           "default": "false"
+        },
+        {
+          "name": "stream",
+          "type": "MediaStream | null | undefined",
+          "optional": true
         }
       ]
     },
@@ -881,6 +886,31 @@
       ]
     },
     {
+      "tagName": "we-move-handle",
+      "className": "MoveHandle",
+      "superclass": "LayoutElement",
+      "ownProps": [
+        {
+          "name": "step",
+          "type": "number",
+          "optional": false,
+          "default": "24"
+        },
+        {
+          "name": "dragging",
+          "type": "boolean",
+          "optional": false,
+          "default": "false"
+        },
+        {
+          "name": "label",
+          "type": "string",
+          "optional": false,
+          "default": "'Move'"
+        }
+      ]
+    },
+    {
       "tagName": "we-number",
       "className": "WeNumber",
       "description": "Displays a number, optionally abbreviated (1 200 → 1.2K, 1 500 000 → 1.5M).",
@@ -1118,6 +1148,12 @@
           "type": "'start' | 'center' | 'end'",
           "optional": false,
           "default": "'center'"
+        },
+        {
+          "name": "line",
+          "type": "'auto' | 'none'",
+          "optional": false,
+          "default": "'auto'"
         },
         {
           "name": "step",
@@ -3032,6 +3068,11 @@
         },
         {
           "name": "size",
+          "type": "\"xs\" | \"sm\" | \"md\" | \"lg\" | \"xl\"",
+          "optional": true
+        },
+        {
+          "name": "itemSize",
           "type": "\"xs\" | \"sm\" | \"md\" | \"lg\" | \"xl\"",
           "optional": true
         },
@@ -5085,6 +5126,7 @@
       "values": {
         "dropdown": "100",
         "sticky": "200",
+        "chrome": "250",
         "modal": "300",
         "popover": "400",
         "toast": "500",
@@ -5332,17 +5374,23 @@
         "isEditingTheme": {
           "type": "boolean"
         },
-        "aiPanelWidth": {
-          "type": "number"
+        "aiDockEdge": {
+          "type": "object"
         },
-        "codePanelWidth": {
-          "type": "number"
+        "codeDockEdge": {
+          "type": "object"
         },
-        "themePanelWidth": {
-          "type": "number"
+        "themeDockEdge": {
+          "type": "object"
         },
-        "visualPanelWidth": {
-          "type": "number"
+        "visualDockEdge": {
+          "type": "object"
+        },
+        "editorDockSize": {
+          "type": "object"
+        },
+        "editorDockFloat": {
+          "type": "boolean"
         }
       },
       "actions": [
@@ -5373,10 +5421,6 @@
         "enterThemeEditing",
         "exitThemeEditing",
         "toggleThemeEditing",
-        "setAiPanelWidth",
-        "setCodePanelWidth",
-        "setThemePanelWidth",
-        "setVisualPanelWidth",
         "sendMessage",
         "clearHistory",
         "setApiKey"
@@ -5812,6 +5856,24 @@
         },
         "dockResizing": {
           "type": "boolean"
+        },
+        "dockPlacement": {
+          "type": "object"
+        },
+        "movingDock": {
+          "type": "string"
+        },
+        "activeSnap": {
+          "type": "object"
+        },
+        "snapTargets": {
+          "type": "array"
+        },
+        "insertSlots": {
+          "type": "array"
+        },
+        "activeInsert": {
+          "type": "string"
         }
       },
       "actions": [
@@ -5819,9 +5881,18 @@
         "closeShellView",
         "setCreateSpaceOpen",
         "scrollToId",
+        "setChromeInset",
         "beginDockResize",
         "resizeDock",
-        "endDockResize"
+        "endDockResize",
+        "fitDock",
+        "beginDockMove",
+        "moveDock",
+        "endDockMove",
+        "snapDock",
+        "insertDock",
+        "toggleMaximiseDock",
+        "toggleDockDisplace"
       ]
     },
     {
@@ -5910,6 +5981,9 @@
           "type": "array",
           "properties": ["label", "value"]
         },
+        "spaceThemePinned": {
+          "type": "boolean"
+        },
         "installedModules": {
           "type": "array"
         },
@@ -5973,6 +6047,8 @@
         "setModuleVisible",
         "setSpaceTemplateOverride",
         "setSpaceThemeOverride",
+        "applyTheme",
+        "clearSpaceThemePin",
         "launchModule",
         "createSignalType",
         "upsertSignal",
@@ -6161,5 +6237,14 @@
       "actions": ["create", "update", "delete"]
     }
   ],
-  "shellComponents": ["AiPanel", "CesiumGlobe", "EditingBar", "RightPanelContainer", "TemplateCard", "WeCube"]
+  "shellComponents": [
+    "AiPanel",
+    "CesiumGlobe",
+    "EditingBar",
+    "EditorCodePanel",
+    "EditorInspectorPanel",
+    "EditorThemePanel",
+    "TemplateCard",
+    "WeCube"
+  ]
 }

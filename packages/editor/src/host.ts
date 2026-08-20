@@ -154,14 +154,6 @@ export interface SessionPort {
   closeThemePanel: () => void;
   visualPanelOpen: () => boolean;
   toggleVisualPanel: () => void;
-  aiPanelWidth: () => number;
-  codePanelWidth: () => number;
-  themePanelWidth: () => number;
-  visualPanelWidth: () => number;
-  setAiPanelWidth: (w: number) => void;
-  setCodePanelWidth: (w: number) => void;
-  setThemePanelWidth: (w: number) => void;
-  setVisualPanelWidth: (w: number) => void;
 
   // AI chat. Read by `@we/editor/ai` only — listed here because the session is one object today, and
   // this is the slice that moves behind its own port when the assistant grows past template editing.

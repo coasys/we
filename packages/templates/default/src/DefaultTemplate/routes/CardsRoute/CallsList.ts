@@ -141,18 +141,17 @@ export const callsList: SchemaNode = {
             titleDraft: { type: 'string', initial: '$call.title' },
             descriptionDraft: { type: 'string', initial: '$call.description' },
             /*
-              Two folds inside the card, both closed.
-
-              A recorded meeting is long: rendering every utterance and every finding makes a card
-              nobody scrolls past, and the two halves are wanted at different moments — the findings
-              when you are catching up, the transcript when you doubt one of them.
+              The findings behind a fold, closed.
 
               Closed by default, and that is a judgement rather than a default: what a finished call
               owes a reader at a glance is who was in it, how much was said and what came out — all
               of which the header already carries.
+
+              The transcript below has no fold of its own. `cardShell` already collapses the whole
+              card, and a fold inside a collapsed card is two nested disclosures wrapping the same
+              text — which reads as a mistake rather than as two choices.
             */
             findingsOpen: { type: 'boolean', initial: false },
-            transcriptOpen: { type: 'boolean', initial: false },
           },
           header: [
             {
@@ -751,69 +750,56 @@ export const callsList: SchemaNode = {
                   },
                 },
                 /*
-                    The transcript, behind a fold.
+                    The transcript, in full.
 
-                    A recorded meeting is long, and a card that renders every utterance is a card
-                    nobody scrolls past. `CollapsedContent` is the same primitive `cardShell` uses to
-                    fold a whole card, applied one level in — so the gesture is the one this route
-                    already teaches, and the fade tells you there is more without a count nobody
-                    reads.
-
-                    Open by default would defeat the point; the findings above it are the summary,
-                    and this is what they were drawn from.
+                    No fold of its own. A recorded meeting is long, so this was behind a
+                    `CollapsedContent` — but `cardShell` already folds the whole card with the same
+                    primitive, and with both in play an expanded card opened onto a second identical
+                    disclosure wrapping the only thing left in it. One gesture, applied at the level
+                    that covers the header and the findings too, is what the route already teaches.
                   */
                 {
-                  type: 'CollapsedContent',
-                  props: {
-                    collapsed: { $not: { $local: 'transcriptOpen' } },
-                    onExpandClick: { $toggleLocal: 'transcriptOpen' },
-                    maxHeight: '160px',
-                  },
+                  type: 'Column',
+                  props: { gap: '300' },
                   children: [
                     {
-                      type: 'Column',
-                      props: { gap: '300' },
-                      children: [
-                        {
-                          type: '$each',
-                          // Drilled down from the call rather than hydrated with `include` — see the note
-                          // on the outer query. `children` still arrives as an array of ids, but the ids
-                          // alone cannot render the text.
-                          // Oldest first, because a transcript read backwards is not a transcript.
-                          props: {
-                            items: {
-                              $query: {
-                                entity: 'TextBlock',
-                                scope: { anchor: 'CollectionBlock', via: 'children', anchorId: '$call.id' },
-                                order: { createdAt: 'asc' },
-                              },
-                            },
-                            as: 'utterance',
+                      type: '$each',
+                      // Drilled down from the call rather than hydrated with `include` — see the note
+                      // on the outer query. `children` still arrives as an array of ids, but the ids
+                      // alone cannot render the text.
+                      // Oldest first, because a transcript read backwards is not a transcript.
+                      props: {
+                        items: {
+                          $query: {
+                            entity: 'TextBlock',
+                            scope: { anchor: 'CollectionBlock', via: 'children', anchorId: '$call.id' },
+                            order: { createdAt: 'asc' },
                           },
-                          children: [
-                            /*
-                        Attribution is free here and needs no diarization: each agent transcribes only
-                        their own microphone, so the block's author *is* the speaker.
-
-                        `$agent` turns that DID into a profile and demand-fetches it, which is what
-                        puts a real picture and a name on the line rather than a generated blob. The
-                        same idiom `PostsList` uses for a post's author — and it reaches anyone, not
-                        only the current space's members.
-                      */
-                            agentByline({
-                              did: '$utterance.author',
-                              as: 'speaker',
-                              stacked: true,
-                              nameColor: 'neutral-600',
-                              // When each utterance was written — which is when it was *said*, since a
-                              // block is flushed as the speaker finishes.
-                              timestamp: '$utterance.createdAt',
-                              children: [
-                                { type: 'we-text', props: { color: 'neutral-900' }, children: ['$utterance.text'] },
-                              ],
-                            }),
-                          ],
                         },
+                        as: 'utterance',
+                      },
+                      children: [
+                        /*
+                          Attribution is free here and needs no diarization: each agent transcribes only
+                          their own microphone, so the block's author *is* the speaker.
+
+                          `$agent` turns that DID into a profile and demand-fetches it, which is what
+                          puts a real picture and a name on the line rather than a generated blob. The
+                          same idiom `PostsList` uses for a post's author — and it reaches anyone, not
+                          only the current space's members.
+                        */
+                        agentByline({
+                          did: '$utterance.author',
+                          as: 'speaker',
+                          stacked: true,
+                          nameColor: 'neutral-600',
+                          // When each utterance was written — which is when it was *said*, since a
+                          // block is flushed as the speaker finishes.
+                          timestamp: '$utterance.createdAt',
+                          children: [
+                            { type: 'we-text', props: { color: 'neutral-900' }, children: ['$utterance.text'] },
+                          ],
+                        }),
                       ],
                     },
                   ],

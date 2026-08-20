@@ -87,6 +87,28 @@ export type DockEdge = 'left' | 'right' | 'top' | 'bottom' | null;
 export type DockSize = 'sm' | 'md' | 'lg' | 'full';
 
 /**
+ * The shape a panel's content wants, for the host to solve a height from.
+ *
+ * A bare ratio is not enough, and the missing term is visible: the call stage pads itself by 12px and
+ * puts 12px between tiles, so solving `height = width / ratio` gave a box a little too short for its
+ * own pictures — which the tiles then answered by shrinking to fit the height and leaving a gap down
+ * each side. The fit looked wrong in the axis it had not been asked about.
+ *
+ * So the ratio describes the *pictures*, and the insets are the fixed pixels around them — padding,
+ * and the gaps between rows and columns, which are fixed once the tile count is known. The host
+ * solves `(width - insetX) / ratio + insetY`, then adds its own titlebar. Everything in the sum is a
+ * constant at a given moment, which is what keeps this a value rather than a callback.
+ */
+export interface DockAspect {
+  /** Width ÷ height of the content itself, ignoring anything around it. */
+  ratio: number;
+  /** Fixed horizontal pixels around the content: padding, and gaps between columns. */
+  insetX?: number;
+  /** Fixed vertical pixels: padding, and gaps between rows. */
+  insetY?: number;
+}
+
+/**
  * A panel that takes room from the app rather than covering it.
  *
  * The distinction that earns a second kind of contribution alongside {@link SlotContribution}: a
@@ -103,38 +125,71 @@ export type DockSize = 'sm' | 'md' | 'lg' | 'full';
  *
  * A docked module used to position itself with `position: fixed` and a hardcoded offset for the
  * module rail — which meant every module re-derived geometry it cannot see, and none of them could
- * inset the content because the content viewport is not theirs to resize. Here the module says
- * *which edge* and *how big*, and the host owns where that lands, what it has to clear, what the
- * viewport becomes, and what happens when the window is too narrow to give anything up.
+ * inset the content because the content viewport is not theirs to resize. Here the module says how
+ * it would like to open, and the host owns everything after that: where it lands, what it has to
+ * clear, what the viewport becomes, and what happens when the window is too narrow to give anything
+ * up.
+ *
+ * "After that" now includes moving and resizing it. Every panel gets a grip, eight snap targets and
+ * a toggle for taking room, from the frame the host wraps it in — so a module that wants its panel
+ * somewhere else does not implement dragging, and a user who moves one keeps it moved across every
+ * module that has one. The call module's six-placement menu is what this replaced; it was the third
+ * piece of geometry a module had written for itself, and the first that other modules would have had
+ * to copy.
  */
 export interface DockContribution {
   /**
-   * A key on this module's own store returning {@link DockEdge}.
+   * A key on this module's own store returning {@link DockEdge}: where the panel would *like* to
+   * open, and `null` while it is closed.
    *
-   * A store key rather than a value because a dock moves: the edge is a user preference, and the
-   * same key returning `null` is how the module says the dock is closed. Named like
-   * {@link ModuleLauncher.action} is, and for the same reason — the host reads it, and a module
+   * An opening bid, not a position. The user drags a panel where they want it and the host remembers
+   * — so this decides where it appears the first time and nothing after that. The `null` is the part
+   * that keeps mattering: a panel's visibility and its placement are the same question, and splitting
+   * them into two keys lets them disagree.
+   *
+   * A store key rather than a value because both halves of that change while the app runs. Named
+   * like {@link ModuleLauncher.action} is, and for the same reason — the host reads it, and a module
    * cannot build a `$store` path to itself.
    */
   edge: string;
-  /** A key on this module's store returning {@link DockSize}. Omit for `'md'`. */
+  /**
+   * A key on this module's store returning {@link DockSize}. Omit for `'md'`.
+   *
+   * Also an opening bid, with one exception: `'full'` is a live state rather than a starting size,
+   * and a panel returning it covers the content region for as long as it does. That is a statement
+   * about the module's own moment — "watch this" — which is why it stays here while position and
+   * size did not.
+   */
   size?: string;
   /**
-   * A key on this module's store returning `true` while the dock should **overlay** rather than
-   * inset — the same panel, not taking room.
+   * A key on this module's store returning `true` while the panel should **overlay** rather than
+   * take room.
    *
-   * Both ends of the size range want this, for opposite reasons. A compact strip is glanceable
-   * chrome and shrinking the app for it would be absurd; a maximised panel is the whole point of
-   * the moment, and insetting it to full size would leave a content viewport of zero width, which
-   * is not a layout any template survives.
+   * The bid for how it opens. Whether a panel goes on to displace content is the user's, through a
+   * toggle the host puts on the panel itself — offered on the four edge-centre snaps, where pushing
+   * content aside has a coherent meaning, and refused in a corner, where it would carve out a column
+   * and leave most of it empty.
    *
    * It exists as a flag rather than two contributions because it must be the *same* container:
-   * moving a panel between two nodes remounts its subtree, and a subtree containing live video
-   * loses its streams when that happens. One box that changes shape, never two boxes.
+   * moving a panel between two nodes remounts its subtree, and a subtree containing live video loses
+   * its streams when that happens. One box that changes shape, never two boxes.
    *
    * The host also forces this on when the window is too narrow to give anything up.
    */
   float?: string;
+  /**
+   * A key on this module's store returning the shape its **content** wants: see {@link DockAspect}.
+   *
+   * Optional, and only worth publishing where the panel's contents have a shape of their own. A video
+   * stage does: its tiles are 16:9 and they pack into a grid, so for any given width there is exactly
+   * one height at which no band of empty panel is left above or below the picture. A notes panel does
+   * not — text reflows, and any height is as correct as any other.
+   *
+   * Where it exists, the host offers "Fit to content" on the panel's own menu and solves for the
+   * height, keeping the width the user chose. Resizing by hand always overshoots slightly, and
+   * without this there is no way to feel your way back to exactly right.
+   */
+  aspect?: string;
   /** The panel itself. A `SchemaNode`, so a deployment can restyle or white-label it. */
   node: SchemaNode;
   /** Ties break on module id, exactly as {@link SlotContribution.order} does. */

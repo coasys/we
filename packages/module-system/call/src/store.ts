@@ -92,23 +92,17 @@ export interface CallTileState {
 }
 
 /**
- * Where the call's video sits — one question, six answers.
+ * The stage's own padding and the gap between tiles, in pixels — `300` on the space scale.
  *
- * This replaced a four-state mode that one button cycled through, and the collapse is the point.
- * That button was encoding three things at once — whether the video showed, where it was, and how
- * big — so it could not have a clear icon, and reaching any given state took up to three clicks
- * through states you did not want.
- *
- * They are all *placements*, including the two that look like modes. `float` takes no room and
- * overlays, `full` takes all of it; the four edges take some and give the rest back. So the whole
- * arrangement is a radio choice, which is a thing people already know how to read — and visibility
- * becomes an ordinary toggle beside it rather than a stop on a cycle.
- *
- * Size is deliberately absent: it is dragged, and the host owns it. See `dockGeometry`.
+ * Named because two places have to agree about them and they are far apart: the stage node in
+ * `index.ts` sets them as design tokens, and `dockAspect` below subtracts them so "fit to content"
+ * solves for the right height. They drifted apart once already — the aspect ignored them entirely,
+ * and the fit came out short by exactly their sum.
  */
-export type CallPlacement = 'float' | 'left' | 'right' | 'top' | 'bottom' | 'full';
+export const STAGE_PADDING_PX = 12;
+export const STAGE_GAP_PX = 12;
 
-/** Which edge a docked stage occupies — the subset of {@link CallPlacement} that takes room. */
+/** Which edge a stage occupies while it takes room. The host decides; this names the vocabulary. */
 export type CallDockEdge = 'left' | 'right' | 'top' | 'bottom';
 
 export interface CallStoreDeps extends ModuleStoreDeps {
@@ -166,16 +160,14 @@ export function createCallStore(deps: CallStoreDeps) {
   const [callId, setCallId] = signal<string | null>(null);
   const [tiles, setTiles] = signal<CallTile[]>([]);
   const [tileStates, setTileStates] = signal<CallTileState[]>([]);
-  const [visible, setVisible] = signal(false);
   /**
-   * Floating by default, because the first press of a button should not reshape the workspace.
+   * Whether the stage is on screen. False between calls, and set by `join` — see there.
    *
-   * Docking is a decision to give up room, and the opening move is usually a glance at who is there
-   * rather than a commitment to watch. Starting docked meant one click on an unlabelled control
-   * shrank the whole app; starting floating means the panel appears over what you were doing and the
-   * user docks it when they decide it is worth the space.
+   * The initial value is the state of a module that is not in a call, which is the only state this
+   * is ever read in before one starts: `dockEdge` is null while `callId` is, so nothing is placed
+   * either way.
    */
-  const [placement, setPlacement] = signal<CallPlacement>('float');
+  const [visible, setVisible] = signal(false);
   /**
    * Whose video the stage is giving most of its room to, or `null` for an even grid.
    *
@@ -479,6 +471,21 @@ export function createCallStore(deps: CallStoreDeps) {
     }
 
     setCallId(id);
+    /*
+      Starting a call shows the call.
+
+      Nothing did this, so the first thing that happened when you pressed the call button was that
+      the bar appeared and the video did not: `dockEdge` returns null while `visible` is false, and
+      the host renders no dock for a null edge. The only way to a visible stage was the expand
+      toggle, which reads as a way to *change* something already on screen — so the call looked like
+      it had failed to start any picture at all.
+
+      Placing it is a separate question from showing it, and not this module's: the stage opens as a
+      floating card, and where it goes from there is the host's, on the panel itself. Leaving a call
+      sets this back off, so it means "this call is showing" rather than a preference that outlives
+      the call it was made in.
+    */
+    setVisible(true);
 
     // coalesce: false, emphatically. Presence heartbeats are last-write-wins so a dropped one costs
     // nothing; an SDP offer dropped because the previous send was slow is simply lost, and that peer
@@ -576,23 +583,17 @@ export function createCallStore(deps: CallStoreDeps) {
    * exactly one row beneath, at any count. A tall narrow dock wants columns of one or two, because
    * three 16:9 tiles across a 440px panel are thumbnails. Anything wide gets the ordinary grid.
    */
-  function stageColumns(count: number, focused: boolean, where: CallPlacement): number {
+  function stageColumns(count: number, focused: boolean): number {
     if (count <= 1) return 1;
     if (focused) return Math.min(count - 1, 4);
-    const vertical = where === 'left' || where === 'right';
-    if (vertical) return count <= 3 ? 1 : 2;
     return count <= 4 ? 2 : 3;
   }
-
-  /** The edge a placement occupies. `float` and `full` name one they do not use — see `dockEdge`. */
-  const edgeFor = (where: CallPlacement): CallDockEdge => (where === 'float' || where === 'full' ? 'bottom' : where);
 
   return {
     // ── State ────────────────────────────────────────────────────────────────
     callId,
     tiles,
     tileStates,
-    placement,
     focusedId,
     media,
     problem,
@@ -609,123 +610,88 @@ export function createCallStore(deps: CallStoreDeps) {
      * value has to stay non-null for the panel to exist at all, and keeping the user's preference
      * live through those modes is what makes cycling back to `dock` return it where they left it.
      */
-    dockEdge: () => (!visible() || !callId() ? null : edgeFor(placement())),
+    dockEdge: () => (!visible() || !callId() ? null : 'bottom'),
     /**
-     * How much room to ask for — now only ever the two extremes, or "an ordinary panel".
+     * How much room to ask for, once, when the panel first opens.
      *
-     * The three named sizes this used to choose between are gone: size is dragged, and the host
-     * stores what the user dragged it to. `md` is therefore an opening bid rather than a setting,
-     * which is why nothing here can change it any more.
+     * An opening bid and nothing else. Size, position, whether it displaces content and whether it
+     * covers the screen are all the host's now, on the panel's own titlebar — so this module has no
+     * opinion about layout left beyond "a card, to begin with".
      */
-    dockSize: () => (placement() === 'full' ? 'full' : placement() === 'float' ? 'sm' : 'md'),
-    /** Overlay rather than inset: a float is too small to be worth shrinking the app for, a full
-     *  stage too large to leave anything of it. */
-    dockFloat: () => placement() === 'float' || placement() === 'full',
+    dockSize: () => 'sm',
+    /**
+     * Always overlaying, as far as this module is concerned.
+     *
+     * The stage floats when it opens; whether it goes on to *take room* is the host's toggle now, on
+     * the panel itself, and this module neither sets it nor reads it. That is the point of the split:
+     * a call knows how much of your attention it wants, and the app knows how the app is laid out.
+     */
+    dockFloat: () => true,
 
     /**
-     * The placement picker, pre-built — a fragment can iterate an array but cannot author one.
+     * The shape this panel's content wants, so the host can offer "fit to content".
      *
-     * One list containing what used to be two controls and a cycle. `float` and `full` sit in it as
-     * peers of the edges because that is what they are: places to put the video, differing only in
-     * how much room they take.
+     * Every tile is 16:9 and they divide the stage evenly, so for any width there is exactly one
+     * height at which no band of empty panel is left above or below the pictures — the thing
+     * hand-resizing can never quite land on. `cols × 16 / (rows × 9)` is that shape.
+     *
+     * The insets are the stage's own fixed pixels: `STAGE_PADDING_PX` on each side and
+     * `STAGE_GAP_PX` between tiles. Left out — as they were at first — the host solved on the full
+     * panel width, made the box about twenty pixels too short for its pictures, and the tiles
+     * answered by shrinking to the height and leaving a gap down each side. They are constants at a
+     * given tile count, which is what lets this stay a value rather than a callback taking a width.
      */
-    placementOptions: () => [
-      { id: 'float', icon: 'picture-in-picture', label: 'Floating', active: placement() === 'float' },
-      { id: 'left', icon: 'arrow-line-left', label: 'Dock left', active: placement() === 'left' },
-      { id: 'right', icon: 'arrow-line-right', label: 'Dock right', active: placement() === 'right' },
-      { id: 'top', icon: 'arrow-line-up', label: 'Dock top', active: placement() === 'top' },
-      { id: 'bottom', icon: 'arrow-line-down', label: 'Dock bottom', active: placement() === 'bottom' },
-      { id: 'full', icon: 'arrows-out', label: 'Full screen', active: placement() === 'full' },
-    ],
+    dockAspect: () => {
+      const count = Math.max(1, tiles().length);
+      const columns = stageColumns(count, focusedId() !== null);
+      const rows = Math.max(1, Math.ceil(count / columns));
+      return {
+        ratio: (columns * 16) / (rows * 9),
+        insetX: STAGE_PADDING_PX * 2 + (columns - 1) * STAGE_GAP_PX,
+        insetY: STAGE_PADDING_PX * 2 + (rows - 1) * STAGE_GAP_PX,
+      };
+    },
 
-    /** Whether the video is showing at all — what the expand button reflects. */
+    /** Whether the video is showing at all — what the show/hide button reflects. */
     stageOpen: visible,
-
-    /**
-     * The control bar has to move when the panel is docked along the top.
-     *
-     * Both are the module's own chrome and both want the top centre, so one of them has to give —
-     * and it should be the small one. The host cannot arbitrate this: it places docks and knows
-     * nothing about a floating pill some module renders through a slot. This module knows about
-     * both, which is exactly why the decision belongs here.
-     */
-    barAtBottom: () => visible() && placement() === 'top',
 
     // ── How the tiles pack ────────────────────────────────────────────────────
     /**
      * The tile container's own CSS, computed rather than expressed as nested `$if` in the fragment.
      *
-     * Grid, not wrapping flex. A wrapping flex container derives its line height from its content
-     * and `align-content` can only *grow* a line — so a declared stage height was a floor rather
-     * than a ceiling, and one oversized child pushed the whole stage past it into a scrollbar. Grid
-     * tracks of `1fr` divide a definite box instead, which cannot overflow however many people join
-     * or whatever resolution they send.
+     * Grid, not wrapping flex. A wrapping flex container derives its line height from its content and
+     * `align-content` can only *grow* a line — so a declared stage height was a floor rather than a
+     * ceiling, and one oversized child pushed the whole stage past it into a scrollbar. Grid tracks of
+     * `1fr` divide a definite box instead, which cannot overflow however many people join or whatever
+     * resolution they send.
      *
-     * A strip is the exception and flows the other way: a single row of fixed-width cells, so the
-     * panel is as wide as the number of people in it rather than a band of empty chrome.
+     * One arrangement now, where there were three. The strip and the side-dock cases existed because
+     * a docked panel's shape was decided by which *edge* it was on — a 440×900 column, a 1600×300
+     * band — and each needed its own way to pack tiles into it. A panel the user has dragged to a
+     * size has no such categories: it is a rectangle, the tiles divide it, and the columns come from
+     * how many people are in the call rather than from where the panel is parked.
      */
-    stageStyle: (): Record<string, string> => {
-      if (placement() === 'float') {
-        return {
-          display: 'grid',
-          'grid-auto-flow': 'column',
-          // 16:9 at the strip's own height. Fixed rather than derived, because deriving it needs
-          // the panel's measured height and the whole arrangement exists to avoid measuring.
-          'grid-auto-columns': '220px',
-          'grid-template-rows': '1fr',
-        };
-      }
-
-      const columns = stageColumns(tiles().length, focusedId() !== null, placement());
-      /**
-       * A side dock is constrained by its *width*, so its rows are sized from that and stack at the
-       * top.
-       *
-       * Sharing the height equally is right when height is the scarce dimension — a wide, short
-       * panel — and wrong when it is not. A 440×900 side dock gave one participant a 900px row to be
-       * centred in, so a 247px picture floated in the middle of the panel with a third of a screen
-       * of nothing above and below it. Deriving the row from the column width instead makes the
-       * tiles exactly as tall as they need to be, and `start` puts the empty space in one place
-       * rather than distributing it between them.
-       */
-      const vertical = placement() === 'left' || placement() === 'right';
-      return vertical
-        ? {
-            display: 'grid',
-            'grid-template-columns': `repeat(${columns}, 1fr)`,
-            'grid-auto-rows': 'min-content',
-            'align-content': 'start',
-            /**
-             * The one arrangement here that can genuinely overflow, so the one that scrolls.
-             *
-             * Everywhere else rows divide a definite height and cannot exceed it — that invariant is
-             * why the stage clips rather than scrolls. A side dock is the exception by construction:
-             * its rows come from its *width*, so widening it makes every tile taller, and enough
-             * participants or a wide enough drag will run past the bottom of the screen. Clipping
-             * there hides people who are in the call.
-             */
-            'overflow-y': 'auto',
-          }
-        : {
-            display: 'grid',
-            'grid-template-columns': `repeat(${columns}, 1fr)`,
-            'grid-auto-rows': '1fr',
-          };
-    },
+    stageStyle: (): Record<string, string> => ({
+      display: 'grid',
+      'grid-template-columns': `repeat(${stageColumns(tiles().length, focusedId() !== null)}, 1fr)`,
+      'grid-auto-rows': '1fr',
+    }),
 
     /**
-     * The picture box's own sizing, which differs by which dimension is the scarce one.
+     * The picture box's own sizing.
      *
-     * Where rows divide a definite height, the box has to fit *within* its cell, and the only way to
-     * express that is to measure the cell — hence the container query. Where rows are sized from the
-     * column width, the width is already known and the aspect ratio derives the height directly,
-     * which is both simpler and the reason `container-type` must not be set in that case: size
-     * containment on a row whose height comes from its content collapses it to nothing.
+     * A 16:9 box as wide as the cell's height allows, so the picture is the right shape whatever
+     * proportions the panel has been dragged to — and the name and badges anchored to its corner land
+     * *on the video* rather than in the empty half of a cell they nominally shared.
+     *
+     * The container query is what makes that possible: `container-type: size` on the cell (see
+     * `tileCells`) is what `100cqh` measures.
      */
-    pictureStyle: (): Record<string, string> =>
-      placement() === 'left' || placement() === 'right'
-        ? { 'aspect-ratio': '16 / 9', width: '100%' }
-        : { 'aspect-ratio': '16 / 9', width: 'min(100%, calc(100cqh * 16 / 9))', margin: 'auto' },
+    pictureStyle: (): Record<string, string> => ({
+      'aspect-ratio': '16 / 9',
+      width: 'min(100%, calc(100cqh * 16 / 9))',
+      margin: 'auto',
+    }),
 
     /**
      * Each participant's face, looked up by id exactly as their volatile flags are.
@@ -741,26 +707,27 @@ export function createCallStore(deps: CallStoreDeps) {
 
     tileCells: (): { id: string; style: Record<string, string | number> }[] => {
       const focus = focusedId();
-      const strip = placement() === 'float';
       // A focused tile spans the full width and two rows: the classic spotlight, in one declaration,
-      // at any participant count. In a strip there is nothing to spotlight — every cell is already
-      // the same size and there is only one row.
+      // at any participant count.
       const spotlight: Record<string, string | number> = { 'grid-column': '1 / -1', 'grid-row': 'span 2', order: -1 };
       /**
        * Every cell is a size container, which is what lets the picture inside it be the right shape.
        *
-       * A cell is whatever the panel's proportions make it — 440×900 for one person in a side dock —
-       * and a picture cannot be fitted into an arbitrary box by CSS alone unless something can be
-       * measured. `container-type: size` makes the cell measurable, so the tile can ask for "as wide
-       * as 16:9 allows at this height" and stop being a full-height box with a band of video in the
-       * middle. That band was where the name and the mute badge ended up: anchored to the bottom of
-       * the cell, floating in empty space well below the picture they belonged to.
+       * A cell is whatever the panel's proportions make it — and a picture cannot be fitted into an
+       * arbitrary box by CSS alone unless something can be measured. `container-type: size` makes the
+       * cell measurable, so the tile can ask for "as wide as 16:9 allows at this height" and stop
+       * being a full-height box with a band of video in the middle. That band was where the name and
+       * the mute badge ended up: anchored to the bottom of the cell, floating in empty space well
+       * below the picture they belonged to.
+       *
+       * Unconditional now. It used to be skipped on a side dock, whose rows were sized from the
+       * column width and would have collapsed to nothing under size containment — a shape a panel
+       * can no longer be in, since every stage divides a box the user dragged.
        */
-      const vertical = placement() === 'left' || placement() === 'right';
-      const cell: Record<string, string | number> = vertical ? {} : { 'container-type': 'size' };
+      const cell: Record<string, string | number> = { 'container-type': 'size' };
       return tiles().map((entry) => ({
         id: entry.id,
-        style: !strip && entry.id === focus ? { ...cell, ...spotlight } : cell,
+        style: entry.id === focus ? { ...cell, ...spotlight } : cell,
       }));
     },
     /** True when this agent is in a call — the call bar's visibility condition. */
@@ -871,17 +838,6 @@ export function createCallStore(deps: CallStoreDeps) {
     /** Show the video, or put it away. The other half of what one button used to do alone. */
     toggleStage: () => setVisible(!visible()),
     closeStage: () => setVisible(false),
-
-    /**
-     * Put the video somewhere — and show it, if it was not showing.
-     *
-     * Choosing a place is an instruction to look at the thing, so making the user open it first and
-     * then place it would be asking twice for one decision.
-     */
-    setPlacement: (where: CallPlacement) => {
-      setPlacement(where);
-      if (!visible()) setVisible(true);
-    },
 
     /**
      * Give this participant the stage, or take it back if they already have it.

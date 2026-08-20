@@ -1,88 +1,49 @@
 /**
- * The shapes WE's templates are built from, as data.
+ * The shapes WE's templates are built from, as data — the WE-domain tier, plus everything portable.
  *
- * Every export here is a function returning `SchemaNode`s — it runs at authoring time and leaves
- * nothing behind. What ships is the JSON it produced, indistinguishable from JSON written by hand,
- * which is what keeps a template inspectable in the visual editor, editable by an AI, and free of
- * any dependency on this package at runtime.
+ * ## Two packages, one import
  *
- * ## Two tiers
+ * The kit has always had two tiers. The portable one names no store and now lives in
+ * `@we/schema-kit`, where a feature module can reach it: the kit sitting under `templates/` made
+ * `modules → templates` the only way to use a shape it already had, and that is the sideways edge
+ * the dependency rules forbid — so the call module copied `peopleTooltip` by hand instead.
  *
- * - **Layout, states, lists, overlays** name no store. They are portable to any deployment.
- * - **`we/`** reads WE's own stores (`profileStore`, `runtimeStore`) or its schema machinery
- *   (`$agent`). They are portable only where those exist.
+ * What stays here reads WE's own stores (`profileStore`, `runtimeStore`, `datasetStore`) or its
+ * schema machinery (`$agent`). That is the tier whose real dependency is the host's store surface,
+ * which no `package.json` can express — a fragment naming `spaceStore.members` resolves to nothing
+ * on a deployment without that store, silently. Keeping the two apart is how a consumer can tell
+ * which fragments will work for them, and it is now a package boundary rather than a directory one.
  *
- * The split is not decoration: the store surface is this kit's real dependency, and it is not
- * expressed in `package.json`. Keeping the tiers apart is how a consumer can tell which fragments
- * will work for them.
+ * Everything portable is re-exported here, so a template importing `@we/template-kit` sees exactly
+ * what it saw before and needs no change. A *module* should import `@we/schema-kit` directly — the
+ * narrower dependency is the point, and it is the one that carries no store assumptions.
  *
- * ## What belongs here, and what belongs in `@we/components`
+ * ## What belongs in a fragment at all
  *
  * Code should own only what data *cannot express*: behaviour, focus management, accessibility
  * semantics, browser APIs, measurement. Everything above that line is arrangement, and arrangement
- * stays here — because a prop is a customisation somebody predicted, while a node tree is every
- * customisation, including the ones nobody thought of.
- *
- * So `AvatarStack` is a component (overlap maths) and the count beside it is a fragment;
- * `we-modal` is a primitive (focus trap, top layer) and the confirm dialog inside it is a fragment.
+ * stays in a fragment — because a prop is a customisation somebody predicted, while a node tree is
+ * every customisation, including the ones nobody thought of.
  *
  * The package README states this rule in full; CONVENTIONS.md carries the authoring rules
- * (extraction threshold, options-object API, the const rule); and
+ * (extraction threshold, options-object API, the const rule) for both packages; and
  * `docs/architecture/template-fragments.md` is where all of it is going.
  */
 
-// States — what a surface shows when it has nothing to show.
-export { emptyNote, emptyState } from './states/emptyState.ts';
-export { skeletonList } from './states/skeletonList.ts';
-export type { SkeletonListOptions } from './states/skeletonList.ts';
-export type { EmptyStateOptions } from './states/emptyState.ts';
-export { gatePrompt } from './states/gatePrompt.ts';
-export type { GatePromptOptions } from './states/gatePrompt.ts';
+// The portable tier, passed straight through. See `@we/schema-kit` for why it is a package.
+export * from '@we/schema-kit';
 
-// Lists — a grid of cards, and the card in it.
-export { cardList, cardShell } from './lists/cards.ts';
-export type { CardListOptions, CardShellOptions } from './lists/cards.ts';
-
-// Collections — the container-shaped surfaces. All of these read `CollectionBlock.kind`, filter
-// muted authors, and gate their empty state on the query having answered.
+// Collections — the container-shaped surfaces. All of these read `CollectionBlock.kind` and filter
+// muted authors through `spaceStore.mutedDids`, which is what keeps them on this side of the line
+// despite being ordinary list arrangements otherwise.
 export { channelRail } from './lists/channelRail.ts';
 export type { ChannelRailOptions } from './lists/channelRail.ts';
 export { collectionFeed } from './lists/collectionFeed.ts';
 export type { CollectionFeedOptions } from './lists/collectionFeed.ts';
 export { commentThread, noReplies, replyCount } from './lists/commentThread.ts';
 export type { CommentThreadOptions } from './lists/commentThread.ts';
-export { kanbanBoard, moveCardMenu } from './lists/kanbanBoard.ts';
-export type { KanbanBoardOptions } from './lists/kanbanBoard.ts';
-export { loadMore } from './lists/loadMore.ts';
-export type { LoadMoreOptions } from './lists/loadMore.ts';
 export { mediaGrid } from './lists/mediaGrid.ts';
 export type { MediaGridOptions } from './lists/mediaGrid.ts';
-export { pickerRow } from './lists/pickerRow.ts';
-export type { PickerRowOptions } from './lists/pickerRow.ts';
-
-// Layout — the boxes a page is made of.
-export { attributeRow } from './layout/attributeRow.ts';
-export type { AttributeRowOptions } from './layout/attributeRow.ts';
-export { pageShell } from './layout/pageShell.ts';
-export type { PageShellOptions } from './layout/pageShell.ts';
-export { railGroup, railItem, railShell } from './layout/rail.ts';
-export type { RailGroupOptions, RailItemOptions, RailShellOptions } from './layout/rail.ts';
-export { sectionCard } from './layout/sectionCard.ts';
-export type { SectionCardOptions } from './layout/sectionCard.ts';
-export { statChip } from './layout/statChip.ts';
-export type { StatChipOptions } from './layout/statChip.ts';
-
-// Input.
-export { field } from './input/field.ts';
-export type { FieldOptions } from './input/field.ts';
-
-// Overlays.
-export { composerModal } from './overlays/composerModal.ts';
-export type { ComposerModalOptions } from './overlays/composerModal.ts';
-export { confirmModal } from './overlays/confirmModal.ts';
-export type { ConfirmModalOptions } from './overlays/confirmModal.ts';
-export { pickerPopover } from './overlays/pickerPopover.ts';
-export type { PickerPopoverOptions } from './overlays/pickerPopover.ts';
 
 // WE-domain — these name WE's stores or its agent machinery.
 export { adminSection } from './we/adminSection.ts';
@@ -95,5 +56,3 @@ export { marketplaceList } from './we/marketplaceList.ts';
 export type { MarketplaceListOptions } from './we/marketplaceList.ts';
 export { peopleRow } from './we/peopleRow.ts';
 export type { PeopleRowOptions } from './we/peopleRow.ts';
-export { peopleTooltip } from './we/peopleTooltip.ts';
-export type { PeopleTooltipOptions } from './we/peopleTooltip.ts';

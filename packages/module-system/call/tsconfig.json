@@ -3,6 +3,12 @@
   "compilerOptions": {
     "outDir": "./dist",
     "rootDir": "./src",
+    // `@we/schema-kit` is exported as source, like every in-repo package a bundler compiles rather
+    // than links, so typechecking this module also typechecks the kit's own `./x.ts` imports.
+    // `app-shell` and the template packages already carry this pair for the same reason. It is an
+    // in-repo arrangement: a published kit would ship `dist` and need nothing here.
+    "allowImportingTsExtensions": true,
+    "noEmit": true,
     // The mesh drives RTCPeerConnection and MediaStream, so it needs the browser lib even though
     // nothing here touches the DOM directly.
     "lib": ["ES2022", "DOM"]

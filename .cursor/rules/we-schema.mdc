@@ -81,7 +81,8 @@ Glossary (these terms pervade stores, models, and `$query`/`perspective` in sche
 | `@we/widgets` | design-system/5-widgets | Generic widgets (graph, sidebar) — feature widgets live in their module family | Solid |
 | `@we/design-utils` | design-system/utils | Shared DS-props → style computation; token resolvers | Neutral core + `/solid` binding |
 | `@we/design-types` | design-system/types | Shared DS prop/type definitions | Agnostic |
-| `@we/template-kit` | templates/kit | Reusable template fragments — authoring-time helpers that expand to plain nodes | Agnostic |
+| `@we/schema-kit` | schema-system/kit | Portable fragments — authoring-time helpers that expand to plain nodes, naming no store | Agnostic |
+| `@we/template-kit` | templates/kit | The same, for fragments that read WE's own stores (`profileStore`, `spaceStore`) | Agnostic |
 | `@we/template-shell` · `@we/template-default` | templates/* | WE's shell surfaces and built-in space templates, as data | Agnostic |
 | `@we/editor` | packages/editor | Template/theme editing surface, embeddable via `EditorHost` | Solid (mount fn at the boundary) |
 | `@we/schema-shared` | schema-system/shared | Schema semantics: prop resolvers, validation, indexer, registry types, reactivity port | **Agnostic** |
@@ -770,7 +771,7 @@ Most @we/primitives also accept Design System Props (see next section for detail
 - we-alert (DesignSystemElement)
   Props: variant: 'neutral' | 'primary' | 'success' | 'warning' | 'danger' = 'primary', dismissible: boolean = false
 - we-audio (LayoutVisualElement)
-  Props: src: string = '', controls: boolean = false, preload: 'none' | 'metadata' | 'auto' = 'metadata', autoplay: boolean = false, loop: boolean = false, muted: boolean = false
+  Props: src: string = '', controls: boolean = false, preload: 'none' | 'metadata' | 'auto' = 'metadata', autoplay: boolean = false, loop: boolean = false, muted: boolean = false, stream?: MediaStream | null | undefined
 - we-avatar (LayoutVisualElement)
   Props: image: string = '', hash: string = '', selected: boolean = false, online: boolean = false, initials: string = '', icon: string = '', size?: 'xxs' | 'xs' | 'sm' | 'md' | 'lg' | 'xl' | 'xxl' | '{css-length}' | undefined, clickable: boolean = false
 - we-badge (DesignSystemElement)
@@ -825,6 +826,8 @@ Supports selected, active, and danger states.
   Props: selected: boolean = false, active: boolean = false, variant: 'default' | 'danger' = 'default', label: unknown, value: unknown
 - we-modal (OverlayElement)
   Props: hideclosebutton: boolean = false, close: () => void
+- we-move-handle (LayoutElement)
+  Props: step: number = 24, dragging: boolean = false, label: string = 'Move'
 - we-number (DesignSystemElement) — Displays a number, optionally abbreviated (1 200 → 1.2K, 1 500 000 → 1.5M).
   Props: value: number = 0, shorten: boolean = false, precision: number = 1, locale: string = 'en', formattedValue: string
 - we-number-input (DesignSystemElement)
@@ -860,7 +863,7 @@ There were two implementations of this before it existed and they diverged in wa
 the editor's is mouse-only, so it does not work on a touchscreen at all, and its rail is a plain
 div — not focusable, so there is no way to resize a panel from the keyboard. Pointer events and a
 `separator` role fix both once, for every consumer, in the layer where imperative DOM work belongs.
-  Props: orientation: 'vertical' | 'horizontal' = 'vertical', align: 'start' | 'center' | 'end' = 'center', step: number = 16, dragging: boolean = false
+  Props: orientation: 'vertical' | 'horizontal' = 'vertical', align: 'start' | 'center' | 'end' = 'center', line: 'auto' | 'none' = 'auto', step: number = 16, dragging: boolean = false
 - we-scroll-area (DesignSystemElement)
   Props: maxHeight: string = '', maxWidth: string = ''
 - we-select (DesignSystemElement) — Pick a single value from a list of options. Custom-rendered dropdown.
@@ -1026,7 +1029,7 @@ when `relative` is enabled.
 - Combobox (DesignSystemElement)
   Props: options: string[] | ComboboxOption[], value?: string, placeholder?: string, size?: "xs" | "sm" | "md" | "lg" | "xl", onChange?: ((value: string) => void)
 - DropdownMenu — Flexible dropdown menu for actions, toggles, and grouped items. Use for context menus, settings panels, layer controls, and command palettes.
-  Props: styles?: Record<string, string | number>, class?: string, placement?: Placement, triggerLabel?: string, triggerIcon?: string, size?: "xs" | "sm" | "md" | "lg" | "xl", items: SolidDropdownMenuEntry[]
+  Props: styles?: Record<string, string | number>, class?: string, placement?: Placement, triggerLabel?: string, triggerIcon?: string, size?: "xs" | "sm" | "md" | "lg" | "xl", itemSize?: "xs" | "sm" | "md" | "lg" | "xl", items: SolidDropdownMenuEntry[]
 - EditableImage (DesignSystemElement)
   Props: src?: string, alt?: string, fit?: "cover" | "contain" | "none" | "fill" | "scale-down", placeholderIcon?: string, onImageChange?: ((file: File) => void), onImageRemove?: (() => void), uploadLabel?: string, editLabel?: string, class?: string, aspect?: number, maxSize?: number
 - FlipCard
@@ -1364,7 +1367,7 @@ size: 'xxs', 'xs', 'sm', 'md', 'lg', 'xl', 'xxl'
 
 space: '0', '100', '200', '300', '400', '500', '600', '700', '800', '900', '1000'
 
-zIndex: 'dropdown', 'sticky', 'modal', 'popover', 'toast', 'tooltip'
+zIndex: 'dropdown', 'sticky', 'chrome', 'modal', 'popover', 'toast', 'tooltip'
 
 ---
 
@@ -1750,10 +1753,12 @@ EditorStore:
   - themePanelOpen: unknown
   - visualPanelOpen: unknown
   - isEditingTheme: unknown
-  - aiPanelWidth: unknown
-  - codePanelWidth: unknown
-  - themePanelWidth: unknown
-  - visualPanelWidth: unknown
+  - aiDockEdge: unknown
+  - codeDockEdge: unknown
+  - themeDockEdge: unknown
+  - visualDockEdge: unknown
+  - editorDockSize: unknown
+  - editorDockFloat: unknown
 - Actions:
   - newChat(): unknown
   - switchSession(): unknown
@@ -1782,10 +1787,6 @@ EditorStore:
   - enterThemeEditing(): unknown
   - exitThemeEditing(): unknown
   - toggleThemeEditing(): unknown
-  - setAiPanelWidth(): unknown
-  - setCodePanelWidth(): unknown
-  - setThemePanelWidth(): unknown
-  - setVisualPanelWidth(): unknown
   - sendMessage(): unknown
   - clearHistory(): unknown
   - setApiKey(): unknown
@@ -1980,14 +1981,29 @@ ShellStore:
   - dockGeometry: unknown
   - contentInset: unknown
   - dockResizing: unknown
+  - dockPlacement: unknown
+  - movingDock: unknown
+  - activeSnap: unknown
+  - snapTargets: unknown
+  - insertSlots: unknown
+  - activeInsert: unknown
 - Actions:
   - openShellView(id: string, path?: string): opens a shell overlay by id, optionally at a route inside it — the overlay keeps its own memory router, so this never touches the browser URL
   - closeShellView(): closes the currently open shell overlay
   - setCreateSpaceOpen(open: boolean): opens or closes the create-space modal. Shell state rather than a page’s $localState because more than one place opens it — the settings page and the sidebar’s spaces group — and a page-scoped flag could only be set from inside that page
   - scrollToId(id: string): smooth-scrolls the element with that DOM id into view
+  - setChromeInset(): unknown
   - beginDockResize(): unknown
   - resizeDock(): unknown
   - endDockResize(): unknown
+  - fitDock(): unknown
+  - beginDockMove(): unknown
+  - moveDock(): unknown
+  - endDockMove(): unknown
+  - snapDock(): unknown
+  - insertDock(): unknown
+  - toggleMaximiseDock(): unknown
+  - toggleDockDisplace(): unknown
 
 SpaceStore:
 - State:
@@ -2010,6 +2026,7 @@ SpaceStore:
   - enabledModules: string[] — ids of the feature modules THIS SPACE has turned on: the community’s decision, shared with every member. An unset value means "not decided", not "none": it falls back to every registered module, so spaces predating the setting keep the chrome they had
   - templateOverrideOptions: { label, value }[] — options for the per-space template override picker: "Use the space’s default" (space-default), "Use my default" (agent-default), then every template. Each of the first two names what it resolves to. Pre-built because a schema can $map a store array into options but cannot prepend one, and without those entries overriding would be one-way
   - themeOverrideOptions: { label, value }[] — the same, for themes
+  - spaceThemePinned: boolean — this agent has pinned a theme for the space on screen that differs from what would otherwise apply, so there is something for a reset to undo. False outside a space, and false for a pin that happens to name what the space resolves to anyway. Gate a "pinned here / reset" affordance on it rather than on the pin merely existing
   - installedModules: string[] — ids of the feature modules THIS AGENT wants available anywhere. Personal, held in the root dataset; unset means "not decided" and falls back to every registered module
   - requiredModules: string[] — module ids the template on screen mounts components from, derived by walking the schema rather than read from meta.components (which no template fills in). What makes uninstalling a capability module refusable
   - missingModules: string[] — of those, the ones this agent has not installed. Non-empty means the template is mounting a component nothing provides, so part of the page silently renders nothing. Empty in the ordinary case
@@ -2045,6 +2062,8 @@ SpaceStore:
   - setModuleVisible(moduleId: string, visible: boolean, spaceUuid?): shows or hides a module for this agent in one space, without changing what the community runs. Private: written to the root dataset, never to the space. Phrased positively so a switch can pass `$event.detail` bare — wrapping it in an operator such as `$not` would evaluate at render time and send a constant
   - setSpaceTemplateOverride(templateId: string, spaceUuid?): sets the template THIS AGENT sees in one space, overriding the community's default. Three values: 'space-default' follows the space, 'agent-default' follows your own global default (tracking later changes to it), or a concrete template id pins that one. Private, and applied immediately when that space is the one on screen. Note the sentinels are named values, not '' — the ORM skips empty strings on update, so '' cannot clear a property
   - setSpaceThemeOverride(themeId: string, spaceUuid?): sets the theme THIS AGENT sees in one space. Same three values as setSpaceTemplateOverride. Private
+  - applyTheme(themeId: string): applies a theme where the agent is — pinned to the space on screen, or set as their global default when there is no space. What a theme picker in chrome should call: it persists, where setCurrentTheme only sets a signal that the next resolution overwrites. Which of the two it does is decided at click time, so a schema cannot express it with $if (whose args resolve at render time)
+  - clearSpaceThemePin(): drops this agent’s theme pin for the space on screen, returning it to whatever would otherwise apply. The way back out of applyTheme, so the picker need not spell the FOLLOW_SPACE sentinel as a literal. Pair with spaceThemePinned
   - launchModule(moduleId: string): invokes that module's declared launcher action. Takes an id rather than a path because $action resolves a literal string, so a rail iterating over modules cannot build modules.<id>.<method> itself
   - createSignalType(config: Partial<SignalType>): creates a new signal type in the community; slug auto-derived from name if blank
   - upsertSignal(nodeId: string, signalTypeId: string, value: number): adds or updates a signal on a node; value=0 deletes it

@@ -295,6 +295,7 @@ exports[`token CSS generation > z-index.css 1`] = `
   /* Stacking Layers */
   --we-z-dropdown: 100;
   --we-z-sticky: 200;
+  --we-z-chrome: 250;
   --we-z-modal: 300;
   --we-z-popover: 400;
   --we-z-toast: 500;

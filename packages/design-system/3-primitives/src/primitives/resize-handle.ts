@@ -65,8 +65,8 @@ const CSS_STYLES = css`
     height: var(--we-resize-handle-thickness, 1px);
   }
 
-  :host(:hover) [part='line'],
-  :host([dragging]) [part='line'] {
+  :host(:not([line='none']):hover) [part='line'],
+  :host(:not([line='none'])[dragging]) [part='line'] {
     background: var(--we-resize-handle-line-active, var(--we-color-primary-500));
   }
 
@@ -76,9 +76,21 @@ const CSS_STYLES = css`
     outline: none;
   }
 
-  :host(:focus-visible) [part='line'] {
+  :host(:not([line='none']):focus-visible) [part='line'] {
     background: var(--we-resize-handle-line-active, var(--we-color-primary-500));
     box-shadow: 0 0 0 1px var(--we-resize-handle-line-active, var(--we-color-primary-500));
+  }
+
+  /*
+     With no line to thicken, focus falls back to an ordinary ring.
+
+     line="none" suppresses the *hover* affordance, not the keyboard one — a handle nobody can see
+     to point at is still a handle somebody has to be able to tab to, and dropping both together is
+     how a control becomes mouse-only without anyone deciding that it should.
+  */
+  :host([line='none']:focus-visible) {
+    outline: 2px solid var(--we-ring-color);
+    outline-offset: -2px;
   }
 `;
 
@@ -142,6 +154,19 @@ export default class ResizeHandle extends LayoutElement {
    * of their own.
    */
   @property({ type: String, reflect: true }) align: 'start' | 'center' | 'end' = 'center';
+
+  /**
+   * Whether the line shows on hover at all.
+   *
+   * `'auto'` is the divider thickening under the pointer, which is right where the handle sits *on* a
+   * boundary between two things — a docked panel and the content it displaced, the editor's rails.
+   *
+   * `'none'` is for a handle on the edge of something floating. There is no boundary there to
+   * thicken, so the line reads as a coloured bar stuck to the side of a card — and it disagrees with
+   * the corner grips, which have never drawn anything and feel cleaner for it. The cursor is the
+   * affordance in that case, as it is for every window corner anybody has ever dragged.
+   */
+  @property({ type: String, reflect: true }) line: 'auto' | 'none' = 'auto';
 
   /** Pixels moved per arrow-key press. */
   @property({ type: Number }) step = 16;

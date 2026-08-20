@@ -42,7 +42,13 @@ const matching = (items: SchemaProp) => ({
 export const TEMPLATE_PICKER_OPEN = 'templatePickerOpen';
 export const THEME_PICKER_OPEN = 'themePickerOpen';
 
-/** Choosing anything dismisses the picker — one left open over the change it just made reads as a miss. */
+/**
+ * Dismiss a picker — appended to anything that leaves it behind: switching template, opening the
+ * editor, raising a dialog. A picker left up over a change it cannot show reads as a click that
+ * missed.
+ *
+ * Choosing a *theme* is the exception and does not close: see the note on that row's `select`.
+ */
 const closeTemplatePicker = { $setLocal: TEMPLATE_PICKER_OPEN, value: false };
 const closeThemePicker = { $setLocal: THEME_PICKER_OPEN, value: false };
 
@@ -213,7 +219,7 @@ export function templatePicker(): SchemaNode {
       pickerPopover({
         openLocal: TEMPLATE_PICKER_OPEN,
         closeOthers: [THEME_PICKER_OPEN],
-        icon: 'cube',
+        icon: 'layout',
         tooltip: 'Template',
         searchPlaceholder: 'Search templates…',
         body: {
@@ -319,8 +325,40 @@ function themeSection(label: string, storePath: string): SchemaNode {
         label: '$theme.name',
         selected: { $eq: ['$theme.id', { $store: 'themeStore.currentThemeId' }] },
         isDefault: { $eq: ['$theme.id', { $store: 'spaceStore.spaceDefaultThemeId' }] },
-        select: [{ $action: 'themeStore.setCurrentTheme', args: ['$theme.id'] }, closeThemePicker],
+        // `applyTheme` rather than `themeStore.setCurrentTheme`: the choice is persisted where it was
+        // made — pinned to this space, or set as the agent's default when there is no space — so it
+        // survives everything that recomputes the space theme. Which of the two it is has to be
+        // decided at click time, in the store; `$if` here would resolve once, at paint.
+        //
+        // Deliberately does *not* close the picker, unlike every other row in this file. The kit's
+        // advice to close on select guards against a change hidden behind the surface that made it;
+        // a theme repaints the whole window, this popover included, so the click is self-evidently
+        // landed — and choosing a theme is the one thing here people do by comparison, trying three
+        // in a row. Closing after each turned that into three round trips through the rail button.
+        select: { $action: 'spaceStore.applyTheme', args: ['$theme.id'] },
         actions: [
+          /*
+            The pin — a state, not an offer, which is why it is filled and why it appears on exactly
+            one row: the theme this agent pinned *here*, when that pin actually diverges from what
+            the space would otherwise show. Clicking it releases the pin.
+
+            It replaces a "Pinned for this space · Reset" line in the footer. Same information, but
+            attached to the row it is about rather than floating below a list where nothing said
+            *which* theme was pinned — and it costs no vertical space in the common case, since it
+            renders nothing when there is no pin to undo.
+          */
+          {
+            icon: 'push-pin',
+            weight: 'fill',
+            tooltip: "Pinned to this space — unpin to follow the space's theme",
+            when: {
+              $and: [
+                { $store: 'spaceStore.spaceThemePinned' },
+                { $eq: ['$theme.id', { $store: 'themeStore.currentThemeId' }] },
+              ],
+            },
+            onClick: { $action: 'spaceStore.clearSpaceThemePin' },
+          },
           {
             icon: 'pencil-simple',
             tooltip: 'Edit this theme',
@@ -374,7 +412,7 @@ export function themePicker(): SchemaNode {
       pickerPopover({
         openLocal: THEME_PICKER_OPEN,
         closeOthers: [TEMPLATE_PICKER_OPEN],
-        icon: 'paint-brush',
+        icon: 'palette',
         tooltip: 'Theme',
         searchPlaceholder: 'Search themes…',
         body: {

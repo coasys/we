@@ -55,8 +55,12 @@ export interface PickerPopoverOptions {
  * `pickerSearch` is declared here on the wrapper and is readable from `body` and `footer`; sibling
  * pickers do not collide over it, because each call returns its own wrapper to scope it to.
  *
- * A caller's rows should clear `openLocal` themselves on select — a picker left up over the change
- * it just made reads as a click that did not land.
+ * A caller's rows clear `openLocal` themselves on select, and whether they should is a real choice
+ * rather than boilerplate. Close when the result of the click is *behind* the surface that made it,
+ * or somewhere else entirely — a picker left sitting over its own effect reads as a click that did
+ * not land. Stay open when the effect is unmissable and the list is one people work through by
+ * comparison: the theme picker repaints the whole window, itself included, so closing after each
+ * try turned "look at three of these" into three round trips through the rail button.
  *
  * ## Why a backdrop rather than a document listener
  *

@@ -1,11 +1,10 @@
 {
-  "name": "@we/template-kit",
+  "name": "@we/schema-kit",
   "version": "0.1.0",
-  "description": "Reusable template fragments — the shapes WE's own templates are built from, as data",
+  "description": "Portable schema fragments — shapes that expand to plain nodes, for templates and modules alike",
   "type": "module",
   "scripts": {
-    "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "typecheck": "tsc --noEmit"
   },
   "exports": {
     ".": {
@@ -14,7 +13,6 @@
     }
   },
   "dependencies": {
-    "@we/schema-kit": "workspace:*",
     "@we/schema-shared": "workspace:*"
   },
   "devDependencies": {

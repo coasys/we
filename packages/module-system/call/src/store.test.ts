@@ -9,7 +9,7 @@
  */
 import { describe, expect, it } from 'vitest';
 
-import { createCallStore } from './store';
+import { createCallStore, STAGE_PADDING_PX } from './store';
 
 /** The reactivity a host lends a module, reduced to the smallest thing that satisfies it. */
 function makeStore() {
@@ -20,8 +20,8 @@ function makeStore() {
   return createCallStore({ signal }) as ReturnType<typeof createCallStore> & Record<string, () => unknown>;
 }
 
-describe('placement', () => {
-  it('separates whether the video shows from where it goes', () => {
+describe('what the call still decides about its own video', () => {
+  it('separates whether the video shows from how much of the screen it has', () => {
     // One button used to cycle visibility, placement and size together, so it could not have a clear
     // icon and any given state took up to three clicks through states nobody wanted.
     const store = makeStore();
@@ -33,114 +33,81 @@ describe('placement', () => {
     expect(store.stageOpen()).toBe(false);
   });
 
-  it('shows the video when a placement is chosen, rather than asking twice', () => {
-    const store = makeStore();
-    store.setPlacement('bottom');
-
-    expect(store.stageOpen()).toBe(true);
-    expect(store.placementOptions().find((option) => option.active)?.id).toBe('bottom');
-  });
-
   it('asks for no room until it is opened', () => {
     // A call you have just joined must not shrink the app on its own. `null` is how the dock says
     // "not placed", which is the same key the host reads for *where* — one question, one answer.
     expect(makeStore().dockEdge()).toBeNull();
   });
 
-  it('treats floating and full screen as placements that overlay, and edges as ones that inset', () => {
-    // Both extremes overlay for opposite reasons: a float is too small to be worth shrinking the app
-    // for, a full stage too large to leave anything of it.
+  it('always overlays, and leaves everything else about the panel to the host', () => {
+    // The module's whole statement about layout, and it is now one sentence: a card, floating, when
+    // it opens. Position, size, whether it displaces content and whether it covers the screen are all
+    // the host's, on the panel's own titlebar.
     const store = makeStore();
+    store.toggleStage();
 
-    store.setPlacement('float');
     expect(store.dockFloat()).toBe(true);
     expect(store.dockSize()).toBe('sm');
-
-    store.setPlacement('right');
-    expect(store.dockFloat()).toBe(false);
-    expect(store.dockSize()).toBe('md');
-
-    store.setPlacement('full');
-    expect(store.dockFloat()).toBe(true);
-    expect(store.dockSize()).toBe('full');
   });
 
-  it('names an edge even for the placements that do not use one', () => {
-    // The host needs a non-null edge for the panel to exist at all; float and full simply ignore it.
-    const store = makeStore();
-    store.setPlacement('float');
-    expect(store.placementOptions().find((option) => option.active)?.id).toBe('float');
-  });
-
-  it('places nothing while there is no call, whatever it was left at', () => {
-    // `dockEdge` answers "where is this panel" for the host, and a panel with nothing in it has no
-    // answer. Without the guard, state left over from a call that ended would dock an empty box.
-    const store = makeStore();
-    store.setPlacement('right');
-
-    expect(store.active()).toBe(false);
-    expect(store.dockEdge()).toBeNull();
-  });
-
-  it('no longer offers a size to choose, because size is dragged', () => {
-    // The three preset buttons are gone; the host stores what the user dragged the panel to. Asserted
-    // so that reintroducing them is a deliberate decision rather than a reflex.
+  it('no longer offers a placement, a size, or a full screen', () => {
+    // The four edges became eight snap targets any panel can use, the three size presets became a
+    // drag, and full screen became a button on the panel's own titlebar. Asserted so that
+    // reintroducing any of them here is a deliberate decision rather than a reflex.
     const store = makeStore() as unknown as Record<string, unknown>;
+    expect(store.placementOptions).toBeUndefined();
+    expect(store.setPlacement).toBeUndefined();
     expect(store.setDockSize).toBeUndefined();
     expect(store.dockSizeOptions).toBeUndefined();
     expect(store.cycleStage).toBeUndefined();
+    expect(store.toggleFullscreen).toBeUndefined();
+    expect(store.stageFull).toBeUndefined();
+    // The bar used to swap ends to dodge a top-docked stage. It cannot know where the stage is now.
+    expect(store.barAtBottom).toBeUndefined();
   });
 });
 
 describe('tile packing', () => {
-  it('divides a definite height when height is the scarce dimension', () => {
+  it('divides the box it is given, whatever shape that box is', () => {
     // The invariant the whole layout exists for. A wrapping flex row derives its line height from
     // content and can only grow, so a declared stage height was a floor; grid tracks of `1fr` divide
     // what they are given and cannot overflow it.
-    const store = makeStore();
-    store.setPlacement('bottom');
+    const style = makeStore().stageStyle();
 
-    const style = store.stageStyle();
     expect(style.display).toBe('grid');
     expect(style['grid-auto-rows']).toBe('1fr');
     expect(style['grid-template-columns']).toBe('repeat(1, 1fr)');
   });
 
-  it('sizes a side dock from its width and stacks the tiles at the top', () => {
-    // Sharing the height equally is right when height is scarce and wrong when it is not: a 440×900
-    // side dock gave one participant a 900px row to be centred in, so a 247px picture floated in the
-    // middle with a third of a screen of nothing above and below it.
-    const store = makeStore();
-    store.setPlacement('right');
+  it('has one arrangement, not one per edge', () => {
+    // The strip and the side-dock cases existed because a docked panel's shape was decided by which
+    // edge it was on — a 440×900 column, a 1600×300 band. A panel the user dragged to a size has no
+    // such categories, so the special cases went with the edges.
+    const style = makeStore().stageStyle();
 
-    const style = store.stageStyle();
-    expect(style['grid-auto-rows']).toBe('min-content');
-    expect(style['align-content']).toBe('start');
+    expect(style['grid-auto-flow']).toBeUndefined();
+    expect(style['align-content']).toBeUndefined();
   });
 
-  it('derives the picture from whichever dimension is scarce', () => {
-    // And never asks a content-sized row to measure itself: `container-type: size` on a row whose
-    // height comes from its content collapses it to nothing, which is why the two regimes cannot
-    // share one style.
-    const store = makeStore();
-
-    store.setPlacement('right');
-    expect(store.pictureStyle().width).toBe('100%');
-
-    store.setPlacement('bottom');
-    expect(store.pictureStyle().width).toContain('cqh');
-  });
-
-  it('flows a floating strip along one row so its width follows the headcount', () => {
-    const store = makeStore();
-    store.setPlacement('float');
-
-    expect(store.stageStyle()['grid-auto-flow']).toBe('column');
-    expect(store.stageStyle()['grid-template-rows']).toBe('1fr');
+  it('fits each picture to its cell by measuring the cell', () => {
+    // `container-type: size` on the cell is what `100cqh` measures, and it is unconditional now: the
+    // one shape it would have collapsed — a row sized from the column width — is no longer reachable.
+    expect(makeStore().pictureStyle().width).toContain('cqh');
   });
 
   it('places nobody when nobody is in the call', () => {
     expect(makeStore().tileCells()).toEqual([]);
+  });
+
+  it('publishes its own padding and gaps with the shape it wants', () => {
+    // The host solves `(width - insetX) / ratio + insetY` for "fit to content", so the insets are
+    // what stop the answer coming out short — which the tiles then answered by shrinking to the
+    // height and leaving a gap down each side, a fit that looked wrong in the other axis.
+    const aspect = makeStore().dockAspect() as { ratio: number; insetX: number; insetY: number };
+
+    expect(aspect.ratio).toBeCloseTo(16 / 9);
+    expect(aspect.insetX).toBe(STAGE_PADDING_PX * 2);
+    expect(aspect.insetY).toBe(STAGE_PADDING_PX * 2);
   });
 });
 
@@ -194,6 +161,33 @@ describe('transport and device lifetime', () => {
 
     return { store, scopeDisposals: () => disposed, disposers };
   }
+
+  it('shows the video when the call starts', async () => {
+    // Nothing did this, so pressing the call button produced a control bar and no picture: `dockEdge`
+    // is null while the stage is closed and the host renders no dock for a null edge, so the only
+    // routes to a visible stage were controls that read as ways to change something already there.
+    const { store } = callable();
+
+    store.joinSpaceCall();
+    await Promise.resolve();
+
+    expect(store.stageOpen()).toBe(true);
+    // Floating, so showing it costs the space behind it nothing — the two questions stay separate.
+    expect(store.dockFloat()).toBe(true);
+    expect(store.dockEdge()).not.toBeNull();
+  });
+
+  it('stops showing it when the call ends', async () => {
+    // "This call is showing", not a preference that outlives the call it was made in.
+    const { store } = callable();
+
+    store.joinSpaceCall();
+    await Promise.resolve();
+    store.leave();
+
+    expect(store.stageOpen()).toBe(false);
+    expect(store.dockEdge()).toBeNull();
+  });
 
   it('gives the transport scope back when the call ends', async () => {
     const { store, scopeDisposals } = callable();

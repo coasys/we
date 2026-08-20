@@ -1,18 +1,57 @@
 /**
- * Dock geometry — where a docked module panel lands, and what the app gives up for it.
+ * Dock geometry — where a module panel lands, and what the app gives up for it.
  *
  * Worth testing directly rather than through a rendered shell, because every interesting case is a
  * decision about *whether* to give up room, and those are the cases a screenshot cannot tell apart:
- * a panel that floats and a panel that insets look identical until you look at what is behind them.
+ * a panel that floats and a panel that displaces look identical until you look at what is behind
+ * them.
+ *
+ * The rule the whole file turns on: **a panel that displaces spans its edge; a panel that floats
+ * does not.** Most of what follows is that sentence, from one side or the other.
  */
 import { describe, expect, it } from 'vitest';
 
-import { contentInset, dockThickness, MIN_DOCK_PX, NARROW_VIEWPORT_PX, resolveDock } from '../src/shared/dockGeometry';
+import {
+  type ContentInset,
+  contentInset,
+  displaces,
+  type DockRequest,
+  dockThickness,
+  edgeOfSnap,
+  fitPlacement,
+  type FloatPlacement,
+  insertionSlots,
+  MIN_DOCK_PX,
+  MIN_FLOAT_PX,
+  NARROW_VIEWPORT_PX,
+  NO_INSET,
+  occupiedFor,
+  rectOf,
+  resolveDock,
+  seedPlacement,
+  SIDEBAR_PX,
+  snapCandidate,
+  snapOrigin,
+  type SnapPoint,
+  snapTargetRects,
+  snapTargetSize,
+  TOP_CHROME_PX,
+} from '../src/shared/dockGeometry';
 
 const desktop = { width: 1600, height: 900 };
 const laptop = { width: NARROW_VIEWPORT_PX - 100, height: 700 };
 
-const dock = (over: Partial<Parameters<typeof resolveDock>[0]> = {}) => ({
+const placement = (over: Partial<FloatPlacement> = {}): FloatPlacement => ({
+  snap: 'right',
+  x: 0,
+  y: 0,
+  w: 440,
+  h: 300,
+  displace: true,
+  ...over,
+});
+
+const dock = (over: Partial<DockRequest> = {}): DockRequest => ({
   id: 'call:0',
   edge: 'right' as const,
   size: 'md' as const,
@@ -20,130 +59,635 @@ const dock = (over: Partial<Parameters<typeof resolveDock>[0]> = {}) => ({
   ...over,
 });
 
-describe('resolveDock', () => {
-  it('takes the edge outright, leaving nothing for chrome to sit in', () => {
-    const geometry = resolveDock(dock(), desktop);
+const px = (value?: string) => (value === undefined ? undefined : parseFloat(value));
 
-    // Flush to the window edge. Panels used to open *beside* the module rail, which left them
-    // stranded in the middle of the edge with the rail outside them and the editor's own rails on
-    // top — three things claiming one edge. Floating chrome positions itself against the content
-    // region instead, so opening a dock slides it inwards. See `RAIL_PX`.
+describe('a panel that displaces', () => {
+  it('spans its edge and takes exactly what the content gave up', () => {
+    const geometry = resolveDock(dock({ placement: placement() }), desktop);
+
+    expect(geometry.floating).toBe(false);
     expect(geometry.right).toBe('0px');
+    expect(geometry.width).toBe('440px');
+    // Spanning is what makes the inset honest: a partial-height panel would still cost a full
+    // column, so the two halves of the rule have to agree.
     expect(geometry.top).toBeDefined();
     expect(geometry.bottom).toBeDefined();
-    expect(geometry.floating).toBe(false);
-    // Never anchored on both axes — a dock has a thickness and a span, not four offsets.
-    expect(geometry.left).toBeUndefined();
+    expect(contentInset([dock({ placement: placement() })], desktop).right).toBe(440);
   });
 
-  it('sits a floating panel off the edge, and a docked one flush against the content', () => {
-    // A card over the app needs air to read as being on top; a panel that took room from the app
-    // meets it edge to edge, and the border between them is the divider.
-    expect(resolveDock(dock({ size: 'full', float: true }), desktop).top).toBe('8px');
-    expect(resolveDock(dock(), desktop).top).toBe('0px');
+  it('meets the content edge to edge, with no gap to fall through', () => {
+    // A floating panel is a card over the app and needs air; a displacing one has taken room *from*
+    // the app, so a gap there is a strip of background where the content used to be.
+    expect(resolveDock(dock({ placement: placement() }), desktop).right).toBe('0px');
+    expect(
+      px(resolveDock(dock({ placement: placement({ snap: null, displace: false }) }), desktop).left),
+    ).toBeGreaterThan(SIDEBAR_PX);
   });
 
-  it('gives a floating strip its content width rather than a band of empty panel', () => {
-    const geometry = resolveDock(dock({ size: 'sm', float: true }), desktop);
-
-    expect(geometry.width).toBeUndefined();
-    expect(geometry.transform).toBe('translateX(-50%)');
-    // Along the bottom, because floating *control* chrome lives at the top — the call bar is a pill
-    // at top centre, and a strip placed there would land on it.
-    expect(geometry.bottom).toBeDefined();
-    expect(geometry.top).toBeUndefined();
+  it('puts its one handle on the side facing the content it takes room from', () => {
+    // Which is also which way "wider" points, and the reason the sign lives in the host rather than
+    // in the handle: it inverts between edges.
+    expect(resolveDock(dock({ placement: placement({ snap: 'right' }) }), desktop).handleX).toBe('left');
+    expect(resolveDock(dock({ placement: placement({ snap: 'left' }) }), desktop).handleX).toBe('right');
+    expect(resolveDock(dock({ placement: placement({ snap: 'bottom' }) }), desktop).handleY).toBe('top');
+    expect(resolveDock(dock({ placement: placement({ snap: 'top' }) }), desktop).handleY).toBe('bottom');
+    // One axis only: a spanning panel has nothing to trade on the other.
+    expect(resolveDock(dock({ placement: placement({ snap: 'right' }) }), desktop).handleY).toBeUndefined();
   });
 
-  it('lets a maximised panel cover the content region instead of insetting to nothing', () => {
-    const geometry = resolveDock(dock({ size: 'full', float: true }), desktop);
+  it('refuses to shrink into a sliver', () => {
+    const thin = resolveDock(dock({ placement: placement({ w: 10 }) }), desktop);
+    expect(thin.width).toBe(`${MIN_DOCK_PX}px`);
+  });
+
+  it('stacks behind a panel already holding that edge', () => {
+    // Without the offset both resolve to the same box and sit on top of one another, which nothing
+    // noticed while only one module had a dock.
+    const second = resolveDock(dock({ id: 'notes:0', placement: placement() }), desktop, {
+      ...NO_INSET,
+      right: 440,
+    });
+    expect(second.right).toBe('440px');
+  });
+});
+
+describe('two strips meeting at a corner', () => {
+  const bottomDocked: ContentInset = { ...NO_INSET, bottom: 300 };
+
+  it('gives the corner to the side, which spans the full height', () => {
+    // Both clearing each other left a square of background where they met, which reads as a hole in
+    // the layout. Every application that lays panels out this way gives it to the vertical edges.
+    const side = resolveDock(dock({ placement: placement({ snap: 'right' }) }), desktop, bottomDocked);
+
+    expect(side.bottom).toBe('0px');
+    expect(side.top).toBe('0px');
+  });
+
+  it('keeps the horizontal one clear of the sides', () => {
+    const rightDocked: ContentInset = { ...NO_INSET, right: 440 };
+    const bottom = resolveDock(
+      dock({ placement: placement({ snap: 'bottom', thickness: 300 }) }),
+      desktop,
+      rightDocked,
+    );
+
+    expect(bottom.right).toBe('440px');
+  });
+});
+
+describe('a panel that floats', () => {
+  const floating = placement({ snap: 'bottom-right', displace: false, w: 360, h: 200 });
+
+  it('takes no room at all', () => {
+    expect(contentInset([dock({ placement: floating })], desktop)).toEqual({ left: 0, right: 0, top: 0, bottom: 0 });
+  });
+
+  it('sits at its snap, off the edges by a gap', () => {
+    const geometry = resolveDock(dock({ placement: floating }), desktop);
 
     expect(geometry.floating).toBe(true);
-    expect(geometry.left).toBeDefined();
-    expect(geometry.right).toBeDefined();
-    expect(contentInset([dock({ size: 'full', float: true })], desktop).right).toBe(0);
+    expect(geometry.width).toBe('360px');
+    expect(geometry.height).toBe('200px');
+    expect(px(geometry.left)! + 360).toBeLessThan(desktop.width);
+    expect(px(geometry.top)! + 200).toBeLessThan(desktop.height);
+  });
+
+  it('recomputes its position from the snap rather than remembering pixels', () => {
+    // What keeps a corner panel in its corner when the window changes shape, instead of drifting
+    // into the middle of it.
+    const wide = resolveDock(dock({ placement: floating }), { width: 1600, height: 900 });
+    const narrow = resolveDock(dock({ placement: floating }), { width: 1200, height: 900 });
+    expect(px(wide.left)).toBeGreaterThan(px(narrow.left)!);
+  });
+
+  it('is dragged from any side or corner', () => {
+    // Which sides render is the frame's decision (`grips`), and for a floating panel it is all of
+    // them: it takes room from nothing, so every edge is free to move and the corners move two at
+    // once. The geometry still names the pair facing the room, which is what a *displacing* panel
+    // narrows to one of.
+    const geometry = resolveDock(dock({ placement: floating }), desktop);
+    expect(geometry.floating).toBe(true);
+    expect(geometry.handleX).toBeDefined();
+    expect(geometry.handleY).toBeDefined();
+  });
+
+  it("cannot be dropped into the band the app's controls occupy", () => {
+    // It was closed to snapping and open to dragging, which made the rule look arbitrary: the panel
+    // refused to snap under the call bar and then let you drop it there by hand — where its own grip
+    // and menu were the parts that ended up underneath.
+    const high = placement({ snap: null, displace: false, x: 600, y: 0, w: 360, h: 200 });
+
+    expect(px(resolveDock(dock({ placement: high }), desktop).top)).toBeGreaterThanOrEqual(TOP_CHROME_PX);
+  });
+
+  it('is clamped into view, however it was stored', () => {
+    // A placement saved on a monitor must not leave a panel's controls off-screen on a laptop.
+    const stray = placement({ snap: null, displace: false, x: 9_000, y: 9_000, w: 360, h: 200 });
+    const geometry = resolveDock(dock({ placement: stray }), desktop);
+
+    expect(px(geometry.left)! + 360).toBeLessThanOrEqual(desktop.width);
+    expect(px(geometry.top)! + 200).toBeLessThanOrEqual(desktop.height);
+  });
+
+  it('keeps a floor under both dimensions', () => {
+    const tiny = resolveDock(dock({ placement: placement({ snap: null, displace: false, w: 1, h: 1 }) }), desktop);
+    expect(tiny.width).toBe(`${MIN_FLOAT_PX}px`);
+    expect(tiny.height).toBe(`${MIN_FLOAT_PX}px`);
+  });
+});
+
+describe('displacing is an edge idea', () => {
+  it('is refused from a corner, however the flag is set', () => {
+    // A rectangular layout cannot flow around a floating box, so insetting for a corner panel would
+    // carve out a full column and leave most of it empty.
+    expect(displaces(placement({ snap: 'top-left', displace: true }), desktop)).toBe(false);
+    expect(displaces(placement({ snap: null, displace: true }), desktop)).toBe(false);
+    expect(displaces(placement({ snap: 'right', displace: true }), desktop)).toBe(true);
+  });
+
+  it('names the edge for the four that have one', () => {
+    expect(edgeOfSnap('right')).toBe('right');
+    expect(edgeOfSnap('bottom-right')).toBeNull();
+    expect(edgeOfSnap(null)).toBeNull();
+  });
+
+  it('is given up entirely on a narrow window', () => {
+    // The trade only makes sense when there is content area to trade. A 440px panel beside a 400px
+    // viewport is not two usable things.
+    expect(displaces(placement(), laptop)).toBe(false);
+    expect(resolveDock(dock({ placement: placement() }), laptop).floating).toBe(true);
+    expect(contentInset([dock({ placement: placement() })], laptop)).toEqual({ left: 0, right: 0, top: 0, bottom: 0 });
+  });
+});
+
+describe('maximised', () => {
+  it("is the user's to turn on, from any panel", () => {
+    // Not the module's any more: "how much room" is a layout question like position and size, and the
+    // call module was the only one that could do it at all.
+    const geometry = resolveDock(dock({ placement: placement({ maximised: true }) }), desktop);
+
+    expect(geometry.floating).toBe(true);
+    expect(geometry.left).toBe(`${SIDEBAR_PX}px`);
+    expect(contentInset([dock({ placement: placement({ maximised: true }) })], desktop).right).toBe(0);
+  });
+
+  it("starts below the app's floating controls", () => {
+    // "Full screen" cannot mean the whole screen while the app keeps permanent chrome over it: a
+    // maximised panel starting at the top put its own titlebar — grip, position menu, and the button
+    // that un-maximises it — underneath the call bar.
+    const geometry = resolveDock(dock({ placement: placement({ maximised: true }) }), desktop);
+
+    expect(px(geometry.top)).toBe(TOP_CHROME_PX);
+  });
+
+  it('leaves the placement underneath it untouched', () => {
+    // So turning it off returns the panel to exactly the corner and size it was at, rather than to a
+    // default somebody has to find again.
+    const parked = placement({ snap: 'bottom-right', displace: false, w: 360, h: 200 });
+    const maximised = resolveDock(dock({ placement: { ...parked, maximised: true } }), desktop);
+    const restored = resolveDock(dock({ placement: parked }), desktop);
+
+    expect(maximised.width).toBeUndefined();
+    expect(restored.width).toBe('360px');
+  });
+
+  it('covers the content region and insets nothing', () => {
+    // Insetting it would leave a content viewport of zero width, which is not a layout any template
+    // survives.
+    const geometry = resolveDock(dock({ size: 'full' }), desktop);
+
+    expect(geometry.floating).toBe(true);
+    expect(geometry.left).toBe(`${SIDEBAR_PX}px`);
+    expect(geometry.right).toBe('0px');
+    expect(contentInset([dock({ size: 'full' })], desktop).right).toBe(0);
+  });
+
+  it('offers no handles, having nothing left to give', () => {
+    const geometry = resolveDock(dock({ size: 'full' }), desktop);
+    expect(geometry.handleX).toBeUndefined();
+    expect(geometry.handleY).toBeUndefined();
+  });
+});
+
+describe('what a module’s bid becomes', () => {
+  it('opens a panel that asked to inset exactly where it asked, spanning', () => {
+    // The whole of the old behaviour, so a panel nobody has dragged looks as it always did.
+    const seeded = seedPlacement(dock({ edge: 'right', float: false }), desktop);
+
+    expect(seeded.snap).toBe('right');
+    expect(seeded.displace).toBe(true);
+    expect(seeded.thickness).toBe(dockThickness('right', 'md', desktop));
+  });
+
+  it('seeds a card for a panel that opens docked, so it has something to become', () => {
+    // Dragging it off its edge restores `w`/`h`, and those used to be the dock's own dimensions —
+    // so undocking a side panel produced a full-height column rather than a card.
+    const seeded = seedPlacement(dock({ edge: 'right', float: false }), desktop);
+
+    expect(seeded.w).toBeLessThan(desktop.width / 2);
+    expect(seeded.h).toBeLessThan(desktop.height / 2);
+  });
+
+  it('opens a panel that asked to float as a card in the bottom-right', () => {
+    const seeded = seedPlacement(dock({ float: true, size: 'sm' }), desktop);
+
+    expect(seeded.snap).toBe('bottom-right');
+    expect(seeded.displace).toBe(false);
+    // 16:9, because the first thing to float is a video stage.
+    expect(seeded.h).toBe(Math.round((seeded.w * 9) / 16));
   });
 
   it('renders nothing without an edge', () => {
     expect(resolveDock(dock({ edge: null }), desktop)).toEqual({ edge: null, floating: true });
   });
+});
 
-  it('floats rather than insets on a narrow window', () => {
-    // The trade only makes sense when there is content area to trade. A 440px panel beside a 400px
-    // viewport is not two usable things.
-    expect(resolveDock(dock(), laptop).floating).toBe(true);
-    expect(contentInset([dock()], laptop)).toEqual({ left: 0, right: 0, top: 0, bottom: 0 });
+describe('room another panel has already taken', () => {
+  const notesDocked: ContentInset = { ...NO_INSET, right: 440 };
+
+  it('keeps a snapped panel clear of it', () => {
+    // The bug: snapping a video to the right landed it on top of a docked notes panel, because every
+    // position here was measured against the window rather than against what was left of it.
+    const floating = placement({ snap: 'right', displace: false, w: 360, h: 200 });
+    const clear = resolveDock(dock({ placement: floating }), desktop, notesDocked);
+
+    expect(px(clear.left)! + 360).toBeLessThanOrEqual(desktop.width - 440);
+  });
+
+  it('keeps a maximised panel clear of it too', () => {
+    // Same region, same answer — which is why full screen needed no separate fix.
+    const geometry = resolveDock(dock({ placement: placement({ maximised: true }) }), desktop, notesDocked);
+
+    expect(geometry.right).toBe('440px');
+  });
+
+  it('moves the landing spots themselves, not just where a panel ends up', () => {
+    // The targets are drawn from the same rects the drop test measures, so a marker that stayed put
+    // while the panel moved would be pointing at a place it could no longer go — which is exactly
+    // what the right-hand markers did once the panel started clamping and they did not.
+    const clear = snapTargetRects(desktop, notesDocked).find((rect) => rect.id === 'right')!;
+    const full = snapTargetRects(desktop).find((rect) => rect.id === 'right')!;
+
+    expect(clear.x).toBeLessThan(full.x);
+    expect(clear.x + clear.w).toBeLessThanOrEqual(desktop.width - notesDocked.right);
+  });
+
+  it('answers the drop test with the same rects it drew', () => {
+    // Overlap is measured against the drawn box, so the two have to be computed from one set of
+    // numbers: markers narrowed while the hit test was not would light a target the drop refused.
+    const target = snapTargetRects(desktop, notesDocked).find((rect) => rect.id === 'right')!;
+    const over = { x: target.x, y: target.y, w: target.w, h: target.h };
+
+    expect(snapCandidate(over, desktop, notesDocked)).toBe('right');
+  });
+
+  it('never counts the panel against itself', () => {
+    // A displacing panel resolved against its own thickness would walk off its edge, one width per
+    // frame. Nothing here passes a panel its own contribution — the store excludes it by index.
+    const docked = resolveDock(dock({ placement: placement({ snap: 'right', thickness: 440 }) }), desktop);
+
+    expect(docked.right).toBe('0px');
   });
 });
 
-describe('dragging', () => {
-  it('lets a dragged size beat the named one', () => {
-    // The module keeps saying what it wants — `md`, an opening bid — and the host keeps deciding
-    // what it gets, which now includes remembering that somebody moved it.
-    const geometry = resolveDock(dock({ resizedTo: 600 }), desktop);
-    // Exactly what the content gave up, because a docked panel is flush with it: a gap between the
-    // two would be a strip of background where the content used to be.
-    expect(geometry.width).toBe('600px');
-    expect(contentInset([dock({ resizedTo: 600 })], desktop).right).toBe(600);
+describe('reordering a strip', () => {
+  const boxes = [
+    { x: 1200, y: 0, w: 400, h: 900 },
+    { x: 800, y: 0, w: 400, h: 900 },
+  ];
+
+  it('offers a slot on an edge that has nothing on it, so a strip can be started', () => {
+    // Without this an empty edge had no target that *took room*: the eight snap boxes can only float a
+    // panel against a side, so docking to a fresh edge meant dropping it somewhere else first and then
+    // finding the displace toggle.
+    const [slot] = insertionSlots('right', [], desktop);
+
+    expect(slot.index).toBe(0);
+    expect(slot.hit.h).toBe(desktop.height);
+    // A wider *target* than a gap between panels: with nothing either side of it to imply the result,
+    // this one is claiming a whole side. The line drawn in it is the same 3px either way.
+    expect(slot.hit.w).toBeGreaterThan(insertionSlots('right', boxes, desktop)[0].hit.w);
+    expect(slot.line.w).toBe(3);
   });
 
-  it('never lets a drag outgrow the window it was not dragged on', () => {
-    // A panel dragged wide on a monitor must not still be wider than a laptop screen when the same
-    // session moves to one.
-    const laptopWide = { width: 1280, height: 800 };
-    const thickness = dockThickness('right', 'md', laptopWide, 5_000);
-    expect(thickness).toBeLessThanOrEqual(1280);
+  it('keeps the outermost slot on screen', () => {
+    // Centred on the boundary, it straddled the screen edge and showed as a sliver you could only
+    // sometimes see — which reads as the rule being intermittent rather than as a drawing bug.
+    const [outer] = insertionSlots('right', boxes, desktop);
+
+    expect(outer.hit.x + outer.hit.w).toBeLessThanOrEqual(desktop.width);
+    expect(outer.hit.x).toBeGreaterThanOrEqual(SIDEBAR_PX);
+    // And the line sits *on* the edge rather than centred in its target, which floated it a dozen
+    // pixels inboard of the boundary it describes.
+    expect(outer.line.x + outer.line.w).toBe(desktop.width);
   });
 
-  it('refuses to shrink a panel into a sliver', () => {
-    expect(dockThickness('right', 'md', desktop, 10)).toBe(MIN_DOCK_PX);
+  it('measures the gaps in a region that still contains the strip', () => {
+    // The bug this cost two rounds of guessing: the caller's "what must I keep clear of" excludes
+    // every docked panel, including the ones these lines are about. Computed in that region, all of a
+    // strip's boundaries fall outside it and clamp to the same spot — three lines drawn on top of one
+    // another at the strip's inner edge, which is the one place you cannot drop.
+    const strip: ContentInset = { ...NO_INSET, right: 800 };
+    const collapsed = insertionSlots('right', boxes, desktop, strip).map((slot) => Math.round(slot.line.x));
+    const correct = insertionSlots('right', boxes, desktop).map((slot) => Math.round(slot.line.x));
+
+    expect(new Set(collapsed).size).toBe(1);
+    expect(new Set(correct).size).toBe(3);
+    // One per boundary: the screen edge, and the inner side of each panel.
+    expect(correct).toEqual([desktop.width - 3, 1199, 799]);
   });
 
-  it('puts the handle on the side facing the content it takes room from', () => {
-    // Which is also which way "wider" points, and the reason the sign lives in the host rather than
-    // in the handle: it inverts between edges.
-    expect(resolveDock(dock({ edge: 'right' }), desktop).handle).toBe('left');
-    expect(resolveDock(dock({ edge: 'left' }), desktop).handle).toBe('right');
-    expect(resolveDock(dock({ edge: 'bottom' }), desktop).handle).toBe('top');
-    expect(resolveDock(dock({ edge: 'top' }), desktop).handle).toBe('bottom');
+  it('offers one gap per panel, plus one against the edge itself', () => {
+    // Two panels, three places to land: outside both, between them, inside both.
+    expect(insertionSlots('right', boxes, desktop)).toHaveLength(3);
   });
 
-  it('offers no handle to a panel that takes no room', () => {
-    // Nothing to trade, so nothing to drag — and a divider on a floating strip would suggest
-    // otherwise.
-    expect(resolveDock(dock({ size: 'sm', float: true }), desktop).handle).toBeUndefined();
-    expect(resolveDock(dock({ size: 'full', float: true }), desktop).handle).toBeUndefined();
+  it('counts outwards from the edge, which is the direction a strip grows', () => {
+    // Index 0 is nearest the edge — the rightmost panel for a right-hand strip, which is the opposite
+    // of reading order and the same as "distance from the edge".
+    const slots = insertionSlots('right', boxes, desktop);
+
+    expect(slots[0].line.x).toBeGreaterThan(slots[1].line.x);
+    expect(slots[1].line.x).toBeGreaterThan(slots[2].line.x);
+  });
+
+  it('runs along the strip rather than sitting in it as a box', () => {
+    // A gap has to say *between these two*, which a box the size of a panel cannot. The number here is
+    // the hit area; the frame centres a 3px hairline in it, because a target you can hit while
+    // dragging a panel is much thicker than a seam anybody wants to look at.
+    const [slot] = insertionSlots('right', boxes, desktop);
+
+    expect(slot.hit.w).toBeLessThan(32);
+    expect(slot.line.w).toBe(3);
+    expect(slot.hit.h).toBe(desktop.height);
+  });
+
+  it('runs the other way for a horizontal strip', () => {
+    const stacked = [
+      { x: 0, y: 600, w: 1600, h: 300 },
+      { x: 0, y: 300, w: 1600, h: 300 },
+    ];
+    const slots = insertionSlots('bottom', stacked, desktop);
+
+    expect(slots[0].line.y).toBeGreaterThan(slots[1].line.y);
+    expect(slots[0].line.w).toBe(desktop.width - SIDEBAR_PX);
+  });
+
+  it('never lets two panels on an edge compare equal', () => {
+    // A tie is the bug: each believes the other is behind it, both shift by the other's thickness, and
+    // they overlap in the middle with a gap at the edge. It came back the moment `order` existed,
+    // because a panel given `order: 0` by a drop tied with whichever panel was first in the registry.
+    const dropped = placement({ snap: 'right', displace: true, thickness: 400, order: 0 });
+    const never = placement({ snap: 'right', displace: true, thickness: 400 });
+    const panels = [dock({ id: 'a', placement: never }), dock({ id: 'b', placement: dropped })];
+
+    // Exactly one of them steps past the other — the sum of what they clear is one panel, not two.
+    const cleared = occupiedFor(panels, 0, desktop).right + occupiedFor(panels, 1, desktop).right;
+    expect(cleared).toBe(400);
+  });
+
+  it('puts a panel that never chose a position after the ones that did', () => {
+    // Which is also "a panel joining a strip without being dropped into it lands at the end".
+    const placed = placement({ snap: 'right', displace: true, thickness: 400, order: 0 });
+    const unplaced = placement({ snap: 'right', displace: true, thickness: 400 });
+    const panels = [dock({ id: 'unplaced', placement: unplaced }), dock({ id: 'placed', placement: placed })];
+
+    expect(occupiedFor(panels, 1, desktop).right).toBe(0);
+    expect(occupiedFor(panels, 0, desktop).right).toBe(400);
+  });
+
+  it('ranks a strip by the order the user set, not the order things registered in', () => {
+    // The bug this exists for: stacking came from the registry, so a panel dragged out of a strip
+    // returned to the slot it left however far along the edge it was dropped.
+    const first = placement({ snap: 'right', displace: true, thickness: 400, order: 1 });
+    const second = placement({ snap: 'right', displace: true, thickness: 400, order: 0 });
+    const panels = [dock({ id: 'a', placement: first }), dock({ id: 'b', placement: second })];
+
+    // `a` registered first but was ordered second, so it is the one that steps past.
+    expect(occupiedFor(panels, 0, desktop).right).toBe(400);
+    expect(occupiedFor(panels, 1, desktop).right).toBe(0);
+  });
+});
+
+describe('what a panel has to keep clear of', () => {
+  const card = placement({ snap: 'right', displace: false, w: 360, h: 200 });
+  const notes = placement({ snap: 'right', displace: true, thickness: 440 });
+
+  it('makes a floating panel clear a displacing one on the same edge, whatever the order', () => {
+    // The bug: the exemption that lets two *displacing* panels take turns was being applied to a
+    // floating one, so a video snapped right sat behind a notes panel that registered after it. Its
+    // landing markers moved correctly the whole time, because a panel mid-drag has no snap for the
+    // exemption to match on — it fired only once the video was dropped.
+    const panels = [dock({ id: 'call:0', placement: card }), dock({ id: 'notes:0', placement: notes })];
+
+    expect(occupiedFor(panels, 0, desktop).right).toBe(440);
+  });
+
+  it('still lets two displacing panels stack rather than dodge each other', () => {
+    const panels = [dock({ id: 'a', placement: notes }), dock({ id: 'b', placement: notes })];
+
+    // The first ignores the second, the second steps past the first. Both counting the other would
+    // leave a gap the width of a panel between them.
+    expect(occupiedFor(panels, 0, desktop).right).toBe(0);
+    expect(occupiedFor(panels, 1, desktop).right).toBe(440);
+  });
+
+  it('never counts a panel against itself', () => {
+    const panels = [dock({ id: 'notes:0', placement: notes })];
+    expect(occupiedFor(panels, 0, desktop).right).toBe(0);
+  });
+
+  it('ignores panels that take no room', () => {
+    // A floating or maximised neighbour covers content rather than displacing it, so there is nothing
+    // for anyone to clear.
+    const panels = [
+      dock({ id: 'call:0', placement: card }),
+      dock({ id: 'b', placement: placement({ snap: 'right', maximised: true }) }),
+      dock({ id: 'c', placement: card }),
+    ];
+
+    expect(occupiedFor(panels, 0, desktop)).toEqual(NO_INSET);
+  });
+
+  it('carries chrome that is not a panel at all', () => {
+    // The editor's rails displace content exactly as a dock does and are not docks.
+    const panels = [dock({ id: 'call:0', placement: card })];
+    const chrome: ContentInset = { ...NO_INSET, right: 320 };
+
+    expect(occupiedFor(panels, 0, desktop, chrome).right).toBe(320);
+  });
+});
+
+describe('fitting a panel to its content', () => {
+  const aspect = { ratio: 16 / 9, insetX: 24, insetY: 24 };
+  // What the panel's chrome costs on the vertical axis: its titlebar, plus the module's own padding.
+  const chrome = 24 + aspect.insetY;
+
+  const fitted = (over: Partial<FloatPlacement>) =>
+    fitPlacement(placement({ snap: null, displace: false, ...over }), aspect, { spanning: false });
+
+  it('trims the height of a panel that is too tall', () => {
+    const before = placement({ snap: null, displace: false, w: 360, h: 600 });
+    const after = fitPlacement(before, aspect, { spanning: false });
+
+    expect(after.h).toBeLessThan(before.h);
+    expect(after.w).toBe(before.w);
+  });
+
+  it('trims the width of a panel that is too wide, rather than growing it taller', () => {
+    // The case that read as a different feature: keeping the width and solving for height *grew* the
+    // panel here, so the button appeared to enlarge a video nobody had asked it to touch.
+    const before = placement({ snap: null, displace: false, w: 900, h: 260 });
+    const after = fitPlacement(before, aspect, { spanning: false });
+
+    expect(after.w).toBeLessThan(before.w);
+    expect(after.h).toBe(before.h);
+  });
+
+  it('never grows a floating panel on either axis', () => {
+    for (const box of [
+      { w: 360, h: 600 },
+      { w: 900, h: 260 },
+      { w: 500, h: 500 },
+    ]) {
+      const after = fitted(box);
+      expect(after.w).toBeLessThanOrEqual(box.w);
+      expect(after.h).toBeLessThanOrEqual(box.h);
+    }
+  });
+
+  it('does nothing the second time', () => {
+    // Idempotent, which is what "the picture stays the size it is" buys: after one press the panel
+    // already matches the ratio, so there is no slack left to take.
+    const once = fitted({ w: 900, h: 260 });
+    const twice = fitPlacement(once, aspect, { spanning: false });
+
+    expect(twice.w).toBe(once.w);
+    expect(twice.h).toBe(once.h);
+  });
+
+  it('leaves the picture at the size it was', () => {
+    // The whole rule, stated as a measurement: the content box's shorter axis is untouched, so the
+    // picture rendered inside it does not move.
+    const before = placement({ snap: null, displace: false, w: 900, h: 260 });
+    const after = fitPlacement(before, aspect, { spanning: false });
+
+    expect(after.h - chrome).toBe(before.h - chrome);
+    expect((after.w - aspect.insetX) / (after.h - chrome)).toBeCloseTo(aspect.ratio, 1);
+  });
+
+  it('sets the thickness instead when the panel spans an edge', () => {
+    // The one case that can grow, and unavoidably: the axis with the slack is the one a spanning
+    // panel does not own, so its thickness is what moves.
+    const docked = placement({ snap: 'right', displace: true, thickness: 200, h: 900 });
+    const after = fitPlacement(docked, aspect, { spanning: true, edge: 'right' });
+
+    expect(after.thickness).toBeGreaterThan(200);
+    expect(after.w).toBe(docked.w);
+  });
+});
+
+describe('reading a resolved box back as a rectangle', () => {
+  it('measures a right-hand displacing panel from the edge it is pinned to', () => {
+    // It carries `right` and a `width` and no `left` at all, so reaching for `left` fell through to
+    // the stored placement — the position it had when it last floated, or the seed's zero.
+    const box = resolveDock(dock({ placement: placement({ snap: 'right', w: 440 }) }), desktop);
+    const rect = rectOf(box, desktop, placement({ x: 0, y: 0 }));
+
+    expect(rect.x).toBe(desktop.width - 440);
+    expect(rect.w).toBe(440);
+  });
+
+  it('measures a maximised panel from four offsets and no size', () => {
+    // The case that made dragging out of full screen land at the far left: with no `width` to read,
+    // the fraction of the titlebar the pointer had hold of was computed against the *small* remembered
+    // size, so grabbing anywhere right of centre put the restored panel off the left edge.
+    const box = resolveDock(dock({ placement: placement({ maximised: true }) }), desktop);
+    const rect = rectOf(box, desktop, placement({ w: 360, h: 200 }));
+
+    expect(rect.x).toBe(SIDEBAR_PX);
+    expect(rect.w).toBe(desktop.width - SIDEBAR_PX);
+    expect(rect.y).toBe(TOP_CHROME_PX);
+    expect(rect.h).toBe(desktop.height - TOP_CHROME_PX);
+  });
+
+  it('reads a floating panel straight off, and falls back only when there is no box', () => {
+    const floating = placement({ snap: 'bottom-right', displace: false, w: 360, h: 200 });
+    const box = resolveDock(dock({ placement: floating }), desktop);
+    const rect = rectOf(box, desktop, floating);
+
+    expect(rect.w).toBe(360);
+    expect(rect.h).toBe(200);
+    expect(rectOf(undefined, desktop, floating)).toEqual({ x: floating.x, y: floating.y, w: 360, h: 200 });
+  });
+});
+
+describe('snapping', () => {
+  it('puts each corner in its corner, clear of the sidebar', () => {
+    const corners: SnapPoint[] = ['top-left', 'bottom-left'];
+    for (const snap of corners) {
+      expect(snapOrigin(snap, 300, 200, desktop).x).toBeGreaterThanOrEqual(SIDEBAR_PX);
+    }
+    expect(snapOrigin('top-right', 300, 200, desktop).x).toBeGreaterThan(desktop.width / 2);
+    expect(snapOrigin('bottom', 300, 200, desktop).y).toBeGreaterThan(desktop.height / 2);
+  });
+
+  it('keeps the top row clear of the app’s floating controls', () => {
+    // A panel snapped to the top centre landed behind the call bar — and its own grip and menu are in
+    // its titlebar, so the bar covered both ways of moving it back out.
+    for (const snap of ['top-left', 'top', 'top-right'] as SnapPoint[]) {
+      expect(snapOrigin(snap, 300, 200, desktop).y).toBeGreaterThanOrEqual(TOP_CHROME_PX);
+    }
+  });
+
+  it('lights a target only once the panel is over it', () => {
+    // Proximity used to decide this — thirds of the region — so a panel merely near an edge snapped
+    // whether or not it had reached the marker, and dropping a video *near* a corner but deliberately
+    // not in it was impossible.
+    const target = snapTargetRects(desktop).find((rect) => rect.id === 'top-left')!;
+
+    expect(snapCandidate({ x: target.x, y: target.y, w: 200, h: 150 }, desktop)).toBe('top-left');
+    // Well inside the top-left third, and touching nothing.
+    expect(
+      snapCandidate({ x: target.x + target.w + 80, y: target.y + target.h + 80, w: 60, h: 40 }, desktop),
+    ).toBeNull();
+  });
+
+  it('takes the target it covers most, when a panel spans two', () => {
+    const left = snapTargetRects(desktop).find((rect) => rect.id === 'left')!;
+    const wide = { x: left.x, y: left.y, w: left.w * 2, h: left.h };
+
+    expect(snapCandidate(wide, desktop)).toBe('left');
+  });
+
+  it('leaves the middle alone, so a panel can simply stay where it was put', () => {
+    // Without somewhere that snaps to nothing, every drop would snap and free positioning would be
+    // unreachable — which is most of the screen, by area.
+    expect(snapCandidate({ x: 700, y: 400, w: 200, h: 150 }, desktop)).toBeNull();
+  });
+
+  it('draws markers, not landing strips', () => {
+    // They were a fifth of the region and read as targets you had to hit. The drawn box is also the
+    // hit test now, so its size is a real decision rather than decoration.
+    const { w, h } = snapTargetSize(desktop);
+
+    expect(w).toBeLessThan((desktop.width - SIDEBAR_PX) / 6);
+    expect(h).toBeLessThan(desktop.height / 6);
   });
 });
 
 describe('dockThickness', () => {
   it('scales the large size with the display and pins the smaller ones', () => {
     // "Most of the screen" is a different number on a laptop and a monitor; "a panel" is not.
-    expect(dockThickness('right', 'md', desktop)).toBe(dockThickness('right', 'md', { width: 2560, height: 1440 }));
+    expect(dockThickness('right', 'md', desktop)).toBe(440);
+    expect(dockThickness('right', 'md', { width: 2560, height: 1440 })).toBe(440);
     expect(dockThickness('right', 'lg', { width: 2560, height: 1440 })).toBeGreaterThan(
       dockThickness('right', 'lg', desktop),
     );
   });
 
-  it('never asks for more room than the content region has', () => {
-    const tiny = { width: 400, height: 300 };
-    expect(dockThickness('right', 'lg', tiny)).toBeLessThanOrEqual(400);
-    expect(dockThickness('bottom', 'lg', tiny)).toBeLessThanOrEqual(300);
-  });
-});
-
-describe('contentInset', () => {
-  it('subtracts only what is actually docked', () => {
-    const inset = contentInset([dock(), dock({ id: 'notes:0', edge: 'left', size: 'sm' })], desktop);
-
-    expect(inset.right).toBe(dockThickness('right', 'md', desktop));
-    expect(inset.left).toBe(dockThickness('left', 'sm', desktop));
-    expect(inset.top).toBe(0);
-  });
-
-  it('stacks two panels sharing an edge', () => {
-    // Nothing places them side by side yet, but an inset that under-reported would put the second
-    // panel over content the app believes is visible.
-    const inset = contentInset([dock(), dock({ id: 'notes:0' })], desktop);
-    expect(inset.right).toBe(dockThickness('right', 'md', desktop) * 2);
+  it('never lets a drag outgrow the window it was not dragged on', () => {
+    const laptopWide = { width: 1280, height: 800 };
+    expect(dockThickness('right', 'md', laptopWide, 5_000)).toBeLessThanOrEqual(1280);
   });
 });

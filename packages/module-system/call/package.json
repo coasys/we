@@ -1,7 +1,7 @@
 {
   "name": "@we/module-call",
   "version": "0.1.0",
-  "description": "Call feature module \u2014 mesh WebRTC audio, video and screen share over the ephemeral port",
+  "description": "Call feature module — mesh WebRTC audio, video and screen share over the ephemeral port",
   "license": "MIT",
   "type": "module",
   "scripts": {
@@ -36,6 +36,7 @@
     "typescript": "^5.7.2",
     "vitest": "^4.0.15",
     "@we/module-shared": "workspace:*",
-    "@we/backend-shared": "workspace:*"
+    "@we/backend-shared": "workspace:*",
+    "@we/schema-kit": "workspace:*"
   }
 }

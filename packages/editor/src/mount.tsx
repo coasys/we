@@ -2,7 +2,6 @@ import { render } from 'solid-js/web';
 
 import { EditingBar } from './components/EditingBar';
 import { EditorOverlay } from './components/EditorOverlay';
-import { RightPanelContainer } from './components/RightPanelContainer';
 import { type EditorHost, EditorHostProvider } from './host';
 import { EditorSurfaceProvider, type SurfacePositioning } from './surface';
 
@@ -13,7 +12,7 @@ export interface MountOptions {
    * Render the overlay that draws selection and resize handles over the live template.
    *
    * Off by default because it draws *over* the template — an application that mounts the editor
-   * beside its content rather than on top of it wants only the editing bar and panels. It is not off for
+   * beside its content rather than on top of it wants only the editing bar. It is not off for
    * geometry reasons: the overlay normalises against its own root and is container-relative already.
    */
   overlay?: boolean;
@@ -24,7 +23,16 @@ export interface MountOptions {
    * business now, and an embedding application supplies its own way of asking that question.
    */
   editingBar?: boolean;
-  /** Render the right-hand panel dock. Default true. */
+  /**
+   * Render the editor's panels.
+   *
+   * Nothing here does any more, and the option is kept as a no-op rather than removed so an embedding
+   * host that passes it keeps working. WE's own shell mounts each panel as a *dock* — placed, sized
+   * and moved by the shell exactly as a module's panel is — so the editor has no panel container of
+   * its own left to render. An application embedding this and wanting the panels mounts them itself.
+   *
+   * @deprecated The panels are the host's to place. See `registries/editorDocks.ts` in `@we/app-shell`.
+   */
   panels?: boolean;
   /**
    * Where the chrome pins itself. Defaults to `container` — an application mounting the editor into
@@ -64,7 +72,7 @@ export interface MountOptions {
  * template. See `tests/geometry.test.ts`.
  */
 export function mountTemplateEditor(element: HTMLElement, options: MountOptions): () => void {
-  const { host, overlay = false, editingBar = true, panels = true, positioning = 'container' } = options;
+  const { host, overlay = false, editingBar = true, positioning = 'container' } = options;
 
   // `absolute` chrome needs a positioned ancestor, and the element handed to us is the one the caller
   // means. Setting it here rather than documenting it removes the most likely way to mis-integrate:
@@ -79,7 +87,6 @@ export function mountTemplateEditor(element: HTMLElement, options: MountOptions)
         <EditorSurfaceProvider value={{ positioning }}>
           {overlay ? <EditorOverlay /> : null}
           {editingBar ? <EditingBar /> : null}
-          {panels ? <RightPanelContainer /> : null}
         </EditorSurfaceProvider>
       </EditorHostProvider>
     ),

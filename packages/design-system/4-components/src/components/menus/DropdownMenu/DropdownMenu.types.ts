@@ -72,6 +72,18 @@ export interface DropdownMenuProps {
    * otherwise.
    */
   size?: 'xs' | 'sm' | 'md' | 'lg' | 'xl';
+  /**
+   * Size of the items in the list. Defaults to `size`.
+   *
+   * Separate because the two are separate: the trigger has to fit whatever chrome it sits in, and the
+   * list has to be readable — and those pull apart at the small end. The shell's panel titlebar wants
+   * a 24px trigger and would be unreadable with 12px items.
+   *
+   * `size` used to reach the trigger alone, so a menu asking to be small got a small button and a
+   * full-size list, which is how the panel menu ended up with items visibly larger than the panel's
+   * own controls.
+   */
+  itemSize?: 'xs' | 'sm' | 'md' | 'lg' | 'xl';
   class?: string;
   styles?: Record<string, string | number>;
 }

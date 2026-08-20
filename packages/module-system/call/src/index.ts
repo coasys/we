@@ -24,6 +24,16 @@
  * - **No camera *and* screen at once.** Sharing replaces the camera track — see `media.ts`.
  */
 import { defineModule, type ModuleStoreDeps } from '@we/module-shared';
+/*
+  A compile-time dependency, and the only kind a module may have on a shape.
+
+  `@we/schema-kit` is the portable half of the fragment kit — nothing in it names a store, so it
+  carries no assumption about the deployment this module lands in. The functions run during this
+  package's build and what ships in `dist` is the data they returned, so there is no runtime
+  coupling, nothing for the host to provide, and no version for the two to agree on. That is why it
+  is a devDependency here rather than a peer, unlike `@we/module-shared` and `@we/schema-shared`.
+*/
+import { peopleTooltip } from '@we/schema-kit';
 import { type SchemaNode } from '@we/schema-shared';
 
 import { createCallStore } from './store';
@@ -31,7 +41,7 @@ import { createCallStore } from './store';
 export { createCallMesh, type CallMesh, type SignallingChannel } from './mesh';
 export { createMediaController, type MediaController, type MediaState } from './media';
 export { anchoredCallId, CALL_PROTOCOL_VERSION, parseCallMessage, spaceCallId } from './protocol';
-export { type CallDockEdge, type CallPlacement, type CallTile, type CallTileState, createCallStore } from './store';
+export { type CallDockEdge, type CallTile, type CallTileState, createCallStore } from './store';
 
 /**
  * Where the call's chrome sits.
@@ -47,6 +57,53 @@ export { type CallDockEdge, type CallPlacement, type CallTile, type CallTileStat
  * *dock* now, and where a dock lands is the host's business — see `docks` at the bottom of this file.
  */
 const CALL_BAR_TOP = '10px';
+
+/**
+ * The bar's own corners, following the theme's **control** radius.
+ *
+ * It was a flat `pill`, so a theme set to Sharp drew a fully rounded bar around square-cornered
+ * buttons — the one shape in the app that ignored the shape presets.
+ *
+ * `controlRadius` rather than `surfaceRadius`, and the distinction is what the two categories are
+ * for. A surface is a sheet with content on it — a modal, a drawer, a docked panel — and its radius
+ * is about the material. This is a cluster of buttons and nothing else, drawn tight around them, so
+ * its corners are a statement about controls; under the Pill preset (controls pill, surfaces 600) a
+ * surface-radius bar would be a 16px box around pill buttons, the same mismatch mirrored. The
+ * editor's history and mode clusters already read this var for the same reason, while its save and
+ * close panel reads the surface one.
+ *
+ * The fallback is what **Default** looks like, since that preset sets no variable at all — so it has
+ * to be a real answer rather than the hardcoded `pill` this started as, which left three of the four
+ * presets working and the fourth indistinguishable from Pill. `400` is that answer because it is
+ * `we-button`'s own default: on Default the bar and the buttons inside it are both 8px, which is the
+ * same relationship every other preset gives them.
+ *
+ * Not the concentric `inner + padding`, which would be `600` here and reads better in isolation. That
+ * figure is only right while the padding is, and the radius is a theme variable: a theme set to Sharp
+ * would then draw a bar with 8px corners around perfectly square buttons — this bug again, smaller.
+ * It also collided with Rounded, which sets controls to `600` outright. Matching the controls exactly
+ * is the one rule that survives all four presets, and it is what the editor's own history and mode
+ * clusters do.
+ *
+ * A theme that states a control radius of its own still wins — several of the built-in ones do.
+ */
+const BAR_RADIUS = 'var(--we-theme-control-radius, var(--we-radius-400))';
+
+/**
+ * The bar's surface, matching the app's other floating control clusters.
+ *
+ * It was `neutral-0` with a `lg` shadow — a *sheet*, which is what the app uses for something with
+ * content on it: a dropdown, a modal, the panel the editor's share button opens. A cluster of
+ * buttons is not that, and read as a different material sitting a centimetre off the page beside
+ * the editor's undo/redo and save/close bars, which are `neutral-50` with a border and no shadow at
+ * all. The module rail is the same recessed surface.
+ *
+ * The shadow stays, at the rail's weight rather than its own. The editor's bars can do without one
+ * because they appear over a dimmed editing surface that already separates them; this floats over
+ * whatever a space happens to be showing, and a border alone against a busy background is not a
+ * separation.
+ */
+const BAR_SURFACE = { bg: 'neutral-50', border: '1px solid neutral-200', shadow: 'md' } as const;
 
 /**
  * The bar's extension point, for chrome that belongs *in a call* rather than at a screen edge.
@@ -172,9 +229,19 @@ const tile: SchemaNode = {
                 stream: '$tile.stream',
                 autoplay: true,
                 playsinline: true,
-                // Never hear yourself. The self tile plays the same microphone the mesh is sending, and
-                // unmuted it is an immediate feedback loop.
-                muted: '$tile.isSelf',
+                /**
+                 * Every tile is silent. The picture is here; the sound is in `audioSink`.
+                 *
+                 * The self tile always had to be — it plays the microphone the mesh is sending, and
+                 * unmuted that is an immediate feedback loop. The peers were unmuted, and that was
+                 * the whole of the call's audio path, which is why it kept disappearing: this
+                 * element exists only while there is a picture to show, so a peer turning their
+                 * camera off, or you putting the stage away, silenced them.
+                 *
+                 * With the sink carrying the audio, an unmuted tile would be a second decoder on the
+                 * same stream — the same voice twice, slightly apart.
+                 */
+                muted: true,
                 /**
                  * Pinned to the tile's four edges rather than sized `100%` × `100%`.
                  *
@@ -447,6 +514,9 @@ const stage: SchemaNode = {
       props: {
         width: '100%',
         height: '100%',
+        // `300` is 12px — `STAGE_PADDING_PX` and `STAGE_GAP_PX`, which `dockAspect` subtracts so that
+        // "fit to content" lands on a height that fits the pictures rather than one that squeezes
+        // them. Change either here and the constant has to follow.
         p: '300',
         gap: '300',
         overflow: 'hidden',
@@ -459,64 +529,124 @@ const stage: SchemaNode = {
   },
 };
 
-/** A toggle button whose icon and tone follow the state it toggles. */
-function mediaToggle(opts: { on: string; off: string; enabled: string; action: string; danger?: boolean }): SchemaNode {
+/**
+ * A toggle button whose icon and tone follow the state it toggles.
+ *
+ * No `size`, which means `md` — the default, and one step up from the `sm` the whole bar used to be.
+ * These are the controls you reach for mid-sentence while looking at somebody else, so they are
+ * worth the extra eight pixels; the bar is still a pill you can ignore. The icons follow on their
+ * own, since a sized primitive publishes `--we-context-icon-size` for the icons slotted into it.
+ *
+ * `square` because there is nothing here but the icon. Without it the button keeps the horizontal
+ * padding it holds for a label — 16px a side at `md` — so a 24px glyph sat in a 56px box, and three
+ * toggles in a row read as three wide slabs rather than a set of buttons. Square sizes both axes
+ * from the component height instead, which is also what the module rail's launchers do.
+ *
+ * The tooltip is required rather than optional, and names the **move** rather than the state — "Mute"
+ * while unmuted, not "Unmuted". An icon-only control has no other way to say what it does, and a
+ * microphone with a line through it is genuinely ambiguous about whether it reports a state or offers
+ * one. The show/hide toggle beside these already phrased its tooltip that way; this makes the whole
+ * bar agree.
+ */
+function mediaToggle(opts: {
+  on: string;
+  off: string;
+  enabled: string;
+  action: string;
+  /** What pressing it does while it is on, and while it is off. */
+  tip: { on: string; off: string };
+}): SchemaNode {
+  const toggled = (then: string, otherwise: string) => ({
+    $if: { condition: { $store: opts.enabled }, then, else: otherwise },
+  });
+
   return {
-    type: 'we-button',
-    props: {
-      size: 'sm',
-      variant: { $if: { condition: { $store: opts.enabled }, then: 'secondary', else: 'ghost' } },
-      onClick: { $action: opts.action },
-    },
+    type: 'we-tooltip',
+    props: { title: toggled(opts.tip.on, opts.tip.off), placement: 'bottom' },
     children: [
       {
-        type: 'we-icon',
-        props: { name: { $if: { condition: { $store: opts.enabled }, then: opts.on, else: opts.off } } },
+        type: 'we-button',
+        props: {
+          square: true,
+          variant: toggled('secondary', 'ghost'),
+          onClick: { $action: opts.action },
+        },
+        children: [{ type: 'we-icon', props: { name: toggled(opts.on, opts.off) } }],
       },
     ],
   };
 }
 
 /**
- * Where the video goes — the one control that used to be three.
+ * Who is here — a readout, not a control.
  *
- * A menu rather than buttons in the bar, because the choice is made once and then left alone, and
- * six permanent options would cost more room in the one piece of chrome that must stay small than
- * the setting is worth. It absorbed the mode cycle and the three size buttons: floating and full
- * screen are placements like any other, and size is dragged now rather than chosen.
+ * The count used to be a number sitting inside the show/hide button, which made that button the one
+ * thing in the bar that could not be square and put a fact inside a switch: the digit changed when
+ * somebody joined, which looks like the control changing state.
  *
- * `triggerLabel` is set explicitly. Left off, `DropdownMenu` falls back to "Options" — the least
- * informative word available for a menu that always has a subject, and the reason this one read as
- * a mystery rather than as a place to put the video.
+ * Separated, it also says the same thing the same way in both halves of this file. The bar you see
+ * when you are *not* in the call is faces and "3 in a call"; this is faces and "3 in the call". One
+ * sentence, two tenses.
+ *
+ * Faces come from `tileFaces` rather than from the roster, so a profile arriving fills them in
+ * without touching `tiles` — which is what keeps a late avatar from remounting somebody's video.
+ * Three, because past that the stack is a smudge at this size and the number is doing the work.
+ *
+ * ## The roster on hover
+ *
+ * Three faces and a number answer "how many"; only the list answers "who". It hangs off the whole
+ * readout rather than off the avatars, because what a reader points at is the faces *and* the words
+ * beside them — a tooltip owned by the stack alone produces nothing when you hover "5 in the call".
+ *
+ * It lists everyone, not the three that were drawn: the people the stack had to hide are exactly the
+ * ones there is no other way to find out about.
+ *
+ * `peopleTooltip` is the kit's, not this module's. It was written out by hand here first — the kit
+ * lived under `templates/` and `modules → templates` is the sideways edge the dependency rules
+ * forbid — and that copy is what made the packaging wrong rather than the module unusual, so the
+ * portable tier moved to `@we/schema-kit` and this reaches for it like a template would.
  */
-const placementMenu: SchemaNode = {
-  type: 'DropdownMenu',
-  props: {
-    triggerIcon: 'layout',
-    triggerLabel: 'Position',
-    // Matching the bar's other controls. `we-button` defaults to `md`, so without this the trigger
-    // simply stood taller than everything beside it.
-    size: 'sm',
-    placement: 'bottom',
-    items: {
-      $map: {
-        items: { $store: 'modules.call.placementOptions' },
-        // Toggles rather than actions, for the check mark: an action item has no way to show which
-        // placement is the current one, and a menu that cannot answer "where is it now?" is a menu
-        // you have to open twice. Toggles also leave it open, which is what you want while trying
-        // placements against the space behind them.
-        select: {
-          id: '$item.id',
-          type: 'toggle',
-          label: '$item.label',
-          icon: '$item.icon',
-          checked: '$item.active',
-          onToggle: { $action: 'modules.call.setPlacement', args: ['$item.id'] },
+const participants: SchemaNode = peopleTooltip({
+  items: { $store: 'modules.call.tileFaces' },
+  image: '$person.image',
+  hash: '$person.hash',
+  name: '$person.name',
+  placement: 'bottom',
+  children: [
+    {
+      type: 'Row',
+      props: { gap: '200', ay: 'center', pl: '100' },
+      children: [
+        {
+          type: 'AvatarStack',
+          props: {
+            avatars: {
+              $map: {
+                items: { $store: 'modules.call.tileFaces' },
+                // `hash` always, never as a fallback for a missing picture: it seeds a generated
+                // avatar that is stable per agent, so two people whose profiles have not arrived are
+                // still two distinguishable faces rather than the same grey glyph twice.
+                select: { image: '$item.image', hash: '$item.hash', initials: '$item.name' },
+              },
+            },
+            max: 3,
+            size: 'sm',
+            // The faces overlap, so each needs the surface behind it to show between them.
+            ring: '0 0 0 2px var(--we-ring-color)',
+          },
         },
-      },
+        {
+          type: 'we-text',
+          props: { color: 'neutral-600' },
+          children: [
+            { type: 'we-number', props: { value: { $count: { items: { $store: 'modules.call.tiles' } } } } },
+            ' in the call',
+          ],
+        },
+      ],
     },
-  },
-};
+  ],
+});
 
 /**
  * Show the video, or put it away.
@@ -525,8 +655,8 @@ const placementMenu: SchemaNode = {
  * clear icon: it was cycling visibility, placement and size together, so a caret pointed in a
  * direction that meant nothing once the panel was docked to the right.
  *
- * Reads as "N people — click to see them", and follows the same active-variant convention as the
- * mute and camera toggles beside it, so the bar has one idea of what "on" looks like.
+ * Follows the same active-variant convention as the mute and camera toggles beside it, so the bar
+ * has one idea of what "on" looks like.
  */
 const participantsToggle: SchemaNode = {
   type: 'we-tooltip',
@@ -538,7 +668,7 @@ const participantsToggle: SchemaNode = {
     {
       type: 'we-button',
       props: {
-        size: 'sm',
+        square: true,
         variant: { $if: { condition: { $store: 'modules.call.stageOpen' }, then: 'secondary', else: 'ghost' } },
         onClick: { $action: 'modules.call.toggleStage' },
       },
@@ -547,17 +677,20 @@ const participantsToggle: SchemaNode = {
           type: 'we-icon',
           props: {
             /**
-             * The action, not the subject.
+             * The subject, with the state carried by the variant.
              *
-             * A person glyph says what the button is *about* and nothing about what pressing it
-             * does — and since the count beside it already names the subject, the icon was spending
-             * the only other slot repeating it. Expanding and contracting arrows say the one thing
-             * left to say, and swap so the button always shows the move it is offering.
+             * This was `arrows-out`/`arrows-in` — the action rather than the subject — on the
+             * grounds that the count beside it already named what the button was about. The count
+             * is its own readout now, so the arrows were left saying "expand" with no stated object
+             * in a bar where two other buttons also open things.
+             *
+             * One glyph rather than a pair, like the screen-share button: `secondary` versus `ghost`
+             * says whether the video is showing, which is the same answer every other toggle here
+             * gives, and the tooltip names the move.
              */
-            name: { $if: { condition: { $store: 'modules.call.stageOpen' }, then: 'arrows-in', else: 'arrows-out' } },
+            name: 'video-conference',
           },
         },
-        { type: 'we-number', props: { value: { $count: { items: { $store: 'modules.call.tiles' } } } } },
       ],
     },
   ],
@@ -584,12 +717,9 @@ const bar: SchemaNode = {
             top: CALL_BAR_TOP,
             left: '50%',
             transform: 'translateX(-50%)',
-            bg: 'neutral-0',
-            border: '1px solid neutral-200',
-            r: 'pill',
-            shadow: 'lg',
-            py: '200',
-            px: '300',
+            ...BAR_SURFACE,
+            r: BAR_RADIUS,
+            p: '200',
             gap: '300',
             ay: 'center',
             zIndex: 'sticky',
@@ -625,10 +755,21 @@ const bar: SchemaNode = {
       type: 'Row',
       props: {
         position: 'fixed',
-        // Swaps ends when the video is docked along the top, which is the only placement that wants
-        // the same corner of the screen as this does. See `barAtBottom`.
-        top: { $if: { condition: { $store: 'modules.call.barAtBottom' }, then: 'auto', else: CALL_BAR_TOP } },
-        bottom: { $if: { condition: { $store: 'modules.call.barAtBottom' }, then: CALL_BAR_TOP, else: 'auto' } },
+        /*
+          The top, pushed down by whatever has taken the top edge.
+
+          It used to swap ends when the stage was docked along the top, since both wanted that corner
+          and the small one should give. That was this module reasoning about its own panel, which it
+          can no longer see — but it does not need to: `--we-dock-top` is what *any* panel displacing
+          the top edge publishes, so this clears a docked notes panel exactly as it clears a call
+          stage, and reads the same way the horizontal terms below already do.
+
+          A panel that merely floats over the top is deliberately not dodged. It takes no room, the
+          user put it there by hand, and it is dragged by a grip this bar would then be covering —
+          chrome that ran away from a decision somebody just made is worse than an overlap they can
+          see and undo.
+        */
+        top: `calc(${CALL_BAR_TOP} + var(--we-dock-top, 0px))`,
         /**
          * Centred on the content, not the window.
          *
@@ -640,13 +781,10 @@ const bar: SchemaNode = {
          */
         left: 'calc(50% + (var(--we-sidebar-width, 0px) + var(--we-dock-left, 0px) - var(--we-dock-right, 0px)) / 2)',
         transform: 'translateX(-50%)',
-        transition: 'left var(--we-chrome-transition, 300ms) ease',
-        bg: 'neutral-0',
-        border: '1px solid neutral-200',
-        r: 'pill',
-        shadow: 'lg',
-        py: '200',
-        px: '300',
+        transition: 'left var(--we-chrome-transition, 300ms) ease, top var(--we-chrome-transition, 300ms) ease',
+        ...BAR_SURFACE,
+        r: BAR_RADIUS,
+        p: '200',
         gap: '200',
         ay: 'center',
         zIndex: 'sticky',
@@ -657,18 +795,32 @@ const bar: SchemaNode = {
           off: 'microphone-slash',
           enabled: 'modules.call.media.audioEnabled',
           action: 'modules.call.toggleAudio',
+          tip: { on: 'Mute', off: 'Unmute' },
         }),
         mediaToggle({
           on: 'video-camera',
           off: 'video-camera-slash',
           enabled: 'modules.call.media.videoEnabled',
           action: 'modules.call.toggleVideo',
+          tip: { on: 'Turn camera off', off: 'Turn camera on' },
         }),
         mediaToggle({
-          on: 'monitor',
-          off: 'monitor',
+          /*
+            The same glyph in both states, unlike the mute and camera buttons beside it.
+
+            `monitor-arrow-up` is a *subject*, not a state: it is your screen, going out. Dropping the
+            arrow while sharing read as the screen leaving — backwards, at the one moment the button
+            has something to report. So the variant carries the state, exactly as it does for the
+            show/hide toggle, and the glyph says what the button is about.
+
+            Sharing is also the one toggle here with no honest "off" icon: you are either sending a
+            screen or sending nothing, so a slash would be describing a state that does not exist.
+          */
+          on: 'monitor-arrow-up',
+          off: 'monitor-arrow-up',
           enabled: 'modules.call.media.screenShareEnabled',
           action: 'modules.call.toggleScreenShare',
+          tip: { on: 'Stop sharing your screen', off: 'Share your screen' },
         }),
         {
           // Where other modules put their call controls — see `anchors` below. The marker is replaced
@@ -677,15 +829,79 @@ const bar: SchemaNode = {
           type: '$slot',
           props: { anchor: CALL_CONTROLS_ANCHOR },
         },
-        { type: 'we-divider', props: { orientation: 'vertical', height: '20px' } },
+        /*
+          Show/hide sits with the devices, not with the call.
+
+          It was on the right, beside the participant readout, on the grounds that it is about the
+          video — but so is the camera button, and what actually separates the two groups is *whose*
+          they are. Everything left of the divider is something you do to your own machine: your
+          microphone, your camera, your screen, your transcript, and whether you are looking at the
+          video. Everything right of it is the call itself — who is in it, and how much room it has.
+        */
         participantsToggle,
-        placementMenu,
+        // Two thirds of a control's height, so it reads as a separator between groups rather than as
+        // a rule drawn down the whole bar. It moved with the buttons: at 20px against `sm` it was
+        // that already, and left alone against `md` it would have been half.
+        { type: 'we-divider', props: { orientation: 'vertical', height: '26px' } },
+        participants,
         {
-          type: 'we-button',
-          props: { size: 'sm', variant: 'danger', onClick: { $action: 'modules.call.leave' } },
-          children: [{ type: 'we-icon', props: { name: 'phone-x' } }],
+          type: 'we-tooltip',
+          props: { title: 'Leave the call', placement: 'bottom' },
+          children: [
+            {
+              // Square like the toggles at the other end, being an icon and nothing else.
+              type: 'we-button',
+              props: { square: true, variant: 'danger', onClick: { $action: 'modules.call.leave' } },
+              children: [{ type: 'we-icon', props: { name: 'phone-x' } }],
+            },
+          ],
         },
       ],
+    },
+  },
+};
+
+/**
+ * The call's audio, attached to the document independently of anything you can see.
+ *
+ * ## Why this exists at all
+ *
+ * Because sound and picture were one decision, and the picture is conditional in three separate
+ * places. A tile renders `we-video` only while that peer `hasPicture`; the stage renders tiles only
+ * while it is open; and the host unmounts a dock whose edge is null — deliberately, so a stage
+ * nobody is watching stops decoding video. Each of those is right on its own terms, and each one
+ * silenced the call, because a `<video>` element was the only thing a remote stream was ever
+ * attached to. Turn your camera off and nobody could hear you. Put the video away and the call went
+ * quiet — which is a valid thing to want and was the fastest way to break it.
+ *
+ * A call is audio first. So the audio hangs off `active` and nothing else: it is mounted from the
+ * moment you are in a call until you leave, at the same anchor as the control bar, whatever the
+ * stage is doing. One `we-audio` per remote participant, playing that peer's stream.
+ *
+ * ## Why not one element for everyone
+ *
+ * A `MediaStream` per peer is what the mesh produces — `ontrack` adds each arriving track to that
+ * peer's own stream — and mixing them into one would mean a `WebAudio` graph this module has no
+ * other use for. Per-peer also means a peer leaving takes their element with them, which is exactly
+ * what `$each` over the tiles already expresses.
+ *
+ * Remote tiles only: your own tile is your own microphone, and playing that back is a feedback loop.
+ *
+ * Nothing is visible. `we-audio` without `controls` draws nothing, and an audio element plays
+ * whether or not anything is painted for it — visibility and playback are unrelated for media
+ * elements, which is the whole property being relied on here.
+ */
+const audioSink: SchemaNode = {
+  type: '$if',
+  props: {
+    condition: { $store: 'modules.call.active' },
+    then: {
+      type: '$each',
+      props: {
+        items: { $filter: { items: { $store: 'modules.call.tiles' }, where: { isSelf: false } } },
+        as: 'tile',
+      },
+      children: [{ type: 'we-audio', props: { stream: '$tile.stream', autoplay: true } }],
     },
   },
 };
@@ -701,15 +917,13 @@ const problem: SchemaNode = {
       props: {
         position: 'fixed',
         /*
-          The end the call bar is not at.
+          The end the call bar is not at, which is now simply the bottom.
 
-          Both were pinned to `CALL_BAR_TOP`, so the alert opened underneath the controls — mostly
-          hidden, and with its dismiss button unreachable, which is a poor showing for the one piece
-          of UI whose entire job is to be read. `barAtBottom` already tracks which end the bar took;
-          taking the other one needs no new state and cannot collide by construction.
+          Both were pinned to `CALL_BAR_TOP` once, so the alert opened underneath the controls —
+          mostly hidden, and with its dismiss button unreachable, which is a poor showing for the one
+          piece of UI whose entire job is to be read. The bar no longer moves, so neither does this.
         */
-        top: { $if: { condition: { $store: 'modules.call.barAtBottom' }, then: CALL_BAR_TOP, else: 'auto' } },
-        bottom: { $if: { condition: { $store: 'modules.call.barAtBottom' }, then: 'auto', else: CALL_BAR_TOP } },
+        bottom: CALL_BAR_TOP,
         left: '50%',
         transform: 'translateX(-50%)',
         zIndex: 'sticky',
@@ -781,6 +995,14 @@ export const callModule = defineModule({
   slots: [
     { anchor: 'dock-bottom', node: bar, order: 100 },
     { anchor: 'dock-bottom', node: problem, order: 80 },
+    /*
+      The audio, at the same anchor as the bar rather than in the dock.
+
+      Chrome, not a panel: it renders nothing and takes no room, and it has to outlive every state
+      the stage can be in — including not existing. A slot contribution is mounted for as long as the
+      shell is, which is the property the sound needs and the dock deliberately does not have.
+    */
+    { anchor: 'dock-bottom', node: audioSink, order: 60 },
   ],
 
   /**
@@ -796,7 +1018,7 @@ export const callModule = defineModule({
    * those that nothing kept in step. Saying "the right edge, medium" and letting the host answer is
    * what makes the same declaration inset on a monitor and float on a laptop.
    */
-  docks: [{ edge: 'dockEdge', size: 'dockSize', float: 'dockFloat', node: stage }],
+  docks: [{ edge: 'dockEdge', size: 'dockSize', float: 'dockFloat', aspect: 'dockAspect', node: stage }],
 
   createStore: (deps: ModuleStoreDeps) => createCallStore(deps),
 });

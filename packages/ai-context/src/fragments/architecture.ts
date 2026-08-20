@@ -85,7 +85,8 @@ Glossary (these terms pervade stores, models, and \`$query\`/\`perspective\` in 
 | \`@we/widgets\` | design-system/5-widgets | Generic widgets (graph, sidebar) — feature widgets live in their module family | Solid |
 | \`@we/design-utils\` | design-system/utils | Shared DS-props → style computation; token resolvers | Neutral core + \`/solid\` binding |
 | \`@we/design-types\` | design-system/types | Shared DS prop/type definitions | Agnostic |
-| \`@we/template-kit\` | templates/kit | Reusable template fragments — authoring-time helpers that expand to plain nodes | Agnostic |
+| \`@we/schema-kit\` | schema-system/kit | Portable fragments — authoring-time helpers that expand to plain nodes, naming no store | Agnostic |
+| \`@we/template-kit\` | templates/kit | The same, for fragments that read WE's own stores (\`profileStore\`, \`spaceStore\`) | Agnostic |
 | \`@we/template-shell\` · \`@we/template-default\` | templates/* | WE's shell surfaces and built-in space templates, as data | Agnostic |
 | \`@we/editor\` | packages/editor | Template/theme editing surface, embeddable via \`EditorHost\` | Solid (mount fn at the boundary) |
 | \`@we/schema-shared\` | schema-system/shared | Schema semantics: prop resolvers, validation, indexer, registry types, reactivity port | **Agnostic** |

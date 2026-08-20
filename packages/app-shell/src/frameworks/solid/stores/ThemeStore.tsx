@@ -636,7 +636,17 @@ export function ThemeStoreProvider(props: ParentProps) {
     );
   }
 
-  const defaultThemeId: Accessor<string> = () => datasetStore.agentSettings()?.defaultThemeId || 'light';
+  /*
+    A memo, not a bare accessor, and the distinction matters well beyond this store.
+
+    `agentSettings` is a `{ equals: false }` signal — it notifies on every write, because
+    `updateAgentSettings` mutates the settings object in place and re-sets it, so identity cannot be
+    the test. A bare accessor passes that straight through: anything reading this inside an effect
+    became a subscriber to every unrelated preference write. `spaceStore`'s theme resolution reads it,
+    so toggling the theme scope switch re-ran the whole resolution and overwrote the theme the agent
+    had just picked. Memoising collapses "settings changed" back to "*this* value changed".
+  */
+  const defaultThemeId: Accessor<string> = createMemo(() => datasetStore.agentSettings()?.defaultThemeId || 'light');
 
   const themeManagementList: Accessor<ThemeManagementItem[]> = () => {
     const defaultId = defaultThemeId();

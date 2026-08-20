@@ -105,26 +105,43 @@ exactly the operator-language pressure named under the falsifiers. The full poli
 
 ---
 
-## `@we/template-kit`
+## Two packages
 
 ```
-src/
+@we/schema-kit          (schema-system/kit)   — names no store
   states/     emptyState · emptyNote · gatePrompt · skeletonList
   layout/     pageShell · sectionCard · attributeRow · statChip · railShell · railGroup · railItem
-  lists/      gridWrapper · cardShell · cardList · channelRail · collectionFeed · commentThread ·
-              kanbanBoard · loadMore · mediaGrid
-  overlays/   composerModal · confirmModal
+  lists/      gridWrapper · cardShell · cardList · kanbanBoard · loadMore · pickerRow
+  overlays/   composerModal · confirmModal · peopleTooltip · pickerPopover
   input/      field
-  we/         agentByline · peopleRow · peopleTooltip · adminSection · installedList · marketplaceList
+
+@we/template-kit        (templates/kit)       — names WE's stores; re-exports all of the above
+  lists/      channelRail · collectionFeed · commentThread · mediaGrid   (spaceStore.mutedDids)
+  we/         agentByline · peopleRow · adminSection · installedList · marketplaceList
 ```
 
-**Two tiers.** Everything outside `we/` names no store and is portable to any deployment. `we/` reads
-WE's own stores (`profileStore`, `runtimeStore`, `datasetStore`) or its schema machinery (`$agent`).
+**The tier is the package.** It was two directories in one package, which was fine while templates
+were the only consumer — and wrong the moment a feature module wanted a shape, because the kit sat
+under `templates/` and `modules → templates` is the sideways edge the dependency rules forbid. The
+call module hand-copied `peopleTooltip` rather than take that edge, which is duplication caused by
+packaging rather than by design.
 
-That split is not decoration. **The kit's real dependency is the host's store surface, and
+That split is not decoration. **The WE tier's real dependency is the host's store surface, and
 `package.json` cannot express it** — a fragment naming `spaceStore.members` resolves to nothing on a
 deployment without that store, silently. Keeping the tiers apart is how a consumer can tell which
 fragments will work for them, and it is the reason the store contract (below) matters.
+
+**A module may depend on `@we/schema-kit`, and only at compile time.** The fragments run during the
+module's build and what ships in its `dist` is the expanded data, so there is no runtime coupling, no
+version for host and module to agree on, and a module built against one version of a fragment keeps
+rendering when that fragment changes. Hence a devDependency in a module, never a peer — unlike
+`@we/module-shared` and `@we/schema-shared`, which are genuinely runtime contracts.
+
+**Enforcement is a test, because it cannot be a manifest.** `kit.test.ts` reads every file in
+`@we/schema-kit`, comments stripped, and fails on a `$store:` or `'$agent'`. The expansion walk beside
+it only covers fragments a fixture exists for — and the four collection fragments above, which all
+filter on `spaceStore.mutedDids`, were moved into the portable package during this split and caught
+by nothing until the source check existed.
 
 ### The ambient-scope contract
 

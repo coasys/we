@@ -119,6 +119,28 @@ function extractIconRefs(content: string): IconRef[] {
     refs.push({ name, weight: 'regular' });
   }
 
+  /*
+    Pattern 5: an icon named as a *value*, nowhere near a `we-icon`.
+
+    The patterns above all look for the element, which misses every icon that arrives as data — a
+    module's `icon`, a launcher's, a dropdown item's, a `triggerIcon`, or anything handed to a helper
+    that renders the element somewhere else entirely. That is most of the shell's own chrome: the call
+    bar builds its buttons through `mediaToggle({ on, off })`, the dock frame's position menu through
+    an `at(snap, label, icon)` helper, and not one of those names was ever collected. They all fell
+    through to the CDN — fine in development, blank squares on a desktop build with no connection,
+    which is a poor showing for an app whose whole claim is that it works offline.
+
+    Deliberately loose, because being wrong is cheap in exactly one direction: `readPhosphorSvg`
+    returns null for a name Phosphor does not have, so a false positive is skipped silently and costs
+    nothing. A false *negative* is an icon that does not render. Weight is always `regular` here —
+    a value-shaped icon has no weight attribute to read, and `regular` is what every one of these
+    call sites uses.
+  */
+  const valueIconRegex = /\b(?:icon|triggerIcon|iconSecondary|on|off)\s*:\s*['"]([a-z][a-z0-9-]{2,})['"]/g;
+  while ((match = valueIconRegex.exec(content)) !== null) {
+    refs.push({ name: match[1], weight: 'regular' });
+  }
+
   return refs;
 }
 

@@ -30,10 +30,6 @@ export function createStandaloneEditorHost(initial: TemplateSchema): {
   const [codeOpen, setCodeOpen] = createSignal(false);
   const [themeOpen, setThemeOpen] = createSignal(false);
   const [visualOpen, setVisualOpen] = createSignal(false);
-  const [aiW, setAiW] = createSignal(360);
-  const [codeW, setCodeW] = createSignal(420);
-  const [themeW, setThemeW] = createSignal(360);
-  const [visualW, setVisualW] = createSignal(320);
 
   const themes: EditorTheme[] = [{ id: 'default', name: 'Default', icon: 'paint-bucket', origin: 'built-in' }];
   const [currentThemeId, setCurrentThemeId] = createSignal('default');
@@ -141,14 +137,6 @@ export function createStandaloneEditorHost(initial: TemplateSchema): {
       closeThemePanel: () => setThemeOpen(false),
       visualPanelOpen: visualOpen,
       toggleVisualPanel: () => setVisualOpen((v) => !v),
-      aiPanelWidth: aiW,
-      codePanelWidth: codeW,
-      themePanelWidth: themeW,
-      visualPanelWidth: visualW,
-      setAiPanelWidth: setAiW,
-      setCodePanelWidth: setCodeW,
-      setThemePanelWidth: setThemeW,
-      setVisualPanelWidth: setVisualW,
 
       // No assistant in this harness — the editor's AI entry is simply not mounted.
       messages: () => [],

@@ -31,16 +31,22 @@ produces the same trees this package does. Where this goes next — extraction i
 provenance tags, marketplace sharing — is designed in
 [docs/architecture/template-fragments.md](../../../docs/architecture/template-fragments.md).
 
-## Two tiers
+## Two tiers, two packages
 
-| Tier      | Directories                                       | May reference                                                             |
-| --------- | ------------------------------------------------- | ------------------------------------------------------------------------- |
-| Portable  | `states/` `layout/` `lists/` `overlays/` `input/` | components, primitives, `$local` contracts it documents                   |
-| WE-domain | `we/`                                             | WE's stores (`profileStore`, `datasetStore`, `runtimeStore`) and `$agent` |
+| Tier      | Package                              | May reference                                                             |
+| --------- | ------------------------------------ | ------------------------------------------------------------------------- |
+| Portable  | `@we/schema-kit` (schema-system/kit) | components, primitives, `$local` contracts it documents                   |
+| WE-domain | `@we/template-kit` (this one)        | WE's stores (`profileStore`, `datasetStore`, `runtimeStore`) and `$agent` |
 
-The split is the package's honest dependency declaration. A fragment naming `spaceStore.members`
-resolves to nothing on a deployment without that store — silently — and `package.json` cannot say
-so. Nothing outside `we/` may name a store.
+The split is the kit's honest dependency declaration. A fragment naming `spaceStore.members` resolves
+to nothing on a deployment without that store — silently — and `package.json` cannot say so. Nothing
+in `@we/schema-kit` may name a store, and `kit.test.ts` reads its source to make sure.
+
+It became a package boundary when a feature module needed a fragment: the kit sat under `templates/`,
+`modules → templates` is a forbidden sideways edge, so the call module copied `peopleTooltip` by hand.
+A module imports `@we/schema-kit` directly — as a devDependency, since fragments expand at build time
+and leave no runtime dependency behind. This package re-exports all of it, so a template importing
+`@we/template-kit` sees exactly what it always did.
 
 ## What belongs here
 

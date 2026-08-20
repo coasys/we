@@ -39,7 +39,7 @@ import { THEME_SCOPE_ATTRIBUTE } from '@solid/stores/ThemeStore';
 import type { Stores } from '@solid/types';
 import { MemoryRouter, Route, useLocation, useNavigate } from '@solidjs/router';
 import { Column } from '@we/components/solid';
-import { panelResizing, RAIL_STRIP_WIDTH, TEMPLATE_RAILS_WIDTH, THEME_RAIL_WIDTH } from '@we/editor/runtime';
+import { panelResizing } from '@we/editor/runtime';
 import type { TemplateSchema } from '@we/schema-shared';
 import { themeToStyle } from '@we/schema-shared';
 import { lazy } from 'solid-js';
@@ -55,42 +55,19 @@ import { buildRoutes } from '../utils/buildRoutes';
 // Width of the collapsed shell sidebar — also set as --we-sidebar-width on :root.
 export const SHELL_SIDEBAR_WIDTH = '80px';
 
-// Right-edge offset of the content viewport — shrinks it to make room for the
-// theme/template editor rails and panels. Shared with PersistentAppFrames so the
-// persistent app iframes (rendered outside the template Router) line up with the
-// same viewport the template content occupies.
-/**
- * The right-edge chrome the *editor* is holding, in pixels.
- *
- * Split out because two different consumers need it separately. The content viewport wants it added
- * to whatever docks are taking, which is what `computeRightOffset` returns; the dock geometry wants
- * it on its own, as room already spoken for — a panel that ignored it opened directly on top of the
- * controls being used to edit the thing it was covering.
- */
-export function computeEditorRightOffset(stores: Stores): number {
-  let offset = 0;
-  if (stores.editorStore.isEditingTheme()) {
-    offset += THEME_RAIL_WIDTH;
-    if (stores.editorStore.themePanelOpen()) offset += stores.editorStore.themePanelWidth();
-  }
-  if (stores.editorStore.isEditingTemplate()) {
-    offset += TEMPLATE_RAILS_WIDTH;
-    if (stores.editorStore.isOpen()) offset += stores.editorStore.aiPanelWidth();
-    if (stores.editorStore.codePanelOpen()) offset += stores.editorStore.codePanelWidth();
-    if (stores.editorStore.contentMode() === 'visual') {
-      offset += RAIL_STRIP_WIDTH;
-      if (stores.editorStore.visualPanelOpen()) offset += stores.editorStore.visualPanelWidth();
-    }
-  }
-  return offset;
-}
-
 // Right-edge offset of the content viewport — shrinks it to make room for the editor's rails and
 // panels, and for any docked module. Shared with PersistentAppFrames so the persistent app iframes
 // (rendered outside the template Router) line up with the same viewport the template content
 // occupies.
 export function computeRightOffset(stores: Stores): string {
-  const offset = stores.shellStore.contentInset().right + computeEditorRightOffset(stores);
+  /*
+    Just the docks now.
+
+    The editor's own term used to be added here, because its panels positioned themselves and the
+    shell had to be told how much of the edge they had taken. They are docks themselves now, so they
+    are already in this sum — and the second term would have counted them twice.
+  */
+  const offset = stores.shellStore.contentInset().right;
   return offset ? `${offset}px` : '0px';
 }
 

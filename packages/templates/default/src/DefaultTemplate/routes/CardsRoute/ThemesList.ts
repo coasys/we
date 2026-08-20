@@ -9,7 +9,9 @@ export const themesList: SchemaNode = installedList({
   avatarIcon: '$theme.icon',
   key: '$theme.id',
   activeStorePath: 'themeStore.currentThemeId',
-  applyAction: 'themeStore.setCurrentTheme',
+  // The same act as picking one in the rail, so the same action: applying a theme here pins it to
+  // this space rather than setting a signal that the next resolution overwrites.
+  applyAction: 'spaceStore.applyTheme',
   defaultField: 'defaultThemeId',
   refreshAction: 'themeStore.refreshSpaceThemes',
 });
