@@ -6,7 +6,7 @@ on:
   pull_request:
 
 # One run per branch/PR — a second push cancels the in-flight run instead of
-# duplicating the full AD4M source build.
+# duplicating the work.
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
@@ -22,62 +22,10 @@ jobs:
         with:
           node-version: '24'
 
-      # WE runs under the pnpm major developers actually use (packageManager:
-      # pnpm@10.18.3).  ad4m's monorepo uses object-format pnpm.overrides which
-      # pnpm v10 rejects, so its install (below) is invoked via `npx pnpm@9`
-      # without touching the global binary.
+      # Matches the repo's `packageManager` field, so CI resolves dependencies
+      # exactly as a developer's machine does.
       - name: Install pnpm
         run: npm install -g pnpm@10.18.3
-
-      - name: Detect branch
-        id: branch
-        run: |
-          BRANCH="${GITHUB_HEAD_REF:-${GITHUB_REF#refs/heads/}}"
-          echo "name=$BRANCH" >> "$GITHUB_OUTPUT"
-          if git ls-remote --exit-code --heads \
-            https://github.com/coasys/ad4m.git "$BRANCH" >/dev/null 2>&1; then
-            echo "ad4m_branch=$BRANCH" >> "$GITHUB_OUTPUT"
-            echo "✅ Found matching AD4M branch: $BRANCH"
-          else
-            echo "ad4m_branch=dev" >> "$GITHUB_OUTPUT"
-            echo "ℹ️ No matching AD4M branch — using dev"
-          fi
-
-      # --- AD4M linked build (published packages have broken workspace: refs) ---
-
-      - name: Clone AD4M
-        run: |
-          git clone --depth 1 --single-branch \
-            --branch "${{ steps.branch.outputs.ad4m_branch }}" \
-            https://github.com/coasys/ad4m.git ad4m
-
-      - name: Get AD4M commit hash
-        id: ad4m-hash
-        run: |
-          HASH=$(cd ad4m && git rev-parse HEAD)
-          echo "hash=$HASH" >> "$GITHUB_OUTPUT"
-          echo "AD4M commit: $HASH"
-
-      - name: Cache AD4M built outputs
-        id: ad4m-cache
-        uses: actions/cache@v4
-        with:
-          path: |
-            ad4m/node_modules
-            ad4m/core/lib
-            ad4m/connect/dist
-          key: ad4m-sdk-${{ steps.ad4m-hash.outputs.hash }}
-
-      - name: Install & build AD4M packages
-        if: steps.ad4m-cache.outputs.cache-hit != 'true'
-        run: |
-          cd ad4m
-          npx -y pnpm@9.15.0 install --no-frozen-lockfile
-
-          cd core && npx -y pnpm@9.15.0 exec tsc && npx -y pnpm@9.15.0 run bundle && cd ..
-          cd connect && npx -y pnpm@9.15.0 run build && cd ..
-
-      # --- WE build ---
 
       # Cache the pnpm content-addressable store, not node_modules: the
       # workspace nests packages 2–4 levels deep, so a node_modules glob
@@ -93,34 +41,28 @@ jobs:
           key: pnpm-store-${{ hashFiles('pnpm-lock.yaml') }}
           restore-keys: pnpm-store-
 
-      # Gate lockfile drift while package.json is still pristine — the AD4M
-      # override rewrite below necessarily diverges from the lockfile, so this
-      # is the only point where --frozen-lockfile can be meaningful.
-      - name: Check lockfile is in sync
-        run: pnpm install --frozen-lockfile --ignore-scripts
-
-      - name: Override AD4M packages with local builds
-        run: |
-          node -e "
-            const pkg = require('./package.json');
-            pkg.pnpm = pkg.pnpm || {};
-            pkg.pnpm.overrides = pkg.pnpm.overrides || {};
-            pkg.pnpm.overrides['@coasys/ad4m'] = 'file:./ad4m/core';
-            pkg.pnpm.overrides['@coasys/ad4m-connect'] = 'file:./ad4m/connect';
-            require('fs').writeFileSync('./package.json', JSON.stringify(pkg, null, 2) + '\n');
-          "
-
-      # --no-frozen-lockfile is required here (the file: overrides above are
-      # deliberate lockfile drift); sync with the committed manifests was
-      # already verified by the frozen install before the rewrite.
-      - name: Install WE dependencies
-        run: pnpm install --no-frozen-lockfile
-
-      - name: Clear build caches for linked SDK
-        run: |
-          rm -rf .turbo node_modules/.cache
-          find . -name '.turbo' -type d -not -path './ad4m/*' -not -path './node_modules/*' -exec rm -rf {} + 2>/dev/null || true
-          find . -name '.vite' -type d -path '*/node_modules/.vite' -not -path './ad4m/*' -exec rm -rf {} + 2>/dev/null || true
+      # Frozen, and nothing rewrites it afterwards.
+      #
+      # This job used to clone the AD4M repo, build its SDK from source, and point
+      # `pnpm.overrides` at the result — so it validated WE against whatever AD4M's
+      # `dev` branch happened to hold at the moment the job ran, rather than against
+      # the version this repo pins. Three things followed from that: the same WE
+      # commit could go from green to red with no WE change (and did — `dev` sat red
+      # for two days while every developer's machine built cleanly); a green build
+      # said nothing about the combination anyone actually runs or would ship; and
+      # the failure surfaced as a TypeScript error inside WE's own source, naming
+      # nothing that would lead a reader to the real cause.
+      #
+      # The justification for it — that the published packages carry broken
+      # `workspace:` refs — does not hold: `@coasys/ad4m` publishes none at all, and
+      # `@coasys/ad4m-connect`'s single one is in `devDependencies`, which a consumer
+      # never installs.
+      #
+      # Testing WE against unreleased AD4M is still worth doing; it just cannot be
+      # the gate that decides whether a WE change may merge. It lives in
+      # `ad4m-compat.yaml`, on a schedule and on demand.
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
 
       - name: Lint
         run: NODE_OPTIONS='--max-old-space-size=8192' pnpm lint
@@ -144,19 +86,16 @@ jobs:
       # `--porcelain` covers modified, deleted and untracked in one check, and cannot go out of date.
       - name: Check generated files are committed
         run: |
-          # Three exclusions, all of them things *this workflow* put there: `package.json` and the
-          # lockfile are rewritten a few steps up to point the AD4M overrides at the locally built
-          # copies, and `ad4m/` is the source clone itself, which is untracked by design. Everything
-          # else in the tree is fair game — which is the point, and why this cannot go stale the way
-          # the old list did.
-          EXCLUDES=(':(exclude)package.json' ':(exclude)pnpm-lock.yaml' ':(exclude)ad4m')
-          DRIFT="$(git status --porcelain -- . "${EXCLUDES[@]}")"
+          # No exclusions. This check used to exempt `package.json`, `pnpm-lock.yaml` and `ad4m/`,
+          # all three of which were things the workflow itself had put there — it rewrote the
+          # manifest and lockfile to point at a local SDK build, then had to agree not to notice.
+          # Nothing rewrites them now, so the check covers the whole tree, and a build that touches
+          # the manifest or the lockfile is a finding rather than an exemption.
+          DRIFT="$(git status --porcelain)"
           if [ -n "$DRIFT" ]; then
             echo '::error::The build changed tracked files — run `pnpm build` and commit the regenerated output.'
             echo "$DRIFT"
-            # Same exclusions as the check — otherwise the diff prints the workflow's own
-            # package.json/lockfile rewrite underneath the real finding and reads as the cause.
-            git diff --stat -- . "${EXCLUDES[@]}"
+            git diff --stat
             exit 1
           fi
 
