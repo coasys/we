@@ -156,7 +156,7 @@ export const edgeDetailModal: SchemaNode = {
                         onClick: {
                           $action: 'model.delete',
                           args: ['Relationship', '$link.id'],
-                          onSuccess: [close, { $toggleLocal: 'revision' }],
+                          onSuccess: [close, { $setLocal: 'revision', by: 1 }],
                         },
                       },
                       children: [{ type: 'we-icon', props: { name: 'trash' } }, 'Remove'],

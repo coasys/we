@@ -1,6 +1,8 @@
 import type { SchemaNode } from '@we/schema-shared';
 import { composerModal, emptyState } from '@we/template-kit';
 
+import { selectNode } from './NodeDetail';
+
 /**
  * The board — the same engine, with position as the data.
  *
@@ -60,7 +62,7 @@ const boardCards: SchemaNode = {
     controls: ['zoom-in', 'zoom-out', 'fit', 'lock'],
     height: '100%',
     revision: { $local: 'revision' },
-    onNodeClick: { $setLocal: 'selected', from: '$event' },
+    onNodeClick: selectNode,
     /*
       The drop, written back.
 
@@ -175,7 +177,7 @@ const newBoardModal: SchemaNode = {
                   onSuccess: [
                     { $setLocal: 'boardId', from: '$result.id' },
                     { $setLocal: 'newBoardOpen', value: false },
-                    { $toggleLocal: 'revision' },
+                    { $setLocal: 'revision', by: 1 },
                   ],
                 },
               },

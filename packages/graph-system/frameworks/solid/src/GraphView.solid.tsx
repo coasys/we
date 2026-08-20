@@ -155,7 +155,17 @@ export function GraphView(props: GraphViewProps) {
           // The behaviour only knows an address; the template wants the node, so it is resolved
           // here where the store is in reach.
           const node = engine.store.node(event.node.id);
-          if (node) props.onNodeClick?.(node);
+          if (!node) break;
+          const at = parseAddress(node.id);
+          props.onNodeClick?.({
+            ...node,
+            ...(at?.kind === 'entity' && { recordId: at.id }),
+            fields: Object.entries(node.data ?? {})
+              // Nulls dropped rather than rendered as "null": an absent property is absent, and a
+              // panel listing it as a value states something the record does not.
+              .filter(([, value]) => value !== null && value !== '')
+              .map(([name, value]) => ({ name, value: String(value) })),
+          });
           break;
         }
         case 'nodeDoubleClick': {
@@ -297,6 +307,17 @@ export function GraphView(props: GraphViewProps) {
   // Following the data is not part of what the graph *is*, so toggling it neither reloads nor
   // re-lays-out — it only starts or stops the listening.
   createEffect(() => engine.setLive(props.live !== false));
+
+  // An expansion asked for from outside a gesture. Compared by value for the same reason `seeds` is:
+  // a host that rebuilds its prop object would otherwise re-expand on every unrelated change.
+  createEffect((previous: string | undefined) => {
+    const request = props.expandRequest;
+    const next = JSON.stringify(request ?? null);
+    if (previous !== undefined && previous !== next && request?.id) {
+      void engine.expand(request.id, request.direction, request.expanders);
+    }
+    return next;
+  });
 
   // A layout swap rearranges what is already loaded rather than reloading it — the whole point of
   // offering several layouts is to see the same graph differently.

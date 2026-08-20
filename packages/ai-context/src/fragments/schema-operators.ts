@@ -293,6 +293,8 @@ Read:  { "$local": "name" } — returns the signal value (reactive).
 Write: { "$setLocal": "name", "from": "$event.target.value" } — event handler that updates the signal.
        { "$setLocal": "name", "value": "literal" } — sets to a literal value (string, number, boolean, null, object).
        { "$setLocal": "name", "merge": { "field": "$event.detail" } } — shallow-merges fields into an object-typed signal. Values are resolved as event paths (e.g. "$event.detail") or passed as literals. Use for partial updates to object state.
+       { "$setLocal": "name", "by": 20 } — adds to a NUMBER field, reading the current value first. The only arithmetic the schema layer has: use it to advance a page size ("show 20 more") or bump a counter something else watches. A non-numeric current value counts as 0.
+Note "value" is a LITERAL and is not resolved — a token object inside it is stored as the object, not as what it would resolve to. To store something computed, bind the prop that reads it instead, or use "from"/"merge", whose values ARE resolved as event paths.
 Toggle: { "$toggleLocal": "fieldName" } — toggles a boolean field (equivalent to setting it to !current). Use for show/hide, open/close, expand/collapse patterns.
 Toggle one of many: { "$toggleLocalIn": "fieldName", "value": "$group.id" } — adds the value to an
   array-typed field, or removes it if already there. Read it back with $in:

@@ -3520,7 +3520,12 @@
         },
         {
           "name": "onNodeClick",
-          "type": "((node: GraphNode) => void)",
+          "type": "((node: GraphNode & { recordId?: string; fields: { name: string; value: string; }[]; }) => void)",
+          "optional": true
+        },
+        {
+          "name": "expandRequest",
+          "type": "{ id: string; expanders?: string[]; direction?: \"in\" | \"out\" | \"both\"; } | null",
           "optional": true
         },
         {

@@ -51,10 +51,9 @@ export interface GraphViewProps {
    * the new record turns up as one more node among the ones the user arranged. Rows that have gone
    * are dropped, unless an expansion is still holding them.
    *
-   * Any value works — only the fact that it *changed* matters, so the natural shape in a template is
-   * a `$localState` boolean flipped with `$toggleLocal` from a create action's `onSuccess`. There is
-   * no arithmetic in the schema language, so a counter is not something a template can increment;
-   * this takes a boolean precisely so the one available "something happened" gesture is enough.
+   * Any value works — only the fact that it *changed* matters. In a template that is a `$localState`
+   * number bumped with `{ $setLocal: 'revision', by: 1 }` from a create action's `onSuccess`, or a
+   * boolean flipped with `$toggleLocal`; both say the same thing to the graph.
    */
   revision?: number | string | boolean;
   /**
@@ -105,7 +104,28 @@ export interface GraphViewProps {
    */
   controls?: string[];
 
-  onNodeClick?: (node: GraphNode) => void;
+  /**
+   * A click on a node, with its scalars flattened into a list.
+   *
+   * `data` is a record, and a schema has no way to iterate one — `$each` takes an array. A panel
+   * that wants to show what a node actually holds needs `fields`, and deriving it here is the only
+   * place it can be done at all.
+   */
+  onNodeClick?: (node: GraphNode & { recordId?: string; fields: { name: string; value: string }[] }) => void;
+  /**
+   * Ask the graph to open a node, from outside a gesture.
+   *
+   * Double-clicking expands a node with whatever `expansion.expanders` names, which is one question.
+   * "Show me this record's own fields" and "show me what it relates to" are two, and a map that can
+   * only ask one of them makes an instance something you look at rather than something you open.
+   * Naming the expanders here is how a panel asks the second question of a node already open for the
+   * first.
+   *
+   * Acts when the value *changes*, like `revision`, so it is a request rather than a state; set it
+   * back to null when the selection changes, or selecting a node would re-run the last request
+   * against it.
+   */
+  expandRequest?: { id: string; expanders?: string[]; direction?: 'in' | 'out' | 'both' } | null;
   onNodeDoubleClick?: (node: GraphNode) => void;
   /**
    * A click on an edge, with the record behind it resolved where there is one.

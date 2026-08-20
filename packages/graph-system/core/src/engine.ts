@@ -520,10 +520,18 @@ export class GraphEngine {
    * Clicking an exhausted node is a no-op rather than a re-fetch: an expansion that silently repeats
    * itself looks identical to one that is broken.
    */
-  async expand(id: string, direction?: ExpandDirection): Promise<void> {
+  async expand(id: string, direction?: ExpandDirection, expanders?: string[]): Promise<void> {
     const node = this.store.node(id);
     if (!node) return;
-    if (this.expansion.isExpanded(id) && !this.expansion.hasMore(id)) return;
+    /*
+      An override reopens a node that is already open.
+
+      "Open its relations" and "open its properties" are different questions about the same node,
+      and the ordinary guard — an exhausted node ignores a second click — would answer the second
+      one with silence. Only when the caller names the expanders, so double-clicking an exhausted
+      node still does nothing, which is what stops a repeat expansion looking like a broken one.
+    */
+    if (!expanders && this.expansion.isExpanded(id) && !this.expansion.hasMore(id)) return;
     // Refusing because the graph is full is itself worth saying. Landing exactly on the ceiling used
     // to stop expansion without ever tripping the flag, so the map went quiet with no explanation —
     // which is the precise failure the budget exists to prevent.
@@ -533,8 +541,8 @@ export class GraphEngine {
     }
 
     const spec = this.spec.expansion ?? {};
-    const expanders = this.registry.expandersFor(node.kind, node.type, spec.expanders);
-    if (!expanders.length) {
+    const chosen = this.registry.expandersFor(node.kind, node.type, expanders ?? spec.expanders);
+    if (!chosen.length) {
       this.warn(`nothing can expand a ${node.kind}/${node.type} node`);
       return;
     }
@@ -561,7 +569,7 @@ export class GraphEngine {
     let cursor: string | undefined;
 
     try {
-      for (const expander of expanders) {
+      for (const expander of chosen) {
         const result = await expander.expand({ ...request }, this.context).catch((error: unknown) => {
           this.warn(`expander "${expander.id}" failed on ${id}: ${describe(error)}`);
           return undefined;

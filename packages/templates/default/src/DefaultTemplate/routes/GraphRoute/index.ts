@@ -3,6 +3,7 @@ import { recordFormModal } from '@we/template-kit';
 
 import { boardBar, boardCanvas, boardQuery } from './Board';
 import { edgeDetailModal } from './EdgeDetail';
+import { expandRequest, nodeDetailStrip, selectNode } from './NodeDetail';
 
 /**
  * The graph route — three graphs over the same space, switchable.
@@ -67,7 +68,8 @@ const schemaGraph: SchemaNode = {
     behaviours: ['pan-zoom', 'select', { type: 'drag-node' }],
     height: '100%',
     revision: { $local: 'revision' },
-    onNodeClick: { $setLocal: 'selected', from: '$event' },
+    onNodeClick: selectNode,
+    expandRequest,
   },
 };
 
@@ -124,7 +126,8 @@ const knowledgeGraph: SchemaNode = {
     ],
     height: '100%',
     revision: { $local: 'revision' },
-    onNodeClick: { $setLocal: 'selected', from: '$event' },
+    onNodeClick: selectNode,
+    expandRequest,
     onEdgeClick: { $setLocal: 'selectedEdge', from: '$event' },
     // Straight to the store: it opens the same record form every other model uses, on
     // `Relationship`, holding the two ends the gesture produced.
@@ -162,7 +165,8 @@ const contentGraph: SchemaNode = {
     behaviours: ['pan-zoom', 'select', 'expand-on-double-click'],
     height: '100%',
     revision: { $local: 'revision' },
-    onNodeClick: { $setLocal: 'selected', from: '$event' },
+    onNodeClick: selectNode,
+    expandRequest,
   },
 };
 
@@ -206,6 +210,14 @@ export const graphRoute: RouteSchema = {
     */
     connecting: { type: 'boolean', initial: false },
     /*
+      Which kind of expansion the panel last asked for, and the whole of the request's state.
+
+      A kind rather than the request itself, because `$setLocal`'s `value` is a literal — a token
+      inside it is stored as the token — so a button cannot write the selected node's id into an
+      object. The request is composed from this plus the selection; see `NodeDetail`.
+    */
+    expandKind: { type: 'string', initial: '' },
+    /*
       Which board is open, mirrored into the URL.
 
       View state in the strict sense: someone sent a link to a board, and the recipient should see
@@ -216,17 +228,14 @@ export const graphRoute: RouteSchema = {
     newBoardOpen: { type: 'boolean', initial: false },
     newCardOpen: { type: 'boolean', initial: false },
     /*
-      Flipped after a record is created, which tells the graph to re-read and merge.
-
-      A boolean rather than a counter because the schema language has no arithmetic — `$toggleLocal`
-      is the whole of "something happened", and the graph only compares the value to the last one.
+      Bumped after a record is created, which tells the graph to re-read and merge.
 
       Belt and braces beside the live watches the engine holds: a watch depends on the backend
       reporting the write, and this is the one case where the template *knows* something changed
       because it is what changed it. The graph merges either way, so the update arriving twice costs
       a query and changes nothing on screen.
     */
-    revision: { type: 'boolean', initial: false },
+    revision: { type: 'number', initial: 0 },
   },
   children: [
     /*
@@ -340,7 +349,7 @@ export const graphRoute: RouteSchema = {
       board work says so twice. A modal is not a compromise here: what is being authored is a
       record, which has nothing to do with where it will land.
     */
-    recordFormModal({ onCreated: [{ $toggleLocal: 'revision' }] }),
+    recordFormModal({ onCreated: [{ $setLocal: 'revision', by: 1 }] }),
 
     {
       type: 'Column',
@@ -365,44 +374,7 @@ export const graphRoute: RouteSchema = {
       ],
     },
 
-    {
-      type: '$if',
-      props: {
-        condition: { $local: 'selected' },
-        // The strip spans the window so its background and rule reach the edges; its contents sit on
-        // the template's measure, like the header above. Same reasoning, same numbers.
-        then: {
-          type: 'Row',
-          props: {
-            width: '100%',
-            ax: 'center',
-            py: '300',
-            bg: 'neutral-50',
-            borderTop: '1px solid neutral-200',
-          },
-          children: [
-            {
-              type: 'Row',
-              props: { width: '100%', maxWidth: 'var(--we-layout-lg)', gap: '300', ay: 'center', px: '400' },
-              children: [
-                { type: 'we-badge', children: [{ $local: 'selected.type' }] },
-                { type: 'we-text', props: { fontWeight: '600' }, children: [{ $local: 'selected.label' }] },
-                {
-                  type: 'we-button',
-                  props: {
-                    size: 'xs',
-                    variant: 'ghost',
-                    ml: 'auto',
-                    onClick: { $setLocal: 'selected', value: null },
-                  },
-                  children: [{ type: 'we-icon', props: { name: 'x' } }],
-                },
-              ],
-            },
-          ],
-        },
-      },
-    },
+    nodeDetailStrip,
 
     edgeDetailModal,
   ],
