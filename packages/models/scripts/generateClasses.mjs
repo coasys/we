@@ -251,6 +251,22 @@ function emitTypes(defs) {
       if (spec.cardinality === 'one') L.push(`  ${rname}?: ${spec.target}Model;`);
       else L.push(`  ${rname}: ${def.typedArrays?.includes(rname) ? `${spec.target}Model[]` : 'string[]'};`);
     }
+    // Accessor methods are contract where consumers call them: every relation listed in
+    // methodRelations, and every to-one's setter. Loosely-typed parameters — how a backend
+    // addresses the related record is its own business.
+    for (const [rname, spec] of Object.entries(e.relations)) {
+      const cap = rname[0].toUpperCase() + rname.slice(1);
+      if (spec.cardinality === 'one') {
+        L.push(`  set${cap}(value: ${spec.target}Model): Promise<unknown>;`);
+      } else if (def.methodRelations?.includes(rname)) {
+        // Mirrors the accessor trio the AD4M lane generates: add/remove one, set the whole list —
+        // addressed by id or by a record carrying one. There is deliberately no get: reading
+        // relations is the query layer's job (include), not an accessor's.
+        L.push(`  add${cap}(value: string | { id: string }): Promise<unknown>;`);
+        L.push(`  remove${cap}(value: string | { id: string }): Promise<unknown>;`);
+        L.push(`  set${cap}(values: (string | { id: string })[]): Promise<unknown>;`);
+      }
+    }
     L.push('}');
     L.push('');
   }
@@ -280,6 +296,15 @@ function emitConformance(defs) {
     L.push(`  Satisfies<InstanceType<typeof C.${name}>, M.${name}Model>,`);
   }
   L.push('];');
+  L.push('');
+  L.push('/*');
+  L.push(' * The STATIC surface (ModelStatic, what the entity proxies are typed as) is deliberately not');
+  L.push(' * asserted here: the AD4M statics are `this`-polymorphic generics — `this: typeof Ad4mModel &');
+  L.push(' * (new (…) => T)` — and a detached method carrying that constraint satisfies no interface');
+  L.push(' * member, however compatible the call actually is. The guarantee is held at runtime instead:');
+  L.push(' * the proxy binds `this` at call time, and every store call in the test suite exercises the');
+  L.push(' * statics through the same proxies production uses.');
+  L.push(' */');
   L.push('');
   writeFileSync(resolve(MANIFEST_DIR, 'conformance.ts'), L.join('\n'));
 }

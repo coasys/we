@@ -1,7 +1,10 @@
 import type { PerspectiveProxy } from '@coasys/ad4m';
 import { Ad4mModel, getPropertiesMetadata } from '@coasys/ad4m';
-import type { CollectionBlock, FileData } from '@we/models';
+import type { FileData } from '@we/models';
 import { asFileField, dataURIToFileData } from '@we/models';
+// The class, not the root's neutral stand-in type: this module already lives in the AD4M lane —
+// it hands models to @coasys metadata APIs — so it types against the implementation it works on.
+import type { CollectionBlock } from '@we/models/classes';
 
 import type { CollectionMode } from './modes';
 import { isReconcilable } from './modes';

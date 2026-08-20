@@ -42,3 +42,12 @@ export type AssertClassesSatisfyContract = [
   Satisfies<InstanceType<typeof C.Theme>, M.ThemeModel>,
   Satisfies<InstanceType<typeof C.VideoBlock>, M.VideoBlockModel>,
 ];
+
+/*
+ * The STATIC surface (ModelStatic, what the entity proxies are typed as) is deliberately not
+ * asserted here: the AD4M statics are `this`-polymorphic generics — `this: typeof Ad4mModel &
+ * (new (…) => T)` — and a detached method carrying that constraint satisfies no interface
+ * member, however compatible the call actually is. The guarantee is held at runtime instead:
+ * the proxy binds `this` at call time, and every store call in the test suite exercises the
+ * statics through the same proxies production uses.
+ */

@@ -478,7 +478,8 @@ export interface SpaceStore {
    * (`AdapterCapabilities.relationFilters`). So this reads the space's nodes and filters them, which
    * is fine for a space and wrong for an inbox spanning many. Pushdown is the fix, not pagination.
    */
-  myMentions: Accessor<{ id: string; author: string; createdAt: string }[]>;
+  /** `createdAt` is the backend's comparable timestamp (epoch millis in the AD4M lane). */
+  myMentions: Accessor<{ id: string; author: string; createdAt: number }[]>;
   /**
    * Put a file somewhere the space can reference, and return the URL that points at it.
    *
@@ -1193,7 +1194,14 @@ export function SpaceStoreProvider(props: ParentProps) {
     if (!p) return;
     const existingRoot = await CollectionBlock.findOne(p, { where: { id: postId } });
     if (!existingRoot) return;
-    await reconcileBlocks(p, existingRoot, json as SerializedBlockNode);
+    // The seam between the neutral store and the AD4M-lane block persistence: the instance IS the
+    // registered backend's class at runtime, and reconcileBlocks hands it to @coasys metadata
+    // APIs. Goes away when block persistence moves behind a port (see PR doc follow-ups).
+    await reconcileBlocks(
+      p,
+      existingRoot as unknown as Parameters<typeof reconcileBlocks>[1],
+      json as SerializedBlockNode,
+    );
   }
 
   /**
@@ -1638,7 +1646,9 @@ export function SpaceStoreProvider(props: ParentProps) {
   });
 
   /** Nodes in this space naming this agent. See the interface for why the filter is not pushed down. */
-  const [myMentions, setMyMentions] = createSignal<{ id: string; author: string; createdAt: string }[]>([]);
+  // Typed number because that is what hydration actually returns — the old `string` here was
+  // only ever satisfied by `any` flowing through untyped model fields.
+  const [myMentions, setMyMentions] = createSignal<{ id: string; author: string; createdAt: number }[]>([]);
 
   createEffect(() => {
     const ds = datasetStore.currentDataset();
@@ -1654,7 +1664,9 @@ export function SpaceStoreProvider(props: ParentProps) {
         setMyMentions(
           nodes
             .filter((node) => (Array.isArray(node.mentions) ? node.mentions : []).includes(did))
-            .map((node) => ({ id: node.id, author: node.author, createdAt: node.createdAt }))
+            // The contract keeps timestamps' representation the backend's business; comparison is
+            // the consumer's, made explicit here.
+            .map((node) => ({ id: node.id, author: node.author, createdAt: Number(node.createdAt) }))
             .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1)),
         );
       } catch (error) {

@@ -1,32 +1,32 @@
 /**
- * The neutral instance contract every backend's model implementations answer to.
+ * WE's additions to the neutral instance contract.
  *
- * What a consumer may rely on about *any* record, whatever holds it: an id, who wrote it, when,
- * and the mutation methods the CRUD conventions use — mutate by assigning fields and calling
- * `save()`; there is deliberately no instance `update`. Deliberately minimal — everything else a
- * model instance offers is either declared per-entity (the generated interfaces in `types.ts`)
- * or a backend's own ergonomics (relation accessor methods, query sugar), which conformance
- * neither requires nor forbids.
- *
- * `createdAt`/`updatedAt` are `unknown` rather than a committed representation: the AD4M lane
- * hands back epoch numbers parsed from ISO strings, and another backend may reasonably differ.
- * Committing the contract to one shape here would make every consumer's comparison code a silent
- * porting hazard instead of a visible one.
+ * `ModelInstance` itself — id, author, timestamps, save/delete — lives in `@we/backend-shared`
+ * beside the query IR it types (`modelContract.ts`); this module carries only what is WE's:
+ * the shared relations every WeNode-based entity offers, declared once in `shared.ts` and typed
+ * once here.
  */
-export interface ModelInstance {
-  readonly id: string;
-  author: string;
-  createdAt: unknown;
-  updatedAt: unknown;
-  save(): Promise<unknown>;
-  delete(): Promise<unknown>;
+import type { ModelInstance } from '@we/backend-shared';
+
+export type { ModelInstance };
+
+/** One shared relation's accessor trio — add/remove one, set the whole list, addressed by id. */
+interface RelationAccessors<K extends string> {
+  addOne: { [P in K as `add${Capitalize<P>}`]: (value: string | { id: string }) => Promise<unknown> };
+  removeOne: { [P in K as `remove${Capitalize<P>}`]: (value: string | { id: string }) => Promise<unknown> };
+  setAll: { [P in K as `set${Capitalize<P>}`]: (values: (string | { id: string })[]) => Promise<unknown> };
 }
+type SharedRelationMethods<K extends string> = RelationAccessors<K>['addOne'] &
+  RelationAccessors<K>['removeOne'] &
+  RelationAccessors<K>['setAll'];
 
 /**
- * What every WeNode-based entity additionally carries — the shared relations declared once in
- * `shared.ts`, as the URI bags they are stored as.
+ * What every WeNode-based entity additionally carries — the shared relations as stored URI bags,
+ * with their accessor trios (consumers write rosters via `addParticipants` and the like, so the
+ * accessors are contract, exactly as they are for the per-entity relations in `types.ts`).
  */
-export interface WeNodeModel extends ModelInstance {
+export interface WeNodeModel
+  extends ModelInstance, SharedRelationMethods<'comments' | 'signals' | 'participants' | 'calls' | 'mentions'> {
   comments: string[];
   signals: string[];
   participants: string[];
