@@ -1838,19 +1838,19 @@ ProfileStore:
 
 RecordStore:
 - State:
-  - creatableEntities: unknown
-  - recordDraft: unknown
-  - recordErrors: unknown
-  - savingRecord: unknown
-  - lastCreatedId: unknown
-  - pendingLink: unknown
+  - creatableEntities: { label, value, icon, group }[] — models a person can create an instance of here, ready for a we-select: this space's own models first, then WE's built-in content types. A model appears here by declaring `authoring` in the manifest, or by being a shape this community defined
+  - recordDraft: the open form's draft ({ entity, label, icon, fields[] }) or null while closed — its non-nullness is what mounts the modal. Each field is { name, label, control, required, options, placeholder, value }, derived from the model's own declaration, so a form exists for a model nobody wrote a form for
+  - recordErrors: string[] — validation errors from the last save attempt, plus any backend failure
+  - savingRecord: boolean — a create is in flight
+  - lastCreatedId: string — the id of the last record created, empty before the first. Read it to act on what was just made; kept in the store because an $action's onSuccess can read a store and cannot hold a value
+  - pendingLink: the two records a pending connection joins ({ sourceId, sourceType, sourceLabel, targetId, targetType, targetLabel }), or null when the open form is an ordinary one. Read it to name what is being connected
 - Actions:
-  - openRecordForm(): unknown
-  - connectNodes(): unknown
-  - setRecordEntity(): unknown
-  - setRecordField(): unknown
-  - cancelRecordForm(): unknown
-  - saveRecord(): unknown
+  - openRecordForm(entity?): opens the create form — on that model, or on the first offered one. Clears any pending connection
+  - connectNodes(link): opens the form on a Relationship joining two records. Takes the graph's onEdgeCreate payload as it arrives
+  - setRecordEntity(entity): switches which model is being created, discarding what was typed
+  - setRecordField(name, value): sets one field. Takes the field name, so one action serves every control — which is the only shape that works when the fields come from data
+  - cancelRecordForm(): closes the form, discarding it
+  - saveRecord(): validates and creates. Errors land in recordErrors and the form stays open holding what was typed; success closes it and sets lastCreatedId
 
 RouteStore:
 - State:
