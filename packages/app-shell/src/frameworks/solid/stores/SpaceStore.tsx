@@ -1,3 +1,4 @@
+import { containmentPredicate, gatherTranscriptTurns, type TurnModel } from '@shared/interpretation/transcriptTurns';
 import { moduleRegistry, moduleStores, type ModuleSurface, moduleSurface } from '@shared/registries/moduleRegistry';
 import {
   isSpaceSelf,
@@ -9,7 +10,6 @@ import {
 import { resolveSpaceTheme } from '@shared/themeResolution';
 import { deriveSlug } from '@shared/utils';
 import type { AgentProfileSummary, DatasetRef } from '@we/backend-shared';
-import { displayName } from '@we/backend-shared';
 import type { SerializedBlockNode } from '@we/block-shared';
 import { createBlocks, deleteBlocks, reconcileBlocks } from '@we/block-shared';
 import { toastService } from '@we/components/solid';
@@ -30,7 +30,6 @@ import {
   SignalType,
   Space,
   SpacePreference,
-  TextBlock,
 } from '@we/models';
 import {
   Accessor,
@@ -1463,34 +1462,44 @@ export function SpaceStoreProvider(props: ParentProps) {
   }
 
   async function exportCallTranscript(callId: string): Promise<void> {
-    const p = datasetStore.currentDataset()?.handle;
-    if (!p) return;
+    const dataset = datasetStore.currentDataset();
+    if (!dataset) return;
+    const p = dataset.handle;
     try {
-      const utterances = await TextBlock.findAll(p, {
-        parent: { id: callId, predicate: PREDICATES.CHILDREN },
-      });
+      // The same gather extraction runs on, rather than a second reading of the same shape. What a
+      // turn is — which entities can be one, which rows are too broken to keep, and the ordering
+      // that makes a transcript a transcript rather than a bag of sentences — is one decision, and
+      // an export that answered it differently would disagree with what the model was shown.
+      const modelFor = (entity: string) => getModelForPerspective(entity, p);
+      const predicate = containmentPredicate(modelFor, datasetStore.currentDatasetModels());
+      const turns = predicate
+        ? await gatherTranscriptTurns(
+            {
+              modelFor: (entity) => modelFor(entity) as TurnModel | undefined,
+              handle: p,
+              containmentPredicate: predicate,
+            },
+            callId,
+          )
+        : [];
 
-      // A speaker's label the way the byline renders it: their display name, else their DID.
+      // Ask for the speakers this transcript actually names before labelling any of them. The cache
+      // is populated as a side effect of rendering people — members, peers, bylines — so relying on
+      // it alone exports whoever happens to be on screen by name and everybody else as a raw DID.
+      // `fetchProfile` no-ops on a profile it already holds and dedupes concurrent calls, so asking
+      // for all of them costs a round trip only for the ones genuinely missing.
+      const speakers = [...new Set(turns.map((turn) => turn.speaker))];
+      await Promise.all(speakers.map((did) => profileStore.fetchProfile(did).catch(() => undefined)));
+
+      // A speaker's label the way the byline renders it: their display name, else their DID. The
+      // cache is keyed on the bare DID — `fetchProfile` strips the scheme on the way in — so a
+      // prefixed author has to be stripped here too or it would never match what was just fetched.
       const nameFor = (did: string): string => {
-        const profile = profileStore.profiles().find((entry) => entry.did === did);
-        return (profile && displayName(profile)) || did;
+        const profile = profileStore.profiles().find((entry) => entry.did === did.replace('did://', ''));
+        return profile?.name || did;
       };
 
-      // The order rows come back is a storage artefact; the order they were said is what the
-      // transcript is, so sort here rather than trust the read.
-      const timeOf = (value: unknown): number =>
-        typeof value === 'number' ? value : new Date(value as string).getTime();
-
-      const lines = [...utterances]
-        .sort((a, b) => (timeOf(a.createdAt) || 0) - (timeOf(b.createdAt) || 0))
-        .map((utterance) => {
-          const text = typeof utterance.text === 'string' ? utterance.text.trim() : '';
-          const speaker = typeof utterance.author === 'string' ? utterance.author : '';
-          const when = timeOf(utterance.createdAt);
-          if (!text || !speaker || Number.isNaN(when)) return null;
-          return `${nameFor(speaker)}, ${new Date(when).toISOString()}: ${text}`;
-        })
-        .filter((line): line is string => Boolean(line));
+      const lines = turns.map((turn) => `${nameFor(turn.speaker)}, ${turn.timestamp}: ${turn.text}`);
 
       if (!lines.length) {
         toastService.warning('This call has no transcript to export.');

@@ -28,11 +28,20 @@ const OUT_DIR = resolve(PRIMITIVES_ROOT, 'src/generated');
 const OUT_FILE = resolve(OUT_DIR, 'icon-bundle.ts');
 
 // Directories to scan (relative to workspace root)
+//
+// Templates and feature modules are in here for the same reason the app is: an icon named anywhere
+// that ships with a deployment has to render without a network. They were missing, so every icon a
+// built-in template asked for fell through to the CDN fallback — which looks fine in development
+// and leaves blank squares on a desktop build with no connection.
 const SCAN_GLOBS = [
   'packages/app-framework/src/**/*.{ts,tsx}',
+  'packages/app-shell/src/**/*.{ts,tsx}',
   'packages/design-system/**/src/**/*.{ts,tsx}',
   'packages/block-system/**/src/**/*.{ts,tsx}',
   'packages/schema-system/**/src/**/*.{ts,tsx}',
+  'packages/module-system/**/src/**/*.{ts,tsx}',
+  'packages/templates/**/src/**/*.{ts,tsx}',
+  'packages/editor/src/**/*.{ts,tsx}',
   'apps/**/src/**/*.{ts,tsx}',
   'views/**/*.{ts,tsx}',
 ];
