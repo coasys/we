@@ -11,12 +11,12 @@
 import type { DatasetHandle, RendererDataBindings } from './dataSource';
 import type { EphemeralPort } from './ephemeral';
 import type { InterpretationPort } from './interpretation';
+import type { LanguageModelPort } from './languageModel';
 import type { AgentSessionPort, DatasetLifecyclePort } from './lifecycle';
 import type { ModelManifest } from './manifest';
 import type { ModelManifestEntry } from './manifestEntry';
 import type { AgentProfileSummary, PublishProfileFields } from './profileTypes';
 import type { RuntimeAdminPort } from './runtimeAdmin';
-import type { LanguageModelPort } from './languageModel';
 import type { TranscriptionPort } from './transcription';
 
 /**

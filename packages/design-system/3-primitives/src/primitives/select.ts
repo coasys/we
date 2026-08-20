@@ -566,9 +566,7 @@ export default class Select extends DesignSystemElement {
                             ${
                               opt.group && opt.group !== filtered[index - 1]?.group
                                 ? html`
-                                    <div part="group-heading" role="presentation" aria-hidden="true">
-                                      ${opt.group}
-                                    </div>
+                                    <div part="group-heading" role="presentation" aria-hidden="true">${opt.group}</div>
                                   `
                                 : nothing
                             }

@@ -28,6 +28,7 @@ import { createAd4mEphemeralPort } from './ad4mEphemeralAdapter';
 import { createFileExpression, getProfile, publishProfileToPublicPerspective } from './agentHelpers';
 import { createAd4mInterpretationPort } from './interpretationAdapter';
 import { readInterpretationHints, resetInterpretationHints, writeInterpretationHints } from './interpretationHints';
+import { createAd4mLanguageModelPort } from './languageModelPort';
 import { createAd4mAgentSession, createAd4mDatasetLifecycle } from './lifecycleAdapter';
 import { compileManifest } from './manifestCompiler';
 import { buildModelClasses, buildModelManifest, getForeignShacl } from './perspectiveHelpers';
@@ -44,7 +45,6 @@ import {
   SPACE_MODELS,
 } from './sdnaModels';
 import { getFluxSubgroupMessages } from './syncHelpers';
-import { createAd4mLanguageModelPort } from './languageModelPort';
 import { createAd4mTranscriptionPort } from './transcriptionAdapter';
 
 const proxy = (dataset: DatasetHandle) => dataset as PerspectiveProxy;

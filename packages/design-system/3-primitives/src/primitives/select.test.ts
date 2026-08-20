@@ -308,7 +308,8 @@ describe('grouped options', () => {
     await press('ArrowDown');
   });
 
-  const headings = () => [...el.shadowRoot!.querySelectorAll('[part="group-heading"]')].map((h) => h.textContent?.trim());
+  const headings = () =>
+    [...el.shadowRoot!.querySelectorAll('[part="group-heading"]')].map((h) => h.textContent?.trim());
 
   it('renders one heading per run of options, not one per option', () => {
     expect(headings()).toEqual(['This space', 'Blocks']);

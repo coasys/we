@@ -73,7 +73,9 @@ describe('asking for a time as well', () => {
   };
   const timeField = (el: TimedEl) => el.shadowRoot?.querySelector('input[part="time"]') as HTMLInputElement | null;
   const firstDay = (el: TimedEl) =>
-    [...el.shadowRoot!.querySelectorAll('[part="day"]')].find((d) => !d.hasAttribute('data-other-month')) as HTMLElement;
+    [...el.shadowRoot!.querySelectorAll('[part="day"]')].find(
+      (d) => !d.hasAttribute('data-other-month'),
+    ) as HTMLElement;
 
   it('offers no time field unless asked', async () => {
     const el = (await makePicker()) as TimedEl;
@@ -169,7 +171,11 @@ describe('the themed time list', () => {
 
   it('marks the chosen time, and the nearest one for a value typed off-grid', async () => {
     const exact = await openTimeList('2026-08-19T14:30');
-    expect(options(exact).find((o) => o.getAttribute('aria-selected') === 'true')?.textContent?.trim()).toMatch(/2:30|14:30/);
+    expect(
+      options(exact)
+        .find((o) => o.getAttribute('aria-selected') === 'true')
+        ?.textContent?.trim(),
+    ).toMatch(/2:30|14:30/);
 
     const offGrid = await openTimeList('2026-08-19T14:37');
     const nearest = options(offGrid).find((o) => o.hasAttribute('data-nearest'));
