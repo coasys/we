@@ -26,8 +26,8 @@ import type {
   SchemaPort,
 } from '@we/backend-shared';
 import { createInMemoryEphemeralPort, InMemoryBus } from '@we/backend-shared';
-import { getModel, getModelForPerspective, registerModel } from '@we/models';
-import { CORE_MANIFEST } from '@we/models/generated/coreManifest';
+import { getModel, getModelForPerspective, registerFileStore, registerModel } from '@we/models';
+import { CORE_MANIFEST } from '@we/models/manifest';
 
 import { compileEntities, type EntityRuntime } from './entities';
 import { inMemoryQueryAdapter } from './queryAdapter';
@@ -462,6 +462,17 @@ export function createInMemoryBackendPorts(
 
   const manifest = opts.entities === undefined ? CORE_MANIFEST : opts.entities;
   if (manifest) schemas.declare(manifest, { moduleId: 'core' });
+
+  // File-format fields keep their content inline: the "address" a store hands back is the data
+  // URI itself, which the resolve pass recognises as already-renderable and leaves alone. Nothing
+  // is stored out-of-band because there is no out-of-band here — the honest in-memory answer.
+  registerFileStore({
+    store: async (_dataset, file) => `data:${file.file_type};base64,${file.data_base64}`,
+    fetch: async (_dataset, address) => {
+      const match = /^data:([^;]+);base64,(.*)$/.exec(address);
+      return match ? { file_type: match[1], data_base64: match[2] } : null;
+    },
+  });
 
   // One bus per bundle; the per-agent port is constructed lazily so the agent id is read after
   // the session unlocks (mirrors the AD4M port's lazy selfId).

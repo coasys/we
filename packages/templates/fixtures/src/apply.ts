@@ -17,8 +17,16 @@ import type { Fixture, FixtureNode } from './types';
 
 /** The pieces of the host a fixture needs. Passed in rather than imported, so this stays neutral. */
 export interface ApplyDeps {
-  /** Resolves a model class by name — `getModel` from `@we/models`. */
-  getModel(name: string): ModelClass;
+  /**
+   * Resolves a model class by name — `getModel` from `@we/models`.
+   *
+   * Typed `unknown` rather than {@link ModelClass} because the registry's own type is a
+   * constructor plus an index signature (what a class satisfies is asserted where each backend
+   * builds it, not in the registry), and an index signature does not satisfy a *declared* member:
+   * a dep typed as `ModelClass` rejects the real `getModel` outright. Narrowed once inside
+   * {@link applyFixture} instead, so no host has to cast.
+   */
+  getModel(name: string): unknown;
   /** The dataset to write into, as the backend's own handle. */
   dataset: unknown;
   /** That dataset's id. Use {@link datasetIdFor} to know it before the dataset exists. */
@@ -35,10 +43,7 @@ export interface ApplyDeps {
   sharedId?: string;
 }
 
-/**
- * Only what this file touches. Deliberately *not* an index signature: `Ad4mModel` has none, so one
- * here would make the real `getModel` unassignable and force every host to cast.
- */
+/** Only what this file touches — what the loose registry type above is narrowed to on the way in. */
 interface ModelInstance {
   id: string;
   addChildren?(related: unknown): Promise<void>;
@@ -81,7 +86,8 @@ const slug = (value: string) =>
     .replace(/^-|-$/g, '');
 
 export async function applyFixture(deps: ApplyDeps, fixture: Fixture): Promise<AppliedFixture> {
-  const { getModel, dataset, datasetId } = deps;
+  const { dataset, datasetId } = deps;
+  const getModel = (name: string) => deps.getModel(name) as ModelClass;
   const created: AppliedFixture['nodes'] = [];
   /** Per-kind counter, so a node with no title still gets a stable id from its position. */
   const counters = new Map<string, number>();

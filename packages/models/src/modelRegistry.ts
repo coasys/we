@@ -1,7 +1,10 @@
-import type { Ad4mModel } from '@coasys/ad4m';
-
+/**
+ * A registered model implementation — whatever the connected backend hands over. Structural and
+ * loose on purpose: the registry stores and returns them; the contract they satisfy is asserted
+ * where they are built (each backend's own conformance), not re-checked here.
+ */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export type ModelClass = typeof Ad4mModel & (new (...args: any[]) => Ad4mModel);
+export type ModelClass = { new (...args: any[]): unknown } & Record<string, any>;
 
 // ─── Global registry (populated by whichever backend connects) ────────────────
 
@@ -111,7 +114,7 @@ export function getModelForPerspective(name: string, dataset?: unknown): ModelCl
  * actually written to the dataset — if a property is declared but doesn't reach the shape, it
  * isn't a predicate anyone will find data under, and shouldn't be judged as one.
  */
-export function getModelPredicates(m: typeof Ad4mModel): string[] {
+export function getModelPredicates(m: ModelClass): string[] {
   const shaped = m as unknown as {
     generateSHACL: () => { shape: { properties?: { path?: string }[] } | null };
   };
@@ -119,7 +122,68 @@ export function getModelPredicates(m: typeof Ad4mModel): string[] {
   return properties.map((p) => p.path).filter((p): p is string => typeof p === 'string');
 }
 
-export function getModelTargetClass(m: typeof Ad4mModel): string | undefined {
+export function getModelTargetClass(m: ModelClass): string | undefined {
   const anyClass = m as unknown as { generateSHACL: () => { shape: { targetClass?: string } | null } };
   return anyClass.generateSHACL().shape?.targetClass;
+}
+
+// ─── Transactions ─────────────────────────────────────────────────────────────
+
+/**
+ * A write group: everything performed inside `run` with the given token commits together where
+ * the backend supports atomicity. The token is opaque — backends mint their own.
+ */
+export type ModelTransactionRunner = <R>(dataset: unknown, run: (tx: { batchId?: string }) => Promise<R>) => Promise<R>;
+
+/**
+ * Passthrough until a backend registers better: the callback runs with no token, so every write
+ * commits individually. Correct for backends without batching (the inmemory one), and the honest
+ * default for a backend that forgot to register — writes still land, atomicity is simply absent.
+ */
+let transactionRunner: ModelTransactionRunner = (_dataset, run) => run({});
+
+/** A backend adapter registers its batching alongside its model implementations. */
+export function registerTransactionRunner(runner: ModelTransactionRunner): void {
+  transactionRunner = runner;
+}
+
+/**
+ * Run `fn` as one write group on whichever backend is connected — the neutral face of
+ * "wrap these writes in a transaction". Consumers thread `tx.batchId` into `save`/`create`/
+ * relation accessors exactly as they would with a backend's own transaction API.
+ */
+export function runModelTransaction<R>(dataset: unknown, fn: (tx: { batchId?: string }) => Promise<R>): Promise<R> {
+  return transactionRunner(dataset, fn);
+}
+
+// ─── File storage ─────────────────────────────────────────────────────────────
+
+/** The payload a file-format property stores — structurally FileData, declared here to stay import-cycle-free. */
+export interface StoredFilePayload {
+  data_base64: string;
+  file_type: string;
+  name?: string;
+}
+
+/**
+ * How the connected backend stores and fetches file-format property content — the runtime face of
+ * the manifest's `format: 'file'`. `store` returns the address the property is written with;
+ * `fetch` gives the payload back for an address. Registered by the backend adapter beside its
+ * models, because which language/blob-store/table holds files is exactly the kind of fact the
+ * manifest deliberately does not carry.
+ */
+export interface ModelFileStore {
+  store(dataset: unknown, file: StoredFilePayload): Promise<string>;
+  fetch(dataset: unknown, address: string): Promise<StoredFilePayload | null>;
+}
+
+let fileStore: ModelFileStore | null = null;
+
+export function registerFileStore(store: ModelFileStore): void {
+  fileStore = store;
+}
+
+/** Null when no backend registered one — callers keep content inline rather than failing. */
+export function getFileStore(): ModelFileStore | null {
+  return fileStore;
 }

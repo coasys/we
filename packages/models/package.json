@@ -10,7 +10,7 @@
     "build": "we-build",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "generate:manifest": "node scripts/generateCoreManifest.mjs > src/generated/coreManifest.ts"
+    "generate:types": "tsx scripts/generateTypes.mjs"
   },
   "types": "dist/index.d.ts",
   "exports": {
@@ -18,25 +18,20 @@
       "import": "./dist/index.js",
       "require": "./dist/index.js"
     },
-    "./classes": {
-      "import": "./dist/classes.js",
-      "require": "./dist/classes.js"
-    },
-    "./generated/coreManifest": {
-      "import": "./dist/generated/coreManifest.js",
-      "require": "./dist/generated/coreManifest.js"
+    "./manifest": {
+      "import": "./dist/manifest/index.js",
+      "require": "./dist/manifest/index.js"
     }
   },
   "files": [
     "dist"
   ],
-  "peerDependencies": {
-    "@coasys/ad4m": "0.13.0-test-9"
-  },
+  "peerDependencies": {},
   "devDependencies": {
     "@we/cli": "workspace:*",
     "tsup": "^8.5.1",
-    "vitest": "^4.0.15"
+    "vitest": "^4.0.15",
+    "tsx": "^4.21.0"
   },
   "publishConfig": {
     "access": "public"

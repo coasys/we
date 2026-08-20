@@ -87,13 +87,13 @@ Glossary (these terms pervade stores, models, and `$query`/`perspective` in sche
 | `@we/schema-shared` | schema-system/shared | Schema semantics: prop resolvers, validation, indexer, registry types, reactivity port | **Agnostic** |
 | `@we/schema-solid` | schema-system/frameworks/solid | The schema renderer (walks the tree, mounts components) | Solid (thin adapter) |
 | `@we/backend-shared` | backend-system/shared | The backend contract: `DataSource`, query IR + engine, ephemeral, presence & transcription ports, model manifest | **Agnostic** |
-| `@we/backend-ad4m` | backend-system/ad4m | The AD4M adapter: query adapter, ephemeral & transcription ports, agent identity, SDNA install, model registry | Agnostic |
+| `@we/backend-ad4m` | backend-system/ad4m | The AD4M adapter: query adapter, ports, agent identity, SDNA install — and the AD4M model classes, generated from @we/models' manifest (src/models) | Agnostic |
 | `@we/backend-inmemory` | backend-system/inmemory | In-memory adapter — the reference implementation, and how stores test without an executor | Agnostic |
 | `@we/module-shared` | module-system/shared | The feature-module contract — what a module author installs | Agnostic |
 | `@we/module-globe` · `-call` · `-notes` · `-transcribe` · `-graph` | module-system/* | Bundled feature modules; globe is a *family* (module · protocol · layers · widget) | Agnostic (components injected) |
 | `@we/graph-protocol` · `-core` · `-expanders` · `-layouts` · `-solid` | graph-system/* | The graph engine: expander/layout/renderer contracts, the neutral engine, first-party plugins, and the Solid adapter | **Agnostic** (Solid only in the adapter) |
 | `@we/block-shared` | block-system/shared | Block content types + serialization | Agnostic |
-| `@we/models` | packages/models | WE's domain models (Space, Block subclasses, …) | **AD4M-decorated** |
+| `@we/models` | packages/models | WE's domain models: the authored neutral manifest (src/manifest, the source of truth), the neutral type contract, and the entity proxies backends register into | **Agnostic** |
 | `@we/app-shell` | packages/app-shell | App shell, stores, registries, built-in template schemas | Solid |
 | `@we/ai-context` | packages/ai-context | Generates this reference (CLAUDE.md et al.) from code + fragments | Build tool |
 
@@ -952,11 +952,11 @@ when `relative` is enabled.
 - AudioInput
   Props: title: string | undefined, artist: string | undefined, audioUrl: string | FileData | undefined, duration: number | undefined, albumArt: string | undefined, onChange: (property: string, value: unknown) => void, isSelected: () => boolean
 - BlockComposer (DesignSystemElement)
-  Props: editorState?: SerializedBlockNode, perspective?: PerspectiveProxy | null, onSave?: ((json: SerializedBlockNode) => void), onReady?: ((api: { save: () => void; }) => void)
+  Props: editorState?: SerializedBlockNode, perspective?: unknown, onSave?: ((json: SerializedBlockNode) => void), onReady?: ((api: { save: () => void; }) => void)
 - BlockPlaceholder
   Props: icon: string, label: string, hint?: string, accept?: string, onFileDrop?: ((file: File) => void), onClick?: (() => void)
 - BlockRenderer (DesignSystemElement)
-  Props: editorState?: SerializedBlockNode, perspective?: PerspectiveProxy | null, rootClass?: string
+  Props: editorState?: SerializedBlockNode, perspective?: unknown, rootClass?: string
 - BlockToolbar
   Props: placement?: BlockToolbarPlacement, children: JSX.Element, stopPropagation?: boolean
 - CalloutDisplay
@@ -1403,7 +1403,7 @@ AudioBlock extends WeNode:
 CalloutBlock extends WeNode:
   Fields:
   - text: string [we://text]
-  - variant: string = info [we://variant]
+  - variant: string = 'info' [we://variant]
   - icon: string [we://icon]
   - version: number [we://version]
 
@@ -1441,7 +1441,7 @@ CollectionBlock extends WeNode:
 
 DividerBlock extends WeNode:
   Fields:
-  - style: string = solid [we://style]
+  - style: string = 'solid' [we://style]
   - version: number [we://version]
 
 EmbedBlock extends WeNode:
@@ -1449,7 +1449,7 @@ EmbedBlock extends WeNode:
   - url: string [we://url]
   - target: string [we://target]
   - targetType: string [we://target_type]
-  - displayMode: string = card [we://display_mode]
+  - displayMode: string = 'card' [we://display_mode]
   - version: number [we://version]
 
 EventBlock extends WeNode:
@@ -1556,7 +1556,7 @@ Space extends WeNode:
   - enabledModules: string [we://enabled_modules]
   - autoInterpret: boolean = false [we://auto_interpret]
   Relations:
-  - location: HasOne [we://location]
+  - location: HasOne → LocationBlock [we://location]
 
 SpacePreference extends WeNode:
   Fields:
@@ -1580,8 +1580,8 @@ TaskBlock extends WeNode:
   Fields:
   - title: string (required) [we://title]
   - description: string [we://description]
-  - status: string = todo [we://status]
-  - priority: string = medium [we://priority]
+  - status: string = 'todo' [we://status]
+  - priority: string = 'medium' [we://priority]
   - dueDate: string [we://due_date]
   - assignee: string [we://assignee]
   - version: number [we://version]

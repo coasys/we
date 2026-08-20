@@ -135,6 +135,22 @@ export type {
   RuntimeAdminPort,
   TokenizerSource,
 } from './runtimeAdmin';
+export type {
+  IncludeExtras,
+  IncludeOf,
+  ModelDataKeys,
+  ModelInstance,
+  ModelStatic,
+  PropertyKeysOf,
+  RelatedModel,
+  RelationKeysOf,
+  TypedIncludeMap,
+  TypedIncludeProjection,
+  TypedModelQuery,
+  TypedOrder,
+  TypedWhere,
+  WriteProperties,
+} from './modelContract';
 export type { LanguageModelPort } from './languageModel';
 export type { TranscriptionModel, TranscriptionPort, TranscriptionStream, TranscriptionTuning } from './transcription';
 export type {

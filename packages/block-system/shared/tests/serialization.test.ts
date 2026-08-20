@@ -2,25 +2,14 @@
  * The block persistence pipeline, tested against a fake model layer.
  *
  * The pipeline's contract is structural — id-claiming, duplicate detection,
- * orphan deletion, relation overwrite — none of which needs a real AD4M
- * executor. The fakes implement exactly the surface serialization.ts touches:
- * Model.create/findOne/save/delete, the children @HasMany accessors,
- * getPropertiesMetadata, and the perspective's isSubjectInstance /
- * createExpression.
+ * orphan deletion, relation overwrite — none of which needs any backend at
+ * all. The fakes implement exactly the neutral surface serialization.ts
+ * touches: the model statics and instance methods of the contract, the
+ * registered transaction runner (a passthrough), and the manifest entries
+ * the field facts are read from. No @coasys mock — the module under test no
+ * longer imports it.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-
-vi.mock('@coasys/ad4m', () => {
-  class Ad4mModel {
-    static async transaction(_perspective: unknown, fn: (tx: { batchId: string }) => unknown) {
-      return fn({ batchId: 'batch-1' });
-    }
-  }
-  return {
-    Ad4mModel,
-    getPropertiesMetadata: (cls: { propsMeta?: Record<string, unknown> }) => cls.propsMeta ?? {},
-  };
-});
 
 vi.mock('@we/models', () => ({
   asFileField: (fileData: unknown) => fileData,
@@ -29,11 +18,29 @@ vi.mock('@we/models', () => ({
     name,
     file_type: uri.slice(5, uri.indexOf(';')),
   }),
+  runModelTransaction: (_dataset: unknown, fn: (tx: { batchId: string }) => unknown) => fn({ batchId: 'batch-1' }),
+  // No file store registered: these fakes declare no file-format fields, so the upload and
+  // resolve passes must short-circuit — which a null store is the honest way to exercise.
+  getFileStore: () => null,
 }));
 
-import type { Ad4mModel, PerspectiveProxy } from '@coasys/ad4m';
+vi.mock('@we/models/manifest', () => ({
+  CORE_MANIFEST: {
+    version: '1',
+    entities: {
+      TextBlock: {
+        properties: { type: {}, text: {}, listType: {}, tag: {}, start: {}, textFormat: {} },
+        relations: {},
+      },
+      CollectionBlock: {
+        properties: { type: {}, title: {}, kind: {}, mode: {} },
+        relations: {},
+      },
+    },
+  },
+}));
 
-import { registerBlock } from '../src/registry';
+import { type BlockModelStatic, registerBlock } from '../src/registry';
 import {
   createBlocks,
   extractBlockData,
@@ -86,14 +93,9 @@ class FakeBlock {
   }
 }
 
-class FakeText extends FakeBlock {
-  static className = 'TextBlock';
-  static propsMeta = { type: {}, text: {}, listType: {}, tag: {}, start: {}, textFormat: {} };
-}
+class FakeText extends FakeBlock {}
 
 class FakeCollection extends FakeBlock {
-  static className = 'CollectionBlock';
-  static propsMeta = { type: {}, title: {}, kind: {}, mode: {} };
   children: string[] = [];
   editorState: unknown = undefined;
   textContent = '';
@@ -117,15 +119,17 @@ class FakeCollection extends FakeBlock {
 
 registerBlock({
   nodeTypes: ['paragraph', 'heading', 'quote', 'listitem'],
-  model: FakeText as unknown as typeof Ad4mModel,
+  model: FakeText as unknown as BlockModelStatic,
+  entity: 'TextBlock',
 });
-registerBlock({ nodeTypes: ['root', 'collection'], model: FakeCollection as unknown as typeof Ad4mModel });
+registerBlock({
+  nodeTypes: ['root', 'collection'],
+  model: FakeCollection as unknown as BlockModelStatic,
+  entity: 'CollectionBlock',
+});
 
-const perspective = {
-  isSubjectInstance: async (uri: string, className: string) =>
-    (byId.get(uri)?.constructor as typeof FakeBlock | undefined)?.className === className,
-  createExpression: async () => 'lang://QmFake',
-} as unknown as PerspectiveProxy;
+// The dataset handle is opaque to the pipeline — an empty object is a complete fake.
+const perspective = {};
 
 function text(t: string): SerializedBlockNode {
   return { type: 'text', text: t, version: 1 };
@@ -194,7 +198,7 @@ describe('extractTextContent', () => {
 describe('extractBlockData', () => {
   it('takes only properties present on both the node and the model', () => {
     const node: SerializedBlockNode = { type: 'paragraph', version: 1, text: 'hi', unrelated: 'x' };
-    expect(extractBlockData(FakeText as unknown as typeof Ad4mModel, node)).toEqual({
+    expect(extractBlockData('TextBlock', node)).toEqual({
       type: 'paragraph',
       text: 'hi',
     });
@@ -202,7 +206,7 @@ describe('extractBlockData', () => {
 
   it('skips undefined values', () => {
     const node: SerializedBlockNode = { type: 'paragraph', version: 1, text: undefined };
-    expect(extractBlockData(FakeText as unknown as typeof Ad4mModel, node)).toEqual({ type: 'paragraph' });
+    expect(extractBlockData('TextBlock', node)).toEqual({ type: 'paragraph' });
   });
 });
 
@@ -356,7 +360,7 @@ describe('mentions', () => {
         { type: 'paragraph', version: 1, children: [mention('did:key:bob', '@bob')] },
       ],
     };
-    const root = (await createBlocks(perspective, node, { kind: 'post' })) as FakeCollection & Ad4mModel;
+    const root = (await createBlocks(perspective, node, { kind: 'post' })) as FakeCollection;
     expect((root as FakeCollection).mentions).toEqual(['did:key:alice', 'did:key:bob']);
 
     const edited: SerializedBlockNode = {
@@ -383,8 +387,7 @@ async function seedPost() {
     version: 1,
     children: [paragraph('one'), paragraph('two')],
   };
-  const root = (await createBlocks(perspective, node, { kind: 'post' })) as FakeCollection &
-    Ad4mModel & { children: string[] };
+  const root = (await createBlocks(perspective, node, { kind: 'post' })) as FakeCollection & { children: string[] };
   const [p1, p2] = root.children.map((id) => byId.get(id)!) as FakeText[];
   return { root, p1, p2 };
 }

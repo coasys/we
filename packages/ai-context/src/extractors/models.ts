@@ -1,140 +1,89 @@
-import { dirname, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
-
-import { Project, SyntaxKind } from 'ts-morph';
-
 import type { ModelEntry, ModelFieldEntry, ModelRelationEntry } from '../types.js';
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-
 /**
- * Extract block and entity models from @we/models source files.
- * Parses @Model, @Property, @HasMany decorators using ts-morph.
+ * Build the model documentation from the manifest itself.
+ *
+ * This used to parse the AD4M-decorated class sources with ts-morph — reasonable when the classes
+ * were the source of truth, and backwards once they became artifacts of `@we/models`' manifest.
+ * Deriving the docs from `CORE_DEFS` closes the arrow: what CLAUDE.md says a model is, is what the
+ * manifest declares, definitionally — and a backend that never generates classes at all still
+ * documents identically.
+ *
+ * Async because the manifest is imported at run time rather than parsed off disk; the `modelsDir`
+ * parameter is kept for signature stability and ignored.
  */
-export function extractModels(modelsDir?: string): ModelEntry[] {
-  const dir = modelsDir ?? resolve(__dirname, '../../../../models/src');
+export async function extractModels(_modelsDir?: string): Promise<ModelEntry[]> {
+  const { CORE_DEFS, WE_NODE_ENTITY } = (await import('@we/models/manifest')) as unknown as {
+    CORE_DEFS: Record<string, CoreDefLike>;
+    WE_NODE_ENTITY: EntityLike;
+  };
 
-  const project = new Project({ skipAddingFilesFromTsConfig: true });
-  project.addSourceFilesAtPaths([`${dir}/blocks/*.ts`, `${dir}/entities/*.ts`, `${dir}/WeNode.ts`]);
+  const entries: ModelEntry[] = Object.entries(CORE_DEFS).map(([name, def]) => ({
+    name,
+    className: name,
+    extends: def.base,
+    fields: fieldEntries(def),
+    relations: relationEntries(def.entity.relations ?? {}),
+  }));
 
-  const entries: ModelEntry[] = [];
+  // WeNode itself: the base whose shared relations every WeNode-based entity inherits. Documented
+  // once, as before, rather than repeated onto every subclass.
+  entries.push({
+    name: 'WeNode',
+    className: 'WeNode',
+    extends: 'Ad4mModel',
+    fields: [],
+    relations: relationEntries(WE_NODE_ENTITY.relations ?? {}),
+  });
 
-  for (const sf of project.getSourceFiles()) {
-    if (sf.getBaseName() === 'index.ts') continue;
-
-    for (const cls of sf.getClasses()) {
-      const modelDeco = cls.getDecorator('Model');
-      if (!modelDeco) continue;
-
-      const modelName = extractDecoratorStringOption(modelDeco, 'name') ?? cls.getName() ?? 'Unknown';
-      const extendsClause = cls.getExtends()?.getText();
-
-      const fields: ModelFieldEntry[] = [];
-      const relations: ModelRelationEntry[] = [];
-
-      for (const prop of cls.getProperties()) {
-        const propDeco = prop.getDecorator('Property');
-        const hasManyDeco = prop.getDecorator('HasMany');
-        const hasOneDeco = prop.getDecorator('HasOne');
-
-        if (propDeco) {
-          const through = extractDecoratorStringOption(propDeco, 'through') ?? '';
-          const required = extractDecoratorBooleanOption(propDeco, 'required') ?? false;
-          const initial = extractDecoratorStringOption(propDeco, 'initial');
-
-          fields.push({
-            name: prop.getName(),
-            type: prop.getType().getText(prop),
-            predicate: through,
-            required,
-            default: initial ?? getPropertyDefault(prop),
-          });
-        } else if (hasManyDeco) {
-          const through = extractDecoratorStringOption(hasManyDeco, 'through') ?? '';
-          const target = extractHasManyTarget(hasManyDeco);
-
-          relations.push({
-            name: prop.getName(),
-            kind: 'HasMany',
-            predicate: through,
-            target,
-          });
-        } else if (hasOneDeco) {
-          const through = extractDecoratorStringOption(hasOneDeco, 'through') ?? '';
-
-          relations.push({
-            name: prop.getName(),
-            kind: 'HasOne',
-            predicate: through,
-          });
-        }
-      }
-
-      entries.push({
-        name: modelName,
-        className: cls.getName() ?? modelName,
-        extends: extendsClause,
-        fields,
-        relations,
-      });
-    }
-  }
-
-  return entries.sort((a, b) => a.name.localeCompare(b.name));
+  return entries;
 }
 
-/**
- * Extract a string value from a decorator option object.
- * Handles both `@Decorator({ key: 'value' })` patterns.
- */
-function extractDecoratorStringOption(decorator: import('ts-morph').Decorator, key: string): string | undefined {
-  for (const arg of decorator.getArguments()) {
-    if (arg.getKind() !== SyntaxKind.ObjectLiteralExpression) continue;
-    const obj = arg.asKindOrThrow(SyntaxKind.ObjectLiteralExpression);
-    const prop = obj.getProperty(key);
-    if (!prop || prop.getKind() !== SyntaxKind.PropertyAssignment) continue;
-    const init = prop.asKindOrThrow(SyntaxKind.PropertyAssignment).getInitializer();
-    if (init?.getKind() === SyntaxKind.StringLiteral) {
-      return init.asKindOrThrow(SyntaxKind.StringLiteral).getLiteralValue();
-    }
-  }
-  return undefined;
+interface PropertyLike {
+  type: string;
+  predicate: string;
+  required?: boolean;
+  default?: unknown;
+}
+interface RelationLike {
+  target?: string;
+  cardinality: 'one' | 'many';
+  predicate: string;
+}
+interface EntityLike {
+  properties?: Record<string, PropertyLike>;
+  relations?: Record<string, RelationLike>;
+}
+interface CoreDefLike {
+  base: string;
+  unions?: Record<string, { alias: string }>;
+  entity: EntityLike;
 }
 
-function extractDecoratorBooleanOption(decorator: import('ts-morph').Decorator, key: string): boolean | undefined {
-  for (const arg of decorator.getArguments()) {
-    if (arg.getKind() !== SyntaxKind.ObjectLiteralExpression) continue;
-    const obj = arg.asKindOrThrow(SyntaxKind.ObjectLiteralExpression);
-    const prop = obj.getProperty(key);
-    if (!prop || prop.getKind() !== SyntaxKind.PropertyAssignment) continue;
-    const init = prop.asKindOrThrow(SyntaxKind.PropertyAssignment).getInitializer();
-    if (init?.getText() === 'true') return true;
-    if (init?.getText() === 'false') return false;
-  }
-  return undefined;
+function fieldEntries(def: CoreDefLike): ModelFieldEntry[] {
+  return Object.entries(def.entity.properties ?? {}).map(([name, spec]) => ({
+    name,
+    // The union alias where one is declared — `mode: SignalMode` reads better than `mode: string`
+    // and is what the generated class declares too.
+    type: def.unions?.[name]?.alias ?? spec.type,
+    predicate: spec.predicate,
+    required: spec.required ?? false,
+    default: formatDefault(spec.default),
+  }));
 }
 
-/**
- * Extract target type from @HasMany(() => Template, { through: ... }) pattern.
- * The first arg may be an arrow function returning the target class.
- */
-function extractHasManyTarget(decorator: import('ts-morph').Decorator): string | undefined {
-  const args = decorator.getArguments();
-  if (args.length === 0) return undefined;
-  const first = args[0];
-  // Arrow function: () => Template
-  if (first.getKind() === SyntaxKind.ArrowFunction) {
-    const body = first.asKindOrThrow(SyntaxKind.ArrowFunction).getBody();
-    return body.getText();
-  }
-  return undefined;
+/** Empty strings and zeroes are omitted — a field defaulting to nothing is the unremarkable case. */
+function formatDefault(value: unknown): string | undefined {
+  if (value === undefined || value === '' || value === 0) return undefined;
+  if (value === null) return 'null';
+  return typeof value === 'string' ? `'${value}'` : String(value);
 }
 
-function getPropertyDefault(prop: import('ts-morph').PropertyDeclaration): string | undefined {
-  const init = prop.getInitializer();
-  if (!init) return undefined;
-  const text = init.getText();
-  // Skip empty defaults like '', 0, [], {}
-  if (text === "''" || text === '""' || text === '0' || text === '[]' || text === '{}') return undefined;
-  return text;
+function relationEntries(relations: Record<string, RelationLike>): ModelRelationEntry[] {
+  return Object.entries(relations).map(([name, spec]) => ({
+    name,
+    kind: spec.cardinality === 'one' ? ('HasOne' as const) : ('HasMany' as const),
+    predicate: spec.predicate,
+    ...(spec.target ? { target: spec.target } : {}),
+  }));
 }

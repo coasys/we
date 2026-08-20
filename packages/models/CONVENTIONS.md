@@ -6,12 +6,56 @@ Rules and patterns for authoring AD4M data models in this package.
 
 ```
 src/
-├── WeNode.ts        ← base class for all models
+├── manifest/        ← THE SOURCE OF TRUTH — authored, per-entity neutral schemas
+│   ├── entities/    ← one module per entity: schema + prose + codegen facts
+│   ├── blocks/      ← one module per block
+│   ├── shared.ts    ← WeNode's shared relations, declared once
+│   ├── defs.ts      ← the CoreEntityDef shape a module exports
+│   ├── types.ts     ← GENERATED neutral interfaces — the model contract (generate:types)
+│   ├── base.ts      ← WeNodeModel over @we/backend-shared's ModelInstance
+│   └── index.ts     ← assembles CORE_MANIFEST (imported as '@we/models/manifest')
+├── index.ts         ← entity proxies, typed by the contract — never by any backend's classes
+├── modelRegistry.ts ← where backends register implementations, transactions, file storage
 ├── constants.ts     ← shared URIs and constants
-├── entities/        ← first-class application objects
-├── blocks/          ← composable content nodes
 └── utils/           ← helper functions (transforms, normalisation)
 ```
+
+This package has **no `@coasys` dependency**. The AD4M classes generated from this manifest live in
+`@we/backend-ad4m` (`src/models/`, rebuilt with `pnpm --filter @we/backend-ad4m generate:classes`),
+beside the adapter that registers them — as any backend's implementations live beside their
+adapter. The conformance assertions holding them to `manifest/types.ts` live there too.
+```
+
+## Authoring a model — edit the manifest, generate the class
+
+The decorated classes in `@we/backend-ad4m/src/models` are build artifacts. To add or change a
+model, edit its module under `src/manifest/` — schema, defaults, interpretation hints and the
+design prose all live there — then run both generators:
+
+```sh
+pnpm --filter @we/models generate:types
+pnpm --filter @we/backend-ad4m generate:classes
+```
+
+Doc comments in the manifest module are lifted into the generated class, so IDE hovers keep
+working. `coreManifest.test.ts` (backend-ad4m) holds the generated classes and the manifest's
+*runtime* compilation in exhaustive agreement — a stale or wrong generation fails there, with
+predicates, hints, defaults and storage behaviour all compared.
+
+Codegen-only facts (TypeScript optionality, union aliases, accessor-method interfaces, typed
+relation arrays) ride beside the schema in each module's `CoreEntityDef` — see `manifest/defs.ts`.
+They shape the generated class; the neutral schema itself stays free of TypeScript.
+
+## The neutral type surface
+
+`generate:classes` also emits `src/manifest/types.ts` — one interface per entity (`SpaceModel`,
+`TaskBlockModel`, …) over the neutral base in `manifest/base.ts`. These ARE the model contract:
+fields only, deliberately, since relation accessors and query sugar are backend ergonomics.
+`src/manifest/conformance.ts` holds the generated AD4M classes to them with type-level assertions
+reached from the manifest entry point, so a class drifting from its interface fails the build.
+A new backend implements these interfaces — runtime-compiled the way `@we/backend-inmemory` does,
+or generated the way the AD4M lane is — and registers its implementations in the entity proxy
+registry; consumers never notice which.
 
 ## The Core Distinction: Entities vs Blocks
 

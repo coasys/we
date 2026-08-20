@@ -6,76 +6,85 @@
  * consumer writes `Space.findAll(dataset, …)` and never names a backend; the AD4M adapter
  * registers decorated classes at connect time, and another backend registers its own.
  *
- * The implementations themselves live behind `@we/models/classes`, which only a backend adapter
- * should import.
+ * The implementations live in each backend's own package — the AD4M classes in
+ * `@we/backend-ad4m/src/models`, generated from this package's manifest — and are registered here
+ * at connect time. Nothing outside a backend adapter can even name them.
+ *
+ * Both exports are typed by the NEUTRAL contract — the generated interfaces in
+ * `manifest/types.ts` and the `ModelStatic` surface from `@we/backend-shared` — not by the AD4M
+ * classes. That is the point of the flip: what a consumer can rely on is what the manifest
+ * declares, conformance holds the AD4M lane to it, and this package's `@coasys` edge stops being
+ * part of its public face.
  */
-import type * as C from './classes';
-import { defineEntity } from './entityProxy';
+import type { ModelStatic } from '@we/backend-shared';
 
-export type WeNode = C.WeNode;
-export const WeNode = defineEntity('WeNode') as unknown as typeof C.WeNode;
-export type AgentSettings = C.AgentSettings;
-export const AgentSettings = defineEntity('AgentSettings') as unknown as typeof C.AgentSettings;
-export type ChatMessage = C.ChatMessage;
-export const ChatMessage = defineEntity('ChatMessage') as unknown as typeof C.ChatMessage;
-export type ChatSession = C.ChatSession;
-export const ChatSession = defineEntity('ChatSession') as unknown as typeof C.ChatSession;
-export type MutedAgent = C.MutedAgent;
-export const MutedAgent = defineEntity('MutedAgent') as unknown as typeof C.MutedAgent;
-export type ReadMarker = C.ReadMarker;
-export const ReadMarker = defineEntity('ReadMarker') as unknown as typeof C.ReadMarker;
-export type Signal = C.Signal;
-export const Signal = defineEntity('Signal') as unknown as typeof C.Signal;
-export type SignalType = C.SignalType;
-export const SignalType = defineEntity('SignalType') as unknown as typeof C.SignalType;
-export type Space = C.Space;
-export const Space = defineEntity('Space') as unknown as typeof C.Space;
-export { AGENT_DEFAULT, FOLLOW_SPACE } from './entities';
-export type SpacePreference = C.SpacePreference;
-export const SpacePreference = defineEntity('SpacePreference') as unknown as typeof C.SpacePreference;
-export type SpaceTemplatePreference = C.SpaceTemplatePreference;
+import { defineEntity } from './entityProxy';
+import type * as M from './manifest/types';
+
+export type WeNode = M.WeNodeModel;
+export const WeNode = defineEntity('WeNode') as unknown as ModelStatic<M.WeNodeModel>;
+export type AgentSettings = M.AgentSettingsModel;
+export const AgentSettings = defineEntity('AgentSettings') as unknown as ModelStatic<M.AgentSettingsModel>;
+export type ChatMessage = M.ChatMessageModel;
+export const ChatMessage = defineEntity('ChatMessage') as unknown as ModelStatic<M.ChatMessageModel>;
+export type ChatSession = M.ChatSessionModel;
+export const ChatSession = defineEntity('ChatSession') as unknown as ModelStatic<M.ChatSessionModel>;
+export type MutedAgent = M.MutedAgentModel;
+export const MutedAgent = defineEntity('MutedAgent') as unknown as ModelStatic<M.MutedAgentModel>;
+export type ReadMarker = M.ReadMarkerModel;
+export const ReadMarker = defineEntity('ReadMarker') as unknown as ModelStatic<M.ReadMarkerModel>;
+export type Signal = M.SignalModel;
+export const Signal = defineEntity('Signal') as unknown as ModelStatic<M.SignalModel>;
+export type SignalType = M.SignalTypeModel;
+export const SignalType = defineEntity('SignalType') as unknown as ModelStatic<M.SignalTypeModel>;
+export type Space = M.SpaceModel;
+export const Space = defineEntity('Space') as unknown as ModelStatic<M.SpaceModel>;
+export { AGENT_DEFAULT, FOLLOW_SPACE } from './manifest/entities/SpacePreference';
+export type SpacePreference = M.SpacePreferenceModel;
+export const SpacePreference = defineEntity('SpacePreference') as unknown as ModelStatic<M.SpacePreferenceModel>;
+export type SpaceTemplatePreference = M.SpaceTemplatePreferenceModel;
 export const SpaceTemplatePreference = defineEntity(
   'SpaceTemplatePreference',
-) as unknown as typeof C.SpaceTemplatePreference;
-export type Shape = C.Shape;
-export const Shape = defineEntity('Shape') as unknown as typeof C.Shape;
-export type Template = C.Template;
-export const Template = defineEntity('Template') as unknown as typeof C.Template;
-export type Theme = C.Theme;
-export const Theme = defineEntity('Theme') as unknown as typeof C.Theme;
+) as unknown as ModelStatic<M.SpaceTemplatePreferenceModel>;
+export type Shape = M.ShapeModel;
+export const Shape = defineEntity('Shape') as unknown as ModelStatic<M.ShapeModel>;
+export type Template = M.TemplateModel;
+export const Template = defineEntity('Template') as unknown as ModelStatic<M.TemplateModel>;
+export type Theme = M.ThemeModel;
+export const Theme = defineEntity('Theme') as unknown as ModelStatic<M.ThemeModel>;
 export { modelToThemeData } from './utils/themeData';
 export type { ThemeData, ThemeLike } from './utils/themeData';
-export type { SignalMode, SignalAggregate, SignalSemantic } from './entities';
-export type AudioBlock = C.AudioBlock;
-export const AudioBlock = defineEntity('AudioBlock') as unknown as typeof C.AudioBlock;
-export type CalloutBlock = C.CalloutBlock;
-export const CalloutBlock = defineEntity('CalloutBlock') as unknown as typeof C.CalloutBlock;
-export type CodeBlock = C.CodeBlock;
-export const CodeBlock = defineEntity('CodeBlock') as unknown as typeof C.CodeBlock;
-export type CollectionBlock = C.CollectionBlock;
-export const CollectionBlock = defineEntity('CollectionBlock') as unknown as typeof C.CollectionBlock;
-export type DividerBlock = C.DividerBlock;
-export const DividerBlock = defineEntity('DividerBlock') as unknown as typeof C.DividerBlock;
-export type EmbedBlock = C.EmbedBlock;
-export const EmbedBlock = defineEntity('EmbedBlock') as unknown as typeof C.EmbedBlock;
-export type EventBlock = C.EventBlock;
-export const EventBlock = defineEntity('EventBlock') as unknown as typeof C.EventBlock;
-export type FileBlock = C.FileBlock;
-export const FileBlock = defineEntity('FileBlock') as unknown as typeof C.FileBlock;
-export type ImageBlock = C.ImageBlock;
-export const ImageBlock = defineEntity('ImageBlock') as unknown as typeof C.ImageBlock;
-export type LinkBlock = C.LinkBlock;
-export const LinkBlock = defineEntity('LinkBlock') as unknown as typeof C.LinkBlock;
-export type LocationBlock = C.LocationBlock;
-export const LocationBlock = defineEntity('LocationBlock') as unknown as typeof C.LocationBlock;
-export type TagBlock = C.TagBlock;
-export const TagBlock = defineEntity('TagBlock') as unknown as typeof C.TagBlock;
-export type TaskBlock = C.TaskBlock;
-export const TaskBlock = defineEntity('TaskBlock') as unknown as typeof C.TaskBlock;
-export type TextBlock = C.TextBlock;
-export const TextBlock = defineEntity('TextBlock') as unknown as typeof C.TextBlock;
-export type VideoBlock = C.VideoBlock;
-export const VideoBlock = defineEntity('VideoBlock') as unknown as typeof C.VideoBlock;
+export type { SignalAggregate, SignalMode, SignalSemantic } from './manifest/types';
+export type AudioBlock = M.AudioBlockModel;
+export const AudioBlock = defineEntity('AudioBlock') as unknown as ModelStatic<M.AudioBlockModel>;
+export type CalloutBlock = M.CalloutBlockModel;
+export const CalloutBlock = defineEntity('CalloutBlock') as unknown as ModelStatic<M.CalloutBlockModel>;
+export type CodeBlock = M.CodeBlockModel;
+export const CodeBlock = defineEntity('CodeBlock') as unknown as ModelStatic<M.CodeBlockModel>;
+export type CollectionBlock = M.CollectionBlockModel;
+export const CollectionBlock = defineEntity('CollectionBlock') as unknown as ModelStatic<M.CollectionBlockModel>;
+export type DividerBlock = M.DividerBlockModel;
+export const DividerBlock = defineEntity('DividerBlock') as unknown as ModelStatic<M.DividerBlockModel>;
+export type EmbedBlock = M.EmbedBlockModel;
+export const EmbedBlock = defineEntity('EmbedBlock') as unknown as ModelStatic<M.EmbedBlockModel>;
+export type EventBlock = M.EventBlockModel;
+export const EventBlock = defineEntity('EventBlock') as unknown as ModelStatic<M.EventBlockModel>;
+export type FileBlock = M.FileBlockModel;
+export const FileBlock = defineEntity('FileBlock') as unknown as ModelStatic<M.FileBlockModel>;
+export type ImageBlock = M.ImageBlockModel;
+export const ImageBlock = defineEntity('ImageBlock') as unknown as ModelStatic<M.ImageBlockModel>;
+export type LinkBlock = M.LinkBlockModel;
+export const LinkBlock = defineEntity('LinkBlock') as unknown as ModelStatic<M.LinkBlockModel>;
+export type LocationBlock = M.LocationBlockModel;
+export const LocationBlock = defineEntity('LocationBlock') as unknown as ModelStatic<M.LocationBlockModel>;
+export type TagBlock = M.TagBlockModel;
+export const TagBlock = defineEntity('TagBlock') as unknown as ModelStatic<M.TagBlockModel>;
+export type TaskBlock = M.TaskBlockModel;
+export const TaskBlock = defineEntity('TaskBlock') as unknown as ModelStatic<M.TaskBlockModel>;
+export type TextBlock = M.TextBlockModel;
+export const TextBlock = defineEntity('TextBlock') as unknown as ModelStatic<M.TextBlockModel>;
+export type VideoBlock = M.VideoBlockModel;
+export const VideoBlock = defineEntity('VideoBlock') as unknown as ModelStatic<M.VideoBlockModel>;
 export { FILE_STORAGE_LANGUAGE, PREDICATES } from './constants';
 export {
   asFileField,
@@ -92,9 +101,11 @@ export { normalizeSignal, denormalizeSignal } from './utils/signalNormalize';
 export { aggregateSignals } from './utils/signalAggregate';
 export { decodeFileAsString, decodeFileAsJson, encodeJsonFileData } from './utils/fileTransforms';
 
-// The model layer's dataset type — what every generated model's static methods accept. Re-exported
-// under a neutral name so the app shell can type dataset handles without importing the backend SDK
-// directly (@coasys imports are confined to this package, backend-ad4m, and ad4m-declaring modules).
-export type { PerspectiveProxy as DatasetProxy } from '@coasys/ad4m';
-export type { Ad4mModel } from '@coasys/ad4m';
+/**
+ * The dataset handle model statics accept — opaque on purpose. Which kind of handle "a dataset"
+ * is (an AD4M PerspectiveProxy, an in-memory store, a connection) is the connected backend's
+ * business; consumers hold one and pass it along. This used to alias PerspectiveProxy, which was
+ * the last `@coasys` edge on this package's public face.
+ */
+export type DatasetProxy = unknown;
 export * from './modelRegistry';

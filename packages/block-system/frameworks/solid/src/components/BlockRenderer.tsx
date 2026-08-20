@@ -1,7 +1,6 @@
-import type { PerspectiveProxy } from '@coasys/ad4m';
 import { ListItemNode, ListNode } from '@lexical/list';
 import { HeadingNode, QuoteNode } from '@lexical/rich-text';
-import type { BlockRendererProps, SerializedBlockNode } from '@we/block-shared';
+import type { BlockDataset, BlockRendererProps, SerializedBlockNode } from '@we/block-shared';
 import { decodeEditorState, resolveExpressionAddresses } from '@we/block-shared';
 import type { ColumnProps } from '@we/components/solid';
 import { Column } from '@we/components/solid';
@@ -19,7 +18,7 @@ import { useBlockDataset } from './BlockDataset';
 
 type Props = Omit<BlockRendererProps, 'ax' | 'ay'> & Pick<ColumnProps, 'ax' | 'ay'> & { rootClass?: string };
 
-function LoadEditorState(props: { editorState?: SerializedBlockNode; perspective?: PerspectiveProxy | null }) {
+function LoadEditorState(props: { editorState?: SerializedBlockNode; perspective?: BlockDataset | null }) {
   const [editor] = useLexicalComposerContext();
 
   // Read props.editorState/props.perspective inside the effect (not destructured

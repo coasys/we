@@ -1,5 +1,4 @@
-import type { Signal } from '../entities/Signal';
-import type { SignalType } from '../entities/SignalType';
+import type { SignalModel as Signal, SignalTypeModel as SignalType } from '../manifest/types';
 
 export function aggregateSignals(signals: Signal[], signalType: SignalType): number {
   const values = signals.map((s) => s.value);

@@ -23,10 +23,11 @@
  * a `WeakMap` of any kind — will look up the stand-in, find nothing, and quietly behave as though
  * the class had no properties. Calls succeed; metadata vanishes.
  *
- * So the rule: **code that hands a model class to the backend's own APIs must import from
- * `@we/models/classes`, not from the package root.** In practice that is exactly the code which
- * already imports `@coasys/ad4m` directly — backend adapters and the block layer. Application
- * code, which only ever calls statics and instance methods, uses the root and stays neutral.
+ * So the rule: **code that hands a model class to a backend's own APIs lives in that backend's
+ * package and imports the classes locally** (the AD4M lane's `src/models`). Application code,
+ * which only ever calls statics and instance methods, uses the root and stays neutral — and since
+ * the block layer's metadata now comes from the manifest, the backend adapters are the only code
+ * left with a reason to hold a real class.
  */
 import { getModel, type ModelClass } from './modelRegistry';
 

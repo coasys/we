@@ -23,7 +23,7 @@
 import { manifestEntries, type ModelManifest, validateManifest } from '@we/backend-shared';
 import { toastService } from '@we/components/solid';
 import { asFileField, decodeFileAsJson, encodeJsonFileData, Shape } from '@we/models';
-import { CORE_MANIFEST } from '@we/models/generated/coreManifest';
+import { CORE_MANIFEST } from '@we/models/manifest';
 import {
   Accessor,
   batch,

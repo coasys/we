@@ -18,11 +18,10 @@
   },
   "dependencies": {
     "@we/design-types": "workspace:*",
-    "@we/models": "workspace:*"
+    "@we/models": "workspace:*",
+    "@we/backend-shared": "workspace:*"
   },
-  "peerDependencies": {
-    "@coasys/ad4m": "0.13.0-test-9"
-  },
+  "peerDependencies": {},
   "devDependencies": {
     "@we/cli": "workspace:*",
     "tsup": "^8.5.1",

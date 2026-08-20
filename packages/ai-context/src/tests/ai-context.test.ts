@@ -29,7 +29,7 @@ const paths = {
 };
 
 describe('extractPrimitives', () => {
-  it('extracts primitives from CEM', () => {
+  it('extracts primitives from CEM', async () => {
     const primitives = extractPrimitives(paths.cem);
     expect(primitives.length).toBeGreaterThan(0);
 
@@ -83,8 +83,8 @@ describe('extractTokens', () => {
 });
 
 describe('extractModels', () => {
-  it('extracts models from source', () => {
-    const models = extractModels(paths.models);
+  it('extracts models from source', async () => {
+    const models = await extractModels(paths.models);
     expect(models.length).toBeGreaterThan(0);
 
     const textBlock = models.find((m) => m.name === 'TextBlock');
@@ -92,8 +92,8 @@ describe('extractModels', () => {
     expect(textBlock!.fields.some((f) => f.name === 'text')).toBe(true);
   });
 
-  it('extracts HasMany relations', () => {
-    const models = extractModels(paths.models);
+  it('extracts HasMany relations', async () => {
+    const models = await extractModels(paths.models);
     const collection = models.find((m) => m.name === 'CollectionBlock');
     expect(collection).toBeDefined();
     expect(collection!.relations.some((r) => r.kind === 'HasMany' && r.name === 'children')).toBe(true);
@@ -101,14 +101,14 @@ describe('extractModels', () => {
 });
 
 describe('assembleReference', () => {
-  it('contains all expected sections', () => {
+  it('contains all expected sections', async () => {
     const context = {
       primitives: extractPrimitives(paths.cem),
       components: [
         ...extractComponentProps(paths.components, 'components'),
         ...extractComponentProps(paths.widgets, 'widgets'),
       ],
-      models: extractModels(paths.models),
+      models: await extractModels(paths.models),
       tokens: extractTokens(paths.tokens),
       storeEntries: [],
       fragments: {
@@ -136,14 +136,14 @@ describe('assembleReference', () => {
     expect(reference).toContain('rules content');
   });
 
-  it('includes specific primitives', () => {
+  it('includes specific primitives', async () => {
     const context = {
       primitives: extractPrimitives(paths.cem),
       components: [
         ...extractComponentProps(paths.components, 'components'),
         ...extractComponentProps(paths.widgets, 'widgets'),
       ],
-      models: extractModels(paths.models),
+      models: await extractModels(paths.models),
       tokens: extractTokens(paths.tokens),
       storeEntries: [],
       fragments: {

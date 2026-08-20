@@ -172,7 +172,7 @@ async function discoverFragments(): Promise<ContextFragment[]> {
         fragments.push({ tokens: extractTokens(src) });
         break;
       case 'models':
-        fragments.push({ models: extractModels(src) });
+        fragments.push({ models: await extractModels(src) });
         break;
       case 'plugins':
         fragments.push({ pluginCatalogs: await extractPluginCatalog(src) });

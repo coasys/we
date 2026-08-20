@@ -5,5 +5,5 @@ export default defineConfig({
   format: ['esm'],
   dts: true,
   clean: true,
-  external: ['@coasys/ad4m', '@we/models'],
+  external: ['@we/models', '@we/backend-shared'],
 });

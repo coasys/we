@@ -1,12 +1,35 @@
-import type { PerspectiveProxy } from '@coasys/ad4m';
-import { Ad4mModel, getPropertiesMetadata } from '@coasys/ad4m';
-import type { CollectionBlock, FileData } from '@we/models';
-import { asFileField, dataURIToFileData } from '@we/models';
+import type { ModelInstance } from '@we/backend-shared';
+import type { FileData } from '@we/models';
+import { asFileField, dataURIToFileData, getFileStore, runModelTransaction } from '@we/models';
+import { CORE_MANIFEST } from '@we/models/manifest';
 
 import type { CollectionMode } from './modes';
 import { isReconcilable } from './modes';
-import { getBlockModel, getRegisteredBlockModels } from './registry';
+import { getBlockRegistration, getRegisteredBlockModels } from './registry';
 import type { SerializedBlockNode } from './types';
+
+/**
+ * The dataset a block tree persists into — whatever handle the connected backend takes. This
+ * module speaks only the neutral model contract: metadata that used to come from decorator
+ * introspection comes from the manifest, transactions and file storage from the runners the
+ * backend registered, and the model calls from the entity proxies. Nothing here names a backend.
+ */
+type BlockDataset = unknown;
+
+/** A block instance as this module handles it: the contract base plus whatever fields its type declares. */
+type BlockModel = ModelInstance & Record<string, unknown>;
+
+/** The manifest's answer to "which of this entity's fields hold file-stored content". */
+function fileFieldNames(entity: string | undefined): string[] {
+  if (!entity) return [];
+  const properties = CORE_MANIFEST.entities[entity]?.properties ?? {};
+  return Object.keys(properties).filter((name) => properties[name].format === 'file');
+}
+
+/** The manifest's answer to "which fields does this entity declare at all". */
+function propertyNames(entity: string): string[] {
+  return Object.keys(CORE_MANIFEST.entities[entity]?.properties ?? {});
+}
 
 /**
  * Lexical inline node types — these are text runs inside paragraph/heading
@@ -161,23 +184,25 @@ export function extractTextContent(node: SerializedBlockNode): string {
   return lastSpace > 0 ? truncated.slice(0, lastSpace) : truncated;
 }
 
-/** Block model instance that has a children @HasMany relation */
-interface BlockWithChildren extends Ad4mModel {
+/** Block model instance that has a children to-many relation */
+interface BlockWithChildren extends ModelInstance {
   children: string[];
-  addChildren: (id: string, batchId?: string) => Promise<void>;
+  // Promise<unknown>, matching the neutral accessor contract — a caller of addChildren gets a
+  // completion signal, not a value.
+  addChildren: (id: string, batch?: string) => Promise<unknown>;
 }
 
 /** Block model instance with loaded child blocks attached */
-interface BlockWithLoadedChildren extends Ad4mModel {
+interface BlockWithLoadedChildren extends ModelInstance {
   children: string[];
-  _loadedChildren?: Ad4mModel[];
+  _loadedChildren?: BlockModel[];
 }
 
-function hasChildrenRelation(block: Ad4mModel): block is BlockWithChildren {
+function hasChildrenRelation(block: ModelInstance): block is BlockWithChildren {
   return 'addChildren' in block && typeof (block as BlockWithChildren).addChildren === 'function';
 }
 
-function hasChildren(block: Ad4mModel): block is BlockWithChildren {
+function hasChildren(block: ModelInstance): block is BlockWithChildren {
   return Array.isArray((block as BlockWithChildren).children);
 }
 
@@ -209,21 +234,19 @@ function isFileData(value: unknown): value is FileData {
  * different name would produce a different address than the original,
  * orphaning the old one for no reason.
  */
-async function preUploadFileAssets(
-  perspective: PerspectiveProxy,
-  node: SerializedBlockNode,
-): Promise<SerializedBlockNode> {
+async function preUploadFileAssets(perspective: BlockDataset, node: SerializedBlockNode): Promise<SerializedBlockNode> {
   // Shallow-copy so we don't mutate the original Lexical JSON
   const patched: SerializedBlockNode = { ...node };
   const assetNames = patched.__assetNames as Record<string, string> | undefined;
   delete patched.__assetNames;
 
-  // Resolve the model class for this node type (if registered)
-  const ModelClass = getBlockModel(node.type);
-  if (ModelClass) {
-    const propsMeta = getPropertiesMetadata(ModelClass);
-    for (const [propName, meta] of Object.entries(propsMeta)) {
-      if (!meta.resolveLanguage) continue;
+  // Which of this node's fields hold file content is the manifest's knowledge; where the bytes go
+  // is the registered file store's. A backend that registered none keeps content inline — the blob
+  // is bigger, nothing is lost.
+  const fileStore = getFileStore();
+  const registration = getBlockRegistration(node.type);
+  if (registration && fileStore) {
+    for (const propName of fileFieldNames(registration.entity)) {
       const value = patched[propName];
       const fileData = isFileData(value)
         ? value
@@ -231,9 +254,7 @@ async function preUploadFileAssets(
           ? dataURIToFileData(value, assetNames?.[propName] ?? propName)
           : undefined;
       if (fileData) {
-        // Upload the file and replace the FileData with the expression address
-        const expressionAddress = await perspective.createExpression(fileData, meta.resolveLanguage);
-        patched[propName] = expressionAddress;
+        patched[propName] = await fileStore.store(perspective, fileData);
       }
     }
   }
@@ -261,34 +282,31 @@ async function preUploadFileAssets(
  * stored CIDs (e.g. "QmLang://QmHash") are replaced with renderable data URIs.
  */
 export async function resolveExpressionAddresses(
-  perspective: PerspectiveProxy,
+  perspective: BlockDataset,
   node: SerializedBlockNode,
 ): Promise<SerializedBlockNode> {
   const patched: SerializedBlockNode = { ...node };
 
-  const ModelClass = getBlockModel(node.type);
-  if (ModelClass) {
-    const propsMeta = getPropertiesMetadata(ModelClass);
-    for (const [propName, meta] of Object.entries(propsMeta)) {
+  const fileStore = getFileStore();
+  const registration = getBlockRegistration(node.type);
+  if (registration && fileStore) {
+    for (const propName of fileFieldNames(registration.entity)) {
       const val = patched[propName];
-      // Only attempt resolution for resolveLanguage properties that hold a
-      // non-empty string containing "://" — the hallmark of an expression address.
-      if (meta.resolveLanguage && typeof val === 'string' && val.includes('://')) {
+      // Only attempt resolution for values holding an address — the "://" is its hallmark, and it
+      // is also what skips inline data URIs from a backend that stores nothing out-of-band.
+      if (typeof val === 'string' && val.includes('://')) {
         try {
-          const expr = await perspective.getExpression(val);
-          if (expr?.data) {
-            const data = typeof expr.data === 'string' ? JSON.parse(expr.data) : expr.data;
-            if (data?.data_base64 && data?.file_type) {
-              patched[propName] = `data:${data.file_type};base64,${data.data_base64}`;
-              // Carry the original upload name forward — preUploadFileAssets
-              // needs it to reuse this exact address if the asset goes
-              // unchanged through an edit round trip (see its doc comment).
-              if (typeof data.name === 'string') {
-                patched.__assetNames = {
-                  ...(patched.__assetNames as Record<string, string> | undefined),
-                  [propName]: data.name,
-                };
-              }
+          const data = await fileStore.fetch(perspective, val);
+          if (data) {
+            patched[propName] = `data:${data.file_type};base64,${data.data_base64}`;
+            // Carry the original upload name forward — preUploadFileAssets
+            // needs it to reuse this exact address if the asset goes
+            // unchanged through an edit round trip (see its doc comment).
+            if (typeof data.name === 'string') {
+              patched.__assetNames = {
+                ...(patched.__assetNames as Record<string, string> | undefined),
+                [propName]: data.name,
+              };
             }
           }
         } catch {
@@ -320,11 +338,10 @@ export async function resolveExpressionAddresses(
  * Extract property values from a serialized node for a given model class.
  * Only includes properties that exist on both the node and the model.
  */
-export function extractBlockData(ModelClass: typeof Ad4mModel, node: SerializedBlockNode): Record<string, unknown> {
-  const propsMeta = getPropertiesMetadata(ModelClass);
+export function extractBlockData(entity: string, node: SerializedBlockNode): Record<string, unknown> {
   const data: Record<string, unknown> = {};
 
-  for (const propName of Object.keys(propsMeta)) {
+  for (const propName of propertyNames(entity)) {
     if (propName in node && node[propName] !== undefined) {
       data[propName] = node[propName];
     }
@@ -336,11 +353,11 @@ export function extractBlockData(ModelClass: typeof Ad4mModel, node: SerializedB
 /** A model exposing `WeNode`'s mentions relation — every block root does, but the type is erased. */
 interface NodeWithMentions {
   mentions: string[];
-  addMentions(target: string | string[], batchId?: string): Promise<void>;
-  removeMentions(target: string | string[], batchId?: string): Promise<void>;
+  addMentions(target: string | string[], batch?: string): Promise<void>;
+  removeMentions(target: string | string[], batch?: string): Promise<void>;
 }
 
-function hasMentions(model: unknown): model is Ad4mModel & NodeWithMentions {
+function hasMentions(model: unknown): model is ModelInstance & NodeWithMentions {
   return typeof (model as NodeWithMentions)?.addMentions === 'function';
 }
 
@@ -356,7 +373,7 @@ function hasMentions(model: unknown): model is Ad4mModel & NodeWithMentions {
  * for the mentions it kept — each removed link is a network write, and an unchanged edge should
  * cost nothing.
  */
-async function writeMentions(root: Ad4mModel, node: SerializedBlockNode, batchId?: string): Promise<void> {
+async function writeMentions(root: ModelInstance, node: SerializedBlockNode, batchId?: string): Promise<void> {
   if (!hasMentions(root)) return;
 
   const wanted = extractMentions(node);
@@ -408,7 +425,7 @@ export interface CreateBlocksOptions {
 
 /**
  * Recursively creates AD4M block models from a serialized block tree.
- * Uses Ad4mModel.transaction() for atomic persistence — if any block
+ * Runs in one write group via runModelTransaction — if any block
  * creation or linking fails, commitBatch() is never called.
  *
  * Parent-child relationships are established via the `children` @HasMany
@@ -425,19 +442,19 @@ export interface CreateBlocksOptions {
  * rewrite is not available; converging one record at a time as they are created is.
  */
 export async function createBlocks(
-  perspective: PerspectiveProxy,
+  perspective: BlockDataset,
   node: SerializedBlockNode,
   options: CreateBlocksOptions = {},
-): Promise<Ad4mModel | undefined> {
+): Promise<BlockModel | undefined> {
   const { kind, mode = kind ? 'document' : undefined, anchor } = options;
-  return Ad4mModel.transaction(perspective, async (tx) => {
+  return runModelTransaction(perspective, async (tx) => {
     const root = await persistNode(perspective, tx.batchId, node, undefined, undefined, anchor);
     // Assigned before the blob write below so both land in that one `save`, rather than costing a
     // second round trip for one string.
     const stampKind = root && kind && 'kind' in root;
-    if (stampKind) (root as CollectionBlock).kind = kind;
+    if (stampKind) root.kind = kind;
     const stampMode = root && mode && 'mode' in root;
-    if (stampMode) (root as CollectionBlock).mode = mode;
+    if (stampMode) root.mode = mode;
 
     // Store the full Lexical serialized JSON as a file-storage blob on the
     // root CollectionBlock for lossless roundtrip. preUploadFileAssets runs
@@ -450,12 +467,12 @@ export async function createBlocks(
       const patchedNode = await preUploadFileAssets(perspective, node);
       const jsonStr = JSON.stringify(patchedNode);
       const base64 = btoa(unescape(encodeURIComponent(jsonStr)));
-      (root as CollectionBlock).editorState = asFileField({
+      root.editorState = asFileField({
         data_base64: base64,
         name: 'editor-state.json',
         file_type: 'application/json',
       });
-      (root as CollectionBlock).textContent = extractTextContent(patchedNode);
+      root.textContent = extractTextContent(patchedNode);
       await root.save(tx.batchId);
     } else if (stampKind || stampMode) {
       // A root with no `editorState` skips the blob write entirely, so `kind`/`mode` would
@@ -483,13 +500,13 @@ export async function createBlocks(
  * inherited downward would link every block in the post to the channel as well.
  */
 async function persistNode(
-  perspective: PerspectiveProxy,
-  batchId: string,
+  perspective: BlockDataset,
+  batchId: string | undefined,
   node: SerializedBlockNode,
-  parent?: Ad4mModel,
+  parent?: ModelInstance,
   inherited?: Record<string, unknown>,
   anchor?: BlockAnchor,
-): Promise<Ad4mModel | undefined> {
+): Promise<BlockModel | undefined> {
   // Pass-through containers (e.g. "list"): don't create a model,
   // carry metadata down to children
   if (PASSTHROUGH_TYPES.has(node.type)) {
@@ -505,11 +522,11 @@ async function persistNode(
     return undefined;
   }
 
-  const ModelClass = getBlockModel(node.type);
-  let block: Ad4mModel | undefined;
+  const registration = getBlockRegistration(node.type);
+  let block: BlockModel | undefined;
 
-  if (ModelClass) {
-    const data = extractBlockData(ModelClass, node);
+  if (registration) {
+    const data = extractBlockData(registration.entity, node);
 
     // Apply inherited metadata from pass-through parents (e.g. list → listitem)
     if (inherited) {
@@ -524,10 +541,10 @@ async function persistNode(
       data.text = extractInlineText(node.children);
     }
 
-    block = await ModelClass.create(perspective, data, {
+    block = (await registration.model.create(perspective, data, {
       batchId,
       ...(anchor && { parent: { id: anchor.id, predicate: anchor.predicate } }),
-    });
+    })) as BlockModel;
     node.id = block.id;
 
     if (parent && block && hasChildrenRelation(parent)) {
@@ -569,21 +586,19 @@ async function persistNode(
 }
 
 /**
- * Resolve the AD4M model class for an arbitrary block expression.
+ * Resolve an arbitrary block id to a hydrated instance of its concrete type.
  *
- * Every block model carries a `@Flag({ through: 'we://flag', value: ... })`
- * property identifying its concrete type, and flags are always required
- * triples — so `isSubjectInstance` reliably discriminates between block
- * classes via a real SPARQL ASK rather than a loose "has any links" check.
- * This replaced an older `we://type`-link classifier that only worked for
- * CollectionBlock/TextBlock (the two models that repurpose `we://type` for
- * their own internal subtype field) and silently failed for every leaf
- * block (ImageBlock, VideoBlock, etc.), which have no `type` property.
+ * Class-scoped `findOne` per registered block model: a find by id under class X answers null when
+ * the record is not an X — every block carries a discriminating flag, and the backend's query
+ * machinery filters on it — so the first non-null answer is both the classification and the
+ * instance, in one call. This replaced an AD4M-specific `isSubjectInstance` ASK followed by a
+ * second fetch; a backend with a cheaper classification primitive can grow a port for it if the
+ * per-class probes ever show up in a profile.
  */
-async function resolveBlockModel(perspective: PerspectiveProxy, uri: string): Promise<typeof Ad4mModel | undefined> {
-  for (const ModelClass of getRegisteredBlockModels()) {
-    const className = (ModelClass as unknown as { className: string }).className;
-    if (await perspective.isSubjectInstance(uri, className)) return ModelClass;
+async function resolveBlockInstance(perspective: BlockDataset, uri: string): Promise<BlockModel | undefined> {
+  for (const registration of getRegisteredBlockModels()) {
+    const block = await registration.model.findOne(perspective, { where: { id: uri } });
+    if (block) return block as BlockModel;
   }
   return undefined;
 }
@@ -594,19 +609,15 @@ async function resolveBlockModel(perspective: PerspectiveProxy, uri: string): Pr
  * Takes a root block URI, resolves its model class, hydrates it, then
  * recursively loads children via the `children` @HasMany relationship.
  */
-export async function loadBlocks(perspective: PerspectiveProxy, rootUri: string): Promise<Ad4mModel | undefined> {
-  async function loadNode(uri: string): Promise<Ad4mModel | undefined> {
-    const ModelClass = await resolveBlockModel(perspective, uri);
-    if (!ModelClass) return undefined;
-
-    // Hydrate the block with the correct concrete class
-    const block = await ModelClass.findOne(perspective, { where: { id: uri } });
+export async function loadBlocks(perspective: BlockDataset, rootUri: string): Promise<BlockModel | undefined> {
+  async function loadNode(uri: string): Promise<BlockModel | undefined> {
+    const block = await resolveBlockInstance(perspective, uri);
     if (!block) return undefined;
 
     // Recursively load children if this block has a children relation
     if (hasChildren(block)) {
       const childUris: string[] = block.children;
-      const loadedChildren: Ad4mModel[] = [];
+      const loadedChildren: BlockModel[] = [];
 
       for (const childUri of childUris) {
         const child = await loadNode(childUri);
@@ -631,13 +642,10 @@ export async function loadBlocks(perspective: PerspectiveProxy, rootUri: string)
  * exist. Runs inside a transaction so a failure partway through doesn't
  * leave the tree half-deleted.
  */
-export async function deleteBlocks(perspective: PerspectiveProxy, rootUri: string): Promise<void> {
-  await Ad4mModel.transaction(perspective, async (tx) => {
+export async function deleteBlocks(perspective: BlockDataset, rootUri: string): Promise<void> {
+  await runModelTransaction(perspective, async (tx) => {
     async function deleteNode(uri: string): Promise<void> {
-      const ModelClass = await resolveBlockModel(perspective, uri);
-      if (!ModelClass) return;
-
-      const block = await ModelClass.findOne(perspective, { where: { id: uri } });
+      const block = await resolveBlockInstance(perspective, uri);
       if (!block) return;
 
       if (hasChildren(block)) {
@@ -659,14 +667,11 @@ export async function deleteBlocks(perspective: PerspectiveProxy, rootUri: strin
  * and cleanup (delete whatever never got claimed) without resolving each
  * instance's model class twice.
  */
-async function collectDescendants(perspective: PerspectiveProxy, childUris: string[]): Promise<Map<string, Ad4mModel>> {
-  const result = new Map<string, Ad4mModel>();
+async function collectDescendants(perspective: BlockDataset, childUris: string[]): Promise<Map<string, BlockModel>> {
+  const result = new Map<string, BlockModel>();
 
   async function walk(uri: string): Promise<void> {
-    const ModelClass = await resolveBlockModel(perspective, uri);
-    if (!ModelClass) return;
-
-    const block = await ModelClass.findOne(perspective, { where: { id: uri } });
+    const block = await resolveBlockInstance(perspective, uri);
     if (!block) return;
 
     result.set(uri, block);
@@ -717,13 +722,13 @@ async function collectDescendants(perspective: PerspectiveProxy, childUris: stri
  * failure is silent and destroys other people's content.
  */
 export async function reconcileBlocks(
-  perspective: PerspectiveProxy,
-  existingRoot: Ad4mModel & BlockWithChildren,
+  perspective: BlockDataset,
+  existingRoot: BlockWithChildren,
   node: SerializedBlockNode,
-): Promise<Ad4mModel> {
+): Promise<ModelInstance> {
   // Read structurally rather than through `CollectionBlock`: the parameter is typed as a generic
   // block root, and `Partial<CollectionBlock>` does not overlap it enough for a direct cast.
-  const root = existingRoot as Ad4mModel & BlockWithChildren & { kind?: string; mode?: string };
+  const root = existingRoot as BlockWithChildren & { kind?: string; mode?: string };
   if (!isReconcilable(root.mode)) {
     throw new Error(
       `reconcileBlocks refused: collection '${root.kind || 'untitled'}' is in '${root.mode}' mode, not 'document'. ` +
@@ -732,7 +737,7 @@ export async function reconcileBlocks(
     );
   }
 
-  return Ad4mModel.transaction(perspective, async (tx) => {
+  return runModelTransaction(perspective, async (tx) => {
     const existing = await collectDescendants(perspective, existingRoot.children);
     const claimed = new Set<string>();
 
@@ -754,8 +759,8 @@ export async function reconcileBlocks(
         return ids;
       }
 
-      const ModelClass = getBlockModel(node.type);
-      if (!ModelClass) {
+      const registration = getBlockRegistration(node.type);
+      if (!registration) {
         // Unrecognized type — same treatment as persistNode: contribute
         // children's ids upward without creating anything for this node.
         const ids: string[] = [];
@@ -767,7 +772,7 @@ export async function reconcileBlocks(
         return ids;
       }
 
-      const data = extractBlockData(ModelClass, node);
+      const data = extractBlockData(registration.entity, node);
       if (inherited) {
         for (const [k, v] of Object.entries(inherited)) {
           if (!(k in data) || !data[k]) data[k] = v;
@@ -778,7 +783,7 @@ export async function reconcileBlocks(
       }
 
       const existingId = typeof node.id === 'string' ? node.id : undefined;
-      let block: Ad4mModel | undefined;
+      let block: BlockModel | undefined;
       if (existingId && !claimed.has(existingId)) {
         block = existing.get(existingId);
         if (block) {
@@ -788,7 +793,7 @@ export async function reconcileBlocks(
         }
       }
       if (!block) {
-        block = await ModelClass.create(perspective, data, { batchId: tx.batchId });
+        block = (await registration.model.create(perspective, data, { batchId: tx.batchId })) as BlockModel;
       }
       node.id = block.id;
 
@@ -838,12 +843,13 @@ export async function reconcileBlocks(
     const patchedNode = await preUploadFileAssets(perspective, node);
     const jsonStr = JSON.stringify(patchedNode);
     const base64 = btoa(unescape(encodeURIComponent(jsonStr)));
-    (existingRoot as CollectionBlock).editorState = asFileField({
+    const rootRecord = existingRoot as BlockWithChildren & Record<string, unknown>;
+    rootRecord.editorState = asFileField({
       data_base64: base64,
       name: 'editor-state.json',
       file_type: 'application/json',
     });
-    (existingRoot as CollectionBlock).textContent = extractTextContent(patchedNode);
+    rootRecord.textContent = extractTextContent(patchedNode);
     await existingRoot.save(tx.batchId);
 
     // Edits add and remove mentions like any other content, so the edge set is reconciled here for

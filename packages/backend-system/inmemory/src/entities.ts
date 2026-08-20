@@ -14,6 +14,7 @@
  * filtering, ordering, paging, relation hydration and count projections are the engine's semantics
  * rather than a second implementation of them.
  */
+import type { IncludeExtras, IncludeOf, ModelInstance, ModelStatic, TypedModelQuery } from '@we/backend-shared';
 import {
   compileQuery,
   type EntitySchema,
@@ -81,18 +82,51 @@ function normalizeOrder(order: unknown): Record<string, 'asc' | 'desc'> | undefi
   return out;
 }
 
+/**
+ * An instance this backend hands out: the neutral base contract, honestly — every row is stamped
+ * with id/author/createdAt/updatedAt at creation and hydration attaches save/delete — plus the
+ * manifest-declared fields, which are dynamic here and so typed as the open remainder.
+ */
+export type InMemoryInstance = ModelInstance & Record<string, unknown>;
+
+/**
+ * A query as this backend takes it: the contract's typed shape, or the untyped record a dynamic
+ * caller (the schema renderer, a space-defined entity) passes. The union rather than only the
+ * record because `TypedModelQuery` is an interface — it carries no implicit index signature, so it
+ * is not assignable *to* a record type, and the contract's callers must be accepted as they come.
+ */
+type AnyQuery = Record<string, unknown> | TypedModelQuery<ModelInstance>;
+
 export interface EntityClassLike {
   new (): Record<string, unknown>;
   entityName: string;
-  findAll(dataset: unknown, query?: Record<string, unknown>): Promise<Record<string, unknown>[]>;
-  findOne(dataset: unknown, query?: Record<string, unknown>): Promise<Record<string, unknown> | null>;
-  create(dataset: unknown, data?: Record<string, unknown>): Promise<Record<string, unknown>>;
-  update(dataset: unknown, id: string, data: Record<string, unknown>): Promise<Record<string, unknown> | null>;
+  findAll<Q extends TypedModelQuery<ModelInstance>>(
+    dataset: unknown,
+    query?: Q | AnyQuery,
+  ): Promise<(InMemoryInstance & IncludeExtras<ModelInstance, IncludeOf<Q>>)[]>;
+  findOne<Q extends TypedModelQuery<ModelInstance>>(
+    dataset: unknown,
+    query?: Q | AnyQuery,
+  ): Promise<(InMemoryInstance & IncludeExtras<ModelInstance, IncludeOf<Q>>) | null>;
+  create(dataset: unknown, data?: Record<string, unknown>): Promise<InMemoryInstance>;
+  update(dataset: unknown, id: string, data: Record<string, unknown>): Promise<InMemoryInstance | null>;
+  delete(dataset: unknown, id: string): Promise<unknown>;
+  count(dataset: unknown, query?: AnyQuery): Promise<number>;
   query(
     dataset: unknown,
     q?: Record<string, unknown>,
   ): { subscribe(cb: (rows: unknown[]) => void): Promise<unknown[]>; dispose(): void };
 }
+
+/**
+ * The contract, checked: this backend's compiled entities present the same static surface the
+ * entity proxies are typed as — which is what makes it a second *conforming* implementation
+ * rather than a lookalike. (The AD4M lane cannot make this assertion structurally — its statics
+ * are `this`-polymorphic — so this is also the one place the contract is compiler-verified
+ * end to end.)
+ */
+type Satisfies<A extends B, B> = A;
+export type AssertEntityClassSatisfiesContract = Satisfies<EntityClassLike, ModelStatic<ModelInstance>>;
 
 /**
  * Compile a manifest into entity classes backed by in-memory rows.
@@ -297,6 +331,23 @@ export function compileEntities(manifest: ModelManifest, runtime: EntityRuntime)
         row.updatedAt = new Date().toISOString();
         notify(dataset);
         return Entity.hydrate(dataset, row);
+      }
+
+      /**
+       * Static delete by id — the contract's counterpart to the instance method, and a hole this
+       * backend actually had: stores call `MutedAgent.delete(dataset, id)`, which resolved to
+       * nothing here and threw. Deleting what does not exist is a no-op, as with instance delete.
+       */
+      static async delete(handle: unknown, id: string): Promise<void> {
+        const dataset = datasetOf(handle);
+        const rows = tableOf(dataset, name);
+        const index = rows.findIndex((r) => r.id === id);
+        if (index >= 0) rows.splice(index, 1);
+        notify(dataset);
+      }
+
+      static async count(handle: unknown, query: Record<string, unknown> = {}): Promise<number> {
+        return (await Entity.findAll(handle, query)).length;
       }
 
       /**

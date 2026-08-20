@@ -1,4 +1,4 @@
-import type { PerspectiveProxy } from '@coasys/ad4m';
+import type { BlockDataset } from '@we/block-shared';
 import { createContext, type JSX, useContext } from 'solid-js';
 
 /**
@@ -28,9 +28,9 @@ import { createContext, type JSX, useContext } from 'solid-js';
  * know anything about the components it mounts. A context is the ordinary answer, and it works the
  * same for a hand-written Solid component as for a schema-mounted one.
  */
-const BlockDatasetContext = createContext<() => PerspectiveProxy | null>(() => null);
+const BlockDatasetContext = createContext<() => BlockDataset | null>(() => null);
 
-export function BlockDatasetProvider(props: { dataset: () => PerspectiveProxy | null; children: JSX.Element }) {
+export function BlockDatasetProvider(props: { dataset: () => BlockDataset | null; children: JSX.Element }) {
   return <BlockDatasetContext.Provider value={props.dataset}>{props.children}</BlockDatasetContext.Provider>;
 }
 
@@ -41,7 +41,7 @@ export function BlockDatasetProvider(props: { dataset: () => PerspectiveProxy | 
  * the user moves between spaces and a block rendered before the switch must not keep reading the
  * space they left.
  */
-export function useBlockDataset(explicit?: PerspectiveProxy | null): PerspectiveProxy | null {
+export function useBlockDataset(explicit?: BlockDataset | null): BlockDataset | null {
   const fromContext = useContext(BlockDatasetContext);
   return explicit ?? fromContext();
 }

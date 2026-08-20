@@ -1,18 +1,20 @@
 /**
- * The core vocabulary, declared vs hand-written.
+ * The core vocabulary: authored manifest vs generated classes.
  *
- * `CORE_MANIFEST` is generated from the decorated classes and is meant to replace them. This holds
- * the two in agreement: every entity compiled from the manifest must produce the same schema the
- * hand-written class does — same predicates, same cardinalities, same storage and read behaviour,
- * same type marker. A wrong predicate here would not error anywhere; it would silently write data
- * where nothing looks for it, which is why the comparison is exhaustive rather than a spot check.
+ * `CORE_MANIFEST` is the source of truth and the decorated classes are generated from it. This
+ * holds the two in agreement through a *different* compiler: every entity compiled from the
+ * manifest at runtime must produce the same schema the generated class does — same predicates,
+ * same cardinalities, same storage and read behaviour, same type marker. A codegen bug and a
+ * compiler bug cannot both make the same mistake silently, and a wrong predicate would not error
+ * anywhere — it would silently write data where nothing looks for it — which is why the comparison
+ * is exhaustive rather than a spot check.
  */
 import type { SHACLShape } from '@coasys/ad4m';
-import * as Classes from '@we/models/classes';
-import { CORE_MANIFEST } from '@we/models/generated/coreManifest';
+import { CORE_MANIFEST } from '@we/models/manifest';
 import { describe, expect, it } from 'vitest';
 
 import { compileManifest } from '../src/manifestCompiler';
+import * as Classes from '../src/models';
 
 type Shaped = { generateSHACL: () => { shape: SHACLShape | null } };
 
@@ -51,10 +53,10 @@ const shapeSummary = (cls: unknown) => {
 const entityNames = Object.keys(CORE_MANIFEST.entities);
 
 /**
- * The manifest is generated, so any failure below means it is stale rather than wrong — say so,
- * because the fix is one command and the diff alone doesn't suggest it.
+ * The classes are generated, so any failure below usually means they are stale rather than wrong —
+ * say so, because the fix is one command and the diff alone doesn't suggest it.
  */
-const REGENERATE = 'The manifest is out of date: run `pnpm --filter @we/models generate:manifest`.';
+const REGENERATE = 'The classes are out of date: run `pnpm --filter @we/backend-ad4m generate:classes`.';
 
 describe('core manifest ↔ hand-written classes', () => {
   it('declares every entity the model layer ships', () => {
