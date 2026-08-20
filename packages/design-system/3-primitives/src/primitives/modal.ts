@@ -70,6 +70,16 @@ const CSS_STYLES = css`
        so nothing ever scrolls. */
     min-height: 0;
     /*
+      Hold the scrollbar's room whether or not it is showing, so crossing the threshold is not also
+      a relayout: expanding one section of a form used to take the bar's width out of the content
+      box, and every control in the modal narrowed to make way for it.
+
+      Nearly free here. The gutter is the 6px of --we-component-scrollbar-width, not the ~15px of a
+      native bar, and the track paints transparent — so on a modal short enough never to scroll it
+      reserves a strip with nothing in it to see.
+    */
+    scrollbar-gutter: stable;
+    /*
       Room for focus rings. A field stretches to this box's full width, and its ring paints just
       outside itself — which the overflow clipping kills dead. The padding is the ring's room and the
       negative margin gives it back, so nothing else moves: content stays aligned with the header

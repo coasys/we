@@ -63,6 +63,27 @@ describe('$if with a reveal', () => {
     await waitFor(() => expect(overflows(container)).toEqual([]), { timeout: 500 });
   });
 
+  /*
+    A grid item's automatic minimum size is its content on *both* axes, and only the revealed one
+    used to be relaxed. A section revealing on the block axis therefore kept `min-width: auto`, so a
+    line of nowrap text — a truncated one-line summary — held it open at the width of the whole line
+    and pushed out of its container, with the ellipsis it was asking for never reachable.
+  */
+  it('relaxes the automatic minimum on both axes, so nowrap content cannot hold it open sideways', () => {
+    const node: SchemaNode = {
+      type: '$if',
+      props: {
+        condition: true,
+        enterTransition: { type: 'reveal', duration: 20 },
+        then: { type: 'Box' },
+      },
+    };
+    const { container } = renderSchema(node);
+    const inner = [...container.querySelectorAll('div')].find((el) => (el as HTMLElement).style.minHeight === '0');
+    expect(inner).toBeTruthy();
+    expect((inner as HTMLElement).style.minWidth).toBe('0');
+  });
+
   it('mirrors the enter transition on the way out, so a section that eased open eases closed', async () => {
     const [show, setShow] = createSignal(true);
     const stores = { appStore: { show: markReactive(show) } };

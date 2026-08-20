@@ -298,6 +298,12 @@ export function ConditionalRenderer({
     The inner div restores pointer events, and for a reveal it is also the clip. `min-*: 0` is not
     optional: a grid item's automatic minimum size is its content, which would hold the track open
     at full size and defeat the whole thing.
+
+    Both axes, not just the one being revealed. The wrapper exists only to animate, so it has no
+    business imposing a minimum on either — and the cross axis is where the automatic minimum does
+    its quietest damage: a line of `white-space: nowrap` text has a min-content width of the whole
+    line, so a block-revealing section holding one refused to shrink and pushed out of its
+    container, taking its own `text-overflow: ellipsis` out of reach on the way.
   */
   const innerStyle = createMemo(() => {
     const style: Record<string, string> = { 'pointer-events': 'auto' };
@@ -305,7 +311,8 @@ export function ConditionalRenderer({
       // Clipped while closed and while the track is moving; released once it has settled open, so a
       // ring or a dropdown inside is not cut off for the rest of the section's life.
       if (!open() || animating()) style.overflow = 'hidden';
-      style[revealsAxis('inline') ? 'min-width' : 'min-height'] = '0';
+      style['min-width'] = '0';
+      style['min-height'] = '0';
     }
     return style;
   });
