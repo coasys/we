@@ -1,6 +1,7 @@
 import type { RouteSchema, SchemaNode } from '@we/schema-shared';
 import { recordFormModal } from '@we/template-kit';
 
+import { boardBar, boardCanvas, boardQuery } from './Board';
 import { edgeDetailModal } from './EdgeDetail';
 
 /**
@@ -21,6 +22,9 @@ const MODES = [
   { value: 'schema', label: 'Schema' },
   { value: 'knowledge', label: 'Knowledge' },
   { value: 'content', label: 'Content' },
+  // Last, and different in kind from the three before it: those derive an arrangement from the
+  // data, and this one is the arrangement.
+  { value: 'board', label: 'Board' },
 ] as const;
 
 const LAYOUTS = [
@@ -181,6 +185,9 @@ export const graphRoute: RouteSchema = {
   path: '/graph',
   type: 'Column',
   props: { width: '100%', height: '100%', gap: '0' },
+  // Hoisted rather than left on the picker: the empty state has to count the same boards the picker
+  // lists, and two subscriptions could disagree about how many there are.
+  $queries: { boards: boardQuery },
   $localState: {
     mode: { type: 'string', initial: 'schema' },
     layout: { type: 'string', initial: 'force' },
@@ -198,6 +205,16 @@ export const graphRoute: RouteSchema = {
       see which of the two things a drag is about to do.
     */
     connecting: { type: 'boolean', initial: false },
+    /*
+      Which board is open, mirrored into the URL.
+
+      View state in the strict sense: someone sent a link to a board, and the recipient should see
+      the board rather than a picker. `push` so the browser's Back button steps between boards, the
+      way it steps between the modes.
+    */
+    boardId: { type: 'string', initial: '', syncParam: { name: 'board', push: true } },
+    newBoardOpen: { type: 'boolean', initial: false },
+    newCardOpen: { type: 'boolean', initial: false },
     /*
       Flipped after a record is created, which tells the graph to re-read and merge.
 
@@ -276,7 +293,16 @@ export const graphRoute: RouteSchema = {
                     },
                   },
                 },
-                picker('layout', LAYOUTS),
+                {
+                  type: '$if',
+                  props: {
+                    condition: { $eq: [{ $local: 'mode' }, 'board'] },
+                    // A board's positions are its data, so there is no layout to choose. Its own
+                    // controls — which board, and adding to it — take the same place instead.
+                    then: boardBar,
+                    else: picker('layout', LAYOUTS),
+                  },
+                },
                 /*
                   Creating a record, from the map of what is in the space.
 
@@ -331,6 +357,10 @@ export const graphRoute: RouteSchema = {
         {
           type: '$if',
           props: { condition: { $eq: [{ $local: 'mode' }, 'content'] }, then: contentGraph },
+        },
+        {
+          type: '$if',
+          props: { condition: { $eq: [{ $local: 'mode' }, 'board'] }, then: boardCanvas },
         },
       ],
     },

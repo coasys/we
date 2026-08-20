@@ -144,8 +144,15 @@ export interface GraphViewProps {
     targetLabel: string;
   }) => void;
   onSelectionChange?: (ids: string[]) => void;
-  /** Fired when a drag ends, with the world position — what a board persists. */
-  onNodeDragEnd?: (payload: { id: string; x: number; y: number }) => void;
+  /**
+   * Fired when a drag ends, with the world position — what a board persists.
+   *
+   * `recordId` is the node's own id, parsed out of its address, since a template writing the
+   * position back needs the record rather than the graph's name for it. Absent for a node that
+   * stands for no record — a property, a literal, a synthetic cluster — which is also how a
+   * template can tell that there is nothing to save.
+   */
+  onNodeDragEnd?: (payload: { id: string; x: number; y: number; recordId?: string; recordType?: string }) => void;
 
   /**
    * Data-layer bindings, injected by the host's component registry rather than written in a template.

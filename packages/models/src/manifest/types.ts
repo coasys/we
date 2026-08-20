@@ -91,6 +91,8 @@ export interface CollectionBlockModel extends WeNodeModel {
   description: string;
   version: number;
   textContent: string;
+  x?: number;
+  y?: number;
   children: string[];
   addChildren(value: string | { id: string }, batch?: string): Promise<unknown>;
   removeChildren(value: string | { id: string }, batch?: string): Promise<unknown>;

@@ -21,6 +21,14 @@ export interface QuerySeedOptions {
   order?: Record<string, 'asc' | 'desc'>;
   limit?: number;
   /**
+   * Drill down from one record through one of its relations, instead of loading a type wholesale.
+   *
+   * What a board needs, and the case a `where` clause cannot express: a board's cards are its
+   * children, which is a link rather than a field, so there is nothing to filter on. The same
+   * neutral shape `$query` already takes.
+   */
+  scope?: { anchor: string; via: string; anchorId: string };
+  /**
    * Relations to hydrate and draw as edges immediately, before any expansion.
    * A map with `defaultDepth: 0` and one relation here is the cheapest useful graph there is.
    */
@@ -57,12 +65,18 @@ export function querySeed(defaults: { reified?: ReifiedEdgeMap } = {}): SeedSour
       // there is nothing to attach them to.
       if (seedingAnEdge) for (const name of endpointRelations(options.entity, reified!)) include[name] = true;
 
+      // A scope naming no anchor yet is a template whose `$local` has not been chosen — a board
+      // nobody has picked. Loading the type wholesale there would fill the canvas with every card
+      // in the space, so it loads nothing and waits.
+      if (options.scope && !options.scope.anchorId) return { nodes: [], edges: [], total: 0 };
+
       const rows = await context.query({
         entity: options.entity,
         dataset,
         where: options.where,
         order: options.order,
         limit: options.limit ?? 100,
+        scope: options.scope,
         include: Object.keys(include).length ? include : undefined,
         signal,
       });

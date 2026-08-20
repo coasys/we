@@ -3,6 +3,10 @@ import type { CoreEntityDef } from '../defs';
 export const CollectionBlock: CoreEntityDef = {
   base: 'WeNode',
   methodRelations: ['children'],
+  // Genuinely absent rather than zero: a card at the origin and a collection that was never on a
+  // board are different things, and defaulting them to 0 would place every post at the top-left of
+  // every board it was ever dragged onto.
+  optional: ['x', 'y'],
   entity: {
     flag: { predicate: 'we://flag', value: 'we://collection_block' },
     properties: {
@@ -79,6 +83,27 @@ export const CollectionBlock: CoreEntityDef = {
       description: { type: 'string', predicate: 'we://description', default: '' },
       version: { type: 'number', predicate: 'we://version', default: 0 },
       textContent: { type: 'string', predicate: 'we://text_content', default: '' },
+      /*
+        Where this sits on a board.
+
+        The one case where position *is* the content rather than a derivation of it. Everywhere else
+        WE renders — a feed, a channel, a calendar — arrangement comes from the data: order by date,
+        group by kind, lay out by containment. A board is the surface where somebody put a thing
+        somewhere because that is what they meant, and nothing else in the record can carry that.
+
+        On the shared model rather than on a `Placement` record pointing at a card, which was the
+        other candidate. A placement record would let *anything* be placed on a board and let one
+        record appear on several, both of which are real; it also means a board's contents are not
+        its children, so nothing that already walks a collection would find them, and two records
+        have to be created, kept in step, and cleaned up together for every card. A collection is
+        already WE's container and `kind` already anticipates a board — this is the smaller change
+        by a long way, and the general form remains reachable later without moving any of it.
+
+        Unset on everything that is not on a board, which costs nothing: an AD4M property is a link
+        that exists only once written, so a post carries no x and no y and no migration was needed.
+      */
+      x: { type: 'number', predicate: 'we://x' },
+      y: { type: 'number', predicate: 'we://y' },
     },
     relations: {
       children: { target: '', cardinality: 'many', predicate: 'we://children' },

@@ -3545,7 +3545,7 @@
         },
         {
           "name": "onNodeDragEnd",
-          "type": "((payload: { id: string; x: number; y: number; }) => void)",
+          "type": "((payload: { id: string; x: number; y: number; recordId?: string; recordType?: string; }) => void)",
           "optional": true
         },
         {
@@ -3872,6 +3872,18 @@
           "name": "textContent",
           "type": "string",
           "predicate": "we://text_content",
+          "required": false
+        },
+        {
+          "name": "x",
+          "type": "number",
+          "predicate": "we://x",
+          "required": false
+        },
+        {
+          "name": "y",
+          "type": "number",
+          "predicate": "we://y",
           "required": false
         }
       ],

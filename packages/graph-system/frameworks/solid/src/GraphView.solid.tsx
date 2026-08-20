@@ -204,9 +204,16 @@ export function GraphView(props: GraphViewProps) {
         case 'selectionChange':
           props.onSelectionChange?.(event.ids);
           break;
-        case 'nodeDragEnd':
-          props.onNodeDragEnd?.({ id: event.node.id, x: event.position.x, y: event.position.y });
+        case 'nodeDragEnd': {
+          const at = parseAddress(event.node.id);
+          props.onNodeDragEnd?.({
+            id: event.node.id,
+            x: event.position.x,
+            y: event.position.y,
+            ...(at?.kind === 'entity' && { recordId: at.id, recordType: at.type }),
+          });
           break;
+        }
         default:
           break;
       }
