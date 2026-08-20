@@ -262,9 +262,9 @@ function emitTypes(defs) {
         // Mirrors the accessor trio the AD4M lane generates: add/remove one, set the whole list —
         // addressed by id or by a record carrying one. There is deliberately no get: reading
         // relations is the query layer's job (include), not an accessor's.
-        L.push(`  add${cap}(value: string | { id: string }): Promise<unknown>;`);
-        L.push(`  remove${cap}(value: string | { id: string }): Promise<unknown>;`);
-        L.push(`  set${cap}(values: (string | { id: string })[]): Promise<unknown>;`);
+        L.push(`  add${cap}(value: string | { id: string }, batch?: string): Promise<unknown>;`);
+        L.push(`  remove${cap}(value: string | { id: string }, batch?: string): Promise<unknown>;`);
+        L.push(`  set${cap}(values: (string | { id: string })[], batch?: string): Promise<unknown>;`);
       }
     }
     L.push('}');

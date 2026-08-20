@@ -4,6 +4,7 @@
  * "use AD4M" is a single line in the app and the shell names no backend at all.
  */
 import type { Ad4mClient, PerspectiveProxy } from '@coasys/ad4m';
+import { Ad4mModel } from '@coasys/ad4m';
 import type {
   BackendPorts,
   BackendPortsContext,
@@ -14,12 +15,15 @@ import type {
   ProfileDirectoryPort,
   SchemaPort,
 } from '@we/backend-shared';
+import { FILE_STORAGE_LANGUAGE } from '@we/models';
 import {
   getModelForPerspective,
   mergeDynamicModels,
   type ModelClass,
   registerDynamicModels,
+  registerFileStore,
   registerModel,
+  registerTransactionRunner,
 } from '@we/models';
 import { Space } from '@we/models/classes';
 
@@ -115,6 +119,22 @@ export function createAd4mBackendPorts(
   for (const M of [...ROOT_MODELS, ...SPACE_MODELS]) {
     registerModel((M as { className?: string }).className ?? M.name, M as unknown as ModelClass);
   }
+  // Batching, registered beside the models it batches: the neutral runModelTransaction resolves
+  // to AD4M's own transaction here, and to individual writes on a backend without one.
+  registerTransactionRunner((dataset, run) =>
+    Ad4mModel.transaction(dataset as PerspectiveProxy, (tx) => run({ batchId: tx.batchId })),
+  );
+  // File storage the same way: format:'file' properties resolve their bytes through this backend's
+  // file-storage language, and the address shape is this backend's own.
+  registerFileStore({
+    store: (dataset, file) => (dataset as PerspectiveProxy).createExpression(file, FILE_STORAGE_LANGUAGE),
+    fetch: async (dataset, address) => {
+      const expr = await (dataset as PerspectiveProxy).getExpression(address);
+      if (!expr?.data) return null;
+      const data = typeof expr.data === 'string' ? JSON.parse(expr.data) : expr.data;
+      return data?.data_base64 && data?.file_type ? data : null;
+    },
+  });
 
   const ephemeral = createAd4mEphemeralPort(ctx.selfId);
 

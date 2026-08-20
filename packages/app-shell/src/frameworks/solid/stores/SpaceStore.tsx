@@ -1194,14 +1194,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     if (!p) return;
     const existingRoot = await CollectionBlock.findOne(p, { where: { id: postId } });
     if (!existingRoot) return;
-    // The seam between the neutral store and the AD4M-lane block persistence: the instance IS the
-    // registered backend's class at runtime, and reconcileBlocks hands it to @coasys metadata
-    // APIs. Goes away when block persistence moves behind a port (see PR doc follow-ups).
-    await reconcileBlocks(
-      p,
-      existingRoot as unknown as Parameters<typeof reconcileBlocks>[1],
-      json as SerializedBlockNode,
-    );
+    await reconcileBlocks(p, existingRoot, json as SerializedBlockNode);
   }
 
   /**

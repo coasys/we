@@ -29,8 +29,13 @@ export interface ModelInstance {
   author: string;
   createdAt: unknown;
   updatedAt: unknown;
-  save(): Promise<unknown>;
-  delete(): Promise<unknown>;
+  /**
+   * `batch` is an opaque write-group token from {@link runModelTransaction}-style runners: writes
+   * carrying the same token commit together where the backend supports atomicity, and a backend
+   * without it ignores the token. Opaque here because its shape is the backend's own.
+   */
+  save(batch?: string): Promise<unknown>;
+  delete(batch?: string): Promise<unknown>;
 }
 
 // ── Field classification (structural, over the neutral interfaces) ─────────────────────────────

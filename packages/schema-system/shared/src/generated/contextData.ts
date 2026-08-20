@@ -696,7 +696,7 @@ export const contextData: ContextData = {
       superclass: 'DesignSystemElement',
       props: [
         { name: 'editorState', type: 'SerializedBlockNode', optional: true },
-        { name: 'perspective', type: 'PerspectiveProxy | null', optional: true },
+        { name: 'perspective', type: 'unknown', optional: true },
         { name: 'onSave', type: '((json: SerializedBlockNode) => void)', optional: true },
         { name: 'onReady', type: '((api: { save: () => void; }) => void)', optional: true },
       ],
@@ -719,7 +719,7 @@ export const contextData: ContextData = {
       superclass: 'DesignSystemElement',
       props: [
         { name: 'editorState', type: 'SerializedBlockNode', optional: true },
-        { name: 'perspective', type: 'PerspectiveProxy | null', optional: true },
+        { name: 'perspective', type: 'unknown', optional: true },
         { name: 'rootClass', type: 'string', optional: true },
       ],
       source: 'components',

@@ -952,11 +952,11 @@ when `relative` is enabled.
 - AudioInput
   Props: title: string | undefined, artist: string | undefined, audioUrl: string | FileData | undefined, duration: number | undefined, albumArt: string | undefined, onChange: (property: string, value: unknown) => void, isSelected: () => boolean
 - BlockComposer (DesignSystemElement)
-  Props: editorState?: SerializedBlockNode, perspective?: PerspectiveProxy | null, onSave?: ((json: SerializedBlockNode) => void), onReady?: ((api: { save: () => void; }) => void)
+  Props: editorState?: SerializedBlockNode, perspective?: unknown, onSave?: ((json: SerializedBlockNode) => void), onReady?: ((api: { save: () => void; }) => void)
 - BlockPlaceholder
   Props: icon: string, label: string, hint?: string, accept?: string, onFileDrop?: ((file: File) => void), onClick?: (() => void)
 - BlockRenderer (DesignSystemElement)
-  Props: editorState?: SerializedBlockNode, perspective?: PerspectiveProxy | null, rootClass?: string
+  Props: editorState?: SerializedBlockNode, perspective?: unknown, rootClass?: string
 - BlockToolbar
   Props: placement?: BlockToolbarPlacement, children: JSX.Element, stopPropagation?: boolean
 - CalloutDisplay

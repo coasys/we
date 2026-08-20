@@ -1,5 +1,7 @@
-import type { PerspectiveProxy } from '@coasys/ad4m';
 import type { DesignSystemProps } from '@we/design-types';
+
+/** The dataset a composer/renderer works against — whichever handle the connected backend takes. */
+export type BlockDataset = unknown;
 
 /**
  * A serialized block node (e.g. from Lexical editor state JSON) — the
@@ -25,12 +27,12 @@ export interface SerializedBlockNode {
 
 export type BlockComposerProps = Omit<DesignSystemProps, 'direction'> & {
   editorState?: SerializedBlockNode;
-  perspective?: PerspectiveProxy | null;
+  perspective?: BlockDataset | null;
   onSave?: (json: SerializedBlockNode) => void;
   onReady?: (api: { save: () => void }) => void;
 };
 
 export type BlockRendererProps = Omit<DesignSystemProps, 'direction'> & {
   editorState?: SerializedBlockNode;
-  perspective?: PerspectiveProxy | null;
+  perspective?: BlockDataset | null;
 };

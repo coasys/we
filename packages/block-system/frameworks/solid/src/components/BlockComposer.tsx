@@ -1,8 +1,7 @@
-import type { PerspectiveProxy } from '@coasys/ad4m';
 import { ListItemNode, ListNode } from '@lexical/list';
 import { CHECK_LIST, HEADING, ORDERED_LIST, QUOTE, UNORDERED_LIST } from '@lexical/markdown';
 import { HeadingNode, QuoteNode } from '@lexical/rich-text';
-import type { BlockComposerProps, SerializedBlockNode } from '@we/block-shared';
+import type { BlockComposerProps, BlockDataset, SerializedBlockNode } from '@we/block-shared';
 import { decodeEditorState, resolveExpressionAddresses } from '@we/block-shared';
 import { registerCoreBlocks } from '@we/block-shared';
 import type { ColumnProps } from '@we/components/solid';
@@ -63,7 +62,7 @@ function LoadEditorState({
   perspective,
 }: {
   editorState?: SerializedBlockNode;
-  perspective?: PerspectiveProxy | null;
+  perspective?: BlockDataset | null;
 }) {
   const [editor] = useLexicalComposerContext();
 

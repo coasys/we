@@ -29,15 +29,15 @@ export interface AgentSettingsModel extends ModelInstance {
   installedTemplates: TemplateModel[];
   installedThemes: ThemeModel[];
   spaceTemplatePreferences: SpaceTemplatePreferenceModel[];
-  addInstalledTemplates(value: string | { id: string }): Promise<unknown>;
-  removeInstalledTemplates(value: string | { id: string }): Promise<unknown>;
-  setInstalledTemplates(values: (string | { id: string })[]): Promise<unknown>;
-  addInstalledThemes(value: string | { id: string }): Promise<unknown>;
-  removeInstalledThemes(value: string | { id: string }): Promise<unknown>;
-  setInstalledThemes(values: (string | { id: string })[]): Promise<unknown>;
-  addSpaceTemplatePreferences(value: string | { id: string }): Promise<unknown>;
-  removeSpaceTemplatePreferences(value: string | { id: string }): Promise<unknown>;
-  setSpaceTemplatePreferences(values: (string | { id: string })[]): Promise<unknown>;
+  addInstalledTemplates(value: string | { id: string }, batch?: string): Promise<unknown>;
+  removeInstalledTemplates(value: string | { id: string }, batch?: string): Promise<unknown>;
+  setInstalledTemplates(values: (string | { id: string })[], batch?: string): Promise<unknown>;
+  addInstalledThemes(value: string | { id: string }, batch?: string): Promise<unknown>;
+  removeInstalledThemes(value: string | { id: string }, batch?: string): Promise<unknown>;
+  setInstalledThemes(values: (string | { id: string })[], batch?: string): Promise<unknown>;
+  addSpaceTemplatePreferences(value: string | { id: string }, batch?: string): Promise<unknown>;
+  removeSpaceTemplatePreferences(value: string | { id: string }, batch?: string): Promise<unknown>;
+  setSpaceTemplatePreferences(values: (string | { id: string })[], batch?: string): Promise<unknown>;
 }
 
 export interface AudioBlockModel extends WeNodeModel {
@@ -65,9 +65,9 @@ export interface ChatSessionModel extends WeNodeModel {
   name: string;
   templateId: string;
   messages: ChatMessageModel[];
-  addMessages(value: string | { id: string }): Promise<unknown>;
-  removeMessages(value: string | { id: string }): Promise<unknown>;
-  setMessages(values: (string | { id: string })[]): Promise<unknown>;
+  addMessages(value: string | { id: string }, batch?: string): Promise<unknown>;
+  removeMessages(value: string | { id: string }, batch?: string): Promise<unknown>;
+  setMessages(values: (string | { id: string })[], batch?: string): Promise<unknown>;
 }
 
 export interface CodeBlockModel extends WeNodeModel {
@@ -87,9 +87,9 @@ export interface CollectionBlockModel extends WeNodeModel {
   version: number;
   textContent: string;
   children: string[];
-  addChildren(value: string | { id: string }): Promise<unknown>;
-  removeChildren(value: string | { id: string }): Promise<unknown>;
-  setChildren(values: (string | { id: string })[]): Promise<unknown>;
+  addChildren(value: string | { id: string }, batch?: string): Promise<unknown>;
+  removeChildren(value: string | { id: string }, batch?: string): Promise<unknown>;
+  setChildren(values: (string | { id: string })[], batch?: string): Promise<unknown>;
 }
 
 export interface DividerBlockModel extends WeNodeModel {
@@ -249,9 +249,9 @@ export interface TemplateModel extends WeNodeModel {
   schema: string | null;
   themeId: string;
   screenshots: string[];
-  addScreenshots(value: string | { id: string }): Promise<unknown>;
-  removeScreenshots(value: string | { id: string }): Promise<unknown>;
-  setScreenshots(values: (string | { id: string })[]): Promise<unknown>;
+  addScreenshots(value: string | { id: string }, batch?: string): Promise<unknown>;
+  removeScreenshots(value: string | { id: string }, batch?: string): Promise<unknown>;
+  setScreenshots(values: (string | { id: string })[], batch?: string): Promise<unknown>;
 }
 
 export interface TextBlockModel extends WeNodeModel {
@@ -278,9 +278,9 @@ export interface ThemeModel extends WeNodeModel {
   css: string | null;
   overrides: string | null;
   screenshots: string[];
-  addScreenshots(value: string | { id: string }): Promise<unknown>;
-  removeScreenshots(value: string | { id: string }): Promise<unknown>;
-  setScreenshots(values: (string | { id: string })[]): Promise<unknown>;
+  addScreenshots(value: string | { id: string }, batch?: string): Promise<unknown>;
+  removeScreenshots(value: string | { id: string }, batch?: string): Promise<unknown>;
+  setScreenshots(values: (string | { id: string })[], batch?: string): Promise<unknown>;
 }
 
 export interface VideoBlockModel extends WeNodeModel {
