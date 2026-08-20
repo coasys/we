@@ -84,4 +84,17 @@ export interface GraphSpec {
   controls?: string[];
   /** Starting camera. Absent fits the seeds to the viewport. */
   viewport?: { x?: number; y?: number; zoom?: number };
+  /**
+   * Follow the data, re-reading the seeds when records of the types they read change.
+   *
+   * On by default wherever the host can report changes, because the alternative is a graph that is
+   * quietly wrong: a space is shared, so the records behind a map are being written by other people
+   * while it is on screen, and one loaded at open and never refreshed states as fact something that
+   * stopped being true. Updates merge, so nothing the reader has arranged moves.
+   *
+   * Set `false` for a graph that must not change under the reader — a diagram in a document, a
+   * thumbnail, anything being screenshotted or presented. A graph with no query-backed seeds is
+   * unaffected either way, since nothing is watched.
+   */
+  live?: boolean;
 }

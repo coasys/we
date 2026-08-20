@@ -137,6 +137,12 @@ export function GraphView(props: GraphViewProps) {
       // and the deployment's data layer begins, so it is deliberately untyped rather than importing
       // the protocol into `app-shell`.
       query: (request) => props.host?.query({ ...request }) ?? Promise.resolve([]),
+      // Present only when the host can actually report changes: the engine tests for the method to
+      // decide whether a live graph is possible at all, so passing a no-op stub would tell it yes
+      // and leave it waiting for notifications nothing will ever send.
+      ...(props.host?.watch && {
+        watch: (request, onChange) => props.host!.watch!(request, onChange),
+      }),
       defaultDataset: () => props.host?.defaultDataset() ?? null,
       models: (dataset) => props.host?.models(dataset) ?? [],
       warn: () => undefined,
@@ -204,6 +210,7 @@ export function GraphView(props: GraphViewProps) {
     layout: props.layout,
     nodeStyle: props.nodeStyle,
     edgeStyle: props.edgeStyle,
+    live: props.live,
   });
 
   // Reload when what the graph *is* changes — where it starts and how far it opens. Deliberately
@@ -244,6 +251,10 @@ export function GraphView(props: GraphViewProps) {
     if (previous !== undefined && previous !== next) void engine.refresh();
     return next;
   });
+
+  // Following the data is not part of what the graph *is*, so toggling it neither reloads nor
+  // re-lays-out — it only starts or stops the listening.
+  createEffect(() => engine.setLive(props.live !== false));
 
   // A layout swap rearranges what is already loaded rather than reloading it — the whole point of
   // offering several layouts is to see the same graph differently.

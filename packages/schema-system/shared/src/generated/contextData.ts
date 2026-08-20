@@ -1246,6 +1246,7 @@ export const contextData: ContextData = {
         { name: 'seeds', type: 'SeedSpec | SeedSpec[]', optional: true },
         { name: 'expansion', type: 'ExpansionSpec', optional: true },
         { name: 'revision', type: 'string | number', optional: true },
+        { name: 'live', type: 'boolean', optional: true },
         { name: 'layout', type: 'LayoutSpec', optional: true },
         { name: 'nodeStyle', type: 'NodeStyleRules', optional: true },
         { name: 'edgeStyle', type: 'EdgeStyleRules', optional: true },

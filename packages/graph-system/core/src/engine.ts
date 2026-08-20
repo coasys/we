@@ -75,6 +75,26 @@ function referencedMetrics(rules: readonly { style: Record<string, unknown> }[] 
 const DEFAULT_MAX_NODES = 2000;
 const DEFAULT_EXPAND_LIMIT = 50;
 
+/**
+ * How long a change waits for company before the graph re-reads.
+ *
+ * One user action is many writes — composing a post creates a collection and every block in it — and
+ * each arrives as its own notification. Long enough to collapse that into one pass, short enough
+ * that a record someone just created appears while they are still looking at where it should be.
+ */
+const WATCH_DEBOUNCE_MS = 250;
+
+/** What the seeds read, and so what is worth watching. */
+interface WatchTarget {
+  entity: string;
+  dataset?: string;
+}
+
+/** Identity of a watch. Only ever compared, never parsed back — the target is carried alongside it. */
+function watchKey(target: WatchTarget): string {
+  return `${target.entity} ${target.dataset ?? ''}`;
+}
+
 export class GraphEngine {
   readonly store = new GraphStore();
   readonly expansion = new ExpansionState();
@@ -99,6 +119,11 @@ export class GraphEngine {
   /** A refresh is running. See {@link refresh} for why a second one queues rather than joining in. */
   private refreshing = false;
   private refreshPending = false;
+  /** Live watches held on the types the seeds read, keyed by entity and dataset. */
+  private readonly watchers = new Map<string, () => void>();
+  private watchTimer?: ReturnType<typeof setTimeout>;
+  /** What the last seed load read, so watches can be re-synced without re-running the queries. */
+  private lastSeedReads: ReadonlyMap<string, WatchTarget> = new Map();
   /** A fit was asked for before there was a surface to fit into. Applied on the next real resize. */
   private pendingFit = false;
   /** Whether the user may move nodes. See `isLocked`. */
@@ -346,11 +371,27 @@ export class GraphEngine {
    *
    * Shared by {@link start} and {@link refresh} so the two can never disagree about what the seeds
    * *are* — the difference between them is entirely what happens to the result.
+   *
+   * Also the one place that learns *what the seeds read*. The seed sources are given a context whose
+   * `query` records the entity and dataset of every read, which is how the engine can watch the right
+   * types without understanding a single seed source's options. A seed plugin nobody has written yet
+   * becomes live for free; the alternative — the engine parsing `options.entity` — would work for
+   * exactly the sources that happen to spell it that way and silently fail for the rest.
    */
   private async loadSeeds(): Promise<GraphFragment> {
     const specs = this.spec.seeds ? (Array.isArray(this.spec.seeds) ? this.spec.seeds : [this.spec.seeds]) : [];
     const nodes: GraphNode[] = [];
     const edges: GraphEdge[] = [];
+    const read = new Map<string, WatchTarget>();
+
+    const recording: ExpanderContext = {
+      ...this.context,
+      query: (request) => {
+        const target: WatchTarget = { entity: request.entity, dataset: request.dataset };
+        read.set(watchKey(target), target);
+        return this.context.query(request);
+      },
+    };
 
     this.beginLoading();
     try {
@@ -360,7 +401,7 @@ export class GraphEngine {
             ? { nodes: seed.nodes, edges: seed.edges }
             : await this.registry
                 .seed(seed.source)
-                ?.seed(seed.options ?? {}, this.context)
+                ?.seed(seed.options ?? {}, recording)
                 .catch((error: unknown) => {
                   this.warn(`seed "${seed.source}" failed: ${describe(error)}`);
                   return undefined;
@@ -378,12 +419,78 @@ export class GraphEngine {
       this.endLoading();
     }
 
+    this.lastSeedReads = read;
+    this.syncWatchers(read);
     return { nodes, edges };
+  }
+
+  // ─── Following the data ──────────────────────────────────────────────────────
+
+  /**
+   * Turn following the data on or off without reloading.
+   *
+   * Its own entry point rather than a `setSpec` field the caller then has to know to act on, because
+   * the two spec paths already mean different things — one reloads, one restyles — and this is a
+   * third: nothing about the graph changes, only whether it keeps listening.
+   */
+  setLive(live: boolean): void {
+    if ((this.spec.live !== false) === live) return;
+    this.spec = { ...this.spec, live };
+    this.syncWatchers(this.lastSeedReads);
+  }
+
+  /**
+   * Hold a watch on exactly the types the seeds just read — no more, and no fewer.
+   *
+   * Recomputed after every load rather than set up once, because what the seeds read can change: a
+   * schema seed reads whatever classes the space now has, and a `$local`-driven entity picker reads a
+   * different type every time somebody uses it. Watches nothing when the host cannot report changes,
+   * or when the template asked for a graph that does not move.
+   */
+  private syncWatchers(read: ReadonlyMap<string, WatchTarget>): void {
+    const enabled = this.spec.live !== false && typeof this.context.watch === 'function';
+    const wanted = enabled ? read : new Map<string, WatchTarget>();
+
+    for (const [key, stop] of this.watchers) {
+      if (wanted.has(key)) continue;
+      stop();
+      this.watchers.delete(key);
+    }
+
+    for (const [key, target] of wanted) {
+      if (this.watchers.has(key)) continue;
+      this.watchers.set(
+        key,
+        this.context.watch!(target, () => this.onDataChanged()),
+      );
+    }
+  }
+
+  /**
+   * Something changed underneath. Coalesce and re-read.
+   *
+   * Debounced because one user action is many writes: composing a post creates the collection and
+   * every block inside it, and a graph that re-queried on each link would run a dozen rounds of
+   * queries to arrive at the state the last one already had. The delay is short enough to read as
+   * immediate and long enough to collapse a batch.
+   */
+  private onDataChanged(): void {
+    if (this.disposed) return;
+    if (this.watchTimer) clearTimeout(this.watchTimer);
+    this.watchTimer = setTimeout(() => {
+      this.watchTimer = undefined;
+      void this.refresh();
+    }, WATCH_DEBOUNCE_MS);
   }
 
   dispose(): void {
     this.disposed = true;
     if (this.layoutTimer) clearTimeout(this.layoutTimer);
+    if (this.watchTimer) clearTimeout(this.watchTimer);
+    // A leaked watch outlives the graph and keeps a whole engine — store, index, layout — reachable
+    // from a backend subscription, which is the shape of leak that only shows up as a slow app.
+    for (const stop of this.watchers.values()) stop();
+    this.watchers.clear();
     this.layout?.stop?.();
     this.listeners.clear();
   }

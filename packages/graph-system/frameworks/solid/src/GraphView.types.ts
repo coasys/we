@@ -55,6 +55,14 @@ export interface GraphViewProps {
    * shape is a `$localState` number bumped from a create action's `onSuccess`.
    */
   revision?: number | string;
+  /**
+   * Follow the data: re-read when records of the types the seeds read change. Defaults to true.
+   *
+   * Set `false` for a graph that must hold still under the reader — a diagram in a document, a
+   * thumbnail, anything being presented or screenshotted. A graph with no query-backed seeds is
+   * unaffected either way, since nothing is watched.
+   */
+  live?: boolean;
   /** Which layout arranges it. Defaults to `force`. */
   layout?: LayoutSpec;
   /** Ordered node style rules; later matches win per property. */
@@ -108,6 +116,13 @@ export interface GraphViewProps {
 /** What the host lends the graph so its expanders can read data without knowing the backend. */
 export interface GraphHostBindings {
   query(request: Record<string, unknown>): Promise<Record<string, unknown>[]>;
+  /**
+   * Report changes to records of a type, and return a function that stops reporting.
+   *
+   * Optional: a host with no change notification omits it and the graph stays as loaded. The engine
+   * decides what to watch from the reads its seeds performed — nothing calls this directly.
+   */
+  watch?(request: { entity: string; dataset?: string }, onChange: () => void): () => void;
   defaultDataset(): string | null;
   models(dataset?: string): {
     name: string;

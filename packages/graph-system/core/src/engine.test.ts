@@ -6,7 +6,7 @@
  * verify, the layering would have failed.
  */
 import type { Expander, ExpanderContext, SeedSource } from '@we/graph-protocol';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { GraphEngine } from './engine';
 import { PluginRegistry } from './registry';
@@ -353,6 +353,137 @@ describe('refreshing keeps the graph the user is looking at', () => {
 
     // One in flight plus one pass for everything that arrived while it ran — not three.
     expect(runs).toBe(2);
+  });
+});
+
+/**
+ * A host that can report changes, and a seed that reads through the context so the engine can see
+ * what it read. The engine derives its watches from the reads themselves, so a seed that fabricates
+ * nodes without querying — every other seed in this file — is correctly watched for nothing.
+ */
+function watchableFixture(entity: string) {
+  const fired: (() => void)[] = [];
+  const watched: { entity: string; dataset?: string }[] = [];
+  let stopped = 0;
+
+  const context: ExpanderContext = {
+    query: async () => [{ id: 'row-1' }],
+    defaultDataset: () => 'ds',
+    models: () => [],
+    warn: () => undefined,
+    watch(request, onChange) {
+      watched.push(request);
+      fired.push(onChange);
+      return () => {
+        stopped += 1;
+      };
+    },
+  };
+
+  const seed: SeedSource = {
+    id: 'test',
+    async seed(_options, ctx) {
+      const rows = await ctx.query({ entity, dataset: 'ds' });
+      return {
+        nodes: rows.map((row) => ({
+          id: String((row as { id: string }).id),
+          kind: 'entity' as const,
+          type: entity,
+        })),
+        edges: [],
+      };
+    },
+  };
+
+  return { context, seed, watched, fired, stopped: () => stopped };
+}
+
+describe('following the data', () => {
+  it('watches exactly the types the seeds read', async () => {
+    const fixture = watchableFixture('Post');
+    const registry = new PluginRegistry({ seeds: [fixture.seed], layouts });
+    const engine = new GraphEngine({
+      spec: { seeds: { source: 'test' }, layout: { type: 'grid' } },
+      registry,
+      context: fixture.context,
+    });
+
+    await engine.start();
+
+    expect(fixture.watched).toEqual([{ entity: 'Post', dataset: 'ds' }]);
+  });
+
+  it('re-reads when a watch fires, and coalesces a burst into one pass', async () => {
+    vi.useFakeTimers();
+    try {
+      const fixture = watchableFixture('Post');
+      const registry = new PluginRegistry({ seeds: [fixture.seed], layouts });
+      const engine = new GraphEngine({
+        spec: { seeds: { source: 'test' }, layout: { type: 'grid' } },
+        registry,
+        context: fixture.context,
+      });
+      await engine.start();
+
+      const refresh = vi.spyOn(engine, 'refresh');
+      // One user action is many writes. Three notifications must not be three rounds of queries.
+      fixture.fired[0]();
+      fixture.fired[0]();
+      fixture.fired[0]();
+      await vi.advanceTimersByTimeAsync(500);
+
+      expect(refresh).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('watches nothing when the template asked for a graph that holds still', async () => {
+    const fixture = watchableFixture('Post');
+    const registry = new PluginRegistry({ seeds: [fixture.seed], layouts });
+    const engine = new GraphEngine({
+      spec: { seeds: { source: 'test' }, layout: { type: 'grid' }, live: false },
+      registry,
+      context: fixture.context,
+    });
+
+    await engine.start();
+
+    expect(fixture.watched).toEqual([]);
+  });
+
+  it('starts and stops watching as live is toggled, without re-running the queries', async () => {
+    const fixture = watchableFixture('Post');
+    const registry = new PluginRegistry({ seeds: [fixture.seed], layouts });
+    const engine = new GraphEngine({
+      spec: { seeds: { source: 'test' }, layout: { type: 'grid' }, live: false },
+      registry,
+      context: fixture.context,
+    });
+    await engine.start();
+
+    engine.setLive(true);
+    expect(fixture.watched).toHaveLength(1);
+
+    engine.setLive(false);
+    expect(fixture.stopped()).toBe(1);
+  });
+
+  it('releases its watches when disposed', async () => {
+    // A leaked watch keeps the whole engine reachable from a backend subscription — the shape of
+    // leak that only ever shows up as an app that gets slower the longer it runs.
+    const fixture = watchableFixture('Post');
+    const registry = new PluginRegistry({ seeds: [fixture.seed], layouts });
+    const engine = new GraphEngine({
+      spec: { seeds: { source: 'test' }, layout: { type: 'grid' } },
+      registry,
+      context: fixture.context,
+    });
+    await engine.start();
+
+    engine.dispose();
+
+    expect(fixture.stopped()).toBe(1);
   });
 });
 

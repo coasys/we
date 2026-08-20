@@ -175,6 +175,62 @@ export function GraphHost(props: Omit<GraphViewProps, 'host'>) {
   }
 
   const host: GraphViewProps['host'] = {
+    /**
+     * Tell the graph when records of a type change here.
+     *
+     * The same live path `$query` uses — `ModelClass.query(...).subscribe(...)` — which is why a
+     * post appears in the cards route the moment it is written. The graph took `findAll` instead,
+     * so it read once and never again; that is the whole difference between a map of a space and a
+     * picture of one.
+     *
+     * `limit: 1` because the rows are thrown away. What is wanted is the *notification*, and the
+     * engine's response is to re-run its own seeds with their own filters and paging — asking for
+     * the full set here would fetch every row twice on every change.
+     */
+    watch(request, onChange) {
+      const model = modelFor(request.entity, request.dataset);
+      const handle = datasetStore.currentDataset()?.handle;
+      if (!model || !handle) return () => undefined;
+
+      let live = true;
+      /*
+        The first delivery is the current state, not a change.
+
+        `subscribe` resolves with the initial page *and* invokes the callback, so treating every
+        invocation as a change makes the graph refresh once per watched type immediately after
+        loading — re-running every seed query for a state it already has. `pending` covers the
+        genuine race: a write landing before the initial page resolves is a real change, and
+        dropping it would lose exactly the update that arrived while the graph was opening.
+      */
+      let primed = false;
+      let pending = false;
+
+      const subscription = model.query(handle, { limit: 1 });
+      subscription
+        .subscribe(() => {
+          if (!live) return;
+          if (!primed) {
+            pending = true;
+            return;
+          }
+          onChange();
+        })
+        .then(() => {
+          primed = true;
+          if (live && pending) onChange();
+        })
+        .catch((error: unknown) => {
+          // A type this backend will not subscribe to leaves the graph as loaded rather than
+          // taking it down — the same degradation every other read here makes.
+          console.warn(`[graph] cannot watch ${request.entity}:`, error);
+        });
+
+      return () => {
+        live = false;
+        subscription.dispose();
+      };
+    },
+
     defaultDataset: () => {
       const current = datasetStore.currentDataset();
       // Prefer the shared id: it is identical on every agent, which is what makes a node address

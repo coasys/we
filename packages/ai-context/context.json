@@ -3459,6 +3459,11 @@
           "optional": true
         },
         {
+          "name": "live",
+          "type": "boolean",
+          "optional": true
+        },
+        {
           "name": "layout",
           "type": "LayoutSpec",
           "optional": true
