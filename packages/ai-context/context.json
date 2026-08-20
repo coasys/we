@@ -5980,6 +5980,7 @@
         "canAdministerSpace",
         "copyShareLink",
         "getSubgroupMessages",
+        "exportCallTranscript",
         "removeSpaceFromGlobal",
         "updateSpaceInCache",
         "loadSpaces"

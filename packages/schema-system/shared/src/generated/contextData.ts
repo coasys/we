@@ -2407,6 +2407,7 @@ export const contextData: ContextData = {
         'canAdministerSpace',
         'copyShareLink',
         'getSubgroupMessages',
+        'exportCallTranscript',
         'removeSpaceFromGlobal',
         'updateSpaceInCache',
         'loadSpaces',

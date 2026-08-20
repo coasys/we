@@ -1,3 +1,4 @@
+import { containmentPredicate, gatherTranscriptTurns, type TurnModel } from '@shared/interpretation/transcriptTurns';
 import { moduleRegistry, moduleStores, type ModuleSurface, moduleSurface } from '@shared/registries/moduleRegistry';
 import {
   isSpaceSelf,
@@ -524,6 +525,15 @@ export interface SpaceStore {
   /** Copy a space's share link to the clipboard. No-op for a space that has none. */
   copyShareLink: (uuid: string) => Promise<void>;
   getSubgroupMessages: (subgroupId: string) => Promise<FluxSubgroupMessage[]>;
+  /**
+   * Write a call's transcript to a `.txt` file and download it.
+   *
+   * One line per utterance: `name, ISO timestamp: text`, where the name is the speaker's display
+   * name and their DID when they have none. Read-only and client-side — it builds the blob and
+   * triggers a download rather than writing anywhere the space can see, which is why it is an
+   * imperative action instead of something a template can express.
+   */
+  exportCallTranscript: (callId: string) => Promise<void>;
   removeSpaceFromGlobal: (spaceUuid: string) => Promise<void>;
   updateSpaceInCache: (dataset: AppDataset, updates: Partial<Space>) => void;
 
@@ -1451,6 +1461,79 @@ export function SpaceStoreProvider(props: ParentProps) {
     }
   }
 
+  async function exportCallTranscript(callId: string): Promise<void> {
+    const dataset = datasetStore.currentDataset();
+    if (!dataset) return;
+    const p = dataset.handle;
+    try {
+      // The same gather extraction runs on, rather than a second reading of the same shape. What a
+      // turn is — which entities can be one, which rows are too broken to keep, and the ordering
+      // that makes a transcript a transcript rather than a bag of sentences — is one decision, and
+      // an export that answered it differently would disagree with what the model was shown.
+      const modelFor = (entity: string) => getModelForPerspective(entity, p);
+      const predicate = containmentPredicate(modelFor, datasetStore.currentDatasetModels());
+      const turns = predicate
+        ? await gatherTranscriptTurns(
+            {
+              modelFor: (entity) => modelFor(entity) as TurnModel | undefined,
+              handle: p,
+              containmentPredicate: predicate,
+            },
+            callId,
+          )
+        : [];
+
+      // Ask for the speakers this transcript actually names before labelling any of them. The cache
+      // is populated as a side effect of rendering people — members, peers, bylines — so relying on
+      // it alone exports whoever happens to be on screen by name and everybody else as a raw DID.
+      // `fetchProfile` no-ops on a profile it already holds and dedupes concurrent calls, so asking
+      // for all of them costs a round trip only for the ones genuinely missing.
+      const speakers = [...new Set(turns.map((turn) => turn.speaker))];
+      await Promise.all(speakers.map((did) => profileStore.fetchProfile(did).catch(() => undefined)));
+
+      // A speaker's label the way the byline renders it: their display name, else their DID. The
+      // cache is keyed on the bare DID — `fetchProfile` strips the scheme on the way in — so a
+      // prefixed author has to be stripped here too or it would never match what was just fetched.
+      const nameFor = (did: string): string => {
+        const profile = profileStore.profiles().find((entry) => entry.did === did.replace('did://', ''));
+        return profile?.name || did;
+      };
+
+      const lines = turns.map((turn) => `${nameFor(turn.speaker)}, ${turn.timestamp}: ${turn.text}`);
+
+      if (!lines.length) {
+        toastService.warning('This call has no transcript to export.');
+        return;
+      }
+
+      // Name the file after the call, falling back to a generic name, then stamp it with the export
+      // time so successive exports of the same call don't overwrite each other.
+      const call = await CollectionBlock.findOne(p, { where: { id: callId } });
+      const rawName = (call?.title ?? '').trim();
+      const slug =
+        rawName
+          .replace(/[^\p{L}\p{N}\-_ ]/gu, '')
+          .trim()
+          .replace(/\s+/g, '-') || 'call-transcript';
+      const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+      const filename = `${slug}-${stamp}.txt`;
+
+      const blob = new Blob([`${lines.join('\n')}\n`], { type: 'text/plain;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = filename;
+      document.body.appendChild(anchor);
+      anchor.click();
+      document.body.removeChild(anchor);
+      URL.revokeObjectURL(url);
+      toastService.success('Transcript exported.');
+    } catch (error) {
+      console.error('SpaceStore: exportCallTranscript failed', error);
+      toastService.error('Could not export the transcript.');
+    }
+  }
+
   const [currentSpace, setCurrentSpace] = createSignal<Space | null>(null);
 
   /**
@@ -2317,6 +2400,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     canAdministerSpace,
     copyShareLink,
     getSubgroupMessages,
+    exportCallTranscript,
     removeSpaceFromGlobal,
     updateSpaceInCache,
 

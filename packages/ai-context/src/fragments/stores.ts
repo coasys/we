@@ -362,6 +362,7 @@ export const storeEntries: StoreEntry[] = [
       'canAdministerSpace',
       'copyShareLink',
       'getSubgroupMessages',
+      'exportCallTranscript',
       'setModuleEnabled',
       'setModuleInstalled',
       'setModuleVisible',
@@ -874,6 +875,8 @@ export function generateStoresText(entries: StoreEntry[]): string {
           '(uuid: string): whether this agent may change what every member of that space sees — true for a personal space, and for a shared one they authored. A UI affordance for deciding whether to offer the controls, NOT enforcement: a shared space is a neighbourhood every member can write to. Ask by name rather than comparing author to $me.did, so the answer can grow (multiple admins, roles) without every template changing',
         getSubgroupMessages:
           "(subgroupId: string): messages belonging to one of Flux's conversation subgroups, fetched on demand. A dialect query against a foreign schema rather than a WE model, so it goes through the backend's interop surface instead of $query — which is why it is a store method and not a relation you can drill into",
+        exportCallTranscript:
+          "(callId: string): writes the call's transcript to a .txt file (one line per utterance: name, timestamp, text) and downloads it. Read-only and client-side — it reads the shared record and writes to the caller's own device",
         setModuleInstalled:
           '(moduleId: string, installed: boolean): turns a module on or off for this agent in every space. Personal — writes AgentSettings.installedModules in the root dataset, so no other member sees it',
         setModuleVisible:
