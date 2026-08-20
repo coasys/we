@@ -3455,7 +3455,7 @@
         },
         {
           "name": "revision",
-          "type": "string | number",
+          "type": "string | number | boolean",
           "optional": true
         },
         {

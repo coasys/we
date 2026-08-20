@@ -1,4 +1,5 @@
 import type { RouteSchema, SchemaNode } from '@we/schema-shared';
+import { recordFormModal } from '@we/template-kit';
 
 /**
  * The graph route — three graphs over the same space, switchable.
@@ -59,6 +60,7 @@ const schemaGraph: SchemaNode = {
     edgeStyle: [{ style: { showLabel: true, arrow: 'target' } }],
     behaviours: ['pan-zoom', 'select', { type: 'drag-node' }],
     height: '100%',
+    revision: { $local: 'revision' },
     onNodeClick: { $setLocal: 'selected', from: '$event' },
   },
 };
@@ -90,6 +92,7 @@ const knowledgeGraph: SchemaNode = {
     edgeStyle: [{ style: { curve: 'arc', arrow: 'target' } }],
     behaviours: ['pan-zoom', 'select', 'expand-on-double-click', { type: 'drag-node' }],
     height: '100%',
+    revision: { $local: 'revision' },
     onNodeClick: { $setLocal: 'selected', from: '$event' },
   },
 };
@@ -123,6 +126,7 @@ const contentGraph: SchemaNode = {
     edgeStyle: [{ style: { curve: 'step', color: 'neutral-200' } }],
     behaviours: ['pan-zoom', 'select', 'expand-on-double-click'],
     height: '100%',
+    revision: { $local: 'revision' },
     onNodeClick: { $setLocal: 'selected', from: '$event' },
   },
 };
@@ -152,6 +156,18 @@ export const graphRoute: RouteSchema = {
     // Holds the last clicked node so the detail strip has something to read. An object rather than
     // scalars because it is one thing that arrives whole from the event.
     selected: { type: 'object', initial: null },
+    /*
+      Flipped after a record is created, which tells the graph to re-read and merge.
+
+      A boolean rather than a counter because the schema language has no arithmetic — `$toggleLocal`
+      is the whole of "something happened", and the graph only compares the value to the last one.
+
+      Belt and braces beside the live watches the engine holds: a watch depends on the backend
+      reporting the write, and this is the one case where the template *knows* something changed
+      because it is what changed it. The graph merges either way, so the update arriving twice costs
+      a query and changes nothing on screen.
+    */
+    revision: { type: 'boolean', initial: false },
   },
   children: [
     /*
@@ -191,11 +207,49 @@ export const graphRoute: RouteSchema = {
                 picker('mode', MODES),
               ],
             },
-            picker('layout', LAYOUTS),
+            {
+              type: 'Row',
+              props: { gap: '300', ay: 'center' },
+              children: [
+                picker('layout', LAYOUTS),
+                /*
+                  Creating a record, from the map of what is in the space.
+
+                  Here rather than in a settings page because this is where the absence is felt: the
+                  schema mode draws a community's vocabulary, and until now the only thing you could
+                  do with a type on that map was look at it. Hidden when the space has no authorable
+                  models at all, since a button whose menu is empty teaches people it is broken.
+                */
+                {
+                  type: '$if',
+                  props: {
+                    condition: { $count: { items: { $store: 'recordStore.creatableEntities' } } },
+                    then: {
+                      type: 'we-button',
+                      props: {
+                        size: 'sm',
+                        variant: 'secondary',
+                        onClick: { $action: 'recordStore.openRecordForm' },
+                      },
+                      children: [{ type: 'we-icon', props: { name: 'plus' } }, 'New'],
+                    },
+                  },
+                },
+              ],
+            },
           ],
         },
       ],
     },
+
+    /*
+      The form sits above the canvas rather than inside it.
+
+      A graph is a transformed, zoomable surface, and text entry on one is its own project — the
+      board work says so twice. A modal is not a compromise here: what is being authored is a
+      record, which has nothing to do with where it will land.
+    */
+    recordFormModal({ onCreated: [{ $toggleLocal: 'revision' }] }),
 
     {
       type: 'Column',

@@ -51,10 +51,12 @@ export interface GraphViewProps {
    * the new record turns up as one more node among the ones the user arranged. Rows that have gone
    * are dropped, unless an expansion is still holding them.
    *
-   * Any value works — a counter, a timestamp, an id. Only the fact that it changed matters. The usual
-   * shape is a `$localState` number bumped from a create action's `onSuccess`.
+   * Any value works — only the fact that it *changed* matters, so the natural shape in a template is
+   * a `$localState` boolean flipped with `$toggleLocal` from a create action's `onSuccess`. There is
+   * no arithmetic in the schema language, so a counter is not something a template can increment;
+   * this takes a boolean precisely so the one available "something happened" gesture is enough.
    */
-  revision?: number | string;
+  revision?: number | string | boolean;
   /**
    * Follow the data: re-read when records of the types the seeds read change. Defaults to true.
    *
