@@ -203,6 +203,8 @@ export interface RailItemOptions {
 }
 
 export function railItem(opts: RailItemOptions): SchemaNode {
+  const active = opts.active ?? false;
+
   const mark: SchemaNode = opts.avatar
     ? {
         type: 'we-avatar',
@@ -223,8 +225,35 @@ export function railItem(opts: RailItemOptions): SchemaNode {
       p: '300',
       ...(opts.disabled !== undefined && { disabled: opts.disabled }),
       ...(opts.onClick !== undefined && { onClick: opts.onClick }),
-      bg: { $if: { condition: opts.active ?? false, then: 'neutral-100', else: '' } },
-      color: { $if: { condition: opts.active ?? false, then: 'primary-600', else: 'neutral-700' } },
+      bg: { $if: { condition: active, then: 'neutral-100', else: '' } },
+      color: { $if: { condition: active, then: 'primary-600', else: 'neutral-700' } },
+      /*
+        The current row deepens on hover rather than losing its colour.
+
+        `ghost` carries hover and active states of its own — `color: 'neutral-900'`, which is
+        near-white in a dark theme — and a state object from the caller *replaces* the variant's
+        rather than merging with it (see `getInstanceProps` in button.ts). So the row that had just
+        been marked as where-you-are flashed back to looking like every other row the moment the
+        pointer crossed it, which reads as a deselection.
+
+        One step along the same hue instead: a hover that says "yes, this one" without restating the
+        answer to a different question. The inactive arm repeats ghost's own values, since replacing
+        the object means restating everything it would have set.
+      */
+      hoverProps: {
+        $if: {
+          condition: active,
+          then: { bg: 'neutral-200', color: 'primary-700' },
+          else: { bg: 'neutral-100', color: 'neutral-900' },
+        },
+      },
+      activeProps: {
+        $if: {
+          condition: active,
+          then: { bg: 'neutral-200', color: 'primary-700' },
+          else: { bg: 'neutral-200', color: 'neutral-900' },
+        },
+      },
     },
     children: [
       mark,
