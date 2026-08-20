@@ -83,6 +83,21 @@ export interface PropertySchema {
    * the scalar type.
    */
   options?: (string | number)[];
+
+  /**
+   * Which control a derived form should offer, where the scalar type does not say.
+   *
+   * The sibling of `options`, and here for the same reason: a form generated from a manifest can
+   * infer a select from a closed vocabulary and a switch from a boolean, and then has nothing to go
+   * on for the cases where one storage type covers several kinds of value. `TaskBlock.dueDate` and
+   * `EventBlock.startDate` are both `string`, and their interpretation hints spend a sentence each
+   * saying they are a date in one format and a datetime in another — a fact the schema was carrying
+   * only in prose aimed at a language model.
+   *
+   * Presentation, not storage — `format` is the storage counterpart and stays about where bytes
+   * live. Absent means "whatever the type implies", which is right for most properties.
+   */
+  control?: 'textarea' | 'date' | 'datetime' | 'color' | 'url';
 }
 
 export interface RelationSchema {
@@ -136,6 +151,27 @@ export interface EntitySchema {
    * class-level counterpart of `PropertySchema.interpretationHint`.
    */
   interpretationHint?: string;
+
+  /**
+   * A person can create one of these by hand, filling in these fields in this order.
+   *
+   * Two facts in one, because they are the same fact. Most entities are not hand-authored at all —
+   * `Template`, `AgentSettings`, `ReadMarker` are written by the app, and `TextBlock` and
+   * `DividerBlock` exist only inside a composed document — so a surface offering "create a…" needs
+   * to know which of the two dozen names in the manifest are things anybody would want. And of an
+   * entity that *is* authorable, only some properties are the author's: `version` is bookkeeping
+   * and `occurrence` is derived, and a generated form that showed them would ask a person to fill
+   * in the implementation.
+   *
+   * Naming the fields rather than flagging the ones to hide also fixes their order, which a form
+   * needs and a property record does not reliably carry.
+   *
+   * Absent means "not authored by hand", which is the right default: an entity gains a form by
+   * someone deciding it should have one. Entities a *community* defines are the other way round —
+   * every property of a shape somebody wrote is theirs by construction, so those need no
+   * declaration and never carry one.
+   */
+  authoring?: { fields: string[] };
 }
 
 export interface ModelManifest {
@@ -159,6 +195,7 @@ const propertySchema = z.object({
   interpretationHint: z.string().optional(),
   identity: z.boolean().optional(),
   options: z.array(z.union([z.string(), z.number()])).optional(),
+  control: z.enum(['textarea', 'date', 'datetime', 'color', 'url']).optional(),
 });
 const relationSchema = z.object({
   target: z.string(),
@@ -173,6 +210,7 @@ const entitySchema = z.object({
   extends: z.string().optional(),
   abstract: z.boolean().optional(),
   interpretationHint: z.string().optional(),
+  authoring: z.object({ fields: z.array(z.string()) }).optional(),
 });
 
 export const modelManifestSchema = z.object({

@@ -7,6 +7,9 @@ export const EventBlock: CoreEntityDef = {
     interpretationHint:
       'Something happening at a identifiable future time — a meeting, a trip, a deadline event, an occasion. A day is enough; it does not need a time of day, an agreement between the speakers, or other attendees. "Visiting my grandma this weekend" is an event. Exclude only the conversation currently happening, and intentions with no when at all.',
     flag: { predicate: 'we://flag', value: 'we://event_block' },
+    // `occurrence` is absent on purpose: it is a dedup key a machine maintains, and asking an
+    // author for one would hand two hand-made events the same key — see its own note below.
+    authoring: { fields: ['title', 'description', 'startDate', 'endDate', 'location', 'allDay'] },
     properties: {
       /**
        * What makes two mentions the same *occasion* — the title and the day, joined.
@@ -57,12 +60,14 @@ export const EventBlock: CoreEntityDef = {
       },
       description: {
         type: 'string',
+        control: 'textarea',
         predicate: 'we://description',
         interpretationHint: 'What it is for, if said. Omit rather than restate the title.',
         default: '',
       },
       startDate: {
         type: 'string',
+        control: 'datetime',
         predicate: 'we://start_date',
         required: true,
         interpretationHint:
@@ -71,6 +76,7 @@ export const EventBlock: CoreEntityDef = {
       },
       endDate: {
         type: 'string',
+        control: 'datetime',
         predicate: 'we://end_date',
         interpretationHint: 'End as YYYY-MM-DDTHH:mm. Omit unless a duration or end time was actually stated.',
         default: '',
