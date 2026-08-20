@@ -514,6 +514,23 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     resetHintEditor: action('space-settings'),
   },
 
+  recordStore: {
+    // ── 'content', not 'space-settings' ──
+    // The neighbouring store defines what a "Sighting" *is*, which is the community shaping its own
+    // container. Creating one is writing a record, which is the same act as posting — so it belongs
+    // in the tier every template can reach, beside `spaceStore.createPost`.
+    creatableEntities: state('content'),
+    recordDraft: state('content'),
+    recordErrors: state('content'),
+    savingRecord: state('content'),
+    lastCreatedId: state('content'),
+    openRecordForm: action('content'),
+    setRecordEntity: action('content'),
+    setRecordField: action('content'),
+    cancelRecordForm: action('content'),
+    saveRecord: action('content'),
+  },
+
   themeStore: {
     builtInThemes: state('appearance'),
     installedThemes: state('appearance'),

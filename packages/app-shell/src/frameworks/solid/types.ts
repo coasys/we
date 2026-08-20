@@ -5,6 +5,7 @@ import type {
   EditorStore,
   PresenceStore,
   ProfileStore,
+  RecordStore,
   RouteStore,
   RuntimeStore,
   SessionStore,
@@ -61,6 +62,7 @@ export interface Stores extends RendererStores {
   appStore: AppStore;
   spaceStore: SpaceStore;
   shapeStore: ShapeStore;
+  recordStore: RecordStore;
   themeStore: ThemeStore;
   templateStore: TemplateStore;
   routeStore: RouteStore;

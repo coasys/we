@@ -1819,6 +1819,20 @@ ProfileStore:
   - clearProfileImage(field: "avatar" | "coverImage"): removes that image from the published profile
   - updateOwnLocation(update: { latitude?, longitude?, city?, country?, countryCode? }): merges the location update into the cache and publishes to the public dataset
 
+RecordStore:
+- State:
+  - creatableEntities: unknown
+  - recordDraft: unknown
+  - recordErrors: unknown
+  - savingRecord: unknown
+  - lastCreatedId: unknown
+- Actions:
+  - openRecordForm(): unknown
+  - setRecordEntity(): unknown
+  - setRecordField(): unknown
+  - cancelRecordForm(): unknown
+  - saveRecord(): unknown
+
 RouteStore:
 - State:
   - currentPath: string (the current route path)

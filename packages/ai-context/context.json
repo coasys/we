@@ -5486,6 +5486,27 @@
       ]
     },
     {
+      "name": "recordStore",
+      "state": {
+        "creatableEntities": {
+          "type": "array"
+        },
+        "recordDraft": {
+          "type": "object"
+        },
+        "recordErrors": {
+          "type": "array"
+        },
+        "savingRecord": {
+          "type": "boolean"
+        },
+        "lastCreatedId": {
+          "type": "string"
+        }
+      },
+      "actions": ["openRecordForm", "setRecordEntity", "setRecordField", "cancelRecordForm", "saveRecord"]
+    },
+    {
       "name": "routeStore",
       "state": {
         "currentPath": {

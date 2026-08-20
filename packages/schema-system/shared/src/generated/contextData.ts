@@ -2111,6 +2111,17 @@ export const contextData: ContextData = {
       ],
     },
     {
+      name: 'recordStore',
+      state: {
+        creatableEntities: { type: 'array' },
+        recordDraft: { type: 'object' },
+        recordErrors: { type: 'array' },
+        savingRecord: { type: 'boolean' },
+        lastCreatedId: { type: 'string' },
+      },
+      actions: ['openRecordForm', 'setRecordEntity', 'setRecordField', 'cancelRecordForm', 'saveRecord'],
+    },
+    {
       name: 'routeStore',
       state: { currentPath: { type: 'string' }, segments: { type: 'array' }, params: { type: 'object' } },
       actions: ['setNavigateFunction', 'setCurrentPath', 'navigate', 'setParam'],
