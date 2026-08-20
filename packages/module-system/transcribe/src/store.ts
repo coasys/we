@@ -123,14 +123,25 @@ const ELECTION_WAIT_MS = 5_000;
  * Flux uses, and the place to tune from.
  */
 const VAD = {
-  /** 0.08 in the defaults. Onset is the one that decides whether normal speech registers at all. */
-  speechOnsetThreshold: 0.04,
+  /**
+   * 0.08 in the defaults, 0.04 in Flux. Onset is the one that decides whether normal speech
+   * registers at all, and even Flux's number wanted a raised voice at ordinary mic distance.
+   */
+  speechOnsetThreshold: 0.025,
   /** 0.05 in the defaults. Too high and a sentence is cut at its quieter moments. */
-  silenceThreshold: 0.025,
+  silenceThreshold: 0.015,
   /** 12 in the defaults — ~32ms of held speech rather than ~16ms. */
   onsetHoldFrames: 6,
   /** 8000 in the defaults. Largely academic either way, since pre-roll already fills the buffer. */
   minUtteranceSamples: 2400,
+  /**
+   * 0.04 in the defaults — the same figure as the onset threshold, but measured across the whole
+   * utterance rather than one frame, and the utterance carries 500ms of pre-roll and up to 500ms of
+   * trailing silence. So the old value was the real floor: quiet speech could open an utterance and
+   * still be dropped on the way out. Lowered in step with onset, and kept above zero because the
+   * hallucination it exists to prevent is real — a near-silent segment makes Whisper invent "you".
+   */
+  minUtteranceRms: 0.02,
 };
 
 /**
@@ -145,7 +156,7 @@ const LEVEL_EVERY_FRAMES = 24;
  * Meter scale: how much of the bar one unit of RMS fills.
  *
  * Speech RMS lives around 0.04–0.25, so a linear 0–1 bar would squeeze everything interesting into
- * the leftmost few pixels and read as permanently empty. At ×400 the onset threshold sits at 16% and
+ * the leftmost few pixels and read as permanently empty. At ×400 the onset threshold sits at 10% and
  * an ordinary voice fills most of the track.
  */
 const METER_SCALE = 400;
