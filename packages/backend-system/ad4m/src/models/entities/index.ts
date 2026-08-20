@@ -3,6 +3,7 @@ export { ChatMessage } from './ChatMessage';
 export { ChatSession } from './ChatSession';
 export { MutedAgent } from './MutedAgent';
 export { ReadMarker } from './ReadMarker';
+export { Relationship } from './Relationship';
 export { Signal } from './Signal';
 export { SignalType } from './SignalType';
 export { Space } from './Space';

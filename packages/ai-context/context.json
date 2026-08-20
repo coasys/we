@@ -4218,6 +4218,49 @@
       "relations": []
     },
     {
+      "name": "Relationship",
+      "className": "Relationship",
+      "extends": "WeNode",
+      "fields": [
+        {
+          "name": "label",
+          "type": "string",
+          "predicate": "we://title",
+          "required": true
+        },
+        {
+          "name": "description",
+          "type": "string",
+          "predicate": "we://description",
+          "required": false
+        },
+        {
+          "name": "sourceType",
+          "type": "string",
+          "predicate": "we://source_type",
+          "required": false
+        },
+        {
+          "name": "targetType",
+          "type": "string",
+          "predicate": "we://target_type",
+          "required": false
+        }
+      ],
+      "relations": [
+        {
+          "name": "source",
+          "kind": "HasOne",
+          "predicate": "we://relationship_source"
+        },
+        {
+          "name": "target",
+          "kind": "HasOne",
+          "predicate": "we://relationship_target"
+        }
+      ]
+    },
+    {
       "name": "Shape",
       "className": "Shape",
       "extends": "WeNode",

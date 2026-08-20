@@ -25,6 +25,7 @@ import { ChatMessage } from './entities/ChatMessage';
 import { ChatSession } from './entities/ChatSession';
 import { MutedAgent } from './entities/MutedAgent';
 import { ReadMarker } from './entities/ReadMarker';
+import { Relationship } from './entities/Relationship';
 import { Shape } from './entities/Shape';
 import { Signal } from './entities/Signal';
 import { SignalType } from './entities/SignalType';
@@ -60,6 +61,7 @@ export const CORE_DEFS: Record<string, CoreEntityDef> = {
   LocationBlock,
   MutedAgent,
   ReadMarker,
+  Relationship,
   Shape,
   Signal,
   SignalType,

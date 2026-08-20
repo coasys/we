@@ -1513,6 +1513,16 @@ ReadMarker extends WeNode:
   - spaceUuid: string [we://space_uuid]
   - lastReadAt: string [we://last_read_at]
 
+Relationship extends WeNode:
+  Fields:
+  - label: string (required) [we://title]
+  - description: string [we://description]
+  - sourceType: string [we://source_type]
+  - targetType: string [we://target_type]
+  Relations:
+  - source: HasOne [we://relationship_source]
+  - target: HasOne [we://relationship_target]
+
 Shape extends WeNode:
   Fields:
   - name: string (required) [we://name]

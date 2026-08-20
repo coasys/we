@@ -66,12 +66,15 @@ function emitTypes(defs) {
       L.push(`  ${interfaceFieldLine(pname, spec, def)}`);
     }
     for (const [rname, spec] of Object.entries(e.relations)) {
-      if (spec.cardinality === 'one') L.push(`  ${rname}?: ${spec.target}Model;`);
+      // An untyped relation holds URIs: there is no target class to name, which is the whole point
+      // of declaring it untyped. Mirrors the to-many case, which has always been a `string[]`.
+      if (spec.cardinality === 'one') L.push(`  ${rname}?: ${spec.target ? `${spec.target}Model` : 'string'};`);
       else L.push(`  ${rname}: ${def.typedArrays?.includes(rname) ? `${spec.target}Model[]` : 'string[]'};`);
     }
     for (const [rname, spec] of Object.entries(e.relations)) {
       const cap = rname[0].toUpperCase() + rname.slice(1);
-      if (spec.cardinality === 'one') {
+      // No setter for an untyped to-one — the accessor's whole signature is its target type.
+      if (spec.cardinality === 'one' && spec.target) {
         L.push(`  set${cap}(value: ${spec.target}Model): Promise<unknown>;`);
       } else if (def.methodRelations?.includes(rname)) {
         L.push(`  add${cap}(value: string | { id: string }, batch?: string): Promise<unknown>;`);

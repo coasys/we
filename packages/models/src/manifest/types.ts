@@ -168,6 +168,15 @@ export interface ReadMarkerModel extends WeNodeModel {
   lastReadAt: string;
 }
 
+export interface RelationshipModel extends WeNodeModel {
+  label: string;
+  description: string;
+  sourceType: string;
+  targetType: string;
+  source?: string;
+  target?: string;
+}
+
 export interface ShapeModel extends WeNodeModel {
   name: string;
   description: string;

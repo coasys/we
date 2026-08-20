@@ -18,6 +18,7 @@ import {
   LocationBlock,
   MutedAgent,
   ReadMarker,
+  Relationship,
   Shape,
   Signal,
   SignalType,
@@ -374,6 +375,10 @@ export const SPACE_MODELS = [
   // The shape *catalogue* — Shape records are how a space carries its own content models, so the
   // entity that holds them installs into every space alongside Space itself.
   Shape,
+  // Connections members draw between records. A space model rather than a root one: a relationship
+  // is a claim made *to* a community, argued with in its comments and weighted by its signals, and
+  // one held privately would be a note to self wearing the shape of a shared statement.
+  Relationship,
   Template,
   Theme,
   WeNode,
