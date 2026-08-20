@@ -41,7 +41,7 @@ import { createCallStore } from './store';
 export { createCallMesh, type CallMesh, type SignallingChannel } from './mesh';
 export { createMediaController, type MediaController, type MediaState } from './media';
 export { anchoredCallId, CALL_PROTOCOL_VERSION, parseCallMessage, spaceCallId } from './protocol';
-export { type CallDockEdge, type CallPlacement, type CallTile, type CallTileState, createCallStore } from './store';
+export { type CallDockEdge, type CallTile, type CallTileState, createCallStore } from './store';
 
 /**
  * Where the call's chrome sits.
@@ -514,6 +514,9 @@ const stage: SchemaNode = {
       props: {
         width: '100%',
         height: '100%',
+        // `300` is 12px — `STAGE_PADDING_PX` and `STAGE_GAP_PX`, which `dockAspect` subtracts so that
+        // "fit to content" lands on a height that fits the pictures rather than one that squeezes
+        // them. Change either here and the constant has to follow.
         p: '300',
         gap: '300',
         overflow: 'hidden',
@@ -573,52 +576,6 @@ function mediaToggle(opts: {
     ],
   };
 }
-
-/**
- * Where the video goes — the one control that used to be three.
- *
- * A menu rather than buttons in the bar, because the choice is made once and then left alone, and
- * six permanent options would cost more room in the one piece of chrome that must stay small than
- * the setting is worth. It absorbed the mode cycle and the three size buttons: floating and full
- * screen are placements like any other, and size is dragged now rather than chosen.
- *
- * `triggerLabel` is set explicitly. Left off, `DropdownMenu` falls back to "Options" — the least
- * informative word available for a menu that always has a subject, and the reason this one read as
- * a mystery rather than as a place to put the video.
- */
-const placementMenu: SchemaNode = {
-  type: 'DropdownMenu',
-  props: {
-    triggerIcon: 'layout',
-    triggerLabel: 'Position',
-    /*
-      Named even though it is `we-button`'s own default, unlike the buttons beside it.
-
-      `DropdownMenu` forwards `size` to its trigger, and its own default is undefined — so leaving it
-      off passes undefined down rather than nothing at all, and what the trigger then does depends on
-      whether the framework treats that as "no attribute" or as a value. Saying it is one word.
-    */
-    size: 'md',
-    placement: 'bottom',
-    items: {
-      $map: {
-        items: { $store: 'modules.call.placementOptions' },
-        // Toggles rather than actions, for the check mark: an action item has no way to show which
-        // placement is the current one, and a menu that cannot answer "where is it now?" is a menu
-        // you have to open twice. Toggles also leave it open, which is what you want while trying
-        // placements against the space behind them.
-        select: {
-          id: '$item.id',
-          type: 'toggle',
-          label: '$item.label',
-          icon: '$item.icon',
-          checked: '$item.active',
-          onToggle: { $action: 'modules.call.setPlacement', args: ['$item.id'] },
-        },
-      },
-    },
-  },
-};
 
 /**
  * Who is here — a readout, not a control.
@@ -798,10 +755,21 @@ const bar: SchemaNode = {
       type: 'Row',
       props: {
         position: 'fixed',
-        // Swaps ends when the video is docked along the top, which is the only placement that wants
-        // the same corner of the screen as this does. See `barAtBottom`.
-        top: { $if: { condition: { $store: 'modules.call.barAtBottom' }, then: 'auto', else: CALL_BAR_TOP } },
-        bottom: { $if: { condition: { $store: 'modules.call.barAtBottom' }, then: CALL_BAR_TOP, else: 'auto' } },
+        /*
+          The top, pushed down by whatever has taken the top edge.
+
+          It used to swap ends when the stage was docked along the top, since both wanted that corner
+          and the small one should give. That was this module reasoning about its own panel, which it
+          can no longer see — but it does not need to: `--we-dock-top` is what *any* panel displacing
+          the top edge publishes, so this clears a docked notes panel exactly as it clears a call
+          stage, and reads the same way the horizontal terms below already do.
+
+          A panel that merely floats over the top is deliberately not dodged. It takes no room, the
+          user put it there by hand, and it is dragged by a grip this bar would then be covering —
+          chrome that ran away from a decision somebody just made is worse than an overlap they can
+          see and undo.
+        */
+        top: `calc(${CALL_BAR_TOP} + var(--we-dock-top, 0px))`,
         /**
          * Centred on the content, not the window.
          *
@@ -813,7 +781,7 @@ const bar: SchemaNode = {
          */
         left: 'calc(50% + (var(--we-sidebar-width, 0px) + var(--we-dock-left, 0px) - var(--we-dock-right, 0px)) / 2)',
         transform: 'translateX(-50%)',
-        transition: 'left var(--we-chrome-transition, 300ms) ease',
+        transition: 'left var(--we-chrome-transition, 300ms) ease, top var(--we-chrome-transition, 300ms) ease',
         ...BAR_SURFACE,
         r: BAR_RADIUS,
         p: '200',
@@ -837,11 +805,18 @@ const bar: SchemaNode = {
           tip: { on: 'Turn camera off', off: 'Turn camera on' },
         }),
         mediaToggle({
-          on: 'monitor',
-          // The only toggle here whose two states are not one glyph and its slash, because sharing
-          // has no "off" — you are either sending a screen or you are not sending anything. The
-          // arrow is the offer to send one; a bare monitor is the screen already going out. Both
-          // glyphs were `monitor` before, which left the variant as the only thing saying which.
+          /*
+            The same glyph in both states, unlike the mute and camera buttons beside it.
+
+            `monitor-arrow-up` is a *subject*, not a state: it is your screen, going out. Dropping the
+            arrow while sharing read as the screen leaving — backwards, at the one moment the button
+            has something to report. So the variant carries the state, exactly as it does for the
+            show/hide toggle, and the glyph says what the button is about.
+
+            Sharing is also the one toggle here with no honest "off" icon: you are either sending a
+            screen or sending nothing, so a slash would be describing a state that does not exist.
+          */
+          on: 'monitor-arrow-up',
           off: 'monitor-arrow-up',
           enabled: 'modules.call.media.screenShareEnabled',
           action: 'modules.call.toggleScreenShare',
@@ -854,16 +829,21 @@ const bar: SchemaNode = {
           type: '$slot',
           props: { anchor: CALL_CONTROLS_ANCHOR },
         },
+        /*
+          Show/hide sits with the devices, not with the call.
+
+          It was on the right, beside the participant readout, on the grounds that it is about the
+          video — but so is the camera button, and what actually separates the two groups is *whose*
+          they are. Everything left of the divider is something you do to your own machine: your
+          microphone, your camera, your screen, your transcript, and whether you are looking at the
+          video. Everything right of it is the call itself — who is in it, and how much room it has.
+        */
+        participantsToggle,
         // Two thirds of a control's height, so it reads as a separator between groups rather than as
         // a rule drawn down the whole bar. It moved with the buttons: at 20px against `sm` it was
         // that already, and left alone against `md` it would have been half.
         { type: 'we-divider', props: { orientation: 'vertical', height: '26px' } },
-        // What the call *is*, then what to do about looking at it. The divider separates the controls
-        // over your own devices from everything about the call itself, which is why the readout goes
-        // on this side of it rather than beside the microphone.
         participants,
-        participantsToggle,
-        placementMenu,
         {
           type: 'we-tooltip',
           props: { title: 'Leave the call', placement: 'bottom' },
@@ -937,15 +917,13 @@ const problem: SchemaNode = {
       props: {
         position: 'fixed',
         /*
-          The end the call bar is not at.
+          The end the call bar is not at, which is now simply the bottom.
 
-          Both were pinned to `CALL_BAR_TOP`, so the alert opened underneath the controls — mostly
-          hidden, and with its dismiss button unreachable, which is a poor showing for the one piece
-          of UI whose entire job is to be read. `barAtBottom` already tracks which end the bar took;
-          taking the other one needs no new state and cannot collide by construction.
+          Both were pinned to `CALL_BAR_TOP` once, so the alert opened underneath the controls —
+          mostly hidden, and with its dismiss button unreachable, which is a poor showing for the one
+          piece of UI whose entire job is to be read. The bar no longer moves, so neither does this.
         */
-        top: { $if: { condition: { $store: 'modules.call.barAtBottom' }, then: CALL_BAR_TOP, else: 'auto' } },
-        bottom: { $if: { condition: { $store: 'modules.call.barAtBottom' }, then: 'auto', else: CALL_BAR_TOP } },
+        bottom: CALL_BAR_TOP,
         left: '50%',
         transform: 'translateX(-50%)',
         zIndex: 'sticky',
@@ -1040,7 +1018,7 @@ export const callModule = defineModule({
    * those that nothing kept in step. Saying "the right edge, medium" and letting the host answer is
    * what makes the same declaration inset on a monitor and float on a laptop.
    */
-  docks: [{ edge: 'dockEdge', size: 'dockSize', float: 'dockFloat', node: stage }],
+  docks: [{ edge: 'dockEdge', size: 'dockSize', float: 'dockFloat', aspect: 'dockAspect', node: stage }],
 
   createStore: (deps: ModuleStoreDeps) => createCallStore(deps),
 });

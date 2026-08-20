@@ -826,6 +826,8 @@ Supports selected, active, and danger states.
   Props: selected: boolean = false, active: boolean = false, variant: 'default' | 'danger' = 'default', label: unknown, value: unknown
 - we-modal (OverlayElement)
   Props: hideclosebutton: boolean = false, close: () => void
+- we-move-handle (LayoutElement)
+  Props: step: number = 24, dragging: boolean = false, label: string = 'Move'
 - we-number (DesignSystemElement) — Displays a number, optionally abbreviated (1 200 → 1.2K, 1 500 000 → 1.5M).
   Props: value: number = 0, shorten: boolean = false, precision: number = 1, locale: string = 'en', formattedValue: string
 - we-number-input (DesignSystemElement)
@@ -861,7 +863,7 @@ There were two implementations of this before it existed and they diverged in wa
 the editor's is mouse-only, so it does not work on a touchscreen at all, and its rail is a plain
 div — not focusable, so there is no way to resize a panel from the keyboard. Pointer events and a
 `separator` role fix both once, for every consumer, in the layer where imperative DOM work belongs.
-  Props: orientation: 'vertical' | 'horizontal' = 'vertical', align: 'start' | 'center' | 'end' = 'center', step: number = 16, dragging: boolean = false
+  Props: orientation: 'vertical' | 'horizontal' = 'vertical', align: 'start' | 'center' | 'end' = 'center', line: 'auto' | 'none' = 'auto', step: number = 16, dragging: boolean = false
 - we-scroll-area (DesignSystemElement)
   Props: maxHeight: string = '', maxWidth: string = ''
 - we-select (DesignSystemElement) — Pick a single value from a list of options. Custom-rendered dropdown.
@@ -1027,7 +1029,7 @@ when `relative` is enabled.
 - Combobox (DesignSystemElement)
   Props: options: string[] | ComboboxOption[], value?: string, placeholder?: string, size?: "xs" | "sm" | "md" | "lg" | "xl", onChange?: ((value: string) => void)
 - DropdownMenu — Flexible dropdown menu for actions, toggles, and grouped items. Use for context menus, settings panels, layer controls, and command palettes.
-  Props: styles?: Record<string, string | number>, class?: string, placement?: Placement, triggerLabel?: string, triggerIcon?: string, size?: "xs" | "sm" | "md" | "lg" | "xl", items: SolidDropdownMenuEntry[]
+  Props: styles?: Record<string, string | number>, class?: string, placement?: Placement, triggerLabel?: string, triggerIcon?: string, size?: "xs" | "sm" | "md" | "lg" | "xl", itemSize?: "xs" | "sm" | "md" | "lg" | "xl", items: SolidDropdownMenuEntry[]
 - EditableImage (DesignSystemElement)
   Props: src?: string, alt?: string, fit?: "cover" | "contain" | "none" | "fill" | "scale-down", placeholderIcon?: string, onImageChange?: ((file: File) => void), onImageRemove?: (() => void), uploadLabel?: string, editLabel?: string, class?: string, aspect?: number, maxSize?: number
 - FlipCard
@@ -1751,10 +1753,12 @@ EditorStore:
   - themePanelOpen: unknown
   - visualPanelOpen: unknown
   - isEditingTheme: unknown
-  - aiPanelWidth: unknown
-  - codePanelWidth: unknown
-  - themePanelWidth: unknown
-  - visualPanelWidth: unknown
+  - aiDockEdge: unknown
+  - codeDockEdge: unknown
+  - themeDockEdge: unknown
+  - visualDockEdge: unknown
+  - editorDockSize: unknown
+  - editorDockFloat: unknown
 - Actions:
   - newChat(): unknown
   - switchSession(): unknown
@@ -1783,10 +1787,6 @@ EditorStore:
   - enterThemeEditing(): unknown
   - exitThemeEditing(): unknown
   - toggleThemeEditing(): unknown
-  - setAiPanelWidth(): unknown
-  - setCodePanelWidth(): unknown
-  - setThemePanelWidth(): unknown
-  - setVisualPanelWidth(): unknown
   - sendMessage(): unknown
   - clearHistory(): unknown
   - setApiKey(): unknown
@@ -1981,14 +1981,26 @@ ShellStore:
   - dockGeometry: unknown
   - contentInset: unknown
   - dockResizing: unknown
+  - dockPlacement: unknown
+  - movingDock: unknown
+  - activeSnap: unknown
+  - snapTargets: unknown
 - Actions:
   - openShellView(id: string, path?: string): opens a shell overlay by id, optionally at a route inside it — the overlay keeps its own memory router, so this never touches the browser URL
   - closeShellView(): closes the currently open shell overlay
   - setCreateSpaceOpen(open: boolean): opens or closes the create-space modal. Shell state rather than a page’s $localState because more than one place opens it — the settings page and the sidebar’s spaces group — and a page-scoped flag could only be set from inside that page
   - scrollToId(id: string): smooth-scrolls the element with that DOM id into view
+  - setChromeInset(): unknown
   - beginDockResize(): unknown
   - resizeDock(): unknown
   - endDockResize(): unknown
+  - fitDock(): unknown
+  - beginDockMove(): unknown
+  - moveDock(): unknown
+  - endDockMove(): unknown
+  - snapDock(): unknown
+  - toggleMaximiseDock(): unknown
+  - toggleDockDisplace(): unknown
 
 SpaceStore:
 - State:

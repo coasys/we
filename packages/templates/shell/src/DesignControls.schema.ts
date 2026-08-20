@@ -213,7 +213,7 @@ export function templatePicker(): SchemaNode {
       pickerPopover({
         openLocal: TEMPLATE_PICKER_OPEN,
         closeOthers: [THEME_PICKER_OPEN],
-        icon: 'cube',
+        icon: 'layout',
         tooltip: 'Template',
         searchPlaceholder: 'Search templates…',
         body: {
@@ -374,7 +374,7 @@ export function themePicker(): SchemaNode {
       pickerPopover({
         openLocal: THEME_PICKER_OPEN,
         closeOthers: [TEMPLATE_PICKER_OPEN],
-        icon: 'paint-brush',
+        icon: 'palette',
         tooltip: 'Theme',
         searchPlaceholder: 'Search themes…',
         body: {

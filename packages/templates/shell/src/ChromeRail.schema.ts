@@ -30,9 +30,8 @@
  * the rail stays reachable while a panel is open rather than being covered by it — and the panel is
  * not stranded in the middle of the edge with chrome on both sides.
  *
- * The editor's panels take the same edge and are painted above this, so they get the same treatment
- * through `--we-editor-right`. Without it, entering an editing session would hide the picker that
- * starts one.
+ * The editor's panels take the same edge and get the same treatment, through the same variable: they
+ * are docks themselves now, so opening one slides this rail exactly as opening a notes panel does.
  *
  * ## What is gated on what
  *
@@ -164,7 +163,7 @@ const designSection: SchemaNode = {
         [TEMPLATE_PICKER_OPEN]: { type: 'boolean', initial: false },
         [THEME_PICKER_OPEN]: { type: 'boolean', initial: false },
       },
-      children: [templatePicker(), themePicker()],
+      children: [themePicker(), templatePicker()],
     },
   },
 };
@@ -182,13 +181,24 @@ export const chromeRail: SchemaNode = {
           Against the content's edge rather than the window's, so chrome that takes this edge slides
           the rail inwards instead of opening on top of it.
 
-          Two things can: a docked module panel (`--we-dock-right`, set by ShellStore) and the
-          editor's own panel stack (`--we-editor-right`, set by RightPanelContainer). The editor
-          paints above this rail, so without its term the pickers would be covered by the editing
-          session they start — the exact failure that moving them here was meant to end.
+          One term, where there were two. The editor's panels used to publish a width of their own
+          (`--we-editor-right`) because they positioned themselves; they are docks now, so they are
+          inside `--we-dock-right` along with every module's panel — and a panel dragged away from
+          this edge stops pushing the rail at all, which the summed version could not express.
         */
-        right: 'calc(var(--we-dock-right, 0px) + var(--we-editor-right, 0px))',
-        top: '16px',
+        right: 'var(--we-dock-right, 0px)',
+        /*
+          Below whatever a panel is doing at the top, and below its titlebar.
+
+          Two terms, for two different collisions. `--we-dock-top` is a panel that has *taken* the top
+          edge, which this would otherwise sit inside — the vertical twin of the `--we-dock-right`
+          term above, and the same fix. `--we-panel-chrome-top` is a panel that merely reaches the top
+          without displacing anything, a maximised one especially: the rail is painted above the
+          panels, so its controls — the position menu, and the button that un-maximises it — ended up
+          underneath this. The shell publishes that band as zero while no panel is open, so nothing
+          moves when there is nothing to clear.
+        */
+        top: 'calc(16px + var(--we-panel-chrome-top, 0px) + var(--we-dock-top, 0px))',
         width: CHROME_RAIL_WIDTH,
         gap: '100',
         p: '200',
@@ -199,7 +209,7 @@ export const chromeRail: SchemaNode = {
         rbl: '400',
         shadow: 'md',
         zIndex: 'sticky',
-        transition: 'right var(--we-chrome-transition, 300ms) ease',
+        transition: 'right var(--we-chrome-transition, 300ms) ease, top var(--we-chrome-transition, 300ms) ease',
       },
       children: [spaceSection, designSection],
     },

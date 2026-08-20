@@ -87,6 +87,22 @@ export function DropdownMenu(props: SolidDropdownMenuProps) {
     return internalState !== undefined ? internalState : (group.collapsed ?? false);
   };
 
+  /**
+   * What each size means for an item: the type, the glyph beside it, and the room around both.
+   *
+   * `md` restates `we-menu-item`'s own defaults rather than leaving them unset, so every size is
+   * legible in one place — reading the table is how you tell what "one smaller" actually changes.
+   */
+  const ITEM_SIZES = {
+    xs: { fontSize: '100', icon: 'xs', px: '200', py: '100', gap: '200' },
+    sm: { fontSize: '200', icon: 'sm', px: '300', py: '100', gap: '200' },
+    md: { fontSize: '300', icon: 'md', px: '300', py: '200', gap: '300' },
+    lg: { fontSize: '400', icon: 'md', px: '400', py: '300', gap: '300' },
+    xl: { fontSize: '500', icon: 'lg', px: '400', py: '300', gap: '400' },
+  } as const;
+
+  const metrics = () => ITEM_SIZES[props.itemSize ?? props.size ?? 'md'];
+
   const renderActionItem = (getItem: () => DropdownMenuAction) => {
     const item = getItem();
     return (
@@ -95,11 +111,15 @@ export function DropdownMenu(props: SolidDropdownMenuProps) {
         variant={item.variant || 'default'}
         opacity={item.disabled ? 0.5 : 1}
         cursor={item.disabled ? 'not-allowed' : 'pointer'}
+        px={metrics().px}
+        py={metrics().py}
+        gap={metrics().gap}
+        fontSize={metrics().fontSize}
       >
         <Show when={item.icon}>
-          <we-icon name={item.icon!} />
+          <we-icon name={item.icon!} size={metrics().icon} />
         </Show>
-        <we-text>{item.label}</we-text>
+        <we-text fontSize={metrics().fontSize}>{item.label}</we-text>
       </we-menu-item>
     );
   };
@@ -114,11 +134,15 @@ export function DropdownMenu(props: SolidDropdownMenuProps) {
         selected={checked()}
         opacity={item.disabled ? 0.5 : 1}
         cursor={item.disabled ? 'not-allowed' : 'pointer'}
+        px={metrics().px}
+        py={metrics().py}
+        gap={metrics().gap}
+        fontSize={metrics().fontSize}
       >
         <Show when={item.icon}>
-          <we-icon name={item.icon!} />
+          <we-icon name={item.icon!} size={metrics().icon} />
         </Show>
-        <we-text>{item.label}</we-text>
+        <we-text fontSize={metrics().fontSize}>{item.label}</we-text>
         <Show when={checked()}>
           <we-icon name="check" size="xs" weight="bold" color="primary-500" />
         </Show>

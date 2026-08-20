@@ -11,10 +11,13 @@
  */
 import { formatExternalManifestForPrompt, sendClaudeRequest } from '@shared/ai/aiInfra';
 import { applySchemaPatches, type SchemaPatch } from '@shared/ai/schemaPatches';
+import { hostDockStores } from '@shared/registries/dockRegistry';
+import { EDITOR_STORE_ID } from '@shared/registries/editorDocks';
 import { deepClone } from '@shared/utils';
 import { type EditingTheme, useDatasetStore, useTemplateStore, useThemeStore } from '@solid/stores';
 import { toastService } from '@we/components/solid';
 import { ChatMessage as ChatMessageModel, ChatSession as ChatSessionModel } from '@we/models';
+import type { DockEdge, DockSize } from '@we/module-shared';
 import type { SchemaNode, TemplateSchema } from '@we/schema-shared';
 import { contextData, setLocalWarningSink } from '@we/schema-shared';
 import {
@@ -131,14 +134,22 @@ export interface EditorStore {
   toggleThemeEditing: () => void;
 
   // --- Panel widths (persisted) ---
-  aiPanelWidth: Accessor<number>;
-  codePanelWidth: Accessor<number>;
-  themePanelWidth: Accessor<number>;
-  visualPanelWidth: Accessor<number>;
-  setAiPanelWidth: (w: number) => void;
-  setCodePanelWidth: (w: number) => void;
-  setThemePanelWidth: (w: number) => void;
-  setVisualPanelWidth: (w: number) => void;
+  /**
+   * Where each panel should open, or `null` while it is closed — the keys the host's dock system
+   * reads to place them. See `registries/editorDocks.ts`.
+   *
+   * All four answer `'right'`, which is an *opening bid* and nothing more: the user drags a panel
+   * wherever they want it and the shell remembers, per device. The widths that used to live here went
+   * with the rails that set them — a panel's size is dragged from any edge or corner now, and stored
+   * beside its position rather than in four separate localStorage keys.
+   */
+  aiDockEdge: Accessor<DockEdge>;
+  codeDockEdge: Accessor<DockEdge>;
+  themeDockEdge: Accessor<DockEdge>;
+  visualDockEdge: Accessor<DockEdge>;
+  /** The opening size and overlay bid every editor panel shares. */
+  editorDockSize: Accessor<DockSize>;
+  editorDockFloat: Accessor<boolean>;
 
   // --- Chat actions ---
   sendMessage: (text: string) => Promise<void>;
@@ -658,23 +669,28 @@ export function EditorStoreProvider(props: ParentProps) {
     setVisualPanelOpen((v) => !v);
   }
 
-  // Panel widths — signal updates immediately; localStorage write is debounced to avoid
-  // blocking the main thread on every mousemove pixel during drag-to-resize.
-  // One helper, four panels: these were four byte-identical signal+debounce blocks.
-  function createPersistedWidth(storageKey: string, fallback: number) {
-    const [width, setWidthSignal] = createSignal(parseInt(localStorage.getItem(storageKey) ?? String(fallback), 10));
-    let persistTimer: ReturnType<typeof setTimeout> | undefined;
-    function setWidth(w: number) {
-      setWidthSignal(w);
-      clearTimeout(persistTimer);
-      persistTimer = setTimeout(() => localStorage.setItem(storageKey, String(w)), 500);
-    }
-    return [width, setWidth] as const;
-  }
-  const [aiPanelWidth, setAiPanelWidth] = createPersistedWidth('we-ai-panel-width', 400);
-  const [codePanelWidth, setCodePanelWidth] = createPersistedWidth('we-code-panel-width', 480);
-  const [themePanelWidth, setThemePanelWidth] = createPersistedWidth('we-theme-panel-width', 320);
-  const [visualPanelWidth, setVisualPanelWidth] = createPersistedWidth('we-visual-panel-width', 280);
+  /*
+    What the host's dock system reads: an edge while the panel is open, and null while it is not.
+
+    Four panels, one shape. Each is gated on the session it belongs to as well as its own flag —
+    a code panel left open has nothing to show once template editing ends, and a dock whose edge went
+    on answering would keep an empty frame on screen.
+
+    The widths that used to sit here are gone with the rails that set them. Size, position, whether a
+    panel displaces content and whether it covers the screen are all the shell's now, remembered per
+    device beside every other panel's — which is what stopped the editor being a second, slightly
+    different panel system at the same edge.
+  */
+  const dockedWhen = (open: Accessor<boolean>, session: Accessor<boolean>): Accessor<DockEdge> =>
+    createMemo(() => (session() && open() ? 'right' : null));
+
+  const aiDockEdge = dockedWhen(isOpen, isEditingTemplate);
+  const codeDockEdge = dockedWhen(codePanelOpen, isEditingTemplate);
+  const themeDockEdge = dockedWhen(themePanelOpen, isEditingTheme);
+  // Properties is the one with a third condition: there is nothing to inspect outside visual mode.
+  const visualDockEdge = createMemo<DockEdge>(() =>
+    isEditingTemplate() && contentMode() === 'visual' && visualPanelOpen() ? 'right' : null,
+  );
 
   // ----------------------------------------------------------------
   // API key management (persisted to AgentSettings)
@@ -1292,14 +1308,14 @@ export function EditorStoreProvider(props: ParentProps) {
     toggleVisualPanel,
 
     // Panel widths
-    aiPanelWidth,
-    codePanelWidth,
-    themePanelWidth,
-    visualPanelWidth,
-    setAiPanelWidth,
-    setCodePanelWidth,
-    setThemePanelWidth,
-    setVisualPanelWidth,
+    aiDockEdge,
+    codeDockEdge,
+    themeDockEdge,
+    visualDockEdge,
+    // An opening bid, shared by all four: a panel at the right edge, taking room. Everything after
+    // the first open is the user's and the shell's.
+    editorDockSize: () => 'md',
+    editorDockFloat: () => false,
 
     // Chat actions
     sendMessage,
@@ -1308,6 +1324,16 @@ export function EditorStoreProvider(props: ParentProps) {
     // Settings
     setApiKey,
   };
+
+  /*
+    Publish this store where the dock system can read it.
+
+    The editor's four panels are docks, and a dock reads its `edge` / `size` / `float` keys off the
+    store named by its entry — normally a module's. The editor is not a module, so the shell registers
+    it here under the id those entries name. See `hostDockStores`.
+  */
+  hostDockStores[EDITOR_STORE_ID] = store as unknown as Record<string, unknown>;
+  onCleanup(() => delete hostDockStores[EDITOR_STORE_ID]);
 
   return <EditorContext.Provider value={store}>{props.children}</EditorContext.Provider>;
 }

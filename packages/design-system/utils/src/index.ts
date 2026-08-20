@@ -131,6 +131,17 @@ export function getKeysForLayers(layers: DSLayer[]): string[] {
   for (const layer of layers) {
     for (const key of layerKeyMap[layer]) keys.add(key);
   }
+  /*
+    `styles` belongs to every component and to no layer, so it is added here rather than to one.
+
+    It is the raw-CSS escape hatch — "inline CSS applied directly to the component's own element" —
+    and what it is *for* is the CSS the layers do not cover, which makes membership of a layer the
+    one thing it cannot have. Left out, it was filtered away by every consumer of this function: the
+    mixin that registers reactive properties, the twenty-odd primitives that rebuild their own key
+    set, and the validator that decides which props a component accepts. So the prop was documented,
+    typed, accepted, and dropped — for a layout-only primitive and a full one alike.
+  */
+  keys.add('styles');
   const result = [...keys];
   keysForLayersCache.set(cacheKey, result);
   return result;

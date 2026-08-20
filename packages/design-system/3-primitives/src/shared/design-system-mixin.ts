@@ -30,8 +30,16 @@ export function DesignSystemMixin<T extends Constructor<LitElement>>(
   const hasState = layers.includes('state');
   const stateKeySet = new Set<string>(stateKeys);
 
-  // Register only the keys for the selected layers as Lit reactive properties
-  const primitiveKeys = activeKeys.filter((key) => !stateKeySet.has(key));
+  /*
+    Register the layer keys as reactive properties — and `styles` as an object, like the state props
+    below, since a stringified one would be meaningless as an attribute.
+
+    Without that registration Lit never re-renders on a `styles` change, so the escape hatch would
+    apply whatever it happened to hold at first paint and ignore every change after. It is filtered
+    out of `primitiveKeys` for the same reason it is listed separately: those are reflected strings.
+  */
+  const primitiveKeys = activeKeys.filter((key) => !stateKeySet.has(key) && key !== 'styles');
+  property({ type: Object, attribute: false })(Base.prototype, 'styles');
   primitiveKeys.forEach((key) => property({ type: primitiveTypes[key] || String, reflect: true })(Base.prototype, key));
   if (hasState) {
     stateKeys.forEach((key) => property({ type: Object, attribute: false })(Base.prototype, key));

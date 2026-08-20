@@ -3,7 +3,6 @@ import { createMemo, createSignal, For, onCleanup, Show } from 'solid-js';
 import { Portal } from 'solid-js/web';
 
 import { useEditorHost } from '../host';
-import { editorOccupiedWidth, panelResizing } from '../panelLayout';
 import { PublishToMarketplaceModal } from './PublishToMarketplaceModal';
 
 /**
@@ -24,10 +23,10 @@ import { PublishToMarketplaceModal } from './PublishToMarketplaceModal';
  *
  * ## Position
  *
- * Beside the panel stack, not over it, and moved by whatever else has taken the right edge. The
- * offset comes from `editorOccupiedWidth` rather than being summed here, so this and the shell's
- * rail cannot disagree about how wide the editor is — they did, and the result was a toolbar
- * overlapping the panel it was meant to sit beside.
+ * Beside the panels, not over them, and moved by whatever has taken the right edge — which is one
+ * number from the shell now that the editor's panels are docks like every other. It used to be summed
+ * from the editor's own widths *and* the shell's, and the two disagreeing is what put this toolbar on
+ * top of the panel it is meant to sit beside.
  */
 export function EditingBar() {
   const { session, template: templateStore, theme: themeStore, identity } = useEditorHost();
@@ -76,9 +75,12 @@ export function EditingBar() {
    * The rail arrives as a variable rather than a constant because it belongs to a package this one
    * cannot import, and it defaults to `0px` — an editor embedded in somebody else's application has
    * no WE rail to avoid. Without the term, the bar sits underneath the rail, which paints above it.
+   *
+   * The editor's own panels used to be a third term, summed from their widths. They are docks now, so
+   * they are already inside `--we-dock-right` — and any panel dragged somewhere other than the right
+   * edge stops pushing this bar at all, which is right and was impossible to express before.
    */
-  const right = () =>
-    `calc(${10 + editorOccupiedWidth(session)}px + var(--we-dock-right, 0px) + var(--we-chrome-rail-width, 0px))`;
+  const right = () => `calc(10px + var(--we-dock-right, 0px) + var(--we-chrome-rail-width, 0px))`;
 
   function exportJson() {
     const blob = new Blob([session.schemaJson()], { type: 'application/json' });
@@ -109,10 +111,10 @@ export function EditingBar() {
           position="absolute"
           top="10px"
           right={right()}
-          // `--we-chrome-transition` collapses to 0s while a *dock* is being dragged; `panelResizing`
-          // covers the editor's own rails. Without both, this animates its `right` over 300ms on
-          // every frame of a drag and trails the edge it is supposed to sit beside.
-          transition={panelResizing() ? 'none' : 'right var(--we-chrome-transition, 300ms) ease'}
+          // `--we-chrome-transition` collapses to 0s while any panel is being dragged, editor panels
+          // included now that they are docks. Without it this animates its `right` over 300ms on every
+          // frame of a drag and trails the edge it is supposed to sit beside.
+          transition="right var(--we-chrome-transition, 300ms) ease"
           pointerEvents="auto"
           ay="start"
           gap="200"
@@ -168,6 +170,63 @@ export function EditingBar() {
               </we-tooltip>
             </Row>
           </Show>
+
+          {/*
+            The panels, opened and closed from here.
+
+            This is the half of the old rails that was not resizing: each panel had a 32px strip of
+            icon at its left edge which toggled it on a press and resized it on a drag. Resizing is the
+            dock frame's now, on every edge and corner rather than one — and a toggle that lived on the
+            panel's own edge could only be found once the panel was already there, which is a poor
+            place for the control that opens it. They sit with the other things you do to a session.
+          */}
+          <Row
+            ay="center"
+            gap="100"
+            bg="neutral-50"
+            border="1px solid neutral-200"
+            r="var(--we-theme-control-radius, var(--we-radius-400))"
+            p="200"
+          >
+            <Show when={session.isEditingTemplate()}>
+              <Show when={session.contentMode() === 'visual'}>
+                <we-tooltip title="Properties" placement="bottom">
+                  <we-button
+                    variant={session.visualPanelOpen() ? 'secondary' : 'ghost'}
+                    square
+                    onClick={() => session.toggleVisualPanel()}
+                  >
+                    <we-icon name="cursor-click" />
+                  </we-button>
+                </we-tooltip>
+              </Show>
+              <we-tooltip title="Code editor" placement="bottom">
+                <we-button
+                  variant={session.codePanelOpen() ? 'secondary' : 'ghost'}
+                  square
+                  onClick={() => session.toggleCodePanel()}
+                >
+                  <we-icon name="code" />
+                </we-button>
+              </we-tooltip>
+              <we-tooltip title="AI chat" placement="bottom">
+                <we-button variant={session.isOpen() ? 'secondary' : 'ghost'} square onClick={() => session.toggle()}>
+                  <we-icon name="chat-circle" />
+                </we-button>
+              </we-tooltip>
+            </Show>
+            <Show when={session.isEditingTheme()}>
+              <we-tooltip title="Theme editor" placement="bottom">
+                <we-button
+                  variant={session.themePanelOpen() ? 'secondary' : 'ghost'}
+                  square
+                  onClick={() => session.toggleThemePanel()}
+                >
+                  <we-icon name="paint-bucket" />
+                </we-button>
+              </we-tooltip>
+            </Show>
+          </Row>
 
           {/* Share + exit — the same pair for whichever kind of session is open */}
           <Column position="relative">

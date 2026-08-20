@@ -38,6 +38,8 @@ import {
   templateEditor,
 } from '@we/template-shell';
 
+import { registerEditorDocks } from './editorDocks';
+
 export interface SlotEntry extends SlotContribution {
   /** Unique. `core:*` for host chrome, otherwise the contributing module's id. */
   id: string;
@@ -253,6 +255,8 @@ export function registerCoreSlots(): void {
   slotRegistry.register({ id: 'core:createSpace', anchor: 'overlay', node: createSpaceModalMount, order: 4 });
   slotRegistry.register({ id: 'core:sidebar', anchor: 'dock-left', node: sidebar, order: 0 });
   slotRegistry.register({ id: 'core:templateEditor', anchor: 'dock-right', node: templateEditor, order: 0 });
+  // The editor's panels, as docks — see `editorDocks.ts` for why they are not part of the node above.
+  registerEditorDocks();
   // The one place feature modules are opened from. Core rather than a module contribution, because
   // only the host can stop launchers colliding — see ChromeRail.schema.ts.
   slotRegistry.register({ id: 'core:chromeRail', anchor: 'dock-right', node: chromeRail, order: 10 });

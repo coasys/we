@@ -65,9 +65,19 @@ const WeCubeOnDemand = lazy(() => import('../components/3d/WeCube'));
 
 /** The editing surface — CodeMirror and Prism arrive with it, once a template is being edited. */
 const EditingBar = lazy(() => import('@we/editor').then((m) => ({ default: m.EditingBar })));
-const RightPanelContainer = lazy(() => import('@we/editor').then((m) => ({ default: m.RightPanelContainer })));
 const TemplateCard = lazy(() => import('@we/editor').then((m) => ({ default: m.TemplateCard })));
 const AiPanel = lazy(() => import('@we/editor/ai').then((m) => ({ default: m.AiPanel })));
+/*
+  One entry per editor panel, because each is its own dock now.
+
+  They arrived as a single `RightPanelContainer` when the editor owned its own rails, widths and
+  position at the right edge. The shell places them now — the same grip, snap targets, resize and
+  maximise every other panel has — so what it needs from this package is the contents of each, named
+  separately so a dock's node can say which one it holds.
+*/
+const EditorCodePanel = lazy(() => import('@we/editor').then((m) => ({ default: m.CodePanel })));
+const EditorInspectorPanel = lazy(() => import('@we/editor').then((m) => ({ default: m.InspectorPanel })));
+const EditorThemePanel = lazy(() => import('@we/editor').then((m) => ({ default: m.ThemePanel })));
 
 export const componentRegistry: ComponentRegistry = {
   // @we/components
@@ -88,7 +98,9 @@ export const componentRegistry: ComponentRegistry = {
 
   // @we/editor
   AiPanel,
-  RightPanelContainer,
+  EditorCodePanel,
+  EditorInspectorPanel,
+  EditorThemePanel,
   // Contributed by @we/module-globe — registered here rather than injected by the module registry so
   // the static registry stays the single source for what a template may name. When modules become
   // installable this entry comes from moduleRegistry.components() instead.

@@ -67,6 +67,12 @@ describe('slotRegistry — faithful generalisation of shellRegistry', () => {
       'core:sidebar',
       'core:templateEditor',
       'core:chromeRail',
+      // The editor's four panels, which are docks at this anchor like any module's — registered by
+      // the host rather than contributed, since the editor is chrome rather than a module.
+      'dock:editor:inspector',
+      'dock:editor:code',
+      'dock:editor:ai',
+      'dock:editor:theme',
       'call',
     ]);
   });

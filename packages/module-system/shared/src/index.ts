@@ -21,6 +21,7 @@ export {
 export type {
   CreateEntityOptions,
   DockContribution,
+  DockAspect,
   DockEdge,
   DockSize,
   ModuleCapability,

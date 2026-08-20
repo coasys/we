@@ -20,11 +20,11 @@ import { describe, expect, it } from 'vitest';
 
 import { dockFrame } from '../src/shared/registries/dockRegistry';
 
-/** The `props` of the first node in a tree carrying the named prop. */
-function propsWith(node: unknown, key: string): Record<string, unknown> | null {
+/** The `props` of the first node in a tree carrying every named prop. */
+function propsWithAll(node: unknown, ...keys: string[]): Record<string, unknown> | null {
   if (Array.isArray(node)) {
     for (const item of node) {
-      const found = propsWith(item, key);
+      const found = propsWithAll(item, ...keys);
       if (found) return found;
     }
     return null;
@@ -32,10 +32,10 @@ function propsWith(node: unknown, key: string): Record<string, unknown> | null {
   if (!node || typeof node !== 'object') return null;
   const record = node as Record<string, unknown>;
   const props = record.props as Record<string, unknown> | undefined;
-  if (props && key in props) return props;
+  if (props && keys.every((key) => key in props)) return props;
   for (const value of Object.values(record)) {
     if (value && typeof value === 'object') {
-      const found = propsWith(value, key);
+      const found = propsWithAll(value, ...keys);
       if (found) return found;
     }
   }
@@ -55,7 +55,9 @@ describe('the shell sidebar and a docked panel', () => {
     // win this by being declared later; it has to outrank.
     const dock = dockFrame({ id: 'call:0', edge: 'left' } as never, { type: 'Column' } as never);
 
-    expect(propsWith(dock, 'zIndex')?.zIndex).toBe('sticky');
-    expect(propsWith(sidebar, 'zIndex')?.zIndex).toBe('chrome');
+    // The panel's own box — identified by its shadow, which nothing else in the frame has. The drag
+    // guides also carry a `zIndex` and a `bg`, and they sit a layer higher on purpose (see below).
+    expect(propsWithAll(dock, 'zIndex', 'shadow')?.zIndex).toBe('sticky');
+    expect(propsWithAll(sidebar, 'zIndex')?.zIndex).toBe('chrome');
   });
 });

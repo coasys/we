@@ -3,8 +3,11 @@ import type { SchemaNode } from '@we/schema-shared';
 /**
  * Shell Template Editor
  *
- * Template editing chrome — the right-side panel container (AI chat + code panels) and the bar of
- * controls that belongs to a live editing session.
+ * Template editing chrome — the bar of controls that belongs to a live editing session.
+ *
+ * The panels are not here. They are *docks*, registered by the shell and placed by it exactly as a
+ * module's panel is, so that one arbiter owns every panel at every edge — see `editorDocks.ts`. What
+ * is left in this slot is the chrome that has no geometry of its own.
  *
  * Grouped as a single registry slot so white-labelers can remove or replace
  * the entire editing UI via slotRegistry.replace('core:templateEditor', node).
@@ -33,7 +36,6 @@ export const templateEditor: SchemaNode = {
             then: { type: 'EditingBar' },
           },
         },
-        { type: 'RightPanelContainer' },
       ],
     },
   },
