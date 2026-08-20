@@ -10,10 +10,28 @@ const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   r: '600',
   p: '900',
   ax: 'stretch',
-  ay: 'center',
+  /*
+    Start, not centre. The base grows with its content, so centring on the main axis does nothing
+    until maxHeight clamps it — and at that point it centres the *overflow* too, pushing the first
+    field up past the top edge where no amount of scrolling reaches it. The host still centres the
+    modal itself in the viewport, which is the centring anybody actually sees.
+  */
+  ay: 'start',
   gap: '500',
   direction: 'column',
   maxHeight: 'calc(100vh - 64px)',
+  /*
+    Scroll rather than spill — but one level in.
+
+    maxHeight lands on [part='base'] (see OverlayElement), and nothing bounded what happened when
+    the content exceeded it: a form gaining rows pushed its content off the screen. Scrolling base
+    itself was the first fix, and wrong by one element: the close button is anchored to base, so it
+    rode away with the content. base clips, and [part='content'] below is what scrolls — the close
+    button stays put, and anything slotted as header or footer is pinned outside the scroll.
+
+    A default prop rather than a stylesheet rule, because the generated sheet declares overflow on
+    [part='base'] itself and wins there whatever a component writes.
+  */
   overflow: 'hidden',
 };
 
@@ -32,6 +50,43 @@ const CSS_STYLES = css`
 
   [part='base'] {
     position: relative;
+  }
+
+  /*
+    The scroll region: the default slot only. Named header/footer slots are left as slots — an
+    unfilled slot is display: contents and costs the layout nothing, and a filled one makes the
+    slotted node a flex row of base itself, pinned above or below the scroll and sharing its gap.
+
+    Safe to style directly: the generated sheet touches :host and [part='base'] only.
+  */
+  [part='content'] {
+    display: flex;
+    flex-direction: column;
+    /* base's own gap and alignment, so nodes inside and outside the scroller line up the same. */
+    gap: inherit;
+    align-items: inherit;
+    overflow: auto;
+    /* A flex item's automatic minimum size is its content — without this nothing ever shrinks,
+       so nothing ever scrolls. */
+    min-height: 0;
+    /*
+      Hold the scrollbar's room whether or not it is showing, so crossing the threshold is not also
+      a relayout: expanding one section of a form used to take the bar's width out of the content
+      box, and every control in the modal narrowed to make way for it.
+
+      Nearly free here. The gutter is the 6px of --we-component-scrollbar-width, not the ~15px of a
+      native bar, and the track paints transparent — so on a modal short enough never to scroll it
+      reserves a strip with nothing in it to see.
+    */
+    scrollbar-gutter: stable;
+    /*
+      Room for focus rings. A field stretches to this box's full width, and its ring paints just
+      outside itself — which the overflow clipping kills dead. The padding is the ring's room and the
+      negative margin gives it back, so nothing else moves: content stays aligned with the header
+      and footer, and the ring has 4px of scroller to paint into (the widest ring is 2px).
+    */
+    padding: var(--we-space-100);
+    margin: calc(-1 * var(--we-space-100));
   }
 
   [part='close-button-wrapper'] {
@@ -107,7 +162,9 @@ export default class Modal extends OverlayElement {
               `
             : null
         }
-        <slot></slot>
+        <slot name="header"></slot>
+        <div part="content"><slot></slot></div>
+        <slot name="footer"></slot>
       </div>
     `;
   }

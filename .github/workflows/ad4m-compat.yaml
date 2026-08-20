@@ -1,0 +1,156 @@
+name: AD4M compatibility
+
+# Does WE still build against AD4M's *unreleased* source?
+#
+# This is the useful half of what the main build used to do: it catches an AD4M
+# change that breaks WE before a tag is cut, and it is how a cross-repo change is
+# tested — a WE branch that needs an unpublished AD4M API can be run against the
+# AD4M branch carrying it.
+#
+# What it deliberately is not is a gate. It compiles against a branch, so its
+# result depends on when it runs and on what someone else pushed to another
+# repository; a WE pull request must not be blocked, or unblocked, by that. The
+# required build (`build.yaml`) installs the versions this repo pins, so it
+# answers a question that has one answer per commit. This job answers a different
+# question — "is upstream about to break us?" — and answers it on its own time.
+#
+# Two ways in:
+#   - nightly, against AD4M `dev`, so drift surfaces within a day of landing;
+#   - on demand, naming any AD4M branch, for cross-repo work in flight.
+
+on:
+  schedule:
+    # 03:00 UTC daily — after AD4M's working day, before WE's.
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+    inputs:
+      ad4m_branch:
+        description: 'AD4M branch to build WE against'
+        required: false
+        default: 'dev'
+      we_ref:
+        description: 'WE ref to test (defaults to the branch this is dispatched from)'
+        required: false
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.inputs.ad4m_branch || 'dev' }}
+  cancel-in-progress: true
+
+jobs:
+  compat:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.we_ref || github.ref }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      # ad4m's monorepo uses object-format `pnpm.overrides`, which pnpm v10
+      # rejects — so its install is invoked below via `npx pnpm@9`, leaving the
+      # global binary on the version WE itself uses.
+      - name: Install pnpm
+        run: npm install -g pnpm@10.18.3
+
+      - name: Resolve AD4M branch
+        id: branch
+        run: |
+          BRANCH="${{ github.event.inputs.ad4m_branch }}"
+          BRANCH="${BRANCH:-dev}"
+          if ! git ls-remote --exit-code --heads \
+            https://github.com/coasys/ad4m.git "$BRANCH" >/dev/null 2>&1; then
+            echo "::error::No such AD4M branch: $BRANCH"
+            exit 1
+          fi
+          echo "name=$BRANCH" >> "$GITHUB_OUTPUT"
+          echo "Building WE against AD4M branch: $BRANCH"
+
+      - name: Clone AD4M
+        run: |
+          git clone --depth 1 --single-branch \
+            --branch "${{ steps.branch.outputs.name }}" \
+            https://github.com/coasys/ad4m.git ad4m
+
+      - name: Get AD4M commit hash
+        id: ad4m-hash
+        run: |
+          HASH=$(cd ad4m && git rev-parse HEAD)
+          echo "hash=$HASH" >> "$GITHUB_OUTPUT"
+          echo "AD4M commit: $HASH"
+
+      - name: Cache AD4M built outputs
+        id: ad4m-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ad4m/node_modules
+            ad4m/core/lib
+            ad4m/connect/dist
+          key: ad4m-sdk-${{ steps.ad4m-hash.outputs.hash }}
+
+      - name: Install & build AD4M packages
+        if: steps.ad4m-cache.outputs.cache-hit != 'true'
+        run: |
+          cd ad4m
+          npx -y pnpm@9.15.0 install --no-frozen-lockfile
+
+          cd core && npx -y pnpm@9.15.0 exec tsc && npx -y pnpm@9.15.0 run bundle && cd ..
+          cd connect && npx -y pnpm@9.15.0 run build && cd ..
+
+      - name: Get pnpm store directory
+        id: pnpm-store
+        run: echo "path=$(pnpm store path --silent)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache pnpm store
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.pnpm-store.outputs.path }}
+          key: pnpm-store-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: pnpm-store-
+
+      # Point the workspace at the source build. This is deliberate lockfile
+      # drift and is why the install below cannot be frozen — and why this
+      # rewrite lives here rather than in a job whose verdict gates a merge.
+      - name: Override AD4M packages with local builds
+        run: |
+          node -e "
+            const pkg = require('./package.json');
+            pkg.pnpm = pkg.pnpm || {};
+            pkg.pnpm.overrides = pkg.pnpm.overrides || {};
+            pkg.pnpm.overrides['@coasys/ad4m'] = 'file:./ad4m/core';
+            pkg.pnpm.overrides['@coasys/ad4m-connect'] = 'file:./ad4m/connect';
+            require('fs').writeFileSync('./package.json', JSON.stringify(pkg, null, 2) + '\n');
+          "
+
+      - name: Install WE dependencies
+        run: pnpm install --no-frozen-lockfile
+
+      # The linked SDK changes under caches keyed on the previous one.
+      - name: Clear build caches for linked SDK
+        run: |
+          rm -rf .turbo node_modules/.cache
+          find . -name '.turbo' -type d -not -path './ad4m/*' -not -path './node_modules/*' -exec rm -rf {} + 2>/dev/null || true
+          find . -name '.vite' -type d -path '*/node_modules/.vite' -not -path './ad4m/*' -exec rm -rf {} + 2>/dev/null || true
+
+      # Build, typecheck and test only. Lint and the generated-file check answer
+      # questions about WE's own source that the required build already answered,
+      # and neither can be affected by which AD4M this ran against.
+      - name: Build
+        run: NODE_OPTIONS='--max-old-space-size=8192' pnpm build
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Test
+        run: pnpm test
+
+      - name: Explain a failure
+        if: failure()
+        run: |
+          echo "::warning::WE does not build against AD4M ${{ steps.branch.outputs.name }} @ ${{ steps.ad4m-hash.outputs.hash }}."
+          echo "This does not mean WE is broken: the required build installs the AD4M versions"
+          echo "pinned in package.json, and is the check that decides whether a change may merge."
+          echo "It means unreleased AD4M has diverged from what WE pins — either AD4M needs a fix,"
+          echo "or WE needs to move to a newer published version once one exists."

@@ -14,12 +14,15 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
 import {
+  BASE_LAYOUT_SPECS,
   buildLayoutStyles,
+  declCSS,
   designSystemKeys,
   filterProps,
   mapFlexAxes,
   mergeProps,
   parseBorder,
+  stateDeclCSS,
   tokenVar,
   zIndexVar,
 } from './index';
@@ -194,5 +197,33 @@ describe('semantic roles as colour prop values', () => {
   it('resolves a border shorthand naming a role', () => {
     expect(parseBorder('1px solid border')).toBe('1px solid var(--we-role-border)');
     expect(parseBorder('1px solid border-strong')).toBe('1px solid var(--we-role-border-strong)');
+  });
+});
+
+describe('overflow on [part="base"]', () => {
+  /*
+    The generated sheet emits the overflow longhands after the shorthand in the same block, so they
+    replace it. Without a fallback, an unset --we-x-overflow-x made the declaration invalid at
+    computed-value time and resolved to `visible` — which discarded the `overflow` DS prop entirely
+    AND beat any overflow rule a component wrote for itself, since the generated sheet is adopted
+    last. A modal with more rows than it had room for spilled down the page instead of scrolling.
+  */
+  const decl = (cssProp: string) =>
+    BASE_LAYOUT_SPECS.filter(([p]) => p === cssProp).map((spec) => declCSS('--we-modal-', spec))[0];
+
+  it('lets the longhands fall back to the shorthand they replace', () => {
+    expect(decl('overflow-x')).toBe('overflow-x: var(--we-modal-overflow-x, var(--we-modal-overflow));');
+    expect(decl('overflow-y')).toBe('overflow-y: var(--we-modal-overflow-y, var(--we-modal-overflow));');
+  });
+
+  it('still declares the shorthand itself', () => {
+    expect(decl('overflow')).toBe('overflow: var(--we-modal-overflow);');
+  });
+
+  it('resolves {p} against the default prefix in state rules too', () => {
+    const spec = BASE_LAYOUT_SPECS.find(([p]) => p === 'overflow-x')!;
+    expect(stateDeclCSS('--we-modal-hover-', '--we-modal-', spec)).toBe(
+      'overflow-x: var(--we-modal-hover-overflow-x, var(--we-modal-overflow-x, var(--we-modal-overflow)));',
+    );
   });
 });

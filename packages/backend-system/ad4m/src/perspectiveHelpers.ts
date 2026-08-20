@@ -135,6 +135,7 @@ export function buildModelManifest(shapes: ForeignShape[]): ModelManifestEntry[]
   return shapes.map(({ name, shape }) => ({
     name,
     targetClass: shape.targetClass ?? '',
+    ...(shape.interpretationHint !== undefined && { interpretationHint: shape.interpretationHint }),
     properties: shape.properties
       .filter((p) => p.hasValue === undefined && p.name !== undefined)
       .map((p): ModelManifestProperty => ({
@@ -146,6 +147,8 @@ export function buildModelManifest(shapes: ForeignShape[]): ModelManifestEntry[]
         writable: p.writable ?? true,
         ...(p.resolveLanguage !== undefined && { resolveLanguage: p.resolveLanguage }),
         ...(p.class !== undefined && { relatedModel: shaclClassToLocalName(p.class) }),
+        ...(p.interpretationHint !== undefined && { interpretationHint: p.interpretationHint }),
+        ...(p.identity ? { identity: true } : {}),
       })),
   }));
 }

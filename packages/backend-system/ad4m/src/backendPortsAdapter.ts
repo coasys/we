@@ -14,13 +14,21 @@ import type {
   ProfileDirectoryPort,
   SchemaPort,
 } from '@we/backend-shared';
-import { type ModelClass, registerDynamicModels, registerModel } from '@we/models';
+import {
+  getModelForPerspective,
+  mergeDynamicModels,
+  type ModelClass,
+  registerDynamicModels,
+  registerModel,
+} from '@we/models';
 import { Space } from '@we/models/classes';
 
 import { createAd4mDataBindings } from './ad4mAdapter';
 import { createAd4mEphemeralPort } from './ad4mEphemeralAdapter';
 import { createFileExpression, getProfile, publishProfileToPublicPerspective } from './agentHelpers';
 import { createAd4mInterpretationPort } from './interpretationAdapter';
+import { readInterpretationHints, resetInterpretationHints, writeInterpretationHints } from './interpretationHints';
+import { createAd4mLanguageModelPort } from './languageModelPort';
 import { createAd4mAgentSession, createAd4mDatasetLifecycle } from './lifecycleAdapter';
 import { compileManifest } from './manifestCompiler';
 import { buildModelClasses, buildModelManifest, getForeignShacl } from './perspectiveHelpers';
@@ -61,10 +69,26 @@ export function createAd4mSchemaPort(backendClient: unknown): SchemaPort {
     },
 
     declare(manifest: ModelManifest, opts) {
-      const classes = compileManifest(manifest, opts);
+      const classes = compileManifest(manifest, opts as Parameters<typeof compileManifest>[1]);
       for (const [name, cls] of Object.entries(classes)) registerModel(name, cls as ModelClass);
       return classes;
     },
+
+    declareInDataset(dataset, manifest: ModelManifest, opts) {
+      const classes = compileManifest(manifest, {
+        ...opts,
+        // Core vocabulary and the dataset's other dynamic entities are legitimate relation
+        // targets; getModelForPerspective already prefers native classes, so a shape cannot
+        // resolve a target to a shadowed core name.
+        resolveExternal: (name) => getModelForPerspective(name, dataset),
+      });
+      mergeDynamicModels(proxy(dataset).uuid, classes as Record<string, ModelClass>);
+      return classes;
+    },
+
+    interpretationHints: (dataset, entity) => readInterpretationHints(proxy(dataset), entity),
+    setInterpretationHints: (dataset, entity, hints) => writeInterpretationHints(proxy(dataset), entity, hints),
+    resetInterpretationHints: (dataset, entity) => resetInterpretationHints(proxy(dataset), entity),
 
     dedupe: (dataset) => deduplicateSpaceSdna(proxy(dataset)),
   };
@@ -101,6 +125,7 @@ export function createAd4mBackendPorts(
     profiles: createAd4mProfileDirectory(backendClient),
     runtime: createAd4mRuntimeAdmin(backendClient, options),
     transcription: createAd4mTranscriptionPort(backendClient),
+    languageModel: createAd4mLanguageModelPort(backendClient),
     // Takes no client: interpretation is entirely a per-dataset operation, and every call already
     // carries the dataset handle it needs.
     interpretation: createAd4mInterpretationPort(ctx.selfId),

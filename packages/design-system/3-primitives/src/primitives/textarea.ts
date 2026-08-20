@@ -60,7 +60,15 @@ const styles = css`
     );
     min-width: 0;
     resize: vertical;
-    min-height: 80px;
+    /*
+      A floor of one control's height, not a fixed 80px.
+
+      80px is about three lines, so it silently overrode the rows attribute for any value below the
+      default: rows="1" rendered at three rows and looked like the prop was being ignored. The floor
+      is still worth having — a zero-row textarea is a hairline — but it belongs at one row, which
+      is the smallest thing anybody asks for.
+    */
+    min-height: var(--we-component-height-md);
   }
 
   [part='textarea']::placeholder {

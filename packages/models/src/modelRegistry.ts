@@ -62,6 +62,20 @@ export function registerDynamicModels(perspectiveUuid: string, models: Record<st
 }
 
 /**
+ * Add classes to a perspective's dynamic registry without dropping what is already there.
+ *
+ * `registerDynamicModels` *replaces* the perspective's map — correct for the foreign-schema sweep
+ * that owns it, and wrong for a second contributor: space-shape classes registered after the sweep
+ * would otherwise erase every foreign class (or be erased by the next sweep, depending on order).
+ * The given classes win name collisions within the dynamic map; native classes still win over both
+ * in `getModelForPerspective`, so a space shape can never shadow core vocabulary.
+ */
+export function mergeDynamicModels(perspectiveUuid: string, models: Record<string, ModelClass>): void {
+  const existing = perspectiveModelRegistry.get(perspectiveUuid) ?? {};
+  perspectiveModelRegistry.set(perspectiveUuid, { ...existing, ...models });
+}
+
+/**
  * UUID-aware model lookup.
  * Prefers globally registered (WE-native) classes over per-perspective
  * synthesised classes, because native classes carry full decorator metadata

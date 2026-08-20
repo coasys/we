@@ -94,6 +94,10 @@ for (const name of names) {
       spec.format = 'file';
       if (p.transform) spec.readAs = 'dataUri';
     }
+    // Interpretation metadata is prompt payload the executor reads off the stored shape — the
+    // manifest cannot be the source of truth while dropping it (it was, and this was the gap).
+    if (p.interpretationHint) spec.interpretationHint = p.interpretationHint;
+    if (p.identity) spec.identity = true;
     const initial = propertyMeta[p.name]?.initial;
     const fallback = initial && !String(initial).includes('uninitialized') ? initial : undefined;
     const value = defaults[name]?.[p.name] !== undefined ? defaults[name][p.name] : fallback;
@@ -103,6 +107,7 @@ for (const name of names) {
   // No type marker in the shape means nothing is ever stored *as* this — it is a base others
   // extend, and the compiler must not mint a marker for it.
   if (!entity.flag) entity.abstract = true;
+  if (shape.interpretationHint) entity.interpretationHint = shape.interpretationHint;
   entities[name] = entity;
 }
 

@@ -37,6 +37,34 @@ const CSS_STYLES = css`
  */
 const zones = new Set<Sortable>();
 
+/**
+ * Put a body-appended overlay into the browser's top layer.
+ *
+ * The drag ghost and the drop indicator are appended to `document.body` and stacked with a large
+ * `z-index`, which is enough on an ordinary page and worth nothing inside a modal: `we-modal`
+ * (through `OverlayElement`) promotes itself with `popover="manual"`, and **no z-index can raise an
+ * element above the top layer**. So both were painting behind the dialog they were dragging in —
+ * a drag inside a modal showed no ghost and no drop line at all, which read as "reordering has no
+ * feedback" rather than "the feedback is underneath this".
+ *
+ * Promoting them the same way fixes it, because the top layer stacks by promotion order and these
+ * are always promoted after the modal that contains them. Feature-detected: where the Popover API
+ * is missing, the z-index behaviour it falls back to is exactly what shipped before.
+ */
+function promoteToTopLayer(el: HTMLElement): void {
+  const showPopover = (el as HTMLElement & { showPopover?: () => void }).showPopover;
+  if (typeof showPopover !== 'function') return;
+  el.setAttribute('popover', 'manual');
+  try {
+    showPopover.call(el);
+  } catch {
+    // A popover that cannot be shown (already open, detached) simply stays where it was.
+  }
+}
+
+/** UA `[popover]` defaults that would otherwise leak in — the same set `OverlayElement` undoes. */
+const POPOVER_RESETS = ['inset:auto', 'margin:0', 'border:none', 'padding:0', 'overflow:visible', 'color:inherit'];
+
 /** What a drop is: an item, the zone it left, the zone it landed in, and where. */
 export interface SortableMoveDetail {
   /** `data-we-id` of the item that moved. */
@@ -85,6 +113,26 @@ export interface SortableMoveDetail {
  * zones; Space drops and Escape cancels. Built in rather than added later, because a board that can
  * only be operated by dragging is a board some people cannot operate at all — and because the
  * events are identical, a consumer gets it for nothing.
+ *
+ * ## Items that contain form controls: `[data-we-handle]`
+ *
+ * By default the whole item is the grab area, which is right for a card or a nav row. It is wrong
+ * the moment an item contains a text field: dragging to select text would start a drag, and — worse
+ * — the keyboard pickup would read a **space typed into an input** as "pick this up", so the field
+ * could not accept spaces at all.
+ *
+ * So two rules, both no-ops for an item without form controls:
+ *
+ * - Mark one or more descendants `data-we-handle`, and only a press that begins inside a handle
+ *   starts a drag. An item with no handle keeps dragging from anywhere, so existing consumers are
+ *   unaffected.
+ * - A Space or Enter that originates in a text-entry element (`input`, `textarea`, `select`,
+ *   `contenteditable`, including inside a component's shadow root) is typing, never a pickup. This
+ *   applies whether or not the item declares handles, because an unfocusable-by-design input that
+ *   swallows spaces is a bug in every consumer that could hit it.
+ *
+ * Make the handle itself focusable (a `we-button` will do) so the keyboard path stays open: Space
+ * on a focused handle picks the row up exactly as it does on a plain item.
  *
  * @fires moved - detail: {@link SortableMoveDetail}, on every completed move
  * @fires reorder - detail: string[] — the destination's order, fired only when an item stayed in
@@ -165,6 +213,27 @@ export default class Sortable extends DesignSystemElement {
     return el.getAttribute('data-we-id') ?? '';
   }
 
+  // ── Grab areas (see the `[data-we-handle]` note in the class doc) ──────────
+
+  /**
+   * Whether a gesture that arrived through `path` is allowed to drag `item`.
+   *
+   * An item declaring no handle drags from anywhere — the default, and what every consumer written
+   * before handles existed relies on. One that declares handles drags only from them.
+   */
+  private _mayDrag(item: Element, path: EventTarget[]): boolean {
+    if (!item.querySelector('[data-we-handle]')) return true;
+    return path.some((node) => node instanceof Element && node.hasAttribute('data-we-handle'));
+  }
+
+  /** An element that owns its own text input: a space keypress there is typing, never a pickup. */
+  private _isTextEntry(node: EventTarget): boolean {
+    if (!(node instanceof HTMLElement)) return false;
+    return (
+      node.tagName === 'INPUT' || node.tagName === 'TEXTAREA' || node.tagName === 'SELECT' || node.isContentEditable
+    );
+  }
+
   // ── Lifecycle ─────────────────────────────────────────────────────────────
 
   connectedCallback() {
@@ -229,7 +298,7 @@ export default class Sortable extends DesignSystemElement {
     if (e.button !== 0) return;
     const path = e.composedPath();
     const dragged = this._getItems().find((item) => path.includes(item));
-    if (!dragged) return;
+    if (!dragged || !this._mayDrag(dragged, path)) return;
 
     this._pending = { pointerId: e.pointerId, startX: e.clientX, startY: e.clientY, dragged };
     this.addEventListener('pointermove', this._onPointerMove);
@@ -272,8 +341,13 @@ export default class Sortable extends DesignSystemElement {
       `box-shadow:0 4px 16px color-mix(in srgb, var(--we-role-shadow-color) 20%, transparent)`,
       `border-radius:6px`,
       `margin:0`,
+      // Transparent rather than unset: the UA's own `[popover]` background would otherwise paint an
+      // opaque card behind the clone once it is promoted.
+      `background:transparent`,
+      ...POPOVER_RESETS,
     ].join(';');
     document.body.appendChild(ghost);
+    promoteToTopLayer(ghost);
     this._ghost = ghost;
   }
 
@@ -286,8 +360,10 @@ export default class Sortable extends DesignSystemElement {
       `background:var(--we-color-primary-500,#3b82f6)`,
       `border-radius:2px`,
       `opacity:0`,
+      ...POPOVER_RESETS,
     ].join(';');
     document.body.appendChild(el);
+    promoteToTopLayer(el);
     this._indicator = el;
   }
 
@@ -313,7 +389,16 @@ export default class Sortable extends DesignSystemElement {
     }
 
     this._dropIndex = target._indexAt(e.clientX, e.clientY, this._dragging);
-    target._updateIndicator(this._indicator, this._dropIndex, this._dragging);
+    /*
+      The indicator draws against the list *without* the dragged item, so it needs the same
+      dragged-inclusive → dragged-exclusive conversion the drop itself gets in _onPointerUp.
+      Unconverted, the two spaces agree when dragging up and differ by one when dragging down —
+      the line sat one row below where the drop would actually land, so a downward drag had to be
+      taken a row too far before the line reached the place already meant.
+    */
+    const fromIndex = this._getItems().indexOf(this._dragging);
+    const shownIndex = target === this && this._dropIndex > fromIndex ? this._dropIndex - 1 : this._dropIndex;
+    target._updateIndicator(this._indicator, shownIndex, this._dragging);
   };
 
   /** Where in this zone a pointer at (x, y) would drop, by comparing against each item's centre. */
@@ -416,7 +501,7 @@ export default class Sortable extends DesignSystemElement {
         const { item, zone, index } = this._held;
         this._releaseHold();
         this._commit(item, zone, index);
-      } else if (focused) {
+      } else if (focused && !path.some((node) => this._isTextEntry(node)) && this._mayDrag(focused, path)) {
         this._held = { item: focused, zone: this, index: this._getItems().indexOf(focused) };
         (focused as HTMLElement).style.opacity = '0.3';
         this.setAttribute('data-drop-target', '');

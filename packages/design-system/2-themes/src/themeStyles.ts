@@ -165,6 +165,20 @@ export function themeToStyle(overrides: ThemeOverrides): Record<string, string> 
     }
   }
 
+  /*
+    Tell the browser which way round its own widgets go.
+
+    Everything the UA draws itself — the popup behind a time input's showPicker(), scrollbars,
+    a <select>'s native dropdown — is coloured for `color-scheme`, not for any token, and no CSS
+    reaches it. A dark theme that never says so gets light-scheme widgets: a white time picker over
+    a dark panel. Darkness here is not a separate flag to keep in sync — a negative multiplier *is*
+    the inversion of the lightness scale, so it is read from that. A theme that does not touch the
+    multiplier inherits the ambient scheme, which is also right: it did not change the polarity.
+  */
+  if (theme.multiplier !== undefined) {
+    style['color-scheme'] = Number(theme.multiplier) < 0 ? 'dark' : 'light';
+  }
+
   // 2. Re-declare neutral-hue linkage when primaryHue is explicitly overridden
   if (theme.primaryHue !== undefined && theme.neutralHue === undefined) {
     style['--we-color-neutral-hue'] = 'var(--we-color-primary-hue)';

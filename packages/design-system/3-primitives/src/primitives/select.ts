@@ -1,10 +1,11 @@
 import type { DesignSystemProps } from '@we/design-types';
 import { type DSLayer, filterProps, getKeysForLayers, mergeProps } from '@we/design-utils';
-import { css, html, nothing } from 'lit';
+import { css, html, nothing, type PropertyValues } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { styleMap } from 'lit/directives/style-map.js';
 
 import { DesignSystemElement } from '../shared/design-system-element';
+import { openFloatingPanel } from '../shared/floating-panel';
 import sharedStyles from '../shared/styles';
 import type { ComponentSize } from '../types';
 
@@ -12,6 +13,15 @@ export interface SelectOption {
   label: string;
   value: string;
   disabled?: boolean;
+  /** Phosphor icon shown before the label, in the list and on the chosen value. */
+  icon?: string;
+  /**
+   * Heading this option sits under. Consecutive options sharing one render below a single
+   * non-interactive heading row — how a list says "these come from this space, those are blocks"
+   * without every label carrying a suffix. Keyboard navigation and filtering see only the options;
+   * a group whose options are all filtered out brings no heading with it.
+   */
+  group?: string;
 }
 
 const DEFAULT_PROPS: Partial<DesignSystemProps> = {
@@ -38,6 +48,36 @@ const CONTROL_HEIGHT: Record<ComponentSize, string> = {
 const styles = css`
   :host {
     min-width: 120px;
+  }
+
+  /*
+    Fitted: the control is as wide as its widest option, and no wider.
+
+    The sizer stacks every label in one grid cell and is hidden without being removed, so it still
+    contributes its width — which is the widest of them — while painting nothing and staying out of
+    the accessibility tree. Sizing this way rather than from the current value is what keeps the
+    control from resizing every time somebody picks something.
+
+    The width itself is set inline, in the updated() hook — not here. The design system's generated sheet
+    re-declares width in its own interaction rules, so a :host rule held until the pointer arrived
+    and then lost: the control sat at its fitted width and jumped to full width on hover. Measured,
+    not guessed; the same cascade is why an equivalent rule on we-number-input never applied at all.
+  */
+
+  [part='sizer'] {
+    display: grid;
+    height: 0;
+    overflow: hidden;
+    visibility: hidden;
+  }
+
+  [part='sizer'] > span {
+    grid-area: 1 / 1;
+    display: inline-flex;
+    align-items: center;
+    gap: var(--we-space-200);
+    white-space: nowrap;
+    font: inherit;
   }
 
   [part='input-wrapper'] {
@@ -77,6 +117,23 @@ const styles = css`
   [part='native-button'] {
     all: unset;
     flex: 1;
+    /*
+      Stretched and centred rather than shrink-wrapped around its label.
+
+      The all:unset above leaves the button with no height of its own, so a select with no value
+      *and* no placeholder had nothing but the caret to click: the trigger was full width and zero
+      height. The :empty::before rule below was meant to cover that and never fired, because
+      placeholder is a property on the host and attr() reads attributes — it is mirrored onto the
+      button element now.
+    */
+    align-self: stretch;
+    /*
+      A one-cell grid, so the value and the width-holding sizer occupy the same space rather than
+      sitting side by side — beside each other the button collapsed to nothing and the label was
+      clipped by the very thing meant to size it.
+    */
+    display: grid;
+    align-items: center;
     padding: 0 var(--we-space-300);
     font: inherit;
     color: inherit;
@@ -86,16 +143,37 @@ const styles = css`
     text-overflow: ellipsis;
   }
 
-  [part='native-button']:empty::before {
-    content: attr(placeholder);
+  [part='native-button'] > * {
+    grid-area: 1 / 1;
+  }
+
+  [part='value'] {
+    display: flex;
+    align-items: center;
+    gap: var(--we-space-200);
+    overflow: hidden;
+  }
+
+  /* Truncation lives on the label span: an icon beside the text must never be what gets clipped. */
+  [part='value-label'] {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* A placeholder reads as absent text, not as a value. */
+  [part='value'][data-placeholder] {
     color: var(--we-color-neutral-400);
   }
 
+  /*
+    Positioned by openFloatingPanel, which promotes it into the top layer — so no ancestor's
+    overflow can clip it and no z-index has to compete. The width still tracks the trigger, which
+    is why that is set from script rather than with a percentage: the panel is no longer laid out
+    inside the control.
+  */
   [part='listbox'] {
-    position: absolute;
-    top: 100%;
-    left: 0;
-    min-width: 100%;
+    position: fixed;
     width: max-content;
     z-index: var(--we-z-dropdown);
     max-height: 200px;
@@ -109,10 +187,34 @@ const styles = css`
   }
 
   [part='option'] {
+    display: flex;
+    align-items: center;
+    gap: var(--we-space-200);
     padding: var(--we-space-200) var(--we-space-300);
     cursor: pointer;
     white-space: nowrap;
     transition: background var(--we-transition-200, 150ms) ease;
+  }
+
+  /* Option icons are wayfinding, not content — tinted toward the accent so they read as a system
+     of markers rather than a column of dark glyphs. */
+  [part='option'] we-icon,
+  [part='value'] we-icon {
+    color: var(--we-color-primary-700);
+  }
+
+  [part='group-heading'] {
+    padding: var(--we-space-200) var(--we-space-300) var(--we-space-100);
+    font-size: 0.75em;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--we-color-neutral-400);
+    pointer-events: none;
+  }
+
+  [part='group-heading']:not(:first-child) {
+    margin-top: var(--we-space-100);
+    border-top: 1px solid var(--we-color-neutral-100);
   }
 
   [part='option']:hover,
@@ -159,11 +261,23 @@ export default class Select extends DesignSystemElement {
   @property({ type: String }) placeholder = '';
   @property({ type: Boolean, reflect: true }) disabled = false;
   @property({ type: Boolean, reflect: true }) searchable = false;
+  /**
+   * Size the control to its widest option instead of filling its container.
+   *
+   * Opt-in, and measured against the *widest* option rather than the current one: a control that
+   * resized as the selection changed would shift everything beside it on every pick. Right where the
+   * options are short and known — true/false, a handful of declared values — and wrong where they
+   * carry user text, which is why filling the container stays the default.
+   */
+  @property({ type: Boolean, reflect: true }) fit = false;
   @property({ type: String }) name = '';
   @property({ type: String, reflect: true }) size: ComponentSize = 'md';
   @property({ type: Object }) styles?: Record<string, string | number | undefined>;
 
   @state() private _open = false;
+
+  /** Teardown for the open panel: stops the position watcher and leaves the top layer. */
+  private _closeFloating?: () => void;
   @state() private _filter = '';
   /**
    * Which option the keyboard is on, as an index into the *filtered* list. `-1` is "none yet".
@@ -193,8 +307,40 @@ export default class Select extends DesignSystemElement {
     document.addEventListener('click', this._onDocClick);
   }
 
+  /**
+   * Float the listbox while it is open.
+   *
+   * `updated` rather than the click handlers, because every path that opens this — pointer,
+   * keyboard, focus on a searchable select — runs through `_open`, and one of them would otherwise
+   * be forgotten.
+   */
+  updated(changed: PropertyValues) {
+    super.updated(changed);
+
+    // Read through the design system rather than off the element: `width` is assigned by whoever
+    // mounts this, not declared here. A consumer asking for a width means it, and `fit` is only the
+    // default-sizing opinion, so an explicit one wins.
+    const fitting = this.fit && !(this.getInstanceProps() as { width?: string }).width;
+    this.style.width = fitting ? 'fit-content' : '';
+    this.style.minWidth = fitting ? '0' : '';
+
+    if (!changed.has('_open')) return;
+    if (this._open) {
+      const trigger = this.shadowRoot?.querySelector('[part="input-wrapper"]') as HTMLElement | null;
+      const listbox = this.shadowRoot?.querySelector('[part="listbox"]') as HTMLElement | null;
+      // Matching the trigger's width is what keeps it looking like part of the control now that it
+      // is no longer inside it.
+      if (trigger && listbox) listbox.style.minWidth = `${trigger.getBoundingClientRect().width}px`;
+      this._closeFloating = openFloatingPanel(trigger, listbox);
+    } else {
+      this._closeFloating?.();
+      this._closeFloating = undefined;
+    }
+  }
+
   disconnectedCallback() {
     super.disconnectedCallback();
+    this._closeFloating?.();
     document.removeEventListener('click', this._onDocClick);
   }
 
@@ -210,6 +356,10 @@ export default class Select extends DesignSystemElement {
 
   private get _displayValue() {
     return this.options.find((o) => o.value === this.value)?.label ?? '';
+  }
+
+  private get _selectedIcon() {
+    return this.options.find((o) => o.value === this.value)?.icon;
   }
 
   private _onInput(e: Event) {
@@ -368,6 +518,7 @@ export default class Select extends DesignSystemElement {
               : html`
                   <button
                     part="native-button"
+                    placeholder=${this.placeholder}
                     ?disabled=${this.disabled}
                     role="combobox"
                     aria-expanded=${this._open ? 'true' : 'false'}
@@ -376,7 +527,27 @@ export default class Select extends DesignSystemElement {
                     @click=${this._toggle}
                     @keydown=${this._onKeyDown}
                   >
-                    ${this._displayValue || this.placeholder || nothing}
+                    <span part="value" ?data-placeholder=${!this._displayValue}>
+                      ${this._selectedIcon ? html`<we-icon name=${this._selectedIcon} size="16px"></we-icon>` : nothing}
+                      <span part="value-label">${this._displayValue || this.placeholder || nothing}</span>
+                    </span>
+                    ${
+                      this.fit
+                        ? html`
+                            <span part="sizer" aria-hidden="true">
+                              ${this.options.map(
+                                // Markup kept tight: this span is a measurement, and stray template
+                                // whitespace inside it would be part of what gets measured.
+                                (o) =>
+                                  html`<span
+                                    >${o.icon ? html`<we-icon name=${o.icon} size="16px"></we-icon>` : nothing}${o.label}</span
+                                  >`,
+                              )}
+                              <span>${this.placeholder}</span>
+                            </span>
+                          `
+                        : nothing
+                    }
                   </button>
                 `
           }
@@ -392,6 +563,13 @@ export default class Select extends DesignSystemElement {
                     filtered.length > 0
                       ? filtered.map(
                           (opt, index) => html`
+                            ${
+                              opt.group && opt.group !== filtered[index - 1]?.group
+                                ? html`
+                                    <div part="group-heading" role="presentation" aria-hidden="true">${opt.group}</div>
+                                  `
+                                : nothing
+                            }
                             <div
                               part="option"
                               role="option"
@@ -401,6 +579,7 @@ export default class Select extends DesignSystemElement {
                               aria-disabled=${opt.disabled ? 'true' : nothing}
                               @click=${() => this._select(opt)}
                             >
+                              ${opt.icon ? html`<we-icon name=${opt.icon} size="16px"></we-icon>` : nothing}
                               ${opt.label}
                             </div>
                           `,

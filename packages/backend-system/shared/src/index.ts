@@ -118,6 +118,7 @@ export type {
   BackendPorts,
   BackendPortsContext,
   DataBindingDeps,
+  EntityHintState,
   ProfileDirectoryPort,
   SchemaPort,
 } from './backendPorts';
@@ -134,6 +135,7 @@ export type {
   RuntimeAdminPort,
   TokenizerSource,
 } from './runtimeAdmin';
+export type { LanguageModelPort } from './languageModel';
 export type { TranscriptionModel, TranscriptionPort, TranscriptionStream, TranscriptionTuning } from './transcription';
 export type {
   InterpretationPort,

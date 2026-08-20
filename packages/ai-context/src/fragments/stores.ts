@@ -371,6 +371,75 @@ export const storeEntries: StoreEntry[] = [
     ],
   },
   {
+    name: 'shapeStore',
+    state: {
+      spaceShapes: {
+        type: 'array',
+        properties: [
+          'id',
+          'name',
+          'description',
+          'icon',
+          'shapeId',
+          'version',
+          'forkedFrom',
+          'propertyCount',
+          'problems',
+        ],
+      },
+      shapesLoaded: { type: 'boolean' },
+      shapeDraft: {
+        type: 'object',
+        properties: ['name', 'description', 'icon', 'classHint', 'identityMember', 'members'],
+      },
+      editingShapeId: { type: 'string' },
+      draftErrors: { type: 'array' },
+      savingShape: { type: 'boolean' },
+      aiAvailable: { type: 'boolean' },
+      generating: { type: 'boolean' },
+      hintEntities: { type: 'array', properties: ['entity', 'source'] },
+      relationshipTargets: { type: 'array', properties: ['label', 'value'] },
+      identityOptions: { type: 'array', properties: ['label', 'value'] },
+      hintEditor: {
+        type: 'object',
+        properties: ['entity', 'classHint', 'defaultClassHint', 'rows', 'customized'],
+      },
+      hintBusy: { type: 'boolean' },
+      expandedMembers: { type: 'array' },
+      memberOptions: { type: 'array', properties: ['rowId', 'options'] },
+      confirmDiscard: { type: 'boolean' },
+      confirmReplaceFields: { type: 'boolean' },
+      generateIntent: { type: 'string' },
+    },
+    actions: [
+      'openShapeWizard',
+      'cancelShapeWizard',
+      'setShapeField',
+      'setIdentityMember',
+      'addProperty',
+      'addRelationship',
+      'removeMember',
+      'setMemberField',
+      'reorderMembers',
+      'toggleMemberExpanded',
+      'commitDraft',
+      'requestCloseWizard',
+      'cancelDiscard',
+      'replaceDraft',
+      'generateShapeDraft',
+      'generateShapeFields',
+      'requestGenerateFields',
+      'cancelReplaceFields',
+      'saveShapeDraft',
+      'deleteShape',
+      'openHintEditor',
+      'closeHintEditor',
+      'setHintDraft',
+      'saveHintEditor',
+      'resetHintEditor',
+    ],
+  },
+  {
     name: 'editorStore',
     state: {
       isOpen: { type: 'boolean' },
@@ -817,6 +886,79 @@ export function generateStoresText(entries: StoreEntry[]): string {
           '(moduleId: string, enabled: boolean, spaceUuid?): turns a feature module on or off for a space; writes the resolved list, so the first toggle also pins whatever was on by fallback. Omit spaceUuid for the space on screen',
         launchModule:
           "(moduleId: string): invokes that module's declared launcher action. Takes an id rather than a path because $action resolves a literal string, so a rail iterating over modules cannot build modules.<id>.<method> itself",
+      },
+    },
+    shapeStore: {
+      state: {
+        spaceShapes:
+          'SpaceShapeView[] — the content models THIS SPACE defines (id, name, description, icon, shapeId, version, forkedFrom, propertyCount, problems). A shape with a non-empty problems array failed validation or adoption and its entity is not queryable; render the problems rather than hiding the row',
+        shapesLoaded:
+          'boolean — the space has been asked for its shapes. An empty list is otherwise indistinguishable from "not fetched yet"; gate empty states on it',
+        shapeDraft:
+          "the model wizard's draft (name, description, icon, classHint, identityMember, members[]) or null while the wizard is closed — its non-nullness is what mounts the wizard modal. Each member is { rowId, kind: 'property' | 'relationship', name, … }: a property carries type/required/hint/options/defaultValue, a relationship carries target/many. Form state lives here rather than $localState because rows are structured and validated as a whole, and the LLM flow fills the same draft",
+        editingShapeId: 'string | null — the Shape record being edited; null means the draft is a new model',
+        draftErrors: 'string[] — wizard-facing validation errors from the last save attempt',
+        savingShape: 'boolean — a save is in flight',
+        aiAvailable: 'boolean — AI model generation is available (the agent has a Claude API key configured)',
+        generating: 'boolean — an AI generation is in flight',
+        hintEntities:
+          "{ entity, source: 'core' | 'shape' }[] — entities offering AI-hint tuning in this space: core interpretable vocabulary (TaskBlock, EventBlock) plus the space's own shapes",
+        relationshipTargets:
+          "{ label, value }[] — what a relationship may point at here, ready for a we-select: this space's own models, then block types, then other apps' models. Core infrastructure entities are deliberately absent",
+        identityOptions:
+          '{ label, value }[] — "None" plus every named property of the open draft, for the identity picker. Built in the store because a schema can $map options but cannot prepend one',
+        hintEditor:
+          'the hint editor state ({ entity, classHint, defaultClassHint, rows: { name, predicate, hint, defaultHint }[], customized }) or null while closed — non-nullness mounts the hint editor modal',
+        hintBusy: 'boolean — the hint editor is loading or saving',
+        memberOptions:
+          "{ rowId, options }[] — each member's default-value picker entries. Read with $find on rowId rather than off $member: rows are mutated in place while typing, so values hanging off the row cannot be reactive",
+        confirmDiscard: 'boolean — the "discard this model?" confirmation is showing',
+        confirmReplaceFields:
+          'boolean — the "replace the fields below?" confirmation is showing. Only ever raised for a generation over hand-written rows; a generated proposal nobody touched re-runs on the click',
+        generateIntent:
+          "'none' | 'generate' | 'regenerate' | 'replace' — what the generate button would do right now, given what the draft holds. Label it \"Regenerate\" on 'regenerate' and 'replace' and \"Generate\" otherwise — 'none' is an empty draft, which has nothing to re-run, so testing for 'generate' alone labels a fresh form wrongly. Disable only on 'none', and route the click through requestGenerateFields, which decides whether to ask first",
+        expandedMembers:
+          "string[] — rowIds whose detail panel is open. Read with { $in: ['$member.rowId', { $store: 'shapeStore.expandedMembers' }] }; a new row and any row an error names open themselves. Generation leaves rows closed — a collapsed row shows its hint, so what was generated is readable without opening anything",
+      },
+      actions: {
+        openShapeWizard:
+          '(shapeRecordId?): opens the model wizard — empty for a new model, or pre-filled from a stored shape to edit it',
+        cancelShapeWizard: '(): closes the wizard, discarding the draft',
+        setShapeField: "(field: 'name' | 'description' | 'icon' | 'classHint', value): sets one top-level draft field",
+        setIdentityMember:
+          "(rowId): chooses which member identifies duplicates for AI extraction; 'none' clears it. At most one, which is why it is a picker rather than a per-row flag",
+        addProperty: '(): appends an empty property (scalar field) row to the draft',
+        addRelationship: '(): appends an empty relationship (edge to another model) row to the draft',
+        removeMember: '(rowId): removes one member row',
+        setMemberField:
+          "(rowId, field, value): sets one field of one member row. 'options' takes the comma-separated string as typed",
+        toggleMemberExpanded: "(rowId): opens or closes one member's detail panel (hint, default, allowed values)",
+        requestCloseWizard:
+          "(): closes the wizard, asking first when there is work to lose. Wire the modal's own close to this so a backdrop click is guarded too",
+        cancelDiscard: '(): dismisses the discard confirmation and keeps the wizard open',
+        commitDraft:
+          '(): publishes in-place edits to the draft signal. Typed fields are mutated without touching it so inputs keep focus, which leaves derived values stale — pair with onBlur on a field something else is computed from',
+        reorderMembers:
+          '(rowIds: string[]): applies a drag-reorder. Pair with we-sortable\'s onReorder and pass "$arg.detail" — order is the stored declaration order, not decoration',
+        replaceDraft:
+          '(draft): replaces the whole draft — how the LLM flow hands a generated model to the same review path',
+        generateShapeDraft:
+          '(description: string): generates a draft from a plain-language description and lands it in the open wizard for review. Proposes only — nothing is stored until the user saves. Gate the control on aiAvailable',
+        generateShapeFields:
+          "(): generates the draft's fields from what the author actually wrote — the name, description and AI hint they typed — and answers whatever they left blank, including anything a previous run had filled in (that being the machine's own output, which would otherwise steer the next prompt and return a model half about the last subject). Replaces the member list wholesale, so call requestGenerateFields from a button instead, and this from the confirmation it raises",
+        requestGenerateFields:
+          "(): the generate button's own entry point — generates now, or raises confirmReplaceFields when the click would discard hand-written rows. The store makes that choice because only it can tell a proposal nobody touched from rows somebody wrote",
+        cancelReplaceFields: '(): dismisses the replace confirmation, keeping the fields as they are',
+        saveShapeDraft:
+          '(): validates, stores and adopts the draft. Errors land in draftErrors; success closes the wizard and the new entity becomes queryable via $query in this space',
+        deleteShape:
+          '(shapeRecordId): removes a model definition from the space. Existing entries keep their data; only the definition goes',
+        openHintEditor: '(entity): opens per-space AI-hint tuning for an entity (core or space-defined)',
+        closeHintEditor: '(): closes the hint editor, discarding unsaved edits',
+        setHintDraft: "(key, value): sets one hint in the open editor — key is 'class' or a property predicate",
+        saveHintEditor:
+          '(): writes the hints to this space and marks them customized, so schema refreshes stop reverting them',
+        resetHintEditor: "(): back to the declaration's hints; release improvements flow again",
       },
     },
     editorStore: {

@@ -3,6 +3,7 @@ import { attributeRow, pageShell, sectionCard } from '@we/template-kit';
 
 import { createSignalTypeModal } from './CreateSignalTypeModal.ts';
 import { marketplaceBrowser } from './MarketplaceBrowser.ts';
+import { modelsSection } from './ModelsSection.ts';
 import { signalTypeCard } from './SignalTypeCard.ts';
 import { themeMarketplaceBrowser } from './ThemeMarketplaceBrowser.ts';
 
@@ -603,6 +604,8 @@ export const settingsRoute: RouteSchema = {
           },
         ],
       }),
+
+      modelsSection,
     ],
   }),
 };

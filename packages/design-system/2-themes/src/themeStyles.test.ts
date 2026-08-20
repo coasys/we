@@ -177,3 +177,23 @@ describe('a named theme brings its own parameters', () => {
     expect(style['--we-color-lightness-500']).toContain('var(--we-color-subtractor)');
   });
 });
+
+describe('color-scheme follows the lightness polarity', () => {
+  /*
+    The UA's own widgets — the time picker's popup, scrollbars, native dropdowns — are coloured
+    for color-scheme and nothing else. A dark theme that never said so got light-scheme widgets:
+    a white time picker floating over a dark panel.
+  */
+  it('declares dark when the multiplier inverts the scale', () => {
+    expect(themeToStyle({ themeName: 'dark' })['color-scheme']).toBe('dark');
+    expect(themeToStyle({ multiplier: -1, subtractor: '108%' })['color-scheme']).toBe('dark');
+  });
+
+  it('declares light when it does not', () => {
+    expect(themeToStyle({ themeName: 'light' })['color-scheme']).toBe('light');
+  });
+
+  it('stays silent when the theme leaves the polarity alone, inheriting the ambient scheme', () => {
+    expect(themeToStyle({ primaryHue: 320 })['color-scheme']).toBeUndefined();
+  });
+});

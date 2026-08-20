@@ -18,7 +18,12 @@ type Shaped = { generateSHACL: () => { shape: SHACLShape | null } };
 
 const compiled = compileManifest(CORE_MANIFEST, { moduleId: 'core' });
 
-/** The parts of a property shape that describe how data is stored and read back. */
+/**
+ * The parts of a property shape that describe how data is stored and read back — plus the
+ * interpretation metadata the executor reads off the stored shape. Hints are compared here because
+ * a manifest that drops one still compiles, still round-trips, and fails only as "the model
+ * extracted nothing" weeks later.
+ */
 const describeProperty = (p: SHACLShape['properties'][number]) => ({
   name: p.name,
   path: p.path,
@@ -28,12 +33,19 @@ const describeProperty = (p: SHACLShape['properties'][number]) => ({
   initial: p.initial ?? null,
   transformed: p.transform !== undefined,
   flagValue: p.hasValue ?? null,
+  hint: p.interpretationHint ?? null,
+  identity: p.identity ?? false,
 });
 
 const shapeSummary = (cls: unknown) => {
   const shape = (cls as Shaped).generateSHACL().shape;
   if (!shape) return null;
-  return [...(shape.properties ?? [])].map(describeProperty).sort((a, b) => `${a.path}`.localeCompare(`${b.path}`));
+  return {
+    classHint: shape.interpretationHint ?? null,
+    properties: [...(shape.properties ?? [])]
+      .map(describeProperty)
+      .sort((a, b) => `${a.path}`.localeCompare(`${b.path}`)),
+  };
 };
 
 const entityNames = Object.keys(CORE_MANIFEST.entities);

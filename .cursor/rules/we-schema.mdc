@@ -785,7 +785,7 @@ Most @we/primitives also accept Design System Props (see next section for detail
 - we-color-picker (DesignSystemElement)
   Props: value: string = '#000000', disabled: boolean = false, name: string = '', palette: array = [ '#000000', '#434343', '#666666', '#999999', '#b7b7b7', '#cccccc', '#d9d9d9', '#ffffff', '#980000', '#ff0000', '#ff9900', '#ffff00', '#00ff00', '#00ffff', '#4a86e8', '#0000ff', '#9900ff', '#ff00ff', '#e6b8af', '#f4cccc', '#fce5cd', '#fff2cc', '#d9ead3', '#d0e0e3', '#c9daf8', '#cfe2f3', '#d9d2e9', '#ead1dc', ]
 - we-date-picker (DesignSystemElement)
-  Props: value: string = '', placeholder: string = 'Select date', disabled: boolean = false, name: string = '', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md'
+  Props: value: string = '', showTime: boolean = false, placeholder: string = 'Select date', disabled: boolean = false, name: string = '', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md'
 - we-divider (LayoutElement)
   Props: orientation: 'horizontal' | 'vertical' = 'horizontal', variant: 'solid' | 'dashed' | 'dotted' = 'solid', color?: string | undefined, thickness?: string | undefined
 - we-drawer (OverlayElement)
@@ -828,7 +828,7 @@ Supports selected, active, and danger states.
 - we-number (DesignSystemElement) — Displays a number, optionally abbreviated (1 200 → 1.2K, 1 500 000 → 1.5M).
   Props: value: number = 0, shorten: boolean = false, precision: number = 1, locale: string = 'en', formattedValue: string
 - we-number-input (DesignSystemElement)
-  Props: value: number = 0, min: number = -Infinity, max: unknown = Infinity, step: number = 1, disabled: boolean = false, name: string = '', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md'
+  Props: value: number | '' = 0, min: number = -Infinity, max: unknown = Infinity, step: number = 1, disabled: boolean = false, name: string = '', placeholder: string = '', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md'
 - we-pagination (DesignSystemElement)
   Props: page: number = 1, total: number = 1, siblings: number = 1, size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md'
 - we-popover (LayoutElement) — Low-level floating panel anchored to a trigger element.
@@ -865,7 +865,7 @@ div — not focusable, so there is no way to resize a panel from the keyboard. P
   Props: maxHeight: string = '', maxWidth: string = ''
 - we-select (DesignSystemElement) — Pick a single value from a list of options. Custom-rendered dropdown.
 Use for form fields, settings, filters. Set searchable=true for type-to-filter.
-  Props: options: SelectOption[] = [], value: string = '', placeholder: string = '', disabled: boolean = false, searchable: boolean = false, name: string = '', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md'
+  Props: options: SelectOption[] = [], value: string = '', placeholder: string = '', disabled: boolean = false, searchable: boolean = false, fit: boolean = false, name: string = '', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md'
 - we-skeleton (DesignSystemElement)
   Props: width: string = '100%', height: string = '20px', animation: 'pulse' | 'wave' = 'pulse'
 - we-slider (DesignSystemElement)
@@ -903,6 +903,26 @@ Space or Enter picks up the focused item; the arrow keys move it, along the list
 zones; Space drops and Escape cancels. Built in rather than added later, because a board that can
 only be operated by dragging is a board some people cannot operate at all — and because the
 events are identical, a consumer gets it for nothing.
+
+## Items that contain form controls: `[data-we-handle]`
+
+By default the whole item is the grab area, which is right for a card or a nav row. It is wrong
+the moment an item contains a text field: dragging to select text would start a drag, and — worse
+— the keyboard pickup would read a **space typed into an input** as "pick this up", so the field
+could not accept spaces at all.
+
+So two rules, both no-ops for an item without form controls:
+
+- Mark one or more descendants `data-we-handle`, and only a press that begins inside a handle
+  starts a drag. An item with no handle keeps dragging from anywhere, so existing consumers are
+  unaffected.
+- A Space or Enter that originates in a text-entry element (`input`, `textarea`, `select`,
+  `contenteditable`, including inside a component's shadow root) is typing, never a pickup. This
+  applies whether or not the item declares handles, because an unfocusable-by-design input that
+  swallows spaces is a bug in every consumer that could hit it.
+
+Make the handle itself focusable (a `we-button` will do) so the keyboard path stays open: Space
+on a focused handle picks the row up exactly as it does on a plain item.
   Props: direction: 'vertical' | 'horizontal' = 'vertical', gap: string = '', zone: string = '', group: string = '', locked: boolean = false
 - we-spinner (LayoutElement)
   Props: size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' | (string & {}) = 'md', color: string = ''
@@ -1490,6 +1510,16 @@ ReadMarker extends WeNode:
   - spaceUuid: string [we://space_uuid]
   - lastReadAt: string [we://last_read_at]
 
+Shape extends WeNode:
+  Fields:
+  - name: string (required) [we://name]
+  - description: string [we://description]
+  - icon: string [we://icon]
+  - shapeId: string [we://shape_id]
+  - version: number = 1 [we://version]
+  - forkedFrom: string [we://forked_from]
+  - definition: string = null [we://shape_definition]
+
 Signal extends Ad4mModel:
   Fields:
   - signalTypeId: string [we://signal_type_id]
@@ -1894,6 +1924,53 @@ SessionStore:
   - refreshMe(): unknown
   - markReady(): unknown
   - onSessionUnlocked(): unknown
+
+ShapeStore:
+- State:
+  - spaceShapes: SpaceShapeView[] — the content models THIS SPACE defines (id, name, description, icon, shapeId, version, forkedFrom, propertyCount, problems). A shape with a non-empty problems array failed validation or adoption and its entity is not queryable; render the problems rather than hiding the row
+  - shapesLoaded: boolean — the space has been asked for its shapes. An empty list is otherwise indistinguishable from "not fetched yet"; gate empty states on it
+  - shapeDraft: the model wizard's draft (name, description, icon, classHint, identityMember, members[]) or null while the wizard is closed — its non-nullness is what mounts the wizard modal. Each member is { rowId, kind: 'property' | 'relationship', name, … }: a property carries type/required/hint/options/defaultValue, a relationship carries target/many. Form state lives here rather than $localState because rows are structured and validated as a whole, and the LLM flow fills the same draft
+  - editingShapeId: string | null — the Shape record being edited; null means the draft is a new model
+  - draftErrors: string[] — wizard-facing validation errors from the last save attempt
+  - savingShape: boolean — a save is in flight
+  - aiAvailable: boolean — AI model generation is available (the agent has a Claude API key configured)
+  - generating: boolean — an AI generation is in flight
+  - hintEntities: { entity, source: 'core' | 'shape' }[] — entities offering AI-hint tuning in this space: core interpretable vocabulary (TaskBlock, EventBlock) plus the space's own shapes
+  - relationshipTargets: { label, value }[] — what a relationship may point at here, ready for a we-select: this space's own models, then block types, then other apps' models. Core infrastructure entities are deliberately absent
+  - identityOptions: { label, value }[] — "None" plus every named property of the open draft, for the identity picker. Built in the store because a schema can $map options but cannot prepend one
+  - hintEditor: the hint editor state ({ entity, classHint, defaultClassHint, rows: { name, predicate, hint, defaultHint }[], customized }) or null while closed — non-nullness mounts the hint editor modal
+  - hintBusy: boolean — the hint editor is loading or saving
+  - memberOptions: { rowId, options }[] — each member's default-value picker entries. Read with $find on rowId rather than off $member: rows are mutated in place while typing, so values hanging off the row cannot be reactive
+  - expandedMembers: string[] — rowIds whose detail panel is open. Read with { $in: ['$member.rowId', { $store: 'shapeStore.expandedMembers' }] }; a new row and any row an error names open themselves. Generation leaves rows closed — a collapsed row shows its hint, so what was generated is readable without opening anything
+  - generateIntent: 'none' | 'generate' | 'regenerate' | 'replace' — what the generate button would do right now, given what the draft holds. Label it "Regenerate" on 'regenerate' and 'replace' and "Generate" otherwise — 'none' is an empty draft, which has nothing to re-run, so testing for 'generate' alone labels a fresh form wrongly. Disable only on 'none', and route the click through requestGenerateFields, which decides whether to ask first
+  - confirmReplaceFields: boolean — the "replace the fields below?" confirmation is showing. Only ever raised for a generation over hand-written rows; a generated proposal nobody touched re-runs on the click
+  - confirmDiscard: boolean — the "discard this model?" confirmation is showing
+- Actions:
+  - openShapeWizard(shapeRecordId?): opens the model wizard — empty for a new model, or pre-filled from a stored shape to edit it
+  - cancelShapeWizard(): closes the wizard, discarding the draft
+  - setShapeField(field: 'name' | 'description' | 'icon' | 'classHint', value): sets one top-level draft field
+  - setIdentityMember(rowId): chooses which member identifies duplicates for AI extraction; 'none' clears it. At most one, which is why it is a picker rather than a per-row flag
+  - addProperty(): appends an empty property (scalar field) row to the draft
+  - addRelationship(): appends an empty relationship (edge to another model) row to the draft
+  - removeMember(rowId): removes one member row
+  - setMemberField(rowId, field, value): sets one field of one member row. 'options' takes the comma-separated string as typed
+  - reorderMembers(rowIds: string[]): applies a drag-reorder. Pair with we-sortable's onReorder and pass "$arg.detail" — order is the stored declaration order, not decoration
+  - toggleMemberExpanded(rowId): opens or closes one member's detail panel (hint, default, allowed values)
+  - commitDraft(): publishes in-place edits to the draft signal. Typed fields are mutated without touching it so inputs keep focus, which leaves derived values stale — pair with onBlur on a field something else is computed from
+  - replaceDraft(draft): replaces the whole draft — how the LLM flow hands a generated model to the same review path
+  - generateShapeDraft(description: string): generates a draft from a plain-language description and lands it in the open wizard for review. Proposes only — nothing is stored until the user saves. Gate the control on aiAvailable
+  - generateShapeFields(): generates the draft's fields from what the author actually wrote — the name, description and AI hint they typed — and answers whatever they left blank, including anything a previous run had filled in (that being the machine's own output, which would otherwise steer the next prompt and return a model half about the last subject). Replaces the member list wholesale, so call requestGenerateFields from a button instead, and this from the confirmation it raises
+  - requestGenerateFields(): the generate button's own entry point — generates now, or raises confirmReplaceFields when the click would discard hand-written rows. The store makes that choice because only it can tell a proposal nobody touched from rows somebody wrote
+  - cancelReplaceFields(): dismisses the replace confirmation, keeping the fields as they are
+  - requestCloseWizard(): closes the wizard, asking first when there is work to lose. Wire the modal's own close to this so a backdrop click is guarded too
+  - cancelDiscard(): dismisses the discard confirmation and keeps the wizard open
+  - saveShapeDraft(): validates, stores and adopts the draft. Errors land in draftErrors; success closes the wizard and the new entity becomes queryable via $query in this space
+  - deleteShape(shapeRecordId): removes a model definition from the space. Existing entries keep their data; only the definition goes
+  - openHintEditor(entity): opens per-space AI-hint tuning for an entity (core or space-defined)
+  - closeHintEditor(): closes the hint editor, discarding unsaved edits
+  - setHintDraft(key, value): sets one hint in the open editor — key is 'class' or a property predicate
+  - saveHintEditor(): writes the hints to this space and marks them customized, so schema refreshes stop reverting them
+  - resetHintEditor(): back to the declaration's hints; release improvements flow again
 
 ShellStore:
 - State:
@@ -2567,6 +2644,13 @@ Undeclared, `$setLocal` warns and no-ops: the button renders, takes the click, a
 
 If the action is slow (a recursive delete walks its whole collection), add a `busy` boolean set
 before it and cleared in `onFinally`, and bind the confirm button's `loading` and `disabled` to it.
+
+**Tall modals — pin the title and buttons.** A modal whose content can outgrow the viewport (a
+long form, a settings editor) scrolls its *content*, never its own title or its action buttons.
+Give the title node `"slot": "header"` and the button row `"slot": "footer"`: both are pinned
+outside the scroll region, sharing the modal's padding and gap, while the default slot scrolls.
+Put a `width` on the `we-modal` itself when using these slots — no single child spans it any
+more. A short confirm dialog like the one above needs none of this; the default slot alone is right.
 
 ### Composing a post — the BlockComposer save handshake
 

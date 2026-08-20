@@ -10,6 +10,7 @@ import {
   revealEffect,
   revealTrackProperty,
   scrollRootMargin,
+  transitionSpan,
 } from './transitionUtils';
 import type { RendererOutput, SchemaNode } from './types';
 
@@ -92,6 +93,20 @@ export function AnimateRenderer({ node, stores, context, renderNode }: AnimateRe
   // triggering (whichever scroll mode, or immediate on mount) happens via animateIn below.
   const [animationCSS, setAnimationCSS] = createSignal('');
 
+  /*
+    Whether the size is currently moving — the clip a reveal needs belongs to the animation, not to
+    the element. Held on afterwards it silently cuts off anything painting outside its own box: a
+    focus ring, a shadow, a dropdown. See the same note in ConditionalRenderer.
+  */
+  const [animating, setAnimating] = createSignal(false);
+  let settleTimer: ReturnType<typeof setTimeout> | undefined;
+  const beginMotion = (config: TransitionConfig) => {
+    clearTimeout(settleTimer);
+    setAnimating(true);
+    settleTimer = setTimeout(() => setAnimating(false), transitionSpan(config));
+  };
+  onCleanup(() => clearTimeout(settleTimer));
+
   const animateIn = (config: TransitionConfig) => {
     setTransitionCSS(buildTransitionCSS(config));
     setAnimationCSS(pulseAnimationCSS(config) ?? '');
@@ -105,6 +120,7 @@ export function AnimateRenderer({ node, stores, context, renderNode }: AnimateRe
         setOpacity(1);
         setTransform('');
         setOpen(true);
+        beginMotion(config);
       }, firstEffect?.delay ?? 0);
     });
   };
@@ -117,6 +133,7 @@ export function AnimateRenderer({ node, stores, context, renderNode }: AnimateRe
       setOpacity(hiddenOpacity(config));
       setTransform(hiddenTransform(config));
       if (revealEffect(config)) setOpen(false);
+      beginMotion(config);
     }, firstEffect?.delay ?? 0);
   };
 
@@ -222,11 +239,12 @@ export function AnimateRenderer({ node, stores, context, renderNode }: AnimateRe
 
   // Clip for the reveal. `min-*: 0` overrides a grid item's automatic minimum size, which is its
   // content — without it the track can never go below that and nothing appears to animate.
-  const innerStyle = createMemo<Record<string, string> | undefined>(() =>
-    hasReveal
-      ? { overflow: 'hidden', [(hasReveal.axis ?? 'block') === 'inline' ? 'min-width' : 'min-height']: '0' }
-      : undefined,
-  );
+  const innerStyle = createMemo<Record<string, string> | undefined>(() => {
+    if (!hasReveal) return undefined;
+    const axisProp = (hasReveal.axis ?? 'block') === 'inline' ? 'min-width' : 'min-height';
+    // Clipped while closed or moving, released once settled open.
+    return open() && !animating() ? { [axisProp]: '0' } : { overflow: 'hidden', [axisProp]: '0' };
+  });
 
   return (
     <div ref={wrapperRef} style={wrapperStyle()}>

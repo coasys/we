@@ -561,38 +561,46 @@ export const CORE_MANIFEST: ModelManifest = {
         "occurrence": {
           "type": "string",
           "predicate": "we://occurrence",
+          "interpretationHint": "A dedup key, not a display value: the title and the start date joined, e.g. \"Design review 2026-08-20\". Always set it when you create an event. Reuse an existing event's exact value only when this is the same occasion on the same day.",
+          "identity": true,
           "default": ""
         },
         "title": {
           "type": "string",
           "predicate": "we://title",
           "required": true,
+          "interpretationHint": "What the occasion is called, e.g. \"Design review\". No trailing period. Never include the bracketed timestamp that starts each turn — it is metadata, not speech.",
           "default": ""
         },
         "description": {
           "type": "string",
           "predicate": "we://description",
+          "interpretationHint": "What it is for, if said. Omit rather than restate the title.",
           "default": ""
         },
         "startDate": {
           "type": "string",
           "predicate": "we://start_date",
           "required": true,
+          "interpretationHint": "Start as YYYY-MM-DDTHH:mm (local time, no timezone suffix). Resolve relative dates like \"next Tuesday at 3\", \"this weekend\" or \"on Friday\" against the bracketed timestamp leading that turn — pick the nearest matching future date. When only a day was said, use T00:00 and set allDay true. Required, so give your best resolution rather than omitting the event.",
           "default": ""
         },
         "endDate": {
           "type": "string",
           "predicate": "we://end_date",
+          "interpretationHint": "End as YYYY-MM-DDTHH:mm. Omit unless a duration or end time was actually stated.",
           "default": ""
         },
         "location": {
           "type": "string",
           "predicate": "we://location",
+          "interpretationHint": "Where it happens — a place or a link, as said. Omit if unstated.",
           "default": ""
         },
         "allDay": {
           "type": "boolean",
           "predicate": "we://all_day",
+          "interpretationHint": "True whenever only a day was said and no time of day — the common case in speech.",
           "default": false
         },
         "version": {
@@ -631,7 +639,8 @@ export const CORE_MANIFEST: ModelManifest = {
       "flag": {
         "predicate": "we://flag",
         "value": "we://event_block"
-      }
+      },
+      "interpretationHint": "Something happening at a identifiable future time — a meeting, a trip, a deadline event, an occasion. A day is enough; it does not need a time of day, an agreement between the speakers, or other attendees. \"Visiting my grandma this weekend\" is an event. Exclude only the conversation currently happening, and intentions with no when at all."
     },
     "FileBlock": {
       "properties": {
@@ -993,6 +1002,78 @@ export const CORE_MANIFEST: ModelManifest = {
       "flag": {
         "predicate": "we://flag",
         "value": "we://read_marker"
+      }
+    },
+    "Shape": {
+      "properties": {
+        "name": {
+          "type": "string",
+          "predicate": "we://name",
+          "required": true,
+          "default": ""
+        },
+        "description": {
+          "type": "string",
+          "predicate": "we://description",
+          "default": ""
+        },
+        "icon": {
+          "type": "string",
+          "predicate": "we://icon",
+          "default": ""
+        },
+        "shapeId": {
+          "type": "string",
+          "predicate": "we://shape_id",
+          "default": ""
+        },
+        "version": {
+          "type": "number",
+          "predicate": "we://version",
+          "default": 1
+        },
+        "forkedFrom": {
+          "type": "string",
+          "predicate": "we://forked_from",
+          "default": ""
+        },
+        "definition": {
+          "type": "string",
+          "predicate": "we://shape_definition",
+          "format": "file",
+          "default": null
+        }
+      },
+      "relations": {
+        "comments": {
+          "target": "",
+          "cardinality": "many",
+          "predicate": "we://comment"
+        },
+        "signals": {
+          "target": "Signal",
+          "cardinality": "many",
+          "predicate": "we://signal"
+        },
+        "participants": {
+          "target": "",
+          "cardinality": "many",
+          "predicate": "we://participants"
+        },
+        "calls": {
+          "target": "",
+          "cardinality": "many",
+          "predicate": "we://call"
+        },
+        "mentions": {
+          "target": "",
+          "cardinality": "many",
+          "predicate": "we://mention"
+        }
+      },
+      "flag": {
+        "predicate": "we://flag",
+        "value": "we://shape"
       }
     },
     "Signal": {
@@ -1374,31 +1455,38 @@ export const CORE_MANIFEST: ModelManifest = {
           "type": "string",
           "predicate": "we://title",
           "required": true,
+          "interpretationHint": "The task as a short imperative phrase, e.g. \"Ship the docs\". No trailing period. Never include the bracketed timestamp that starts each turn — it is metadata, not speech. Reuse the wording of an existing task when this is the same piece of work said again.",
+          "identity": true,
           "default": ""
         },
         "description": {
           "type": "string",
           "predicate": "we://description",
+          "interpretationHint": "Extra context from the conversation that the title alone loses. Omit rather than restate the title.",
           "default": ""
         },
         "status": {
           "type": "string",
           "predicate": "we://status",
+          "interpretationHint": "Exactly one of: \"todo\", \"in-progress\", \"done\". Use \"todo\" unless the speaker says work has begun.",
           "default": "todo"
         },
         "priority": {
           "type": "string",
           "predicate": "we://priority",
+          "interpretationHint": "Exactly one of: \"low\", \"medium\", \"high\". Use \"medium\" unless urgency is stated; do not infer it from tone.",
           "default": "medium"
         },
         "dueDate": {
           "type": "string",
           "predicate": "we://due_date",
+          "interpretationHint": "Due date as YYYY-MM-DD. Only when a date is actually stated — resolve \"Friday\" against the bracketed timestamp leading that turn. Omit if vague.",
           "default": ""
         },
         "assignee": {
           "type": "string",
           "predicate": "we://assignee",
+          "interpretationHint": "Who took the task on, as the name used in conversation (\"James\"), not a DID. Omit if nobody was named.",
           "default": ""
         },
         "version": {
@@ -1437,7 +1525,8 @@ export const CORE_MANIFEST: ModelManifest = {
       "flag": {
         "predicate": "we://flag",
         "value": "we://task_block"
-      }
+      },
+      "interpretationHint": "A piece of work the speakers say needs doing and that is not done yet. Includes anything phrased as \"we need to…\", \"one task is…\", \"someone should…\", or a commitment like \"I'll do X\" — an owner is not required, and neither is a deadline. It must be work in the world that outlives this conversation. Exclude work described as already finished, work raised purely to rule it out, and anything about the act of talking or testing itself — \"let me add another one\", \"I need to say more to trigger this\" and the like are about the conversation, not work anybody committed to."
     },
     "Template": {
       "properties": {

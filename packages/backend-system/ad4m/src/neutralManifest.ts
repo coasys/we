@@ -53,11 +53,20 @@ export function toNeutralManifest(entries: ModelManifestEntry[], opts?: { versio
         }
         relations[p.name] = { target: p.relatedModel, cardinality: p.isCollection ? 'many' : 'one' };
       } else {
-        properties[p.name] = { type: SCALAR[p.type], ...(p.required ? { required: true } : {}) };
+        properties[p.name] = {
+          type: SCALAR[p.type],
+          ...(p.required ? { required: true } : {}),
+          ...(p.interpretationHint !== undefined ? { interpretationHint: p.interpretationHint } : {}),
+          ...(p.identity ? { identity: true } : {}),
+        };
       }
     }
 
-    entities[entry.name] = { properties, relations };
+    entities[entry.name] = {
+      properties,
+      relations,
+      ...(entry.interpretationHint !== undefined ? { interpretationHint: entry.interpretationHint } : {}),
+    };
   }
 
   return { manifest: { version: opts?.version ?? '1', entities }, warnings };

@@ -17,6 +17,7 @@ import {
   LocationBlock,
   MutedAgent,
   ReadMarker,
+  Shape,
   Signal,
   SignalType,
   Space,
@@ -96,6 +97,13 @@ export interface StoredShape {
   identityPath?: string;
   /** Property-level interpretation hints, decoded, keyed by `sh://path`. */
   propHints: Map<string, string>;
+  /**
+   * The space customized this shape's hints (`we://interpretation_customized` marker present —
+   * see `interpretationHints.ts`). Hints are then space-owned: the staleness comparison yields on
+   * them rather than reverting the community's tuning on every space switch. Structure (paths,
+   * identity) stays code-owned and compared regardless.
+   */
+  hintsCustomized?: boolean;
 }
 
 /**
@@ -148,6 +156,15 @@ async function storedShapes(p: PerspectiveProxy): Promise<Map<string, StoredShap
     if (row.targetClass && row.path && row.hint !== undefined) {
       entry(row.targetClass).propHints.set(row.path, decodeHint(row.hint));
     }
+  }
+  for (const row of await select(
+    `SELECT ?targetClass ?flag WHERE {
+      ?targetClass <rdf://type> <ad4m://SubjectClass> .
+      ?targetClass <ad4m://shape> ?shapeUri .
+      ?shapeUri <we://interpretation_customized> ?flag .
+    }`,
+  )) {
+    if (row.targetClass) entry(row.targetClass).hintsCustomized = true;
   }
 
   return shapes;
@@ -227,8 +244,12 @@ export function shapeIsStale(model: typeof Ad4mModel, stored: ReadonlyMap<string
 
   const declared = declaredShape(model);
   if ([...declared.paths].some((predicate) => !current.paths.has(predicate))) return true;
-  if (declared.classHint !== current.classHint) return true;
   if (declared.identityPath !== current.identityPath) return true;
+  // Hints are space-owned once customized (see StoredShape.hintsCustomized): a stored hint that
+  // differs from the declaration is then the community's tuning, not staleness, and rewriting it
+  // would silently revert their work on every space switch.
+  if (current.hintsCustomized) return false;
+  if (declared.classHint !== current.classHint) return true;
   for (const [path, hint] of declared.propHints) {
     if (current.propHints.get(path) !== hint) return true;
   }
@@ -349,6 +370,9 @@ export async function installRootSdna(p: PerspectiveProxy): Promise<void> {
  */
 export const SPACE_MODELS = [
   Space,
+  // The shape *catalogue* — Shape records are how a space carries its own content models, so the
+  // entity that holds them installs into every space alongside Space itself.
+  Shape,
   Template,
   Theme,
   WeNode,

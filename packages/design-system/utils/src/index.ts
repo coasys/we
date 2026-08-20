@@ -389,6 +389,17 @@ export function mergeProps(
 // the corresponding prop was actually provided.
 // ────────────────────────────────────────────
 
+/**
+ * A property the generated stylesheet declares, and the custom property it reads.
+ *
+ * The optional fallback may contain `{p}`, which is replaced with the component's variable prefix
+ * — the way one declaration defers to another prop's variable. `overflow-x` needs this: it is
+ * emitted after the `overflow` shorthand in the same block, so it replaces it, and without a
+ * fallback an unset `--we-x-overflow-x` makes the whole declaration invalid at computed-value time.
+ * That resolved to `visible` and silently discarded both the `overflow` prop and any overflow rule
+ * a component wrote for itself — a modal with more content than it had room for spilled down the
+ * page instead of scrolling.
+ */
 export type PropSpec = [cssProp: string, varSuffix: string] | [cssProp: string, varSuffix: string, fallback: string];
 
 /** Host/outer-box layout — positioning relative to the parent. */
@@ -438,8 +449,8 @@ export const BASE_VISUAL_SPECS: PropSpec[] = [
 export const BASE_LAYOUT_SPECS: PropSpec[] = [
   ['display', 'display', 'flex'],
   ['overflow', 'overflow'],
-  ['overflow-x', 'overflow-x'],
-  ['overflow-y', 'overflow-y'],
+  ['overflow-x', 'overflow-x', 'var({p}overflow)'],
+  ['overflow-y', 'overflow-y', 'var({p}overflow)'],
   ['scrollbar-width', 'scrollbar-width'],
   ['scrollbar-gutter', 'scrollbar-gutter'],
 ];
@@ -466,13 +477,25 @@ export const BASE_TYPOGRAPHY_SPECS: PropSpec[] = [
   ['white-space', 'white-space'],
 ];
 
+/**
+ * The `{p}` placeholder a fallback chain uses to name the prefix it resolves against.
+ *
+ * A regex rather than `String.replaceAll`, which is ES2021 — the workspace targets ES2020, so the
+ * method typechecks nowhere except by accident of a package's own `lib`.
+ */
+const PREFIX_PLACEHOLDER = /\{p\}/g;
+
 export function declCSS(prefix: string, [cssProp, varSuffix, fallback]: PropSpec): string {
-  return fallback ? `${cssProp}: var(${prefix}${varSuffix}, ${fallback});` : `${cssProp}: var(${prefix}${varSuffix});`;
+  if (!fallback) return `${cssProp}: var(${prefix}${varSuffix});`;
+  return `${cssProp}: var(${prefix}${varSuffix}, ${fallback.replace(PREFIX_PLACEHOLDER, prefix)});`;
 }
 
 export function stateDeclCSS(statePrefix: string, defaultPrefix: string, spec: PropSpec): string {
   const [cssProp, varSuffix, fallback] = spec;
-  const defaultRef = fallback ? `var(${defaultPrefix}${varSuffix}, ${fallback})` : `var(${defaultPrefix}${varSuffix})`;
+  // {p} resolves against the default prefix here: a state's own shorthand (--x-hover-overflow) is
+  // not a thing anybody sets, and the chain still ends at the plain shorthand either way.
+  const resolved = fallback?.replace(PREFIX_PLACEHOLDER, defaultPrefix);
+  const defaultRef = resolved ? `var(${defaultPrefix}${varSuffix}, ${resolved})` : `var(${defaultPrefix}${varSuffix})`;
   return `${cssProp}: var(${statePrefix}${varSuffix}, ${defaultRef});`;
 }
 

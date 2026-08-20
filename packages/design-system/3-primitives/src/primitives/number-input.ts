@@ -27,10 +27,38 @@ const SIZE_DEFAULTS: Record<ComponentSize, Partial<DesignSystemProps>> = {
 };
 
 const styles = css`
+  /*
+    The inner row follows the host, in both directions.
+
+    The host carries the border and takes any width prop, and this row has to match it — otherwise a
+    number input given a width draws its box at that width and leaves the space after the + button
+    empty. Flex rather than width:100%: the host is an inline-flex box that shrink-wraps when no
+    width is given, and a percentage width against a shrink-to-fit parent resolves from the
+    *available* space instead, so the control claimed a whole row it did not need. As a flex item it
+    grows into a width when there is one and reports its own content width when there is not.
+  */
+  [part='base'] {
+    display: flex;
+    align-items: center;
+    flex: 1;
+    min-width: 0;
+  }
+
   input[part='native'] {
     all: unset;
     text-align: center;
-    width: 3em;
+    /*
+      Sized from what it holds, in ch — the width of a digit.
+
+      Measured in a browser rather than reasoned about: an input's intrinsic width is twenty
+      characters (~180px) and that is what a shrink-to-fit ancestor measures, so the control drew at
+      249px however it was styled from outside. A flex basis did not help, because a growable item
+      still contributes its *max-content* width. Nor did the size attribute, which the all:unset
+      above leaves without effect. An explicit width does, and taking it from the value means the
+      field hugs a short number and widens for a long one instead of hiding it.
+    */
+    flex: 1 1 auto;
+    min-width: 0;
     font: inherit;
     color: inherit;
     -moz-appearance: textfield;
@@ -69,12 +97,28 @@ const styles = css`
 export default class NumberInput extends DesignSystemElement {
   static styles = [sharedStyles, styles];
 
-  @property({ type: Number }) value = 0;
+  /**
+   * The number, or `''` for no number at all.
+   *
+   * Empty is not zero, and the difference is load-bearing wherever a numeric field is optional: a
+   * default that is unset, a filter nobody has set yet. Typed as a number by default so existing
+   * consumers are unaffected; a converter is used rather than `type: Number` because that one turns
+   * an empty attribute into 0 and the distinction is lost before this component sees it.
+   */
+  @property({
+    converter: {
+      fromAttribute: (v: string | null) => (v === null || v === '' ? '' : Number(v)),
+      toAttribute: (v: number | '') => (v === '' ? null : String(v)),
+    },
+  })
+  value: number | '' = 0;
   @property({ type: Number }) min = -Infinity;
   @property({ type: Number }) max = Infinity;
   @property({ type: Number }) step = 1;
   @property({ type: Boolean, reflect: true }) disabled = false;
   @property({ type: String }) name = '';
+  /** Shown when there is no number — worth setting wherever empty is a legitimate answer. */
+  @property({ type: String }) placeholder = '';
   @property({ type: String, reflect: true }) size: ComponentSize = 'md';
   @property({ type: Object }) styles?: Record<string, string | number | undefined>;
 
@@ -104,23 +148,48 @@ export default class NumberInput extends DesignSystemElement {
     return parseFloat(val.toFixed(dp));
   }
 
-  private _emit(val: number) {
-    const clamped = this._clamp(this._round(val));
-    this.value = clamped;
-    this.dispatchEvent(new CustomEvent('change', { detail: clamped, bubbles: true, composed: true }));
+  private _emit(val: number | '') {
+    const next = val === '' ? '' : this._clamp(this._round(val));
+    this.value = next;
+    this.dispatchEvent(new CustomEvent('change', { detail: next, bubbles: true, composed: true }));
+  }
+
+  /**
+   * Where a step starts from when there is no number yet.
+   *
+   * Without this, stepping an empty field did arithmetic on `''`: one direction produced a number
+   * and the other did nothing, so the buttons appeared broken until you happened to press the one
+   * that worked. A bounded field starts at its own floor, an unbounded one at zero.
+   */
+  /**
+   * How many characters wide the field should be: what it holds, or what its placeholder says,
+   * whichever is longer — with a floor so an empty field is still a field, and one extra so a
+   * caret at the end of the number has somewhere to sit.
+   */
+  private _displayWidth(): number {
+    const content = Math.max(String(this.value).length, this.placeholder.length);
+    return Math.max(4, content + 1);
+  }
+
+  private _base(): number {
+    if (this.value !== '') return this.value;
+    return Number.isFinite(this.min) ? this.min : 0;
   }
 
   private _decrement() {
-    this._emit(this.value - this.step);
+    this._emit(this.value === '' ? this._base() : this._base() - this.step);
   }
 
   private _increment() {
-    this._emit(this.value + this.step);
+    this._emit(this.value === '' ? this._base() : this._base() + this.step);
   }
 
   private _onInput(e: Event) {
     e.stopPropagation();
-    const val = Number((e.target as HTMLInputElement).value);
+    const raw = (e.target as HTMLInputElement).value;
+    // Emptying the field is a real edit — it is how a value is taken back.
+    if (raw === '') return this._emit('');
+    const val = Number(raw);
     if (!Number.isNaN(val)) this._emit(val);
   }
 
@@ -133,7 +202,9 @@ export default class NumberInput extends DesignSystemElement {
         <input
           part="native"
           type="number"
-          .value=${String(this.value)}
+          .value=${this.value === '' ? '' : String(this.value)}
+          placeholder=${this.placeholder}
+          style=${styleMap({ width: `${this._displayWidth()}ch` })}
           min=${this.min}
           max=${this.max}
           step=${this.step}

@@ -11,6 +11,7 @@
 import type { DatasetHandle, RendererDataBindings } from './dataSource';
 import type { EphemeralPort } from './ephemeral';
 import type { InterpretationPort } from './interpretation';
+import type { LanguageModelPort } from './languageModel';
 import type { AgentSessionPort, DatasetLifecyclePort } from './lifecycle';
 import type { ModelManifest } from './manifest';
 import type { ModelManifestEntry } from './manifestEntry';
@@ -55,14 +56,59 @@ export interface SchemaPort {
   foreignSchemas(dataset: DatasetHandle): Promise<ModelManifestEntry[]>;
   /**
    * Compile a declared manifest into this backend's installable schema payloads, registered for
-   * name-based query resolution. Keys are entity names.
+   * name-based query resolution. Keys are entity names. `resolveExternal` resolves relation
+   * targets defined outside the manifest (core vocabulary, sibling shapes) to this backend's own
+   * payloads — pass through what the backend previously minted, never construct one.
    */
   declare(
     manifest: ModelManifest,
-    opts: { moduleId: string; predicates?: Record<string, string> },
+    opts: { moduleId: string; predicates?: Record<string, string>; resolveExternal?: (name: string) => unknown },
   ): Record<string, unknown>;
+  /**
+   * Compile a declared manifest and register its entities for name-based query resolution *in one
+   * dataset only* — the space-shape path. A shape a space carries must resolve there and nowhere
+   * else, which is exactly what module `declare` (global by design) must not do. Relation targets
+   * outside the manifest resolve against what the dataset already knows (host vocabulary plus its
+   * other dynamic entities). Does not install anything — pass the returned payloads to `ensure`.
+   */
+  declareInDataset(
+    dataset: DatasetHandle,
+    manifest: ModelManifest,
+    opts: { moduleId: string },
+  ): Record<string, unknown>;
+  /**
+   * The interpretation hints a dataset currently stores for one entity, or null when the entity
+   * has no installed schema there. Property hints are keyed by predicate — the stable storage
+   * key; hosts map display names to predicates through the manifest entries they already hold.
+   */
+  interpretationHints(dataset: DatasetHandle, entity: string): Promise<EntityHintState | null>;
+  /**
+   * Customize an entity's interpretation hints in one dataset — a partial update (only the keys
+   * given are touched; an empty-string hint removes that hint), marking the entity's hints as
+   * space-owned so schema refreshes stop reverting them. Rejects when the entity has no schema
+   * installed in the dataset.
+   */
+  setInterpretationHints(
+    dataset: DatasetHandle,
+    entity: string,
+    hints: { classHint?: string; propHints?: Record<string, string> },
+  ): Promise<void>;
+  /**
+   * Reset an entity's hints in one dataset to what its declaration ships, clearing the
+   * space-owned marker — after which release improvements flow again.
+   */
+  resetInterpretationHints(dataset: DatasetHandle, entity: string): Promise<void>;
   /** Optional remediation for duplicated schema installs (backend-specific failure mode). */
   dedupe?(dataset: DatasetHandle): Promise<{ removed: number; authors: string[] }>;
+}
+
+/** What `SchemaPort.interpretationHints` answers — one entity's stored hint state in one dataset. */
+export interface EntityHintState {
+  classHint?: string;
+  /** Property hints keyed by predicate (the storage key, not the display name). */
+  propHints: Record<string, string>;
+  /** Whether this dataset has customized the hints (they are space-owned there). */
+  customized: boolean;
 }
 
 /**
@@ -123,6 +169,11 @@ export interface BackendPorts {
    * and anything that wanted to listen says so rather than failing silently.
    */
   transcription?: TranscriptionPort;
+  /**
+   * Text generation on the backend's own model. Optional on the same terms as transcription: a
+   * node with no language model omits it, and anything that wanted to generate says so.
+   */
+  languageModel?: LanguageModelPort;
   /**
    * Turning what was said into typed records. Optional on the same terms as transcription — the two
    * are a pair, and a backend that can hear but not interpret is a normal thing to be.

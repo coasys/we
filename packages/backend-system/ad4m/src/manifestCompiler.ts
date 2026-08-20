@@ -9,8 +9,9 @@
  * golden test (tests/manifestCompiler.test.ts) round-trips every hand-written WE model through the
  * manifest projection to hold that fidelity.
  *
- * v1 scope: scalars and typed relations. Flags are minted automatically (one type flag per
- * entity); defaults, enums, and asset kinds are out of scope — models needing those stay decorated.
+ * Scope: scalars, typed relations, defaults, interpretation hints and identity. Flags are minted
+ * automatically (one type flag per entity). `options` (closed value sets) are manifest-level
+ * metadata for forms and prompts — not compiled, since SHACL carries no enum the executor reads.
  */
 import { Ad4mModel, fileToDataUri, Flag, HasMany, HasOne, Model, Property } from '@coasys/ad4m';
 import type { EntitySchema, ModelManifest } from '@we/backend-shared';
@@ -59,6 +60,12 @@ export interface CompileManifestOptions {
   moduleId: string;
   /** Explicit predicate overrides, keyed `"Entity.property"`. Wins over minting and core vocabulary. */
   predicates?: Record<string, string>;
+  /**
+   * Resolve a relation target defined outside this manifest — a space shape relating to core
+   * vocabulary (`LocationBlock`) or to a sibling shape compiled separately. Consulted only after
+   * the manifest's own entities; validated with the matching `externalEntities` beforehand.
+   */
+  resolveExternal?: (name: string) => typeof Ad4mModel | undefined;
 }
 
 /**
@@ -134,11 +141,19 @@ export function buildModelFromEntry(
         // Only file properties declared to read back rendered get the data-URI transform; the
         // rest (stored templates, themes, editor state) hand back what the caller decodes itself.
         ...((p as { readAs?: string }).readAs === 'dataUri' ? { transform: fileToDataUri } : {}),
+        // Interpretation metadata rides the same decorators the hand-written models use, so a
+        // declared entity's hints reach the stored shape — and therefore the executor — by
+        // exactly the path TaskBlock's do.
+        ...(p.interpretationHint !== undefined ? { interpretationHint: p.interpretationHint } : {}),
+        ...(p.identity ? { identity: true } : {}),
       })(proto as never, p.name as never);
     }
   }
 
-  Model({ name: entry.name })(cls);
+  Model({
+    name: entry.name,
+    ...(entry.interpretationHint !== undefined ? { interpretationHint: entry.interpretationHint } : {}),
+  })(cls);
   return cls;
 }
 
@@ -171,6 +186,7 @@ export function manifestToEntries(manifest: ModelManifest, opts: CompileManifest
       targetClass: '',
       flag: entity.flag,
       ...(entity.abstract ? { abstract: true } : {}),
+      ...(entity.interpretationHint !== undefined ? { interpretationHint: entity.interpretationHint } : {}),
       properties: [
         ...Object.entries(entity.properties).map(([propName, spec]) => ({
           name: propName,
@@ -180,6 +196,8 @@ export function manifestToEntries(manifest: ModelManifest, opts: CompileManifest
           ...(spec.format === 'file' ? { resolveLanguage: FILE_STORAGE_LANGUAGE } : {}),
           ...(spec.readAs === 'dataUri' ? { readAs: 'dataUri' as const } : {}),
           ...(spec.default !== undefined ? { default: spec.default } : {}),
+          ...(spec.interpretationHint !== undefined ? { interpretationHint: spec.interpretationHint } : {}),
+          ...(spec.identity ? { identity: true } : {}),
           // datetime/json have no SHACL datatype of their own — stored as strings, like the
           // hand-written models store timestamps.
           type: (spec.type === 'number' ? 'number' : spec.type === 'boolean' ? 'boolean' : 'string') as
@@ -214,7 +232,7 @@ export function compileManifest(
   opts: CompileManifestOptions,
 ): Record<string, typeof Ad4mModel> {
   const classes: Record<string, typeof Ad4mModel> = {};
-  const resolver = (name: string) => classes[name];
+  const resolver = (name: string) => classes[name] ?? opts.resolveExternal?.(name);
   const prefix = `we://module/${opts.moduleId}/`;
 
   for (const entry of manifestToEntries(manifest, opts)) {

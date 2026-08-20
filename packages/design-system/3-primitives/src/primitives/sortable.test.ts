@@ -257,3 +257,116 @@ describe('keyboard', () => {
     expect(itemsOf(zone).every((item) => item.getAttribute('tabindex') === '0')).toBe(true);
   });
 });
+
+describe('drag feedback inside a modal', () => {
+  /*
+    The ghost and the drop line are appended to document.body and stacked with a z-index, which no
+    modal can be beaten with: `we-modal` promotes itself into the browser's top layer via
+    `popover="manual"`, and the top layer is above every z-index there is. Dragging inside a dialog
+    therefore showed neither, which read as "reordering gives no feedback".
+
+    jsdom has no Popover API, so the stub below is what makes the promotion path reachable at all —
+    which is also the fallback being asserted in the last case.
+  */
+  const withPopoverSupport = (fn: () => void) => {
+    // `lib.dom` declares showPopover whether or not the runtime has it, so this is a plain property
+    // write and removal rather than anything typed — hence Reflect over `delete`.
+    const proto = HTMLElement.prototype as unknown as Record<string, unknown>;
+    const shown: HTMLElement[] = [];
+    proto.showPopover = function showPopover(this: HTMLElement) {
+      shown.push(this);
+    };
+    try {
+      fn();
+    } finally {
+      Reflect.deleteProperty(proto, 'showPopover');
+    }
+    return shown;
+  };
+
+  it('promotes both the ghost and the drop line to the top layer', async () => {
+    const zone = await makeZone({ zone: 'todo', items: ['a', 'b', 'c'] });
+    const shown = withPopoverSupport(() => drag(zone, itemsOf(zone)[0], { x: 100, y: 260 }));
+
+    expect(shown).toHaveLength(2);
+    for (const el of shown) expect(el.getAttribute('popover')).toBe('manual');
+  });
+
+  it('still drags where the Popover API is missing', async () => {
+    const zone = await makeZone({ zone: 'todo', items: ['a', 'b', 'c'] });
+    const { reorder } = drag(zone, itemsOf(zone)[0], { x: 100, y: 260 });
+    expect(reorder).toEqual(['b', 'c', 'a']);
+  });
+});
+
+describe('items containing form controls', () => {
+  /*
+    Both cases here are what made a form row unusable inside a sortable: a drag begun in a text
+    field, and — the worse one — a space typed into a field being read as "pick this up", which
+    stopped the field accepting spaces at all.
+  */
+  const key = (el: Element, k: string) =>
+    el.dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true, composed: true }));
+
+  /** A zone whose items each hold a text input, and optionally a declared drag handle. */
+  async function makeFormZone(withHandle: boolean): Promise<{ zone: SortableEl; inputs: HTMLInputElement[] }> {
+    const zone = await makeZone({ zone: 'rows', items: ['a', 'b', 'c'] });
+    const inputs: HTMLInputElement[] = [];
+    itemsOf(zone).forEach((item) => {
+      if (withHandle) {
+        const handle = document.createElement('button');
+        handle.setAttribute('data-we-handle', '');
+        item.appendChild(handle);
+      }
+      const input = document.createElement('input');
+      item.appendChild(input);
+      inputs.push(input);
+    });
+    return { zone, inputs };
+  }
+
+  it('drags from anywhere when the item declares no handle', async () => {
+    const { zone } = await makeFormZone(false);
+    const { reorder } = drag(zone, itemsOf(zone)[0], { x: 100, y: 260 });
+    expect(reorder).toEqual(['b', 'c', 'a']);
+  });
+
+  it('refuses a drag begun in a text field once a handle is declared', async () => {
+    const { zone, inputs } = await makeFormZone(true);
+    // The press starts on the input rather than the handle: this is text selection, not a drag.
+    const { moves } = drag(zone, inputs[0], { x: 100, y: 260 });
+    expect(moves).toHaveLength(0);
+  });
+
+  it('still drags when the press begins on the handle', async () => {
+    const { zone } = await makeFormZone(true);
+    const handle = itemsOf(zone)[0].querySelector('[data-we-handle]') as HTMLElement;
+    const { reorder } = drag(zone, handle, { x: 100, y: 260 });
+    expect(reorder).toEqual(['b', 'c', 'a']);
+  });
+
+  it('never reads a space typed into a field as a pickup', async () => {
+    const { zone, inputs } = await makeFormZone(false);
+    const moved: CustomEvent[] = [];
+    zone.addEventListener('moved', (e) => moved.push(e as CustomEvent));
+
+    key(inputs[0], ' ');
+    key(inputs[0], 'ArrowDown');
+    key(inputs[0], ' ');
+
+    expect(moved).toHaveLength(0);
+  });
+
+  it('keeps the keyboard path open through the handle', async () => {
+    const { zone } = await makeFormZone(true);
+    const moved: CustomEvent[] = [];
+    zone.addEventListener('moved', (e) => moved.push(e as CustomEvent));
+    const handle = itemsOf(zone)[0].querySelector('[data-we-handle]') as HTMLElement;
+
+    key(handle, ' ');
+    key(handle, 'ArrowDown');
+    key(handle, ' ');
+
+    expect(moved[0].detail.ids).toEqual(['b', 'a', 'c']);
+  });
+});
