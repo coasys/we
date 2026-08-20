@@ -93,7 +93,7 @@ Glossary (these terms pervade stores, models, and `$query`/`perspective` in sche
 | `@we/module-globe` · `-call` · `-notes` · `-transcribe` · `-graph` | module-system/* | Bundled feature modules; globe is a *family* (module · protocol · layers · widget) | Agnostic (components injected) |
 | `@we/graph-protocol` · `-core` · `-expanders` · `-layouts` · `-solid` | graph-system/* | The graph engine: expander/layout/renderer contracts, the neutral engine, first-party plugins, and the Solid adapter | **Agnostic** (Solid only in the adapter) |
 | `@we/block-shared` | block-system/shared | Block content types + serialization | Agnostic |
-| `@we/models` | packages/models | WE's domain models (Space, Block subclasses, …) | **AD4M-decorated** |
+| `@we/models` | packages/models | WE's domain models — authored neutral manifest (src/manifest, the source of truth) + generated AD4M classes | Neutral manifest; AD4M in the generated lane |
 | `@we/app-shell` | packages/app-shell | App shell, stores, registries, built-in template schemas | Solid |
 | `@we/ai-context` | packages/ai-context | Generates this reference (CLAUDE.md et al.) from code + fragments | Build tool |
 

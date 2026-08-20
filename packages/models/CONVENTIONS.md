@@ -38,6 +38,17 @@ Codegen-only facts (TypeScript optionality, union aliases, accessor-method inter
 relation arrays) ride beside the schema in each module's `CoreEntityDef` — see `manifest/defs.ts`.
 They shape the generated class; the neutral schema itself stays free of TypeScript.
 
+## The neutral type surface
+
+`generate:classes` also emits `src/manifest/types.ts` — one interface per entity (`SpaceModel`,
+`TaskBlockModel`, …) over the neutral base in `manifest/base.ts`. These ARE the model contract:
+fields only, deliberately, since relation accessors and query sugar are backend ergonomics.
+`src/manifest/conformance.ts` holds the generated AD4M classes to them with type-level assertions
+reached from the manifest entry point, so a class drifting from its interface fails the build.
+A new backend implements these interfaces — runtime-compiled the way `@we/backend-inmemory` does,
+or generated the way the AD4M lane is — and registers its implementations in the entity proxy
+registry; consumers never notice which.
+
 ## The Core Distinction: Entities vs Blocks
 
 ### Entities (`entities/`)

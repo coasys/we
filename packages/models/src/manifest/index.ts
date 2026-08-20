@@ -16,6 +16,14 @@ import { TaskBlock } from './blocks/TaskBlock';
 import { TextBlock } from './blocks/TextBlock';
 import { VideoBlock } from './blocks/VideoBlock';
 import type { CoreEntityDef } from './defs';
+
+/*
+  Exporting these places types.ts (the neutral contract) on the package's public surface and pulls
+  conformance.ts into the build's type graph — the dts build typechecks what it reaches, so a class
+  drifting from its interface fails the build rather than waiting to be noticed.
+*/
+export type { AssertClassesSatisfyContract } from './conformance';
+export * from './types';
 import { AgentSettings } from './entities/AgentSettings';
 import { ChatMessage } from './entities/ChatMessage';
 import { ChatSession } from './entities/ChatSession';

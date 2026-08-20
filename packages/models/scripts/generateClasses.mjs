@@ -9,6 +9,11 @@
  *
  *   node scripts/generateClasses.mjs   # then `pnpm exec prettier --write` runs on the output
  *
+ * Also emits `src/manifest/types.ts` — the neutral per-entity interfaces that ARE the model
+ * contract — and `src/manifest/conformance.ts`, whose type-level assertions hold the generated
+ * AD4M classes to them at build time. A new backend implements the interfaces; the AD4M lane is
+ * checked against them like any other.
+ *
  * `coreManifest.test.ts` (backend-ad4m) holds the emitted classes and the manifest's runtime
  * compilation in exhaustive agreement — a codegen bug fails there rather than drifting.
  */
@@ -207,8 +212,83 @@ function emitEntity(name, def) {
   return `${kind}/${name}.ts`;
 }
 
+// ── The neutral type surface ───────────────────────────────────────────────────────────────────
+
+/** The interface field for one property — same optional/default rules the class emission uses. */
+function interfaceFieldLine(name, spec, def) {
+  const union = def.unions?.[name];
+  const base = union ? union.values.map(q).join(' | ') : TS_TYPE[spec.type];
+  if (def.optional?.includes(name)) return `${name}?: ${base};`;
+  if (spec.default === null) return `${name}: ${base} | null;`;
+  const hasDefault = spec.default !== undefined || TS_TYPE[spec.type] === 'string';
+  return hasDefault ? `${name}: ${base};` : `${name}?: ${base};`;
+}
+
+function emitTypes(defs) {
+  const L = [];
+  L.push('/**');
+  L.push(' * GENERATED from the manifest definitions — do not edit here.');
+  L.push(' *');
+  L.push(' * The neutral model contract: one interface per core entity, defining the fields any backend');
+  L.push(" * must present for it. The AD4M classes are held to these in conformance.ts; another backend's");
+  L.push(' * implementations (runtime-compiled like backend-inmemory, or generated like the AD4M lane)');
+  L.push(' * are what these interfaces exist to type. Fields only, deliberately: relation accessor');
+  L.push(' * methods and query sugar are backend ergonomics, not the contract.');
+  L.push(' *');
+  L.push(' * Rebuild with `pnpm --filter @we/models generate:classes`.');
+  L.push(' */');
+  L.push("import type { ModelInstance, WeNodeModel } from './base';");
+  L.push('');
+  L.push('export type { ModelInstance, WeNodeModel };');
+  L.push('');
+  for (const [name, def] of Object.entries(defs)) {
+    const e = def.entity;
+    L.push(`export interface ${name}Model extends ${def.base === 'WeNode' ? 'WeNodeModel' : 'ModelInstance'} {`);
+    for (const [pname, spec] of Object.entries(e.properties)) {
+      L.push(`  ${interfaceFieldLine(pname, spec, def)}`);
+    }
+    for (const [rname, spec] of Object.entries(e.relations)) {
+      if (spec.cardinality === 'one') L.push(`  ${rname}?: ${spec.target}Model;`);
+      else L.push(`  ${rname}: ${def.typedArrays?.includes(rname) ? `${spec.target}Model[]` : 'string[]'};`);
+    }
+    L.push('}');
+    L.push('');
+  }
+  writeFileSync(resolve(MANIFEST_DIR, 'types.ts'), L.join('\n'));
+}
+
+function emitConformance(defs) {
+  const L = [];
+  L.push('/**');
+  L.push(' * GENERATED — the AD4M classes, held to the neutral contract.');
+  L.push(' *');
+  L.push(' * Type-level only: each assertion fails compilation when a generated class stops satisfying');
+  L.push(' * its interface in types.ts, so the contract cannot drift from the one implementation that');
+  L.push(' * ships. Reached from the manifest entry point as a type export, which is what places this');
+  L.push(" * file in the build's type graph — an unimported assertion checks nothing.");
+  L.push(' */');
+  // One import group, no blank line — matching the repo's import sorter so the file lints clean
+  // exactly as generated.
+  L.push("import type * as C from '../classes';");
+  L.push("import type * as M from './types';");
+  L.push('');
+  L.push('type Satisfies<A extends B, B> = A;');
+  L.push('');
+  L.push('/** One entry per entity; the tuple exists so every assertion is referenced. */');
+  L.push('export type AssertClassesSatisfyContract = [');
+  for (const name of Object.keys(defs)) {
+    L.push(`  Satisfies<InstanceType<typeof C.${name}>, M.${name}Model>,`);
+  }
+  L.push('];');
+  L.push('');
+  writeFileSync(resolve(MANIFEST_DIR, 'conformance.ts'), L.join('\n'));
+}
+
 const written = Object.entries(CORE_DEFS).map(([name, def]) => emitEntity(name, def));
-console.log(`generated ${written.length} classes`);
+emitTypes(CORE_DEFS);
+emitConformance(CORE_DEFS);
+written.push('manifest/types.ts', 'manifest/conformance.ts');
+console.log(`generated ${written.length - 2} classes + the neutral type surface`);
 try {
   execFileSync('pnpm', ['exec', 'prettier', '--write', ...written.map((f) => resolve(here, '../src', f))], {
     cwd: resolve(here, '..'),
