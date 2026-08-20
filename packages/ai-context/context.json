@@ -5090,6 +5090,7 @@
       "values": {
         "dropdown": "100",
         "sticky": "200",
+        "chrome": "250",
         "modal": "300",
         "popover": "400",
         "toast": "500",

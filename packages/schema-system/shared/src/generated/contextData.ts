@@ -1895,7 +1895,15 @@ export const contextData: ContextData = {
     {
       name: 'zIndex',
       type: 'Record<ZIndexLayer, string>',
-      values: { dropdown: '100', sticky: '200', modal: '300', popover: '400', toast: '500', tooltip: '600' },
+      values: {
+        dropdown: '100',
+        sticky: '200',
+        chrome: '250',
+        modal: '300',
+        popover: '400',
+        toast: '500',
+        tooltip: '600',
+      },
     },
   ],
   storeEntries: [

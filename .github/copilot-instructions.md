@@ -1364,7 +1364,7 @@ size: 'xxs', 'xs', 'sm', 'md', 'lg', 'xl', 'xxl'
 
 space: '0', '100', '200', '300', '400', '500', '600', '700', '800', '900', '1000'
 
-zIndex: 'dropdown', 'sticky', 'modal', 'popover', 'toast', 'tooltip'
+zIndex: 'dropdown', 'sticky', 'chrome', 'modal', 'popover', 'toast', 'tooltip'
 
 ---
 

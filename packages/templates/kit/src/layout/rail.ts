@@ -83,7 +83,13 @@ export interface RailShellOptions {
   expandedWidth?: string;
   /** Defaults to 'fixed', so the rail overlays rather than displacing the page. */
   position?: 'static' | 'fixed' | 'absolute';
-  zIndex?: number;
+  /**
+   * A z-index token name (`'chrome'`) or a raw number.
+   *
+   * A rail that overlays wants the token: `chrome` is the layer that sits above a module's docked
+   * panel, which a bare number can only match by knowing what `sticky` happens to be today.
+   */
+  zIndex?: number | string;
   /** Defaults to 'neutral-50'. */
   bg?: string;
   /**

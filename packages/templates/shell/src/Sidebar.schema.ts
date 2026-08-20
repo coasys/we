@@ -26,7 +26,17 @@ const COLLAPSED_WIDTH = '80px';
 const rail: SchemaNode = railShell({
   collapsedWidth: COLLAPSED_WIDTH,
   position: 'fixed',
-  zIndex: 10,
+  /*
+    Above a docked module panel, which is what `chrome` means — see the z-index tokens.
+
+    This was `10`, below the `sticky` layer every dock is placed on, and the sidebar is the one piece
+    of chrome that cannot get out of a panel's way: it holds the left edge, and `SIDEBAR_PX` reserves
+    that edge so a left dock opens *beside* it rather than over it. Collapsed the two never meet, so
+    nothing showed — until the pointer arrived and the rail expanded from 80px to 240px, and those
+    extra 160px opened behind the video panel. The sidebar overlays the template the same way and has
+    always been meant to; it simply lost to a neighbour that outranked it.
+  */
+  zIndex: 'chrome',
   bg: 'neutral-50',
   // Blends into a page that shares this background rather than drawing a seam against it.
   border: '0',
