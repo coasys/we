@@ -9,14 +9,26 @@ export function CollapsedContent(props: CollapsedContentProps) {
 
   let innerRef: HTMLDivElement | undefined;
   const [overflow, setOverflow] = createSignal(false);
+  /*
+    How tall the content actually is, kept current by the ResizeObserver below.
+
+    Measured rather than guessed because an open section must animate towards its *own* height.
+    This used to open to a flat `max-height: 5000px`, which is not "uncapped" — with the
+    `overflow: hidden` above it, anything past 5000px was clipped and unreachable, since the
+    box does not scroll either. A call transcript hit that at roughly ninety utterances and
+    silently lost the rest; so would any long post body.
+  */
+  const [contentHeight, setContentHeight] = createSignal(0);
 
   onMount(() => {
     if (!innerRef) return;
 
     const check = () => {
       const maxPx = parseFloat(props.maxHeight ?? '280px');
+      const height = innerRef?.scrollHeight ?? 0;
+      setContentHeight(height);
       // Threshold prevents the button+fade making the card taller than its expanded state.
-      setOverflow((innerRef?.scrollHeight ?? 0) > maxPx);
+      setOverflow(height > maxPx);
     };
 
     const observer = new ResizeObserver(check);
@@ -30,13 +42,25 @@ export function CollapsedContent(props: CollapsedContentProps) {
   const effectivelyCollapsed = () => props.collapsed && overflow();
   const toggleIcon = () => props.icon ?? (effectivelyCollapsed() ? 'caret-down' : 'caret-up');
 
+  /*
+    Open: the content's own measured height, which is both the honest cap and a real target for
+    the transition to animate towards — `none` is not animatable, which is why the flat 5000px
+    was there in the first place.
+
+    It stays honest as things change because the observer above re-measures on every content
+    resize, so a late image, a streamed reply or another utterance arriving mid-call widens the
+    cap with it rather than being cut off by a stale number.
+  */
+  const maxHeightStyle = () =>
+    effectivelyCollapsed() ? maxH() : contentHeight() ? `${contentHeight()}px` : 'none';
+
   return (
     <div class={`we-collapsed-content${props.class ? ' ' + props.class : ''}`}>
       <div
         style={{
           position: 'relative',
           overflow: 'hidden',
-          'max-height': effectivelyCollapsed() ? maxH() : '5000px',
+          'max-height': maxHeightStyle(),
           transition: 'max-height 0.4s ease',
         }}
       >
