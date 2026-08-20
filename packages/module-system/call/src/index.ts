@@ -49,6 +49,53 @@ export { type CallDockEdge, type CallPlacement, type CallTile, type CallTileStat
 const CALL_BAR_TOP = '10px';
 
 /**
+ * The bar's own corners, following the theme's **control** radius.
+ *
+ * It was a flat `pill`, so a theme set to Sharp drew a fully rounded bar around square-cornered
+ * buttons — the one shape in the app that ignored the shape presets.
+ *
+ * `controlRadius` rather than `surfaceRadius`, and the distinction is what the two categories are
+ * for. A surface is a sheet with content on it — a modal, a drawer, a docked panel — and its radius
+ * is about the material. This is a cluster of buttons and nothing else, drawn tight around them, so
+ * its corners are a statement about controls; under the Pill preset (controls pill, surfaces 600) a
+ * surface-radius bar would be a 16px box around pill buttons, the same mismatch mirrored. The
+ * editor's history and mode clusters already read this var for the same reason, while its save and
+ * close panel reads the surface one.
+ *
+ * The fallback is what **Default** looks like, since that preset sets no variable at all — so it has
+ * to be a real answer rather than the hardcoded `pill` this started as, which left three of the four
+ * presets working and the fourth indistinguishable from Pill. `400` is that answer because it is
+ * `we-button`'s own default: on Default the bar and the buttons inside it are both 8px, which is the
+ * same relationship every other preset gives them.
+ *
+ * Not the concentric `inner + padding`, which would be `600` here and reads better in isolation. That
+ * figure is only right while the padding is, and the radius is a theme variable: a theme set to Sharp
+ * would then draw a bar with 8px corners around perfectly square buttons — this bug again, smaller.
+ * It also collided with Rounded, which sets controls to `600` outright. Matching the controls exactly
+ * is the one rule that survives all four presets, and it is what the editor's own history and mode
+ * clusters do.
+ *
+ * A theme that states a control radius of its own still wins — several of the built-in ones do.
+ */
+const BAR_RADIUS = 'var(--we-theme-control-radius, var(--we-radius-400))';
+
+/**
+ * The bar's surface, matching the app's other floating control clusters.
+ *
+ * It was `neutral-0` with a `lg` shadow — a *sheet*, which is what the app uses for something with
+ * content on it: a dropdown, a modal, the panel the editor's share button opens. A cluster of
+ * buttons is not that, and read as a different material sitting a centimetre off the page beside
+ * the editor's undo/redo and save/close bars, which are `neutral-50` with a border and no shadow at
+ * all. The module rail is the same recessed surface.
+ *
+ * The shadow stays, at the rail's weight rather than its own. The editor's bars can do without one
+ * because they appear over a dimmed editing surface that already separates them; this floats over
+ * whatever a space happens to be showing, and a border alone against a busy background is not a
+ * separation.
+ */
+const BAR_SURFACE = { bg: 'neutral-50', border: '1px solid neutral-200', shadow: 'md' } as const;
+
+/**
  * The bar's extension point, for chrome that belongs *in a call* rather than at a screen edge.
  *
  * Exported so a contributing module names the same string this one renders, without either importing
@@ -469,12 +516,24 @@ const stage: SchemaNode = {
   },
 };
 
-/** A toggle button whose icon and tone follow the state it toggles. */
+/**
+ * A toggle button whose icon and tone follow the state it toggles.
+ *
+ * No `size`, which means `md` — the default, and one step up from the `sm` the whole bar used to be.
+ * These are the controls you reach for mid-sentence while looking at somebody else, so they are
+ * worth the extra eight pixels; the bar is still a pill you can ignore. The icons follow on their
+ * own, since a sized primitive publishes `--we-context-icon-size` for the icons slotted into it.
+ *
+ * `square` because there is nothing here but the icon. Without it the button keeps the horizontal
+ * padding it holds for a label — 16px a side at `md` — so a 24px glyph sat in a 56px box, and three
+ * toggles in a row read as three wide slabs rather than a set of buttons. Square sizes both axes
+ * from the component height instead, which is also what the module rail's launchers do.
+ */
 function mediaToggle(opts: { on: string; off: string; enabled: string; action: string; danger?: boolean }): SchemaNode {
   return {
     type: 'we-button',
     props: {
-      size: 'sm',
+      square: true,
       variant: { $if: { condition: { $store: opts.enabled }, then: 'secondary', else: 'ghost' } },
       onClick: { $action: opts.action },
     },
@@ -504,9 +563,14 @@ const placementMenu: SchemaNode = {
   props: {
     triggerIcon: 'layout',
     triggerLabel: 'Position',
-    // Matching the bar's other controls. `we-button` defaults to `md`, so without this the trigger
-    // simply stood taller than everything beside it.
-    size: 'sm',
+    /*
+      Named even though it is `we-button`'s own default, unlike the buttons beside it.
+
+      `DropdownMenu` forwards `size` to its trigger, and its own default is undefined — so leaving it
+      off passes undefined down rather than nothing at all, and what the trigger then does depends on
+      whether the framework treats that as "no attribute" or as a value. Saying it is one word.
+    */
+    size: 'md',
     placement: 'bottom',
     items: {
       $map: {
@@ -548,7 +612,6 @@ const participantsToggle: SchemaNode = {
     {
       type: 'we-button',
       props: {
-        size: 'sm',
         variant: { $if: { condition: { $store: 'modules.call.stageOpen' }, then: 'secondary', else: 'ghost' } },
         onClick: { $action: 'modules.call.toggleStage' },
       },
@@ -594,12 +657,9 @@ const bar: SchemaNode = {
             top: CALL_BAR_TOP,
             left: '50%',
             transform: 'translateX(-50%)',
-            bg: 'neutral-0',
-            border: '1px solid neutral-200',
-            r: 'pill',
-            shadow: 'lg',
-            py: '200',
-            px: '300',
+            ...BAR_SURFACE,
+            r: BAR_RADIUS,
+            p: '200',
             gap: '300',
             ay: 'center',
             zIndex: 'sticky',
@@ -651,12 +711,9 @@ const bar: SchemaNode = {
         left: 'calc(50% + (var(--we-sidebar-width, 0px) + var(--we-dock-left, 0px) - var(--we-dock-right, 0px)) / 2)',
         transform: 'translateX(-50%)',
         transition: 'left var(--we-chrome-transition, 300ms) ease',
-        bg: 'neutral-0',
-        border: '1px solid neutral-200',
-        r: 'pill',
-        shadow: 'lg',
-        py: '200',
-        px: '300',
+        ...BAR_SURFACE,
+        r: BAR_RADIUS,
+        p: '200',
         gap: '200',
         ay: 'center',
         zIndex: 'sticky',
@@ -687,12 +744,16 @@ const bar: SchemaNode = {
           type: '$slot',
           props: { anchor: CALL_CONTROLS_ANCHOR },
         },
-        { type: 'we-divider', props: { orientation: 'vertical', height: '20px' } },
+        // Two thirds of a control's height, so it reads as a separator between groups rather than as
+        // a rule drawn down the whole bar. It moved with the buttons: at 20px against `sm` it was
+        // that already, and left alone against `md` it would have been half.
+        { type: 'we-divider', props: { orientation: 'vertical', height: '26px' } },
         participantsToggle,
         placementMenu,
         {
+          // Square like the toggles at the other end, being an icon and nothing else.
           type: 'we-button',
-          props: { size: 'sm', variant: 'danger', onClick: { $action: 'modules.call.leave' } },
+          props: { square: true, variant: 'danger', onClick: { $action: 'modules.call.leave' } },
           children: [{ type: 'we-icon', props: { name: 'phone-x' } }],
         },
       ],
