@@ -20,6 +20,31 @@ async function makePicker(value = ''): Promise<PickerEl> {
 
 const clearButton = (el: PickerEl) => el.shadowRoot?.querySelector('[part="clear"]') as HTMLElement | null;
 
+/*
+  What the component would render, in whatever locale the host happens to run.
+
+  The picker formats through `toLocale*String(undefined, …)` on purpose — a 12-hour reader should
+  read "2:30 PM" while "14:30" is what gets stored — so any test asserting a literal rendering
+  asserts the machine it was written on. One did (`/14:30/`), and passed everywhere in Europe before
+  failing on a CI runner that formats US-English; two others hedged with `/2:30|14:30/`, which is the
+  same defect noticed and worked around rather than fixed.
+
+  Deriving the expectation from the same call the component makes keeps the assertion exact — it
+  still pins the minute, not merely "some time is shown" — while saying nothing about which locale
+  is running. `el.value` assertions stay literal, because the stored value is 24-hour by contract.
+*/
+const shownTime = (h: number, m: number) =>
+  new Date(2000, 0, 1, h, m).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+
+const shownDateTime = (y: number, monthIndex: number, d: number, h: number, m: number) =>
+  new Date(y, monthIndex, d, h, m).toLocaleString(undefined, {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+
 describe('clearing', () => {
   it('offers nothing to clear when there is no date', async () => {
     expect(clearButton(await makePicker())).toBeNull();
@@ -103,7 +128,7 @@ describe('asking for a time as well', () => {
     expect(shown()).not.toMatch(/00:00/);
     el.value = '2026-08-19T14:30';
     await el.updateComplete;
-    expect(shown()).toMatch(/14:30/);
+    expect(shown()).toBe(shownDateTime(2026, 7, 19, 14, 30));
   });
 
   it('stays open on the day, so the time is still reachable', async () => {
@@ -175,11 +200,11 @@ describe('the themed time list', () => {
       options(exact)
         .find((o) => o.getAttribute('aria-selected') === 'true')
         ?.textContent?.trim(),
-    ).toMatch(/2:30|14:30/);
+    ).toBe(shownTime(14, 30));
 
     const offGrid = await openTimeList('2026-08-19T14:37');
     const nearest = options(offGrid).find((o) => o.hasAttribute('data-nearest'));
-    expect(nearest?.textContent?.trim()).toMatch(/2:30|14:30/);
+    expect(nearest?.textContent?.trim()).toBe(shownTime(14, 30));
   });
 
   it('commits a picked time onto the day and closes the list', async () => {
