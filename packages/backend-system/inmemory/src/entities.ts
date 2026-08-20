@@ -125,9 +125,8 @@ export interface EntityClassLike {
  * are `this`-polymorphic — so this is also the one place the contract is compiler-verified
  * end to end.)
  */
-declare const _conformance: EntityClassLike;
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-const _staticsSatisfyContract: ModelStatic<ModelInstance> = _conformance;
+type Satisfies<A extends B, B> = A;
+export type AssertEntityClassSatisfiesContract = Satisfies<EntityClassLike, ModelStatic<ModelInstance>>;
 
 /**
  * Compile a manifest into entity classes backed by in-memory rows.
