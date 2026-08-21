@@ -142,15 +142,22 @@ const typeRow: SchemaNode = {
 };
 
 /**
- * The key's dock: always mounted, on the left edge, and inert until something is in it.
+ * The key's dock: always mounted, on the right edge, and inert until something is in it.
  *
- * A `$if` with a transition wraps its content in an animation container, and that wrapper is
- * positioned from the content — so an absolutely positioned panel inside one is placed against the
- * *wrapper's* box rather than the canvas, which is how the key ended up sharing an edge with the
- * detail panel instead of facing it. Docking the panel in a container that is always there and
- * always where it says it is takes the question away from the wrapper entirely.
+ * A `$if` with a transition wraps its content in an animation container positioned *from* that
+ * content, so an absolutely positioned panel inside one is placed against the wrapper's box rather
+ * than the canvas's. Docking it in a container that is always there and always where it says it is
+ * takes the question away from the wrapper entirely.
  *
- * `pointerEvents: 'none'` because a 260px column down the left of the canvas would otherwise eat
+ * Right, because the detail panel took the left: the module rail runs down the right edge of the app
+ * and overlaps whatever a route puts there, and of the two panels the key is the one that can afford
+ * to lose a strip — it is read at a glance and dismissed, where the detail panel is worked in.
+ *
+ * `top` and `bottom` rather than a height, so the column is as tall as the canvas whatever resolves:
+ * a percentage height needs an unbroken chain of resolved heights above it, and where that chain
+ * breaks the panel is merely short, with its border stopping in mid-air.
+ *
+ * `pointerEvents: 'none'` because a 260px column down the side of the canvas would otherwise eat
  * every click on the board behind it while the key is closed; the panel inside turns them back on.
  */
 export const boardLegend: SchemaNode = {
@@ -158,8 +165,8 @@ export const boardLegend: SchemaNode = {
   props: {
     position: 'absolute',
     top: '0',
-    left: '0',
-    height: '100%',
+    bottom: '0',
+    right: '0',
     zIndex: 'chrome',
     pointerEvents: 'none',
   },
@@ -169,7 +176,7 @@ export const boardLegend: SchemaNode = {
       props: {
         condition: { $and: [BOARD, { $local: 'legendOpen' }] },
         enterTransition: [
-          { type: 'slide', direction: 'left', distance: '24px', duration: 180 },
+          { type: 'slide', direction: 'right', distance: '24px', duration: 180 },
           { type: 'fade', duration: 150 },
         ],
         then: {
@@ -203,7 +210,7 @@ export const boardLegend: SchemaNode = {
             // The same surface as the detail panel on the other edge, for the same reason: the
             // canvas paints its own `neutral-0`, so there is nothing lighter to be.
             bg: 'neutral-25',
-            borderRight: '1px solid neutral-200',
+            borderLeft: '1px solid neutral-200',
             shadow: 'lg',
             pointerEvents: 'auto',
           },

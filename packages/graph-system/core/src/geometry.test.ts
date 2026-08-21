@@ -242,3 +242,70 @@ describe('groupByEndpoints', () => {
     expect(Math.abs(roomy.to.y)).toBe(30);
   });
 });
+
+/**
+ * Where an edge stops when its target is a box rather than a dot.
+ *
+ * A node's `size` is half its *largest* dimension, so using it as a radius draws a circle around a
+ * card: right on the long side, well outside the shape on the short one. Narrowing a wide card left
+ * every arrow pointing at where the old width used to be, with a gap no re-read could close — the
+ * geometry was doing exactly what it had been told.
+ */
+describe('clearance against a box', () => {
+  const from = { x: 0, y: 0 };
+
+  it('meets a wide card on its side, not on a circle around it', () => {
+    // 300 wide, 40 tall, approached horizontally: the side is 150 out, the circle would be 150 too —
+    // the case that always looked right.
+    const route = routeEdge('e', from, { x: 400, y: 0 }, 'straight', 0, { halfWidth: 150, halfHeight: 20 });
+
+    expect(route.to.x).toBeCloseTo(250, 5);
+  });
+
+  it('meets a narrow card on its side rather than half its height away', () => {
+    // The reported bug: the same card narrowed to 40 wide. A radius would still be 150 — the height
+    // now being the largest dimension — and stop the arrow 130 short of the card.
+    const route = routeEdge('e', from, { x: 400, y: 0 }, 'straight', 0, { halfWidth: 20, halfHeight: 150 });
+
+    expect(route.to.x).toBeCloseTo(380, 5);
+  });
+
+  it('crosses the box on the side the direction reaches first', () => {
+    // Diagonal into a wide, short box: it meets the top, not the side, because the top is nearer
+    // along that ray.
+    const route = routeEdge('e', from, { x: 200, y: 200 }, 'straight', 0, { halfWidth: 100, halfHeight: 20 });
+
+    expect(route.to.y).toBeCloseTo(180, 5);
+    expect(route.to.x).toBeCloseTo(180, 5);
+  });
+
+  it('keeps a plain radius circular', () => {
+    // The distinction that has to survive: a round node approached at 45° is r away, where a square
+    // of half-extent r would be r√2 — passing one as the other pushes every diagonal 40% too far.
+    const route = routeEdge('e', from, { x: 100, y: 100 }, 'straight', 0, 10);
+
+    expect(Math.hypot(route.to.x - 100, route.to.y - 100)).toBeCloseTo(10, 5);
+  });
+
+  it('attaches a smooth curve on the axis it arrives along', () => {
+    // Arriving horizontally means meeting a vertical side, and how tall the card is says nothing
+    // about where that side is.
+    const route = routeEdge('e', from, { x: 400, y: 0 }, 'smooth', 0, { halfWidth: 20, halfHeight: 150 });
+
+    expect(route.to.x).toBeCloseTo(380, 5);
+    expect(route.to.y).toBeCloseTo(0, 5);
+  });
+
+  it('attaches a smooth curve arriving vertically on the top edge', () => {
+    const route = routeEdge('e', from, { x: 0, y: 400 }, 'smooth', 0, { halfWidth: 150, halfHeight: 20 });
+
+    expect(route.to.y).toBeCloseTo(380, 5);
+  });
+
+  it('does not overshoot a target closer than its own edge', () => {
+    // Two overlapping cards: the trim would otherwise put the arrowhead behind the source.
+    const route = routeEdge('e', from, { x: 10, y: 0 }, 'straight', 0, { halfWidth: 150, halfHeight: 150 });
+
+    expect(route.to).toEqual({ x: 10, y: 0 });
+  });
+});

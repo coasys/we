@@ -26,6 +26,7 @@ import type {
 import { addressKind } from '@we/graph-protocol';
 
 import { ExpansionState, SEED_OPENER } from './expansion';
+import type { EdgeClearance } from './geometry';
 import { bowOffsets, distanceToEdge, edgeBounds, groupByEndpoints, normaliseCurve, routeEdge } from './geometry';
 import { PluginRegistry } from './registry';
 import { SpatialIndex } from './spatial';
@@ -899,6 +900,21 @@ export class GraphEngine {
   }
 
   /**
+   * A few pixels beyond the target's edge, so an arrowhead sits against it.
+   *
+   * A number for a round node and half-extents for a box, which is a real distinction rather than a
+   * convenience: on a 45° approach a circle of radius r is r away and a square of half-extent r is
+   * r√2, so treating every node as a box would push every diagonal arrow 40% too far out.
+   */
+  private clearanceFor(node: GraphNode | undefined): number | EdgeClearance {
+    const gap = 6;
+    if (!node) return 14 + gap;
+    const area = this.hitArea(node);
+    if (area.halfWidth === undefined || area.halfHeight === undefined) return area.radius + gap;
+    return { halfWidth: area.halfWidth + gap, halfHeight: area.halfHeight + gap };
+  }
+
+  /**
    * Work out where every edge runs, and cache the bounds picking rejects against.
    *
    * Grouped by endpoint pair first, so mutual and parallel edges fan apart instead of stacking into a
@@ -916,12 +932,26 @@ export class GraphEngine {
         if (!from || !to) return;
         const style = resolveStyle(edge, this.spec.edgeStyle);
         const targetNode = this.store.node(edge.target);
-        // Stop short of the node's centre, so an arrowhead lands on it rather than inside it. The
-        // radius comes from the same place the renderer gets its size, so the two cannot disagree.
-        // *Where* on the node it lands is the route's decision, not this one — a curve that arrives
-        // along an axis does not meet the node where the straight line between centres would.
-        const radius = targetNode ? this.hitArea(targetNode).radius : 14;
-        const geometry = routeEdge(edge.id, from, to, normaliseCurve(style.curve), offsets[index], radius + 6);
+        /*
+          Stop short of the node's *edge*, so an arrowhead lands on it rather than inside it or short
+          of it. Measured from the same place the renderer gets its size, so the two cannot disagree.
+
+          Per axis, not as a radius. A radius is half the node's largest dimension, which describes a
+          circle drawn around a card — right on its long side and well outside it on its short one.
+          Narrowing a wide card left every arrow stopping where the old width used to be, with a gap
+          no re-read could close, because the geometry was doing exactly what it had been told.
+
+          *Where* on the node it lands is still the route's decision, not this one: a curve that
+          arrives along an axis does not meet the node where the straight line between centres would.
+        */
+        const geometry = routeEdge(
+          edge.id,
+          from,
+          to,
+          normaliseCurve(style.curve),
+          offsets[index],
+          this.clearanceFor(targetNode),
+        );
         this.edgeGeometry.set(edge.id, geometry);
         this.edgeBoxes.set(edge.id, edgeBounds(geometry));
       });

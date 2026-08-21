@@ -353,24 +353,34 @@ const actions: SchemaNode = {
 };
 
 /**
- * The panel's dock: always mounted, on the right edge, and inert until something is in it.
+ * The panel's dock: always mounted, on the left edge, and inert until something is in it.
  *
  * The panel cannot position itself. A `$if` with a transition wraps its content in an animation
- * container positioned *from* that content, so `right: 0` inside one pins to the wrapper's right
- * edge rather than the canvas's — and the wrapper sits at its own static position, which put a panel
- * that reads as docked right at the left of the board, on top of the key. Docking it in a container
- * that is always there and always where it says it is takes the question away from the wrapper.
+ * container positioned *from* that content, so an edge offset inside one pins to the wrapper's box
+ * rather than the canvas's — and the wrapper sits at its own static position. Docking it in a
+ * container that is always there and always where it says it is takes the question away from the
+ * wrapper entirely.
  *
- * `pointerEvents: 'none'` because a column down the right of the canvas would otherwise eat clicks
- * on the board while nothing is selected; the panel inside turns them back on.
+ * **Left, because the right belongs to the app.** The module rail runs down that edge and overlaps
+ * anything a route puts there. A route cannot see the chrome around it, so the rule is simply that
+ * the far edge is not a route's to use — and the key moves to the right in exchange, which is the
+ * lighter of the two to lose a strip of.
+ *
+ * `top` and `bottom` rather than a height: an absolute box pinned to both edges is the same height
+ * as the canvas whatever resolves — a percentage height depends on an unbroken chain of resolved
+ * heights above it, and where that chain breaks the panel is merely short, with its border stopping
+ * in mid-air.
+ *
+ * `pointerEvents: 'none'` because a column down the side of the canvas would otherwise eat clicks on
+ * the board while nothing is selected; the panel inside turns them back on.
  */
 export const nodeDetailPanel: SchemaNode = {
   type: 'Column',
   props: {
     position: 'absolute',
     top: '0',
-    right: '0',
-    height: '100%',
+    bottom: '0',
+    left: '0',
     zIndex: 'chrome',
     pointerEvents: 'none',
   },
@@ -381,7 +391,7 @@ export const nodeDetailPanel: SchemaNode = {
         condition: { $and: [{ $local: 'selected' }, { $not: { $local: 'panelClosed' } }] },
         // Sliding in from the edge it is docked to, so it reads as arriving rather than appearing.
         enterTransition: [
-          { type: 'slide', direction: 'left', distance: '24px', duration: 180 },
+          { type: 'slide', direction: 'right', distance: '24px', duration: 180 },
           { type: 'fade', duration: 150 },
         ],
         then: {
@@ -400,7 +410,7 @@ export const nodeDetailPanel: SchemaNode = {
               the only thing telling you where the canvas stops.
             */
             bg: 'neutral-25',
-            borderLeft: '1px solid neutral-200',
+            borderRight: '1px solid neutral-200',
             shadow: 'lg',
           },
           children: [
