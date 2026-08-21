@@ -16,7 +16,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
 import type { ThemeRole } from './overrides';
-import { type ThemeName, THEME_PRESETS } from './presets';
+import { THEME_PRESETS, type ThemeName } from './presets';
 import { sanitiseCss } from './sanitiseCss';
 import { roleVar } from './themeStyles';
 

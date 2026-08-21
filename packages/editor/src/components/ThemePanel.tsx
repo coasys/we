@@ -166,6 +166,36 @@ const ROLE_GROUPS: { label: string; roles: { role: ThemeRole; label: string }[] 
   },
 ];
 
+/**
+ * The colour to store for a role, given what the picker returned and the alpha the role already had.
+ *
+ * Exported for its test rather than for reuse. `<input type="color">` cannot express alpha, so a
+ * picker interaction on a translucent role returns an opaque colour — and the scrim's default is 60%
+ * transparent, where that is not a slightly-wrong colour but a solid sheet over the whole app.
+ */
+export function roleColorToStore(hex: string, alpha: number): string {
+  if (alpha >= 1) return hex;
+  const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
+  return `rgb(${r} ${g} ${b} / ${alpha})`;
+}
+
+/**
+ * The `roles` value to store after setting one role — `undefined` once nothing is pinned.
+ *
+ * An empty object would persist as `"roles":{}`, which reads as "this theme pins roles" to anything
+ * inspecting it and never becomes false again.
+ */
+export function nextRoles(
+  current: Partial<Record<ThemeRole, string>> | undefined,
+  role: ThemeRole,
+  value: string | undefined,
+): Partial<Record<ThemeRole, string>> | undefined {
+  const next = { ...(current ?? {}) };
+  if (value === undefined) delete next[role];
+  else next[role] = value;
+  return Object.keys(next).length ? next : undefined;
+}
+
 const HEIGHT_OPTIONS = [
   { value: '', label: 'Default' },
   { value: '-4px', label: 'Short' },
@@ -550,11 +580,7 @@ export function ThemePanel() {
   });
 
   function setRole(role: ThemeRole, value: string | undefined) {
-    const next: Partial<Record<ThemeRole, string>> = { ...(overrides().roles ?? {}) };
-    if (value === undefined) delete next[role];
-    else next[role] = value;
-    // An empty object would persist as `"roles":{}` and read as "this theme pins roles" forever.
-    themeStore.updateEditingOverrides({ roles: Object.keys(next).length ? next : undefined });
+    themeStore.updateEditingOverrides({ roles: nextRoles(overrides().roles, role, value) });
     saveTheme();
   }
 
@@ -565,18 +591,7 @@ export function ThemePanel() {
       <Row ay="center" gap="300">
         <we-color-picker
           value={sampled().hex}
-          on:change={(e: CustomEvent) => {
-            const hex = e.detail as string;
-            /*
-              Keep whatever transparency the role already had. The scrim is the case that matters:
-              its default is 60% alpha, <input type="color"> cannot express alpha at all, and a
-              fully opaque overlay is not a slightly-wrong scrim — it is a solid sheet over the app.
-            */
-            const { alpha } = sampled();
-            if (alpha >= 1) return setRole(role, hex);
-            const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
-            setRole(role, `rgb(${r} ${g} ${b} / ${alpha})`);
-          }}
+          on:change={(e: CustomEvent) => setRole(role, roleColorToStore(e.detail as string, sampled().alpha))}
         />
         <we-text flex="1" fontSize="300" color={pinned() ? 'neutral-800' : 'neutral-600'}>
           {label}
@@ -753,10 +768,9 @@ export function ThemePanel() {
             {/* ── Roles ── */}
             <CollapsibleSection title="Roles">
               <we-text fontSize="200" color="neutral-500" lineHeight="1.5">
-                What a colour <i>means</i>, rather than where it sits on the scale. Left alone, each
-                follows the hues and lightness above — pin one to redesign a relationship the scale
-                cannot express, such as raised surfaces getting lighter in a dark theme instead of
-                casting a shadow.
+                What a colour <i>means</i>, rather than where it sits on the scale. Left alone, each follows the hues
+                and lightness above — pin one to redesign a relationship the scale cannot express, such as raised
+                surfaces getting lighter in a dark theme instead of casting a shadow.
               </we-text>
               <For each={ROLE_GROUPS}>
                 {(group) => (
