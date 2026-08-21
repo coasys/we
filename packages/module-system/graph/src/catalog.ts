@@ -308,6 +308,13 @@ export const GRAPH_PLUGIN_CATALOG: PluginCatalog = {
       example: `"behaviours": [{ "type": "connect-nodes", "options": { "armed": { "$local": "connecting" } } }, "pan-zoom", "select", { "type": "drag-node" }]`,
     },
     {
+      id: 'node-double-click',
+      category: 'behaviour',
+      description:
+        "Double-click a node to emit onNodeDoubleClick, with the record it stands for resolved onto the payload. Writes nothing — what opening a node means is the template's decision. Pairs with canvas-double-click, which handles the same gesture on empty canvas; list both and exactly one fires. Do NOT list it alongside expand-on-double-click, which claims the same gesture to do something else.",
+      example: `"behaviours": ["node-double-click", "canvas-double-click", "pan-zoom", "select"]`,
+    },
+    {
       id: 'canvas-double-click',
       category: 'behaviour',
       description:

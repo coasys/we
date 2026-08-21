@@ -278,6 +278,33 @@ export function expandOnDoubleClickBehaviour(rawOptions?: Record<string, unknown
 }
 
 /**
+ * Double-click a node to say "open this".
+ *
+ * The counterpart to `canvas-double-click`, and the thing that makes `onNodeDoubleClick` reachable
+ * at all: the event was declared in the protocol and routed by the adapter, and **no behaviour ever
+ * emitted it**, so a template binding the prop got silence. Declared-and-unimplemented is the
+ * quietest kind of gap — everything typechecks, the wiring reads as complete, and the gesture just
+ * does nothing.
+ *
+ * Emits and does nothing else. What opening a node *means* is the consumer's: a board opens the
+ * card, an explorer might do what `expand-on-double-click` does instead. Which is why the two are
+ * separate behaviours rather than one with a mode — a template lists whichever it means, and
+ * listing both would have the first claim the gesture.
+ */
+export function nodeDoubleClickBehaviour(): Behaviour {
+  return {
+    id: 'node-double-click',
+    description: 'Double-click a node to open it.',
+    onDoubleClick(input, ctx) {
+      const [hit] = ctx.hitTest(ctx.toWorld(input.at));
+      if (!hit) return;
+      ctx.emit({ type: 'nodeDoubleClick', node: { id: hit, kind: 'entity', type: '' } });
+      return true;
+    },
+  };
+}
+
+/**
  * Double-click empty canvas to say "make something here".
  *
  * Emits `canvasDoubleClick` with the world point and writes nothing, like every other gesture here.
@@ -329,6 +356,7 @@ export function defaultBehaviours() {
     'drag-node': dragNodeBehaviour,
     'connect-nodes': connectNodesBehaviour,
     'canvas-double-click': canvasDoubleClickBehaviour,
+    'node-double-click': nodeDoubleClickBehaviour,
     select: selectBehaviour,
     'expand-on-click': expandOnClickBehaviour,
     'expand-on-double-click': expandOnDoubleClickBehaviour,

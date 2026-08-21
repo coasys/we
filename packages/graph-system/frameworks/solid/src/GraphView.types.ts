@@ -127,7 +127,13 @@ export interface GraphViewProps {
    * against it.
    */
   expandRequest?: { id: string; expanders?: string[]; direction?: 'in' | 'out' | 'both' } | null;
-  onNodeDoubleClick?: (node: GraphNode) => void;
+  /**
+   * A double-click on a node. Requires the `node-double-click` behaviour.
+   *
+   * `recordId`/`recordType` are resolved out of the address, since opening a node means opening the
+   * record it stands for. Absent for a node that stands for none — a property, a literal, a cluster.
+   */
+  onNodeDoubleClick?: (node: GraphNode & { recordId?: string; recordType?: string }) => void;
   /**
    * A click on an edge, with the record behind it resolved where there is one.
    *

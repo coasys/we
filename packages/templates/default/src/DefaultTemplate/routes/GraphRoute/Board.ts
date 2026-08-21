@@ -80,7 +80,9 @@ const boardCards: SchemaNode = {
       { when: { type: 'EventBlock' }, style: { color: 'warning-50', labelColor: 'warning-800' } },
     ],
     behaviours: [
-      // Before pan-zoom, which is the background fallback and would otherwise claim the press first.
+      // The two halves of a double-click: on a node it opens, on empty canvas it creates. Both
+      // before pan-zoom, which is the background fallback and would otherwise claim the press first.
+      'node-double-click',
       'canvas-double-click',
       'pan-zoom',
       'select',

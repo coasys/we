@@ -6,6 +6,7 @@ import {
   connectNodesBehaviour,
   dispatchPointer,
   dragNodeBehaviour,
+  nodeDoubleClickBehaviour,
   panZoomBehaviour,
   selectBehaviour,
 } from './behaviours';
@@ -244,6 +245,51 @@ describe('connectNodesBehaviour', () => {
 
     expect(ctx.drawConnection).toHaveBeenCalled();
     expect(ctx.pin).not.toHaveBeenCalled();
+  });
+});
+
+describe('nodeDoubleClickBehaviour', () => {
+  it('emits the node that was double-clicked', () => {
+    // The gap this closes: `nodeDoubleClick` was declared in the protocol and routed by the adapter
+    // and emitted by nothing, so a template binding `onNodeDoubleClick` got silence. Everything
+    // typechecked and the gesture simply did nothing.
+    const ctx = fakeContext();
+
+    nodeDoubleClickBehaviour().onDoubleClick?.(input(100, 100), ctx);
+
+    expect(ctx.emit).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'nodeDoubleClick', node: expect.objectContaining({ id: 'n1' }) }),
+    );
+  });
+
+  it('says nothing on empty canvas, leaving it to whatever creates there', () => {
+    const ctx = fakeContext();
+
+    nodeDoubleClickBehaviour().onDoubleClick?.(input(640, 480), ctx);
+
+    expect(ctx.emit).not.toHaveBeenCalled();
+  });
+
+  it('pairs with canvas-double-click so exactly one of them fires', () => {
+    // They divide the gesture by where it landed rather than competing for it, which is why a
+    // template can list both and why neither needs to know the other exists.
+    const onNode = fakeContext();
+    dispatchPointer(
+      [nodeDoubleClickBehaviour(), canvasDoubleClickBehaviour()],
+      'onDoubleClick',
+      input(100, 100),
+      onNode,
+    );
+    expect(onNode.emit).toHaveBeenCalledTimes(1);
+
+    const onCanvas = fakeContext();
+    dispatchPointer(
+      [nodeDoubleClickBehaviour(), canvasDoubleClickBehaviour()],
+      'onDoubleClick',
+      input(640, 480),
+      onCanvas,
+    );
+    expect(onCanvas.emit).toHaveBeenCalledTimes(1);
   });
 });
 

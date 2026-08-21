@@ -1272,7 +1272,11 @@ export const contextData: ContextData = {
           type: '{ id: string; expanders?: string[]; direction?: "in" | "out" | "both"; } | null',
           optional: true,
         },
-        { name: 'onNodeDoubleClick', type: '((node: GraphNode) => void)', optional: true },
+        {
+          name: 'onNodeDoubleClick',
+          type: '((node: GraphNode & { recordId?: string; recordType?: string; }) => void)',
+          optional: true,
+        },
         {
           name: 'onEdgeClick',
           type: '((edge: GraphEdge & { recordId?: string; recordType?: string; }) => void)',

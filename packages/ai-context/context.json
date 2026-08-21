@@ -3530,7 +3530,7 @@
         },
         {
           "name": "onNodeDoubleClick",
-          "type": "((node: GraphNode) => void)",
+          "type": "((node: GraphNode & { recordId?: string; recordType?: string; }) => void)",
           "optional": true
         },
         {

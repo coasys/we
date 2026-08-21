@@ -171,7 +171,15 @@ export function GraphView(props: GraphViewProps) {
         }
         case 'nodeDoubleClick': {
           const node = engine.store.node(event.node.id);
-          if (node) props.onNodeDoubleClick?.(node);
+          if (!node) break;
+          // The record, resolved out of the address, as `nodeClick` does. Opening a node means
+          // opening the thing it stands for, and a template has no operator that could take a
+          // `we-graph://` address apart to find it.
+          const opened = parseAddress(node.id);
+          props.onNodeDoubleClick?.({
+            ...node,
+            ...(opened?.kind === 'entity' && { recordId: opened.id, recordType: opened.type }),
+          });
           break;
         }
         case 'edgeClick': {
