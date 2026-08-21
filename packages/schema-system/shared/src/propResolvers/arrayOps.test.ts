@@ -63,6 +63,27 @@ describe('$filter where combinators', () => {
   matched nothing and reported that as "no results": a calendar cell asking whether any event's
   `startDate` began with its own date drew no marker on a month full of events.
 */
+describe('$filter set membership', () => {
+  it('matches any value in a bare array — the positive form of not', () => {
+    // `$query` has always compiled a bare array to the IR's `in`, which the AD4M adapter declares
+    // native and the executor pushes down as a SPARQL `VALUES` clause. `$filter` compared the value
+    // against the array *object* and matched nothing, silently — the same divergence the anchored
+    // matchers below were added to close, and the reason "fetching a set of records by id" was
+    // believed to be inexpressible.
+    expect(filter({ handle: ['ada', 'alan'] })).toEqual([members[0], members[2]]);
+  });
+
+  it('matches nothing for an empty list, rather than everything', () => {
+    // "none of these" is a real query — a board with no placements asking for the records it placed
+    // — and answering it with the whole table is the worst available wrong answer.
+    expect(filter({ handle: [] })).toEqual([]);
+  });
+
+  it('still reads an array under `not` as exclusion', () => {
+    expect(filter({ handle: { not: ['ada', 'alan'] } })).toEqual([members[1]]);
+  });
+});
+
 describe('$filter anchored string matches', () => {
   const events = [
     { title: 'Standup', startDate: '2026-08-15T09:00' },

@@ -9,6 +9,7 @@ import type { CountProp, FilterProp, FindProp, Memo, Props } from './types';
  * ($filter) uses the same vocabulary as SPARQL-backed $query filtering:
  *
  *   { field: value }              — strict equality
+ *   { field: [a, b] }             — set membership; matches any of them
  *   { field: { not: value } }     — inequality (value or array of excluded values)
  *   { field: { contains: 'x' } }  — case-insensitive substring match
  *   { field: { exists: true } }   — non-null / non-undefined presence check
@@ -127,10 +128,27 @@ function matchesWhere(
       }
     }
 
-    // Default: strict equality
+    /*
+      Default: strict equality — or set membership when the expected value is a list.
+
+      A bare array is the positive form of `not: [...]`, and `$query` has always compiled one to the
+      IR's `in` (see `queryCompiler`'s `fieldCondition`), which the AD4M adapter declares native and
+      the executor pushes down as a SPARQL `VALUES` clause. `$filter` did not, so `where: { id: [a, b] }`
+      compared a value against the array *object*, matched nothing, and did it silently.
+
+      Exactly the divergence the anchored matchers above describe, for the same reason: the docs
+      promise one operator set across `$filter` and `$query`, and every operator that exists on only
+      one side is a clause that works until somebody moves it. Nothing is lost by treating an array
+      this way — strict equality against one could never have matched, since arrays compare by
+      reference.
+    */
     let expected = resolvePropFn(rawValue, stores, context, memo);
     if (typeof expected === 'function' && REACTIVE_ACCESSOR in (expected as object)) {
       expected = (expected as () => unknown)();
+    }
+    if (Array.isArray(expected)) {
+      if (!expected.includes(actual)) return false;
+      continue;
     }
     if (actual !== expected) return false;
   }

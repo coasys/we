@@ -115,12 +115,18 @@ Array operators:
 Filters an array to items where all where conditions match. Mirrors the $query where operator set:
 
   { "field": "value" }                                   — strict equality
+  { "field": ["a", "b"] }                                — set membership (IN); matches any of them
   { "field": { "not": "value" } }                        — inequality; array form excludes multiple values
   { "field": { "contains": "text" } }                    — case-insensitive substring match (strings only)
   { "field": { "startsWith": "text" } }                  — anchored prefix match, case-SENSITIVE
   { "field": { "endsWith": "text" } }                    — anchored suffix match, case-SENSITIVE
   { "field": { "exists": true } }                        — non-null / non-undefined presence check
   { "field": { "exists": false } }                       — null or undefined check
+
+A bare array is the positive counterpart of "not" with an array, and it is the way to fetch a known
+set: { "id": ["id1", "id2", "id3"] }. Native on the AD4M backend, where it pushes down to a SPARQL
+VALUES clause, so it is index-friendly rather than a scan. An empty array matches nothing, which is
+what "none of these" should mean.
 
 startsWith/endsWith are case-sensitive where contains is not: they exist to match structured strings
 against a known prefix (an ISO date out of a datetime, an id out of a URI), where folding case would
