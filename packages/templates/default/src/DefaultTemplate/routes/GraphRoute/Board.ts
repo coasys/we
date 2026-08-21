@@ -285,13 +285,16 @@ const newCardModal: SchemaNode = composerModal({
   },
   onSaved: [
     /*
-      Placed where the double-click landed, using the id `createPost` now returns.
+      Placed where the double-click landed, then — and only then — the canvas is told to re-read.
 
-      `$result` is the resolved value of the action this ran after, which is the only way a schema
-      can act on something it just made — a template has no variables, and the new card's id did not
-      exist a moment ago. A card added from the toolbar has no point, so `newCardAt` is null and the
-      placement is skipped: it lands in the tray instead, which is the honest answer to "nobody said
-      where".
+      Two writes make one act, and the refresh belongs after both. Bumping `revision` as soon as the
+      *card* existed showed it in the tray, unplaced, for as long as the placement took to land; the
+      placement's own write then arrived and the card jumped to where it had been put. Sequencing
+      through `onSuccess` is what makes "the write finished" mean the whole write.
+
+      `$result` is the id `createPost` returns, which is the only way a schema can act on something
+      it has just made. A card added from the toolbar has no point, so `newCardAt` is null, nothing
+      is placed, and it lands in the tray — the honest answer to "nobody said where".
     */
     {
       $if: {
@@ -299,14 +302,14 @@ const newCardModal: SchemaNode = composerModal({
         then: {
           $action: 'recordStore.placeOnBoard',
           args: [BOARD, '$result', 'CollectionBlock', { $local: 'newCardAt.x' }, { $local: 'newCardAt.y' }],
+          onSuccess: [
+            { $setLocal: 'newCardAt', value: null },
+            { $setLocal: 'revision', by: 1 },
+          ],
         },
+        else: { $setLocal: 'revision', by: 1 },
       },
     },
-    { $setLocal: 'newCardAt', value: null },
-    // Tell the canvas to re-read. The engine also watches `CollectionBlock` and would get there on
-    // its own, but this is the one case where the template *knows* — it is what wrote the card — and
-    // waiting on a notification for something you just did is how a board comes to feel broken.
-    { $setLocal: 'revision', by: 1 },
   ],
 });
 

@@ -22,7 +22,6 @@ import '@we/graph-solid/styles';
 
 import type { ModelClass, ModelManifestEntry, QueryOptions } from '@we/backend-shared';
 import { manifestEntries } from '@we/backend-shared';
-import type { SerializedBlockNode } from '@we/block-shared';
 import { BlockRenderer } from '@we/block-solid';
 import type { EntityShape, GraphNode } from '@we/graph-protocol';
 import { GraphView, type GraphViewProps } from '@we/graph-solid';
@@ -86,26 +85,22 @@ function toEntityShape(entry: ModelManifestEntry): EntityShape {
  * system and a Lexical tree, and a graph engine that imported any of that would stop being portable.
  *
  * `editorState` is already on the node — it is a declared string property, so the row the seed
- * fetched carried it into `data` — and parsed here rather than at the seed because a graph node's
- * `data` holds scalars by contract. A card whose state is missing or unparseable renders nothing and
- * the card falls back to its label, which is the same degradation as a missing component.
+ * fetched carried it into `data` — and handed over exactly as it arrived. A file-backed property
+ * resolves to a `data:…;base64,…` blob rather than to JSON, and `BlockRenderer` already knows to
+ * decode a string; parsing it here first threw on every card and rendered nothing, which is why they
+ * all looked empty.
  */
 function BlockCard(props: { node: GraphNode }) {
   const datasetStore = useDatasetStore();
 
   const editorState = createMemo(() => {
     const raw = props.node.data?.editorState;
-    if (typeof raw !== 'string' || !raw) return undefined;
-    try {
-      return JSON.parse(raw) as SerializedBlockNode;
-    } catch {
-      return undefined;
-    }
+    return typeof raw === 'string' && raw ? raw : undefined;
   });
 
   return (
     <Show when={editorState()}>
-      {(state) => <BlockRenderer editorState={state()} perspective={datasetStore.currentDataset()?.handle} />}
+      {(state) => <BlockRenderer editorState={state() as never} perspective={datasetStore.currentDataset()?.handle} />}
     </Show>
   );
 }
