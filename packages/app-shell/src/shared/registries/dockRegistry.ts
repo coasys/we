@@ -133,8 +133,8 @@ export function dockFrame(entry: DockEntry, node: SchemaNode): SchemaNode {
               // The panel's own surface. A module's node fills it and need not paint a background, a
               // border or a radius of its own — which is what stops two docked modules from looking
               // like two different applications.
-              bg: 'neutral-0',
-              border: '1px solid neutral-200',
+              bg: 'surface',
+              border: '1px solid border',
               // Rounded and lifted only while floating. A card over the app should read as being on
               // top; a panel that has taken room *from* the app meets it edge to edge, where a radius
               // would leave slivers of background in the corners and a shadow would fall on content
@@ -195,8 +195,8 @@ function titleBar(entry: DockEntry): SchemaNode {
       gap: '100',
       px: '200',
       py: '100',
-      bg: 'neutral-50',
-      borderBottom: '1px solid neutral-200',
+      bg: 'page',
+      borderBottom: '1px solid border',
       /*
         Double-click to maximise, the other half of the convention the grip completes.
 
@@ -436,8 +436,8 @@ function insertLines(id: string): SchemaNode {
                   condition: {
                     $eq: [{ $store: 'shellStore.activeInsert' }, { $concat: ['$slot.edge', ':', '$slot.index'] }],
                   },
-                  then: 'primary-500',
-                  else: 'neutral-300',
+                  then: 'accent',
+                  else: 'surfaceActive',
                 },
               },
               opacity: {
@@ -506,7 +506,7 @@ function snapTargets(id: string): SchemaNode {
               bg: {
                 $if: {
                   condition: { $eq: [{ $store: 'shellStore.activeSnap' }, '$target.id'] },
-                  then: 'primary-100',
+                  then: 'accentMuted',
                   else: 'transparent',
                 },
               },

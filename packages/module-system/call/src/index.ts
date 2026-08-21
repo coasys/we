@@ -103,7 +103,7 @@ const BAR_RADIUS = 'var(--we-theme-control-radius, var(--we-radius-400))';
  * whatever a space happens to be showing, and a border alone against a busy background is not a
  * separation.
  */
-const BAR_SURFACE = { bg: 'neutral-50', border: '1px solid neutral-200', shadow: 'md' } as const;
+const BAR_SURFACE = { bg: 'surfaceRaised', border: '1px solid border', shadow: 'md' } as const;
 
 /**
  * The bar's extension point, for chrome that belongs *in a call* rather than at a screen edge.
@@ -199,7 +199,7 @@ const tile: SchemaNode = {
         // Low-numbered, so it stays a recessed surface under both themes — see the note on `stage`.
         // It shows only where a picture cannot fill 16:9, which is a screen share letterboxed inside
         // its own frame rather than a grey box around every camera.
-        bg: 'neutral-100',
+        bg: 'surfaceSunken',
         r: '400',
         overflow: 'hidden',
         ax: 'center',
@@ -331,7 +331,7 @@ const tile: SchemaNode = {
                         { type: 'we-spinner', props: { size: 'xs' } },
                         {
                           type: 'we-text',
-                          props: { variant: 'footnote', color: 'neutral-500' },
+                          props: { variant: 'footnote', color: 'textMuted' },
                           children: ['Connecting…'],
                         },
                       ],
@@ -347,10 +347,10 @@ const tile: SchemaNode = {
                           type: 'Row',
                           props: { gap: '100', ay: 'center' },
                           children: [
-                            { type: 'we-icon', props: { name: 'warning', size: 'xs', color: 'danger-500' } },
+                            { type: 'we-icon', props: { name: 'warning', size: 'xs', color: 'dangerText' } },
                             {
                               type: 'we-text',
-                              props: { variant: 'footnote', color: 'danger-500' },
+                              props: { variant: 'footnote', color: 'dangerText' },
                               children: ["Couldn't connect"],
                             },
                           ],
@@ -637,7 +637,7 @@ const participants: SchemaNode = peopleTooltip({
         },
         {
           type: 'we-text',
-          props: { color: 'neutral-600' },
+          props: { color: 'textMuted' },
           children: [
             { type: 'we-number', props: { value: { $count: { items: { $store: 'modules.call.tiles' } } } } },
             ' in the call',

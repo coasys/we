@@ -299,7 +299,7 @@ export const twitterTemplate: TemplateSchema = {
         maxWidth: '640px',
         flex: '1',
         minWidth: '0',
-        bg: 'neutral-0',
+        bg: 'surface',
         borderLeft: '1px solid border',
         borderRight: '1px solid border',
       },

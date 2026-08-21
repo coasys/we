@@ -12,7 +12,7 @@ import { gatePrompt } from '@we/template-kit';
 export const homeRoute: RouteSchema = {
   path: '/',
   type: 'Column',
-  props: { height: '100vh', ax: 'center', ay: 'center', gap: '500', p: '600', bg: 'neutral-50' },
+  props: { height: '100vh', ax: 'center', ay: 'center', gap: '500', p: '600', bg: 'page' },
   children: [
     {
       type: 'Column',
@@ -44,7 +44,7 @@ export const homeRoute: RouteSchema = {
                   type: 'Card',
                   props: {
                     ax: 'center',
-                    bg: 'neutral-0',
+                    bg: 'surface',
                     width: '160px',
                     styles: { cursor: 'pointer' },
                     onClick: { $action: 'spaceStore.navigateToSpace', args: ['$space.spaceId'] },
@@ -91,7 +91,7 @@ export const homeRoute: RouteSchema = {
             condition: { $not: { $count: { items: { $store: 'spaceStore.orderedSidebarItems' } } } },
             then: {
               type: 'Card',
-              props: { ax: 'center', bg: 'neutral-0', width: '100%' },
+              props: { ax: 'center', bg: 'surface', width: '100%' },
               children: [
                 // Inside a card that has its own flow, so it does not claim the height a page-level
                 // gate does.

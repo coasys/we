@@ -35,9 +35,9 @@ import { emptyState, field } from '@we/template-kit';
  * now is a shape that design supersedes.
  */
 const COLUMNS = [
-  { status: 'todo', label: 'To do', color: 'neutral-500' },
-  { status: 'in-progress', label: 'In progress', color: 'primary-600' },
-  { status: 'done', label: 'Done', color: 'success-600' },
+  { status: 'todo', label: 'To do', color: 'textMuted' },
+  { status: 'in-progress', label: 'In progress', color: 'accentStrong' },
+  { status: 'done', label: 'Done', color: 'successText' },
 ] as const;
 
 /** Tasks in one state, oldest first. */
@@ -71,10 +71,10 @@ const cardBody: SchemaNode = {
   props: {
     width: '100%',
     gap: '200',
-    bg: 'neutral-0',
+    bg: 'surface',
     r: '300',
     p: '300',
-    border: '1px solid neutral-200',
+    border: '1px solid border',
   },
   children: [
     { type: 'we-text', props: { fontWeight: 'semibold' }, children: ['$task.title'] },
@@ -84,7 +84,7 @@ const cardBody: SchemaNode = {
         condition: '$task.description',
         then: {
           type: 'we-text',
-          props: { fontSize: '200', color: 'neutral-700', truncate: true },
+          props: { fontSize: '200', color: 'text', truncate: true },
           children: ['$task.description'],
         },
       },
@@ -114,7 +114,7 @@ const cardBody: SchemaNode = {
             condition: '$task.dueDate',
             then: {
               type: 'we-text',
-              props: { fontSize: '200', color: 'neutral-700' },
+              props: { fontSize: '200', color: 'text' },
               children: ['$task.dueDate'],
             },
           },
@@ -125,7 +125,7 @@ const cardBody: SchemaNode = {
             condition: '$task.assignee',
             then: {
               type: 'we-text',
-              props: { fontSize: '200', color: 'neutral-700' },
+              props: { fontSize: '200', color: 'text' },
               children: [{ $concat: ['@', '$task.assignee'] }],
             },
           },
@@ -163,8 +163,8 @@ const column = (spec: (typeof COLUMNS)[number]): SchemaNode => ({
     width: '300px',
     minHeight: '200px',
     gap: '300',
-    bg: 'neutral-100',
-    border: '1px solid neutral-200',
+    bg: 'surfaceSunken',
+    border: '1px solid border',
     r: '400',
     p: '300',
     ay: 'start',
@@ -182,7 +182,7 @@ const column = (spec: (typeof COLUMNS)[number]): SchemaNode => ({
           type: 'we-text',
           props: {
             variant: 'footnote',
-            color: 'neutral-500',
+            color: 'textMuted',
             ml: 'auto',
             text: { $count: { items: tasksIn(spec.status) } },
           },

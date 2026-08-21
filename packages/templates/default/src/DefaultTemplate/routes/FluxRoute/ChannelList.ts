@@ -2,7 +2,7 @@ import type { SchemaNode } from '@we/schema-shared';
 
 const messageCard: SchemaNode = {
   type: 'Row',
-  props: { ay: 'start', gap: '300', p: '300', r: '300', bg: 'neutral-25' },
+  props: { ay: 'start', gap: '300', p: '300', r: '300', bg: 'surfaceRaised' },
   children: [
     // Identicon avatar from author DID
     { type: 'we-avatar', props: { hash: '$message.author', size: 'sm' } },
@@ -20,7 +20,7 @@ const messageCard: SchemaNode = {
               type: 'we-text',
               props: {
                 variant: 'footnote',
-                color: 'neutral-400',
+                color: 'textFaint',
                 fontWeight: 'semibold',
                 flex: '0 0 auto',
                 maxWidth: '220px',
@@ -85,8 +85,8 @@ export const channelList: SchemaNode = {
                 {
                   type: 'Card',
                   props: {
-                    bg: 'neutral-0',
-                    border: '1px solid neutral-200',
+                    bg: 'surface',
+                    border: '1px solid border',
                     mb: '200',
                   },
                   children: [
@@ -135,7 +135,7 @@ export const channelList: SchemaNode = {
               children: [
                 {
                   type: 'Card',
-                  props: { bg: 'neutral-0', border: '1px solid neutral-200', overflow: 'hidden', mb: '300' },
+                  props: { bg: 'surface', border: '1px solid border', overflow: 'hidden', mb: '300' },
                   children: [
                     // Channel header
                     {
@@ -144,8 +144,8 @@ export const channelList: SchemaNode = {
                         ay: 'center',
                         gap: '300',
                         p: '400',
-                        bg: 'neutral-50',
-                        borderBottom: '1px solid neutral-200',
+                        bg: 'page',
+                        borderBottom: '1px solid border',
                       },
                       children: [
                         { type: 'we-icon', props: { name: 'hash', size: 'sm' } },
@@ -164,7 +164,7 @@ export const channelList: SchemaNode = {
                                 condition: '$channel.description',
                                 then: {
                                   type: 'we-text',
-                                  props: { variant: 'footnote', color: 'neutral-400' },
+                                  props: { variant: 'footnote', color: 'textFaint' },
                                   children: ['$channel.description'],
                                 },
                               },

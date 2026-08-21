@@ -42,7 +42,7 @@ const blockHeader = (icon: string): SchemaNode[] => [
     children: [
       { type: 'we-icon', props: { name: icon, size: 'sm' } },
       // The type's name used to sit beside the icon, and is left commented out here as before:
-      // { type: 'we-text', props: { color: 'neutral-700', truncate: true }, children: ['<type name>'] },
+      // { type: 'we-text', props: { color: 'text', truncate: true }, children: ['<type name>'] },
     ],
   },
 ];

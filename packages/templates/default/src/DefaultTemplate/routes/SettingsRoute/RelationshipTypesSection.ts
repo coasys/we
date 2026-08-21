@@ -115,7 +115,7 @@ const createModal: SchemaNode = {
                 { type: 'we-text', props: { variant: 'label' }, children: ['Direction matters'] },
                 {
                   type: 'we-text',
-                  props: { variant: 'footnote', color: 'neutral-500' },
+                  props: { variant: 'footnote', color: 'textMuted' },
                   children: ['Off for "related to" and "same as", where an arrow would assert an order nobody meant.'],
                 },
               ],
@@ -178,14 +178,14 @@ const kindRow: SchemaNode = {
     ay: 'center',
     width: '100%',
     py: '300',
-    borderBottom: '1px solid neutral-100',
+    borderBottom: '1px solid border',
   },
   children: [
     {
       type: 'we-icon',
       props: {
         name: '$kind.icon',
-        color: { $if: { condition: '$kind.color', then: '$kind.color', else: 'neutral-500' } },
+        color: { $if: { condition: '$kind.color', then: '$kind.color', else: 'textMuted' } },
       },
     },
     {
@@ -203,7 +203,7 @@ const kindRow: SchemaNode = {
                 condition: '$kind.inverseName',
                 then: {
                   type: 'we-text',
-                  props: { variant: 'footnote', color: 'neutral-500' },
+                  props: { variant: 'footnote', color: 'textMuted' },
                   children: [{ $concat: ['↔ ', '$kind.inverseName'] }],
                 },
               },
@@ -223,7 +223,7 @@ const kindRow: SchemaNode = {
             condition: '$kind.description',
             then: {
               type: 'we-text',
-              props: { variant: 'footnote', color: 'neutral-500' },
+              props: { variant: 'footnote', color: 'textMuted' },
               children: ['$kind.description'],
             },
           },
@@ -235,7 +235,7 @@ const kindRow: SchemaNode = {
       props: {
         size: 'xs',
         variant: 'ghost',
-        color: 'danger-600',
+        color: 'dangerText',
         // Removing a kind leaves the connections that used it: they keep their label and lose their
         // colour, which is the right degradation. Deleting them with it would delete claims people
         // made because somebody tidied a vocabulary.

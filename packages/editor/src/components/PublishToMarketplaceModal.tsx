@@ -111,7 +111,7 @@ export function PublishToMarketplaceModal(props: Props) {
   return (
     <we-modal close={props.onClose} width="100%" maxWidth="600px">
       <Column ax="center" gap="200">
-        <we-icon name={isTheme() ? 'paint-bucket' : 'cloud-arrow-up'} size="xl" color="primary-700" />
+        <we-icon name={isTheme() ? 'paint-bucket' : 'cloud-arrow-up'} size="xl" color="accentStrong" />
         <we-text variant="heading-md">{isTheme() ? 'Publish theme to marketplace' : 'Publish to marketplace'}</we-text>
       </Column>
 
@@ -140,7 +140,7 @@ export function PublishToMarketplaceModal(props: Props) {
             placeholder={isTheme() ? 'theme-slug' : 'template-slug'}
             on:input={(e: CustomEvent) => setSlug(slugify(e.detail))}
           />
-          <we-text variant="footnote" color="neutral-500">
+          <we-text variant="footnote" color="textMuted">
             Unique identifier for this listing in the marketplace. Change it if you're publishing a variant that
             shouldn't overwrite an existing one.
           </we-text>
@@ -162,7 +162,7 @@ export function PublishToMarketplaceModal(props: Props) {
           <Column gap="100">
             <we-text variant="label">Associated theme (optional)</we-text>
             <we-select value={themeId()} options={themeOptions()} onChange={(e: CustomEvent) => setThemeId(e.detail)} />
-            <we-text variant="footnote" color="neutral-500">
+            <we-text variant="footnote" color="textMuted">
               Link a theme so users can install it alongside this template.
             </we-text>
           </Column>
@@ -200,8 +200,8 @@ export function PublishToMarketplaceModal(props: Props) {
                 width="120px"
                 height="80px"
                 r="200"
-                border="1px dashed neutral-300"
-                bg="neutral-50"
+                border="1px dashed borderStrong"
+                bg="surfaceSunken"
                 placeholderIcon="image"
                 aspect={3 / 2}
                 onImageChange={addScreenshot}
@@ -212,7 +212,7 @@ export function PublishToMarketplaceModal(props: Props) {
 
         {/* Card preview */}
         <Column gap="200">
-          <we-text variant="label" color="neutral-500">
+          <we-text variant="label" color="textMuted">
             Preview
           </we-text>
           <TemplateCard template={previewData()} mode="preview" />

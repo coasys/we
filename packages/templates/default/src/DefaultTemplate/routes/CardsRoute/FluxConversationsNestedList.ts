@@ -94,7 +94,7 @@ const subgroupMessagesList: SchemaNode = {
     condition: { $local: 'subgroupMessagesOpen' },
     then: {
       type: 'Column',
-      props: { gap: '300' }, // pl: '600', borderLeft: '2px solid neutral-200'
+      props: { gap: '300' }, // pl: '600', borderLeft: '2px solid border'
       children: [
         {
           type: '$each',
@@ -102,10 +102,10 @@ const subgroupMessagesList: SchemaNode = {
           children: [
             {
               type: 'Column',
-              props: { gap: '200', p: '400', bg: 'neutral-50', r: '300', border: '1px solid neutral-200' },
+              props: { gap: '200', p: '400', bg: 'surfaceSunken', r: '300', border: '1px solid border' },
               children: [
                 agentByline({ did: '$msg.author', timestamp: '$msg.timestamp' }),
-                { type: 'we-html', props: { color: 'neutral-700', content: '$msg.body' } },
+                { type: 'we-html', props: { color: 'text', content: '$msg.body' } },
               ],
             },
           ],
@@ -114,7 +114,7 @@ const subgroupMessagesList: SchemaNode = {
           type: '$if',
           props: {
             condition: { $eq: [{ $count: { items: { $local: 'subgroupMessages' } } }, 0] },
-            then: { type: 'we-text', props: { color: 'neutral-400' }, children: ['No messages in this subgroup.'] },
+            then: { type: 'we-text', props: { color: 'textFaint' }, children: ['No messages in this subgroup.'] },
           },
         },
       ],
@@ -125,7 +125,7 @@ const subgroupMessagesList: SchemaNode = {
 const subgroupCard: SchemaNode = withLocalState(
   {
     type: 'Column',
-    props: { gap: '300', p: '400', bg: 'neutral-75', r: '300', border: '1px solid neutral-200' },
+    props: { gap: '300', p: '400', bg: 'surfaceSunken', r: '300', border: '1px solid border' },
     children: [
       {
         type: 'Row',
@@ -139,7 +139,7 @@ const subgroupCard: SchemaNode = withLocalState(
         type: '$if',
         props: {
           condition: '$subgroup.summary',
-          then: { type: 'we-text', props: { color: 'neutral-600' }, children: ['$subgroup.summary'] },
+          then: { type: 'we-text', props: { color: 'textMuted' }, children: ['$subgroup.summary'] },
         },
       },
       peopleRow({ items: '$subgroup.participants', dids: true, noun: 'Participant' }),
@@ -176,7 +176,7 @@ const conversationSubgroupsList: SchemaNode = {
     condition: { $local: 'subgroupsOpen' },
     then: {
       type: 'Column',
-      props: { gap: '200' }, // pl: '600', borderLeft: '2px solid neutral-200'
+      props: { gap: '200' }, // pl: '600', borderLeft: '2px solid border'
       children: [
         {
           type: '$each',
@@ -252,7 +252,7 @@ export const fluxConversationsNestedList: SchemaNode = {
                   condition: '$conversation.summary',
                   then: {
                     type: 'we-text',
-                    props: { color: 'neutral-600' },
+                    props: { color: 'textMuted' },
                     children: ['$conversation.summary'],
                   },
                 },

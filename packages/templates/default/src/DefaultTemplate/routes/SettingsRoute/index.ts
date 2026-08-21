@@ -34,7 +34,7 @@ const defaultPickerRow = (opts: {
       ax: 'between',
       p: '300',
       r: '300',
-      bg: { $if: { condition: isDefault, then: 'neutral-200', else: 'neutral-50' } },
+      bg: { $if: { condition: isDefault, then: 'surfaceActive', else: 'page' } },
     },
     children: [
       {
@@ -146,7 +146,7 @@ export const settingsRoute: RouteSchema = {
             type: 'Column',
             props: { gap: '100' },
             children: [
-              { type: 'we-text', props: { color: 'neutral-700' }, children: ['Name'] },
+              { type: 'we-text', props: { color: 'text' }, children: ['Name'] },
               {
                 type: 'we-form-field',
                 children: [
@@ -174,7 +174,7 @@ export const settingsRoute: RouteSchema = {
             type: 'Column',
             props: { gap: '100' },
             children: [
-              { type: 'we-text', props: { color: 'neutral-700' }, children: ['Description'] },
+              { type: 'we-text', props: { color: 'text' }, children: ['Description'] },
               {
                 type: 'we-form-field',
                 children: [

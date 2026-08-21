@@ -69,7 +69,7 @@ export const connectedApps: SchemaNode = {
                   children: [
                     {
                       type: 'Card',
-                      props: { bg: 'neutral-100' },
+                      props: { bg: 'surfaceSunken' },
                       children: [
                         {
                           type: 'Row',
@@ -104,7 +104,7 @@ export const connectedApps: SchemaNode = {
                                     },
                                     {
                                       type: 'we-text',
-                                      props: { variant: 'footnote', color: 'neutral-500' },
+                                      props: { variant: 'footnote', color: 'textMuted' },
                                       children: ['$app.url'],
                                     },
                                   ],
@@ -187,7 +187,7 @@ export const trustedAgents: SchemaNode = {
                         gap: '300',
                         ay: 'center',
                         ax: 'between',
-                        bg: 'neutral-100',
+                        bg: 'surfaceSunken',
                         r: '300',
                         px: '300',
                         py: '200',
@@ -273,13 +273,13 @@ export const mcpServer: SchemaNode = {
           type: 'Row',
           props: { gap: '200', ay: 'center' },
           children: [
-            { type: 'we-icon', props: { name: 'plugs-connected', color: 'neutral-600' } },
+            { type: 'we-icon', props: { name: 'plugs-connected', color: 'textMuted' } },
             { type: 'we-text', props: { fontWeight: 'semibold' }, children: ['AI tool access (MCP)'] },
           ],
         },
         {
           type: 'we-text',
-          props: { variant: 'footnote', color: 'neutral-500' },
+          props: { variant: 'footnote', color: 'textMuted' },
           children: [
             'Lets AI tools on this machine — editors, agents, desktop assistants — read and write your data through the Model Context Protocol. Off unless you turn it on.',
           ],
@@ -298,7 +298,7 @@ export const mcpServer: SchemaNode = {
             { type: 'we-text', props: { variant: 'label' }, children: ['Serve MCP'] },
             {
               type: 'we-text',
-              props: { variant: 'footnote', color: 'neutral-500', ml: '300' },
+              props: { variant: 'footnote', color: 'textMuted', ml: '300' },
               children: ['Port'],
             },
             {
@@ -321,7 +321,7 @@ export const mcpServer: SchemaNode = {
             condition: { $store: 'runtimeStore.executorRestartPending' },
             then: {
               type: 'Row',
-              props: { gap: '300', ay: 'center', ax: 'between', bg: 'neutral-100', r: '300', px: '300', py: '200' },
+              props: { gap: '300', ay: 'center', ax: 'between', bg: 'surfaceSunken', r: '300', px: '300', py: '200' },
               children: [
                 {
                   type: 'we-text',
@@ -369,13 +369,13 @@ export const backup: SchemaNode = {
           type: 'Row',
           props: { gap: '200', ay: 'center' },
           children: [
-            { type: 'we-icon', props: { name: 'archive', color: 'neutral-600' } },
+            { type: 'we-icon', props: { name: 'archive', color: 'textMuted' } },
             { type: 'we-text', props: { fontWeight: 'semibold' }, children: ['Backup'] },
           ],
         },
         {
           type: 'we-text',
-          props: { variant: 'footnote', color: 'neutral-500' },
+          props: { variant: 'footnote', color: 'textMuted' },
           children: [
             'Write everything this account holds to a file, or read a file back in. The file is written by the data layer, on this machine.',
           ],
@@ -412,7 +412,7 @@ export const backup: SchemaNode = {
             condition: { $store: 'runtimeStore.backupStatus' },
             then: {
               type: 'we-text',
-              props: { variant: 'footnote', color: 'neutral-500', styles: { 'word-break': 'break-all' } },
+              props: { variant: 'footnote', color: 'textMuted', styles: { 'word-break': 'break-all' } },
               children: [{ $store: 'runtimeStore.backupStatus' }],
             },
           },
@@ -444,13 +444,13 @@ export const logging: SchemaNode = {
           type: 'Row',
           props: { gap: '200', ay: 'center' },
           children: [
-            { type: 'we-icon', props: { name: 'file-text', color: 'neutral-600' } },
+            { type: 'we-icon', props: { name: 'file-text', color: 'textMuted' } },
             { type: 'we-text', props: { fontWeight: 'semibold' }, children: ['Logging'] },
           ],
         },
         {
           type: 'we-text',
-          props: { variant: 'footnote', color: 'neutral-500' },
+          props: { variant: 'footnote', color: 'textMuted' },
           children: ['Raise the log level for part of the data layer when you need to see what it is doing.'],
         },
         {
@@ -467,7 +467,7 @@ export const logging: SchemaNode = {
                   children: [
                     {
                       type: 'Row',
-                      props: { gap: '200', ay: 'center', bg: 'neutral-100', r: '300', px: '300', py: '200' },
+                      props: { gap: '200', ay: 'center', bg: 'surfaceSunken', r: '300', px: '300', py: '200' },
                       children: [
                         { type: 'we-code', props: { flex: '1' }, children: ['$entry.crate'] },
                         {
@@ -619,7 +619,7 @@ export const peerNetwork: SchemaNode = {
               children: [
                 {
                   type: 'we-text',
-                  props: { variant: 'footnote', color: 'neutral-500' },
+                  props: { variant: 'footnote', color: 'textMuted' },
                   children: [
                     'Share these records with a peer who cannot find you, and paste theirs below. Only needed when automatic discovery fails.',
                   ],

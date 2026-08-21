@@ -91,11 +91,11 @@ export function ValueRefPicker(props: {
     <div ref={ref} style={{ position: 'relative', 'min-width': '0' }}>
       <we-button variant="outline" size="xs" width="100%" onClick={() => setOpen((v) => !v)}>
         <Row ay="center" gap="200" width="100%" minWidth="0">
-          <we-icon name={operandIcon(props.value)} size="xs" color="neutral-400" />
+          <we-icon name={operandIcon(props.value)} size="xs" color="textFaint" />
           <we-text flex="1" truncate fontSize="200" color={props.value ? 'neutral-800' : 'neutral-400'}>
             {label()}
           </we-text>
-          <we-icon name={open() ? 'caret-up' : 'caret-down'} size="xs" color="neutral-400" />
+          <we-icon name={open() ? 'caret-up' : 'caret-down'} size="xs" color="textFaint" />
         </Row>
       </we-button>
 
@@ -120,7 +120,7 @@ export function ValueRefPicker(props: {
                 {(custom) => (
                   <we-menu-item on:select={() => choose(custom())}>
                     <Row ay="center" gap="200" minWidth="0">
-                      <we-icon name="arrow-elbow-down-right" size="xs" color="neutral-400" />
+                      <we-icon name="arrow-elbow-down-right" size="xs" color="textFaint" />
                       <we-text fontSize="200" truncate>
                         Use “{custom().path}”
                       </we-text>
@@ -141,7 +141,7 @@ export function ValueRefPicker(props: {
                           fontWeight="600"
                           textTransform="uppercase"
                           letterSpacing="0.06em"
-                          color="neutral-400"
+                          color="textFaint"
                         >
                           {group.label}
                         </we-text>
@@ -152,12 +152,12 @@ export function ValueRefPicker(props: {
                               on:select={() => choose(refToOperand(scopeRef))}
                             >
                               <Row ay="center" gap="200" minWidth="0">
-                                <we-icon name={KIND_ICONS[scopeRef.kind]} size="xs" color="neutral-400" />
+                                <we-icon name={KIND_ICONS[scopeRef.kind]} size="xs" color="textFaint" />
                                 <we-text fontSize="200" truncate>
                                   {scopeRef.label}
                                 </we-text>
                                 <Show when={scopeRef.valueType !== 'unknown'}>
-                                  <we-text fontSize="100" color="neutral-400">
+                                  <we-text fontSize="100" color="textFaint">
                                     {scopeRef.valueType}
                                   </we-text>
                                 </Show>
@@ -170,7 +170,7 @@ export function ValueRefPicker(props: {
                   </For>
 
                   <Show when={filtered().length === 0}>
-                    <we-text px="200" py="200" fontSize="200" color="neutral-400">
+                    <we-text px="200" py="200" fontSize="200" color="textFaint">
                       Nothing in scope matches.
                     </we-text>
                   </Show>
@@ -181,7 +181,7 @@ export function ValueRefPicker(props: {
                 <Column borderTop={`1px solid ${tokenVar('color', 'neutral-100')}`} pt="100">
                   <we-menu-item on:select={() => choose({ kind: 'count', items: { kind: 'context', path: '' } })}>
                     <Row ay="center" gap="200">
-                      <we-icon name="hash" size="xs" color="neutral-400" />
+                      <we-icon name="hash" size="xs" color="textFaint" />
                       <we-text fontSize="200">Count of a list…</we-text>
                     </Row>
                   </we-menu-item>
@@ -404,7 +404,7 @@ export function OperandInput(props: {
               <Show when={countValue()}>
                 {(count) => (
                   <>
-                    <we-text fontSize="200" color="neutral-500" whiteSpace="nowrap">
+                    <we-text fontSize="200" color="textMuted" whiteSpace="nowrap">
                       count of
                     </we-text>
                     <Column flex="1" minWidth="0">
@@ -424,7 +424,7 @@ export function OperandInput(props: {
               <Show when={formStateValue()}>
                 {(formState) => (
                   <>
-                    <we-text fontSize="200" color="neutral-500" whiteSpace="nowrap">
+                    <we-text fontSize="200" color="textMuted" whiteSpace="nowrap">
                       {formState().token === 'error'
                         ? 'error of'
                         : formState().token === 'touched'

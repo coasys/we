@@ -16,7 +16,7 @@ import { adminSection, emptyNote } from '@we/template-kit';
 
 const languageRow: SchemaNode = {
   type: 'Row',
-  props: { gap: '300', ay: 'center', ax: 'between', bg: 'neutral-100', r: '300', px: '300', py: '200' },
+  props: { gap: '300', ay: 'center', ax: 'between', bg: 'surfaceSunken', r: '300', px: '300', py: '200' },
   children: [
     {
       type: 'Column',

@@ -13,12 +13,12 @@ export const aboutRoute: RouteSchema = {
             type: 'Column',
             props: { gap: '100' },
             children: [
-              { type: 'we-text', props: { color: 'neutral-700' }, children: ['Name'] },
+              { type: 'we-text', props: { color: 'text' }, children: ['Name'] },
               {
                 type: 'we-text',
                 props: {
                   variant: 'heading-md',
-                  color: 'neutral-1000',
+                  color: 'text',
                   loading: { $not: { $store: 'spaceStore.currentSpace' } },
                   loadingWidth: '220px',
                 },
@@ -32,7 +32,7 @@ export const aboutRoute: RouteSchema = {
             type: 'Column',
             props: { gap: '100' },
             children: [
-              { type: 'we-text', props: { color: 'neutral-700' }, children: ['Description'] },
+              { type: 'we-text', props: { color: 'text' }, children: ['Description'] },
               // Waits on the space rather than reading through it: the inner condition tests
               // `description`, which is falsy while unloaded, so on its own it claimed "No
               // description..." about a space it had not seen yet.

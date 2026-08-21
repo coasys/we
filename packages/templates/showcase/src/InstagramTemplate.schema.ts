@@ -23,8 +23,8 @@ const header: SchemaNode = {
     ay: 'center',
     px: '500',
     py: '300',
-    bg: 'neutral-0',
-    borderBottom: '1px solid neutral-200',
+    bg: 'surface',
+    borderBottom: '1px solid border',
     position: 'sticky',
     top: '0',
     zIndex: 10,
@@ -134,10 +134,10 @@ const photoDetail: RouteSchema = {
               props: {
                 width: '100%',
                 gap: '400',
-                bg: 'neutral-0',
+                bg: 'surface',
                 r: '400',
                 p: '400',
-                border: '1px solid neutral-200',
+                border: '1px solid border',
               },
               children: [
                 agentByline({ did: '$post.author', timestamp: '$post.createdAt' }),
@@ -210,7 +210,7 @@ export const instagramTemplate: TemplateSchema = {
     themeId: 'dark',
   },
   type: 'Column',
-  props: { bg: 'neutral-50', width: '100%', minHeight: '100%' },
+  props: { bg: 'page', width: '100%', minHeight: '100%' },
   children: [header, { type: '$routes' }],
   routes: [
     {
@@ -256,7 +256,7 @@ export const instagramTemplate: TemplateSchema = {
       path: '*',
       type: 'Column',
       props: { p: '600', ax: 'center' },
-      children: [{ type: 'we-text', props: { color: 'neutral-400' }, children: ['Not found.'] }],
+      children: [{ type: 'we-text', props: { color: 'textFaint' }, children: ['Not found.'] }],
     },
   ],
 };

@@ -68,11 +68,11 @@ const mutationButtons3 = buttonRow('outline', [
 function mutationArea(placeholder: string, innerChildren: SchemaNode[] = []): SchemaNode {
   return {
     type: 'Column',
-    props: { p: '400', bg: 'neutral-0', r: '400' },
+    props: { p: '400', bg: 'surface', r: '400' },
     children: [
       {
         type: 'we-text',
-        props: { color: 'neutral-400' },
+        props: { color: 'textFaint' },
         children: [placeholder],
       },
       { type: 'Column', props: { mt: '300', gap: '300' }, children: innerChildren },
@@ -89,12 +89,12 @@ const header: SchemaNode = {
   children: [
     {
       type: 'we-text',
-      props: { fontSize: '700', fontWeight: '700', color: 'primary-800' },
+      props: { fontSize: '700', fontWeight: '700', color: 'accentStrong' },
       children: ['Mutation Tests'],
     },
     {
       type: 'we-text',
-      props: { color: 'neutral-600' },
+      props: { color: 'textMuted' },
       children: ['Tests the updateSchema diffing engine — use buttons to add, remove, and change nodes'],
     },
     { type: 'we-divider' },
@@ -103,7 +103,7 @@ const header: SchemaNode = {
 
 const mainContent: SchemaNode = {
   type: 'Column',
-  props: { minHeight: '100%', width: '100%', bg: 'neutral-50', gap: '400' },
+  props: { minHeight: '100%', width: '100%', bg: 'page', gap: '400' },
   children: [header, mutationButtons, mutationButtons2, mutationButtons3, dynamicArea, routeArea],
 };
 

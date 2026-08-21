@@ -32,7 +32,7 @@ export function adminSection(opts: AdminSectionOptions): SchemaNode {
             type: 'Row',
             props: { gap: '200', ay: 'center' },
             children: [
-              { type: 'we-icon', props: { name: icon, color: 'neutral-600' } },
+              { type: 'we-icon', props: { name: icon, color: 'textMuted' } },
               { type: 'we-text', props: { fontWeight: 'semibold' }, children: [title] },
             ],
           },

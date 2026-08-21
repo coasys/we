@@ -77,10 +77,10 @@ const boardsRoute: RouteSchema = {
                     width: '100%',
                     gap: '200',
                     p: '400',
-                    bg: 'neutral-0',
+                    bg: 'surface',
                     r: '400',
-                    border: '1px solid neutral-200',
-                    hoverProps: { borderColor: 'primary-400' },
+                    border: '1px solid border',
+                    hoverProps: { borderColor: 'accent' },
                   },
                   children: [
                     { type: 'we-text', props: { fontWeight: 'semibold', truncate: true }, children: ['$board.title'] },
@@ -91,7 +91,7 @@ const boardsRoute: RouteSchema = {
                         { type: 'we-number', props: { value: '$board.$columnCount' } },
                         {
                           type: 'we-text',
-                          props: { variant: 'footnote', color: 'neutral-400' },
+                          props: { variant: 'footnote', color: 'textFaint' },
                           children: [{ $plural: { count: '$board.$columnCount', one: 'column', other: 'columns' } }],
                         },
                       ],
@@ -129,8 +129,8 @@ const boardRoute: RouteSchema = {
         width: '100%',
         px: '500',
         py: '300',
-        bg: 'neutral-0',
-        borderBottom: '1px solid neutral-200',
+        bg: 'surface',
+        borderBottom: '1px solid border',
       },
       children: [
         {
@@ -181,9 +181,9 @@ const boardRoute: RouteSchema = {
             width: '100%',
             gap: '200',
             p: '300',
-            bg: 'neutral-0',
+            bg: 'surface',
             r: '300',
-            border: '1px solid neutral-200',
+            border: '1px solid border',
           },
           children: [
             {
@@ -251,7 +251,7 @@ export const kanbanTemplate: TemplateSchema = {
     themeId: 'light',
   },
   type: 'Column',
-  props: { bg: 'neutral-50', width: '100%', minHeight: '100%' },
+  props: { bg: 'page', width: '100%', minHeight: '100%' },
   children: [{ type: '$routes' }],
   routes: [
     boardsRoute,
@@ -260,7 +260,7 @@ export const kanbanTemplate: TemplateSchema = {
       path: '*',
       type: 'Column',
       props: { p: '600', ax: 'center' },
-      children: [{ type: 'we-text', props: { color: 'neutral-400' }, children: ['No such board.'] }],
+      children: [{ type: 'we-text', props: { color: 'textFaint' }, children: ['No such board.'] }],
     },
   ],
 };

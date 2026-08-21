@@ -2,7 +2,7 @@ import type { SchemaNode } from '@we/schema-shared';
 
 export const signalTypeCard: SchemaNode = {
   type: 'Card',
-  props: { bg: 'neutral-50', border: '1px solid neutral-100' },
+  props: { bg: 'surface', border: '1px solid border' },
   children: [
     // Header: icon + name/description + delete
     {
@@ -42,7 +42,7 @@ export const signalTypeCard: SchemaNode = {
                 size: 'sm',
                 onClick: { $action: 'model.delete', args: ['SignalType', '$signalType.id'] },
               },
-              children: [{ type: 'we-icon', props: { name: 'trash', color: 'danger-500' } }],
+              children: [{ type: 'we-icon', props: { name: 'trash', color: 'dangerText' } }],
             },
           ],
         },

@@ -175,11 +175,11 @@ function createMessage(role: ChatMessage['role'], content: string, status?: Chat
 /** Minimal starter template for "Start Fresh" */
 const starterTemplate: SchemaNode = {
   type: 'Column',
-  props: { width: '100%', minHeight: '100%', bg: 'neutral-50' },
+  props: { width: '100%', minHeight: '100%', bg: 'page' },
   children: [
     {
       type: 'Column',
-      props: { p: '600', gap: '300', bg: 'primary-100' },
+      props: { p: '600', gap: '300', bg: 'accentMuted' },
       children: [{ type: 'we-text', props: { fontSize: '700', fontWeight: 'bold' }, children: ['Welcome'] }],
     },
     {
@@ -188,7 +188,7 @@ const starterTemplate: SchemaNode = {
       children: [
         {
           type: 'we-text',
-          props: { fontSize: '400', color: 'neutral-400' },
+          props: { fontSize: '400', color: 'textFaint' },
           children: ['Chat with AI to build your interface.'],
         },
       ],

@@ -40,7 +40,7 @@ function joinControls(label: string): SchemaNode[] {
         condition: { $and: [joiningThisSpace, { $store: 'spaceStore.joinSlow' }] },
         then: {
           type: 'we-text',
-          props: { variant: 'footnote', color: 'neutral-400', textAlign: 'center', maxWidth: '400px' },
+          props: { variant: 'footnote', color: 'textFaint', textAlign: 'center', maxWidth: '400px' },
           children: ['Still joining. A first join has to fetch and install the space, which can take a minute.'],
         },
       },
@@ -52,7 +52,7 @@ function joinControls(label: string): SchemaNode[] {
         condition: { $eq: [{ $store: 'spaceStore.joinError.spaceId' }, { $store: 'routeStore.segments.1' }] },
         then: {
           type: 'we-text',
-          props: { variant: 'footnote', color: 'danger-500', textAlign: 'center', maxWidth: '400px' },
+          props: { variant: 'footnote', color: 'dangerText', textAlign: 'center', maxWidth: '400px' },
           children: [{ $store: 'spaceStore.joinError.message' }],
         },
       },

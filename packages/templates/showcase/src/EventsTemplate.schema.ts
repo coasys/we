@@ -57,9 +57,9 @@ const eventCard: SchemaNode = {
     width: '100%',
     gap: '300',
     p: '400',
-    bg: 'neutral-0',
+    bg: 'surface',
     r: '400',
-    border: '1px solid neutral-200',
+    border: '1px solid border',
   },
   children: [
     {
@@ -105,7 +105,7 @@ export const eventsTemplate: TemplateSchema = {
     themeId: 'retro',
   },
   type: 'Column',
-  props: { bg: 'neutral-50', width: '100%', minHeight: '100%', ax: 'center' },
+  props: { bg: 'page', width: '100%', minHeight: '100%', ax: 'center' },
   $localState: { composeOpen: { type: 'boolean', initial: false } },
   children: [
     {

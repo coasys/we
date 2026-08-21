@@ -103,7 +103,7 @@ function accountBadge(account: string): SchemaNode {
           image: { $store: `${account}.avatar` },
           initials: { $store: `${account}.name` },
           size: '120px',
-          bg: 'primary-100',
+          bg: 'accentMuted',
         },
       },
       {
@@ -191,7 +191,7 @@ const firstRunSplash: SchemaNode = {
       props: { gap: '300', ay: 'center', height: '40px' },
       children: [
         { type: 'we-spinner', props: { size: 'sm' } },
-        { type: 'we-text', props: { fontSize: '400', color: 'neutral-600' }, children: ['Loading...'] },
+        { type: 'we-text', props: { fontSize: '400', color: 'textMuted' }, children: ['Loading...'] },
       ],
     },
   ],
@@ -223,7 +223,7 @@ function accountSwitcher(): SchemaNode {
     type: 'we-button',
     // Deliberately not disabled mid-switch: the fade out and back is its own flicker, and switching
     // again is a reasonable thing to want. The store handles it.
-    props: { variant: 'bare', ax: 'start', p: '300', hoverProps: { bg: 'neutral-25' }, onClick },
+    props: { variant: 'bare', ax: 'start', p: '300', hoverProps: { bg: 'surfaceHover' }, onClick },
     children: [
       {
         type: 'Row',
@@ -255,7 +255,7 @@ function accountSwitcher(): SchemaNode {
             '$account.name',
             {
               type: 'we-avatar',
-              props: { image: '$account.avatar', initials: '$account.name', size: 'lg', bg: 'primary-200' },
+              props: { image: '$account.avatar', initials: '$account.name', size: 'lg', bg: 'accentMuted' },
             },
             { $action: 'accountStore.switchAccount', args: ['$account.id'] },
           ),
@@ -273,7 +273,7 @@ function accountSwitcher(): SchemaNode {
           // corner.
           then: tile(
             'New account',
-            { type: 'we-avatar', props: { icon: 'plus', size: 'lg', bg: 'neutral-100' } },
+            { type: 'we-avatar', props: { icon: 'plus', size: 'lg', bg: 'surfaceSunken' } },
             { $action: 'accountStore.createAccount' },
           ),
         },
@@ -294,15 +294,15 @@ const welcomeHeading: SchemaNode = {
   type: 'Column',
   props: { gap: '300', ax: 'center', maxWidth: '420px' },
   children: [
-    { type: 'we-text', props: { variant: 'heading-lg', color: 'primary-700' }, children: ['Welcome'] },
+    { type: 'we-text', props: { variant: 'heading-lg', color: 'accentStrong' }, children: ['Welcome'] },
     {
       type: 'we-text',
-      props: { fontSize: '500', color: 'neutral-600', textAlign: 'center' },
+      props: { fontSize: '500', color: 'textMuted', textAlign: 'center' },
       children: ['Create an account to get started.'],
     },
     {
       type: 'we-text',
-      props: { color: 'neutral-600', textAlign: 'center' },
+      props: { color: 'textMuted', textAlign: 'center' },
       children: [
         'All your data lives on this device. Only content added to shared spaces is synced with their members.',
       ],
@@ -339,7 +339,7 @@ const creatingAccountState: SchemaNode = {
   props: { gap: '300', ay: 'center' },
   children: [
     { type: 'we-spinner', props: { size: 'sm' } },
-    { type: 'we-text', props: { color: 'neutral-600' }, children: ['Preparing new account...'] },
+    { type: 'we-text', props: { color: 'textMuted' }, children: ['Preparing new account...'] },
   ],
 };
 
@@ -406,7 +406,7 @@ function knownAccountState(account: string): SchemaNode {
         props: { gap: '300', ay: 'center', height: '40px' },
         children: [
           { type: 'we-spinner', props: { size: 'sm' } },
-          { type: 'we-text', props: { color: 'neutral-600' }, children: ['Loading account...'] },
+          { type: 'we-text', props: { color: 'textMuted' }, children: ['Loading account...'] },
         ],
       },
     ],
@@ -429,7 +429,7 @@ const unlockForm: SchemaNode = {
           type: 'Row',
           props: { gap: '300', ay: 'center' },
           children: [
-            { type: 'we-icon', props: { name: 'key', color: 'primary-600' } },
+            { type: 'we-icon', props: { name: 'key', color: 'accentStrong' } },
             {
               type: 'we-text',
               props: { variant: 'heading-sm', fontWeight: 'regular' },
@@ -577,7 +577,7 @@ const bootFailure: SchemaNode = {
           type: 'Row',
           props: { gap: '300', ay: 'center' },
           children: [
-            { type: 'we-icon', props: { name: 'warning', color: 'danger-500' } },
+            { type: 'we-icon', props: { name: 'warning', color: 'dangerText' } },
             {
               type: 'we-text',
               props: { variant: 'heading-sm', fontWeight: 'regular' },
@@ -587,7 +587,7 @@ const bootFailure: SchemaNode = {
         },
         {
           type: 'we-text',
-          props: { color: 'neutral-600', textAlign: 'center' },
+          props: { color: 'textMuted', textAlign: 'center' },
           children: ['WE could not connect to the data layer that holds your account.'],
         },
         {
@@ -626,7 +626,7 @@ export const bootScreen: SchemaNode = {
         // Colour beneath, fields above: `bg` emits the `background` shorthand but is assigned
         // before `background-image`, so the two compose. Swap `blobBackground` for
         // `hueSweepBackground` for the concentric version.
-        bg: 'neutral-0',
+        bg: 'surface',
         bgImage: blobBackground,
         // Not `opacity`, which would take the heading and the form down with the background.
         bgImageOpacity: 0.3,
@@ -764,7 +764,7 @@ export const bootScreen: SchemaNode = {
                               type: 'Row',
                               props: { gap: '300', ay: 'center' },
                               children: [
-                                { type: 'we-icon', props: { name: 'user-plus', color: 'primary-700' } },
+                                { type: 'we-icon', props: { name: 'user-plus', color: 'accentStrong' } },
                                 {
                                   type: 'we-text',
                                   props: { variant: 'heading-md', fontWeight: 'regular' },

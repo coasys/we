@@ -55,9 +55,9 @@ export function schemaMutationActions(
     const count = dynamicArea.children.length;
     dynamicArea.children.push({
       type: 'Row',
-      props: { p: '300', gap: '200', bg: 'neutral-100', r: '200', ay: 'center' },
+      props: { p: '300', gap: '200', bg: 'surfaceSunken', r: '200', ay: 'center' },
       children: [
-        { type: 'we-icon', props: { name: 'check', color: 'success-500' } },
+        { type: 'we-icon', props: { name: 'check', color: 'successText' } },
         { type: 'we-text', children: [`Template child #${count}`] },
       ],
     });
@@ -100,9 +100,9 @@ export function schemaMutationActions(
       const count = homeRoute.children.length;
       homeRoute.children.push({
         type: 'Row',
-        props: { p: '300', gap: '200', bg: 'neutral-100', r: '200', ay: 'center' },
+        props: { p: '300', gap: '200', bg: 'surfaceSunken', r: '200', ay: 'center' },
         children: [
-          { type: 'we-icon', props: { name: 'check', color: 'primary-500' } },
+          { type: 'we-icon', props: { name: 'check', color: 'accent' } },
           { type: 'we-text', children: [`Route child #${count}`] },
         ],
       });
@@ -164,9 +164,9 @@ export function schemaMutationActions(
     const count = innerColumn.children.length;
     innerColumn.children.push({
       type: 'Row',
-      props: { p: '300', gap: '200', bg: 'primary-50', r: '200', ay: 'center' },
+      props: { p: '300', gap: '200', bg: 'accentMuted', r: '200', ay: 'center' },
       children: [
-        { type: 'we-icon', props: { name: 'lightning', color: 'primary-500' } },
+        { type: 'we-icon', props: { name: 'lightning', color: 'accent' } },
         { type: 'we-text', children: [`Multi-mutate child #${count}`] },
       ],
     });

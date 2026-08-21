@@ -271,7 +271,7 @@ function TreeNode(props: TreeNodeProps) {
           }}
         >
           <Show when={hasKids()}>
-            <we-icon name={isCollapsed() ? 'caret-right' : 'caret-down'} size="xs" color="neutral-400" />
+            <we-icon name={isCollapsed() ? 'caret-right' : 'caret-down'} size="xs" color="textFaint" />
           </Show>
         </div>
 
@@ -284,7 +284,7 @@ function TreeNode(props: TreeNodeProps) {
 
         {/* Context label: route path, slot name, or prop name */}
         <Show when={props.contextLabel}>
-          <we-text fontSize="10px" lineHeight="1" flexShrink="0" whiteSpace="nowrap" color="neutral-400">
+          <we-text fontSize="10px" lineHeight="1" flexShrink="0" whiteSpace="nowrap" color="textFaint">
             {props.contextLabel}:
           </we-text>
         </Show>
@@ -456,15 +456,7 @@ export function InspectorPanel() {
   }
 
   return (
-    <Column
-      width="100%"
-      height="100%"
-      overflow="hidden"
-      bg="neutral-0"
-      fontFamily="base"
-      fontSize="200"
-      color="neutral-800"
-    >
+    <Column width="100%" height="100%" overflow="hidden" bg="surface" fontFamily="base" fontSize="200" color="text">
       {/* Header */}
       <Row
         ax="between"
@@ -494,8 +486,8 @@ export function InspectorPanel() {
           flex="none"
           borderBottom={`1px solid ${tokenVar('color', 'neutral-100')}`}
         >
-          <we-icon name="list" size="xs" color="neutral-400" />
-          <we-text fontSize="100" fontWeight="600" textTransform="uppercase" letterSpacing="widest" color="neutral-400">
+          <we-icon name="list" size="xs" color="textFaint" />
+          <we-text fontSize="100" fontWeight="600" textTransform="uppercase" letterSpacing="widest" color="textFaint">
             Layers
           </we-text>
         </Row>
@@ -511,7 +503,7 @@ export function InspectorPanel() {
           height: '4px',
           cursor: 'row-resize',
           'flex-shrink': '0',
-          background: dividerResizing() ? 'var(--we-color-primary-300)' : 'var(--we-color-neutral-100)',
+          background: dividerResizing() ? 'var(--we-color-primary-300)' : 'var(--we-role-border)',
         }}
       />
 
@@ -521,8 +513,8 @@ export function InspectorPanel() {
           when={selectedNode()}
           fallback={
             <Column flex="1" ax="center" ay="center" gap="200" p="500" textAlign="center">
-              <we-icon name="cursor-click" size="lg" color="neutral-300" />
-              <we-text fontSize="200" color="neutral-400">
+              <we-icon name="cursor-click" size="lg" color="textFaint" />
+              <we-text fontSize="200" color="textFaint">
                 Click a node to inspect it
               </we-text>
             </Column>
@@ -629,12 +621,12 @@ function NodeProperties(props: {
   return (
     <>
       {/* Header */}
-      <Column px="400" pt="300" pb="200" gap="100" borderBottom="1px solid neutral-100" flex="none">
-        <we-text fontSize="300" fontWeight="600" color="neutral-900">
+      <Column px="400" pt="300" pb="200" gap="100" borderBottom="1px solid border" flex="none">
+        <we-text fontSize="300" fontWeight="600" color="text">
           {props.node.type ?? '(no type)'}
         </we-text>
         <Show when={props.node.id}>
-          <we-text fontSize="100" color="neutral-400">
+          <we-text fontSize="100" color="textFaint">
             id: {props.node.id}
           </we-text>
         </Show>
@@ -644,7 +636,7 @@ function NodeProperties(props: {
       <we-scroll-area flex="1">
         {/* Content — text, a bound value, or a value-level conditional */}
         <Show when={showContent()}>
-          <Column py="200" borderBottom="1px solid neutral-100">
+          <Column py="200" borderBottom="1px solid border">
             <ContentEditor
               content={props.node.children}
               nodeId={props.node.id}
@@ -658,7 +650,7 @@ function NodeProperties(props: {
 
         {/* Logic — condition builder for $if, in place of raw JSON */}
         <Show when={props.node.type === '$if'}>
-          <Column py="100" borderBottom="1px solid neutral-100">
+          <Column py="100" borderBottom="1px solid border">
             <ConditionEditor
               label="Show when"
               condition={currentProps().condition}
@@ -735,7 +727,7 @@ function NodeProperties(props: {
 
         {/* Unknown component — show any primitive props that are set */}
         <Show when={!meta() && usedProps().size === 0 && complexProps().length === 0}>
-          <we-text py="400" px="14px" color="neutral-400">
+          <we-text py="400" px="14px" color="textFaint">
             No props
           </we-text>
         </Show>
@@ -748,7 +740,7 @@ function NodeProperties(props: {
             <For each={complexProps().map(([key]) => key)}>
               {(key) => (
                 <Column px="400" py="100" gap="100">
-                  <we-text fontSize="100" fontWeight="500" color="neutral-500">
+                  <we-text fontSize="100" fontWeight="500" color="textMuted">
                     {key}
                   </we-text>
                   <ValueEditor
@@ -776,8 +768,8 @@ function CollapsibleSection(props: { label: string; children: JSX.Element }) {
   return (
     <Column borderTop="1px solid neutral-50">
       <Row ay="center" gap="100" px="400" py="100" cursor="pointer" onClick={() => setOpen((v) => !v)}>
-        <we-icon name={open() ? 'caret-down' : 'caret-right'} size="xs" color="neutral-400" />
-        <we-text fontSize="100" fontWeight="600" textTransform="uppercase" letterSpacing="0.06em" color="neutral-400">
+        <we-icon name={open() ? 'caret-down' : 'caret-right'} size="xs" color="textFaint" />
+        <we-text fontSize="100" fontWeight="600" textTransform="uppercase" letterSpacing="0.06em" color="textFaint">
           {props.label}
         </we-text>
       </Row>
@@ -801,7 +793,7 @@ function SectionLabel(props: { children: string }) {
       fontWeight="600"
       textTransform="uppercase"
       letterSpacing="0.06em"
-      color="neutral-400"
+      color="textFaint"
     >
       {props.children}
     </we-text>
@@ -962,7 +954,7 @@ function ColorSwatchPicker(props: { value: string; onChange: (v: string) => void
           <we-text flex="1" truncate color={props.value ? 'neutral-800' : 'neutral-400'} fontSize="200">
             {props.value || '—'}
           </we-text>
-          <we-icon name={open() ? 'caret-up' : 'caret-down'} size="xs" color="neutral-400" />
+          <we-icon name={open() ? 'caret-up' : 'caret-down'} size="xs" color="textFaint" />
         </Row>
       </we-button>
 
@@ -988,7 +980,7 @@ function ColorSwatchPicker(props: { value: string; onChange: (v: string) => void
                     setOpen(false);
                   }}
                 >
-                  <we-text color="neutral-400">(unset)</we-text>
+                  <we-text color="textFaint">(unset)</we-text>
                 </we-menu-item>
               </Show>
 
@@ -1168,7 +1160,7 @@ function RingPicker(props: { value: string; onChange: (v: string) => void }) {
               ? `${widthPx()}px · ${color() === RING_THEME_ACCENT ? 'theme accent' : color() || 'custom'}`
               : '—'}
           </we-text>
-          <we-icon name={open() ? 'caret-up' : 'caret-down'} size="xs" color="neutral-400" />
+          <we-icon name={open() ? 'caret-up' : 'caret-down'} size="xs" color="textFaint" />
         </Row>
       </we-button>
 
@@ -1194,7 +1186,7 @@ function RingPicker(props: { value: string; onChange: (v: string) => void }) {
                     setOpen(false);
                   }}
                 >
-                  <we-text color="neutral-400">(unset)</we-text>
+                  <we-text color="textFaint">(unset)</we-text>
                 </we-menu-item>
               </Show>
 
@@ -1204,7 +1196,7 @@ function RingPicker(props: { value: string; onChange: (v: string) => void }) {
                   <we-text
                     fontSize="100"
                     fontWeight="600"
-                    color="neutral-400"
+                    color="textFaint"
                     textTransform="uppercase"
                     letterSpacing="0.06em"
                   >
@@ -1223,7 +1215,7 @@ function RingPicker(props: { value: string; onChange: (v: string) => void }) {
                   <we-text
                     fontSize="100"
                     fontWeight="600"
-                    color="neutral-400"
+                    color="textFaint"
                     textTransform="uppercase"
                     letterSpacing="0.06em"
                   >
@@ -1245,7 +1237,7 @@ function RingPicker(props: { value: string; onChange: (v: string) => void }) {
                 <we-text
                   fontSize="100"
                   fontWeight="600"
-                  color="neutral-400"
+                  color="textFaint"
                   textTransform="uppercase"
                   letterSpacing="0.06em"
                 >
@@ -1384,7 +1376,7 @@ function BgImagePicker(props: {
     'background-image': src ? `url("${src}")` : undefined,
     'background-size': 'cover',
     'background-position': 'center',
-    'background-color': 'var(--we-color-neutral-100)',
+    'background-color': 'var(--we-role-border)',
   });
 
   // Long unbroken strings (data URIs, or just long URLs) can blow out an ancestor's
@@ -1420,7 +1412,7 @@ function BgImagePicker(props: {
           <we-text flex="1" minWidth="0" truncate color={props.value ? 'neutral-800' : 'neutral-400'} fontSize="200">
             {triggerLabel()}
           </we-text>
-          <we-icon name={open() ? 'caret-up' : 'caret-down'} size="xs" color="neutral-400" />
+          <we-icon name={open() ? 'caret-up' : 'caret-down'} size="xs" color="textFaint" />
         </Row>
       </we-button>
 
@@ -1446,7 +1438,7 @@ function BgImagePicker(props: {
                     setOpen(false);
                   }}
                 >
-                  <we-text color="neutral-400">(unset)</we-text>
+                  <we-text color="textFaint">(unset)</we-text>
                 </we-menu-item>
               </Show>
 
@@ -1479,7 +1471,7 @@ function BgImagePicker(props: {
                   <Show
                     when={images().length > 0}
                     fallback={
-                      <we-text color="neutral-400" fontSize="200" textAlign="center">
+                      <we-text color="textFaint" fontSize="200" textAlign="center">
                         No images in this space yet
                       </we-text>
                     }
@@ -1521,8 +1513,8 @@ function BgImagePicker(props: {
                   }
                 >
                   <we-file-upload accept="image/*" on:change={handleFileInputChange} width="100%">
-                    <we-icon name="image" color="neutral-500" size="lg" />
-                    <we-text color="neutral-500" fontSize="200">
+                    <we-icon name="image" color="textMuted" size="lg" />
+                    <we-text color="textMuted" fontSize="200">
                       Drop an image or click to browse
                     </we-text>
                   </we-file-upload>
@@ -1549,19 +1541,19 @@ function BgImagePicker(props: {
               {/* Opacity/tint — persistent regardless of active tab, since they apply to
                   whichever image is currently selected, not to the picking process itself. */}
               <Show when={props.value}>
-                <Column gap="200" borderTop="1px solid neutral-100" pt="300">
+                <Column gap="200" borderTop="1px solid border" pt="300">
                   <Row ay="center" gap="200">
                     <we-text
                       fontSize="100"
                       fontWeight="600"
-                      color="neutral-400"
+                      color="textFaint"
                       textTransform="uppercase"
                       letterSpacing="0.06em"
                       flex="1"
                     >
                       Opacity
                     </we-text>
-                    <we-text fontSize="100" color="neutral-400">
+                    <we-text fontSize="100" color="textFaint">
                       {Math.round((props.opacity ?? 1) * 100)}%
                     </we-text>
                   </Row>
@@ -1582,14 +1574,14 @@ function BgImagePicker(props: {
                     <we-text
                       fontSize="100"
                       fontWeight="600"
-                      color="neutral-400"
+                      color="textFaint"
                       textTransform="uppercase"
                       letterSpacing="0.06em"
                     >
                       Fade to
                     </we-text>
                     <ColorSwatchPicker value={props.tint ?? ''} onChange={(v) => props.onTintChange(v)} />
-                    <we-text fontSize="100" color="neutral-400">
+                    <we-text fontSize="100" color="textFaint">
                       {props.tint ? '' : `Defaults to ${props.bg ?? 'neutral-0'} (this element's own bg)`}
                     </we-text>
                   </Show>
@@ -1609,23 +1601,23 @@ function BgImagePicker(props: {
 
 const BOX_MARGIN = {
   bg: 'var(--we-color-warning-200)',
-  border: 'var(--we-color-warning-400)',
+  border: 'var(--we-role-warning-text)',
   label: 'var(--we-color-warning-800)',
   value: 'var(--we-color-warning-800)',
-  placeholder: 'var(--we-color-warning-400)',
+  placeholder: 'var(--we-role-warning-text)',
 };
 
 const BOX_PADDING = {
   bg: 'var(--we-color-success-200)',
-  border: 'var(--we-color-success-400)',
+  border: 'var(--we-role-success-text)',
   label: 'var(--we-color-success-800)',
   value: 'var(--we-color-success-800)',
-  placeholder: 'var(--we-color-success-400)',
+  placeholder: 'var(--we-role-success-text)',
 };
 
 const BOX_ELEMENT = {
-  bg: 'var(--we-color-primary-200)',
-  border: 'var(--we-color-primary-400)',
+  bg: 'var(--we-role-accent-muted)',
+  border: 'var(--we-role-accent)',
   text: 'var(--we-color-primary-800)',
 };
 
@@ -1707,7 +1699,7 @@ function BoxModel(props: {
 
   return (
     <Show when={hasPadding() || hasMargin()}>
-      <Column px="400" py="200" borderBottom="1px solid neutral-100">
+      <Column px="400" py="200" borderBottom="1px solid border">
         {/* Shorthand row: all / x-axis / y-axis setters */}
         <Column gap="100" mb="200">
           <Show when={hasMargin()}>
@@ -1917,7 +1909,7 @@ function PropRow(props: {
     // unbroken string (a URL, a data URI) in the input column, which pushes the whole
     // row wider than the panel and shoves the prop-key label out of view.
     <Grid template="minmax(0, 1fr) minmax(0, 1.2fr)" gap="200" ay="center" px="400" py="100">
-      <we-text title={props.propKey} fontSize="200" fontWeight="500" color="neutral-600" truncate minWidth="0">
+      <we-text title={props.propKey} fontSize="200" fontWeight="500" color="textMuted" truncate minWidth="0">
         {props.propKey}
       </we-text>
       {renderInput()}

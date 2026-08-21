@@ -22,7 +22,7 @@ export const headerLayout: TemplateSchema = {
   type: 'Column',
   // `minHeight` rather than `height`: fills the viewport when a route is short, and grows with a
   // long one. A fixed 100% clips the box at the fold, so this node's own background stops there.
-  props: { bg: 'neutral-50', minHeight: '100%' },
+  props: { bg: 'page', minHeight: '100%' },
   children: [{ type: '$routes' }],
   routes: [
     homeRoute,

@@ -42,7 +42,7 @@ const accountSection: SchemaNode = {
     { type: 'we-text', props: { fontWeight: 'semibold' }, children: ['Account'] },
     {
       type: 'Card',
-      props: { bg: 'neutral-100' },
+      props: { bg: 'surfaceSunken' },
       children: [
         {
           type: 'Row',
@@ -89,7 +89,7 @@ const templatesSection: SchemaNode = {
                 bg: {
                   $if: {
                     condition: '$template.isDefault',
-                    then: 'neutral-100',
+                    then: 'surfaceSunken',
                     else: 'transparent',
                   },
                 },
@@ -218,7 +218,7 @@ const templatesSection: SchemaNode = {
                       children: [
                         {
                           type: 'we-icon',
-                          props: { name: 'trash', size: '16px', color: 'danger-400' },
+                          props: { name: 'trash', size: '16px', color: 'dangerText' },
                         },
                       ],
                     },
@@ -256,9 +256,9 @@ const themeScopeSection: SchemaNode = {
         ax: 'between',
         gap: '300',
         p: '300',
-        bg: 'neutral-0',
+        bg: 'surface',
         r: '300',
-        border: '1px solid neutral-200',
+        border: '1px solid border',
       },
       children: [
         {
@@ -268,7 +268,7 @@ const themeScopeSection: SchemaNode = {
             { type: 'we-text', props: { variant: 'label' }, children: ['Let spaces theme the whole window'] },
             {
               type: 'we-text',
-              props: { variant: 'footnote', color: 'neutral-400' },
+              props: { variant: 'footnote', color: 'textFaint' },
               children: [
                 'Off, a space themes its own content and the shell keeps your theme. On, entering a space restyles everything, including these settings.',
               ],
@@ -279,7 +279,7 @@ const themeScopeSection: SchemaNode = {
                 condition: { $store: 'themeStore.themeScopePreviewing' },
                 then: {
                   type: 'we-text',
-                  props: { variant: 'footnote', color: 'warning-600' },
+                  props: { variant: 'footnote', color: 'warningText' },
                   children: ['A theme you are editing is previewing a different scope right now.'],
                 },
               },
@@ -302,9 +302,9 @@ const themeScopeSection: SchemaNode = {
         ax: 'between',
         gap: '300',
         p: '300',
-        bg: 'neutral-0',
+        bg: 'surface',
         r: '300',
-        border: '1px solid neutral-200',
+        border: '1px solid border',
       },
       children: [
         {
@@ -314,7 +314,7 @@ const themeScopeSection: SchemaNode = {
             { type: 'we-text', props: { variant: 'label' }, children: ['Let templates bring their own theme'] },
             {
               type: 'we-text',
-              props: { variant: 'footnote', color: 'neutral-400' },
+              props: { variant: 'footnote', color: 'textFaint' },
               children: [
                 'On, switching to a template designed for a particular theme switches the look with it, and switching back restores what you had. Off, only you and the space decide the theme. A theme you pick for a space always wins either way.',
               ],
@@ -356,7 +356,7 @@ const themesSection: SchemaNode = {
                 bg: {
                   $if: {
                     condition: '$theme.isDefault',
-                    then: 'neutral-100',
+                    then: 'surfaceSunken',
                     else: 'transparent',
                   },
                 },
@@ -468,7 +468,7 @@ const themesSection: SchemaNode = {
                       children: [
                         {
                           type: 'we-icon',
-                          props: { name: 'trash', size: '16px', color: 'danger-400' },
+                          props: { name: 'trash', size: '16px', color: 'dangerText' },
                         },
                       ],
                     },
@@ -492,9 +492,9 @@ function moduleRow(control: SchemaNode): SchemaNode {
       ax: 'between',
       gap: '300',
       p: '300',
-      bg: 'neutral-0',
+      bg: 'surface',
       r: '300',
-      border: '1px solid neutral-200',
+      border: '1px solid border',
     },
     children: [
       {
@@ -509,7 +509,7 @@ function moduleRow(control: SchemaNode): SchemaNode {
               { type: 'we-text', props: { variant: 'label' }, children: ['$mod.name'] },
               {
                 type: 'we-text',
-                props: { variant: 'footnote', color: 'neutral-400' },
+                props: { variant: 'footnote', color: 'textFaint' },
                 children: ['$mod.description'],
               },
             ],
@@ -545,7 +545,7 @@ function moduleGroup(title: string, blurb: string, surface: string, control: Sch
         props: { gap: '200' },
         children: [
           { type: 'we-text', props: { variant: 'label' }, children: [title] },
-          { type: 'we-text', props: { variant: 'footnote', color: 'neutral-400' }, children: [blurb] },
+          { type: 'we-text', props: { variant: 'footnote', color: 'textFaint' }, children: [blurb] },
           {
             type: 'Column',
             props: { gap: '200' },
@@ -583,7 +583,7 @@ const modulesSection: SchemaNode = {
         },
         {
           type: 'we-text',
-          props: { variant: 'footnote', color: 'neutral-400' },
+          props: { variant: 'footnote', color: 'textFaint' },
           children: ['Which feature modules you want available to you. Your own choice, and it applies everywhere.'],
         },
       ],
@@ -728,7 +728,7 @@ function page(children: SchemaNode[]): SchemaNode {
 export const settingsTemplate: TemplateSchema = {
   meta: { name: 'Settings', description: 'Account settings', icon: 'gear' },
   type: 'Column',
-  props: { width: '100%', minHeight: '100%', bg: 'neutral-50', ax: 'center' },
+  props: { width: '100%', minHeight: '100%', bg: 'page', ax: 'center' },
   // Every route below declares whatever local state it needs. A route is rendered by `buildRoutes`
   // as its own `RenderSchema` call with a fresh context — so it is not a descendant of this node at
   // render time, whatever the schema tree looks like, and state declared here would never reach it.

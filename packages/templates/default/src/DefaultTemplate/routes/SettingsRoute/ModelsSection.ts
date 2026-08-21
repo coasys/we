@@ -62,7 +62,7 @@ const dragHandle: SchemaNode = {
       cursor: 'grab',
     },
   },
-  children: [{ type: 'we-icon', props: { size: 'sm', name: 'dots-six-vertical', color: 'neutral-400' } }],
+  children: [{ type: 'we-icon', props: { size: 'sm', name: 'dots-six-vertical', color: 'textFaint' } }],
 };
 
 /**
@@ -339,7 +339,7 @@ const propertyRow: SchemaNode = {
   // neutral-0, not neutral-50: neutral-50 is what `we-input` fills itself with, so a card painted
   // in it made every field disappear into its own container. Surfaces take the surface step and
   // controls keep their recessed one — see the note on `relationshipRow` for the tinted case.
-  props: { gap: '200', p: '300', bg: 'neutral-0', r: '300', border: '1px solid neutral-200', ay: 'start' },
+  props: { gap: '200', p: '300', bg: 'surface', r: '300', border: '1px solid border', ay: 'start' },
   children: [
     dragHandle,
     {
@@ -433,7 +433,7 @@ const propertyRow: SchemaNode = {
               type: 'we-text',
               props: {
                 variant: 'footnote',
-                color: 'neutral-400',
+                color: 'textFaint',
                 // Its own spacing, since the Column has no gap to give it — see the note there.
                 pt: '200',
                 truncate: true,
@@ -474,7 +474,7 @@ const relationshipRow: SchemaNode = {
   type: 'Row',
   // A tint is fine where a fill is not: primary-50 is a different step from the neutral-50 that
   // `we-input` paints itself, so the fields still read as recessed against it.
-  props: { gap: '200', p: '300', bg: 'primary-50', r: '300', border: '1px solid primary-100', ay: 'start' },
+  props: { gap: '200', p: '300', bg: 'accentMuted', r: '300', border: '1px solid accentMuted', ay: 'start' },
   children: [
     dragHandle,
     {
@@ -486,7 +486,7 @@ const relationshipRow: SchemaNode = {
           props: { gap: '300', ay: 'center', wrap: true },
           children: [
             memberNameInput,
-            { type: 'we-icon', props: { name: 'arrow-right', color: 'neutral-400' } },
+            { type: 'we-icon', props: { name: 'arrow-right', color: 'textFaint' } },
             {
               type: 'we-select',
               props: {
@@ -732,13 +732,13 @@ const shapeWizardModal: SchemaNode = {
                     py: '400',
                     px: '400',
                     r: '300',
-                    border: '1px dashed neutral-300',
+                    border: '1px dashed borderStrong',
                     gap: '100',
                   },
                   children: [
                     {
                       type: 'we-text',
-                      props: { color: 'neutral-400' },
+                      props: { color: 'textFaint' },
                       children: ['No properties or relationships yet.'],
                     },
                     /*
@@ -754,12 +754,12 @@ const shapeWizardModal: SchemaNode = {
                         condition: { $store: 'shapeStore.aiAvailable' },
                         then: {
                           type: 'we-text',
-                          props: { variant: 'footnote', color: 'neutral-400', textAlign: 'center' },
+                          props: { variant: 'footnote', color: 'textFaint', textAlign: 'center' },
                           children: ['Add one below, or name the model above and press Generate.'],
                         },
                         else: {
                           type: 'we-text',
-                          props: { variant: 'footnote', color: 'neutral-400', textAlign: 'center' },
+                          props: { variant: 'footnote', color: 'textFaint', textAlign: 'center' },
                           children: [
                             'Configure a language model in Settings \u2192 AI to generate fields from a description.',
                           ],
@@ -930,7 +930,7 @@ const hintEditorModal: SchemaNode = {
       children: [
         {
           type: 'we-text',
-          props: { variant: 'footnote', color: 'neutral-400' },
+          props: { variant: 'footnote', color: 'textFaint' },
           children: [
             'These hints steer AI extraction in this space. Once customized, they stay as this community set them — updates to the defaults no longer apply until you reset.',
           ],
@@ -1039,7 +1039,7 @@ const shapeRow: SchemaNode = {
               type: 'we-icon',
               props: {
                 name: { $if: { condition: '$shape.icon', then: '$shape.icon', else: 'cube' } },
-                color: 'primary-600',
+                color: 'accentStrong',
               },
             },
             {
@@ -1070,7 +1070,7 @@ const shapeRow: SchemaNode = {
                 },
                 {
                   type: 'we-text',
-                  props: { variant: 'footnote', color: 'neutral-400' },
+                  props: { variant: 'footnote', color: 'textFaint' },
                   children: ['$shape.description'],
                 },
               ],
@@ -1142,7 +1142,7 @@ const hintEntityRow: SchemaNode = {
       type: 'Row',
       props: { gap: '200', ay: 'center' },
       children: [
-        { type: 'we-icon', props: { name: 'package', color: 'neutral-500' } },
+        { type: 'we-icon', props: { name: 'package', color: 'textMuted' } },
         { type: 'we-text', children: ['$entity.entity'] },
         { type: 'we-badge', props: { variant: 'neutral', size: 'xs' }, children: ['Built-in'] },
       ],
@@ -1342,10 +1342,10 @@ export const modelsSection: SchemaNode = {
                 type: 'Column',
                 props: { ax: 'center', gap: '200', p: '400' },
                 children: [
-                  { type: 'we-icon', props: { name: 'cube', size: 'lg', color: 'neutral-400' } },
+                  { type: 'we-icon', props: { name: 'cube', size: 'lg', color: 'textFaint' } },
                   {
                     type: 'we-text',
-                    props: { color: 'neutral-400', textAlign: 'center' },
+                    props: { color: 'textFaint', textAlign: 'center' },
                     children: ['This space has no models of its own yet.'],
                   },
                 ],
@@ -1363,7 +1363,7 @@ export const modelsSection: SchemaNode = {
           { type: 'we-text', props: { variant: 'label' }, children: ['Built-in models'] },
           {
             type: 'we-text',
-            props: { variant: 'footnote', color: 'neutral-400' },
+            props: { variant: 'footnote', color: 'textFaint' },
             children: ['Ship with WE. Their structure is fixed, but how AI interprets them here is yours to tune.'],
           },
           {

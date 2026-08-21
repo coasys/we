@@ -95,8 +95,8 @@ const monthPicker: SchemaNode = {
         zIndex: 20,
         width: '260px',
         gap: '200',
-        bg: 'neutral-0',
-        border: '1px solid neutral-200',
+        bg: 'surface',
+        border: '1px solid border',
         r: '400',
         p: '300',
         shadow: 'lg',
@@ -149,7 +149,7 @@ const monthPicker: SchemaNode = {
                     ],
                     // The real current month stays marked even while another year is on screen,
                     // so "where am I relative to now" survives paging away.
-                    color: { $if: { condition: '$month.isThisMonth', then: 'primary-600', else: '' } },
+                    color: { $if: { condition: '$month.isThisMonth', then: 'accentStrong', else: '' } },
                   },
                   children: ['$month.label'],
                 },
@@ -187,7 +187,7 @@ const monthNav: SchemaNode = {
             px: '200',
             py: '100',
             r: '300',
-            hoverProps: { bg: 'neutral-100' },
+            hoverProps: { bg: 'surfaceHover' },
             onClick: { $toggleLocal: 'pickerOpen' },
           },
           children: [
@@ -269,7 +269,7 @@ const monthNav: SchemaNode = {
  */
 const monthGrid: SchemaNode = {
   type: 'Column',
-  props: { width: '100%', gap: '300', bg: 'neutral-0', border: '1px solid neutral-200', r: '500', p: '400' },
+  props: { width: '100%', gap: '300', bg: 'surface', border: '1px solid border', r: '500', p: '400' },
   children: [
     monthNav,
 
@@ -285,7 +285,7 @@ const monthGrid: SchemaNode = {
             {
               type: 'Row',
               props: { flex: '1', ax: 'center' },
-              children: [{ type: 'we-text', props: { variant: 'footnote', color: 'neutral-500', text: '$weekday' } }],
+              children: [{ type: 'we-text', props: { variant: 'footnote', color: 'textMuted', text: '$weekday' } }],
             },
           ],
         },
@@ -326,8 +326,8 @@ const monthGrid: SchemaNode = {
                 bg: {
                   $if: {
                     condition: { $eq: ['$cell.date', { $local: 'day' }] },
-                    then: 'primary-50',
-                    else: { $if: { condition: '$cell.inMonth', then: '', else: 'neutral-50' } },
+                    then: 'accentMuted',
+                    else: { $if: { condition: '$cell.inMonth', then: '', else: 'page' } },
                   },
                 },
                 border: {
@@ -341,8 +341,8 @@ const monthGrid: SchemaNode = {
                   bg: {
                     $if: {
                       condition: { $eq: ['$cell.date', { $local: 'day' }] },
-                      then: 'primary-50',
-                      else: 'neutral-100',
+                      then: 'accentMuted',
+                      else: 'surfaceSunken',
                     },
                   },
                 },
@@ -378,7 +378,7 @@ const monthGrid: SchemaNode = {
                     ax: 'center',
                     ay: 'center',
                     r: 'pill',
-                    bg: { $if: { condition: '$cell.isToday', then: 'primary-500', else: '' } },
+                    bg: { $if: { condition: '$cell.isToday', then: 'accent', else: '' } },
                   },
                   children: [
                     {
@@ -391,8 +391,8 @@ const monthGrid: SchemaNode = {
                         color: {
                           $if: {
                             condition: '$cell.isToday',
-                            then: 'neutral-0',
-                            else: { $if: { condition: '$cell.inMonth', then: 'neutral-900', else: 'neutral-400' } },
+                            then: 'accentText',
+                            else: { $if: { condition: '$cell.inMonth', then: 'text', else: 'textFaint' } },
                           },
                         },
                         fontWeight: { $if: { condition: '$cell.isToday', then: 'semibold', else: '' } },
@@ -436,8 +436,8 @@ const monthGrid: SchemaNode = {
                         text: '$mark.title',
                         // Faded for the neighbouring months, so a busy 1st of next month does not
                         // read as part of the month being looked at.
-                        bg: { $if: { condition: '$cell.inMonth', then: 'primary-100', else: 'neutral-100' } },
-                        color: { $if: { condition: '$cell.inMonth', then: 'primary-800', else: 'neutral-500' } },
+                        bg: { $if: { condition: '$cell.inMonth', then: 'accentMuted', else: 'surfaceSunken' } },
+                        color: { $if: { condition: '$cell.inMonth', then: 'accentStrong', else: 'textMuted' } },
                       },
                     },
                   ],
@@ -464,7 +464,7 @@ const monthGrid: SchemaNode = {
                     },
                     then: {
                       type: 'we-text',
-                      props: { fontSize: '100', color: 'neutral-500', px: '100', text: 'more…' },
+                      props: { fontSize: '100', color: 'textMuted', px: '100', text: 'more…' },
                     },
                   },
                 },
@@ -486,17 +486,17 @@ const monthGrid: SchemaNode = {
  */
 const eventRow: SchemaNode = {
   type: 'Column',
-  props: { width: '100%', gap: '200', bg: 'neutral-50', r: '300', p: '400' },
+  props: { width: '100%', gap: '200', bg: 'surfaceSunken', r: '300', p: '400' },
   children: [
     {
       type: 'Row',
       props: { gap: '300', ay: 'center' },
       children: [
-        { type: 'we-icon', props: { name: 'calendar', color: 'primary-700' } },
+        { type: 'we-icon', props: { name: 'calendar', color: 'accentStrong' } },
         { type: 'we-text', props: { fontWeight: 'semibold' }, children: ['$event.title'] },
         {
           type: 'we-text',
-          props: { fontSize: '200', color: 'neutral-700', ml: 'auto' },
+          props: { fontSize: '200', color: 'text', ml: 'auto' },
           children: [{ type: 'we-timestamp', props: { value: '$event.startDate' } }],
         },
       ],
@@ -505,7 +505,7 @@ const eventRow: SchemaNode = {
       type: '$if',
       props: {
         condition: '$event.description',
-        then: { type: 'we-text', props: { color: 'neutral-700' }, children: ['$event.description'] },
+        then: { type: 'we-text', props: { color: 'text' }, children: ['$event.description'] },
       },
     },
     {
@@ -516,8 +516,8 @@ const eventRow: SchemaNode = {
           type: 'Row',
           props: { gap: '200', ay: 'center' },
           children: [
-            { type: 'we-icon', props: { name: 'map-pin', color: 'neutral-500' } },
-            { type: 'we-text', props: { fontSize: '200', color: 'neutral-700' }, children: ['$event.location'] },
+            { type: 'we-icon', props: { name: 'map-pin', color: 'textMuted' } },
+            { type: 'we-text', props: { fontSize: '200', color: 'text' }, children: ['$event.location'] },
           ],
         },
       },
@@ -648,7 +648,7 @@ export const calendarRoute: RouteSchema = {
                         // timestamp inherits.
                         fontSize: '100',
                         textTransform: 'uppercase',
-                        color: 'neutral-500',
+                        color: 'textMuted',
                       },
                     },
                     {
@@ -677,11 +677,11 @@ export const calendarRoute: RouteSchema = {
                     */
                     else: {
                       type: 'Column',
-                      props: { width: '100%', gap: '300', ay: 'start', bg: 'neutral-50', r: '300', p: '400' },
+                      props: { width: '100%', gap: '300', ay: 'start', bg: 'surfaceSunken', r: '300', p: '400' },
                       children: [
                         {
                           type: 'we-text',
-                          props: { color: 'neutral-500' },
+                          props: { color: 'textMuted' },
                           children: ['Nothing scheduled on this day.'],
                         },
                         {
@@ -720,7 +720,7 @@ export const calendarRoute: RouteSchema = {
                   children: [
                     {
                       type: 'we-text',
-                      props: { variant: 'footnote', color: 'neutral-500', uppercase: true },
+                      props: { variant: 'footnote', color: 'textMuted', uppercase: true },
                       children: ['Scheduled'],
                     },
                     {

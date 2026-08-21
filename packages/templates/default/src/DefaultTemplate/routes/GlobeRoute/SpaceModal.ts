@@ -54,7 +54,7 @@ export const spaceModal = {
                       type: 'we-image',
                       props: { src: '$space.avatar', width: '60px', height: '60px', fit: 'cover', r: 'full' },
                     },
-                    else: { type: 'we-icon', props: { name: 'globe', size: 'xl', color: 'neutral-300' } },
+                    else: { type: 'we-icon', props: { name: 'globe', size: 'xl', color: 'textFaint' } },
                   },
                 },
                 {

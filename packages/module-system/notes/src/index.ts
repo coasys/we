@@ -85,7 +85,7 @@ const collectionId = {
  */
 const noteCard = (entity: string): SchemaNode => ({
   type: 'Column',
-  props: { bg: 'neutral-50', r: '300', p: '300', gap: '200' },
+  props: { bg: 'surfaceSunken', r: '300', p: '300', gap: '200' },
   children: [
     { type: 'we-text', children: ['$note.text'] },
     {

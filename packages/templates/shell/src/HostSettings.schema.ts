@@ -24,7 +24,7 @@ function detail(label: string, value: SchemaProp): SchemaNode {
         type: 'Row',
         props: { gap: '300', ay: 'start', ax: 'between', wrap: true },
         children: [
-          { type: 'we-text', props: { variant: 'footnote', color: 'neutral-500' }, children: [label] },
+          { type: 'we-text', props: { variant: 'footnote', color: 'textMuted' }, children: [label] },
           {
             type: 'we-text',
             props: { variant: 'footnote', textAlign: 'right', styles: { 'word-break': 'break-all' } },
@@ -65,7 +65,7 @@ const identity: SchemaNode = {
             condition: { $store: 'sessionStore.host.description' },
             then: {
               type: 'we-text',
-              props: { variant: 'footnote', color: 'neutral-500' },
+              props: { variant: 'footnote', color: 'textMuted' },
               children: [{ $store: 'sessionStore.host.description' }],
             },
           },
@@ -89,13 +89,13 @@ const credits: SchemaNode = {
     },
     then: {
       type: 'Row',
-      props: { gap: '300', ay: 'center', ax: 'between', bg: 'neutral-100', r: '300', px: '300', py: '200' },
+      props: { gap: '300', ay: 'center', ax: 'between', bg: 'surfaceSunken', r: '300', px: '300', py: '200' },
       children: [
         {
           type: 'Row',
           props: { gap: '200', ay: 'center' },
           children: [
-            { type: 'we-icon', props: { name: 'lightning', color: 'neutral-600' } },
+            { type: 'we-icon', props: { name: 'lightning', color: 'textMuted' } },
             { type: 'we-text', props: { variant: 'footnote' }, children: ['Credits remaining'] },
           ],
         },
@@ -122,7 +122,7 @@ const advertisedModels: SchemaNode = {
       type: 'Column',
       props: { gap: '200' },
       children: [
-        { type: 'we-text', props: { variant: 'footnote', color: 'neutral-500' }, children: ['AI models offered'] },
+        { type: 'we-text', props: { variant: 'footnote', color: 'textMuted' }, children: ['AI models offered'] },
         {
           type: 'Row',
           props: { gap: '200', wrap: true },
@@ -147,7 +147,7 @@ const pricing: SchemaNode = {
       type: 'Column',
       props: { gap: '200' },
       children: [
-        { type: 'we-text', props: { variant: 'footnote', color: 'neutral-500' }, children: ['Rates'] },
+        { type: 'we-text', props: { variant: 'footnote', color: 'textMuted' }, children: ['Rates'] },
         {
           type: '$each',
           props: { items: { $store: 'sessionStore.host.rates' }, as: 'rate' },
@@ -159,7 +159,7 @@ const pricing: SchemaNode = {
                 { type: 'we-text', props: { variant: 'footnote' }, children: ['$rate.description'] },
                 {
                   type: 'we-text',
-                  props: { variant: 'footnote', color: 'neutral-500' },
+                  props: { variant: 'footnote', color: 'textMuted' },
                   children: [{ $concat: ['$rate.priceInHOT', ' HOT'] }],
                 },
               ],
@@ -183,13 +183,13 @@ export const hostSection: SchemaNode = {
           type: 'Row',
           props: { gap: '200', ay: 'center' },
           children: [
-            { type: 'we-icon', props: { name: 'hard-drives', color: 'neutral-600' } },
+            { type: 'we-icon', props: { name: 'hard-drives', color: 'textMuted' } },
             { type: 'we-text', props: { fontWeight: 'semibold' }, children: ['Connected to'] },
           ],
         },
         {
           type: 'Card',
-          props: { bg: 'neutral-100' },
+          props: { bg: 'surfaceSunken' },
           children: [
             {
               type: 'Column',
@@ -211,7 +211,7 @@ export const hostSection: SchemaNode = {
                 pricing,
                 {
                   type: 'we-text',
-                  props: { variant: 'footnote', color: 'neutral-400', italic: true },
+                  props: { variant: 'footnote', color: 'textFaint', italic: true },
                   children: [
                     'Your data and your agent live on this node. Signing out forgets it and returns you to the host picker.',
                   ],

@@ -78,8 +78,8 @@ export function ValueEditor(props: {
         <Column gap="100">
           <Row ay="center" ax="between" gap="100">
             <Row ay="center" gap="100" minWidth="0">
-              <we-icon name="info" size="xs" color="neutral-400" />
-              <we-text fontSize="100" color="neutral-400" truncate>
+              <we-icon name="info" size="xs" color="textFaint" />
+              <we-text fontSize="100" color="textFaint" truncate>
                 Custom expression — edit as JSON
               </we-text>
             </Row>
@@ -103,7 +103,7 @@ export function ValueEditor(props: {
 
       <Match when={valueIf()}>
         {(branch) => (
-          <Column gap="200" bg="neutral-50" r="200" py="100">
+          <Column gap="200" bg="surfaceSunken" r="200" py="100">
             <ConditionEditor
               label="If"
               condition={branch().condition}
@@ -112,7 +112,7 @@ export function ValueEditor(props: {
             />
             <Column px="400" gap="200">
               <Column gap="100">
-                <we-text fontSize="100" fontWeight="600" color="neutral-500">
+                <we-text fontSize="100" fontWeight="600" color="textMuted">
                   Then show
                 </we-text>
                 <ValueEditor
@@ -124,7 +124,7 @@ export function ValueEditor(props: {
                 />
               </Column>
               <Column gap="100">
-                <we-text fontSize="100" fontWeight="600" color="neutral-500">
+                <we-text fontSize="100" fontWeight="600" color="textMuted">
                   Otherwise show
                 </we-text>
                 <ValueEditor

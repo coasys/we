@@ -122,11 +122,11 @@ export const schemaTestsTemplate: TemplateSchema = {
     stores: { testStore: true, templateStore: true },
   },
   type: 'Column',
-  props: { width: '100%', minHeight: '100%', ax: 'center', bg: 'neutral-50' },
+  props: { width: '100%', minHeight: '100%', ax: 'center', bg: 'page' },
   children: [
     {
       type: 'Column',
-      props: { maxWidth: '1200px', width: '100%', bg: 'neutral-50', p: '500', gap: '400' },
+      props: { maxWidth: '1200px', width: '100%', bg: 'page', p: '500', gap: '400' },
       children: [
         {
           type: 'Column',

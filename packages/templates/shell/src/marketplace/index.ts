@@ -36,7 +36,7 @@ const marketplaceBrowser = {
     // Header
     {
       type: 'Column',
-      props: { bg: 'neutral-100', ax: 'center', px: '500', pt: '900', borderBottom: '1px solid neutral-200' },
+      props: { bg: 'surfaceSunken', ax: 'center', px: '500', pt: '900', borderBottom: '1px solid border' },
       children: [
         {
           type: 'Column',
@@ -73,7 +73,7 @@ const marketplaceBrowser = {
 export const marketplaceTemplate: TemplateSchema = {
   meta: { name: 'Module Marketplace', description: 'Browse and install community modules', icon: 'storefront' },
   type: 'Column',
-  props: { width: '100%', minHeight: '100%', bg: 'neutral-50' },
+  props: { width: '100%', minHeight: '100%', bg: 'page' },
   children: [
     {
       type: '$if',

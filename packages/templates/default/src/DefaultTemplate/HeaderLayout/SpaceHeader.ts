@@ -7,7 +7,7 @@ export const spaceHeader: SchemaNode = {
     // ─── Header ───────────────────────────────────────────────────────────────
     {
       type: 'Row',
-      props: { bg: 'neutral-100', ax: 'center' },
+      props: { bg: 'surfaceSunken', ax: 'center' },
       children: [
         {
           type: 'Column',
@@ -66,7 +66,7 @@ export const spaceHeader: SchemaNode = {
                       type: 'we-text',
                       props: {
                         variant: 'heading-md',
-                        color: 'neutral-1000',
+                        color: 'text',
                         loading: { $not: { $store: 'spaceStore.currentSpace' } },
                         loadingWidth: '220px',
                       },
@@ -129,13 +129,13 @@ export const spaceHeader: SchemaNode = {
 export const spaceNavBar: SchemaNode = {
   type: 'Row',
   props: {
-    bg: 'neutral-100',
+    bg: 'surfaceSunken',
     ax: 'center',
     position: 'sticky',
     zIndex: 'sticky',
     top: '0',
     left: '0',
-    borderBottom: '1px solid neutral-200',
+    borderBottom: '1px solid border',
   },
   children: [
     // Mini-profile (fades in once the header has scrolled out of view)
@@ -257,7 +257,7 @@ export const spaceNavBar: SchemaNode = {
                                 shorten: true,
                               },
                             },
-                            { type: 'we-text', props: { color: 'neutral-800' }, children: ['online now'] },
+                            { type: 'we-text', props: { color: 'text' }, children: ['online now'] },
                           ],
                         },
                         {

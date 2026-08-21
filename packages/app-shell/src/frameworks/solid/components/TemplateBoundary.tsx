@@ -63,7 +63,7 @@ export function TemplateBoundary(props: TemplateBoundaryProps) {
             <we-text variant="heading-md" textAlign="center">
               {`Something went wrong in ${props.what}`}
             </we-text>
-            <we-text variant="body" textAlign="center" color="neutral-500" maxWidth="var(--we-layout-xs)">
+            <we-text variant="body" textAlign="center" color="textMuted" maxWidth="var(--we-layout-xs)">
               {/*
                 The message, not a stack. A template's author is often not the person looking at it,
                 and "Cannot read properties of undefined" tells that person nothing they can act on

@@ -22,7 +22,7 @@ const isRoot = { $eq: ['$dataset.id', { $store: 'datasetStore.rootDataset.id' }]
 
 const datasetCard: SchemaNode = {
   type: 'Column',
-  props: { gap: '200', p: '300', bg: 'neutral-0', r: '300', border: '1px solid neutral-200' },
+  props: { gap: '200', p: '300', bg: 'surface', r: '300', border: '1px solid border' },
   $localState: { sdnaCleanupResult: { type: 'string', initial: '' } },
   children: [
     {
@@ -54,7 +54,7 @@ const datasetCard: SchemaNode = {
     },
     {
       type: 'we-text',
-      props: { variant: 'footnote', color: 'neutral-400' },
+      props: { variant: 'footnote', color: 'textFaint' },
       children: [{ $concat: ['ID: ', '$dataset.id'] }],
     },
     {
@@ -63,7 +63,7 @@ const datasetCard: SchemaNode = {
         condition: '$dataset.sharedUri',
         then: {
           type: 'we-text',
-          props: { variant: 'footnote', color: 'neutral-400' },
+          props: { variant: 'footnote', color: 'textFaint' },
           children: [{ $concat: ['URL: ', '$dataset.sharedUri'] }],
         },
       },
@@ -111,7 +111,7 @@ const datasetCard: SchemaNode = {
         condition: isRoot,
         then: {
           type: 'we-text',
-          props: { variant: 'footnote', color: 'danger-600' },
+          props: { variant: 'footnote', color: 'dangerText' },
           children: [
             'Deleting this removes your agent settings, per-space preferences, and every installed template and theme. No space is removed with it.',
           ],
@@ -124,7 +124,7 @@ const datasetCard: SchemaNode = {
         condition: { $local: 'sdnaCleanupResult' },
         then: {
           type: 'we-text',
-          props: { variant: 'footnote', color: 'neutral-400' },
+          props: { variant: 'footnote', color: 'textFaint' },
           children: [{ $local: 'sdnaCleanupResult' }],
         },
       },
@@ -158,7 +158,7 @@ export const advancedDatasetsSection: SchemaNode = {
           children: [
             {
               type: 'we-text',
-              props: { variant: 'footnote', color: 'neutral-400' },
+              props: { variant: 'footnote', color: 'textFaint' },
               children: ['Raw storage, including the datasets the app keeps for itself.'],
             },
             {

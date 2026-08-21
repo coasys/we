@@ -37,7 +37,7 @@ const rail: SchemaNode = railShell({
     always been meant to; it simply lost to a neighbour that outranked it.
   */
   zIndex: 'chrome',
-  bg: 'neutral-50',
+  bg: 'page',
   // Blends into a page that shares this background rather than drawing a seam against it.
   border: '0',
   // Whether somebody likes their rail pinned open is about their own window, so it is remembered
