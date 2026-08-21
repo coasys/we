@@ -41,7 +41,7 @@ export const spaceHeader: SchemaNode = {
                     fit: 'cover',
                     width: '120px',
                     height: '120px',
-                    r: 'pill',
+                    r: 'avatar',
                     ring: '0 0 0 2px var(--we-ring-color)',
                     placeholderIcon: 'users-three',
                     onImageChange: { $action: 'spaceStore.updateSpaceImage', args: ['avatar', '$arg'] },

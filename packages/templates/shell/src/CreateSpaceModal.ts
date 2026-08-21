@@ -35,6 +35,10 @@ export const createSpaceModal = {
         width: '100%',
         height: '180px',
         aspect: 4 / 1,
+        // Inset inside a modal that has its own radius, so square corners here read as a mismatch
+        // in any rounded theme. Full-bleed banners (the space header, the profile page) are left
+        // square deliberately — rounding a page-width header is a template decision, not a theme's.
+        r: 'media',
         placeholderIcon: 'panorama',
         uploadLabel: 'Upload cover image',
         editLabel: 'Change cover image',
@@ -55,7 +59,7 @@ export const createSpaceModal = {
             fit: 'cover',
             width: '120px',
             height: '120px',
-            r: 'full',
+            r: 'avatar',
             ring: '0 0 0 2px var(--we-ring-color)',
             placeholderIcon: 'image',
             uploadLabel: 'Add image',

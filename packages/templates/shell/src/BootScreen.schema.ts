@@ -792,7 +792,7 @@ export const bootScreen: SchemaNode = {
                                 fontSize: '200',
                                 width: '120px',
                                 height: '120px',
-                                r: 'full',
+                                r: 'avatar',
                                 alignSelf: 'center',
                                 // mb: '100',
                                 onImageChange: { $action: 'profileStore.setPendingAvatar', args: ['$arg'] },

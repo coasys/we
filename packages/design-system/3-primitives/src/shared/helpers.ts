@@ -75,6 +75,15 @@ const COMPONENT_CASCADE: Record<string, ComponentCascade> = {
   // guaranteed square (width and height both come from --we-avatar-size), which is what makes a
   // percentage radius safe here and unsafe on a video. See ThemeOverrides.avatarRadius.
   avatar: { radiusGroup: '--we-theme-avatar-radius', radiusDefault: '50%' },
+  // Rectangular embedded content joins the *surface* group rather than taking one of its own.
+  // A theme that rounds its panels to 16px wants its photos at 16px — they are one visual
+  // language — and a fifth group would be a row in every theme editor for a distinction
+  // ("sharp panels, soft photos") nobody has asked for. Explicit '0' defaults because these
+  // three declare no radius in DEFAULT_PROPS, so there is nothing to auto-derive from and the
+  // cascade would otherwise reset border-radius to its initial value.
+  image: { radiusGroup: '--we-theme-surface-radius', radiusDefault: '0' },
+  video: { radiusGroup: '--we-theme-surface-radius', radiusDefault: '0' },
+  iframe: { radiusGroup: '--we-theme-surface-radius', radiusDefault: '0' },
   // Controls
   button: {
     radiusGroup: '--we-theme-control-radius',

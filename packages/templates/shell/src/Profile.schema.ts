@@ -37,7 +37,7 @@ export const profileTemplate: TemplateSchema = {
             fit: 'cover',
             width: '120px',
             height: '120px',
-            r: '300',
+            r: 'avatar',
             ring: '0 0 0 3px var(--we-color-neutral-500)',
             placeholderIcon: 'user',
             uploadLabel: 'Add photo',

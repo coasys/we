@@ -222,6 +222,17 @@ export const resolveFontFamily = makeTokenResolver(new Set(Object.keys(font.fami
  */
 const ROLE_NAMES = new Set(Object.keys(role).map((name) => name.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`)));
 
+/**
+ * Radius names that resolve to a theme group rather than a scale position — see `SemanticRadius`.
+ *
+ * Each carries the same fallback the corresponding primitive's cascade uses, so a component
+ * written with `r="avatar"` matches `we-avatar` exactly in a theme that sets nothing.
+ */
+const SEMANTIC_RADIUS: Record<string, string> = {
+  avatar: 'var(--we-theme-avatar-radius, 50%)',
+  media: 'var(--we-theme-surface-radius, 0px)',
+};
+
 export function tokenVar(prefix: string, token?: string, fallback = '0') {
   // If no token, return fallback
   if (!token) return fallback;
@@ -234,6 +245,9 @@ export function tokenVar(prefix: string, token?: string, fallback = '0') {
 
   // A colour prop may name a semantic role instead of a scale position.
   if (prefix === 'color' && ROLE_NAMES.has(token)) return `var(--we-role-${token})`;
+
+  // A radius prop may name a theme group instead of a scale position, on the same principle.
+  if (prefix === 'radius' && SEMANTIC_RADIUS[token]) return SEMANTIC_RADIUS[token];
 
   // Otherwise return CSS variable
   return `var(--we-${prefix}-${token})`;

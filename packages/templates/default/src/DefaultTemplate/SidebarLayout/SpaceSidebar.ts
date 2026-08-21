@@ -33,7 +33,7 @@ export const spaceSidebar: SchemaNode = {
             fit: 'cover',
             width: '120px',
             height: '120px',
-            r: 'pill',
+            r: 'avatar',
             ring: '0 0 0 2px var(--we-ring-color)',
             placeholderIcon: 'users-three',
             uploadLabel: 'Add image',
