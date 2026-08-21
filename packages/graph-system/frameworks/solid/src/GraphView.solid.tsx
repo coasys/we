@@ -752,7 +752,15 @@ export function GraphView(props: GraphViewProps) {
       <Show
         when={props.showStatus !== false && (status().loading || status().budgetReached || status().warnings.length)}
       >
-        <Column pointerEvents="none" position="absolute" left="300" bottom="300" gap="100" maxWidth="60%">
+        <Column
+          class="we-graph__status"
+          pointerEvents="none"
+          position="absolute"
+          left="300"
+          bottom="300"
+          gap="100"
+          maxWidth="60%"
+        >
           <Show when={status().loading}>
             <Row ay="center" gap="200" bg="neutral-100" r="200" px="200" py="100">
               <we-spinner size="xs" />

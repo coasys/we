@@ -36,6 +36,27 @@
   }
 }
 
+/**
+ * The status strip — the one place on a graph that is reading matter rather than canvas.
+ *
+ * Everything else here is a direct-manipulation surface, so the root sets `user-select: none` and a
+ * drag anywhere moves the camera. That is right for nodes and wrong for a warning: a message telling
+ * you an expander failed is a message you want to *copy*, and until now a press on one gave you the
+ * grab cursor and panned the board behind it.
+ *
+ * The container stays transparent to the pointer so the canvas is still pannable everywhere the
+ * messages are not — only the message boxes themselves take the pointer back. `user-select` inherits
+ * into shadow DOM, so setting it on the host is enough for the alert's own text.
+ */
+.we-graph__status {
+  > * {
+    pointer-events: auto;
+    user-select: text;
+    // The grab cursor is a promise the canvas makes and this element does not keep.
+    cursor: auto;
+  }
+}
+
 .we-graph__layer {
   position: absolute;
   inset: 0;
