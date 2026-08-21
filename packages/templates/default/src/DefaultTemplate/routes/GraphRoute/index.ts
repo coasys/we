@@ -423,10 +423,15 @@ export const graphRoute: RouteSchema = {
 
     {
       type: 'Column',
-      // The canvas takes the page colour so the detail panel, which is `neutral-0`, reads as a
-      // surface raised off it. Unset, both were the same colour and the panel had no edge but its
-      // border.
-      props: { width: '100%', flex: '1', position: 'relative', overflow: 'hidden', bg: 'neutral-50' },
+      /*
+        No background here, deliberately.
+
+        A `bg` on this container is dead: `GraphView` paints its own, defaulting to `neutral-0`, and
+        covers whatever is behind it. A template that wants a different canvas colour sets the
+        graph's `bg` prop — putting one here looks like it works and does nothing, which is how the
+        detail panel ended up the same colour as the canvas it sits on.
+      */
+      props: { width: '100%', flex: '1', position: 'relative', overflow: 'hidden' },
       children: [
         {
           type: '$if',

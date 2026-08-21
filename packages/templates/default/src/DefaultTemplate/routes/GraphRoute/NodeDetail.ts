@@ -251,7 +251,15 @@ export const nodeDetailPanel: SchemaNode = {
         height: '100%',
         width: '320px',
         maxWidth: '100%',
-        bg: 'neutral-0',
+        /*
+          A shade off the canvas rather than a shade above it.
+
+          `GraphView` paints its own background at `neutral-0`, so the panel cannot be lighter than
+          what it sits on — there is nothing lighter. `neutral-25` reads as a distinct surface
+          instead: quiet enough not to compete with the map, separate enough that the border is not
+          the only thing telling you where the canvas stops.
+        */
+        bg: 'neutral-25',
         borderLeft: '1px solid neutral-200',
         shadow: 'lg',
         zIndex: 'chrome',
