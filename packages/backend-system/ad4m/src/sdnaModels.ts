@@ -301,7 +301,8 @@ const refreshedThisSession = new Set<string>();
 /**
  * Write shapes for `missing` (absent entirely) and `stale` (present in an older form).
  *
- * Returns the target classes actually refreshed — which excludes any already refreshed this session.
+ * Returns the target classes actually written — every missing one, plus the stale ones not already
+ * refreshed this session.
  */
 async function registerModels(
   p: PerspectiveProxy,
@@ -332,7 +333,38 @@ async function registerModels(
   // write path (the shell used to carry five copies of it as a "HACK" sleep); living here, it
   // also runs only when something was actually written.
   await new Promise((resolve) => setTimeout(resolve, 500));
-  return refreshed;
+  return [...missing.map((m) => getModelTargetClass(m)).filter((c): c is string => Boolean(c)), ...refreshed];
+}
+
+/**
+ * Which of these models the perspective does not have at all.
+ *
+ * Two steps, and the second is the point. A class with no stored shape is only a **candidate**: the
+ * SPARQL read behind {@link StoredShape} can lag on a freshly-joined neighbourhood — the same lag
+ * `hasSubjectClassLink` documents — so treating its silence as "absent" would rewrite shapes that
+ * are already there, which is how a space ends up with duplicates. Each candidate is therefore
+ * confirmed against the SubjectClass marker, which is the reliable answer.
+ *
+ * In the ordinary case there are no candidates and this costs nothing beyond the read already done.
+ * A build that adds a model pays one link query per new model, per space, once.
+ *
+ * Exported for the same reason {@link shapeIsStale} is: the two together decide whether a change to
+ * WE's models ever reaches an existing space, every past mistake in that decision has shipped as a
+ * silent failure somewhere else entirely, and both are worth being able to test without a running
+ * perspective.
+ */
+export async function missingModels(
+  p: PerspectiveProxy,
+  models: readonly (typeof Ad4mModel)[],
+  stored: ReadonlyMap<string, StoredShape>,
+): Promise<(typeof Ad4mModel)[]> {
+  const candidates = models.filter((m) => {
+    const targetClass = getModelTargetClass(m);
+    return targetClass ? !stored.get(targetClass)?.paths.size : false;
+  });
+  if (candidates.length === 0) return [];
+  const present = await Promise.all(candidates.map((m) => hasSubjectClassLink(p, getModelTargetClass(m))));
+  return candidates.filter((_, i) => !present[i]);
 }
 
 /**
@@ -456,22 +488,33 @@ export async function installModuleSdna(p: PerspectiveProxy, moduleModels: reado
  *
  * Needed because `installSpaceSdna` deliberately does not run on a space that already has WE's SDNA
  * — that skip is what stops a foreign dataset being silently converted into a WE space. The cost is
- * that a property added to an existing model reaches newly created spaces only, and writes to it are
- * dropped everywhere else; `Space.enabledModules` is the case that surfaced it, where a community
- * could toggle a module and nothing persisted.
+ * that a change to WE's own models reaches newly created spaces only, and this is what pays it.
  *
- * Deliberately narrower than calling `installSpaceSdna` here instead: this is one SPARQL query in
- * the common case, against ~20 `hasSubjectClassLink` round trips per space switch. Only shapes that
- * are genuinely out of date are written — see {@link shapeIsStale}, including why a shape with no
- * stored properties is left alone.
+ * **Two different absences, and both have shipped as silent breaks.**
  *
- * Returns the target classes it refreshed, for logging.
+ * - A *property* added to an existing model: the class is there in an older form, and writes to the
+ *   new field are dropped by a perspective that looks perfectly healthy. `Space.enabledModules` is
+ *   the case that surfaced it. Caught by {@link shapeIsStale}.
+ * - A *model* added outright: the class is not there at all, so nothing is stale — a stored shape
+ *   with no properties is deliberately read as fresh, because on a freshly-joined neighbourhood that
+ *   is what a shape whose triples have not replicated yet looks like. Every query against the new
+ *   entity then fails with "No SHACL shape stored for class X", in every space that predates the
+ *   build. `TypeStyle` is the case that surfaced it; `Placement` and `Relationship` had the same
+ *   hole and were simply only ever used in spaces made after they existed. Caught by
+ *   {@link missingModels}, which confirms each candidate against the reliable marker rather than
+ *   trusting the read that cannot distinguish the two.
+ *
+ * Still deliberately narrower than calling `installSpaceSdna` here: one SPARQL read in the common
+ * case, against ~20 `hasSubjectClassLink` round trips per space switch.
+ *
+ * Returns the target classes it wrote, for logging.
  */
 export async function refreshSpaceSdna(p: PerspectiveProxy): Promise<string[]> {
   const stored = await storedShapes(p).catch(() => new Map<string, StoredShape>());
+  const missing = await missingModels(p, SPACE_MODELS, stored);
   return registerModels(
     p,
-    [],
+    missing,
     SPACE_MODELS.filter((m) => shapeIsStale(m, stored)),
   );
 }
