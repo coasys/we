@@ -79,6 +79,18 @@ const SPACING_OPTIONS = [
   { value: 'var(--we-space-900)', label: 'XXXL' },
 ];
 
+/**
+ * Input padding is a full shorthand, not a single token: textarea shares this group and has no
+ * fixed height to supply the vertical from, so a one-value option would either crush its text
+ * against the top edge or push a fixed-height input's content out of its box.
+ */
+const INPUT_SPACING_OPTIONS = [
+  { value: '', label: 'Default' },
+  { value: 'var(--we-space-100) var(--we-space-200)', label: 'Compact' },
+  { value: 'var(--we-space-200) var(--we-space-400)', label: 'Comfortable' },
+  { value: 'var(--we-space-300) var(--we-space-500)', label: 'Spacious' },
+];
+
 const HEIGHT_OPTIONS = [
   { value: '', label: 'Default' },
   { value: '-4px', label: 'Short' },
@@ -118,6 +130,7 @@ const SPACING_PRESETS = {
     controlHeight: '-4px',
     surfaceSpacing: 'var(--we-space-300)',
     surfaceGap: 'var(--we-space-200)',
+    inputSpacing: 'var(--we-space-100) var(--we-space-200)',
   },
   comfortable: {
     controlPaddingX: undefined,
@@ -125,6 +138,7 @@ const SPACING_PRESETS = {
     controlHeight: undefined,
     surfaceSpacing: undefined,
     surfaceGap: undefined,
+    inputSpacing: undefined,
   },
   spacious: {
     controlPaddingX: 'var(--we-space-600)',
@@ -132,6 +146,7 @@ const SPACING_PRESETS = {
     controlHeight: '8px',
     surfaceSpacing: 'var(--we-space-900)',
     surfaceGap: 'var(--we-space-600)',
+    inputSpacing: 'var(--we-space-300) var(--we-space-500)',
   },
 } as const;
 
@@ -410,7 +425,8 @@ export function ThemePanel() {
         (o.controlGap ?? undefined) === vals.controlGap &&
         (o.controlHeight ?? undefined) === vals.controlHeight &&
         (o.surfaceSpacing ?? undefined) === vals.surfaceSpacing &&
-        (o.surfaceGap ?? undefined) === vals.surfaceGap
+        (o.surfaceGap ?? undefined) === vals.surfaceGap &&
+        (o.inputSpacing ?? undefined) === vals.inputSpacing
       ) {
         return name;
       }
@@ -631,6 +647,7 @@ export function ThemePanel() {
                 {selectControl('Control height', 'controlHeight', HEIGHT_OPTIONS, '120px')}
                 {selectControl('Surface padding', 'surfaceSpacing', SPACING_OPTIONS, '120px')}
                 {selectControl('Surface gap', 'surfaceGap', SPACING_OPTIONS, '120px')}
+                {selectControl('Input padding', 'inputSpacing', INPUT_SPACING_OPTIONS, '120px')}
               </Column>
             </CollapsibleSection>
 

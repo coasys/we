@@ -93,6 +93,16 @@ export type ThemeOverrides = {
   surfaceSpacing?: string; // --we-theme-surface-spacing  (card / modal / drawer padding)
   surfaceGap?: string; // --we-theme-surface-gap  (card / modal / drawer child gap)
 
+  /**
+   * --we-theme-input-spacing (input, textarea, select, number/date/colour pickers).
+   *
+   * A full padding shorthand rather than an x-only value like `controlPaddingX`, because textarea
+   * is in this group and has no fixed height to supply the vertical from. The components have
+   * consumed this variable since the cascade was written; what was missing was any way to set it,
+   * so inputs had a themeable radius and un-themeable padding.
+   */
+  inputSpacing?: string;
+
   // Effects
   shadowIntensity?: 'flat' | 'subtle' | 'elevated' | 'dramatic'; // maps to --we-theme-shadow-preset
   surfaceOpacity?: number; // --we-theme-surface-opacity  (0–1, background alpha for surfaces)

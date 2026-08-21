@@ -79,6 +79,7 @@ const THEME_CSS_MAP: Record<ParametricKey, string> = {
   controlHeight: '--we-theme-control-height-offset',
   surfaceSpacing: '--we-theme-surface-spacing',
   surfaceGap: '--we-theme-surface-gap',
+  inputSpacing: '--we-theme-input-spacing',
   // Effects
   surfaceOpacity: '--we-theme-surface-opacity',
 };

@@ -30,6 +30,24 @@ const CSS_STYLES = css`
     box-sizing: border-box;
     cursor: pointer;
   }
+
+  /*
+    Vertical from the tab's own default, horizontal from the control group — the shape we-button
+    uses, and for the same reason.
+
+    Tabs used to point at --we-theme-tab-spacing, a variable nothing could set: no theme key mapped
+    to it, so the slot was wired at this end and dead at the other. Pointing the whole padding at
+    --we-theme-control-padding-x instead would have made it settable and wrong, because that key
+    means "breathing room either side of a control's label" — buttons apply it with a hard 0
+    vertical precisely because they have a fixed height to sit in. A tab has none, so a spacious
+    theme would have tripled its height.
+  */
+  [part='base'] {
+    padding: var(
+      --we-tab-padding,
+      var(--we-space-200) var(--we-theme-tab-padding-x, var(--we-theme-control-padding-x, var(--we-space-300)))
+    );
+  }
 `;
 
 @customElement('we-tab')

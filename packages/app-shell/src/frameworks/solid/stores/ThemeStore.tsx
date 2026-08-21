@@ -318,6 +318,7 @@ const OVERRIDE_CSS_VARS: Partial<Record<keyof ThemeOverrides, string>> = {
   controlHeight: '--we-theme-control-height-offset',
   surfaceSpacing: '--we-theme-surface-spacing',
   surfaceGap: '--we-theme-surface-gap',
+  inputSpacing: '--we-theme-input-spacing',
   // Effects
   surfaceOpacity: '--we-theme-surface-opacity',
 };

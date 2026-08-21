@@ -150,7 +150,8 @@ const COMPONENT_CASCADE: Record<string, ComponentCascade> = {
     gapDefault: 'var(--we-space-100)',
   },
   // Tabs
-  tab: { radiusGroup: '--we-theme-control-radius', paddingGroup: '--we-theme-tab-spacing' },
+  // Padding is owned by CSS_STYLES (own vertical, control-group horizontal) — see the note there.
+  tab: { radiusGroup: '--we-theme-control-radius', nativePadding: true },
   // Surfaces
   modal: {
     radiusGroup: '--we-theme-surface-radius',
