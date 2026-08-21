@@ -319,21 +319,19 @@ export const graphRoute: RouteSchema = {
                   schema mode draws a community's vocabulary, and until now the only thing you could
                   do with a type on that map was look at it.
 
-                  Hidden when the space has no authorable models at all, since a button whose menu is
-                  empty teaches people it is broken — and hidden on a board, where the thing you make
-                  is a card and `boardBar` already offers one. A record created here would be a real
-                  record that simply did not appear on the board it was made from, which is the same
-                  lesson by a slower route.
+                  Hidden only when the space has no authorable models at all, since a button whose
+                  menu is empty teaches people it is broken.
+
+                  It was briefly hidden on a board too, on the grounds that the record would not
+                  appear there. That was the wrong call: this is the only way to create a model
+                  instance anywhere in the app, and removing the sole entry point to a capability
+                  because one view cannot draw the result leaves somebody with no way to do it at
+                  all. What a board can hold is a separate question, and a smaller one.
                 */
                 {
                   type: '$if',
                   props: {
-                    condition: {
-                      $and: [
-                        { $ne: [{ $local: 'mode' }, 'board'] },
-                        { $count: { items: { $store: 'recordStore.creatableEntities' } } },
-                      ],
-                    },
+                    condition: { $count: { items: { $store: 'recordStore.creatableEntities' } } },
                     then: {
                       type: 'we-button',
                       props: {

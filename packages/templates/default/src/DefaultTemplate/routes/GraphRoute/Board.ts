@@ -207,6 +207,10 @@ const newCardModal: SchemaNode = composerModal({
     // `'$arg'` first: `createPost(json, options)`.
     args: ['$arg', { kind: 'card', parentId: BOARD, predicate: 'we://children' }],
   },
+  // Tell the canvas to re-read. The engine also watches `CollectionBlock` and would get there on its
+  // own, but this is the one case where the template *knows* — it is what wrote the card — and
+  // waiting on a notification for something you just did is how a board comes to feel broken.
+  onSaved: [{ $setLocal: 'revision', by: 1 }],
 });
 
 /** The canvas, or a reason there is nothing on it. */
