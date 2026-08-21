@@ -487,6 +487,66 @@ describe('following the data', () => {
   });
 });
 
+describe('warnings', () => {
+  /** A layout that complains on demand, so the engine's handling of what it says is under test. */
+  function complaining(message: () => string | null) {
+    return {
+      grid: () => ({
+        id: 'grid',
+        init(inputNodes: { nodes: { id: string }[] }) {
+          const said = message();
+          return {
+            positions: new Map(inputNodes.nodes.map((n, i) => [n.id, { x: i * 10, y: 0 }])),
+            ...(said ? { warnings: [said] } : {}),
+          };
+        },
+      }),
+    };
+  }
+
+  it('retires a layout warning once a later arrangement no longer makes it', async () => {
+    // The bug this pins: a complaint true of an empty board stayed on screen after the first drag
+    // made it false. A layout warning describes the arrangement *as it is now*, so a later
+    // arrangement supersedes it — otherwise a reader cannot tell a live warning from a spent one.
+    let say: string | null = 'nothing carries a position';
+    const registry = new PluginRegistry({ seeds: [seedOf(2)], layouts: complaining(() => say) });
+    const engine = engineWith({ seeds: { source: 'test' }, layout: { type: 'grid' } }, registry);
+
+    await engine.start();
+    expect(engine.getStatus().warnings).toContain('nothing carries a position');
+
+    say = null;
+    engine.relayout();
+
+    expect(engine.getStatus().warnings).toEqual([]);
+  });
+
+  it('keeps an expander warning across a re-layout, because an event does not un-happen', async () => {
+    // The other half of the rule. A query that failed stays failed; only the layout's description of
+    // the current arrangement is superseded by a new one.
+    const registry = new PluginRegistry({
+      seeds: [seedOf(1)],
+      expanders: [
+        {
+          id: 'broken',
+          kinds: ['entity'],
+          async expand() {
+            throw new Error('backend unavailable');
+          },
+        },
+      ],
+      layouts: complaining(() => null),
+    });
+    const engine = engineWith({ seeds: { source: 'test' }, layout: { type: 'grid' } }, registry);
+    await engine.start();
+    await engine.expand('seed-0');
+
+    engine.relayout();
+
+    expect(engine.getStatus().warnings.join(' ')).toContain('backend unavailable');
+  });
+});
+
 describe('the scene stays consistent with what is drawn', () => {
   it('re-indexes after a pin, so a dragged node is hittable where it was dropped', async () => {
     // The bug this pins down: `pin` moved the node visually and left the spatial index holding its

@@ -134,6 +134,8 @@ export class GraphEngine {
   private status: EngineStatus = { loading: false, budgetReached: false, warnings: [] };
   private inFlight = 0;
   private disposed = false;
+  /** What the layout last complained about, so a new arrangement can retire it. */
+  private layoutWarnings: string[] = [];
   /** A refresh is running. See {@link refresh} for why a second one queues rather than joining in. */
   private refreshing = false;
   private refreshPending = false;
@@ -295,6 +297,7 @@ export class GraphEngine {
     this.pinnedIds.clear();
     this.selected.clear();
     this.status = { loading: false, budgetReached: false, warnings: [] };
+    this.layoutWarnings = [];
 
     const fragment = await this.loadSeeds();
     this.store.merge(fragment);
@@ -739,7 +742,7 @@ export class GraphEngine {
       containment: this.containment(),
       viewport: { width: width || 800, height: height || 600 },
     });
-    for (const warning of result.warnings ?? []) this.warn(warning);
+    this.setLayoutWarnings(result.warnings ?? []);
     this.fitUntilSettled = !!options?.fit && !!result.running;
     this.applyPositions(result.positions, options?.fit);
     // A fit that could not run yet (no surface measured) is remembered, not dropped.
@@ -1157,6 +1160,29 @@ export class GraphEngine {
       this.status = { ...this.status, loading: false };
       this.notify('status');
     }
+  }
+
+  /**
+   * Replace whatever the layout last complained about.
+   *
+   * A layout warning describes the arrangement *as it is now* — "every node stayed where it was" —
+   * so a later arrangement supersedes it rather than joining it. Left to accumulate through `warn`,
+   * a complaint that was true of an empty board stayed on screen after the first drag made it
+   * false, which is a worse failure than the one it was reporting: the reader has no way to tell a
+   * live warning from a spent one.
+   *
+   * Expander and seed warnings deliberately do not work this way. Those describe an *event* — a
+   * query that failed, a scan that truncated — and an event does not stop having happened.
+   */
+  private setLayoutWarnings(warnings: string[]): void {
+    const previous = this.layoutWarnings;
+    if (!previous.length && !warnings.length) return;
+    this.layoutWarnings = warnings;
+    const kept = this.status.warnings.filter((message) => !previous.includes(message));
+    const next = [...kept, ...warnings.filter((message) => !kept.includes(message))];
+    if (next.length === this.status.warnings.length && next.every((m, i) => m === this.status.warnings[i])) return;
+    this.status = { ...this.status, warnings: next };
+    this.notify('status');
   }
 
   private warn(message: string): void {

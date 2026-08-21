@@ -160,6 +160,34 @@ describe('manual layout', () => {
     const result = layout.init(input([node('a', { x: 42, y: 84 })]));
     expect(result.positions.get('a')).toMatchObject({ x: 5, y: 5 });
   });
+
+  it('says nothing about a fresh board, where carrying no positions is the normal state', () => {
+    // The regression: this warned whenever no node carried x/y, which is every board before anybody
+    // has dragged a card. It fired as a matter of course and then stayed on screen after the first
+    // drag made it untrue — a permanent warning about a state that had passed.
+    const result = manualLayout().init(input([node('a'), node('b')]));
+
+    expect(result.warnings ?? []).toEqual([]);
+  });
+
+  it('says nothing when some nodes are placed and others are new', () => {
+    const result = manualLayout().init(input([node('a', { x: 10, y: 10 }), node('b')]));
+
+    expect(result.warnings ?? []).toEqual([]);
+  });
+
+  it('warns when it was chosen for a graph that stores nothing, and so did nothing at all', () => {
+    // The failure actually worth reporting: switching a knowledge map to `manual` leaves every node
+    // exactly where the previous layout left it, which on screen is indistinguishable from a layout
+    // that ran and decided nothing needed moving.
+    const previous = new Map([
+      ['a', { x: 3, y: 4 }],
+      ['b', { x: 5, y: 6 }],
+    ]);
+    const result = manualLayout().init(input([node('a'), node('b')], [], { previous }));
+
+    expect(result.warnings?.join(' ')).toContain('left exactly where it already was');
+  });
 });
 
 describe('pinning across deterministic layouts', () => {
