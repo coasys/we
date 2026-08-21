@@ -144,6 +144,7 @@ const ROLE_GROUPS: { label: string; roles: { role: ThemeRole; label: string }[] 
     label: 'Accent',
     roles: [
       { role: 'accent', label: 'Accent' },
+      { role: 'accentStrong', label: 'Accent text' },
       { role: 'accentText', label: 'On accent' },
       { role: 'accentMuted', label: 'Accent tint' },
       { role: 'focus', label: 'Focus ring' },
@@ -152,9 +153,12 @@ const ROLE_GROUPS: { label: string; roles: { role: ThemeRole; label: string }[] 
   {
     label: 'Status',
     roles: [
-      { role: 'dangerSurface', label: 'Danger' },
-      { role: 'successSurface', label: 'Success' },
-      { role: 'warningSurface', label: 'Warning' },
+      { role: 'dangerText', label: 'Danger' },
+      { role: 'dangerSurface', label: 'Danger tint' },
+      { role: 'successText', label: 'Success' },
+      { role: 'successSurface', label: 'Success tint' },
+      { role: 'warningText', label: 'Warning' },
+      { role: 'warningSurface', label: 'Warning tint' },
     ],
   },
   {

@@ -40,6 +40,16 @@ export const role = {
   accentText: 'var(--we-color-neutral-0)',
   /** A de-emphasised accent — accent-tinted fills, selected rows, subtle highlights. */
   accentMuted: 'var(--we-color-primary-100)',
+  /**
+   * The accent at text contrast — an accented heading, an accent-coloured icon on a surface.
+   *
+   * Distinct from `accent` because that one is sized for a *fill*, where the text sits on top of it
+   * and `accentText` supplies the contrast. Used as a foreground on an ordinary surface the same
+   * value is often too light to read, which is why templates reached past it for primary-600/700.
+   * A theme with a pale accent has to move this further than `accent` to stay legible; one with a
+   * dark accent may set them equal. Only a second role can say either.
+   */
+  accentStrong: 'var(--we-color-primary-700)',
 
   /** Hover tint on a surface (menu items, list rows, ghost buttons). */
   surfaceHover: 'var(--we-color-neutral-100)',
@@ -74,6 +84,19 @@ export const role = {
   dangerSurface: 'var(--we-color-danger-50)',
   successSurface: 'var(--we-color-success-50)',
   warningSurface: 'var(--we-color-warning-50)',
+
+  /**
+   * Status as a *foreground* — the error under a field, the warning icon, the "connected" tick.
+   *
+   * The surfaces above cover a tinted panel and nothing else, so every status message in the repo
+   * reached for a scale position instead, and they disagreed: danger text appeared as danger-400,
+   * -500 and -600 in three neighbouring files. Splitting foreground from surface also lets a theme
+   * do the thing a single value cannot — keep a status legible against its own tint, where the two
+   * must move in opposite directions as the theme darkens.
+   */
+  dangerText: 'var(--we-color-danger-600)',
+  successText: 'var(--we-color-success-600)',
+  warningText: 'var(--we-color-warning-600)',
 } as const;
 
 export type RoleToken = keyof typeof role;

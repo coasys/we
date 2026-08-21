@@ -33,12 +33,16 @@ export type ThemeRole =
   | 'accent'
   | 'accentText'
   | 'accentMuted'
+  | 'accentStrong'
   | 'overlay'
   | 'shadowColor'
   | 'focus'
   | 'dangerSurface'
   | 'successSurface'
-  | 'warningSurface';
+  | 'warningSurface'
+  | 'dangerText'
+  | 'successText'
+  | 'warningText';
 
 export type ThemeOverrides = {
   // Named preset
