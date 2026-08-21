@@ -176,12 +176,24 @@ export interface ReadMarkerModel extends WeNodeModel {
 }
 
 export interface RelationshipModel extends WeNodeModel {
+  relationshipTypeId: string;
   label: string;
   description: string;
   sourceType: string;
   targetType: string;
   source?: string;
   target?: string;
+}
+
+export interface RelationshipTypeModel extends WeNodeModel {
+  name: string;
+  slug: string;
+  description: string;
+  icon: string;
+  color: string;
+  inverseName: string;
+  directed: boolean;
+  schemaVersion: number;
 }
 
 export interface ShapeModel extends WeNodeModel {

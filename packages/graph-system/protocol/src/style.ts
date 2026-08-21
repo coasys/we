@@ -126,8 +126,22 @@ export interface StyleRule<TStyle> {
   style: TStyle;
 }
 
-export type NodeStyleRules = StyleRule<NodeStyle>[];
-export type EdgeStyleRules = StyleRule<EdgeStyle>[];
+/**
+ * An ordered rule list, where an entry may itself be a list.
+ *
+ * Nesting exists because a schema cannot build one array out of two. `$concat` joins strings, and
+ * there is no array-merge operator — so a template that wants a base rule plus one rule *per row of
+ * data* has no way to write the combined array, and styling driven by a community's own vocabulary
+ * is unreachable. That is the case this is for: a `$map` over the relationship kinds a space has
+ * named produces a rule each, and it sits in the list beside the hand-written ones.
+ *
+ * Flattened before use, so precedence reads exactly as written — a nested group applies in the
+ * position it occupies, and later matches still win per property.
+ */
+export type StyleRules<TStyle> = (StyleRule<TStyle> | StyleRule<TStyle>[])[];
+
+export type NodeStyleRules = StyleRules<NodeStyle>;
+export type EdgeStyleRules = StyleRules<EdgeStyle>;
 
 /**
  * A registered metric.

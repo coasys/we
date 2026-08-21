@@ -100,6 +100,39 @@ describe('metric references', () => {
   });
 });
 
+describe('rule lists built from data', () => {
+  it('flattens a nested group so a mapped rule sits among hand-written ones', () => {
+    // A schema cannot merge two arrays — `$concat` joins strings — so a template that wants a base
+    // rule plus one rule per row of data has no way to write the combined list. Nesting is how a
+    // `$map` over a community's own vocabulary contributes rules alongside the authored ones.
+    const style = resolveStyle(belief, [
+      { style: { size: 10 } },
+      [
+        { when: { type: 'Belief' }, style: { color: 'primary-500' } },
+        { when: { type: 'Task' }, style: { color: 'danger-500' } },
+      ],
+    ]);
+
+    expect(style).toEqual({ size: 10, color: 'primary-500' });
+  });
+
+  it('applies a nested group in the position it occupies, not last', () => {
+    // Precedence has to read exactly as written, or a template author cannot reason about which
+    // rule wins by looking at the list.
+    const style = resolveStyle(belief, [[{ style: { color: 'neutral-500' } }], { style: { color: 'primary-700' } }]);
+
+    expect(style).toEqual({ color: 'primary-700' });
+  });
+
+  it('treats an empty group as no rules at all', () => {
+    // A `$map` over a space that has named nothing yet. It must leave the hand-written rules alone
+    // rather than resolving to something that overrides them.
+    const style = resolveStyle(belief, [{ style: { size: 12 } }, []]);
+
+    expect(style).toEqual({ size: 12 });
+  });
+});
+
 describe('defaults', () => {
   it('scales labels and edges with the camera unless told otherwise', () => {
     // The intuition people arrive with is a board, where zoom magnifies the whole drawing. Constant

@@ -71,5 +71,6 @@ export type {
   NodeStyle,
   NodeStyleRules,
   StyleRule,
+  StyleRules,
   StyleValue,
 } from './style';

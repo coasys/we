@@ -115,6 +115,32 @@ const knowledgeGraph: SchemaNode = {
       // because the distinction that matters on this map is "a schema says so" against "a person
       // says so", and the second is the one worth arguing with.
       { when: { type: 'relates' }, style: { showLabel: true, color: 'primary-500', width: 2 } },
+      /*
+        One rule per kind this community has named — the payoff of the middle tier.
+
+        A free-text label can only be read; a named kind can be *seen*, and a map whose vocabulary
+        is legible at a glance is a different instrument from one where every line has to be read to
+        be understood. `directed` decides the arrowhead, because "contradicts" is asymmetric and
+        "related to" is not, and drawing a head on the second asserts something nobody meant.
+
+        Nested inside the list rather than appended to it: a schema cannot merge two arrays —
+        `$concat` joins strings — so rule lists flatten one level precisely so a `$map` over data can
+        contribute rules alongside hand-written ones.
+      */
+      {
+        $map: {
+          items: { $local: 'relationshipKinds' },
+          select: {
+            when: { 'data.relationshipTypeId': '$item.id' },
+            style: {
+              showLabel: true,
+              width: 2,
+              color: '$item.color',
+              arrow: { $if: { condition: '$item.directed', then: 'target', else: 'none' } },
+            },
+          },
+        },
+      },
     ],
     behaviours: [
       // Before drag-node, which is what makes arming mean anything: both claim a press on a node.
@@ -189,9 +215,15 @@ export const graphRoute: RouteSchema = {
   path: '/graph',
   type: 'Column',
   props: { width: '100%', height: '100%', gap: '0' },
-  // Hoisted rather than left on the picker: the empty state has to count the same boards the picker
-  // lists, and two subscriptions could disagree about how many there are.
-  $queries: { boards: boardQuery },
+  /*
+    Hoisted rather than left on the picker: the empty state has to count the same boards the picker
+    lists, and two subscriptions could disagree about how many there are.
+
+    `relationshipKinds` is here for a different reason — the knowledge map's edge styles are built
+    from it, and a style rule is a prop rather than a child, so it has to resolve where the graph is
+    declared rather than somewhere inside it.
+  */
+  $queries: { boards: boardQuery, relationshipKinds: { entity: 'RelationshipType', order: { name: 'asc' } } },
   $localState: {
     mode: { type: 'string', initial: 'schema' },
     layout: { type: 'string', initial: 'force' },

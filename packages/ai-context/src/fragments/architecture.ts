@@ -166,4 +166,11 @@ For deeper detail (data sync/persistence, block & editor internals, the local de
 see docs/architecture/codebase-map.md.
 For how reusable template fragments work and where they are going, see
 docs/architecture/template-fragments.md.
+
+**Before adding a relation between two models, read docs/architecture/relations.md.** A connection
+can live in three places — a free-text label, a community-named \`RelationshipType\`, or a relation
+declared on the model class — and they are not interchangeable. The short version: a declared
+relation gets the full query surface and can carry nothing about itself (no author, no date, nothing
+to comment on or rate); a reified one carries all of that and has no query pushdown at all. Declare
+what is a fact about the *type*; reify what is a claim about a *pair*.
 `;

@@ -4265,10 +4265,16 @@
       "extends": "WeNode",
       "fields": [
         {
+          "name": "relationshipTypeId",
+          "type": "string",
+          "predicate": "we://relationship_type_id",
+          "required": false
+        },
+        {
           "name": "label",
           "type": "string",
           "predicate": "we://title",
-          "required": true
+          "required": false
         },
         {
           "name": "description",
@@ -4301,6 +4307,64 @@
           "predicate": "we://relationship_target"
         }
       ]
+    },
+    {
+      "name": "RelationshipType",
+      "className": "RelationshipType",
+      "extends": "WeNode",
+      "fields": [
+        {
+          "name": "name",
+          "type": "string",
+          "predicate": "we://name",
+          "required": true
+        },
+        {
+          "name": "slug",
+          "type": "string",
+          "predicate": "we://slug",
+          "required": false
+        },
+        {
+          "name": "description",
+          "type": "string",
+          "predicate": "we://description",
+          "required": false
+        },
+        {
+          "name": "icon",
+          "type": "string",
+          "predicate": "we://icon",
+          "required": false
+        },
+        {
+          "name": "color",
+          "type": "string",
+          "predicate": "we://color",
+          "required": false
+        },
+        {
+          "name": "inverseName",
+          "type": "string",
+          "predicate": "we://inverse_name",
+          "required": false
+        },
+        {
+          "name": "directed",
+          "type": "boolean",
+          "predicate": "we://directed",
+          "required": false,
+          "default": "true"
+        },
+        {
+          "name": "schemaVersion",
+          "type": "number",
+          "predicate": "we://schema_version",
+          "required": false,
+          "default": "1"
+        }
+      ],
+      "relations": []
     },
     {
       "name": "Shape",
@@ -6179,6 +6243,7 @@
         "clearSpaceThemePin",
         "launchModule",
         "createSignalType",
+        "createRelationshipType",
         "upsertSignal",
         "navigateToSpace",
         "canAdministerSpace",

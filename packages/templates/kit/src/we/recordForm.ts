@@ -108,6 +108,14 @@ export function recordFormModal(opts: RecordFormModalOptions = {}): SchemaNode {
           maxWidth: 'var(--we-layout-sm)',
           width: '100%',
         },
+        /*
+          The kinds of connection this community has named.
+
+          Hoisted rather than queried inside the picker for the house reason: one subscription, so
+          the picker and anything else reading it cannot disagree about what exists. Subscribed, so
+          a kind named in another window appears here without a reload.
+        */
+        $queries: { relationshipKinds: { entity: 'RelationshipType', order: { name: 'asc' } } },
         children: [
           {
             type: 'Row',
@@ -158,6 +166,56 @@ export function recordFormModal(opts: RecordFormModalOptions = {}): SchemaNode {
                     type: 'we-text',
                     props: { variant: 'label', truncate: true },
                     children: [{ $store: 'recordStore.pendingLink.targetLabel' }],
+                  },
+                ],
+              },
+            },
+          },
+
+          /*
+            Which kind of connection this is — the middle tier.
+
+            Shown only when connecting, and only once the community has named at least one kind. A
+            space that has named none still connects things: the label below carries the meaning,
+            which is how a vocabulary gets discovered before anybody knows what it is. Once kinds
+            exist this picker carries it and the label qualifies it.
+
+            "None" is prepended by hand because a schema can `$map` a store array into options but
+            cannot add one — the same reason `shapeStore.identityOptions` is built in a store. Here
+            the list comes from `$queries` rather than a store, so the prepend happens in the
+            fragment instead.
+          */
+          {
+            type: '$if',
+            props: {
+              condition: {
+                $and: [{ $store: 'recordStore.pendingLink' }, { $count: { items: { $local: 'relationshipKinds' } } }],
+              },
+              then: {
+                type: 'we-form-field',
+                props: { label: 'Kind', width: '100%' },
+                children: [
+                  {
+                    type: 'we-select',
+                    props: {
+                      width: '100%',
+                      placeholder: 'Unnamed kind',
+                      options: {
+                        $concat: [
+                          [{ label: 'Unnamed kind', value: '' }],
+                          {
+                            $map: {
+                              items: { $local: 'relationshipKinds' },
+                              select: { label: '$item.name', value: '$item.id', icon: '$item.icon' },
+                            },
+                          },
+                        ],
+                      },
+                      onChange: {
+                        $action: 'recordStore.setRecordField',
+                        args: ['relationshipTypeId', '$event.detail'],
+                      },
+                    },
                   },
                 ],
               },

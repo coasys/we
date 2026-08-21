@@ -383,6 +383,9 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
 
     // ── signals ──
     createSignalType: action('signals'),
+    // The vocabulary of connections, alongside the vocabulary of reactions — same tier, same act:
+    // a community naming what it means by something.
+    createRelationshipType: action('signals'),
     upsertSignal: action('signals'),
 
     // ── navigation ──

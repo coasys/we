@@ -23,6 +23,7 @@ import type {
   NodeStyle,
   NodeVisual,
   StyleRule,
+  StyleRules,
 } from '@we/graph-protocol';
 
 import { normaliseCurve } from './geometry';
@@ -74,14 +75,32 @@ export function matches(subject: GraphNode | GraphEdge, clause?: MatchClause): b
   return true;
 }
 
-/** Merge every matching rule's style, in order. */
+/**
+ * Flatten a rule list one level, so a group produced by a `$map` sits inline among hand-written rules.
+ *
+ * One level rather than deep, deliberately: the case is "a rule per row of data", and a rule list
+ * nested twice is a template doing something nobody should have to read. Exported because the engine
+ * also walks rules — to work out which metrics they reference — and two flattenings that disagreed
+ * would mean a metric silently not computed for a rule that uses it.
+ */
+export function flattenRules<TStyle>(rules: StyleRules<TStyle> | undefined): StyleRule<TStyle>[] {
+  if (!rules) return [];
+  return rules.flatMap((rule) => (Array.isArray(rule) ? rule : [rule]));
+}
+
+/**
+ * Merge every matching rule's style, in order.
+ *
+ * The rule list is read as `StyleRule<TStyle>[]` for inference's sake — a parameter typed as the
+ * nested union infers `TStyle` as `object` and loses every property name downstream — and flattened
+ * at the top. Callers pass `NodeStyleRules`/`EdgeStyleRules`, which are the nested form.
+ */
 export function resolveStyle<TStyle extends object>(
   subject: GraphNode | GraphEdge,
-  rules: StyleRule<TStyle>[] | undefined,
+  rules: StyleRule<TStyle>[] | StyleRules<TStyle> | undefined,
 ): TStyle {
   let result = {} as TStyle;
-  if (!rules) return result;
-  for (const rule of rules) {
+  for (const rule of flattenRules(rules)) {
     if (matches(subject, rule.when)) result = { ...result, ...rule.style };
   }
   return result;

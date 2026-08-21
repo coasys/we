@@ -26,6 +26,7 @@ import {
   MutedAgent,
   PREDICATES,
   ReadMarker,
+  RelationshipType,
   Signal,
   SignalType,
   Space,
@@ -530,6 +531,14 @@ export interface SpaceStore {
   clearSpaceThemePin: () => Promise<void>;
   launchModule: (moduleId: string) => void;
   createSignalType: (config: Partial<SignalType>) => Promise<void>;
+  /**
+   * Name a kind of connection this community makes — "contradicts", "came out of".
+   *
+   * The counterpart to `createSignalType`, and the middle tier between a free-text label and a
+   * relation declared on a model. A record rather than a schema change, so any member can propose
+   * the vocabulary; identified, so a query can filter on it and an edge style can key on it.
+   */
+  createRelationshipType: (config: Partial<RelationshipType>) => Promise<void>;
   upsertSignal: (nodeId: string, signalTypeId: string, value: number) => Promise<void>;
   navigateToSpace: (spaceId: string, view?: string) => Promise<void>;
   /** Whether this agent may change what every member of that space sees. */
@@ -1442,6 +1451,20 @@ export function SpaceStoreProvider(props: ParentProps) {
     const normalised =
       withSlug.mode && rangeOverrides[withSlug.mode] ? { ...withSlug, ...rangeOverrides[withSlug.mode] } : withSlug;
     await SignalType.create(p, normalised);
+  }
+
+  /**
+   * Name a kind of connection, deriving its slug the way a signal type derives one.
+   *
+   * The slug is what a template refers to when it cares about a specific kind — "draw
+   * contradictions in red" — because the display name belongs to the community and may change,
+   * where an identifier does not.
+   */
+  async function createRelationshipType(config: Partial<RelationshipType>): Promise<void> {
+    const p = datasetStore.currentDataset()?.handle;
+    if (!p) return;
+    const slug = config.slug || (config.name ? deriveSlug(config.name) : '');
+    await RelationshipType.create(p, { ...config, slug });
   }
 
   async function upsertSignal(nodeId: string, signalTypeId: string, value: number): Promise<void> {
@@ -2506,6 +2529,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     clearSpaceThemePin,
     launchModule,
     createSignalType,
+    createRelationshipType,
     upsertSignal,
     navigateToSpace,
     canAdministerSpace,

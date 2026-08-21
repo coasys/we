@@ -20,6 +20,7 @@ import type {
   Layout,
   Placement,
   Point,
+  StyleRules,
 } from '@we/graph-protocol';
 import { addressKind } from '@we/graph-protocol';
 
@@ -28,7 +29,7 @@ import { bowOffsets, distanceToEdge, edgeBounds, groupByEndpoints, normaliseCurv
 import { PluginRegistry } from './registry';
 import { SpatialIndex } from './spatial';
 import { GraphStore } from './store';
-import { nodeVisual, resolveStyle } from './style';
+import { flattenRules, nodeVisual, resolveStyle } from './style';
 import { boundsOf, Viewport } from './viewport';
 
 export interface EngineOptions {
@@ -75,9 +76,11 @@ const NO_METRICS = new Map<string, ReadonlyMap<string, number>>();
  * Computed metrics are cheap but not free, and a graph whose rules mention none should pay nothing —
  * so the engine runs exactly the metrics the style asks for and no others.
  */
-function referencedMetrics(rules: readonly { style: Record<string, unknown> }[] | undefined): string[] {
+function referencedMetrics(rules: StyleRules<Record<string, unknown>> | undefined): string[] {
   const found = new Set<string>();
-  for (const rule of rules ?? []) {
+  // Through the nesting, so a metric named by a rule a `$map` produced is still computed. Missing it
+  // would leave that rule resolving to its fallback — a graph that draws, plainly, for no visible reason.
+  for (const rule of flattenRules(rules)) {
     for (const value of Object.values(rule.style ?? {})) {
       if (value && typeof value === 'object' && 'metric' in value) {
         found.add(String((value as { metric: unknown }).metric));
@@ -233,8 +236,8 @@ export class GraphEngine {
    */
   private recomputeMetrics(): void {
     const wanted = [
-      ...referencedMetrics(this.spec.nodeStyle as { style: Record<string, unknown> }[] | undefined),
-      ...referencedMetrics(this.spec.edgeStyle as { style: Record<string, unknown> }[] | undefined),
+      ...referencedMetrics(this.spec.nodeStyle as StyleRules<Record<string, unknown>> | undefined),
+      ...referencedMetrics(this.spec.edgeStyle as StyleRules<Record<string, unknown>> | undefined),
     ];
     if (!wanted.length) {
       if (this.metrics.size) this.metrics = new Map();

@@ -32,6 +32,7 @@ export type AssertClassesSatisfyContract = [
   Satisfies<InstanceType<typeof C.Placement>, M.PlacementModel>,
   Satisfies<InstanceType<typeof C.ReadMarker>, M.ReadMarkerModel>,
   Satisfies<InstanceType<typeof C.Relationship>, M.RelationshipModel>,
+  Satisfies<InstanceType<typeof C.RelationshipType>, M.RelationshipTypeModel>,
   Satisfies<InstanceType<typeof C.Shape>, M.ShapeModel>,
   Satisfies<InstanceType<typeof C.Signal>, M.SignalModel>,
   Satisfies<InstanceType<typeof C.SignalType>, M.SignalTypeModel>,

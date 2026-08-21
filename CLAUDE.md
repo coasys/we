@@ -163,6 +163,13 @@ see docs/architecture/codebase-map.md.
 For how reusable template fragments work and where they are going, see
 docs/architecture/template-fragments.md.
 
+**Before adding a relation between two models, read docs/architecture/relations.md.** A connection
+can live in three places — a free-text label, a community-named `RelationshipType`, or a relation
+declared on the model class — and they are not interchangeable. The short version: a declared
+relation gets the full query surface and can carry nothing about itself (no author, no date, nothing
+to comment on or rate); a reified one carries all of that and has no query pushdown at all. Declare
+what is a fact about the *type*; reify what is a claim about a *pair*.
+
 ---
 
 ## Schema Structure
@@ -1540,13 +1547,25 @@ ReadMarker extends WeNode:
 
 Relationship extends WeNode:
   Fields:
-  - label: string (required) [we://title]
+  - relationshipTypeId: string [we://relationship_type_id]
+  - label: string [we://title]
   - description: string [we://description]
   - sourceType: string [we://source_type]
   - targetType: string [we://target_type]
   Relations:
   - source: HasOne [we://relationship_source]
   - target: HasOne [we://relationship_target]
+
+RelationshipType extends WeNode:
+  Fields:
+  - name: string (required) [we://name]
+  - slug: string [we://slug]
+  - description: string [we://description]
+  - icon: string [we://icon]
+  - color: string [we://color]
+  - inverseName: string [we://inverse_name]
+  - directed: boolean = true [we://directed]
+  - schemaVersion: number = 1 [we://schema_version]
 
 Shape extends WeNode:
   Fields:
@@ -2119,6 +2138,7 @@ SpaceStore:
   - clearSpaceThemePin(): drops this agent’s theme pin for the space on screen, returning it to whatever would otherwise apply. The way back out of applyTheme, so the picker need not spell the FOLLOW_SPACE sentinel as a literal. Pair with spaceThemePinned
   - launchModule(moduleId: string): invokes that module's declared launcher action. Takes an id rather than a path because $action resolves a literal string, so a rail iterating over modules cannot build modules.<id>.<method> itself
   - createSignalType(config: Partial<SignalType>): creates a new signal type in the community; slug auto-derived from name if blank
+  - createRelationshipType(): unknown
   - upsertSignal(nodeId: string, signalTypeId: string, value: number): adds or updates a signal on a node; value=0 deletes it
   - navigateToSpace(spaceId: string, view?: string): navigates to a space — accepts a perspective UUID or a neighbourhood CID (sharedUrl without the neighbourhood:// prefix); pre-loads space templates before switching so the template and data arrive together
   - canAdministerSpace(uuid: string): whether this agent may change what every member of that space sees — true for a personal space, and for a shared one they authored. A UI affordance for deciding whether to offer the controls, NOT enforcement: a shared space is a neighbourhood every member can write to. Ask by name rather than comparing author to $me.did, so the answer can grow (multiple admins, roles) without every template changing

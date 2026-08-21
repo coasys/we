@@ -5,6 +5,7 @@ export { MutedAgent } from './MutedAgent';
 export { Placement } from './Placement';
 export { ReadMarker } from './ReadMarker';
 export { Relationship } from './Relationship';
+export { RelationshipType } from './RelationshipType';
 export { Signal } from './Signal';
 export { SignalType } from './SignalType';
 export { Space } from './Space';

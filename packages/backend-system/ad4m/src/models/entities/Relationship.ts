@@ -56,13 +56,31 @@ export class Relationship extends WeNode {
   flag: string = '';
 
   /**
+   * Which kind of connection this is, when the community has named one.
+   *
+   * The same shape `Signal.signalTypeId` uses, and for the same reason: a kind is a record the
+   * community owns, so referencing it by id gives a query something to filter on and an edge
+   * style something to key on, where a free-text label gives neither.
+   *
+   * Optional, deliberately. A space that has not named any kinds yet still connects things, and
+   * making this required would mean the first person to notice that two records are related has
+   * to define a vocabulary before they can say so. The label carries the meaning until a kind
+   * exists; afterwards it qualifies it — "contradicts, *specifically about the timeline*".
+   */
+  @Property({ through: 'we://relationship_type_id' })
+  relationshipTypeId: string = '';
+
+  /**
    * What the connection *is*, in the author's words — "contradicts", "came out of".
    *
-   * Free text rather than a vocabulary, because the vocabulary is the thing being discovered. A
-   * community that finds itself writing "contradicts" repeatedly has learnt something about how
-   * it thinks, and the answer to that is a model it defines, not a dropdown WE guessed at.
+   * Free text, because in a space that has named no kinds yet the vocabulary is the thing being
+   * discovered, and a dropdown WE guessed at would be worse than a blank field. Once the
+   * community has named kinds this becomes the qualifier on top of one — "contradicts,
+   * *specifically about the timeline*" — so it is no longer required: a connection needs a kind
+   * or a label, and the form enforces that rather than the schema, which cannot express "one of
+   * these two".
    */
-  @Property({ through: 'we://title', required: true })
+  @Property({ through: 'we://title' })
   label: string = '';
 
   /** Why — the room a one-word label does not leave. */

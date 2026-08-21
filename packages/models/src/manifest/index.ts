@@ -27,6 +27,7 @@ import { MutedAgent } from './entities/MutedAgent';
 import { Placement } from './entities/Placement';
 import { ReadMarker } from './entities/ReadMarker';
 import { Relationship } from './entities/Relationship';
+import { RelationshipType } from './entities/RelationshipType';
 import { Shape } from './entities/Shape';
 import { Signal } from './entities/Signal';
 import { SignalType } from './entities/SignalType';
@@ -64,6 +65,7 @@ export const CORE_DEFS: Record<string, CoreEntityDef> = {
   Placement,
   ReadMarker,
   Relationship,
+  RelationshipType,
   Shape,
   Signal,
   SignalType,
