@@ -105,6 +105,32 @@ function backOff(route: EdgeGeometry, gap: number): Point {
  */
 const ARROW_LENGTH = 6;
 
+/**
+ * How much of a value is worth carrying to a panel.
+ *
+ * Long enough for a sentence, short enough that one field cannot become the whole panel.
+ */
+const FIELD_MAX = 240;
+
+/**
+ * A node's scalars, as a panel can show them.
+ *
+ * Three things are dropped, and each for its own reason. **Nulls and blanks**, because an absent
+ * property is absent and listing it states something the record does not. **File-storage blobs**,
+ * which resolve to `data:<mime>;base64,…` — a card's `editorState` is a whole document encoded, and
+ * it is not a field, it is the thing the card *is*; shown as one it was tens of thousands of
+ * unbreakable characters in a row. **The tail of anything very long**, because a field that fills
+ * the panel has stopped being scannable, which is the only reason the panel is a column.
+ */
+function readableFields(node: GraphNode): { name: string; value: string }[] {
+  return Object.entries(node.data ?? {}).flatMap(([name, value]) => {
+    if (value === null || value === '') return [];
+    const text = String(value);
+    if (text.startsWith('data:')) return [];
+    return [{ name, value: text.length > FIELD_MAX ? `${text.slice(0, FIELD_MAX - 1)}…` : text }];
+  });
+}
+
 /** Design tokens resolve against the live theme; anything else is passed through as CSS. */
 function color(value: string | undefined, fallback: string): string {
   const token = value ?? fallback;
@@ -161,11 +187,7 @@ export function GraphView(props: GraphViewProps) {
           props.onNodeClick?.({
             ...node,
             ...(at?.kind === 'entity' && { recordId: at.id }),
-            fields: Object.entries(node.data ?? {})
-              // Nulls dropped rather than rendered as "null": an absent property is absent, and a
-              // panel listing it as a value states something the record does not.
-              .filter(([, value]) => value !== null && value !== '')
-              .map(([name, value]) => ({ name, value: String(value) })),
+            fields: readableFields(node),
           });
           break;
         }

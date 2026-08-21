@@ -423,7 +423,10 @@ export const graphRoute: RouteSchema = {
 
     {
       type: 'Column',
-      props: { width: '100%', flex: '1', position: 'relative', overflow: 'hidden' },
+      // The canvas takes the page colour so the detail panel, which is `neutral-0`, reads as a
+      // surface raised off it. Unset, both were the same colour and the panel had no edge but its
+      // border.
+      props: { width: '100%', flex: '1', position: 'relative', overflow: 'hidden', bg: 'neutral-50' },
       children: [
         {
           type: '$if',

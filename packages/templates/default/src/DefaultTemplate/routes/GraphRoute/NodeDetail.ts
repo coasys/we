@@ -57,7 +57,15 @@ export const selectNode = [
 export const expandRequest = {
   $if: {
     condition: { $local: 'expandKind' },
-    then: { id: { $local: 'selected.id' }, expanders: [{ $local: 'expandKind' }] },
+    /*
+      `direction: 'both'` because asking is not the same as arriving.
+
+      The maps auto-expand outward, so a node's outgoing relations are already drawn — and a request
+      that repeated that fetched the same neighbours, merged them, and changed nothing on screen. A
+      button that silently does nothing is worse than no button. What has *not* been fetched is what
+      points *at* the node, which is the half of the question a person clicking "Relations" is asking.
+    */
+    then: { id: { $local: 'selected.id' }, direction: 'both', expanders: [{ $local: 'expandKind' }] },
     else: null,
   },
 };
@@ -78,7 +86,13 @@ const fieldRow: SchemaNode = {
   props: { gap: '100', width: '100%' },
   children: [
     { type: 'we-text', props: { variant: 'footnote', color: 'neutral-500' }, children: ['$field.name'] },
-    { type: 'we-text', props: { variant: 'body' }, children: ['$field.value'] },
+    {
+      type: 'we-text',
+      // A value with no spaces in it — a URI, an id, a hash — has nowhere to break, so without this
+      // one field can push the whole panel sideways. Belt and braces beside the adapter's own cap.
+      props: { variant: 'body', styles: { 'overflow-wrap': 'anywhere' } },
+      children: ['$field.value'],
+    },
   ],
 };
 
@@ -97,10 +111,24 @@ const actions: SchemaNode = {
       type: 'Column',
       props: { gap: '300', width: '100%' },
       children: [
+        /*
+          Opening a node further — and not on a board, where it would do nothing.
+
+          A board draws what is *placed* on it, so a node's relations and fields are not part of the
+          map and there is nowhere for them to appear. The board's graph carries no `expandRequest`
+          for the same reason, which is what made these two buttons inert there: they set a request
+          nothing was listening for.
+        */
         {
-          type: 'Row',
-          props: { gap: '200', ay: 'center', wrap: true, width: '100%' },
-          children: [openButton('Relations', 'graph', 'entity'), openButton('Fields', 'list-bullets', 'property')],
+          type: '$if',
+          props: {
+            condition: { $ne: [{ $local: 'mode' }, 'board'] },
+            then: {
+              type: 'Row',
+              props: { gap: '200', ay: 'center', wrap: true, width: '100%' },
+              children: [openButton('Relations', 'graph', 'entity'), openButton('Fields', 'list-bullets', 'property')],
+            },
+          },
         },
         {
           type: 'Row',
@@ -137,6 +165,36 @@ const actions: SchemaNode = {
               },
             },
             /*
+              Deleting the record itself — offered here because the modal that used to hold it is
+              gone. Opening a card now goes straight to the composer, which is the right surface for
+              its content and the wrong one for destroying it: a delete button beside a save button
+              is a delete button somebody will hit.
+            */
+            {
+              type: '$if',
+              props: {
+                condition: { $eq: [{ $local: 'selected.type' }, 'CollectionBlock'] },
+                then: {
+                  type: 'we-button',
+                  props: {
+                    size: 'xs',
+                    variant: 'ghost',
+                    color: 'danger-600',
+                    // Recursive, and kind-agnostic: the one delete that serves every collection.
+                    onClick: {
+                      $action: 'spaceStore.deleteCollection',
+                      args: [{ $local: 'selected.recordId' }],
+                      onSuccess: [
+                        { $setLocal: 'selected', value: null },
+                        { $setLocal: 'revision', by: 1 },
+                      ],
+                    },
+                  },
+                  children: [{ type: 'we-icon', props: { name: 'trash' } }, 'Delete'],
+                },
+              },
+            },
+            /*
               Taking something off a board is deleting its placement, and nothing else.
 
               The counterpart to dragging it on, and the reason placement being membership is worth
@@ -164,7 +222,7 @@ const actions: SchemaNode = {
                       ],
                     },
                   },
-                  children: [{ type: 'we-icon', props: { name: 'x-circle' } }, 'Remove'],
+                  children: [{ type: 'we-icon', props: { name: 'x-circle' } }, 'Remove from board'],
                 },
               },
             },
