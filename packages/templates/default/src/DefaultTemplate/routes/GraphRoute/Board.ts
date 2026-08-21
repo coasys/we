@@ -42,7 +42,10 @@ const boardCards: SchemaNode = {
   props: {
     // The `board` seed reads the board's contents *and* the placements recorded against it, and
     // merges the coordinates into each node. A template names the board and nothing else.
-    seeds: { source: 'board', options: { board: BOARD } },
+    // `connections` draws the relationships whose two ends are both on this board — the same
+    // records the knowledge map draws as edges, seen from the arrangement somebody made instead of
+    // from the query that found them.
+    seeds: { source: 'board', options: { board: BOARD, connections: 'Relationship' } },
     // Nothing opens automatically: a board shows what is on it, and drilling into a card's own
     // blocks would turn a wall of notes into a tree of fragments.
     expansion: { defaultDepth: 0 },
@@ -80,6 +83,8 @@ const boardCards: SchemaNode = {
       { when: { type: 'EventBlock' }, style: { color: 'warning-50', labelColor: 'warning-800' } },
     ],
     behaviours: [
+      // Before drag-node, which is what makes arming mean anything: both claim a press on a node.
+      { type: 'connect-nodes', options: { armed: { $local: 'connecting' } } },
       // The two halves of a double-click: on a node it opens, on empty canvas it creates. Both
       // before pan-zoom, which is the background fallback and would otherwise claim the press first.
       'node-double-click',
@@ -87,6 +92,25 @@ const boardCards: SchemaNode = {
       'pan-zoom',
       'select',
       { type: 'drag-node', options: { pin: true } },
+    ],
+    edgeStyle: [
+      { style: { curve: 'smooth', arrow: 'target', color: 'primary-500', width: 2, showLabel: true } },
+      // One rule per kind the community has named, exactly as the knowledge map does — a board's
+      // connections mean the same things and should look the same way.
+      {
+        $map: {
+          items: { $local: 'relationshipKinds' },
+          select: {
+            when: { 'data.relationshipTypeId': '$item.id' },
+            style: {
+              showLabel: true,
+              width: 2,
+              color: '$item.color',
+              arrow: { $if: { condition: '$item.directed', then: 'target', else: 'none' } },
+            },
+          },
+        },
+      },
     ],
     // `lock` rather than `pin`: every card is placed already, so there is nothing to hold, and the
     // risk worth guarding against is rearranging somebody else's board by accident.
@@ -99,6 +123,10 @@ const boardCards: SchemaNode = {
     // id: the click that precedes the second one has already selected the node, and the modal reads
     // the selection.
     onNodeDoubleClick: { $setLocal: 'cardOpen', value: true },
+    onEdgeClick: { $setLocal: 'selectedEdge', from: '$event' },
+    // The same store call the knowledge map makes: connecting two things means the same thing
+    // wherever you drew the line, and both end up in the same form.
+    onEdgeCreate: { $action: 'recordStore.connectNodes', args: ['$event'] },
     /*
       Double-click empty canvas to make something there.
 
@@ -172,6 +200,22 @@ export const boardBar: SchemaNode = {
           type: 'Row',
           props: { gap: '200', ay: 'center' },
           children: [
+            /*
+              Connect mode, the same gesture the knowledge map arms.
+
+              A mode with a visible control rather than a modifier key: the modifiers are taken or do
+              not travel, and there are none at all on a touchscreen. It also gives the reader
+              somewhere to see which of the two things a drag is about to do.
+            */
+            {
+              type: 'we-button',
+              props: {
+                size: 'sm',
+                variant: { $if: { condition: { $local: 'connecting' }, then: 'primary', else: 'ghost' } },
+                onClick: { $toggleLocal: 'connecting' },
+              },
+              children: [{ type: 'we-icon', props: { name: 'flow-arrow' } }, 'Connect'],
+            },
             {
               type: 'we-button',
               props: { size: 'sm', variant: 'secondary', onClick: { $setLocal: 'newCardOpen', value: true } },

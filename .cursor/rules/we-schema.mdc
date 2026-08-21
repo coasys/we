@@ -1116,6 +1116,7 @@ Names resolvable inside GraphView props: seed sources (seeds.source), expanders 
   - board: string — Record id of the board (required).
   - contains: string[] — Types the board may hold beyond whatever its placements name — one query each. Defaults to the block vocabulary; anything *placed* is loaded whether or not it is listed.
   - via: string — Relation holding the contents. Defaults to "children".
+  - connections: string — Reified relation entity to draw as lines between the cards — e.g. "Relationship". Only pairs whose two ends are both on the board are drawn, since a line to something elsewhere would leave the canvas. Each line carries the record it stands for, so clicking one can open it. Omit for a board with no connections.
   - limit: number — Rows per type. Default 200.
   - Example: `{ "source": "board", "options": { "board": { "$local": "boardId" } } }`
 - `dataset` — Seeds a single node for the current space — the starting point for exploring outward.

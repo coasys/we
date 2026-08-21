@@ -4,7 +4,7 @@ import { recordFormModal } from '@we/template-kit';
 import { boardBar, boardCanvas, boardQuery } from './Board';
 import { openCardModal } from './CardModal';
 import { edgeDetailModal } from './EdgeDetail';
-import { expandRequest, nodeDetailPanel, selectNode } from './NodeDetail';
+import { clearOnEmptySelection, expandRequest, nodeDetailPanel, selectNode } from './NodeDetail';
 
 /**
  * The graph route — three graphs over the same space, switchable.
@@ -70,6 +70,7 @@ const schemaGraph: SchemaNode = {
     height: '100%',
     revision: { $local: 'revision' },
     onNodeClick: selectNode,
+    onSelectionChange: clearOnEmptySelection,
     onNodeDoubleClick: { $setLocal: 'cardOpen', value: true },
     expandRequest,
   },
@@ -163,6 +164,7 @@ const knowledgeGraph: SchemaNode = {
     height: '100%',
     revision: { $local: 'revision' },
     onNodeClick: selectNode,
+    onSelectionChange: clearOnEmptySelection,
     onNodeDoubleClick: { $setLocal: 'cardOpen', value: true },
     expandRequest,
     onEdgeClick: { $setLocal: 'selectedEdge', from: '$event' },
@@ -206,6 +208,7 @@ const contentGraph: SchemaNode = {
     height: '100%',
     revision: { $local: 'revision' },
     onNodeClick: selectNode,
+    onSelectionChange: clearOnEmptySelection,
     expandRequest,
   },
 };
@@ -338,7 +341,8 @@ export const graphRoute: RouteSchema = {
               props: { gap: '300', ay: 'center' },
               children: [
                 /*
-                  Connect mode, on the knowledge map only.
+                  Connect mode, on the knowledge map. The board has its own, in the board bar with
+                  the rest of its controls.
 
                   The schema map draws types rather than records, and the content tree draws
                   containment somebody else's data already states — neither has anything a person's
@@ -377,19 +381,26 @@ export const graphRoute: RouteSchema = {
                   schema mode draws a community's vocabulary, and until now the only thing you could
                   do with a type on that map was look at it.
 
-                  Hidden only when the space has no authorable models at all, since a button whose
-                  menu is empty teaches people it is broken.
+                  Hidden when the space has no authorable models at all, since a button whose menu is
+                  empty teaches people it is broken — and on a board, where `Record` in the board bar
+                  is the same form and *places* what it makes.
 
-                  It was briefly hidden on a board too, on the grounds that the record would not
-                  appear there. That was the wrong call: this is the only way to create a model
-                  instance anywhere in the app, and removing the sole entry point to a capability
-                  because one view cannot draw the result leaves somebody with no way to do it at
-                  all. What a board can hold is a separate question, and a smaller one.
+                  It was hidden on boards once before and restored, because at the time this was the
+                  only way to create a model instance anywhere and removing the sole entry point to a
+                  capability leaves somebody with no way to do it at all. `Record` is that entry
+                  point now, so the objection has been answered rather than overruled: two buttons
+                  opening the same form, one of which quietly makes something that does not appear
+                  where you made it, is worse than one button that works.
                 */
                 {
                   type: '$if',
                   props: {
-                    condition: { $count: { items: { $store: 'recordStore.creatableEntities' } } },
+                    condition: {
+                      $and: [
+                        { $ne: [{ $local: 'mode' }, 'board'] },
+                        { $count: { items: { $store: 'recordStore.creatableEntities' } } },
+                      ],
+                    },
                     then: {
                       type: 'we-button',
                       props: {

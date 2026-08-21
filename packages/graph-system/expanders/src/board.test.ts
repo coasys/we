@@ -28,6 +28,19 @@ const SHAPES: EntityShape[] = [
   },
   { name: 'CodeBlock', identityProperty: 'title', properties: [{ name: 'title', type: 'string' }], relations: [] },
   {
+    name: 'Relationship',
+    identityProperty: 'label',
+    properties: [
+      { name: 'label', type: 'string' },
+      { name: 'sourceType', type: 'string' },
+      { name: 'targetType', type: 'string' },
+    ],
+    relations: [
+      { name: 'source', target: '', cardinality: 'one' },
+      { name: 'target', target: '', cardinality: 'one' },
+    ],
+  },
+  {
     name: 'Placement',
     properties: [
       { name: 'nodeType', type: 'string' },
@@ -57,8 +70,16 @@ function context(tables: Record<string, Record<string, unknown>[]>, board = 'b1'
       query: async (request: ExpanderQuery) => {
         asked.push(request.entity);
         const rows = tables[request.entity] ?? [];
-        const ids = (request.where as { id?: unknown } | undefined)?.id;
-        if (Array.isArray(ids)) return rows.filter((row) => ids.includes(row.id));
+        const where = request.where as Record<string, unknown> | undefined;
+        if (where) {
+          // A bare array is set membership, on a relation field as much as on `id` — the backend
+          // emits a SPARQL `VALUES` clause either way.
+          return rows.filter((row) =>
+            Object.entries(where).every(([field, expected]) =>
+              Array.isArray(expected) ? expected.includes(row[field]) : row[field] === expected,
+            ),
+          );
+        }
         if (request.scope?.anchorId !== board) return [];
         return rows;
       },
@@ -188,6 +209,71 @@ describe('boardSeed', () => {
     const { nodes } = await boardSeed().seed({ board: 'b1' }, ctx);
 
     expect(nodes.find((n) => n.type === 'CodeBlock')).toBeUndefined();
+  });
+
+  it('draws a connection whose two ends are both on the board', async () => {
+    const { context: ctx } = context({
+      Placement: [
+        { id: 'p1', node: 'c1', nodeType: 'CollectionBlock', x: 0, y: 0 },
+        { id: 'p2', node: 'c2', nodeType: 'CollectionBlock', x: 200, y: 0 },
+      ],
+      CollectionBlock: [
+        { id: 'c1', title: 'One' },
+        { id: 'c2', title: 'Two' },
+      ],
+      Relationship: [
+        {
+          id: 'r1',
+          label: 'contradicts',
+          source: 'c1',
+          sourceType: 'CollectionBlock',
+          target: 'c2',
+          targetType: 'CollectionBlock',
+        },
+      ],
+    });
+
+    const { edges } = await boardSeed().seed({ board: 'b1', connections: 'Relationship' }, ctx);
+
+    expect(edges).toHaveLength(1);
+    expect(edges[0].label).toBe('contradicts');
+    // Clicking the line has to be able to open the claim it stands for.
+    expect(edges[0].reifiedAs).toContain('Relationship');
+  });
+
+  it('drops a connection whose far end is not on the board', async () => {
+    // A board is a closed surface. A line to a record that is not on it would leave the canvas and
+    // end nowhere, and pulling the far end in to fix that would put things on the board nobody
+    // placed.
+    const { context: ctx } = context({
+      Placement: [{ id: 'p1', node: 'c1', nodeType: 'CollectionBlock', x: 0, y: 0 }],
+      CollectionBlock: [{ id: 'c1', title: 'One' }],
+      Relationship: [
+        {
+          id: 'r1',
+          label: 'contradicts',
+          source: 'c1',
+          sourceType: 'CollectionBlock',
+          target: 'elsewhere',
+          targetType: 'TaskBlock',
+        },
+      ],
+    });
+
+    const { edges, nodes } = await boardSeed().seed({ board: 'b1', connections: 'Relationship' }, ctx);
+
+    expect(edges).toEqual([]);
+    expect(nodes).toHaveLength(1);
+  });
+
+  it('asks for no connections when nothing is placed', async () => {
+    // Nothing to connect, and the query would be `source: []` — which matches nothing, so asking is
+    // a round trip for a known answer.
+    const { context: ctx, asked } = context({ CollectionBlock: [{ id: 'c1', title: 'One' }] });
+
+    await boardSeed().seed({ board: 'b1', connections: 'Relationship' }, ctx);
+
+    expect(asked).not.toContain('Relationship');
   });
 
   it('skips a placed type the dataset does not declare rather than querying it', async () => {

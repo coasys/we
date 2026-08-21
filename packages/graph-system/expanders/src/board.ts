@@ -39,7 +39,8 @@
  * is what is wanted anyway: the records come back in one query per type — `where: { id: [...] }`,
  * which is native on AD4M and pushes down to a SPARQL `VALUES` clause — and are matched up here.
  */
-import type { GraphEdge, GraphNode, SeedSource } from '@we/graph-protocol';
+import type { GraphEdge, GraphNode, GraphValue, SeedSource } from '@we/graph-protocol';
+import { entityAddress } from '@we/graph-protocol';
 
 import { rowToNode } from './nodes';
 
@@ -59,6 +60,14 @@ export interface BoardSeedOptions {
    * entity the dataset declares.
    */
   contains?: string[];
+  /**
+   * Entity to draw as connections between the things on this board, if any.
+   *
+   * Only those with *both* ends placed here are drawn. A board is a closed surface — a line to a
+   * record that is not on it would leave the canvas and end nowhere, and pulling the far end in to
+   * fix that would put things on the board that nobody placed.
+   */
+  connections?: string;
   limit?: number;
 }
 
@@ -75,6 +84,17 @@ const DEFAULT_CONTAINS = ['CollectionBlock'];
 interface Placed {
   x: number;
   y: number;
+}
+
+/** A connection's own scalars, for style rules to match on — the same thing `reified` carries. */
+function scalarsOf(row: Record<string, unknown>): Record<string, GraphValue> {
+  const data: Record<string, GraphValue> = {};
+  for (const [key, value] of Object.entries(row)) {
+    if (value === null || ['string', 'number', 'boolean'].includes(typeof value)) {
+      data[key] = value as GraphValue;
+    }
+  }
+  return data;
 }
 
 export function boardSeed(): SeedSource {
@@ -122,6 +142,16 @@ export function boardSeed(): SeedSource {
 
       const nodes: GraphNode[] = [];
       const seen = new Set<string>();
+      /** Record ids on this board, so a connection can be checked for having both ends here. */
+      const placed = new Set<string>([...placedIds.values()].flat());
+      /** Record id → its entity name, so a connection's endpoints can be addressed. */
+      const typeOf = new Map<string, string>();
+      for (const [entity, ids] of placedIds) for (const id of ids) typeOf.set(id, entity);
+
+      const addressOf = (declared: unknown, id: string): string | undefined => {
+        const entity = typeof declared === 'string' && declared ? declared : typeOf.get(id);
+        return entity ? entityAddress(dataset, entity, id) : undefined;
+      };
 
       /*
         Two passes, because a board answers two questions.
@@ -162,10 +192,42 @@ export function boardSeed(): SeedSource {
         }
       }
 
-      // No edges: containment is how a board holds things, not something a board is *about*. Drawing
-      // it would put a line from an invisible parent to every card, which is a hub-and-spoke diagram
-      // rather than the freeform surface the whole mode exists to be.
+      /*
+        Connections between what is on the board.
+
+        No *containment* edges — that would draw a line from an invisible parent to every card, a
+        hub-and-spoke diagram rather than the freeform surface the mode exists to be. What is worth
+        drawing is what people asserted: a relationship between two cards that are both here.
+
+        Filtered to pairs that are both placed, and filtered *here* rather than in the query, because
+        "both ends in this set" is not a where-clause. The query narrows by source, which is the half
+        a backend can do, and the target check is a set lookup against what was just loaded.
+      */
       const edges: GraphEdge[] = [];
+      const connections = options.connections;
+      if (connections && shapes.some((s) => s.name === connections) && placed.size) {
+        const ends = [...placed];
+        for (const row of await read(connections, { source: ends })) {
+          const source = typeof row.source === 'string' ? row.source : undefined;
+          const target = typeof row.target === 'string' ? row.target : undefined;
+          if (!source || !target || !placed.has(source) || !placed.has(target)) continue;
+          const from = addressOf(row.sourceType, source);
+          const to = addressOf(row.targetType, target);
+          if (!from || !to) continue;
+          edges.push({
+            id: `board-connection|${String(row.id)}`,
+            source: from,
+            target: to,
+            type: 'relates',
+            ...(typeof row.label === 'string' && row.label ? { label: row.label } : {}),
+            data: scalarsOf(row),
+            // Keeps the record reachable, exactly as the reified expander does: clicking the line
+            // should be able to open the claim it stands for rather than dead-ending.
+            reifiedAs: entityAddress(dataset, connections, String(row.id)),
+          });
+        }
+      }
+
       return { nodes, edges, total: nodes.length };
     },
   };

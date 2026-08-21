@@ -59,6 +59,12 @@ export const GRAPH_PLUGIN_CATALOG: PluginCatalog = {
             'Types the board may hold beyond whatever its placements name — one query each. Defaults to the block vocabulary; anything *placed* is loaded whether or not it is listed.',
         },
         { name: 'via', type: 'string', description: 'Relation holding the contents. Defaults to "children".' },
+        {
+          name: 'connections',
+          type: 'string',
+          description:
+            'Reified relation entity to draw as lines between the cards — e.g. "Relationship". Only pairs whose two ends are both on the board are drawn, since a line to something elsewhere would leave the canvas. Each line carries the record it stands for, so clicking one can open it. Omit for a board with no connections.',
+        },
         { name: 'limit', type: 'number', description: 'Rows per type. Default 200.' },
       ],
       example: `{ "source": "board", "options": { "board": { "$local": "boardId" } } }`,

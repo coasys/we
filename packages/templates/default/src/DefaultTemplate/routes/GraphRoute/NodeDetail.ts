@@ -48,6 +48,26 @@ export const selectNode = [
 ];
 
 /**
+ * The graph's selection changed — including to nothing.
+ *
+ * `select` already clears on a background click and reports it; nothing was listening, so the panel
+ * stayed open describing a node that was no longer highlighted, and the only way out was to select
+ * something else.
+ *
+ * Bound on every mode rather than only where a background click is likely: a selection that can be
+ * emptied by shift-clicking the last node has the same problem, and a handler that only knew about
+ * one of the two ways to reach empty would be wrong half the time.
+ */
+export const clearOnEmptySelection = [
+  {
+    $if: {
+      condition: { $count: { items: '$event' } },
+      else: [CLEAR, { $setLocal: 'selected', value: null }, { $setLocal: 'cardOpen', value: false }],
+    },
+  },
+];
+
+/**
  * What the graph is being asked to open, derived rather than stored.
  *
  * `$setLocal`'s `value` is a literal — a token inside it is stored as the token — so a button
