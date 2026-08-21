@@ -59,6 +59,15 @@ const RADIUS_OPTIONS = [
   { value: 'var(--we-radius-pill)', label: 'Pill' },
 ];
 
+/**
+ * Avatars get Circle as well, and only avatars do.
+ *
+ * `full` is `50%` — a percentage, resolved per-axis — so it is a circle on a square box and an
+ * ellipse on anything else. Avatars are square by construction; controls, surfaces and inputs are
+ * not, which is why the option is absent from the shared list rather than filtered out of it.
+ */
+const AVATAR_RADIUS_OPTIONS = [...RADIUS_OPTIONS, { value: 'var(--we-radius-full)', label: 'Circle' }];
+
 const SPACING_OPTIONS = [
   { value: '', label: 'Default' },
   { value: 'var(--we-space-100)', label: 'XS' },
@@ -80,18 +89,25 @@ const HEIGHT_OPTIONS = [
 
 // ─── Presets ──────────────────────────────────────────────────────────────────
 
+/**
+ * Only `sharp` touches `avatarRadius`. "Rounded" and "Pill" describe a corner treatment, and an
+ * avatar is already as round as a corner gets — squaring it off there would surprise. A sharp theme
+ * is the one case where circular avatars actively contradict what the preset says.
+ */
 const SHAPE_PRESETS = {
-  sharp: { controlRadius: '0', surfaceRadius: '0', inputRadius: '0' },
-  default: { controlRadius: undefined, surfaceRadius: undefined, inputRadius: undefined },
+  sharp: { controlRadius: '0', surfaceRadius: '0', inputRadius: '0', avatarRadius: '0' },
+  default: { controlRadius: undefined, surfaceRadius: undefined, inputRadius: undefined, avatarRadius: undefined },
   rounded: {
     controlRadius: 'var(--we-radius-600)',
     surfaceRadius: 'var(--we-radius-600)',
     inputRadius: 'var(--we-radius-600)',
+    avatarRadius: undefined,
   },
   pill: {
     controlRadius: 'var(--we-radius-pill)',
     surfaceRadius: 'var(--we-radius-600)',
     inputRadius: 'var(--we-radius-pill)',
+    avatarRadius: undefined,
   },
 } as const;
 
@@ -374,7 +390,8 @@ export function ThemePanel() {
       if (
         (o.controlRadius ?? undefined) === vals.controlRadius &&
         (o.surfaceRadius ?? undefined) === vals.surfaceRadius &&
-        (o.inputRadius ?? undefined) === vals.inputRadius
+        (o.inputRadius ?? undefined) === vals.inputRadius &&
+        (o.avatarRadius ?? undefined) === vals.avatarRadius
       ) {
         return name;
       }
@@ -566,6 +583,7 @@ export function ThemePanel() {
                 {selectControl('Controls', 'controlRadius', RADIUS_OPTIONS, '80px')}
                 {selectControl('Surfaces', 'surfaceRadius', RADIUS_OPTIONS, '80px')}
                 {selectControl('Inputs', 'inputRadius', RADIUS_OPTIONS, '80px')}
+                {selectControl('Avatars', 'avatarRadius', AVATAR_RADIUS_OPTIONS, '80px')}
               </Column>
             </CollapsibleSection>
 

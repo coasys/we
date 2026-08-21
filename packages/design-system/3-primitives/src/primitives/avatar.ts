@@ -80,10 +80,13 @@ const styles = css`
     --we-icon-size: calc(var(--we-avatar-size) * 0.6);
   }
 
+  /* inherit, not a second 50%: the host's radius is themeable (--we-theme-avatar-radius) and a
+     hardcoded circle here would win for exactly the avatars that have a picture — so a theme asking
+     for rounded-square avatars got squares everywhere except where it mattered most. */
   [part='img'] {
     width: 100%;
     height: 100%;
-    border-radius: 50%;
+    border-radius: inherit;
     object-fit: cover;
   }
 

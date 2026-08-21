@@ -72,6 +72,7 @@ const THEME_CSS_MAP: Record<ParametricKey, string> = {
   controlRadius: '--we-theme-control-radius',
   surfaceRadius: '--we-theme-surface-radius',
   inputRadius: '--we-theme-input-radius',
+  avatarRadius: '--we-theme-avatar-radius',
   // Density
   controlPaddingX: '--we-theme-control-padding-x',
   controlGap: '--we-theme-control-gap',

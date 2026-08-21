@@ -70,7 +70,11 @@ interface ComponentCascade {
 
 const COMPONENT_CASCADE: Record<string, ComponentCascade> = {
   // Media
-  avatar: { radiusDefault: '50%' },
+  //
+  // Avatars take their own group rather than the media/surface one: they are the only components
+  // guaranteed square (width and height both come from --we-avatar-size), which is what makes a
+  // percentage radius safe here and unsafe on a video. See ThemeOverrides.avatarRadius.
+  avatar: { radiusGroup: '--we-theme-avatar-radius', radiusDefault: '50%' },
   // Controls
   button: {
     radiusGroup: '--we-theme-control-radius',

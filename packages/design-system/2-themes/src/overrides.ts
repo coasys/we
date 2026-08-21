@@ -68,8 +68,23 @@ export type ThemeOverrides = {
 
   // Shape — radius cascade: component r= prop → component theme → group theme → token default
   controlRadius?: string; // --we-theme-control-radius  (buttons, badges, tags)
-  surfaceRadius?: string; // --we-theme-surface-radius  (modals, drawers, alerts)
+  surfaceRadius?: string; // --we-theme-surface-radius  (modals, drawers, alerts, images, video, embeds)
   inputRadius?: string; // --we-theme-input-radius  (inputs, selects, textareas)
+
+  /**
+   * --we-theme-avatar-radius (avatars, and anything else square by construction).
+   *
+   * Separate from the three above rather than folded into them, because an avatar is the only
+   * thing here whose box is guaranteed square — `we-avatar` sets width and height from one
+   * `--we-avatar-size`. That guarantee is what makes a *percentage* radius safe: `50%` resolves
+   * per-axis, so it is a circle on a square box and an ellipse on anything else. Sharing a value
+   * with `surfaceRadius` would mean a theme that rounds its avatars also turns every 16:9 video
+   * into an ellipse.
+   *
+   * Defaults to `50%`, so avatars stay circular in every theme that says nothing. A theme wanting
+   * the rounded-square look sets a length here instead (`var(--we-radius-400)`).
+   */
+  avatarRadius?: string;
 
   // Density — padding/gap cascade: component p=/gap= prop → component theme → group theme → size default
   controlPaddingX?: string; // --we-theme-control-padding-x  (button / badge / tag horizontal padding)

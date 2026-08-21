@@ -109,7 +109,10 @@ export function AvatarStack(props: AvatarStackProps) {
             'flex-shrink': '0',
             width: sizeVar(),
             height: sizeVar(),
-            'border-radius': '50%',
+            // The avatar group, not a literal circle: this chip sits in the row *as* one of the
+            // faces, so a theme that squares them off has to square this too or the row ends in an
+            // odd one out. Safe as a percentage for the same reason the avatars are — it is square.
+            'border-radius': 'var(--we-theme-avatar-radius, 50%)',
             background: 'var(--we-color-neutral-200)',
             color: 'var(--we-color-neutral-800)',
             'font-size': 'var(--we-font-size-100)',
