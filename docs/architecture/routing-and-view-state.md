@@ -55,8 +55,8 @@ devices.
 **4. Ephemeral — in-the-moment → plain `$localState`.**
 Open modals, in-flight flags, drag state. Survives nothing, and shouldn't.
 
-The dividing question for any field: _"If I sent this URL to someone else,
-should they see the effect?"_ Yes → tier 1 or 2. No, but future-me should →
+The dividing question for any field: *"If I sent this URL to someone else,
+should they see the effect?"* Yes → tier 1 or 2. No, but future-me should →
 tier 3. No one → tier 4.
 
 ## Template & theme suggestions in links

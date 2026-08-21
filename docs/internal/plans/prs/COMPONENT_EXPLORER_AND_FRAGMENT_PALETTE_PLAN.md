@@ -11,12 +11,12 @@ Grounding: `docs/architecture/template-fragments.md` (the expansion model this b
 ## Where this starts from
 
 - **Users cannot add nodes at all today.** The inspector edits existing nodes; there is no insert.
-  That gap is the real driver — fragments are the _good version_ of solving it, not a separate
+  That gap is the real driver — fragments are the *good version* of solving it, not a separate
   feature.
 - The AI is already connected to the fragment system at the level the architecture intends:
   the kit's shapes ship as JSON recipes in `schemaContext` (the in-app AI's system prompt), so an
   AI-authored template produces the same trees the kit does. What the AI lacks is the same thing
-  the human lacks: an _insert operation_ with checks.
+  the human lacks: an *insert operation* with checks.
 - Everything needed to describe the vocabulary already exists in `context.json`: per-component
   props, types, allowed values, `@ai` docs — the same data the validator and value pickers use.
 - The kit is TypeScript in the app bundle. **The editor can simply import and call it.** Insert =
@@ -26,20 +26,20 @@ Grounding: `docs/architecture/template-fragments.md` (the expansion model this b
 ## Design positions
 
 **One insert pipeline, two callers.** Insert-at-selection is a single editor operation — validate
-target, check scope, splice nodes, select result — used by the palette UI _and_ exposed to the
+target, check scope, splice nodes, select result — used by the palette UI *and* exposed to the
 in-app AI as a tool. Both authors get the same checks; later, marketplace-fragment action
 disclosure lives at this same choke point. Do not build a human path and an AI path.
 
 **Insert is where the ambient-scope contract finally gets enforced.** A fragment's manifest
 declares `requires: { local: [...], context: [...] }`; the editor checks it against
 `getScopeAtNode` (exists, powers the value pickers) at the drop target. Unmet requirements render
-the fragment as _insertable-with-fix_ — "declares `searchText` on the page for you" — or disabled
+the fragment as *insertable-with-fix* — "declares `searchText` on the page for you" — or disabled
 with the reason. This is the check `template-fragments.md` names as prerequisite #1 for
 marketplace fragments; building it for the kit first means it exists before strangers need it.
 
 **Previews are live renders, not screenshots.** Fragments expand to plain nodes, and the policy
 already allows schema islands in TSX via `RenderSchema` — so a preview is the fragment expanded
-with sample props and rendered in the _current theme_, which screenshots can never be. Fragments
+with sample props and rendered in the *current theme*, which screenshots can never be. Fragments
 needing live data (`peopleRow`, `agentByline`) take the `SignalControl` precedent: sample data in
 the manifest, rendered against a stub stores bag. Screenshot fallback only where a component
 drags a heavy dependency (globe, graph).

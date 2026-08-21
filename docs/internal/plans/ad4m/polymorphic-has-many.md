@@ -151,14 +151,14 @@ or the decorator holds one:
 @HasMany(() => WeNode, { through: 'we://children', polymorphic: true, classResolver: getBlockModel })
 ```
 
-### 2. `sh:class` now survives the round trip — but that is the _declared_ target, not the instance's
+### 2. `sh:class` now survives the round trip — but that is the *declared* target, not the instance's
 
 `feat/fromSHACL-class-resolver` (commit `d47a16bb5`) is **merged to dev**. It fixed
 `parse_shacl_to_links` silently dropping `sh:class`, `ad4m://getter` and
 `ad4m://conformanceConditions`, which had left every collection property on a `fromSHACL`-reconstructed
 class with no target wired up.
 
-Worth reading before starting, and worth _not_ mistaking for this feature. It resolves what a relation
+Worth reading before starting, and worth *not* mistaking for this feature. It resolves what a relation
 **declares** it points at. Polymorphism is about what each instance **is**, which is a different lookup
 and still missing: `getSubjectClassMetadata` goes className → metadata, and there is no reverse
 (URI → class) primitive. The batch type resolution in **Proposed Solution** is still the new work, and
@@ -167,8 +167,8 @@ option 1 (a SurrealDB batch over the type/flag links) is still the right shape.
 ### 3. The "Files to modify" table above is stale — hydration moved to Rust
 
 `core/src/model/hydration.ts` is now a **27-line shim** retaining only `normalizeValue()`. Its own
-header says why: _"After the Rust model_query pipeline migration, most hydration logic moved to
-Rust."_ The real hydration is `rust-executor/src/perspectives/model_query/` (`hydration.rs`,
+header says why: *"After the Rust model_query pipeline migration, most hydration logic moved to
+Rust."* The real hydration is `rust-executor/src/perspectives/model_query/` (`hydration.rs`,
 `relations.rs`, `shape.rs`, `projection.rs`).
 
 What survives TS-side is **class instantiation**, and that is the interesting part.
@@ -185,12 +185,12 @@ local change that never enters the Rust pipeline.
 
 ### 4. Do not branch into `model_query` right now — that area is contested
 
-| PR   | Branch                                           | Base     | State | Last touched |
-| ---- | ------------------------------------------------ | -------- | ----- | ------------ |
-| #842 | `refactor/typed-rdf-literals-and-fn-cleanup`     | dev      | open  | 2026-07-30   |
-| #846 | `refactor/sparql-pushdown-last-write-wins`       | **#842** | draft | 2026-07-27   |
-| #853 | `feat/model-query-construct-hydration`           | **#846** | draft | 2026-06-11   |
-| #874 | `…-nico-refactor` ("old state with refactoring") | dev      | open  | 2026-08-03   |
+| PR | Branch | Base | State | Last touched |
+| --- | --- | --- | --- | --- |
+| #842 | `refactor/typed-rdf-literals-and-fn-cleanup` | dev | open | 2026-07-30 |
+| #846 | `refactor/sparql-pushdown-last-write-wins` | **#842** | draft | 2026-07-27 |
+| #853 | `feat/model-query-construct-hydration` | **#846** | draft | 2026-06-11 |
+| #874 | `…-nico-refactor` ("old state with refactoring") | dev | open | 2026-08-03 |
 
 A three-deep unmerged stack over the model_query hydration path, plus a competing refactor of the same
 base (#874) that is more recently active than the stack above it. Anything landing inside
@@ -199,8 +199,8 @@ base (#874) that is more recently active than the stack above it. Anything landi
 ### 5. Recommended split: ship the missing primitive first, off `dev`
 
 The one thing genuinely absent is a **URI → concrete class name** lookup. Its mirror already exists:
-`perspective.isSubjectInstance(uri, className)` answers _"is this URI an instance of class X"_. What
-nothing answers is _"what class is this URI"_, in one call, for many URIs.
+`perspective.isSubjectInstance(uri, className)` answers *"is this URI an instance of class X"*. What
+nothing answers is *"what class is this URI"*, in one call, for many URIs.
 
 That absence is already costing WE, independently of this feature. `resolveBlockModel`
 (`packages/block-system/shared/src/serialization.ts:447`) is:
@@ -230,7 +230,7 @@ The sequencing also de-risks: if the stack never lands, WE still gets a real imp
 ### 6. Second consumer: call transcripts
 
 The plan cites blocks as the motivating case. Call transcripts are now a second, and they are the one
-that made the gap _user-visible_ rather than merely inconvenient.
+that made the gap *user-visible* rather than merely inconvenient.
 
 A call's record is a `CollectionBlock` with `kind: 'call'` holding its utterances as `children`. Posts
 never hit this because they render from the `editorState` blob rather than traversing the relation —
@@ -251,11 +251,11 @@ and `compute-up` on any backend that lacks it. That works today and is correct.
 
 What the feature would change, once it lands:
 
-| Today                                                                                              | With `polymorphic: true`                                                           |
-| -------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
-| One drill-down query per parent                                                                    | Folded into the parent query's `include`                                           |
+| Today | With `polymorphic: true` |
+| --- | --- |
+| One drill-down query per parent | Folded into the parent query's `include` |
 | Children arrive as their concrete class only because the drill-down names one entity (`TextBlock`) | Genuinely mixed children (text + image + task in one collection) hydrate correctly |
-| `loadBlocks()` resolves types by hand through the block registry                                   | The ORM does it                                                                    |
+| `loadBlocks()` resolves types by hand through the block registry | The ORM does it |
 
 So the migration afterwards is **an optimisation, not a correction**: swap a `scope` for an `include`
 where the relation is heterogeneous, and retire the manual resolution in `loadBlocks()`. Nothing about

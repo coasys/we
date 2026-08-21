@@ -207,4 +207,4 @@ Children arrays require no changes. `$store` and `$local` tokens require no chan
 | `packages/schema-system/shared/src/semanticValidation.ts`        | Warn on magic strings in prop positions           |
 | `packages/schema-system/frameworks/solid/src/SchemaRenderer.tsx` | Handle `$ctx` in renderer                         |
 | `packages/ai-context/src/fragments/schema-operators.ts`          | Document `$ctx`, update `$arg` / `$setLocal` docs |
-| `packages/app-shell/src/shared/schemas/**`                       | Migrate magic strings in prop/args positions      |
+| `packages/app-shell/src/shared/schemas/**`                   | Migrate magic strings in prop/args positions      |

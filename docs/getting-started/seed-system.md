@@ -1,7 +1,7 @@
 # The Seed System
 
 Every WE deployment starts from a **seed file** — `we-seed.json` at the
-workspace root. It declares what this deployment _is_: project metadata, which
+workspace root. It declares what this deployment *is*: project metadata, which
 feature modules ship, which external apps are embedded, how the bundled AD4M
 executor is wired, and the shared spaces a fresh install is offered.
 White-labeling a deployment is a matter of swapping the seed.
@@ -30,7 +30,7 @@ Pure metadata.
 
 The feature modules this deployment ships, by id — e.g.
 `["globe", "graph", "notes", "call", "transcribe"]`. Declaring what the
-deployment includes is what a seed is _for_; ids are matched against the
+deployment includes is what a seed is *for*; ids are matched against the
 bundled module set at boot, and an unknown id is reported rather than silently
 ignored. (Per-agent and per-space choices layer on top:
 `AgentSettings.installedModules` and `Space.enabledModules`.)

@@ -1,7 +1,7 @@
 # Plan: Set semantics for `@HasMany` (`distinct`), and link provenance
 
 > Feature request: let a `@HasMany` declare that it is a **set of targets** rather than a bag of
-> assertions — and, separately, let a consumer that wants the bag see _who asserted what_. Today the
+> assertions — and, separately, let a consumer that wants the bag see *who asserted what*. Today the
 > ORM offers neither, so every reader of a scalar relation gets duplicates it did not ask for and no
 > way to understand them.
 
@@ -25,7 +25,7 @@ surfaces the multiset and gives a consumer nothing to do about it:
 - **No `distinct`.** A reader who wants set semantics — which is nearly every reader of a scalar
   relation — must deduplicate by hand at each call site, and will forget at some of them.
 - **No provenance.** `participants: string[]` hands back bare target strings, dropping the author and
-  timestamp that are the _only_ things distinguishing the two links.
+  timestamp that are the *only* things distinguishing the two links.
 
 Which is the worst of both: duplicates you did not want, and no access to the information that would
 justify keeping them.
@@ -60,7 +60,7 @@ person noticing a doubled avatar row.
 
 "Alice says Bob was here" and "Bob says Bob was here" are different statements, and an agent-centric
 system is right to store both. Collapsing them at the link layer would destroy information WE may well
-want later — a transcript that can say _who attests_ a participant was present is strictly more useful
+want later — a transcript that can say *who attests* a participant was present is strictly more useful
 than one that cannot.
 
 So the fix belongs in the **ORM's read surface**, which is where "give me the members" and "give me
@@ -92,7 +92,7 @@ Two open questions for whoever picks this up:
 
 ### 2. Optional, separable: expose link provenance
 
-For consumers that want the bag _because_ it is a bag:
+For consumers that want the bag *because* it is a bag:
 
 ```typescript
 @HasMany({ through: 'we://participants', withLinks: true })
@@ -120,18 +120,18 @@ WE is **not blocked**. The one-writer rule already produces correct data for any
 it. What the option changes is that the guarantee stops depending on every future writer knowing
 about it.
 
-| Today                                                                 | With `distinct: true`                                                                 |
-| --------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
-| `WeNode.participants` carries a prose contract nothing enforces       | The relation declares its own semantics; a misbehaving writer cannot corrupt the read |
-| `AvatarStack` deduplicates before drawing, for every caller           | Still wanted as defence for pre-existing data, but no longer load-bearing             |
-| A new writer appending another agent's DID breaks the roster silently | Costs a redundant link and nothing else                                               |
+| Today | With `distinct: true` |
+| --- | --- |
+| `WeNode.participants` carries a prose contract nothing enforces | The relation declares its own semantics; a misbehaving writer cannot corrupt the read |
+| `AvatarStack` deduplicates before drawing, for every caller | Still wanted as defence for pre-existing data, but no longer load-bearing |
+| A new writer appending another agent's DID breaks the roster silently | Costs a redundant link and nothing else |
 
 ### Cleanup once it lands
 
 1. **Add `distinct: true`** to `WeNode.participants`, and to `comments` / `signals` / `calls` if the
    same reasoning applies — each should be checked rather than assumed.
 2. **Reconsider the coverage rule in transcribe.** With `distinct`, cross-appending is no longer
-   _wrong_, only wasteful, so "each agent appends everyone it can see" becomes available again. It is
+   *wrong*, only wasteful, so "each agent appends everyone it can see" becomes available again. It is
    worth re-examining rather than reinstating: self-appending also gives better coverage, because a
    silent participant currently appears only if somebody else happens to flush while they are there.
    Keep the effect either way; the decision is only about whether to append others as well.

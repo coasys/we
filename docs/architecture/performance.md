@@ -3,6 +3,7 @@
 > Figures measured 2026-07-21, pre template-kit refactor (dev @ ~e43baec). Methodology and
 > conclusions stand; re-run `apps/playgrounds/solid/render-bench` before quoting absolute numbers.
 
+
 A like-for-like measurement of four ways to render the same page — raw DOM, plain Solid, Solid with
 the WE design system, and WE's JSON template system — in a real browser, including paint.
 
