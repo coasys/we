@@ -34,6 +34,7 @@ import {
   type RecordDraft,
   recordDraftErrors,
   recordDraftFields,
+  writeFieldValue,
 } from '../../../shared/shapes/recordDraft';
 import { useDatasetStore } from './DatasetStore';
 import { BLOCK_ICONS, useShapeStore } from './ShapeStore';
@@ -115,6 +116,15 @@ export interface RecordStore {
   setRecordEntity: (entity: string) => void;
   /** Set one field's value. Takes the field name, so one action serves every control. */
   setRecordField: (name: string, value: string | number | boolean) => void;
+  /**
+   * Which named kind the pending connection is, or empty for one carrying only a label.
+   *
+   * Held beside the draft rather than in it, because `relationshipTypeId` is deliberately absent
+   * from `Relationship.authoring.fields`: the kinds are a list to pick from, and a generated form
+   * would render the field as a text box asking somebody to type an id.
+   */
+  relationshipKind: Accessor<string>;
+  setRelationshipKind: (id: unknown) => void;
   cancelRecordForm: () => void;
   /** Validate and create. Errors land in `recordErrors`; success closes the form. */
   saveRecord: () => Promise<void>;
@@ -150,6 +160,7 @@ export function RecordStoreProvider(props: ParentProps) {
   const [lastCreatedId, setLastCreatedId] = createSignal('');
   const [pendingLink, setPendingLink] = createSignal<PendingLink | null>(null);
   const [pendingBoard, setPendingBoard] = createSignal('');
+  const [relationshipKind, setKind] = createSignal('');
 
   /**
    * WE's own authorable models, read straight off the core manifest.
@@ -225,6 +236,7 @@ export function RecordStoreProvider(props: ParentProps) {
       // nothing on screen to suggest it happened.
       setPendingLink(null);
       setPendingBoard('');
+      setKind('');
     });
     // Opening on the first offered model rather than on an empty picker: in a space with one
     // vocabulary that is the only answer, and in a space with several it is still a better start
@@ -250,19 +262,30 @@ export function RecordStoreProvider(props: ParentProps) {
   }
 
   /**
-   * Replace the whole draft on every keystroke.
+   * Write one field's value in place, and deliberately do not touch the signal.
    *
-   * The shape wizard mutates its rows in place to keep inputs focused, and pays for it with a
-   * `commitDraft` call every consumer has to remember. There is nothing derived from a value here —
-   * validation runs at save — so a plain immutable update is correct, and the controls are bound to
-   * their own value rather than re-created, so nothing loses focus.
+   * `$each` renders rows with Solid's `<For>`, which keys on **object identity**. Replacing the
+   * draft on every keystroke made every row a new object, so every control was torn down and
+   * rebuilt — and the input being typed into lost focus after a single character.
+   *
+   * The shape wizard already solved this, and its comment says so: typed fields are mutated without
+   * touching the draft signal "so inputs keep focus". An earlier version of this function dismissed
+   * that as a cost the wizard paid for reasons that did not apply here, on the grounds that nothing
+   * downstream derives from a value. That reasoning was beside the point — `<For>` does not care
+   * what a value is *for*, only whether the object holding it is the same one as last time.
+   *
+   * Nothing has to be published, which is what makes the mutation safe rather than merely expedient:
+   * which control a row renders comes from `field.control`, validation runs at save, and the typed
+   * text is already in the DOM. The wizard needs `commitDraft` because its rows *do* derive things
+   * from what is typed; this one has nothing to keep in step.
    */
   function setRecordField(name: string, value: string | number | boolean): void {
-    setRecordDraft((draft) =>
-      draft
-        ? { ...draft, fields: draft.fields.map((field) => (field.name === name ? { ...field, value } : field)) }
-        : draft,
-    );
+    writeFieldValue(recordDraft(), name, value);
+  }
+
+  /** Takes `unknown` for the reason `openRecordForm` does — a picker's event can arrive here. */
+  function setRelationshipKind(id: unknown): void {
+    setKind(asEntityName(id));
   }
 
   function connectNodes(link: PendingLink): void {
@@ -279,6 +302,7 @@ export function RecordStoreProvider(props: ParentProps) {
       setRecordErrors([]);
       setPendingLink(null);
       setPendingBoard('');
+      setKind('');
     });
   }
 
@@ -354,7 +378,12 @@ export function RecordStoreProvider(props: ParentProps) {
         and findable only by looking for it.
       */
       const fields = recordDraftFields(draft);
-      if (link) Object.assign(fields, { sourceType: link.sourceType, targetType: link.targetType });
+      if (link) {
+        Object.assign(fields, { sourceType: link.sourceType, targetType: link.targetType });
+        // Only when one was chosen: an empty string would write a reference to a kind that does not
+        // exist, and the ORM cannot later clear it — see `recordDraftFields` on blank optionals.
+        if (relationshipKind()) Object.assign(fields, { relationshipTypeId: relationshipKind() });
+      }
 
       const created = (await Model.create(dataset.handle, fields)) as {
         id?: string;
@@ -379,6 +408,7 @@ export function RecordStoreProvider(props: ParentProps) {
         setRecordErrors([]);
         setPendingLink(null);
         setPendingBoard('');
+        setKind('');
       });
       toastService.success(`${draft.label} created.`);
     } catch (error) {
@@ -405,6 +435,8 @@ export function RecordStoreProvider(props: ParentProps) {
     placeOnBoard,
     setRecordEntity,
     setRecordField,
+    relationshipKind,
+    setRelationshipKind,
     cancelRecordForm,
     saveRecord,
   };

@@ -5654,6 +5654,9 @@
         },
         "pendingLink": {
           "type": "object"
+        },
+        "relationshipKind": {
+          "type": "string"
         }
       },
       "actions": [
@@ -5661,6 +5664,7 @@
         "connectNodes",
         "setRecordEntity",
         "setRecordField",
+        "setRelationshipKind",
         "cancelRecordForm",
         "saveRecord",
         "placeOnBoard",

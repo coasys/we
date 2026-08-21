@@ -14,6 +14,7 @@ import {
   humanise,
   recordDraftErrors,
   recordDraftFields,
+  writeFieldValue,
 } from '@shared/shapes/recordDraft';
 import type { EntitySchema } from '@we/backend-shared';
 import { describe, expect, it } from 'vitest';
@@ -104,6 +105,32 @@ describe('fieldsFor', () => {
   it('starts each field at its declared default', () => {
     const fields = fieldsFor(task, false);
     expect(fields.find((f) => f.name === 'status')?.value).toBe('todo');
+  });
+});
+
+describe('writing a value', () => {
+  it('keeps the field objects it was given', () => {
+    // The regression: `$each` renders rows with Solid's `<For>`, which keys on object identity. A
+    // draft rebuilt on every keystroke gave every row a new object, so every control was torn down
+    // and remade — and the input being typed into lost focus after a single character.
+    const draft = emptyRecordDraft({ entity: 'TaskBlock', schema: task, authorable: false });
+    const fields = draft.fields;
+    const title = draft.fields[0];
+
+    writeFieldValue(draft, 'title', 'Ship the docs');
+
+    expect(draft.fields).toBe(fields);
+    expect(draft.fields[0]).toBe(title);
+    expect(title.value).toBe('Ship the docs');
+  });
+
+  it('ignores a name the draft does not have', () => {
+    // `Relationship.relationshipTypeId` is deliberately absent from its authoring fields, and the
+    // kind picker was writing to it through here — finding nothing and silently doing nothing.
+    const draft = emptyRecordDraft({ entity: 'TaskBlock', schema: task, authorable: false });
+
+    expect(() => writeFieldValue(draft, 'nothingNamedThis', 'x')).not.toThrow();
+    expect(recordDraftFields(draft)).not.toHaveProperty('nothingNamedThis');
   });
 });
 

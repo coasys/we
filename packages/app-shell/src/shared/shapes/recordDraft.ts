@@ -168,6 +168,24 @@ export function schemaFromManifest(manifest: ModelManifest, entity: string): Ent
 }
 
 /**
+ * Write one field's value, in place.
+ *
+ * Mutation rather than replacement, and the reason is the renderer: `$each` draws rows with Solid's
+ * `<For>`, which keys on **object identity**. A draft rebuilt on every keystroke gives every row a
+ * new object, so every control is torn down and remade — and the input being typed into loses focus
+ * after a single character.
+ *
+ * Here rather than inline in the store so the invariant is testable without mounting anything. What
+ * the tests pin is not the value — that part is obvious — but that the array and the field objects
+ * come back *the same objects*, which is the whole of the fix and the part a later tidy-up would
+ * otherwise quietly undo.
+ */
+export function writeFieldValue(draft: RecordDraft | null, name: string, value: string | number | boolean): void {
+  const field = draft?.fields.find((row) => row.name === name);
+  if (field) field.value = value;
+}
+
+/**
  * What is stopping this draft being saved.
  *
  * Only the checks the declaration actually supports. A `required` property with nothing in it is

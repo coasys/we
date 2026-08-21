@@ -534,6 +534,8 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     placeOnBoard: action('content'),
     setRecordEntity: action('content'),
     setRecordField: action('content'),
+    relationshipKind: state('content'),
+    setRelationshipKind: action('content'),
     cancelRecordForm: action('content'),
     saveRecord: action('content'),
   },

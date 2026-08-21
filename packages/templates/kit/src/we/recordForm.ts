@@ -211,9 +211,13 @@ export function recordFormModal(opts: RecordFormModalOptions = {}): SchemaNode {
                           },
                         ],
                       },
+                      // Not `setRecordField`: `relationshipTypeId` is deliberately absent from the
+                      // draft's fields, so writing it through the field setter found nothing and
+                      // silently did nothing. The chosen kind is held beside the draft instead.
+                      value: { $store: 'recordStore.relationshipKind' },
                       onChange: {
-                        $action: 'recordStore.setRecordField',
-                        args: ['relationshipTypeId', '$event.detail'],
+                        $action: 'recordStore.setRelationshipKind',
+                        args: ['$event.detail'],
                       },
                     },
                   },
