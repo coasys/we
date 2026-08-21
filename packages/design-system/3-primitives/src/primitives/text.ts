@@ -8,12 +8,27 @@ import { DesignSystemElement } from '../shared/design-system-element';
 import sharedStyles from '../shared/styles';
 import type { TextTag, TextVariant } from '../types';
 
+/**
+ * A theme may set a display face for headings without changing body text.
+ *
+ * The fallback is written out at the use site rather than defaulting the variable to
+ * `var(--we-font-family)` at :root, which would look equivalent and is not: a custom property
+ * containing var() is substituted where it is *declared*, so :root would bake in the document's
+ * font and a space-scoped theme changing --we-font-family would move its body text and leave its
+ * headings behind. Resolved here, both follow whatever is ambient at the element.
+ *
+ * Applied to the four heading variants only. A display face is chosen for the sizes that carry a
+ * page, and `subheading` sits inline among body text at 18px, where a second face reads as a
+ * mistake rather than a decision.
+ */
+const HEADING_FONT = 'var(--we-theme-heading-font-family, var(--we-font-family))';
+
 const VARIANT_DEFAULTS: Record<TextVariant, Partial<DesignSystemProps>> = {
   '': {},
-  'heading-sm': { fontSize: '500', fontWeight: 'bold' },
-  'heading-md': { fontSize: '600', fontWeight: 'bold' },
-  'heading-lg': { fontSize: '700', fontWeight: 'bold' },
-  'heading-xl': { fontSize: '800', fontWeight: 'bold' },
+  'heading-sm': { fontSize: '500', fontWeight: 'bold', fontFamily: HEADING_FONT },
+  'heading-md': { fontSize: '600', fontWeight: 'bold', fontFamily: HEADING_FONT },
+  'heading-lg': { fontSize: '700', fontWeight: 'bold', fontFamily: HEADING_FONT },
+  'heading-xl': { fontSize: '800', fontWeight: 'bold', fontFamily: HEADING_FONT },
   subheading: { fontSize: '400', fontWeight: 'medium' },
   ingress: { fontSize: '400', lineHeight: '1.6' },
   body: { fontSize: '300' },

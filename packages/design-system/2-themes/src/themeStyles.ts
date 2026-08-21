@@ -66,6 +66,7 @@ const THEME_CSS_MAP: Record<ParametricKey, string> = {
   ringColor: '--we-ring-color',
   // Typography
   fontFamily: '--we-font-family',
+  headingFontFamily: '--we-theme-heading-font-family',
   letterSpacing: '--we-theme-letter-spacing',
   lineHeight: '--we-theme-line-height',
   // Shape

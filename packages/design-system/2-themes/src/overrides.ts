@@ -62,6 +62,14 @@ export type ThemeOverrides = {
 
   // Typography
   fontFamily?: string; // --we-font-family
+  /**
+   * --we-theme-heading-font-family — a display face for the heading variants of `we-text`.
+   *
+   * Unset means headings use the body face, which is what every theme did before this existed:
+   * one `fontFamily` slot for a token scale that ships three families, so "a display font for
+   * headings" was reachable only through a theme's raw CSS.
+   */
+  headingFontFamily?: string;
   letterSpacing?: string; // --we-theme-letter-spacing  (e.g. "0.05em" for airy headlines)
   lineHeight?: string; // --we-theme-line-height  (e.g. "1.5" or "relaxed")
   fontScale?: number; // scales root font-size (1 = 100%, 1.125 = 112.5%) — affects all rem-based tokens

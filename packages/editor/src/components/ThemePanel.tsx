@@ -25,6 +25,17 @@ const FONT_OPTIONS = [
   { value: "'Boldonse', serif", label: 'Boldonse' },
 ];
 
+/**
+ * "Match body" rather than "Default": unset here does not mean a particular face, it means the
+ * heading takes whatever the body font is — including a change made on the row above.
+ */
+const HEADING_FONT_OPTIONS = [
+  { value: 'match', label: 'Match body' },
+  { value: "'DM Sans', sans-serif", label: 'DM Sans' },
+  { value: "'Mozilla Text', serif", label: 'Mozilla Text' },
+  { value: "'Boldonse', serif", label: 'Boldonse' },
+];
+
 const LETTER_SPACING_OPTIONS = [
   { value: '-0.02em', label: 'Tight' },
   { value: 'default', label: 'Default' },
@@ -606,6 +617,7 @@ export function ThemePanel() {
             {/* ── Typography ── */}
             <CollapsibleSection title="Typography">
               {selectControl('Font family', 'fontFamily', FONT_OPTIONS, '100px', 'default')}
+              {selectControl('Heading font', 'headingFontFamily', HEADING_FONT_OPTIONS, '100px', 'match')}
               {selectControl('Letter spacing', 'letterSpacing', LETTER_SPACING_OPTIONS, '100px', 'default')}
               {selectControl('Line height', 'lineHeight', LINE_HEIGHT_OPTIONS, '100px', 'default')}
               <Column gap="200">
