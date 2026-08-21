@@ -41,6 +41,10 @@ const CSS_STYLES = css`
     means "breathing room either side of a control's label" — buttons apply it with a hard 0
     vertical precisely because they have a fixed height to sit in. A tab has none, so a spacious
     theme would have tripled its height.
+
+    The two literals mirror py/px in DEFAULT_PROPS above: nativePadding means the generated
+    stylesheet emits no padding for this element, so the fallback chain has to restate them. Keep
+    them in step.
   */
   [part='base'] {
     padding: var(
