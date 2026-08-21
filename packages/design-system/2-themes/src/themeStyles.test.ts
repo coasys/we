@@ -197,3 +197,46 @@ describe('color-scheme follows the lightness polarity', () => {
     expect(themeToStyle({ primaryHue: 320 })['color-scheme']).toBeUndefined();
   });
 });
+
+describe('roles resolve against the theme they belong to', () => {
+  /*
+    A custom property containing var() is substituted where it is *declared*. The tokens CSS
+    declares the role defaults at :root, so a role left unpinned computes against :root's colours
+    and inherits downward as a finished value — which is invisible for the document theme and wrong
+    for every other application of one. A scoped space theme could redeclare each colour token on
+    its wrapper and still paint its unpinned surfaces from the personal theme's scale.
+  */
+  it('re-declares every role default, so an unpinned role follows this theme', () => {
+    const style = themeToStyle({ multiplier: -1, subtractor: '108%' });
+    expect(style['--we-role-surface']).toBe('var(--we-color-neutral-0)');
+    expect(style['--we-role-text-muted']).toBe('var(--we-color-neutral-500)');
+  });
+
+  it('lets a pin win over the default it replaces, rather than sitting beside it', () => {
+    const style = themeToStyle({ roles: { surfaceRaised: 'var(--we-color-neutral-100)' } });
+    expect(style['--we-role-surface-raised']).toBe('var(--we-color-neutral-100)');
+  });
+
+  it('carries the pins a named preset brings with it', () => {
+    // `dark` is the case in point: raised surfaces get lighter instead of casting a shadow.
+    expect(themeToStyle({ themeName: 'dark' })['--we-role-surface-raised']).toBe('var(--we-color-neutral-100)');
+  });
+});
+
+describe('the shape, density and typography keys added alongside the roles editor', () => {
+  it('maps avatarRadius to its own group, separate from surfaces', () => {
+    const style = themeToStyle({ avatarRadius: '0', surfaceRadius: '16px' });
+    expect(style['--we-theme-avatar-radius']).toBe('0');
+    expect(style['--we-theme-surface-radius']).toBe('16px');
+  });
+
+  it('maps inputSpacing, which nothing could set before', () => {
+    expect(themeToStyle({ inputSpacing: '4px 8px' })['--we-theme-input-spacing']).toBe('4px 8px');
+  });
+
+  it('maps headingFontFamily without touching the body face', () => {
+    const style = themeToStyle({ headingFontFamily: "'Boldonse', serif" });
+    expect(style['--we-theme-heading-font-family']).toBe("'Boldonse', serif");
+    expect(style['--we-font-family']).toBeUndefined();
+  });
+});

@@ -8,6 +8,7 @@ export type {
   TemplateSchema,
   RouteParamsBinding,
   ThemeOverrides,
+  ThemeRole,
   RouteSchema,
   TransitionConfig,
   TransitionEffect,
@@ -85,7 +86,7 @@ export {
 export type { LocalFieldMeta, LocalMetaMap, MapProp } from './propResolvers';
 export { hasToken } from './predicates';
 export { isPropsSchemaNode, isSchemaChild, replaceNodeInTree } from './treeUtils';
-export { applyThemeVars, themeToStyle } from './themeStyles';
+export { applyThemeVars, roleVar, themeToStyle } from './themeStyles';
 export { validateField } from './validation';
 export {
   computeSectionIndex,

@@ -1,8 +1,9 @@
 import { CodeEditor, Column, Row } from '@we/components/solid';
 import { tokenVar } from '@we/design-utils';
-import type { ThemeOverrides } from '@we/schema-shared';
+import type { ThemeOverrides, ThemeRole } from '@we/schema-shared';
+import { roleVar, themeToStyle } from '@we/schema-shared';
 import type { JSX } from 'solid-js';
-import { createMemo, createSignal, onCleanup, Show } from 'solid-js';
+import { createEffect, createMemo, createSignal, For, onCleanup, Show } from 'solid-js';
 
 import { useEditorHost } from '../host';
 
@@ -100,6 +101,69 @@ const INPUT_SPACING_OPTIONS = [
   { value: 'var(--we-space-100) var(--we-space-200)', label: 'Compact' },
   { value: 'var(--we-space-200) var(--we-space-400)', label: 'Comfortable' },
   { value: 'var(--we-space-300) var(--we-space-500)', label: 'Spacious' },
+];
+
+/**
+ * The 21 semantic roles, grouped the way somebody designing a theme thinks about them.
+ *
+ * Roles are the difference between a theme that recolours and a theme that is designed: the
+ * lightness scale steps evenly, so no combination of hue, saturation, multiplier and subtractor can
+ * say "raised surfaces are lighter than the page by 6 but the rail is darker by 3.5". Both built-in
+ * reference themes (channels, timeline) reach for roles to express exactly that, and until now the
+ * only way for anyone else to do it was hand-writing the theme's CSS.
+ */
+const ROLE_GROUPS: { label: string; roles: { role: ThemeRole; label: string }[] }[] = [
+  {
+    label: 'Surfaces',
+    roles: [
+      { role: 'page', label: 'Page' },
+      { role: 'surface', label: 'Surface' },
+      { role: 'surfaceRaised', label: 'Raised' },
+      { role: 'surfaceSunken', label: 'Sunken' },
+      { role: 'surfaceHover', label: 'Hover' },
+      { role: 'surfaceActive', label: 'Pressed' },
+    ],
+  },
+  {
+    label: 'Text',
+    roles: [
+      { role: 'text', label: 'Primary' },
+      { role: 'textMuted', label: 'Muted' },
+      { role: 'textFaint', label: 'Faint' },
+      { role: 'textInverse', label: 'Inverse' },
+    ],
+  },
+  {
+    label: 'Lines',
+    roles: [
+      { role: 'border', label: 'Border' },
+      { role: 'borderStrong', label: 'Strong border' },
+    ],
+  },
+  {
+    label: 'Accent',
+    roles: [
+      { role: 'accent', label: 'Accent' },
+      { role: 'accentText', label: 'On accent' },
+      { role: 'accentMuted', label: 'Accent tint' },
+      { role: 'focus', label: 'Focus ring' },
+    ],
+  },
+  {
+    label: 'Status',
+    roles: [
+      { role: 'dangerSurface', label: 'Danger' },
+      { role: 'successSurface', label: 'Success' },
+      { role: 'warningSurface', label: 'Warning' },
+    ],
+  },
+  {
+    label: 'Depth',
+    roles: [
+      { role: 'overlay', label: 'Scrim' },
+      { role: 'shadowColor', label: 'Shadow' },
+    ],
+  },
 ];
 
 const HEIGHT_OPTIONS = [
@@ -445,6 +509,96 @@ export function ThemePanel() {
     return 'custom';
   }
 
+  // ── Semantic roles ──────────────────────────────────────────────────────────
+
+  /*
+    A hidden element carrying the theme being edited, so a swatch can be read off it.
+
+    The panel is editor chrome, and the theme it is editing is usually not applied to it: a space
+    theme is scoped to the space's own content by default, so sampling --we-role-* from the panel —
+    or from documentElement — would report the *personal* theme's colours, and every unpinned role
+    would show a swatch from the wrong theme entirely. One throwaway element carrying the edited
+    overrides is the only place guaranteed to resolve them the way the space will.
+  */
+  let roleProbe: HTMLDivElement | undefined;
+  const [roleColors, setRoleColors] = createSignal<Record<string, { hex: string; alpha: number }>>({});
+  const probeStyle = createMemo(() => themeToStyle(overrides()) as Record<string, string>);
+
+  /** Resolve any CSS colour — hsl(), a var() chain, a hex — to hex plus its alpha. */
+  function resolveColor(el: HTMLElement, value: string): { hex: string; alpha: number } {
+    el.style.color = '';
+    el.style.color = value;
+    const parts = getComputedStyle(el).color.match(/[\d.]+/g);
+    if (!parts) return { hex: '#000000', alpha: 1 };
+    const [r, g, b] = parts.slice(0, 3).map((n) => Math.round(Number(n)));
+    const hex = `#${[r, g, b].map((n) => n.toString(16).padStart(2, '0')).join('')}`;
+    return { hex, alpha: parts.length > 3 ? Number(parts[3]) : 1 };
+  }
+
+  createEffect(() => {
+    probeStyle(); // re-sample whenever any part of the theme changes
+    if (!roleProbe) return;
+    const computed = getComputedStyle(roleProbe);
+    const next: Record<string, { hex: string; alpha: number }> = {};
+    for (const group of ROLE_GROUPS) {
+      for (const { role } of group.roles) {
+        next[role] = resolveColor(roleProbe, computed.getPropertyValue(roleVar(role)).trim());
+      }
+    }
+    roleProbe.style.color = '';
+    setRoleColors(next);
+  });
+
+  function setRole(role: ThemeRole, value: string | undefined) {
+    const next: Partial<Record<ThemeRole, string>> = { ...(overrides().roles ?? {}) };
+    if (value === undefined) delete next[role];
+    else next[role] = value;
+    // An empty object would persist as `"roles":{}` and read as "this theme pins roles" forever.
+    themeStore.updateEditingOverrides({ roles: Object.keys(next).length ? next : undefined });
+    saveTheme();
+  }
+
+  function roleRow(role: ThemeRole, label: string) {
+    const pinned = () => overrides().roles?.[role];
+    const sampled = () => roleColors()[role] ?? { hex: '#000000', alpha: 1 };
+    return (
+      <Row ay="center" gap="300">
+        <we-color-picker
+          value={sampled().hex}
+          on:change={(e: CustomEvent) => {
+            const hex = e.detail as string;
+            /*
+              Keep whatever transparency the role already had. The scrim is the case that matters:
+              its default is 60% alpha, <input type="color"> cannot express alpha at all, and a
+              fully opaque overlay is not a slightly-wrong scrim — it is a solid sheet over the app.
+            */
+            const { alpha } = sampled();
+            if (alpha >= 1) return setRole(role, hex);
+            const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
+            setRole(role, `rgb(${r} ${g} ${b} / ${alpha})`);
+          }}
+        />
+        <we-text flex="1" fontSize="300" color={pinned() ? 'neutral-800' : 'neutral-600'}>
+          {label}
+        </we-text>
+        <Show
+          when={pinned()}
+          fallback={
+            <we-text fontSize="200" color="neutral-400">
+              auto
+            </we-text>
+          }
+        >
+          <we-tooltip title="Back to the parametric default">
+            <we-button variant="ghost" size="xs" onClick={() => setRole(role, undefined)}>
+              <we-icon name="arrow-counter-clockwise" />
+            </we-button>
+          </we-tooltip>
+        </Show>
+      </Row>
+    );
+  }
+
   // ── CSS edit helpers ────────────────────────────────────────────────────────
 
   function startCssEdit() {
@@ -499,6 +653,14 @@ export function ThemePanel() {
           </Column>
         }
       >
+        {/* Carries the edited theme so role swatches can be sampled from it — see setRole above.
+            Rendered rather than detached: a custom property only resolves inside the document. */}
+        <div
+          ref={roleProbe}
+          aria-hidden="true"
+          style={{ ...probeStyle(), position: 'absolute', width: '0', height: '0', visibility: 'hidden' }}
+        />
+
         <we-scroll-area flex="1">
           <Column gap="0" p="400">
             {/* ── Name + icon ── */}
@@ -586,6 +748,26 @@ export function ThemePanel() {
                 </we-text>
                 {percentSlider('Subtractor', 'subtractor', 0, 200, 0)}
               </Column>
+            </CollapsibleSection>
+
+            {/* ── Roles ── */}
+            <CollapsibleSection title="Roles">
+              <we-text fontSize="200" color="neutral-500" lineHeight="1.5">
+                What a colour <i>means</i>, rather than where it sits on the scale. Left alone, each
+                follows the hues and lightness above — pin one to redesign a relationship the scale
+                cannot express, such as raised surfaces getting lighter in a dark theme instead of
+                casting a shadow.
+              </we-text>
+              <For each={ROLE_GROUPS}>
+                {(group) => (
+                  <Column gap="200">
+                    <we-text fontSize="200" color="neutral-400">
+                      {group.label}
+                    </we-text>
+                    <For each={group.roles}>{(entry) => roleRow(entry.role, entry.label)}</For>
+                  </Column>
+                )}
+              </For>
             </CollapsibleSection>
 
             {/* ── Shape ── */}

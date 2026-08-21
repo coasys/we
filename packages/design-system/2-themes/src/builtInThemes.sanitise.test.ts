@@ -15,7 +15,10 @@ import { fileURLToPath } from 'node:url';
 
 import { describe, expect, it } from 'vitest';
 
+import type { ThemeRole } from './overrides';
+import { type ThemeName, THEME_PRESETS } from './presets';
 import { sanitiseCss } from './sanitiseCss';
+import { roleVar } from './themeStyles';
 
 const SRC = dirname(fileURLToPath(import.meta.url));
 
@@ -49,6 +52,30 @@ describe('the built-in themes', () => {
 
     const count = (out: string) => (out.match(/\{/g) ?? []).length;
     expect(count(scoped.css)).toBeGreaterThanOrEqual(count(unscoped.css));
+  });
+
+  /*
+    A theme's CSS file and its preset parameters must agree about roles.
+
+    `themeToStyle` re-declares every role's parametric default so an unpinned role resolves against
+    the theme it belongs to rather than against :root (see ROLE_DEFAULT_VARS). Those land as inline
+    styles, which outrank an attribute-selector rule — so a role a theme declares *only* in its CSS
+    file would be overwritten by its own default, and the theme would lose the relationship it was
+    written to express. Dark is the live case: it declares --we-role-surface-raised in CSS and
+    mirrors it in `presets.ts`, which is what keeps it working. Nothing enforced that mirroring.
+  */
+  it('declares no role in CSS that its preset parameters do not also pin', () => {
+    for (const { name, css } of themes) {
+      const declared = [...css.matchAll(/(--we-role-[a-z-]+)\s*:/g)].map((m) => m[1]);
+      if (!declared.length) continue;
+
+      const params = THEME_PRESETS[name as ThemeName].parameters as { roles?: Record<string, string> };
+      const pinned = Object.keys(params.roles ?? {}).map((role) => roleVar(role as ThemeRole));
+      expect({ theme: name, declared: declared.filter((v) => !pinned.includes(v)) }).toEqual({
+        theme: name,
+        declared: [],
+      });
+    }
   });
 
   it('carries its fonts rather than fetching them', () => {

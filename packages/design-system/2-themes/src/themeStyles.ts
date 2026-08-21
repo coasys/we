@@ -1,5 +1,5 @@
 import type { ColorHueToken, ColorLightnessToken } from '@we/tokens';
-import { color } from '@we/tokens';
+import { color, role } from '@we/tokens';
 
 import type { ThemeOverrides, ThemeRole } from './overrides';
 import { isThemeName, THEME_PRESETS } from './presets';
@@ -17,6 +17,21 @@ type ParametricKey = Exclude<
 export function roleVar(role: ThemeRole): string {
   return `--we-role-${role.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`)}`;
 }
+
+/**
+ * Every role's parametric default, as custom properties.
+ *
+ * The tokens CSS declares these at :root, which is enough for the document theme and not enough for
+ * a theme applied anywhere else. A custom property containing var() is substituted where it is
+ * *declared*, so `--we-role-surface: var(--we-color-neutral-0)` computes against :root's colours and
+ * inherits downward as a finished value — a scoped space theme could redeclare every colour token on
+ * its wrapper and its unpinned roles would still be painted from the personal theme's scale. It is
+ * the same hazard `themeToStyle` already re-declares the colour formulas for, and the same one that
+ * put an explicit `color:` on the scoped wrapper in TemplateLayout.
+ */
+const ROLE_DEFAULT_VARS: Record<string, string> = Object.fromEntries(
+  Object.entries(role).map(([name, value]) => [roleVar(name as ThemeRole), value]),
+);
 
 /** Maps shadowIntensity preset to the CSS box-shadow value emitted as --we-theme-shadow. */
 const SHADOW_INTENSITY_VALUES: Record<NonNullable<ThemeOverrides['shadowIntensity']>, string> = {
@@ -135,7 +150,9 @@ export function themeToStyle(overrides: ThemeOverrides): Record<string, string> 
     overrides.themeName && isThemeName(overrides.themeName) ? THEME_PRESETS[overrides.themeName].parameters : undefined;
   const theme: ThemeOverrides = preset ? { ...preset, ...stripUndefined(overrides) } : overrides;
 
-  const style: Record<string, string> = {};
+  // Role defaults first, so an explicit pin below overwrites its own default rather than sitting
+  // beside it. See ROLE_DEFAULT_VARS for why they are re-declared at all.
+  const style: Record<string, string> = { ...ROLE_DEFAULT_VARS };
   const hasNamedTheme = !!theme.themeName;
 
   // 1. Set any explicit parametric overrides as custom properties
