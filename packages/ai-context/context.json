@@ -3544,6 +3544,11 @@
           "optional": true
         },
         {
+          "name": "onCanvasDoubleClick",
+          "type": "((payload: { x: number; y: number; }) => void)",
+          "optional": true
+        },
+        {
           "name": "onSelectionChange",
           "type": "((ids: string[]) => void)",
           "optional": true

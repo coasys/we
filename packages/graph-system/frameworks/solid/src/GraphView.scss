@@ -221,6 +221,32 @@
   overflow: hidden;
 }
 
+/**
+ * A card's real content, when a style rule named one.
+ *
+ * Clipped rather than scrolled, and that is the design rather than a limitation: a card is a
+ * *preview* of a document, and one that scrolled would be a window you have to operate to read
+ * through — on a surface where the wheel already means zoom. What does not fit is reached by opening
+ * the thing, which is what the fade at the bottom is there to suggest.
+ */
+.we-graph__card-content {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  // Inherited from the layer, but stated here because this subtree is arbitrary host content and
+  // one element in it setting `pointer-events: auto` would put a hole in the canvas.
+  pointer-events: none;
+
+  &::after {
+    content: '';
+    position: absolute;
+    inset: auto 0 0 0;
+    height: var(--we-space-500);
+    background: linear-gradient(to bottom, transparent, var(--node-color));
+  }
+}
+
 .we-graph__card-text {
   color: var(--node-label-color);
   font-size: var(--node-label-size);

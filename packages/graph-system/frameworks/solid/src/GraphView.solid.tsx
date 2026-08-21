@@ -40,8 +40,9 @@ import { defaultLayouts } from '@we/graph-layouts';
 import type { Behaviour, ControlContext, EdgeGeometry, GraphNode, Point, PointerInput } from '@we/graph-protocol';
 import { parseAddress } from '@we/graph-protocol';
 import { batch, createEffect, createMemo, createSignal, For, onCleanup, onMount, Show, untrack } from 'solid-js';
+import { Dynamic } from 'solid-js/web';
 
-import type { GraphViewProps } from './GraphView.types';
+import type { GraphViewProps, NodeContent } from './GraphView.types';
 
 export type * from './GraphView.types';
 
@@ -211,6 +212,9 @@ export function GraphView(props: GraphViewProps) {
           });
           break;
         }
+        case 'canvasDoubleClick':
+          props.onCanvasDoubleClick?.({ x: event.at.x, y: event.at.y });
+          break;
         case 'selectionChange':
           props.onSelectionChange?.(event.ids);
           break;
@@ -455,6 +459,21 @@ export function GraphView(props: GraphViewProps) {
     return engine.viewport.get().zoom;
   });
 
+  /**
+   * The content component for a card, or nothing.
+   *
+   * Nothing in three cases, each of which falls back to the label: the style named none, the host
+   * supplies none by that name, or the camera is below the card's `contentMinZoom`. The last is the
+   * one that decides whether rich cards scale — a hundred documents rendered at once is a hundred
+   * component trees, and at the zoom where a board is a wall of coloured rectangles not one of them
+   * can be read.
+   */
+  const cardContent = (visual: { content?: string; contentMinZoom?: number }): NodeContent | undefined => {
+    if (!visual.content) return undefined;
+    if (visual.contentMinZoom !== undefined && zoom() < visual.contentMinZoom) return undefined;
+    return props.host?.nodeContent?.[visual.content];
+  };
+
   const status = createMemo(() => {
     statusVersion();
     return engine.getStatus();
@@ -688,7 +707,24 @@ export function GraphView(props: GraphViewProps) {
                 }
               >
                 <div class="we-graph__card">
-                  <span class="we-graph__card-text">{entry.visual.label}</span>
+                  {/*
+                    The card's real content, when a style rule named one and the host supplies it.
+
+                    Falls back to the label rather than to nothing — a card whose content component
+                    is missing, or whose data has not arrived, still has to say what it is. That is
+                    also what makes `contentMinZoom` cheap: below the threshold the card draws one
+                    string instead of a document, which is all that is legible at that size anyway.
+                  */}
+                  <Show
+                    when={cardContent(entry.visual)}
+                    fallback={<span class="we-graph__card-text">{entry.visual.label}</span>}
+                  >
+                    {(Content) => (
+                      <div class="we-graph__card-content">
+                        <Dynamic component={Content()} node={entry.node} />
+                      </div>
+                    )}
+                  </Show>
                   <Show when={entry.hasMore}>
                     <span class="we-graph__more we-graph__more--card">+</span>
                   </Show>

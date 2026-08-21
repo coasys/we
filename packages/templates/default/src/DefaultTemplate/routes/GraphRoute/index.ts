@@ -259,6 +259,10 @@ export const graphRoute: RouteSchema = {
     boardId: { type: 'string', initial: '', syncParam: { name: 'board', push: true } },
     newBoardOpen: { type: 'boolean', initial: false },
     newCardOpen: { type: 'boolean', initial: false },
+    /** Where a double-click landed, so the card it opens can be placed there. Null from the toolbar. */
+    newCardAt: { type: 'object', initial: null },
+    /** The card being read, by record id. Empty when none is open. */
+    openCardId: { type: 'string', initial: '' },
     /*
       Bumped after a record is created, which tells the graph to re-read and merge.
 

@@ -191,6 +191,20 @@ export const GRAPH_PLUGIN_CATALOG: PluginCatalog = {
       example: `"edgeStyle": [{ "style": { "scaleWithZoom": false } }]`,
     },
     {
+      id: 'content',
+      category: 'style',
+      description:
+        "Node style, cards only. Names a host-supplied component to draw INSIDE the card instead of a text label — WE registers `block`, which renders a CollectionBlock's composed content the way a post card does. A label can only ever be the first line, so a card holding an image and three paragraphs shows sixty characters and gives no sign the rest exists. Clipped, not scrolled: a card is a preview, and what does not fit is reached by opening it. Falls back to the label when the host supplies no component by that name.",
+      example: `"nodeStyle": [{ "style": { "shape": "card", "width": 180, "content": "block" } }]`,
+    },
+    {
+      id: 'contentMinZoom',
+      category: 'style',
+      description:
+        'Node style. Hides card content below this zoom and falls back to the label. The sibling of labelMinZoom, and the thing that decides whether rich cards scale: a hundred documents rendered at once is a hundred component trees, and at the zoom where a board reads as coloured rectangles none of them is legible anyway.',
+      example: `"nodeStyle": [{ "style": { "shape": "card", "content": "block", "contentMinZoom": 0.5 } }]`,
+    },
+    {
       id: 'scaleLabelWithZoom',
       category: 'style',
       description:
@@ -292,6 +306,13 @@ export const GRAPH_PLUGIN_CATALOG: PluginCatalog = {
         },
       ],
       example: `"behaviours": [{ "type": "connect-nodes", "options": { "armed": { "$local": "connecting" } } }, "pan-zoom", "select", { "type": "drag-node" }]`,
+    },
+    {
+      id: 'canvas-double-click',
+      category: 'behaviour',
+      description:
+        "Double-click empty canvas to emit onCanvasDoubleClick with the world point. Writes nothing — what gets made there is the template's decision. List it BEFORE pan-zoom, which is the background fallback. Claims only the background, so it composes with expand-on-double-click: a double-click on a node opens it, one beside a node creates.",
+      example: `"behaviours": ["canvas-double-click", "pan-zoom", "select", { "type": "drag-node", "options": { "pin": true } }]`,
     },
     {
       id: 'expand-on-double-click',

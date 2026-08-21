@@ -161,6 +161,34 @@ describe('manual layout', () => {
     expect(result.positions.get('a')).toMatchObject({ x: 5, y: 5 });
   });
 
+  it('parks an unplaced node where the reader is looking, not at the origin', () => {
+    // The origin is the one place guaranteed to be wrong: it is wherever the camera is not, so a
+    // card created while panned elsewhere appeared to vanish.
+    const visible = { x: 4000, y: 2000, width: 800, height: 600 };
+    const result = manualLayout({ gap: 100 }).init(input([node('a')], [], { visible }));
+    const at = result.positions.get('a')!;
+
+    expect(at.x).toBeGreaterThanOrEqual(visible.x);
+    expect(at.x).toBeLessThan(visible.x + visible.width);
+    expect(at.y).toBeGreaterThanOrEqual(visible.y);
+    expect(at.y).toBeLessThan(visible.y + visible.height);
+  });
+
+  it('groups unplaced nodes in a row, so "not put anywhere yet" reads as a state', () => {
+    const visible = { x: 0, y: 0, width: 800, height: 600 };
+    const result = manualLayout({ gap: 100 }).init(input([node('a'), node('b'), node('c')], [], { visible }));
+
+    // Same row, evenly spaced — a tray rather than a scatter.
+    expect(result.positions.get('a')!.y).toBe(result.positions.get('b')!.y);
+    expect(result.positions.get('b')!.x - result.positions.get('a')!.x).toBe(100);
+  });
+
+  it('falls back to the origin before a surface has been measured', () => {
+    // The one moment there is no better answer: no camera, no size, nothing to be relative to.
+    const result = manualLayout({ gap: 100 }).init(input([node('a')]));
+    expect(result.positions.get('a')).toMatchObject({ x: 50, y: 50 });
+  });
+
   it('says nothing about a fresh board, where carrying no positions is the normal state', () => {
     // The regression: this warned whenever no node carried x/y, which is every board before anybody
     // has dragged a card. It fired as a matter of course and then stayed on screen after the first

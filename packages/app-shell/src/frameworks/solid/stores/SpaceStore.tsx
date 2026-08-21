@@ -425,7 +425,15 @@ export interface SpaceStore {
    * {@link CreatePostOptions}. Keeps its name because a post is the default and renaming it would
    * churn every existing template for no gain.
    */
-  createPost: (json: unknown, options?: CreatePostOptions) => Promise<void>;
+  /**
+   * Create a composed artifact, and return its id.
+   *
+   * The id is what makes "and then do something with it" possible from a schema — placing a new card
+   * where somebody double-clicked, scrolling to it, selecting it — since `$action`'s `onSuccess`
+   * reads the resolved value as `$result`. `createBlocks` has always returned the model; this simply
+   * stopped throwing the id away.
+   */
+  createPost: (json: unknown, options?: CreatePostOptions) => Promise<string | undefined>;
   updatePost: (postId: string, json: unknown) => Promise<void>;
   /**
    * Move a child between two collections — a card between kanban columns. A relink of the two
@@ -1199,7 +1207,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     })();
   });
 
-  async function createPost(json: unknown, options: CreatePostOptions = {}): Promise<void> {
+  async function createPost(json: unknown, options: CreatePostOptions = {}): Promise<string | undefined> {
     const p = datasetStore.currentDataset()?.handle;
     if (!p) return;
 
@@ -1214,10 +1222,11 @@ export function SpaceStoreProvider(props: ParentProps) {
     const { kind = 'post', parentId, predicate = PREDICATES.CHILDREN } = options;
 
     // The action arrives from a schema as unknown; the composer produced it, so it is editor state.
-    await createBlocks(p, json as SerializedBlockNode, {
+    const root = await createBlocks(p, json as SerializedBlockNode, {
       kind,
       ...(parentId && { anchor: { id: parentId, predicate } }),
     });
+    return root?.id;
   }
 
   async function updatePost(postId: string, json: unknown): Promise<void> {

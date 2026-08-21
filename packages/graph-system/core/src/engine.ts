@@ -741,6 +741,7 @@ export class GraphEngine {
       previous: this.positions,
       containment: this.containment(),
       viewport: { width: width || 800, height: height || 600 },
+      ...(width && height ? { visible: this.visibleWorldRect() } : {}),
     });
     this.setLayoutWarnings(result.warnings ?? []);
     this.fitUntilSettled = !!options?.fit && !!result.running;
@@ -748,6 +749,28 @@ export class GraphEngine {
     // A fit that could not run yet (no surface measured) is remembered, not dropped.
     if (options?.fit && !this.positions.size) this.pendingFit = true;
     if (result.running) this.scheduleTick();
+  }
+
+  /**
+   * The world rectangle currently on screen.
+   *
+   * Handed to a layout that has to *put* a node somewhere rather than derive where it goes. Computed
+   * here rather than by the layout because the camera is the engine's, and a layout that reached for
+   * it would be a layout that knew about a viewport it is not supposed to own.
+   *
+   * Only when there is a surface to measure: before the first resize the numbers are zero, and a
+   * rectangle of nothing at the origin is worse than no answer at all.
+   */
+  private visibleWorldRect(): { x: number; y: number; width: number; height: number } {
+    const { width, height } = this.viewport.get();
+    const topLeft = this.viewport.toWorld({ x: 0, y: 0 });
+    const bottomRight = this.viewport.toWorld({ x: width, y: height });
+    return {
+      x: topLeft.x,
+      y: topLeft.y,
+      width: bottomRight.x - topLeft.x,
+      height: bottomRight.y - topLeft.y,
+    };
   }
 
   private scheduleTick(): void {

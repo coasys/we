@@ -251,6 +251,33 @@ export interface ManualLayoutOptions {
  * the data being edited, and only invents one for a node that has never been placed — arranged in a
  * grid off to one side rather than stacked at the origin, so a batch of new nodes is separable.
  */
+/**
+ * Where a node with no stored position goes.
+ *
+ * A row along the top of whatever is currently on screen — a tray of things that are on the board
+ * and nowhere in particular, waiting to be put somewhere.
+ *
+ * In *view* rather than at the origin, which is the whole point. The origin is the one place
+ * guaranteed to be wrong: it is wherever the reader is not, so a card created while panned
+ * elsewhere appeared to vanish. Grouped in a row rather than scattered, so "I have not placed
+ * these" reads as a state rather than as clutter — and a template can style them apart, since a
+ * node the layout parked is one whose data carries no coordinate.
+ *
+ * Falls back to the origin before a surface has been measured, which is the one moment there is no
+ * better answer.
+ */
+function trayPosition(input: LayoutInput, index: number, gap: number): Point {
+  const visible = input.visible;
+  const perRow = Math.max(1, Math.floor((visible?.width ?? gap * 5) / gap));
+  const column = index % perRow;
+  const row = Math.floor(index / perRow);
+  // Inset by half a gap so the first card is not flush against the edge of the view.
+  return {
+    x: (visible?.x ?? 0) + gap / 2 + column * gap,
+    y: (visible?.y ?? 0) + gap / 2 + row * gap,
+  };
+}
+
 export function manualLayout(rawOptions?: Record<string, unknown>): Layout {
   const options = { xField: 'x', yField: 'y', gap: 160, ...(rawOptions as ManualLayoutOptions) };
   const pinned = new Map<string, Point>();
@@ -287,11 +314,7 @@ export function manualLayout(rawOptions?: Record<string, unknown>): Layout {
           reused += 1;
           continue;
         }
-        positions.set(node.id, {
-          x: (unplaced % 5) * options.gap,
-          y: Math.floor(unplaced / 5) * options.gap,
-          fixed: true,
-        });
+        positions.set(node.id, { ...trayPosition(input, unplaced, options.gap), fixed: true });
         unplaced += 1;
       }
 

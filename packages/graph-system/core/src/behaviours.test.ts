@@ -2,6 +2,7 @@ import type { BehaviourContext, PointerInput } from '@we/graph-protocol';
 import { describe, expect, it, vi } from 'vitest';
 
 import {
+  canvasDoubleClickBehaviour,
   connectNodesBehaviour,
   dispatchPointer,
   dragNodeBehaviour,
@@ -243,6 +244,28 @@ describe('connectNodesBehaviour', () => {
 
     expect(ctx.drawConnection).toHaveBeenCalled();
     expect(ctx.pin).not.toHaveBeenCalled();
+  });
+});
+
+describe('canvasDoubleClickBehaviour', () => {
+  it('reports the world point of a double-click on empty canvas', () => {
+    // The position is the whole message: on a surface where position is the data, "make something"
+    // is not a request anybody can act on and "make something here" is.
+    const ctx = fakeContext();
+
+    canvasDoubleClickBehaviour().onDoubleClick?.(input(640, 480), ctx);
+
+    expect(ctx.emit).toHaveBeenCalledWith({ type: 'canvasDoubleClick', at: { x: 640, y: 480 } });
+  });
+
+  it('says nothing when the double-click landed on a node', () => {
+    // So it composes with expand-on-double-click rather than competing: opening a node and creating
+    // beside one are the same gesture in two places, and they must never both fire.
+    const ctx = fakeContext();
+
+    canvasDoubleClickBehaviour().onDoubleClick?.(input(100, 100), ctx);
+
+    expect(ctx.emit).not.toHaveBeenCalled();
   });
 });
 

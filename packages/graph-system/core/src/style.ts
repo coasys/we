@@ -194,6 +194,10 @@ export function nodeVisual(node: GraphNode, style: NodeStyle, metrics: MetricVal
     // `size` is the hit radius everywhere else in the system; for a card it is half the box, so
     // picking covers the card rather than a dot in the middle of it.
     visual.size = Math.max(visual.width, visual.height) / 2;
+    // Only on a card — a dot has nowhere to put content, and passing the name through anyway would
+    // have a renderer looking up a component it has no room to draw.
+    if (style.content !== undefined) visual.content = style.content;
+    if (style.contentMinZoom !== undefined) visual.contentMinZoom = style.contentMinZoom;
   }
   if (style.borderColor !== undefined) visual.borderColor = style.borderColor;
   if (style.borderWidth !== undefined) visual.borderWidth = style.borderWidth;

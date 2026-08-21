@@ -100,6 +100,25 @@ describe('metric references', () => {
   });
 });
 
+describe('card content', () => {
+  const card = { id: 'c1', kind: 'entity' as const, type: 'CollectionBlock', label: 'Idea' };
+
+  it('carries a named content renderer through to the visual', () => {
+    const visual = nodeVisual(card, { shape: 'card', content: 'block', contentMinZoom: 0.5 }, NO_METRICS);
+
+    expect(visual.content).toBe('block');
+    expect(visual.contentMinZoom).toBe(0.5);
+  });
+
+  it('ignores it on anything that is not a card', () => {
+    // A dot has nowhere to put content, and passing the name through anyway would have a renderer
+    // looking up a component it has no room to draw.
+    const visual = nodeVisual(card, { shape: 'circle', content: 'block' }, NO_METRICS);
+
+    expect(visual.content).toBeUndefined();
+  });
+});
+
 describe('rule lists built from data', () => {
   it('flattens a nested group so a mapped rule sits among hand-written ones', () => {
     // A schema cannot merge two arrays — `$concat` joins strings — so a template that wants a base

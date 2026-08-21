@@ -1283,6 +1283,7 @@ export const contextData: ContextData = {
           type: '((payload: { source: GraphNode; target: GraphNode; sourceId: string; sourceType: string; targetId: string; targetType: string; sourceLabel: string; targetLabel: string; }) => void)',
           optional: true,
         },
+        { name: 'onCanvasDoubleClick', type: '((payload: { x: number; y: number; }) => void)', optional: true },
         { name: 'onSelectionChange', type: '((ids: string[]) => void)', optional: true },
         {
           name: 'onNodeDragEnd',

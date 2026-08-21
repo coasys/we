@@ -21,11 +21,17 @@ import { selectNode } from './NodeDetail';
  * else, and is found by everything that already walks a collection. Nothing here is board-shaped
  * except the two numbers.
  *
- * ## What is deliberately absent
+ * ## Reading and editing
  *
- * Editing a card's text on the canvas. Text entry inside a transformed, zoomable surface is its own
- * piece of work, and the graph engine's own notes have said so twice; faking it would teach the
- * wrong thing about what exists. Composing happens in the modal, and a card is dragged afterwards.
+ * A card draws its real content — `content: 'block'` mounts the same renderer a post card uses — so
+ * a note holding a photo and three paragraphs looks like one rather than like sixty characters of
+ * its first line. Clipped, not scrolled: a card is a preview, and what does not fit is reached by
+ * opening it.
+ *
+ * Editing is that modal rather than the canvas. Text entry inside a transformed, zoomable surface is
+ * its own piece of work — the engine's notes have said so three times — and once the content is
+ * *visible* in place, the remaining value of typing in place is small next to what it costs. Worth
+ * revisiting after this has been used, not before.
  */
 
 /** Which board is open. A picker writes it; the seed refuses to load until it is set. */
@@ -42,9 +48,29 @@ const boardCards: SchemaNode = {
     expansion: { defaultDepth: 0 },
     layout: { type: 'manual' },
     nodeStyle: [
-      // A card carries its text inside the box — the node *is* the content, rather than a mark with
-      // a caption — which is what `shape: 'card'` means and why `size` stops applying.
-      { style: { shape: 'card', width: 180, color: 'primary-100', labelColor: 'primary-900' } },
+      /*
+        A card carries its content inside the box — the node *is* the thing, rather than a mark with
+        a caption, which is what `shape: 'card'` means and why `size` stops applying.
+
+        `content: 'block'` draws the post itself: its text, its images, its tasks. A label could only
+        ever be the first line, so a card holding a photo and three paragraphs showed sixty
+        characters and gave no sign the rest existed.
+
+        Clipped, not scrolled, and that is the design: a card is a *preview*, and what does not fit
+        is reached by opening it. Below half zoom it falls back to the label, because a hundred
+        documents rendered at once is a hundred component trees and none of them is legible at the
+        size where a board reads as coloured rectangles.
+      */
+      {
+        style: {
+          shape: 'card',
+          width: 180,
+          color: 'primary-100',
+          labelColor: 'primary-900',
+          content: 'block',
+          contentMinZoom: 0.5,
+        },
+      },
       { when: { 'data.kind': 'note' }, style: { color: 'warning-100', labelColor: 'warning-900' } },
       { when: { 'data.kind': 'call' }, style: { color: 'success-100', labelColor: 'success-900' } },
       // Anything that is not a composed card — a task somebody put here, a model instance the
@@ -53,13 +79,33 @@ const boardCards: SchemaNode = {
       { when: { type: 'TaskBlock' }, style: { color: 'primary-50', labelColor: 'primary-800' } },
       { when: { type: 'EventBlock' }, style: { color: 'warning-50', labelColor: 'warning-800' } },
     ],
-    behaviours: ['pan-zoom', 'select', { type: 'drag-node', options: { pin: true } }],
+    behaviours: [
+      // Before pan-zoom, which is the background fallback and would otherwise claim the press first.
+      'canvas-double-click',
+      'pan-zoom',
+      'select',
+      { type: 'drag-node', options: { pin: true } },
+    ],
     // `lock` rather than `pin`: every card is placed already, so there is nothing to hold, and the
     // risk worth guarding against is rearranging somebody else's board by accident.
     controls: ['zoom-in', 'zoom-out', 'fit', 'lock'],
     height: '100%',
     revision: { $local: 'revision' },
     onNodeClick: selectNode,
+    // Double-click opens the card. Nothing expands on a board, so the gesture is free — and it is
+    // the one people arrive expecting from every other canvas they have used.
+    onNodeDoubleClick: { $setLocal: 'openCardId', from: '$event.recordId' },
+    /*
+      Double-click empty canvas to make something there.
+
+      Position first, then content — forced by the composer being a modal that takes focus and covers
+      the canvas, so "click to place" cannot be the last step. It is also the better order: you know
+      where a note goes before you know what it says.
+    */
+    onCanvasDoubleClick: [
+      { $setLocal: 'newCardAt', from: '$event' },
+      { $setLocal: 'newCardOpen', value: true },
+    ],
     /*
       The drop, written back.
 
@@ -237,11 +283,118 @@ const newCardModal: SchemaNode = composerModal({
     // `'$arg'` first: `createPost(json, options)`.
     args: ['$arg', { kind: 'card', parentId: BOARD, predicate: 'we://children' }],
   },
-  // Tell the canvas to re-read. The engine also watches `CollectionBlock` and would get there on its
-  // own, but this is the one case where the template *knows* — it is what wrote the card — and
-  // waiting on a notification for something you just did is how a board comes to feel broken.
-  onSaved: [{ $setLocal: 'revision', by: 1 }],
+  onSaved: [
+    /*
+      Placed where the double-click landed, using the id `createPost` now returns.
+
+      `$result` is the resolved value of the action this ran after, which is the only way a schema
+      can act on something it just made — a template has no variables, and the new card's id did not
+      exist a moment ago. A card added from the toolbar has no point, so `newCardAt` is null and the
+      placement is skipped: it lands in the tray instead, which is the honest answer to "nobody said
+      where".
+    */
+    {
+      $if: {
+        condition: { $local: 'newCardAt' },
+        then: {
+          $action: 'recordStore.placeOnBoard',
+          args: [BOARD, '$result', 'CollectionBlock', { $local: 'newCardAt.x' }, { $local: 'newCardAt.y' }],
+        },
+      },
+    },
+    { $setLocal: 'newCardAt', value: null },
+    // Tell the canvas to re-read. The engine also watches `CollectionBlock` and would get there on
+    // its own, but this is the one case where the template *knows* — it is what wrote the card — and
+    // waiting on a notification for something you just did is how a board comes to feel broken.
+    { $setLocal: 'revision', by: 1 },
+  ],
 });
+
+/**
+ * A card, opened.
+ *
+ * The card on the canvas is a preview — clipped, non-interactive, and deliberately so. This is where
+ * the whole thing is readable and editable, which is the trade that made in-place editing
+ * unnecessary for now: seeing the content on the board is most of the value, and a modal is where
+ * WE already authors everything.
+ */
+const openCardModal: SchemaNode = {
+  type: '$if',
+  props: {
+    condition: { $local: 'openCardId' },
+    then: {
+      type: 'we-modal',
+      props: {
+        close: { $setLocal: 'openCardId', value: '' },
+        maxWidth: 'var(--we-layout-md)',
+        width: '100%',
+      },
+      $localState: { editCardOpen: { type: 'boolean', initial: false } },
+      children: [
+        {
+          type: '$single',
+          props: {
+            item: { $query: { entity: 'CollectionBlock', where: { id: { $local: 'openCardId' } } } },
+            as: 'card',
+          },
+          children: [
+            {
+              type: 'Column',
+              props: { gap: '400', width: '100%' },
+              children: [
+                { type: 'BlockRenderer', props: { editorState: '$card.editorState' } },
+                {
+                  type: 'Row',
+                  props: { gap: '300', width: '100%' },
+                  children: [
+                    {
+                      type: 'we-button',
+                      props: { size: 'sm', variant: 'secondary', onClick: { $setLocal: 'editCardOpen', value: true } },
+                      children: [{ type: 'we-icon', props: { name: 'pencil-simple' } }, 'Edit'],
+                    },
+                    {
+                      type: 'we-button',
+                      props: {
+                        size: 'sm',
+                        variant: 'ghost',
+                        color: 'danger-600',
+                        ml: 'auto',
+                        // Deletes the card and everything composed into it — the one delete that
+                        // serves every collection, kind-agnostic by design.
+                        onClick: {
+                          $action: 'spaceStore.deleteCollection',
+                          args: ['$card.id'],
+                          onSuccess: [
+                            { $setLocal: 'openCardId', value: '' },
+                            { $setLocal: 'revision', by: 1 },
+                          ],
+                        },
+                      },
+                      children: [{ type: 'we-icon', props: { name: 'trash' } }, 'Delete'],
+                    },
+                  ],
+                },
+                /*
+                  Editing reconciles rather than re-creates: `updatePost` keeps the blocks whose ids
+                  survived the edit, so a card's comments and signals stay attached to it and its
+                  placement is untouched. `'$arg'` goes second here — `updatePost(postId, json)`.
+                */
+                composerModal({
+                  openLocal: 'editCardOpen',
+                  title: 'Edit card',
+                  saveLabel: 'Save',
+                  editorState: '$card.editorState',
+                  saveAction: { $action: 'spaceStore.updatePost', args: ['$card.id', '$arg'] },
+                  onSaved: [{ $setLocal: 'revision', by: 1 }],
+                }),
+              ],
+            },
+          ],
+        },
+      ],
+    },
+  },
+};
 
 /** The canvas, or a reason there is nothing on it. */
 export const boardCanvas: SchemaNode = {
@@ -250,6 +403,7 @@ export const boardCanvas: SchemaNode = {
   children: [
     newBoardModal,
     newCardModal,
+    openCardModal,
     {
       type: '$if',
       props: {

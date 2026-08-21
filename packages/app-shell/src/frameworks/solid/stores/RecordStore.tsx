@@ -145,7 +145,7 @@ export interface RecordStore {
    * does not appear on the board it was made from — which is the confusion the button was hidden to
    * avoid, and hiding it was the wrong answer.
    */
-  createOnBoard: (board: string) => void;
+  createOnBoard: (board: string, x?: number, y?: number) => void;
 }
 
 const RecordStoreContext = createContext<RecordStore>();
@@ -161,6 +161,7 @@ export function RecordStoreProvider(props: ParentProps) {
   const [pendingLink, setPendingLink] = createSignal<PendingLink | null>(null);
   const [pendingBoard, setPendingBoard] = createSignal('');
   const [relationshipKind, setKind] = createSignal('');
+  const [pendingPoint, setPendingPoint] = createSignal<{ x: number; y: number } | null>(null);
 
   /**
    * WE's own authorable models, read straight off the core manifest.
@@ -237,6 +238,7 @@ export function RecordStoreProvider(props: ParentProps) {
       setPendingLink(null);
       setPendingBoard('');
       setKind('');
+      setPendingPoint(null);
     });
     // Opening on the first offered model rather than on an empty picker: in a space with one
     // vocabulary that is the only answer, and in a space with several it is still a better start
@@ -303,13 +305,20 @@ export function RecordStoreProvider(props: ParentProps) {
       setPendingLink(null);
       setPendingBoard('');
       setKind('');
+      setPendingPoint(null);
     });
   }
 
-  function createOnBoard(board: string): void {
+  function createOnBoard(board: string, x?: number, y?: number): void {
     if (!board) return;
     openRecordForm();
-    setPendingBoard(board);
+    batch(() => {
+      setPendingBoard(board);
+      // A point only when somebody chose one — a double-click on the canvas has one, a toolbar
+      // button does not. Inventing `(0, 0)` for the second case is what made a new record appear at
+      // the world origin, which is wherever the reader is not looking.
+      setPendingPoint(x !== undefined && y !== undefined ? { x, y } : null);
+    });
   }
 
   /**
@@ -410,10 +419,16 @@ export function RecordStoreProvider(props: ParentProps) {
         await created.setTarget?.(link.targetId);
       }
 
-      // Placed after the record exists, because a placement points at something. A failure here
-      // leaves a real record that is merely not positioned, which somebody can fix by dragging it —
-      // where placing first would leave a coordinate for nothing.
-      if (board && created?.id) await placeOnBoard(board, created.id, draft.entity, 0, 0);
+      /*
+        Placed only where somebody chose a point, and after the record exists.
+
+        After, because a placement points at something and placing first would leave a coordinate for
+        nothing. Only-where-chosen, because a record with no placement is *unplaced* — the layout
+        parks it in a tray in view, which is a state a person can see and act on. Writing `(0, 0)`
+        instead dressed "nobody said" up as an answer, and put the card at the world origin.
+      */
+      const at = pendingPoint();
+      if (board && at && created?.id) await placeOnBoard(board, created.id, draft.entity, at.x, at.y);
 
       batch(() => {
         setLastCreatedId(created?.id ?? '');
@@ -422,6 +437,7 @@ export function RecordStoreProvider(props: ParentProps) {
         setPendingLink(null);
         setPendingBoard('');
         setKind('');
+        setPendingPoint(null);
       });
       toastService.success(`${draft.label} created.`);
     } catch (error) {

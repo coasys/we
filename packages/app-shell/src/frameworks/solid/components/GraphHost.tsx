@@ -22,10 +22,12 @@ import '@we/graph-solid/styles';
 
 import type { ModelClass, ModelManifestEntry, QueryOptions } from '@we/backend-shared';
 import { manifestEntries } from '@we/backend-shared';
-import type { EntityShape } from '@we/graph-protocol';
+import type { SerializedBlockNode } from '@we/block-shared';
+import { BlockRenderer } from '@we/block-solid';
+import type { EntityShape, GraphNode } from '@we/graph-protocol';
 import { GraphView, type GraphViewProps } from '@we/graph-solid';
 import { CORE_MANIFEST } from '@we/models/manifest';
-import { createMemo } from 'solid-js';
+import { createMemo, Show } from 'solid-js';
 
 import { useDatasetStore } from '../stores/DatasetStore';
 import { useProfileStore } from '../stores/ProfileStore';
@@ -74,6 +76,38 @@ function toEntityShape(entry: ModelManifestEntry): EntityShape {
   }
 
   return { name: entry.name, properties, relations };
+}
+
+/**
+ * A card that draws its own contents, rather than its first sixty characters.
+ *
+ * The `content: 'block'` a board's style rules name. It lives here, not in the graph package, which
+ * is the point of the `nodeContent` seam: `BlockRenderer` drags in the block system, the design
+ * system and a Lexical tree, and a graph engine that imported any of that would stop being portable.
+ *
+ * `editorState` is already on the node — it is a declared string property, so the row the seed
+ * fetched carried it into `data` — and parsed here rather than at the seed because a graph node's
+ * `data` holds scalars by contract. A card whose state is missing or unparseable renders nothing and
+ * the card falls back to its label, which is the same degradation as a missing component.
+ */
+function BlockCard(props: { node: GraphNode }) {
+  const datasetStore = useDatasetStore();
+
+  const editorState = createMemo(() => {
+    const raw = props.node.data?.editorState;
+    if (typeof raw !== 'string' || !raw) return undefined;
+    try {
+      return JSON.parse(raw) as SerializedBlockNode;
+    } catch {
+      return undefined;
+    }
+  });
+
+  return (
+    <Show when={editorState()}>
+      {(state) => <BlockRenderer editorState={state()} perspective={datasetStore.currentDataset()?.handle} />}
+    </Show>
+  );
 }
 
 export function GraphHost(props: Omit<GraphViewProps, 'host'>) {
@@ -175,6 +209,8 @@ export function GraphHost(props: Omit<GraphViewProps, 'host'>) {
   }
 
   const host: GraphViewProps['host'] = {
+    nodeContent: { block: BlockCard },
+
     /**
      * Tell the graph when records of a type change here.
      *

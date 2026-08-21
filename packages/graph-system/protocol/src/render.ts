@@ -35,6 +35,10 @@ export interface NodeVisual {
   scaleLabelWithZoom?: boolean;
   icon?: string;
   image?: string;
+  /** Registered node-content renderer to draw inside a card — see `NodeStyle.content`. */
+  content?: string;
+  /** Zoom below which the content is hidden and the label stands in for it. */
+  contentMinZoom?: number;
 }
 
 /**
@@ -124,6 +128,14 @@ export type GraphEvent =
    * others, and the engine has no write path anyway.
    */
   | { type: 'edgeCreate'; source: GraphNode; target: GraphNode }
+  /**
+   * The user double-clicked empty canvas, at this point in world space.
+   *
+   * Intent again, and the position is the whole of it: "make something here" is a different request
+   * from "make something", and a surface where position is the data cannot ask the second one. What
+   * gets made is the consumer's business — a board creates a card, an outline might do nothing.
+   */
+  | { type: 'canvasDoubleClick'; at: Point }
   | { type: 'expanded'; id: string; added: number; total?: number }
   | { type: 'budgetReached'; limit: number };
 

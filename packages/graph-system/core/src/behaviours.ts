@@ -277,6 +277,30 @@ export function expandOnDoubleClickBehaviour(rawOptions?: Record<string, unknown
   };
 }
 
+/**
+ * Double-click empty canvas to say "make something here".
+ *
+ * Emits `canvasDoubleClick` with the world point and writes nothing, like every other gesture here.
+ * The position is the whole of the message: on a surface where position *is* the data, "make
+ * something" is not a request anybody can act on and "make something here" is.
+ *
+ * Claims only the background, so it composes with `expand-on-double-click` — a double-click on a
+ * node opens it, a double-click beside one creates. Which order they are listed in does not matter
+ * for the same reason: they never both match.
+ */
+export function canvasDoubleClickBehaviour(): Behaviour {
+  return {
+    id: 'canvas-double-click',
+    description: 'Double-click empty canvas to create something at that point.',
+    onDoubleClick(input, ctx) {
+      const at = ctx.toWorld(input.at);
+      if (ctx.hitTest(at).length) return;
+      ctx.emit({ type: 'canvasDoubleClick', at });
+      return true;
+    },
+  };
+}
+
 /** Single click expands instead of selecting — for maps meant to be explored rather than edited. */
 export function expandOnClickBehaviour(rawOptions?: Record<string, unknown>): Behaviour {
   const options = (rawOptions ?? {}) as { direction?: 'in' | 'out' | 'both' };
@@ -304,6 +328,7 @@ export function defaultBehaviours() {
     'pan-zoom': panZoomBehaviour,
     'drag-node': dragNodeBehaviour,
     'connect-nodes': connectNodesBehaviour,
+    'canvas-double-click': canvasDoubleClickBehaviour,
     select: selectBehaviour,
     'expand-on-click': expandOnClickBehaviour,
     'expand-on-double-click': expandOnDoubleClickBehaviour,

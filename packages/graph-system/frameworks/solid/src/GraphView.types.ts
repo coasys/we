@@ -19,6 +19,7 @@ import type {
   NodeStyleRules,
   SeedSpec,
 } from '@we/graph-protocol';
+import type { JSX } from 'solid-js';
 
 /**
  * @ai A general-purpose graph view: knowledge maps, schema maps, hierarchies, cluster maps and
@@ -163,6 +164,13 @@ export interface GraphViewProps {
     sourceLabel: string;
     targetLabel: string;
   }) => void;
+  /**
+   * The user double-clicked empty canvas. Requires the `canvas-double-click` behaviour.
+   *
+   * Carries the world point, which is the whole of the message: on a surface where position is the
+   * data, "make something here" is a request that can be acted on and "make something" is not.
+   */
+  onCanvasDoubleClick?: (payload: { x: number; y: number }) => void;
   onSelectionChange?: (ids: string[]) => void;
   /**
    * Fired when a drag ends, with the world position — what a board persists.
@@ -181,8 +189,26 @@ export interface GraphViewProps {
   host?: GraphHostBindings;
 }
 
+/**
+ * A component the host lends the graph to draw *inside* a card.
+ *
+ * Receives the whole node, so it can read whatever the seed put in `data` — a serialized editor
+ * state, a title, a colour. Rendered without pointer events, like everything else in the transformed
+ * layer: picking is geometric and owned by the engine, and content that took clicks would put a hole
+ * in the canvas wherever a card happened to be.
+ */
+export type NodeContent = (props: { node: GraphNode }) => JSX.Element;
+
 /** What the host lends the graph so its expanders can read data without knowing the backend. */
 export interface GraphHostBindings {
+  /**
+   * Components a style rule may name with `content`, keyed by name.
+   *
+   * The seam that keeps a block renderer out of a graph package meant to be portable. A template
+   * names `content: 'block'`; the host decides what drawing a block means, and a deployment with no
+   * such component simply has a card that falls back to its label.
+   */
+  nodeContent?: Record<string, NodeContent>;
   query(request: Record<string, unknown>): Promise<Record<string, unknown>[]>;
   /**
    * Report changes to records of a type, and return a function that stops reporting.

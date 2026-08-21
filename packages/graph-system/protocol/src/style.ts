@@ -80,6 +80,29 @@ export interface NodeStyle {
   /** Hide the label below this zoom, so a dense graph stays readable when zoomed out. */
   labelMinZoom?: number;
   /**
+   * Name of a registered node-content renderer to draw *inside* the node.
+   *
+   * The escape hatch `scalars()` has always pointed at — "anything else belongs behind a node
+   * template". A label is one string, which is right for a mark with a caption and hopeless for a
+   * card standing in for a document: a post holding an image, a task and three paragraphs shows as
+   * its first sixty characters, and everything else in it silently is not there.
+   *
+   * Named rather than passed, like every other plugin here, so a template stays JSON. The component
+   * itself arrives through the host bindings — which is what keeps a block renderer, and everything
+   * it drags in, out of a graph package that is meant to be portable.
+   *
+   * Only meaningful on `shape: 'card'`. A dot has nowhere to put it.
+   */
+  content?: string;
+  /**
+   * Hide the content below this zoom, falling back to the label.
+   *
+   * The sibling of `labelMinZoom`, and the answer to the one thing that decides whether rich cards
+   * scale: a hundred documents rendered at once is a hundred component trees, and at the zoom where
+   * a board is a wall of coloured rectangles none of them can be read anyway.
+   */
+  contentMinZoom?: number;
+  /**
    * Whether the label grows and shrinks with the camera. Default `true`.
    *
    * `false` pins it to a constant on-screen size, which keeps text readable at any zoom — right for a
