@@ -2,8 +2,9 @@ import type { RouteSchema, SchemaNode } from '@we/schema-shared';
 import { recordFormModal } from '@we/template-kit';
 
 import { boardBar, boardCanvas, boardQuery } from './Board';
+import { openCardModal } from './CardModal';
 import { edgeDetailModal } from './EdgeDetail';
-import { expandRequest, nodeDetailStrip, selectNode } from './NodeDetail';
+import { expandRequest, nodeDetailPanel, selectNode } from './NodeDetail';
 
 /**
  * The graph route — three graphs over the same space, switchable.
@@ -65,10 +66,11 @@ const schemaGraph: SchemaNode = {
       { when: { 'data.relations': 0 }, style: { color: 'neutral-400' } },
     ],
     edgeStyle: [{ style: { showLabel: true, arrow: 'target' } }],
-    behaviours: ['pan-zoom', 'select', { type: 'drag-node' }],
+    behaviours: ['node-double-click', 'pan-zoom', 'select', { type: 'drag-node' }],
     height: '100%',
     revision: { $local: 'revision' },
     onNodeClick: selectNode,
+    onNodeDoubleClick: { $setLocal: 'cardOpen', value: true },
     expandRequest,
   },
 };
@@ -147,12 +149,21 @@ const knowledgeGraph: SchemaNode = {
       { type: 'connect-nodes', options: { armed: { $local: 'connecting' } } },
       'pan-zoom',
       'select',
-      'expand-on-double-click',
+      /*
+        Double-click opens the record rather than expanding it.
+
+        `expand-on-double-click` claims the same gesture, and only the first of them sees it — so
+        this is a choice, not an ordering accident. Opening is what the gesture means everywhere else
+        in the app, and expansion has its own affordances in the panel: Relations and Fields, which
+        say which question they answer where a double-click cannot.
+      */
+      'node-double-click',
       { type: 'drag-node' },
     ],
     height: '100%',
     revision: { $local: 'revision' },
     onNodeClick: selectNode,
+    onNodeDoubleClick: { $setLocal: 'cardOpen', value: true },
     expandRequest,
     onEdgeClick: { $setLocal: 'selectedEdge', from: '$event' },
     // Straight to the store: it opens the same record form every other model uses, on
@@ -188,6 +199,9 @@ const contentGraph: SchemaNode = {
       { when: { type: 'EventBlock' }, style: { shape: 'circle', size: 14, color: 'warning-600' } },
     ],
     edgeStyle: [{ style: { curve: 'step', color: 'neutral-200' } }],
+    // Keeps `expand-on-double-click` where the other modes take `node-double-click`: drilling in *is*
+    // this mode. So no open handler either — it would be config that could never fire, since only
+    // one behaviour ever sees the gesture. The panel's Open button still reaches a document here.
     behaviours: ['pan-zoom', 'select', 'expand-on-double-click'],
     height: '100%',
     revision: { $local: 'revision' },
@@ -261,8 +275,16 @@ export const graphRoute: RouteSchema = {
     newCardOpen: { type: 'boolean', initial: false },
     /** Where a double-click landed, so the card it opens can be placed there. Null from the toolbar. */
     newCardAt: { type: 'object', initial: null },
-    /** The card being read, by record id. Empty when none is open. */
-    openCardId: { type: 'string', initial: '' },
+    /*
+      Whether the selected card is open for reading.
+
+      A flag rather than an id, because there is nowhere to copy an id to: `$setLocal`'s `value` is a
+      literal and its `from` reads the event. Binding the modal to the selection is the better answer
+      anyway — it always shows the node that is selected and cannot drift from it.
+    */
+    cardOpen: { type: 'boolean', initial: false },
+    /** The detail panel was dismissed. Cleared whenever something is selected — see `selectNode`. */
+    panelClosed: { type: 'boolean', initial: false },
     /*
       Bumped after a record is created, which tells the graph to re-read and merge.
 
@@ -419,10 +441,13 @@ export const graphRoute: RouteSchema = {
           type: '$if',
           props: { condition: { $eq: [{ $local: 'mode' }, 'board'] }, then: boardCanvas },
         },
+        // Inside the graph container, not after it: the panel overlays the canvas rather than
+        // taking a slice of the route, which is what keeps the camera still when it opens.
+        nodeDetailPanel,
       ],
     },
 
-    nodeDetailStrip,
+    openCardModal,
 
     edgeDetailModal,
   ],

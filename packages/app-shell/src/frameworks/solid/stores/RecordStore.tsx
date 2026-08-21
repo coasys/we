@@ -163,6 +163,16 @@ export interface RecordStore {
    */
   placeOnBoard: (board: string, nodeId: string, nodeType: string, x: number, y: number) => Promise<void>;
   /**
+   * Take a record off a board, leaving the record itself alone.
+   *
+   * Deleting the placement and nothing else — which is the whole payoff of placement being
+   * membership. Being on a board was never what made a record exist, so coming off one cannot be
+   * what ends it: a task removed from a board is still owned by the call it came out of, and a card
+   * the board owns survives as an unplaced one in the tray, where it can be dragged back or deleted
+   * outright.
+   */
+  removeFromBoard: (board: string, nodeId: string) => Promise<void>;
+  /**
    * Open the create form, and place whatever it makes onto this board.
    *
    * The counterpart to `connectNodes`: the same form and the same save path, with an intent held
@@ -425,6 +435,24 @@ export function RecordStoreProvider(props: ParentProps) {
     }
   }
 
+  async function removeFromBoard(board: string, nodeId: string): Promise<void> {
+    const dataset = datasetStore.currentDataset();
+    if (!dataset || !board || !nodeId) return;
+    try {
+      const existing = (await Placement.findAll(dataset.handle, {
+        parent: { id: board, predicate: PREDICATES.CHILDREN },
+      } as Record<string, unknown>)) as { id: string; node?: string }[];
+      // Every placement for this node, not the first: a duplicate should not survive the removal and
+      // silently put the thing back on the board at the next refresh.
+      for (const row of existing.filter((placement) => placement.node === nodeId)) {
+        await Placement.delete(dataset.handle, row.id);
+      }
+    } catch (error) {
+      console.error('RecordStore: removing a record from a board failed', error);
+      toastService.error('Could not remove that.');
+    }
+  }
+
   async function saveRecord(): Promise<void> {
     const draft = recordDraft();
     const dataset = datasetStore.currentDataset();
@@ -526,6 +554,7 @@ export function RecordStoreProvider(props: ParentProps) {
     createOnBoard,
     createCardOnBoard,
     placeOnBoard,
+    removeFromBoard,
     setRecordEntity,
     setRecordField,
     relationshipKind,

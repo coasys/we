@@ -95,8 +95,10 @@ const boardCards: SchemaNode = {
     revision: { $local: 'revision' },
     onNodeClick: selectNode,
     // Double-click opens the card. Nothing expands on a board, so the gesture is free — and it is
-    // the one people arrive expecting from every other canvas they have used.
-    onNodeDoubleClick: { $setLocal: 'openCardId', from: '$event.recordId' },
+    // the one people arrive expecting from every other canvas they have used. A flag rather than an
+    // id: the click that precedes the second one has already selected the node, and the modal reads
+    // the selection.
+    onNodeDoubleClick: { $setLocal: 'cardOpen', value: true },
     /*
       Double-click empty canvas to make something there.
 
@@ -303,92 +305,6 @@ const newCardModal: SchemaNode = composerModal({
   ],
 });
 
-/**
- * A card, opened.
- *
- * The card on the canvas is a preview — clipped, non-interactive, and deliberately so. This is where
- * the whole thing is readable and editable, which is the trade that made in-place editing
- * unnecessary for now: seeing the content on the board is most of the value, and a modal is where
- * WE already authors everything.
- */
-const openCardModal: SchemaNode = {
-  type: '$if',
-  props: {
-    condition: { $local: 'openCardId' },
-    then: {
-      type: 'we-modal',
-      props: {
-        close: { $setLocal: 'openCardId', value: '' },
-        maxWidth: 'var(--we-layout-md)',
-        width: '100%',
-      },
-      $localState: { editCardOpen: { type: 'boolean', initial: false } },
-      children: [
-        {
-          type: '$single',
-          props: {
-            item: { $query: { entity: 'CollectionBlock', where: { id: { $local: 'openCardId' } } } },
-            as: 'card',
-          },
-          children: [
-            {
-              type: 'Column',
-              props: { gap: '400', width: '100%' },
-              children: [
-                { type: 'BlockRenderer', props: { editorState: '$card.editorState' } },
-                {
-                  type: 'Row',
-                  props: { gap: '300', width: '100%' },
-                  children: [
-                    {
-                      type: 'we-button',
-                      props: { size: 'sm', variant: 'secondary', onClick: { $setLocal: 'editCardOpen', value: true } },
-                      children: [{ type: 'we-icon', props: { name: 'pencil-simple' } }, 'Edit'],
-                    },
-                    {
-                      type: 'we-button',
-                      props: {
-                        size: 'sm',
-                        variant: 'ghost',
-                        color: 'danger-600',
-                        ml: 'auto',
-                        // Deletes the card and everything composed into it — the one delete that
-                        // serves every collection, kind-agnostic by design.
-                        onClick: {
-                          $action: 'spaceStore.deleteCollection',
-                          args: ['$card.id'],
-                          onSuccess: [
-                            { $setLocal: 'openCardId', value: '' },
-                            { $setLocal: 'revision', by: 1 },
-                          ],
-                        },
-                      },
-                      children: [{ type: 'we-icon', props: { name: 'trash' } }, 'Delete'],
-                    },
-                  ],
-                },
-                /*
-                  Editing reconciles rather than re-creates: `updatePost` keeps the blocks whose ids
-                  survived the edit, so a card's comments and signals stay attached to it and its
-                  placement is untouched. `'$arg'` goes second here — `updatePost(postId, json)`.
-                */
-                composerModal({
-                  openLocal: 'editCardOpen',
-                  title: 'Edit card',
-                  saveLabel: 'Save',
-                  editorState: '$card.editorState',
-                  saveAction: { $action: 'spaceStore.updatePost', args: ['$card.id', '$arg'] },
-                  onSaved: [{ $setLocal: 'revision', by: 1 }],
-                }),
-              ],
-            },
-          ],
-        },
-      ],
-    },
-  },
-};
-
 /** The canvas, or a reason there is nothing on it. */
 export const boardCanvas: SchemaNode = {
   type: 'Column',
@@ -396,7 +312,6 @@ export const boardCanvas: SchemaNode = {
   children: [
     newBoardModal,
     newCardModal,
-    openCardModal,
     {
       type: '$if',
       props: {

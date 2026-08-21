@@ -2204,6 +2204,7 @@ export const contextData: ContextData = {
         'cancelRecordForm',
         'saveRecord',
         'placeOnBoard',
+        'removeFromBoard',
         'createOnBoard',
         'createCardOnBoard',
       ],

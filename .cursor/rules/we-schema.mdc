@@ -1905,6 +1905,7 @@ RecordStore:
   - cancelRecordForm(): closes the form, discarding it
   - saveRecord(): validates and creates. Errors land in recordErrors and the form stays open holding what was typed; success closes it and sets lastCreatedId
   - placeOnBoard(): unknown
+  - removeFromBoard(): unknown
   - createOnBoard(): unknown
   - createCardOnBoard(): unknown
 
