@@ -106,6 +106,19 @@ interface Placed {
 }
 
 /**
+ * "Explicitly nothing" — a value the board drops as though the field were absent.
+ *
+ * Needed because an empty string cannot be *stored*: `Ad4mModel`'s update skips `''` exactly as it
+ * skips `undefined`, so a card given a colour of its own could never have it taken away, and the
+ * control offering that would be a one-way door. A named value the seed drops is the same trick
+ * `SpacePreference` uses for "follow the space" and "follow my default", for the same reason.
+ *
+ * Prefixed so it cannot collide with a design token or a CSS colour, both of which are legitimate
+ * values for the fields it appears in.
+ */
+export const PLACEMENT_UNSET = 'we:unset';
+
+/**
  * The presentation fields a placement carries, named as a node's data bag names them.
  *
  * Unset values are dropped rather than passed through as `0` and `''`: a style rule reading an
@@ -125,7 +138,8 @@ export function placementStyle(row: Record<string, unknown>): Record<string, Gra
     if (Number.isFinite(value) && value > 0) style[as] = value;
   };
   const text = (key: string, as: string) => {
-    if (typeof row[key] === 'string' && row[key]) style[as] = row[key] as string;
+    // The sentinel is dropped exactly as an empty value is — that is what makes it mean "unset".
+    if (typeof row[key] === 'string' && row[key] && row[key] !== PLACEMENT_UNSET) style[as] = row[key] as string;
   };
   number('width', 'boardWidth');
   number('height', 'boardHeight');
@@ -212,8 +226,9 @@ export function boardSeed(): SeedSource {
       */
       const typeColors = new Map<string, string>();
       for (const row of styles) {
-        if (typeof row.nodeType === 'string' && typeof row.color === 'string' && row.nodeType && row.color) {
-          typeColors.set(row.nodeType, row.color);
+        const color = typeof row.color === 'string' ? row.color : '';
+        if (typeof row.nodeType === 'string' && row.nodeType && color && color !== PLACEMENT_UNSET) {
+          typeColors.set(row.nodeType, color);
         }
       }
 

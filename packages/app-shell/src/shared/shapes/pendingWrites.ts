@@ -15,32 +15,21 @@
 export type PendingWrites = Record<string, Record<string, unknown>>;
 
 /**
- * Drop the patches these rows confirm.
+ * Forget these records' patches.
  *
- * Two rules, both learned rather than assumed:
- *
- * - **Every field must match, not any.** A read that has caught up on a card's colour but not its
- *   size is still a read the optimistic size is needed for. Clearing on a partial match would put
- *   the old size back for however long the rest took.
- * - **Compare values; do not trust the write to have landed.** A read issued *before* a write can be
- *   answered after it, and the reverse — so "a read happened, therefore it is stored" is wrong in
- *   both directions. A row that carries the values is the only evidence that means anything, and it
- *   makes this immune to the ordering entirely.
+ * Who decides *when* is the part that was wrong first. Confirming where the data was **read** looks
+ * right and is half a second early — a read lands, then the rest of the seed runs, and only then do
+ * the drawn things carry the new value; clearing on the read put the old value back for the whole of
+ * that window, so an edit flashed to its new size, snapped back, and arrived again. The caller that
+ * can see the *drawn* result is the one that knows, so this takes ids and asks nothing.
  *
  * Returns the same object when nothing changed, so a signal set from it does not re-render the world
- * on every read.
+ * every time something is drawn.
  */
-export function confirmPending(
-  pending: PendingWrites,
-  rows: readonly Record<string, unknown>[],
-  idOf: (row: Record<string, unknown>) => string | undefined,
-): PendingWrites {
+export function dropAllPending(pending: PendingWrites, ids: readonly string[]): PendingWrites {
   let next = pending;
-  for (const row of rows) {
-    const id = idOf(row);
-    const patch = id ? pending[id] : undefined;
-    if (!id || !patch) continue;
-    if (!Object.entries(patch).every(([field, value]) => row[field] === value)) continue;
+  for (const id of ids) {
+    if (!pending[id]) continue;
     if (next === pending) next = { ...pending };
     delete next[id];
   }

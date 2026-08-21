@@ -117,13 +117,21 @@ const boardCards: SchemaNode = {
     behaviours: [
       // Before drag-node, which is what makes arming mean anything: both claim a press on a node.
       { type: 'connect-nodes', options: { armed: { $local: 'connecting' } } },
-      // The two halves of a double-click: on a node it opens, on empty canvas it creates. Both
-      // before pan-zoom, which is the background fallback and would otherwise claim the press first.
+      // The two halves of a double-click: on a node it opens, on empty canvas it creates.
       'node-double-click',
       'canvas-double-click',
-      'pan-zoom',
       'select',
       { type: 'drag-node', options: { pin: true } },
+      /*
+        Last, because it is the fallback — its own description says so, and listing it earlier is
+        what stopped clicking empty canvas from deselecting anything.
+
+        `pan-zoom` claims a press on the background and dispatch stops at the first behaviour that
+        claims, so `select` never saw the press begin and had nothing to compare the release
+        against. Nothing looked broken: the graph panned, the click did nothing, and the only
+        missing thing was an event nobody could see was absent.
+      */
+      'pan-zoom',
     ],
     edgeStyle: [
       { style: { curve: 'smooth', arrow: 'target', color: 'primary-500', width: 2, showLabel: true } },

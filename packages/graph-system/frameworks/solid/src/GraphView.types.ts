@@ -258,6 +258,16 @@ export interface GraphHostBindings {
    * Reactive: read inside the render, so a host signal here re-draws the nodes it names.
    */
   pendingData?(): Record<string, Record<string, GraphValue>>;
+  /**
+   * These records' pending fields are now carried by the graph's own data, so the host can forget
+   * them.
+   *
+   * Reported from the drawn node rather than judged by the host, because the host reads rows and the
+   * graph draws nodes, and there is a whole seed between the two. Clearing on the read is half a
+   * second early: the edit flashes to its new value, snaps back for the rest of the seed, and
+   * arrives again — which is exactly the flicker optimism was added to remove.
+   */
+  confirmPending?(recordIds: string[]): void;
   query(request: Record<string, unknown>): Promise<Record<string, unknown>[]>;
   /**
    * Report changes to records of a type, and return a function that stops reporting.

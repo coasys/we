@@ -177,6 +177,18 @@ const cardStyle: SchemaNode = {
                 step: 0.05,
                 showValue: true,
                 value: { $local: 'selected.data.boardContentScale' },
+                /*
+                  Preview while dragging, write on release.
+
+                  A slider reports continuously and a write per frame would be absurd — but waiting
+                  for the release to see the result means choosing a size blind, which for "how much
+                  of this document fits" is the whole question. Both go through the same pending
+                  map, so the card never jumps between the last preview and the write.
+                */
+                onInput: {
+                  $action: 'recordStore.previewCardStyle',
+                  args: [{ $local: 'selected.recordId' }, 'contentScale', '$event.detail'],
+                },
                 onChange: setStyle('contentScale', '$event.detail'),
               },
             },

@@ -353,3 +353,66 @@ describe('dispatchPointer', () => {
     expect(calls).toEqual(['a-down', 'a-up', 'b-up']);
   });
 });
+
+/**
+ * Behaviour order, which is a real part of the contract and reads like a formatting detail.
+ *
+ * Dispatch stops at the first behaviour that claims a phase, so a list is a priority order rather
+ * than a set. `pan-zoom` claims a press on empty canvas — which is why its own description says to
+ * list it last, and why every template that listed it first had a background click that silently
+ * stopped clearing the selection. Nothing looked broken: the graph panned, the click did nothing,
+ * and the missing thing was an event nobody could see was absent.
+ */
+describe('pan-zoom and select, in both orders', () => {
+  const background = input(10, 10);
+
+  function harness() {
+    const selections: string[][] = [];
+    const panned: number[][] = [];
+    const ctx = fakeContext({
+      // Empty canvas: the press lands on nothing, which is the case both behaviours read.
+      hitTest: () => [],
+      select: (ids) => {
+        selections.push(ids);
+      },
+      pan: (dx, dy) => {
+        panned.push([dx, dy]);
+      },
+    });
+    return { ctx, selections, panned };
+  }
+
+  it('clears the selection on a background click when select comes first', () => {
+    const { ctx, selections } = harness();
+    const behaviours = [selectBehaviour(), panZoomBehaviour()];
+
+    dispatchPointer(behaviours, 'onPointerDown', background, ctx);
+    dispatchPointer(behaviours, 'onPointerUp', background, ctx);
+
+    expect(selections).toEqual([[]]);
+  });
+
+  it('clears nothing when pan-zoom comes first', () => {
+    // The regression, pinned: pan-zoom claims the press, `select` never records that one began, and
+    // its release handler has nothing to compare against.
+    const { ctx, selections } = harness();
+    const behaviours = [panZoomBehaviour(), selectBehaviour()];
+
+    dispatchPointer(behaviours, 'onPointerDown', background, ctx);
+    dispatchPointer(behaviours, 'onPointerUp', background, ctx);
+
+    expect(selections).toEqual([]);
+  });
+
+  it('still pans with select in front of it', () => {
+    // The order that fixes the click must not cost the drag: `select` claims nothing on the way
+    // down, so the press reaches pan-zoom either way.
+    const { ctx, panned } = harness();
+    const behaviours = [selectBehaviour(), panZoomBehaviour()];
+
+    dispatchPointer(behaviours, 'onPointerDown', background, ctx);
+    dispatchPointer(behaviours, 'onPointerMove', input(40, 30), ctx);
+
+    expect(panned).toEqual([[30, 20]]);
+  });
+});

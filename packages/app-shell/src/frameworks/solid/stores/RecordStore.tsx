@@ -25,11 +25,12 @@
 import type { EntitySchema } from '@we/backend-shared';
 import { createBlocks } from '@we/block-shared';
 import { toastService } from '@we/components/solid';
+import { PLACEMENT_UNSET } from '@we/graph-expanders';
 import { getModel, Placement, PREDICATES, runModelTransaction, TypeStyle } from '@we/models';
 import { CORE_MANIFEST } from '@we/models/manifest';
 import { Accessor, batch, createContext, createMemo, createSignal, ParentProps, useContext } from 'solid-js';
 
-import { confirmPending, dropPending, holdPending, type PendingWrites } from '../../../shared/shapes/pendingWrites';
+import { dropAllPending, dropPending, holdPending, type PendingWrites } from '../../../shared/shapes/pendingWrites';
 import {
   asEntityName,
   emptyRecordDraft,
@@ -198,21 +199,30 @@ export interface RecordStore {
    * behind the finger reads as broken rather than as slow, so the change is drawn immediately and
    * this is what says so.
    *
-   * Cleared by {@link confirmRows} when a read shows the value has landed, so the optimistic value
-   * and the stored one are never both authoritative for longer than one read. A failed write clears
-   * it too, which is what makes the card snap back to the truth rather than lying about a change
-   * that did not happen.
+   * Cleared by {@link confirmPending} once the graph is drawing the real value, so the optimistic
+   * value and the stored one are never both authoritative for longer than that. A failed write
+   * clears it too, which is what makes the card snap back to the truth rather than lying about a
+   * change that did not happen.
    */
   pendingCardStyle: Accessor<PendingWrites>;
   /**
-   * Reconcile the optimistic state against rows just read from the backend.
+   * Forget the pending fields for these records — whatever draws them now has the real values.
    *
-   * Called by whatever reads on the store's behalf — the graph host, today. Deliberately generic:
-   * the caller says which entity it read and hands over the rows, and the store decides whether any
-   * of it answers something it is still waiting on. A caller that knew *which* pending writes to
-   * clear would be a caller that had to understand placements.
+   * Called by whoever draws on the store's behalf, which is the graph host today. Reported from the
+   * drawing rather than judged here, because a read landing is not the same moment as a card being
+   * redrawn from it: clearing on the read put the old value back for the rest of the seed, so an
+   * edit flashed to its new size, snapped back, and arrived again.
    */
-  confirmRows: (entity: string, rows: readonly Record<string, unknown>[]) => void;
+  confirmPending: (recordIds: readonly string[]) => void;
+  /**
+   * Show a presentation change without writing it — for a control that reports while it is moving.
+   *
+   * The half of `setCardStyle` that costs nothing: a slider emits continuously as it is dragged and
+   * a write per frame would be absurd, but waiting for the release to see the result means choosing
+   * a size blind. So the drag previews and the release writes, and because both go through the same
+   * pending map the card never jumps between them.
+   */
+  previewCardStyle: (nodeId: string, field: string, value: unknown) => void;
   /**
    * Set the colour every card of one type is drawn in, on one board.
    *
@@ -495,13 +505,9 @@ export function RecordStoreProvider(props: ParentProps) {
     setPendingCardStyle((current) => holdPending(current, nodeId, patch));
   const drop = (nodeId: string) => setPendingCardStyle((current) => dropPending(current, nodeId));
 
-  function confirmRows(entity: string, rows: readonly Record<string, unknown>[]): void {
-    // Placements are the only thing written optimistically here. Named rather than inferred, so a
-    // read of something else cannot clear a patch by coincidence of field names.
-    if (entity !== 'Placement' || !Object.keys(pendingCardStyle()).length) return;
-    setPendingCardStyle((current) =>
-      confirmPending(current, rows, (row) => (typeof row.node === 'string' ? row.node : undefined)),
-    );
+  function confirmPending(recordIds: readonly string[]): void {
+    if (!Object.keys(pendingCardStyle()).length) return;
+    setPendingCardStyle((current) => dropAllPending(current, recordIds));
   }
 
   /**
@@ -549,21 +555,38 @@ export function RecordStoreProvider(props: ParentProps) {
     });
   }
 
-  async function setCardStyle(board: string, nodeId: string, field: string, value: unknown): Promise<void> {
+  /**
+   * One presentation field, as a value the placement can hold.
+   *
+   * Accepts an event or a raw value: a `we-slider` hands back `$event.detail`, but a swatch button
+   * has no detail to pass and sends the value itself. Reading both means the template says what it
+   * means at every call site instead of choosing between an action per control and a wrapper.
+   *
+   * The empty string becomes {@link PLACEMENT_UNSET}, because an empty string cannot be *stored*: the
+   * ORM's update skips `''` exactly as it skips `undefined`, so "no colour of its own" would be
+   * unwritable — a card could be given an override and never have it taken away. A named value the
+   * board seed drops is the same trick `SpacePreference` uses for its two sentinels.
+   */
+  function cardStyleValue(field: string, value: unknown): string | number | undefined {
     if (!(CARD_STYLE_FIELDS as readonly string[]).includes(field)) {
       console.warn(`RecordStore: "${field}" is not a card presentation property`);
-      return;
+      return undefined;
     }
-    /*
-      An event or a raw value, both accepted.
-
-      A `we-color-picker` and a `we-slider` hand back `$event.detail`, but a swatch button has no
-      detail to pass and sends the value itself. Reading both here means the template says what it
-      means at every call site instead of choosing between an action per control and a wrapper.
-    */
     const raw =
       value !== null && typeof value === 'object' && 'detail' in value ? (value as { detail: unknown }).detail : value;
-    const scalar = typeof raw === 'string' || typeof raw === 'number' ? raw : '';
+    if (typeof raw === 'number') return raw;
+    return typeof raw === 'string' && raw ? raw : PLACEMENT_UNSET;
+  }
+
+  function previewCardStyle(nodeId: string, field: string, value: unknown): void {
+    const scalar = cardStyleValue(field, value);
+    if (scalar === undefined || !nodeId) return;
+    hold(nodeId, { [field]: scalar });
+  }
+
+  async function setCardStyle(board: string, nodeId: string, field: string, value: unknown): Promise<void> {
+    const scalar = cardStyleValue(field, value);
+    if (scalar === undefined) return;
     await stylePlacement(board, nodeId, { [field]: scalar });
   }
 
@@ -572,7 +595,9 @@ export function RecordStoreProvider(props: ParentProps) {
     if (!dataset || !board || !nodeType) return;
     const raw =
       color !== null && typeof color === 'object' && 'detail' in color ? (color as { detail: unknown }).detail : color;
-    const value = typeof raw === 'string' ? raw : '';
+    // The same sentinel a card's own colour uses, and for the same reason: `''` cannot be stored, so
+    // without it a type could be given a colour and never have it taken away.
+    const value = typeof raw === 'string' && raw ? raw : PLACEMENT_UNSET;
     const parent = { id: board, predicate: PREDICATES.CHILDREN };
 
     try {
@@ -588,7 +613,8 @@ export function RecordStoreProvider(props: ParentProps) {
         await TypeStyle.update(dataset.handle, already.id, { color: value });
         return;
       }
-      if (!value) return;
+      // Nothing to clear that was never set.
+      if (value === PLACEMENT_UNSET) return;
       await TypeStyle.create(dataset.handle as never, { nodeType, color: value } as never, { parent } as never);
     } catch (error) {
       console.error('RecordStore: colouring a type on a board failed', error);
@@ -717,7 +743,8 @@ export function RecordStoreProvider(props: ParentProps) {
     placeOnBoard,
     removeFromBoard,
     pendingCardStyle,
-    confirmRows,
+    confirmPending,
+    previewCardStyle,
     resizeOnBoard,
     setCardStyle,
     setTypeColor,

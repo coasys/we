@@ -1117,6 +1117,7 @@ Names resolvable inside GraphView props: seed sources (seeds.source), expanders 
   - contains: string[] — Types the board may hold beyond whatever its placements name — one query each. Defaults to the block vocabulary; anything *placed* is loaded whether or not it is listed.
   - via: string — Relation holding the contents. Defaults to "children".
   - connections: string — Reified relation entity to draw as lines between the cards — e.g. "Relationship". Only pairs whose two ends are both on the board are drawn, since a line to something elsewhere would leave the canvas. Each line carries the record it stands for, so clicking one can open it. Omit for a board with no connections.
+  - typeStyles: string — Entity holding this board's colour per kind of thing — WE passes "TypeStyle". Read onto every node as `boardTypeColor`, for a style rule to pick up with `{ from: "data.boardTypeColor" }`. This is what a board's key writes.
   - limit: number — Rows per type. Default 200.
   - Example: `{ "source": "board", "options": { "board": { "$local": "boardId" } } }`
 - `dataset` — Seeds a single node for the current space — the starting point for exploring outward.
@@ -1207,15 +1208,15 @@ Names resolvable inside GraphView props: seed sources (seeds.source), expanders 
 
 **behaviour**
 
-- `pan-zoom` — Drag the background to pan, wheel to zoom about the pointer. List it last — it is the fallback.
-  - Example: `"behaviours": ["pan-zoom", "select", "expand-on-double-click"]`
-- `select` — Click to select, shift-click to extend, background to clear. Emits onNodeClick.
+- `pan-zoom` — Drag the background to pan, wheel to zoom about the pointer. **List it last.** It claims a press on empty canvas, and dispatch stops at the first behaviour that claims — so anything after it never sees a background press. Listed before `select`, clicking empty canvas silently stops clearing the selection.
+  - Example: `"behaviours": ["select", "expand-on-double-click", "pan-zoom"]`
+- `select` — Click to select, shift-click to extend, background to clear. Emits onNodeClick, and onSelectionChange with an empty list when a background click clears it. Must be listed BEFORE pan-zoom, which claims the background press it needs to see.
 - `drag-node` — Drag a node to move it. Releases on drop by default so the layout stays in charge; pass { pin: true } on a board.
   - pin: boolean — Leave the node pinned where it was dropped.
   - Example: `{ "type": "drag-node", "options": { "pin": true } }`
 - `connect-nodes` — Drag from one node to another to connect them, emitting onEdgeCreate with both ends. Writes nothing — what a connection means is the template's decision, so it answers by creating whatever record it thinks the connection is. List it BEFORE drag-node: both claim a press on a node and the first wins. Arm it from a control the user can see rather than a modifier key, which is undiscoverable and absent on a touchscreen.
   - armed: boolean — Whether the gesture is live. Default true. Disarmed, the press falls through to drag-node.
-  - Example: `"behaviours": [{ "type": "connect-nodes", "options": { "armed": { "$local": "connecting" } } }, "pan-zoom", "select", { "type": "drag-node" }]`
+  - Example: `"behaviours": [{ "type": "connect-nodes", "options": { "armed": { "$local": "connecting" } } }, "select", { "type": "drag-node" }, "pan-zoom"]`
 - `node-double-click` — Double-click a node to emit onNodeDoubleClick, with the record it stands for resolved onto the payload. Writes nothing — what opening a node means is the template's decision. Pairs with canvas-double-click, which handles the same gesture on empty canvas; list both and exactly one fires. Do NOT list it alongside expand-on-double-click, which claims the same gesture to do something else.
   - Example: `"behaviours": ["node-double-click", "canvas-double-click", "pan-zoom", "select"]`
 - `canvas-double-click` — Double-click empty canvas to emit onCanvasDoubleClick with the world point. Writes nothing — what gets made there is the template's decision. List it BEFORE pan-zoom, which is the background fallback. Claims only the background, so it composes with expand-on-double-click: a double-click on a node opens it, one beside a node creates.
@@ -1920,7 +1921,8 @@ RecordStore:
   - removeFromBoard(): unknown
   - resizeOnBoard(): unknown
   - setCardStyle(): unknown
-  - confirmRows(): unknown
+  - confirmPending(): unknown
+  - previewCardStyle(): unknown
   - setTypeColor(): unknown
   - createOnBoard(): unknown
   - createCardOnBoard(): unknown

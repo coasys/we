@@ -6,57 +6,34 @@
  * the old value for as long as the write takes; too late and it keeps showing something that never
  * got stored.
  */
-import { confirmPending, dropPending, holdPending } from '@shared/shapes/pendingWrites';
+import { dropAllPending, dropPending, holdPending } from '@shared/shapes/pendingWrites';
 import { describe, expect, it } from 'vitest';
 
-const byNode = (row: Record<string, unknown>) => (typeof row.node === 'string' ? row.node : undefined);
+describe('dropAllPending', () => {
+  it('forgets the records it is given and leaves the rest', () => {
+    const pending = { c1: { width: 320 }, c2: { color: 'danger-100' } };
 
-describe('confirmPending', () => {
-  it('drops a patch a row confirms', () => {
-    const pending = { c1: { width: 320, color: 'warning-100' } };
-
-    const next = confirmPending(pending, [{ node: 'c1', width: 320, color: 'warning-100' }], byNode);
-
-    expect(next).toEqual({});
+    expect(dropAllPending(pending, ['c1'])).toEqual({ c2: { color: 'danger-100' } });
   });
 
-  it('keeps a patch a row only half confirms', () => {
-    // A read that has caught up on the colour but not the size is still a read the optimistic size
-    // is needed for — clearing here would put the old width back until the rest arrived.
-    const pending = { c1: { width: 320, color: 'warning-100' } };
-
-    const next = confirmPending(pending, [{ node: 'c1', width: 180, color: 'warning-100' }], byNode);
-
-    expect(next).toEqual(pending);
-  });
-
-  it('ignores rows for records with nothing pending', () => {
+  it('ignores an id with nothing pending', () => {
     const pending = { c1: { width: 320 } };
 
-    expect(confirmPending(pending, [{ node: 'c2', width: 999 }], byNode)).toEqual(pending);
-  });
-
-  it('ignores a row it cannot identify', () => {
-    // A placement whose node never linked names no record, so it can confirm nothing.
-    const pending = { c1: { width: 320 } };
-
-    expect(confirmPending(pending, [{ width: 320 }], byNode)).toEqual(pending);
+    expect(dropAllPending(pending, ['c2'])).toEqual(pending);
   });
 
   it('returns the same object when nothing changed', () => {
-    // A signal set from this runs on every read the graph makes; a fresh object each time would
-    // re-render every card on a board whose data had not moved.
+    // This runs whenever the graph draws; a fresh object each time would re-render every card on a
+    // board whose data had not moved.
     const pending = { c1: { width: 320 } };
 
-    expect(confirmPending(pending, [{ node: 'c1', width: 180 }], byNode)).toBe(pending);
+    expect(dropAllPending(pending, ['c2'])).toBe(pending);
   });
 
-  it('confirms one record without touching another still in flight', () => {
-    const pending = { c1: { width: 320 }, c2: { color: 'danger-100' } };
-
-    const next = confirmPending(pending, [{ node: 'c1', width: 320 }], byNode);
-
-    expect(next).toEqual({ c2: { color: 'danger-100' } });
+  it('forgets several at once', () => {
+    expect(dropAllPending({ c1: { width: 1 }, c2: { width: 2 }, c3: { width: 3 } }, ['c1', 'c3'])).toEqual({
+      c2: { width: 2 },
+    });
   });
 });
 

@@ -66,7 +66,9 @@ const schemaGraph: SchemaNode = {
       { when: { 'data.relations': 0 }, style: { color: 'neutral-400' } },
     ],
     edgeStyle: [{ style: { showLabel: true, arrow: 'target' } }],
-    behaviours: ['node-double-click', 'pan-zoom', 'select', { type: 'drag-node' }],
+    // `pan-zoom` last: it is the background fallback, and it claims a press on empty canvas — listed
+    // before `select`, that press never reaches selection and clicking the background cannot clear it.
+    behaviours: ['node-double-click', 'select', { type: 'drag-node' }, 'pan-zoom'],
     height: '100%',
     revision: { $local: 'revision' },
     onNodeClick: selectNode,
@@ -148,7 +150,9 @@ const knowledgeGraph: SchemaNode = {
     behaviours: [
       // Before drag-node, which is what makes arming mean anything: both claim a press on a node.
       { type: 'connect-nodes', options: { armed: { $local: 'connecting' } } },
-      'pan-zoom',
+      // `select` before `pan-zoom`, which is the background fallback: pan-zoom claims a press on the
+      // background, and dispatch stops at the first behaviour that claims — so listing it first left
+      // `select` never seeing a background press, and clicking empty canvas could not deselect.
       'select',
       /*
         Double-click opens the record rather than expanding it.
@@ -160,6 +164,7 @@ const knowledgeGraph: SchemaNode = {
       */
       'node-double-click',
       { type: 'drag-node' },
+      'pan-zoom',
     ],
     height: '100%',
     revision: { $local: 'revision' },
@@ -204,7 +209,7 @@ const contentGraph: SchemaNode = {
     // Keeps `expand-on-double-click` where the other modes take `node-double-click`: drilling in *is*
     // this mode. So no open handler either — it would be config that could never fire, since only
     // one behaviour ever sees the gesture. The panel's Open button still reaches a document here.
-    behaviours: ['pan-zoom', 'select', 'expand-on-double-click'],
+    behaviours: ['select', 'expand-on-double-click', 'pan-zoom'],
     height: '100%',
     revision: { $local: 'revision' },
     onNodeClick: selectNode,

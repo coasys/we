@@ -51,6 +51,7 @@ import { batch, createEffect, createMemo, createSignal, For, onCleanup, onMount,
 import { Dynamic } from 'solid-js/web';
 
 import type { GraphViewProps, NodeContent } from './GraphView.types';
+import { isSettled, patched } from './pending';
 import { type Grip, HANDLES, resizeBox } from './resize';
 
 /** Matches the engine's own floor, so a drag cannot leave a card the style layer would refuse. */
@@ -418,7 +419,7 @@ export function GraphView(props: GraphViewProps) {
       const at = placed.get(rawNode.id);
       if (!at) return [];
       const patch = pendingFor(pending, rawNode);
-      const node = patch ? { ...rawNode, data: { ...rawNode.data, ...patch } } : rawNode;
+      const node = patched(rawNode, patch);
       const style = resolveStyle(node, props.nodeStyle);
       return [
         {
@@ -439,6 +440,37 @@ export function GraphView(props: GraphViewProps) {
     const at = parseAddress(node.id);
     return at?.kind === 'entity' && at.id ? pending[at.id] : undefined;
   }
+
+  /*
+    Tell the host which optimistic fields the data has caught up with.
+
+    Here rather than where the host read the rows, because this is the only place that can see both
+    at once — and the difference is visible: clearing when the *read* landed put the old value back
+    for the rest of the seed, so an edit flashed to its new size, snapped back, and arrived again a
+    moment later. A node whose own data already says what the patch says can lose the patch with
+    nothing moving on screen.
+
+    An effect rather than part of the memo: telling somebody something is not deriving a value, and a
+    store write inside a memo would run during render.
+  */
+  createEffect(() => {
+    const pending = props.host?.pendingData?.();
+    if (!pending || !Object.keys(pending).length) return;
+    const settled = nodes()
+      .filter((entry) => {
+        const at = parseAddress(entry.node.id);
+        const patch = at?.kind === 'entity' && at.id ? pending[at.id] : undefined;
+        // `entry.node` already carries the patch, so the raw node is the one to ask. It is only
+        // absent from the store between a refresh dropping a node and this running.
+        const raw = engine.store.node(entry.node.id);
+        return Boolean(patch && raw && isSettled(raw, patch));
+      })
+      .flatMap((entry) => {
+        const at = parseAddress(entry.node.id);
+        return at?.id ? [at.id] : [];
+      });
+    if (settled.length) props.host?.confirmPending?.(settled);
+  });
 
   const edges = createMemo(() => {
     version();

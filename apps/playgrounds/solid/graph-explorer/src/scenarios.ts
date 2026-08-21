@@ -61,7 +61,7 @@ export const SCENARIOS: Scenario[] = [
       ],
       // review↔revise are mutual: they must bow apart, not draw as one line.
       edgeStyle: [{ style: { showLabel: true, arrow: 'target' } }],
-      behaviours: ['pan-zoom', 'select', { type: 'drag-node', options: { pin: true } }],
+      behaviours: ['select', { type: 'drag-node', options: { pin: true } }, 'pan-zoom'],
       // `pin` as well as `lock`, because dragging here pins: without a release, arranging the diagram
       // would leave a held node behind on every card you touched and no way to undo it.
       controls: ['zoom-in', 'zoom-out', 'fit', 'pin', 'lock'],
@@ -90,7 +90,7 @@ export const SCENARIOS: Scenario[] = [
         },
       ],
       edgeStyle: [{ style: { showLabel: true, curve: 'bezier' } }],
-      behaviours: ['pan-zoom', 'select', 'expand-on-double-click', { type: 'drag-node' }],
+      behaviours: ['select', 'expand-on-double-click', { type: 'drag-node' }, 'pan-zoom'],
     },
   },
 
@@ -104,7 +104,7 @@ export const SCENARIOS: Scenario[] = [
       layout: { type: 'force' },
       nodeStyle: PALETTE,
       edgeStyle: [{ style: { curve: 'bezier', arrow: 'target', showLabel: true } }],
-      behaviours: ['pan-zoom', 'select', 'expand-on-double-click', { type: 'drag-node' }],
+      behaviours: ['select', 'expand-on-double-click', { type: 'drag-node' }, 'pan-zoom'],
     },
   },
 
@@ -118,7 +118,7 @@ export const SCENARIOS: Scenario[] = [
       layout: { type: 'radial', options: { ringGap: 190 } },
       nodeStyle: [...PALETTE, { when: { type: 'Topic' }, style: { size: 26 } }],
       edgeStyle: [{ style: { arrow: 'target', showLabel: true } }],
-      behaviours: ['pan-zoom', 'select', 'expand-on-double-click'],
+      behaviours: ['select', 'expand-on-double-click', 'pan-zoom'],
     },
   },
 
@@ -137,7 +137,7 @@ export const SCENARIOS: Scenario[] = [
         { when: { 'data.kind': 'notes' }, style: { color: 'warning-500' } },
       ],
       edgeStyle: [{ style: { curve: 'orthogonal', color: 'neutral-300', arrow: 'none' } }],
-      behaviours: ['pan-zoom', 'select', 'expand-on-double-click'],
+      behaviours: ['select', 'expand-on-double-click', 'pan-zoom'],
     },
   },
 
@@ -156,7 +156,7 @@ export const SCENARIOS: Scenario[] = [
         { when: { kind: 'literal' }, style: { shape: 'rect', size: 14, color: 'warning-500' } },
       ],
       edgeStyle: [{ style: { color: 'neutral-200', arrow: 'none' } }],
-      behaviours: ['pan-zoom', 'select', 'expand-on-double-click'],
+      behaviours: ['select', 'expand-on-double-click', 'pan-zoom'],
     },
   },
 
@@ -169,7 +169,7 @@ export const SCENARIOS: Scenario[] = [
       expansion: { defaultDepth: 3, direction: 'both', maxNodes: 12 },
       layout: { type: 'grid', options: { columns: 4, gap: 130 } },
       nodeStyle: [{ style: { shape: 'rect', size: 18, color: 'primary-500' } }],
-      behaviours: ['pan-zoom', 'select'],
+      behaviours: ['select', 'pan-zoom'],
     },
   },
 
@@ -190,7 +190,7 @@ export const SCENARIOS: Scenario[] = [
         { when: { type: 'tagged' }, style: { showLabel: false, color: 'primary-400', width: 2 } },
         { when: { 'data.relevance': { gt: 0.8 } }, style: { color: 'primary-600', width: 4 } },
       ],
-      behaviours: ['pan-zoom', 'select', 'expand-on-double-click'],
+      behaviours: ['select', 'expand-on-double-click', 'pan-zoom'],
     },
   },
 
@@ -211,7 +211,7 @@ export const SCENARIOS: Scenario[] = [
         },
       ],
       edgeStyle: [{ style: { color: 'neutral-200', arrow: 'none' } }],
-      behaviours: ['pan-zoom', 'select', 'expand-on-double-click'],
+      behaviours: ['select', 'expand-on-double-click', 'pan-zoom'],
     },
   },
 
@@ -228,7 +228,7 @@ export const SCENARIOS: Scenario[] = [
         { when: { type: { not: '$schema' } }, style: { shape: 'circle', size: 9, color: 'neutral-400' } },
       ],
       edgeStyle: [{ style: { color: 'neutral-200', arrow: 'none' } }],
-      behaviours: ['pan-zoom', 'select', 'expand-on-double-click'],
+      behaviours: ['select', 'expand-on-double-click', 'pan-zoom'],
     },
   },
 
@@ -253,7 +253,7 @@ export const SCENARIOS: Scenario[] = [
       edgeStyle: [{ style: { curve: 'orthogonal', color: 'neutral-300', arrow: 'none' } }],
       // `pin: true` is what separates a board from an explorer: a dropped node stays dropped rather
       // than being reclaimed by the layout on the next change.
-      behaviours: ['pan-zoom', 'select', { type: 'drag-node', options: { pin: true } }],
+      behaviours: ['select', { type: 'drag-node', options: { pin: true } }, 'pan-zoom'],
       // And `lock` rather than `pin`: every card is placed already, so there is nothing to hold, and
       // the risk worth guarding against is rearranging somebody else's board by accident.
       controls: ['zoom-in', 'zoom-out', 'fit', 'lock'],

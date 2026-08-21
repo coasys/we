@@ -65,6 +65,12 @@ export const GRAPH_PLUGIN_CATALOG: PluginCatalog = {
           description:
             'Reified relation entity to draw as lines between the cards — e.g. "Relationship". Only pairs whose two ends are both on the board are drawn, since a line to something elsewhere would leave the canvas. Each line carries the record it stands for, so clicking one can open it. Omit for a board with no connections.',
         },
+        {
+          name: 'typeStyles',
+          type: 'string',
+          description:
+            'Entity holding this board\'s colour per kind of thing — WE passes "TypeStyle". Read onto every node as `boardTypeColor`, for a style rule to pick up with `{ from: "data.boardTypeColor" }`. This is what a board\'s key writes.',
+        },
         { name: 'limit', type: 'number', description: 'Rows per type. Default 200.' },
       ],
       example: `{ "source": "board", "options": { "board": { "$local": "boardId" } } }`,
@@ -283,13 +289,15 @@ export const GRAPH_PLUGIN_CATALOG: PluginCatalog = {
     {
       id: 'pan-zoom',
       category: 'behaviour',
-      description: 'Drag the background to pan, wheel to zoom about the pointer. List it last — it is the fallback.',
-      example: `"behaviours": ["pan-zoom", "select", "expand-on-double-click"]`,
+      description:
+        'Drag the background to pan, wheel to zoom about the pointer. **List it last.** It claims a press on empty canvas, and dispatch stops at the first behaviour that claims — so anything after it never sees a background press. Listed before `select`, clicking empty canvas silently stops clearing the selection.',
+      example: `"behaviours": ["select", "expand-on-double-click", "pan-zoom"]`,
     },
     {
       id: 'select',
       category: 'behaviour',
-      description: 'Click to select, shift-click to extend, background to clear. Emits onNodeClick.',
+      description:
+        'Click to select, shift-click to extend, background to clear. Emits onNodeClick, and onSelectionChange with an empty list when a background click clears it. Must be listed BEFORE pan-zoom, which claims the background press it needs to see.',
     },
     {
       id: 'drag-node',
@@ -311,7 +319,7 @@ export const GRAPH_PLUGIN_CATALOG: PluginCatalog = {
           description: 'Whether the gesture is live. Default true. Disarmed, the press falls through to drag-node.',
         },
       ],
-      example: `"behaviours": [{ "type": "connect-nodes", "options": { "armed": { "$local": "connecting" } } }, "pan-zoom", "select", { "type": "drag-node" }]`,
+      example: `"behaviours": [{ "type": "connect-nodes", "options": { "armed": { "$local": "connecting" } } }, "select", { "type": "drag-node" }, "pan-zoom"]`,
     },
     {
       id: 'node-double-click',

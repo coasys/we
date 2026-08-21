@@ -10,7 +10,7 @@
 import type { EntityShape, ExpanderContext, ExpanderQuery } from '@we/graph-protocol';
 import { describe, expect, it } from 'vitest';
 
-import { boardSeed } from './board';
+import { boardSeed, PLACEMENT_UNSET } from './board';
 
 const SHAPES: EntityShape[] = [
   {
@@ -361,6 +361,47 @@ describe('boardSeed', () => {
       boardCardShape: 'round',
       width: 4000,
     });
+  });
+
+  it('reads the unset sentinel as no value, so an override can be taken away', async () => {
+    /*
+      An empty string cannot be *stored* — `Ad4mModel`'s update skips `''` exactly as it skips
+      `undefined` — so "no colour of its own" has to be written as something. A named value the seed
+      drops is the same trick `SpacePreference` uses for its two sentinels, and without it a card
+      could be given a colour and never have it taken away.
+    */
+    const { context: ctx } = context({
+      Placement: [
+        { id: 'p1', node: 'c1', nodeType: 'CollectionBlock', x: 0, y: 0, color: PLACEMENT_UNSET },
+        { id: 'p2', node: 'c2', nodeType: 'CollectionBlock', x: 50, y: 0, color: 'danger-100' },
+      ],
+      CollectionBlock: [
+        { id: 'c1', title: 'One' },
+        { id: 'c2', title: 'Two' },
+      ],
+      TypeStyle: [{ id: 's1', nodeType: 'CollectionBlock', color: 'success-100' }],
+    });
+
+    const { nodes } = await boardSeed().seed({ board: 'b1', typeStyles: 'TypeStyle', contains: [] }, ctx);
+
+    const cleared = nodes.find((node) => node.label === 'One');
+    const overridden = nodes.find((node) => node.label === 'Two');
+    // Cleared: nothing of its own, so the style rule defers and it takes its type's colour.
+    expect(cleared?.data).not.toHaveProperty('boardColor');
+    expect(cleared?.data?.boardTypeColor).toBe('success-100');
+    expect(overridden?.data?.boardColor).toBe('danger-100');
+  });
+
+  it("reads the sentinel as no value in the board's key too", async () => {
+    const { context: ctx } = context({
+      Placement: [{ id: 'p1', node: 'c1', nodeType: 'CollectionBlock', x: 0, y: 0 }],
+      CollectionBlock: [{ id: 'c1', title: 'One' }],
+      TypeStyle: [{ id: 's1', nodeType: 'CollectionBlock', color: PLACEMENT_UNSET }],
+    });
+
+    const { nodes } = await boardSeed().seed({ board: 'b1', typeStyles: 'TypeStyle', contains: [] }, ctx);
+
+    expect(nodes[0].data).not.toHaveProperty('boardTypeColor');
   });
 
   it('omits presentation the placement does not carry', async () => {

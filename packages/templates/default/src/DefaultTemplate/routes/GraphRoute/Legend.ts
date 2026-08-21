@@ -141,117 +141,144 @@ const typeRow: SchemaNode = {
   ],
 };
 
+/**
+ * The key's dock: always mounted, on the left edge, and inert until something is in it.
+ *
+ * A `$if` with a transition wraps its content in an animation container, and that wrapper is
+ * positioned from the content — so an absolutely positioned panel inside one is placed against the
+ * *wrapper's* box rather than the canvas, which is how the key ended up sharing an edge with the
+ * detail panel instead of facing it. Docking the panel in a container that is always there and
+ * always where it says it is takes the question away from the wrapper entirely.
+ *
+ * `pointerEvents: 'none'` because a 260px column down the left of the canvas would otherwise eat
+ * every click on the board behind it while the key is closed; the panel inside turns them back on.
+ */
 export const boardLegend: SchemaNode = {
-  type: '$if',
+  type: 'Column',
   props: {
-    condition: { $and: [BOARD, { $local: 'legendOpen' }] },
-    enterTransition: [
-      { type: 'slide', direction: 'right', distance: '24px', duration: 180 },
-      { type: 'fade', duration: 150 },
-    ],
-    then: {
-      type: 'Column',
-      /*
+    position: 'absolute',
+    top: '0',
+    left: '0',
+    height: '100%',
+    zIndex: 'chrome',
+    pointerEvents: 'none',
+  },
+  children: [
+    {
+      type: '$if',
+      props: {
+        condition: { $and: [BOARD, { $local: 'legendOpen' }] },
+        enterTransition: [
+          { type: 'slide', direction: 'left', distance: '24px', duration: 180 },
+          { type: 'fade', duration: 150 },
+        ],
+        then: {
+          type: 'Column',
+          /*
         Its own subscriptions, declared here rather than at the route.
 
         The panel is mounted only while it is open, so a board nobody asked a key about pays for
         neither query — and both are about the board this key is describing, which is the node they
         are declared on.
       */
-      $queries: {
-        boardPlacements: {
-          entity: 'Placement',
-          scope: { anchor: 'CollectionBlock', via: 'children', anchorId: BOARD },
-          // Ordered by type, which is what makes the `$prev` grouping below yield each type once.
-          order: { nodeType: 'asc' },
-          limit: 200,
-        },
-        boardTypeStyles: {
-          entity: 'TypeStyle',
-          scope: { anchor: 'CollectionBlock', via: 'children', anchorId: BOARD },
-          limit: 50,
-        },
-      },
-      $localState: { openTypes: { type: 'array', initial: [] } },
-      props: {
-        position: 'absolute',
-        top: '0',
-        left: '0',
-        height: '100%',
-        width: '260px',
-        maxWidth: '100%',
-        // The same surface as the detail panel on the other edge, for the same reason: the canvas
-        // paints its own `neutral-0`, so there is nothing lighter to be.
-        bg: 'neutral-25',
-        borderRight: '1px solid neutral-200',
-        shadow: 'lg',
-        zIndex: 'chrome',
-      },
-      children: [
-        {
-          type: 'Row',
+          $queries: {
+            boardPlacements: {
+              entity: 'Placement',
+              scope: { anchor: 'CollectionBlock', via: 'children', anchorId: BOARD },
+              // Ordered by type, which is what makes the `$prev` grouping below yield each type once.
+              order: { nodeType: 'asc' },
+              limit: 200,
+            },
+            boardTypeStyles: {
+              entity: 'TypeStyle',
+              scope: { anchor: 'CollectionBlock', via: 'children', anchorId: BOARD },
+              limit: 50,
+            },
+          },
+          $localState: { openTypes: { type: 'array', initial: [] } },
           props: {
-            gap: '200',
-            ay: 'center',
-            width: '100%',
-            px: '400',
-            py: '300',
-            borderBottom: '1px solid neutral-100',
+            height: '100%',
+            width: '260px',
+            maxWidth: '100%',
+            // The same surface as the detail panel on the other edge, for the same reason: the
+            // canvas paints its own `neutral-0`, so there is nothing lighter to be.
+            bg: 'neutral-25',
+            borderRight: '1px solid neutral-200',
+            shadow: 'lg',
+            pointerEvents: 'auto',
           },
           children: [
-            { type: 'we-text', props: { variant: 'label' }, children: ['Key'] },
             {
-              type: 'we-button',
-              props: { size: 'xs', variant: 'ghost', ml: 'auto', onClick: { $setLocal: 'legendOpen', value: false } },
-              children: [{ type: 'we-icon', props: { name: 'x' } }],
+              type: 'Row',
+              props: {
+                gap: '200',
+                ay: 'center',
+                width: '100%',
+                px: '400',
+                py: '300',
+                borderBottom: '1px solid neutral-100',
+              },
+              children: [
+                { type: 'we-text', props: { variant: 'label' }, children: ['Key'] },
+                {
+                  type: 'we-button',
+                  props: {
+                    size: 'xs',
+                    variant: 'ghost',
+                    ml: 'auto',
+                    onClick: { $setLocal: 'legendOpen', value: false },
+                  },
+                  children: [{ type: 'we-icon', props: { name: 'x' } }],
+                },
+              ],
             },
-          ],
-        },
-        {
-          type: 'we-scroll-area',
-          props: { flex: '1', width: '100%' },
-          children: [
             {
-              type: 'Column',
-              props: { gap: '300', width: '100%', px: '400', py: '400' },
+              type: 'we-scroll-area',
+              props: { flex: '1', width: '100%' },
               children: [
                 {
-                  type: '$if',
-                  props: {
-                    condition: { $count: { items: { $local: 'boardPlacements' } } },
-                    then: {
-                      type: '$each',
-                      props: { items: { $local: 'boardPlacements' }, as: 'placement' },
-                      children: [
-                        {
-                          /*
-                            One row per *type*, from a list of placements.
+                  type: 'Column',
+                  props: { gap: '300', width: '100%', px: '400', py: '400' },
+                  children: [
+                    {
+                      type: '$if',
+                      props: {
+                        condition: { $count: { items: { $local: 'boardPlacements' } } },
+                        then: {
+                          type: '$each',
+                          props: { items: { $local: 'boardPlacements' }, as: 'placement' },
+                          children: [
+                            {
+                              /*
+                                One row per *type*, from a list of placements.
 
-                            The rows are ordered by type, so a row is the first of its kind exactly
-                            when it differs from the one before it — the documented grouping trick,
-                            and the only way to express "distinct" with the operators there are. The
-                            first row has no `$prev`, so it always renders, which is correct.
-                          */
-                          type: '$if',
-                          props: {
-                            condition: { $ne: ['$placement.nodeType', '$prev.nodeType'] },
-                            then: typeRow,
-                          },
+                                The rows are ordered by type, so a row is the first of its kind exactly
+                                when it differs from the one before it — the documented grouping trick,
+                                and the only way to express "distinct" with the operators there are. The
+                                first row has no `$prev`, so it always renders, which is correct.
+                              */
+                              type: '$if',
+                              props: {
+                                condition: { $ne: ['$placement.nodeType', '$prev.nodeType'] },
+                                then: typeRow,
+                              },
+                            },
+                          ],
                         },
-                      ],
+                        else: {
+                          type: 'we-text',
+                          props: { variant: 'footnote', color: 'neutral-400' },
+                          children: ['Nothing placed on this board yet.'],
+                        },
+                      },
                     },
-                    else: {
-                      type: 'we-text',
-                      props: { variant: 'footnote', color: 'neutral-400' },
-                      children: ['Nothing placed on this board yet.'],
-                    },
-                  },
+                  ],
                 },
               ],
             },
           ],
         },
-      ],
+      },
     },
-  },
+  ],
 };

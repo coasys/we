@@ -224,6 +224,15 @@ export function GraphHost(props: Omit<GraphViewProps, 'host'>) {
       return out;
     },
 
+    /*
+      The graph has caught up on these, so the store can stop standing in for them.
+
+      Reported from the drawn node rather than judged here, and the difference is visible: a read
+      landing is not the same moment as a card being redrawn from it — there is the rest of a seed
+      in between — so clearing where the rows arrive put the old value back for that whole window.
+    */
+    confirmPending: (recordIds) => recordStore.confirmPending(recordIds),
+
     /**
      * Tell the graph when records of a type change here.
      *
@@ -325,12 +334,8 @@ export function GraphHost(props: Omit<GraphViewProps, 'host'>) {
         (options as Record<string, unknown>).parent = parent;
       }
 
-      const rows = (await model.findAll(handle, options)) as Record<string, unknown>[];
-      // Every read is also an answer to whatever the store is still waiting on — see `confirmRows`.
-      // Here rather than after the write, because a value that matches is confirmed whichever read
-      // brought it, including one issued before the write and answered after it.
-      recordStore.confirmRows(entity, rows);
-      return rows;
+      const rows = await model.findAll(handle, options);
+      return rows as Record<string, unknown>[];
     },
   };
 
