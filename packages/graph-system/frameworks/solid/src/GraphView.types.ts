@@ -187,6 +187,24 @@ export interface GraphViewProps {
    * template can tell that there is nothing to save.
    */
   onNodeDragEnd?: (payload: { id: string; x: number; y: number; recordId?: string; recordType?: string }) => void;
+  /**
+   * The user dragged a selected card's corner to this size, in world units.
+   *
+   * Binding it is what puts the handle on screen — a corner that moved and then changed nothing is
+   * worse than no corner — so a graph whose sizes are not stored anywhere simply omits it.
+   *
+   * Where a size *lives* is the template's decision, the same as a position: on a board it belongs
+   * to the placement rather than the record, so the same note can be a banner on one board and a
+   * small square on another. `recordId` carries the record the node stands for, absent for a node
+   * that stands for none.
+   */
+  onNodeResize?: (payload: {
+    id: string;
+    width: number;
+    height: number;
+    recordId?: string;
+    recordType?: string;
+  }) => void;
 
   /**
    * Data-layer bindings, injected by the host's component registry rather than written in a template.

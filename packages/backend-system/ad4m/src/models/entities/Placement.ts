@@ -67,6 +67,24 @@ export class Placement extends Ad4mModel {
   @Property({ through: 'we://y' })
   y: number = 0;
 
+  @Property({ through: 'we://width' })
+  width: number = 0;
+
+  @Property({ through: 'we://height' })
+  height: number = 0;
+
+  /** Multiplier on the content drawn inside the card. 0 is unset; see `NodeStyle.contentScale`. */
+  @Property({ through: 'we://content_scale' })
+  contentScale: number = 0;
+
+  /** Design token or CSS colour. Empty is unset, so the board's own rules decide. */
+  @Property({ through: 'we://color' })
+  color: string = '';
+
+  /** `note`, `square` or `round`. Empty is unset; anything else is ignored by the renderer. */
+  @Property({ through: 'we://card_shape' })
+  cardShape: string = '';
+
   /**
    * What is placed. Untyped, because a board holds whatever its community puts on it.
    *

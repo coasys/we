@@ -247,9 +247,24 @@
   }
 }
 
+// The content's own scale, per card — see `NodeStyle.contentScale`.
+//
+// A wider, taller box drawn smaller, rather than the same box shrunk: the content is laid out at
+// `100% / scale` and then scaled back down, so at 0.5 twice as much of the document fits in a card
+// whose size on the board has not changed. `top left` because the card is a page, and text that
+// grew from its centre would drift out of both margins at once.
+.we-graph__card-scale {
+  width: calc(100% / var(--content-scale, 1));
+  height: calc(100% / var(--content-scale, 1));
+  transform-origin: top left;
+  transform: scale(var(--content-scale, 1));
+}
+
 .we-graph__card-text {
   color: var(--node-label-color);
-  font-size: var(--node-label-size);
+  // Scaled with the card's content, so the fallback answers the same slider as the real thing —
+  // otherwise the setting would appear to do nothing on a card whose content has not arrived.
+  font-size: calc(var(--node-label-size) * var(--content-scale, 1));
   line-height: 1.4;
   // Clamped rather than scrolled: a card is a glance, and the inspector is where the whole value is.
   display: -webkit-box;
@@ -271,6 +286,29 @@
 
 .we-graph__node--card.we-graph__node--selected .we-graph__card {
   box-shadow: 0 0 0 3px var(--we-color-primary-500);
+}
+
+// The resize corner on a selected card.
+//
+// Outside the card rather than inside it, so the card's `overflow: hidden` cannot clip it and it
+// stays grabbable on a card whose content fills the box. Sized in inverse zoom so it is the same
+// number of screen pixels at any magnification — a handle that shrank with the board would become
+// impossible to hit exactly when a zoomed-out card is hardest to resize by eye.
+.we-graph__resize {
+  position: absolute;
+  left: calc(var(--node-width) / 2);
+  top: calc(var(--node-height) / 2);
+  width: calc(14px / var(--graph-zoom));
+  height: calc(14px / var(--graph-zoom));
+  transform: translate(-50%, -50%);
+  border-radius: calc(4px / var(--graph-zoom));
+  background: var(--we-color-primary-500);
+  border: calc(2px / var(--graph-zoom)) solid var(--we-color-neutral-0);
+  cursor: nwse-resize;
+  // The node layer is inert so the canvas can hit-test in world space; this is the one element that
+  // takes a press itself, because the thing it resizes is a box on screen rather than a point.
+  pointer-events: auto;
+  touch-action: none;
 }
 
 .we-graph__node--hovered .we-graph__dot {

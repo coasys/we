@@ -534,6 +534,8 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     createCardOnBoard: action('content'),
     placeOnBoard: action('content'),
     removeFromBoard: action('content'),
+    resizeOnBoard: action('content'),
+    setCardStyle: action('content'),
     setRecordEntity: action('content'),
     setRecordField: action('content'),
     relationshipKind: state('content'),

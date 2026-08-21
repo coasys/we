@@ -81,22 +81,101 @@ describe('style resolution', () => {
   });
 });
 
+describe('field references', () => {
+  const card = (data: Record<string, unknown>): GraphNode => ({ id: 'c', kind: 'entity', type: 'Card', data });
+
+  it('reads a size and a colour off the node itself', () => {
+    const visual = nodeVisual(
+      card({ boardWidth: 320, boardColor: '#ffcc00' }),
+      {
+        shape: 'card',
+        width: { from: 'data.boardWidth' },
+        color: { from: 'data.boardColor' },
+      },
+      NO_METRICS,
+    );
+
+    expect(visual.width).toBe(320);
+    expect(visual.color).toBe('#ffcc00');
+  });
+
+  it('defers to the rule above when the field is absent, rather than to the default', () => {
+    // The whole point of the cascade: a board colours every card by its type, then lets a card carry
+    // its own colour in front of that. If the second rule contributed `undefined` here, the cards
+    // carrying none would come out the built-in default and the type rule would be pointless.
+    const style = resolveStyle(card({ typeColor: 'success-500' }), [
+      { style: { color: { from: 'data.typeColor' } } },
+      { style: { color: { from: 'data.boardColor' } } },
+    ]);
+
+    expect(style.color).toEqual({ from: 'data.typeColor' });
+  });
+
+  it('lets a present field override the rule above', () => {
+    const style = resolveStyle(card({ typeColor: 'success-500', boardColor: '#ffcc00' }), [
+      { style: { color: { from: 'data.typeColor' } } },
+      { style: { color: { from: 'data.boardColor' } } },
+    ]);
+
+    expect(style.color).toEqual({ from: 'data.boardColor' });
+  });
+
+  it('accepts a number that was stored as a string', () => {
+    // What a backend with no numeric column hands back. Refusing it would make a size that
+    // round-trips through storage silently stop working.
+    const visual = nodeVisual(card({ w: '240' }), { shape: 'card', width: { from: 'data.w' } }, NO_METRICS);
+    expect(visual.width).toBe(240);
+  });
+
+  it('falls back when the stored value is the wrong type', () => {
+    const visual = nodeVisual(
+      card({ w: 'wide' }),
+      { shape: 'card', width: { from: 'data.w', fallback: 200 } },
+      NO_METRICS,
+    );
+    expect(visual.width).toBe(200);
+  });
+
+  it('refuses a card shape it does not know', () => {
+    // This reads a *stored* value, so a board written by a newer version of the app must fall back
+    // rather than hand the renderer a name it has no drawing for.
+    const visual = nodeVisual(card({ s: 'hexagon' }), { shape: 'card', cardShape: { from: 'data.s' } }, NO_METRICS);
+    expect(visual.cardShape).toBe('note');
+  });
+
+  it('clamps a content scale that would make the card unusable', () => {
+    // Comes off a record, so a zero renders content nobody can see and nothing on screen to undo it.
+    expect(
+      nodeVisual(card({ s: 0 }), { shape: 'card', contentScale: { from: 'data.s' } }, NO_METRICS).contentScale,
+    ).toBe(0.25);
+    expect(
+      nodeVisual(card({ s: 99 }), { shape: 'card', contentScale: { from: 'data.s' } }, NO_METRICS).contentScale,
+    ).toBe(4);
+  });
+
+  it('keeps a card big enough to grab', () => {
+    const visual = nodeVisual(card({ w: 2 }), { shape: 'card', width: { from: 'data.w' } }, NO_METRICS);
+    expect(visual.width).toBeGreaterThanOrEqual(40);
+  });
+});
+
 describe('metric references', () => {
   const metrics = new Map([['degree', new Map([['a', 0.5]])]]);
+  const a = { id: 'a', type: 'Task' };
 
   it('maps a metric onto a numeric range', () => {
-    expect(resolveNumber({ metric: 'degree', range: [10, 30] }, 'a', metrics, 12)).toBe(20);
+    expect(resolveNumber({ metric: 'degree', range: [10, 30] }, a, metrics, 12)).toBe(20);
   });
 
   it('maps a metric onto a named colour scale', () => {
-    expect(resolveColor({ metric: 'degree', scale: 'heat' }, 'a', metrics, 'neutral-500')).toBe('primary-500');
+    expect(resolveColor({ metric: 'degree', scale: 'heat' }, a, metrics, 'neutral-500')).toBe('primary-500');
   });
 
   it('falls back when the metric has not been computed', () => {
     // Metrics run on user action, so a rule referencing one is legitimately unresolved until then —
     // drawing plainly beats refusing to draw.
-    expect(resolveNumber({ metric: 'betweenness' }, 'a', metrics, 14)).toBe(14);
-    expect(resolveColor({ metric: 'betweenness' }, 'a', metrics, 'neutral-500')).toBe('neutral-500');
+    expect(resolveNumber({ metric: 'betweenness' }, a, metrics, 14)).toBe(14);
+    expect(resolveColor({ metric: 'betweenness' }, a, metrics, 'neutral-500')).toBe('neutral-500');
   });
 });
 

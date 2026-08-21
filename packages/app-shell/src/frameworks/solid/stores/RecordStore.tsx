@@ -173,6 +173,22 @@ export interface RecordStore {
    */
   removeFromBoard: (board: string, nodeId: string) => Promise<void>;
   /**
+   * Resize a card on a board. Takes the graph's `onNodeResize` payload as it arrives.
+   *
+   * The size goes on the placement, beside the position, for the reason the position is there: it is
+   * a fact about a pair. Shrinking a post to fit six of them on a wall is not editing the post, and
+   * the same post on somebody else's board must not change size because of it.
+   */
+  resizeOnBoard: (board: string, payload: unknown) => Promise<void>;
+  /**
+   * Set one presentation property of one card on one board — colour, shape, content scale.
+   *
+   * Takes the property name, so one action serves every control, which is the only shape that works
+   * when a swatch, a picker and a slider all write to the same record. Nothing here touches the
+   * record being displayed: every one of these is undone by taking the card off the board.
+   */
+  setCardStyle: (board: string, nodeId: string, field: string, value: unknown) => Promise<void>;
+  /**
    * Open the create form, and place whatever it makes onto this board.
    *
    * The counterpart to `connectNodes`: the same form and the same save path, with an intent held
@@ -435,6 +451,59 @@ export function RecordStoreProvider(props: ParentProps) {
     }
   }
 
+  /** The presentation a placement may carry, and the only keys `setCardStyle` will write. */
+  const CARD_STYLE_FIELDS = ['width', 'height', 'contentScale', 'color', 'cardShape'] as const;
+
+  /**
+   * Patch the placement for one node on one board.
+   *
+   * Refuses rather than creating one, and says so: a node with no placement is an unplaced card in
+   * the tray, and a placement minted here would have to invent a position — putting the card at the
+   * board's origin as a side effect of choosing a colour.
+   */
+  async function stylePlacement(board: string, nodeId: string, patch: Record<string, unknown>): Promise<void> {
+    const dataset = datasetStore.currentDataset();
+    if (!dataset || !board || !nodeId || !Object.keys(patch).length) return;
+    try {
+      const existing = (await Placement.findAll(dataset.handle, {
+        parent: { id: board, predicate: PREDICATES.CHILDREN },
+      } as Record<string, unknown>)) as { id: string; node?: string }[];
+      const already = existing.find((row) => row.node === nodeId);
+      if (!already) {
+        toastService.error('Drag this onto the board first — how a card looks is saved with where it sits.');
+        return;
+      }
+      await Placement.update(dataset.handle, already.id, patch);
+    } catch (error) {
+      console.error('RecordStore: styling a card on a board failed', error);
+      toastService.error('Could not save that.');
+    }
+  }
+
+  async function resizeOnBoard(board: string, payload: unknown): Promise<void> {
+    const event = (payload ?? {}) as { recordId?: string; width?: number; height?: number };
+    if (!event.recordId || !event.width || !event.height) return;
+    await stylePlacement(board, event.recordId, { width: Math.round(event.width), height: Math.round(event.height) });
+  }
+
+  async function setCardStyle(board: string, nodeId: string, field: string, value: unknown): Promise<void> {
+    if (!(CARD_STYLE_FIELDS as readonly string[]).includes(field)) {
+      console.warn(`RecordStore: "${field}" is not a card presentation property`);
+      return;
+    }
+    /*
+      An event or a raw value, both accepted.
+
+      A `we-color-picker` and a `we-slider` hand back `$event.detail`, but a swatch button has no
+      detail to pass and sends the value itself. Reading both here means the template says what it
+      means at every call site instead of choosing between an action per control and a wrapper.
+    */
+    const raw =
+      value !== null && typeof value === 'object' && 'detail' in value ? (value as { detail: unknown }).detail : value;
+    const scalar = typeof raw === 'string' || typeof raw === 'number' ? raw : '';
+    await stylePlacement(board, nodeId, { [field]: scalar });
+  }
+
   async function removeFromBoard(board: string, nodeId: string): Promise<void> {
     const dataset = datasetStore.currentDataset();
     if (!dataset || !board || !nodeId) return;
@@ -555,6 +624,8 @@ export function RecordStoreProvider(props: ParentProps) {
     createCardOnBoard,
     placeOnBoard,
     removeFromBoard,
+    resizeOnBoard,
+    setCardStyle,
     setRecordEntity,
     setRecordField,
     relationshipKind,

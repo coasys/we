@@ -28,6 +28,18 @@ const SHAPES: EntityShape[] = [
   },
   { name: 'CodeBlock', identityProperty: 'title', properties: [{ name: 'title', type: 'string' }], relations: [] },
   {
+    name: 'ImageBlock',
+    identityProperty: 'src',
+    properties: [
+      { name: 'src', type: 'string' },
+      // The picture's own pixel size, which is exactly what a placement's `width` must not collide
+      // with — see the namespacing test below.
+      { name: 'width', type: 'number' },
+      { name: 'height', type: 'number' },
+    ],
+    relations: [],
+  },
+  {
     name: 'Relationship',
     identityProperty: 'label',
     properties: [
@@ -209,6 +221,55 @@ describe('boardSeed', () => {
     const { nodes } = await boardSeed().seed({ board: 'b1' }, ctx);
 
     expect(nodes.find((n) => n.type === 'CodeBlock')).toBeUndefined();
+  });
+
+  it("carries the placement's own presentation onto the node, namespaced", async () => {
+    const { context: ctx } = context({
+      Placement: [
+        {
+          id: 'p1',
+          node: 'i1',
+          nodeType: 'ImageBlock',
+          x: 10,
+          y: 20,
+          width: 320,
+          height: 200,
+          contentScale: 0.5,
+          color: '#ffcc00',
+          cardShape: 'round',
+        },
+      ],
+      // The picture is 4000px wide. Unprefixed, that would become the card's width on any board
+      // where nobody had chosen one — which is why these are namespaced rather than merged bare.
+      ImageBlock: [{ id: 'i1', src: 'x.png', width: 4000, height: 3000 }],
+    });
+
+    const { nodes } = await boardSeed().seed({ board: 'b1', contains: [] }, ctx);
+
+    expect(nodes[0].data).toMatchObject({
+      x: 10,
+      y: 20,
+      boardWidth: 320,
+      boardHeight: 200,
+      boardContentScale: 0.5,
+      boardColor: '#ffcc00',
+      boardCardShape: 'round',
+      width: 4000,
+    });
+  });
+
+  it('omits presentation the placement does not carry', async () => {
+    // A style rule reading an absent field defers to the rule above it, which is what lets a card
+    // with no colour of its own take the one its type was given. A zero would override that.
+    const { context: ctx } = context({
+      Placement: [{ id: 'p1', node: 'c1', nodeType: 'CollectionBlock', x: 0, y: 0, width: 0, color: '' }],
+      CollectionBlock: [{ id: 'c1', title: 'One' }],
+    });
+
+    const { nodes } = await boardSeed().seed({ board: 'b1' }, ctx);
+
+    expect(nodes[0].data).not.toHaveProperty('boardWidth');
+    expect(nodes[0].data).not.toHaveProperty('boardColor');
   });
 
   it('draws a connection whose two ends are both on the board', async () => {

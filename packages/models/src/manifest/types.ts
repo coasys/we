@@ -166,6 +166,11 @@ export interface PlacementModel extends ModelInstance {
   nodeType: string;
   x: number;
   y: number;
+  width: number;
+  height: number;
+  contentScale: number;
+  color: string;
+  cardShape: string;
   node?: string;
 }
 

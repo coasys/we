@@ -8,7 +8,7 @@
  */
 import type { GraphEdge, GraphNode } from './graph';
 import type { Point } from './layout';
-import type { NodeStyle } from './style';
+import type { CardShape, NodeStyle } from './style';
 
 /**
  * A drawing instruction for one node, resolved from its style rules.
@@ -39,6 +39,10 @@ export interface NodeVisual {
   content?: string;
   /** Zoom below which the content is hidden and the label stands in for it. */
   contentMinZoom?: number;
+  /** The card's outline. See `NodeStyle.cardShape`. */
+  cardShape?: CardShape;
+  /** Multiplier on the size the card's content is drawn at. See `NodeStyle.contentScale`. */
+  contentScale?: number;
 }
 
 /**
@@ -118,6 +122,17 @@ export type GraphEvent =
   | { type: 'edgeClick'; edge: GraphEdge }
   | { type: 'selectionChange'; ids: string[] }
   | { type: 'nodeDragEnd'; node: GraphNode; position: Point }
+  /**
+   * The user resized a card, to this size in world units.
+   *
+   * Intent rather than a mutation, like every other event here: the engine has no write path, and
+   * where a card's size *lives* is the consumer's business — on a board it belongs to the placement,
+   * so the same note can be a wide banner on one board and a small square on another.
+   *
+   * Emitted on release rather than continuously. The drag itself is drawn locally, so what you see
+   * follows the pointer without a write per frame.
+   */
+  | { type: 'nodeResize'; node: GraphNode; width: number; height: number }
   /**
    * The user drew a line from one node to another.
    *

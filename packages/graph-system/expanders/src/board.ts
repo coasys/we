@@ -84,6 +84,40 @@ const DEFAULT_CONTAINS = ['CollectionBlock'];
 interface Placed {
   x: number;
   y: number;
+  /**
+   * Presentation the placement carries, namespaced on its way into the node's data bag.
+   *
+   * Namespaced because it lands beside the *record's* own fields, and `width` on an `ImageBlock` is
+   * the picture's pixel width — a card silently sized by its image, on the one board where nobody
+   * had chosen a size, is exactly the kind of bug that gets diagnosed as "the board is broken".
+   * `x`/`y` need no prefix for the same reason in reverse: no block has them, and the `manual`
+   * layout reads them by those names.
+   */
+  style: Record<string, GraphValue>;
+}
+
+/**
+ * The presentation fields, if the placement carries any.
+ *
+ * Unset values are dropped rather than passed through as `0` and `''`: a style rule reading an
+ * absent field defers to the rule above it, which is what lets a card with no colour of its own take
+ * the one its type was given. A zero would override that with a size no card should have.
+ */
+function styleOf(row: Record<string, unknown>): Record<string, GraphValue> {
+  const style: Record<string, GraphValue> = {};
+  const number = (key: string, as: string) => {
+    const value = Number(row[key]);
+    if (Number.isFinite(value) && value > 0) style[as] = value;
+  };
+  const text = (key: string, as: string) => {
+    if (typeof row[key] === 'string' && row[key]) style[as] = row[key] as string;
+  };
+  number('width', 'boardWidth');
+  number('height', 'boardHeight');
+  number('contentScale', 'boardContentScale');
+  text('color', 'boardColor');
+  text('cardShape', 'boardCardShape');
+  return style;
 }
 
 /** A connection's own scalars, for style rules to match on — the same thing `reified` carries. */
@@ -135,7 +169,7 @@ export function boardSeed(): SeedSource {
           // A placement whose node never linked names a type and points at nothing. Skipped rather
           // than half-drawn, and left for a sweep — the record it meant is not knowable from here.
           if (!node || !nodeType) continue;
-          positions.set(node, { x: Number(row.x) || 0, y: Number(row.y) || 0 });
+          positions.set(node, { x: Number(row.x) || 0, y: Number(row.y) || 0, style: styleOf(row) });
           placedIds.set(nodeType, [...(placedIds.get(nodeType) ?? []), node]);
         }
       }
@@ -188,7 +222,7 @@ export function boardSeed(): SeedSource {
             has: it is handed nodes and returns positions, and a seed that needed its own channel to
             the layout would be a seed only one layout could use.
           */
-          nodes.push(at ? { ...node, data: { ...node.data, x: at.x, y: at.y } } : node);
+          nodes.push(at ? { ...node, data: { ...node.data, ...at.style, x: at.x, y: at.y } } : node);
         }
       }
 

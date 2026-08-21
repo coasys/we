@@ -55,6 +55,28 @@ export const Placement: CoreEntityDef = {
       nodeType: { type: 'string', predicate: 'we://node_type', default: '' },
       x: { type: 'number', predicate: 'we://x', default: 0 },
       y: { type: 'number', predicate: 'we://y', default: 0 },
+      /*
+        How the card is presented on this board — and only on this board.
+
+        Here rather than on the record for the same reason the coordinate is: this is a fact about a
+        pair. Somebody shrinking a post to fit six of them on a wall is not editing the post, and the
+        same post on somebody else's board must not change size because of it. It is also what makes
+        these safe to offer at all — every one of them is undoable by deleting a placement, and none
+        of them can damage the thing being displayed.
+
+        Zero means unset throughout, so the style layer falls back to its default rather than drawing
+        a card with no size. A default of `0` rather than the real default because the real default
+        lives in one place, in the graph engine, and a copy of it here would be a second place to
+        change when a card's proportions are next reconsidered.
+      */
+      width: { type: 'number', predicate: 'we://width', default: 0 },
+      height: { type: 'number', predicate: 'we://height', default: 0 },
+      /** Multiplier on the content drawn inside the card. 0 is unset; see `NodeStyle.contentScale`. */
+      contentScale: { type: 'number', predicate: 'we://content_scale', default: 0 },
+      /** Design token or CSS colour. Empty is unset, so the board's own rules decide. */
+      color: { type: 'string', predicate: 'we://color', default: '' },
+      /** `note`, `square` or `round`. Empty is unset; anything else is ignored by the renderer. */
+      cardShape: { type: 'string', predicate: 'we://card_shape', default: '' },
     },
     relations: {
       /**

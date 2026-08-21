@@ -3559,6 +3559,11 @@
           "optional": true
         },
         {
+          "name": "onNodeResize",
+          "type": "((payload: { id: string; width: number; height: number; recordId?: string; recordType?: string; }) => void)",
+          "optional": true
+        },
+        {
           "name": "host",
           "type": "GraphHostBindings",
           "optional": true
@@ -4227,6 +4232,36 @@
           "name": "y",
           "type": "number",
           "predicate": "we://y",
+          "required": false
+        },
+        {
+          "name": "width",
+          "type": "number",
+          "predicate": "we://width",
+          "required": false
+        },
+        {
+          "name": "height",
+          "type": "number",
+          "predicate": "we://height",
+          "required": false
+        },
+        {
+          "name": "contentScale",
+          "type": "number",
+          "predicate": "we://content_scale",
+          "required": false
+        },
+        {
+          "name": "color",
+          "type": "string",
+          "predicate": "we://color",
+          "required": false
+        },
+        {
+          "name": "cardShape",
+          "type": "string",
+          "predicate": "we://card_shape",
           "required": false
         }
       ],
@@ -5674,6 +5709,8 @@
         "saveRecord",
         "placeOnBoard",
         "removeFromBoard",
+        "resizeOnBoard",
+        "setCardStyle",
         "createOnBoard",
         "createCardOnBoard"
       ]

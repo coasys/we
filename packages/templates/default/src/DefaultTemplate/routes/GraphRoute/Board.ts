@@ -81,6 +81,27 @@ const boardCards: SchemaNode = {
       { when: { type: { not: 'CollectionBlock' } }, style: { color: 'neutral-100', labelColor: 'neutral-800' } },
       { when: { type: 'TaskBlock' }, style: { color: 'primary-50', labelColor: 'primary-800' } },
       { when: { type: 'EventBlock' }, style: { color: 'warning-50', labelColor: 'warning-800' } },
+      /*
+        Last, and read off each card: the presentation somebody chose, in front of every rule above.
+
+        `{ from: … }` reads a field on the node rather than writing a value into the rule, which is
+        the only way a rule list fixed when the template was written can describe cards that each
+        carry their own size and colour. A card carrying none contributes nothing here and keeps
+        whatever the rules above gave it — that deferral is what makes this a *front* layer rather
+        than a replacement for the ones behind it.
+
+        The board seed namespaces these on their way out of the placement, so `boardWidth` cannot be
+        confused with an image's own pixel width.
+      */
+      {
+        style: {
+          width: { from: 'data.boardWidth' },
+          height: { from: 'data.boardHeight' },
+          contentScale: { from: 'data.boardContentScale' },
+          cardShape: { from: 'data.boardCardShape' },
+          color: { from: 'data.boardColor' },
+        },
+      },
     ],
     behaviours: [
       // Before drag-node, which is what makes arming mean anything: both claim a press on a node.
@@ -154,6 +175,14 @@ const boardCards: SchemaNode = {
       $action: 'recordStore.placeOnBoard',
       args: [BOARD, '$event.recordId', '$event.recordType', '$event.x', '$event.y'],
     },
+    /*
+      The corner drag, written back — and binding this is what puts the handle on a selected card.
+
+      Onto the placement rather than the record, for the reason the position goes there: a size is a
+      fact about the pair. Shrinking a post to fit six of them on a wall is not editing the post, and
+      the same post on somebody else's board must not change size because of it.
+    */
+    onNodeResize: { $action: 'recordStore.resizeOnBoard', args: [BOARD, '$event'] },
   },
 };
 

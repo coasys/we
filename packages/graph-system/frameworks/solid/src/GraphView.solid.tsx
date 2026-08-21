@@ -44,6 +44,9 @@ import { Dynamic } from 'solid-js/web';
 
 import type { GraphViewProps, NodeContent } from './GraphView.types';
 
+/** Matches the engine's own floor, so a drag cannot leave a card the style layer would refuse. */
+const MIN_CARD = 40;
+
 export type * from './GraphView.types';
 
 /** Sensible without being opinionated: look around, select things, open things. */
@@ -498,6 +501,21 @@ export function GraphView(props: GraphViewProps) {
    * component trees, and at the zoom where a board is a wall of coloured rectangles not one of them
    * can be read.
    */
+  /**
+   * A card's corners, or a dot's.
+   *
+   * `round` is 50% on a box, which draws an ellipse rather than a circle — deliberately: the card
+   * keeps whatever width and height somebody gave it, and forcing it square would silently undo a
+   * resize the moment the shape was changed.
+   */
+  function nodeRadius(visual: { shape: string; cardShape?: string }): string {
+    if (visual.shape === 'circle') return '50%';
+    if (visual.shape !== 'card') return 'var(--we-radius-300)';
+    if (visual.cardShape === 'square') return '0';
+    if (visual.cardShape === 'round') return '50%';
+    return 'var(--we-radius-300)';
+  }
+
   const cardContent = (visual: { content?: string; contentMinZoom?: number }): NodeContent | undefined => {
     if (!visual.content) return undefined;
     if (visual.contentMinZoom !== undefined && zoom() < visual.contentMinZoom) return undefined;
@@ -526,6 +544,69 @@ export function GraphView(props: GraphViewProps) {
       metaKey: event.metaKey,
       delta: 'deltaY' in event ? event.deltaY : undefined,
     };
+  }
+
+  /*
+    A resize in progress, drawn locally.
+
+    Renderer state rather than engine state, and a handle rather than a behaviour, because both
+    halves of the gesture are about the box on screen: the grab area is a corner of a specific card,
+    which a world-space hit test knows nothing about, and the feedback is that card following the
+    pointer. The engine hears about it once, on release, as an intent — which is all a board needs to
+    write, and one write instead of one per frame.
+  */
+  const [resizing, setResizing] = createSignal<{ id: string; width: number; height: number } | null>(null);
+
+  function beginResize(event: PointerEvent, entry: { node: GraphNode; visual: { width?: number; height?: number } }) {
+    // Never reaches the canvas dispatcher, which would read the same press as the start of a drag —
+    // the node under the corner is the node being resized, so both gestures would run at once.
+    event.stopPropagation();
+    event.preventDefault();
+    const handle = event.currentTarget as HTMLElement;
+    handle.setPointerCapture?.(event.pointerId);
+    const from = { x: event.clientX, y: event.clientY };
+    const start = { width: entry.visual.width ?? 160, height: entry.visual.height ?? 120 };
+
+    const move = (moved: PointerEvent) => {
+      moved.stopPropagation();
+      // Screen pixels over zoom: the card is measured in world units, so a drag at 2× has to move it
+      // half as far or the card runs away from the pointer.
+      const scale = zoom() || 1;
+      setResizing({
+        id: entry.node.id,
+        width: Math.max(MIN_CARD, start.width + (moved.clientX - from.x) / scale),
+        height: Math.max(MIN_CARD, start.height + (moved.clientY - from.y) / scale),
+      });
+    };
+    const end = (ended: PointerEvent) => {
+      ended.stopPropagation();
+      handle.removeEventListener('pointermove', move);
+      handle.removeEventListener('pointerup', end);
+      handle.removeEventListener('pointercancel', end);
+      const size = resizing();
+      setResizing(null);
+      if (!size) return;
+      const at = parseAddress(entry.node.id);
+      props.onNodeResize?.({
+        id: entry.node.id,
+        width: Math.round(size.width),
+        height: Math.round(size.height),
+        ...(at?.kind === 'entity' && { recordId: at.id, recordType: at.type }),
+      });
+    };
+
+    // On the handle rather than the window: the pointer is captured to it, so it sees the whole drag
+    // wherever the cursor goes, and nothing else on the page has to be listened to.
+    handle.addEventListener('pointermove', move);
+    handle.addEventListener('pointerup', end);
+    handle.addEventListener('pointercancel', end);
+  }
+
+  /** The size a card is drawn at right now — the live drag where there is one, the stored size otherwise. */
+  function boxOf(entry: { node: GraphNode; visual: { width?: number; height?: number } }) {
+    const live = resizing();
+    if (live && live.id === entry.node.id) return { width: live.width, height: live.height };
+    return { width: entry.visual.width, height: entry.visual.height };
   }
 
   function dispatch(phase: Parameters<typeof dispatchPointer>[1], event: PointerEvent | WheelEvent | MouseEvent) {
@@ -700,12 +781,13 @@ export function GraphView(props: GraphViewProps) {
               style={{
                 transform: `translate(${entry.at.x}px, ${entry.at.y}px)`,
                 '--node-size': `${entry.visual.size * 2}px`,
-                '--node-width': `${entry.visual.width ?? entry.visual.size * 2}px`,
-                '--node-height': `${entry.visual.height ?? entry.visual.size * 2}px`,
+                '--node-width': `${boxOf(entry).width ?? entry.visual.size * 2}px`,
+                '--node-height': `${boxOf(entry).height ?? entry.visual.size * 2}px`,
                 '--node-color': color(entry.visual.color, 'primary-500'),
                 '--node-border': color(entry.visual.borderColor, 'transparent'),
                 '--node-border-width': `${entry.visual.borderWidth ?? 0}px`,
-                '--node-radius': entry.visual.shape === 'circle' ? '50%' : 'var(--we-radius-300)',
+                '--node-radius': nodeRadius(entry.visual),
+                '--content-scale': String(entry.visual.contentScale ?? 1),
                 '--node-label-color': color(entry.visual.labelColor, 'neutral-800'),
                 '--node-label-size': `${entry.visual.labelSize ?? 12}px`,
                 '--label-scale': entry.visual.scaleLabelWithZoom ? '1' : 'calc(1 / var(--graph-zoom))',
@@ -751,7 +833,16 @@ export function GraphView(props: GraphViewProps) {
                   >
                     {(Content) => (
                       <div class="we-graph__card-content">
-                        <Dynamic component={Content()} node={entry.node} />
+                        {/*
+                          The scale lives on an inner element because it has to change the box the
+                          content is *laid out* in, not just how large the result is drawn. Scaling
+                          the clipping element would shrink the drawing and leave the same amount of
+                          text in it; a wider inner box at a smaller scale is what fits more of the
+                          document into the same card.
+                        */}
+                        <div class="we-graph__card-scale">
+                          <Dynamic component={Content()} node={entry.node} />
+                        </div>
                       </div>
                     )}
                   </Show>
@@ -759,6 +850,17 @@ export function GraphView(props: GraphViewProps) {
                     <span class="we-graph__more we-graph__more--card">+</span>
                   </Show>
                 </div>
+              </Show>
+              {/*
+                The resize corner, on a selected card only.
+
+                Only when the template is listening: a handle that moved and then changed nothing is
+                worse than no handle. Only on the selection, because a corner on every card would put
+                a grab target over the content of each one — and selecting first is how you say which
+                card you mean anyway.
+              */}
+              <Show when={props.onNodeResize && entry.selected && entry.visual.shape === 'card'}>
+                <div class="we-graph__resize" title="Resize" onPointerDown={(event) => beginResize(event, entry)} />
               </Show>
             </div>
           )}

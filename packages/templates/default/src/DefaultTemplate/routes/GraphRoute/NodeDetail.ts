@@ -100,6 +100,158 @@ const openButton = (label: string, icon: string, kind: string): SchemaNode => ({
   children: [{ type: 'we-icon', props: { name: icon } }, label],
 });
 
+/**
+ * How this card looks on this board — colour, shape, and how large its content is drawn.
+ *
+ * Presentation per placement, which is the reason it can be offered at all: none of it touches the
+ * record. Shrinking a post to fit six of them on a wall is not editing the post, the same post on
+ * another board keeps its own look, and every setting here is undone by taking the card off the
+ * board. That is also why it is a section of the panel rather than a modal — nothing in it needs
+ * confirming.
+ *
+ * Sizing is not here. A card's size is set by dragging its corner, where the feedback is the card
+ * itself; two numbers in a panel would be the same act with the answer hidden.
+ */
+const SWATCHES = [
+  { token: '' },
+  { token: 'primary-100' },
+  { token: 'success-100' },
+  { token: 'warning-100' },
+  { token: 'danger-100' },
+  { token: 'neutral-100' },
+  { token: 'neutral-800' },
+];
+
+const setStyle = (field: string, value: unknown) => ({
+  $action: 'recordStore.setCardStyle',
+  args: [{ $local: 'boardId' }, { $local: 'selected.recordId' }, field, value],
+  // The graph re-reads and merges, so the change lands on the card rather than at the next reload.
+  onSuccess: [{ $setLocal: 'revision', by: 1 }],
+});
+
+const cardStyle: SchemaNode = {
+  type: '$if',
+  props: {
+    condition: { $and: [{ $eq: [{ $local: 'mode' }, 'board'] }, { $local: 'selected.recordId' }] },
+    then: {
+      type: 'Column',
+      props: { gap: '300', width: '100%' },
+      children: [
+        { type: 'we-divider' },
+        { type: 'we-text', props: { variant: 'footnote', color: 'neutral-500' }, children: ['Card'] },
+        {
+          type: 'Row',
+          props: { gap: '200', ay: 'center', wrap: true, width: '100%' },
+          children: [
+            {
+              type: '$each',
+              props: { items: SWATCHES, as: 'swatch' },
+              children: [
+                {
+                  /*
+                    A swatch is a button, not a colour input.
+
+                    Tokens rather than hex, so a card keeps meaning the same thing when the theme
+                    changes — a hex chosen against a light theme is a hole in a dark one. The empty
+                    token is "no colour of its own", which puts the card back under the board's own
+                    rules, and it has to be a value you can pick rather than a separate Reset button:
+                    otherwise there is no way back to being coloured *by type*, which is what the key
+                    controls.
+                  */
+                  type: 'we-button',
+                  props: {
+                    variant: 'bare',
+                    title: { $if: { condition: '$swatch.token', then: '$swatch.token', else: 'Default' } },
+                    onClick: setStyle('color', '$swatch.token'),
+                  },
+                  children: [
+                    {
+                      type: 'Column',
+                      props: {
+                        width: '24px',
+                        height: '24px',
+                        r: '200',
+                        bg: { $if: { condition: '$swatch.token', then: '$swatch.token', else: 'neutral-0' } },
+                        ax: 'center',
+                        ay: 'center',
+                        border: {
+                          $if: {
+                            condition: { $eq: [{ $local: 'selected.data.boardColor' }, '$swatch.token'] },
+                            then: '2px solid primary-600',
+                            else: '1px solid neutral-300',
+                          },
+                        },
+                      },
+                      // The default swatch has no colour to show, so it says so with a mark rather
+                      // than reading as white — which is a colour somebody might have chosen.
+                      children: [
+                        {
+                          type: '$if',
+                          props: {
+                            condition: { $not: '$swatch.token' },
+                            then: { type: 'we-icon', props: { name: 'x', size: 'xs', color: 'neutral-400' } },
+                          },
+                        },
+                      ],
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+        {
+          type: 'we-form-field',
+          props: { label: 'Shape', size: 'sm', width: '100%' },
+          children: [
+            {
+              type: 'we-select',
+              props: {
+                size: 'sm',
+                width: '100%',
+                value: { $local: 'selected.data.boardCardShape' },
+                options: [
+                  { label: 'Note', value: 'note' },
+                  { label: 'Square', value: 'square' },
+                  { label: 'Round', value: 'round' },
+                ],
+                onChange: setStyle('cardShape', '$event.detail'),
+              },
+            },
+          ],
+        },
+        {
+          type: 'we-form-field',
+          props: { label: 'Content size', size: 'sm', width: '100%' },
+          children: [
+            {
+              /*
+                A multiplier on the content, not on the card and not on the stored text.
+
+                The card keeps the size it was given and the document keeps its own formatting; what
+                changes is how much of it fits in the box. That is the setting people actually want
+                on a wall of notes — read more of a card without making it bigger — and it is why
+                this belongs to the placement rather than to the post.
+              */
+              type: 'we-slider',
+              props: {
+                size: 'sm',
+                width: '100%',
+                min: 0.25,
+                max: 2,
+                step: 0.05,
+                showValue: true,
+                value: { $local: 'selected.data.boardContentScale' },
+                onChange: setStyle('contentScale', '$event.detail'),
+              },
+            },
+          ],
+        },
+      ],
+    },
+  },
+};
+
 /** One field: the name above the value, which is the whole reason this is a column. */
 const fieldRow: SchemaNode = {
   type: 'Column',
@@ -329,6 +481,7 @@ export const nodeDetailPanel: SchemaNode = {
               children: [
                 { type: 'we-text', props: { variant: 'heading-sm' }, children: [{ $local: 'selected.label' }] },
                 actions,
+                cardStyle,
                 {
                   type: '$if',
                   props: {
