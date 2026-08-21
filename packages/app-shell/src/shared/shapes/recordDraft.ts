@@ -129,6 +129,21 @@ export function fieldsFor(schema: EntitySchema, authorable: boolean): RecordFiel
   });
 }
 
+/**
+ * A model name, or nothing — from a caller that may have been handed something else entirely.
+ *
+ * `$action` with no `args` forwards the handler's own arguments, so a store method reached from a
+ * button and declaring an optional leading parameter receives a `PointerEvent`. It surfaced as a
+ * toast reading `No model named "[object PointerEvent]" in this space`, which is the failure being
+ * loud enough to find and still a failure.
+ *
+ * Here rather than inline in the store so the rule is testable without mounting anything, and so
+ * the next store method with an optional leading string has somewhere to reach for.
+ */
+export function asEntityName(value: unknown): string {
+  return typeof value === 'string' ? value : '';
+}
+
 export interface DraftSource {
   entity: string;
   label?: string;

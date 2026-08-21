@@ -39,6 +39,12 @@ Resolves a value from a named store, supporting nested paths.
 Action/event:
 { "$action": "storeName.method", "args": [...] }
 Calls a method on a store, optionally with arguments (which can themselves be tokens).
+IMPORTANT — omitting "args" does NOT call the method with no arguments: the handler's own arguments are
+forwarded, so a click handler passes the DOM event as the first parameter. That is deliberate (it is how
+{ "onChange": { "$action": "store.method" } } passes a value straight through), but it means a method whose
+first parameter is OPTIONAL receives a PointerEvent from a button written the obvious way. Pass the argument
+you mean explicitly when the method has an optional leading parameter — note "args": [] does not help, since
+an empty list is treated as "no args given" and forwards the event too.
 Supports async lifecycle callbacks — fired after the store method's Promise resolves/rejects:
   onSuccess: [...actions]  — fired on resolve; '$result' (and '$result.<path>') in args refers to the resolved value
   onError: [...actions]    — fired on reject; '$result.message' etc. refers to the error object

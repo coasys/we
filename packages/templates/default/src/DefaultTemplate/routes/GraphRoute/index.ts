@@ -317,19 +317,33 @@ export const graphRoute: RouteSchema = {
 
                   Here rather than in a settings page because this is where the absence is felt: the
                   schema mode draws a community's vocabulary, and until now the only thing you could
-                  do with a type on that map was look at it. Hidden when the space has no authorable
-                  models at all, since a button whose menu is empty teaches people it is broken.
+                  do with a type on that map was look at it.
+
+                  Hidden when the space has no authorable models at all, since a button whose menu is
+                  empty teaches people it is broken — and hidden on a board, where the thing you make
+                  is a card and `boardBar` already offers one. A record created here would be a real
+                  record that simply did not appear on the board it was made from, which is the same
+                  lesson by a slower route.
                 */
                 {
                   type: '$if',
                   props: {
-                    condition: { $count: { items: { $store: 'recordStore.creatableEntities' } } },
+                    condition: {
+                      $and: [
+                        { $ne: [{ $local: 'mode' }, 'board'] },
+                        { $count: { items: { $store: 'recordStore.creatableEntities' } } },
+                      ],
+                    },
                     then: {
                       type: 'we-button',
                       props: {
                         size: 'sm',
                         variant: 'secondary',
-                        onClick: { $action: 'recordStore.openRecordForm' },
+                        // `args` given explicitly, and not omitted: a `$action` with no args forwards
+                        // the handler's own arguments, so the button would call this with the click
+                        // event as its optional `entity`. The store guards against that too — this is
+                        // the call site saying what it means.
+                        onClick: { $action: 'recordStore.openRecordForm', args: [''] },
                       },
                       children: [{ type: 'we-icon', props: { name: 'plus' } }, 'New'],
                     },

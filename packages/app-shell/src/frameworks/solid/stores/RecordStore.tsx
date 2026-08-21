@@ -29,6 +29,7 @@ import { CORE_MANIFEST } from '@we/models/manifest';
 import { Accessor, batch, createContext, createMemo, createSignal, ParentProps, useContext } from 'solid-js';
 
 import {
+  asEntityName,
   emptyRecordDraft,
   type RecordDraft,
   recordDraftErrors,
@@ -93,8 +94,14 @@ export interface RecordStore {
    */
   pendingLink: Accessor<PendingLink | null>;
 
-  /** Open the form. With an entity, on that model; without, on the picker. */
-  openRecordForm: (entity?: string) => void;
+  /**
+   * Open the form: on the named model, or on the first one this space offers.
+   *
+   * Takes `unknown` rather than `string | undefined` because a template writing
+   * `{ $action: 'recordStore.openRecordForm' }` with no `args` hands it the DOM event — anything
+   * that is not a model name is treated as "no model named".
+   */
+  openRecordForm: (entity?: unknown) => void;
   /**
    * Open the form on a `Relationship` joining these two records.
    *
@@ -175,7 +182,21 @@ export function RecordStoreProvider(props: ParentProps) {
     return undefined;
   }
 
-  function openRecordForm(entity?: string): void {
+  /*
+    `entity` is typed loosely because of how `$action` calls a store method.
+
+    A token with no `args` forwards the handler's own arguments, so
+    `{ $action: 'recordStore.openRecordForm' }` on a button arrives here holding a `PointerEvent`.
+    That is right for the common case — it is how `onChange: { $action: … }` passes a value through —
+    and it means *any* store method with an optional leading parameter can be handed an event by a
+    template that was written the obvious way. It surfaced as a toast reading
+    `No model named "[object PointerEvent]" in this space`, which at least said what had happened.
+
+    Guarded here as well as at the call site, because the trap belongs to `$action` rather than to
+    any one template, and there will be more call sites than there are stores.
+  */
+  function openRecordForm(entity?: unknown): void {
+    const named = asEntityName(entity);
     batch(() => {
       setRecordErrors([]);
       setRecordDraft(null);
@@ -187,7 +208,7 @@ export function RecordStoreProvider(props: ParentProps) {
     // Opening on the first offered model rather than on an empty picker: in a space with one
     // vocabulary that is the only answer, and in a space with several it is still a better start
     // than a form with nothing in it.
-    const target = entity || creatableEntities()[0]?.value;
+    const target = named || creatableEntities()[0]?.value;
     if (target) setRecordEntity(target);
   }
 
