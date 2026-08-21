@@ -352,106 +352,128 @@ const actions: SchemaNode = {
   },
 };
 
+/**
+ * The panel's dock: always mounted, on the right edge, and inert until something is in it.
+ *
+ * The panel cannot position itself. A `$if` with a transition wraps its content in an animation
+ * container positioned *from* that content, so `right: 0` inside one pins to the wrapper's right
+ * edge rather than the canvas's — and the wrapper sits at its own static position, which put a panel
+ * that reads as docked right at the left of the board, on top of the key. Docking it in a container
+ * that is always there and always where it says it is takes the question away from the wrapper.
+ *
+ * `pointerEvents: 'none'` because a column down the right of the canvas would otherwise eat clicks
+ * on the board while nothing is selected; the panel inside turns them back on.
+ */
 export const nodeDetailPanel: SchemaNode = {
-  type: '$if',
+  type: 'Column',
   props: {
-    condition: { $and: [{ $local: 'selected' }, { $not: { $local: 'panelClosed' } }] },
-    // Sliding in from the edge it is docked to, so it reads as arriving rather than appearing.
-    enterTransition: [
-      { type: 'slide', direction: 'left', distance: '24px', duration: 180 },
-      { type: 'fade', duration: 150 },
-    ],
-    then: {
-      type: 'Column',
+    position: 'absolute',
+    top: '0',
+    right: '0',
+    height: '100%',
+    zIndex: 'chrome',
+    pointerEvents: 'none',
+  },
+  children: [
+    {
+      type: '$if',
       props: {
-        position: 'absolute',
-        top: '0',
-        right: '0',
-        height: '100%',
-        width: '320px',
-        maxWidth: '100%',
-        /*
-          A shade off the canvas rather than a shade above it.
-
-          `GraphView` paints its own background at `neutral-0`, so the panel cannot be lighter than
-          what it sits on — there is nothing lighter. `neutral-25` reads as a distinct surface
-          instead: quiet enough not to compete with the map, separate enough that the border is not
-          the only thing telling you where the canvas stops.
-        */
-        bg: 'neutral-25',
-        borderLeft: '1px solid neutral-200',
-        shadow: 'lg',
-        zIndex: 'chrome',
-      },
-      children: [
-        {
-          type: 'Row',
+        condition: { $and: [{ $local: 'selected' }, { $not: { $local: 'panelClosed' } }] },
+        // Sliding in from the edge it is docked to, so it reads as arriving rather than appearing.
+        enterTransition: [
+          { type: 'slide', direction: 'left', distance: '24px', duration: 180 },
+          { type: 'fade', duration: 150 },
+        ],
+        then: {
+          type: 'Column',
           props: {
-            gap: '200',
-            ay: 'center',
-            width: '100%',
-            px: '400',
-            py: '300',
-            borderBottom: '1px solid neutral-100',
+            height: '100%',
+            width: '320px',
+            maxWidth: '100%',
+            pointerEvents: 'auto',
+            /*
+              A shade off the canvas rather than a shade above it.
+
+              `GraphView` paints its own background at `neutral-0`, so the panel cannot be lighter than
+              what it sits on — there is nothing lighter. `neutral-25` reads as a distinct surface
+              instead: quiet enough not to compete with the map, separate enough that the border is not
+              the only thing telling you where the canvas stops.
+            */
+            bg: 'neutral-25',
+            borderLeft: '1px solid neutral-200',
+            shadow: 'lg',
           },
           children: [
-            { type: 'we-badge', props: { size: 'xs' }, children: [{ $local: 'selected.type' }] },
             {
-              type: 'we-button',
+              type: 'Row',
               props: {
-                size: 'xs',
-                variant: 'ghost',
-                ml: 'auto',
-                /*
-                  Closes the panel and leaves the node selected.
-
-                  Deselecting as well would be the easier thing to write and the wrong thing to do:
-                  you dismiss a description because you have read it, not because you are done with
-                  the thing it described — and the selection is what the expand buttons and the
-                  graph's own highlight are keyed on. Selecting anything re-opens it.
-                */
-                onClick: { $setLocal: 'panelClosed', value: true },
+                gap: '200',
+                ay: 'center',
+                width: '100%',
+                px: '400',
+                py: '300',
+                borderBottom: '1px solid neutral-100',
               },
-              children: [{ type: 'we-icon', props: { name: 'x' } }],
-            },
-          ],
-        },
-        {
-          // The body scrolls, the header does not: a record with twenty fields must not push its own
-          // type badge off the top of the panel.
-          type: 'we-scroll-area',
-          props: { flex: '1', width: '100%' },
-          children: [
-            {
-              type: 'Column',
-              props: { gap: '400', width: '100%', px: '400', py: '400' },
               children: [
-                { type: 'we-text', props: { variant: 'heading-sm' }, children: [{ $local: 'selected.label' }] },
-                actions,
-                cardStyle,
+                { type: 'we-badge', props: { size: 'xs' }, children: [{ $local: 'selected.type' }] },
                 {
-                  type: '$if',
+                  type: 'we-button',
                   props: {
-                    condition: { $count: { items: { $local: 'selected.fields' } } },
-                    then: {
-                      type: 'Column',
-                      props: { gap: '300', width: '100%' },
-                      children: [
-                        { type: 'we-divider' },
-                        {
-                          type: '$each',
-                          props: { items: { $local: 'selected.fields' }, as: 'field' },
-                          children: [fieldRow],
-                        },
-                      ],
-                    },
+                    size: 'xs',
+                    variant: 'ghost',
+                    ml: 'auto',
+                    /*
+                      Closes the panel and leaves the node selected.
+
+                      Deselecting as well would be the easier thing to write and the wrong thing to do:
+                      you dismiss a description because you have read it, not because you are done with
+                      the thing it described — and the selection is what the expand buttons and the
+                      graph's own highlight are keyed on. Selecting anything re-opens it.
+                    */
+                    onClick: { $setLocal: 'panelClosed', value: true },
                   },
+                  children: [{ type: 'we-icon', props: { name: 'x' } }],
+                },
+              ],
+            },
+            {
+              // The body scrolls, the header does not: a record with twenty fields must not push its own
+              // type badge off the top of the panel.
+              type: 'we-scroll-area',
+              props: { flex: '1', width: '100%' },
+              children: [
+                {
+                  type: 'Column',
+                  props: { gap: '400', width: '100%', px: '400', py: '400' },
+                  children: [
+                    { type: 'we-text', props: { variant: 'heading-sm' }, children: [{ $local: 'selected.label' }] },
+                    actions,
+                    cardStyle,
+                    {
+                      type: '$if',
+                      props: {
+                        condition: { $count: { items: { $local: 'selected.fields' } } },
+                        then: {
+                          type: 'Column',
+                          props: { gap: '300', width: '100%' },
+                          children: [
+                            { type: 'we-divider' },
+                            {
+                              type: '$each',
+                              props: { items: { $local: 'selected.fields' }, as: 'field' },
+                              children: [fieldRow],
+                            },
+                          ],
+                        },
+                      },
+                    },
+                  ],
                 },
               ],
             },
           ],
         },
-      ],
+      },
     },
-  },
+  ],
 };

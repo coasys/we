@@ -280,12 +280,75 @@
   color: var(--node-label-color);
 }
 
+/*
+  Hovering says "this one, and it is clickable".
+
+  A ring rather than a colour change, because a board lets people choose a card's colour and
+  feedback made out of that colour would be invisible on whichever card happened to match it.
+  `outline` rather than a border: a border changes the box and nudges the content inside it, and on
+  a surface where a card can be sized to the pixel a hover that moves the layout reads as a bug.
+*/
 .we-graph__node--card.we-graph__node--hovered .we-graph__card {
   box-shadow: var(--we-shadow-md);
+  outline: calc(2px / var(--graph-zoom)) solid var(--we-color-primary-300);
+  outline-offset: calc(1px / var(--graph-zoom));
 }
 
 .we-graph__node--card.we-graph__node--selected .we-graph__card {
   box-shadow: 0 0 0 3px var(--we-color-primary-500);
+}
+
+// A card that is both selected and hovered keeps the selection ring alone — two rings around one
+// card says nothing the stronger of them does not.
+.we-graph__node--card.we-graph__node--selected.we-graph__node--hovered .we-graph__card {
+  outline: none;
+}
+
+.we-graph__node--hovered .we-graph__dot {
+  box-shadow: 0 0 0 3px var(--we-color-primary-200);
+}
+
+.we-graph__node--selected .we-graph__dot {
+  box-shadow: 0 0 0 3px var(--we-color-primary-500);
+}
+
+/*
+  A held node says so.
+
+  Pinning is state the layout obeys and nothing else shows, so without a mark a graph that refuses to
+  rearrange one node looks broken rather than instructed — and the usual cause is a drag somebody has
+  forgotten making. Drawn as a ring rather than a badge so it costs no layout and survives a card, a
+  dot and whatever shape comes next.
+
+  `outline` rather than `box-shadow`: the selected and hovered rings already use the shadow, and a
+  node can easily be both held and selected.
+*/
+.we-graph__node--pinned .we-graph__dot,
+.we-graph__node--pinned .we-graph__card {
+  outline: 2px dashed var(--we-color-neutral-500);
+  outline-offset: 3px;
+}
+
+.we-graph__node--unresolved .we-graph__dot {
+  // A placeholder has to look like one — the difference between "not here yet" and "empty".
+  border-style: dashed;
+  background: transparent;
+}
+
+/**
+ * The hover mark on an edge: the same line, wider, faint, drawn underneath.
+ *
+ * Worth more than the node equivalent. A node is a shape with a visible boundary; an edge is a
+ * two-pixel line whose clickable width is a tolerance nobody can see, so without this the only way
+ * to find out whether the pointer is on the line is to click and see what opens.
+ *
+ * A second path rather than a thicker stroke on the real one, so the drawing itself never changes
+ * shape as the pointer moves near it.
+ */
+.we-graph__edge-hover {
+  opacity: 0.3;
+  stroke-linecap: round;
+  pointer-events: none;
 }
 
 // Resize handles on a selected card: four corners, four edges.

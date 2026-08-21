@@ -85,6 +85,188 @@ const thread: SchemaNode = commentThread({
   ],
 });
 
+/**
+ * The claim itself, editable.
+ *
+ * A connection is somebody's words about a pair, and words get revised — a line drawn "blocks" when
+ * it turns out to be "depends on" is the ordinary case, and until now the only way to fix one was to
+ * delete it and draw it again, which discards the thread and the ratings underneath it. That is the
+ * argument for editing rather than re-drawing: what is being corrected is the wording of a claim,
+ * not the claim's existence.
+ *
+ * Editing in place rather than in a second modal. The heading *is* the label, so replacing it with a
+ * field is the smallest thing that can happen — and everything below stays on screen, which matters
+ * when what you are rewording is being discussed right underneath.
+ *
+ * The draft seeds from the record and is thrown away on cancel, so nothing is written until Save.
+ * Open to everyone for the reason Remove is: a neighbourhood is writable by every member, and the
+ * edit is authored.
+ */
+const editing: SchemaNode = {
+  type: 'Column',
+  props: { gap: '300', width: '100%' },
+  /*
+    Seeded from the record, which is why this is declared inside `$single` rather than on the modal:
+    `$link` does not exist further out, and an initial that resolved to nothing would silently make
+    every edit start from a blank field.
+  */
+  $localState: {
+    editOpen: { type: 'boolean', initial: false },
+    draftLabel: { type: 'string', initial: '$link.label' },
+    draftDescription: { type: 'string', initial: '$link.description' },
+    draftKind: { type: 'string', initial: '$link.relationshipTypeId' },
+  },
+  children: [
+    {
+      type: '$if',
+      props: {
+        condition: { $local: 'editOpen' },
+        else: {
+          type: 'Row',
+          props: { gap: '200', ay: 'center', width: '100%' },
+          children: [
+            { type: 'we-text', props: { variant: 'heading-md' }, children: ['$link.label'] },
+            {
+              type: 'we-button',
+              props: {
+                size: 'xs',
+                variant: 'ghost',
+                ml: 'auto',
+                title: 'Edit',
+                onClick: { $setLocal: 'editOpen', value: true },
+              },
+              children: [{ type: 'we-icon', props: { name: 'pencil-simple' } }],
+            },
+          ],
+        },
+        then: {
+          type: 'Column',
+          props: { gap: '300', width: '100%' },
+          children: [
+            {
+              type: 'we-form-field',
+              props: { label: 'Says', size: 'sm', width: '100%' },
+              children: [
+                {
+                  type: 'we-input',
+                  props: {
+                    width: '100%',
+                    placeholder: 'contradicts, depends on, inspired by…',
+                    value: { $local: 'draftLabel' },
+                    onInput: { $setLocal: 'draftLabel', from: '$event.detail' },
+                  },
+                },
+              ],
+            },
+            {
+              type: 'we-form-field',
+              props: { label: 'Why', size: 'sm', width: '100%' },
+              children: [
+                {
+                  type: 'we-textarea',
+                  props: {
+                    width: '100%',
+                    rows: 2,
+                    placeholder: 'What makes this true? (optional)',
+                    value: { $local: 'draftDescription' },
+                    onInput: { $setLocal: 'draftDescription', from: '$event.detail' },
+                  },
+                },
+              ],
+            },
+            /*
+              The kind, where the community has named any.
+
+              Changing it is a real edit rather than a cosmetic one: the kind is what the maps colour
+              and arrow by, so this is how a line drawn as a free-text label gets promoted into the
+              vocabulary the space actually uses.
+            */
+            {
+              type: '$if',
+              props: {
+                condition: { $count: { items: { $local: 'relationshipKinds' } } },
+                then: {
+                  type: 'we-form-field',
+                  props: { label: 'Kind', size: 'sm', width: '100%' },
+                  children: [
+                    {
+                      type: 'we-select',
+                      props: {
+                        size: 'sm',
+                        width: '100%',
+                        placeholder: 'No particular kind',
+                        value: { $local: 'draftKind' },
+                        options: {
+                          $map: {
+                            items: { $local: 'relationshipKinds' },
+                            select: { label: '$item.name', value: '$item.id' },
+                          },
+                        },
+                        onChange: { $setLocal: 'draftKind', from: '$event.detail' },
+                      },
+                    },
+                  ],
+                },
+              },
+            },
+            {
+              type: 'Row',
+              props: { gap: '300', ax: 'end', width: '100%' },
+              children: [
+                {
+                  type: 'we-button',
+                  props: {
+                    size: 'sm',
+                    variant: 'ghost',
+                    // Resets the draft as well as closing: reopening after a cancel must start from
+                    // the record again rather than from the words somebody decided against.
+                    onClick: [{ $resetLocal: '$scope' }],
+                  },
+                  children: ['Cancel'],
+                },
+                {
+                  type: 'we-button',
+                  props: {
+                    size: 'sm',
+                    variant: 'primary',
+                    // Nothing about a label is locally judgeable beyond its presence.
+                    disabled: { $not: { $local: 'draftLabel' } },
+                    onClick: {
+                      $action: 'model.update',
+                      args: [
+                        'Relationship',
+                        '$link.id',
+                        {
+                          label: { $local: 'draftLabel' },
+                          description: { $local: 'draftDescription' },
+                          relationshipTypeId: { $local: 'draftKind' },
+                        },
+                      ],
+                      // The graph re-reads, so the line's label and its colour change with it.
+                      onSuccess: [
+                        { $setLocal: 'editOpen', value: false },
+                        { $setLocal: 'revision', by: 1 },
+                      ],
+                    },
+                  },
+                  children: ['Save'],
+                },
+              ],
+            },
+          ],
+        },
+      },
+    },
+    {
+      type: '$if',
+      props: {
+        condition: { $and: ['$link.description', { $not: { $local: 'editOpen' } }] },
+        then: { type: 'we-text', props: { color: 'neutral-600' }, children: ['$link.description'] },
+      },
+    },
+  ],
+};
+
 export const edgeDetailModal: SchemaNode = {
   type: '$if',
   props: {
@@ -117,14 +299,7 @@ export const edgeDetailModal: SchemaNode = {
                     { type: 'we-badge', props: { size: 'xs' }, children: ['$link.targetType'] },
                   ],
                 },
-                { type: 'we-text', props: { variant: 'heading-md' }, children: ['$link.label'] },
-                {
-                  type: '$if',
-                  props: {
-                    condition: '$link.description',
-                    then: { type: 'we-text', props: { color: 'neutral-600' }, children: ['$link.description'] },
-                  },
-                },
+                editing,
                 agentByline({ did: '$link.author', timestamp: '$link.createdAt' }),
                 signals,
                 { type: 'we-divider' },

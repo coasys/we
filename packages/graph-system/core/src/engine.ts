@@ -17,6 +17,7 @@ import type {
   GraphFragment,
   GraphNode,
   GraphSpec,
+  GraphValue,
   Layout,
   Placement,
   Point,
@@ -832,7 +833,56 @@ export class GraphEngine {
    * which this used to be — gives a 6px property node an 18px grab area that swallows its neighbours,
    * and a 28px type node one smaller than it looks.
    */
-  private hitArea(node: GraphNode): { radius: number; halfWidth?: number; halfHeight?: number } {
+  /**
+   * Fields drawn over a node's own, by node id — see {@link setDataOverlay}.
+   *
+   * Deliberately beside the store rather than merged into it. The overlay stands for a write that
+   * has not come back yet, and the host works out that it has come back by comparing the patch
+   * against the node's *seeded* data — so merging would make every patch look confirmed the instant
+   * it was applied, and the card would flick back to the old value.
+   */
+  private overlay: ReadonlyMap<string, Record<string, GraphValue>> = new Map();
+
+  /**
+   * Lay fields over nodes without touching what the seeds returned.
+   *
+   * This is what makes an optimistic edit *whole*. Drawing one is not enough: a card is picked by
+   * the spatial index and its edges are routed to its border, and both are resolved from the same
+   * style rules the drawing is. Overlay only the drawing and a resized card is picked at its old
+   * size and has arrows pointing at where it used to end — a graph that disagrees with itself until
+   * something else forces a re-read.
+   *
+   * Re-indexes and re-routes, since both are derived from it, and bumps the version so a renderer
+   * watching for changes redraws.
+   */
+  setDataOverlay(overlay: ReadonlyMap<string, Record<string, GraphValue>>): void {
+    this.overlay = overlay;
+    this.reindex();
+    this.routeEdges();
+    // `graph` rather than `positions`: nothing moved, but a node's size, colour and shape can all
+    // have changed, and those are read off the node projection rather than off the placements.
+    this.notify('graph');
+  }
+
+  /** Whether anything is currently laid over the graph — so a renderer can skip clearing nothing. */
+  hasDataOverlay(): boolean {
+    return this.overlay.size > 0;
+  }
+
+  /** The fields laid over this node, if any. Read by a renderer so it draws from the same values. */
+  overlayFor(id: string): Record<string, GraphValue> | undefined {
+    return this.overlay.get(id);
+  }
+
+  /** A node as everything downstream should see it: its own fields, with the overlay in front. */
+  private overlaid(node: GraphNode): GraphNode {
+    const patch = this.overlay.get(node.id);
+    if (!patch) return node;
+    return { ...node, data: { ...node.data, ...patch } };
+  }
+
+  private hitArea(rawNode: GraphNode): { radius: number; halfWidth?: number; halfHeight?: number } {
+    const node = this.overlaid(rawNode);
     // Resolved through `nodeVisual` — the same function the renderer paints from — rather than read
     // off the raw style rules. Deriving it separately is how a card ended up with an 18px hit spot in
     // the middle of a 170px box: a card sets `width`, never `size`, so the rule-reading version fell

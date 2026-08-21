@@ -163,6 +163,7 @@ export function GraphView(props: GraphViewProps) {
   const [statusVersion, setStatusVersion] = createSignal(0);
   const [connectionVersion, setConnectionVersion] = createSignal(0);
   const [hovered, setHovered] = createSignal<string | null>(null);
+  const [hoveredEdge, setHoveredEdge] = createSignal<string | null>(null);
 
   // Read once: expanders are constructed with their options, so changing `reified` needs a remount —
   // which is what a template does anyway when it swaps one graph for another.
@@ -411,15 +412,13 @@ export function GraphView(props: GraphViewProps) {
     version();
     const placed = engine.getPositions();
     const selected = new Set(engine.getSelection());
-    // What the host has written and not yet seen come back — see `GraphHostBindings.pendingData`.
-    // Read here, before the style rules, so an optimistic value is indistinguishable from a seeded
-    // one to everything downstream.
-    const pending = props.host?.pendingData?.() ?? {};
     return [...engine.store.nodes()].flatMap((rawNode) => {
       const at = placed.get(rawNode.id);
       if (!at) return [];
-      const patch = pendingFor(pending, rawNode);
-      const node = patched(rawNode, patch);
+      // The overlay comes back out of the engine rather than being applied again here — see the
+      // effect below. Hit-testing and edge routing resolve from the same values, so a card cannot be
+      // drawn at one size and picked at another.
+      const node = patched(rawNode, engine.overlayFor(rawNode.id));
       const style = resolveStyle(node, props.nodeStyle);
       return [
         {
@@ -434,12 +433,28 @@ export function GraphView(props: GraphViewProps) {
     });
   });
 
-  /** The host's pending fields for the record this node stands for, if it stands for one. */
-  function pendingFor(pending: Record<string, Record<string, GraphValue>>, node: GraphNode) {
-    if (!Object.keys(pending).length) return undefined;
-    const at = parseAddress(node.id);
-    return at?.kind === 'entity' && at.id ? pending[at.id] : undefined;
-  }
+  /*
+    The host's optimistic fields, handed to the engine keyed by node.
+
+    Translated here because the host thinks in records and the engine thinks in nodes — and given to
+    the engine rather than applied at paint time because drawing is only one of three things resolved
+    from a node's data. Hit-testing and edge routing are the others, and a card drawn at its new size
+    but picked and pointed at at its old one is a graph disagreeing with itself.
+  */
+  createEffect(() => {
+    const pending = props.host?.pendingData?.();
+    const overlay = new Map<string, Record<string, GraphValue>>();
+    if (pending && Object.keys(pending).length) {
+      for (const node of engine.store.nodes()) {
+        const at = parseAddress(node.id);
+        const patch = at?.kind === 'entity' && at.id ? pending[at.id] : undefined;
+        if (patch) overlay.set(node.id, patch);
+      }
+    }
+    // Untracked so this reads the store without re-running on every graph change — the effect is
+    // about the host's map, and `version()` below is what redraws when the graph itself moves.
+    if (overlay.size || engine.hasDataOverlay()) engine.setDataOverlay(overlay);
+  });
 
   /*
     Tell the host which optimistic fields the data has caught up with.
@@ -456,19 +471,14 @@ export function GraphView(props: GraphViewProps) {
   createEffect(() => {
     const pending = props.host?.pendingData?.();
     if (!pending || !Object.keys(pending).length) return;
-    const settled = nodes()
-      .filter((entry) => {
-        const at = parseAddress(entry.node.id);
-        const patch = at?.kind === 'entity' && at.id ? pending[at.id] : undefined;
-        // `entry.node` already carries the patch, so the raw node is the one to ask. It is only
-        // absent from the store between a refresh dropping a node and this running.
-        const raw = engine.store.node(entry.node.id);
-        return Boolean(patch && raw && isSettled(raw, patch));
-      })
-      .flatMap((entry) => {
-        const at = parseAddress(entry.node.id);
-        return at?.id ? [at.id] : [];
-      });
+    const settled = nodes().flatMap((entry) => {
+      const at = parseAddress(entry.node.id);
+      const patch = at?.kind === 'entity' && at.id ? pending[at.id] : undefined;
+      // The *raw* node, not `entry.node` — that one already carries the overlay, so asking it
+      // would report every patch settled the instant it was applied.
+      const raw = engine.store.node(entry.node.id);
+      return patch && raw && at?.id && isSettled(raw, patch) ? [at.id] : [];
+    });
     if (settled.length) props.host?.confirmPending?.(settled);
   });
 
@@ -716,8 +726,18 @@ export function GraphView(props: GraphViewProps) {
     dispatch('onPointerMove', event);
     // Hover is read straight off the index rather than from DOM enter/leave, so it behaves the same
     // whether the node is an element or a painted shape.
-    const [hit] = engine.index.hitTest(engine.viewport.toWorld(toInput(event).at));
+    const at = engine.viewport.toWorld(toInput(event).at);
+    const [hit] = engine.index.hitTest(at);
     if (hit !== hovered()) setHovered(hit ?? null);
+    /*
+      Edges are hovered too, and nodes win — the same rule picking follows.
+
+      Worth more here than on a node: a node is a shape you can see the boundary of, and an edge is a
+      two-pixel line whose clickable width is a tolerance nobody can see. Without a hover mark the
+      only way to find out whether you are on the line is to click and see what opens.
+    */
+    const edge = hit ? null : engine.hitTestEdge(at);
+    if (edge !== hoveredEdge()) setHoveredEdge(edge);
   }
 
   return (
@@ -778,6 +798,21 @@ export function GraphView(props: GraphViewProps) {
           <For each={edges()}>
             {(entry) => (
               <g>
+                {/*
+                  A wider, transparent copy of the line under the real one — the hover mark, and the
+                  reason it is a second path rather than a thicker stroke: the visible line keeps its
+                  own width, so nothing about the drawing changes shape when the pointer is near it.
+                */}
+                <Show when={hoveredEdge() === entry.edge.id}>
+                  <path
+                    class="we-graph__edge-hover"
+                    d={entry.path}
+                    fill="none"
+                    stroke={color(entry.visual.color, 'neutral-300')}
+                    stroke-width={entry.visual.width * 4}
+                    vector-effect={entry.visual.scaleWithZoom ? undefined : 'non-scaling-stroke'}
+                  />
+                </Show>
                 <path
                   d={entry.path}
                   fill="none"

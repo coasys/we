@@ -1019,3 +1019,91 @@ describe('a settled layout that is given a reason to move', () => {
     expect(engine.getPositions().get('seed-1')?.x).toBeGreaterThan(held);
   });
 });
+
+/**
+ * An optimistic edit has to reach everything a node's data decides, not only the drawing.
+ *
+ * A card is drawn from its style, *picked* by the spatial index, and its edges are routed to its
+ * border — all three resolved from the same rules. Overlay only the drawing and a resized card is
+ * clicked at its old size and has arrows pointing at where it used to end, until something else
+ * forces a re-read. That is what this pins.
+ */
+describe('data overlay', () => {
+  const cardStyle = [{ style: { shape: 'card' as const, width: { from: 'data.boardWidth' }, height: 100 } }];
+
+  const twoCards: SeedSource = {
+    id: 'two',
+    async seed() {
+      return {
+        nodes: [
+          { id: 'a', kind: 'entity' as const, type: 'Card', label: 'A', data: { boardWidth: 100 } },
+          { id: 'b', kind: 'entity' as const, type: 'Card', label: 'B', data: { boardWidth: 100 } },
+        ],
+        edges: [{ id: 'a->b', source: 'a', target: 'b', type: 'rel' }],
+      };
+    },
+  };
+
+  async function boardEngine() {
+    const registry = new PluginRegistry({ seeds: [twoCards], expanders: [], layouts });
+    const engine = engineWith({ seeds: { source: 'two' }, layout: { type: 'grid' }, nodeStyle: cardStyle }, registry);
+    await engine.start();
+    return engine;
+  }
+
+  it('picks a node at its overlaid size', async () => {
+    const engine = await boardEngine();
+    const at = engine.getPositions().get('a')!;
+    // 120 world units to the right of centre: outside a 100-wide card, inside a 400-wide one.
+    const beyond = { x: at.x + 120, y: at.y };
+
+    expect(engine.index.hitTest(beyond)).not.toContain('a');
+
+    engine.setDataOverlay(new Map([['a', { boardWidth: 400 }]]));
+
+    expect(engine.index.hitTest(beyond)).toContain('a');
+  });
+
+  it('re-routes the edges that meet an overlaid node', async () => {
+    const engine = await boardEngine();
+    const before = engine.getEdgeGeometry().get('a->b');
+
+    engine.setDataOverlay(new Map([['b', { boardWidth: 400 }]]));
+
+    // The line stops short of the node's border, so a wider target ends the edge sooner.
+    expect(engine.getEdgeGeometry().get('a->b')?.to).not.toEqual(before?.to);
+  });
+
+  it('leaves the node the seeds returned alone', async () => {
+    // The host works out that a write has come back by comparing its patch against the *seeded*
+    // data. Merging the overlay into the store would report every patch settled the moment it was
+    // applied, and the card would flick back to the old value.
+    const engine = await boardEngine();
+
+    engine.setDataOverlay(new Map([['a', { boardWidth: 400 }]]));
+
+    expect(engine.store.node('a')?.data?.boardWidth).toBe(100);
+    expect(engine.overlayFor('a')).toEqual({ boardWidth: 400 });
+  });
+
+  it('tells subscribers the graph changed', async () => {
+    const engine = await boardEngine();
+    const reasons: string[] = [];
+    engine.subscribe((reason) => reasons.push(reason));
+
+    engine.setDataOverlay(new Map([['a', { boardWidth: 400 }]]));
+
+    expect(reasons).toContain('graph');
+  });
+
+  it('clears back to the seeded size', async () => {
+    const engine = await boardEngine();
+    engine.setDataOverlay(new Map([['a', { boardWidth: 400 }]]));
+
+    engine.setDataOverlay(new Map());
+
+    expect(engine.hasDataOverlay()).toBe(false);
+    const at = engine.getPositions().get('a')!;
+    expect(engine.index.hitTest({ x: at.x + 120, y: at.y })).not.toContain('a');
+  });
+});
