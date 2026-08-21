@@ -3878,18 +3878,6 @@
           "type": "string",
           "predicate": "we://text_content",
           "required": false
-        },
-        {
-          "name": "x",
-          "type": "number",
-          "predicate": "we://x",
-          "required": false
-        },
-        {
-          "name": "y",
-          "type": "number",
-          "predicate": "we://y",
-          "required": false
         }
       ],
       "relations": [
@@ -4212,6 +4200,38 @@
         }
       ],
       "relations": []
+    },
+    {
+      "name": "Placement",
+      "className": "Placement",
+      "extends": "Ad4mModel",
+      "fields": [
+        {
+          "name": "nodeType",
+          "type": "string",
+          "predicate": "we://node_type",
+          "required": false
+        },
+        {
+          "name": "x",
+          "type": "number",
+          "predicate": "we://x",
+          "required": false
+        },
+        {
+          "name": "y",
+          "type": "number",
+          "predicate": "we://y",
+          "required": false
+        }
+      ],
+      "relations": [
+        {
+          "name": "node",
+          "kind": "HasOne",
+          "predicate": "we://placed_node"
+        }
+      ]
     },
     {
       "name": "ReadMarker",
@@ -5578,7 +5598,9 @@
         "setRecordEntity",
         "setRecordField",
         "cancelRecordForm",
-        "saveRecord"
+        "saveRecord",
+        "placeOnBoard",
+        "createOnBoard"
       ]
     },
     {

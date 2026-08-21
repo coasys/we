@@ -24,6 +24,20 @@ export interface CollectionExpanderOptions {
   via?: string;
   /** Child entity types to look for, in order. Each is one drill-down query. */
   children?: string[];
+  /**
+   * Child types to skip, whatever else says to look for them.
+   *
+   * For containment that is bookkeeping rather than content. A board keeps its coordinates as
+   * `Placement` records parented alongside its cards — the cheapest place to put them, since a
+   * board's children are already a mixed bag — and a containment walk that drew them would put a
+   * dot on the canvas for every card, saying nothing and doubling the node count.
+   *
+   * A denylist rather than leaving them out of `children`, because the two lists answer different
+   * questions: `children` is what a template *wants*, and this is what is never worth drawing
+   * whatever anybody wants. It applies to the default list too, which is the case that matters —
+   * a template that names no children at all still should not see them.
+   */
+  exclude?: string[];
   /** Edge type drawn from parent to child. */
   edgeType?: string;
 }
@@ -47,9 +61,18 @@ const ID = 'collection';
  */
 const DEFAULT_CHILDREN = ['CollectionBlock', 'TextBlock', 'ImageBlock', 'TaskBlock', 'EventBlock'];
 
+/**
+ * Never drawn as containment, whatever a template asks for.
+ *
+ * `Placement` is a coordinate parented next to the thing it positions — see the board seed — so it
+ * is a child in the storage sense and never in the sense anybody means by "what is in here".
+ */
+const NEVER_CHILDREN = ['Placement'];
+
 export function collectionExpander(options: CollectionExpanderOptions = {}): Expander {
   const via = options.via ?? 'children';
-  const childEntities = options.children ?? DEFAULT_CHILDREN;
+  const skip = new Set([...NEVER_CHILDREN, ...(options.exclude ?? [])]);
+  const childEntities = (options.children ?? DEFAULT_CHILDREN).filter((name) => !skip.has(name));
   const edgeType = options.edgeType ?? 'contains';
 
   return {

@@ -43,6 +43,11 @@ const SHAPES: EntityShape[] = [
     properties: [{ name: 'title', type: 'string' }],
     relations: [],
   },
+  {
+    name: 'Placement',
+    properties: [{ name: 'nodeType', type: 'string' }],
+    relations: [],
+  },
 ];
 
 function contextWith(rows: (query: ExpanderQuery) => Record<string, unknown>[]) {
@@ -196,5 +201,32 @@ describe('what a collection is opened into by default', () => {
 
     const asked = query.mock.calls.map(([request]) => (request as ExpanderQuery).entity);
     expect(asked).toEqual(['TaskBlock']);
+  });
+
+  it('never opens a collection into its placements, even when told to', async () => {
+    // A board keeps its coordinates as `Placement` records parented alongside its cards — the
+    // cheapest place for them, since a board's children are a mixed bag anyway. Drawn as
+    // containment they would put a dot on the canvas for every card, saying nothing and doubling
+    // the node count. The refusal is unconditional because it is not a preference: a placement is
+    // never what anybody means by "what is in here".
+    const { context, query } = contextWith(() => []);
+
+    await collectionExpander({ children: ['CollectionBlock', 'Placement'] }).expand(
+      { id: COLLECTION, direction: 'out' },
+      context,
+    );
+
+    const asked = query.mock.calls.map(([request]) => (request as ExpanderQuery).entity);
+    expect(asked).toEqual(['CollectionBlock']);
+  });
+
+  it('honours a template excluding a type it would otherwise open into', async () => {
+    const { context, query } = contextWith(() => []);
+
+    await collectionExpander({ exclude: ['TextBlock'] }).expand({ id: COLLECTION, direction: 'out' }, context);
+
+    const asked = query.mock.calls.map(([request]) => (request as ExpanderQuery).entity);
+    expect(asked).not.toContain('TextBlock');
+    expect(asked).toContain('CollectionBlock');
   });
 });

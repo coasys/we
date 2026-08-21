@@ -2,6 +2,7 @@ export { AgentSettings } from './AgentSettings';
 export { ChatMessage } from './ChatMessage';
 export { ChatSession } from './ChatSession';
 export { MutedAgent } from './MutedAgent';
+export { Placement } from './Placement';
 export { ReadMarker } from './ReadMarker';
 export { Relationship } from './Relationship';
 export { Signal } from './Signal';

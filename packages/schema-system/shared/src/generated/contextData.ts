@@ -1437,8 +1437,6 @@ export const contextData: ContextData = {
         { name: 'description', type: 'string', predicate: 'we://description', required: false },
         { name: 'version', type: 'number', predicate: 'we://version', required: false },
         { name: 'textContent', type: 'string', predicate: 'we://text_content', required: false },
-        { name: 'x', type: 'number', predicate: 'we://x', required: false },
-        { name: 'y', type: 'number', predicate: 'we://y', required: false },
       ],
       relations: [{ name: 'children', kind: 'HasMany', predicate: 'we://children' }],
     },
@@ -1546,6 +1544,17 @@ export const contextData: ContextData = {
         { name: 'description', type: 'string', predicate: 'we://description', required: false },
       ],
       relations: [],
+    },
+    {
+      name: 'Placement',
+      className: 'Placement',
+      extends: 'Ad4mModel',
+      fields: [
+        { name: 'nodeType', type: 'string', predicate: 'we://node_type', required: false },
+        { name: 'x', type: 'number', predicate: 'we://x', required: false },
+        { name: 'y', type: 'number', predicate: 'we://y', required: false },
+      ],
+      relations: [{ name: 'node', kind: 'HasOne', predicate: 'we://placed_node' }],
     },
     {
       name: 'ReadMarker',
@@ -2170,6 +2179,8 @@ export const contextData: ContextData = {
         'setRecordField',
         'cancelRecordForm',
         'saveRecord',
+        'placeOnBoard',
+        'createOnBoard',
       ],
     },
     {

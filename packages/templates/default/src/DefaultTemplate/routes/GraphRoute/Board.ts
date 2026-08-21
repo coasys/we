@@ -34,16 +34,9 @@ const BOARD = { $local: 'boardId' };
 const boardCards: SchemaNode = {
   type: 'GraphView',
   props: {
-    seeds: {
-      source: 'query',
-      options: {
-        entity: 'CollectionBlock',
-        // The board's children, not every collection in the space. A `where` clause could not say
-        // this — containment is a link, so there is no field to filter on.
-        scope: { anchor: 'CollectionBlock', via: 'children', anchorId: BOARD },
-        limit: 200,
-      },
-    },
+    // The `board` seed reads the board's contents *and* the placements recorded against it, and
+    // merges the coordinates into each node. A template names the board and nothing else.
+    seeds: { source: 'board', options: { board: BOARD } },
     // Nothing opens automatically: a board shows what is on it, and drilling into a card's own
     // blocks would turn a wall of notes into a tree of fragments.
     expansion: { defaultDepth: 0 },
@@ -54,8 +47,12 @@ const boardCards: SchemaNode = {
       { style: { shape: 'card', width: 180, color: 'primary-100', labelColor: 'primary-900' } },
       { when: { 'data.kind': 'note' }, style: { color: 'warning-100', labelColor: 'warning-900' } },
       { when: { 'data.kind': 'call' }, style: { color: 'success-100', labelColor: 'success-900' } },
+      // Anything that is not a composed card — a task somebody put here, a model instance the
+      // community defined — reads as its own kind of thing rather than as a note that lost its text.
+      { when: { type: { not: 'CollectionBlock' } }, style: { color: 'neutral-100', labelColor: 'neutral-800' } },
+      { when: { type: 'TaskBlock' }, style: { color: 'primary-50', labelColor: 'primary-800' } },
+      { when: { type: 'EventBlock' }, style: { color: 'warning-50', labelColor: 'warning-800' } },
     ],
-    edgeStyle: [{ style: { curve: 'smooth', color: 'neutral-300', arrow: 'none' } }],
     behaviours: ['pan-zoom', 'select', { type: 'drag-node', options: { pin: true } }],
     // `lock` rather than `pin`: every card is placed already, so there is nothing to hold, and the
     // risk worth guarding against is rearranging somebody else's board by accident.
@@ -67,13 +64,17 @@ const boardCards: SchemaNode = {
       The drop, written back.
 
       Without this the board is a layout that forgets — and worse, forgets silently, since the cards
-      stay where they were dropped until the next reload. `recordId` rather than the node's address:
-      the graph names a node `we-graph://entity/<dataset>/<type>/<id>`, and a template has no
-      operator that could take that apart.
+      stay where they were dropped until the next reload.
+
+      An upsert against the *board*, not an update of the record. A coordinate is a fact about the
+      pair, so the same note can sit on two boards in two places, and the record itself never learns
+      it was on a board at all. `recordId`/`recordType` rather than the node's address: the graph
+      names a node `we-graph://entity/<dataset>/<type>/<id>` and a template has no operator that
+      could take that apart.
     */
     onNodeDragEnd: {
-      $action: 'model.update',
-      args: ['CollectionBlock', '$event.recordId', { x: '$event.x', y: '$event.y' }],
+      $action: 'recordStore.placeOnBoard',
+      args: [BOARD, '$event.recordId', '$event.recordType', '$event.x', '$event.y'],
     },
   },
 };
@@ -118,9 +119,38 @@ export const boardBar: SchemaNode = {
       props: {
         condition: BOARD,
         then: {
-          type: 'we-button',
-          props: { size: 'sm', variant: 'secondary', onClick: { $setLocal: 'newCardOpen', value: true } },
-          children: [{ type: 'we-icon', props: { name: 'note' } }, 'Card'],
+          type: 'Row',
+          props: { gap: '200', ay: 'center' },
+          children: [
+            {
+              type: 'we-button',
+              props: { size: 'sm', variant: 'secondary', onClick: { $setLocal: 'newCardOpen', value: true } },
+              children: [{ type: 'we-icon', props: { name: 'note' } }, 'Card'],
+            },
+            /*
+              A model instance, made *onto* this board.
+
+              The same form the New button opens anywhere else — `createOnBoard` only adds the
+              intent, so what is created is placed here rather than left loose in the space. That is
+              the whole difference between a board that holds a community's own models and one that
+              holds sticky notes, and it is one store call rather than a second authoring path.
+            */
+            {
+              type: '$if',
+              props: {
+                condition: { $count: { items: { $store: 'recordStore.creatableEntities' } } },
+                then: {
+                  type: 'we-button',
+                  props: {
+                    size: 'sm',
+                    variant: 'ghost',
+                    onClick: { $action: 'recordStore.createOnBoard', args: [BOARD] },
+                  },
+                  children: [{ type: 'we-icon', props: { name: 'cube' } }, 'Record'],
+                },
+              },
+            },
+          ],
         },
       },
     },

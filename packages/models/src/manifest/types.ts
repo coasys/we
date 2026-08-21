@@ -91,8 +91,6 @@ export interface CollectionBlockModel extends WeNodeModel {
   description: string;
   version: number;
   textContent: string;
-  x?: number;
-  y?: number;
   children: string[];
   addChildren(value: string | { id: string }, batch?: string): Promise<unknown>;
   removeChildren(value: string | { id: string }, batch?: string): Promise<unknown>;
@@ -162,6 +160,13 @@ export interface LocationBlockModel extends WeNodeModel {
 export interface MutedAgentModel extends WeNodeModel {
   did: string;
   description: string;
+}
+
+export interface PlacementModel extends ModelInstance {
+  nodeType: string;
+  x: number;
+  y: number;
+  node?: string;
 }
 
 export interface ReadMarkerModel extends WeNodeModel {

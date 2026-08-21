@@ -1099,6 +1099,12 @@ Names resolvable inside GraphView props: seed sources (seeds.source), expanders 
 - `schema` — Maps the dataset's own entity types and the relations between them — one node per type. Picks up model types installed after the template was written, so it suits spaces whose vocabulary is open-ended.
   - entities: string[] — Restrict to these types; omit for all of them.
   - Example: `{ "source": "schema" }`
+- `board` — A container's contents at the positions somebody put them. Membership is ordinary containment, so a card composed onto the board is found like any child; position comes from Placement records parented to the same board, which is why the same note can sit on two boards in two places. Pair with layout: manual and drag-node { pin: true }, and persist a drop through recordStore.placeOnBoard. Loads nothing until a board is chosen.
+  - board: string — Record id of the board (required).
+  - contains: string[] — Types the board may hold beyond whatever its placements name — one query each. Defaults to the block vocabulary; anything *placed* is loaded whether or not it is listed.
+  - via: string — Relation holding the contents. Defaults to "children".
+  - limit: number — Rows per type. Default 200.
+  - Example: `{ "source": "board", "options": { "board": { "$local": "boardId" } } }`
 - `dataset` — Seeds a single node for the current space — the starting point for exploring outward.
   - label: string
   - Example: `{ "source": "dataset", "options": { "label": "This space" } }`
@@ -1450,8 +1456,6 @@ CollectionBlock extends WeNode:
   - description: string [we://description]
   - version: number [we://version]
   - textContent: string [we://text_content]
-  - x: number [we://x]
-  - y: number [we://y]
   Relations:
   - children: HasMany [we://children]
 
@@ -1519,6 +1523,14 @@ MutedAgent extends WeNode:
   Fields:
   - did: string [we://did]
   - description: string [we://description]
+
+Placement extends Ad4mModel:
+  Fields:
+  - nodeType: string [we://node_type]
+  - x: number [we://x]
+  - y: number [we://y]
+  Relations:
+  - node: HasOne [we://placed_node]
 
 ReadMarker extends WeNode:
   Fields:
@@ -1857,6 +1869,8 @@ RecordStore:
   - setRecordField(name, value): sets one field. Takes the field name, so one action serves every control — which is the only shape that works when the fields come from data
   - cancelRecordForm(): closes the form, discarding it
   - saveRecord(): validates and creates. Errors land in recordErrors and the form stays open holding what was typed; success closes it and sets lastCreatedId
+  - placeOnBoard(): unknown
+  - createOnBoard(): unknown
 
 RouteStore:
 - State:

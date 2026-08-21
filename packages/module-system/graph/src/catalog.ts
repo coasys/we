@@ -46,6 +46,24 @@ export const GRAPH_PLUGIN_CATALOG: PluginCatalog = {
       example: `{ "source": "schema" }`,
     },
     {
+      id: 'board',
+      category: 'seed',
+      description:
+        "A container's contents at the positions somebody put them. Membership is ordinary containment, so a card composed onto the board is found like any child; position comes from Placement records parented to the same board, which is why the same note can sit on two boards in two places. Pair with layout: manual and drag-node { pin: true }, and persist a drop through recordStore.placeOnBoard. Loads nothing until a board is chosen.",
+      options: [
+        { name: 'board', type: 'string', description: 'Record id of the board (required).' },
+        {
+          name: 'contains',
+          type: 'string[]',
+          description:
+            'Types the board may hold beyond whatever its placements name — one query each. Defaults to the block vocabulary; anything *placed* is loaded whether or not it is listed.',
+        },
+        { name: 'via', type: 'string', description: 'Relation holding the contents. Defaults to "children".' },
+        { name: 'limit', type: 'number', description: 'Rows per type. Default 200.' },
+      ],
+      example: `{ "source": "board", "options": { "board": { "$local": "boardId" } } }`,
+    },
+    {
       id: 'dataset',
       category: 'seed',
       description: 'Seeds a single node for the current space — the starting point for exploring outward.',

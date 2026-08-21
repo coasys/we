@@ -103,12 +103,6 @@ export class CollectionBlock extends WeNode {
   @Property({ through: 'we://text_content' })
   textContent: string = '';
 
-  @Property({ through: 'we://x' })
-  x?: number;
-
-  @Property({ through: 'we://y' })
-  y?: number;
-
   @HasMany({ through: 'we://children' })
   children: string[] = [];
 }

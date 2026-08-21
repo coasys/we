@@ -24,7 +24,7 @@
  */
 import type { EntitySchema } from '@we/backend-shared';
 import { toastService } from '@we/components/solid';
-import { getModel } from '@we/models';
+import { getModel, Placement, PREDICATES } from '@we/models';
 import { CORE_MANIFEST } from '@we/models/manifest';
 import { Accessor, batch, createContext, createMemo, createSignal, ParentProps, useContext } from 'solid-js';
 
@@ -118,6 +118,24 @@ export interface RecordStore {
   cancelRecordForm: () => void;
   /** Validate and create. Errors land in `recordErrors`; success closes the form. */
   saveRecord: () => Promise<void>;
+
+  /**
+   * Put a record at a position on a board, or move one already there.
+   *
+   * An upsert, because dragging the same card twice must not leave two coordinates for it. The
+   * board is the parent; a record can be placed on as many boards as somebody puts it on, each with
+   * its own position, which is the whole reason a coordinate is not a field on the record.
+   */
+  placeOnBoard: (board: string, nodeId: string, nodeType: string, x: number, y: number) => Promise<void>;
+  /**
+   * Open the create form, and place whatever it makes onto this board.
+   *
+   * The counterpart to `connectNodes`: the same form and the same save path, with an intent held
+   * beside it. Without this, creating a model instance from a board makes a real record that simply
+   * does not appear on the board it was made from — which is the confusion the button was hidden to
+   * avoid, and hiding it was the wrong answer.
+   */
+  createOnBoard: (board: string) => void;
 }
 
 const RecordStoreContext = createContext<RecordStore>();
@@ -131,6 +149,7 @@ export function RecordStoreProvider(props: ParentProps) {
   const [savingRecord, setSavingRecord] = createSignal(false);
   const [lastCreatedId, setLastCreatedId] = createSignal('');
   const [pendingLink, setPendingLink] = createSignal<PendingLink | null>(null);
+  const [pendingBoard, setPendingBoard] = createSignal('');
 
   /**
    * WE's own authorable models, read straight off the core manifest.
@@ -200,10 +219,12 @@ export function RecordStoreProvider(props: ParentProps) {
     batch(() => {
       setRecordErrors([]);
       setRecordDraft(null);
-      // A form opened from a button is not a connection, whatever the last one was. Left set, the
-      // next ordinary record created would silently be linked to two nodes somebody connected
-      // earlier — a wrong write with nothing on screen to suggest it happened.
+      // A form opened from a button is not a connection, and is not aimed at a board, whatever the
+      // last one was. Left set, the next ordinary record created would silently be linked to two
+      // nodes somebody connected earlier, or land on a board they had closed — a wrong write with
+      // nothing on screen to suggest it happened.
       setPendingLink(null);
+      setPendingBoard('');
     });
     // Opening on the first offered model rather than on an empty picker: in a space with one
     // vocabulary that is the only answer, and in a space with several it is still a better start
@@ -257,7 +278,55 @@ export function RecordStoreProvider(props: ParentProps) {
       setRecordDraft(null);
       setRecordErrors([]);
       setPendingLink(null);
+      setPendingBoard('');
     });
+  }
+
+  function createOnBoard(board: string): void {
+    if (!board) return;
+    openRecordForm();
+    setPendingBoard(board);
+  }
+
+  /**
+   * Upsert the coordinate for one node on one board.
+   *
+   * Read-then-write rather than blind create, because dragging a card twice must not leave two
+   * placements for it — and a board that accumulated one per drag would slow down in exactly
+   * proportion to how much anybody used it.
+   *
+   * The read is scoped to the board's own children rather than filtered across every placement in
+   * the space: the parent link is what makes a placement belong to a board, so asking the board is
+   * both cheaper and the only phrasing that stays correct when the same record sits on two.
+   */
+  async function placeOnBoard(board: string, nodeId: string, nodeType: string, x: number, y: number): Promise<void> {
+    const dataset = datasetStore.currentDataset();
+    if (!dataset || !board || !nodeId) return;
+    const parent = { id: board, predicate: PREDICATES.CHILDREN };
+
+    try {
+      const existing = (await Placement.findAll(dataset.handle, { parent } as Record<string, unknown>)) as {
+        id: string;
+        node?: string;
+      }[];
+
+      const already = existing.find((row) => row.node === nodeId);
+      if (already) {
+        await Placement.update(dataset.handle, already.id, { x, y });
+        return;
+      }
+
+      const created = (await Placement.create(dataset.handle, { nodeType, x, y }, { parent })) as {
+        setNode?: (value: string) => Promise<unknown>;
+      };
+      // The node reference is a relation, and the ORM skips a relation field handed a plain value in
+      // the create payload — the same trap `Relationship`'s endpoints hit. Linked after, through the
+      // accessor the decorator generates whether or not the relation declares a target class.
+      await created.setNode?.(nodeId);
+    } catch (error) {
+      console.error('RecordStore: placing a record on a board failed', error);
+      toastService.error('Could not save that position.');
+    }
   }
 
   async function saveRecord(): Promise<void> {
@@ -298,11 +367,18 @@ export function RecordStoreProvider(props: ParentProps) {
         await created.setTarget?.(link.targetId);
       }
 
+      // Placed after the record exists, because a placement points at something. A failure here
+      // leaves a real record that is merely not on the board, which somebody can fix by dragging it
+      // there — where placing first would leave a coordinate for nothing.
+      const board = pendingBoard();
+      if (board && created?.id) await placeOnBoard(board, created.id, draft.entity, 0, 0);
+
       batch(() => {
         setLastCreatedId(created?.id ?? '');
         setRecordDraft(null);
         setRecordErrors([]);
         setPendingLink(null);
+        setPendingBoard('');
       });
       toastService.success(`${draft.label} created.`);
     } catch (error) {
@@ -325,6 +401,8 @@ export function RecordStoreProvider(props: ParentProps) {
     pendingLink,
     openRecordForm,
     connectNodes,
+    createOnBoard,
+    placeOnBoard,
     setRecordEntity,
     setRecordField,
     cancelRecordForm,

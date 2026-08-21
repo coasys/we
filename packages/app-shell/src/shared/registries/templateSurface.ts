@@ -527,6 +527,8 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     pendingLink: state('content'),
     openRecordForm: action('content'),
     connectNodes: action('content'),
+    createOnBoard: action('content'),
+    placeOnBoard: action('content'),
     setRecordEntity: action('content'),
     setRecordField: action('content'),
     cancelRecordForm: action('content'),

@@ -17,6 +17,7 @@ import {
   LinkBlock,
   LocationBlock,
   MutedAgent,
+  Placement,
   ReadMarker,
   Relationship,
   Shape,
@@ -379,6 +380,9 @@ export const SPACE_MODELS = [
   // is a claim made *to* a community, argued with in its comments and weighted by its signals, and
   // one held privately would be a note to self wearing the shape of a shared statement.
   Relationship,
+  // Where things sit on a board. Shared for the same reason: a board everyone sees arranged
+  // differently is not a board, it is everyone's own sketch of one.
+  Placement,
   Template,
   Theme,
   WeNode,
