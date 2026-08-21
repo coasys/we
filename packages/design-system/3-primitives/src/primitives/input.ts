@@ -13,7 +13,7 @@ const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   ay: 'center',
   px: '300',
   fontSize: '300',
-  bg: 'neutral-50',
+  bg: 'page',
   r: '300',
   color: 'neutral-1000',
   hoverProps: { bg: 'neutral-75', ring: '0 0 0 2px var(--we-ring-color, var(--we-color-primary-500))' },

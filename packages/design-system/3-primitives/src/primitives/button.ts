@@ -27,35 +27,35 @@ const DEFAULT_PROPS: Partial<DesignSystemProps> = {
 
 const VARIANT_DEFAULTS: Record<ButtonVariant, Partial<DesignSystemProps>> = {
   primary: {
-    bg: 'primary-500',
-    color: 'neutral-0',
-    hoverProps: { bg: 'primary-600', color: 'neutral-0' },
-    activeProps: { bg: 'primary-700', color: 'neutral-0' },
+    bg: 'accent',
+    color: 'accent-text',
+    hoverProps: { bg: 'accent-hover', color: 'accent-text' },
+    activeProps: { bg: 'accent-active', color: 'accent-text' },
   },
   secondary: {
-    bg: 'neutral-200',
+    bg: 'surface-active',
     color: 'neutral-800',
-    hoverProps: { bg: 'neutral-300', color: 'neutral-900' },
-    activeProps: { bg: 'neutral-400', color: 'neutral-900' },
+    hoverProps: { bg: 'neutral-300', color: 'text' },
+    activeProps: { bg: 'neutral-400', color: 'text' },
   },
   ghost: {
     bg: 'transparent',
     color: 'neutral-700',
-    hoverProps: { bg: 'neutral-100', color: 'neutral-900' },
-    activeProps: { bg: 'neutral-200', color: 'neutral-900' },
+    hoverProps: { bg: 'surface-hover', color: 'text' },
+    activeProps: { bg: 'surface-active', color: 'text' },
   },
   danger: {
     bg: 'danger-500',
-    color: 'neutral-0',
-    hoverProps: { bg: 'danger-600', color: 'neutral-0' },
-    activeProps: { bg: 'danger-700', color: 'neutral-0' },
+    color: 'text-inverse',
+    hoverProps: { bg: 'danger-600', color: 'text-inverse' },
+    activeProps: { bg: 'danger-700', color: 'text-inverse' },
   },
   outline: {
     bg: 'transparent',
     color: 'neutral-700',
     border: '1px solid var(--we-color-neutral-300)',
-    hoverProps: { bg: 'neutral-100', color: 'neutral-900', border: '1px solid var(--we-color-neutral-500)' },
-    activeProps: { bg: 'neutral-200', color: 'neutral-900', border: '1px solid var(--we-color-neutral-500)' },
+    hoverProps: { bg: 'surface-hover', color: 'text', border: '1px solid var(--we-color-neutral-500)' },
+    activeProps: { bg: 'surface-active', color: 'text', border: '1px solid var(--we-color-neutral-500)' },
   },
   // The appearance-free member of the scale: button semantics, no chrome. For wrapping arbitrary
   // content in a real <button> — the styling then lives on the wrapped Column/Card, which is

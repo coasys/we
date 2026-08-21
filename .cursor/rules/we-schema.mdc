@@ -1272,6 +1272,7 @@ a user-chosen swatch.
 | `border` | Default borders and dividers. |
 | `border-strong` | Emphasised separation. |
 | `accent` | An accent *fill* — a primary button, a selected disc. |
+| `accent-hover` / `accent-active` | Hover and pressed states of an accent fill. |
 | `accent-text` | Text or an icon **on top of** an accent fill. |
 | `accent-strong` | An accent-coloured heading or icon **on an ordinary surface**, where `accent` is often too light to read. |
 | `accent-muted` | An accent-tinted fill — a selected row, a subtle highlight. |

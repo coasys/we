@@ -19,11 +19,14 @@ body,
   // `neutral-50`, exactly what was hardcoded, so nothing moves for a theme that pins nothing.
   background-color: var(--we-role-page);
 
-  // Deliberately *not* `--we-role-text`, which defaults to `neutral-900` rather than the
-  // `neutral-1000` here. Adopting it would darken-or-lighten body text in every existing theme as a
-  // side effect of a background fix. It belongs to the role migration proper, where the change can
-  // be seen and decided on.
-  color: var(--we-color-neutral-1000);
+  // The role migration this was waiting for. Most text in the app sets no colour of its own and
+  // inherits from here, so while this named a scale position, `text` was the one role a theme could
+  // pin and watch do nothing — which is most of what "changing the colours does nothing" meant.
+  //
+  // It does move: `text` defaults to `neutral-900` against the `neutral-1000` that was here, so body
+  // text softens by one step off pure black in themes that pin nothing. That is the conventional
+  // choice for body copy and the cost of having the role reach anything at all.
+  color: var(--we-role-text);
 }
 
 // Before the app has mounted anything, paint what the boot screen is about to paint.
@@ -36,7 +39,10 @@ body,
 //
 // `:empty` stops applying the moment Solid renders into it, so this costs the running app nothing.
 #root:empty {
-  background-color: var(--we-color-neutral-0);
+  // `surface` defaults to the `neutral-0` that was here, so the pre-mount frame is unchanged — but a
+  // theme that pins its surfaces now keeps the chain (window → empty document → boot screen) one
+  // colour, which was the whole point of matching them.
+  background-color: var(--we-role-surface);
 }
 
 // Global scrollbar styling — uses design-system tokens, themed via CSS variables

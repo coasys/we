@@ -15,7 +15,7 @@ const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   p: '700',
   r: '500',
   border: '2px dashed var(--we-color-neutral-300)',
-  color: 'neutral-500',
+  color: 'text-muted',
   fontSize: '300',
   cursor: 'pointer',
 };

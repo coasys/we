@@ -12,12 +12,12 @@ const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   px: '300',
   cursor: 'pointer',
   borderBottom: '2px solid transparent',
-  hoverProps: { bg: 'neutral-200' },
+  hoverProps: { bg: 'surface-active' },
 };
 
 const DEFAULT_SELECTED_PROPS: Partial<DesignSystemProps> = {
-  bg: 'neutral-100',
-  borderBottom: '2px solid primary-500',
+  bg: 'surface-sunken',
+  borderBottom: '2px solid accent',
 };
 
 const CSS_STYLES = css`

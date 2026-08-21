@@ -9,7 +9,7 @@ import sharedStyles from '../shared/styles';
 const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   display: 'flex',
   r: '400',
-  bg: 'neutral-100',
+  bg: 'surface-sunken',
 };
 
 const styles = css`

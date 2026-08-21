@@ -50,6 +50,16 @@ export const role = {
    * dark accent may set them equal. Only a second role can say either.
    */
   accentStrong: 'var(--we-color-primary-700)',
+  /**
+   * Hover and pressed states for an accent *fill* — the primary button, chiefly.
+   *
+   * `surfaceHover` / `surfaceActive` already exist for the neutral case and these are the same
+   * argument: a theme that pins `accent` but leaves its states on the scale gets a button that
+   * jumps to an unrelated colour under the pointer, because the pin and the scale no longer agree
+   * about what the accent is.
+   */
+  accentHover: 'var(--we-color-primary-600)',
+  accentActive: 'var(--we-color-primary-700)',
 
   /** Hover tint on a surface (menu items, list rows, ghost buttons). */
   surfaceHover: 'var(--we-color-neutral-100)',

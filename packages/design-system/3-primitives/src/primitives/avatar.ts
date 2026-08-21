@@ -20,8 +20,10 @@ const styles = css`
     --we-avatar-height: var(--we-avatar-size);
     --we-avatar-size: var(--we-avatar-size-md);
     --we-avatar-border: none;
-    --we-avatar-color: var(--we-color-black);
-    --we-avatar-bg: var(--we-color-neutral-100);
+    --we-avatar-color: var(--we-role-text);
+    /* The disc behind an identicon or initials — a sunken surface, whose default is the
+       neutral-100 that was here, so nothing moves. */
+    --we-avatar-bg: var(--we-role-surface-sunken);
   }
   /* The disc exists for the identicon/initials/icon fallbacks; a picture covers it
      entirely, so it is dropped when there is one. Keyed off the marker attribute rather

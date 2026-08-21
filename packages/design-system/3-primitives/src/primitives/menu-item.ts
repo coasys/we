@@ -18,7 +18,7 @@ const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   ay: 'center',
   gap: '300',
   hoverProps: {
-    bg: 'neutral-50',
+    bg: 'page',
     color: 'neutral-700',
   },
 };
@@ -26,7 +26,7 @@ const DEFAULT_PROPS: Partial<DesignSystemProps> = {
 const VARIANT_DEFAULTS: Partial<Record<MenuItemVariant, Partial<DesignSystemProps>>> = {
   danger: {
     color: 'danger-500',
-    hoverProps: { bg: 'danger-50', color: 'danger-600' },
+    hoverProps: { bg: 'danger-surface', color: 'danger-text' },
   },
 };
 

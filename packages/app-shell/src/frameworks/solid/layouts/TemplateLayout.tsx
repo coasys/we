@@ -221,17 +221,21 @@ export function TemplateLayout(
       /**
        * Re-resolve the inherited text colour against this wrapper's own tokens.
        *
-       * The global stylesheet sets `color: var(--we-color-neutral-1000)` on `html, body, #root`.
-       * A custom property is substituted where the declaration lives, so that resolves against
+       * The global stylesheet sets `color: var(--we-role-text)` on `html, body, #root`. A custom
+       * property is substituted where the declaration lives, so that resolves against
        * documentElement — the *personal* theme in scoped mode — and then inherits down as a
        * finished colour. Re-declaring the token on this wrapper does not re-run that substitution,
        * so a light space under a dark personal theme rendered light surfaces with white text on
        * anything that did not set its own colour.
        *
+       * It must name the same thing the global rule does, which is now the role rather than a scale
+       * position — otherwise a space theme pinning `text` would be overridden here by the scale,
+       * for every element that inherits rather than setting its own colour, which is most of them.
+       *
        * `background-color` needs no equivalent: it does not inherit, so the wrapper's own surfaces
        * paint from the tokens it declares.
        */
-      color: 'var(--we-color-neutral-1000)',
+      color: 'var(--we-role-text)',
     };
   });
 

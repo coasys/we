@@ -34,6 +34,8 @@ export type ThemeRole =
   | 'accentText'
   | 'accentMuted'
   | 'accentStrong'
+  | 'accentHover'
+  | 'accentActive'
   | 'overlay'
   | 'shadowColor'
   | 'focus'

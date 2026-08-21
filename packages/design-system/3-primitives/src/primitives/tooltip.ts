@@ -68,8 +68,12 @@ const CSS_STYLES = css`
     font-size: var(--we-font-size-200, 14px);
     font-weight: 500;
     padding: var(--we-space-300, 8px) var(--we-space-300, 8px);
-    background: #222;
-    color: white;
+    /* An inverted surface: the tooltip is painted in the text colour and lettered in the
+       inverse one, which is the pair those two roles exist to name. Replaces a hardcoded
+       #222 that no theme could reach — including the dark ones, where a near-black tooltip
+       on a near-black panel was invisible. */
+    background: var(--we-role-text);
+    color: var(--we-role-text-inverse);
     border-radius: var(--we-border-radius, 4px);
     box-shadow: 0 2px 8px color-mix(in srgb, var(--we-role-shadow-color) 15%, transparent);
     pointer-events: none;

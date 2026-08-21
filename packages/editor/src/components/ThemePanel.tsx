@@ -144,6 +144,8 @@ const ROLE_GROUPS: { label: string; roles: { role: ThemeRole; label: string }[] 
     label: 'Accent',
     roles: [
       { role: 'accent', label: 'Accent' },
+      { role: 'accentHover', label: 'Accent hover' },
+      { role: 'accentActive', label: 'Accent pressed' },
       { role: 'accentStrong', label: 'Accent text' },
       { role: 'accentText', label: 'On accent' },
       { role: 'accentMuted', label: 'Accent tint' },
