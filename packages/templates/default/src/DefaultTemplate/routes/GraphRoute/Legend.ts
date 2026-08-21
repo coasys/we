@@ -79,14 +79,14 @@ const typeRow: SchemaNode = {
                 r: '100',
                 // Falls back to the neutral every unstyled card is drawn in, so the key never shows
                 // a colour the board is not using.
-                bg: { $if: { condition: colorOf, then: colorOf, else: 'accentMuted' } },
-                border: '1px solid borderStrong',
+                bg: { $if: { condition: colorOf, then: colorOf, else: 'accent-muted' } },
+                border: '1px solid border-strong',
               },
             },
             { type: 'we-text', props: { variant: 'label', truncate: true }, children: ['$placement.nodeType'] },
             {
               type: 'we-text',
-              props: { variant: 'footnote', color: 'textMuted', ml: 'auto' },
+              props: { variant: 'footnote', color: 'text-muted', ml: 'auto' },
               children: [
                 {
                   $count: {
@@ -104,7 +104,7 @@ const typeRow: SchemaNode = {
               type: 'we-icon',
               props: {
                 size: 'xs',
-                color: 'textFaint',
+                color: 'text-faint',
                 name: {
                   $if: {
                     condition: { $in: ['$placement.nodeType', { $local: 'openTypes' }] },
@@ -209,7 +209,7 @@ export const boardLegend: SchemaNode = {
             maxWidth: '100%',
             // The same surface as the detail panel on the other edge, for the same reason: the
             // canvas paints its own `neutral-0`, so there is nothing lighter to be.
-            bg: 'surfaceRaised',
+            bg: 'surface-raised',
             borderLeft: '1px solid border',
             shadow: 'lg',
             pointerEvents: 'auto',
@@ -274,7 +274,7 @@ export const boardLegend: SchemaNode = {
                         },
                         else: {
                           type: 'we-text',
-                          props: { variant: 'footnote', color: 'textFaint' },
+                          props: { variant: 'footnote', color: 'text-faint' },
                           children: ['Nothing placed on this board yet.'],
                         },
                       },

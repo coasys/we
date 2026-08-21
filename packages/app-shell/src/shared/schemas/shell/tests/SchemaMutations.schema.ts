@@ -72,7 +72,7 @@ function mutationArea(placeholder: string, innerChildren: SchemaNode[] = []): Sc
     children: [
       {
         type: 'we-text',
-        props: { color: 'textFaint' },
+        props: { color: 'text-faint' },
         children: [placeholder],
       },
       { type: 'Column', props: { mt: '300', gap: '300' }, children: innerChildren },
@@ -89,12 +89,12 @@ const header: SchemaNode = {
   children: [
     {
       type: 'we-text',
-      props: { fontSize: '700', fontWeight: '700', color: 'accentStrong' },
+      props: { fontSize: '700', fontWeight: '700', color: 'accent-strong' },
       children: ['Mutation Tests'],
     },
     {
       type: 'we-text',
-      props: { color: 'textMuted' },
+      props: { color: 'text-muted' },
       children: ['Tests the updateSchema diffing engine — use buttons to add, remove, and change nodes'],
     },
     { type: 'we-divider' },

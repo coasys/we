@@ -35,9 +35,9 @@ import { emptyState, field } from '@we/template-kit';
  * now is a shape that design supersedes.
  */
 const COLUMNS = [
-  { status: 'todo', label: 'To do', color: 'textMuted' },
-  { status: 'in-progress', label: 'In progress', color: 'accentStrong' },
-  { status: 'done', label: 'Done', color: 'successText' },
+  { status: 'todo', label: 'To do', color: 'text-muted' },
+  { status: 'in-progress', label: 'In progress', color: 'accent-strong' },
+  { status: 'done', label: 'Done', color: 'success-text' },
 ] as const;
 
 /** Tasks in one state, oldest first. */
@@ -163,7 +163,7 @@ const column = (spec: (typeof COLUMNS)[number]): SchemaNode => ({
     width: '300px',
     minHeight: '200px',
     gap: '300',
-    bg: 'surfaceSunken',
+    bg: 'surface-sunken',
     border: '1px solid border',
     r: '400',
     p: '300',
@@ -182,7 +182,7 @@ const column = (spec: (typeof COLUMNS)[number]): SchemaNode => ({
           type: 'we-text',
           props: {
             variant: 'footnote',
-            color: 'textMuted',
+            color: 'text-muted',
             ml: 'auto',
             text: { $count: { items: tasksIn(spec.status) } },
           },

@@ -42,7 +42,7 @@ const accountSection: SchemaNode = {
     { type: 'we-text', props: { fontWeight: 'semibold' }, children: ['Account'] },
     {
       type: 'Card',
-      props: { bg: 'surfaceSunken' },
+      props: { bg: 'surface-sunken' },
       children: [
         {
           type: 'Row',
@@ -89,7 +89,7 @@ const templatesSection: SchemaNode = {
                 bg: {
                   $if: {
                     condition: '$template.isDefault',
-                    then: 'surfaceSunken',
+                    then: 'surface-sunken',
                     else: 'transparent',
                   },
                 },
@@ -218,7 +218,7 @@ const templatesSection: SchemaNode = {
                       children: [
                         {
                           type: 'we-icon',
-                          props: { name: 'trash', size: '16px', color: 'dangerText' },
+                          props: { name: 'trash', size: '16px', color: 'danger-text' },
                         },
                       ],
                     },
@@ -268,7 +268,7 @@ const themeScopeSection: SchemaNode = {
             { type: 'we-text', props: { variant: 'label' }, children: ['Let spaces theme the whole window'] },
             {
               type: 'we-text',
-              props: { variant: 'footnote', color: 'textFaint' },
+              props: { variant: 'footnote', color: 'text-faint' },
               children: [
                 'Off, a space themes its own content and the shell keeps your theme. On, entering a space restyles everything, including these settings.',
               ],
@@ -279,7 +279,7 @@ const themeScopeSection: SchemaNode = {
                 condition: { $store: 'themeStore.themeScopePreviewing' },
                 then: {
                   type: 'we-text',
-                  props: { variant: 'footnote', color: 'warningText' },
+                  props: { variant: 'footnote', color: 'warning-text' },
                   children: ['A theme you are editing is previewing a different scope right now.'],
                 },
               },
@@ -314,7 +314,7 @@ const themeScopeSection: SchemaNode = {
             { type: 'we-text', props: { variant: 'label' }, children: ['Let templates bring their own theme'] },
             {
               type: 'we-text',
-              props: { variant: 'footnote', color: 'textFaint' },
+              props: { variant: 'footnote', color: 'text-faint' },
               children: [
                 'On, switching to a template designed for a particular theme switches the look with it, and switching back restores what you had. Off, only you and the space decide the theme. A theme you pick for a space always wins either way.',
               ],
@@ -356,7 +356,7 @@ const themesSection: SchemaNode = {
                 bg: {
                   $if: {
                     condition: '$theme.isDefault',
-                    then: 'surfaceSunken',
+                    then: 'surface-sunken',
                     else: 'transparent',
                   },
                 },
@@ -468,7 +468,7 @@ const themesSection: SchemaNode = {
                       children: [
                         {
                           type: 'we-icon',
-                          props: { name: 'trash', size: '16px', color: 'dangerText' },
+                          props: { name: 'trash', size: '16px', color: 'danger-text' },
                         },
                       ],
                     },
@@ -509,7 +509,7 @@ function moduleRow(control: SchemaNode): SchemaNode {
               { type: 'we-text', props: { variant: 'label' }, children: ['$mod.name'] },
               {
                 type: 'we-text',
-                props: { variant: 'footnote', color: 'textFaint' },
+                props: { variant: 'footnote', color: 'text-faint' },
                 children: ['$mod.description'],
               },
             ],
@@ -545,7 +545,7 @@ function moduleGroup(title: string, blurb: string, surface: string, control: Sch
         props: { gap: '200' },
         children: [
           { type: 'we-text', props: { variant: 'label' }, children: [title] },
-          { type: 'we-text', props: { variant: 'footnote', color: 'textFaint' }, children: [blurb] },
+          { type: 'we-text', props: { variant: 'footnote', color: 'text-faint' }, children: [blurb] },
           {
             type: 'Column',
             props: { gap: '200' },
@@ -583,7 +583,7 @@ const modulesSection: SchemaNode = {
         },
         {
           type: 'we-text',
-          props: { variant: 'footnote', color: 'textFaint' },
+          props: { variant: 'footnote', color: 'text-faint' },
           children: ['Which feature modules you want available to you. Your own choice, and it applies everywhere.'],
         },
       ],

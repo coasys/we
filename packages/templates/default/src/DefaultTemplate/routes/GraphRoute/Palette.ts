@@ -80,7 +80,7 @@ export function swatchRow(options: { current: SchemaProp; pick: (token: string) 
                     type: '$if',
                     props: {
                       condition: { $not: '$swatch.token' },
-                      then: { type: 'we-icon', props: { name: 'x', size: 'xs', color: 'textFaint' } },
+                      then: { type: 'we-icon', props: { name: 'x', size: 'xs', color: 'text-faint' } },
                     },
                   },
                 ],

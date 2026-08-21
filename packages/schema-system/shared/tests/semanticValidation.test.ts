@@ -941,3 +941,36 @@ describe('$local dot paths', () => {
     expect(validateSemantic(schema, ctx()).valid).toBe(false);
   });
 });
+
+describe('a role named in its TypeScript spelling', () => {
+  /*
+    This failure is silent, which is why it is worth an error rather than a warning. `tokenVar`
+    recognises roles kebab-cased, so `surfaceSunken` emits `var(--we-color-surfaceSunken)` — a
+    variable that does not exist — and the browser drops the declaration: nothing painted, nothing
+    logged, and a symptom that reads as a layout bug somewhere else. Migrating this repo's templates
+    to roles hit it on hundreds of call sites at once, and typecheck and validation both passed.
+  */
+  const errorsFor = (props: Record<string, unknown>) => validateSemantic({ type: 'Column', props }, ctx()).errors;
+
+  it('is an error, naming the spelling a schema actually wants', () => {
+    expect(errorsFor({ bg: 'surfaceSunken' }).some((e) => e.message.includes('"surface-sunken"'))).toBe(true);
+  });
+
+  it('is caught on a foreground and inside a border shorthand', () => {
+    expect(errorsFor({ color: 'textMuted' }).some((e) => e.message.includes('"text-muted"'))).toBe(true);
+    expect(errorsFor({ border: '1px solid borderStrong' }).some((e) => e.message.includes('"border-strong"'))).toBe(
+      true,
+    );
+  });
+
+  it('is caught behind $if, where a colour just as often lives', () => {
+    const errors = errorsFor({ bg: { $if: { condition: true, then: 'accentMuted', else: 'surface' } } });
+    expect(errors.some((e) => e.message.includes('"accent-muted"'))).toBe(true);
+  });
+
+  it('leaves the right spelling alone — including roles that read the same either way', () => {
+    for (const bg of ['surface-sunken', 'text-muted', 'page', 'surface', 'accent', 'neutral-100', '#ff0000']) {
+      expect(errorsFor({ bg })).toEqual([]);
+    }
+  });
+});

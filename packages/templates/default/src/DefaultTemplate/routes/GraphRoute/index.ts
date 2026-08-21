@@ -221,7 +221,7 @@ const contentGraph: SchemaNode = {
 /** A segmented picker, built from a list so the two rows cannot drift apart. */
 const picker = (field: string, options: readonly { value: string; label: string }[]): SchemaNode => ({
   type: 'Row',
-  props: { gap: '100', bg: 'surfaceSunken', r: '300', p: '100' },
+  props: { gap: '100', bg: 'surface-sunken', r: '300', p: '100' },
   children: options.map((option) => ({
     type: 'we-button',
     props: {

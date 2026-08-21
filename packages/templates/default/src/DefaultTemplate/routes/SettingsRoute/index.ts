@@ -34,7 +34,7 @@ const defaultPickerRow = (opts: {
       ax: 'between',
       p: '300',
       r: '300',
-      bg: { $if: { condition: isDefault, then: 'surfaceActive', else: 'page' } },
+      bg: { $if: { condition: isDefault, then: 'surface-active', else: 'page' } },
     },
     children: [
       {

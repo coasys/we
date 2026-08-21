@@ -7,7 +7,7 @@ export const spaceHeader: SchemaNode = {
     // ─── Header ───────────────────────────────────────────────────────────────
     {
       type: 'Row',
-      props: { bg: 'surfaceSunken', ax: 'center' },
+      props: { bg: 'surface-sunken', ax: 'center' },
       children: [
         {
           type: 'Column',
@@ -129,7 +129,7 @@ export const spaceHeader: SchemaNode = {
 export const spaceNavBar: SchemaNode = {
   type: 'Row',
   props: {
-    bg: 'surfaceSunken',
+    bg: 'surface-sunken',
     ax: 'center',
     position: 'sticky',
     zIndex: 'sticky',

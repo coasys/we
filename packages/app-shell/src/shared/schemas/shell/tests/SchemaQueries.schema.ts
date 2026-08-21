@@ -22,7 +22,7 @@ function section(title: string, expectation: string, body: SchemaNode): SchemaNo
     props: { bg: 'surface', border: '1px solid border', r: '400', p: '400', gap: '200' },
     children: [
       { type: 'we-text', props: { variant: 'heading-sm' }, children: [title] },
-      { type: 'we-text', props: { variant: 'footnote', color: 'textMuted' }, children: [expectation] },
+      { type: 'we-text', props: { variant: 'footnote', color: 'text-muted' }, children: [expectation] },
       { type: 'we-divider' },
       body,
     ],
@@ -35,7 +35,7 @@ function labeledRow(label: string, query: SchemaProp): SchemaNode {
     type: 'Row',
     props: { gap: '200', ay: 'center', wrap: true },
     children: [
-      { type: 'we-text', props: { variant: 'label', color: 'textFaint', width: '200px' }, children: [label] },
+      { type: 'we-text', props: { variant: 'label', color: 'text-faint', width: '200px' }, children: [label] },
       {
         type: '$each',
         props: { items: query, as: 'item' },
@@ -80,7 +80,7 @@ const irToggle: SchemaNode = {
     },
     {
       type: 'we-text',
-      props: { variant: 'footnote', color: 'textMuted' },
+      props: { variant: 'footnote', color: 'text-muted' },
       children: ['Flip live — every section re-routes without a reload. Watch for anything that changes.'],
     },
   ],
@@ -97,7 +97,7 @@ const seedControls: SchemaNode = {
     },
     {
       type: 'we-text',
-      props: { variant: 'footnote', color: 'textMuted' },
+      props: { variant: 'footnote', color: 'text-muted' },
       children: ['Click first → Alpha (2 children, 1 mine) · Beta (0) · Gamma (1, mine)'],
     },
   ],
@@ -215,7 +215,7 @@ const projectionSection = section(
           },
           {
             type: 'we-text',
-            props: { variant: 'footnote', color: 'textFaint' },
+            props: { variant: 'footnote', color: 'text-faint' },
             children: [{ $concat: ['include: ', { $count: { items: '$item.children' } }, ' hydrated'] }],
           },
         ],
@@ -276,7 +276,7 @@ export const schemaQueriesTemplate: TemplateSchema = {
   children: [
     {
       type: 'we-text',
-      props: { variant: 'body', color: 'textMuted' },
+      props: { variant: 'body', color: 'text-muted' },
       children: [
         'Toggle seed.features.useQueryIR and reload — every section should render identically. There is no silent fallback: if a query needed a capability the backend lacks, it would report an error and render nothing rather than quietly reverting to the raw backend path.',
       ],

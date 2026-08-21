@@ -33,12 +33,12 @@ export const schemaRoutingTemplate: TemplateSchema = {
           children: [
             {
               type: 'we-text',
-              props: { fontSize: '700', fontWeight: '700', color: 'accentStrong' },
+              props: { fontSize: '700', fontWeight: '700', color: 'accent-strong' },
               children: ['Routing Tests'],
             },
             {
               type: 'we-text',
-              props: { color: 'textMuted' },
+              props: { color: 'text-muted' },
               children: ['Tests $routes token, nested routes, catch-all, and navigation'],
             },
             { type: 'we-divider' },
@@ -118,7 +118,7 @@ export const schemaRoutingTemplate: TemplateSchema = {
         { type: 'we-text', props: { fontWeight: '600' }, children: ['Home'] },
         {
           type: 'we-text',
-          props: { color: 'textMuted' },
+          props: { color: 'text-muted' },
           children: ['This is the home route. Use buttons above to navigate.'],
         },
       ],
@@ -131,7 +131,7 @@ export const schemaRoutingTemplate: TemplateSchema = {
         { type: 'we-text', props: { fontWeight: '600' }, children: ['Route 1'] },
         {
           type: 'we-text',
-          props: { color: 'textMuted' },
+          props: { color: 'text-muted' },
           children: ['This is another route. Use buttons below to navigate nested routes.'],
         },
         {
@@ -168,7 +168,7 @@ export const schemaRoutingTemplate: TemplateSchema = {
             },
           ],
         },
-        { type: 'Column', props: { bg: 'surfaceSunken', p: '400', r: '400' }, children: [{ type: '$routes' }] },
+        { type: 'Column', props: { bg: 'surface-sunken', p: '400', r: '400' }, children: [{ type: '$routes' }] },
       ],
       routes: [
         {
@@ -183,7 +183,7 @@ export const schemaRoutingTemplate: TemplateSchema = {
             },
             {
               type: 'we-text',
-              props: { color: 'textMuted' },
+              props: { color: 'text-muted' },
               children: ['This is the default sub-route for route 1. Use buttons above to navigate.'],
             },
           ],
@@ -200,7 +200,7 @@ export const schemaRoutingTemplate: TemplateSchema = {
             },
             {
               type: 'we-text',
-              props: { color: 'textMuted' },
+              props: { color: 'text-muted' },
               children: ['This is another sub-route under route 1. Use buttons above to navigate.'],
             },
           ],
@@ -216,7 +216,7 @@ export const schemaRoutingTemplate: TemplateSchema = {
         { type: 'we-text', props: { fontSize: '500', fontWeight: '600' }, children: ['Route 2'] },
         {
           type: 'we-text',
-          props: { color: 'textMuted' },
+          props: { color: 'text-muted' },
           children: ['Welcome to route 2 :)'],
         },
       ],
@@ -224,7 +224,7 @@ export const schemaRoutingTemplate: TemplateSchema = {
     {
       path: '*',
       type: 'Column',
-      children: [{ type: 'we-text', props: { color: 'textFaint' }, children: ['Page not found'] }],
+      children: [{ type: 'we-text', props: { color: 'text-faint' }, children: ['Page not found'] }],
     },
   ],
 };

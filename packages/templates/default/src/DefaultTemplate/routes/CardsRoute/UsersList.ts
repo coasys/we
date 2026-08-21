@@ -73,7 +73,7 @@ export const usersList: SchemaNode = cardList({
           type: '$if',
           props: {
             condition: '$user.bio',
-            then: { type: 'we-text', props: { color: 'textMuted' }, children: ['$user.bio'] },
+            then: { type: 'we-text', props: { color: 'text-muted' }, children: ['$user.bio'] },
           },
         },
         {

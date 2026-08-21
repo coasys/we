@@ -2,7 +2,7 @@ import type { SchemaNode } from '@we/schema-shared';
 
 export const spaceSidebar: SchemaNode = {
   type: 'Column',
-  props: { flex: '0 0 400px', gap: '200', bg: 'surfaceRaised' },
+  props: { flex: '0 0 400px', gap: '200', bg: 'surface-raised' },
   children: [
     // Cover image
     {

@@ -98,7 +98,7 @@ export const spacesList: SchemaNode = cardList({
           type: '$if',
           props: {
             condition: '$space.description',
-            then: { type: 'we-text', props: { color: 'textMuted' }, children: ['$space.description'] },
+            then: { type: 'we-text', props: { color: 'text-muted' }, children: ['$space.description'] },
           },
         },
         {
@@ -133,13 +133,13 @@ export const spacesList: SchemaNode = cardList({
               type: 'Row',
               props: { gap: '100', ay: 'center', flex: 'none' },
               children: [
-                { type: 'we-icon', props: { name: 'clock', size: 'sm', color: 'textMuted' } },
-                { type: 'we-text', props: { color: 'textMuted' }, children: ['Created:'] },
+                { type: 'we-icon', props: { name: 'clock', size: 'sm', color: 'text-muted' } },
+                { type: 'we-text', props: { color: 'text-muted' }, children: ['Created:'] },
                 {
                   type: 'we-timestamp',
                   props: { value: '$space.createdAt', relative: true, color: 'text' },
                 },
-                { type: 'we-text', props: { color: 'textMuted' }, children: ['by'] },
+                { type: 'we-text', props: { color: 'text-muted' }, children: ['by'] },
                 {
                   type: '$agent',
                   props: { did: '$space.author', as: 'creator' },

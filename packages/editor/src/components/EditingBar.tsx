@@ -123,7 +123,7 @@ export function EditingBar() {
           <Row
             ay="center"
             gap="100"
-            bg="surfaceRaised"
+            bg="surface-raised"
             border="1px solid border"
             r="var(--we-theme-control-radius, var(--we-radius-400))"
             p="200"
@@ -145,7 +145,7 @@ export function EditingBar() {
             <Row
               ay="center"
               gap="100"
-              bg="surfaceRaised"
+              bg="surface-raised"
               border="1px solid border"
               r="var(--we-theme-control-radius, var(--we-radius-400))"
               p="200"
@@ -183,7 +183,7 @@ export function EditingBar() {
           <Row
             ay="center"
             gap="100"
-            bg="surfaceRaised"
+            bg="surface-raised"
             border="1px solid border"
             r="var(--we-theme-control-radius, var(--we-radius-400))"
             p="200"
@@ -233,7 +233,7 @@ export function EditingBar() {
             <Row
               ay="center"
               gap="100"
-              bg="surfaceRaised"
+              bg="surface-raised"
               border="1px solid border"
               r="var(--we-theme-control-radius, var(--we-radius-400))"
               p="200"
@@ -283,13 +283,13 @@ export function EditingBar() {
                         px="300"
                         py="200"
                         cursor="pointer"
-                        hoverProps={{ bg: 'surfaceSunken' }}
+                        hoverProps={{ bg: 'surface-sunken' }}
                         onClick={exportJson}
                       >
-                        <we-icon name="download-simple" color="textMuted" />
+                        <we-icon name="download-simple" color="text-muted" />
                         <Column gap="0">
                           <we-text color="text">Export as JSON</we-text>
-                          <we-text variant="footnote" color="textMuted">
+                          <we-text variant="footnote" color="text-muted">
                             Download template file
                           </we-text>
                         </Column>
@@ -302,7 +302,7 @@ export function EditingBar() {
                       py="200"
                       cursor={identity.marketplaceJoined() ? 'pointer' : 'not-allowed'}
                       opacity={identity.marketplaceJoined() ? 1 : 0.4}
-                      hoverProps={identity.marketplaceJoined() ? { bg: 'surfaceSunken' } : undefined}
+                      hoverProps={identity.marketplaceJoined() ? { bg: 'surface-sunken' } : undefined}
                       onClick={
                         identity.marketplaceJoined()
                           ? () => {
@@ -313,10 +313,10 @@ export function EditingBar() {
                           : undefined
                       }
                     >
-                      <we-icon name="storefront" color="textMuted" />
+                      <we-icon name="storefront" color="text-muted" />
                       <Column gap="0">
                         <we-text color="text">Upload to marketplace</we-text>
-                        <we-text variant="footnote" color="textMuted">
+                        <we-text variant="footnote" color="text-muted">
                           {identity.marketplaceJoined() ? 'Publish for others to install' : 'Marketplace not connected'}
                         </we-text>
                       </Column>
@@ -327,17 +327,17 @@ export function EditingBar() {
                       px="300"
                       py="200"
                       cursor="pointer"
-                      hoverProps={{ bg: 'surfaceSunken' }}
+                      hoverProps={{ bg: 'surface-sunken' }}
                       onClick={() => setShareView('space')}
                     >
-                      <we-icon name="users" color="textMuted" />
+                      <we-icon name="users" color="text-muted" />
                       <Column gap="0" flex="1">
                         <we-text color="text">Share to a space</we-text>
-                        <we-text variant="footnote" color="textMuted">
+                        <we-text variant="footnote" color="text-muted">
                           Copy it into a space's library
                         </we-text>
                       </Column>
-                      <we-icon name="caret-right" color="textFaint" size="sm" />
+                      <we-icon name="caret-right" color="text-faint" size="sm" />
                     </Row>
                   </Column>
                 </Show>
@@ -364,7 +364,7 @@ export function EditingBar() {
                               px="300"
                               py="200"
                               cursor="pointer"
-                              hoverProps={{ bg: 'surfaceSunken' }}
+                              hoverProps={{ bg: 'surface-sunken' }}
                               onClick={() => void shareToSpace(space.uuid, space.name)}
                             >
                               <we-avatar image={space.avatar} initials={space.name} size="sm" />
@@ -378,7 +378,7 @@ export function EditingBar() {
                           )}
                         </For>
                         <Show when={filteredSpaces().length === 0}>
-                          <we-text variant="footnote" color="textFaint" px="300" py="200">
+                          <we-text variant="footnote" color="text-faint" px="300" py="200">
                             No spaces found
                           </we-text>
                         </Show>

@@ -112,7 +112,7 @@ function channelRow(opts: ChannelRailOptions, as: string): SchemaNode {
         type: 'Row',
         props: { gap: '200', ay: 'center', minWidth: '0' },
         children: [
-          { type: 'we-icon', props: { name: 'hash', color: 'textFaint' } },
+          { type: 'we-icon', props: { name: 'hash', color: 'text-faint' } },
           { type: 'we-text', props: { truncate: true }, children: [`$${as}.title`] },
         ],
       },

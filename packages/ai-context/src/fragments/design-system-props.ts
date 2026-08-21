@@ -39,34 +39,39 @@ a user-chosen swatch.
 |---|---|
 | \`page\` | The app/route background behind everything. Set it on a template's root node. |
 | \`surface\` | A card, panel or sheet sitting on the page. |
-| \`surfaceRaised\` | Something floating above the page — a popover, a floating bar, a docked rail with a shadow. |
-| \`surfaceSunken\` | A well recessed into a surface — an inset box, a code block, an input trough. |
-| \`surfaceHover\` / \`surfaceActive\` | Row and item feedback. Use inside \`hoverProps\` / \`activeProps\`. |
+| \`surface-raised\` | Something floating above the page — a popover, a floating bar, a docked rail with a shadow. |
+| \`surface-sunken\` | A well recessed into a surface — an inset box, a code block, an input trough. |
+| \`surface-hover\` / \`surface-active\` | Row and item feedback. Use inside \`hoverProps\` / \`activeProps\`. |
 | \`text\` | Primary body and heading text. |
-| \`textMuted\` | Secondary text — captions, labels, metadata. |
-| \`textFaint\` | Tertiary text — placeholders, disabled labels, decorative icons. |
-| \`textInverse\` | Text on an inverted surface, such as a tooltip. **Not** for text on the accent — that is \`accentText\`. |
+| \`text-muted\` | Secondary text — captions, labels, metadata. |
+| \`text-faint\` | Tertiary text — placeholders, disabled labels, decorative icons. |
+| \`text-inverse\` | Text on an inverted surface, such as a tooltip. **Not** for text on the accent — that is \`accent-text\`. |
 | \`border\` | Default borders and dividers. |
-| \`borderStrong\` | Emphasised separation. |
+| \`border-strong\` | Emphasised separation. |
 | \`accent\` | An accent *fill* — a primary button, a selected disc. |
-| \`accentText\` | Text or an icon **on top of** an accent fill. |
-| \`accentStrong\` | An accent-coloured heading or icon **on an ordinary surface**, where \`accent\` is often too light to read. |
-| \`accentMuted\` | An accent-tinted fill — a selected row, a subtle highlight. |
+| \`accent-text\` | Text or an icon **on top of** an accent fill. |
+| \`accent-strong\` | An accent-coloured heading or icon **on an ordinary surface**, where \`accent\` is often too light to read. |
+| \`accent-muted\` | An accent-tinted fill — a selected row, a subtle highlight. |
 | \`focus\` | The focus ring. Rarely set directly; \`--we-ring-color\` already resolves to it. |
-| \`dangerText\` / \`successText\` / \`warningText\` | Status as a **foreground** — an error message, a warning icon, a "connected" tick. |
-| \`dangerSurface\` / \`successSurface\` / \`warningSurface\` | The tinted **panel** behind status content. |
+| \`danger-text\` / \`success-text\` / \`warning-text\` | Status as a **foreground** — an error message, a warning icon, a "connected" tick. |
+| \`danger-surface\` / \`success-surface\` / \`warning-surface\` | The tinted **panel** behind status content. |
 | \`overlay\` | The scrim behind a modal or drawer. Carries its own alpha. |
-| \`shadowColor\` | The colour shadows are built from. |
+| \`shadow-color\` | The colour shadows are built from. |
 
 \`\`\`json
 { "type": "Column", "props": { "bg": "surface", "border": "1px solid border" }, "children": [
   { "type": "we-text", "props": { "variant": "heading-md", "color": "text" }, "children": ["Title"] },
-  { "type": "we-text", "props": { "color": "textMuted" }, "children": ["Supporting line"] }
+  { "type": "we-text", "props": { "color": "text-muted" }, "children": ["Supporting line"] }
 ]}
 \`\`\`
 
 Roles work anywhere a colour token does, including inside a border shorthand
-(\`"1px solid border"\`) and behind \`$if\` (\`{ "$if": { "condition": …, "then": "accentMuted", "else": "surfaceSunken" } }\`).
+(\`"1px solid border"\`) and behind \`$if\` (\`{ "$if": { "condition": …, "then": "accent-muted", "else": "surface-sunken" } }\`).
+
+**Always kebab-case: \`"surface-sunken"\`, never \`"surfaceSunken"\`.** The camelCase spelling is the
+TypeScript key of a \`ThemeRole\`; a schema writes the CSS spelling. Getting it wrong fails silently —
+the value resolves to a variable that does not exist and the element paints nothing at all — so the
+validator rejects it with the right spelling rather than letting it through.
 
 **Layout-only primitives** — these accept only Layout props (not Visual, Flex, Typography, or State):
 we-divider, we-icon, we-menu-group, we-popover, we-spinner, we-tooltip

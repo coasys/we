@@ -203,7 +203,7 @@ export const chromeRail: SchemaNode = {
         gap: '100',
         p: '200',
         ay: 'center',
-        bg: 'surfaceRaised',
+        bg: 'surface-raised',
         border: '1px solid border',
         rtl: '400',
         rbl: '400',

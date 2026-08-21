@@ -437,7 +437,7 @@ function insertLines(id: string): SchemaNode {
                     $eq: [{ $store: 'shellStore.activeInsert' }, { $concat: ['$slot.edge', ':', '$slot.index'] }],
                   },
                   then: 'accent',
-                  else: 'surfaceActive',
+                  else: 'surface-active',
                 },
               },
               opacity: {
@@ -506,7 +506,7 @@ function snapTargets(id: string): SchemaNode {
               bg: {
                 $if: {
                   condition: { $eq: [{ $store: 'shellStore.activeSnap' }, '$target.id'] },
-                  then: 'accentMuted',
+                  then: 'accent-muted',
                   else: 'transparent',
                 },
               },

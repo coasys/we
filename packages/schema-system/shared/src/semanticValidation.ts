@@ -1,4 +1,5 @@
 import { BASE_CLASS_LAYERS, getKeysForLayers, layerKeyMap } from '@we/design-utils';
+import { role } from '@we/tokens';
 
 import type { ContextData, StateMemberMeta } from './contextTypes';
 import type { ValidationError, ValidationResult } from './validators';
@@ -654,6 +655,46 @@ function checkComposerHandshake(
   });
 }
 
+/**
+ * Semantic roles as a *template* spells them — kebab-case — mapped from the camelCase a `ThemeRole`
+ * uses. The two spellings are unavoidable (one is a TypeScript key, the other a CSS custom property)
+ * and confusing them fails in the worst possible way: `tokenVar` does not recognise `surfaceSunken`,
+ * so it emits `var(--we-color-surfaceSunken)`, a variable that does not exist, and the declaration
+ * is dropped. No error, no fallback — the element simply paints nothing, which reads as a layout
+ * bug somewhere else entirely. Migrating the repo's templates to roles hit this on ~690 call sites
+ * at once, all of them silent.
+ */
+const ROLE_SPELLINGS = new Map(
+  Object.keys(role).map((name) => [name, name.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`)]),
+);
+const COLOUR_PROPS = new Set(['bg', 'color', 'borderColor', 'fadeColor', 'bgImageTint', 'ring']);
+const BORDER_PROPS = new Set(['border', 'borderTop', 'borderRight', 'borderBottom', 'borderLeft']);
+
+/** Flag a role named in camelCase, wherever a colour can appear — including behind `$if`. */
+function checkColourValue(propName: string, value: unknown, path: string, errors: ValidationError[]): void {
+  if (typeof value === 'string') {
+    const candidate = BORDER_PROPS.has(propName) ? value.split(' ').slice(2).join(' ') : value;
+    // Only when the two spellings actually differ — `page` and `surface` are the same either way.
+    const kebab = ROLE_SPELLINGS.get(candidate);
+    if (kebab && kebab !== candidate) {
+      errors.push({
+        path,
+        message:
+          `"${candidate}" is a role name in its TypeScript spelling; a schema writes roles kebab-cased. ` +
+          `Use "${kebab}". As written it resolves to a CSS variable that does not exist, so nothing is painted.`,
+        severity: 'error',
+      });
+    }
+    return;
+  }
+  // A colour reached through $if/$store still lands on the same prop.
+  if (value && typeof value === 'object') {
+    for (const [key, inner] of Object.entries(value as Record<string, unknown>)) {
+      if (key === 'then' || key === 'else' || key === '$if') checkColourValue(propName, inner, path, errors);
+    }
+  }
+}
+
 function checkProps(
   props: Record<string, unknown>,
   path: string,
@@ -675,6 +716,10 @@ function checkProps(
 
     // Check for token values in props (regardless of whether prop is known)
     checkTokenValue(propValue, propPath, ctx, state, errors);
+
+    if (COLOUR_PROPS.has(propName) || BORDER_PROPS.has(propName)) {
+      checkColourValue(propName, propValue, propPath, errors);
+    }
 
     // Universal props are always valid
     if (ctx.universalProps.has(propName)) continue;

@@ -11,7 +11,7 @@ export function CodePanel() {
     <Column
       height="100%"
       width="100%"
-      bg="surfaceRaised"
+      bg="surface-raised"
       overflow="hidden"
       onKeyDown={(e: KeyboardEvent) => {
         if ((e.metaKey || e.ctrlKey) && e.key === 'z') {

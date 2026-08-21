@@ -74,7 +74,7 @@ export function marketplaceList(opts: MarketplaceListOptions): SchemaNode {
           {
             type: 'Search',
             props: {
-              ...(grid && { bg: 'surface', border: '1px solid borderStrong', maxWidth: '300px' }),
+              ...(grid && { bg: 'surface', border: '1px solid border-strong', maxWidth: '300px' }),
               placeholder: `Search ${opts.label}…`,
               value: { $local: 'search' },
               // `$arg` rather than `$event.detail`: `Search` is a layer-4 component and calls its

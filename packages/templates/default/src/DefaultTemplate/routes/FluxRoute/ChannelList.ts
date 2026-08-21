@@ -2,7 +2,7 @@ import type { SchemaNode } from '@we/schema-shared';
 
 const messageCard: SchemaNode = {
   type: 'Row',
-  props: { ay: 'start', gap: '300', p: '300', r: '300', bg: 'surfaceRaised' },
+  props: { ay: 'start', gap: '300', p: '300', r: '300', bg: 'surface-raised' },
   children: [
     // Identicon avatar from author DID
     { type: 'we-avatar', props: { hash: '$message.author', size: 'sm' } },
@@ -20,7 +20,7 @@ const messageCard: SchemaNode = {
               type: 'we-text',
               props: {
                 variant: 'footnote',
-                color: 'textFaint',
+                color: 'text-faint',
                 fontWeight: 'semibold',
                 flex: '0 0 auto',
                 maxWidth: '220px',
@@ -164,7 +164,7 @@ export const channelList: SchemaNode = {
                                 condition: '$channel.description',
                                 then: {
                                   type: 'we-text',
-                                  props: { variant: 'footnote', color: 'textFaint' },
+                                  props: { variant: 'footnote', color: 'text-faint' },
                                   children: ['$channel.description'],
                                 },
                               },

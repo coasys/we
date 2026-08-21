@@ -230,7 +230,7 @@ function pageHeader(card: (typeof CTA_CARDS)[0]) {
         type: 'Row',
         props: { ay: 'center', gap: '400' },
         children: [
-          { type: 'we-icon', props: { name: card.icon, size: 'lg', color: 'accentStrong' } },
+          { type: 'we-icon', props: { name: card.icon, size: 'lg', color: 'accent-strong' } },
           {
             type: 'we-text',
             props: { variant: 'heading-md', textTransform: 'uppercase' },
@@ -266,7 +266,7 @@ function subHeader(text: string, icon?: string) {
       props: { gap: '10px', ay: 'center', mb: '-10px' },
       children: [
         { type: 'we-icon', props: { name: icon, size: '36px', gradient: 'primary' } },
-        { type: 'we-text', props: { variant: 'heading-sm', color: 'accentStrong' }, children: [text] },
+        { type: 'we-text', props: { variant: 'heading-sm', color: 'accent-strong' }, children: [text] },
       ],
     };
   }
@@ -302,7 +302,7 @@ function bulletItem(text: string) {
 function boxSection(children: SchemaNode['children']) {
   return {
     type: 'Card',
-    props: { bg: 'surfaceSunken', border: '1px solid var(--we-role-border)' },
+    props: { bg: 'surface-sunken', border: '1px solid var(--we-role-border)' },
     children,
   };
 }
@@ -331,15 +331,15 @@ function ctaCard(card: (typeof CTA_CARDS)[0], imageLeft: boolean) {
             props: {
               name: card.icon,
               size: 'lg',
-              color: 'accentStrong',
+              color: 'accent-strong',
               // gradient: 'primary',
             },
-          }, // color: 'textMuted'
+          }, // color: 'text-muted'
           {
             type: 'we-text',
             props: {
               variant: 'heading-md',
-              // color: 'accentStrong',
+              // color: 'accent-strong',
               // gradient: 'primary',
               textTransform: 'uppercase',
               // letterSpacing: '0.08em',
@@ -380,7 +380,7 @@ function ctaCard(card: (typeof CTA_CARDS)[0], imageLeft: boolean) {
       border: '1px solid var(--we-role-border)',
       width: '100%',
       p: '0',
-      bg: 'surfaceSunken',
+      bg: 'surface-sunken',
     },
     children: [imageCol, contentCol],
   };
@@ -404,7 +404,7 @@ function roadmapCard(
     type: 'Card',
     props: {
       p: '700',
-      bg: 'surfaceSunken',
+      bg: 'surface-sunken',
       border: '1px solid var(--we-role-border)',
       width: '100%',
     },
@@ -440,7 +440,7 @@ function roadmapItem(item: { title: string; description: string }, status: Roadm
       direction: 'row',
       ay: 'center',
       p: '400',
-      bg: 'surfaceSunken',
+      bg: 'surface-sunken',
       border: '1px solid var(--we-role-border)', //  done ? '1px solid var(--we-role-border)' : '2px dashed var(--we-color-neutral-400)',
     },
     children: [
@@ -462,7 +462,7 @@ function roadmapItem(item: { title: string; description: string }, status: Roadm
             props: {
               variant: 'subheading',
               fontWeight: 'bold',
-              color: 'accentStrong',
+              color: 'accent-strong',
               // lineHeight: '1.5',
             },
             children: [item.title],
@@ -727,10 +727,10 @@ export const landingPageTemplate: TemplateSchema = {
                 },
                 {
                   type: 'we-icon',
-                  props: { name: 'hand-pointing', size: '28px', color: 'textFaint' },
+                  props: { name: 'hand-pointing', size: '28px', color: 'text-faint' },
                   // styles: { transform: 'rotate(180deg)' },
                 },
-                // { type: 'we-icon', props: { name: 'arrow-down', color: 'textFaint' } },
+                // { type: 'we-icon', props: { name: 'arrow-down', color: 'text-faint' } },
               ],
             },
           ],
@@ -747,7 +747,7 @@ export const landingPageTemplate: TemplateSchema = {
               front: {
                 type: 'Card',
                 props: {
-                  bg: 'surfaceSunken',
+                  bg: 'surface-sunken',
                   height: '100%',
                   border: '1px solid var(--we-role-border)',
                 },
@@ -781,21 +781,21 @@ export const landingPageTemplate: TemplateSchema = {
                 type: 'Card',
                 props: { ay: 'center', bg: 'gradient-primary', height: '100%' },
                 children: [
-                  { type: 'we-icon', props: { name: card.back.icon, size: 'xl', color: 'textFaint' } },
+                  { type: 'we-icon', props: { name: card.back.icon, size: 'xl', color: 'text-faint' } },
                   {
                     type: 'we-text',
                     props: {
                       fontSize: '500',
                       fontWeight: '600',
                       textAlign: 'center',
-                      color: 'textFaint',
+                      color: 'text-faint',
                       lineHeight: '1.4',
                     },
                     children: [card.back.title],
                   },
                   {
                     type: 'we-text',
-                    props: { fontSize: '200', textAlign: 'center', color: 'textFaint', lineHeight: '1.6' },
+                    props: { fontSize: '200', textAlign: 'center', color: 'text-faint', lineHeight: '1.6' },
                     children: [card.back.body],
                   },
                 ],
@@ -824,15 +824,15 @@ export const landingPageTemplate: TemplateSchema = {
                 //   children: [
                 //     {
                 //       type: 'we-text',
-                //       props: { fontSize: '600', color: 'textMuted', textAlign: 'center' },
+                //       props: { fontSize: '600', color: 'text-muted', textAlign: 'center' },
                 //       children: ['Click "learn more" on each card for a deeper dive'],
                 //     },
                 //     {
                 //       type: 'we-icon',
-                //       props: { name: 'hand-pointing', size: '28px', color: 'textFaint' },
+                //       props: { name: 'hand-pointing', size: '28px', color: 'text-faint' },
                 //       // styles: { transform: 'rotate(180deg)' },
                 //     },
-                //     // { type: 'we-icon', props: { name: 'arrow-down', color: 'textFaint' } },
+                //     // { type: 'we-icon', props: { name: 'arrow-down', color: 'text-faint' } },
                 //   ],
                 // },
                 {
@@ -926,7 +926,7 @@ export const landingPageTemplate: TemplateSchema = {
                 //   props: {
                 //     name: 'arrow-down',
                 //     // size: 'sm',
-                //     color: 'textMuted',
+                //     color: 'text-muted',
                 //     // gradient: 'primary',
                 //   },
                 // },
@@ -1066,7 +1066,7 @@ export const landingPageTemplate: TemplateSchema = {
           ],
         },
 
-        { type: 'we-divider', props: { color: 'textFaint', thickness: '2px', mt: '100px' } },
+        { type: 'we-divider', props: { color: 'text-faint', thickness: '2px', mt: '100px' } },
 
         // For Builders
         {
@@ -1145,7 +1145,7 @@ export const landingPageTemplate: TemplateSchema = {
           ],
         },
 
-        { type: 'we-divider', props: { color: 'textFaint', thickness: '2px', mt: '100px' } },
+        { type: 'we-divider', props: { color: 'text-faint', thickness: '2px', mt: '100px' } },
 
         // How It Works
         {
@@ -1242,7 +1242,7 @@ export const landingPageTemplate: TemplateSchema = {
               children: BLOCK_TYPES.map((block) => ({
                 type: 'Card',
                 props: {
-                  bg: 'surfaceSunken',
+                  bg: 'surface-sunken',
                   border: '1px solid var(--we-role-border)',
                   width: '180px',
                   height: '180px',
@@ -1293,7 +1293,7 @@ export const landingPageTemplate: TemplateSchema = {
           ],
         },
 
-        { type: 'we-divider', props: { color: 'textFaint', thickness: '2px', mt: '100px' } },
+        { type: 'we-divider', props: { color: 'text-faint', thickness: '2px', mt: '100px' } },
 
         // See It In Practice
         {

@@ -73,7 +73,7 @@ export const conversationList: SchemaNode = {
                       type: 'we-text',
                       props: {
                         variant: 'footnote',
-                        color: 'textFaint',
+                        color: 'text-faint',
                         styles: {
                           display: '-webkit-box',
                           '-webkit-line-clamp': '3',

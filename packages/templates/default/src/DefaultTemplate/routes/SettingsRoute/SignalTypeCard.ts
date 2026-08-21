@@ -42,7 +42,7 @@ export const signalTypeCard: SchemaNode = {
                 size: 'sm',
                 onClick: { $action: 'model.delete', args: ['SignalType', '$signalType.id'] },
               },
-              children: [{ type: 'we-icon', props: { name: 'trash', color: 'dangerText' } }],
+              children: [{ type: 'we-icon', props: { name: 'trash', color: 'danger-text' } }],
             },
           ],
         },

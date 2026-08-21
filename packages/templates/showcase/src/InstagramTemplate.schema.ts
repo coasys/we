@@ -256,7 +256,7 @@ export const instagramTemplate: TemplateSchema = {
       path: '*',
       type: 'Column',
       props: { p: '600', ax: 'center' },
-      children: [{ type: 'we-text', props: { color: 'textFaint' }, children: ['Not found.'] }],
+      children: [{ type: 'we-text', props: { color: 'text-faint' }, children: ['Not found.'] }],
     },
   ],
 };

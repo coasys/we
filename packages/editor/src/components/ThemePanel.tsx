@@ -281,7 +281,7 @@ function HueSwatch(props: { hue: number }) {
 
 function SectionLabel(props: { children: string }) {
   return (
-    <we-text fontSize="200" fontWeight="600" color="textMuted" textTransform="uppercase" letterSpacing="0.05em">
+    <we-text fontSize="200" fontWeight="600" color="text-muted" textTransform="uppercase" letterSpacing="0.05em">
       {props.children}
     </we-text>
   );
@@ -293,7 +293,7 @@ function CollapsibleSection(props: { title: string; defaultOpen?: boolean; child
     <Column borderBottom={`1px solid ${tokenVar('color', 'neutral-100')}`} pb="0">
       <Row ay="center" ax="between" py="300" onClick={() => setOpen(!open())} cursor="pointer">
         <SectionLabel>{props.title}</SectionLabel>
-        <we-icon name={open() ? 'caret-up' : 'caret-down'} size="sm" color="textFaint" />
+        <we-icon name={open() ? 'caret-up' : 'caret-down'} size="sm" color="text-faint" />
       </Row>
       <Show when={open()}>
         <Column gap="300" pb="400">
@@ -357,7 +357,7 @@ export function ThemePanel() {
     const val = () => (overrides()[key] as number | undefined) ?? defaultVal;
     return (
       <Row ay="center" gap="300">
-        <we-text minWidth="80px" fontSize="300" color="textMuted">
+        <we-text minWidth="80px" fontSize="300" color="text-muted">
           {label}
         </we-text>
         <HueSwatch hue={val()} />
@@ -370,7 +370,7 @@ export function ThemePanel() {
           on:input={(e: CustomEvent) => setOverride(key, Number(e.detail))}
           on:change={() => saveTheme()}
         />
-        <we-text minWidth="32px" fontSize="200" color="textMuted" textAlign="right">
+        <we-text minWidth="32px" fontSize="200" color="text-muted" textAlign="right">
           {val()}°
         </we-text>
       </Row>
@@ -385,7 +385,7 @@ export function ThemePanel() {
     };
     return (
       <Row ay="center" gap="300">
-        <we-text minWidth="130px" fontSize="300" color="textMuted">
+        <we-text minWidth="130px" fontSize="300" color="text-muted">
           {label}
         </we-text>
         <we-slider
@@ -397,7 +397,7 @@ export function ThemePanel() {
           on:input={(e: CustomEvent) => setOverride(key, `${e.detail}%`)}
           on:change={() => saveTheme()}
         />
-        <we-text minWidth="36px" fontSize="200" color="textMuted" textAlign="right">
+        <we-text minWidth="36px" fontSize="200" color="text-muted" textAlign="right">
           {numVal()}%
         </we-text>
       </Row>
@@ -419,7 +419,7 @@ export function ThemePanel() {
     const val = () => (overrides()[key] as number | undefined) ?? defaultVal;
     return (
       <Row ay="center" gap="300">
-        <we-text minWidth="120px" fontSize="300" color="textMuted">
+        <we-text minWidth="120px" fontSize="300" color="text-muted">
           {label}
         </we-text>
         <we-slider
@@ -434,7 +434,7 @@ export function ThemePanel() {
           }}
           on:change={() => saveTheme()}
         />
-        <we-text minWidth="36px" fontSize="200" color="textMuted" textAlign="right">
+        <we-text minWidth="36px" fontSize="200" color="text-muted" textAlign="right">
           {format(val())}
         </we-text>
       </Row>
@@ -460,7 +460,7 @@ export function ThemePanel() {
     };
     return (
       <Row ay="center" gap="300">
-        <we-text minWidth={labelWidth} fontSize="300" color="textMuted">
+        <we-text minWidth={labelWidth} fontSize="300" color="text-muted">
           {label}
         </we-text>
         <we-select
@@ -603,7 +603,7 @@ export function ThemePanel() {
         <Show
           when={pinned()}
           fallback={
-            <we-text fontSize="200" color="textFaint">
+            <we-text fontSize="200" color="text-faint">
               auto
             </we-text>
           }
@@ -638,7 +638,7 @@ export function ThemePanel() {
   // ── Render ──────────────────────────────────────────────────────────────────
 
   return (
-    <Column height="100%" width="100%" bg="surfaceRaised" overflow="hidden">
+    <Column height="100%" width="100%" bg="surface-raised" overflow="hidden">
       {/* Header */}
       <Row
         ax="between"
@@ -662,8 +662,8 @@ export function ThemePanel() {
         when={editing()}
         fallback={
           <Column ax="center" ay="center" flex="1" gap="300" p="500">
-            <we-icon name="paint-bucket" color="textFaint" size="xl" />
-            <we-text fontSize="400" color="textMuted" textAlign="center">
+            <we-icon name="paint-bucket" color="text-faint" size="xl" />
+            <we-text fontSize="400" color="text-muted" textAlign="center">
               No theme selected for editing
             </we-text>
             <we-button variant="secondary" size="sm" onClick={() => themeStore.startEditing()}>
@@ -745,7 +745,7 @@ export function ThemePanel() {
             {/* ── Color ── */}
             <CollapsibleSection title="Color">
               <Column gap="200">
-                <we-text fontSize="200" color="textFaint">
+                <we-text fontSize="200" color="text-faint">
                   Hues
                 </we-text>
                 {hueSlider('Primary', 'primaryHue', 220)}
@@ -755,14 +755,14 @@ export function ThemePanel() {
                 {hueSlider('Neutral', 'neutralHue', 220)}
               </Column>
               <Column gap="200">
-                <we-text fontSize="200" color="textFaint">
+                <we-text fontSize="200" color="text-faint">
                   Saturation
                 </we-text>
                 {percentSlider('Colors', 'saturation', 0, 100, 50)}
                 {percentSlider('Neutrals', 'neutralSaturation', 0, 100, 20)}
               </Column>
               <Column gap="200">
-                <we-text fontSize="200" color="textFaint">
+                <we-text fontSize="200" color="text-faint">
                   Lightness
                 </we-text>
                 {percentSlider('Subtractor', 'subtractor', 0, 200, 0)}
@@ -771,7 +771,7 @@ export function ThemePanel() {
 
             {/* ── Roles ── */}
             <CollapsibleSection title="Roles">
-              <we-text fontSize="200" color="textMuted" lineHeight="1.5">
+              <we-text fontSize="200" color="text-muted" lineHeight="1.5">
                 What a colour <i>means</i>, rather than where it sits on the scale. Left alone, each follows the hues
                 and lightness above — pin one to redesign a relationship the scale cannot express, such as raised
                 surfaces getting lighter in a dark theme instead of casting a shadow.
@@ -779,7 +779,7 @@ export function ThemePanel() {
               <For each={ROLE_GROUPS}>
                 {(group) => (
                   <Column gap="200">
-                    <we-text fontSize="200" color="textFaint">
+                    <we-text fontSize="200" color="text-faint">
                       {group.label}
                     </we-text>
                     <For each={group.roles}>{(entry) => roleRow(entry.role, entry.label)}</For>
@@ -791,7 +791,7 @@ export function ThemePanel() {
             {/* ── Shape ── */}
             <CollapsibleSection title="Shape">
               <Column gap="200">
-                <we-text fontSize="200" color="textFaint">
+                <we-text fontSize="200" color="text-faint">
                   Preset
                 </we-text>
                 {presetRow(
@@ -804,7 +804,7 @@ export function ThemePanel() {
                 )}
               </Column>
               <Column gap="200">
-                <we-text fontSize="200" color="textFaint">
+                <we-text fontSize="200" color="text-faint">
                   Overrides
                 </we-text>
                 {selectControl('Controls', 'controlRadius', RADIUS_OPTIONS, '80px')}
@@ -821,7 +821,7 @@ export function ThemePanel() {
               {selectControl('Letter spacing', 'letterSpacing', LETTER_SPACING_OPTIONS, '100px', 'default')}
               {selectControl('Line height', 'lineHeight', LINE_HEIGHT_OPTIONS, '100px', 'default')}
               <Column gap="200">
-                <we-text fontSize="200" color="textFaint">
+                <we-text fontSize="200" color="text-faint">
                   Scale
                 </we-text>
                 {presetRow(
@@ -838,7 +838,7 @@ export function ThemePanel() {
             {/* ── Spacing & Density ── */}
             <CollapsibleSection title="Spacing & Density">
               <Column gap="200">
-                <we-text fontSize="200" color="textFaint">
+                <we-text fontSize="200" color="text-faint">
                   Preset
                 </we-text>
                 {presetRow(
@@ -851,7 +851,7 @@ export function ThemePanel() {
                 )}
               </Column>
               <Column gap="200">
-                <we-text fontSize="200" color="textFaint">
+                <we-text fontSize="200" color="text-faint">
                   Overrides
                 </we-text>
                 {selectControl('Control padding', 'controlPaddingX', SPACING_OPTIONS, '120px')}
@@ -866,7 +866,7 @@ export function ThemePanel() {
             {/* ── Effects & Motion ── */}
             <CollapsibleSection title="Effects & Motion">
               <Column gap="200">
-                <we-text fontSize="200" color="textFaint">
+                <we-text fontSize="200" color="text-faint">
                   Shadow intensity
                 </we-text>
                 {presetRow(
@@ -895,7 +895,7 @@ export function ThemePanel() {
                 clearOnZero: true,
               })}
               <Column gap="200">
-                <we-text fontSize="200" color="textFaint">
+                <we-text fontSize="200" color="text-faint">
                   Animation speed
                 </we-text>
                 {presetRow(

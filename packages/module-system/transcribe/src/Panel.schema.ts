@@ -37,8 +37,8 @@ function note(status: string, icon: string, text: string, action?: SchemaNode): 
             type: 'Row',
             props: { gap: '200', ay: 'start' },
             children: [
-              { type: 'we-icon', props: { name: icon, color: 'textFaint' } },
-              { type: 'we-text', props: { variant: 'footnote', color: 'textMuted' }, children: [text] },
+              { type: 'we-icon', props: { name: icon, color: 'text-faint' } },
+              { type: 'we-text', props: { variant: 'footnote', color: 'text-muted' }, children: [text] },
             ],
           },
           ...(action ? [action] : []),
@@ -73,7 +73,7 @@ const meter: SchemaNode = {
           children: [
             {
               type: 'we-text',
-              props: { variant: 'footnote', color: 'textMuted' },
+              props: { variant: 'footnote', color: 'text-muted' },
               children: ['Microphone'],
             },
             {
@@ -84,8 +84,8 @@ const meter: SchemaNode = {
                 color: {
                   $if: {
                     condition: { $store: 'modules.transcribe.speaking' },
-                    then: 'successText',
-                    else: 'textFaint',
+                    then: 'success-text',
+                    else: 'text-faint',
                   },
                 },
               },
@@ -107,7 +107,7 @@ const meter: SchemaNode = {
             position: 'relative',
             height: '8px',
             width: '100%',
-            bg: 'surfaceSunken',
+            bg: 'surface-sunken',
             r: 'pill',
             overflow: 'hidden',
           },
@@ -121,7 +121,7 @@ const meter: SchemaNode = {
                   $if: {
                     condition: { $store: 'modules.transcribe.speaking' },
                     then: 'success-500',
-                    else: 'surfaceActive',
+                    else: 'surface-active',
                   },
                 },
                 // `styles` rather than `width`, because the value is computed per frame and a DS prop
@@ -141,7 +141,7 @@ const meter: SchemaNode = {
                 top: '0px',
                 height: '100%',
                 width: '2px',
-                bg: 'borderStrong',
+                bg: 'border-strong',
                 styles: { left: { $store: 'modules.transcribe.thresholdPercent' } },
               },
             },
@@ -174,7 +174,7 @@ const proposals: SchemaNode = {
       children: [
         {
           type: 'we-text',
-          props: { variant: 'footnote', color: 'textMuted', uppercase: true },
+          props: { variant: 'footnote', color: 'text-muted', uppercase: true },
           children: ['Awaiting your call'],
         },
         {
@@ -183,7 +183,7 @@ const proposals: SchemaNode = {
           children: [
             {
               type: 'Column',
-              props: { bg: 'warningSurface', r: '300', p: '300', gap: '200' },
+              props: { bg: 'warning-surface', r: '300', p: '300', gap: '200' },
               children: [
                 { type: 'we-text', props: { variant: 'footnote' }, children: ['$proposal.summary'] },
                 {
@@ -237,7 +237,7 @@ const extract: SchemaNode = {
     condition: { $store: 'modules.transcribe.extractable' },
     then: {
       type: 'Column',
-      props: { gap: '200', bg: 'surfaceSunken', r: '300', p: '300' },
+      props: { gap: '200', bg: 'surface-sunken', r: '300', p: '300' },
       children: [
         {
           type: 'Row',
@@ -250,7 +250,7 @@ const extract: SchemaNode = {
                 { type: 'we-text', props: { variant: 'footnote', fontWeight: '600' }, children: ['Extract'] },
                 {
                   type: 'we-text',
-                  props: { variant: 'footnote', color: 'textMuted' },
+                  props: { variant: 'footnote', color: 'text-muted' },
                   children: ['Find the tasks and events in what was said.'],
                 },
               ],
@@ -293,7 +293,7 @@ const extract: SchemaNode = {
                 { type: 'we-spinner', props: { size: 'sm' } },
                 {
                   type: 'we-text',
-                  props: { variant: 'footnote', color: 'textMuted' },
+                  props: { variant: 'footnote', color: 'text-muted' },
                   children: ['Reading the transcript…'],
                 },
               ],
@@ -308,10 +308,10 @@ const extract: SchemaNode = {
               type: 'Row',
               props: { gap: '200', ay: 'center' },
               children: [
-                { type: 'we-icon', props: { name: 'check', color: 'successText' } },
+                { type: 'we-icon', props: { name: 'check', color: 'success-text' } },
                 {
                   type: 'we-text',
-                  props: { variant: 'footnote', color: 'textMuted' },
+                  props: { variant: 'footnote', color: 'text-muted' },
                   children: [
                     // Zero is a real and common answer — a conversation with no commitments in it —
                     // and saying so is the difference between "it worked, there was nothing" and
@@ -423,7 +423,7 @@ export const panel: SchemaNode = {
                           $if: { condition: { $store: 'modules.transcribe.listening' }, then: 'fill', else: 'regular' },
                         },
                         color: {
-                          $if: { condition: { $store: 'modules.transcribe.listening' }, then: 'dangerText', else: '' },
+                          $if: { condition: { $store: 'modules.transcribe.listening' }, then: 'danger-text', else: '' },
                         },
                       },
                     },
@@ -452,7 +452,7 @@ export const panel: SchemaNode = {
               props: { gap: '200', ay: 'center' },
               children: [
                 { type: 'we-spinner', props: { size: 'sm' } },
-                { type: 'we-text', props: { variant: 'footnote', color: 'textMuted' }, children: ['Starting…'] },
+                { type: 'we-text', props: { variant: 'footnote', color: 'text-muted' }, children: ['Starting…'] },
               ],
             },
           },
@@ -470,7 +470,7 @@ export const panel: SchemaNode = {
             },
             then: {
               type: 'we-text',
-              props: { variant: 'footnote', color: 'textMuted', italic: true },
+              props: { variant: 'footnote', color: 'text-muted', italic: true },
               children: [
                 {
                   $if: {
@@ -510,7 +510,7 @@ export const panel: SchemaNode = {
               },
               else: {
                 type: 'we-text',
-                props: { variant: 'footnote', color: 'textFaint' },
+                props: { variant: 'footnote', color: 'text-faint' },
                 children: ['Models are configured on the node this app is connected to.'],
               },
             },
@@ -538,7 +538,7 @@ export const panel: SchemaNode = {
             condition: { $store: 'modules.transcribe.pending' },
             then: {
               type: 'Column',
-              props: { bg: 'accentMuted', r: '300', p: '300', gap: '200' },
+              props: { bg: 'accent-muted', r: '300', p: '300', gap: '200' },
               children: [
                 {
                   type: 'Row',
@@ -546,7 +546,7 @@ export const panel: SchemaNode = {
                   children: [
                     {
                       type: 'we-text',
-                      props: { variant: 'footnote', color: 'textMuted', uppercase: true },
+                      props: { variant: 'footnote', color: 'text-muted', uppercase: true },
                       children: ['Not saved yet'],
                     },
                     {
@@ -578,7 +578,7 @@ export const panel: SchemaNode = {
                   children: [
                     {
                       type: 'Column',
-                      props: { bg: 'surfaceSunken', r: '300', p: '300' },
+                      props: { bg: 'surface-sunken', r: '300', p: '300' },
                       children: [{ type: 'we-text', children: ['$line'] }],
                     },
                   ],

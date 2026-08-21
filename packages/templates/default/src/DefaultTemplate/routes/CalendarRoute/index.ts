@@ -149,7 +149,7 @@ const monthPicker: SchemaNode = {
                     ],
                     // The real current month stays marked even while another year is on screen,
                     // so "where am I relative to now" survives paging away.
-                    color: { $if: { condition: '$month.isThisMonth', then: 'accentStrong', else: '' } },
+                    color: { $if: { condition: '$month.isThisMonth', then: 'accent-strong', else: '' } },
                   },
                   children: ['$month.label'],
                 },
@@ -187,7 +187,7 @@ const monthNav: SchemaNode = {
             px: '200',
             py: '100',
             r: '300',
-            hoverProps: { bg: 'surfaceHover' },
+            hoverProps: { bg: 'surface-hover' },
             onClick: { $toggleLocal: 'pickerOpen' },
           },
           children: [
@@ -285,7 +285,7 @@ const monthGrid: SchemaNode = {
             {
               type: 'Row',
               props: { flex: '1', ax: 'center' },
-              children: [{ type: 'we-text', props: { variant: 'footnote', color: 'textMuted', text: '$weekday' } }],
+              children: [{ type: 'we-text', props: { variant: 'footnote', color: 'text-muted', text: '$weekday' } }],
             },
           ],
         },
@@ -326,7 +326,7 @@ const monthGrid: SchemaNode = {
                 bg: {
                   $if: {
                     condition: { $eq: ['$cell.date', { $local: 'day' }] },
-                    then: 'accentMuted',
+                    then: 'accent-muted',
                     else: { $if: { condition: '$cell.inMonth', then: '', else: 'page' } },
                   },
                 },
@@ -341,8 +341,8 @@ const monthGrid: SchemaNode = {
                   bg: {
                     $if: {
                       condition: { $eq: ['$cell.date', { $local: 'day' }] },
-                      then: 'accentMuted',
-                      else: 'surfaceSunken',
+                      then: 'accent-muted',
+                      else: 'surface-sunken',
                     },
                   },
                 },
@@ -391,8 +391,8 @@ const monthGrid: SchemaNode = {
                         color: {
                           $if: {
                             condition: '$cell.isToday',
-                            then: 'accentText',
-                            else: { $if: { condition: '$cell.inMonth', then: 'text', else: 'textFaint' } },
+                            then: 'accent-text',
+                            else: { $if: { condition: '$cell.inMonth', then: 'text', else: 'text-faint' } },
                           },
                         },
                         fontWeight: { $if: { condition: '$cell.isToday', then: 'semibold', else: '' } },
@@ -436,8 +436,8 @@ const monthGrid: SchemaNode = {
                         text: '$mark.title',
                         // Faded for the neighbouring months, so a busy 1st of next month does not
                         // read as part of the month being looked at.
-                        bg: { $if: { condition: '$cell.inMonth', then: 'accentMuted', else: 'surfaceSunken' } },
-                        color: { $if: { condition: '$cell.inMonth', then: 'accentStrong', else: 'textMuted' } },
+                        bg: { $if: { condition: '$cell.inMonth', then: 'accent-muted', else: 'surface-sunken' } },
+                        color: { $if: { condition: '$cell.inMonth', then: 'accent-strong', else: 'text-muted' } },
                       },
                     },
                   ],
@@ -464,7 +464,7 @@ const monthGrid: SchemaNode = {
                     },
                     then: {
                       type: 'we-text',
-                      props: { fontSize: '100', color: 'textMuted', px: '100', text: 'more…' },
+                      props: { fontSize: '100', color: 'text-muted', px: '100', text: 'more…' },
                     },
                   },
                 },
@@ -486,13 +486,13 @@ const monthGrid: SchemaNode = {
  */
 const eventRow: SchemaNode = {
   type: 'Column',
-  props: { width: '100%', gap: '200', bg: 'surfaceSunken', r: '300', p: '400' },
+  props: { width: '100%', gap: '200', bg: 'surface-sunken', r: '300', p: '400' },
   children: [
     {
       type: 'Row',
       props: { gap: '300', ay: 'center' },
       children: [
-        { type: 'we-icon', props: { name: 'calendar', color: 'accentStrong' } },
+        { type: 'we-icon', props: { name: 'calendar', color: 'accent-strong' } },
         { type: 'we-text', props: { fontWeight: 'semibold' }, children: ['$event.title'] },
         {
           type: 'we-text',
@@ -516,7 +516,7 @@ const eventRow: SchemaNode = {
           type: 'Row',
           props: { gap: '200', ay: 'center' },
           children: [
-            { type: 'we-icon', props: { name: 'map-pin', color: 'textMuted' } },
+            { type: 'we-icon', props: { name: 'map-pin', color: 'text-muted' } },
             { type: 'we-text', props: { fontSize: '200', color: 'text' }, children: ['$event.location'] },
           ],
         },
@@ -648,7 +648,7 @@ export const calendarRoute: RouteSchema = {
                         // timestamp inherits.
                         fontSize: '100',
                         textTransform: 'uppercase',
-                        color: 'textMuted',
+                        color: 'text-muted',
                       },
                     },
                     {
@@ -677,11 +677,11 @@ export const calendarRoute: RouteSchema = {
                     */
                     else: {
                       type: 'Column',
-                      props: { width: '100%', gap: '300', ay: 'start', bg: 'surfaceSunken', r: '300', p: '400' },
+                      props: { width: '100%', gap: '300', ay: 'start', bg: 'surface-sunken', r: '300', p: '400' },
                       children: [
                         {
                           type: 'we-text',
-                          props: { color: 'textMuted' },
+                          props: { color: 'text-muted' },
                           children: ['Nothing scheduled on this day.'],
                         },
                         {
@@ -720,7 +720,7 @@ export const calendarRoute: RouteSchema = {
                   children: [
                     {
                       type: 'we-text',
-                      props: { variant: 'footnote', color: 'textMuted', uppercase: true },
+                      props: { variant: 'footnote', color: 'text-muted', uppercase: true },
                       children: ['Scheduled'],
                     },
                     {

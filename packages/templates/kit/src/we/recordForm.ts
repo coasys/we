@@ -150,7 +150,7 @@ export function recordFormModal(opts: RecordFormModalOptions = {}): SchemaNode {
                   ay: 'center',
                   wrap: true,
                   width: '100%',
-                  bg: 'surfaceSunken',
+                  bg: 'surface-sunken',
                   r: '300',
                   px: '300',
                   py: '200',
@@ -161,7 +161,7 @@ export function recordFormModal(opts: RecordFormModalOptions = {}): SchemaNode {
                     props: { variant: 'label', truncate: true },
                     children: [{ $store: 'recordStore.pendingLink.sourceLabel' }],
                   },
-                  { type: 'we-icon', props: { name: 'arrow-right', size: 'xs', color: 'textFaint' } },
+                  { type: 'we-icon', props: { name: 'arrow-right', size: 'xs', color: 'text-faint' } },
                   {
                     type: 'we-text',
                     props: { variant: 'label', truncate: true },
@@ -290,7 +290,7 @@ export function recordFormModal(opts: RecordFormModalOptions = {}): SchemaNode {
                     type: '$each',
                     props: { items: { $store: 'recordStore.recordErrors' }, as: 'problem' },
                     children: [
-                      { type: 'we-text', props: { variant: 'footnote', color: 'dangerText' }, children: ['$problem'] },
+                      { type: 'we-text', props: { variant: 'footnote', color: 'danger-text' }, children: ['$problem'] },
                     ],
                   },
                 ],

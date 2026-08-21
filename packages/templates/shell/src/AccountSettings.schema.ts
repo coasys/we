@@ -17,7 +17,7 @@ import type { SchemaNode } from '@we/schema-shared';
 /** The row for one account: who it is, and whether it can be removed. */
 const accountRow: SchemaNode = {
   type: 'Card',
-  props: { bg: 'surfaceSunken' },
+  props: { bg: 'surface-sunken' },
   children: [
     {
       type: 'Row',
@@ -29,7 +29,7 @@ const accountRow: SchemaNode = {
           children: [
             {
               type: 'we-avatar',
-              props: { image: '$account.avatar', initials: '$account.name', size: 'sm', bg: 'accentMuted' },
+              props: { image: '$account.avatar', initials: '$account.name', size: 'sm', bg: 'accent-muted' },
             },
             { type: 'we-text', props: { variant: 'label' }, children: ['$account.name'] },
             {
@@ -92,7 +92,7 @@ export const accountSettings: SchemaNode = {
         },
         {
           type: 'we-text',
-          props: { variant: 'footnote', color: 'textMuted' },
+          props: { variant: 'footnote', color: 'text-muted' },
           children: ['Each account is a separate identity with its own spaces and data.'],
         },
       ],
@@ -135,7 +135,7 @@ export const removeAccountModal: SchemaNode = {
               type: 'Row',
               props: { gap: '300', ay: 'center' },
               children: [
-                { type: 'we-icon', props: { name: 'warning', color: 'dangerText' } },
+                { type: 'we-icon', props: { name: 'warning', color: 'danger-text' } },
                 {
                   type: 'we-text',
                   props: { variant: 'heading-sm' },
@@ -152,7 +152,7 @@ export const removeAccountModal: SchemaNode = {
             },
             {
               type: 'we-text',
-              props: { variant: 'body', color: 'textMuted' },
+              props: { variant: 'body', color: 'text-muted' },
               children: ['Close Flux and the ADAM launcher first if they use this account.'],
             },
             // Only for the account the launcher keeps its registry inside. Nobody would predict

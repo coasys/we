@@ -81,10 +81,10 @@ function extracted(query: object, label: string, icon: string, as: string): Sche
             type: 'Row',
             props: { gap: '200', ay: 'center' },
             children: [
-              { type: 'we-icon', props: { name: icon, color: 'accentStrong' } },
+              { type: 'we-icon', props: { name: icon, color: 'accent-strong' } },
               {
                 type: 'we-text',
-                props: { variant: 'footnote', color: 'textMuted', uppercase: true },
+                props: { variant: 'footnote', color: 'text-muted', uppercase: true },
                 children: [label],
               },
             ],
@@ -95,7 +95,7 @@ function extracted(query: object, label: string, icon: string, as: string): Sche
             children: [
               {
                 type: 'Row',
-                props: { gap: '200', ay: 'center', bg: 'surfaceSunken', r: '300', px: '300', py: '200' },
+                props: { gap: '200', ay: 'center', bg: 'surface-sunken', r: '300', px: '300', py: '200' },
                 children: [{ type: 'we-text', children: [`$${as}.title`] }],
               },
             ],
@@ -158,7 +158,7 @@ export const callsList: SchemaNode = {
               type: 'Row',
               props: { ay: 'center', gap: '300' },
               children: [
-                { type: 'we-icon', props: { name: 'phone', color: 'accentStrong' } },
+                { type: 'we-icon', props: { name: 'phone', color: 'accent-strong' } },
                 {
                   type: 'Column',
                   props: { gap: '100' },
@@ -275,10 +275,10 @@ export const callsList: SchemaNode = {
                           type: 'Row',
                           props: { gap: '100', ay: 'center' },
                           children: [
-                            { type: 'we-icon', props: { name: 'sparkle', color: 'textFaint', size: 'xs' } },
+                            { type: 'we-icon', props: { name: 'sparkle', color: 'text-faint', size: 'xs' } },
                             {
                               type: 'we-text',
-                              props: { variant: 'footnote', color: 'textFaint' },
+                              props: { variant: 'footnote', color: 'text-faint' },
                               children: ['Extracting automatically'],
                             },
                           ],
@@ -521,7 +521,7 @@ export const callsList: SchemaNode = {
                           children: [
                             {
                               type: 'we-text',
-                              props: { fontSize: '200', color: 'dangerText' },
+                              props: { fontSize: '200', color: 'danger-text' },
                               children: ['Extraction failed'],
                             },
                           ],

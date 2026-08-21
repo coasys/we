@@ -91,7 +91,7 @@ const boardsRoute: RouteSchema = {
                         { type: 'we-number', props: { value: '$board.$columnCount' } },
                         {
                           type: 'we-text',
-                          props: { variant: 'footnote', color: 'textFaint' },
+                          props: { variant: 'footnote', color: 'text-faint' },
                           children: [{ $plural: { count: '$board.$columnCount', one: 'column', other: 'columns' } }],
                         },
                       ],
@@ -260,7 +260,7 @@ export const kanbanTemplate: TemplateSchema = {
       path: '*',
       type: 'Column',
       props: { p: '600', ax: 'center' },
-      children: [{ type: 'we-text', props: { color: 'textFaint' }, children: ['No such board.'] }],
+      children: [{ type: 'we-text', props: { color: 'text-faint' }, children: ['No such board.'] }],
     },
   ],
 };

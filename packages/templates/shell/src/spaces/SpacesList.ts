@@ -85,7 +85,7 @@ const spaceCard: SchemaNode = {
                     condition: '$space.description',
                     then: {
                       type: 'we-text',
-                      props: { variant: 'footnote', color: 'textFaint', truncate: true },
+                      props: { variant: 'footnote', color: 'text-faint', truncate: true },
                       children: ['$space.description'],
                     },
                   },

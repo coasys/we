@@ -39,8 +39,8 @@ function section(token: string, title: string, children: (SchemaNode | string)[]
         type: 'Row',
         props: { gap: '200', ay: 'center', pb: '200' },
         children: [
-          { type: 'we-text', props: { fontWeight: '600', color: 'accentStrong' }, children: [token] },
-          { type: 'we-text', props: { color: 'textMuted' }, children: [`- ${title}`] },
+          { type: 'we-text', props: { fontWeight: '600', color: 'accent-strong' }, children: [token] },
+          { type: 'we-text', props: { color: 'text-muted' }, children: [`- ${title}`] },
         ],
       },
       ...children,
@@ -58,13 +58,13 @@ function check(label: string, expected: string, actual: SchemaProp, condition: S
         type: '$if',
         props: {
           condition,
-          then: { type: 'we-icon', props: { name: 'check', size: 'xs', color: 'successText' } },
-          else: { type: 'we-icon', props: { name: 'x', size: 'xs', color: 'dangerText' } },
+          then: { type: 'we-icon', props: { name: 'check', size: 'xs', color: 'success-text' } },
+          else: { type: 'we-icon', props: { name: 'x', size: 'xs', color: 'danger-text' } },
         },
       },
       { type: 'we-text', children: [label] },
-      { type: 'we-text', props: { color: 'textFaint' }, children: [`expected "${expected}"`] },
-      { type: 'we-text', props: { color: 'textFaint' }, children: ['→'] },
+      { type: 'we-text', props: { color: 'text-faint' }, children: [`expected "${expected}"`] },
+      { type: 'we-text', props: { color: 'text-faint' }, children: ['→'] },
       { type: 'we-text', children: [actual as string] },
     ],
   };
@@ -80,8 +80,8 @@ function boolCheck(label: string, condition: SchemaProp): SchemaNode {
         type: '$if',
         props: {
           condition,
-          then: { type: 'we-icon', props: { name: 'check', size: 'xs', color: 'successText' } },
-          else: { type: 'we-icon', props: { name: 'x', size: 'xs', color: 'dangerText' } },
+          then: { type: 'we-icon', props: { name: 'check', size: 'xs', color: 'success-text' } },
+          else: { type: 'we-icon', props: { name: 'x', size: 'xs', color: 'danger-text' } },
         },
       },
       { type: 'we-text', children: [label] },
@@ -95,7 +95,7 @@ function interactiveLabel(label: string): SchemaNode {
     type: 'Row',
     props: { gap: '200', ay: 'center', py: '50' },
     children: [
-      { type: 'we-icon', props: { name: 'arrow-clockwise', size: 'xs', color: 'accentStrong' } },
+      { type: 'we-icon', props: { name: 'arrow-clockwise', size: 'xs', color: 'accent-strong' } },
       { type: 'we-text', children: [label] },
     ],
   };
@@ -105,7 +105,7 @@ function interactiveLabel(label: string): SchemaNode {
 function groupHeading(title: string): SchemaNode {
   return {
     type: 'we-text',
-    props: { fontSize: '600', fontWeight: '600', color: 'textMuted', mt: '300' },
+    props: { fontSize: '600', fontWeight: '600', color: 'text-muted', mt: '300' },
     children: [title],
   };
 }
@@ -138,7 +138,7 @@ function queryModePanel(mode: string, description: string, queryConfig: Record<s
         type: 'Column',
         props: { gap: '300', ax: 'start' },
         children: [
-          { type: 'we-text', props: { color: 'textMuted' }, children: [description] },
+          { type: 'we-text', props: { color: 'text-muted' }, children: [description] },
           {
             type: '$each',
             props: {
@@ -155,11 +155,11 @@ function queryModePanel(mode: string, description: string, queryConfig: Record<s
             children: [
               {
                 type: 'Row',
-                props: { gap: '200', p: '200', bg: 'surfaceSunken', r: '300', ay: 'center' },
+                props: { gap: '200', p: '200', bg: 'surface-sunken', r: '300', ay: 'center' },
                 children: [
-                  { type: 'we-icon', props: { name: 'check', color: 'successText', size: 'xs' } },
+                  { type: 'we-icon', props: { name: 'check', color: 'success-text', size: 'xs' } },
                   { type: 'we-text', props: { flex: '1' }, children: [`$q.name`] },
-                  { type: 'we-text', props: { color: 'textFaint' }, children: [`$q.status`] },
+                  { type: 'we-text', props: { color: 'text-faint' }, children: [`$q.status`] },
                 ],
               },
             ],
@@ -230,7 +230,7 @@ const actionTest = section('$action', 'Trigger store mutations', [
       { type: 'we-text', children: ['Counter:'] },
       {
         type: 'we-text',
-        props: { color: 'accentStrong' },
+        props: { color: 'accent-strong' },
         children: [{ $store: 'testStore.counter' }],
       },
     ],
@@ -250,7 +250,7 @@ const argTest = section('$arg', 'Extract native event values', [
           onInput: { $action: 'testStore.setTypedText', args: ['$arg.detail'] },
         },
       },
-      { type: 'we-text', props: { color: 'textFaint' }, children: ['Echo:'] },
+      { type: 'we-text', props: { color: 'text-faint' }, children: ['Echo:'] },
       { type: 'we-text', props: { fontWeight: '600' }, children: [{ $store: 'testStore.typedText' }] },
     ],
   },
@@ -342,7 +342,7 @@ const ifTest = section('$if', 'Conditional rendering (prop + node level)', [
         props: { variant: { $if: { condition: { $store: 'testStore.toggleValue' }, then: 'primary', else: 'ghost' } } },
         children: [{ $if: { condition: { $store: 'testStore.toggleValue' }, then: 'ON', else: 'OFF' } }],
       },
-      { type: 'we-text', props: { color: 'textFaint' }, children: ['(prop-level $if)'] },
+      { type: 'we-text', props: { color: 'text-faint' }, children: ['(prop-level $if)'] },
     ],
   },
   // Node-level: conditionally show/hide content
@@ -353,18 +353,18 @@ const ifTest = section('$if', 'Conditional rendering (prop + node level)', [
       condition: { $store: 'testStore.toggleValue' },
       then: {
         type: 'Row',
-        props: { gap: '200', ay: 'center', p: '200', bg: 'successSurface', r: '300' },
+        props: { gap: '200', ay: 'center', p: '200', bg: 'success-surface', r: '300' },
         children: [
-          { type: 'we-icon', props: { name: 'check', color: 'successText' } },
-          { type: 'we-text', props: { color: 'successText' }, children: ['Visible!'] },
+          { type: 'we-icon', props: { name: 'check', color: 'success-text' } },
+          { type: 'we-text', props: { color: 'success-text' }, children: ['Visible!'] },
         ],
       },
       else: {
         type: 'Row',
-        props: { gap: '200', ay: 'center', p: '200', bg: 'surfaceSunken', r: '300' },
+        props: { gap: '200', ay: 'center', p: '200', bg: 'surface-sunken', r: '300' },
         children: [
-          { type: 'we-icon', props: { name: 'eye-slash', color: 'textFaint' } },
-          { type: 'we-text', props: { color: 'textFaint' }, children: ['Hidden (toggle ON to show)'] },
+          { type: 'we-icon', props: { name: 'eye-slash', color: 'text-faint' } },
+          { type: 'we-text', props: { color: 'text-faint' }, children: ['Hidden (toggle ON to show)'] },
         ],
       },
     },
@@ -379,12 +379,12 @@ const ifTest = section('$if', 'Conditional rendering (prop + node level)', [
       exitTransition: { type: 'fade', duration: 1000, easing: 'ease-in-out' },
       then: {
         type: 'Row',
-        props: { gap: '200', ay: 'center', p: '200', bg: 'accentMuted', r: '300' },
+        props: { gap: '200', ay: 'center', p: '200', bg: 'accent-muted', r: '300' },
         children: [
           { type: 'we-icon', props: { name: 'sparkle', color: 'accent' } },
           {
             type: 'we-text',
-            props: { color: 'accentStrong' },
+            props: { color: 'accent-strong' },
             children: ['Animated content (fade in 1000ms / out 1000ms)'],
           },
         ],
@@ -396,12 +396,12 @@ const ifTest = section('$if', 'Conditional rendering (prop + node level)', [
 const eachTest = section('$each', 'Iterate a list', [
   {
     type: 'we-text',
-    props: { color: 'textFaint' },
+    props: { color: 'text-faint' },
     children: ['Rendering testStore.fruits'],
   },
   {
     type: 'we-text',
-    props: { color: 'textMuted' },
+    props: { color: 'text-muted' },
     children: ['Expect 4 items'],
   },
   {
@@ -414,11 +414,11 @@ const eachTest = section('$each', 'Iterate a list', [
         children: [
           {
             type: 'Row',
-            props: { gap: '200', ay: 'center', p: '200', bg: 'surfaceSunken', r: '300' },
+            props: { gap: '200', ay: 'center', p: '200', bg: 'surface-sunken', r: '300' },
             children: [
               { type: 'we-text', children: ['$item.emoji'] },
               { type: 'we-text', children: ['$item.name'] },
-              { type: 'we-text', props: { color: 'textFaint' }, children: ['$item.color'] },
+              { type: 'we-text', props: { color: 'text-faint' }, children: ['$item.color'] },
             ],
           },
         ],
@@ -431,21 +431,21 @@ const eachTest = section('$each', 'Iterate a list', [
 const eachEmptyTest = section('$each (empty)', 'Iterate an empty list — should render nothing', [
   {
     type: 'we-text',
-    props: { color: 'textFaint' },
+    props: { color: 'text-faint' },
     children: ['Rendering testStore.emptyList — no items should appear below:'],
   },
   {
     type: 'Column',
-    props: { gap: '200', p: '200', bg: 'surfaceSunken', r: '300' },
+    props: { gap: '200', p: '200', bg: 'surface-sunken', r: '300' },
     children: [
       {
         type: '$each',
         props: { items: { $store: 'testStore.emptyList' } },
-        children: [{ type: 'we-text', props: { color: 'dangerText' }, children: ['BUG: This should not render!'] }],
+        children: [{ type: 'we-text', props: { color: 'danger-text' }, children: ['BUG: This should not render!'] }],
       },
       {
         type: 'we-text',
-        props: { color: 'textFaint' },
+        props: { color: 'text-faint' },
         children: ['(If nothing else appears above this line, the test passes)'],
       },
     ],
@@ -455,12 +455,12 @@ const eachEmptyTest = section('$each (empty)', 'Iterate an empty list — should
 const nestedEachTest = section('Nested $each', 'Iterate nested lists (groups → items)', [
   {
     type: 'we-text',
-    props: { color: 'textFaint' },
+    props: { color: 'text-faint' },
     children: ['Rendering testStore.groups'],
   },
   {
     type: 'we-text',
-    props: { color: 'textMuted' },
+    props: { color: 'text-muted' },
     children: ['Expect 2 groups with 2 items each'],
   },
   {
@@ -473,9 +473,9 @@ const nestedEachTest = section('Nested $each', 'Iterate nested lists (groups →
         children: [
           {
             type: 'Column',
-            props: { gap: '200', p: '300', bg: 'surfaceSunken', r: '300' },
+            props: { gap: '200', p: '300', bg: 'surface-sunken', r: '300' },
             children: [
-              { type: 'we-text', props: { color: 'textMuted' }, children: ['$group.name'] },
+              { type: 'we-text', props: { color: 'text-muted' }, children: ['$group.name'] },
               {
                 type: '$each',
                 props: { items: '$group.items', as: 'sub' },
@@ -484,7 +484,7 @@ const nestedEachTest = section('Nested $each', 'Iterate nested lists (groups →
                     type: 'Row',
                     props: { gap: '200', pl: '300' },
                     children: [
-                      { type: 'we-text', props: { color: 'textMuted' }, children: ['•'] },
+                      { type: 'we-text', props: { color: 'text-muted' }, children: ['•'] },
                       { type: 'we-text', children: ['$sub.label'] },
                     ],
                   },
@@ -503,10 +503,10 @@ const nestedEachTest = section('Nested $each', 'Iterate nested lists (groups →
 // ---------------------------------------------------------------------------
 
 const mapTest = section('$map', 'Transform list items via select', [
-  { type: 'we-text', props: { color: 'textFaint' }, children: ['$map remaps {key,value} → {label,detail}'] },
+  { type: 'we-text', props: { color: 'text-faint' }, children: ['$map remaps {key,value} → {label,detail}'] },
   {
     type: 'we-text',
-    props: { color: 'textMuted' },
+    props: { color: 'text-muted' },
     children: ['Expect 3 rows: Language (TypeScript), Framework (SolidJS), Version (2.0)'],
   },
   {
@@ -524,9 +524,9 @@ const mapTest = section('$map', 'Transform list items via select', [
         children: [
           {
             type: 'Row',
-            props: { gap: '200', p: '200', bg: 'surfaceSunken', r: '300' },
+            props: { gap: '200', p: '200', bg: 'surface-sunken', r: '300' },
             children: [
-              { type: 'we-text', props: { color: 'textMuted' }, children: ['$row.label'] },
+              { type: 'we-text', props: { color: 'text-muted' }, children: ['$row.label'] },
               { type: 'we-text', children: ['$row.detail'] },
             ],
           },
@@ -539,19 +539,19 @@ const mapTest = section('$map', 'Transform list items via select', [
 const pickTest = section('$pick', 'Extract property subset from object', [
   {
     type: 'we-text',
-    props: { color: 'textFaint' },
+    props: { color: 'text-faint' },
     children: ['$pick extracts { name, status } from fullObject { name, status, category, secret }'],
   },
   {
     type: 'we-text',
-    props: { color: 'textMuted' },
+    props: { color: 'text-muted' },
     children: ['Expect "Picked: Test Item (active)" below, and no errors about missing properties'],
   },
   {
     type: 'Row',
-    props: { gap: '200', p: '200', bg: 'surfaceSunken', r: '300' },
+    props: { gap: '200', p: '200', bg: 'surface-sunken', r: '300' },
     children: [
-      { type: 'we-text', props: { color: 'textFaint' }, children: ['Picked:'] },
+      { type: 'we-text', props: { color: 'text-faint' }, children: ['Picked:'] },
       {
         type: 'we-text',
         children: [
@@ -565,7 +565,7 @@ const pickTest = section('$pick', 'Extract property subset from object', [
 const pickChainingTest = section('$pick + $concat', 'Chain $pick output into $concat', [
   {
     type: 'we-text',
-    props: { color: 'textFaint' },
+    props: { color: 'text-faint' },
     children: ['$concat reading from $pick-extracted properties:'],
   },
   check(
@@ -588,7 +588,7 @@ const pickChainingTest = section('$pick + $concat', 'Chain $pick output into $co
 const queryOneShotTest = section('$query (one-shot)', 'FindAll $query without subscription', [
   {
     type: 'we-text',
-    props: { color: 'textFaint' },
+    props: { color: 'text-faint' },
     children: ['$query with subscribe: false — fetches once, no live updates:'],
   },
   {
@@ -608,11 +608,11 @@ const queryOneShotTest = section('$query (one-shot)', 'FindAll $query without su
             children: [
               {
                 type: 'Row',
-                props: { gap: '200', p: '200', bg: 'surfaceSunken', r: '300' },
+                props: { gap: '200', p: '200', bg: 'surface-sunken', r: '300' },
                 children: [
-                  { type: 'we-icon', props: { name: 'check', color: 'successText', size: 'xs' } },
+                  { type: 'we-icon', props: { name: 'check', color: 'success-text', size: 'xs' } },
                   { type: 'we-text', children: ['$q.name'] },
-                  { type: 'we-text', props: { color: 'textFaint' }, children: ['(one-shot)'] },
+                  { type: 'we-text', props: { color: 'text-faint' }, children: ['(one-shot)'] },
                 ],
               },
             ],
@@ -621,12 +621,12 @@ const queryOneShotTest = section('$query (one-shot)', 'FindAll $query without su
       },
       else: {
         type: 'Row',
-        props: { gap: '200', p: '200', bg: 'warningSurface', r: '300', ay: 'center' },
+        props: { gap: '200', p: '200', bg: 'warning-surface', r: '300', ay: 'center' },
         children: [
-          { type: 'we-icon', props: { name: 'clock', color: 'warningText' } },
+          { type: 'we-icon', props: { name: 'clock', color: 'warning-text' } },
           {
             type: 'we-text',
-            props: { color: 'warningText' },
+            props: { color: 'warning-text' },
             children: ['Waiting for AD4M perspective...'],
           },
         ],
@@ -638,12 +638,12 @@ const queryOneShotTest = section('$query (one-shot)', 'FindAll $query without su
 const querySubscriptionTest = section('$query (subscription)', 'FindAll $query with subscription', [
   {
     type: 'we-text',
-    props: { color: 'textFaint' },
+    props: { color: 'text-faint' },
     children: ['Subscribes to TestItem models in we-test perspective (requires AD4M):'],
   },
   {
     type: 'we-text',
-    props: { color: 'textMuted' },
+    props: { color: 'text-muted' },
     children: ['Expect 3 seed rows + any dynamically created items. Click "Add item" and verify it appears.'],
   },
   {
@@ -665,7 +665,7 @@ const querySubscriptionTest = section('$query (subscription)', 'FindAll $query w
               },
               {
                 type: 'we-text',
-                props: { color: 'textFaint' },
+                props: { color: 'text-faint' },
                 children: ['New item should appear below if subscription is working'],
               },
             ],
@@ -679,11 +679,11 @@ const querySubscriptionTest = section('$query (subscription)', 'FindAll $query w
             children: [
               {
                 type: 'Row',
-                props: { gap: '200', p: '200', bg: 'surfaceSunken', r: '300', ay: 'center' },
+                props: { gap: '200', p: '200', bg: 'surface-sunken', r: '300', ay: 'center' },
                 children: [
-                  { type: 'we-icon', props: { name: 'check', color: 'successText', size: 'xs' } },
+                  { type: 'we-icon', props: { name: 'check', color: 'success-text', size: 'xs' } },
                   { type: 'we-text', props: { flex: '1' }, children: ['$q.name'] },
-                  { type: 'we-text', props: { color: 'textFaint' }, children: ['$q.status'] },
+                  { type: 'we-text', props: { color: 'text-faint' }, children: ['$q.status'] },
                   {
                     type: 'we-button',
                     props: {
@@ -691,7 +691,7 @@ const querySubscriptionTest = section('$query (subscription)', 'FindAll $query w
                       size: 'xs', // TODO: not having any effect
                       onClick: { $action: 'testStore.deleteTestItem', args: ['$q.id'] },
                     },
-                    children: [{ type: 'we-icon', props: { name: 'x', color: 'textMuted', size: 'xs' } }],
+                    children: [{ type: 'we-icon', props: { name: 'x', color: 'text-muted', size: 'xs' } }],
                   },
                 ],
               },
@@ -701,10 +701,10 @@ const querySubscriptionTest = section('$query (subscription)', 'FindAll $query w
       },
       else: {
         type: 'Row',
-        props: { gap: '200', p: '200', bg: 'warningSurface', r: '300', ay: 'center' },
+        props: { gap: '200', p: '200', bg: 'warning-surface', r: '300', ay: 'center' },
         children: [
-          { type: 'we-icon', props: { name: 'clock', color: 'warningText' } },
-          { type: 'we-text', props: { color: 'warningText' }, children: ['Waiting for AD4M perspective...'] },
+          { type: 'we-icon', props: { name: 'clock', color: 'warning-text' } },
+          { type: 'we-text', props: { color: 'warning-text' }, children: ['Waiting for AD4M perspective...'] },
         ],
       },
     },
@@ -714,7 +714,7 @@ const querySubscriptionTest = section('$query (subscription)', 'FindAll $query w
 const queryFilteringTest = section('$query (filtering)', 'Query with where, order, limit, offset', [
   {
     type: 'we-text',
-    props: { color: 'textFaint' },
+    props: { color: 'text-faint' },
     children: ['Toggle between query filter modes — each applies different $query params:'],
   },
   {
@@ -747,12 +747,12 @@ const queryFilteringTest = section('$query (filtering)', 'Query with where, orde
       },
       else: {
         type: 'Row',
-        props: { gap: '200', p: '200', bg: 'warningSurface', r: '300', ay: 'center' },
+        props: { gap: '200', p: '200', bg: 'warning-surface', r: '300', ay: 'center' },
         children: [
-          { type: 'we-icon', props: { name: 'clock', color: 'warningText' } },
+          { type: 'we-icon', props: { name: 'clock', color: 'warning-text' } },
           {
             type: 'we-text',
-            props: { color: 'warningText' },
+            props: { color: 'warning-text' },
             children: ['Waiting for AD4M perspective...'],
           },
         ],
@@ -778,8 +778,8 @@ const localStateBasicTest: SchemaNode = {
       type: 'Row',
       props: { gap: '200', ay: 'center', pb: '200' },
       children: [
-        { type: 'we-text', props: { fontWeight: '600', color: 'accentStrong' }, children: ['$localState'] },
-        { type: 'we-text', props: { color: 'textMuted' }, children: ['- Scoped ephemeral state'] },
+        { type: 'we-text', props: { fontWeight: '600', color: 'accent-strong' }, children: ['$localState'] },
+        { type: 'we-text', props: { color: 'text-muted' }, children: ['- Scoped ephemeral state'] },
       ],
     },
     // --- $local read + $setLocal write ---
@@ -796,7 +796,7 @@ const localStateBasicTest: SchemaNode = {
             onInput: { $setLocal: 'name', from: '$event.detail' },
           },
         },
-        { type: 'we-text', props: { color: 'textFaint' }, children: ['Echo:'] },
+        { type: 'we-text', props: { color: 'text-faint' }, children: ['Echo:'] },
         { type: 'we-text', props: { fontWeight: '600' }, children: [{ $local: 'name' }] },
       ],
     },
@@ -814,7 +814,7 @@ const localStateBasicTest: SchemaNode = {
           },
           children: ['Log name'],
         },
-        { type: 'we-text', props: { color: 'textFaint' }, children: ['testStore.typedText:'] },
+        { type: 'we-text', props: { color: 'text-faint' }, children: ['testStore.typedText:'] },
         { type: 'we-text', props: { fontWeight: '600' }, children: [{ $store: 'testStore.typedText' }] },
       ],
     },
@@ -832,8 +832,8 @@ const localStateBasicTest: SchemaNode = {
           type: '$if',
           props: {
             condition: { $local: 'enabled' },
-            then: { type: 'we-text', props: { color: 'successText', fontWeight: '600' }, children: ['Enabled!'] },
-            else: { type: 'we-text', props: { color: 'textFaint' }, children: ['Disabled'] },
+            then: { type: 'we-text', props: { color: 'success-text', fontWeight: '600' }, children: ['Enabled!'] },
+            else: { type: 'we-text', props: { color: 'text-faint' }, children: ['Disabled'] },
           },
         },
       ],
@@ -858,7 +858,7 @@ const localStateBasicTest: SchemaNode = {
         },
         {
           type: 'we-text',
-          props: { color: 'textFaint' },
+          props: { color: 'text-faint' },
           children: ['(disabled when name is empty, label shows $local value)'],
         },
       ],
@@ -894,8 +894,8 @@ const formValidationBasicTest: SchemaNode = {
       type: 'Row',
       props: { gap: '200', ay: 'center', pb: '200' },
       children: [
-        { type: 'we-text', props: { fontWeight: '600', color: 'accentStrong' }, children: ['$error / $valid'] },
-        { type: 'we-text', props: { color: 'textMuted' }, children: ['- Field validation with touch gating'] },
+        { type: 'we-text', props: { fontWeight: '600', color: 'accent-strong' }, children: ['$error / $valid'] },
+        { type: 'we-text', props: { color: 'text-muted' }, children: ['- Field validation with touch gating'] },
       ],
     },
     // --- Username field with $error ---
@@ -944,13 +944,13 @@ const formValidationBasicTest: SchemaNode = {
           type: 'Row',
           props: { gap: '200', ay: 'center' },
           children: [
-            { type: 'we-text', props: { color: 'textFaint' }, children: ['username $valid:'] },
+            { type: 'we-text', props: { color: 'text-faint' }, children: ['username $valid:'] },
             {
               type: '$if',
               props: {
                 condition: { $valid: 'username' },
-                then: { type: 'we-icon', props: { name: 'check-circle', color: 'successText', size: 'xs' } },
-                else: { type: 'we-icon', props: { name: 'x-circle', color: 'dangerText', size: 'xs' } },
+                then: { type: 'we-icon', props: { name: 'check-circle', color: 'success-text', size: 'xs' } },
+                else: { type: 'we-icon', props: { name: 'x-circle', color: 'danger-text', size: 'xs' } },
               },
             },
           ],
@@ -959,13 +959,13 @@ const formValidationBasicTest: SchemaNode = {
           type: 'Row',
           props: { gap: '200', ay: 'center' },
           children: [
-            { type: 'we-text', props: { color: 'textFaint' }, children: ['email $valid:'] },
+            { type: 'we-text', props: { color: 'text-faint' }, children: ['email $valid:'] },
             {
               type: '$if',
               props: {
                 condition: { $valid: 'email' },
-                then: { type: 'we-icon', props: { name: 'check-circle', color: 'successText', size: 'xs' } },
-                else: { type: 'we-icon', props: { name: 'x-circle', color: 'dangerText', size: 'xs' } },
+                then: { type: 'we-icon', props: { name: 'check-circle', color: 'success-text', size: 'xs' } },
+                else: { type: 'we-icon', props: { name: 'x-circle', color: 'danger-text', size: 'xs' } },
               },
             },
           ],
@@ -982,13 +982,13 @@ const formValidationBasicTest: SchemaNode = {
           type: 'Row',
           props: { gap: '200', ay: 'center' },
           children: [
-            { type: 'we-text', props: { color: 'textFaint' }, children: ['username $touched:'] },
+            { type: 'we-text', props: { color: 'text-faint' }, children: ['username $touched:'] },
             {
               type: '$if',
               props: {
                 condition: { $touched: 'username' },
-                then: { type: 'we-text', props: { color: 'successText', fontWeight: '600' }, children: ['true'] },
-                else: { type: 'we-text', props: { color: 'textFaint' }, children: ['false'] },
+                then: { type: 'we-text', props: { color: 'success-text', fontWeight: '600' }, children: ['true'] },
+                else: { type: 'we-text', props: { color: 'text-faint' }, children: ['false'] },
               },
             },
           ],
@@ -997,13 +997,13 @@ const formValidationBasicTest: SchemaNode = {
           type: 'Row',
           props: { gap: '200', ay: 'center' },
           children: [
-            { type: 'we-text', props: { color: 'textFaint' }, children: ['email $touched:'] },
+            { type: 'we-text', props: { color: 'text-faint' }, children: ['email $touched:'] },
             {
               type: '$if',
               props: {
                 condition: { $touched: 'email' },
-                then: { type: 'we-text', props: { color: 'successText', fontWeight: '600' }, children: ['true'] },
-                else: { type: 'we-text', props: { color: 'textFaint' }, children: ['false'] },
+                then: { type: 'we-text', props: { color: 'success-text', fontWeight: '600' }, children: ['true'] },
+                else: { type: 'we-text', props: { color: 'text-faint' }, children: ['false'] },
               },
             },
           ],
@@ -1032,8 +1032,8 @@ const formValidationBasicTest: SchemaNode = {
           type: '$if',
           props: {
             condition: { $formValid: '$scope' },
-            then: { type: 'we-text', props: { color: 'successText' }, children: ['Form valid ✓'] },
-            else: { type: 'we-text', props: { color: 'dangerText' }, children: ['Form invalid ✗'] },
+            then: { type: 'we-text', props: { color: 'success-text' }, children: ['Form valid ✓'] },
+            else: { type: 'we-text', props: { color: 'danger-text' }, children: ['Form invalid ✗'] },
           },
         },
       ],
@@ -1054,8 +1054,8 @@ const formValidationActionsTest: SchemaNode = {
       type: 'Row',
       props: { gap: '200', ay: 'center', pb: '200' },
       children: [
-        { type: 'we-text', props: { fontWeight: '600', color: 'accentStrong' }, children: ['$touch / $resetLocal'] },
-        { type: 'we-text', props: { color: 'textMuted' }, children: ['- Touch all, reset, and handler arrays'] },
+        { type: 'we-text', props: { fontWeight: '600', color: 'accent-strong' }, children: ['$touch / $resetLocal'] },
+        { type: 'we-text', props: { color: 'text-muted' }, children: ['- Touch all, reset, and handler arrays'] },
       ],
     },
     // --- Two fields ---
@@ -1129,7 +1129,7 @@ const formValidationActionsTest: SchemaNode = {
           },
           children: ['Submit (touch + guard)'],
         },
-        { type: 'we-text', props: { color: 'textFaint' }, children: ['typedText:'] },
+        { type: 'we-text', props: { color: 'text-faint' }, children: ['typedText:'] },
         { type: 'we-text', props: { fontWeight: '600' }, children: [{ $store: 'testStore.typedText' }] },
       ],
     },
@@ -1189,8 +1189,8 @@ const formValidationMatchTest: SchemaNode = {
       type: 'Row',
       props: { gap: '200', ay: 'center', pb: '200' },
       children: [
-        { type: 'we-text', props: { fontWeight: '600', color: 'accentStrong' }, children: ['match rule'] },
-        { type: 'we-text', props: { color: 'textMuted' }, children: ['- Cross-field password confirmation'] },
+        { type: 'we-text', props: { fontWeight: '600', color: 'accent-strong' }, children: ['match rule'] },
+        { type: 'we-text', props: { color: 'text-muted' }, children: ['- Cross-field password confirmation'] },
       ],
     },
     {
@@ -1252,8 +1252,8 @@ const formValidationMatchTest: SchemaNode = {
           type: '$if',
           props: {
             condition: { $formValid: '$scope' },
-            then: { type: 'we-text', props: { color: 'successText' }, children: ['Passwords match ✓'] },
-            else: { type: 'we-text', props: { color: 'dangerText' }, children: ['Form invalid ✗'] },
+            then: { type: 'we-text', props: { color: 'success-text' }, children: ['Passwords match ✓'] },
+            else: { type: 'we-text', props: { color: 'danger-text' }, children: ['Form invalid ✗'] },
           },
         },
       ],
@@ -1281,10 +1281,10 @@ const formValidationStylingTest: SchemaNode = {
       type: 'Row',
       props: { gap: '200', ay: 'center', pb: '200' },
       children: [
-        { type: 'we-text', props: { fontWeight: '600', color: 'accentStrong' }, children: ['Conditional styling'] },
+        { type: 'we-text', props: { fontWeight: '600', color: 'accent-strong' }, children: ['Conditional styling'] },
         {
           type: 'we-text',
-          props: { color: 'textMuted' },
+          props: { color: 'text-muted' },
           children: ['- min/max rules + $touched + $valid composition'],
         },
       ],
@@ -1298,7 +1298,7 @@ const formValidationStylingTest: SchemaNode = {
         bg: {
           $if: {
             condition: { $touched: 'age' },
-            then: { $if: { condition: { $valid: 'age' }, then: 'successSurface', else: 'dangerSurface' } },
+            then: { $if: { condition: { $valid: 'age' }, then: 'success-surface', else: 'danger-surface' } },
             else: 'page',
           },
         },
@@ -1332,7 +1332,7 @@ const formValidationStylingTest: SchemaNode = {
 const childrenTokenTest = section('Children tokens', 'Operator tokens resolved directly in children arrays', [
   {
     type: 'we-text',
-    props: { color: 'textFaint' },
+    props: { color: 'text-faint' },
     children: ['Tests the renderChildren token resolution added for $store/$concat in children:'],
   },
   check(
@@ -1350,7 +1350,7 @@ const childrenTokenTest = section('Children tokens', 'Operator tokens resolved d
   // Context reference in $each children
   {
     type: 'we-text',
-    props: { color: 'textFaint', pt: '100' },
+    props: { color: 'text-faint', pt: '100' },
     children: ['$item references in children via $each. Expect list of fruits below:'],
   },
   {
@@ -1360,7 +1360,7 @@ const childrenTokenTest = section('Children tokens', 'Operator tokens resolved d
       {
         type: '$each',
         props: { items: { $store: 'testStore.fruits' } },
-        children: [{ type: 'we-text', props: { p: '100', bg: 'surfaceSunken', r: '200' }, children: ['$item.name'] }],
+        children: [{ type: 'we-text', props: { p: '100', bg: 'surface-sunken', r: '200' }, children: ['$item.name'] }],
       },
     ],
   },
@@ -1369,7 +1369,7 @@ const childrenTokenTest = section('Children tokens', 'Operator tokens resolved d
 const wcReactivePropsTest = section('WC reactive props', 'Web component props update reactively', [
   {
     type: 'we-text',
-    props: { color: 'textFaint' },
+    props: { color: 'text-faint' },
     children: ['Web component with reactive $store prop — color should change on toggle:'],
   },
   interactiveLabel('Toggle to switch text color between success-600 and danger-600'),
@@ -1383,7 +1383,7 @@ const wcReactivePropsTest = section('WC reactive props', 'Web component props up
     props: {
       fontWeight: '600',
       fontSize: '500',
-      color: { $if: { condition: { $store: 'testStore.toggleValue' }, then: 'successText', else: 'dangerText' } },
+      color: { $if: { condition: { $store: 'testStore.toggleValue' }, then: 'success-text', else: 'danger-text' } },
     },
     children: [
       {
@@ -1397,7 +1397,7 @@ const wcReactivePropsTest = section('WC reactive props', 'Web component props up
   },
   {
     type: 'we-text',
-    props: { color: 'textFaint' },
+    props: { color: 'text-faint' },
     children: ['Web component with reactive $store prop — button variant reacts to toggle:'],
   },
   {
@@ -1417,7 +1417,7 @@ const wcReactivePropsTest = section('WC reactive props', 'Web component props up
 const tokenCompositionTest = section('Token composition', 'Deeply nested token chains', [
   {
     type: 'we-text',
-    props: { color: 'textFaint' },
+    props: { color: 'text-faint' },
     children: ['Tests that tokens compose correctly when nested 3-4 levels deep:'],
   },
   // $if condition is $and of $eq of $store values, then is $concat of $store results
@@ -1466,13 +1466,13 @@ const tokenCompositionTest = section('Token composition', 'Deeply nested token c
 const fragmentTest = section('Fragment (no type)', 'Node without type renders as fragment', [
   {
     type: 'we-text',
-    props: { color: 'textFaint' },
+    props: { color: 'text-faint' },
     children: ['A node with no type renders its children inline (fragment). Expect two texts below:'],
   },
   {
     children: [
-      { type: 'we-text', props: { color: 'accentStrong' }, children: ['Fragment child 1 (Primary)'] },
-      { type: 'we-text', props: { color: 'successText' }, children: ['Fragment child 2 (Green)'] },
+      { type: 'we-text', props: { color: 'accent-strong' }, children: ['Fragment child 1 (Primary)'] },
+      { type: 'we-text', props: { color: 'success-text' }, children: ['Fragment child 2 (Green)'] },
     ],
   } as SchemaNode,
 ]);
@@ -1480,7 +1480,7 @@ const fragmentTest = section('Fragment (no type)', 'Node without type renders as
 const fragmentThemeTest = section('Fragment + theme', 'Themeable fragment wraps children in theme div', [
   {
     type: 'we-text',
-    props: { color: 'textFaint' },
+    props: { color: 'text-faint' },
     children: ['A fragment with theme overrides wraps children in a themed div:'],
   },
   {
@@ -1497,7 +1497,7 @@ const fragmentThemeTest = section('Fragment + theme', 'Themeable fragment wraps 
 
 const tokenThemeTest: SchemaNode = {
   type: 'Column',
-  props: { gap: '300', p: '400', r: '400', bg: 'surfaceSunken', border: '1px solid var(--we-role-accent-muted)' },
+  props: { gap: '300', p: '400', r: '400', bg: 'surface-sunken', border: '1px solid var(--we-role-accent-muted)' },
   // Apply theme overrides to this section
   theme: { primaryHue: 320, saturation: '90%' },
   children: [
@@ -1506,13 +1506,13 @@ const tokenThemeTest: SchemaNode = {
       props: { gap: '200', ay: 'center' },
       children: [
         { type: 'we-text', props: { color: 'accent', fontWeight: '600' }, children: ['Theme (parametric)'] },
-        { type: 'we-text', props: { color: 'textMuted' }, children: ['—'] },
-        { type: 'we-text', props: { color: 'textMuted' }, children: ['Scoped CSS variable overrides'] },
+        { type: 'we-text', props: { color: 'text-muted' }, children: ['—'] },
+        { type: 'we-text', props: { color: 'text-muted' }, children: ['Scoped CSS variable overrides'] },
       ],
     },
     {
       type: 'we-text',
-      props: { color: 'textFaint' },
+      props: { color: 'text-faint' },
       children: ['This section has primaryHue: 320 (pink) — the "primary" colors below should appear pink:'],
     },
     {
@@ -1528,7 +1528,7 @@ const tokenThemeTest: SchemaNode = {
 
 const namedThemeTest: SchemaNode = {
   type: 'Column',
-  props: { gap: '300', p: '400', r: '400', bg: 'surfaceSunken', border: '1px solid var(--we-role-accent-muted)' },
+  props: { gap: '300', p: '400', r: '400', bg: 'surface-sunken', border: '1px solid var(--we-role-accent-muted)' },
   theme: { themeName: 'cyberpunk' },
   children: [
     {
@@ -1536,13 +1536,13 @@ const namedThemeTest: SchemaNode = {
       props: { gap: '200', ay: 'center' },
       children: [
         { type: 'we-text', props: { color: 'accent', fontWeight: '600' }, children: ['Theme (named)'] },
-        { type: 'we-text', props: { color: 'textMuted' }, children: ['—'] },
-        { type: 'we-text', props: { color: 'textMuted' }, children: ['Named theme via data-we-theme attribute'] },
+        { type: 'we-text', props: { color: 'text-muted' }, children: ['—'] },
+        { type: 'we-text', props: { color: 'text-muted' }, children: ['Named theme via data-we-theme attribute'] },
       ],
     },
     {
       type: 'we-text',
-      props: { color: 'textFaint' },
+      props: { color: 'text-faint' },
       children: ['This section has themeName: "cyberpunk" — sets data-we-theme="cyberpunk" on the wrapper:'],
     },
     {
@@ -1648,12 +1648,12 @@ export const schemaTokensTemplate: TemplateSchema = {
       children: [
         {
           type: 'we-text',
-          props: { fontSize: '700', fontWeight: '700', color: 'accentStrong' },
+          props: { fontSize: '700', fontWeight: '700', color: 'accent-strong' },
           children: ['Token Integration Tests'],
         },
         {
           type: 'we-text',
-          props: { color: 'textMuted' },
+          props: { color: 'text-muted' },
           children: ['Visual test suite — each section exercises a specific token'],
         },
         { type: 'Row', props: { gap: '200', wrap: true, py: '200' }, children: groups.map(navTab) },

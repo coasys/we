@@ -47,7 +47,7 @@ export function agentByline(opts: AgentBylineOptions): SchemaNode {
   };
   const time: SchemaNode[] =
     opts.timestamp !== undefined
-      ? [{ type: 'we-timestamp', props: { value: opts.timestamp, relative: true, color: 'textMuted' } }]
+      ? [{ type: 'we-timestamp', props: { value: opts.timestamp, relative: true, color: 'text-muted' } }]
       : [];
 
   return {

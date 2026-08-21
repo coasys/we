@@ -211,7 +211,7 @@ const modelForm: SchemaNode = {
 
 const modelCard: SchemaNode = {
   type: 'Column',
-  props: { gap: '200', bg: 'surfaceSunken', r: '300', px: '300', py: '300' },
+  props: { gap: '200', bg: 'surface-sunken', r: '300', px: '300', py: '300' },
   children: [
     {
       type: 'Row',
@@ -291,10 +291,10 @@ const modelCard: SchemaNode = {
       type: 'Row',
       props: { gap: '200', ay: 'center', wrap: true },
       children: [
-        { type: 'we-text', props: { variant: 'footnote', color: 'textMuted' }, children: ['$model.kindLabel'] },
-        { type: 'we-text', props: { variant: 'footnote', color: 'textMuted' }, children: ['·'] },
-        { type: 'we-text', props: { variant: 'footnote', color: 'textMuted' }, children: ['$model.sourceLabel'] },
-        { type: 'we-text', props: { variant: 'footnote', color: 'textMuted' }, children: ['·'] },
+        { type: 'we-text', props: { variant: 'footnote', color: 'text-muted' }, children: ['$model.kindLabel'] },
+        { type: 'we-text', props: { variant: 'footnote', color: 'text-muted' }, children: ['·'] },
+        { type: 'we-text', props: { variant: 'footnote', color: 'text-muted' }, children: ['$model.sourceLabel'] },
+        { type: 'we-text', props: { variant: 'footnote', color: 'text-muted' }, children: ['·'] },
         { type: 'we-text', props: { variant: 'footnote' }, children: ['$model.detail'] },
       ],
     },
@@ -305,7 +305,7 @@ const modelCard: SchemaNode = {
         condition: '$model.statusText',
         then: {
           type: 'we-text',
-          props: { variant: 'footnote', color: 'textMuted' },
+          props: { variant: 'footnote', color: 'text-muted' },
           children: ['$model.statusText'],
         },
       },
@@ -315,7 +315,7 @@ const modelCard: SchemaNode = {
 
 const taskCard: SchemaNode = {
   type: 'Column',
-  props: { gap: '100', bg: 'surfaceSunken', r: '300', px: '300', py: '200' },
+  props: { gap: '100', bg: 'surface-sunken', r: '300', px: '300', py: '200' },
   children: [
     {
       type: 'Row',
@@ -347,7 +347,7 @@ const taskCard: SchemaNode = {
       children: [
         {
           type: 'we-text',
-          props: { variant: 'footnote', color: 'textMuted', styles: { 'white-space': 'pre-wrap' } },
+          props: { variant: 'footnote', color: 'text-muted', styles: { 'white-space': 'pre-wrap' } },
           children: ['$task.systemPrompt'],
         },
       ],

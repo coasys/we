@@ -179,7 +179,7 @@ const starterTemplate: SchemaNode = {
   children: [
     {
       type: 'Column',
-      props: { p: '600', gap: '300', bg: 'accentMuted' },
+      props: { p: '600', gap: '300', bg: 'accent-muted' },
       children: [{ type: 'we-text', props: { fontSize: '700', fontWeight: 'bold' }, children: ['Welcome'] }],
     },
     {
@@ -188,7 +188,7 @@ const starterTemplate: SchemaNode = {
       children: [
         {
           type: 'we-text',
-          props: { fontSize: '400', color: 'textFaint' },
+          props: { fontSize: '400', color: 'text-faint' },
           children: ['Chat with AI to build your interface.'],
         },
       ],

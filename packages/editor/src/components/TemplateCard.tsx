@@ -101,11 +101,11 @@ export function TemplateCard(props: Props) {
             <Show when={author()}>
               <Row ay="center" gap="200">
                 <we-avatar size="xs" image={author()?.avatar} initials={authorName()} />
-                <we-text fontSize="300" color="textMuted" truncate>
+                <we-text fontSize="300" color="text-muted" truncate>
                   {authorName()}
                 </we-text>
                 <Show when={props.template.createdAt}>
-                  <we-timestamp value={props.template.createdAt} relative color="textFaint" fontSize="300" />
+                  <we-timestamp value={props.template.createdAt} relative color="text-faint" fontSize="300" />
                 </Show>
               </Row>
             </Show>
@@ -168,7 +168,7 @@ export function TemplateCard(props: Props) {
 
       {/* Description */}
       <Show when={props.template.description}>
-        <we-text fontSize="300" color="textMuted">
+        <we-text fontSize="300" color="text-muted">
           {props.template.description}
         </we-text>
       </Show>
@@ -179,7 +179,7 @@ export function TemplateCard(props: Props) {
           v{props.template.version}
         </we-badge>
         <Show when={props.template.slug}>
-          <we-text fontSize="300" color="textFaint" truncate>
+          <we-text fontSize="300" color="text-faint" truncate>
             {props.template.slug}
           </we-text>
         </Show>
@@ -213,12 +213,12 @@ export function TemplateCard(props: Props) {
         <Row ay="center" gap="200" flex="1" minWidth="0">
           <Show when={author()}>
             <we-avatar size="xs" image={author()?.avatar} initials={authorName()} />
-            <we-text fontSize="300" color="textMuted" truncate>
+            <we-text fontSize="300" color="text-muted" truncate>
               {authorName()}
             </we-text>
           </Show>
           <Show when={props.template.createdAt}>
-            <we-timestamp value={props.template.createdAt} relative color="textFaint" fontSize="300" />
+            <we-timestamp value={props.template.createdAt} relative color="text-faint" fontSize="300" />
           </Show>
         </Row>
         <Show when={mode() === 'marketplace'}>

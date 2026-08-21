@@ -111,7 +111,7 @@ The `scripts/generate-css.ts` script runs as a post-build hook (via tsup). It:
 ## Roles vs scale positions
 
 `color.ts` holds the **scale** — `neutral-0` … `neutral-1000`, one ramp per hue. `role.ts` holds the
-**vocabulary**: `surface`, `textMuted`, `border`, `accentStrong`, `dangerText`. A scale position says
+**vocabulary**: `surface`, `text-muted`, `border`, `accent-strong`, `danger-text`. A scale position says
 which grey; a role says what the colour is *for*.
 
 **Anything with a meaning takes a role.** Every `bg`, `color` and border colour in a template, in the

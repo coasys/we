@@ -62,7 +62,7 @@ const joinPrompt: SchemaNode = {
       children: [
         {
           type: 'Row',
-          props: { ay: 'center', gap: '200', px: '200', py: '100', bg: 'surfaceSunken', r: PROMPT_RADIUS },
+          props: { ay: 'center', gap: '200', px: '200', py: '100', bg: 'surface-sunken', r: PROMPT_RADIUS },
           children: [
             {
               type: 'we-text',
@@ -160,7 +160,7 @@ export const callControl: SchemaNode = {
                   props: {
                     name: 'text-aa',
                     color: {
-                      $if: { condition: { $store: 'modules.transcribe.listening' }, then: 'dangerText', else: '' },
+                      $if: { condition: { $store: 'modules.transcribe.listening' }, then: 'danger-text', else: '' },
                     },
                   },
                 },

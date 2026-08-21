@@ -84,7 +84,7 @@ export function CodeViewer(props: CodeViewerProps) {
           }
         >
           <Show when={error()}>
-            <we-text fontSize="200" color="dangerText">
+            <we-text fontSize="200" color="danger-text">
               {error()}
             </we-text>
           </Show>

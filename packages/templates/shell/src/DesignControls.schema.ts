@@ -75,7 +75,7 @@ function section(label: string, rows: SchemaProp, body: SchemaNode): SchemaNode 
         children: [
           {
             type: 'we-text',
-            props: { variant: 'footnote', color: 'textFaint', px: '200', pt: '200' },
+            props: { variant: 'footnote', color: 'text-faint', px: '200', pt: '200' },
             children: [label],
           },
           body,
@@ -101,7 +101,7 @@ function destinationToggle(): SchemaNode {
     type: 'Column',
     props: { gap: '100' },
     children: [
-      { type: 'we-text', props: { variant: 'footnote', color: 'textMuted' }, children: ['Save to'] },
+      { type: 'we-text', props: { variant: 'footnote', color: 'text-muted' }, children: ['Save to'] },
       {
         type: 'Row',
         props: { gap: '200' },
@@ -460,7 +460,7 @@ export function themePicker(): SchemaNode {
                     { type: 'we-text', props: { variant: 'label' }, children: ['Apply across the whole app'] },
                     {
                       type: 'we-text',
-                      props: { variant: 'footnote', color: 'textMuted' },
+                      props: { variant: 'footnote', color: 'text-muted' },
                       children: ["Off, it themes only this space's content"],
                     },
                   ],

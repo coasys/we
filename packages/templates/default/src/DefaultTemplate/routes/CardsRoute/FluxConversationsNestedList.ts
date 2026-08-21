@@ -102,7 +102,7 @@ const subgroupMessagesList: SchemaNode = {
           children: [
             {
               type: 'Column',
-              props: { gap: '200', p: '400', bg: 'surfaceSunken', r: '300', border: '1px solid border' },
+              props: { gap: '200', p: '400', bg: 'surface-sunken', r: '300', border: '1px solid border' },
               children: [
                 agentByline({ did: '$msg.author', timestamp: '$msg.timestamp' }),
                 { type: 'we-html', props: { color: 'text', content: '$msg.body' } },
@@ -114,7 +114,7 @@ const subgroupMessagesList: SchemaNode = {
           type: '$if',
           props: {
             condition: { $eq: [{ $count: { items: { $local: 'subgroupMessages' } } }, 0] },
-            then: { type: 'we-text', props: { color: 'textFaint' }, children: ['No messages in this subgroup.'] },
+            then: { type: 'we-text', props: { color: 'text-faint' }, children: ['No messages in this subgroup.'] },
           },
         },
       ],
@@ -125,7 +125,7 @@ const subgroupMessagesList: SchemaNode = {
 const subgroupCard: SchemaNode = withLocalState(
   {
     type: 'Column',
-    props: { gap: '300', p: '400', bg: 'surfaceSunken', r: '300', border: '1px solid border' },
+    props: { gap: '300', p: '400', bg: 'surface-sunken', r: '300', border: '1px solid border' },
     children: [
       {
         type: 'Row',
@@ -139,7 +139,7 @@ const subgroupCard: SchemaNode = withLocalState(
         type: '$if',
         props: {
           condition: '$subgroup.summary',
-          then: { type: 'we-text', props: { color: 'textMuted' }, children: ['$subgroup.summary'] },
+          then: { type: 'we-text', props: { color: 'text-muted' }, children: ['$subgroup.summary'] },
         },
       },
       peopleRow({ items: '$subgroup.participants', dids: true, noun: 'Participant' }),
@@ -252,7 +252,7 @@ export const fluxConversationsNestedList: SchemaNode = {
                   condition: '$conversation.summary',
                   then: {
                     type: 'we-text',
-                    props: { color: 'textMuted' },
+                    props: { color: 'text-muted' },
                     children: ['$conversation.summary'],
                   },
                 },

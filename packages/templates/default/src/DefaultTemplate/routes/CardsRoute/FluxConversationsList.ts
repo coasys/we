@@ -56,7 +56,7 @@ export const fluxConversationsList: SchemaNode = {
               type: '$if',
               props: {
                 condition: '$conversation.summary',
-                then: { type: 'we-text', props: { color: 'textMuted' }, children: ['$conversation.summary'] },
+                then: { type: 'we-text', props: { color: 'text-muted' }, children: ['$conversation.summary'] },
               },
             },
             peopleRow({ items: '$conversation.participants', dids: true, noun: 'Participant' }),

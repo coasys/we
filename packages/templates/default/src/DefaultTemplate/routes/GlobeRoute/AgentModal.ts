@@ -47,7 +47,7 @@ export const agentModal = {
                     },
                     else: {
                       type: 'we-icon',
-                      props: { name: 'user-circle', size: 'xl', color: 'textFaint' },
+                      props: { name: 'user-circle', size: 'xl', color: 'text-faint' },
                     },
                   },
                 },
@@ -62,7 +62,7 @@ export const agentModal = {
                     },
                     {
                       type: 'we-text',
-                      props: { variant: 'footnote', color: 'textFaint' },
+                      props: { variant: 'footnote', color: 'text-faint' },
                       children: [{ $concat: ['@', '$agent.handle'] }],
                     },
                   ],

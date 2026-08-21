@@ -41,8 +41,8 @@ const MODE_LABELS: Record<ContentShape, string> = {
 function PendingHint(props: { children: string }) {
   return (
     <Row ay="center" gap="100">
-      <we-icon name="info" size="xs" color="textFaint" />
-      <we-text fontSize="100" color="textFaint">
+      <we-icon name="info" size="xs" color="text-faint" />
+      <we-text fontSize="100" color="text-faint">
         {props.children}
       </we-text>
     </Row>
@@ -134,7 +134,7 @@ export function ContentEditor(props: {
   return (
     <Column gap="200">
       <Row px="400" ay="center" ax="between" gap="200">
-        <we-text fontSize="100" fontWeight="600" textTransform="uppercase" letterSpacing="0.06em" color="textFaint">
+        <we-text fontSize="100" fontWeight="600" textTransform="uppercase" letterSpacing="0.06em" color="text-faint">
           Content
         </we-text>
         <we-select
@@ -173,7 +173,7 @@ export function ContentEditor(props: {
       </Show>
 
       <Show when={mode() === 'conditional'}>
-        <Column gap="100" bg="surfaceSunken" mx="300" r="200" py="100">
+        <Column gap="100" bg="surface-sunken" mx="300" r="200" py="100">
           <ConditionEditor
             label="If"
             condition={currentIf().condition}
@@ -182,7 +182,7 @@ export function ContentEditor(props: {
           />
           <Column px="400" pb="200" gap="200">
             <Column gap="100">
-              <we-text fontSize="100" fontWeight="600" color="textMuted">
+              <we-text fontSize="100" fontWeight="600" color="text-muted">
                 Then show
               </we-text>
               <ValueEditor
@@ -194,7 +194,7 @@ export function ContentEditor(props: {
               />
             </Column>
             <Column gap="100">
-              <we-text fontSize="100" fontWeight="600" color="textMuted">
+              <we-text fontSize="100" fontWeight="600" color="text-muted">
                 Otherwise show
               </we-text>
               <ValueEditor
@@ -221,7 +221,7 @@ export function ContentEditor(props: {
 
       <Show when={mode() === 'custom'}>
         <Column px="400" gap="100">
-          <we-text fontSize="100" color="textFaint">
+          <we-text fontSize="100" color="text-faint">
             Custom expression — edit as JSON, or switch to another mode to replace it.
           </we-text>
           <Column border={`1px solid ${tokenVar('color', 'neutral-100')}`} r="200" overflow="hidden" maxHeight="250px">
