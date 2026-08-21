@@ -26,6 +26,7 @@ const SHAPES: EntityShape[] = [
     properties: [{ name: 'name', type: 'string' }],
     relations: [],
   },
+  { name: 'CodeBlock', identityProperty: 'title', properties: [{ name: 'title', type: 'string' }], relations: [] },
   {
     name: 'Placement',
     properties: [
@@ -126,6 +127,31 @@ describe('boardSeed', () => {
 
     expect(result.nodes).toEqual([]);
     expect(asked).toEqual([]);
+  });
+
+  it('asks for nothing but collections when no placement names anything else', async () => {
+    // There is exactly one way onto a board that leaves no placement: a card composed straight onto
+    // it. Everything else arrives placed, so its type is already named — and listing more types
+    // would cost a drill-down each, on every load, looking for what cannot be there.
+    const { context: ctx, asked } = context({ CollectionBlock: [{ id: 'c1', title: 'Idea' }] });
+
+    await boardSeed().seed({ board: 'b1' }, ctx);
+
+    expect(asked).toEqual(['Placement', 'CollectionBlock']);
+  });
+
+  it('finds a record that is both placed and contained, whatever its type', async () => {
+    // The regression: creating a CodeBlock from a board wrote its placement and left the record
+    // loose in the space, so the board's own children never included it. It showed up in the cards
+    // route — which asks the space rather than the board — and nowhere on the board.
+    const { context: ctx } = context({
+      Placement: [{ id: 'p1', node: 'k1', nodeType: 'CodeBlock', x: 30, y: 60 }],
+      CodeBlock: [{ id: 'k1', title: 'Snippet' }],
+    });
+
+    const { nodes } = await boardSeed().seed({ board: 'b1' }, ctx);
+
+    expect(nodes.find((n) => n.type === 'CodeBlock')?.data).toMatchObject({ x: 30, y: 60 });
   });
 
   it('skips a placed type the dataset does not declare rather than querying it', async () => {

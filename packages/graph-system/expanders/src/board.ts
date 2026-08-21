@@ -49,8 +49,20 @@ export interface BoardSeedOptions {
   limit?: number;
 }
 
-/** What a board tends to hold when a template does not say. Mirrors the collection expander's set. */
-const DEFAULT_CONTAINS = ['CollectionBlock', 'TaskBlock', 'EventBlock', 'ImageBlock'];
+/**
+ * What is queried when a template names nothing, beyond whatever the placements name.
+ *
+ * One type, deliberately, because there is exactly one way onto a board that leaves no placement
+ * behind: a card composed straight onto it, which is always a `CollectionBlock`. Everything else
+ * arrives *placed* — that is what putting it on a board means — so its type is already named by the
+ * placement and already queried.
+ *
+ * Listing more would cost a drill-down query each, on every load and every refresh, to look for
+ * things that cannot be there unplaced. The earlier list named `TaskBlock` and friends on the
+ * reasonable-sounding grounds that a board might hold them; it might, and when it does they have a
+ * placement, so the list was three round trips buying nothing.
+ */
+const DEFAULT_CONTAINS = ['CollectionBlock'];
 
 interface Placed {
   x: number;

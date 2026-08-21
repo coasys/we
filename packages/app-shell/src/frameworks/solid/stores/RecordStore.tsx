@@ -385,7 +385,21 @@ export function RecordStoreProvider(props: ParentProps) {
         if (relationshipKind()) Object.assign(fields, { relationshipTypeId: relationshipKind() });
       }
 
-      const created = (await Model.create(dataset.handle, fields)) as {
+      /*
+        Created *inside* the board when there is one, not merely positioned on it.
+
+        A board holds things by containment and positions them by placement — two facts, and it
+        needs both. Writing only the placement made a record that existed, had a coordinate, and was
+        invisible: the board's seed asks for each type among the board's own children, and a record
+        created loose in the space is nobody's child. It turned up in the cards route, which asks the
+        space rather than the board, which is exactly the shape of that bug from the outside.
+      */
+      const board = pendingBoard();
+      const created = (await Model.create(
+        dataset.handle,
+        fields,
+        board ? { parent: { id: board, predicate: PREDICATES.CHILDREN } } : undefined,
+      )) as {
         id?: string;
         setSource?: (value: string) => Promise<unknown>;
         setTarget?: (value: string) => Promise<unknown>;
@@ -397,9 +411,8 @@ export function RecordStoreProvider(props: ParentProps) {
       }
 
       // Placed after the record exists, because a placement points at something. A failure here
-      // leaves a real record that is merely not on the board, which somebody can fix by dragging it
-      // there — where placing first would leave a coordinate for nothing.
-      const board = pendingBoard();
+      // leaves a real record that is merely not positioned, which somebody can fix by dragging it —
+      // where placing first would leave a coordinate for nothing.
       if (board && created?.id) await placeOnBoard(board, created.id, draft.entity, 0, 0);
 
       batch(() => {
