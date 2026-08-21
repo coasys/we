@@ -2201,6 +2201,7 @@ export const contextData: ContextData = {
         'saveRecord',
         'placeOnBoard',
         'createOnBoard',
+        'createCardOnBoard',
       ],
     },
     {

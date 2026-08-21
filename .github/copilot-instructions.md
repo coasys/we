@@ -1904,6 +1904,7 @@ RecordStore:
   - saveRecord(): validates and creates. Errors land in recordErrors and the form stays open holding what was typed; success closes it and sets lastCreatedId
   - placeOnBoard(): unknown
   - createOnBoard(): unknown
+  - createCardOnBoard(): unknown
 
 RouteStore:
 - State:

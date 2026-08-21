@@ -23,8 +23,9 @@
  * entry point, two bodies. Folding a document editor into a generated form would serve neither.
  */
 import type { EntitySchema } from '@we/backend-shared';
+import { createBlocks } from '@we/block-shared';
 import { toastService } from '@we/components/solid';
-import { getModel, Placement, PREDICATES } from '@we/models';
+import { getModel, Placement, PREDICATES, runModelTransaction } from '@we/models';
 import { CORE_MANIFEST } from '@we/models/manifest';
 import { Accessor, batch, createContext, createMemo, createSignal, ParentProps, useContext } from 'solid-js';
 
@@ -60,6 +61,30 @@ export interface PendingLink {
 
 /** The model a drawn connection is written as. Named once, so the store and the form agree. */
 const RELATIONSHIP = 'Relationship';
+
+/**
+ * Write one placement, node reference included, inside whatever write group the caller is in.
+ *
+ * The reference goes in as a **one-element array**, which is what makes it part of the same commit.
+ * The ORM skips a relation field handed a plain value — that is the trap `Relationship`'s endpoints
+ * hit — and the generated `setNode` accessor takes no batch, so linking afterwards would commit
+ * separately and reintroduce the intermediate state. An array value routes through
+ * `setRelationValues` *with* the batch, which is the documented path and the only one that composes.
+ */
+async function createPlacement(
+  dataset: unknown,
+  parent: { id: string; predicate: string },
+  nodeId: string,
+  nodeType: string,
+  at: { x: number; y: number },
+  batchId?: string,
+): Promise<void> {
+  await Placement.create(
+    dataset as never,
+    { nodeType, x: at.x, y: at.y, node: [nodeId] } as never,
+    { parent, ...(batchId ? { batchId } : {}) } as never,
+  );
+}
 
 export interface RecordStore {
   /**
@@ -146,6 +171,18 @@ export interface RecordStore {
    * avoid, and hiding it was the wrong answer.
    */
   createOnBoard: (board: string, x?: number, y?: number) => void;
+  /**
+   * Compose a card onto a board, and record where it sits — as one write.
+   *
+   * The composer's counterpart to `createOnBoard`, and one action rather than two because two would
+   * be two commits. Anything watching the data layer sees every commit, so a card written first and
+   * positioned second is a card the board draws unpositioned and then moves.
+   *
+   * `at` omitted — the toolbar's "Card", which names no point — creates the card and no placement,
+   * so it lands in the tray. That is the honest answer to "nobody said where", and the tray is where
+   * it is recoverable from.
+   */
+  createCardOnBoard: (editorState: unknown, options: { board: string; at?: { x: number; y: number } }) => Promise<void>;
 }
 
 const RecordStoreContext = createContext<RecordStore>();
@@ -322,6 +359,38 @@ export function RecordStoreProvider(props: ParentProps) {
   }
 
   /**
+   * Compose a card onto a board and place it, in one write group.
+   *
+   * `createBlocks` transacts internally, so it takes the batch rather than opening its own — see
+   * `runModelTransaction`'s `join`. Everything here lands as a single commit, which is the whole
+   * point: the board never observes a card that exists but is not yet anywhere.
+   */
+  async function createCardOnBoard(
+    editorState: unknown,
+    options: { board: string; at?: { x: number; y: number } },
+  ): Promise<void> {
+    const dataset = datasetStore.currentDataset();
+    if (!dataset || !options.board) return;
+    const parent = { id: options.board, predicate: PREDICATES.CHILDREN };
+
+    try {
+      await runModelTransaction(dataset.handle, async (tx) => {
+        const root = (await createBlocks(dataset.handle as never, editorState as never, {
+          kind: 'card',
+          anchor: parent,
+          batchId: tx.batchId,
+        })) as { id?: string } | undefined;
+
+        if (!options.at || !root?.id) return;
+        await createPlacement(dataset.handle, parent, root.id, 'CollectionBlock', options.at, tx.batchId);
+      });
+    } catch (error) {
+      console.error('RecordStore: creating a card on a board failed', error);
+      toastService.error('Could not add that card.');
+    }
+  }
+
+  /**
    * Upsert the coordinate for one node on one board.
    *
    * Read-then-write rather than blind create, because dragging a card twice must not leave two
@@ -349,13 +418,7 @@ export function RecordStoreProvider(props: ParentProps) {
         return;
       }
 
-      const created = (await Placement.create(dataset.handle, { nodeType, x, y }, { parent })) as {
-        setNode?: (value: string) => Promise<unknown>;
-      };
-      // The node reference is a relation, and the ORM skips a relation field handed a plain value in
-      // the create payload — the same trap `Relationship`'s endpoints hit. Linked after, through the
-      // accessor the decorator generates whether or not the relation declares a target class.
-      await created.setNode?.(nodeId);
+      await createPlacement(dataset.handle, parent, nodeId, nodeType, { x, y });
     } catch (error) {
       console.error('RecordStore: placing a record on a board failed', error);
       toastService.error('Could not save that position.');
@@ -461,6 +524,7 @@ export function RecordStoreProvider(props: ParentProps) {
     openRecordForm,
     connectNodes,
     createOnBoard,
+    createCardOnBoard,
     placeOnBoard,
     setRecordEntity,
     setRecordField,

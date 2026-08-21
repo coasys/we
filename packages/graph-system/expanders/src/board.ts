@@ -1,11 +1,23 @@
 /**
  * The board seed — a container's contents, at the positions somebody put them.
  *
- * Every other seed answers "what is here". This one answers "what is here, and where did people
- * put it", which is two questions because the answers live in two places. Membership is ordinary
- * containment, so a card composed onto a board is found by everything that already walks a
- * collection. Position is a `Placement` record, because a coordinate is a fact about a *pair* — this
- * board, this node — and storing it on either one alone means a record can be in one place only.
+ * Every other seed answers "what is here". This one answers two questions, because a board holds
+ * three facts that are usually one:
+ *
+ * - **Ownership** — containment. Where a record *lives*, and what a delete cascades to. A note born
+ *   on a board is owned by it; a task from a call is owned by the call.
+ * - **Membership** — the placement's existence. That it *appears* on this board. Many per record,
+ *   one per board it is on.
+ * - **Position** — the placement's coordinates.
+ *
+ * Letting containment carry both ownership and membership is what made "a note born here" and "a
+ * task brought here" impossible to tell apart: putting an existing record on a board would have
+ * reparented it, and a note the board owned could not be removed from view without deleting it.
+ *
+ * So placed records are fetched **by id**, from the placements. Containment is still read, but only
+ * for what the board *owns* and nobody has positioned — the tray, which is a recovery surface rather
+ * than a third kind of membership: a placement that failed to write, or a card composed before
+ * anybody said where it goes.
  *
  * ## Why it is a seed rather than a layout
  *
@@ -24,7 +36,8 @@
  *
  * Placements are read first for that reason, and their node references are read as bare URIs rather
  * than hydrated. An untyped relation has no target class for `include` to hydrate into, and the id
- * is what is wanted anyway: the records come back in one query per type and are matched up here.
+ * is what is wanted anyway: the records come back in one query per type — `where: { id: [...] }`,
+ * which is native on AD4M and pushes down to a SPARQL `VALUES` clause — and are matched up here.
  */
 import type { GraphEdge, GraphNode, SeedSource } from '@we/graph-protocol';
 
@@ -50,17 +63,12 @@ export interface BoardSeedOptions {
 }
 
 /**
- * What is queried when a template names nothing, beyond whatever the placements name.
+ * Types checked for *owned but unplaced* records — the tray.
  *
- * One type, deliberately, because there is exactly one way onto a board that leaves no placement
- * behind: a card composed straight onto it, which is always a `CollectionBlock`. Everything else
- * arrives *placed* — that is what putting it on a board means — so its type is already named by the
- * placement and already queried.
- *
- * Listing more would cost a drill-down query each, on every load and every refresh, to look for
- * things that cannot be there unplaced. The earlier list named `TaskBlock` and friends on the
- * reasonable-sounding grounds that a board might hold them; it might, and when it does they have a
- * placement, so the list was three round trips buying nothing.
+ * One, deliberately. Everything that is on a board is placed; the only way to be owned by one and
+ * have no position is to be a card composed onto it before anybody said where, which is always a
+ * `CollectionBlock`. Listing more would cost a drill-down query each, on every load and every
+ * refresh, looking for what cannot be there.
  */
 const DEFAULT_CONTAINS = ['CollectionBlock'];
 
@@ -86,40 +94,62 @@ export function boardSeed(): SeedSource {
       const limit = options.limit ?? 200;
       const scope = { anchor: 'CollectionBlock', via, anchorId: options.board };
 
-      const read = (entity: string) =>
-        context.query({ entity, dataset, scope, limit, signal }).catch((error: unknown) => {
-          context.warn(`board: cannot read ${entity}: ${error instanceof Error ? error.message : String(error)}`);
-          return [] as Record<string, unknown>[];
-        });
+      const read = (entity: string, where?: Record<string, unknown>) =>
+        context
+          .query({ entity, dataset, limit, signal, ...(where ? { where } : { scope }) })
+          .catch((error: unknown) => {
+            context.warn(`board: cannot read ${entity}: ${error instanceof Error ? error.message : String(error)}`);
+            return [] as Record<string, unknown>[];
+          });
 
       /*
-        Positions first, because they decide what else is worth asking for.
-
-        A board that has never been arranged returns none, and falls back to `contains` — which is
-        right: a freshly composed card has containment and no placement yet, and appears unplaced
-        for the layout to park.
+        Placements first, because they *are* the membership: which records are on this board, of what
+        type, and where. Everything after this is looking those records up.
       */
       const positions = new Map<string, Placed>();
-      const placedTypes = new Set<string>();
+      const placedIds = new Map<string, string[]>();
       if (shapes.some((s) => s.name === placementEntity)) {
         for (const row of await read(placementEntity)) {
           const node = typeof row.node === 'string' ? row.node : undefined;
-          if (!node) continue;
+          const nodeType = typeof row.nodeType === 'string' ? row.nodeType : '';
+          // A placement whose node never linked names a type and points at nothing. Skipped rather
+          // than half-drawn, and left for a sweep — the record it meant is not knowable from here.
+          if (!node || !nodeType) continue;
           positions.set(node, { x: Number(row.x) || 0, y: Number(row.y) || 0 });
-          if (typeof row.nodeType === 'string' && row.nodeType) placedTypes.add(row.nodeType);
+          placedIds.set(nodeType, [...(placedIds.get(nodeType) ?? []), node]);
         }
       }
 
-      const wanted = [...new Set([...(options.contains ?? DEFAULT_CONTAINS), ...placedTypes])];
       const nodes: GraphNode[] = [];
+      const seen = new Set<string>();
 
-      for (const entity of wanted) {
+      /*
+        Two passes, because a board answers two questions.
+
+        Placed records come back by id — one query per type, `where: { id: [...] }`, native on AD4M
+        and pushed down as a SPARQL `VALUES` clause. By id rather than by containment because
+        placement is what puts something on a board: a task owned by a call belongs on this board
+        without being reparented into it, which asking for the board's children could never express.
+
+        Owned-but-unplaced records come back by containment, and are the tray.
+      */
+      const passes: { entity: string; where?: Record<string, unknown> }[] = [
+        ...[...placedIds].map(([entity, ids]) => ({ entity, where: { id: ids } })),
+        ...(options.contains ?? DEFAULT_CONTAINS).map((entity) => ({ entity })),
+      ];
+
+      for (const pass of passes) {
+        const entity = pass.entity;
         if (entity === placementEntity) continue;
         if (!shapes.some((s) => s.name === entity)) continue;
         const shape = shapes.find((s) => s.name === entity);
-        for (const row of await read(entity)) {
+        for (const row of await read(entity, pass.where)) {
           const node = rowToNode(row, entity, dataset, shape, 'board');
           if (!node) continue;
+          // A record both placed and owned answers both passes; the first one wins, and it is the
+          // placed one, which is the one carrying a position.
+          if (seen.has(node.id)) continue;
+          seen.add(node.id);
           const at = typeof row.id === 'string' ? positions.get(row.id) : undefined;
           /*
             Coordinates land in `data`, where the `manual` layout reads them.

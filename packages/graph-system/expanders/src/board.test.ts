@@ -38,7 +38,15 @@ const SHAPES: EntityShape[] = [
   },
 ];
 
-/** Rows by entity, answered only for drill-downs anchored on the board being asked about. */
+/**
+ * Rows by entity, answered the two ways a board asks for them.
+ *
+ * A drill-down is answered only for the board being asked about; a `where: { id: [...] }` is
+ * answered by set membership, which is what the backend does with a bare array. The fake has to know
+ * both, because the board's whole design is that placement and containment are different questions —
+ * one that only answered drill-downs would make a placed-but-unowned record look unreachable when it
+ * is precisely the case the split exists for.
+ */
 function context(tables: Record<string, Record<string, unknown>[]>, board = 'b1') {
   const asked: string[] = [];
   const warnings: string[] = [];
@@ -48,8 +56,11 @@ function context(tables: Record<string, Record<string, unknown>[]>, board = 'b1'
     context: {
       query: async (request: ExpanderQuery) => {
         asked.push(request.entity);
+        const rows = tables[request.entity] ?? [];
+        const ids = (request.where as { id?: unknown } | undefined)?.id;
+        if (Array.isArray(ids)) return rows.filter((row) => ids.includes(row.id));
         if (request.scope?.anchorId !== board) return [];
-        return tables[request.entity] ?? [];
+        return rows;
       },
       defaultDataset: () => 'ds',
       models: () => SHAPES,
@@ -85,8 +96,8 @@ describe('boardSeed', () => {
   });
 
   it('loads a placed type nobody listed, so a board can hold a model the template never heard of', async () => {
-    // The whole reason placements are read first: `contains` is what a template could anticipate,
-    // and a community's own models are not in it.
+    // The whole reason placements are read first: they *are* the membership, and a community's own
+    // models are not in any list a template could have written.
     const { context: ctx, asked } = context({
       Placement: [{ id: 'p1', node: 's1', nodeType: 'Sighting', x: 10, y: 20 }],
       Sighting: [{ id: 's1', name: 'Heron' }],
@@ -140,18 +151,43 @@ describe('boardSeed', () => {
     expect(asked).toEqual(['Placement', 'CollectionBlock']);
   });
 
-  it('finds a record that is both placed and contained, whatever its type', async () => {
-    // The regression: creating a CodeBlock from a board wrote its placement and left the record
-    // loose in the space, so the board's own children never included it. It showed up in the cards
-    // route — which asks the space rather than the board — and nowhere on the board.
+  it('finds a placed record the board does not own, without it being reparented', async () => {
+    // The case containment could never express: a task owned by a call, put on a board. Asking for
+    // the board's children would never return it, and making it a child to fix that would move it
+    // out of the call it came from.
     const { context: ctx } = context({
-      Placement: [{ id: 'p1', node: 'k1', nodeType: 'CodeBlock', x: 30, y: 60 }],
+      Placement: [{ id: 'p1', node: 't1', nodeType: 'TaskBlock', x: 30, y: 60 }],
+      // Deliberately answers no drill-down for this board — it is not a child of it.
+      TaskBlock: [{ id: 't1', title: 'Ship the docs' }],
+    });
+
+    const { nodes } = await boardSeed().seed({ board: 'b1' }, ctx);
+
+    expect(nodes.find((n) => n.type === 'TaskBlock')?.data).toMatchObject({ x: 30, y: 60 });
+  });
+
+  it('counts a record once when it is both placed and owned', async () => {
+    const { context: ctx } = context({
+      Placement: [{ id: 'p1', node: 'c1', nodeType: 'CollectionBlock', x: 10, y: 20 }],
+      CollectionBlock: [{ id: 'c1', title: 'Idea' }],
+    });
+
+    const { nodes } = await boardSeed().seed({ board: 'b1' }, ctx);
+
+    expect(nodes).toHaveLength(1);
+    expect(nodes[0].data).toMatchObject({ x: 10, y: 20 });
+  });
+
+  it('skips a placement whose node never linked, rather than half-drawing it', async () => {
+    // It names a type and points at nothing, so the record it meant is not knowable from here.
+    const { context: ctx } = context({
+      Placement: [{ id: 'p1', nodeType: 'CodeBlock', x: 30, y: 60 }],
       CodeBlock: [{ id: 'k1', title: 'Snippet' }],
     });
 
     const { nodes } = await boardSeed().seed({ board: 'b1' }, ctx);
 
-    expect(nodes.find((n) => n.type === 'CodeBlock')?.data).toMatchObject({ x: 30, y: 60 });
+    expect(nodes.find((n) => n.type === 'CodeBlock')).toBeUndefined();
   });
 
   it('skips a placed type the dataset does not declare rather than querying it', async () => {

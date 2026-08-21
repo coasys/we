@@ -421,6 +421,15 @@ export interface CreateBlocksOptions {
   mode?: CollectionMode;
   /** Attach the root to something that already exists. See {@link BlockAnchor}. */
   anchor?: BlockAnchor;
+  /**
+   * An open write group to join, instead of opening one.
+   *
+   * For a caller whose act is larger than composing a document — creating a card *and* recording
+   * where it sits on a board. Without it the two commit separately and anything watching the data
+   * layer catches the state between them, which on a board looked like the card appearing
+   * unpositioned and then moving.
+   */
+  batchId?: string;
 }
 
 /**
@@ -446,46 +455,50 @@ export async function createBlocks(
   node: SerializedBlockNode,
   options: CreateBlocksOptions = {},
 ): Promise<BlockModel | undefined> {
-  const { kind, mode = kind ? 'document' : undefined, anchor } = options;
-  return runModelTransaction(perspective, async (tx) => {
-    const root = await persistNode(perspective, tx.batchId, node, undefined, undefined, anchor);
-    // Assigned before the blob write below so both land in that one `save`, rather than costing a
-    // second round trip for one string.
-    const stampKind = root && kind && 'kind' in root;
-    if (stampKind) root.kind = kind;
-    const stampMode = root && mode && 'mode' in root;
-    if (stampMode) root.mode = mode;
+  const { kind, mode = kind ? 'document' : undefined, anchor, batchId } = options;
+  return runModelTransaction(
+    perspective,
+    async (tx) => {
+      const root = await persistNode(perspective, tx.batchId, node, undefined, undefined, anchor);
+      // Assigned before the blob write below so both land in that one `save`, rather than costing a
+      // second round trip for one string.
+      const stampKind = root && kind && 'kind' in root;
+      if (stampKind) root.kind = kind;
+      const stampMode = root && mode && 'mode' in root;
+      if (stampMode) root.mode = mode;
 
-    // Store the full Lexical serialized JSON as a file-storage blob on the
-    // root CollectionBlock for lossless roundtrip. preUploadFileAssets runs
-    // *after* persistNode (rather than before, against the original node) so
-    // its per-node shallow copies pick up the `id` fields persistNode just
-    // stamped onto `node` — giving every block a stable id in the blob for
-    // free, which edit-time reconciliation (reconcileBlocks) depends on to
-    // tell "this still exists, update it" apart from "this is brand new".
-    if (root && 'editorState' in root) {
-      const patchedNode = await preUploadFileAssets(perspective, node);
-      const jsonStr = JSON.stringify(patchedNode);
-      const base64 = btoa(unescape(encodeURIComponent(jsonStr)));
-      root.editorState = asFileField({
-        data_base64: base64,
-        name: 'editor-state.json',
-        file_type: 'application/json',
-      });
-      root.textContent = extractTextContent(patchedNode);
-      await root.save(tx.batchId);
-    } else if (stampKind || stampMode) {
-      // A root with no `editorState` skips the blob write entirely, so `kind`/`mode` would
-      // otherwise be assigned to an instance nobody saves.
-      await root!.save(tx.batchId);
-    }
+      // Store the full Lexical serialized JSON as a file-storage blob on the
+      // root CollectionBlock for lossless roundtrip. preUploadFileAssets runs
+      // *after* persistNode (rather than before, against the original node) so
+      // its per-node shallow copies pick up the `id` fields persistNode just
+      // stamped onto `node` — giving every block a stable id in the blob for
+      // free, which edit-time reconciliation (reconcileBlocks) depends on to
+      // tell "this still exists, update it" apart from "this is brand new".
+      if (root && 'editorState' in root) {
+        const patchedNode = await preUploadFileAssets(perspective, node);
+        const jsonStr = JSON.stringify(patchedNode);
+        const base64 = btoa(unescape(encodeURIComponent(jsonStr)));
+        root.editorState = asFileField({
+          data_base64: base64,
+          name: 'editor-state.json',
+          file_type: 'application/json',
+        });
+        root.textContent = extractTextContent(patchedNode);
+        await root.save(tx.batchId);
+      } else if (stampKind || stampMode) {
+        // A root with no `editorState` skips the blob write entirely, so `kind`/`mode` would
+        // otherwise be assigned to an instance nobody saves.
+        await root!.save(tx.batchId);
+      }
 
-    // After the save: `addMentions` writes links, which is a separate operation from the property
-    // write above and has nothing to add to that round trip.
-    if (root) await writeMentions(root, node, tx.batchId);
+      // After the save: `addMentions` writes links, which is a separate operation from the property
+      // write above and has nothing to add to that round trip.
+      if (root) await writeMentions(root, node, tx.batchId);
 
-    return root;
-  });
+      return root;
+    },
+    { batchId },
+  );
 }
 
 /**

@@ -278,38 +278,26 @@ const newCardModal: SchemaNode = composerModal({
   openLocal: 'newCardOpen',
   title: 'New card',
   saveLabel: 'Add',
+  /*
+    One action, because it is one act.
+
+    The card and the coordinate that says where it sits land as a single commit. Written separately
+    they are two, and anything watching the data layer catches the state between them — which is
+    exactly what the board did: it drew the card unpositioned, in the tray, for as long as the
+    placement took to arrive, and then moved it.
+
+    `newCardAt` is null when the card came from the toolbar rather than a double-click, and the store
+    then writes no placement at all: the card lands in the tray, which is the honest answer to
+    "nobody said where" and the place it is recoverable from.
+  */
   saveAction: {
-    $action: 'spaceStore.createPost',
-    // `'$arg'` first: `createPost(json, options)`.
-    args: ['$arg', { kind: 'card', parentId: BOARD, predicate: 'we://children' }],
+    $action: 'recordStore.createCardOnBoard',
+    // `'$arg'` first: the serialized tree, then where it goes.
+    args: ['$arg', { board: BOARD, at: { $local: 'newCardAt' } }],
   },
   onSaved: [
-    /*
-      Placed where the double-click landed, then — and only then — the canvas is told to re-read.
-
-      Two writes make one act, and the refresh belongs after both. Bumping `revision` as soon as the
-      *card* existed showed it in the tray, unplaced, for as long as the placement took to land; the
-      placement's own write then arrived and the card jumped to where it had been put. Sequencing
-      through `onSuccess` is what makes "the write finished" mean the whole write.
-
-      `$result` is the id `createPost` returns, which is the only way a schema can act on something
-      it has just made. A card added from the toolbar has no point, so `newCardAt` is null, nothing
-      is placed, and it lands in the tray — the honest answer to "nobody said where".
-    */
-    {
-      $if: {
-        condition: { $local: 'newCardAt' },
-        then: {
-          $action: 'recordStore.placeOnBoard',
-          args: [BOARD, '$result', 'CollectionBlock', { $local: 'newCardAt.x' }, { $local: 'newCardAt.y' }],
-          onSuccess: [
-            { $setLocal: 'newCardAt', value: null },
-            { $setLocal: 'revision', by: 1 },
-          ],
-        },
-        else: { $setLocal: 'revision', by: 1 },
-      },
-    },
+    { $setLocal: 'newCardAt', value: null },
+    { $setLocal: 'revision', by: 1 },
   ],
 });
 

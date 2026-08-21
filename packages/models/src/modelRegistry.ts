@@ -151,8 +151,23 @@ export function registerTransactionRunner(runner: ModelTransactionRunner): void 
  * Run `fn` as one write group on whichever backend is connected — the neutral face of
  * "wrap these writes in a transaction". Consumers thread `tx.batchId` into `save`/`create`/
  * relation accessors exactly as they would with a backend's own transaction API.
+ *
+ * `join` makes a write group *composable*. Given an open batch it runs inside that one instead of
+ * opening its own, so a caller can wrap something that already transacts — composing a document and
+ * then recording where it sits, say — and have the whole thing land as one commit.
+ *
+ * That is not a tidiness point. Anything watching the data layer sees every commit, so two writes
+ * that make one act are two states a reader can catch in between: a board showed a card as
+ * unpositioned for as long as its placement took to land, then moved it. A nested batch would have
+ * been the other way to express this and is worse — the inner one would commit on its own, which is
+ * exactly the intermediate state being avoided.
  */
-export function runModelTransaction<R>(dataset: unknown, fn: (tx: { batchId?: string }) => Promise<R>): Promise<R> {
+export function runModelTransaction<R>(
+  dataset: unknown,
+  fn: (tx: { batchId?: string }) => Promise<R>,
+  join?: { batchId?: string },
+): Promise<R> {
+  if (join?.batchId) return fn({ batchId: join.batchId });
   return transactionRunner(dataset, fn);
 }
 

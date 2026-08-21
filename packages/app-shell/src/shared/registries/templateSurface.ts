@@ -531,6 +531,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     openRecordForm: action('content'),
     connectNodes: action('content'),
     createOnBoard: action('content'),
+    createCardOnBoard: action('content'),
     placeOnBoard: action('content'),
     setRecordEntity: action('content'),
     setRecordField: action('content'),

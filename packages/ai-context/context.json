@@ -5673,7 +5673,8 @@
         "cancelRecordForm",
         "saveRecord",
         "placeOnBoard",
-        "createOnBoard"
+        "createOnBoard",
+        "createCardOnBoard"
       ]
     },
     {
