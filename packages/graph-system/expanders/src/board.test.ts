@@ -81,15 +81,38 @@ const SHAPES: EntityShape[] = [
  * one that only answered drill-downs would make a placed-but-unowned record look unreachable when it
  * is precisely the case the split exists for.
  */
-function context(tables: Record<string, Record<string, unknown>[]>, board = 'b1') {
+function context(tables: Record<string, Record<string, unknown>[]>, rounds?: string[][], board = 'b1') {
   const asked: string[] = [];
   const warnings: string[] = [];
+  /*
+    Queries issued in one synchronous burst are one round.
+
+    Answering on a macrotask is what makes that observable: everything a `Promise.all` issues lands
+    before the first answer does, so the burst closes exactly when the seed next has to wait. Without
+    it a sequential seed and a batched one look identical from here, which is the difference this is
+    measuring.
+  */
+  let round: string[] | null = null;
+  const openRound = (entity: string) => {
+    if (!rounds) return;
+    if (!round) {
+      round = [];
+      rounds.push(round);
+      setTimeout(() => {
+        round = null;
+      }, 0);
+    }
+    round.push(entity);
+  };
+
   return {
     asked,
     warnings,
     context: {
       query: async (request: ExpanderQuery) => {
         asked.push(request.entity);
+        openRound(request.entity);
+        if (rounds) await new Promise((resolve) => setTimeout(resolve, 0));
         const rows = tables[request.entity] ?? [];
         const where = request.where as Record<string, unknown> | undefined;
         if (where) {
@@ -230,6 +253,44 @@ describe('boardSeed', () => {
     const { nodes } = await boardSeed().seed({ board: 'b1' }, ctx);
 
     expect(nodes.find((n) => n.type === 'CodeBlock')).toBeUndefined();
+  });
+
+  it('reads the whole board in three rounds, whatever it holds', async () => {
+    /*
+      What decides how long a board takes to appear is the number of *sequential* rounds, not the
+      number of queries: every read is a round trip to a peer-to-peer data layer. Five kinds of thing
+      on a board used to be five queries deep before anything was drawn.
+
+      Three is the floor, and each genuinely waits on the one before: what is placed, then the
+      records it names, then the connections between them.
+    */
+    const rounds: string[][] = [];
+    const { context: ctx } = context(
+      {
+        Placement: [
+          { id: 'p1', node: 'c1', nodeType: 'CollectionBlock', x: 0, y: 0 },
+          { id: 'p2', node: 't1', nodeType: 'TaskBlock', x: 100, y: 0 },
+          { id: 'p3', node: 'k1', nodeType: 'CodeBlock', x: 200, y: 0 },
+        ],
+        CollectionBlock: [{ id: 'c1', title: 'One' }],
+        TaskBlock: [{ id: 't1', title: 'Two' }],
+        CodeBlock: [{ id: 'k1', title: 'Three' }],
+        TypeStyle: [{ id: 's1', nodeType: 'TaskBlock', color: 'warning-200' }],
+        Relationship: [],
+      },
+      rounds,
+    );
+
+    await boardSeed().seed({ board: 'b1', connections: 'Relationship', typeStyles: 'TypeStyle' }, ctx);
+
+    // Placements and the key together; then every record type together — including the second
+    // `CollectionBlock` read, which is the tray, asked by containment rather than by id; then the
+    // connections, which could not be asked for until the ends were known.
+    expect(rounds).toEqual([
+      ['Placement', 'TypeStyle'],
+      ['CollectionBlock', 'TaskBlock', 'CodeBlock', 'CollectionBlock'],
+      ['Relationship'],
+    ]);
   });
 
   it("colours a node by its type, from the board's own key", async () => {

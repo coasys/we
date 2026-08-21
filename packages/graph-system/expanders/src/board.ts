@@ -171,38 +171,49 @@ export function boardSeed(): SeedSource {
             return [] as Record<string, unknown>[];
           });
 
+      const declared = (entity: string | undefined) => Boolean(entity) && shapes.some((s) => s.name === entity);
+
       /*
-        Placements first, because they *are* the membership: which records are on this board, of what
-        type, and where. Everything after this is looking those records up.
+        Round one: what is on this board, and how this board draws things.
+
+        Both together, because neither needs the other — and every read here is a round trip to a
+        peer-to-peer data layer, so what decides how long a board takes to appear is the number of
+        *sequential* rounds rather than the number of queries. Three rounds is the floor: what is
+        placed, then the records it names, then the connections between them, each genuinely waiting
+        on the one before.
+      */
+      const [placements, styles] = await Promise.all([
+        declared(placementEntity) ? read(placementEntity) : [],
+        declared(options.typeStyles) ? read(options.typeStyles as string) : [],
+      ]);
+
+      /*
+        Placements *are* the membership: which records are on this board, of what type, and where.
+        Everything after this is looking those records up.
       */
       const positions = new Map<string, Placed>();
       const placedIds = new Map<string, string[]>();
-      if (shapes.some((s) => s.name === placementEntity)) {
-        for (const row of await read(placementEntity)) {
-          const node = typeof row.node === 'string' ? row.node : undefined;
-          const nodeType = typeof row.nodeType === 'string' ? row.nodeType : '';
-          // A placement whose node never linked names a type and points at nothing. Skipped rather
-          // than half-drawn, and left for a sweep — the record it meant is not knowable from here.
-          if (!node || !nodeType) continue;
-          positions.set(node, { x: Number(row.x) || 0, y: Number(row.y) || 0, style: placementStyle(row) });
-          placedIds.set(nodeType, [...(placedIds.get(nodeType) ?? []), node]);
-        }
+      for (const row of placements) {
+        const node = typeof row.node === 'string' ? row.node : undefined;
+        const nodeType = typeof row.nodeType === 'string' ? row.nodeType : '';
+        // A placement whose node never linked names a type and points at nothing. Skipped rather
+        // than half-drawn, and left for a sweep — the record it meant is not knowable from here.
+        if (!node || !nodeType) continue;
+        positions.set(node, { x: Number(row.x) || 0, y: Number(row.y) || 0, style: placementStyle(row) });
+        placedIds.set(nodeType, [...(placedIds.get(nodeType) ?? []), node]);
       }
 
       /*
         The board's own vocabulary of colour, by type.
 
-        Read before the records so it can be stamped onto each as it is built — cheaper than a second
-        pass, and it keeps the rule that a node arrives from the seed complete rather than being
-        patched afterwards by something that would have to know how nodes are addressed.
+        Stamped onto each node as it is built rather than patched on afterwards — cheaper than a
+        second pass, and it keeps the rule that a node arrives from the seed complete rather than
+        being finished by something that would have to know how nodes are addressed.
       */
       const typeColors = new Map<string, string>();
-      const typeStyles = options.typeStyles;
-      if (typeStyles && shapes.some((s) => s.name === typeStyles)) {
-        for (const row of await read(typeStyles)) {
-          if (typeof row.nodeType === 'string' && typeof row.color === 'string' && row.nodeType && row.color) {
-            typeColors.set(row.nodeType, row.color);
-          }
+      for (const row of styles) {
+        if (typeof row.nodeType === 'string' && typeof row.color === 'string' && row.nodeType && row.color) {
+          typeColors.set(row.nodeType, row.color);
         }
       }
 
@@ -234,12 +245,21 @@ export function boardSeed(): SeedSource {
         ...(options.contains ?? DEFAULT_CONTAINS).map((entity) => ({ entity })),
       ];
 
-      for (const pass of passes) {
+      /*
+        Round two: the records themselves, all at once.
+
+        Issued together and consumed in order, which keeps the dedup below meaning what it says — the
+        placed pass wins over the owned one — while paying one round trip for the lot instead of one
+        each. A board holding five kinds of thing was five sequential queries deep before anything
+        appeared.
+      */
+      const wanted = passes.filter((pass) => pass.entity !== placementEntity && declared(pass.entity));
+      const results = await Promise.all(wanted.map((pass) => read(pass.entity, pass.where)));
+
+      for (const [index, pass] of wanted.entries()) {
         const entity = pass.entity;
-        if (entity === placementEntity) continue;
-        if (!shapes.some((s) => s.name === entity)) continue;
         const shape = shapes.find((s) => s.name === entity);
-        for (const row of await read(entity, pass.where)) {
+        for (const row of results[index]) {
           const node = rowToNode(row, entity, dataset, shape, 'board');
           if (!node) continue;
           // A record both placed and owned answers both passes; the first one wins, and it is the
@@ -278,8 +298,9 @@ export function boardSeed(): SeedSource {
         a backend can do, and the target check is a set lookup against what was just loaded.
       */
       const edges: GraphEdge[] = [];
+      // Round three: the connections, which genuinely could not be asked for until the ends were known.
       const connections = options.connections;
-      if (connections && shapes.some((s) => s.name === connections) && placed.size) {
+      if (connections && declared(connections) && placed.size) {
         const ends = [...placed];
         for (const row of await read(connections, { source: ends })) {
           const source = typeof row.source === 'string' ? row.source : undefined;
