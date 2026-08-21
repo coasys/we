@@ -32,6 +32,7 @@ import {
   Template,
   TextBlock,
   Theme,
+  TypeStyle,
   VideoBlock,
   WeNode,
 } from './models';
@@ -387,6 +388,9 @@ export const SPACE_MODELS = [
   // Where things sit on a board. Shared for the same reason: a board everyone sees arranged
   // differently is not a board, it is everyone's own sketch of one.
   Placement,
+  // And how a board draws each kind of thing — the board's own vocabulary of colour, which is
+  // shared for exactly the reason its arrangement is.
+  TypeStyle,
   Template,
   Theme,
   WeNode,

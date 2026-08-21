@@ -25,7 +25,7 @@
 import type { EntitySchema } from '@we/backend-shared';
 import { createBlocks } from '@we/block-shared';
 import { toastService } from '@we/components/solid';
-import { getModel, Placement, PREDICATES, runModelTransaction } from '@we/models';
+import { getModel, Placement, PREDICATES, runModelTransaction, TypeStyle } from '@we/models';
 import { CORE_MANIFEST } from '@we/models/manifest';
 import { Accessor, batch, createContext, createMemo, createSignal, ParentProps, useContext } from 'solid-js';
 
@@ -188,6 +188,16 @@ export interface RecordStore {
    * record being displayed: every one of these is undone by taking the card off the board.
    */
   setCardStyle: (board: string, nodeId: string, field: string, value: unknown) => Promise<void>;
+  /**
+   * Set the colour every card of one type is drawn in, on one board.
+   *
+   * The board's key, made writable. A colour per *type* rather than per card because that is what a
+   * legend is: "tasks are amber here" is a fact about the board, said once, and re-deciding it on
+   * every card somebody adds is the thing a key exists to avoid. Per board rather than per type,
+   * because two boards in the same space legitimately disagree about which question they are
+   * colouring by. An empty colour clears it.
+   */
+  setTypeColor: (board: string, nodeType: string, color: unknown) => Promise<void>;
   /**
    * Open the create form, and place whatever it makes onto this board.
    *
@@ -504,6 +514,35 @@ export function RecordStoreProvider(props: ParentProps) {
     await stylePlacement(board, nodeId, { [field]: scalar });
   }
 
+  async function setTypeColor(board: string, nodeType: string, color: unknown): Promise<void> {
+    const dataset = datasetStore.currentDataset();
+    if (!dataset || !board || !nodeType) return;
+    const raw =
+      color !== null && typeof color === 'object' && 'detail' in color ? (color as { detail: unknown }).detail : color;
+    const value = typeof raw === 'string' ? raw : '';
+    const parent = { id: board, predicate: PREDICATES.CHILDREN };
+
+    try {
+      // An upsert against the board's own children, exactly as a placement is: the parent link is
+      // what makes a style belong to a board, and colouring a type twice must not leave two records
+      // disagreeing about it.
+      const existing = (await TypeStyle.findAll(dataset.handle, { parent } as Record<string, unknown>)) as {
+        id: string;
+        nodeType?: string;
+      }[];
+      const already = existing.find((row) => row.nodeType === nodeType);
+      if (already) {
+        await TypeStyle.update(dataset.handle, already.id, { color: value });
+        return;
+      }
+      if (!value) return;
+      await TypeStyle.create(dataset.handle as never, { nodeType, color: value } as never, { parent } as never);
+    } catch (error) {
+      console.error('RecordStore: colouring a type on a board failed', error);
+      toastService.error('Could not save that colour.');
+    }
+  }
+
   async function removeFromBoard(board: string, nodeId: string): Promise<void> {
     const dataset = datasetStore.currentDataset();
     if (!dataset || !board || !nodeId) return;
@@ -626,6 +665,7 @@ export function RecordStoreProvider(props: ParentProps) {
     removeFromBoard,
     resizeOnBoard,
     setCardStyle,
+    setTypeColor,
     setRecordEntity,
     setRecordField,
     relationshipKind,

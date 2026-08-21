@@ -36,6 +36,7 @@ import { SpacePreference } from './entities/SpacePreference';
 import { SpaceTemplatePreference } from './entities/SpaceTemplatePreference';
 import { Template } from './entities/Template';
 import { Theme } from './entities/Theme';
+import { TypeStyle } from './entities/TypeStyle';
 import { WE_NODE_ENTITY, WE_NODE_RELATIONS } from './shared';
 
 export { WE_NODE_ENTITY, WE_NODE_RELATIONS };
@@ -77,6 +78,7 @@ export const CORE_DEFS: Record<string, CoreEntityDef> = {
   Template,
   TextBlock,
   Theme,
+  TypeStyle,
   VideoBlock,
 };
 

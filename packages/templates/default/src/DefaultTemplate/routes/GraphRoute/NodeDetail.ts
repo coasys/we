@@ -1,5 +1,7 @@
 import type { SchemaNode } from '@we/schema-shared';
 
+import { swatchRow } from './Palette';
+
 /**
  * The selected node, opened out — a panel over the right edge of the canvas.
  *
@@ -112,16 +114,6 @@ const openButton = (label: string, icon: string, kind: string): SchemaNode => ({
  * Sizing is not here. A card's size is set by dragging its corner, where the feedback is the card
  * itself; two numbers in a panel would be the same act with the answer hidden.
  */
-const SWATCHES = [
-  { token: '' },
-  { token: 'primary-100' },
-  { token: 'success-100' },
-  { token: 'warning-100' },
-  { token: 'danger-100' },
-  { token: 'neutral-100' },
-  { token: 'neutral-800' },
-];
-
 const setStyle = (field: string, value: unknown) => ({
   $action: 'recordStore.setCardStyle',
   args: [{ $local: 'boardId' }, { $local: 'selected.recordId' }, field, value],
@@ -139,67 +131,10 @@ const cardStyle: SchemaNode = {
       children: [
         { type: 'we-divider' },
         { type: 'we-text', props: { variant: 'footnote', color: 'neutral-500' }, children: ['Card'] },
-        {
-          type: 'Row',
-          props: { gap: '200', ay: 'center', wrap: true, width: '100%' },
-          children: [
-            {
-              type: '$each',
-              props: { items: SWATCHES, as: 'swatch' },
-              children: [
-                {
-                  /*
-                    A swatch is a button, not a colour input.
-
-                    Tokens rather than hex, so a card keeps meaning the same thing when the theme
-                    changes — a hex chosen against a light theme is a hole in a dark one. The empty
-                    token is "no colour of its own", which puts the card back under the board's own
-                    rules, and it has to be a value you can pick rather than a separate Reset button:
-                    otherwise there is no way back to being coloured *by type*, which is what the key
-                    controls.
-                  */
-                  type: 'we-button',
-                  props: {
-                    variant: 'bare',
-                    title: { $if: { condition: '$swatch.token', then: '$swatch.token', else: 'Default' } },
-                    onClick: setStyle('color', '$swatch.token'),
-                  },
-                  children: [
-                    {
-                      type: 'Column',
-                      props: {
-                        width: '24px',
-                        height: '24px',
-                        r: '200',
-                        bg: { $if: { condition: '$swatch.token', then: '$swatch.token', else: 'neutral-0' } },
-                        ax: 'center',
-                        ay: 'center',
-                        border: {
-                          $if: {
-                            condition: { $eq: [{ $local: 'selected.data.boardColor' }, '$swatch.token'] },
-                            then: '2px solid primary-600',
-                            else: '1px solid neutral-300',
-                          },
-                        },
-                      },
-                      // The default swatch has no colour to show, so it says so with a mark rather
-                      // than reading as white — which is a colour somebody might have chosen.
-                      children: [
-                        {
-                          type: '$if',
-                          props: {
-                            condition: { $not: '$swatch.token' },
-                            then: { type: 'we-icon', props: { name: 'x', size: 'xs', color: 'neutral-400' } },
-                          },
-                        },
-                      ],
-                    },
-                  ],
-                },
-              ],
-            },
-          ],
-        },
+        swatchRow({
+          current: { $local: 'selected.data.boardColor' },
+          pick: (token) => setStyle('color', token),
+        }),
         {
           type: 'we-form-field',
           props: { label: 'Shape', size: 'sm', width: '100%' },

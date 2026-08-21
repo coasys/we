@@ -44,6 +44,7 @@ export type AssertClassesSatisfyContract = [
   Satisfies<InstanceType<typeof C.Template>, M.TemplateModel>,
   Satisfies<InstanceType<typeof C.TextBlock>, M.TextBlockModel>,
   Satisfies<InstanceType<typeof C.Theme>, M.ThemeModel>,
+  Satisfies<InstanceType<typeof C.TypeStyle>, M.TypeStyleModel>,
   Satisfies<InstanceType<typeof C.VideoBlock>, M.VideoBlockModel>,
 ];
 

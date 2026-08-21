@@ -321,6 +321,11 @@ export interface ThemeModel extends WeNodeModel {
   setScreenshots(values: (string | { id: string })[], batch?: string): Promise<unknown>;
 }
 
+export interface TypeStyleModel extends ModelInstance {
+  nodeType: string;
+  color: string;
+}
+
 export interface VideoBlockModel extends WeNodeModel {
   title: string;
   url: string;

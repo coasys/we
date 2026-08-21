@@ -68,6 +68,15 @@ export interface BoardSeedOptions {
    * fix that would put things on the board that nobody placed.
    */
   connections?: string;
+  /**
+   * Entity holding this board's per-type colours, if any — WE passes `TypeStyle`.
+   *
+   * Read into every node's data as `boardTypeColor`, for a style rule to pick up. The board decides
+   * what its kinds look like and each card may still carry its own colour in front of that, which is
+   * two layers rather than one because they answer different questions: "tasks are amber here" is a
+   * fact about the board, and "this one is red" is a fact about the card.
+   */
+  typeStyles?: string;
   limit?: number;
 }
 
@@ -174,6 +183,23 @@ export function boardSeed(): SeedSource {
         }
       }
 
+      /*
+        The board's own vocabulary of colour, by type.
+
+        Read before the records so it can be stamped onto each as it is built — cheaper than a second
+        pass, and it keeps the rule that a node arrives from the seed complete rather than being
+        patched afterwards by something that would have to know how nodes are addressed.
+      */
+      const typeColors = new Map<string, string>();
+      const typeStyles = options.typeStyles;
+      if (typeStyles && shapes.some((s) => s.name === typeStyles)) {
+        for (const row of await read(typeStyles)) {
+          if (typeof row.nodeType === 'string' && typeof row.color === 'string' && row.nodeType && row.color) {
+            typeColors.set(row.nodeType, row.color);
+          }
+        }
+      }
+
       const nodes: GraphNode[] = [];
       const seen = new Set<string>();
       /** Record ids on this board, so a connection can be checked for having both ends here. */
@@ -222,7 +248,15 @@ export function boardSeed(): SeedSource {
             has: it is handed nodes and returns positions, and a seed that needed its own channel to
             the layout would be a seed only one layout could use.
           */
-          nodes.push(at ? { ...node, data: { ...node.data, ...at.style, x: at.x, y: at.y } } : node);
+          // Type colour first, so a card's own colour lands in front of it — and both are dropped
+          // when unset, which is what lets a style rule defer to the one above it.
+          const typeColor = typeColors.get(entity);
+          const data = {
+            ...node.data,
+            ...(typeColor ? { boardTypeColor: typeColor } : {}),
+            ...(at ? { ...at.style, x: at.x, y: at.y } : {}),
+          };
+          nodes.push({ ...node, data });
         }
       }
 

@@ -1703,6 +1703,11 @@ Theme extends WeNode:
   Relations:
   - screenshots: HasMany → ImageBlock [we://screenshot]
 
+TypeStyle extends Ad4mModel:
+  Fields:
+  - nodeType: string [we://node_type]
+  - color: string [we://color]
+
 VideoBlock extends WeNode:
   Fields:
   - title: string [we://title]
@@ -1914,6 +1919,7 @@ RecordStore:
   - removeFromBoard(): unknown
   - resizeOnBoard(): unknown
   - setCardStyle(): unknown
+  - setTypeColor(): unknown
   - createOnBoard(): unknown
   - createCardOnBoard(): unknown
 

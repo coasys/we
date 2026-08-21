@@ -1,6 +1,7 @@
 import type { SchemaNode } from '@we/schema-shared';
 import { composerModal, emptyState } from '@we/template-kit';
 
+import { boardLegend } from './Legend';
 import { selectNode } from './NodeDetail';
 
 /**
@@ -45,7 +46,9 @@ const boardCards: SchemaNode = {
     // `connections` draws the relationships whose two ends are both on this board — the same
     // records the knowledge map draws as edges, seen from the arrangement somebody made instead of
     // from the query that found them.
-    seeds: { source: 'board', options: { board: BOARD, connections: 'Relationship' } },
+    // `typeStyles` is the board's key, read back: a colour per kind of thing, which every card of
+    // that kind is drawn in unless it carries one of its own.
+    seeds: { source: 'board', options: { board: BOARD, connections: 'Relationship', typeStyles: 'TypeStyle' } },
     // Nothing opens automatically: a board shows what is on it, and drilling into a card's own
     // blocks would turn a wall of notes into a tree of fragments.
     expansion: { defaultDepth: 0 },
@@ -81,6 +84,14 @@ const boardCards: SchemaNode = {
       { when: { type: { not: 'CollectionBlock' } }, style: { color: 'neutral-100', labelColor: 'neutral-800' } },
       { when: { type: 'TaskBlock' }, style: { color: 'primary-50', labelColor: 'primary-800' } },
       { when: { type: 'EventBlock' }, style: { color: 'warning-50', labelColor: 'warning-800' } },
+      /*
+        The board's key: a colour per kind of thing, decided once and applied to every card of that
+        kind. In front of the rules above — which are this template's opinion about what a note and a
+        task look like — and behind the card's own colour below, because they answer different
+        questions. "Tasks are amber here" is a fact about the board; "this one is red" is a fact
+        about the card.
+      */
+      { style: { color: { from: 'data.boardTypeColor' } } },
       /*
         Last, and read off each card: the presentation somebody chose, in front of every rule above.
 
@@ -245,6 +256,22 @@ export const boardBar: SchemaNode = {
               },
               children: [{ type: 'we-icon', props: { name: 'flow-arrow' } }, 'Connect'],
             },
+            /*
+              The key, which is also where a type's colour is set.
+
+              Toggleable rather than fixed: a board with three kinds of thing on it does not need a
+              legend, and a panel explaining what you can already see is a panel over the thing you
+              are looking at.
+            */
+            {
+              type: 'we-button',
+              props: {
+                size: 'sm',
+                variant: { $if: { condition: { $local: 'legendOpen' }, then: 'secondary', else: 'ghost' } },
+                onClick: { $toggleLocal: 'legendOpen' },
+              },
+              children: [{ type: 'we-icon', props: { name: 'palette' } }, 'Key'],
+            },
             {
               type: 'we-button',
               props: { size: 'sm', variant: 'secondary', onClick: { $setLocal: 'newCardOpen', value: true } },
@@ -385,6 +412,7 @@ export const boardCanvas: SchemaNode = {
   children: [
     newBoardModal,
     newCardModal,
+    boardLegend,
     {
       type: '$if',
       props: {

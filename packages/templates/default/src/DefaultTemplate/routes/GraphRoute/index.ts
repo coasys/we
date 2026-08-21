@@ -259,6 +259,14 @@ export const graphRoute: RouteSchema = {
     */
     connecting: { type: 'boolean', initial: false },
     /*
+      Whether the board's key is open.
+
+      A preference rather than view state: somebody sent a link to a board, and the recipient should
+      see the board rather than whichever panels the sender had open. Kept per device instead, since
+      a person who wants the key generally wants it every time.
+    */
+    legendOpen: { type: 'boolean', initial: false, persist: 'board.keyOpen' },
+    /*
       Which kind of expansion the panel last asked for, and the whole of the request's state.
 
       A kind rather than the request itself, because `$setLocal`'s `value` is a literal — a token

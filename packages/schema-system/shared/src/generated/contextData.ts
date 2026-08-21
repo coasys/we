@@ -1792,6 +1792,16 @@ export const contextData: ContextData = {
       relations: [{ name: 'screenshots', kind: 'HasMany', predicate: 'we://screenshot', target: 'ImageBlock' }],
     },
     {
+      name: 'TypeStyle',
+      className: 'TypeStyle',
+      extends: 'Ad4mModel',
+      fields: [
+        { name: 'nodeType', type: 'string', predicate: 'we://node_type', required: false },
+        { name: 'color', type: 'string', predicate: 'we://color', required: false },
+      ],
+      relations: [],
+    },
+    {
       name: 'VideoBlock',
       className: 'VideoBlock',
       extends: 'WeNode',
@@ -2217,6 +2227,7 @@ export const contextData: ContextData = {
         'removeFromBoard',
         'resizeOnBoard',
         'setCardStyle',
+        'setTypeColor',
         'createOnBoard',
         'createCardOnBoard',
       ],

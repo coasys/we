@@ -58,6 +58,8 @@ export type Template = M.TemplateModel;
 export const Template = defineEntity('Template') as unknown as ModelStatic<M.TemplateModel>;
 export type Theme = M.ThemeModel;
 export const Theme = defineEntity('Theme') as unknown as ModelStatic<M.ThemeModel>;
+export type TypeStyle = M.TypeStyleModel;
+export const TypeStyle = defineEntity('TypeStyle') as unknown as ModelStatic<M.TypeStyleModel>;
 export { modelToThemeData } from './utils/themeData';
 export type { ThemeData, ThemeLike } from './utils/themeData';
 export type { SignalAggregate, SignalMode, SignalSemantic } from './manifest/types';

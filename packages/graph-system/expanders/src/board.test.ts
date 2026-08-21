@@ -28,6 +28,15 @@ const SHAPES: EntityShape[] = [
   },
   { name: 'CodeBlock', identityProperty: 'title', properties: [{ name: 'title', type: 'string' }], relations: [] },
   {
+    name: 'TypeStyle',
+    identityProperty: 'nodeType',
+    properties: [
+      { name: 'nodeType', type: 'string' },
+      { name: 'color', type: 'string' },
+    ],
+    relations: [],
+  },
+  {
     name: 'ImageBlock',
     identityProperty: 'src',
     properties: [
@@ -221,6 +230,41 @@ describe('boardSeed', () => {
     const { nodes } = await boardSeed().seed({ board: 'b1' }, ctx);
 
     expect(nodes.find((n) => n.type === 'CodeBlock')).toBeUndefined();
+  });
+
+  it("colours a node by its type, from the board's own key", async () => {
+    const { context: ctx } = context({
+      Placement: [
+        { id: 'p1', node: 't1', nodeType: 'TaskBlock', x: 0, y: 0 },
+        { id: 'p2', node: 'c1', nodeType: 'CollectionBlock', x: 40, y: 0 },
+      ],
+      TaskBlock: [{ id: 't1', title: 'Ship it' }],
+      CollectionBlock: [{ id: 'c1', title: 'A note' }],
+      TypeStyle: [{ id: 's1', nodeType: 'TaskBlock', color: 'warning-200' }],
+    });
+
+    const { nodes } = await boardSeed().seed({ board: 'b1', typeStyles: 'TypeStyle', contains: [] }, ctx);
+
+    const task = nodes.find((node) => node.type === 'TaskBlock');
+    const note = nodes.find((node) => node.type === 'CollectionBlock');
+    expect(task?.data?.boardTypeColor).toBe('warning-200');
+    // Untouched, so the rule reading it defers and the note keeps whatever the board's own rules say.
+    expect(note?.data).not.toHaveProperty('boardTypeColor');
+  });
+
+  it("lets a card's own colour sit in front of its type's", async () => {
+    // Two layers rather than one, because they answer different questions: "tasks are amber here" is
+    // a fact about the board, "this one is red" is a fact about the card. Both are on the node, and
+    // the style rules decide which wins.
+    const { context: ctx } = context({
+      Placement: [{ id: 'p1', node: 't1', nodeType: 'TaskBlock', x: 0, y: 0, color: 'danger-200' }],
+      TaskBlock: [{ id: 't1', title: 'Ship it' }],
+      TypeStyle: [{ id: 's1', nodeType: 'TaskBlock', color: 'warning-200' }],
+    });
+
+    const { nodes } = await boardSeed().seed({ board: 'b1', typeStyles: 'TypeStyle', contains: [] }, ctx);
+
+    expect(nodes[0].data).toMatchObject({ boardTypeColor: 'warning-200', boardColor: 'danger-200' });
   });
 
   it("carries the placement's own presentation onto the node, namespaced", async () => {
