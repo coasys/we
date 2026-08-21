@@ -108,6 +108,35 @@ The `scripts/generate-css.ts` script runs as a post-build hook (via tsup). It:
 - `--we-font-size-400`
 - `--we-radius-400`
 
+## Roles vs scale positions
+
+`color.ts` holds the **scale** — `neutral-0` … `neutral-1000`, one ramp per hue. `role.ts` holds the
+**vocabulary**: `surface`, `textMuted`, `border`, `accentStrong`, `dangerText`. A scale position says
+which grey; a role says what the colour is *for*.
+
+**Anything with a meaning takes a role.** Every `bg`, `color` and border colour in a template, in the
+app chrome and in a feature module names a role, and `tokenVar('color', …)` resolves role names to
+`--we-role-*` exactly as it resolves scale positions to `--we-color-*`, so they are interchangeable
+at every call site — including inside a border shorthand and behind `$if`.
+
+Two reasons it matters, and only the second is obvious:
+
+1. A role is what a theme can redefine. `ThemeOverrides.roles` pins any of them; the theme editor
+   exposes all of them.
+2. Some relationships **invert** between light and dark and a scale position cannot express that,
+   because the whole ramp flips together. A raised surface gets *lighter* in dark rather than
+   casting a shadow; a rail that must stay darker than its page in both modes cannot be written as
+   `neutral-100` over `neutral-50`. This is the reason roles exist, not a nicety.
+
+**Scale positions remain right for a palette** — a graph's node colours by category, a chart series,
+a user-picked swatch. A node painted `warning-100` because it is a note is not a warning, and
+nothing about a theme should recolour it as one. Those are the only scale positions left in the
+templates, deliberately.
+
+When adding a role, give it a parametric default over the scale so every existing theme keeps
+working untouched, and say in its doc comment what relationship it exists to express — if the answer
+is only "a slightly different grey", it is a scale position and does not belong here.
+
 ## Runtime Consumption
 
 Tokens are consumed at runtime via two mechanisms in `@we/design-utils`:

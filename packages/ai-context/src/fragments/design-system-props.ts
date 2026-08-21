@@ -14,7 +14,7 @@ Most @we/primitives inherit **all** layers below. Props use design token values 
 | Token Type | Valid Values |
 |---|---|
 | SpaceValue | "0", "100", "200", "300", "400", "500", "600", "700", "800", "900", "1000" (or CSS length e.g. "16px") |
-| ColorValue | "{hue}-{shade}" where hue = neutral, primary, success, warning, danger and shade = 0, 25, 50, 75, 100, 200–900, 1000. Also "white", "black". (or CSS color) |
+| ColorValue | A **role** — see the table below — or a scale position "{hue}-{shade}" where hue = neutral, primary, success, warning, danger and shade = 0, 25, 50, 75, 100, 200–900, 1000. Also "white", "black". (or CSS color). **Prefer a role.** |
 | RadiusValue | "0", "100", "200", "300", "400", "500", "600", "700", "800", "900", "pill", "full" (or CSS length). Also two *semantic* values that follow the theme instead of naming a size: "avatar" (circular by default; use for anything square that reads as a profile picture) and "media" (square by default; images, video, embeds). Prefer these on an \`EditableImage\` or a raw element standing in for one — a pinned "full" or "pill" cannot follow a theme's shape settings. Note "full" is 50%, so it is an ellipse on any box that is not square; reach for "pill" on wide boxes. |
 | ShadowValue | "sm", "md", "lg", "xl" |
 | FontSizeValue | "base", "100", "200", "300", "400", "500", "600", "700", "800", "900", "1000" (or CSS length) |
@@ -22,6 +22,51 @@ Most @we/primitives inherit **all** layers below. Props use design token values 
 | LineHeightValue | "none", "tight", "snug", "normal", "relaxed", "loose" (or CSS value) |
 | LetterSpacingValue | "tighter", "tight", "normal", "wide", "wider", "widest" (or CSS value) |
 | FontWeightValue | Named tokens: "regular" (400), "medium" (500), "semibold" (600), "bold" (700). Numeric: "100"–"900". CSS pass-through: "light", "normal", "bolder". |
+
+### Semantic Colour Roles — reach for these before a scale position
+
+A scale position says *which grey*. A role says *what the colour is for*, and that is what a theme
+can redesign. Some relationships invert between light and dark — a raised surface gets **lighter**
+in dark rather than casting a shadow — and a scale position cannot express that, because the whole
+scale flips together. Templates written with roles restyle correctly under any theme; templates
+written with \`neutral-100\` are frozen into one theme's idea of what that grey meant.
+
+**Use a role for every \`bg\`, \`color\` and border colour.** Reach for a scale position only when the
+colour is a *palette* rather than a meaning — a graph's node colours by category, a chart series,
+a user-chosen swatch.
+
+| Role | Use for |
+|---|---|
+| \`page\` | The app/route background behind everything. Set it on a template's root node. |
+| \`surface\` | A card, panel or sheet sitting on the page. |
+| \`surfaceRaised\` | Something floating above the page — a popover, a floating bar, a docked rail with a shadow. |
+| \`surfaceSunken\` | A well recessed into a surface — an inset box, a code block, an input trough. |
+| \`surfaceHover\` / \`surfaceActive\` | Row and item feedback. Use inside \`hoverProps\` / \`activeProps\`. |
+| \`text\` | Primary body and heading text. |
+| \`textMuted\` | Secondary text — captions, labels, metadata. |
+| \`textFaint\` | Tertiary text — placeholders, disabled labels, decorative icons. |
+| \`textInverse\` | Text on an inverted surface, such as a tooltip. **Not** for text on the accent — that is \`accentText\`. |
+| \`border\` | Default borders and dividers. |
+| \`borderStrong\` | Emphasised separation. |
+| \`accent\` | An accent *fill* — a primary button, a selected disc. |
+| \`accentText\` | Text or an icon **on top of** an accent fill. |
+| \`accentStrong\` | An accent-coloured heading or icon **on an ordinary surface**, where \`accent\` is often too light to read. |
+| \`accentMuted\` | An accent-tinted fill — a selected row, a subtle highlight. |
+| \`focus\` | The focus ring. Rarely set directly; \`--we-ring-color\` already resolves to it. |
+| \`dangerText\` / \`successText\` / \`warningText\` | Status as a **foreground** — an error message, a warning icon, a "connected" tick. |
+| \`dangerSurface\` / \`successSurface\` / \`warningSurface\` | The tinted **panel** behind status content. |
+| \`overlay\` | The scrim behind a modal or drawer. Carries its own alpha. |
+| \`shadowColor\` | The colour shadows are built from. |
+
+\`\`\`json
+{ "type": "Column", "props": { "bg": "surface", "border": "1px solid border" }, "children": [
+  { "type": "we-text", "props": { "variant": "heading-md", "color": "text" }, "children": ["Title"] },
+  { "type": "we-text", "props": { "color": "textMuted" }, "children": ["Supporting line"] }
+]}
+\`\`\`
+
+Roles work anywhere a colour token does, including inside a border shorthand
+(\`"1px solid border"\`) and behind \`$if\` (\`{ "$if": { "condition": …, "then": "accentMuted", "else": "surfaceSunken" } }\`).
 
 **Layout-only primitives** — these accept only Layout props (not Visual, Flex, Typography, or State):
 we-divider, we-icon, we-menu-group, we-popover, we-spinner, we-tooltip

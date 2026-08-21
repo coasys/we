@@ -169,6 +169,32 @@ background: #1a1a2e;
 
 Exception: theme-specific accent colors that intentionally don't follow the token system (e.g. retro's `silver` background).
 
+## Roles — where a theme stops being parametric
+
+The hue/saturation/multiplier/subtractor parameters generate the whole scale from four numbers,
+which is what makes a theme shareable data. What they cannot do is change a *relationship*: the
+lightness ramp steps evenly, so the gap from page to rail always equals the gap from page to raised
+surface, and the whole ramp inverts together in dark mode. A theme wanting raised surfaces to get
+lighter in dark rather than cast a shadow, or a rail that stays darker than its page in both modes,
+has to leave the parametric system — and `roles` is where it goes.
+
+Pin roles in the preset's `parameters.roles` (see `dark`, `channels`, `timeline` in `presets.ts`),
+not in the theme's CSS file. Two reasons:
+
+- **Everything reads the preset.** `themeToStyle` resolves a named theme's parameters wherever it is
+  applied — including scoped to one space's content — while a `[data-we-theme='x']` rule only fires
+  where that attribute is set.
+- **A CSS-only pin now loses.** `themeToStyle` re-declares every role's parametric default as an
+  inline style so unpinned roles resolve against the theme they belong to rather than `:root`, and
+  an inline style outranks an attribute selector. A role declared *only* in a theme's CSS file would
+  be overwritten by its own default. `dark` declares `--we-role-surface-raised` in both places and
+  `builtInThemes.sanitise.test.ts` enforces that they agree; if you add a role to a CSS file, add it
+  to the preset too or that test will tell you.
+
+Pin the *lightness* and leave hue and saturation variable — the `neutral()` helper in `presets.ts`
+exists for this, so changing `neutralHue` still moves the whole theme together. A role pinned to a
+literal hex freezes one colour out of the parametric system and the theme comes apart around it.
+
 ## Build
 
 Themes are built with PostCSS:

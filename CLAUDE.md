@@ -1237,7 +1237,7 @@ Most @we/primitives inherit **all** layers below. Props use design token values 
 | Token Type | Valid Values |
 |---|---|
 | SpaceValue | "0", "100", "200", "300", "400", "500", "600", "700", "800", "900", "1000" (or CSS length e.g. "16px") |
-| ColorValue | "{hue}-{shade}" where hue = neutral, primary, success, warning, danger and shade = 0, 25, 50, 75, 100, 200–900, 1000. Also "white", "black". (or CSS color) |
+| ColorValue | A **role** — see the table below — or a scale position "{hue}-{shade}" where hue = neutral, primary, success, warning, danger and shade = 0, 25, 50, 75, 100, 200–900, 1000. Also "white", "black". (or CSS color). **Prefer a role.** |
 | RadiusValue | "0", "100", "200", "300", "400", "500", "600", "700", "800", "900", "pill", "full" (or CSS length). Also two *semantic* values that follow the theme instead of naming a size: "avatar" (circular by default; use for anything square that reads as a profile picture) and "media" (square by default; images, video, embeds). Prefer these on an `EditableImage` or a raw element standing in for one — a pinned "full" or "pill" cannot follow a theme's shape settings. Note "full" is 50%, so it is an ellipse on any box that is not square; reach for "pill" on wide boxes. |
 | ShadowValue | "sm", "md", "lg", "xl" |
 | FontSizeValue | "base", "100", "200", "300", "400", "500", "600", "700", "800", "900", "1000" (or CSS length) |
@@ -1245,6 +1245,51 @@ Most @we/primitives inherit **all** layers below. Props use design token values 
 | LineHeightValue | "none", "tight", "snug", "normal", "relaxed", "loose" (or CSS value) |
 | LetterSpacingValue | "tighter", "tight", "normal", "wide", "wider", "widest" (or CSS value) |
 | FontWeightValue | Named tokens: "regular" (400), "medium" (500), "semibold" (600), "bold" (700). Numeric: "100"–"900". CSS pass-through: "light", "normal", "bolder". |
+
+### Semantic Colour Roles — reach for these before a scale position
+
+A scale position says *which grey*. A role says *what the colour is for*, and that is what a theme
+can redesign. Some relationships invert between light and dark — a raised surface gets **lighter**
+in dark rather than casting a shadow — and a scale position cannot express that, because the whole
+scale flips together. Templates written with roles restyle correctly under any theme; templates
+written with `neutral-100` are frozen into one theme's idea of what that grey meant.
+
+**Use a role for every `bg`, `color` and border colour.** Reach for a scale position only when the
+colour is a *palette* rather than a meaning — a graph's node colours by category, a chart series,
+a user-chosen swatch.
+
+| Role | Use for |
+|---|---|
+| `page` | The app/route background behind everything. Set it on a template's root node. |
+| `surface` | A card, panel or sheet sitting on the page. |
+| `surfaceRaised` | Something floating above the page — a popover, a floating bar, a docked rail with a shadow. |
+| `surfaceSunken` | A well recessed into a surface — an inset box, a code block, an input trough. |
+| `surfaceHover` / `surfaceActive` | Row and item feedback. Use inside `hoverProps` / `activeProps`. |
+| `text` | Primary body and heading text. |
+| `textMuted` | Secondary text — captions, labels, metadata. |
+| `textFaint` | Tertiary text — placeholders, disabled labels, decorative icons. |
+| `textInverse` | Text on an inverted surface, such as a tooltip. **Not** for text on the accent — that is `accentText`. |
+| `border` | Default borders and dividers. |
+| `borderStrong` | Emphasised separation. |
+| `accent` | An accent *fill* — a primary button, a selected disc. |
+| `accentText` | Text or an icon **on top of** an accent fill. |
+| `accentStrong` | An accent-coloured heading or icon **on an ordinary surface**, where `accent` is often too light to read. |
+| `accentMuted` | An accent-tinted fill — a selected row, a subtle highlight. |
+| `focus` | The focus ring. Rarely set directly; `--we-ring-color` already resolves to it. |
+| `dangerText` / `successText` / `warningText` | Status as a **foreground** — an error message, a warning icon, a "connected" tick. |
+| `dangerSurface` / `successSurface` / `warningSurface` | The tinted **panel** behind status content. |
+| `overlay` | The scrim behind a modal or drawer. Carries its own alpha. |
+| `shadowColor` | The colour shadows are built from. |
+
+```json
+{ "type": "Column", "props": { "bg": "surface", "border": "1px solid border" }, "children": [
+  { "type": "we-text", "props": { "variant": "heading-md", "color": "text" }, "children": ["Title"] },
+  { "type": "we-text", "props": { "color": "textMuted" }, "children": ["Supporting line"] }
+]}
+```
+
+Roles work anywhere a colour token does, including inside a border shorthand
+(`"1px solid border"`) and behind `$if` (`{ "$if": { "condition": …, "then": "accentMuted", "else": "surfaceSunken" } }`).
 
 **Layout-only primitives** — these accept only Layout props (not Visual, Flex, Typography, or State):
 we-divider, we-icon, we-menu-group, we-popover, we-spinner, we-tooltip
@@ -2506,7 +2551,7 @@ Use literal arrays for fixed/sample data:
   "children": [
     {
       "type": "Column",
-      "props": { "bg": "neutral-0", "r": "400", "border": "1px solid neutral-200", "p": "400", "gap": "300" },
+      "props": { "bg": "surface", "r": "400", "border": "1px solid border", "p": "400", "gap": "300" },
       "children": [
         {
           "type": "Row",
@@ -2651,10 +2696,10 @@ looks identical to a page still loading, and the reader cannot tell which.
       "type": "Column",
       "props": { "ax": "center", "ay": "center", "gap": "200", "p": "600", "width": "100%" },
       "children": [
-        { "type": "we-icon", "props": { "name": "newspaper", "size": "lg", "color": "neutral-400" } },
+        { "type": "we-icon", "props": { "name": "newspaper", "size": "lg", "color": "textFaint" } },
         {
           "type": "we-text",
-          "props": { "color": "neutral-400", "textAlign": "center" },
+          "props": { "color": "textFaint", "textAlign": "center" },
           "children": ["This space doesn't have any posts."]
         }
       ]
@@ -2878,7 +2923,7 @@ with the value itself as `$arg`.
       "children": [
         { "type": "we-avatar", "props": { "size": "sm", "image": "$author.avatar", "hash": "$author.did" } },
         { "type": "we-text", "props": { "fontWeight": "semibold" }, "children": ["$author.name"] },
-        { "type": "we-timestamp", "props": { "value": "$post.createdAt", "relative": true, "color": "neutral-500" } }
+        { "type": "we-timestamp", "props": { "value": "$post.createdAt", "relative": true, "color": "textMuted" } }
       ]
     }
   ]
@@ -2955,7 +3000,7 @@ the route's background reaches the edges, the inner holds the measure.
 ```json
 {
   "type": "Card",
-  "props": { "bg": "neutral-100", "border": "1px solid neutral-200" },
+  "props": { "bg": "surfaceSunken", "border": "1px solid border" },
   "children": [
     {
       "type": "Column",
@@ -2981,7 +3026,7 @@ the route's background reaches the edges, the inner holds the measure.
       "type": "Row",
       "props": { "ay": "center", "gap": "400", "py": "100" },
       "children": [
-        { "type": "we-icon", "props": { "name": "globe", "color": "primary-600" } },
+        { "type": "we-icon", "props": { "name": "globe", "color": "accentStrong" } },
         {
           "type": "Column",
           "props": { "gap": "100" },
@@ -2990,7 +3035,7 @@ the route's background reaches the edges, the inner holds the measure.
               "type": "Row",
               "props": { "gap": "300" },
               "children": [
-                { "type": "we-text", "props": { "fontWeight": "bold", "color": "neutral-700" }, "children": ["Discovery:"] },
+                { "type": "we-text", "props": { "fontWeight": "bold", "color": "text" }, "children": ["Discovery:"] },
                 { "type": "we-text", "props": { "fontWeight": "bold" }, "children": ["Listed"] }
               ]
             },
@@ -3029,7 +3074,7 @@ themselves come from a `$query`.
     "height": "100%",
     "overflow": "hidden",
     "position": "fixed",
-    "bg": "neutral-50",
+    "bg": "page",
     "onMouseEnter": { "$setLocal": "expanded", "value": true },
     "onMouseLeave": { "$setLocal": "expanded", "value": false }
   },
@@ -3251,7 +3296,8 @@ WRONG icon names (Heroicons/Material — do NOT use):
 - "menu" → use "list"
 - All schemas must be valid JSON with property names and string values in double quotes.
 - The meta property at the root is required: { "meta": { "name": "...", "description": "...", "icon": "..." } }
-- Always set `bg: 'neutral-50'` on root-level schema nodes (templates, pages). This ensures proper background in all themes — without it, dark mode renders white backgrounds.
+- Always set `bg: 'page'` on root-level schema nodes (templates, pages). Without a background, dark mode renders white. Use the role, not `neutral-50`: the role is what a theme redefines, and a theme that wants a page darker than its cards cannot say so through a scale position.
+- Colour every `bg`, `color` and border with a **semantic role** — `surface`, `textMuted`, `border`, `accentStrong`, `dangerText` — rather than a scale position. See "Semantic Colour Roles" in the Design System Props section for the full table and what each is for. Scale positions are for palettes (a graph's node colours by category, a chart series), not for meanings.
 - Use `we-text`'s `loading` prop for text bound to data that has not arrived — never a hand-authored `$if` + `we-skeleton` beside it. A separate placeholder needs a height nobody can derive from the schema, and any value you measure drifts the moment a theme changes `fontScale` or the type scale. `we-text` sizes its own placeholder from the line it would occupy, so it stays right. Set `loadingWidth` (default `'100%'`) for the one thing the element cannot infer: how wide the absent text would have been.
 - An empty `we-text` already reserves one line, so text that simply arrives late does not shift the layout even without `loading`. Only `inline` text still collapses, which is correct for a run inside a sentence.
 - Distinguish "not loaded yet" from "loaded and empty" when the difference is visible. A condition like `{ $store: 'spaceStore.currentSpace.description' }` is falsy in both cases, so an `else` branch saying "No description" asserts it about a space that has not arrived. Test the container first (`currentSpace`), then its field.

@@ -225,7 +225,7 @@ Use literal arrays for fixed/sample data:
   "children": [
     {
       "type": "Column",
-      "props": { "bg": "neutral-0", "r": "400", "border": "1px solid neutral-200", "p": "400", "gap": "300" },
+      "props": { "bg": "surface", "r": "400", "border": "1px solid border", "p": "400", "gap": "300" },
       "children": [
         {
           "type": "Row",
