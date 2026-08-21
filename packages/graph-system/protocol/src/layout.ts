@@ -40,6 +40,15 @@ export interface LayoutInput {
   containment?: ReadonlyMap<string, string[]>;
   /** The area to lay out into, in world units. */
   viewport: { width: number; height: number };
+  /**
+   * The world rectangle currently on screen.
+   *
+   * For a layout that has to *put* something rather than derive where it goes. A node with no
+   * position of its own has to land somewhere, and the origin is the one place guaranteed to be
+   * wrong — it is wherever the reader is not. Absent before a surface has been measured, which is
+   * why it is optional and why a layout falls back to the origin rather than requiring it.
+   */
+  visible?: { x: number; y: number; width: number; height: number };
 }
 
 export interface LayoutResult {

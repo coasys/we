@@ -36,11 +36,15 @@ export interface SchemaPort {
   /** Install only the given module schemas (runs on every space switch — diffs before writing). */
   installModules(dataset: DatasetHandle, moduleSchemas: readonly unknown[]): Promise<void>;
   /**
-   * Bring a dataset's already-installed space schemas up to date with the ones this build declares,
-   * for a dataset that `installSpace` deliberately skips because it is already a host space.
+   * Bring a dataset's space schemas up to date with the ones this build declares, for a dataset that
+   * `installSpace` deliberately skips because it is already a host space.
    *
-   * Runs on every space switch, so it must diff before writing. Returns the schemas it updated, or
-   * an empty array — the common case — when everything stored was already current.
+   * Covers both ways a stored schema can be behind: one that changed since it was installed, and one
+   * this build declares that the dataset never had at all. The second matters as much as the first —
+   * a dataset predating a newly added entity can answer no query about it.
+   *
+   * Runs on every space switch, so it must diff before writing. Returns the schemas it wrote, or an
+   * empty array — the common case — when everything stored was already current.
    */
   refreshSpace(dataset: DatasetHandle): Promise<string[]>;
   /** Ensure one schema payload is installed. Idempotent. */

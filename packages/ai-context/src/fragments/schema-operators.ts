@@ -39,6 +39,12 @@ Resolves a value from a named store, supporting nested paths.
 Action/event:
 { "$action": "storeName.method", "args": [...] }
 Calls a method on a store, optionally with arguments (which can themselves be tokens).
+IMPORTANT — omitting "args" does NOT call the method with no arguments: the handler's own arguments are
+forwarded, so a click handler passes the DOM event as the first parameter. That is deliberate (it is how
+{ "onChange": { "$action": "store.method" } } passes a value straight through), but it means a method whose
+first parameter is OPTIONAL receives a PointerEvent from a button written the obvious way. Pass the argument
+you mean explicitly when the method has an optional leading parameter — note "args": [] does not help, since
+an empty list is treated as "no args given" and forwards the event too.
 Supports async lifecycle callbacks — fired after the store method's Promise resolves/rejects:
   onSuccess: [...actions]  — fired on resolve; '$result' (and '$result.<path>') in args refers to the resolved value
   onError: [...actions]    — fired on reject; '$result.message' etc. refers to the error object
@@ -109,12 +115,18 @@ Array operators:
 Filters an array to items where all where conditions match. Mirrors the $query where operator set:
 
   { "field": "value" }                                   — strict equality
+  { "field": ["a", "b"] }                                — set membership (IN); matches any of them
   { "field": { "not": "value" } }                        — inequality; array form excludes multiple values
   { "field": { "contains": "text" } }                    — case-insensitive substring match (strings only)
   { "field": { "startsWith": "text" } }                  — anchored prefix match, case-SENSITIVE
   { "field": { "endsWith": "text" } }                    — anchored suffix match, case-SENSITIVE
   { "field": { "exists": true } }                        — non-null / non-undefined presence check
   { "field": { "exists": false } }                       — null or undefined check
+
+A bare array is the positive counterpart of "not" with an array, and it is the way to fetch a known
+set: { "id": ["id1", "id2", "id3"] }. Native on the AD4M backend, where it pushes down to a SPARQL
+VALUES clause, so it is index-friendly rather than a scan. An empty array matches nothing, which is
+what "none of these" should mean.
 
 startsWith/endsWith are case-sensitive where contains is not: they exist to match structured strings
 against a known prefix (an ISO date out of a datetime, an id out of a URI), where folding case would
@@ -293,6 +305,8 @@ Read:  { "$local": "name" } — returns the signal value (reactive).
 Write: { "$setLocal": "name", "from": "$event.target.value" } — event handler that updates the signal.
        { "$setLocal": "name", "value": "literal" } — sets to a literal value (string, number, boolean, null, object).
        { "$setLocal": "name", "merge": { "field": "$event.detail" } } — shallow-merges fields into an object-typed signal. Values are resolved as event paths (e.g. "$event.detail") or passed as literals. Use for partial updates to object state.
+       { "$setLocal": "name", "by": 20 } — adds to a NUMBER field, reading the current value first. The only arithmetic the schema layer has: use it to advance a page size ("show 20 more") or bump a counter something else watches. A non-numeric current value counts as 0.
+Note "value" is a LITERAL and is not resolved — a token object inside it is stored as the object, not as what it would resolve to. To store something computed, bind the prop that reads it instead, or use "from"/"merge", whose values ARE resolved as event paths.
 Toggle: { "$toggleLocal": "fieldName" } — toggles a boolean field (equivalent to setting it to !current). Use for show/hide, open/close, expand/collapse patterns.
 Toggle one of many: { "$toggleLocalIn": "fieldName", "value": "$group.id" } — adds the value to an
   array-typed field, or removes it if already there. Read it back with $in:

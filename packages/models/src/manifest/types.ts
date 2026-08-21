@@ -162,10 +162,43 @@ export interface MutedAgentModel extends WeNodeModel {
   description: string;
 }
 
+export interface PlacementModel extends ModelInstance {
+  nodeType: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  contentScale: number;
+  color: string;
+  cardShape: string;
+  node?: string;
+}
+
 export interface ReadMarkerModel extends WeNodeModel {
   nodeId: string;
   spaceUuid: string;
   lastReadAt: string;
+}
+
+export interface RelationshipModel extends WeNodeModel {
+  relationshipTypeId: string;
+  label: string;
+  description: string;
+  sourceType: string;
+  targetType: string;
+  source?: string;
+  target?: string;
+}
+
+export interface RelationshipTypeModel extends WeNodeModel {
+  name: string;
+  slug: string;
+  description: string;
+  icon: string;
+  color: string;
+  inverseName: string;
+  directed: boolean;
+  schemaVersion: number;
 }
 
 export interface ShapeModel extends WeNodeModel {
@@ -286,6 +319,11 @@ export interface ThemeModel extends WeNodeModel {
   addScreenshots(value: string | { id: string }, batch?: string): Promise<unknown>;
   removeScreenshots(value: string | { id: string }, batch?: string): Promise<unknown>;
   setScreenshots(values: (string | { id: string })[], batch?: string): Promise<unknown>;
+}
+
+export interface TypeStyleModel extends ModelInstance {
+  nodeType: string;
+  color: string;
 }
 
 export interface VideoBlockModel extends WeNodeModel {

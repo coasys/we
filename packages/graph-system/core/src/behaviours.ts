@@ -182,6 +182,86 @@ export function selectBehaviour(rawOptions?: Record<string, unknown>): Behaviour
   };
 }
 
+export interface ConnectNodesOptions {
+  /**
+   * Whether the gesture is live. Defaults to true.
+   *
+   * An option rather than a modifier key, because the modifiers are taken and the ones left do not
+   * travel. Shift already extends the selection; `PointerInput` carries no `ctrlKey`; and `metaKey`
+   * is Command on a Mac and Super on Linux, where it is usually the window manager's. More
+   * importantly a modifier-only gesture is invisible — nobody discovers it, and a touchscreen has
+   * no modifiers at all.
+   *
+   * So a template arms it from its own control, which also gives the user somewhere to see that
+   * dragging currently means connecting rather than moving. Disarmed, this claims nothing and the
+   * press falls through to whatever handles nodes next — normally `drag-node`.
+   */
+  armed?: boolean;
+}
+
+/**
+ * Drag from one node to another to connect them.
+ *
+ * Emits `edgeCreate` and writes nothing. What connecting two things *means* is the consumer's —
+ * a knowledge map creates a relationship record, an outline would reparent — and a behaviour that
+ * assumed one would be useless to the others. The same rule `we-sortable` follows.
+ *
+ * Must be listed **before** `drag-node`: both claim a press on a node, and whichever comes first
+ * wins. After it, arming the gesture would do nothing at all and look like a broken toggle.
+ */
+export function connectNodesBehaviour(rawOptions?: Record<string, unknown>): Behaviour {
+  const options = { armed: true, ...(rawOptions as ConnectNodesOptions) };
+  let from: string | null = null;
+
+  /** End the gesture and take down the line, whatever the outcome. */
+  function reset(ctx: BehaviourContext): void {
+    from = null;
+    ctx.drawConnection(null);
+  }
+
+  return {
+    id: 'connect-nodes',
+    description: 'Drag from one node to another to connect them.',
+    onPointerDown(input, ctx) {
+      if (!options.armed) return;
+      const [hit] = ctx.hitTest(ctx.toWorld(input.at));
+      if (!hit) return;
+      from = hit;
+      return true;
+    },
+    onPointerMove(input, ctx) {
+      if (!from) return;
+      // Same guard as the drag behaviour: no button held means no gesture, whatever this thinks.
+      // Without it a dropped pointer-up leaves a line following the cursor around the canvas.
+      if (input.buttons === 0) {
+        reset(ctx);
+        return;
+      }
+      ctx.drawConnection(from, ctx.toWorld(input.at));
+      return true;
+    },
+    onPointerCancel(_input, ctx) {
+      reset(ctx);
+    },
+    onPointerUp(input, ctx) {
+      if (!from) return;
+      const source = from;
+      const [target] = ctx.hitTest(ctx.toWorld(input.at));
+      reset(ctx);
+      // A node cannot be connected to itself, and a release on empty canvas is an abandoned
+      // gesture rather than a connection to nothing. Both end quietly: the line goes and no event
+      // is emitted, so nothing opens a dialog about a connection the user did not make.
+      if (!target || target === source) return;
+      ctx.emit({
+        type: 'edgeCreate',
+        source: { id: source, kind: 'entity', type: '' },
+        target: { id: target, kind: 'entity', type: '' },
+      });
+      return true;
+    },
+  };
+}
+
 /** Double-click a node to open or close it — the gesture that drives resolution. */
 export function expandOnDoubleClickBehaviour(rawOptions?: Record<string, unknown>): Behaviour {
   const options = (rawOptions ?? {}) as { direction?: 'in' | 'out' | 'both' };
@@ -192,6 +272,57 @@ export function expandOnDoubleClickBehaviour(rawOptions?: Record<string, unknown
       const [hit] = ctx.hitTest(ctx.toWorld(input.at));
       if (!hit) return;
       ctx.expand(hit, options.direction);
+      return true;
+    },
+  };
+}
+
+/**
+ * Double-click a node to say "open this".
+ *
+ * The counterpart to `canvas-double-click`, and the thing that makes `onNodeDoubleClick` reachable
+ * at all: the event was declared in the protocol and routed by the adapter, and **no behaviour ever
+ * emitted it**, so a template binding the prop got silence. Declared-and-unimplemented is the
+ * quietest kind of gap — everything typechecks, the wiring reads as complete, and the gesture just
+ * does nothing.
+ *
+ * Emits and does nothing else. What opening a node *means* is the consumer's: a board opens the
+ * card, an explorer might do what `expand-on-double-click` does instead. Which is why the two are
+ * separate behaviours rather than one with a mode — a template lists whichever it means, and
+ * listing both would have the first claim the gesture.
+ */
+export function nodeDoubleClickBehaviour(): Behaviour {
+  return {
+    id: 'node-double-click',
+    description: 'Double-click a node to open it.',
+    onDoubleClick(input, ctx) {
+      const [hit] = ctx.hitTest(ctx.toWorld(input.at));
+      if (!hit) return;
+      ctx.emit({ type: 'nodeDoubleClick', node: { id: hit, kind: 'entity', type: '' } });
+      return true;
+    },
+  };
+}
+
+/**
+ * Double-click empty canvas to say "make something here".
+ *
+ * Emits `canvasDoubleClick` with the world point and writes nothing, like every other gesture here.
+ * The position is the whole of the message: on a surface where position *is* the data, "make
+ * something" is not a request anybody can act on and "make something here" is.
+ *
+ * Claims only the background, so it composes with `expand-on-double-click` — a double-click on a
+ * node opens it, a double-click beside one creates. Which order they are listed in does not matter
+ * for the same reason: they never both match.
+ */
+export function canvasDoubleClickBehaviour(): Behaviour {
+  return {
+    id: 'canvas-double-click',
+    description: 'Double-click empty canvas to create something at that point.',
+    onDoubleClick(input, ctx) {
+      const at = ctx.toWorld(input.at);
+      if (ctx.hitTest(at).length) return;
+      ctx.emit({ type: 'canvasDoubleClick', at });
       return true;
     },
   };
@@ -223,6 +354,9 @@ export function defaultBehaviours() {
   return {
     'pan-zoom': panZoomBehaviour,
     'drag-node': dragNodeBehaviour,
+    'connect-nodes': connectNodesBehaviour,
+    'canvas-double-click': canvasDoubleClickBehaviour,
+    'node-double-click': nodeDoubleClickBehaviour,
     select: selectBehaviour,
     'expand-on-click': expandOnClickBehaviour,
     'expand-on-double-click': expandOnDoubleClickBehaviour,

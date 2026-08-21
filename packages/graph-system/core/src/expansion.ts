@@ -125,6 +125,69 @@ export class ExpansionState {
     return { removedNodes: [...removed], bundles };
   }
 
+  /**
+   * Drop one opener's claim on everything except what it still holds, and report what nothing is
+   * holding any more.
+   *
+   * This is what makes a *refresh* different from a restart. Re-running the seeds hands back the
+   * rows that exist now; anything the seeds used to introduce and no longer do has to go, while
+   * everything reached by expanding a node has to stay exactly where it is. Recomputing that by
+   * clearing and reloading would be correct and would also throw away every position, every pin and
+   * every open node on screen — which is the whole reason a live graph could not be built on
+   * {@link reset}.
+   *
+   * Cascades for the same reason {@link collapse} does: a released node may itself have been open,
+   * and what it was the only holder of goes with it. Deliberately shares that logic's shape rather
+   * than its code — collapse keeps the node it was called on, and this one is releasing a *pseudo*
+   * opener that is not a node at all.
+   */
+  releaseFrom(
+    opener: string,
+    keepNodes: ReadonlySet<string>,
+    keepEdges: ReadonlySet<string>,
+  ): { nodes: string[]; edges: string[] } {
+    const removed = new Set<string>();
+    const releasedEdges: string[] = [];
+    const worklist = [opener];
+
+    while (worklist.length) {
+      const holder = worklist.pop()!;
+      // The opener itself is not a node and was never "expanded"; anything cascaded from it is.
+      if (holder !== opener) {
+        this.expanded.delete(holder);
+        this.cursors.delete(holder);
+      }
+      // `keep` applies only to the opener's own direct claims. A node that survives in the new seed
+      // set is kept whatever else happens; one that is merely *reachable* from a released node is not.
+      const honourKeep = holder === opener;
+
+      for (const [nodeId, holders] of this.openers) {
+        if (honourKeep && keepNodes.has(nodeId)) continue;
+        if (!holders.has(holder)) continue;
+        holders.delete(holder);
+        if (holders.size > 0 || removed.has(nodeId)) continue;
+        removed.add(nodeId);
+        worklist.push(nodeId);
+      }
+
+      for (const [edgeId, holders] of this.edgeOpeners) {
+        if (honourKeep && keepEdges.has(edgeId)) continue;
+        if (!holders.has(holder)) continue;
+        holders.delete(holder);
+        if (holders.size > 0) continue;
+        this.edgeOpeners.delete(edgeId);
+        releasedEdges.push(edgeId);
+      }
+    }
+
+    for (const nodeId of removed) {
+      this.openers.delete(nodeId);
+      this.bundles.delete(nodeId);
+    }
+
+    return { nodes: [...removed], edges: releasedEdges };
+  }
+
   /** Bundle edges owed to a node, so re-expanding it can retract them. */
   bundlesFor(id: string): string[] {
     return this.bundles.get(id) ?? [];

@@ -36,6 +36,27 @@
   }
 }
 
+/**
+ * The status strip — the one place on a graph that is reading matter rather than canvas.
+ *
+ * Everything else here is a direct-manipulation surface, so the root sets `user-select: none` and a
+ * drag anywhere moves the camera. That is right for nodes and wrong for a warning: a message telling
+ * you an expander failed is a message you want to *copy*, and until now a press on one gave you the
+ * grab cursor and panned the board behind it.
+ *
+ * The container stays transparent to the pointer so the canvas is still pannable everywhere the
+ * messages are not — only the message boxes themselves take the pointer back. `user-select` inherits
+ * into shadow DOM, so setting it on the host is enough for the alert's own text.
+ */
+.we-graph__status {
+  > * {
+    pointer-events: auto;
+    user-select: text;
+    // The grab cursor is a promise the canvas makes and this element does not keep.
+    cursor: auto;
+  }
+}
+
 .we-graph__layer {
   position: absolute;
   inset: 0;
@@ -200,9 +221,50 @@
   overflow: hidden;
 }
 
+/**
+ * A card's real content, when a style rule named one.
+ *
+ * Clipped rather than scrolled, and that is the design rather than a limitation: a card is a
+ * *preview* of a document, and one that scrolled would be a window you have to operate to read
+ * through — on a surface where the wheel already means zoom. What does not fit is reached by opening
+ * the thing, which is what the fade at the bottom is there to suggest.
+ */
+.we-graph__card-content {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  // Inherited from the layer, but stated here because this subtree is arbitrary host content and
+  // one element in it setting `pointer-events: auto` would put a hole in the canvas.
+  pointer-events: none;
+
+  &::after {
+    content: '';
+    position: absolute;
+    inset: auto 0 0 0;
+    height: var(--we-space-500);
+    background: linear-gradient(to bottom, transparent, var(--node-color));
+  }
+}
+
+// The content's own scale, per card — see `NodeStyle.contentScale`.
+//
+// A wider, taller box drawn smaller, rather than the same box shrunk: the content is laid out at
+// `100% / scale` and then scaled back down, so at 0.5 twice as much of the document fits in a card
+// whose size on the board has not changed. `top left` because the card is a page, and text that
+// grew from its centre would drift out of both margins at once.
+.we-graph__card-scale {
+  width: calc(100% / var(--content-scale, 1));
+  height: calc(100% / var(--content-scale, 1));
+  transform-origin: top left;
+  transform: scale(var(--content-scale, 1));
+}
+
 .we-graph__card-text {
   color: var(--node-label-color);
-  font-size: var(--node-label-size);
+  // Scaled with the card's content, so the fallback answers the same slider as the real thing —
+  // otherwise the setting would appear to do nothing on a card whose content has not arrived.
+  font-size: calc(var(--node-label-size) * var(--content-scale, 1));
   line-height: 1.4;
   // Clamped rather than scrolled: a card is a glance, and the inspector is where the whole value is.
   display: -webkit-box;
@@ -218,12 +280,28 @@
   color: var(--node-label-color);
 }
 
+/*
+  Hovering says "this one, and it is clickable".
+
+  A ring rather than a colour change, because a board lets people choose a card's colour and
+  feedback made out of that colour would be invisible on whichever card happened to match it.
+  `outline` rather than a border: a border changes the box and nudges the content inside it, and on
+  a surface where a card can be sized to the pixel a hover that moves the layout reads as a bug.
+*/
 .we-graph__node--card.we-graph__node--hovered .we-graph__card {
   box-shadow: var(--we-shadow-md);
+  outline: calc(2px / var(--graph-zoom)) solid var(--we-color-primary-300);
+  outline-offset: calc(1px / var(--graph-zoom));
 }
 
 .we-graph__node--card.we-graph__node--selected .we-graph__card {
   box-shadow: 0 0 0 3px var(--we-color-primary-500);
+}
+
+// A card that is both selected and hovered keeps the selection ring alone — two rings around one
+// card says nothing the stronger of them does not.
+.we-graph__node--card.we-graph__node--selected.we-graph__node--hovered .we-graph__card {
+  outline: none;
 }
 
 .we-graph__node--hovered .we-graph__dot {
@@ -257,3 +335,115 @@
   background: transparent;
 }
 
+/**
+ * The hover mark on an edge: the same line, wider, faint, drawn underneath.
+ *
+ * Worth more than the node equivalent. A node is a shape with a visible boundary; an edge is a
+ * two-pixel line whose clickable width is a tolerance nobody can see, so without this the only way
+ * to find out whether the pointer is on the line is to click and see what opens.
+ *
+ * A second path rather than a thicker stroke on the real one, so the drawing itself never changes
+ * shape as the pointer moves near it.
+ */
+.we-graph__edge-hover {
+  opacity: 0.3;
+  stroke-linecap: round;
+  pointer-events: none;
+}
+
+// Resize handles on a selected card: four corners, four edges.
+//
+// Outside the card rather than inside it, so the card's `overflow: hidden` cannot clip them and they
+// stay grabbable on a card whose content fills the box. Sized in inverse zoom so each is the same
+// number of screen pixels at any magnification — a handle that shrank with the board would become
+// impossible to hit exactly when a zoomed-out card is hardest to resize by eye.
+//
+// `--half-w` / `--half-h` place them against the card's own edges, which is what keeps eight rules
+// down to two coordinates each.
+.we-graph__resize {
+  --grip: calc(12px / var(--graph-zoom));
+  --half-w: calc(var(--node-width) / 2);
+  --half-h: calc(var(--node-height) / 2);
+  position: absolute;
+  transform: translate(-50%, -50%);
+  // The node layer is inert so the canvas can hit-test in world space; these are the elements that
+  // take a press themselves, because what they resize is a box on screen rather than a point.
+  pointer-events: auto;
+  touch-action: none;
+}
+
+// The corners: marked, because a corner is the handle people look for, and the only one whose
+// position is not obvious from the cursor alone.
+.we-graph__resize--nw,
+.we-graph__resize--ne,
+.we-graph__resize--se,
+.we-graph__resize--sw {
+  width: var(--grip);
+  height: var(--grip);
+  border-radius: 50%;
+  background: var(--we-color-neutral-0);
+  border: calc(2px / var(--graph-zoom)) solid var(--we-color-primary-500);
+}
+
+// The edges: strips along each side, deliberately unmarked. An edge handle announces itself by the
+// cursor changing, which is what every canvas tool does — drawing all eight would ring a selected
+// card with furniture and cover the content it is there to show.
+.we-graph__resize--n,
+.we-graph__resize--s {
+  width: calc(var(--node-width) - var(--grip) * 2);
+  height: var(--grip);
+}
+
+.we-graph__resize--e,
+.we-graph__resize--w {
+  width: var(--grip);
+  height: calc(var(--node-height) - var(--grip) * 2);
+}
+
+.we-graph__resize--nw {
+  left: calc(var(--half-w) * -1);
+  top: calc(var(--half-h) * -1);
+  cursor: nwse-resize;
+}
+
+.we-graph__resize--n {
+  left: 0;
+  top: calc(var(--half-h) * -1);
+  cursor: ns-resize;
+}
+
+.we-graph__resize--ne {
+  left: var(--half-w);
+  top: calc(var(--half-h) * -1);
+  cursor: nesw-resize;
+}
+
+.we-graph__resize--e {
+  left: var(--half-w);
+  top: 0;
+  cursor: ew-resize;
+}
+
+.we-graph__resize--se {
+  left: var(--half-w);
+  top: var(--half-h);
+  cursor: nwse-resize;
+}
+
+.we-graph__resize--s {
+  left: 0;
+  top: var(--half-h);
+  cursor: ns-resize;
+}
+
+.we-graph__resize--sw {
+  left: calc(var(--half-w) * -1);
+  top: var(--half-h);
+  cursor: nesw-resize;
+}
+
+.we-graph__resize--w {
+  left: calc(var(--half-w) * -1);
+  top: 0;
+  cursor: ew-resize;
+}

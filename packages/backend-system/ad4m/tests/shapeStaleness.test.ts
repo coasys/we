@@ -25,7 +25,7 @@
  * The unit under test is the diff. So the declared side is a fixture, and the two assertions that
  * genuinely are about the runtime are marked as such below.
  */
-import { declaredShape, shapeIsStale, type StoredShape } from '@we/backend-ad4m';
+import { declaredShape, missingModels, shapeIsStale, type StoredShape } from '@we/backend-ad4m';
 import { describe, expect, it } from 'vitest';
 
 import { TaskBlock } from '../src/models';
@@ -183,5 +183,76 @@ describe('declaredShape against the real models', () => {
     const declared = declaredShape(TaskBlock as never);
     expect(declared.classHint).toContain('needs doing');
     expect(declared.propHints.get('we://title')).toContain('imperative');
+  });
+});
+
+/**
+ * Which models a space does not have at all — the other half of "is this space up to date".
+ *
+ * `shapeIsStale` deliberately answers "not stale" for a class with no stored properties, because on
+ * a freshly-joined neighbourhood that is indistinguishable from a shape whose triples have not
+ * replicated yet. The consequence, until this existed, was that a *newly added model* reached
+ * newly created spaces only: every query against it failed with "No SHACL shape stored for class X"
+ * everywhere else, in a space that otherwise looked perfectly healthy. `TypeStyle` is the case that
+ * surfaced it.
+ *
+ * So the two questions must be answered differently, and the difference is the link query: the
+ * stored-shape read narrows the field, the SubjectClass marker decides.
+ */
+describe('missing models', () => {
+  const model = (targetClass: string) =>
+    ({ generateSHACL: () => ({ shape: { targetClass, properties: [] } }) }) as never;
+
+  /** A perspective that holds SubjectClass markers for exactly these classes. */
+  const perspective = (installed: string[]) => {
+    const queried: string[] = [];
+    const proxy = {
+      get: async (query: { source?: string }) => {
+        queried.push(query.source ?? '');
+        return installed.includes(query.source ?? '') ? [{}] : [];
+      },
+    } as never;
+    return { proxy, queried };
+  };
+
+  const withPaths = (targetClass: string): [string, StoredShape] => [
+    targetClass,
+    { paths: new Set(['we://x']), propHints: new Map() },
+  ];
+
+  it('reports a class the perspective has never had', async () => {
+    const { proxy } = perspective(['we://Placement']);
+    const stored = new Map([withPaths('we://Placement')]);
+
+    const missing = await missingModels(proxy, [model('we://Placement'), model('we://TypeStyle')], stored);
+
+    expect(missing.map((m) => m.generateSHACL().shape.targetClass)).toEqual(['we://TypeStyle']);
+  });
+
+  it('does not report a class whose shape triples have simply not replicated yet', async () => {
+    // The marker is there and the shape is not — a freshly-joined neighbourhood mid-sync. Writing
+    // here would install a second copy of a shape that is already on its way, which is how a space
+    // ends up needing `cleanupSpaceSdna`.
+    const { proxy } = perspective(['we://Placement']);
+
+    expect(await missingModels(proxy, [model('we://Placement')], new Map())).toEqual([]);
+  });
+
+  it('asks the perspective nothing when every shape is already stored', async () => {
+    // The common case, and it runs on every space switch: the stored-shape read has already
+    // answered, so this must not add round trips to it.
+    const { proxy, queried } = perspective([]);
+    const stored = new Map([withPaths('we://Placement'), withPaths('we://TypeStyle')]);
+
+    await missingModels(proxy, [model('we://Placement'), model('we://TypeStyle')], stored);
+
+    expect(queried).toEqual([]);
+  });
+
+  it('ignores a model that declares no target class', async () => {
+    const { proxy } = perspective([]);
+    const nameless = { generateSHACL: () => ({ shape: null }) } as never;
+
+    expect(await missingModels(proxy, [nameless], new Map())).toEqual([]);
   });
 });

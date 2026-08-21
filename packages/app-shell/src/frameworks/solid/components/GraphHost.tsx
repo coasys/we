@@ -22,13 +22,16 @@ import '@we/graph-solid/styles';
 
 import type { ModelClass, ModelManifestEntry, QueryOptions } from '@we/backend-shared';
 import { manifestEntries } from '@we/backend-shared';
-import type { EntityShape } from '@we/graph-protocol';
+import { BlockRenderer } from '@we/block-solid';
+import { placementStyle } from '@we/graph-expanders';
+import type { EntityShape, GraphNode, GraphValue } from '@we/graph-protocol';
 import { GraphView, type GraphViewProps } from '@we/graph-solid';
 import { CORE_MANIFEST } from '@we/models/manifest';
-import { createMemo } from 'solid-js';
+import { createMemo, Show } from 'solid-js';
 
 import { useDatasetStore } from '../stores/DatasetStore';
 import { useProfileStore } from '../stores/ProfileStore';
+import { useRecordStore } from '../stores/RecordStore';
 import { useSessionStore } from '../stores/SessionStore';
 
 /**
@@ -76,8 +79,37 @@ function toEntityShape(entry: ModelManifestEntry): EntityShape {
   return { name: entry.name, properties, relations };
 }
 
+/**
+ * A card that draws its own contents, rather than its first sixty characters.
+ *
+ * The `content: 'block'` a board's style rules name. It lives here, not in the graph package, which
+ * is the point of the `nodeContent` seam: `BlockRenderer` drags in the block system, the design
+ * system and a Lexical tree, and a graph engine that imported any of that would stop being portable.
+ *
+ * `editorState` is already on the node — it is a declared string property, so the row the seed
+ * fetched carried it into `data` — and handed over exactly as it arrived. A file-backed property
+ * resolves to a `data:…;base64,…` blob rather than to JSON, and `BlockRenderer` already knows to
+ * decode a string; parsing it here first threw on every card and rendered nothing, which is why they
+ * all looked empty.
+ */
+function BlockCard(props: { node: GraphNode }) {
+  const datasetStore = useDatasetStore();
+
+  const editorState = createMemo(() => {
+    const raw = props.node.data?.editorState;
+    return typeof raw === 'string' && raw ? raw : undefined;
+  });
+
+  return (
+    <Show when={editorState()}>
+      {(state) => <BlockRenderer editorState={state() as never} perspective={datasetStore.currentDataset()?.handle} />}
+    </Show>
+  );
+}
+
 export function GraphHost(props: Omit<GraphViewProps, 'host'>) {
   const datasetStore = useDatasetStore();
+  const recordStore = useRecordStore();
   const sessionStore = useSessionStore();
   const profileStore = useProfileStore();
 
@@ -175,6 +207,88 @@ export function GraphHost(props: Omit<GraphViewProps, 'host'>) {
   }
 
   const host: GraphViewProps['host'] = {
+    nodeContent: { block: BlockCard },
+
+    /**
+     * What the board has just written and not yet seen come back.
+     *
+     * Named through `placementStyle`, the board seed's own mapping, so an optimistic field and a
+     * seeded one are the same field — two copies of that naming would drift, and the copy that fell
+     * behind would write a key nothing reads, leaving the card unchanged until the round trip landed
+     * with no sign of why.
+     */
+    pendingData: () => {
+      const pending = recordStore.pendingCardStyle();
+      const out: Record<string, Record<string, GraphValue>> = {};
+      for (const [nodeId, patch] of Object.entries(pending)) out[nodeId] = placementStyle(patch);
+      return out;
+    },
+
+    /*
+      The graph has caught up on these, so the store can stop standing in for them.
+
+      Reported from the drawn node rather than judged here, and the difference is visible: a read
+      landing is not the same moment as a card being redrawn from it — there is the rest of a seed
+      in between — so clearing where the rows arrive put the old value back for that whole window.
+    */
+    confirmPending: (recordIds) => recordStore.confirmPending(recordIds),
+
+    /**
+     * Tell the graph when records of a type change here.
+     *
+     * The same live path `$query` uses — `ModelClass.query(...).subscribe(...)` — which is why a
+     * post appears in the cards route the moment it is written. The graph took `findAll` instead,
+     * so it read once and never again; that is the whole difference between a map of a space and a
+     * picture of one.
+     *
+     * `limit: 1` because the rows are thrown away. What is wanted is the *notification*, and the
+     * engine's response is to re-run its own seeds with their own filters and paging — asking for
+     * the full set here would fetch every row twice on every change.
+     */
+    watch(request, onChange) {
+      const model = modelFor(request.entity, request.dataset);
+      const handle = datasetStore.currentDataset()?.handle;
+      if (!model || !handle) return () => undefined;
+
+      let live = true;
+      /*
+        The first delivery is the current state, not a change.
+
+        `subscribe` resolves with the initial page *and* invokes the callback, so treating every
+        invocation as a change makes the graph refresh once per watched type immediately after
+        loading — re-running every seed query for a state it already has. `pending` covers the
+        genuine race: a write landing before the initial page resolves is a real change, and
+        dropping it would lose exactly the update that arrived while the graph was opening.
+      */
+      let primed = false;
+      let pending = false;
+
+      const subscription = model.query(handle, { limit: 1 });
+      subscription
+        .subscribe(() => {
+          if (!live) return;
+          if (!primed) {
+            pending = true;
+            return;
+          }
+          onChange();
+        })
+        .then(() => {
+          primed = true;
+          if (live && pending) onChange();
+        })
+        .catch((error: unknown) => {
+          // A type this backend will not subscribe to leaves the graph as loaded rather than
+          // taking it down — the same degradation every other read here makes.
+          console.warn(`[graph] cannot watch ${request.entity}:`, error);
+        });
+
+      return () => {
+        live = false;
+        subscription.dispose();
+      };
+    },
+
     defaultDataset: () => {
       const current = datasetStore.currentDataset();
       // Prefer the shared id: it is identical on every agent, which is what makes a node address

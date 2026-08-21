@@ -47,6 +47,16 @@ export interface ComposerModalOptions {
   saveAction: { $action: string; args: SchemaProp[] };
   /** Primary button label. Defaults to "Post". */
   saveLabel?: string;
+  /**
+   * Actions to run once the save has succeeded, after the modal closes itself.
+   *
+   * `saveAction` deliberately takes only `$action` and `args` — the lifecycle is this fragment's,
+   * because closing on success and clearing the in-flight flag are what the handshake is for, and a
+   * caller supplying its own `onSuccess` would silently replace both. That left no way to react to a
+   * save at all, which is a real gap: a graph has to be told to re-read, a list may want to scroll to
+   * what was just written. These run alongside the fragment's own rather than instead of them.
+   */
+  onSaved?: SchemaProp[];
   /** Content to prefill — `'$post.editorState'` for an edit. Omit for a blank composition. */
   editorState?: SchemaProp;
 }
@@ -91,7 +101,9 @@ export function composerModal(opts: ComposerModalOptions): SchemaNode {
                     {
                       $action: opts.saveAction.$action,
                       args: opts.saveAction.args,
-                      onSuccess: [{ $setLocal: opts.openLocal, value: false }],
+                      // The close first, so anything the caller adds runs against a modal that has
+                      // already gone — a refresh it triggers repaints what is behind, not under it.
+                      onSuccess: [{ $setLocal: opts.openLocal, value: false }, ...(opts.onSaved ?? [])],
                       onFinally: [{ $setLocal: 'submitting', value: false }],
                     },
                   ],

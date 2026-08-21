@@ -50,7 +50,7 @@ export { SpatialIndex } from './spatial';
 export type { IndexedNode } from './spatial';
 export { GraphStore } from './store';
 export type { StoreChange } from './store';
-export { edgeVisual, matches, nodeVisual, resolveColor, resolveNumber, resolveStyle } from './style';
+export { edgeVisual, matches, nodeVisual, resolveColor, resolveNumber, resolveStyle, resolveText } from './style';
 export type { EdgeVisual, MetricValues } from './style';
 export { boundsOf, Viewport } from './viewport';
 export type { Bounds, ViewportState } from './viewport';

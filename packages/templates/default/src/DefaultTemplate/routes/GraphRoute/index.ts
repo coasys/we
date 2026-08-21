@@ -1,4 +1,10 @@
 import type { RouteSchema, SchemaNode } from '@we/schema-shared';
+import { recordFormModal } from '@we/template-kit';
+
+import { boardBar, boardCanvas, boardQuery } from './Board';
+import { openCardModal } from './CardModal';
+import { edgeDetailModal } from './EdgeDetail';
+import { clearOnEmptySelection, expandRequest, nodeDetailPanel, selectNode } from './NodeDetail';
 
 /**
  * The graph route — three graphs over the same space, switchable.
@@ -18,6 +24,9 @@ const MODES = [
   { value: 'schema', label: 'Schema' },
   { value: 'knowledge', label: 'Knowledge' },
   { value: 'content', label: 'Content' },
+  // Last, and different in kind from the three before it: those derive an arrangement from the
+  // data, and this one is the arrangement.
+  { value: 'board', label: 'Board' },
 ] as const;
 
 const LAYOUTS = [
@@ -57,9 +66,15 @@ const schemaGraph: SchemaNode = {
       { when: { 'data.relations': 0 }, style: { color: 'neutral-400' } },
     ],
     edgeStyle: [{ style: { showLabel: true, arrow: 'target' } }],
-    behaviours: ['pan-zoom', 'select', { type: 'drag-node' }],
+    // `pan-zoom` last: it is the background fallback, and it claims a press on empty canvas — listed
+    // before `select`, that press never reaches selection and clicking the background cannot clear it.
+    behaviours: ['node-double-click', 'select', { type: 'drag-node' }, 'pan-zoom'],
     height: '100%',
-    onNodeClick: { $setLocal: 'selected', from: '$event' },
+    revision: { $local: 'revision' },
+    onNodeClick: selectNode,
+    onSelectionChange: clearOnEmptySelection,
+    onNodeDoubleClick: { $setLocal: 'cardOpen', value: true },
+    expandRequest,
   },
 };
 
@@ -78,7 +93,19 @@ const schemaGraph: SchemaNode = {
 const knowledgeGraph: SchemaNode = {
   type: 'GraphView',
   props: {
-    seeds: { source: 'query', options: { entity: 'CollectionBlock', limit: 40 } },
+    /*
+      Two seeds: what people made, and what they have said about how it relates.
+
+      `Relationship` is seeded rather than only expanded into, because a connection nobody has
+      opened a node to find is still a thing the community asserted, and a knowledge map that only
+      showed connections you had gone looking for would hide exactly the ones you did not know about.
+      It draws as an edge rather than a node — see `reified` on GraphView — so seeding it adds lines,
+      not dots.
+    */
+    seeds: [
+      { source: 'query', options: { entity: 'CollectionBlock', limit: 40 } },
+      { source: 'query', options: { entity: 'Relationship', limit: 60 } },
+    ],
     expansion: { defaultDepth: 1, direction: 'out', limit: 20, maxNodes: 500 },
     layout: layoutSpec,
     nodeStyle: [
@@ -87,10 +114,68 @@ const knowledgeGraph: SchemaNode = {
       { when: { kind: 'literal' }, style: { shape: 'rect', size: 10, color: 'neutral-300' } },
       { when: { unresolved: true }, style: { color: 'neutral-200' } },
     ],
-    edgeStyle: [{ style: { curve: 'arc', arrow: 'target' } }],
-    behaviours: ['pan-zoom', 'select', 'expand-on-double-click', { type: 'drag-node' }],
+    edgeStyle: [
+      { style: { curve: 'arc', arrow: 'target' } },
+      // A drawn connection carries somebody's own words, so it says them. Heavier and coloured
+      // because the distinction that matters on this map is "a schema says so" against "a person
+      // says so", and the second is the one worth arguing with.
+      { when: { type: 'relates' }, style: { showLabel: true, color: 'primary-500', width: 2 } },
+      /*
+        One rule per kind this community has named — the payoff of the middle tier.
+
+        A free-text label can only be read; a named kind can be *seen*, and a map whose vocabulary
+        is legible at a glance is a different instrument from one where every line has to be read to
+        be understood. `directed` decides the arrowhead, because "contradicts" is asymmetric and
+        "related to" is not, and drawing a head on the second asserts something nobody meant.
+
+        Nested inside the list rather than appended to it: a schema cannot merge two arrays —
+        `$concat` joins strings — so rule lists flatten one level precisely so a `$map` over data can
+        contribute rules alongside hand-written ones.
+      */
+      {
+        $map: {
+          items: { $local: 'relationshipKinds' },
+          select: {
+            when: { 'data.relationshipTypeId': '$item.id' },
+            style: {
+              showLabel: true,
+              width: 2,
+              color: '$item.color',
+              arrow: { $if: { condition: '$item.directed', then: 'target', else: 'none' } },
+            },
+          },
+        },
+      },
+    ],
+    behaviours: [
+      // Before drag-node, which is what makes arming mean anything: both claim a press on a node.
+      { type: 'connect-nodes', options: { armed: { $local: 'connecting' } } },
+      // `select` before `pan-zoom`, which is the background fallback: pan-zoom claims a press on the
+      // background, and dispatch stops at the first behaviour that claims — so listing it first left
+      // `select` never seeing a background press, and clicking empty canvas could not deselect.
+      'select',
+      /*
+        Double-click opens the record rather than expanding it.
+
+        `expand-on-double-click` claims the same gesture, and only the first of them sees it — so
+        this is a choice, not an ordering accident. Opening is what the gesture means everywhere else
+        in the app, and expansion has its own affordances in the panel: Relations and Fields, which
+        say which question they answer where a double-click cannot.
+      */
+      'node-double-click',
+      { type: 'drag-node' },
+      'pan-zoom',
+    ],
     height: '100%',
-    onNodeClick: { $setLocal: 'selected', from: '$event' },
+    revision: { $local: 'revision' },
+    onNodeClick: selectNode,
+    onSelectionChange: clearOnEmptySelection,
+    onNodeDoubleClick: { $setLocal: 'cardOpen', value: true },
+    expandRequest,
+    onEdgeClick: { $setLocal: 'selectedEdge', from: '$event' },
+    // Straight to the store: it opens the same record form every other model uses, on
+    // `Relationship`, holding the two ends the gesture produced.
+    onEdgeCreate: { $action: 'recordStore.connectNodes', args: ['$event'] },
   },
 };
 
@@ -121,9 +206,15 @@ const contentGraph: SchemaNode = {
       { when: { type: 'EventBlock' }, style: { shape: 'circle', size: 14, color: 'warning-600' } },
     ],
     edgeStyle: [{ style: { curve: 'step', color: 'neutral-200' } }],
-    behaviours: ['pan-zoom', 'select', 'expand-on-double-click'],
+    // Keeps `expand-on-double-click` where the other modes take `node-double-click`: drilling in *is*
+    // this mode. So no open handler either — it would be config that could never fire, since only
+    // one behaviour ever sees the gesture. The panel's Open button still reaches a document here.
+    behaviours: ['select', 'expand-on-double-click', 'pan-zoom'],
     height: '100%',
-    onNodeClick: { $setLocal: 'selected', from: '$event' },
+    revision: { $local: 'revision' },
+    onNodeClick: selectNode,
+    onSelectionChange: clearOnEmptySelection,
+    expandRequest,
   },
 };
 
@@ -146,12 +237,79 @@ export const graphRoute: RouteSchema = {
   path: '/graph',
   type: 'Column',
   props: { width: '100%', height: '100%', gap: '0' },
+  /*
+    Hoisted rather than left on the picker: the empty state has to count the same boards the picker
+    lists, and two subscriptions could disagree about how many there are.
+
+    `relationshipKinds` is here for a different reason — the knowledge map's edge styles are built
+    from it, and a style rule is a prop rather than a child, so it has to resolve where the graph is
+    declared rather than somewhere inside it.
+  */
+  $queries: { boards: boardQuery, relationshipKinds: { entity: 'RelationshipType', order: { name: 'asc' } } },
   $localState: {
     mode: { type: 'string', initial: 'schema' },
     layout: { type: 'string', initial: 'force' },
     // Holds the last clicked node so the detail strip has something to read. An object rather than
     // scalars because it is one thing that arrives whole from the event.
     selected: { type: 'object', initial: null },
+    /** The last clicked edge, for the strip that reads a drawn connection back. */
+    selectedEdge: { type: 'object', initial: null },
+    /*
+      Whether dragging a node means connecting it rather than moving it.
+
+      A mode with a visible control rather than a modifier key. The modifiers are taken or do not
+      travel — shift extends the selection, and there are none at all on a touchscreen — and a
+      gesture nobody can discover is a gesture nobody uses. It also gives the reader somewhere to
+      see which of the two things a drag is about to do.
+    */
+    connecting: { type: 'boolean', initial: false },
+    /*
+      Whether the board's key is open.
+
+      A preference rather than view state: somebody sent a link to a board, and the recipient should
+      see the board rather than whichever panels the sender had open. Kept per device instead, since
+      a person who wants the key generally wants it every time.
+    */
+    legendOpen: { type: 'boolean', initial: false, persist: 'board.keyOpen' },
+    /*
+      Which kind of expansion the panel last asked for, and the whole of the request's state.
+
+      A kind rather than the request itself, because `$setLocal`'s `value` is a literal — a token
+      inside it is stored as the token — so a button cannot write the selected node's id into an
+      object. The request is composed from this plus the selection; see `NodeDetail`.
+    */
+    expandKind: { type: 'string', initial: '' },
+    /*
+      Which board is open, mirrored into the URL.
+
+      View state in the strict sense: someone sent a link to a board, and the recipient should see
+      the board rather than a picker. `push` so the browser's Back button steps between boards, the
+      way it steps between the modes.
+    */
+    boardId: { type: 'string', initial: '', syncParam: { name: 'board', push: true } },
+    newBoardOpen: { type: 'boolean', initial: false },
+    newCardOpen: { type: 'boolean', initial: false },
+    /** Where a double-click landed, so the card it opens can be placed there. Null from the toolbar. */
+    newCardAt: { type: 'object', initial: null },
+    /*
+      Whether the selected card is open for reading.
+
+      A flag rather than an id, because there is nowhere to copy an id to: `$setLocal`'s `value` is a
+      literal and its `from` reads the event. Binding the modal to the selection is the better answer
+      anyway — it always shows the node that is selected and cannot drift from it.
+    */
+    cardOpen: { type: 'boolean', initial: false },
+    /** The detail panel was dismissed. Cleared whenever something is selected — see `selectNode`. */
+    panelClosed: { type: 'boolean', initial: false },
+    /*
+      Bumped after a record is created, which tells the graph to re-read and merge.
+
+      Belt and braces beside the live watches the engine holds: a watch depends on the backend
+      reporting the write, and this is the one case where the template *knows* something changed
+      because it is what changed it. The graph merges either way, so the update arriving twice costs
+      a query and changes nothing on screen.
+    */
+    revision: { type: 'number', initial: 0 },
   },
   children: [
     /*
@@ -191,14 +349,112 @@ export const graphRoute: RouteSchema = {
                 picker('mode', MODES),
               ],
             },
-            picker('layout', LAYOUTS),
+            {
+              type: 'Row',
+              props: { gap: '300', ay: 'center' },
+              children: [
+                /*
+                  Connect mode, on the knowledge map. The board has its own, in the board bar with
+                  the rest of its controls.
+
+                  The schema map draws types rather than records, and the content tree draws
+                  containment somebody else's data already states — neither has anything a person's
+                  own connection would attach to. Offering the toggle there would arm a gesture whose
+                  save could not succeed.
+                */
+                {
+                  type: '$if',
+                  props: {
+                    condition: { $eq: [{ $local: 'mode' }, 'knowledge'] },
+                    then: {
+                      type: 'we-button',
+                      props: {
+                        size: 'sm',
+                        variant: { $if: { condition: { $local: 'connecting' }, then: 'primary', else: 'ghost' } },
+                        onClick: { $toggleLocal: 'connecting' },
+                      },
+                      children: [{ type: 'we-icon', props: { name: 'flow-arrow' } }, 'Connect'],
+                    },
+                  },
+                },
+                {
+                  type: '$if',
+                  props: {
+                    condition: { $eq: [{ $local: 'mode' }, 'board'] },
+                    // A board's positions are its data, so there is no layout to choose. Its own
+                    // controls — which board, and adding to it — take the same place instead.
+                    then: boardBar,
+                    else: picker('layout', LAYOUTS),
+                  },
+                },
+                /*
+                  Creating a record, from the map of what is in the space.
+
+                  Here rather than in a settings page because this is where the absence is felt: the
+                  schema mode draws a community's vocabulary, and until now the only thing you could
+                  do with a type on that map was look at it.
+
+                  Hidden when the space has no authorable models at all, since a button whose menu is
+                  empty teaches people it is broken — and on a board, where `Record` in the board bar
+                  is the same form and *places* what it makes.
+
+                  It was hidden on boards once before and restored, because at the time this was the
+                  only way to create a model instance anywhere and removing the sole entry point to a
+                  capability leaves somebody with no way to do it at all. `Record` is that entry
+                  point now, so the objection has been answered rather than overruled: two buttons
+                  opening the same form, one of which quietly makes something that does not appear
+                  where you made it, is worse than one button that works.
+                */
+                {
+                  type: '$if',
+                  props: {
+                    condition: {
+                      $and: [
+                        { $ne: [{ $local: 'mode' }, 'board'] },
+                        { $count: { items: { $store: 'recordStore.creatableEntities' } } },
+                      ],
+                    },
+                    then: {
+                      type: 'we-button',
+                      props: {
+                        size: 'sm',
+                        variant: 'secondary',
+                        // `args` given explicitly, and not omitted: a `$action` with no args forwards
+                        // the handler's own arguments, so the button would call this with the click
+                        // event as its optional `entity`. The store guards against that too — this is
+                        // the call site saying what it means.
+                        onClick: { $action: 'recordStore.openRecordForm', args: [''] },
+                      },
+                      children: [{ type: 'we-icon', props: { name: 'plus' } }, 'New'],
+                    },
+                  },
+                },
+              ],
+            },
           ],
         },
       ],
     },
 
+    /*
+      The form sits above the canvas rather than inside it.
+
+      A graph is a transformed, zoomable surface, and text entry on one is its own project — the
+      board work says so twice. A modal is not a compromise here: what is being authored is a
+      record, which has nothing to do with where it will land.
+    */
+    recordFormModal({ onCreated: [{ $setLocal: 'revision', by: 1 }] }),
+
     {
       type: 'Column',
+      /*
+        No background here, deliberately.
+
+        A `bg` on this container is dead: `GraphView` paints its own, defaulting to `neutral-0`, and
+        covers whatever is behind it. A template that wants a different canvas colour sets the
+        graph's `bg` prop — putting one here looks like it works and does nothing, which is how the
+        detail panel ended up the same colour as the canvas it sits on.
+      */
       props: { width: '100%', flex: '1', position: 'relative', overflow: 'hidden' },
       children: [
         {
@@ -213,46 +469,18 @@ export const graphRoute: RouteSchema = {
           type: '$if',
           props: { condition: { $eq: [{ $local: 'mode' }, 'content'] }, then: contentGraph },
         },
+        {
+          type: '$if',
+          props: { condition: { $eq: [{ $local: 'mode' }, 'board'] }, then: boardCanvas },
+        },
+        // Inside the graph container, not after it: the panel overlays the canvas rather than
+        // taking a slice of the route, which is what keeps the camera still when it opens.
+        nodeDetailPanel,
       ],
     },
 
-    {
-      type: '$if',
-      props: {
-        condition: { $local: 'selected' },
-        // The strip spans the window so its background and rule reach the edges; its contents sit on
-        // the template's measure, like the header above. Same reasoning, same numbers.
-        then: {
-          type: 'Row',
-          props: {
-            width: '100%',
-            ax: 'center',
-            py: '300',
-            bg: 'neutral-50',
-            borderTop: '1px solid neutral-200',
-          },
-          children: [
-            {
-              type: 'Row',
-              props: { width: '100%', maxWidth: 'var(--we-layout-lg)', gap: '300', ay: 'center', px: '400' },
-              children: [
-                { type: 'we-badge', children: [{ $local: 'selected.type' }] },
-                { type: 'we-text', props: { fontWeight: '600' }, children: [{ $local: 'selected.label' }] },
-                {
-                  type: 'we-button',
-                  props: {
-                    size: 'xs',
-                    variant: 'ghost',
-                    ml: 'auto',
-                    onClick: { $setLocal: 'selected', value: null },
-                  },
-                  children: [{ type: 'we-icon', props: { name: 'x' } }],
-                },
-              ],
-            },
-          ],
-        },
-      },
-    },
+    openCardModal,
+
+    edgeDetailModal,
   ],
 };

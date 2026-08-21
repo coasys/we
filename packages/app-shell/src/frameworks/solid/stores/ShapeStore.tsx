@@ -70,7 +70,7 @@ export interface RelationshipTargetOption {
  * The block composer's own iconography (BlockMenu.tsx), so a block is drawn the same way wherever
  * it is named. Blocks the composer has no insert entry for get the nearest documented icon.
  */
-const BLOCK_ICONS: Record<string, string> = {
+export const BLOCK_ICONS: Record<string, string> = {
   AudioBlock: 'speaker-high',
   CalloutBlock: 'megaphone',
   CodeBlock: 'code',

@@ -53,7 +53,38 @@ export interface MetricRef {
   scale?: string;
 }
 
-export type StyleValue<T> = T | MetricRef;
+/**
+ * A value read off the subject itself, rather than written into the rule.
+ *
+ * The sibling of {@link MetricRef}, and the other half of the same bargain: a metric answers
+ * "computed from the graph's shape", this answers "already on the record". It exists because a rule
+ * list is fixed when the template is written, and per-instance presentation is not — a board where
+ * every card carries its own size and colour would otherwise need one rule per card, minted by
+ * whatever drew them.
+ *
+ * `from` uses the {@link MatchClause} key vocabulary, so `data.boardColor` reaches into the data bag
+ * and a bare name reads a field. **A reference the subject cannot answer contributes nothing**: the
+ * property falls through to whatever an earlier rule set, rather than to the built-in default. That
+ * is what lets a per-card colour sit in front of a per-type colour and only override the cards that
+ * actually carry one.
+ */
+export interface FieldRef<T> {
+  /** Field path on the node or edge — `data.<field>`, or a bare field name. */
+  from: string;
+  /** Used when the field is present but the wrong type. Absence is *not* an error; it defers. */
+  fallback?: T;
+}
+
+export type StyleValue<T> = T | MetricRef | FieldRef<T>;
+
+/**
+ * A card's outline. Only meaningful for `shape: 'card'`.
+ *
+ * Presentation a person chooses per card, which is why it is separate from `shape` rather than more
+ * values on it: `shape: 'card'` is structural — it decides that the content goes *inside* the box —
+ * and a card that stopped being a card the moment somebody rounded it would drop its content.
+ */
+export type CardShape = 'note' | 'square' | 'round';
 
 export interface NodeStyle {
   /** Radius in world units, or the box's half-height for non-circular shapes. */
@@ -71,14 +102,48 @@ export interface NodeStyle {
    */
   shape?: 'circle' | 'rect' | 'card' | 'template';
   /** Card width in world units. Only meaningful for `shape: 'card'`; defaults to a readable box. */
-  width?: number;
+  width?: StyleValue<number>;
   /** Card height. Defaults to `width` × 0.75, roughly a post-it. */
-  height?: number;
+  height?: StyleValue<number>;
+  /** The card's outline — see {@link CardShape}. Defaults to `note`. */
+  cardShape?: StyleValue<CardShape>;
+  /**
+   * How large the card's *content* is drawn, as a multiplier. Default 1.
+   *
+   * Not a zoom and not a font size: it scales the whole content — text, images, everything the
+   * content component draws — inside a box whose size does not change, so a smaller scale fits more
+   * of the document into the same card. Presentation only. The document is untouched, and the same
+   * post on another board can be shown at another scale.
+   */
+  contentScale?: StyleValue<number>;
   opacity?: number;
   labelColor?: string;
   labelSize?: number;
   /** Hide the label below this zoom, so a dense graph stays readable when zoomed out. */
   labelMinZoom?: number;
+  /**
+   * Name of a registered node-content renderer to draw *inside* the node.
+   *
+   * The escape hatch `scalars()` has always pointed at — "anything else belongs behind a node
+   * template". A label is one string, which is right for a mark with a caption and hopeless for a
+   * card standing in for a document: a post holding an image, a task and three paragraphs shows as
+   * its first sixty characters, and everything else in it silently is not there.
+   *
+   * Named rather than passed, like every other plugin here, so a template stays JSON. The component
+   * itself arrives through the host bindings — which is what keeps a block renderer, and everything
+   * it drags in, out of a graph package that is meant to be portable.
+   *
+   * Only meaningful on `shape: 'card'`. A dot has nowhere to put it.
+   */
+  content?: string;
+  /**
+   * Hide the content below this zoom, falling back to the label.
+   *
+   * The sibling of `labelMinZoom`, and the answer to the one thing that decides whether rich cards
+   * scale: a hundred documents rendered at once is a hundred component trees, and at the zoom where
+   * a board is a wall of coloured rectangles none of them can be read anyway.
+   */
+  contentMinZoom?: number;
   /**
    * Whether the label grows and shrinks with the camera. Default `true`.
    *
@@ -126,8 +191,22 @@ export interface StyleRule<TStyle> {
   style: TStyle;
 }
 
-export type NodeStyleRules = StyleRule<NodeStyle>[];
-export type EdgeStyleRules = StyleRule<EdgeStyle>[];
+/**
+ * An ordered rule list, where an entry may itself be a list.
+ *
+ * Nesting exists because a schema cannot build one array out of two. `$concat` joins strings, and
+ * there is no array-merge operator — so a template that wants a base rule plus one rule *per row of
+ * data* has no way to write the combined array, and styling driven by a community's own vocabulary
+ * is unreachable. That is the case this is for: a `$map` over the relationship kinds a space has
+ * named produces a rule each, and it sits in the list beside the hand-written ones.
+ *
+ * Flattened before use, so precedence reads exactly as written — a nested group applies in the
+ * position it occupies, and later matches still win per property.
+ */
+export type StyleRules<TStyle> = (StyleRule<TStyle> | StyleRule<TStyle>[])[];
+
+export type NodeStyleRules = StyleRules<NodeStyle>;
+export type EdgeStyleRules = StyleRules<EdgeStyle>;
 
 /**
  * A registered metric.

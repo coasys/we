@@ -35,6 +35,8 @@ export const TaskBlock: CoreEntityDef = {
     interpretationHint:
       'A piece of work the speakers say needs doing and that is not done yet. Includes anything phrased as "we need to…", "one task is…", "someone should…", or a commitment like "I\'ll do X" — an owner is not required, and neither is a deadline. It must be work in the world that outlives this conversation. Exclude work described as already finished, work raised purely to rule it out, and anything about the act of talking or testing itself — "let me add another one", "I need to say more to trigger this" and the like are about the conversation, not work anybody committed to.',
     flag: { predicate: 'we://flag', value: 'we://task_block' },
+    // Title first because it is the task; everything else qualifies it. `version` is bookkeeping.
+    authoring: { fields: ['title', 'description', 'status', 'priority', 'dueDate', 'assignee'] },
     properties: {
       /**
        * The task, and its dedup key.
@@ -69,13 +71,24 @@ export const TaskBlock: CoreEntityDef = {
       description: {
         type: 'string',
         predicate: 'we://description',
+        control: 'textarea',
         interpretationHint:
           'Extra context from the conversation that the title alone loses. Omit rather than restate the title.',
         default: '',
       },
+      /*
+        `options` states the closed vocabulary the hint has always described in prose.
+
+        The hint is the LLM's copy and stays as it is — it has to say *when* to pick each value, not
+        only which exist. `options` is the same fact in a form a machine can act on, which is what
+        lets a generated form render a select rather than a free-text box, and it is worth having
+        twice: a person typing "urgent" into a box produces exactly the unrecognised tag the hint
+        was written to stop a model producing.
+      */
       status: {
         type: 'string',
         predicate: 'we://status',
+        options: ['todo', 'in-progress', 'done'],
         interpretationHint:
           'Exactly one of: "todo", "in-progress", "done". Use "todo" unless the speaker says work has begun.',
         default: 'todo',
@@ -83,6 +96,7 @@ export const TaskBlock: CoreEntityDef = {
       priority: {
         type: 'string',
         predicate: 'we://priority',
+        options: ['low', 'medium', 'high'],
         interpretationHint:
           'Exactly one of: "low", "medium", "high". Use "medium" unless urgency is stated; do not infer it from tone.',
         default: 'medium',
@@ -90,6 +104,7 @@ export const TaskBlock: CoreEntityDef = {
       dueDate: {
         type: 'string',
         predicate: 'we://due_date',
+        control: 'date',
         interpretationHint:
           'Due date as YYYY-MM-DD. Only when a date is actually stated — resolve "Friday" against the bracketed timestamp leading that turn. Omit if vague.',
         default: '',

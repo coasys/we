@@ -163,6 +163,13 @@ see docs/architecture/codebase-map.md.
 For how reusable template fragments work and where they are going, see
 docs/architecture/template-fragments.md.
 
+**Before adding a relation between two models, read docs/architecture/relations.md.** A connection
+can live in three places — a free-text label, a community-named `RelationshipType`, or a relation
+declared on the model class — and they are not interchangeable. The short version: a declared
+relation gets the full query surface and can carry nothing about itself (no author, no date, nothing
+to comment on or rate); a reified one carries all of that and has no query pushdown at all. Declare
+what is a fact about the *type*; reify what is a claim about a *pair*.
+
 ---
 
 ## Schema Structure
@@ -199,6 +206,12 @@ Resolves a value from a named store, supporting nested paths.
 Action/event:
 { "$action": "storeName.method", "args": [...] }
 Calls a method on a store, optionally with arguments (which can themselves be tokens).
+IMPORTANT — omitting "args" does NOT call the method with no arguments: the handler's own arguments are
+forwarded, so a click handler passes the DOM event as the first parameter. That is deliberate (it is how
+{ "onChange": { "$action": "store.method" } } passes a value straight through), but it means a method whose
+first parameter is OPTIONAL receives a PointerEvent from a button written the obvious way. Pass the argument
+you mean explicitly when the method has an optional leading parameter — note "args": [] does not help, since
+an empty list is treated as "no args given" and forwards the event too.
 Supports async lifecycle callbacks — fired after the store method's Promise resolves/rejects:
   onSuccess: [...actions]  — fired on resolve; '$result' (and '$result.<path>') in args refers to the resolved value
   onError: [...actions]    — fired on reject; '$result.message' etc. refers to the error object
@@ -269,12 +282,18 @@ Array operators:
 Filters an array to items where all where conditions match. Mirrors the $query where operator set:
 
   { "field": "value" }                                   — strict equality
+  { "field": ["a", "b"] }                                — set membership (IN); matches any of them
   { "field": { "not": "value" } }                        — inequality; array form excludes multiple values
   { "field": { "contains": "text" } }                    — case-insensitive substring match (strings only)
   { "field": { "startsWith": "text" } }                  — anchored prefix match, case-SENSITIVE
   { "field": { "endsWith": "text" } }                    — anchored suffix match, case-SENSITIVE
   { "field": { "exists": true } }                        — non-null / non-undefined presence check
   { "field": { "exists": false } }                       — null or undefined check
+
+A bare array is the positive counterpart of "not" with an array, and it is the way to fetch a known
+set: { "id": ["id1", "id2", "id3"] }. Native on the AD4M backend, where it pushes down to a SPARQL
+VALUES clause, so it is index-friendly rather than a scan. An empty array matches nothing, which is
+what "none of these" should mean.
 
 startsWith/endsWith are case-sensitive where contains is not: they exist to match structured strings
 against a known prefix (an ISO date out of a datetime, an id out of a URI), where folding case would
@@ -453,6 +472,8 @@ Read:  { "$local": "name" } — returns the signal value (reactive).
 Write: { "$setLocal": "name", "from": "$event.target.value" } — event handler that updates the signal.
        { "$setLocal": "name", "value": "literal" } — sets to a literal value (string, number, boolean, null, object).
        { "$setLocal": "name", "merge": { "field": "$event.detail" } } — shallow-merges fields into an object-typed signal. Values are resolved as event paths (e.g. "$event.detail") or passed as literals. Use for partial updates to object state.
+       { "$setLocal": "name", "by": 20 } — adds to a NUMBER field, reading the current value first. The only arithmetic the schema layer has: use it to advance a page size ("show 20 more") or bump a counter something else watches. A non-numeric current value counts as 0.
+Note "value" is a LITERAL and is not resolved — a token object inside it is stored as the object, not as what it would resolve to. To store something computed, bind the prop that reads it instead, or use "from"/"merge", whose values ARE resolved as event paths.
 Toggle: { "$toggleLocal": "fieldName" } — toggles a boolean field (equivalent to setting it to !current). Use for show/hide, open/close, expand/collapse patterns.
 Toggle one of many: { "$toggleLocalIn": "fieldName", "value": "$group.id" } — adds the value to an
   array-typed field, or removes it if already there. Read it back with $in:
@@ -1066,7 +1087,7 @@ Common recipes:
 the relations between them. Picks up model types added later with no template change.
 - **Hierarchy** — `layout: { type: 'tree' }` with a `collection` expansion for nested content.
 - **Static diagram** — `seeds: { literal: true, nodes: [...], edges: [...] }` and no expansion at all.
-  Props: seeds?: SeedSpec | SeedSpec[], expansion?: ExpansionSpec, layout?: LayoutSpec, nodeStyle?: NodeStyleRules, edgeStyle?: EdgeStyleRules, behaviours?: BehaviourSpec[], reified?: Record<string, { source: string; target: string; type?: string; }>, width?: string, height?: string, bg?: string, showStatus?: boolean, showControls?: boolean, controls?: string[], onNodeClick?: ((node: GraphNode) => void), onNodeDoubleClick?: ((node: GraphNode) => void), onEdgeClick?: ((edge: GraphEdge) => void), onSelectionChange?: ((ids: string[]) => void), onNodeDragEnd?: ((payload: { id: string; x: number; y: number; }) => void), host?: GraphHostBindings
+  Props: seeds?: SeedSpec | SeedSpec[], expansion?: ExpansionSpec, revision?: string | number | boolean, live?: boolean, layout?: LayoutSpec, nodeStyle?: NodeStyleRules, edgeStyle?: EdgeStyleRules, behaviours?: BehaviourSpec[], reified?: Record<string, { source: string; target: string; type?: string; sourceType?: string; targetType?: string; }>, width?: string, height?: string, bg?: string, showStatus?: boolean, showControls?: boolean, controls?: string[], onNodeClick?: ((node: GraphNode & { recordId?: string; fields: { name: string; value: string; }[]; }) => void), expandRequest?: { id: string; expanders?: string[]; direction?: "in" | "out" | "both"; } | null, onNodeDoubleClick?: ((node: GraphNode & { recordId?: string; recordType?: string; }) => void), onEdgeClick?: ((edge: GraphEdge & { recordId?: string; recordType?: string; }) => void), onEdgeCreate?: ((payload: { source: GraphNode; target: GraphNode; sourceId: string; sourceType: string; targetId: string; targetType: string; sourceLabel: string; targetLabel: string; }) => void), onCanvasDoubleClick?: ((payload: { x: number; y: number; }) => void), onSelectionChange?: ((ids: string[]) => void), onNodeDragEnd?: ((payload: { id: string; x: number; y: number; recordId?: string; recordType?: string; }) => void), onNodeResize?: ((payload: { id: string; x: number; y: number; width: number; height: number; recordId?: string; recordType?: string; }) => void), host?: GraphHostBindings
 
 ---
 
@@ -1091,6 +1112,14 @@ Names resolvable inside GraphView props: seed sources (seeds.source), expanders 
 - `schema` — Maps the dataset's own entity types and the relations between them — one node per type. Picks up model types installed after the template was written, so it suits spaces whose vocabulary is open-ended.
   - entities: string[] — Restrict to these types; omit for all of them.
   - Example: `{ "source": "schema" }`
+- `board` — A container's contents at the positions somebody put them. Membership is ordinary containment, so a card composed onto the board is found like any child; position comes from Placement records parented to the same board, which is why the same note can sit on two boards in two places. Pair with layout: manual and drag-node { pin: true }, and persist a drop through recordStore.placeOnBoard. Loads nothing until a board is chosen.
+  - board: string — Record id of the board (required).
+  - contains: string[] — Types the board may hold beyond whatever its placements name — one query each. Defaults to the block vocabulary; anything *placed* is loaded whether or not it is listed.
+  - via: string — Relation holding the contents. Defaults to "children".
+  - connections: string — Reified relation entity to draw as lines between the cards — e.g. "Relationship". Only pairs whose two ends are both on the board are drawn, since a line to something elsewhere would leave the canvas. Each line carries the record it stands for, so clicking one can open it. Omit for a board with no connections.
+  - typeStyles: string — Entity holding this board's colour per kind of thing — WE passes "TypeStyle". Read onto every node as `boardTypeColor`, for a style rule to pick up with `{ from: "data.boardTypeColor" }`. This is what a board's key writes.
+  - limit: number — Rows per type. Default 200.
+  - Example: `{ "source": "board", "options": { "board": { "$local": "boardId" } } }`
 - `dataset` — Seeds a single node for the current space — the starting point for exploring outward.
   - label: string
   - Example: `{ "source": "dataset", "options": { "label": "This space" } }`
@@ -1146,6 +1175,10 @@ Names resolvable inside GraphView props: seed sources (seeds.source), expanders 
   - Example: `"edgeStyle": [{ "style": { "arrow": "none" } }]`
 - `scaleWithZoom` — Edge style. true (default) treats the line as part of the drawing, so it thickens as you zoom in — right for a board. false pins it to a constant on-screen width, so hairlines stay visible when you zoom out to see a whole network.
   - Example: `"edgeStyle": [{ "style": { "scaleWithZoom": false } }]`
+- `content` — Node style, cards only. Names a host-supplied component to draw INSIDE the card instead of a text label — WE registers `block`, which renders a CollectionBlock's composed content the way a post card does. A label can only ever be the first line, so a card holding an image and three paragraphs shows sixty characters and gives no sign the rest exists. Clipped, not scrolled: a card is a preview, and what does not fit is reached by opening it. Falls back to the label when the host supplies no component by that name.
+  - Example: `"nodeStyle": [{ "style": { "shape": "card", "width": 180, "content": "block" } }]`
+- `contentMinZoom` — Node style. Hides card content below this zoom and falls back to the label. The sibling of labelMinZoom, and the thing that decides whether rich cards scale: a hundred documents rendered at once is a hundred component trees, and at the zoom where a board reads as coloured rectangles none of them is legible anyway.
+  - Example: `"nodeStyle": [{ "style": { "shape": "card", "content": "block", "contentMinZoom": 0.5 } }]`
 - `scaleLabelWithZoom` — Node style. true (default) scales the label with the camera; false keeps it a constant on-screen size, which keeps text readable at any zoom on a map you navigate by reading. Affects the label only — a node mark always scales, because its size and its hit area are both world units.
   - Example: `"nodeStyle": [{ "style": { "scaleLabelWithZoom": false } }]`
 - `labelMinZoom` — Node style. Hides the label below this zoom level, so a dense graph stays readable when zoomed out and gains its detail as you move in.
@@ -1175,12 +1208,19 @@ Names resolvable inside GraphView props: seed sources (seeds.source), expanders 
 
 **behaviour**
 
-- `pan-zoom` — Drag the background to pan, wheel to zoom about the pointer. List it last — it is the fallback.
-  - Example: `"behaviours": ["pan-zoom", "select", "expand-on-double-click"]`
-- `select` — Click to select, shift-click to extend, background to clear. Emits onNodeClick.
+- `pan-zoom` — Drag the background to pan, wheel to zoom about the pointer. **List it last.** It claims a press on empty canvas, and dispatch stops at the first behaviour that claims — so anything after it never sees a background press. Listed before `select`, clicking empty canvas silently stops clearing the selection.
+  - Example: `"behaviours": ["select", "expand-on-double-click", "pan-zoom"]`
+- `select` — Click to select, shift-click to extend, background to clear. Emits onNodeClick, and onSelectionChange with an empty list when a background click clears it. Must be listed BEFORE pan-zoom, which claims the background press it needs to see.
 - `drag-node` — Drag a node to move it. Releases on drop by default so the layout stays in charge; pass { pin: true } on a board.
   - pin: boolean — Leave the node pinned where it was dropped.
   - Example: `{ "type": "drag-node", "options": { "pin": true } }`
+- `connect-nodes` — Drag from one node to another to connect them, emitting onEdgeCreate with both ends. Writes nothing — what a connection means is the template's decision, so it answers by creating whatever record it thinks the connection is. List it BEFORE drag-node: both claim a press on a node and the first wins. Arm it from a control the user can see rather than a modifier key, which is undiscoverable and absent on a touchscreen.
+  - armed: boolean — Whether the gesture is live. Default true. Disarmed, the press falls through to drag-node.
+  - Example: `"behaviours": [{ "type": "connect-nodes", "options": { "armed": { "$local": "connecting" } } }, "select", { "type": "drag-node" }, "pan-zoom"]`
+- `node-double-click` — Double-click a node to emit onNodeDoubleClick, with the record it stands for resolved onto the payload. Writes nothing — what opening a node means is the template's decision. Pairs with canvas-double-click, which handles the same gesture on empty canvas; list both and exactly one fires. Do NOT list it alongside expand-on-double-click, which claims the same gesture to do something else.
+  - Example: `"behaviours": ["node-double-click", "canvas-double-click", "pan-zoom", "select"]`
+- `canvas-double-click` — Double-click empty canvas to emit onCanvasDoubleClick with the world point. Writes nothing — what gets made there is the template's decision. List it BEFORE pan-zoom, which is the background fallback. Claims only the background, so it composes with expand-on-double-click: a double-click on a node opens it, one beside a node creates.
+  - Example: `"behaviours": ["canvas-double-click", "pan-zoom", "select", { "type": "drag-node", "options": { "pin": true } }]`
 - `expand-on-double-click` — Double-click a node to expand it. The usual gesture on a map you also want to select on.
   - direction: "in" | "out" | "both"
 - `expand-on-click` — Single click expands — for maps meant purely for exploring, where selection is not needed.
@@ -1507,11 +1547,46 @@ MutedAgent extends WeNode:
   - did: string [we://did]
   - description: string [we://description]
 
+Placement extends Ad4mModel:
+  Fields:
+  - nodeType: string [we://node_type]
+  - x: number [we://x]
+  - y: number [we://y]
+  - width: number [we://width]
+  - height: number [we://height]
+  - contentScale: number [we://content_scale]
+  - color: string [we://color]
+  - cardShape: string [we://card_shape]
+  Relations:
+  - node: HasOne [we://placed_node]
+
 ReadMarker extends WeNode:
   Fields:
   - nodeId: string [we://node_id]
   - spaceUuid: string [we://space_uuid]
   - lastReadAt: string [we://last_read_at]
+
+Relationship extends WeNode:
+  Fields:
+  - relationshipTypeId: string [we://relationship_type_id]
+  - label: string [we://title]
+  - description: string [we://description]
+  - sourceType: string [we://source_type]
+  - targetType: string [we://target_type]
+  Relations:
+  - source: HasOne [we://relationship_source]
+  - target: HasOne [we://relationship_target]
+
+RelationshipType extends WeNode:
+  Fields:
+  - name: string (required) [we://name]
+  - slug: string [we://slug]
+  - description: string [we://description]
+  - icon: string [we://icon]
+  - color: string [we://color]
+  - inverseName: string [we://inverse_name]
+  - directed: boolean = true [we://directed]
+  - schemaVersion: number = 1 [we://schema_version]
 
 Shape extends WeNode:
   Fields:
@@ -1628,6 +1703,11 @@ Theme extends WeNode:
   - overrides: string = null [we://token_overrides]
   Relations:
   - screenshots: HasMany → ImageBlock [we://screenshot]
+
+TypeStyle extends Ad4mModel:
+  Fields:
+  - nodeType: string [we://node_type]
+  - color: string [we://color]
 
 VideoBlock extends WeNode:
   Fields:
@@ -1818,6 +1898,34 @@ ProfileStore:
   - updateProfileImage(field: "avatar" | "coverImage", imageFile: File): uploads the image and publishes its expression URL to the public dataset
   - clearProfileImage(field: "avatar" | "coverImage"): removes that image from the published profile
   - updateOwnLocation(update: { latitude?, longitude?, city?, country?, countryCode? }): merges the location update into the cache and publishes to the public dataset
+
+RecordStore:
+- State:
+  - creatableEntities: { label, value, icon, group }[] — models a person can create an instance of here, ready for a we-select: this space's own models first, then WE's built-in content types. A model appears here by declaring `authoring` in the manifest, or by being a shape this community defined
+  - recordDraft: the open form's draft ({ entity, label, icon, fields[] }) or null while closed — its non-nullness is what mounts the modal. Each field is { name, label, control, required, options, placeholder, value }, derived from the model's own declaration, so a form exists for a model nobody wrote a form for
+  - recordErrors: string[] — validation errors from the last save attempt, plus any backend failure
+  - savingRecord: boolean — a create is in flight
+  - lastCreatedId: string — the id of the last record created, empty before the first. Read it to act on what was just made; kept in the store because an $action's onSuccess can read a store and cannot hold a value
+  - pendingLink: the two records a pending connection joins ({ sourceId, sourceType, sourceLabel, targetId, targetType, targetLabel }), or null when the open form is an ordinary one. Read it to name what is being connected
+  - relationshipKind: unknown
+  - pendingCardStyle: unknown
+- Actions:
+  - openRecordForm(entity?): opens the create form — on that model, or on the first offered one. Clears any pending connection
+  - connectNodes(link): opens the form on a Relationship joining two records. Takes the graph's onEdgeCreate payload as it arrives
+  - setRecordEntity(entity): switches which model is being created, discarding what was typed
+  - setRecordField(name, value): sets one field. Takes the field name, so one action serves every control — which is the only shape that works when the fields come from data
+  - setRelationshipKind(): unknown
+  - cancelRecordForm(): closes the form, discarding it
+  - saveRecord(): validates and creates. Errors land in recordErrors and the form stays open holding what was typed; success closes it and sets lastCreatedId
+  - placeOnBoard(): unknown
+  - removeFromBoard(): unknown
+  - resizeOnBoard(): unknown
+  - setCardStyle(): unknown
+  - confirmPending(): unknown
+  - previewCardStyle(): unknown
+  - setTypeColor(): unknown
+  - createOnBoard(): unknown
+  - createCardOnBoard(): unknown
 
 RouteStore:
 - State:
@@ -2066,6 +2174,7 @@ SpaceStore:
   - clearSpaceThemePin(): drops this agent’s theme pin for the space on screen, returning it to whatever would otherwise apply. The way back out of applyTheme, so the picker need not spell the FOLLOW_SPACE sentinel as a literal. Pair with spaceThemePinned
   - launchModule(moduleId: string): invokes that module's declared launcher action. Takes an id rather than a path because $action resolves a literal string, so a rail iterating over modules cannot build modules.<id>.<method> itself
   - createSignalType(config: Partial<SignalType>): creates a new signal type in the community; slug auto-derived from name if blank
+  - createRelationshipType(): unknown
   - upsertSignal(nodeId: string, signalTypeId: string, value: number): adds or updates a signal on a node; value=0 deletes it
   - navigateToSpace(spaceId: string, view?: string): navigates to a space — accepts a perspective UUID or a neighbourhood CID (sharedUrl without the neighbourhood:// prefix); pre-loads space templates before switching so the template and data arrive together
   - canAdministerSpace(uuid: string): whether this agent may change what every member of that space sees — true for a personal space, and for a shared one they authored. A UI affordance for deciding whether to offer the controls, NOT enforcement: a shared space is a neighbourhood every member can write to. Ask by name rather than comparing author to $me.did, so the answer can grow (multiple admins, roles) without every template changing

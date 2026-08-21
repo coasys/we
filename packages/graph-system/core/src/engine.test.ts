@@ -6,7 +6,7 @@
  * verify, the layering would have failed.
  */
 import type { Expander, ExpanderContext, SeedSource } from '@we/graph-protocol';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { GraphEngine } from './engine';
 import { PluginRegistry } from './registry';
@@ -66,12 +66,21 @@ function engineWith(spec: Parameters<typeof GraphEngine.prototype.setSpec>[0], p
 }
 
 const layouts = {
-  // A trivial deterministic layout: the engine's behaviour under test is expansion, not positioning.
+  /*
+    A trivial deterministic layout: the engine's behaviour under test is expansion, not positioning.
+
+    It honours `previous` for anything it has already placed, which is not decoration — every real
+    layout warm-starts, and a fake that re-derived every position from scratch would let the engine
+    lose placements no shipped layout would lose, so a test written against it would pass while the
+    app moved every node on every update.
+  */
   grid: () => ({
     id: 'grid',
-    init(input: { nodes: { id: string }[] }) {
+    init(input: { nodes: { id: string }[]; previous?: ReadonlyMap<string, { x: number; y: number }> }) {
       return {
-        positions: new Map(input.nodes.map((node, index) => [node.id, { x: index * 10, y: 0 }])),
+        positions: new Map(
+          input.nodes.map((node, index) => [node.id, input.previous?.get(node.id) ?? { x: index * 10, y: 0 }]),
+        ),
       };
     },
   }),
@@ -200,6 +209,341 @@ describe('GraphEngine', () => {
 
     ctx.select(['seed-0'], 'toggle');
     expect(ctx.selection()).toEqual(['seed-1']);
+  });
+});
+
+/**
+ * A seed source whose rows can change between runs — what a live query looks like from the engine's
+ * side, and the only way to test that a refresh reconciles rather than restarts.
+ */
+function mutableSeed(initial: string[]): SeedSource & { rows: string[] } {
+  const source = {
+    id: 'test',
+    rows: [...initial],
+    async seed() {
+      return {
+        nodes: source.rows.map((id) => ({ id, kind: 'entity' as const, type: 'Thing', label: id })),
+        edges: [],
+      };
+    },
+  };
+  return source;
+}
+
+describe('refreshing keeps the graph the user is looking at', () => {
+  it('adds a new row without disturbing what is already placed', async () => {
+    const seed = mutableSeed(['seed-0', 'seed-1']);
+    const registry = new PluginRegistry({ seeds: [seed], layouts });
+    const engine = engineWith({ seeds: { source: 'test' }, layout: { type: 'grid' } }, registry);
+    await engine.start();
+    engine.resize(800, 600);
+    engine.pin('seed-0', { x: 123, y: 456 });
+
+    seed.rows.push('seed-2');
+    await engine.refresh();
+
+    expect(engine.store.nodeCount).toBe(3);
+    expect(engine.store.hasNode('seed-2')).toBe(true);
+    // The whole reason `refresh` exists rather than a second `start`: a position somebody chose has
+    // to survive somebody else's write.
+    expect(engine.getPositions().get('seed-0')).toMatchObject({ x: 123, y: 456 });
+    expect(engine.isPinned('seed-0')).toBe(true);
+  });
+
+  it('drops a row the seeds no longer return, with its position and selection', async () => {
+    const seed = mutableSeed(['seed-0', 'seed-1']);
+    const registry = new PluginRegistry({ seeds: [seed], layouts });
+    const engine = engineWith({ seeds: { source: 'test' }, layout: { type: 'grid' } }, registry);
+    await engine.start();
+    engine.select(['seed-1']);
+
+    seed.rows = ['seed-0'];
+    await engine.refresh();
+
+    expect(engine.store.hasNode('seed-1')).toBe(false);
+    expect(engine.getPositions().has('seed-1')).toBe(false);
+    expect(engine.getSelection()).toEqual([]);
+  });
+
+  it('keeps a vanished seed row that an expansion is still holding open', async () => {
+    // Two openers on one node is the ordinary case, and the reason release is reference-counted
+    // rather than a set difference: the seed query no longer returns it, but the user opened the
+    // node it hangs off, and deleting it would take a node off screen that they put there.
+    const seed = mutableSeed(['seed-0']);
+    const registry = new PluginRegistry({
+      seeds: [seed],
+      expanders: [
+        {
+          id: 'to-shared',
+          kinds: ['entity'],
+          async expand(request) {
+            return {
+              nodes: [{ id: 'shared', kind: 'entity' as const, type: 'Thing', label: 'shared' }],
+              edges: [{ id: `${request.id}->shared`, source: request.id, target: 'shared', type: 'rel' }],
+            };
+          },
+        },
+      ],
+      layouts,
+    });
+    const engine = engineWith({ seeds: { source: 'test' }, layout: { type: 'grid' } }, registry);
+    await engine.start();
+    await engine.expand('seed-0');
+    seed.rows = ['seed-0', 'shared'];
+    await engine.refresh();
+
+    seed.rows = ['seed-0'];
+    await engine.refresh();
+
+    expect(engine.store.hasNode('shared')).toBe(true);
+  });
+
+  it('does not re-open a node the user collapsed', async () => {
+    // Auto-expansion over the whole store on every refresh would make a collapsed node spring back
+    // the next time anything changed, which reads as the graph refusing to be closed.
+    const seed = mutableSeed(['seed-0']);
+    const registry = new PluginRegistry({ seeds: [seed], expanders: [fanoutExpander(2)], layouts });
+    const engine = engineWith(
+      { seeds: { source: 'test' }, layout: { type: 'grid' }, expansion: { defaultDepth: 1 } },
+      registry,
+    );
+    await engine.start();
+    expect(engine.store.nodeCount).toBe(3);
+
+    engine.collapse('seed-0');
+    expect(engine.store.nodeCount).toBe(1);
+
+    await engine.refresh();
+
+    expect(engine.store.nodeCount).toBe(1);
+  });
+
+  it('auto-expands rows that arrive, so a new node opens like the ones loaded with it', async () => {
+    const seed = mutableSeed(['seed-0']);
+    const registry = new PluginRegistry({ seeds: [seed], expanders: [fanoutExpander(2)], layouts });
+    const engine = engineWith(
+      { seeds: { source: 'test' }, layout: { type: 'grid' }, expansion: { defaultDepth: 1 } },
+      registry,
+    );
+    await engine.start();
+
+    seed.rows.push('seed-1');
+    await engine.refresh();
+
+    // 2 seeds, each with 2 children.
+    expect(engine.store.nodeCount).toBe(6);
+  });
+
+  it('collapses concurrent refreshes into one more pass rather than racing', async () => {
+    const seed = mutableSeed(['seed-0']);
+    let runs = 0;
+    const counted: SeedSource = {
+      id: 'test',
+      async seed() {
+        runs += 1;
+        return seed.seed();
+      },
+    };
+    const registry = new PluginRegistry({ seeds: [counted], layouts });
+    const engine = engineWith({ seeds: { source: 'test' }, layout: { type: 'grid' } }, registry);
+    await engine.start();
+    runs = 0;
+
+    await Promise.all([engine.refresh(), engine.refresh(), engine.refresh()]);
+
+    // One in flight plus one pass for everything that arrived while it ran — not three.
+    expect(runs).toBe(2);
+  });
+});
+
+/**
+ * A host that can report changes, and a seed that reads through the context so the engine can see
+ * what it read. The engine derives its watches from the reads themselves, so a seed that fabricates
+ * nodes without querying — every other seed in this file — is correctly watched for nothing.
+ */
+function watchableFixture(entity: string) {
+  const fired: (() => void)[] = [];
+  const watched: { entity: string; dataset?: string }[] = [];
+  let stopped = 0;
+
+  const context: ExpanderContext = {
+    query: async () => [{ id: 'row-1' }],
+    defaultDataset: () => 'ds',
+    models: () => [],
+    warn: () => undefined,
+    watch(request, onChange) {
+      watched.push(request);
+      fired.push(onChange);
+      return () => {
+        stopped += 1;
+      };
+    },
+  };
+
+  const seed: SeedSource = {
+    id: 'test',
+    async seed(_options, ctx) {
+      const rows = await ctx.query({ entity, dataset: 'ds' });
+      return {
+        nodes: rows.map((row) => ({
+          id: String((row as { id: string }).id),
+          kind: 'entity' as const,
+          type: entity,
+        })),
+        edges: [],
+      };
+    },
+  };
+
+  return { context, seed, watched, fired, stopped: () => stopped };
+}
+
+describe('following the data', () => {
+  it('watches exactly the types the seeds read', async () => {
+    const fixture = watchableFixture('Post');
+    const registry = new PluginRegistry({ seeds: [fixture.seed], layouts });
+    const engine = new GraphEngine({
+      spec: { seeds: { source: 'test' }, layout: { type: 'grid' } },
+      registry,
+      context: fixture.context,
+    });
+
+    await engine.start();
+
+    expect(fixture.watched).toEqual([{ entity: 'Post', dataset: 'ds' }]);
+  });
+
+  it('re-reads when a watch fires, and coalesces a burst into one pass', async () => {
+    vi.useFakeTimers();
+    try {
+      const fixture = watchableFixture('Post');
+      const registry = new PluginRegistry({ seeds: [fixture.seed], layouts });
+      const engine = new GraphEngine({
+        spec: { seeds: { source: 'test' }, layout: { type: 'grid' } },
+        registry,
+        context: fixture.context,
+      });
+      await engine.start();
+
+      const refresh = vi.spyOn(engine, 'refresh');
+      // One user action is many writes. Three notifications must not be three rounds of queries.
+      fixture.fired[0]();
+      fixture.fired[0]();
+      fixture.fired[0]();
+      await vi.advanceTimersByTimeAsync(500);
+
+      expect(refresh).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('watches nothing when the template asked for a graph that holds still', async () => {
+    const fixture = watchableFixture('Post');
+    const registry = new PluginRegistry({ seeds: [fixture.seed], layouts });
+    const engine = new GraphEngine({
+      spec: { seeds: { source: 'test' }, layout: { type: 'grid' }, live: false },
+      registry,
+      context: fixture.context,
+    });
+
+    await engine.start();
+
+    expect(fixture.watched).toEqual([]);
+  });
+
+  it('starts and stops watching as live is toggled, without re-running the queries', async () => {
+    const fixture = watchableFixture('Post');
+    const registry = new PluginRegistry({ seeds: [fixture.seed], layouts });
+    const engine = new GraphEngine({
+      spec: { seeds: { source: 'test' }, layout: { type: 'grid' }, live: false },
+      registry,
+      context: fixture.context,
+    });
+    await engine.start();
+
+    engine.setLive(true);
+    expect(fixture.watched).toHaveLength(1);
+
+    engine.setLive(false);
+    expect(fixture.stopped()).toBe(1);
+  });
+
+  it('releases its watches when disposed', async () => {
+    // A leaked watch keeps the whole engine reachable from a backend subscription — the shape of
+    // leak that only ever shows up as an app that gets slower the longer it runs.
+    const fixture = watchableFixture('Post');
+    const registry = new PluginRegistry({ seeds: [fixture.seed], layouts });
+    const engine = new GraphEngine({
+      spec: { seeds: { source: 'test' }, layout: { type: 'grid' } },
+      registry,
+      context: fixture.context,
+    });
+    await engine.start();
+
+    engine.dispose();
+
+    expect(fixture.stopped()).toBe(1);
+  });
+});
+
+describe('warnings', () => {
+  /** A layout that complains on demand, so the engine's handling of what it says is under test. */
+  function complaining(message: () => string | null) {
+    return {
+      grid: () => ({
+        id: 'grid',
+        init(inputNodes: { nodes: { id: string }[] }) {
+          const said = message();
+          return {
+            positions: new Map(inputNodes.nodes.map((n, i) => [n.id, { x: i * 10, y: 0 }])),
+            ...(said ? { warnings: [said] } : {}),
+          };
+        },
+      }),
+    };
+  }
+
+  it('retires a layout warning once a later arrangement no longer makes it', async () => {
+    // The bug this pins: a complaint true of an empty board stayed on screen after the first drag
+    // made it false. A layout warning describes the arrangement *as it is now*, so a later
+    // arrangement supersedes it — otherwise a reader cannot tell a live warning from a spent one.
+    let say: string | null = 'nothing carries a position';
+    const registry = new PluginRegistry({ seeds: [seedOf(2)], layouts: complaining(() => say) });
+    const engine = engineWith({ seeds: { source: 'test' }, layout: { type: 'grid' } }, registry);
+
+    await engine.start();
+    expect(engine.getStatus().warnings).toContain('nothing carries a position');
+
+    say = null;
+    engine.relayout();
+
+    expect(engine.getStatus().warnings).toEqual([]);
+  });
+
+  it('keeps an expander warning across a re-layout, because an event does not un-happen', async () => {
+    // The other half of the rule. A query that failed stays failed; only the layout's description of
+    // the current arrangement is superseded by a new one.
+    const registry = new PluginRegistry({
+      seeds: [seedOf(1)],
+      expanders: [
+        {
+          id: 'broken',
+          kinds: ['entity'],
+          async expand() {
+            throw new Error('backend unavailable');
+          },
+        },
+      ],
+      layouts: complaining(() => null),
+    });
+    const engine = engineWith({ seeds: { source: 'test' }, layout: { type: 'grid' } }, registry);
+    await engine.start();
+    await engine.expand('seed-0');
+
+    engine.relayout();
+
+    expect(engine.getStatus().warnings.join(' ')).toContain('backend unavailable');
   });
 });
 
@@ -673,5 +1017,93 @@ describe('a settled layout that is given a reason to move', () => {
     engine.setPinned(['seed-0'], false);
     await new Promise((resolve) => setTimeout(resolve, 100));
     expect(engine.getPositions().get('seed-1')?.x).toBeGreaterThan(held);
+  });
+});
+
+/**
+ * An optimistic edit has to reach everything a node's data decides, not only the drawing.
+ *
+ * A card is drawn from its style, *picked* by the spatial index, and its edges are routed to its
+ * border — all three resolved from the same rules. Overlay only the drawing and a resized card is
+ * clicked at its old size and has arrows pointing at where it used to end, until something else
+ * forces a re-read. That is what this pins.
+ */
+describe('data overlay', () => {
+  const cardStyle = [{ style: { shape: 'card' as const, width: { from: 'data.boardWidth' }, height: 100 } }];
+
+  const twoCards: SeedSource = {
+    id: 'two',
+    async seed() {
+      return {
+        nodes: [
+          { id: 'a', kind: 'entity' as const, type: 'Card', label: 'A', data: { boardWidth: 100 } },
+          { id: 'b', kind: 'entity' as const, type: 'Card', label: 'B', data: { boardWidth: 100 } },
+        ],
+        edges: [{ id: 'a->b', source: 'a', target: 'b', type: 'rel' }],
+      };
+    },
+  };
+
+  async function boardEngine() {
+    const registry = new PluginRegistry({ seeds: [twoCards], expanders: [], layouts });
+    const engine = engineWith({ seeds: { source: 'two' }, layout: { type: 'grid' }, nodeStyle: cardStyle }, registry);
+    await engine.start();
+    return engine;
+  }
+
+  it('picks a node at its overlaid size', async () => {
+    const engine = await boardEngine();
+    const at = engine.getPositions().get('a')!;
+    // 120 world units to the right of centre: outside a 100-wide card, inside a 400-wide one.
+    const beyond = { x: at.x + 120, y: at.y };
+
+    expect(engine.index.hitTest(beyond)).not.toContain('a');
+
+    engine.setDataOverlay(new Map([['a', { boardWidth: 400 }]]));
+
+    expect(engine.index.hitTest(beyond)).toContain('a');
+  });
+
+  it('re-routes the edges that meet an overlaid node', async () => {
+    const engine = await boardEngine();
+    const before = engine.getEdgeGeometry().get('a->b');
+
+    engine.setDataOverlay(new Map([['b', { boardWidth: 400 }]]));
+
+    // The line stops short of the node's border, so a wider target ends the edge sooner.
+    expect(engine.getEdgeGeometry().get('a->b')?.to).not.toEqual(before?.to);
+  });
+
+  it('leaves the node the seeds returned alone', async () => {
+    // The host works out that a write has come back by comparing its patch against the *seeded*
+    // data. Merging the overlay into the store would report every patch settled the moment it was
+    // applied, and the card would flick back to the old value.
+    const engine = await boardEngine();
+
+    engine.setDataOverlay(new Map([['a', { boardWidth: 400 }]]));
+
+    expect(engine.store.node('a')?.data?.boardWidth).toBe(100);
+    expect(engine.overlayFor('a')).toEqual({ boardWidth: 400 });
+  });
+
+  it('tells subscribers the graph changed', async () => {
+    const engine = await boardEngine();
+    const reasons: string[] = [];
+    engine.subscribe((reason) => reasons.push(reason));
+
+    engine.setDataOverlay(new Map([['a', { boardWidth: 400 }]]));
+
+    expect(reasons).toContain('graph');
+  });
+
+  it('clears back to the seeded size', async () => {
+    const engine = await boardEngine();
+    engine.setDataOverlay(new Map([['a', { boardWidth: 400 }]]));
+
+    engine.setDataOverlay(new Map());
+
+    expect(engine.hasDataOverlay()).toBe(false);
+    const at = engine.getPositions().get('a')!;
+    expect(engine.index.hitTest({ x: at.x + 120, y: at.y })).not.toContain('a');
   });
 });

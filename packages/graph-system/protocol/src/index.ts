@@ -62,8 +62,10 @@ export type {
 } from './render';
 export type { AutoExpandRule, BehaviourSpec, ExpansionSpec, GraphSpec, LayoutSpec, SeedSpec } from './spec';
 export type {
+  CardShape,
   EdgeStyle,
   EdgeStyleRules,
+  FieldRef,
   MatchClause,
   MatchOperators,
   Metric,
@@ -71,5 +73,6 @@ export type {
   NodeStyle,
   NodeStyleRules,
   StyleRule,
+  StyleRules,
   StyleValue,
 } from './style';

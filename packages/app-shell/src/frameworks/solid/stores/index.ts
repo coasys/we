@@ -4,6 +4,7 @@ export { type DatasetStore, useDatasetStore, DatasetStoreProvider } from './Data
 export { type ProfileStore, useProfileStore, ProfileStoreProvider } from './ProfileStore';
 export { type RuntimeStore, useRuntimeStore, RuntimeStoreProvider } from './RuntimeStore';
 export { type ShapeStore, useShapeStore, ShapeStoreProvider } from './ShapeStore';
+export { type RecordStore, useRecordStore, RecordStoreProvider } from './RecordStore';
 export { type SpaceStore, useSpaceStore, SpaceStoreProvider } from './SpaceStore';
 export { type ThemeStore, type EditingTheme, useThemeStore, ThemeStoreProvider } from './ThemeStore';
 export { type TemplateStore, useTemplateStore, TemplateStoreProvider } from './TemplateStore';

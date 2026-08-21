@@ -12,6 +12,7 @@ import {
   useEditorStore,
   usePresenceStore,
   useProfileStore,
+  useRecordStore,
   useRouteStore,
   useRuntimeStore,
   useSessionStore,
@@ -50,6 +51,7 @@ export default function TemplateProvider() {
   const appStore = useAppStore();
   const spaceStore = useSpaceStore();
   const shapeStore = useShapeStore();
+  const recordStore = useRecordStore();
   const themeStore = useThemeStore();
   const templateStore = useTemplateStore();
   const routeStore = useRouteStore();
@@ -136,6 +138,7 @@ export default function TemplateProvider() {
     appStore,
     spaceStore,
     shapeStore,
+    recordStore,
     themeStore,
     templateStore,
     routeStore,

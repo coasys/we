@@ -8,7 +8,19 @@ import type { EntityShape, GraphNode, GraphValue } from '@we/graph-protocol';
 import { entityAddress } from '@we/graph-protocol';
 
 /** Property names worth trying as a label, in descending order of how likely they are to be one. */
-const LABEL_CANDIDATES = ['name', 'title', 'label', 'handle', 'subgroupName', 'text', 'content'];
+/*
+  Ordered by how deliberately a value names the thing.
+
+  `textContent` is last and was missing, which is why every composed card on a board read
+  "CollectionBlock": a post has no `title` — the composer writes its text into `editorState` and a
+  flattened copy into `textContent`, which exists "for search and preview" and is exactly a preview.
+  With nothing matching, the label fell through to the entity name, so a wall of notes announced
+  their class instead of their contents.
+
+  Last rather than first because it is derived. A collection somebody *named* should show that name,
+  and only one nobody named should fall back to what it happens to say.
+*/
+const LABEL_CANDIDATES = ['name', 'title', 'label', 'handle', 'subgroupName', 'text', 'content', 'textContent'];
 
 /**
  * The property that best names an instance of a shape.
@@ -26,12 +38,20 @@ export function labelProperty(shape: EntityShape | undefined): string | undefine
   return shape.properties.find((p) => p.type === 'string' && p.required)?.name;
 }
 
-/** Truncate a label to something that fits beside a node rather than across the whole graph. */
+/**
+ * Truncate a label to something worth carrying, leaving the *fitting* to CSS.
+ *
+ * Sixty characters was tuned for a caption beside a dot, and it is the wrong cap for a card, which
+ * clamps to five lines of real text — a postit that stopped mid-sentence at sixty characters looked
+ * like the data was truncated rather than the caption. Both cases are already handled in CSS: a dot
+ * label ellipsises on one line, a card clamps to five. So this only has to stop a node dragging a
+ * whole document into the graph store.
+ */
 function trim(value: unknown): string | undefined {
   if (value === null || value === undefined) return undefined;
   const text = String(value).trim();
   if (!text) return undefined;
-  return text.length > 60 ? `${text.slice(0, 57)}…` : text;
+  return text.length > 300 ? `${text.slice(0, 297)}…` : text;
 }
 
 /** Only scalars travel into `data` — anything else belongs behind a node template. */

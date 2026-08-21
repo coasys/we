@@ -288,3 +288,99 @@ describe('reified edges', () => {
     expect(result.nodes.some((n) => n.type === 'SemanticRelationship')).toBe(true);
   });
 });
+
+/**
+ * A connection somebody drew, rather than one a schema declared.
+ *
+ * The difference that matters here is that its endpoints are untyped — it can point at anything —
+ * so the entity name each end needs for its address has nowhere to come from except the record.
+ */
+describe('reified edges with untyped endpoints', () => {
+  const DRAWN = {
+    Relationship: {
+      source: 'source',
+      target: 'target',
+      type: 'relates',
+      sourceType: 'sourceType',
+      targetType: 'targetType',
+    },
+  };
+
+  const DRAWN_SHAPES: EntityShape[] = [
+    ...SHAPES,
+    {
+      name: 'Relationship',
+      identityProperty: 'label',
+      properties: [
+        { name: 'label', type: 'string', required: true },
+        { name: 'sourceType', type: 'string' },
+        { name: 'targetType', type: 'string' },
+      ],
+      relations: [
+        { name: 'source', target: '', cardinality: 'one' },
+        { name: 'target', target: '', cardinality: 'one' },
+      ],
+    },
+  ];
+
+  /**
+   * Answers a reverse lookup honestly: a row comes back only from the end it is actually attached
+   * to.
+   *
+   * Both endpoint relations are queried, because a node can be at either end of a connection — and
+   * a fake that returned every row for both would hide that, by making one relationship look like
+   * two edges when it is really one query finding it and one query not.
+   */
+  function drawnContext(rows: Record<string, unknown>[]) {
+    const warnings: string[] = [];
+    return {
+      warnings,
+      context: {
+        query: async (request: ExpanderQuery) => {
+          if (request.entity !== 'Relationship') return [];
+          const { via, anchorId } = request.scope ?? {};
+          return via ? rows.filter((row) => row[via] === anchorId) : rows;
+        },
+        defaultDataset: () => 'ds',
+        models: () => DRAWN_SHAPES,
+        warn: (m: string) => warnings.push(m),
+      } as ExpanderContext,
+    };
+  }
+
+  it('takes each end’s type from the record when the relation declares none', async () => {
+    const { context } = drawnContext([
+      { id: 'r1', label: 'contradicts', source: 'p1', sourceType: 'Post', target: 'a1', targetType: 'Agent' },
+    ]);
+
+    const result = await entityExpander({ reified: DRAWN }).expand({ id: POST, direction: 'in' }, context);
+
+    expect(result.edges).toHaveLength(1);
+    // The types are what make the addresses, so getting them from the row is the whole mechanism:
+    // without it neither end could be addressed and the edge could not be drawn at all.
+    expect(result.nodes.map((n) => n.type).sort()).toEqual(['Agent', 'Post']);
+  });
+
+  it('carries the author’s own words as the edge label', async () => {
+    // `type` stays a stable category — "somebody asserted this" — and the label carries the meaning,
+    // which is why the type is not the entity name.
+    const { context } = drawnContext([
+      { id: 'r1', label: 'came out of', source: 'p1', sourceType: 'Post', target: 'a1', targetType: 'Agent' },
+    ]);
+
+    const [edge] = (await entityExpander({ reified: DRAWN }).expand({ id: POST, direction: 'in' }, context)).edges;
+
+    expect(edge.type).toBe('relates');
+    expect(edge.label).toBe('came out of');
+    expect(edge.reifiedAs).toContain('Relationship');
+  });
+
+  it('draws nothing when a record does not say what it connected', async () => {
+    // An address cannot be minted without a type, and half an edge is worse than none.
+    const { context } = drawnContext([{ id: 'r1', label: 'contradicts', source: 'p1', target: 'a1' }]);
+
+    const result = await entityExpander({ reified: DRAWN }).expand({ id: POST, direction: 'in' }, context);
+
+    expect(result.edges).toEqual([]);
+  });
+});

@@ -66,6 +66,7 @@
     "@we/template-shell": "workspace:*",
     "@we/editor": "workspace:*",
     "@we/globe-widget": "workspace:*",
+    "@we/graph-expanders": "workspace:*",
     "@we/graph-protocol": "workspace:*",
     "@we/graph-solid": "workspace:*"
   },

@@ -6,3 +6,5 @@
  */
 export { GraphView, pathFrom } from './GraphView.solid';
 export type { GraphHostBindings, GraphViewProps } from './GraphView.types';
+export { type Box, type Grip, HANDLES, resizeBox } from './resize';
+export { isSettled, patched } from './pending';

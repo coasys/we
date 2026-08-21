@@ -4,6 +4,7 @@ import { attributeRow, pageShell, sectionCard } from '@we/template-kit';
 import { createSignalTypeModal } from './CreateSignalTypeModal.ts';
 import { marketplaceBrowser } from './MarketplaceBrowser.ts';
 import { modelsSection } from './ModelsSection.ts';
+import { relationshipTypesSection } from './RelationshipTypesSection.ts';
 import { signalTypeCard } from './SignalTypeCard.ts';
 import { themeMarketplaceBrowser } from './ThemeMarketplaceBrowser.ts';
 
@@ -118,6 +119,7 @@ export const settingsRoute: RouteSchema = {
     showMarketplace: { type: 'boolean', initial: false },
     showThemeMarketplace: { type: 'boolean', initial: false },
     createSignalTypeOpen: { type: 'boolean', initial: false },
+    createRelationshipTypeOpen: { type: 'boolean', initial: false },
     editName: { type: 'string', initial: { $store: 'spaceStore.currentSpace.name' } },
     editDescription: { type: 'string', initial: { $store: 'spaceStore.currentSpace.description' } },
     saving: { type: 'boolean', initial: false },
@@ -604,6 +606,11 @@ export const settingsRoute: RouteSchema = {
           },
         ],
       }),
+
+      // Beside Signal Types and the models section, because all three are the same act at different
+      // levels: a community naming what a reaction means, what a connection means, and what a thing
+      // *is*. See `docs/architecture/relations.md` for where the middle one sits.
+      relationshipTypesSection,
 
       modelsSection,
     ],

@@ -175,8 +175,15 @@ function emitEntity(name, def) {
   for (const [rname, spec] of Object.entries(e.relations)) {
     if (memberDocs[rname]) L.push(indentDoc(memberDocs[rname], '  '));
     if (spec.cardinality === 'one') {
-      L.push(`  @HasOne(() => ${spec.target}, { through: ${q(spec.predicate)} })`);
-      L.push(`  ${rname}?: ${spec.target};`);
+      // An untyped to-one — a reference to whatever, the counterpart of the untyped to-many below.
+      // It holds a URI rather than an instance, since there is no class to hydrate it into, and it
+      // gets no `set<Name>` companion for the same reason: the accessor's whole signature is its
+      // target type.
+      const decorator = spec.target
+        ? `@HasOne(() => ${spec.target}, { through: ${q(spec.predicate)} })`
+        : `@HasOne({ through: ${q(spec.predicate)} })`;
+      L.push(`  ${decorator}`);
+      L.push(`  ${rname}?: ${spec.target ? spec.target : 'string'};`);
     } else {
       const decorator = spec.target
         ? `@HasMany(() => ${spec.target}, { through: ${q(spec.predicate)} })`
@@ -190,7 +197,8 @@ function emitEntity(name, def) {
   while (L[L.length - 1] === '') L.pop();
   L.push('}');
 
-  const setters = relations.filter(([, r]) => r.cardinality === 'one');
+  // Typed to-ones only: `set<Name>(value: T)` has no signature to declare without a target class.
+  const setters = relations.filter(([, r]) => r.cardinality === 'one' && r.target);
   if (manyMethods.length || setters.length) {
     L.push('');
     if (manyMethods.length) {

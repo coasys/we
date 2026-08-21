@@ -26,6 +26,7 @@ import {
   MutedAgent,
   PREDICATES,
   ReadMarker,
+  RelationshipType,
   Signal,
   SignalType,
   Space,
@@ -424,7 +425,15 @@ export interface SpaceStore {
    * {@link CreatePostOptions}. Keeps its name because a post is the default and renaming it would
    * churn every existing template for no gain.
    */
-  createPost: (json: unknown, options?: CreatePostOptions) => Promise<void>;
+  /**
+   * Create a composed artifact, and return its id.
+   *
+   * The id is what makes "and then do something with it" possible from a schema — placing a new card
+   * where somebody double-clicked, scrolling to it, selecting it — since `$action`'s `onSuccess`
+   * reads the resolved value as `$result`. `createBlocks` has always returned the model; this simply
+   * stopped throwing the id away.
+   */
+  createPost: (json: unknown, options?: CreatePostOptions) => Promise<string | undefined>;
   updatePost: (postId: string, json: unknown) => Promise<void>;
   /**
    * Move a child between two collections — a card between kanban columns. A relink of the two
@@ -530,6 +539,14 @@ export interface SpaceStore {
   clearSpaceThemePin: () => Promise<void>;
   launchModule: (moduleId: string) => void;
   createSignalType: (config: Partial<SignalType>) => Promise<void>;
+  /**
+   * Name a kind of connection this community makes — "contradicts", "came out of".
+   *
+   * The counterpart to `createSignalType`, and the middle tier between a free-text label and a
+   * relation declared on a model. A record rather than a schema change, so any member can propose
+   * the vocabulary; identified, so a query can filter on it and an edge style can key on it.
+   */
+  createRelationshipType: (config: Partial<RelationshipType>) => Promise<void>;
   upsertSignal: (nodeId: string, signalTypeId: string, value: number) => Promise<void>;
   navigateToSpace: (spaceId: string, view?: string) => Promise<void>;
   /** Whether this agent may change what every member of that space sees. */
@@ -1190,7 +1207,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     })();
   });
 
-  async function createPost(json: unknown, options: CreatePostOptions = {}): Promise<void> {
+  async function createPost(json: unknown, options: CreatePostOptions = {}): Promise<string | undefined> {
     const p = datasetStore.currentDataset()?.handle;
     if (!p) return;
 
@@ -1205,10 +1222,11 @@ export function SpaceStoreProvider(props: ParentProps) {
     const { kind = 'post', parentId, predicate = PREDICATES.CHILDREN } = options;
 
     // The action arrives from a schema as unknown; the composer produced it, so it is editor state.
-    await createBlocks(p, json as SerializedBlockNode, {
+    const root = await createBlocks(p, json as SerializedBlockNode, {
       kind,
       ...(parentId && { anchor: { id: parentId, predicate } }),
     });
+    return root?.id;
   }
 
   async function updatePost(postId: string, json: unknown): Promise<void> {
@@ -1442,6 +1460,20 @@ export function SpaceStoreProvider(props: ParentProps) {
     const normalised =
       withSlug.mode && rangeOverrides[withSlug.mode] ? { ...withSlug, ...rangeOverrides[withSlug.mode] } : withSlug;
     await SignalType.create(p, normalised);
+  }
+
+  /**
+   * Name a kind of connection, deriving its slug the way a signal type derives one.
+   *
+   * The slug is what a template refers to when it cares about a specific kind — "draw
+   * contradictions in red" — because the display name belongs to the community and may change,
+   * where an identifier does not.
+   */
+  async function createRelationshipType(config: Partial<RelationshipType>): Promise<void> {
+    const p = datasetStore.currentDataset()?.handle;
+    if (!p) return;
+    const slug = config.slug || (config.name ? deriveSlug(config.name) : '');
+    await RelationshipType.create(p, { ...config, slug });
   }
 
   async function upsertSignal(nodeId: string, signalTypeId: string, value: number): Promise<void> {
@@ -2506,6 +2538,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     clearSpaceThemePin,
     launchModule,
     createSignalType,
+    createRelationshipType,
     upsertSignal,
     navigateToSpace,
     canAdministerSpace,

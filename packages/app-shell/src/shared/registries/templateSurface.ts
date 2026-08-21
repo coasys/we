@@ -383,6 +383,9 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
 
     // ── signals ──
     createSignalType: action('signals'),
+    // The vocabulary of connections, alongside the vocabulary of reactions — same tier, same act:
+    // a community naming what it means by something.
+    createRelationshipType: action('signals'),
     upsertSignal: action('signals'),
 
     // ── navigation ──
@@ -512,6 +515,42 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     setHintDraft: action('space-settings'),
     saveHintEditor: action('space-settings'),
     resetHintEditor: action('space-settings'),
+  },
+
+  recordStore: {
+    // ── 'content', not 'space-settings' ──
+    // The neighbouring store defines what a "Sighting" *is*, which is the community shaping its own
+    // container. Creating one is writing a record, which is the same act as posting — so it belongs
+    // in the tier every template can reach, beside `spaceStore.createPost`.
+    creatableEntities: state('content'),
+    recordDraft: state('content'),
+    recordErrors: state('content'),
+    savingRecord: state('content'),
+    lastCreatedId: state('content'),
+    pendingLink: state('content'),
+    openRecordForm: action('content'),
+    connectNodes: action('content'),
+    createOnBoard: action('content'),
+    createCardOnBoard: action('content'),
+    placeOnBoard: action('content'),
+    removeFromBoard: action('content'),
+    resizeOnBoard: action('content'),
+    // Host wiring, both halves of one mechanism: the graph host reads what is pending and reports
+    // the rows it read back. A template has no use for either — it writes through the actions above
+    // and the optimism is applied for it.
+    pendingCardStyle: WIRING,
+    confirmPending: WIRING,
+    // Template-facing: a control that reports while it moves previews through this and writes on
+    // release, which is what makes a slider show its result before the drag ends.
+    previewCardStyle: action('content'),
+    setCardStyle: action('content'),
+    setTypeColor: action('content'),
+    setRecordEntity: action('content'),
+    setRecordField: action('content'),
+    relationshipKind: state('content'),
+    setRelationshipKind: action('content'),
+    cancelRecordForm: action('content'),
+    saveRecord: action('content'),
   },
 
   themeStore: {

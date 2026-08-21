@@ -81,6 +81,19 @@ export interface ExpanderContext {
   defaultDataset(): string | null;
   /** Entity shapes available in a dataset, for expanders that work off the schema rather than a fixed model. */
   models(dataset?: string): EntityShape[];
+  /**
+   * Ask to be told when records of a type change, and get back a function that stops the watch.
+   *
+   * Coarse on purpose — the entity and the dataset, not the query. The signal is "look again", and
+   * the engine's answer is to re-run its seeds and reconcile, which is idempotent; a watch that
+   * mirrored the exact where-clause would cost one subscription per query for no better an answer,
+   * and would go stale the moment a clause referenced something reactive.
+   *
+   * Optional because it is a *capability*, not a requirement: a host with no change notification
+   * (a fixture, a static export) simply omits it and the graph stays as loaded. Nothing calls this
+   * directly — the engine derives what to watch from the reads its seeds performed.
+   */
+  watch?(request: { entity: string; dataset?: string }, onChange: () => void): () => void;
   /** Structured, non-fatal reporting. An expander that cannot answer says so; it does not throw. */
   warn(message: string): void;
 }

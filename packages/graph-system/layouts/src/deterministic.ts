@@ -251,6 +251,33 @@ export interface ManualLayoutOptions {
  * the data being edited, and only invents one for a node that has never been placed — arranged in a
  * grid off to one side rather than stacked at the origin, so a batch of new nodes is separable.
  */
+/**
+ * Where a node with no stored position goes.
+ *
+ * A row along the top of whatever is currently on screen — a tray of things that are on the board
+ * and nowhere in particular, waiting to be put somewhere.
+ *
+ * In *view* rather than at the origin, which is the whole point. The origin is the one place
+ * guaranteed to be wrong: it is wherever the reader is not, so a card created while panned
+ * elsewhere appeared to vanish. Grouped in a row rather than scattered, so "I have not placed
+ * these" reads as a state rather than as clutter — and a template can style them apart, since a
+ * node the layout parked is one whose data carries no coordinate.
+ *
+ * Falls back to the origin before a surface has been measured, which is the one moment there is no
+ * better answer.
+ */
+function trayPosition(input: LayoutInput, index: number, gap: number): Point {
+  const visible = input.visible;
+  const perRow = Math.max(1, Math.floor((visible?.width ?? gap * 5) / gap));
+  const column = index % perRow;
+  const row = Math.floor(index / perRow);
+  // Inset by half a gap so the first card is not flush against the edge of the view.
+  return {
+    x: (visible?.x ?? 0) + gap / 2 + column * gap,
+    y: (visible?.y ?? 0) + gap / 2 + row * gap,
+  };
+}
+
 export function manualLayout(rawOptions?: Record<string, unknown>): Layout {
   const options = { xField: 'x', yField: 'y', gap: 160, ...(rawOptions as ManualLayoutOptions) };
   const pinned = new Map<string, Point>();
@@ -266,6 +293,7 @@ export function manualLayout(rawOptions?: Record<string, unknown>): Layout {
       const positions = new Map<string, Placement>();
       let unplaced = 0;
       let fromData = 0;
+      let reused = 0;
 
       for (const node of input.nodes) {
         const override = pinned.get(node.id);
@@ -283,28 +311,34 @@ export function manualLayout(rawOptions?: Record<string, unknown>): Layout {
         const previous = input.previous?.get(node.id);
         if (previous) {
           positions.set(node.id, previous);
+          reused += 1;
           continue;
         }
-        positions.set(node.id, {
-          x: (unplaced % 5) * options.gap,
-          y: Math.floor(unplaced / 5) * options.gap,
-          fixed: true,
-        });
+        positions.set(node.id, { ...trayPosition(input, unplaced, options.gap), fixed: true });
         unplaced += 1;
       }
 
       /*
-        Say so when there was nothing to read.
+        Say so only when this layout genuinely did nothing.
 
-        This layout's whole job is to take positions from the data, so a dataset that carries none
-        leaves it holding everything exactly where it found it — on screen, identical to a layout that
-        ran and decided nothing needed to move. Picking it and seeing no change is then indistinguishable
-        from picking it and having it silently do nothing, which is the version people conclude.
+        The failure worth reporting is choosing `manual` for a graph that has no stored positions:
+        every node keeps exactly where the previous layout left it, so on screen it is
+        indistinguishable from a layout that ran and decided nothing needed moving — and "it silently
+        does nothing" is the conclusion people reach.
+
+        "No node carries x/y" is *not* that failure, and warning on it was wrong. A board whose cards
+        have never been dragged carries no positions and is working perfectly: the nodes get parked
+        into a grid, which is a visible arrangement and the whole reason `unplaced` exists. Reported
+        anyway, it fired as a matter of course on every fresh board and then stayed on screen after
+        the first drag made it untrue — a permanent warning about a state that had passed.
+
+        So the test is what *happened*, not what was read: nothing from data, nothing parked, and
+        something reused means every node stayed put and the layout was a no-op.
       */
       const warnings: string[] = [];
-      if (input.nodes.length && fromData === 0) {
+      if (fromData === 0 && unplaced === 0 && reused > 0) {
         warnings.push(
-          `manual layout: no node carries "${options.xField}" and "${options.yField}", so positions were left as they were. ` +
+          `manual layout: no node carries "${options.xField}" and "${options.yField}", so every node was left exactly where it already was. ` +
             `It suits a board, where position is the data being edited — a graph without stored positions wants a layout that derives them.`,
         );
       }

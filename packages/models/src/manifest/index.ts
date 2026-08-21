@@ -24,7 +24,10 @@ import { AgentSettings } from './entities/AgentSettings';
 import { ChatMessage } from './entities/ChatMessage';
 import { ChatSession } from './entities/ChatSession';
 import { MutedAgent } from './entities/MutedAgent';
+import { Placement } from './entities/Placement';
 import { ReadMarker } from './entities/ReadMarker';
+import { Relationship } from './entities/Relationship';
+import { RelationshipType } from './entities/RelationshipType';
 import { Shape } from './entities/Shape';
 import { Signal } from './entities/Signal';
 import { SignalType } from './entities/SignalType';
@@ -33,6 +36,7 @@ import { SpacePreference } from './entities/SpacePreference';
 import { SpaceTemplatePreference } from './entities/SpaceTemplatePreference';
 import { Template } from './entities/Template';
 import { Theme } from './entities/Theme';
+import { TypeStyle } from './entities/TypeStyle';
 import { WE_NODE_ENTITY, WE_NODE_RELATIONS } from './shared';
 
 export { WE_NODE_ENTITY, WE_NODE_RELATIONS };
@@ -59,7 +63,10 @@ export const CORE_DEFS: Record<string, CoreEntityDef> = {
   LinkBlock,
   LocationBlock,
   MutedAgent,
+  Placement,
   ReadMarker,
+  Relationship,
+  RelationshipType,
   Shape,
   Signal,
   SignalType,
@@ -71,6 +78,7 @@ export const CORE_DEFS: Record<string, CoreEntityDef> = {
   Template,
   TextBlock,
   Theme,
+  TypeStyle,
   VideoBlock,
 };
 

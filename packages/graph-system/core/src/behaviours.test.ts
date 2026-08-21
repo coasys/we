@@ -1,11 +1,22 @@
 import type { BehaviourContext, PointerInput } from '@we/graph-protocol';
 import { describe, expect, it, vi } from 'vitest';
 
-import { dispatchPointer, dragNodeBehaviour, panZoomBehaviour, selectBehaviour } from './behaviours';
+import {
+  canvasDoubleClickBehaviour,
+  connectNodesBehaviour,
+  dispatchPointer,
+  dragNodeBehaviour,
+  nodeDoubleClickBehaviour,
+  panZoomBehaviour,
+  selectBehaviour,
+} from './behaviours';
 
 /** A behaviour context whose world is one node ('n1') at (100, 100) with radius 20. */
 function fakeContext(overrides: Partial<BehaviourContext> = {}): BehaviourContext {
-  const positions = new Map([['n1', { x: 100, y: 100 }]]);
+  const positions = new Map([
+    ['n1', { x: 100, y: 100 }],
+    ['n2', { x: 300, y: 100 }],
+  ]);
   // Annotated and merged rather than cast. Spreading a `Partial` into the literal makes every
   // property possibly-undefined, which is what the `as unknown as` here used to paper over — and
   // that cast also destroyed the contextual typing, so every callback parameter below was an
@@ -33,6 +44,7 @@ function fakeContext(overrides: Partial<BehaviourContext> = {}): BehaviourContex
     selection: () => [],
     collapse: vi.fn(),
     toScreen: (p) => p,
+    drawConnection: vi.fn(),
   };
   return Object.assign(base, overrides);
 }
@@ -150,6 +162,159 @@ describe('selectBehaviour', () => {
   });
 });
 
+describe('connectNodesBehaviour', () => {
+  it('emits both ends when a drag lands on another node', () => {
+    const ctx = fakeContext();
+    const behaviour = connectNodesBehaviour();
+
+    behaviour.onPointerDown?.(input(100, 100), ctx);
+    behaviour.onPointerMove?.(input(200, 100), ctx);
+    behaviour.onPointerUp?.(input(300, 100), ctx);
+
+    expect(ctx.emit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'edgeCreate',
+        source: expect.objectContaining({ id: 'n1' }),
+        target: expect.objectContaining({ id: 'n2' }),
+      }),
+    );
+  });
+
+  it('follows the pointer while dragging, and takes the line down at the end', () => {
+    // A drag with nothing following the pointer is the difference between a gesture and a guess.
+    const ctx = fakeContext();
+    const behaviour = connectNodesBehaviour();
+
+    behaviour.onPointerDown?.(input(100, 100), ctx);
+    behaviour.onPointerMove?.(input(220, 140), ctx);
+    expect(ctx.drawConnection).toHaveBeenCalledWith('n1', { x: 220, y: 140 });
+
+    behaviour.onPointerUp?.(input(300, 100), ctx);
+    expect(ctx.drawConnection).toHaveBeenLastCalledWith(null);
+  });
+
+  it('says nothing when the drag ends on empty canvas', () => {
+    // An abandoned gesture must not open a dialog about a connection nobody made.
+    const ctx = fakeContext();
+    const behaviour = connectNodesBehaviour();
+
+    behaviour.onPointerDown?.(input(100, 100), ctx);
+    behaviour.onPointerUp?.(input(700, 700), ctx);
+
+    expect(ctx.emit).not.toHaveBeenCalled();
+    expect(ctx.drawConnection).toHaveBeenLastCalledWith(null);
+  });
+
+  it('refuses to connect a node to itself', () => {
+    const ctx = fakeContext();
+    const behaviour = connectNodesBehaviour();
+
+    behaviour.onPointerDown?.(input(100, 100), ctx);
+    behaviour.onPointerUp?.(input(105, 105), ctx);
+
+    expect(ctx.emit).not.toHaveBeenCalled();
+  });
+
+  it('claims nothing when disarmed, so the press reaches drag-node', () => {
+    const ctx = fakeContext();
+    const behaviour = connectNodesBehaviour({ armed: false });
+
+    expect(behaviour.onPointerDown?.(input(100, 100), ctx)).toBeUndefined();
+  });
+
+  it('drops the gesture when no button is held', () => {
+    // A dropped pointer-up otherwise leaves a line following the cursor around the canvas.
+    const ctx = fakeContext();
+    const behaviour = connectNodesBehaviour();
+
+    behaviour.onPointerDown?.(input(100, 100), ctx);
+    behaviour.onPointerMove?.(input(200, 100, { buttons: 0 }), ctx);
+    behaviour.onPointerUp?.(input(300, 100), ctx);
+
+    expect(ctx.emit).not.toHaveBeenCalled();
+  });
+
+  it('takes the press before drag-node, so an armed graph connects rather than moves', () => {
+    // Ordering is the whole of arming: listed after drag-node the toggle would do nothing at all.
+    const ctx = fakeContext();
+    const connect = connectNodesBehaviour();
+    const drag = dragNodeBehaviour();
+
+    dispatchPointer([connect, drag], 'onPointerDown', input(100, 100), ctx);
+    dispatchPointer([connect, drag], 'onPointerMove', input(200, 100), ctx);
+
+    expect(ctx.drawConnection).toHaveBeenCalled();
+    expect(ctx.pin).not.toHaveBeenCalled();
+  });
+});
+
+describe('nodeDoubleClickBehaviour', () => {
+  it('emits the node that was double-clicked', () => {
+    // The gap this closes: `nodeDoubleClick` was declared in the protocol and routed by the adapter
+    // and emitted by nothing, so a template binding `onNodeDoubleClick` got silence. Everything
+    // typechecked and the gesture simply did nothing.
+    const ctx = fakeContext();
+
+    nodeDoubleClickBehaviour().onDoubleClick?.(input(100, 100), ctx);
+
+    expect(ctx.emit).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'nodeDoubleClick', node: expect.objectContaining({ id: 'n1' }) }),
+    );
+  });
+
+  it('says nothing on empty canvas, leaving it to whatever creates there', () => {
+    const ctx = fakeContext();
+
+    nodeDoubleClickBehaviour().onDoubleClick?.(input(640, 480), ctx);
+
+    expect(ctx.emit).not.toHaveBeenCalled();
+  });
+
+  it('pairs with canvas-double-click so exactly one of them fires', () => {
+    // They divide the gesture by where it landed rather than competing for it, which is why a
+    // template can list both and why neither needs to know the other exists.
+    const onNode = fakeContext();
+    dispatchPointer(
+      [nodeDoubleClickBehaviour(), canvasDoubleClickBehaviour()],
+      'onDoubleClick',
+      input(100, 100),
+      onNode,
+    );
+    expect(onNode.emit).toHaveBeenCalledTimes(1);
+
+    const onCanvas = fakeContext();
+    dispatchPointer(
+      [nodeDoubleClickBehaviour(), canvasDoubleClickBehaviour()],
+      'onDoubleClick',
+      input(640, 480),
+      onCanvas,
+    );
+    expect(onCanvas.emit).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('canvasDoubleClickBehaviour', () => {
+  it('reports the world point of a double-click on empty canvas', () => {
+    // The position is the whole message: on a surface where position is the data, "make something"
+    // is not a request anybody can act on and "make something here" is.
+    const ctx = fakeContext();
+
+    canvasDoubleClickBehaviour().onDoubleClick?.(input(640, 480), ctx);
+
+    expect(ctx.emit).toHaveBeenCalledWith({ type: 'canvasDoubleClick', at: { x: 640, y: 480 } });
+  });
+
+  it('says nothing when the double-click landed on a node', () => {
+    // So it composes with expand-on-double-click rather than competing: opening a node and creating
+    // beside one are the same gesture in two places, and they must never both fire.
+    const ctx = fakeContext();
+
+    canvasDoubleClickBehaviour().onDoubleClick?.(input(100, 100), ctx);
+
+    expect(ctx.emit).not.toHaveBeenCalled();
+  });
+});
+
 describe('dispatchPointer', () => {
   it('the first claimer stops later behaviours — except on gesture-ending phases', () => {
     const calls: string[] = [];
@@ -186,5 +351,68 @@ describe('dispatchPointer', () => {
     // must learn the gesture ended, or (the original bug) a clicked node stays
     // latched to the cursor with no button held.
     expect(calls).toEqual(['a-down', 'a-up', 'b-up']);
+  });
+});
+
+/**
+ * Behaviour order, which is a real part of the contract and reads like a formatting detail.
+ *
+ * Dispatch stops at the first behaviour that claims a phase, so a list is a priority order rather
+ * than a set. `pan-zoom` claims a press on empty canvas — which is why its own description says to
+ * list it last, and why every template that listed it first had a background click that silently
+ * stopped clearing the selection. Nothing looked broken: the graph panned, the click did nothing,
+ * and the missing thing was an event nobody could see was absent.
+ */
+describe('pan-zoom and select, in both orders', () => {
+  const background = input(10, 10);
+
+  function harness() {
+    const selections: string[][] = [];
+    const panned: number[][] = [];
+    const ctx = fakeContext({
+      // Empty canvas: the press lands on nothing, which is the case both behaviours read.
+      hitTest: () => [],
+      select: (ids) => {
+        selections.push(ids);
+      },
+      pan: (dx, dy) => {
+        panned.push([dx, dy]);
+      },
+    });
+    return { ctx, selections, panned };
+  }
+
+  it('clears the selection on a background click when select comes first', () => {
+    const { ctx, selections } = harness();
+    const behaviours = [selectBehaviour(), panZoomBehaviour()];
+
+    dispatchPointer(behaviours, 'onPointerDown', background, ctx);
+    dispatchPointer(behaviours, 'onPointerUp', background, ctx);
+
+    expect(selections).toEqual([[]]);
+  });
+
+  it('clears nothing when pan-zoom comes first', () => {
+    // The regression, pinned: pan-zoom claims the press, `select` never records that one began, and
+    // its release handler has nothing to compare against.
+    const { ctx, selections } = harness();
+    const behaviours = [panZoomBehaviour(), selectBehaviour()];
+
+    dispatchPointer(behaviours, 'onPointerDown', background, ctx);
+    dispatchPointer(behaviours, 'onPointerUp', background, ctx);
+
+    expect(selections).toEqual([]);
+  });
+
+  it('still pans with select in front of it', () => {
+    // The order that fixes the click must not cost the drag: `select` claims nothing on the way
+    // down, so the press reaches pan-zoom either way.
+    const { ctx, panned } = harness();
+    const behaviours = [selectBehaviour(), panZoomBehaviour()];
+
+    dispatchPointer(behaviours, 'onPointerDown', background, ctx);
+    dispatchPointer(behaviours, 'onPointerMove', input(40, 30), ctx);
+
+    expect(panned).toEqual([[30, 20]]);
   });
 });

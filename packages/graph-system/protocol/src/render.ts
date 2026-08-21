@@ -8,7 +8,7 @@
  */
 import type { GraphEdge, GraphNode } from './graph';
 import type { Point } from './layout';
-import type { NodeStyle } from './style';
+import type { CardShape, NodeStyle } from './style';
 
 /**
  * A drawing instruction for one node, resolved from its style rules.
@@ -35,6 +35,14 @@ export interface NodeVisual {
   scaleLabelWithZoom?: boolean;
   icon?: string;
   image?: string;
+  /** Registered node-content renderer to draw inside a card — see `NodeStyle.content`. */
+  content?: string;
+  /** Zoom below which the content is hidden and the label stands in for it. */
+  contentMinZoom?: number;
+  /** The card's outline. See `NodeStyle.cardShape`. */
+  cardShape?: CardShape;
+  /** Multiplier on the size the card's content is drawn at. See `NodeStyle.contentScale`. */
+  contentScale?: number;
 }
 
 /**
@@ -92,6 +100,16 @@ export interface BehaviourContext {
   /** Screen ↔ world conversion, since pointer events arrive in screen space. */
   toWorld(at: Point): Point;
   toScreen(at: Point): Point;
+  /**
+   * Show a line being drawn from a node to a point in world space; `null` clears it.
+   *
+   * The one piece of *transient* scene state a behaviour is allowed to set, and it is here rather
+   * than owned by the behaviour because the renderer has to draw it and behaviours never touch the
+   * DOM. A drag with nothing following the pointer is the difference between a gesture and a guess:
+   * without it, connecting two nodes means pressing on one, moving across a graph that looks
+   * completely inert, and hoping.
+   */
+  drawConnection(from: string | null, to?: Point): void;
   /** Emit a graph event to the host — what a template binds `onNodeClick` and friends to. */
   emit(event: GraphEvent): void;
 }
@@ -104,6 +122,38 @@ export type GraphEvent =
   | { type: 'edgeClick'; edge: GraphEdge }
   | { type: 'selectionChange'; ids: string[] }
   | { type: 'nodeDragEnd'; node: GraphNode; position: Point }
+  /**
+   * The user resized a card, giving it this box in world units.
+   *
+   * Intent rather than a mutation, like every other event here: the engine has no write path, and
+   * where a card's box *lives* is the consumer's business — on a board it belongs to the placement,
+   * so the same note can be a wide banner on one board and a small square on another.
+   *
+   * The position travels with the size because resizing from one edge anchors the other, and a card
+   * drawn from its centre has to move that centre to hold an edge still.
+   *
+   * Emitted on release rather than continuously. The drag itself is drawn locally, so what you see
+   * follows the pointer without a write per frame.
+   */
+  | { type: 'nodeResize'; node: GraphNode; position: Point; width: number; height: number }
+  /**
+   * The user drew a line from one node to another.
+   *
+   * Intent, never a mutation — the same rule `we-sortable` follows. What connecting two things
+   * *means* is the consumer's business and differs completely: a knowledge map creates a
+   * relationship record somebody can argue with, a board might draw an arrow that is only ever
+   * decoration, an outline would reparent. A gesture that wrote one of those would be useless to the
+   * others, and the engine has no write path anyway.
+   */
+  | { type: 'edgeCreate'; source: GraphNode; target: GraphNode }
+  /**
+   * The user double-clicked empty canvas, at this point in world space.
+   *
+   * Intent again, and the position is the whole of it: "make something here" is a different request
+   * from "make something", and a surface where position is the data cannot ask the second one. What
+   * gets made is the consumer's business — a board creates a card, an outline might do nothing.
+   */
+  | { type: 'canvasDoubleClick'; at: Point }
   | { type: 'expanded'; id: string; added: number; total?: number }
   | { type: 'budgetReached'; limit: number };
 

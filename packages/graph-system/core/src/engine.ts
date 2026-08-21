@@ -12,21 +12,26 @@ import type {
   EdgeGeometry,
   ExpandDirection,
   ExpanderContext,
+  GraphEdge,
   GraphEvent,
+  GraphFragment,
   GraphNode,
   GraphSpec,
+  GraphValue,
   Layout,
   Placement,
   Point,
+  StyleRules,
 } from '@we/graph-protocol';
 import { addressKind } from '@we/graph-protocol';
 
 import { ExpansionState, SEED_OPENER } from './expansion';
+import type { EdgeClearance } from './geometry';
 import { bowOffsets, distanceToEdge, edgeBounds, groupByEndpoints, normaliseCurve, routeEdge } from './geometry';
 import { PluginRegistry } from './registry';
 import { SpatialIndex } from './spatial';
 import { GraphStore } from './store';
-import { nodeVisual, resolveStyle } from './style';
+import { flattenRules, nodeVisual, resolveStyle } from './style';
 import { boundsOf, Viewport } from './viewport';
 
 export interface EngineOptions {
@@ -39,7 +44,22 @@ export interface EngineOptions {
 }
 
 /** What changed, so a renderer can decide how much to redo. */
-export type ChangeReason = 'graph' | 'positions' | 'viewport' | 'selection' | 'status';
+export type ChangeReason =
+  | 'graph'
+  | 'positions'
+  | 'viewport'
+  | 'selection'
+  | 'status'
+  /**
+   * The line being drawn during a connect gesture moved.
+   *
+   * Its own reason rather than `positions`, which is the channel it looks most like. `positions`
+   * legitimately re-runs the node and edge projections — the nodes have moved — and this changes
+   * one straight segment while every node stays exactly where it was. Sharing the channel would
+   * make dragging a connection across a settled graph re-derive the whole scene on every pointer
+   * move, which is the most expensive way to draw a line anybody has thought of.
+   */
+  | 'connection';
 
 export interface EngineStatus {
   loading: boolean;
@@ -58,9 +78,11 @@ const NO_METRICS = new Map<string, ReadonlyMap<string, number>>();
  * Computed metrics are cheap but not free, and a graph whose rules mention none should pay nothing —
  * so the engine runs exactly the metrics the style asks for and no others.
  */
-function referencedMetrics(rules: readonly { style: Record<string, unknown> }[] | undefined): string[] {
+function referencedMetrics(rules: StyleRules<Record<string, unknown>> | undefined): string[] {
   const found = new Set<string>();
-  for (const rule of rules ?? []) {
+  // Through the nesting, so a metric named by a rule a `$map` produced is still computed. Missing it
+  // would leave that rule resolving to its fallback — a graph that draws, plainly, for no visible reason.
+  for (const rule of flattenRules(rules)) {
     for (const value of Object.values(rule.style ?? {})) {
       if (value && typeof value === 'object' && 'metric' in value) {
         found.add(String((value as { metric: unknown }).metric));
@@ -72,6 +94,26 @@ function referencedMetrics(rules: readonly { style: Record<string, unknown> }[] 
 
 const DEFAULT_MAX_NODES = 2000;
 const DEFAULT_EXPAND_LIMIT = 50;
+
+/**
+ * How long a change waits for company before the graph re-reads.
+ *
+ * One user action is many writes — composing a post creates a collection and every block in it — and
+ * each arrives as its own notification. Long enough to collapse that into one pass, short enough
+ * that a record someone just created appears while they are still looking at where it should be.
+ */
+const WATCH_DEBOUNCE_MS = 250;
+
+/** What the seeds read, and so what is worth watching. */
+interface WatchTarget {
+  entity: string;
+  dataset?: string;
+}
+
+/** Identity of a watch. Only ever compared, never parsed back — the target is carried alongside it. */
+function watchKey(target: WatchTarget): string {
+  return `${target.entity} ${target.dataset ?? ''}`;
+}
 
 export class GraphEngine {
   readonly store = new GraphStore();
@@ -94,6 +136,16 @@ export class GraphEngine {
   private status: EngineStatus = { loading: false, budgetReached: false, warnings: [] };
   private inFlight = 0;
   private disposed = false;
+  /** What the layout last complained about, so a new arrangement can retire it. */
+  private layoutWarnings: string[] = [];
+  /** A refresh is running. See {@link refresh} for why a second one queues rather than joining in. */
+  private refreshing = false;
+  private refreshPending = false;
+  /** Live watches held on the types the seeds read, keyed by entity and dataset. */
+  private readonly watchers = new Map<string, () => void>();
+  private watchTimer?: ReturnType<typeof setTimeout>;
+  /** What the last seed load read, so watches can be re-synced without re-running the queries. */
+  private lastSeedReads: ReadonlyMap<string, WatchTarget> = new Map();
   /** A fit was asked for before there was a surface to fit into. Applied on the next real resize. */
   private pendingFit = false;
   /** Whether the user may move nodes. See `isLocked`. */
@@ -122,6 +174,8 @@ export class GraphEngine {
   private edgeGeometry = new Map<string, EdgeGeometry>();
   /** Bounds per edge, so picking rejects most edges without measuring them. */
   private edgeBoxes = new Map<string, { minX: number; minY: number; maxX: number; maxY: number }>();
+  /** The connect gesture in progress — see {@link getPendingConnection}. */
+  private pendingConnection: { from: string; to: Point } | null = null;
 
   constructor(options: EngineOptions) {
     this.spec = options.spec;
@@ -186,8 +240,8 @@ export class GraphEngine {
    */
   private recomputeMetrics(): void {
     const wanted = [
-      ...referencedMetrics(this.spec.nodeStyle as { style: Record<string, unknown> }[] | undefined),
-      ...referencedMetrics(this.spec.edgeStyle as { style: Record<string, unknown> }[] | undefined),
+      ...referencedMetrics(this.spec.nodeStyle as StyleRules<Record<string, unknown>> | undefined),
+      ...referencedMetrics(this.spec.edgeStyle as StyleRules<Record<string, unknown>> | undefined),
     ];
     if (!wanted.length) {
       if (this.metrics.size) this.metrics = new Map();
@@ -245,17 +299,134 @@ export class GraphEngine {
     this.pinnedIds.clear();
     this.selected.clear();
     this.status = { loading: false, budgetReached: false, warnings: [] };
+    this.layoutWarnings = [];
 
-    const seeds = this.spec.seeds ? (Array.isArray(this.spec.seeds) ? this.spec.seeds : [this.spec.seeds]) : [];
+    const fragment = await this.loadSeeds();
+    this.store.merge(fragment);
+    this.expansion.attribute(
+      SEED_OPENER,
+      fragment.nodes.map((n) => n.id),
+      fragment.edges.map((e) => e.id),
+    );
+
+    await this.runAutoExpansion();
+    this.recomputeMetrics();
+    this.relayout({ fit: true });
+    this.notify('graph');
+  }
+
+  /**
+   * Re-run the seed sources and reconcile the result into the graph already on screen.
+   *
+   * The counterpart to {@link start}, and the difference is the entire point: `start` says "this is a
+   * different graph now" and resets everything, while this says "the same graph, with newer data".
+   * Positions, pins, the selection, the camera and every open node survive — so a record created in a
+   * modal appears as one more node among the ones the user arranged, and a peer's edit arriving over
+   * the network does not rearrange a board somebody is working on.
+   *
+   * Rows that have gone are removed, but only where the seeds were the *only* thing holding them:
+   * a node the user reached by expanding something else is theirs, not the seed query's, and it stays
+   * until they close what opened it.
+   *
+   * Deliberately does **not** fit the camera. A refresh is usually not something the user asked for —
+   * it can arrive from a subscription while they are reading — and a viewport that jumps whenever a
+   * peer writes something would make a shared graph unusable.
+   */
+  async refresh(): Promise<void> {
+    if (this.disposed) return;
+    // A second request while one is running becomes one more pass at the end, rather than a
+    // concurrent pair racing to reconcile against each other's half-applied state.
+    if (this.refreshing) {
+      this.refreshPending = true;
+      return;
+    }
+    this.refreshing = true;
+    try {
+      do {
+        this.refreshPending = false;
+        await this.refreshOnce();
+      } while (this.refreshPending && !this.disposed);
+    } finally {
+      this.refreshing = false;
+    }
+  }
+
+  private async refreshOnce(): Promise<void> {
+    const fragment = await this.loadSeeds();
+    if (this.disposed) return;
+
+    const nodes = this.trimToBudget(fragment.nodes);
+    const seedNodes = new Set(nodes.map((n) => n.id));
+    const seedEdges = new Set(fragment.edges.map((e) => e.id));
+
+    // Claimed before anything is released, so a node that was previously held only by an expansion
+    // and now also answers the seed query is not briefly unheld.
+    const change = this.store.merge({ nodes, edges: fragment.edges });
+    this.expansion.attribute(SEED_OPENER, seedNodes, seedEdges);
+
+    const released = this.expansion.releaseFrom(SEED_OPENER, seedNodes, seedEdges);
+    if (released.edges.length) this.store.removeEdges(released.edges);
+    if (released.nodes.length) {
+      this.store.removeNodes(released.nodes);
+      for (const id of released.nodes) {
+        this.positions.delete(id);
+        this.selected.delete(id);
+        this.pinnedIds.delete(id);
+      }
+    }
+
+    // Only the arrivals are auto-expanded. Running the rules over the whole graph would re-open every
+    // node the user had deliberately collapsed, on every refresh — the map would keep growing back.
+    if (change.addedNodes.length) await this.runAutoExpansion(change.addedNodes);
+
+    // Rows going away can bring a blocked graph back under the ceiling; leaving the flag set would
+    // make the next expansion refuse with no visible reason.
+    if (this.status.budgetReached && !this.atBudget()) {
+      this.status = { ...this.status, budgetReached: false };
+      this.notify('status');
+    }
+
+    this.recomputeMetrics();
+    this.relayout();
+    this.notify('graph');
+  }
+
+  /**
+   * Run every seed source and return what they produced as one fragment.
+   *
+   * Shared by {@link start} and {@link refresh} so the two can never disagree about what the seeds
+   * *are* — the difference between them is entirely what happens to the result.
+   *
+   * Also the one place that learns *what the seeds read*. The seed sources are given a context whose
+   * `query` records the entity and dataset of every read, which is how the engine can watch the right
+   * types without understanding a single seed source's options. A seed plugin nobody has written yet
+   * becomes live for free; the alternative — the engine parsing `options.entity` — would work for
+   * exactly the sources that happen to spell it that way and silently fail for the rest.
+   */
+  private async loadSeeds(): Promise<GraphFragment> {
+    const specs = this.spec.seeds ? (Array.isArray(this.spec.seeds) ? this.spec.seeds : [this.spec.seeds]) : [];
+    const nodes: GraphNode[] = [];
+    const edges: GraphEdge[] = [];
+    const read = new Map<string, WatchTarget>();
+
+    const recording: ExpanderContext = {
+      ...this.context,
+      query: (request) => {
+        const target: WatchTarget = { entity: request.entity, dataset: request.dataset };
+        read.set(watchKey(target), target);
+        return this.context.query(request);
+      },
+    };
+
     this.beginLoading();
     try {
-      for (const seed of seeds) {
+      for (const seed of specs) {
         const fragment =
           'literal' in seed
             ? { nodes: seed.nodes, edges: seed.edges }
             : await this.registry
                 .seed(seed.source)
-                ?.seed(seed.options ?? {}, this.context)
+                ?.seed(seed.options ?? {}, recording)
                 .catch((error: unknown) => {
                   this.warn(`seed "${seed.source}" failed: ${describe(error)}`);
                   return undefined;
@@ -266,26 +437,85 @@ export class GraphEngine {
           }
           continue;
         }
-        this.store.merge(fragment);
-        this.expansion.attribute(
-          SEED_OPENER,
-          fragment.nodes.map((n) => n.id),
-          fragment.edges.map((e) => e.id),
-        );
+        nodes.push(...fragment.nodes);
+        edges.push(...fragment.edges);
       }
     } finally {
       this.endLoading();
     }
 
-    await this.runAutoExpansion();
-    this.recomputeMetrics();
-    this.relayout({ fit: true });
-    this.notify('graph');
+    this.lastSeedReads = read;
+    this.syncWatchers(read);
+    return { nodes, edges };
+  }
+
+  // ─── Following the data ──────────────────────────────────────────────────────
+
+  /**
+   * Turn following the data on or off without reloading.
+   *
+   * Its own entry point rather than a `setSpec` field the caller then has to know to act on, because
+   * the two spec paths already mean different things — one reloads, one restyles — and this is a
+   * third: nothing about the graph changes, only whether it keeps listening.
+   */
+  setLive(live: boolean): void {
+    if ((this.spec.live !== false) === live) return;
+    this.spec = { ...this.spec, live };
+    this.syncWatchers(this.lastSeedReads);
+  }
+
+  /**
+   * Hold a watch on exactly the types the seeds just read — no more, and no fewer.
+   *
+   * Recomputed after every load rather than set up once, because what the seeds read can change: a
+   * schema seed reads whatever classes the space now has, and a `$local`-driven entity picker reads a
+   * different type every time somebody uses it. Watches nothing when the host cannot report changes,
+   * or when the template asked for a graph that does not move.
+   */
+  private syncWatchers(read: ReadonlyMap<string, WatchTarget>): void {
+    const enabled = this.spec.live !== false && typeof this.context.watch === 'function';
+    const wanted = enabled ? read : new Map<string, WatchTarget>();
+
+    for (const [key, stop] of this.watchers) {
+      if (wanted.has(key)) continue;
+      stop();
+      this.watchers.delete(key);
+    }
+
+    for (const [key, target] of wanted) {
+      if (this.watchers.has(key)) continue;
+      this.watchers.set(
+        key,
+        this.context.watch!(target, () => this.onDataChanged()),
+      );
+    }
+  }
+
+  /**
+   * Something changed underneath. Coalesce and re-read.
+   *
+   * Debounced because one user action is many writes: composing a post creates the collection and
+   * every block inside it, and a graph that re-queried on each link would run a dozen rounds of
+   * queries to arrive at the state the last one already had. The delay is short enough to read as
+   * immediate and long enough to collapse a batch.
+   */
+  private onDataChanged(): void {
+    if (this.disposed) return;
+    if (this.watchTimer) clearTimeout(this.watchTimer);
+    this.watchTimer = setTimeout(() => {
+      this.watchTimer = undefined;
+      void this.refresh();
+    }, WATCH_DEBOUNCE_MS);
   }
 
   dispose(): void {
     this.disposed = true;
     if (this.layoutTimer) clearTimeout(this.layoutTimer);
+    if (this.watchTimer) clearTimeout(this.watchTimer);
+    // A leaked watch outlives the graph and keeps a whole engine — store, index, layout — reachable
+    // from a backend subscription, which is the shape of leak that only shows up as a slow app.
+    for (const stop of this.watchers.values()) stop();
+    this.watchers.clear();
     this.layout?.stop?.();
     this.listeners.clear();
   }
@@ -298,10 +528,18 @@ export class GraphEngine {
    * Clicking an exhausted node is a no-op rather than a re-fetch: an expansion that silently repeats
    * itself looks identical to one that is broken.
    */
-  async expand(id: string, direction?: ExpandDirection): Promise<void> {
+  async expand(id: string, direction?: ExpandDirection, expanders?: string[]): Promise<void> {
     const node = this.store.node(id);
     if (!node) return;
-    if (this.expansion.isExpanded(id) && !this.expansion.hasMore(id)) return;
+    /*
+      An override reopens a node that is already open.
+
+      "Open its relations" and "open its properties" are different questions about the same node,
+      and the ordinary guard — an exhausted node ignores a second click — would answer the second
+      one with silence. Only when the caller names the expanders, so double-clicking an exhausted
+      node still does nothing, which is what stops a repeat expansion looking like a broken one.
+    */
+    if (!expanders && this.expansion.isExpanded(id) && !this.expansion.hasMore(id)) return;
     // Refusing because the graph is full is itself worth saying. Landing exactly on the ceiling used
     // to stop expansion without ever tripping the flag, so the map went quiet with no explanation —
     // which is the precise failure the budget exists to prevent.
@@ -311,8 +549,8 @@ export class GraphEngine {
     }
 
     const spec = this.spec.expansion ?? {};
-    const expanders = this.registry.expandersFor(node.kind, node.type, spec.expanders);
-    if (!expanders.length) {
+    const chosen = this.registry.expandersFor(node.kind, node.type, expanders ?? spec.expanders);
+    if (!chosen.length) {
       this.warn(`nothing can expand a ${node.kind}/${node.type} node`);
       return;
     }
@@ -339,7 +577,7 @@ export class GraphEngine {
     let cursor: string | undefined;
 
     try {
-      for (const expander of expanders) {
+      for (const expander of chosen) {
         const result = await expander.expand({ ...request }, this.context).catch((error: unknown) => {
           this.warn(`expander "${expander.id}" failed on ${id}: ${describe(error)}`);
           return undefined;
@@ -397,7 +635,14 @@ export class GraphEngine {
     else void this.expand(id, direction);
   }
 
-  private async runAutoExpansion(): Promise<void> {
+  /**
+   * Open what the depth and the auto rules ask for.
+   *
+   * `from` narrows the starting frontier, which is what a refresh passes: the rules should reach the
+   * nodes that have just arrived and nothing else. Omitted — the case `start` uses — it begins at
+   * every node in the store.
+   */
+  private async runAutoExpansion(from?: string[]): Promise<void> {
     const spec = this.spec.expansion;
     const depth = spec?.defaultDepth ?? 0;
     const rules = spec?.auto ?? [];
@@ -405,7 +650,7 @@ export class GraphEngine {
 
     // Breadth-first by depth, so a shallow rule never gets starved by a deep one, and each level is
     // fully open before the next begins — otherwise the graph grows down one arm while the user waits.
-    let frontier = [...this.store.nodes()].map((n) => n.id);
+    let frontier = from ?? [...this.store.nodes()].map((n) => n.id);
     for (let level = 0; level < Math.max(depth, ...rules.map((r) => r.depth), 0); level += 1) {
       const next: string[] = [];
       for (const id of frontier) {
@@ -498,13 +743,36 @@ export class GraphEngine {
       previous: this.positions,
       containment: this.containment(),
       viewport: { width: width || 800, height: height || 600 },
+      ...(width && height ? { visible: this.visibleWorldRect() } : {}),
     });
-    for (const warning of result.warnings ?? []) this.warn(warning);
+    this.setLayoutWarnings(result.warnings ?? []);
     this.fitUntilSettled = !!options?.fit && !!result.running;
     this.applyPositions(result.positions, options?.fit);
     // A fit that could not run yet (no surface measured) is remembered, not dropped.
     if (options?.fit && !this.positions.size) this.pendingFit = true;
     if (result.running) this.scheduleTick();
+  }
+
+  /**
+   * The world rectangle currently on screen.
+   *
+   * Handed to a layout that has to *put* a node somewhere rather than derive where it goes. Computed
+   * here rather than by the layout because the camera is the engine's, and a layout that reached for
+   * it would be a layout that knew about a viewport it is not supposed to own.
+   *
+   * Only when there is a surface to measure: before the first resize the numbers are zero, and a
+   * rectangle of nothing at the origin is worse than no answer at all.
+   */
+  private visibleWorldRect(): { x: number; y: number; width: number; height: number } {
+    const { width, height } = this.viewport.get();
+    const topLeft = this.viewport.toWorld({ x: 0, y: 0 });
+    const bottomRight = this.viewport.toWorld({ x: width, y: height });
+    return {
+      x: topLeft.x,
+      y: topLeft.y,
+      width: bottomRight.x - topLeft.x,
+      height: bottomRight.y - topLeft.y,
+    };
   }
 
   private scheduleTick(): void {
@@ -566,7 +834,56 @@ export class GraphEngine {
    * which this used to be — gives a 6px property node an 18px grab area that swallows its neighbours,
    * and a 28px type node one smaller than it looks.
    */
-  private hitArea(node: GraphNode): { radius: number; halfWidth?: number; halfHeight?: number } {
+  /**
+   * Fields drawn over a node's own, by node id — see {@link setDataOverlay}.
+   *
+   * Deliberately beside the store rather than merged into it. The overlay stands for a write that
+   * has not come back yet, and the host works out that it has come back by comparing the patch
+   * against the node's *seeded* data — so merging would make every patch look confirmed the instant
+   * it was applied, and the card would flick back to the old value.
+   */
+  private overlay: ReadonlyMap<string, Record<string, GraphValue>> = new Map();
+
+  /**
+   * Lay fields over nodes without touching what the seeds returned.
+   *
+   * This is what makes an optimistic edit *whole*. Drawing one is not enough: a card is picked by
+   * the spatial index and its edges are routed to its border, and both are resolved from the same
+   * style rules the drawing is. Overlay only the drawing and a resized card is picked at its old
+   * size and has arrows pointing at where it used to end — a graph that disagrees with itself until
+   * something else forces a re-read.
+   *
+   * Re-indexes and re-routes, since both are derived from it, and bumps the version so a renderer
+   * watching for changes redraws.
+   */
+  setDataOverlay(overlay: ReadonlyMap<string, Record<string, GraphValue>>): void {
+    this.overlay = overlay;
+    this.reindex();
+    this.routeEdges();
+    // `graph` rather than `positions`: nothing moved, but a node's size, colour and shape can all
+    // have changed, and those are read off the node projection rather than off the placements.
+    this.notify('graph');
+  }
+
+  /** Whether anything is currently laid over the graph — so a renderer can skip clearing nothing. */
+  hasDataOverlay(): boolean {
+    return this.overlay.size > 0;
+  }
+
+  /** The fields laid over this node, if any. Read by a renderer so it draws from the same values. */
+  overlayFor(id: string): Record<string, GraphValue> | undefined {
+    return this.overlay.get(id);
+  }
+
+  /** A node as everything downstream should see it: its own fields, with the overlay in front. */
+  private overlaid(node: GraphNode): GraphNode {
+    const patch = this.overlay.get(node.id);
+    if (!patch) return node;
+    return { ...node, data: { ...node.data, ...patch } };
+  }
+
+  private hitArea(rawNode: GraphNode): { radius: number; halfWidth?: number; halfHeight?: number } {
+    const node = this.overlaid(rawNode);
     // Resolved through `nodeVisual` — the same function the renderer paints from — rather than read
     // off the raw style rules. Deriving it separately is how a card ended up with an 18px hit spot in
     // the middle of a 170px box: a card sets `width`, never `size`, so the rule-reading version fell
@@ -580,6 +897,21 @@ export class GraphEngine {
     }
     // A few pixels of slack, so a mark is grabbable at its edge rather than only inside it.
     return { radius: visual.size + 4 };
+  }
+
+  /**
+   * A few pixels beyond the target's edge, so an arrowhead sits against it.
+   *
+   * A number for a round node and half-extents for a box, which is a real distinction rather than a
+   * convenience: on a 45° approach a circle of radius r is r away and a square of half-extent r is
+   * r√2, so treating every node as a box would push every diagonal arrow 40% too far out.
+   */
+  private clearanceFor(node: GraphNode | undefined): number | EdgeClearance {
+    const gap = 6;
+    if (!node) return 14 + gap;
+    const area = this.hitArea(node);
+    if (area.halfWidth === undefined || area.halfHeight === undefined) return area.radius + gap;
+    return { halfWidth: area.halfWidth + gap, halfHeight: area.halfHeight + gap };
   }
 
   /**
@@ -600,12 +932,26 @@ export class GraphEngine {
         if (!from || !to) return;
         const style = resolveStyle(edge, this.spec.edgeStyle);
         const targetNode = this.store.node(edge.target);
-        // Stop short of the node's centre, so an arrowhead lands on it rather than inside it. The
-        // radius comes from the same place the renderer gets its size, so the two cannot disagree.
-        // *Where* on the node it lands is the route's decision, not this one — a curve that arrives
-        // along an axis does not meet the node where the straight line between centres would.
-        const radius = targetNode ? this.hitArea(targetNode).radius : 14;
-        const geometry = routeEdge(edge.id, from, to, normaliseCurve(style.curve), offsets[index], radius + 6);
+        /*
+          Stop short of the node's *edge*, so an arrowhead lands on it rather than inside it or short
+          of it. Measured from the same place the renderer gets its size, so the two cannot disagree.
+
+          Per axis, not as a radius. A radius is half the node's largest dimension, which describes a
+          circle drawn around a card — right on its long side and well outside it on its short one.
+          Narrowing a wide card left every arrow stopping where the old width used to be, with a gap
+          no re-read could close, because the geometry was doing exactly what it had been told.
+
+          *Where* on the node it lands is still the route's decision, not this one: a curve that
+          arrives along an axis does not meet the node where the straight line between centres would.
+        */
+        const geometry = routeEdge(
+          edge.id,
+          from,
+          to,
+          normaliseCurve(style.curve),
+          offsets[index],
+          this.clearanceFor(targetNode),
+        );
         this.edgeGeometry.set(edge.id, geometry);
         this.edgeBoxes.set(edge.id, edgeBounds(geometry));
       });
@@ -872,8 +1218,29 @@ export class GraphEngine {
       },
       toWorld: (at) => this.viewport.toWorld(at),
       toScreen: (at) => this.viewport.toScreen(at),
+      drawConnection: (from, to) => this.drawConnection(from, to),
       emit: (event) => this.emit(event),
     };
+  }
+
+  /**
+   * The line currently being drawn, or null.
+   *
+   * Read by the renderer each frame of a connect gesture. Not an edge in the store, deliberately:
+   * it stands for nothing yet, it must not be laid out, routed, hit-tested, counted against the
+   * budget or seen by a metric — and putting it there would mean every one of those had to learn to
+   * skip it.
+   */
+  getPendingConnection(): { from: Point; to: Point } | null {
+    if (!this.pendingConnection) return null;
+    const from = this.positions.get(this.pendingConnection.from);
+    if (!from) return null;
+    return { from: { x: from.x, y: from.y }, to: this.pendingConnection.to };
+  }
+
+  private drawConnection(from: string | null, to?: Point): void {
+    this.pendingConnection = from && to ? { from, to } : null;
+    this.notify('connection');
   }
 
   emit(event: GraphEvent): void {
@@ -896,6 +1263,29 @@ export class GraphEngine {
       this.status = { ...this.status, loading: false };
       this.notify('status');
     }
+  }
+
+  /**
+   * Replace whatever the layout last complained about.
+   *
+   * A layout warning describes the arrangement *as it is now* — "every node stayed where it was" —
+   * so a later arrangement supersedes it rather than joining it. Left to accumulate through `warn`,
+   * a complaint that was true of an empty board stayed on screen after the first drag made it
+   * false, which is a worse failure than the one it was reporting: the reader has no way to tell a
+   * live warning from a spent one.
+   *
+   * Expander and seed warnings deliberately do not work this way. Those describe an *event* — a
+   * query that failed, a scan that truncated — and an event does not stop having happened.
+   */
+  private setLayoutWarnings(warnings: string[]): void {
+    const previous = this.layoutWarnings;
+    if (!previous.length && !warnings.length) return;
+    this.layoutWarnings = warnings;
+    const kept = this.status.warnings.filter((message) => !previous.includes(message));
+    const next = [...kept, ...warnings.filter((message) => !kept.includes(message))];
+    if (next.length === this.status.warnings.length && next.every((m, i) => m === this.status.warnings[i])) return;
+    this.status = { ...this.status, warnings: next };
+    this.notify('status');
   }
 
   private warn(message: string): void {

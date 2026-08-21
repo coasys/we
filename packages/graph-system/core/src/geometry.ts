@@ -28,6 +28,30 @@ export function normaliseCurve(curve: string | undefined): EdgeCurve {
 }
 
 /**
+ * How far a target's edge is from its centre, per axis — for a target that is a **box**.
+ *
+ * A single radius was the old answer and it is only right for a round node. A card is a rectangle,
+ * and half its largest dimension — which is what a node's `size` is — describes a circle drawn
+ * around it: fine on the long side, well outside the shape on the short one. Narrow a wide card and
+ * every arrow pointing at it stopped where the old width used to be, leaving a gap the length of the
+ * change that no amount of re-reading closed, because the geometry was doing exactly what it was
+ * told.
+ *
+ * A plain number still means a circle, and that distinction is load-bearing rather than a
+ * convenience: on a 45° approach a circle of radius r is r away and a square of half-extent r is
+ * r√2. Passing a round node's radius as a box would push every diagonal arrow 40% too far out.
+ */
+export interface EdgeClearance {
+  halfWidth: number;
+  halfHeight: number;
+}
+
+/** Half-extents on each axis. A circle's are equal, which is all the axis-aligned cases need. */
+function clearanceOf(clearance: number | EdgeClearance): EdgeClearance {
+  return typeof clearance === 'number' ? { halfWidth: clearance, halfHeight: clearance } : clearance;
+}
+
+/**
  * Trim a segment so it ends at the node's edge rather than its centre.
  *
  * Without this the arrowhead sits under the target node and every edge looks unterminated.
@@ -104,10 +128,14 @@ export function groupByEndpoints<T extends { source: string; target: string }>(e
  * Clamped to the node it lands on, so a lane never slides off the face of a small node. With no
  * clearance given there is no node to fall off, and the full half-offset applies.
  */
-function laneWidth(offset: number, clearance: number): number {
+function laneWidth(offset: number, clearance: number | EdgeClearance, horizontal: boolean): number {
   const half = offset / 2;
-  if (clearance <= 0) return half;
-  return Math.sign(half) * Math.min(Math.abs(half), clearance * 0.5);
+  // The lane slides *along* the face, so the face it slides along is the one to clamp to: an edge
+  // arriving horizontally lands on a vertical side, whose length is the node's height.
+  const { halfWidth, halfHeight } = clearanceOf(clearance);
+  const face = horizontal ? halfHeight : halfWidth;
+  if (face <= 0) return half;
+  return Math.sign(half) * Math.min(Math.abs(half), face * 0.5);
 }
 
 function shiftLane(point: Point, lane: number, horizontal: boolean): Point {
@@ -135,14 +163,47 @@ function shiftLane(point: Point, lane: number, horizontal: boolean): Point {
  * moment the curve itself changes which axis it travels along. One visible change rather than two
  * disagreeing ones.
  */
-function attachPoint(from: Point, to: Point, curve: EdgeCurve, clearance: number, horizontal: boolean): Point {
-  if (clearance <= 0) return to;
+function attachPoint(
+  from: Point,
+  to: Point,
+  curve: EdgeCurve,
+  clearance: number | EdgeClearance,
+  horizontal: boolean,
+): Point {
+  const { halfWidth, halfHeight } = clearanceOf(clearance);
+  if (halfWidth <= 0 && halfHeight <= 0) return to;
   if (curve === 'smooth' || curve === 'step') {
+    // The axis it arrives on is the axis to measure: a curve arriving horizontally meets the left or
+    // right side, and how tall the node happens to be says nothing about where that side is.
     return horizontal
-      ? { x: to.x - Math.sign(to.x - from.x || 1) * clearance, y: to.y }
-      : { x: to.x, y: to.y - Math.sign(to.y - from.y || 1) * clearance };
+      ? { x: to.x - Math.sign(to.x - from.x || 1) * halfWidth, y: to.y }
+      : { x: to.x, y: to.y - Math.sign(to.y - from.y || 1) * halfHeight };
   }
-  return trimToRadius(from, to, clearance);
+  // A number is a round node, so the chord meets it at a constant distance; a box is met wherever
+  // the ray crosses it, which depends on the direction.
+  return typeof clearance === 'number' ? trimToRadius(from, to, clearance) : trimToBox(from, to, halfWidth, halfHeight);
+}
+
+/**
+ * Trim a straight chord to where it crosses the target's box.
+ *
+ * The ray-box intersection, which for equal half-extents is exactly a circle — so this replaces
+ * {@link trimToRadius} for routing without changing anything about a round node. The chord is what a
+ * straight or arced edge travels along, so it is the direction that decides which side it meets.
+ */
+function trimToBox(from: Point, to: Point, halfWidth: number, halfHeight: number): Point {
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  const length = Math.hypot(dx, dy);
+  if (length === 0) return to;
+  // Distance from the centre to the box along this direction: whichever side the ray reaches first.
+  const reach = Math.min(
+    Math.abs(dx) > 1e-6 ? (halfWidth * length) / Math.abs(dx) : Infinity,
+    Math.abs(dy) > 1e-6 ? (halfHeight * length) / Math.abs(dy) : Infinity,
+  );
+  if (!Number.isFinite(reach) || length <= reach) return to;
+  const ratio = (length - reach) / length;
+  return { x: from.x + dx * ratio, y: from.y + dy * ratio };
 }
 
 /**
@@ -158,7 +219,7 @@ export function routeEdge(
   to: Point,
   curve: EdgeCurve,
   offset = 0,
-  clearance = 0,
+  clearance: number | EdgeClearance = 0,
 ): EdgeGeometry {
   if (from.x === to.x && from.y === to.y) {
     // A self-loop has no direction to bow along, so it gets a fixed teardrop above the node.
@@ -185,7 +246,7 @@ export function routeEdge(
   if (curve === 'step') {
     // Two separations, at right angles to each other so they compose rather than compete: the lane
     // holds the approach segments apart, and the crossing holds the segment between them apart.
-    const lane = laneWidth(offset, clearance);
+    const lane = laneWidth(offset, clearance, horizontal);
     const start = shiftLane(from, lane, horizontal);
     const finish = shiftLane(end, lane, horizontal);
     const crossing = horizontal ? (start.x + finish.x) / 2 + offset / 2 : (start.y + finish.y) / 2 + offset / 2;
@@ -222,7 +283,7 @@ export function routeEdge(
       bulged apart in the middle and converged where it mattered. Moving the whole curve gives two
       parallel S-curves — the same thing `straight` does, and legible for the same reason.
     */
-    const lane = laneWidth(offset, clearance);
+    const lane = laneWidth(offset, clearance, horizontal);
     const start = shiftLane(from, lane, horizontal);
     const finish = shiftLane(end, lane, horizontal);
     const reach = (horizontal ? finish.x - start.x : finish.y - start.y) / 2;

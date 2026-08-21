@@ -1,7 +1,7 @@
 {
   "name": "@we/graph-layouts",
   "version": "0.1.0",
-  "description": "Layout strategies for the graph engine \u2014 force, radial, tree, grid and manual",
+  "description": "Layout strategies for the graph engine — force, radial, tree, grid and manual",
   "license": "MIT",
   "type": "module",
   "scripts": {

@@ -46,6 +46,36 @@ export const GRAPH_PLUGIN_CATALOG: PluginCatalog = {
       example: `{ "source": "schema" }`,
     },
     {
+      id: 'board',
+      category: 'seed',
+      description:
+        "A container's contents at the positions somebody put them. Membership is ordinary containment, so a card composed onto the board is found like any child; position comes from Placement records parented to the same board, which is why the same note can sit on two boards in two places. Pair with layout: manual and drag-node { pin: true }, and persist a drop through recordStore.placeOnBoard. Loads nothing until a board is chosen.",
+      options: [
+        { name: 'board', type: 'string', description: 'Record id of the board (required).' },
+        {
+          name: 'contains',
+          type: 'string[]',
+          description:
+            'Types the board may hold beyond whatever its placements name — one query each. Defaults to the block vocabulary; anything *placed* is loaded whether or not it is listed.',
+        },
+        { name: 'via', type: 'string', description: 'Relation holding the contents. Defaults to "children".' },
+        {
+          name: 'connections',
+          type: 'string',
+          description:
+            'Reified relation entity to draw as lines between the cards — e.g. "Relationship". Only pairs whose two ends are both on the board are drawn, since a line to something elsewhere would leave the canvas. Each line carries the record it stands for, so clicking one can open it. Omit for a board with no connections.',
+        },
+        {
+          name: 'typeStyles',
+          type: 'string',
+          description:
+            'Entity holding this board\'s colour per kind of thing — WE passes "TypeStyle". Read onto every node as `boardTypeColor`, for a style rule to pick up with `{ from: "data.boardTypeColor" }`. This is what a board\'s key writes.',
+        },
+        { name: 'limit', type: 'number', description: 'Rows per type. Default 200.' },
+      ],
+      example: `{ "source": "board", "options": { "board": { "$local": "boardId" } } }`,
+    },
+    {
       id: 'dataset',
       category: 'seed',
       description: 'Seeds a single node for the current space — the starting point for exploring outward.',
@@ -173,6 +203,20 @@ export const GRAPH_PLUGIN_CATALOG: PluginCatalog = {
       example: `"edgeStyle": [{ "style": { "scaleWithZoom": false } }]`,
     },
     {
+      id: 'content',
+      category: 'style',
+      description:
+        "Node style, cards only. Names a host-supplied component to draw INSIDE the card instead of a text label — WE registers `block`, which renders a CollectionBlock's composed content the way a post card does. A label can only ever be the first line, so a card holding an image and three paragraphs shows sixty characters and gives no sign the rest exists. Clipped, not scrolled: a card is a preview, and what does not fit is reached by opening it. Falls back to the label when the host supplies no component by that name.",
+      example: `"nodeStyle": [{ "style": { "shape": "card", "width": 180, "content": "block" } }]`,
+    },
+    {
+      id: 'contentMinZoom',
+      category: 'style',
+      description:
+        'Node style. Hides card content below this zoom and falls back to the label. The sibling of labelMinZoom, and the thing that decides whether rich cards scale: a hundred documents rendered at once is a hundred component trees, and at the zoom where a board reads as coloured rectangles none of them is legible anyway.',
+      example: `"nodeStyle": [{ "style": { "shape": "card", "content": "block", "contentMinZoom": 0.5 } }]`,
+    },
+    {
       id: 'scaleLabelWithZoom',
       category: 'style',
       description:
@@ -245,13 +289,15 @@ export const GRAPH_PLUGIN_CATALOG: PluginCatalog = {
     {
       id: 'pan-zoom',
       category: 'behaviour',
-      description: 'Drag the background to pan, wheel to zoom about the pointer. List it last — it is the fallback.',
-      example: `"behaviours": ["pan-zoom", "select", "expand-on-double-click"]`,
+      description:
+        'Drag the background to pan, wheel to zoom about the pointer. **List it last.** It claims a press on empty canvas, and dispatch stops at the first behaviour that claims — so anything after it never sees a background press. Listed before `select`, clicking empty canvas silently stops clearing the selection.',
+      example: `"behaviours": ["select", "expand-on-double-click", "pan-zoom"]`,
     },
     {
       id: 'select',
       category: 'behaviour',
-      description: 'Click to select, shift-click to extend, background to clear. Emits onNodeClick.',
+      description:
+        'Click to select, shift-click to extend, background to clear. Emits onNodeClick, and onSelectionChange with an empty list when a background click clears it. Must be listed BEFORE pan-zoom, which claims the background press it needs to see.',
     },
     {
       id: 'drag-node',
@@ -260,6 +306,34 @@ export const GRAPH_PLUGIN_CATALOG: PluginCatalog = {
         'Drag a node to move it. Releases on drop by default so the layout stays in charge; pass { pin: true } on a board.',
       options: [{ name: 'pin', type: 'boolean', description: 'Leave the node pinned where it was dropped.' }],
       example: `{ "type": "drag-node", "options": { "pin": true } }`,
+    },
+    {
+      id: 'connect-nodes',
+      category: 'behaviour',
+      description:
+        "Drag from one node to another to connect them, emitting onEdgeCreate with both ends. Writes nothing — what a connection means is the template's decision, so it answers by creating whatever record it thinks the connection is. List it BEFORE drag-node: both claim a press on a node and the first wins. Arm it from a control the user can see rather than a modifier key, which is undiscoverable and absent on a touchscreen.",
+      options: [
+        {
+          name: 'armed',
+          type: 'boolean',
+          description: 'Whether the gesture is live. Default true. Disarmed, the press falls through to drag-node.',
+        },
+      ],
+      example: `"behaviours": [{ "type": "connect-nodes", "options": { "armed": { "$local": "connecting" } } }, "select", { "type": "drag-node" }, "pan-zoom"]`,
+    },
+    {
+      id: 'node-double-click',
+      category: 'behaviour',
+      description:
+        "Double-click a node to emit onNodeDoubleClick, with the record it stands for resolved onto the payload. Writes nothing — what opening a node means is the template's decision. Pairs with canvas-double-click, which handles the same gesture on empty canvas; list both and exactly one fires. Do NOT list it alongside expand-on-double-click, which claims the same gesture to do something else.",
+      example: `"behaviours": ["node-double-click", "canvas-double-click", "pan-zoom", "select"]`,
+    },
+    {
+      id: 'canvas-double-click',
+      category: 'behaviour',
+      description:
+        "Double-click empty canvas to emit onCanvasDoubleClick with the world point. Writes nothing — what gets made there is the template's decision. List it BEFORE pan-zoom, which is the background fallback. Claims only the background, so it composes with expand-on-double-click: a double-click on a node opens it, one beside a node creates.",
+      example: `"behaviours": ["canvas-double-click", "pan-zoom", "select", { "type": "drag-node", "options": { "pin": true } }]`,
     },
     {
       id: 'expand-on-double-click',

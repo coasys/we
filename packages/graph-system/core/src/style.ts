@@ -12,8 +12,10 @@
  * language it is slowly becoming.
  */
 import type {
+  CardShape,
   EdgeCurve,
   EdgeStyle,
+  FieldRef,
   GraphEdge,
   GraphNode,
   GraphValue,
@@ -23,6 +25,8 @@ import type {
   NodeStyle,
   NodeVisual,
   StyleRule,
+  StyleRules,
+  StyleValue,
 } from '@we/graph-protocol';
 
 import { normaliseCurve } from './geometry';
@@ -74,21 +78,65 @@ export function matches(subject: GraphNode | GraphEdge, clause?: MatchClause): b
   return true;
 }
 
-/** Merge every matching rule's style, in order. */
+/**
+ * Flatten a rule list one level, so a group produced by a `$map` sits inline among hand-written rules.
+ *
+ * One level rather than deep, deliberately: the case is "a rule per row of data", and a rule list
+ * nested twice is a template doing something nobody should have to read. Exported because the engine
+ * also walks rules — to work out which metrics they reference — and two flattenings that disagreed
+ * would mean a metric silently not computed for a rule that uses it.
+ */
+export function flattenRules<TStyle>(rules: StyleRules<TStyle> | undefined): StyleRule<TStyle>[] {
+  if (!rules) return [];
+  return rules.flatMap((rule) => (Array.isArray(rule) ? rule : [rule]));
+}
+
+/**
+ * Merge every matching rule's style, in order.
+ *
+ * The rule list is read as `StyleRule<TStyle>[]` for inference's sake — a parameter typed as the
+ * nested union infers `TStyle` as `object` and loses every property name downstream — and flattened
+ * at the top. Callers pass `NodeStyleRules`/`EdgeStyleRules`, which are the nested form.
+ */
 export function resolveStyle<TStyle extends object>(
   subject: GraphNode | GraphEdge,
-  rules: StyleRule<TStyle>[] | undefined,
+  rules: StyleRule<TStyle>[] | StyleRules<TStyle> | undefined,
 ): TStyle {
   let result = {} as TStyle;
-  if (!rules) return result;
-  for (const rule of rules) {
-    if (matches(subject, rule.when)) result = { ...result, ...rule.style };
+  for (const rule of flattenRules(rules)) {
+    if (matches(subject, rule.when)) result = { ...result, ...contributed(subject, rule.style) };
   }
   return result;
 }
 
+/**
+ * The properties a rule actually has something to say about this subject.
+ *
+ * A {@link FieldRef} the subject cannot answer is dropped here, at merge time, rather than resolved
+ * to a fallback later — and the difference is the whole cascade. A board colours every card by its
+ * type and then lets a card carry its own colour in front of that; if the second rule contributed
+ * `undefined` for the cards that carry none, it would overwrite the type colour with the built-in
+ * default and the first rule would be pointless. Deferring instead means "read this off the record,
+ * and if it is not there, leave whatever was decided above".
+ */
+function contributed<TStyle extends object>(subject: GraphNode | GraphEdge, style: TStyle): Partial<TStyle> {
+  let out: Partial<TStyle> | undefined;
+  for (const [key, value] of Object.entries(style)) {
+    if (!isFieldRef(value) || readField(subject, value.from) !== undefined) continue;
+    // Copied once, on the first property that defers — the common rule has no field refs at all and
+    // must not pay for a clone.
+    out = out ?? { ...style };
+    delete out[key as keyof TStyle];
+  }
+  return out ?? style;
+}
+
 function isMetricRef(value: unknown): value is MetricRef {
   return typeof value === 'object' && value !== null && 'metric' in value;
+}
+
+function isFieldRef(value: unknown): value is FieldRef<unknown> {
+  return typeof value === 'object' && value !== null && 'from' in value;
 }
 
 /**
@@ -99,18 +147,49 @@ function isMetricRef(value: unknown): value is MetricRef {
  * refused to draw until then would be worse than one that draws plainly.
  */
 export function resolveNumber(
-  value: number | MetricRef | undefined,
-  nodeId: string,
+  value: StyleValue<number> | undefined,
+  subject: GraphNode | GraphEdge,
   metrics: MetricValues,
   fallback: number,
 ): number {
   if (value === undefined) return fallback;
   if (typeof value === 'number') return value;
+  if (isFieldRef(value)) {
+    const read = readField(subject, value.from);
+    // A number stored as a string is what a backend with no numeric column returns, and refusing it
+    // would make a size that round-trips through storage silently stop working.
+    const asNumber = typeof read === 'string' ? Number(read) : read;
+    if (typeof asNumber === 'number' && Number.isFinite(asNumber)) return asNumber;
+    return value.fallback ?? fallback;
+  }
   if (!isMetricRef(value)) return fallback;
-  const normalised = metrics.get(value.metric)?.get(nodeId);
+  const normalised = metrics.get(value.metric)?.get(subject.id);
   if (normalised === undefined) return fallback;
   const [min, max] = value.range ?? [fallback, fallback * 2];
   return min + normalised * (max - min);
+}
+
+/**
+ * Resolve a value that is a plain string or read off the subject — a shape name, say.
+ *
+ * No metric branch: a metric produces a number, and mapping one onto a set of names would be a scale
+ * nobody asked for. Anything computational still goes through {@link MetricRef} on a property that
+ * takes numbers or colours.
+ */
+export function resolveText<T extends string>(
+  value: StyleValue<T> | undefined,
+  subject: GraphNode | GraphEdge,
+  allowed: readonly T[],
+  fallback: T,
+): T {
+  if (value === undefined) return fallback;
+  if (typeof value === 'string') return value;
+  if (!isFieldRef(value)) return fallback;
+  const read = readField(subject, value.from);
+  // Checked against the allowed set rather than cast: this reads a *stored* value, so a board
+  // holding a name from a newer version of the app must fall back rather than reach the renderer.
+  if (typeof read === 'string' && (allowed as readonly string[]).includes(read)) return read as T;
+  return value.fallback ?? fallback;
 }
 
 /**
@@ -127,15 +206,20 @@ const SCALES: Record<string, string[]> = {
 };
 
 export function resolveColor(
-  value: string | MetricRef | undefined,
-  nodeId: string,
+  value: StyleValue<string> | undefined,
+  subject: GraphNode | GraphEdge,
   metrics: MetricValues,
   fallback: string,
 ): string {
   if (value === undefined) return fallback;
   if (typeof value === 'string') return value;
+  if (isFieldRef(value)) {
+    const read = readField(subject, value.from);
+    if (typeof read === 'string' && read) return read;
+    return value.fallback ?? fallback;
+  }
   if (!isMetricRef(value)) return fallback;
-  const normalised = metrics.get(value.metric)?.get(nodeId);
+  const normalised = metrics.get(value.metric)?.get(subject.id);
   if (normalised === undefined) return fallback;
   const scale = SCALES[value.scale ?? 'heat'] ?? SCALES.heat;
   const index = Math.min(scale.length - 1, Math.floor(normalised * scale.length));
@@ -155,11 +239,20 @@ const DEFAULT_NODE: Required<Pick<NodeVisual, 'shape' | 'size' | 'color' | 'labe
 /** A card readable at one glance without dominating the canvas. */
 const DEFAULT_CARD = { width: 160, height: 120 };
 
+/** Below this a card is a speck with no content visible and no corner big enough to grab. */
+const MIN_CARD = 40;
+
+const CARD_SHAPES: readonly CardShape[] = ['note', 'square', 'round'];
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
+
 export function nodeVisual(node: GraphNode, style: NodeStyle, metrics: MetricValues): NodeVisual {
   const visual: NodeVisual = {
     shape: style.shape ?? DEFAULT_NODE.shape,
-    size: resolveNumber(style.size, node.id, metrics, DEFAULT_NODE.size),
-    color: resolveColor(style.color, node.id, metrics, DEFAULT_NODE.color),
+    size: resolveNumber(style.size, node, metrics, DEFAULT_NODE.size),
+    color: resolveColor(style.color, node, metrics, DEFAULT_NODE.color),
     label: node.label ?? node.type,
     labelColor: style.labelColor ?? DEFAULT_NODE.labelColor,
     labelSize: style.labelSize ?? DEFAULT_NODE.labelSize,
@@ -168,13 +261,21 @@ export function nodeVisual(node: GraphNode, style: NodeStyle, metrics: MetricVal
     scaleLabelWithZoom: style.scaleLabelWithZoom ?? true,
   };
   if (visual.shape === 'card') {
-    visual.width = style.width ?? DEFAULT_CARD.width;
+    visual.width = Math.max(MIN_CARD, resolveNumber(style.width, node, metrics, DEFAULT_CARD.width));
     // Proportional rather than fixed, so widening a card keeps its shape instead of turning it into
     // a letterbox.
-    visual.height = style.height ?? Math.round(visual.width * 0.75);
+    visual.height = Math.max(MIN_CARD, resolveNumber(style.height, node, metrics, Math.round(visual.width * 0.75)));
+    visual.cardShape = resolveText(style.cardShape, node, CARD_SHAPES, 'note');
+    // Clamped rather than trusted: this comes off a record, and a zero or a negative would render a
+    // card whose content is invisible or inside out, with nothing on screen to undo it by.
+    visual.contentScale = clamp(resolveNumber(style.contentScale, node, metrics, 1), 0.25, 4);
     // `size` is the hit radius everywhere else in the system; for a card it is half the box, so
     // picking covers the card rather than a dot in the middle of it.
     visual.size = Math.max(visual.width, visual.height) / 2;
+    // Only on a card — a dot has nowhere to put content, and passing the name through anyway would
+    // have a renderer looking up a component it has no room to draw.
+    if (style.content !== undefined) visual.content = style.content;
+    if (style.contentMinZoom !== undefined) visual.contentMinZoom = style.contentMinZoom;
   }
   if (style.borderColor !== undefined) visual.borderColor = style.borderColor;
   if (style.borderWidth !== undefined) visual.borderWidth = style.borderWidth;
@@ -212,8 +313,8 @@ export function edgeVisual(edge: GraphEdge, style: EdgeStyle, metrics: MetricVal
   // relationship — the honesty a collapsed view depends on.
   const weightBoost = edge.weight && edge.weight > 1 ? Math.min(4, 1 + Math.log2(edge.weight)) : 1;
   const visual: EdgeVisual = {
-    width: resolveNumber(style.width, edge.id, metrics, DEFAULT_EDGE.width) * weightBoost,
-    color: resolveColor(style.color, edge.id, metrics, DEFAULT_EDGE.color),
+    width: resolveNumber(style.width, edge, metrics, DEFAULT_EDGE.width) * weightBoost,
+    color: resolveColor(style.color, edge, metrics, DEFAULT_EDGE.color),
     curve: normaliseCurve(style.curve),
     arrow: style.arrow ?? 'target',
     scaleWithZoom: style.scaleWithZoom ?? true,

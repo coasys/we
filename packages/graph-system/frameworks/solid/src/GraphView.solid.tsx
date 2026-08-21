@@ -37,10 +37,28 @@ import {
 } from '@we/graph-core';
 import { DEFAULT_REIFIED_EDGES, defaultExpanders } from '@we/graph-expanders';
 import { defaultLayouts } from '@we/graph-layouts';
-import type { Behaviour, ControlContext, EdgeGeometry, GraphNode, Point, PointerInput } from '@we/graph-protocol';
+import type {
+  Behaviour,
+  ControlContext,
+  EdgeGeometry,
+  GraphNode,
+  GraphValue,
+  Point,
+  PointerInput,
+} from '@we/graph-protocol';
+import { parseAddress } from '@we/graph-protocol';
 import { batch, createEffect, createMemo, createSignal, For, onCleanup, onMount, Show, untrack } from 'solid-js';
+import { Dynamic } from 'solid-js/web';
 
-import type { GraphViewProps } from './GraphView.types';
+import type { GraphViewProps, NodeContent } from './GraphView.types';
+import { isSettled, patched } from './pending';
+import { type Grip, HANDLES, resizeBox } from './resize';
+
+/** Matches the engine's own floor, so a drag cannot leave a card the style layer would refuse. */
+const MIN_CARD = 40;
+/** Only reached by a card whose style names no size — the engine's defaults, kept in step. */
+const DEFAULT_CARD_WIDTH = 160;
+const DEFAULT_CARD_HEIGHT = 120;
 
 export type * from './GraphView.types';
 
@@ -103,6 +121,32 @@ function backOff(route: EdgeGeometry, gap: number): Point {
  */
 const ARROW_LENGTH = 6;
 
+/**
+ * How much of a value is worth carrying to a panel.
+ *
+ * Long enough for a sentence, short enough that one field cannot become the whole panel.
+ */
+const FIELD_MAX = 240;
+
+/**
+ * A node's scalars, as a panel can show them.
+ *
+ * Three things are dropped, and each for its own reason. **Nulls and blanks**, because an absent
+ * property is absent and listing it states something the record does not. **File-storage blobs**,
+ * which resolve to `data:<mime>;base64,…` — a card's `editorState` is a whole document encoded, and
+ * it is not a field, it is the thing the card *is*; shown as one it was tens of thousands of
+ * unbreakable characters in a row. **The tail of anything very long**, because a field that fills
+ * the panel has stopped being scannable, which is the only reason the panel is a column.
+ */
+function readableFields(node: GraphNode): { name: string; value: string }[] {
+  return Object.entries(node.data ?? {}).flatMap(([name, value]) => {
+    if (value === null || value === '') return [];
+    const text = String(value);
+    if (text.startsWith('data:')) return [];
+    return [{ name, value: text.length > FIELD_MAX ? `${text.slice(0, FIELD_MAX - 1)}…` : text }];
+  });
+}
+
 /** Design tokens resolve against the live theme; anything else is passed through as CSS. */
 function color(value: string | undefined, fallback: string): string {
   const token = value ?? fallback;
@@ -117,7 +161,9 @@ export function GraphView(props: GraphViewProps) {
   const [version, setVersion] = createSignal(0);
   const [viewportVersion, setViewportVersion] = createSignal(0);
   const [statusVersion, setStatusVersion] = createSignal(0);
+  const [connectionVersion, setConnectionVersion] = createSignal(0);
   const [hovered, setHovered] = createSignal<string | null>(null);
+  const [hoveredEdge, setHoveredEdge] = createSignal<string | null>(null);
 
   // Read once: expanders are constructed with their options, so changing `reified` needs a remount —
   // which is what a template does anyway when it swaps one graph for another.
@@ -137,6 +183,12 @@ export function GraphView(props: GraphViewProps) {
       // and the deployment's data layer begins, so it is deliberately untyped rather than importing
       // the protocol into `app-shell`.
       query: (request) => props.host?.query({ ...request }) ?? Promise.resolve([]),
+      // Present only when the host can actually report changes: the engine tests for the method to
+      // decide whether a live graph is possible at all, so passing a no-op stub would tell it yes
+      // and leave it waiting for notifications nothing will ever send.
+      ...(props.host?.watch && {
+        watch: (request, onChange) => props.host!.watch!(request, onChange),
+      }),
       defaultDataset: () => props.host?.defaultDataset() ?? null,
       models: (dataset) => props.host?.models(dataset) ?? [],
       warn: () => undefined,
@@ -147,26 +199,82 @@ export function GraphView(props: GraphViewProps) {
           // The behaviour only knows an address; the template wants the node, so it is resolved
           // here where the store is in reach.
           const node = engine.store.node(event.node.id);
-          if (node) props.onNodeClick?.(node);
+          if (!node) break;
+          const at = parseAddress(node.id);
+          props.onNodeClick?.({
+            ...node,
+            ...(at?.kind === 'entity' && { recordId: at.id }),
+            fields: readableFields(node),
+          });
           break;
         }
         case 'nodeDoubleClick': {
           const node = engine.store.node(event.node.id);
-          if (node) props.onNodeDoubleClick?.(node);
+          if (!node) break;
+          // The record, resolved out of the address, as `nodeClick` does. Opening a node means
+          // opening the thing it stands for, and a template has no operator that could take a
+          // `we-graph://` address apart to find it.
+          const opened = parseAddress(node.id);
+          props.onNodeDoubleClick?.({
+            ...node,
+            ...(opened?.kind === 'entity' && { recordId: opened.id, recordType: opened.type }),
+          });
           break;
         }
         case 'edgeClick': {
           // The behaviour only knows an id — picking is geometric now, so it never held the edge.
           const edge = engine.store.edge(event.edge.id);
-          if (edge) props.onEdgeClick?.(edge);
+          if (!edge) break;
+          // A reified edge is a view of a record, and a consumer that wants to open it needs the
+          // record rather than the address. Absent on an ordinary edge, which stands for a declared
+          // relation and has no record of its own.
+          const behind = edge.reifiedAs ? parseAddress(edge.reifiedAs) : null;
+          props.onEdgeClick?.({
+            ...edge,
+            ...(behind?.kind === 'entity' && { recordId: behind.id, recordType: behind.type }),
+          });
           break;
         }
+        case 'edgeCreate': {
+          // Both ends resolved from the store, as `nodeClick` does: the behaviour only ever held
+          // addresses, and a template answering this needs each end's type to write the record.
+          const source = engine.store.node(event.source.id);
+          const target = engine.store.node(event.target.id);
+          if (!source || !target) break;
+          // Only entity nodes stand for records. A property, a literal or a synthetic cluster has
+          // no id to write a connection against, and offering to connect one would raise a dialog
+          // whose save could not succeed.
+          const from = parseAddress(source.id);
+          const to = parseAddress(target.id);
+          if (from?.kind !== 'entity' || to?.kind !== 'entity') break;
+          props.onEdgeCreate?.({
+            source,
+            target,
+            sourceId: from.id ?? '',
+            sourceType: from.type ?? source.type,
+            sourceLabel: source.label ?? source.type,
+            targetId: to.id ?? '',
+            targetType: to.type ?? target.type,
+            targetLabel: target.label ?? target.type,
+          });
+          break;
+        }
+        case 'canvasDoubleClick':
+          props.onCanvasDoubleClick?.({ x: event.at.x, y: event.at.y });
+          break;
         case 'selectionChange':
           props.onSelectionChange?.(event.ids);
           break;
-        case 'nodeDragEnd':
-          props.onNodeDragEnd?.({ id: event.node.id, x: event.position.x, y: event.position.y });
+        case 'nodeDragEnd': {
+          const at = parseAddress(event.node.id);
+          props.onNodeDragEnd?.({
+            id: event.node.id,
+            x: event.position.x,
+            y: event.position.y,
+            ...(at?.kind === 'entity' && { recordId: at.id, recordType: at.type }),
+          });
           break;
+        }
         default:
           break;
       }
@@ -177,6 +285,7 @@ export function GraphView(props: GraphViewProps) {
     batch(() => {
       if (reason === 'viewport') setViewportVersion((n) => n + 1);
       else if (reason === 'status') setStatusVersion((n) => n + 1);
+      else if (reason === 'connection') setConnectionVersion((n) => n + 1);
       else setVersion((n) => n + 1);
     });
   });
@@ -204,6 +313,7 @@ export function GraphView(props: GraphViewProps) {
     layout: props.layout,
     nodeStyle: props.nodeStyle,
     edgeStyle: props.edgeStyle,
+    live: props.live,
   });
 
   // Reload when what the graph *is* changes — where it starts and how far it opens. Deliberately
@@ -225,6 +335,38 @@ export function GraphView(props: GraphViewProps) {
       engine.setSpec(currentSpec());
       void engine.start();
     });
+    return next;
+  });
+
+  /*
+    A revision bump re-reads the data and merges it in.
+
+    Separate from the seeds effect above because the two mean different things: that one fires when
+    the graph *becomes a different graph* and resets, while this one fires when the same graph has
+    newer data behind it. Sharing a path would make creating a record throw away the arrangement the
+    user was working in, which is exactly the failure that made a board impossible to build on.
+
+    The first run only records the value — the seeds effect has already loaded, and refreshing on
+    mount would run every seed query twice.
+  */
+  createEffect((previous: string | undefined) => {
+    const next = String(props.revision ?? '');
+    if (previous !== undefined && previous !== next) void engine.refresh();
+    return next;
+  });
+
+  // Following the data is not part of what the graph *is*, so toggling it neither reloads nor
+  // re-lays-out — it only starts or stops the listening.
+  createEffect(() => engine.setLive(props.live !== false));
+
+  // An expansion asked for from outside a gesture. Compared by value for the same reason `seeds` is:
+  // a host that rebuilds its prop object would otherwise re-expand on every unrelated change.
+  createEffect((previous: string | undefined) => {
+    const request = props.expandRequest;
+    const next = JSON.stringify(request ?? null);
+    if (previous !== undefined && previous !== next && request?.id) {
+      void engine.expand(request.id, request.direction, request.expanders);
+    }
     return next;
   });
 
@@ -270,9 +412,13 @@ export function GraphView(props: GraphViewProps) {
     version();
     const placed = engine.getPositions();
     const selected = new Set(engine.getSelection());
-    return [...engine.store.nodes()].flatMap((node) => {
-      const at = placed.get(node.id);
+    return [...engine.store.nodes()].flatMap((rawNode) => {
+      const at = placed.get(rawNode.id);
       if (!at) return [];
+      // The overlay comes back out of the engine rather than being applied again here — see the
+      // effect below. Hit-testing and edge routing resolve from the same values, so a card cannot be
+      // drawn at one size and picked at another.
+      const node = patched(rawNode, engine.overlayFor(rawNode.id));
       const style = resolveStyle(node, props.nodeStyle);
       return [
         {
@@ -285,6 +431,55 @@ export function GraphView(props: GraphViewProps) {
         },
       ];
     });
+  });
+
+  /*
+    The host's optimistic fields, handed to the engine keyed by node.
+
+    Translated here because the host thinks in records and the engine thinks in nodes — and given to
+    the engine rather than applied at paint time because drawing is only one of three things resolved
+    from a node's data. Hit-testing and edge routing are the others, and a card drawn at its new size
+    but picked and pointed at at its old one is a graph disagreeing with itself.
+  */
+  createEffect(() => {
+    const pending = props.host?.pendingData?.();
+    const overlay = new Map<string, Record<string, GraphValue>>();
+    if (pending && Object.keys(pending).length) {
+      for (const node of engine.store.nodes()) {
+        const at = parseAddress(node.id);
+        const patch = at?.kind === 'entity' && at.id ? pending[at.id] : undefined;
+        if (patch) overlay.set(node.id, patch);
+      }
+    }
+    // Untracked so this reads the store without re-running on every graph change — the effect is
+    // about the host's map, and `version()` below is what redraws when the graph itself moves.
+    if (overlay.size || engine.hasDataOverlay()) engine.setDataOverlay(overlay);
+  });
+
+  /*
+    Tell the host which optimistic fields the data has caught up with.
+
+    Here rather than where the host read the rows, because this is the only place that can see both
+    at once — and the difference is visible: clearing when the *read* landed put the old value back
+    for the rest of the seed, so an edit flashed to its new size, snapped back, and arrived again a
+    moment later. A node whose own data already says what the patch says can lose the patch with
+    nothing moving on screen.
+
+    An effect rather than part of the memo: telling somebody something is not deriving a value, and a
+    store write inside a memo would run during render.
+  */
+  createEffect(() => {
+    const pending = props.host?.pendingData?.();
+    if (!pending || !Object.keys(pending).length) return;
+    const settled = nodes().flatMap((entry) => {
+      const at = parseAddress(entry.node.id);
+      const patch = at?.kind === 'entity' && at.id ? pending[at.id] : undefined;
+      // The *raw* node, not `entry.node` — that one already carries the overlay, so asking it
+      // would report every patch settled the instant it was applied.
+      const raw = engine.store.node(entry.node.id);
+      return patch && raw && at?.id && isSettled(raw, patch) ? [at.id] : [];
+    });
+    if (settled.length) props.host?.confirmPending?.(settled);
   });
 
   const edges = createMemo(() => {
@@ -303,6 +498,19 @@ export function GraphView(props: GraphViewProps) {
       const gap = visual.arrow === 'none' ? 0 : ARROW_LENGTH * visual.width;
       return [{ edge, route, path: pathFrom(route, gap), visual }];
     });
+  });
+
+  /*
+    The connect gesture's line, tracked on the positions channel.
+
+    Its own channel rather than the one positions use: the line moves with the pointer, and
+    re-running the node and edge projections on every pointer move — to draw one straight segment
+    while every node stays exactly where it was — would make the gesture the most expensive thing
+    on the canvas.
+  */
+  const pending = createMemo(() => {
+    connectionVersion();
+    return engine.getPendingConnection();
   });
 
   const transform = createMemo(() => {
@@ -351,6 +559,36 @@ export function GraphView(props: GraphViewProps) {
     return engine.viewport.get().zoom;
   });
 
+  /**
+   * The content component for a card, or nothing.
+   *
+   * Nothing in three cases, each of which falls back to the label: the style named none, the host
+   * supplies none by that name, or the camera is below the card's `contentMinZoom`. The last is the
+   * one that decides whether rich cards scale — a hundred documents rendered at once is a hundred
+   * component trees, and at the zoom where a board is a wall of coloured rectangles not one of them
+   * can be read.
+   */
+  /**
+   * A card's corners, or a dot's.
+   *
+   * `round` is 50% on a box, which draws an ellipse rather than a circle — deliberately: the card
+   * keeps whatever width and height somebody gave it, and forcing it square would silently undo a
+   * resize the moment the shape was changed.
+   */
+  function nodeRadius(visual: { shape: string; cardShape?: string }): string {
+    if (visual.shape === 'circle') return '50%';
+    if (visual.shape !== 'card') return 'var(--we-radius-300)';
+    if (visual.cardShape === 'square') return '0';
+    if (visual.cardShape === 'round') return '50%';
+    return 'var(--we-radius-300)';
+  }
+
+  const cardContent = (visual: { content?: string; contentMinZoom?: number }): NodeContent | undefined => {
+    if (!visual.content) return undefined;
+    if (visual.contentMinZoom !== undefined && zoom() < visual.contentMinZoom) return undefined;
+    return props.host?.nodeContent?.[visual.content];
+  };
+
   const status = createMemo(() => {
     statusVersion();
     return engine.getStatus();
@@ -375,6 +613,111 @@ export function GraphView(props: GraphViewProps) {
     };
   }
 
+  /*
+    A resize in progress, drawn locally.
+
+    Renderer state rather than engine state, and handles rather than a behaviour, because every part
+    of the gesture is about the box on screen: the grab areas are the edges and corners of a specific
+    card, which a world-space hit test knows nothing about, and the feedback is that card following
+    the pointer. The engine hears about it once, on release, as an intent — one write instead of one
+    per frame.
+
+    It carries a position as well as a size, because resizing from a corner must hold the *opposite*
+    corner still. A card is drawn from its centre, so keeping one edge where it is means moving the
+    centre — and a gesture that grew a card in all four directions at once, whichever handle you
+    pulled, is the thing that feels wrong about the naive version.
+  */
+  const [resizing, setResizing] = createSignal<{
+    id: string;
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  } | null>(null);
+
+  /**
+   * Begin a resize from one handle.
+   *
+   * `grip` is which way that handle pulls: `-1`, `0` or `1` per axis, so a corner moves both and an
+   * edge moves one. Zero on an axis is what makes an edge handle leave the other dimension alone.
+   */
+  function beginResize(
+    event: PointerEvent,
+    entry: { node: GraphNode; at: { x: number; y: number }; visual: { width?: number; height?: number } },
+    grip: Grip,
+  ) {
+    // Never reaches the canvas dispatcher, which would read the same press as the start of a drag —
+    // the node under the handle is the node being resized, so both gestures would run at once.
+    event.stopPropagation();
+    event.preventDefault();
+    const handle = event.currentTarget as HTMLElement;
+    handle.setPointerCapture?.(event.pointerId);
+    const from = { x: event.clientX, y: event.clientY };
+    const width = entry.visual.width ?? DEFAULT_CARD_WIDTH;
+    const height = entry.visual.height ?? DEFAULT_CARD_HEIGHT;
+
+    const move = (moved: PointerEvent) => {
+      moved.stopPropagation();
+      // Screen pixels over zoom: the card is measured in world units, so a drag at 2x has to move it
+      // half as far or the card runs away from the pointer.
+      const scale = zoom() || 1;
+      const delta = { x: (moved.clientX - from.x) / scale, y: (moved.clientY - from.y) / scale };
+      const next = resizeBox({ at: entry.at, width, height }, grip, delta, MIN_CARD);
+      setResizing({ id: entry.node.id, x: next.at.x, y: next.at.y, width: next.width, height: next.height });
+    };
+    const end = (ended: PointerEvent) => {
+      ended.stopPropagation();
+      handle.removeEventListener('pointermove', move);
+      handle.removeEventListener('pointerup', end);
+      handle.removeEventListener('pointercancel', end);
+      const box = resizing();
+      setResizing(null);
+      if (!box) return;
+      /*
+        Hold the card where the drag left it, exactly as dropping one does.
+
+        Resizing from an edge moves the centre, and the engine still has the old one — so without
+        this the card would jump back on the next refresh and creep to its new position only when the
+        write came round. `drag-node` pins on drop for the same reason; a pin survives a refresh,
+        which is what makes both gestures land where the pointer left them.
+      */
+      engine.behaviourContext().pin(entry.node.id, { x: box.x, y: box.y });
+      const at = parseAddress(entry.node.id);
+      props.onNodeResize?.({
+        id: entry.node.id,
+        x: Math.round(box.x),
+        y: Math.round(box.y),
+        width: Math.round(box.width),
+        height: Math.round(box.height),
+        ...(at?.kind === 'entity' && { recordId: at.id, recordType: at.type }),
+      });
+    };
+
+    // On the handle rather than the window: the pointer is captured to it, so it sees the whole drag
+    // wherever the cursor goes, and nothing else on the page has to be listened to.
+    handle.addEventListener('pointermove', move);
+    handle.addEventListener('pointerup', end);
+    handle.addEventListener('pointercancel', end);
+  }
+
+  /**
+   * Where and how big a card is drawn right now — the live drag where there is one, otherwise what
+   * the engine and the style rules resolved.
+   *
+   * Position comes through here too because a resize that anchors one edge moves the centre, so the
+   * transform and the size have to be read from the same place or the card would grow around a point
+   * it is no longer centred on.
+   */
+  function boxOf(entry: {
+    node: GraphNode;
+    at: { x: number; y: number };
+    visual: { width?: number; height?: number };
+  }) {
+    const live = resizing();
+    if (live && live.id === entry.node.id) return live;
+    return { x: entry.at.x, y: entry.at.y, width: entry.visual.width, height: entry.visual.height };
+  }
+
   function dispatch(phase: Parameters<typeof dispatchPointer>[1], event: PointerEvent | WheelEvent | MouseEvent) {
     dispatchPointer(behaviours(), phase, toInput(event), engine.behaviourContext());
   }
@@ -383,8 +726,18 @@ export function GraphView(props: GraphViewProps) {
     dispatch('onPointerMove', event);
     // Hover is read straight off the index rather than from DOM enter/leave, so it behaves the same
     // whether the node is an element or a painted shape.
-    const [hit] = engine.index.hitTest(engine.viewport.toWorld(toInput(event).at));
+    const at = engine.viewport.toWorld(toInput(event).at);
+    const [hit] = engine.index.hitTest(at);
     if (hit !== hovered()) setHovered(hit ?? null);
+    /*
+      Edges are hovered too, and nodes win — the same rule picking follows.
+
+      Worth more here than on a node: a node is a shape you can see the boundary of, and an edge is a
+      two-pixel line whose clickable width is a tolerance nobody can see. Without a hover mark the
+      only way to find out whether you are on the line is to click and see what opens.
+    */
+    const edge = hit ? null : engine.hitTestEdge(at);
+    if (edge !== hoveredEdge()) setHoveredEdge(edge);
   }
 
   return (
@@ -445,6 +798,21 @@ export function GraphView(props: GraphViewProps) {
           <For each={edges()}>
             {(entry) => (
               <g>
+                {/*
+                  A wider, transparent copy of the line under the real one — the hover mark, and the
+                  reason it is a second path rather than a thicker stroke: the visible line keeps its
+                  own width, so nothing about the drawing changes shape when the pointer is near it.
+                */}
+                <Show when={hoveredEdge() === entry.edge.id}>
+                  <path
+                    class="we-graph__edge-hover"
+                    d={entry.path}
+                    fill="none"
+                    stroke={color(entry.visual.color, 'neutral-300')}
+                    stroke-width={entry.visual.width * 4}
+                    vector-effect={entry.visual.scaleWithZoom ? undefined : 'non-scaling-stroke'}
+                  />
+                </Show>
                 <path
                   d={entry.path}
                   fill="none"
@@ -460,6 +828,28 @@ export function GraphView(props: GraphViewProps) {
               </g>
             )}
           </For>
+          {/*
+            The line being drawn during a connect gesture.
+
+            Dashed, so it reads as a proposal rather than as an edge that already exists, and drawn
+            straight rather than through the curve machinery: it has no endpoints to bow apart from
+            and no direction worth stating until it lands somewhere. It is not in the store — see
+            `getPendingConnection` — so nothing lays it out, routes it, or counts it.
+          */}
+          <Show when={pending()}>
+            {(line) => (
+              <line
+                x1={line().from.x}
+                y1={line().from.y}
+                x2={line().to.x}
+                y2={line().to.y}
+                stroke="var(--we-color-primary-500)"
+                stroke-width="2"
+                stroke-dasharray="6 4"
+                vector-effect="non-scaling-stroke"
+              />
+            )}
+          </Show>
           <defs>
             <marker
               id="we-graph-arrow"
@@ -523,14 +913,15 @@ export function GraphView(props: GraphViewProps) {
                 'we-graph__node--pinned': entry.at.fixed === true && engine.pinningIsMeaningful(),
               }}
               style={{
-                transform: `translate(${entry.at.x}px, ${entry.at.y}px)`,
+                transform: `translate(${boxOf(entry).x}px, ${boxOf(entry).y}px)`,
                 '--node-size': `${entry.visual.size * 2}px`,
-                '--node-width': `${entry.visual.width ?? entry.visual.size * 2}px`,
-                '--node-height': `${entry.visual.height ?? entry.visual.size * 2}px`,
+                '--node-width': `${boxOf(entry).width ?? entry.visual.size * 2}px`,
+                '--node-height': `${boxOf(entry).height ?? entry.visual.size * 2}px`,
                 '--node-color': color(entry.visual.color, 'primary-500'),
                 '--node-border': color(entry.visual.borderColor, 'transparent'),
                 '--node-border-width': `${entry.visual.borderWidth ?? 0}px`,
-                '--node-radius': entry.visual.shape === 'circle' ? '50%' : 'var(--we-radius-300)',
+                '--node-radius': nodeRadius(entry.visual),
+                '--content-scale': String(entry.visual.contentScale ?? 1),
                 '--node-label-color': color(entry.visual.labelColor, 'neutral-800'),
                 '--node-label-size': `${entry.visual.labelSize ?? 12}px`,
                 '--label-scale': entry.visual.scaleLabelWithZoom ? '1' : 'calc(1 / var(--graph-zoom))',
@@ -562,11 +953,62 @@ export function GraphView(props: GraphViewProps) {
                 }
               >
                 <div class="we-graph__card">
-                  <span class="we-graph__card-text">{entry.visual.label}</span>
+                  {/*
+                    The card's real content, when a style rule named one and the host supplies it.
+
+                    Falls back to the label rather than to nothing — a card whose content component
+                    is missing, or whose data has not arrived, still has to say what it is. That is
+                    also what makes `contentMinZoom` cheap: below the threshold the card draws one
+                    string instead of a document, which is all that is legible at that size anyway.
+                  */}
+                  <Show
+                    when={cardContent(entry.visual)}
+                    fallback={<span class="we-graph__card-text">{entry.visual.label}</span>}
+                  >
+                    {(Content) => (
+                      <div class="we-graph__card-content">
+                        {/*
+                          The scale lives on an inner element because it has to change the box the
+                          content is *laid out* in, not just how large the result is drawn. Scaling
+                          the clipping element would shrink the drawing and leave the same amount of
+                          text in it; a wider inner box at a smaller scale is what fits more of the
+                          document into the same card.
+                        */}
+                        <div class="we-graph__card-scale">
+                          <Dynamic component={Content()} node={entry.node} />
+                        </div>
+                      </div>
+                    )}
+                  </Show>
                   <Show when={entry.hasMore}>
                     <span class="we-graph__more we-graph__more--card">+</span>
                   </Show>
                 </div>
+              </Show>
+              {/*
+                Resize handles, on a selected card only.
+
+                Only when the template is listening: a handle that moved and then changed nothing is
+                worse than no handle. Only on the selection, because handles on every card would put
+                grab targets over the content of each one — and selecting first is how you say which
+                card you mean anyway.
+
+                Eight of them, because an edge and a corner are different requests: an edge changes
+                one dimension, a corner changes both. The corners are marked and the edges are not —
+                an edge is a strip along the side of the card, found by the cursor changing, which is
+                what every canvas tool does and what keeps a selected card from being ringed with
+                furniture.
+              */}
+              <Show when={props.onNodeResize && entry.selected && entry.visual.shape === 'card'}>
+                <For each={HANDLES}>
+                  {(handle) => (
+                    <div
+                      class={`we-graph__resize we-graph__resize--${handle.id}`}
+                      title="Resize"
+                      onPointerDown={(event) => beginResize(event, entry, handle.grip)}
+                    />
+                  )}
+                </For>
               </Show>
             </div>
           )}
@@ -626,7 +1068,15 @@ export function GraphView(props: GraphViewProps) {
       <Show
         when={props.showStatus !== false && (status().loading || status().budgetReached || status().warnings.length)}
       >
-        <Column pointerEvents="none" position="absolute" left="300" bottom="300" gap="100" maxWidth="60%">
+        <Column
+          class="we-graph__status"
+          pointerEvents="none"
+          position="absolute"
+          left="300"
+          bottom="300"
+          gap="100"
+          maxWidth="60%"
+        >
           <Show when={status().loading}>
             <Row ay="center" gap="200" bg="neutral-100" r="200" px="200" py="100">
               <we-spinner size="xs" />

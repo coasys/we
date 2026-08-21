@@ -154,6 +154,36 @@ All `@Property` predicates use the `we://` namespace. Use snake_case for multi-w
 
 ---
 
+## Relations — three tiers, and choosing between them
+
+Before adding a `@HasOne` or `@HasMany`, read
+[`docs/architecture/relations.md`](../../docs/architecture/relations.md). A connection between two
+records can live in three places and they are not interchangeable:
+
+| | Authored by | Query by it | Carries its own data |
+|---|---|---|---|
+| Free-text label on a `Relationship` | any member | no | yes |
+| A community-named `RelationshipType` | the community | `where: { relationshipTypeId }` | yes |
+| A relation declared here | whoever owns the schema | fully | **no** |
+
+The deciding question is not scale — it is **whether the connection is a fact about the *type* or a
+claim about a *pair***. "Every task may have an assignee" is the first and belongs on the class.
+"This task came out of that call" is the second, was made by a person after both records existed,
+and belongs in a record of its own.
+
+Two consequences worth knowing before you reach for a decorator:
+
+- **A declared relation has no identity.** No author, no date, nothing to comment on, nothing to
+  rate. If the connection can be disputed or attributed, declaring it throws that away — and no
+  amount of extra properties on either end brings it back.
+- **A reified relation has no query pushdown.** No `include` hydration, no ordering by a related
+  property, no count projections. If you will query *by* it, declare it.
+
+`Relationship`, `Placement` and `Signal` are all the reified form, and each names in its own header
+why it is not a declared relation. `RelationshipType` and `SignalType` are the middle tier.
+
+---
+
 ## Type Discriminators (`@Flag`)
 
 Every model must have a `@Flag` as its first property. The `@Flag` decorator writes a constant triple that uniquely identifies the model type — essential for filtering mixed graph results.
