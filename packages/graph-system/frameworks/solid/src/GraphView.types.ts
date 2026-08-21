@@ -15,6 +15,7 @@ import type {
   ExpansionSpec,
   GraphEdge,
   GraphNode,
+  GraphValue,
   LayoutSpec,
   NodeStyleRules,
   SeedSpec,
@@ -188,18 +189,25 @@ export interface GraphViewProps {
    */
   onNodeDragEnd?: (payload: { id: string; x: number; y: number; recordId?: string; recordType?: string }) => void;
   /**
-   * The user dragged a selected card's corner to this size, in world units.
+   * The user dragged a selected card's edge or corner, giving it this box in world units.
    *
-   * Binding it is what puts the handle on screen — a corner that moved and then changed nothing is
-   * worse than no corner — so a graph whose sizes are not stored anywhere simply omits it.
+   * Binding it is what puts the handles on screen — a handle that moved and then changed nothing is
+   * worse than no handle — so a graph whose sizes are not stored anywhere simply omits it.
    *
-   * Where a size *lives* is the template's decision, the same as a position: on a board it belongs
+   * **Carries a position as well as a size**, and a consumer that writes one must write both.
+   * Resizing from a corner holds the *opposite* corner still, and a card is drawn from its centre,
+   * so keeping one edge where it is means the centre moves. Storing only the size would slide the
+   * card sideways by half the change on every resize.
+   *
+   * Where the box *lives* is the template's decision, the same as a position: on a board it belongs
    * to the placement rather than the record, so the same note can be a banner on one board and a
    * small square on another. `recordId` carries the record the node stands for, absent for a node
    * that stands for none.
    */
   onNodeResize?: (payload: {
     id: string;
+    x: number;
+    y: number;
     width: number;
     height: number;
     recordId?: string;
@@ -233,6 +241,23 @@ export interface GraphHostBindings {
    * such component simply has a card that falls back to its label.
    */
   nodeContent?: Record<string, NodeContent>;
+  /**
+   * Fields to lay over a node's own data, keyed by the record id the node stands for.
+   *
+   * The seam for **optimistic edits**, and it is here rather than in the engine because it is not
+   * the graph's business how long a write takes to come back. A board's own gestures — resize a
+   * card, colour it, change its shape — are answered by a record the host writes, and the answer
+   * arrives via a subscription and a re-seed. Even a fast backend is a round trip away, and a slider
+   * that lags a round trip behind the finger reads as broken rather than as slow.
+   *
+   * So the host says what it has just written and has not yet seen come back; the graph draws it as
+   * though it had. Applied before the style rules run, so `{ from: 'data.x' }` reads it exactly as it
+   * reads a seeded value and nothing else has to know the difference. The host clears an entry when
+   * a read confirms it, at which point this and the seeded data agree and the change is invisible.
+   *
+   * Reactive: read inside the render, so a host signal here re-draws the nodes it names.
+   */
+  pendingData?(): Record<string, Record<string, GraphValue>>;
   query(request: Record<string, unknown>): Promise<Record<string, unknown>[]>;
   /**
    * Report changes to records of a type, and return a function that stops reporting.

@@ -29,6 +29,7 @@ import { getModel, Placement, PREDICATES, runModelTransaction, TypeStyle } from 
 import { CORE_MANIFEST } from '@we/models/manifest';
 import { Accessor, batch, createContext, createMemo, createSignal, ParentProps, useContext } from 'solid-js';
 
+import { confirmPending, dropPending, holdPending, type PendingWrites } from '../../../shared/shapes/pendingWrites';
 import {
   asEntityName,
   emptyRecordDraft,
@@ -188,6 +189,30 @@ export interface RecordStore {
    * record being displayed: every one of these is undone by taking the card off the board.
    */
   setCardStyle: (board: string, nodeId: string, field: string, value: unknown) => Promise<void>;
+  /**
+   * Placement fields written but not yet read back, keyed by the placed record's id.
+   *
+   * The optimistic half of every board gesture that writes presentation. A resize, a colour or a
+   * shape is answered by a record, and the answer comes back through a subscription and a re-read —
+   * a round trip at best, and a re-seed of the whole board after it. A slider that lags that far
+   * behind the finger reads as broken rather than as slow, so the change is drawn immediately and
+   * this is what says so.
+   *
+   * Cleared by {@link confirmRows} when a read shows the value has landed, so the optimistic value
+   * and the stored one are never both authoritative for longer than one read. A failed write clears
+   * it too, which is what makes the card snap back to the truth rather than lying about a change
+   * that did not happen.
+   */
+  pendingCardStyle: Accessor<PendingWrites>;
+  /**
+   * Reconcile the optimistic state against rows just read from the backend.
+   *
+   * Called by whatever reads on the store's behalf — the graph host, today. Deliberately generic:
+   * the caller says which entity it read and hands over the rows, and the store decides whether any
+   * of it answers something it is still waiting on. A caller that knew *which* pending writes to
+   * clear would be a caller that had to understand placements.
+   */
+  confirmRows: (entity: string, rows: readonly Record<string, unknown>[]) => void;
   /**
    * Set the colour every card of one type is drawn in, on one board.
    *
@@ -464,6 +489,21 @@ export function RecordStoreProvider(props: ParentProps) {
   /** The presentation a placement may carry, and the only keys `setCardStyle` will write. */
   const CARD_STYLE_FIELDS = ['width', 'height', 'contentScale', 'color', 'cardShape'] as const;
 
+  const [pendingCardStyle, setPendingCardStyle] = createSignal<PendingWrites>({});
+
+  const hold = (nodeId: string, patch: Record<string, unknown>) =>
+    setPendingCardStyle((current) => holdPending(current, nodeId, patch));
+  const drop = (nodeId: string) => setPendingCardStyle((current) => dropPending(current, nodeId));
+
+  function confirmRows(entity: string, rows: readonly Record<string, unknown>[]): void {
+    // Placements are the only thing written optimistically here. Named rather than inferred, so a
+    // read of something else cannot clear a patch by coincidence of field names.
+    if (entity !== 'Placement' || !Object.keys(pendingCardStyle()).length) return;
+    setPendingCardStyle((current) =>
+      confirmPending(current, rows, (row) => (typeof row.node === 'string' ? row.node : undefined)),
+    );
+  }
+
   /**
    * Patch the placement for one node on one board.
    *
@@ -474,26 +514,39 @@ export function RecordStoreProvider(props: ParentProps) {
   async function stylePlacement(board: string, nodeId: string, patch: Record<string, unknown>): Promise<void> {
     const dataset = datasetStore.currentDataset();
     if (!dataset || !board || !nodeId || !Object.keys(patch).length) return;
+    // Before the write, not after it: the point is that the card changes on the gesture rather than
+    // on the round trip. Dropped again below if the write turns out not to be possible.
+    hold(nodeId, patch);
     try {
       const existing = (await Placement.findAll(dataset.handle, {
         parent: { id: board, predicate: PREDICATES.CHILDREN },
       } as Record<string, unknown>)) as { id: string; node?: string }[];
       const already = existing.find((row) => row.node === nodeId);
       if (!already) {
+        drop(nodeId);
         toastService.error('Drag this onto the board first — how a card looks is saved with where it sits.');
         return;
       }
       await Placement.update(dataset.handle, already.id, patch);
     } catch (error) {
+      drop(nodeId);
       console.error('RecordStore: styling a card on a board failed', error);
       toastService.error('Could not save that.');
     }
   }
 
   async function resizeOnBoard(board: string, payload: unknown): Promise<void> {
-    const event = (payload ?? {}) as { recordId?: string; width?: number; height?: number };
+    const event = (payload ?? {}) as { recordId?: string; width?: number; height?: number; x?: number; y?: number };
     if (!event.recordId || !event.width || !event.height) return;
-    await stylePlacement(board, event.recordId, { width: Math.round(event.width), height: Math.round(event.height) });
+    // Position travels with the size. Resizing from one edge anchors the other, and a card drawn
+    // from its centre has to move that centre to hold an edge still — so writing only the size would
+    // slide the card sideways by half the change every time.
+    await stylePlacement(board, event.recordId, {
+      width: Math.round(event.width),
+      height: Math.round(event.height),
+      ...(typeof event.x === 'number' ? { x: Math.round(event.x) } : {}),
+      ...(typeof event.y === 'number' ? { y: Math.round(event.y) } : {}),
+    });
   }
 
   async function setCardStyle(board: string, nodeId: string, field: string, value: unknown): Promise<void> {
@@ -663,6 +716,8 @@ export function RecordStoreProvider(props: ParentProps) {
     createCardOnBoard,
     placeOnBoard,
     removeFromBoard,
+    pendingCardStyle,
+    confirmRows,
     resizeOnBoard,
     setCardStyle,
     setTypeColor,

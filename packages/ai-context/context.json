@@ -3560,7 +3560,7 @@
         },
         {
           "name": "onNodeResize",
-          "type": "((payload: { id: string; width: number; height: number; recordId?: string; recordType?: string; }) => void)",
+          "type": "((payload: { id: string; x: number; y: number; width: number; height: number; recordId?: string; recordType?: string; }) => void)",
           "optional": true
         },
         {
@@ -5717,6 +5717,9 @@
         },
         "relationshipKind": {
           "type": "string"
+        },
+        "pendingCardStyle": {
+          "type": "object"
         }
       },
       "actions": [
@@ -5731,6 +5734,7 @@
         "removeFromBoard",
         "resizeOnBoard",
         "setCardStyle",
+        "confirmRows",
         "setTypeColor",
         "createOnBoard",
         "createCardOnBoard"

@@ -1296,7 +1296,7 @@ export const contextData: ContextData = {
         },
         {
           name: 'onNodeResize',
-          type: '((payload: { id: string; width: number; height: number; recordId?: string; recordType?: string; }) => void)',
+          type: '((payload: { id: string; x: number; y: number; width: number; height: number; recordId?: string; recordType?: string; }) => void)',
           optional: true,
         },
         { name: 'host', type: 'GraphHostBindings', optional: true },
@@ -2214,6 +2214,7 @@ export const contextData: ContextData = {
         lastCreatedId: { type: 'string' },
         pendingLink: { type: 'object' },
         relationshipKind: { type: 'string' },
+        pendingCardStyle: { type: 'object' },
       },
       actions: [
         'openRecordForm',
@@ -2227,6 +2228,7 @@ export const contextData: ContextData = {
         'removeFromBoard',
         'resizeOnBoard',
         'setCardStyle',
+        'confirmRows',
         'setTypeColor',
         'createOnBoard',
         'createCardOnBoard',

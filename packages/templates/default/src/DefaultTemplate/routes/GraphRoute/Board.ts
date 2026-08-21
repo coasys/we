@@ -2,7 +2,7 @@ import type { SchemaNode } from '@we/schema-shared';
 import { composerModal, emptyState } from '@we/template-kit';
 
 import { boardLegend } from './Legend';
-import { selectNode } from './NodeDetail';
+import { clearOnEmptySelection, selectNode } from './NodeDetail';
 
 /**
  * The board — the same engine, with position as the data.
@@ -150,6 +150,10 @@ const boardCards: SchemaNode = {
     height: '100%',
     revision: { $local: 'revision' },
     onNodeClick: selectNode,
+    // Clicking empty canvas deselects — the same handler the other three modes carry. The board is
+    // where it matters most: it is the mode you click around in, and without it the only way to
+    // dismiss the panel is to select something else.
+    onSelectionChange: clearOnEmptySelection,
     // Double-click opens the card. Nothing expands on a board, so the gesture is free — and it is
     // the one people arrive expecting from every other canvas they have used. A flag rather than an
     // id: the click that precedes the second one has already selected the node, and the modal reads

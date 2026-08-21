@@ -106,13 +106,19 @@ interface Placed {
 }
 
 /**
- * The presentation fields, if the placement carries any.
+ * The presentation fields a placement carries, named as a node's data bag names them.
  *
  * Unset values are dropped rather than passed through as `0` and `''`: a style rule reading an
  * absent field defers to the rule above it, which is what lets a card with no colour of its own take
  * the one its type was given. A zero would override that with a size no card should have.
+ *
+ * Exported because a host applying an **optimistic** placement edit — a card resized or recoloured,
+ * drawn before the write comes back — has to name those fields the same way this does. Two copies of
+ * the naming is exactly the sort of thing that drifts silently: the copy that fell behind would
+ * write `boardColour`, nothing would read it, and the card would simply not change until the round
+ * trip landed.
  */
-function styleOf(row: Record<string, unknown>): Record<string, GraphValue> {
+export function placementStyle(row: Record<string, unknown>): Record<string, GraphValue> {
   const style: Record<string, GraphValue> = {};
   const number = (key: string, as: string) => {
     const value = Number(row[key]);
@@ -178,7 +184,7 @@ export function boardSeed(): SeedSource {
           // A placement whose node never linked names a type and points at nothing. Skipped rather
           // than half-drawn, and left for a sweep — the record it meant is not knowable from here.
           if (!node || !nodeType) continue;
-          positions.set(node, { x: Number(row.x) || 0, y: Number(row.y) || 0, style: styleOf(row) });
+          positions.set(node, { x: Number(row.x) || 0, y: Number(row.y) || 0, style: placementStyle(row) });
           placedIds.set(nodeType, [...(placedIds.get(nodeType) ?? []), node]);
         }
       }

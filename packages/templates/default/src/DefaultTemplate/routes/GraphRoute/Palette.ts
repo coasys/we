@@ -1,4 +1,4 @@
-import type { SchemaNode } from '@we/schema-shared';
+import type { SchemaNode, SchemaProp } from '@we/schema-shared';
 
 /**
  * The colours a board can be painted with, and the row that picks one.
@@ -36,7 +36,7 @@ export const SWATCHES = [
  * `$each` over the palette: the caller says what picking *means* and the loop says which colour it
  * happened to. Both call sites end up writing to a store, one per card and one per type.
  */
-export function swatchRow(options: { current: unknown; pick: (token: string) => unknown }): SchemaNode {
+export function swatchRow(options: { current: SchemaProp; pick: (token: string) => SchemaProp }): SchemaNode {
   return {
     type: 'Row',
     props: { gap: '200', ay: 'center', wrap: true, width: '100%' },

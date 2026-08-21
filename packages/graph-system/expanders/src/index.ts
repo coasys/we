@@ -30,7 +30,7 @@ export {
   type ReifiedEdgeSpec,
   reifiedEdgeFrom,
 } from './reified';
-export { boardSeed, type BoardSeedOptions } from './board';
+export { boardSeed, type BoardSeedOptions, placementStyle } from './board';
 export { datasetSeed, querySeed, schemaSeed } from './seeds';
 export type { QuerySeedOptions, SchemaSeedOptions } from './seeds';
 

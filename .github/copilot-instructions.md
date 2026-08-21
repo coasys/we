@@ -1087,7 +1087,7 @@ Common recipes:
 the relations between them. Picks up model types added later with no template change.
 - **Hierarchy** — `layout: { type: 'tree' }` with a `collection` expansion for nested content.
 - **Static diagram** — `seeds: { literal: true, nodes: [...], edges: [...] }` and no expansion at all.
-  Props: seeds?: SeedSpec | SeedSpec[], expansion?: ExpansionSpec, revision?: string | number | boolean, live?: boolean, layout?: LayoutSpec, nodeStyle?: NodeStyleRules, edgeStyle?: EdgeStyleRules, behaviours?: BehaviourSpec[], reified?: Record<string, { source: string; target: string; type?: string; sourceType?: string; targetType?: string; }>, width?: string, height?: string, bg?: string, showStatus?: boolean, showControls?: boolean, controls?: string[], onNodeClick?: ((node: GraphNode & { recordId?: string; fields: { name: string; value: string; }[]; }) => void), expandRequest?: { id: string; expanders?: string[]; direction?: "in" | "out" | "both"; } | null, onNodeDoubleClick?: ((node: GraphNode & { recordId?: string; recordType?: string; }) => void), onEdgeClick?: ((edge: GraphEdge & { recordId?: string; recordType?: string; }) => void), onEdgeCreate?: ((payload: { source: GraphNode; target: GraphNode; sourceId: string; sourceType: string; targetId: string; targetType: string; sourceLabel: string; targetLabel: string; }) => void), onCanvasDoubleClick?: ((payload: { x: number; y: number; }) => void), onSelectionChange?: ((ids: string[]) => void), onNodeDragEnd?: ((payload: { id: string; x: number; y: number; recordId?: string; recordType?: string; }) => void), onNodeResize?: ((payload: { id: string; width: number; height: number; recordId?: string; recordType?: string; }) => void), host?: GraphHostBindings
+  Props: seeds?: SeedSpec | SeedSpec[], expansion?: ExpansionSpec, revision?: string | number | boolean, live?: boolean, layout?: LayoutSpec, nodeStyle?: NodeStyleRules, edgeStyle?: EdgeStyleRules, behaviours?: BehaviourSpec[], reified?: Record<string, { source: string; target: string; type?: string; sourceType?: string; targetType?: string; }>, width?: string, height?: string, bg?: string, showStatus?: boolean, showControls?: boolean, controls?: string[], onNodeClick?: ((node: GraphNode & { recordId?: string; fields: { name: string; value: string; }[]; }) => void), expandRequest?: { id: string; expanders?: string[]; direction?: "in" | "out" | "both"; } | null, onNodeDoubleClick?: ((node: GraphNode & { recordId?: string; recordType?: string; }) => void), onEdgeClick?: ((edge: GraphEdge & { recordId?: string; recordType?: string; }) => void), onEdgeCreate?: ((payload: { source: GraphNode; target: GraphNode; sourceId: string; sourceType: string; targetId: string; targetType: string; sourceLabel: string; targetLabel: string; }) => void), onCanvasDoubleClick?: ((payload: { x: number; y: number; }) => void), onSelectionChange?: ((ids: string[]) => void), onNodeDragEnd?: ((payload: { id: string; x: number; y: number; recordId?: string; recordType?: string; }) => void), onNodeResize?: ((payload: { id: string; x: number; y: number; width: number; height: number; recordId?: string; recordType?: string; }) => void), host?: GraphHostBindings
 
 ---
 
@@ -1907,6 +1907,7 @@ RecordStore:
   - lastCreatedId: string — the id of the last record created, empty before the first. Read it to act on what was just made; kept in the store because an $action's onSuccess can read a store and cannot hold a value
   - pendingLink: the two records a pending connection joins ({ sourceId, sourceType, sourceLabel, targetId, targetType, targetLabel }), or null when the open form is an ordinary one. Read it to name what is being connected
   - relationshipKind: unknown
+  - pendingCardStyle: unknown
 - Actions:
   - openRecordForm(entity?): opens the create form — on that model, or on the first offered one. Clears any pending connection
   - connectNodes(link): opens the form on a Relationship joining two records. Takes the graph's onEdgeCreate payload as it arrives
@@ -1919,6 +1920,7 @@ RecordStore:
   - removeFromBoard(): unknown
   - resizeOnBoard(): unknown
   - setCardStyle(): unknown
+  - confirmRows(): unknown
   - setTypeColor(): unknown
   - createOnBoard(): unknown
   - createCardOnBoard(): unknown

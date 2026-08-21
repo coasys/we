@@ -23,13 +23,15 @@ import '@we/graph-solid/styles';
 import type { ModelClass, ModelManifestEntry, QueryOptions } from '@we/backend-shared';
 import { manifestEntries } from '@we/backend-shared';
 import { BlockRenderer } from '@we/block-solid';
-import type { EntityShape, GraphNode } from '@we/graph-protocol';
+import { placementStyle } from '@we/graph-expanders';
+import type { EntityShape, GraphNode, GraphValue } from '@we/graph-protocol';
 import { GraphView, type GraphViewProps } from '@we/graph-solid';
 import { CORE_MANIFEST } from '@we/models/manifest';
 import { createMemo, Show } from 'solid-js';
 
 import { useDatasetStore } from '../stores/DatasetStore';
 import { useProfileStore } from '../stores/ProfileStore';
+import { useRecordStore } from '../stores/RecordStore';
 import { useSessionStore } from '../stores/SessionStore';
 
 /**
@@ -107,6 +109,7 @@ function BlockCard(props: { node: GraphNode }) {
 
 export function GraphHost(props: Omit<GraphViewProps, 'host'>) {
   const datasetStore = useDatasetStore();
+  const recordStore = useRecordStore();
   const sessionStore = useSessionStore();
   const profileStore = useProfileStore();
 
@@ -205,6 +208,21 @@ export function GraphHost(props: Omit<GraphViewProps, 'host'>) {
 
   const host: GraphViewProps['host'] = {
     nodeContent: { block: BlockCard },
+
+    /**
+     * What the board has just written and not yet seen come back.
+     *
+     * Named through `placementStyle`, the board seed's own mapping, so an optimistic field and a
+     * seeded one are the same field — two copies of that naming would drift, and the copy that fell
+     * behind would write a key nothing reads, leaving the card unchanged until the round trip landed
+     * with no sign of why.
+     */
+    pendingData: () => {
+      const pending = recordStore.pendingCardStyle();
+      const out: Record<string, Record<string, GraphValue>> = {};
+      for (const [nodeId, patch] of Object.entries(pending)) out[nodeId] = placementStyle(patch);
+      return out;
+    },
 
     /**
      * Tell the graph when records of a type change here.
@@ -307,8 +325,12 @@ export function GraphHost(props: Omit<GraphViewProps, 'host'>) {
         (options as Record<string, unknown>).parent = parent;
       }
 
-      const rows = await model.findAll(handle, options);
-      return rows as Record<string, unknown>[];
+      const rows = (await model.findAll(handle, options)) as Record<string, unknown>[];
+      // Every read is also an answer to whatever the store is still waiting on — see `confirmRows`.
+      // Here rather than after the write, because a value that matches is confirmed whichever read
+      // brought it, including one issued before the write and answered after it.
+      recordStore.confirmRows(entity, rows);
+      return rows;
     },
   };
 

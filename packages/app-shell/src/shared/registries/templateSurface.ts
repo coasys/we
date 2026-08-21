@@ -535,6 +535,11 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     placeOnBoard: action('content'),
     removeFromBoard: action('content'),
     resizeOnBoard: action('content'),
+    // Host wiring, both halves of one mechanism: the graph host reads what is pending and reports
+    // the rows it read back. A template has no use for either — it writes through the actions above
+    // and the optimism is applied for it.
+    pendingCardStyle: WIRING,
+    confirmRows: WIRING,
     setCardStyle: action('content'),
     setTypeColor: action('content'),
     setRecordEntity: action('content'),

@@ -439,6 +439,9 @@ importers:
       '@we/globe-widget':
         specifier: workspace:*
         version: link:../module-system/globe/widget
+      '@we/graph-expanders':
+        specifier: workspace:*
+        version: link:../graph-system/expanders
       '@we/graph-protocol':
         specifier: workspace:*
         version: link:../graph-system/protocol

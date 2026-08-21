@@ -123,16 +123,19 @@ export type GraphEvent =
   | { type: 'selectionChange'; ids: string[] }
   | { type: 'nodeDragEnd'; node: GraphNode; position: Point }
   /**
-   * The user resized a card, to this size in world units.
+   * The user resized a card, giving it this box in world units.
    *
    * Intent rather than a mutation, like every other event here: the engine has no write path, and
-   * where a card's size *lives* is the consumer's business — on a board it belongs to the placement,
+   * where a card's box *lives* is the consumer's business — on a board it belongs to the placement,
    * so the same note can be a wide banner on one board and a small square on another.
+   *
+   * The position travels with the size because resizing from one edge anchors the other, and a card
+   * drawn from its centre has to move that centre to hold an edge still.
    *
    * Emitted on release rather than continuously. The drag itself is drawn locally, so what you see
    * follows the pointer without a write per frame.
    */
-  | { type: 'nodeResize'; node: GraphNode; width: number; height: number }
+  | { type: 'nodeResize'; node: GraphNode; position: Point; width: number; height: number }
   /**
    * The user drew a line from one node to another.
    *

@@ -37,15 +37,27 @@ import {
 } from '@we/graph-core';
 import { DEFAULT_REIFIED_EDGES, defaultExpanders } from '@we/graph-expanders';
 import { defaultLayouts } from '@we/graph-layouts';
-import type { Behaviour, ControlContext, EdgeGeometry, GraphNode, Point, PointerInput } from '@we/graph-protocol';
+import type {
+  Behaviour,
+  ControlContext,
+  EdgeGeometry,
+  GraphNode,
+  GraphValue,
+  Point,
+  PointerInput,
+} from '@we/graph-protocol';
 import { parseAddress } from '@we/graph-protocol';
 import { batch, createEffect, createMemo, createSignal, For, onCleanup, onMount, Show, untrack } from 'solid-js';
 import { Dynamic } from 'solid-js/web';
 
 import type { GraphViewProps, NodeContent } from './GraphView.types';
+import { type Grip, HANDLES, resizeBox } from './resize';
 
 /** Matches the engine's own floor, so a drag cannot leave a card the style layer would refuse. */
 const MIN_CARD = 40;
+/** Only reached by a card whose style names no size — the engine's defaults, kept in step. */
+const DEFAULT_CARD_WIDTH = 160;
+const DEFAULT_CARD_HEIGHT = 120;
 
 export type * from './GraphView.types';
 
@@ -398,9 +410,15 @@ export function GraphView(props: GraphViewProps) {
     version();
     const placed = engine.getPositions();
     const selected = new Set(engine.getSelection());
-    return [...engine.store.nodes()].flatMap((node) => {
-      const at = placed.get(node.id);
+    // What the host has written and not yet seen come back — see `GraphHostBindings.pendingData`.
+    // Read here, before the style rules, so an optimistic value is indistinguishable from a seeded
+    // one to everything downstream.
+    const pending = props.host?.pendingData?.() ?? {};
+    return [...engine.store.nodes()].flatMap((rawNode) => {
+      const at = placed.get(rawNode.id);
       if (!at) return [];
+      const patch = pendingFor(pending, rawNode);
+      const node = patch ? { ...rawNode, data: { ...rawNode.data, ...patch } } : rawNode;
       const style = resolveStyle(node, props.nodeStyle);
       return [
         {
@@ -414,6 +432,13 @@ export function GraphView(props: GraphViewProps) {
       ];
     });
   });
+
+  /** The host's pending fields for the record this node stands for, if it stands for one. */
+  function pendingFor(pending: Record<string, Record<string, GraphValue>>, node: GraphNode) {
+    if (!Object.keys(pending).length) return undefined;
+    const at = parseAddress(node.id);
+    return at?.kind === 'entity' && at.id ? pending[at.id] : undefined;
+  }
 
   const edges = createMemo(() => {
     version();
@@ -549,48 +574,79 @@ export function GraphView(props: GraphViewProps) {
   /*
     A resize in progress, drawn locally.
 
-    Renderer state rather than engine state, and a handle rather than a behaviour, because both
-    halves of the gesture are about the box on screen: the grab area is a corner of a specific card,
-    which a world-space hit test knows nothing about, and the feedback is that card following the
-    pointer. The engine hears about it once, on release, as an intent — which is all a board needs to
-    write, and one write instead of one per frame.
-  */
-  const [resizing, setResizing] = createSignal<{ id: string; width: number; height: number } | null>(null);
+    Renderer state rather than engine state, and handles rather than a behaviour, because every part
+    of the gesture is about the box on screen: the grab areas are the edges and corners of a specific
+    card, which a world-space hit test knows nothing about, and the feedback is that card following
+    the pointer. The engine hears about it once, on release, as an intent — one write instead of one
+    per frame.
 
-  function beginResize(event: PointerEvent, entry: { node: GraphNode; visual: { width?: number; height?: number } }) {
+    It carries a position as well as a size, because resizing from a corner must hold the *opposite*
+    corner still. A card is drawn from its centre, so keeping one edge where it is means moving the
+    centre — and a gesture that grew a card in all four directions at once, whichever handle you
+    pulled, is the thing that feels wrong about the naive version.
+  */
+  const [resizing, setResizing] = createSignal<{
+    id: string;
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  } | null>(null);
+
+  /**
+   * Begin a resize from one handle.
+   *
+   * `grip` is which way that handle pulls: `-1`, `0` or `1` per axis, so a corner moves both and an
+   * edge moves one. Zero on an axis is what makes an edge handle leave the other dimension alone.
+   */
+  function beginResize(
+    event: PointerEvent,
+    entry: { node: GraphNode; at: { x: number; y: number }; visual: { width?: number; height?: number } },
+    grip: Grip,
+  ) {
     // Never reaches the canvas dispatcher, which would read the same press as the start of a drag —
-    // the node under the corner is the node being resized, so both gestures would run at once.
+    // the node under the handle is the node being resized, so both gestures would run at once.
     event.stopPropagation();
     event.preventDefault();
     const handle = event.currentTarget as HTMLElement;
     handle.setPointerCapture?.(event.pointerId);
     const from = { x: event.clientX, y: event.clientY };
-    const start = { width: entry.visual.width ?? 160, height: entry.visual.height ?? 120 };
+    const width = entry.visual.width ?? DEFAULT_CARD_WIDTH;
+    const height = entry.visual.height ?? DEFAULT_CARD_HEIGHT;
 
     const move = (moved: PointerEvent) => {
       moved.stopPropagation();
-      // Screen pixels over zoom: the card is measured in world units, so a drag at 2× has to move it
+      // Screen pixels over zoom: the card is measured in world units, so a drag at 2x has to move it
       // half as far or the card runs away from the pointer.
       const scale = zoom() || 1;
-      setResizing({
-        id: entry.node.id,
-        width: Math.max(MIN_CARD, start.width + (moved.clientX - from.x) / scale),
-        height: Math.max(MIN_CARD, start.height + (moved.clientY - from.y) / scale),
-      });
+      const delta = { x: (moved.clientX - from.x) / scale, y: (moved.clientY - from.y) / scale };
+      const next = resizeBox({ at: entry.at, width, height }, grip, delta, MIN_CARD);
+      setResizing({ id: entry.node.id, x: next.at.x, y: next.at.y, width: next.width, height: next.height });
     };
     const end = (ended: PointerEvent) => {
       ended.stopPropagation();
       handle.removeEventListener('pointermove', move);
       handle.removeEventListener('pointerup', end);
       handle.removeEventListener('pointercancel', end);
-      const size = resizing();
+      const box = resizing();
       setResizing(null);
-      if (!size) return;
+      if (!box) return;
+      /*
+        Hold the card where the drag left it, exactly as dropping one does.
+
+        Resizing from an edge moves the centre, and the engine still has the old one — so without
+        this the card would jump back on the next refresh and creep to its new position only when the
+        write came round. `drag-node` pins on drop for the same reason; a pin survives a refresh,
+        which is what makes both gestures land where the pointer left them.
+      */
+      engine.behaviourContext().pin(entry.node.id, { x: box.x, y: box.y });
       const at = parseAddress(entry.node.id);
       props.onNodeResize?.({
         id: entry.node.id,
-        width: Math.round(size.width),
-        height: Math.round(size.height),
+        x: Math.round(box.x),
+        y: Math.round(box.y),
+        width: Math.round(box.width),
+        height: Math.round(box.height),
         ...(at?.kind === 'entity' && { recordId: at.id, recordType: at.type }),
       });
     };
@@ -602,11 +658,22 @@ export function GraphView(props: GraphViewProps) {
     handle.addEventListener('pointercancel', end);
   }
 
-  /** The size a card is drawn at right now — the live drag where there is one, the stored size otherwise. */
-  function boxOf(entry: { node: GraphNode; visual: { width?: number; height?: number } }) {
+  /**
+   * Where and how big a card is drawn right now — the live drag where there is one, otherwise what
+   * the engine and the style rules resolved.
+   *
+   * Position comes through here too because a resize that anchors one edge moves the centre, so the
+   * transform and the size have to be read from the same place or the card would grow around a point
+   * it is no longer centred on.
+   */
+  function boxOf(entry: {
+    node: GraphNode;
+    at: { x: number; y: number };
+    visual: { width?: number; height?: number };
+  }) {
     const live = resizing();
-    if (live && live.id === entry.node.id) return { width: live.width, height: live.height };
-    return { width: entry.visual.width, height: entry.visual.height };
+    if (live && live.id === entry.node.id) return live;
+    return { x: entry.at.x, y: entry.at.y, width: entry.visual.width, height: entry.visual.height };
   }
 
   function dispatch(phase: Parameters<typeof dispatchPointer>[1], event: PointerEvent | WheelEvent | MouseEvent) {
@@ -779,7 +846,7 @@ export function GraphView(props: GraphViewProps) {
                 'we-graph__node--pinned': entry.at.fixed === true && engine.pinningIsMeaningful(),
               }}
               style={{
-                transform: `translate(${entry.at.x}px, ${entry.at.y}px)`,
+                transform: `translate(${boxOf(entry).x}px, ${boxOf(entry).y}px)`,
                 '--node-size': `${entry.visual.size * 2}px`,
                 '--node-width': `${boxOf(entry).width ?? entry.visual.size * 2}px`,
                 '--node-height': `${boxOf(entry).height ?? entry.visual.size * 2}px`,
@@ -852,15 +919,29 @@ export function GraphView(props: GraphViewProps) {
                 </div>
               </Show>
               {/*
-                The resize corner, on a selected card only.
+                Resize handles, on a selected card only.
 
                 Only when the template is listening: a handle that moved and then changed nothing is
-                worse than no handle. Only on the selection, because a corner on every card would put
-                a grab target over the content of each one — and selecting first is how you say which
+                worse than no handle. Only on the selection, because handles on every card would put
+                grab targets over the content of each one — and selecting first is how you say which
                 card you mean anyway.
+
+                Eight of them, because an edge and a corner are different requests: an edge changes
+                one dimension, a corner changes both. The corners are marked and the edges are not —
+                an edge is a strip along the side of the card, found by the cursor changing, which is
+                what every canvas tool does and what keeps a selected card from being ringed with
+                furniture.
               */}
               <Show when={props.onNodeResize && entry.selected && entry.visual.shape === 'card'}>
-                <div class="we-graph__resize" title="Resize" onPointerDown={(event) => beginResize(event, entry)} />
+                <For each={HANDLES}>
+                  {(handle) => (
+                    <div
+                      class={`we-graph__resize we-graph__resize--${handle.id}`}
+                      title="Resize"
+                      onPointerDown={(event) => beginResize(event, entry, handle.grip)}
+                    />
+                  )}
+                </For>
               </Show>
             </div>
           )}
