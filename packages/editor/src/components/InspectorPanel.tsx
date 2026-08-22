@@ -139,6 +139,33 @@ const TEXT_CONTENT_TYPES = new Set([
 ]);
 
 const COLOR_HUES = ['neutral', 'primary', 'success', 'warning', 'danger'] as const;
+
+/**
+ * The roles this picker offers, and the reason it leads with them.
+ *
+ * Every colour a template sets should name a role: a scale position is frozen into one theme's idea
+ * of what that grey meant, and a role is what a theme can redesign. This picker offered *only*
+ * scale positions, which meant anything authored through the visual editor came out unthemeable —
+ * quietly undoing, one node at a time, the migration that made the rest of the app follow a theme.
+ *
+ * Ordered by how often a template needs one, not alphabetically, and kept to the roles a *template*
+ * legitimately reaches for. The states (`surface-hover`, `accent-active`) and the internals
+ * (`control-surface`, `shadow-color`) are the design system's business, not a node's.
+ */
+function isRole(value: string): boolean {
+  return COLOR_ROLES.some((g) => g.roles.includes(value));
+}
+
+const COLOR_ROLES: { group: string; roles: string[] }[] = [
+  { group: 'Surfaces', roles: ['page', 'surface', 'surface-raised', 'surface-sunken', 'surface-inverse'] },
+  { group: 'Text', roles: ['text', 'text-muted', 'text-faint', 'on-inverse'] },
+  { group: 'Accent', roles: ['accent', 'accent-text', 'on-accent', 'accent-muted'] },
+  { group: 'Lines', roles: ['border', 'border-strong'] },
+  {
+    group: 'Status',
+    roles: ['danger-text', 'danger-surface', 'success-text', 'success-surface', 'warning-text', 'warning-surface'],
+  },
+];
 const COLOR_SHADES = ['0', '25', '50', '75', '100', '200', '300', '400', '500', '600', '700', '800', '900', '1000'];
 
 // -----------------------------------------------------------------------
@@ -934,7 +961,10 @@ function ColorSwatchPicker(props: { value: string; onChange: (v: string) => void
     onCleanup(() => document.removeEventListener('mousedown', handler));
   });
 
-  const swatchBg = (value: string) => (value ? `var(--we-color-${value})` : 'transparent');
+  const host = useEditorHost();
+  // A role and a scale position are different variables; a single guess paints one of them nothing.
+  const swatchBg = (value: string) =>
+    !value ? 'transparent' : isRole(value) ? `var(--we-role-${value})` : `var(--we-color-${value})`;
 
   return (
     <div ref={ref} style={{ position: 'relative' }}>
@@ -983,6 +1013,71 @@ function ColorSwatchPicker(props: { value: string; onChange: (v: string) => void
                   <we-text color="text-faint">(unset)</we-text>
                 </we-menu-item>
               </Show>
+
+              {/*
+                The bridge from a node to the theme.
+
+                Somebody looking at a wrong colour is not thinking "surfaceRaised", they are
+                thinking "that panel". Having arrived here by clicking the thing, the useful second
+                option is to change it *everywhere* rather than only here — which is the difference
+                between patching one node and fixing the theme.
+              */}
+              <Show when={props.value && isRole(props.value)}>
+                <we-menu-item
+                  on:select={() => {
+                    host.theme.startEditing();
+                    host.session.enterThemeEditing();
+                    setOpen(false);
+                  }}
+                >
+                  <Row gap="200" ay="center">
+                    <we-icon name="paint-bucket" size="xs" color="accent-text" />
+                    <we-text fontSize="200">Edit “{props.value}” for the whole theme</we-text>
+                  </Row>
+                </we-menu-item>
+              </Show>
+
+              {/* Roles first: this is what a template should be reaching for. */}
+              <Column gap="100">
+                <we-text fontSize="100" color="text-faint">
+                  Roles — follow the theme
+                </we-text>
+                <For each={COLOR_ROLES}>
+                  {(g) => (
+                    <Row gap="100" wrap>
+                      <For each={g.roles}>
+                        {(v) => (
+                          <we-tooltip title={`${v} · ${g.group}`} placement="top">
+                            <button
+                              onClick={() => {
+                                props.onChange(v);
+                                setOpen(false);
+                              }}
+                              onMouseEnter={() => setHovered(v)}
+                              onMouseLeave={() => setHovered(null)}
+                              style={{
+                                all: 'unset',
+                                width: '20px',
+                                height: '20px',
+                                background: `var(--we-role-${v})`,
+                                'box-shadow': `0 0 0 1px var(--we-role-${hovered() === v ? 'accent' : 'border'})`,
+                                'border-radius': '3px',
+                                cursor: 'pointer',
+                                padding: '0',
+                                transition: 'all 0.3s',
+                              }}
+                            />
+                          </we-tooltip>
+                        )}
+                      </For>
+                    </Row>
+                  )}
+                </For>
+              </Column>
+
+              <we-text fontSize="100" color="text-faint">
+                Scale — a fixed colour, for a palette
+              </we-text>
 
               {/* White + black */}
               <Row gap="100">
@@ -1126,7 +1221,7 @@ function RingPicker(props: { value: string; onChange: (v: string) => void }) {
           width: size,
           height: size,
           'flex-shrink': '0',
-          background: `var(--we-color-${v})`,
+          background: isRole(v) ? `var(--we-role-${v})` : `var(--we-color-${v})`,
           'box-shadow':
             color() === v
               ? `0 0 0 2px var(--we-color-primary-600)`
@@ -1271,6 +1366,48 @@ function RingPicker(props: { value: string; onChange: (v: string) => void }) {
                     <we-text fontSize="200">Theme accent</we-text>
                   </button>
                 </we-tooltip>
+
+                {/* Roles first: this is what a template should be reaching for. */}
+                <Column gap="100">
+                  <we-text fontSize="100" color="text-faint">
+                    Roles — follow the theme
+                  </we-text>
+                  <For each={COLOR_ROLES}>
+                    {(g) => (
+                      <Row gap="100" wrap>
+                        <For each={g.roles}>
+                          {(v) => (
+                            <we-tooltip title={`${v} · ${g.group}`} placement="top">
+                              <button
+                                onClick={() => {
+                                  props.onChange(v);
+                                  setOpen(false);
+                                }}
+                                onMouseEnter={() => setHovered(v)}
+                                onMouseLeave={() => setHovered(null)}
+                                style={{
+                                  all: 'unset',
+                                  width: '20px',
+                                  height: '20px',
+                                  background: `var(--we-role-${v})`,
+                                  'box-shadow': `0 0 0 1px var(--we-role-${hovered() === v ? 'accent' : 'border'})`,
+                                  'border-radius': '3px',
+                                  cursor: 'pointer',
+                                  padding: '0',
+                                  transition: 'all 0.3s',
+                                }}
+                              />
+                            </we-tooltip>
+                          )}
+                        </For>
+                      </Row>
+                    )}
+                  </For>
+                </Column>
+
+                <we-text fontSize="100" color="text-faint">
+                  Scale — a fixed colour, for a palette
+                </we-text>
 
                 {/* White + black */}
                 <Row gap="100">{['white', 'black'].map((v) => swatch(v))}</Row>

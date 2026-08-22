@@ -721,6 +721,71 @@ export function ThemePanel() {
     saveTheme();
   }
 
+  /**
+   * A small gallery rendered in the theme being edited.
+   *
+   * Every role needs somewhere visible to land, and no single screen of a real app contains one of
+   * everything — the roles that look inert are usually the ones the current route happens not to
+   * use. Editing a colour and looking is the natural way to understand what it does; this is what
+   * makes that reliable rather than a hunt for a screen with a tooltip on it.
+   *
+   * It carries `probeStyle` for the same reason the sampling probe does: the panel is chrome, and
+   * in scoped mode the theme being edited is not the one the chrome is wearing.
+   */
+  function previewStrip() {
+    const chip = (bg: string, fg: string, text: string) => (
+      <Column bg={bg} color={fg} px="200" py="100" r="200" fontSize="100">
+        {text}
+      </Column>
+    );
+    return (
+      <div style={{ ...probeStyle(), 'border-radius': tokenVar('radius', '300'), overflow: 'hidden' }}>
+        <Column bg="page" p="300" gap="300">
+          <Column bg="surface" p="300" r="300" gap="200" border={`1px solid ${'var(--we-role-border)'}`}>
+            <we-text fontSize="300" fontWeight="600" color="text">
+              A card on the page
+            </we-text>
+            <we-text fontSize="200" color="text-muted">
+              Muted supporting text.
+            </we-text>
+            <we-text fontSize="100" color="text-faint">
+              Faint metadata.
+            </we-text>
+            <Row gap="200" ay="center" wrap>
+              <we-button size="xs" variant="primary">
+                Primary
+              </we-button>
+              <we-button size="xs" variant="secondary">
+                Secondary
+              </we-button>
+              <we-button size="xs" variant="ghost">
+                Ghost
+              </we-button>
+            </Row>
+            <we-input size="sm" placeholder="An input…" />
+            <Row gap="100" wrap>
+              {chip('danger-surface', 'danger-text', 'Danger')}
+              {chip('success-surface', 'success-text', 'Success')}
+              {chip('warning-surface', 'warning-text', 'Warning')}
+              {chip('accent-muted', 'accent-text', 'Accent')}
+            </Row>
+          </Column>
+          <Row gap="200" ay="center">
+            <Column bg="surface-raised" px="300" py="200" r="300" shadow="md" fontSize="100" color="text">
+              Raised
+            </Column>
+            <Column bg="surface-sunken" px="300" py="200" r="300" fontSize="100" color="text-muted">
+              Sunken
+            </Column>
+            <Column bg="surface-inverse" px="300" py="200" r="300" fontSize="100" color="on-inverse">
+              Tooltip
+            </Column>
+          </Row>
+        </Column>
+      </div>
+    );
+  }
+
   function roleRow(role: ThemeRole, label: string, hint: string) {
     const pinned = () => overrides().roles?.[role];
     // Unpinned, the swatch shows what the role currently resolves to — sampled with its alpha, so
@@ -919,6 +984,8 @@ export function ThemePanel() {
                 and lightness above — pin one to redesign a relationship the scale cannot express, such as raised
                 surfaces getting lighter in a dark theme instead of casting a shadow.
               </we-text>
+              {previewStrip()}
+
               {/*
                 Shown where the decisions are made rather than on a separate audit screen: a
                 warning you have to go and look for is one nobody looks for. It reports the *result*,
