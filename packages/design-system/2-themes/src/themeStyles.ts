@@ -1,3 +1,4 @@
+import { contrastRatio, parseColor, type Rgba } from '@we/design-utils';
 import type { ColorHueToken, ColorLightnessToken } from '@we/tokens';
 import { color, role } from '@we/tokens';
 
@@ -351,8 +352,95 @@ export function applyThemeVars(root: HTMLElement, theme: ThemeOverrides): void {
       if (!(prop in styles)) root.style.removeProperty(prop);
     }
   }
-  appliedThemeVars.set(root, new Set(Object.keys(styles)));
-
   // Inline, so a theme beats any stylesheet — including a component's own defaults.
   for (const [prop, value] of Object.entries(styles)) root.style.setProperty(prop, value);
+
+  // Tracked alongside the rest, so the next theme clears them: a derived value from the old theme
+  // outliving it would be worse than never deriving one.
+  const derived = applyAutoContrast(root, theme);
+  appliedThemeVars.set(root, new Set([...Object.keys(styles), ...derived]));
+}
+
+/**
+ * Foregrounds whose colour is a *consequence* of the fill they sit on, not a separate decision.
+ *
+ * Each entry is a foreground role, the fills it has to stay readable against, and the two candidates
+ * to choose between. The worst of the fills wins the vote: a primary button's label has to work at
+ * rest, on hover and while pressed, and a label chosen against the rest state alone goes unreadable
+ * halfway through a click.
+ */
+const AUTO_CONTRAST: { fg: ThemeRole; against: ThemeRole[] }[] = [
+  { fg: 'onAccent', against: ['accent', 'accentHover', 'accentActive'] },
+  { fg: 'onInverse', against: ['surfaceInverse'] },
+];
+
+/**
+ * Of the candidate foregrounds, the one that stays readable against *every* fill it must sit on.
+ *
+ * The weakest pairing decides rather than the average: a primary button's label has to work at
+ * rest, on hover and while pressed, and one chosen against the rest state alone goes unreadable
+ * halfway through a click. Ties and unparseable candidates fall back to the first, which is the
+ * light one — the conventional default, and the one a designed theme is most likely to want.
+ *
+ * Separated from the DOM work so the decision can be tested without a browser; `applyAutoContrast`
+ * is only the part that measures and writes.
+ */
+export function pickReadableForeground(candidates: string[], fills: Rgba[]): string {
+  let best = candidates[0];
+  let bestScore = -1;
+  for (const candidate of candidates) {
+    const colour = parseColor(candidate);
+    if (!colour) continue;
+    const score = Math.min(...fills.map((fill) => contrastRatio(colour, fill)));
+    if (score > bestScore) {
+      bestScore = score;
+      best = candidate;
+    }
+  }
+  return best;
+}
+
+/**
+ * Choose the readable foreground for each auto-contrast pair, and write it.
+ *
+ * This is what stops a theme author having to know about contrast at all. Pick a pale accent and the
+ * button label goes dark on its own; pick a deep one and it goes light. Without it, "choose an
+ * accent" is a decision that can silently produce an unreadable button — and the evidence that this
+ * matters is that three of the seven *built-in* themes needed exactly this correction by hand.
+ *
+ * Deliberately skipped where the theme pins the foreground itself: an author who has said what they
+ * want is not overruled, even when they are wrong. The contrast test is where being wrong is
+ * reported; this is only for the roles nobody has spoken for.
+ *
+ * Runs after the variables are applied because it has to *measure*: the fill is usually a `var()`
+ * chain over a parametric ramp, and the only thing that knows what that resolves to is the browser.
+ */
+function applyAutoContrast(root: HTMLElement, theme: ThemeOverrides): string[] {
+  // Needs a real element in a real document: the whole point is to measure what a `var()` chain
+  // resolves to, and only the browser knows. Anywhere else — a test stub, a server render — the
+  // roles keep their declared defaults, which is the correct answer when nothing can be measured.
+  if (typeof getComputedStyle !== 'function' || root?.nodeType !== 1 || !root.isConnected) return [];
+  const computed = getComputedStyle(root);
+  const written: string[] = [];
+
+  for (const { fg, against } of AUTO_CONTRAST) {
+    if (theme.roles?.[fg] !== undefined) continue;
+
+    const fills = against
+      .map((role) => parseColor(computed.getPropertyValue(roleVar(role)).trim()))
+      .filter((c): c is Rgba => c !== null);
+    if (!fills.length) continue;
+
+    // Hue and saturation follow the theme's neutral so the label still belongs to it; only the
+    // lightness is being decided.
+    const hue = computed.getPropertyValue('--we-color-neutral-hue').trim() || '220';
+    const saturation = computed.getPropertyValue('--we-color-neutral-saturation').trim() || '10%';
+    const candidates = [`hsl(${hue} ${saturation} 98%)`, `hsl(${hue} ${saturation} 10%)`];
+
+    const prop = roleVar(fg);
+    root.style.setProperty(prop, pickReadableForeground(candidates, fills));
+    written.push(prop);
+  }
+
+  return written;
 }

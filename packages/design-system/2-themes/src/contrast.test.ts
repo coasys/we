@@ -17,6 +17,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { ThemeOverrides, ThemeRole } from './overrides';
 import { THEME_PRESETS, type ThemeName } from './presets';
+import { pickReadableForeground } from './themeStyles';
 
 const PAIRS: { fg: ThemeRole; bg: ThemeRole; level: ContrastLevel; what: string }[] = [
   { fg: 'text', bg: 'page', level: 'body', what: 'body text on the page' },
@@ -92,5 +93,33 @@ describe.each(Object.keys(THEME_PRESETS) as ThemeName[])('%s', (name) => {
       Number(ratio.toFixed(2)),
       `${name}: ${pair.what} is ${ratio.toFixed(2)}:1, needs ${CONTRAST_MINIMUM[pair.level]}:1`,
     ).toBeGreaterThanOrEqual(CONTRAST_MINIMUM[pair.level]);
+  });
+});
+
+describe('pickReadableForeground', () => {
+  const LIGHT = 'hsl(220 10% 98%)';
+  const DARK = 'hsl(220 10% 10%)';
+  const fill = (css: string) => [parseColor(css)!];
+
+  it('goes dark on a pale fill and light on a deep one', () => {
+    expect(pickReadableForeground([LIGHT, DARK], fill('hsl(55 95% 70%)'))).toBe(DARK);
+    expect(pickReadableForeground([LIGHT, DARK], fill('hsl(250 70% 25%)'))).toBe(LIGHT);
+  });
+
+  /*
+    The case that makes this worth having as its own function: a label chosen against the rest
+    state alone can go unreadable halfway through a click, when the fill darkens under the pointer.
+  */
+  it('lets the weakest pairing decide, not the first fill', () => {
+    const rest = parseColor('hsl(220 80% 46%)')!;
+    const pressed = parseColor('hsl(220 80% 88%)')!;
+    const chosen = pickReadableForeground([LIGHT, DARK], [rest, pressed]);
+    // Light reads on the rest state and vanishes on the pressed one, so dark has to win.
+    expect(chosen).toBe(DARK);
+    expect(contrastRatio(parseColor(chosen)!, pressed)).toBeGreaterThan(contrastRatio(parseColor(LIGHT)!, pressed));
+  });
+
+  it('falls back to the first candidate when none can be parsed', () => {
+    expect(pickReadableForeground([LIGHT, 'not-a-colour'], fill('#000'))).toBe(LIGHT);
   });
 });
