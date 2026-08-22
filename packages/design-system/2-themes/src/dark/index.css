@@ -11,11 +11,6 @@
   box-shadow: 0 0 40px 20px hsl(var(--we-color-primary-hue) var(--we-color-saturation) 20% / 5%);
 }
 
-[data-we-theme='dark'] we-tooltip::part(tooltip) {
-  background: var(--we-color-neutral-50);
-  color: var(--we-color-black);
-}
-
 [data-we-theme='dark'] we-text[variant='heading-md'] {
   color: var(--we-color-primary-700);
 }

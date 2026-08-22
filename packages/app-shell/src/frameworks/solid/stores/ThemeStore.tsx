@@ -103,8 +103,13 @@ export interface ThemeStore {
    * space's. Null in global mode, where the template inherits documentElement.
    */
   activeTemplateTheme: Accessor<ThemeData | null>;
-  /** Apply a theme temporarily (space default) without persisting to AgentSettings. */
-  replaceTheme: (themeId: string) => void;
+  /**
+   * Apply a theme temporarily (space default) without persisting to AgentSettings.
+   *
+   * `explicit` marks a choice somebody made, as opposed to a recompute — only the former may end an
+   * editing session on a different theme. See the implementation for why the difference matters.
+   */
+  replaceTheme: (themeId: string, opts?: { explicit?: boolean }) => void;
   /** Restore the persisted personal theme (called when leaving a space with a default theme). */
   restorePersonalTheme: () => void;
   /** Clear the scoped space theme without restoring the personal theme (used when entering a space with no default theme). */
@@ -747,9 +752,19 @@ export function ThemeStoreProvider(props: ParentProps) {
    * back to the agent's own theme rather than a light default, so a slow load reads as "not themed
    * yet" instead of flashing white.
    */
-  function replaceTheme(themeId: string) {
-    // Don't disturb an editing preview — it outranks the space theme on both surfaces.
-    if (untrack(() => editingTheme())) return;
+  function replaceTheme(themeId: string, opts?: { explicit?: boolean }) {
+    /*
+      An editing session outranks the space theme on both surfaces, so a recompute must not steal
+      it: walking into a space while editing should keep showing what you are editing.
+
+      A *pick* is the opposite, and the two arrive here by the same door. Without the distinction
+      the theme picker looked broken — it writes the pin, the recompute lands here, the guard drops
+      it, `currentThemeId` never moves, and nothing downstream notices; the editing theme kept
+      masking `documentTheme` and the picker appeared stuck on it. Told which it is, an explicit
+      choice moves `currentThemeId`, and EditorStore's effect on that ends the session and closes
+      the panel — flushing any debounced edit on the way out.
+    */
+    if (!opts?.explicit && untrack(() => editingTheme())) return;
     setCurrentThemeId(themeId);
   }
 

@@ -28,6 +28,7 @@ export type ThemeRole =
   | 'textMuted'
   | 'textFaint'
   | 'textInverse'
+  | 'surfaceInverse'
   | 'border'
   | 'borderStrong'
   | 'accent'

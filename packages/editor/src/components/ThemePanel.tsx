@@ -104,7 +104,7 @@ const INPUT_SPACING_OPTIONS = [
 ];
 
 /**
- * The 21 semantic roles, grouped the way somebody designing a theme thinks about them.
+ * Every semantic role, grouped the way somebody designing a theme thinks about them.
  *
  * Roles are the difference between a theme that recolours and a theme that is designed: the
  * lightness scale steps evenly, so no combination of hue, saturation, multiplier and subtractor can
@@ -122,6 +122,7 @@ const ROLE_GROUPS: { label: string; roles: { role: ThemeRole; label: string }[] 
       { role: 'surfaceSunken', label: 'Sunken' },
       { role: 'surfaceHover', label: 'Hover' },
       { role: 'surfaceActive', label: 'Pressed' },
+      { role: 'surfaceInverse', label: 'Inverse' },
     ],
   },
   {
@@ -130,7 +131,7 @@ const ROLE_GROUPS: { label: string; roles: { role: ThemeRole; label: string }[] 
       { role: 'text', label: 'Primary' },
       { role: 'textMuted', label: 'Muted' },
       { role: 'textFaint', label: 'Faint' },
-      { role: 'textInverse', label: 'Inverse' },
+      { role: 'textInverse', label: 'On inverse' },
     ],
   },
   {

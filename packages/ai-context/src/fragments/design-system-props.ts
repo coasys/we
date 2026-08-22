@@ -45,7 +45,8 @@ a user-chosen swatch.
 | \`text\` | Primary body and heading text. |
 | \`text-muted\` | Secondary text — captions, labels, metadata. |
 | \`text-faint\` | Tertiary text — placeholders, disabled labels, decorative icons. |
-| \`text-inverse\` | Text on an inverted surface, such as a tooltip. **Not** for text on the accent — that is \`accent-text\`. |
+| \`surface-inverse\` | A surface deliberately opposite to the page — a tooltip. Holds a fixed lightness, so it does *not* flip with the theme. |
+| \`text-inverse\` | Text on \`surface-inverse\`. **Not** for text on the accent — that is \`accent-text\`. |
 | \`border\` | Default borders and dividers. |
 | \`border-strong\` | Emphasised separation. |
 | \`accent\` | An accent *fill* — a primary button, a selected disc. |

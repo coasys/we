@@ -28,8 +28,28 @@ export const role = {
   textMuted: 'var(--we-color-neutral-500)',
   /** Tertiary/faint text (placeholders, disabled labels). */
   textFaint: 'var(--we-color-neutral-400)',
-  /** Text on inverted surfaces (e.g. tooltips). */
-  textInverse: 'var(--we-color-neutral-0)',
+  /**
+   * Text on an inverted surface — a tooltip, a filled status button.
+   *
+   * A *fixed* lightness rather than a scale position, for the same reason `overlay` and
+   * `shadowColor` are: the scale flips with the theme, so `neutral-0` here read as near-white in a
+   * light theme and near-black in a dark one — inverting along with the surface it is supposed to
+   * contrast against, which is the one thing it must not do. It is paired with `surfaceInverse`,
+   * and the two hold their relationship in both polarities.
+   *
+   * Hue and saturation stay parametric, so it still follows a theme's neutral tint.
+   */
+  textInverse: 'hsl(var(--we-color-neutral-hue) var(--we-color-neutral-saturation) 98%)',
+
+  /**
+   * A surface deliberately opposite to the page — the tooltip, and anything else that must read as
+   * "not part of the document".
+   *
+   * Like `textInverse`, pinned in lightness so it does not flip. The tooltip hardcoded `#222` for
+   * exactly this reason and the dark theme carried a CSS override to undo it in dark mode; both are
+   * gone, and a theme can now move the pair together.
+   */
+  surfaceInverse: 'hsl(var(--we-color-neutral-hue) var(--we-color-neutral-saturation) 13%)',
   /** Default border/divider. */
   border: 'var(--we-color-neutral-200)',
   /** Emphasised border (focus-adjacent, strong separation). */
