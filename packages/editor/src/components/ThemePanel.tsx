@@ -1,12 +1,12 @@
 import { CodeEditor, Column, Row } from '@we/components/solid';
 import { CONTRAST_MINIMUM, type ContrastLevel, contrastRatio, parseColor, tokenVar } from '@we/design-utils';
 import type { ThemeOverrides, ThemeRole } from '@we/schema-shared';
-import { roleVar, themeToStyle } from '@we/schema-shared';
+import { roleVar, surfacesForPolarity, themeToStyle } from '@we/schema-shared';
 import type { JSX } from 'solid-js';
 import { createEffect, createMemo, createSignal, For, onCleanup, Show } from 'solid-js';
 
 import { useEditorHost } from '../host';
-import { nextRoles, roleTierLabel, surfacesForPolarity } from '../themeRoles';
+import { nextRoles, roleTierLabel } from '../themeRoles';
 
 const SAVE_DEBOUNCE_MS = 600;
 

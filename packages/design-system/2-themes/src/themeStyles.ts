@@ -444,3 +444,64 @@ function applyAutoContrast(root: HTMLElement, theme: ThemeOverrides): string[] {
 
   return written;
 }
+
+/**
+ * The surface stack a polarity needs.
+ *
+ * Flipping the multiplier inverts the whole scale, and the four surface roles do not survive that
+ * intact: `page` is neutral-50 and `surface` is neutral-0, so in dark the card lands *below* the
+ * page it sits on, and the sunken well lands above both. Every dark interface does the reverse —
+ * depth is carried by light, because there is no darker left to go.
+ *
+ * So going dark pins the stack, matching what the `dark` preset does. Going light clears the pins
+ * instead of writing its own: the parametric defaults are already right in that direction, and a
+ * theme with no pins is one the hue and lightness sliders still fully control.
+ *
+ * It lives here rather than in the editor because two different things change a theme's polarity —
+ * the Light/Dark buttons and the base-preset picker — and only one of them was in the editor. A
+ * theme that went through the second path kept the stack from the polarity it had left, which is
+ * how three clicks produced near-black cards under a light theme's near-black text: 1.12:1.
+ *
+ * Clobbering a hand-tuned stack is the intended behaviour rather than a regrettable side effect —
+ * a stack tuned for one polarity is not merely stale after a flip, it is inverted, and silently
+ * keeping it is what produces a "dark" theme with white cards.
+ */
+const neutralAt = (lightness: number) =>
+  `hsl(var(--we-color-neutral-hue) var(--we-color-neutral-saturation) ${lightness}%)`;
+
+export const DARK_SURFACES: Partial<Record<ThemeRole, string>> = {
+  page: neutralAt(10),
+  surface: neutralAt(14),
+  surfaceSunken: neutralAt(8),
+  surfaceRaised: neutralAt(19),
+};
+
+export function surfacesForPolarity(
+  polarity: 'light' | 'dark',
+  current: Partial<Record<ThemeRole, string>> | undefined,
+): Partial<Record<ThemeRole, string>> | undefined {
+  const next = { ...(current ?? {}) };
+  if (polarity === 'dark') Object.assign(next, DARK_SURFACES);
+  else for (const role of Object.keys(DARK_SURFACES) as ThemeRole[]) delete next[role];
+  return Object.keys(next).length ? next : undefined;
+}
+
+export const isDarkPolarity = (overrides: Pick<ThemeOverrides, 'multiplier'>) => (overrides.multiplier ?? 1) === -1;
+
+/**
+ * The roles to keep when a theme changes base preset.
+ *
+ * Carrying the author's own pins across a preset change is right for almost all of them — a
+ * hand-picked accent should survive. It is wrong for the four surfaces, which are the ones whose
+ * *meaning* depends on the polarity, so those are reconciled and everything else is left alone.
+ *
+ * Only on an actual change of polarity: re-picking within the same one must leave a tuned stack
+ * where it is, or choosing between two dark presets would silently discard the author's work.
+ */
+export function reconcileSurfaces(
+  existing: ThemeOverrides,
+  preset: Pick<ThemeOverrides, 'multiplier'>,
+): Partial<Record<ThemeRole, string>> | undefined {
+  if (isDarkPolarity(existing) === isDarkPolarity(preset)) return existing.roles;
+  return surfacesForPolarity(isDarkPolarity(preset) ? 'dark' : 'light', existing.roles);
+}

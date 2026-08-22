@@ -49,39 +49,3 @@ export function nextRoles(
   else next[role] = value;
   return Object.keys(next).length ? next : undefined;
 }
-
-/**
- * The surface stack a polarity needs, for the Light/Dark buttons.
- *
- * Flipping the multiplier inverts the whole scale, and the four surface roles do not survive that
- * intact: `page` is neutral-50 and `surface` is neutral-0, so in dark the card lands *below* the
- * page it sits on, and the sunken well lands above both. Every dark interface does the reverse —
- * depth is carried by light, because there is no darker left to go.
- *
- * So the Dark button pins the stack, matching what the `dark` preset does. Light clears the pins
- * instead of writing its own: the parametric defaults are already right in that direction, and a
- * theme with no pins is one the hue and lightness sliders still fully control.
- *
- * Clobbering a hand-tuned stack is the intended behaviour rather than a regrettable side effect —
- * a stack tuned for one polarity is not merely stale after a flip, it is inverted, and silently
- * keeping it is what produces a "dark" theme with white cards.
- */
-const neutralAt = (lightness: number) =>
-  `hsl(var(--we-color-neutral-hue) var(--we-color-neutral-saturation) ${lightness}%)`;
-
-export const DARK_SURFACES: Partial<Record<ThemeRole, string>> = {
-  page: neutralAt(10),
-  surface: neutralAt(14),
-  surfaceSunken: neutralAt(8),
-  surfaceRaised: neutralAt(19),
-};
-
-export function surfacesForPolarity(
-  polarity: 'light' | 'dark',
-  current: Partial<Record<ThemeRole, string>> | undefined,
-): Partial<Record<ThemeRole, string>> | undefined {
-  const next = { ...(current ?? {}) };
-  if (polarity === 'dark') Object.assign(next, DARK_SURFACES);
-  else for (const role of Object.keys(DARK_SURFACES) as ThemeRole[]) delete next[role];
-  return Object.keys(next).length ? next : undefined;
-}

@@ -8,9 +8,13 @@
  */
 export {
   applyThemeVars,
+  DARK_SURFACES,
+  isDarkPolarity,
   migrateOverrides,
   parseOverrides,
+  reconcileSurfaces,
   roleVar,
+  surfacesForPolarity,
   THEME_SCHEMA_VERSION,
   themeToStyle,
 } from '@we/themes/presets';

@@ -235,4 +235,12 @@ export function isThemeName(value: string): value is ThemeName {
 // The vocabulary and its mapping live beside the presets — one JS entry for the package.
 export type { ThemeOverrides, ThemeRole } from './overrides';
 export { migrateOverrides, parseOverrides, THEME_SCHEMA_VERSION } from './migrate';
-export { applyThemeVars, roleVar, themeToStyle } from './themeStyles';
+export {
+  applyThemeVars,
+  DARK_SURFACES,
+  isDarkPolarity,
+  reconcileSurfaces,
+  roleVar,
+  surfacesForPolarity,
+  themeToStyle,
+} from './themeStyles';

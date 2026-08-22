@@ -11,7 +11,7 @@ import {
   Theme,
 } from '@we/models';
 import type { ThemeOverrides } from '@we/schema-shared';
-import { applyThemeVars, parseOverrides, THEME_SCHEMA_VERSION } from '@we/schema-shared';
+import { applyThemeVars, parseOverrides, reconcileSurfaces, THEME_SCHEMA_VERSION } from '@we/schema-shared';
 import type { SanitiseCssOptions } from '@we/themes/sanitiseCss';
 import { sanitiseCss } from '@we/themes/sanitiseCss';
 import {
@@ -856,6 +856,16 @@ export function ThemeStoreProvider(props: ParentProps) {
       multiplier: presetDefaults.multiplier,
       subtractor: presetDefaults.subtractor,
     };
+
+    /*
+      Reconcile the surface stack when the preset flips polarity.
+
+      `...existing` carries the author's own role pins forward, which is right for almost all of
+      them. It is wrong for the four surfaces: a stack tuned for dark is not merely stale under a
+      light preset, it is upside down. Choosing Dark and then picking a light base preset left
+      near-black cards under a light theme's near-black text — 1.12:1, three clicks in.
+    */
+    updated.roles = reconcileSurfaces(existing, presetDefaults);
     if (preset) updated.themeName = preset;
     else delete updated.themeName;
 
