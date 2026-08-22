@@ -67,7 +67,7 @@ const CSS_STYLES = css`
 
   :host(:not([line='none']):hover) [part='line'],
   :host(:not([line='none'])[dragging]) [part='line'] {
-    background: var(--we-resize-handle-line-active, var(--we-color-primary-500));
+    background: var(--we-resize-handle-line-active, var(--we-role-accent));
   }
 
   /* Keyboard users get the same affordance: the handle is focusable and the focus ring is the line
@@ -77,8 +77,8 @@ const CSS_STYLES = css`
   }
 
   :host(:not([line='none']):focus-visible) [part='line'] {
-    background: var(--we-resize-handle-line-active, var(--we-color-primary-500));
-    box-shadow: 0 0 0 1px var(--we-resize-handle-line-active, var(--we-color-primary-500));
+    background: var(--we-resize-handle-line-active, var(--we-role-accent));
+    box-shadow: 0 0 0 1px var(--we-resize-handle-line-active, var(--we-role-accent));
   }
 
   /*

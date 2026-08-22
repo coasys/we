@@ -14,7 +14,7 @@ const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   gap: '200',
   cursor: 'pointer',
   fontSize: '300',
-  color: 'neutral-800',
+  color: 'text',
 };
 
 const SIZE_DEFAULTS: Record<ComponentSize, Partial<DesignSystemProps>> = {
@@ -37,13 +37,13 @@ const styles = css`
   [part='track'] {
     position: relative;
     border-radius: var(--we-radius-pill);
-    background: var(--we-color-neutral-300);
+    background: var(--we-role-surface-active);
     transition: background var(--we-transition-200, 150ms) ease;
     flex-shrink: 0;
   }
 
   :host([checked]) [part='track'] {
-    background: var(--we-color-primary-500);
+    background: var(--we-role-accent);
   }
 
   [part='thumb'] {

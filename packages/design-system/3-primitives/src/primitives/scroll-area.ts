@@ -30,7 +30,7 @@ const styles = css`
   }
 
   [part='base'] {
-    scrollbar-color: var(--we-color-neutral-300) transparent;
+    scrollbar-color: var(--we-role-border-strong) transparent;
   }
 
   [part='base']::-webkit-scrollbar {
@@ -43,12 +43,12 @@ const styles = css`
   }
 
   [part='base']::-webkit-scrollbar-thumb {
-    background: var(--we-color-neutral-300);
+    background: var(--we-role-surface-active);
     border-radius: var(--we-radius-pill);
   }
 
   [part='base']::-webkit-scrollbar-thumb:hover {
-    background: var(--we-color-neutral-400);
+    background: var(--we-role-border-strong);
   }
 `;
 

@@ -10,7 +10,7 @@ import sharedStyles from '../shared/styles';
 const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   display: 'block',
   fontSize: '300',
-  color: 'neutral-800',
+  color: 'text',
 };
 
 const styles = css`
@@ -44,14 +44,14 @@ const styles = css`
 
   /* Links */
   [part='base'] a {
-    color: var(--we-color-primary-600);
+    color: var(--we-role-accent-strong);
     text-decoration: underline;
   }
 
   /* Inline code */
   [part='base'] code {
     font-family: var(--we-font-mono, monospace);
-    background: var(--we-color-neutral-100);
+    background: var(--we-role-surface-sunken);
     padding: 0.1em 0.35em;
     border-radius: 3px;
     font-size: 0.9em;

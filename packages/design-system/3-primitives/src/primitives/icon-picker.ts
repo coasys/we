@@ -126,9 +126,9 @@ const styles = css`
     display: inline-flex;
     align-items: center;
     gap: var(--we-space-200);
-    border: 1px solid var(--we-color-neutral-300);
+    border: 1px solid var(--we-role-border);
     border-radius: var(--we-radius-400);
-    background: var(--we-color-neutral-0);
+    background: var(--we-role-surface);
     padding: 0 var(--we-space-300);
     cursor: pointer;
     white-space: nowrap;
@@ -138,13 +138,13 @@ const styles = css`
   }
 
   [part='trigger']:focus-visible {
-    border-color: var(--we-color-primary-500);
-    outline: 2px solid var(--we-color-primary-100);
+    border-color: var(--we-role-accent);
+    outline: 2px solid var(--we-role-accent-muted);
     outline-offset: -1px;
   }
 
   [part='trigger']:hover:not([disabled]) {
-    border-color: var(--we-color-neutral-400);
+    border-color: var(--we-role-border-strong);
   }
 
   [part='preview-icon'] {
@@ -157,19 +157,19 @@ const styles = css`
 
   /* Both inherit the host's type size (see SIZE_DEFAULTS) rather than pinning one of their own. */
   [part='placeholder'] {
-    color: var(--we-color-neutral-400);
+    color: var(--we-role-text-faint);
     flex: 1;
   }
 
   [part='label'] {
-    color: var(--we-color-neutral-700);
+    color: var(--we-role-text);
     flex: 1;
     overflow: hidden;
     text-overflow: ellipsis;
   }
 
   [part='caret'] {
-    color: var(--we-color-neutral-400);
+    color: var(--we-role-text-faint);
     margin-left: auto;
   }
 
@@ -197,7 +197,7 @@ const styles = css`
   [part='tabs'] {
     display: flex;
     gap: var(--we-space-100);
-    border-bottom: 1px solid var(--we-color-neutral-100);
+    border-bottom: 1px solid var(--we-role-border);
     padding-bottom: var(--we-space-200);
   }
 
@@ -208,20 +208,20 @@ const styles = css`
     border-radius: var(--we-radius-300);
     font-size: var(--we-font-size-300);
     font-weight: 500;
-    color: var(--we-color-neutral-500);
+    color: var(--we-role-text-muted);
     transition:
       background var(--we-transition-200, 150ms) ease,
       color var(--we-transition-200, 150ms) ease;
   }
 
   [part='tab']:hover {
-    background: var(--we-color-neutral-50);
-    color: var(--we-color-neutral-700);
+    background: var(--we-role-page);
+    color: var(--we-role-text);
   }
 
   [part='tab'][aria-selected='true'] {
-    background: var(--we-color-primary-50);
-    color: var(--we-color-primary-600);
+    background: var(--we-role-accent-muted);
+    color: var(--we-role-accent-strong);
   }
 
   /* Search */
@@ -230,23 +230,23 @@ const styles = css`
     display: block;
     width: 100%;
     box-sizing: border-box;
-    border: 1px solid var(--we-color-neutral-300);
+    border: 1px solid var(--we-role-border);
     border-radius: var(--we-radius-400);
     padding: var(--we-space-200) var(--we-space-300);
     font-size: var(--we-font-size-300);
-    background: var(--we-color-neutral-0);
-    color: var(--we-color-neutral-900);
+    background: var(--we-role-surface);
+    color: var(--we-role-text);
     transition: border-color var(--we-transition-200, 150ms) ease;
   }
 
   [part='search']:focus {
-    border-color: var(--we-color-primary-500);
-    outline: 2px solid var(--we-color-primary-100);
+    border-color: var(--we-role-accent);
+    outline: 2px solid var(--we-role-accent-muted);
     outline-offset: -1px;
   }
 
   [part='search']::placeholder {
-    color: var(--we-color-neutral-400);
+    color: var(--we-role-text-faint);
   }
 
   /* Icon grid */
@@ -274,13 +274,13 @@ const styles = css`
   }
 
   [part='icon-btn']:hover {
-    background: var(--we-color-neutral-50);
-    border-color: var(--we-color-neutral-200);
+    background: var(--we-role-page);
+    border-color: var(--we-role-border);
   }
 
   [part='icon-btn'][aria-selected='true'] {
-    background: var(--we-color-primary-50);
-    border-color: var(--we-color-primary-400);
+    background: var(--we-role-accent-muted);
+    border-color: var(--we-role-accent);
   }
 
   /* Load more */
@@ -292,19 +292,19 @@ const styles = css`
     text-align: center;
     padding: var(--we-space-200);
     font-size: var(--we-font-size-300);
-    color: var(--we-color-primary-500);
+    color: var(--we-role-accent);
     cursor: pointer;
     border-radius: var(--we-radius-300);
     transition: background var(--we-transition-200, 150ms) ease;
   }
 
   [part='load-more']:hover {
-    background: var(--we-color-neutral-50);
+    background: var(--we-role-page);
   }
 
   [part='no-results'] {
     text-align: center;
-    color: var(--we-color-neutral-400);
+    color: var(--we-role-text-faint);
     font-size: var(--we-font-size-300);
     padding: var(--we-space-400) 0;
   }
@@ -334,18 +334,18 @@ const styles = css`
   }
 
   [part='emoji-btn']:hover {
-    background: var(--we-color-neutral-50);
-    border-color: var(--we-color-neutral-200);
+    background: var(--we-role-page);
+    border-color: var(--we-role-border);
   }
 
   [part='emoji-btn'][aria-selected='true'] {
-    background: var(--we-color-primary-50);
-    border-color: var(--we-color-primary-400);
+    background: var(--we-role-accent-muted);
+    border-color: var(--we-role-accent);
   }
 
   [part='emoji-input-label'] {
     font-size: var(--we-font-size-300);
-    color: var(--we-color-neutral-500);
+    color: var(--we-role-text-muted);
     margin-bottom: 4px;
   }
 
@@ -354,19 +354,19 @@ const styles = css`
     display: block;
     width: 100%;
     box-sizing: border-box;
-    border: 1px solid var(--we-color-neutral-300);
+    border: 1px solid var(--we-role-border);
     border-radius: var(--we-radius-400);
     padding: var(--we-space-200) var(--we-space-300);
     font-size: var(--we-font-size-500);
     text-align: center;
-    background: var(--we-color-neutral-0);
-    color: var(--we-color-neutral-900);
+    background: var(--we-role-surface);
+    color: var(--we-role-text);
     transition: border-color var(--we-transition-200, 150ms) ease;
   }
 
   [part='emoji-input']:focus {
-    border-color: var(--we-color-primary-500);
-    outline: 2px solid var(--we-color-primary-100);
+    border-color: var(--we-role-accent);
+    outline: 2px solid var(--we-role-accent-muted);
     outline-offset: -1px;
   }
 

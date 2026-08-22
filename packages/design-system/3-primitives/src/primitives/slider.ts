@@ -13,7 +13,7 @@ const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   ay: 'center',
   gap: '300',
   width: '100%',
-  color: 'neutral-800',
+  color: 'text',
   fontSize: '300',
 };
 
@@ -61,13 +61,13 @@ const styles = css`
   input[part='native']::-webkit-slider-runnable-track {
     height: var(--track-height);
     border-radius: var(--we-radius-pill);
-    background: var(--we-color-neutral-200);
+    background: var(--we-role-surface-active);
   }
 
   input[part='native']::-moz-range-track {
     height: var(--track-height);
     border-radius: var(--we-radius-pill);
-    background: var(--we-color-neutral-200);
+    background: var(--we-role-surface-active);
   }
 
   input[part='native']::-webkit-slider-thumb {
@@ -75,7 +75,7 @@ const styles = css`
     width: var(--thumb-size);
     height: var(--thumb-size);
     border-radius: var(--we-radius-full);
-    background: var(--we-color-primary-500);
+    background: var(--we-role-accent);
     border: 2px solid white;
     box-shadow: 0 1px 3px color-mix(in srgb, var(--we-role-shadow-color) 20%, transparent);
     margin-top: calc((var(--thumb-size) - var(--track-height)) / -2);
@@ -85,7 +85,7 @@ const styles = css`
     width: var(--thumb-size);
     height: var(--thumb-size);
     border-radius: var(--we-radius-full);
-    background: var(--we-color-primary-500);
+    background: var(--we-role-accent);
     border: 2px solid white;
     box-shadow: 0 1px 3px color-mix(in srgb, var(--we-role-shadow-color) 20%, transparent);
   }

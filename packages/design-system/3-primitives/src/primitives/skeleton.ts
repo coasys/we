@@ -43,9 +43,9 @@ const styles = css`
   :host([animation='wave']) [part='base'] {
     background: linear-gradient(
       90deg,
-      var(--we-color-neutral-100) 25%,
-      var(--we-color-neutral-200) 50%,
-      var(--we-color-neutral-100) 75%
+      var(--we-role-surface-sunken) 25%,
+      var(--we-role-surface-active) 50%,
+      var(--we-role-surface-sunken) 75%
     );
     background-size: 200% 100%;
     animation: wave 1.5s linear infinite;

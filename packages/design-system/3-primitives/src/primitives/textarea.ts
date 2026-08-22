@@ -15,10 +15,10 @@ const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   fontSize: '300',
   bg: 'page',
   r: '300',
-  color: 'neutral-1000',
-  hoverProps: { bg: 'neutral-75', ring: '0 0 0 2px var(--we-ring-color, var(--we-color-primary-500))' },
-  activeProps: { bg: 'neutral-75', ring: '0 0 0 2px var(--we-ring-color, var(--we-color-primary-500))' },
-  focusProps: { bg: 'neutral-75', ring: '0 0 0 2px var(--we-ring-color, var(--we-color-primary-500))' },
+  color: 'text',
+  hoverProps: { bg: 'surface-hover', ring: '0 0 0 2px var(--we-ring-color, var(--we-role-focus))' },
+  activeProps: { bg: 'surface-hover', ring: '0 0 0 2px var(--we-ring-color, var(--we-role-focus))' },
+  focusProps: { bg: 'surface-hover', ring: '0 0 0 2px var(--we-ring-color, var(--we-role-focus))' },
 };
 
 const SIZE_DEFAULTS: Record<ComponentSize, Partial<DesignSystemProps>> = {
@@ -72,7 +72,7 @@ const styles = css`
   }
 
   [part='textarea']::placeholder {
-    color: var(--we-color-neutral-400);
+    color: var(--we-role-text-faint);
   }
 `;
 

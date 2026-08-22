@@ -45,11 +45,11 @@ const styles = css`
 
   [part='page']:hover,
   [part='nav']:hover {
-    background: var(--we-color-neutral-100);
+    background: var(--we-role-surface-sunken);
   }
 
   [part='page'][aria-current='page'] {
-    background: var(--we-color-primary-500);
+    background: var(--we-role-accent);
     color: white;
   }
 

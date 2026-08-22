@@ -19,11 +19,13 @@ const DEFAULT_PROPS: Partial<DesignSystemProps> = {
 };
 
 const VARIANT_DEFAULTS: Record<ComponentVariant, Partial<DesignSystemProps>> = {
-  neutral: { bg: 'page', color: 'neutral-800' },
-  primary: { bg: 'primary-50', color: 'primary-800' },
-  success: { bg: 'success-surface', color: 'success-800' },
-  warning: { bg: 'warning-surface', color: 'warning-800' },
-  danger: { bg: 'danger-surface', color: 'danger-800' },
+  // `surfaceSunken`, not `page`: an alert is a tinted panel, and the three status variants beside
+  // it are tints. `page` won this slot only because neutral-50 happened to be the value here.
+  neutral: { bg: 'surface-sunken', color: 'text' },
+  primary: { bg: 'accent-muted', color: 'accent-strong' },
+  success: { bg: 'success-surface', color: 'success-text' },
+  warning: { bg: 'warning-surface', color: 'warning-text' },
+  danger: { bg: 'danger-surface', color: 'danger-text' },
 };
 
 const VARIANT_ICONS: Record<ComponentVariant, string> = {
@@ -35,7 +37,7 @@ const VARIANT_ICONS: Record<ComponentVariant, string> = {
 };
 
 const VARIANT_BORDER: Record<ComponentVariant, string> = {
-  neutral: '1px solid var(--we-color-neutral-200)',
+  neutral: '1px solid var(--we-role-border)',
   primary: '1px solid var(--we-color-primary-200)',
   success: '1px solid var(--we-color-success-200)',
   warning: '1px solid var(--we-color-warning-200)',

@@ -21,7 +21,7 @@ const baseThemeSpec: Record<string, Record<string, string>> = {
     height: '100%',
     fontSize: 'var(--we-font-size-100)',
     fontFamily: 'monospace',
-    backgroundColor: 'var(--we-color-neutral-50)',
+    backgroundColor: 'var(--we-role-page)',
   },
   '.cm-scroller': {
     overflow: 'auto',
@@ -29,24 +29,24 @@ const baseThemeSpec: Record<string, Record<string, string>> = {
     lineHeight: '1.6',
   },
   '.cm-content': {
-    caretColor: 'var(--we-color-neutral-800)',
+    caretColor: 'var(--we-role-text)',
     padding: 'var(--we-space-400)',
   },
   '.cm-gutters': {
-    backgroundColor: 'var(--we-color-neutral-75)',
-    borderRight: '1px solid var(--we-color-neutral-200)',
-    color: 'var(--we-color-neutral-400)',
+    backgroundColor: 'var(--we-role-surface-hover)',
+    borderRight: '1px solid var(--we-role-border)',
+    color: 'var(--we-role-text-faint)',
     userSelect: 'none',
   },
   '.cm-activeLineGutter': {
-    backgroundColor: 'var(--we-color-neutral-100)',
+    backgroundColor: 'var(--we-role-surface-sunken)',
   },
   '.cm-activeLine': { backgroundColor: 'transparent' },
   '.cm-selectionBackground': {
-    backgroundColor: 'var(--we-color-neutral-200)',
+    backgroundColor: 'var(--we-role-surface-active)',
   },
   '&.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground': {
-    backgroundColor: 'var(--we-color-neutral-200)',
+    backgroundColor: 'var(--we-role-surface-active)',
   },
   '.cm-foldGutter .cm-gutterElement': {
     cursor: 'pointer',
@@ -72,8 +72,8 @@ const baseThemeSpec: Record<string, Record<string, string>> = {
     alignItems: 'center',
     gap: '6px',
     padding: '6px 10px',
-    backgroundColor: 'var(--we-color-neutral-0)',
-    borderTop: '1px solid var(--we-color-neutral-100)',
+    backgroundColor: 'var(--we-role-surface)',
+    borderTop: '1px solid var(--we-role-border)',
     flexWrap: 'wrap',
     fontSize: 'var(--we-font-size-100)',
   },
@@ -85,35 +85,35 @@ const baseThemeSpec: Record<string, Record<string, string>> = {
   '.cm-search input': {
     fontFamily: 'inherit',
     fontSize: 'inherit',
-    background: 'var(--we-color-neutral-50)',
-    border: '1px solid var(--we-color-neutral-200)',
+    background: 'var(--we-role-page)',
+    border: '1px solid var(--we-role-border)',
     borderRadius: 'var(--we-radius-200)',
     padding: '2px 8px',
-    color: 'var(--we-color-neutral-800)',
+    color: 'var(--we-role-text)',
     outline: 'none',
     height: '26px',
   },
   '.cm-search input:focus': {
-    borderColor: 'var(--we-color-primary-400)',
+    borderColor: 'var(--we-role-accent)',
   },
   '.cm-search button': {
     fontFamily: 'inherit',
     fontSize: 'inherit',
-    background: 'var(--we-color-neutral-100)',
-    border: '1px solid var(--we-color-neutral-200)',
+    background: 'var(--we-role-surface-sunken)',
+    border: '1px solid var(--we-role-border)',
     borderRadius: 'var(--we-radius-200)',
     padding: '2px 8px',
     cursor: 'pointer',
-    color: 'var(--we-color-neutral-700)',
+    color: 'var(--we-role-text)',
     height: '26px',
   },
   '.cm-search button:hover': {
-    background: 'var(--we-color-neutral-200)',
+    background: 'var(--we-role-surface-active)',
   },
   '.cm-panel.cm-search [name=close]': {
     background: 'none',
     border: 'none',
-    color: 'var(--we-color-neutral-500)',
+    color: 'var(--we-role-text-muted)',
     padding: '2px 4px',
     fontSize: '20px',
   },
@@ -133,18 +133,24 @@ const baseThemeSpec: Record<string, Record<string, string>> = {
   '.cm-cursor, .cm-dropCursor': {
     borderLeftColor: 'var(--we-color-neutral-700)',
   },
+  /*
+    Syntax tokens are a palette, so they keep their scale positions: a theme pinning `dangerText`
+    means "make my error messages this", not "recolour every string literal". They still follow the
+    hue and polarity parameters. The editor's *chrome* above — gutter, panel, selection, borders —
+    is UI and does take roles. (Comments are the one crossover: faint text is faint text.)
+  */
   // Syntax tokens (.tok-* classes from classHighlighter)
-  '.tok-propertyName': { color: 'var(--we-color-primary-600)' },
+  '.tok-propertyName': { color: 'var(--we-role-accent-strong)' },
   '.tok-string': { color: 'var(--we-color-success-600)' },
   '.tok-number, .tok-integer, .tok-float': { color: 'var(--we-color-warning-600)' },
   '.tok-bool, .tok-null, .tok-atom': { color: 'var(--we-color-danger-500)' },
   '.tok-keyword, .tok-controlKeyword, .tok-moduleKeyword': { color: 'var(--we-color-primary-700)', fontWeight: 'bold' },
-  '.tok-comment, .tok-lineComment, .tok-blockComment': { color: 'var(--we-color-neutral-400)', fontStyle: 'italic' },
-  '.tok-tagName': { color: 'var(--we-color-primary-500)' },
+  '.tok-comment, .tok-lineComment, .tok-blockComment': { color: 'var(--we-role-text-faint)', fontStyle: 'italic' },
+  '.tok-tagName': { color: 'var(--we-role-accent)' },
   '.tok-className, .tok-labelName': { color: 'var(--we-color-success-700)' },
   '.tok-unit': { color: 'var(--we-color-warning-500)' },
   '.tok-color': { color: 'var(--we-color-success-600)' },
-  '.tok-operator, .tok-punctuation': { color: 'var(--we-color-neutral-500)' },
+  '.tok-operator, .tok-punctuation': { color: 'var(--we-role-text-muted)' },
   '.tok-invalid': { color: 'var(--we-color-danger-600)', textDecoration: 'underline' },
 };
 

@@ -11,7 +11,7 @@ import type { MenuItemVariant } from '../types';
 const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   cursor: 'pointer',
   bg: 'transparent',
-  color: 'neutral-600',
+  color: 'text-muted',
   px: '300',
   py: '200',
   ax: 'start',
@@ -19,13 +19,13 @@ const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   gap: '300',
   hoverProps: {
     bg: 'page',
-    color: 'neutral-700',
+    color: 'text',
   },
 };
 
 const VARIANT_DEFAULTS: Partial<Record<MenuItemVariant, Partial<DesignSystemProps>>> = {
   danger: {
-    color: 'danger-500',
+    color: 'danger-text',
     hoverProps: { bg: 'danger-surface', color: 'danger-text' },
   },
 };

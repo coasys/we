@@ -14,7 +14,7 @@ const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   gap: '200',
   cursor: 'pointer',
   fontSize: '300',
-  color: 'neutral-800',
+  color: 'text',
 };
 
 const SIZE_DEFAULTS: Record<ComponentSize, Partial<DesignSystemProps>> = {
@@ -29,7 +29,7 @@ const styles = css`
   [part='control'] {
     width: 18px;
     height: 18px;
-    border: 2px solid var(--we-color-neutral-400);
+    border: 2px solid var(--we-role-border-strong);
     border-radius: var(--we-radius-200);
     background: transparent;
     display: flex;
@@ -40,8 +40,8 @@ const styles = css`
   }
 
   :host([checked]) [part='control'] {
-    background: var(--we-color-primary-500);
-    border-color: var(--we-color-primary-500);
+    background: var(--we-role-accent);
+    border-color: var(--we-role-accent);
   }
 
   :host([disabled]) {

@@ -401,7 +401,7 @@ export function ImageCrop(allProps: ImageCropProps) {
           cursor: 'grab',
           'touch-action': 'none',
           'border-radius': 'var(--we-radius-400)',
-          background: 'var(--we-color-neutral-100)',
+          background: 'var(--we-role-surface-sunken)',
         }}
         onPointerDown={(e) => {
           onPointerDown(e);
@@ -437,7 +437,7 @@ export function ImageCrop(allProps: ImageCropProps) {
 
         <Column ax="center">
           <we-slider mt="24px" min={-45} max={45} step={0.5} value={fineRotDeg()} on:input={onSlider} />
-          <we-text mt="10px" fontSize="300" color="neutral-500">
+          <we-text mt="10px" fontSize="300" color="text-muted">
             {fineRotDeg() > 0 ? `+${fineRotDeg()}°` : `${fineRotDeg()}°`}
           </we-text>
         </Column>

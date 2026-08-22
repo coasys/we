@@ -17,13 +17,13 @@ const styles = css`
     width: 48px;
     height: 48px;
     border-radius: var(--we-radius-400);
-    border: 2px solid var(--we-color-neutral-200);
+    border: 2px solid var(--we-role-border);
     cursor: pointer;
     transition: border-color var(--we-transition-200, 150ms) ease;
   }
 
   [part='preview']:hover {
-    border-color: var(--we-color-primary-500);
+    border-color: var(--we-role-accent);
   }
 
   [part='popover'] {
@@ -56,11 +56,11 @@ const styles = css`
   }
 
   [part='swatch']:hover {
-    border-color: var(--we-color-neutral-400);
+    border-color: var(--we-role-border-strong);
   }
 
   [part='swatch'][aria-selected='true'] {
-    border-color: var(--we-color-primary-500);
+    border-color: var(--we-role-accent);
   }
 
   [part='hex-input'] {
@@ -71,7 +71,7 @@ const styles = css`
 
   [part='hex-input'] input {
     all: unset;
-    border: 1px solid var(--we-color-neutral-300);
+    border: 1px solid var(--we-role-border);
     border-radius: var(--we-radius-400);
     padding: var(--we-space-100) var(--we-space-200);
     font-family: monospace;

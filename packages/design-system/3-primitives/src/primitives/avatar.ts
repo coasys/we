@@ -32,7 +32,7 @@ const styles = css`
     --we-avatar-bg: transparent;
   }
   :host([selected]) {
-    --we-avatar-box-shadow: 0px 0px 0px 2px var(--we-color-primary-500);
+    --we-avatar-box-shadow: 0px 0px 0px 2px var(--we-role-accent);
   }
   :host([online]) [part='base']:before {
     position: absolute;
@@ -43,7 +43,7 @@ const styles = css`
     width: 25%;
     height: 25%;
     border-radius: 50%;
-    background: var(--we-color-primary-500);
+    background: var(--we-role-accent);
   }
   :host([size='xxs']) {
     --we-avatar-size: var(--we-avatar-size-xxs);

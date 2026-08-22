@@ -155,7 +155,7 @@ export function Combobox(allProps: ComboboxComponentProps) {
           style={{ cursor: 'pointer', display: 'flex', 'align-items': 'center' }}
           onClick={handleCaretClick}
         >
-          <we-icon name={open() ? 'caret-up' : 'caret-down'} size="xs" color="neutral-400" />
+          <we-icon name={open() ? 'caret-up' : 'caret-down'} size="xs" color="text-faint" />
         </div>
       </we-input>
 

@@ -32,18 +32,34 @@ const VARIANT_DEFAULTS: Record<ButtonVariant, Partial<DesignSystemProps>> = {
     hoverProps: { bg: 'accent-hover', color: 'accent-text' },
     activeProps: { bg: 'accent-active', color: 'accent-text' },
   },
+  /*
+    The ladder by mixing, not by two more roles.
+
+    A filled neutral control needs three steps and the vocabulary has a role for the first. Naming
+    the other two would mean roles ("secondary button, pressed") nobody would ever pin, and leaving
+    them on the scale meant the rest state followed a theme's pin while hover jumped somewhere else.
+    Mixing toward `text` gives both, and because `text` inverts with the theme the same expression
+    darkens in a light theme and lightens in a dark one. The percentages reproduce the neutral-300
+    and neutral-400 that were here to within a point.
+  */
   secondary: {
     bg: 'surface-active',
-    color: 'neutral-800',
-    hoverProps: { bg: 'neutral-300', color: 'text' },
-    activeProps: { bg: 'neutral-400', color: 'text' },
+    color: 'text',
+    hoverProps: { bg: 'color-mix(in srgb, var(--we-role-surface-active) 88%, var(--we-role-text))', color: 'text' },
+    activeProps: { bg: 'color-mix(in srgb, var(--we-role-surface-active) 76%, var(--we-role-text))', color: 'text' },
   },
   ghost: {
     bg: 'transparent',
-    color: 'neutral-700',
+    color: 'text',
     hoverProps: { bg: 'surface-hover', color: 'text' },
     activeProps: { bg: 'surface-active', color: 'text' },
   },
+  /*
+    Deliberately still on the scale. A status *fill* has no role — `dangerText` is the foreground of
+    an error message, and a theme pinning it means "make my error text this", not "make the delete
+    button this". The scale is not a hardcode: danger-500/600/700 already follow `dangerHue` and the
+    theme's polarity, so this stays themeable through the parameter that owns it.
+  */
   danger: {
     bg: 'danger-500',
     color: 'text-inverse',
@@ -52,10 +68,10 @@ const VARIANT_DEFAULTS: Record<ButtonVariant, Partial<DesignSystemProps>> = {
   },
   outline: {
     bg: 'transparent',
-    color: 'neutral-700',
-    border: '1px solid var(--we-color-neutral-300)',
-    hoverProps: { bg: 'surface-hover', color: 'text', border: '1px solid var(--we-color-neutral-500)' },
-    activeProps: { bg: 'surface-active', color: 'text', border: '1px solid var(--we-color-neutral-500)' },
+    color: 'text',
+    border: '1px solid var(--we-role-border)',
+    hoverProps: { bg: 'surface-hover', color: 'text', border: '1px solid var(--we-role-border-strong)' },
+    activeProps: { bg: 'surface-active', color: 'text', border: '1px solid var(--we-role-border-strong)' },
   },
   // The appearance-free member of the scale: button semantics, no chrome. For wrapping arbitrary
   // content in a real <button> — the styling then lives on the wrapped Column/Card, which is

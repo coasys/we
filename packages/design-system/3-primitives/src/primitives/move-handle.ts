@@ -55,14 +55,14 @@ const CSS_STYLES = css`
     justify-content: center;
     /* Faint at rest and firm under the pointer, like the resize handle's line: a grip that shouts
        all the time is chrome on top of chrome, and this one sits over content. */
-    color: var(--we-move-handle-color, var(--we-color-neutral-400));
+    color: var(--we-move-handle-color, var(--we-role-text-faint));
     transition: color 120ms ease;
   }
 
   :host(:hover) [part='base'],
   :host([dragging]) [part='base'],
   :host(:focus-visible) [part='base'] {
-    color: var(--we-move-handle-active-color, var(--we-color-neutral-700));
+    color: var(--we-move-handle-active-color, var(--we-role-text));
   }
 
   :host(:focus-visible) {

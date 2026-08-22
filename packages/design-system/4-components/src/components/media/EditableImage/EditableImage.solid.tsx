@@ -178,7 +178,7 @@ export function EditableImage(allProps: EditableImageProps) {
           when={props.src}
           fallback={
             <Column width="100%" height="100%" ax="center" ay="center">
-              <we-icon name={props.placeholderIcon || 'image'} size="32px" color="neutral-400" />
+              <we-icon name={props.placeholderIcon || 'image'} size="32px" color="text-faint" />
             </Column>
           }
         >

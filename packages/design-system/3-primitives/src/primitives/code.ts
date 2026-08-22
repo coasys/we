@@ -14,7 +14,7 @@ const DEFAULT_PROPS: Partial<DesignSystemProps> = {
 };
 
 const MODE_DEFAULTS: Record<'inline' | 'block', Partial<DesignSystemProps>> = {
-  inline: { display: 'inline', bg: 'surface-sunken', color: 'neutral-800', px: '100', py: '50' },
+  inline: { display: 'inline', bg: 'surface-sunken', color: 'text', px: '100', py: '50' },
   block: {
     display: 'block',
     // A block of code reads as a terminal: dark in every theme. Scale tokens can't say

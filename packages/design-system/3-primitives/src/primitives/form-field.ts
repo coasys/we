@@ -39,7 +39,7 @@ const styles = css`
   [part='label'] {
     font-size: var(--we-font-size-200);
     font-weight: 500;
-    color: var(--we-color-neutral-700);
+    color: var(--we-role-text);
     cursor: default;
   }
 
@@ -50,7 +50,7 @@ const styles = css`
 
   [part='description'] {
     font-size: var(--we-font-size-100);
-    color: var(--we-color-neutral-500);
+    color: var(--we-role-text-muted);
   }
 
   /* Footnote-sized like the description, but weighted: it has to carry at the smaller size. */
