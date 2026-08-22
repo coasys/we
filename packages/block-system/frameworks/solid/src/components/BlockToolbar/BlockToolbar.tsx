@@ -55,7 +55,7 @@ export function BlockToolbar(props: BlockToolbarProps) {
       r="200"
       gap="200"
       border="1px solid var(--we-role-border)"
-      bg="surface"
+      bg="surface-sunken"
       onMouseDown={props.stopPropagation !== false ? stop : undefined}
       onClick={props.stopPropagation !== false ? stop : undefined}
     >

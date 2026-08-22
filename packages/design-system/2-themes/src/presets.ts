@@ -99,12 +99,18 @@ export const THEME_PRESETS = {
       against a ramp whose colour was inverted end for end, so it came out half again too high. The
       weighting is by how much of a screen each step paints: an unweighted fit treats `neutral-900`,
       a few pixels of text, as equal to `neutral-50`, which is the entire background.
+
+      The ceiling is constrained so that no step *clips*. At 125% the top of the ramp ran past white
+      and `text` landed on pure #ffffff — which costs almost nothing in a least-squares fit and is
+      the thing somebody notices, because a clipped step is not "one point brighter", it is the same
+      colour as every step above it. Every label, icon and ghost-button glyph in the app inherits
+      `text`, so the whole interface read as harsher than it had been.
     */
     parameters: {
       schemaVersion: THEME_SCHEMA_VERSION,
       polarity: 'dark',
-      lightnessFloor: '19.5%',
-      lightnessCeiling: '125%',
+      lightnessFloor: '20%',
+      lightnessCeiling: '121%',
       saturation: 75,
       neutralSaturation: 26,
       roles: {

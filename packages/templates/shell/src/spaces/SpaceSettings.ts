@@ -85,7 +85,7 @@ const header: SchemaNode = {
  */
 const notAWeSpaceNotice: SchemaNode = {
   type: 'Column',
-  props: { gap: '200', p: '400', bg: 'surface', r: '300', border: '1px solid border' },
+  props: { gap: '200', p: '400', bg: 'surface-sunken', r: '300', border: '1px solid border' },
   children: [
     { type: 'we-text', props: { variant: 'label' }, children: ['Nothing to configure yet'] },
     {
@@ -119,7 +119,7 @@ const communitySection: SchemaNode = {
     condition: '$space.canAdminister',
     then: {
       type: 'Column',
-      props: { gap: '300', p: '400', bg: 'surface', r: '300', border: '1px solid border' },
+      props: { gap: '300', p: '400', bg: 'surface-sunken', r: '300', border: '1px solid border' },
       $localState: {
         editName: { type: 'string', initial: '$space.name' },
         editDescription: { type: 'string', initial: '$space.description' },
@@ -221,7 +221,7 @@ const shareSection: SchemaNode = {
     condition: '$space.shareLink',
     then: {
       type: 'Column',
-      props: { gap: '300', p: '400', bg: 'surface', r: '300', border: '1px solid border' },
+      props: { gap: '300', p: '400', bg: 'surface-sunken', r: '300', border: '1px solid border' },
       children: [
         {
           type: 'Column',
@@ -284,7 +284,7 @@ const shareSection: SchemaNode = {
  */
 const personalAppearanceSection: SchemaNode = {
   type: 'Column',
-  props: { gap: '300', p: '400', bg: 'surface', r: '300', border: '1px solid border' },
+  props: { gap: '300', p: '400', bg: 'surface-sunken', r: '300', border: '1px solid border' },
   children: [
     {
       type: 'Column',
@@ -415,7 +415,7 @@ const moduleRow: SchemaNode = {
 
 const modulesSection: SchemaNode = {
   type: 'Column',
-  props: { gap: '200', p: '400', bg: 'surface', r: '300', border: '1px solid border' },
+  props: { gap: '200', p: '400', bg: 'surface-sunken', r: '300', border: '1px solid border' },
   children: [
     {
       type: 'Column',
@@ -454,7 +454,7 @@ const modulesSection: SchemaNode = {
  */
 const autoInterpretSection: SchemaNode = {
   type: 'Column',
-  props: { gap: '200', p: '400', bg: 'surface', r: '300', border: '1px solid border' },
+  props: { gap: '200', p: '400', bg: 'surface-sunken', r: '300', border: '1px solid border' },
   children: [
     {
       type: 'Row',

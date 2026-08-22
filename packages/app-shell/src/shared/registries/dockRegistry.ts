@@ -133,7 +133,7 @@ export function dockFrame(entry: DockEntry, node: SchemaNode): SchemaNode {
               // The panel's own surface. A module's node fills it and need not paint a background, a
               // border or a radius of its own — which is what stops two docked modules from looking
               // like two different applications.
-              bg: 'surface',
+              bg: 'surface-sunken',
               border: '1px solid border',
               // Rounded and lifted only while floating. A card over the app should read as being on
               // top; a panel that has taken room *from* the app meets it edge to edge, where a radius

@@ -39,7 +39,7 @@ export const conversationList: SchemaNode = {
             {
               type: 'Card',
               props: {
-                bg: 'surface',
+                bg: 'surface-sunken',
                 border: '1px solid border',
                 minWidth: '200px',
                 maxWidth: '280px',

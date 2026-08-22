@@ -266,7 +266,7 @@ export function EditingBar() {
                 top="100%"
                 right="0"
                 mt="100"
-                bg="surface"
+                bg="surface-sunken"
                 border="1px solid border"
                 r="var(--we-theme-surface-radius, var(--we-radius-400))"
                 shadow="md"

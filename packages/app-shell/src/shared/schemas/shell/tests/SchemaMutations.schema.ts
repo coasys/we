@@ -68,7 +68,7 @@ const mutationButtons3 = buttonRow('outline', [
 function mutationArea(placeholder: string, innerChildren: SchemaNode[] = []): SchemaNode {
   return {
     type: 'Column',
-    props: { p: '400', bg: 'surface', r: '400' },
+    props: { p: '400', bg: 'surface-sunken', r: '400' },
     children: [
       {
         type: 'we-text',

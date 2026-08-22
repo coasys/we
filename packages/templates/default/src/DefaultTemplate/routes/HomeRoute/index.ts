@@ -44,7 +44,7 @@ export const homeRoute: RouteSchema = {
                   type: 'Card',
                   props: {
                     ax: 'center',
-                    bg: 'surface',
+                    bg: 'surface-sunken',
                     width: '160px',
                     styles: { cursor: 'pointer' },
                     onClick: { $action: 'spaceStore.navigateToSpace', args: ['$space.spaceId'] },
@@ -91,7 +91,7 @@ export const homeRoute: RouteSchema = {
             condition: { $not: { $count: { items: { $store: 'spaceStore.orderedSidebarItems' } } } },
             then: {
               type: 'Card',
-              props: { ax: 'center', bg: 'surface', width: '100%' },
+              props: { ax: 'center', bg: 'surface-sunken', width: '100%' },
               children: [
                 // Inside a card that has its own flow, so it does not claim the height a page-level
                 // gate does.

@@ -95,7 +95,7 @@ const monthPicker: SchemaNode = {
         zIndex: 20,
         width: '260px',
         gap: '200',
-        bg: 'surface',
+        bg: 'surface-sunken',
         border: '1px solid border',
         r: '400',
         p: '300',
@@ -269,7 +269,7 @@ const monthNav: SchemaNode = {
  */
 const monthGrid: SchemaNode = {
   type: 'Column',
-  props: { width: '100%', gap: '300', bg: 'surface', border: '1px solid border', r: '500', p: '400' },
+  props: { width: '100%', gap: '300', bg: 'surface-sunken', border: '1px solid border', r: '500', p: '400' },
   children: [
     monthNav,
 

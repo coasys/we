@@ -22,7 +22,7 @@ const isRoot = { $eq: ['$dataset.id', { $store: 'datasetStore.rootDataset.id' }]
 
 const datasetCard: SchemaNode = {
   type: 'Column',
-  props: { gap: '200', p: '300', bg: 'surface', r: '300', border: '1px solid border' },
+  props: { gap: '200', p: '300', bg: 'surface-sunken', r: '300', border: '1px solid border' },
   $localState: { sdnaCleanupResult: { type: 'string', initial: '' } },
   children: [
     {

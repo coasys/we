@@ -103,7 +103,7 @@ export const schemaRoutingTemplate: TemplateSchema = {
         // $routes outlet
         {
           type: 'Column',
-          props: { p: '400', bg: 'surface', r: '400', gap: '400' },
+          props: { p: '400', bg: 'surface-sunken', r: '400', gap: '400' },
           children: [{ type: '$routes' }],
         },
       ],

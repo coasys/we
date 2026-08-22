@@ -139,7 +139,7 @@ export function TemplateCard(props: Props) {
   // ── Grid card mode (marketplace + preview) ───────────────────────────────
   return (
     <Card
-      bg="surface"
+      bg="surface-sunken"
       border="1px solid border"
       transition="box-shadow 150ms ease"
       hoverProps={mode() === 'marketplace' ? { border: '1px solid accent', shadow: 'sm' } : undefined}

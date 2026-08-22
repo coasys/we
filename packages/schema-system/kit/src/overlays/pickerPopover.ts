@@ -128,7 +128,7 @@ export function pickerPopover(opts: PickerPopoverOptions): SchemaNode {
               top: '0',
               ...(opts.side === 'right' ? { left: '100%', ml: '200' } : { right: '100%', mr: '200' }),
               minWidth: opts.width ?? '300px',
-              bg: 'surface',
+              bg: 'surface-sunken',
               border: '1px solid border',
               r: 'var(--we-theme-surface-radius, var(--we-radius-400))',
               shadow: 'md',

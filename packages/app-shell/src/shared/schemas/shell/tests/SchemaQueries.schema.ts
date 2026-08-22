@@ -19,7 +19,7 @@ import type { SchemaNode, SchemaProp, TemplateSchema } from '@we/schema-shared';
 function section(title: string, expectation: string, body: SchemaNode): SchemaNode {
   return {
     type: 'Column',
-    props: { bg: 'surface', border: '1px solid border', r: '400', p: '400', gap: '200' },
+    props: { bg: 'surface-sunken', border: '1px solid border', r: '400', p: '400', gap: '200' },
     children: [
       { type: 'we-text', props: { variant: 'heading-sm' }, children: [title] },
       { type: 'we-text', props: { variant: 'footnote', color: 'text-muted' }, children: [expectation] },
@@ -52,7 +52,7 @@ function labeledRow(label: string, query: SchemaProp): SchemaNode {
 // Live toggle — flips the QueryIR routing at runtime (no reload); watch sections re-route.
 const irToggle: SchemaNode = {
   type: 'Row',
-  props: { gap: '300', ay: 'center', wrap: true, bg: 'surface', border: '1px solid border', r: '400', p: '300' },
+  props: { gap: '300', ay: 'center', wrap: true, bg: 'surface-sunken', border: '1px solid border', r: '400', p: '300' },
   children: [
     {
       type: 'we-button',

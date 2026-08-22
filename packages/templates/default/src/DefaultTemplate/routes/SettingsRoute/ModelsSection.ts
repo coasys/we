@@ -339,7 +339,7 @@ const propertyRow: SchemaNode = {
   // neutral-0, not neutral-50: neutral-50 is what `we-input` fills itself with, so a card painted
   // in it made every field disappear into its own container. Surfaces take the surface step and
   // controls keep their recessed one — see the note on `relationshipRow` for the tinted case.
-  props: { gap: '200', p: '300', bg: 'surface', r: '300', border: '1px solid border', ay: 'start' },
+  props: { gap: '200', p: '300', bg: 'surface-sunken', r: '300', border: '1px solid border', ay: 'start' },
   children: [
     dragHandle,
     {

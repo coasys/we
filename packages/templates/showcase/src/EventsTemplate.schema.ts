@@ -57,7 +57,7 @@ const eventCard: SchemaNode = {
     width: '100%',
     gap: '300',
     p: '400',
-    bg: 'surface',
+    bg: 'surface-sunken',
     r: '400',
     border: '1px solid border',
   },

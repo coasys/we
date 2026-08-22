@@ -64,7 +64,7 @@ export function swatchRow(options: { current: SchemaProp; pick: (token: string) 
                   r: '200',
                   ax: 'center',
                   ay: 'center',
-                  bg: { $if: { condition: '$swatch.token', then: '$swatch.token', else: 'surface' } },
+                  bg: { $if: { condition: '$swatch.token', then: '$swatch.token', else: 'surface-sunken' } },
                   border: {
                     $if: {
                       condition: { $eq: [options.current, '$swatch.token'] },

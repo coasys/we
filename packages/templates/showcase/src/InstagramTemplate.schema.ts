@@ -23,7 +23,7 @@ const header: SchemaNode = {
     ay: 'center',
     px: '500',
     py: '300',
-    bg: 'surface',
+    bg: 'surface-sunken',
     borderBottom: '1px solid border',
     position: 'sticky',
     top: '0',
@@ -134,7 +134,7 @@ const photoDetail: RouteSchema = {
               props: {
                 width: '100%',
                 gap: '400',
-                bg: 'surface',
+                bg: 'surface-sunken',
                 r: '400',
                 p: '400',
                 border: '1px solid border',

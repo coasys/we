@@ -33,7 +33,7 @@ export const tokensBasePath = '/tokens';
 function section(token: string, title: string, children: (SchemaNode | string)[]): SchemaNode {
   return {
     type: 'Column',
-    props: { gap: '300', p: '400', bg: 'surface', r: '400', ax: 'start' },
+    props: { gap: '300', p: '400', bg: 'surface-sunken', r: '400', ax: 'start' },
     children: [
       {
         type: 'Row',
@@ -767,7 +767,7 @@ const queryFilteringTest = section('$query (filtering)', 'Query with where, orde
 
 const localStateBasicTest: SchemaNode = {
   type: 'Column',
-  props: { gap: '300', p: '400', bg: 'surface', r: '400', ax: 'start' },
+  props: { gap: '300', p: '400', bg: 'surface-sunken', r: '400', ax: 'start' },
   $localState: {
     name: { type: 'string', initial: '' },
     count: { type: 'number', initial: 0 },
@@ -873,7 +873,7 @@ const localStateBasicTest: SchemaNode = {
 /** Form validation: basic field errors, touch gating, $valid, $formValid */
 const formValidationBasicTest: SchemaNode = {
   type: 'Column',
-  props: { gap: '300', p: '400', bg: 'surface', r: '400', ax: 'start' },
+  props: { gap: '300', p: '400', bg: 'surface-sunken', r: '400', ax: 'start' },
   $localState: {
     username: {
       type: 'string',
@@ -1044,7 +1044,7 @@ const formValidationBasicTest: SchemaNode = {
 /** Form validation: $touch "$all", handler arrays, $resetLocal */
 const formValidationActionsTest: SchemaNode = {
   type: 'Column',
-  props: { gap: '300', p: '400', bg: 'surface', r: '400', ax: 'start' },
+  props: { gap: '300', p: '400', bg: 'surface-sunken', r: '400', ax: 'start' },
   $localState: {
     firstName: { type: 'string', initial: '', validate: [{ rule: 'required' }] },
     lastName: { type: 'string', initial: '', validate: [{ rule: 'required' }] },
@@ -1168,7 +1168,7 @@ const formValidationActionsTest: SchemaNode = {
 /** Form validation: cross-field match rule (password confirmation) */
 const formValidationMatchTest: SchemaNode = {
   type: 'Column',
-  props: { gap: '300', p: '400', bg: 'surface', r: '400', ax: 'start' },
+  props: { gap: '300', p: '400', bg: 'surface-sunken', r: '400', ax: 'start' },
   $localState: {
     password: {
       type: 'string',
@@ -1264,7 +1264,7 @@ const formValidationMatchTest: SchemaNode = {
 /** Form validation: conditional styling based on touched + valid state */
 const formValidationStylingTest: SchemaNode = {
   type: 'Column',
-  props: { gap: '300', p: '400', bg: 'surface', r: '400', ax: 'start' },
+  props: { gap: '300', p: '400', bg: 'surface-sunken', r: '400', ax: 'start' },
   $localState: {
     age: {
       type: 'number',

@@ -34,7 +34,7 @@ export const consentPrompt: SchemaNode = {
       children: [
         {
           type: 'Column',
-          props: { bg: 'surface', r: '400', p: '600', gap: '400', maxWidth: '420px', shadow: 'xl' },
+          props: { bg: 'surface-sunken', r: '400', p: '600', gap: '400', maxWidth: '420px', shadow: 'xl' },
           children: [
             // Heading — the backend's own title, so a request type we don't specifically
             // recognise still says something true rather than nothing.
@@ -204,7 +204,7 @@ export const consentSecret: SchemaNode = {
       children: [
         {
           type: 'Column',
-          props: { bg: 'surface', r: '400', p: '600', gap: '400', maxWidth: '420px', shadow: 'xl', ax: 'center' },
+          props: { bg: 'surface-sunken', r: '400', p: '600', gap: '400', maxWidth: '420px', shadow: 'xl', ax: 'center' },
           children: [
             { type: 'we-icon', props: { name: 'key', color: 'accent-text', size: 'lg' } },
             { type: 'we-text', props: { variant: 'heading-sm' }, children: ['Confirmation code'] },

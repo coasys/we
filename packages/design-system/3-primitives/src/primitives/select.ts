@@ -86,7 +86,9 @@ const styles = css`
     align-items: center;
     border: 1px solid var(--we-role-border);
     border-radius: var(--we-theme-input-radius, var(--we-radius-400));
-    background: var(--we-role-surface);
+    /* Recessed, not raised. This was neutral-0 — the *darkest* step in a dark theme, i.e. a well —
+       and reading it as "the lightest, therefore a card" inverted it. */
+    background: var(--we-role-surface-sunken);
     transition: border-color var(--we-transition-200, 150ms) ease;
   }
 

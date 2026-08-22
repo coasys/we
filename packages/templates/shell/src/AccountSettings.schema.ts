@@ -129,7 +129,7 @@ export const removeAccountModal: SchemaNode = {
       children: [
         {
           type: 'Column',
-          props: { bg: 'surface', r: '400', p: '600', gap: '400', maxWidth: '440px', shadow: 'xl' },
+          props: { bg: 'surface-sunken', r: '400', p: '600', gap: '400', maxWidth: '440px', shadow: 'xl' },
           children: [
             {
               type: 'Row',

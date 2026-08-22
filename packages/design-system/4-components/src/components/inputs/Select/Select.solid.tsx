@@ -116,7 +116,7 @@ export function Select(allProps: SelectProps) {
           </Show>
           <we-button
             variant="outline"
-            bg="surface"
+            bg="surface-sunken"
             size={size()}
             px={TRIGGER_PADDING_X[size()]}
             gap={TRIGGER_GAP[size()]}

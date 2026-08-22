@@ -71,7 +71,7 @@ const cardBody: SchemaNode = {
   props: {
     width: '100%',
     gap: '200',
-    bg: 'surface',
+    bg: 'surface-sunken',
     r: '300',
     p: '300',
     border: '1px solid border',

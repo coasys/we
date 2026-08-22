@@ -18,7 +18,7 @@ import {
   color,
   RAMP,
   role,
-  ROLE_ELEVATION_FALLBACK,
+  ROLE_RELATIVE_FALLBACK,
   STATE_STEPS,
 } from '@we/tokens';
 
@@ -64,7 +64,7 @@ export function roleVar(role: ThemeRole): string {
  * put an explicit `color:` on the scoped wrapper in TemplateLayout.
  */
 const ROLE_DEFAULT_VARS: Record<string, string> = Object.fromEntries(
-  Object.entries<string>({ ...role, ...(supportsRelativeColor() ? {} : ROLE_ELEVATION_FALLBACK) }).map(
+  Object.entries<string>({ ...role, ...(supportsRelativeColor() ? {} : ROLE_RELATIVE_FALLBACK) }).map(
     ([name, value]) => [roleVar(name as ThemeRole), value],
   ),
 );

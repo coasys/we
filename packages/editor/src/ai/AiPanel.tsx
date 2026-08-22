@@ -91,7 +91,7 @@ export function AiPanel() {
               value={apiKeyInput()}
               placeholder="sk-ant-..."
               size="sm"
-              bg="surface"
+              bg="surface-sunken"
               flex="1"
               on:input={(e: CustomEvent) => setApiKeyInput(e.detail)}
               on:keydown={(e: CustomEvent) => {

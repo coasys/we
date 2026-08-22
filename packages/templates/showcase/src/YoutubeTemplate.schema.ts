@@ -255,7 +255,7 @@ const playlistsRoute: RouteSchema = {
           children: [
             {
               type: 'Column',
-              props: { gap: '100', p: '400', bg: 'surface', r: '400', border: '1px solid border' },
+              props: { gap: '100', p: '400', bg: 'surface-sunken', r: '400', border: '1px solid border' },
               children: [
                 { type: 'we-text', props: { fontWeight: 'semibold', truncate: true }, children: ['$playlist.title'] },
                 {
@@ -305,7 +305,7 @@ export const youtubeTemplate: TemplateSchema = {
         ay: 'center',
         px: '500',
         py: '300',
-        bg: 'surface',
+        bg: 'surface-sunken',
         borderBottom: '1px solid border',
       },
       children: [
