@@ -71,8 +71,8 @@ export function BlockPlaceholder(props: BlockPlaceholderProps) {
 
   const borderStyle = () => {
     if (dragOver()) return '2px dashed var(--we-color-primary-500)';
-    if (droppable()) return '2px dashed var(--we-color-neutral-200)';
-    return '2px solid var(--we-color-neutral-200)';
+    if (droppable()) return '2px dashed var(--we-role-border)';
+    return '2px solid var(--we-role-border)';
   };
 
   const defaultHint = () => (droppable() ? 'Drop here or click for options' : 'Click to configure');

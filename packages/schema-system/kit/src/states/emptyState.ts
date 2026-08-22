@@ -68,8 +68,8 @@ export function emptyState(opts: EmptyStateOptions): SchemaNode {
     type: 'Column',
     props: { ax: 'center', ay: 'center', gap: '200', p: '600', width: '100%' },
     children: [
-      { type: 'we-icon', props: { name: opts.icon, size: 'lg', color: 'neutral-400' } },
-      { type: 'we-text', props: { color: 'neutral-400', textAlign: 'center' }, children: [message] },
+      { type: 'we-icon', props: { name: opts.icon, size: 'lg', color: 'text-faint' } },
+      { type: 'we-text', props: { color: 'text-faint', textAlign: 'center' }, children: [message] },
     ],
   };
 
@@ -93,7 +93,7 @@ export function emptyState(opts: EmptyStateOptions): SchemaNode {
 export function emptyNote(text: string): SchemaNode {
   return {
     type: 'we-text',
-    props: { variant: 'footnote', color: 'neutral-500', italic: true },
+    props: { variant: 'footnote', color: 'text-muted', italic: true },
     children: [text],
   };
 }

@@ -27,12 +27,12 @@ export function AudioDisplay(props: AudioDisplayProps) {
           </Show>
           <Column>
             <Show when={props.title}>
-              <we-text fontSize="400" color="neutral-700">
+              <we-text fontSize="400" color="text">
                 {props.title}
               </we-text>
             </Show>
             <Show when={props.artist}>
-              <we-text fontSize="400" color="neutral-500">
+              <we-text fontSize="400" color="text-muted">
                 {props.artist}
               </we-text>
             </Show>

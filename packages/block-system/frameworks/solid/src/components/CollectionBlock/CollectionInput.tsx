@@ -184,7 +184,7 @@ export function CollectionInput(props: CollectionInputProps) {
 
           {/* Column count — only relevant for grid / columns layouts */}
           <Show when={hasColumns()}>
-            <we-divider orientation="vertical" my="300" mx="100" color="neutral-100" />
+            <we-divider orientation="vertical" my="300" mx="100" color="text-faint" />
             <For each={COL_COUNTS}>
               {(n) => (
                 <we-button

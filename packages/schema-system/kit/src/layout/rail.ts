@@ -236,7 +236,7 @@ export function railItem(opts: RailItemOptions): SchemaNode {
       /*
         The current row deepens on hover rather than losing its colour.
 
-        `ghost` carries hover and active states of its own — `color: 'neutral-900'`, which is
+        `ghost` carries hover and active states of its own — `color: 'text'`, which is
         near-white in a dark theme — and a state object from the caller *replaces* the variant's
         rather than merging with it (see `getInstanceProps` in button.ts). So the row that had just
         been marked as where-you-are flashed back to looking like every other row the moment the
@@ -249,15 +249,15 @@ export function railItem(opts: RailItemOptions): SchemaNode {
       hoverProps: {
         $if: {
           condition: active,
-          then: { bg: 'neutral-200', color: 'primary-700' },
-          else: { bg: 'neutral-100', color: 'neutral-900' },
+          then: { bg: 'surface-active', color: 'accent-strong' },
+          else: { bg: 'surface-hover', color: 'text' },
         },
       },
       activeProps: {
         $if: {
           condition: active,
-          then: { bg: 'neutral-200', color: 'primary-700' },
-          else: { bg: 'neutral-200', color: 'neutral-900' },
+          then: { bg: 'surface-active', color: 'accent-strong' },
+          else: { bg: 'surface-active', color: 'text' },
         },
       },
     },
@@ -289,7 +289,7 @@ export function railItem(opts: RailItemOptions): SchemaNode {
                 ? [
                     {
                       type: 'we-badge',
-                      props: { size: 'sm', fontWeight: '600', bg: 'primary-500', color: 'neutral-0' },
+                      props: { size: 'sm', fontWeight: '600', bg: 'accent', color: 'text-inverse' },
                       children: [opts.badge],
                     },
                   ]
@@ -415,19 +415,19 @@ export function railGroup(opts: RailGroupOptions): SchemaNode {
                 props: {
                   name: { $if: { condition: isCollapsed, then: 'caret-right', else: 'caret-down' } },
                   size: 'xs',
-                  color: 'neutral-400',
+                  color: 'text-faint',
                 },
               },
               {
                 type: 'we-text',
-                props: { fontSize: '200', fontWeight: '600', color: 'neutral-400', truncate: true },
+                props: { fontSize: '200', fontWeight: '600', color: 'text-faint', truncate: true },
                 children: [opts.label],
               },
               ...(opts.badge !== undefined
                 ? [
                     {
                       type: 'we-badge',
-                      props: { size: 'sm', bg: 'neutral-200', color: 'neutral-600' },
+                      props: { size: 'sm', bg: 'surface-active', color: 'text-muted' },
                       children: [opts.badge],
                     },
                   ]

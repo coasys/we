@@ -17,22 +17,22 @@ export function LinkDisplay(props: LinkDisplayProps) {
             gap="400"
             ay="center"
             p="400"
-            border="1px solid neutral-300"
+            border="1px solid border-strong"
             r="400"
             width="100%"
-            bg="neutral-75"
-            hoverProps={{ bg: 'neutral-100' }}
+            bg="surface-sunken"
+            hoverProps={{ bg: 'surface-sunken' }}
           >
-            <we-icon name="link" color="neutral-500" />
+            <we-icon name="link" color="text-muted" />
             <Show when={props.thumbnail}>
               <we-image src={props.thumbnail} alt="" width="80px" height="60px" r="200" fit="cover" />
             </Show>
             <Column gap="100" flex="1">
-              <we-text fontSize="500" color="neutral-800">
+              <we-text fontSize="500" color="text">
                 {props.title || props.url}
               </we-text>
               <Show when={props.description}>
-                <we-text fontSize="400" color="neutral-600">
+                <we-text fontSize="400" color="text-muted">
                   {props.description}
                 </we-text>
               </Show>

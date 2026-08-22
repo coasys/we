@@ -22,7 +22,7 @@ export function TaskDisplay(props: TaskDisplayProps) {
   const isDone = createMemo(() => props.status === 'done');
 
   return (
-    <Row class="we-task-block" gap="300" ay="start" p="300" border="1px solid neutral-200" r="300">
+    <Row class="we-task-block" gap="300" ay="start" p="300" border="1px solid border" r="300">
       <we-icon name={isDone() ? 'check-square' : 'square'} size="sm" flex="none" mt="2px" />
       <Column gap="100" flex="1">
         <we-text
@@ -39,12 +39,12 @@ export function TaskDisplay(props: TaskDisplayProps) {
             </we-tag>
           </Show>
           <Show when={props.dueDate}>
-            <we-text variant="footnote" color="neutral-500">
+            <we-text variant="footnote" color="text-muted">
               Due: {new Date(props.dueDate!).toLocaleDateString()}
             </we-text>
           </Show>
           <Show when={props.assignee}>
-            <we-text variant="footnote" color="neutral-500">
+            <we-text variant="footnote" color="text-muted">
               @{props.assignee}
             </we-text>
           </Show>

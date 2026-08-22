@@ -90,7 +90,7 @@ export function VideoInput(props: VideoInputProps) {
                 </we-button>
               )}
             </For>
-            <we-divider orientation="vertical" my="300" mx="100" color="neutral-100" />
+            <we-divider orientation="vertical" my="300" mx="100" color="text-faint" />
             <we-button square variant="ghost" onClick={openModal}>
               <we-icon name="pencil" size="xs" />
             </we-button>

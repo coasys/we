@@ -75,8 +75,8 @@ export function kanbanBoard(opts: KanbanBoardOptions): SchemaNode {
                   gap: '300',
                   p: '300',
                   r: '400',
-                  bg: 'neutral-100',
-                  border: '1px solid neutral-200',
+                  bg: 'surface-sunken',
+                  border: '1px solid border',
                 },
                 $queries: {
                   cardRows: {
