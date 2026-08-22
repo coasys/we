@@ -174,16 +174,31 @@ const ROLE_GROUPS: { label: string; roles: { role: ThemeRole; label: string }[] 
 ];
 
 /**
- * The colour to store for a role, given what the picker returned and the alpha the role already had.
+ * Which rung of the ladder a stored role value sits on.
  *
- * Exported for its test rather than for reuse. `<input type="color">` cannot express alpha, so a
- * picker interaction on a translucent role returns an opaque colour — and the scrim's default is 60%
- * transparent, where that is not a slightly-wrong colour but a solid sheet over the whole app.
+ * The string says it, so nothing needs to be remembered alongside it. It matters because the rungs
+ * behave differently under everything else a theme can change: a `token` follows the hue sliders and
+ * the light/dark polarity, a `lightness` pin (the form the built-in presets use) follows hue and
+ * saturation but holds its lightness against a polarity flip, and a `custom` colour follows nothing
+ * at all. Only the last is really "opting out", and the editor should say so rather than making it
+ * the silent default.
  */
-export function roleColorToStore(hex: string, alpha: number): string {
-  if (alpha >= 1) return hex;
-  const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
-  return `rgb(${r} ${g} ${b} / ${alpha})`;
+export type RoleTier = 'auto' | 'token' | 'lightness' | 'custom';
+
+export function roleTier(value: string | undefined): RoleTier {
+  if (!value) return 'auto';
+  if (/^var\(--we-color-[a-z]+-\d+\)$/.test(value.trim())) return 'token';
+  if (/^hsl\(\s*var\(--we-color-[a-z]+-hue\)/.test(value.trim())) return 'lightness';
+  return 'custom';
+}
+
+/** What to show beside the swatch: the token's name, or the rung. */
+export function roleTierLabel(value: string | undefined): string {
+  const tier = roleTier(value);
+  if (tier === 'token') return /var\(--we-color-([a-z]+-\d+)\)/.exec(value!)![1];
+  if (tier === 'lightness') return 'theme tint';
+  if (tier === 'custom') return 'custom';
+  return 'auto';
 }
 
 /**
@@ -558,25 +573,27 @@ export function ThemePanel() {
     overrides is the only place guaranteed to resolve them the way the space will.
   */
   let roleProbe: HTMLDivElement | undefined;
-  const [roleColors, setRoleColors] = createSignal<Record<string, { hex: string; alpha: number }>>({});
+  const [roleColors, setRoleColors] = createSignal<Record<string, string>>({});
   const probeStyle = createMemo(() => themeToStyle(overrides()) as Record<string, string>);
 
-  /** Resolve any CSS colour — hsl(), a var() chain, a hex — to hex plus its alpha. */
-  function resolveColor(el: HTMLElement, value: string): { hex: string; alpha: number } {
+  /**
+   * Resolve any CSS colour — an hsl(), a var() chain, a hex — to what the browser paints.
+   *
+   * Returned as the computed string rather than a hex, so a role that carries transparency keeps
+   * it: the scrim is 60% alpha by default, and handing its picker an opaque hex would open it on a
+   * colour the role has never been.
+   */
+  function resolveColor(el: HTMLElement, value: string): string {
     el.style.color = '';
     el.style.color = value;
-    const parts = getComputedStyle(el).color.match(/[\d.]+/g);
-    if (!parts) return { hex: '#000000', alpha: 1 };
-    const [r, g, b] = parts.slice(0, 3).map((n) => Math.round(Number(n)));
-    const hex = `#${[r, g, b].map((n) => n.toString(16).padStart(2, '0')).join('')}`;
-    return { hex, alpha: parts.length > 3 ? Number(parts[3]) : 1 };
+    return getComputedStyle(el).color;
   }
 
   createEffect(() => {
     probeStyle(); // re-sample whenever any part of the theme changes
     if (!roleProbe) return;
     const computed = getComputedStyle(roleProbe);
-    const next: Record<string, { hex: string; alpha: number }> = {};
+    const next: Record<string, string> = {};
     for (const group of ROLE_GROUPS) {
       for (const { role } of group.roles) {
         next[role] = resolveColor(roleProbe, computed.getPropertyValue(roleVar(role)).trim());
@@ -593,24 +610,28 @@ export function ThemePanel() {
 
   function roleRow(role: ThemeRole, label: string) {
     const pinned = () => overrides().roles?.[role];
-    const sampled = () => roleColors()[role] ?? { hex: '#000000', alpha: 1 };
+    // Unpinned, the swatch shows what the role currently resolves to — sampled with its alpha, so
+    // opening the scrim's picker starts on a translucent colour rather than an opaque guess.
+    const shown = () => pinned() ?? roleColors()[role] ?? '#000000';
     return (
       <Row ay="center" gap="300">
         <we-color-picker
-          value={sampled().hex}
-          on:change={(e: CustomEvent) => setRole(role, roleColorToStore(e.detail as string, sampled().alpha))}
+          tokens
+          alpha
+          width="28px"
+          height="28px"
+          value={shown()}
+          on:change={(e: CustomEvent) => setRole(role, e.detail as string)}
         />
-        <we-text flex="1" fontSize="300" color={pinned() ? 'neutral-800' : 'neutral-600'}>
-          {label}
-        </we-text>
-        <Show
-          when={pinned()}
-          fallback={
-            <we-text fontSize="200" color="text-faint">
-              auto
-            </we-text>
-          }
-        >
+        <Column flex="1" gap="0">
+          <we-text fontSize="300" color={pinned() ? 'text' : 'text-muted'}>
+            {label}
+          </we-text>
+          <we-text fontSize="100" color="text-faint" truncate>
+            {roleTierLabel(pinned())}
+          </we-text>
+        </Column>
+        <Show when={pinned()}>
           <we-tooltip title="Back to the parametric default">
             <we-button variant="ghost" size="xs" onClick={() => setRole(role, undefined)}>
               <we-icon name="arrow-counter-clockwise" />

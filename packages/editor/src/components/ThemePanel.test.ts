@@ -7,21 +7,36 @@
  */
 import { describe, expect, it } from 'vitest';
 
-import { nextRoles, roleColorToStore } from './ThemePanel';
+import { nextRoles, roleTier, roleTierLabel } from './ThemePanel';
 
-describe('the colour a role stores', () => {
-  it("keeps the picker's value when the role is opaque", () => {
-    expect(roleColorToStore('#3366ff', 1)).toBe('#3366ff');
+describe('the rung a stored role value sits on', () => {
+  /*
+    The tiers are not cosmetic: only `custom` really leaves the parametric system. A token still
+    follows the hue sliders and the light/dark polarity, and a lightness pin — the form the built-in
+    presets use — follows hue and saturation while holding its lightness against a polarity flip.
+    The editor labels the rung so that opting out is a thing somebody chose rather than the silent
+    consequence of using a colour picker.
+  */
+  it('reads a token pin as a token, and names it', () => {
+    expect(roleTier('var(--we-color-neutral-200)')).toBe('token');
+    expect(roleTierLabel('var(--we-color-neutral-200)')).toBe('neutral-200');
   });
 
-  /*
-    The case that matters. `overlay` defaults to 60% alpha and <input type="color"> cannot express
-    alpha, so picking a colour for it returns an opaque one — which is not a slightly-wrong scrim
-    but a solid sheet over the application.
-  */
-  it('carries the alpha the role already had, so a scrim stays a scrim', () => {
-    expect(roleColorToStore('#000000', 0.6)).toBe('rgb(0 0 0 / 0.6)');
-    expect(roleColorToStore('#ff8000', 0.25)).toBe('rgb(255 128 0 / 0.25)');
+  it('reads the presets’ own form as a lightness pin', () => {
+    const preset = 'hsl(var(--we-color-neutral-hue) var(--we-color-neutral-saturation) 11%)';
+    expect(roleTier(preset)).toBe('lightness');
+    expect(roleTierLabel(preset)).toBe('theme tint');
+  });
+
+  it('reads a literal as custom, whatever notation it is in', () => {
+    for (const v of ['#3366ff', 'rgb(1 2 3)', 'rgb(0 0 0 / 0.6)', 'hsl(210 100% 50%)']) {
+      expect(roleTier(v)).toBe('custom');
+    }
+  });
+
+  it('reads nothing as auto', () => {
+    expect(roleTier(undefined)).toBe('auto');
+    expect(roleTierLabel(undefined)).toBe('auto');
   });
 });
 

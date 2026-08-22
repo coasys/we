@@ -1,6 +1,8 @@
 import type { DesignSystemProps, FlexDirection } from '@we/design-types';
 import { font, role } from '@we/tokens';
 
+export * from './color';
+
 // --- Shared sub-arrays (used by CSS helpers directly) ---
 export const paddingKeys = ['p', 'px', 'py', 'pt', 'pr', 'pb', 'pl'] as const;
 export const marginKeys = ['m', 'mx', 'my', 'mt', 'mr', 'mb', 'ml'] as const;
