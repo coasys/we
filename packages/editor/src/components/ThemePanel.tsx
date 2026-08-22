@@ -1,5 +1,5 @@
 import { CodeEditor, Column, Row } from '@we/components/solid';
-import { tokenVar } from '@we/design-utils';
+import { CONTRAST_MINIMUM, type ContrastLevel, contrastRatio, parseColor, tokenVar } from '@we/design-utils';
 import type { ThemeOverrides, ThemeRole } from '@we/schema-shared';
 import { roleVar, themeToStyle } from '@we/schema-shared';
 import type { JSX } from 'solid-js';
@@ -280,6 +280,37 @@ export function nextRoles(
   else next[role] = value;
   return Object.keys(next).length ? next : undefined;
 }
+
+/**
+ * The pairs the vocabulary already declares, and what each has to clear.
+ *
+ * This is the check nothing was doing: you could pin `text` to the same colour as `surface` and the
+ * editor would smile at you. It is possible here *only* because the roles name their pairings —
+ * `onAccent` is defined as the thing that sits on `accent`, `dangerText` as the message on
+ * `dangerSurface` — so the foreground and the background of each test are known rather than guessed
+ * at by walking the DOM.
+ *
+ * `ui` pairs are the 3:1 ones: a border or a focus ring is not text, and holding it to 4.5 would
+ * fail every reasonable design. `large` is for text that is always rendered big.
+ */
+const CONTRAST_PAIRS: { fg: ThemeRole; bg: ThemeRole; level: ContrastLevel; what: string }[] = [
+  { fg: 'text', bg: 'page', level: 'body', what: 'Body text on the page' },
+  { fg: 'text', bg: 'surface', level: 'body', what: 'Body text on a card' },
+  { fg: 'text', bg: 'surfaceSunken', level: 'body', what: 'Body text in a well' },
+  { fg: 'textMuted', bg: 'surface', level: 'body', what: 'Muted text on a card' },
+  { fg: 'textFaint', bg: 'surface', level: 'large', what: 'Faint text on a card' },
+  { fg: 'onAccent', bg: 'accent', level: 'body', what: 'Label on a primary button' },
+  { fg: 'onAccent', bg: 'accentHover', level: 'body', what: 'Label on a hovered primary button' },
+  { fg: 'accentText', bg: 'surface', level: 'body', what: 'Accent text on a card' },
+  { fg: 'accentText', bg: 'accentMuted', level: 'body', what: 'Accent text on its own tint' },
+  { fg: 'onInverse', bg: 'surfaceInverse', level: 'body', what: 'Tooltip text' },
+  { fg: 'dangerText', bg: 'dangerSurface', level: 'body', what: 'Danger text on its tint' },
+  { fg: 'dangerText', bg: 'surface', level: 'body', what: 'Danger text on a card' },
+  { fg: 'successText', bg: 'successSurface', level: 'body', what: 'Success text on its tint' },
+  { fg: 'warningText', bg: 'warningSurface', level: 'body', what: 'Warning text on its tint' },
+  { fg: 'border', bg: 'surface', level: 'ui', what: 'A border against a card' },
+  { fg: 'focus', bg: 'page', level: 'ui', what: 'The focus ring on the page' },
+];
 
 const HEIGHT_OPTIONS = [
   { value: '', label: 'Default' },
@@ -666,6 +697,25 @@ export function ThemePanel() {
     setRoleColors(next);
   });
 
+  /**
+   * Every declared pair that currently fails, measured against what the theme actually resolves to.
+   *
+   * Sampled from the probe rather than from the stored overrides, so it judges the *result* — a
+   * theme that pins nothing is still checked, and so is one whose failure comes from a hue slider
+   * two sections up rather than from a role at all.
+   */
+  const contrastFailures = createMemo(() => {
+    const colors = roleColors();
+    return CONTRAST_PAIRS.flatMap((pair) => {
+      const fg = parseColor(colors[pair.fg] ?? '');
+      const bg = parseColor(colors[pair.bg] ?? '');
+      if (!fg || !bg) return [];
+      const ratio = contrastRatio(fg, bg);
+      const required = CONTRAST_MINIMUM[pair.level];
+      return ratio < required ? [{ ...pair, ratio, required }] : [];
+    });
+  });
+
   function setRole(role: ThemeRole, value: string | undefined) {
     themeStore.updateEditingOverrides({ roles: nextRoles(overrides().roles, role, value) });
     saveTheme();
@@ -869,6 +919,29 @@ export function ThemePanel() {
                 and lightness above — pin one to redesign a relationship the scale cannot express, such as raised
                 surfaces getting lighter in a dark theme instead of casting a shadow.
               </we-text>
+              {/*
+                Shown where the decisions are made rather than on a separate audit screen: a
+                warning you have to go and look for is one nobody looks for. It reports the *result*,
+                so a failure caused by the hue sliders reads the same as one caused by a pin.
+              */}
+              <Show when={contrastFailures().length}>
+                <Column gap="100" p="300" r="200" bg="warning-surface">
+                  <Row ay="center" gap="200">
+                    <we-icon name="warning" size="xs" color="warning-text" />
+                    <we-text fontSize="200" fontWeight="600" color="warning-text">
+                      {contrastFailures().length} contrast {contrastFailures().length === 1 ? 'issue' : 'issues'}
+                    </we-text>
+                  </Row>
+                  <For each={contrastFailures()}>
+                    {(f) => (
+                      <we-text fontSize="100" color="text-muted" lineHeight="1.4">
+                        {f.what} — {f.ratio.toFixed(1)}:1, needs {f.required}:1
+                      </we-text>
+                    )}
+                  </For>
+                </Column>
+              </Show>
+
               <For each={ROLE_GROUPS}>
                 {(group) => (
                   <Column gap="200">

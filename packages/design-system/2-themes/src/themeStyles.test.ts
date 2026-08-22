@@ -209,7 +209,7 @@ describe('roles resolve against the theme they belong to', () => {
   it('re-declares every role default, so an unpinned role follows this theme', () => {
     const style = themeToStyle({ multiplier: -1, subtractor: '108%' });
     expect(style['--we-role-surface']).toBe('var(--we-color-neutral-0)');
-    expect(style['--we-role-text-muted']).toBe('var(--we-color-neutral-500)');
+    expect(style['--we-role-text-muted']).toBe('var(--we-color-neutral-600)');
   });
 
   it('lets a pin win over the default it replaces, rather than sitting beside it', () => {

@@ -712,6 +712,9 @@ importers:
       '@we/cli':
         specifier: workspace:*
         version: link:../../cli
+      '@we/design-utils':
+        specifier: workspace:*
+        version: link:../utils
       '@we/tokens':
         specifier: workspace:*
         version: link:../1-tokens

@@ -7,7 +7,16 @@
  */
 import { describe, expect, it } from 'vitest';
 
-import { colorVarToken, formatColor, hsvToRgb, parseColor, rgbToHex, rgbToHsv } from './color';
+import {
+  colorVarToken,
+  contrastRatio,
+  formatColor,
+  hsvToRgb,
+  parseColor,
+  relativeLuminance,
+  rgbToHex,
+  rgbToHsv,
+} from './color';
 
 describe('parseColor', () => {
   it('reads hex in every length a person might type', () => {
@@ -83,5 +92,37 @@ describe('colorVarToken', () => {
     expect(colorVarToken('var(--we-color-neutral-200)')).toBe('neutral-200');
     expect(colorVarToken('var(--we-role-surface)')).toBeNull();
     expect(colorVarToken('#fff')).toBeNull();
+  });
+});
+
+describe('contrast', () => {
+  const c = (s: string) => parseColor(s)!;
+
+  it('matches the values WCAG is checked against', () => {
+    expect(contrastRatio(c('#000'), c('#fff'))).toBeCloseTo(21, 2);
+    expect(contrastRatio(c('#fff'), c('#fff'))).toBeCloseTo(1, 2);
+    // The canonical "just passes AA on white" grey.
+    expect(contrastRatio(c('#767676'), c('#fff'))).toBeGreaterThanOrEqual(4.5);
+    expect(contrastRatio(c('#777777'), c('#fff'))).toBeLessThan(4.5);
+  });
+
+  it('is symmetric — the ratio does not care which is on top', () => {
+    expect(contrastRatio(c('#000'), c('#fff'))).toBeCloseTo(contrastRatio(c('#fff'), c('#000')), 6);
+  });
+
+  /*
+    Transparency is the thing most likely to make text unreadable, so scoring a translucent
+    foreground as though it were solid gets the check exactly backwards.
+  */
+  it('composites a translucent foreground over its background first', () => {
+    const solid = contrastRatio(c('#000'), c('#fff'));
+    const faded = contrastRatio(c('rgb(0 0 0 / 0.5)'), c('#fff'));
+    expect(faded).toBeLessThan(solid);
+    expect(faded).toBeGreaterThan(1);
+  });
+
+  it('linearises rather than averaging the raw bytes', () => {
+    // Mid-grey is not half-way in luminance; a naive average would put this near 2:1.
+    expect(relativeLuminance(c('#808080'))).toBeCloseTo(0.2159, 3);
   });
 });

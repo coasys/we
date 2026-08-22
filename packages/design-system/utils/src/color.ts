@@ -137,3 +137,49 @@ export function colorVarToken(value: string): string | null {
   const m = /^var\(--we-color-([a-z]+-\d+)\)$/.exec(value.trim());
   return m ? m[1] : null;
 }
+
+/**
+ * Relative luminance, per WCAG 2.
+ *
+ * The sRGB channels are gamma-encoded, so they have to be linearised before they mean anything
+ * photometric — averaging the raw bytes is the classic way to get a contrast check that passes
+ * things nobody can read.
+ */
+export function relativeLuminance({ r, g, b }: Pick<Rgba, 'r' | 'g' | 'b'>): number {
+  const lin = (c: number) => {
+    const s = c / 255;
+    return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+  };
+  return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
+}
+
+/**
+ * The WCAG 2 contrast ratio between two colours, 1 (identical) to 21 (black on white).
+ *
+ * A translucent foreground is composited over the background first — otherwise a 10%-alpha text
+ * colour scores as though it were solid, which is exactly backwards: transparency is the thing
+ * most likely to make text unreadable.
+ *
+ * WCAG 2 is used rather than APCA because it is what accessibility requirements are still written
+ * against. It is known to be unkind to mid-tones; a check that disagrees with the standard people
+ * are held to would be worse than one that is occasionally pessimistic.
+ */
+export function contrastRatio(foreground: Rgba, background: Rgba): number {
+  const composited: Rgba =
+    foreground.a >= 1
+      ? foreground
+      : {
+          r: foreground.r * foreground.a + background.r * (1 - foreground.a),
+          g: foreground.g * foreground.a + background.g * (1 - foreground.a),
+          b: foreground.b * foreground.a + background.b * (1 - foreground.a),
+          a: 1,
+        };
+  const [hi, lo] = [relativeLuminance(composited), relativeLuminance(background)].sort((x, y) => y - x);
+  return (hi + 0.05) / (lo + 0.05);
+}
+
+/** What a pair is for, and therefore what it has to clear. */
+export type ContrastLevel = 'body' | 'large' | 'ui';
+
+/** WCAG 2 AA thresholds: 4.5 for body text, 3 for large text and for non-text UI. */
+export const CONTRAST_MINIMUM: Record<ContrastLevel, number> = { body: 4.5, large: 3, ui: 3 };

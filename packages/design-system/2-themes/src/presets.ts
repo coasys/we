@@ -65,7 +65,11 @@ export const THEME_PRESETS = {
       subtractor: '108%',
       saturation: '50%',
       neutralSaturation: '20%',
-      roles: { surfaceRaised: 'var(--we-color-neutral-100)' },
+      roles: {
+        surfaceRaised: 'var(--we-color-neutral-100)',
+        // White on this accent measures 3.6:1; the dark end measures 4.7. See contrast.test.ts.
+        onAccent: neutral(10),
+      },
     },
   },
   black: {
@@ -81,7 +85,14 @@ export const THEME_PRESETS = {
   cyberpunk: {
     name: 'Cyberpunk',
     icon: 'cpu',
-    parameters: { multiplier: -1, subtractor: '110%', saturation: '60%', neutralSaturation: '10%' },
+    parameters: {
+      multiplier: -1,
+      subtractor: '110%',
+      saturation: '60%',
+      neutralSaturation: '10%',
+      // A bright accent needs a dark label: white measures 3.5:1 on it, near-black 4.8.
+      roles: { onAccent: neutral(10) },
+    },
   },
 
   /**
@@ -170,7 +181,9 @@ export const THEME_PRESETS = {
         textMuted: neutral(44),
         textFaint: neutral(55),
         accent: 'hsl(203 89% 53%)',
-        onAccent: '#ffffff',
+        // Was '#ffffff', which measures 2.7:1 on that blue — the theme shipped a primary button
+        // label below AA. Near-black measures 6.2. See contrast.test.ts.
+        onAccent: neutral(10),
       },
       controlRadius: 'var(--we-radius-pill)',
       surfaceRadius: '16px',

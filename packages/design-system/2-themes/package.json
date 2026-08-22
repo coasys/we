@@ -38,6 +38,7 @@
   "devDependencies": {
     "@types/node": "^24.10.0",
     "@we/cli": "workspace:*",
+    "@we/design-utils": "workspace:*",
     "@we/tokens": "workspace:*",
     "jsdom": "^28.0.0",
     "postcss": "^8.4.23",

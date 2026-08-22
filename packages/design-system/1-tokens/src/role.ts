@@ -24,8 +24,14 @@ export const role = {
   surfaceSunken: 'var(--we-color-neutral-100)',
   /** Primary text. */
   text: 'var(--we-color-neutral-900)',
-  /** Secondary/muted text. */
-  textMuted: 'var(--we-color-neutral-500)',
+  /**
+   * Secondary/muted text — captions, labels, metadata.
+   *
+   * neutral-600 rather than -500 because -500 measured 4.24:1 on a card, and WCAG AA wants 4.5 for
+   * body-sized text. The half-step darker is the smallest change that clears it in every built-in
+   * theme, and `contrast.test.ts` is what says so.
+   */
+  textMuted: 'var(--we-color-neutral-600)',
   /** Tertiary/faint text (placeholders, disabled labels). */
   textFaint: 'var(--we-color-neutral-400)',
   /**
@@ -56,8 +62,18 @@ export const role = {
   borderStrong: 'var(--we-color-neutral-500)',
   /** The accent (interactive emphasis). */
   accent: 'var(--we-color-primary-500)',
-  /** Text/icon colour on top of an accent fill. Named for what it sits *on*, not what it is. */
-  onAccent: 'var(--we-color-neutral-0)',
+  /**
+   * Text and icons placed *on* an accent fill. Named for what it sits on, not what it is.
+   *
+   * A fixed lightness, like `onInverse` and for the same reason: as `neutral-0` it inverted with the
+   * theme, so a primary button in a dark theme got near-*black* text on a mid-blue fill. A label on
+   * a fill has to contrast with the fill, and the fill does not follow the neutral ramp.
+   *
+   * Near-white suits an accent dark enough to carry it. A theme whose accent is bright pins the
+   * dark end instead — `dark`, `cyberpunk` and `timeline` all do, because white on their accent
+   * measures between 2.7 and 3.6:1.
+   */
+  onAccent: 'hsl(var(--we-color-neutral-hue) var(--we-color-neutral-saturation) 98%)',
   /** A de-emphasised accent — accent-tinted fills, selected rows, subtle highlights. */
   accentMuted: 'var(--we-color-primary-100)',
   /**
@@ -136,8 +152,11 @@ export const role = {
    * must move in opposite directions as the theme darkens.
    */
   dangerText: 'var(--we-color-danger-600)',
-  successText: 'var(--we-color-success-600)',
-  warningText: 'var(--we-color-warning-600)',
+  // Green and yellow carry far more luminance than red at the same step, so -600 measured 3.0 and
+  // 3.7 against their own tints where danger-600 measured comfortably over 4.5. These are the
+  // lowest steps that clear AA in every built-in theme.
+  successText: 'var(--we-color-success-800)',
+  warningText: 'var(--we-color-warning-700)',
 } as const;
 
 export type RoleToken = keyof typeof role;

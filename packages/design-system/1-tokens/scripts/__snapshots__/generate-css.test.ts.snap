@@ -125,14 +125,14 @@ exports[`token CSS generation > color.css — hues, lightness ramp, palettes, ro
   --we-role-surface-raised: var(--we-color-neutral-0);
   --we-role-surface-sunken: var(--we-color-neutral-100);
   --we-role-text: var(--we-color-neutral-900);
-  --we-role-text-muted: var(--we-color-neutral-500);
+  --we-role-text-muted: var(--we-color-neutral-600);
   --we-role-text-faint: var(--we-color-neutral-400);
   --we-role-on-inverse: hsl(var(--we-color-neutral-hue) var(--we-color-neutral-saturation) 98%);
   --we-role-surface-inverse: hsl(var(--we-color-neutral-hue) var(--we-color-neutral-saturation) 13%);
   --we-role-border: var(--we-color-neutral-200);
   --we-role-border-strong: var(--we-color-neutral-500);
   --we-role-accent: var(--we-color-primary-500);
-  --we-role-on-accent: var(--we-color-neutral-0);
+  --we-role-on-accent: hsl(var(--we-color-neutral-hue) var(--we-color-neutral-saturation) 98%);
   --we-role-accent-muted: var(--we-color-primary-100);
   --we-role-accent-text: var(--we-color-primary-700);
   --we-role-accent-hover: var(--we-color-primary-600);
@@ -147,8 +147,8 @@ exports[`token CSS generation > color.css — hues, lightness ramp, palettes, ro
   --we-role-success-surface: var(--we-color-success-50);
   --we-role-warning-surface: var(--we-color-warning-50);
   --we-role-danger-text: var(--we-color-danger-600);
-  --we-role-success-text: var(--we-color-success-600);
-  --we-role-warning-text: var(--we-color-warning-600);
+  --we-role-success-text: var(--we-color-success-800);
+  --we-role-warning-text: var(--we-color-warning-700);
 
   /* Focus Colors */
   --we-color-focus: var(--we-color-primary-500);
