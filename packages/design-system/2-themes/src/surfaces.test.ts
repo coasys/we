@@ -45,8 +45,8 @@ describe('the surface stack a polarity needs', () => {
 });
 
 describe('changing base preset', () => {
-  const DARK = { multiplier: -1 };
-  const LIGHT = { multiplier: 1 };
+  const DARK = { polarity: 'dark' as const };
+  const LIGHT = { polarity: 'light' as const };
   const darkStack = surfacesForPolarity('dark', undefined)!;
 
   /*
@@ -55,12 +55,12 @@ describe('changing base preset', () => {
     cards. 1.12:1, which is not a subtle regression, it is an invisible interface.
   */
   it('drops a dark stack when the new preset is light', () => {
-    const out = reconcileSurfaces({ multiplier: -1, roles: darkStack }, LIGHT);
+    const out = reconcileSurfaces({ polarity: 'dark' as const, roles: darkStack }, LIGHT);
     expect(out).toBeUndefined();
   });
 
   it('pins a dark stack when the new preset is dark', () => {
-    const out = reconcileSurfaces({ multiplier: 1 }, DARK)!;
+    const out = reconcileSurfaces({ polarity: 'light' as const }, DARK)!;
     expect(out.surface).toBe(darkStack.surface);
   });
 
@@ -70,14 +70,14 @@ describe('changing base preset', () => {
   */
   it('leaves a tuned stack alone when the polarity does not change', () => {
     const tuned = { ...darkStack, surface: 'hsl(220 20% 22%)' };
-    expect(reconcileSurfaces({ multiplier: -1, roles: tuned }, DARK)).toBe(tuned);
+    expect(reconcileSurfaces({ polarity: 'dark' as const, roles: tuned }, DARK)).toBe(tuned);
   });
 
   it('keeps role pins that are not surfaces, in both directions', () => {
-    expect(reconcileSurfaces({ multiplier: -1, roles: { ...darkStack, accent: '#f0f' } }, LIGHT)).toEqual({
+    expect(reconcileSurfaces({ polarity: 'dark' as const, roles: { ...darkStack, accent: '#f0f' } }, LIGHT)).toEqual({
       accent: '#f0f',
     });
-    expect(reconcileSurfaces({ multiplier: 1, roles: { accent: '#f0f' } }, DARK)!.accent).toBe('#f0f');
+    expect(reconcileSurfaces({ polarity: 'light' as const, roles: { accent: '#f0f' } }, DARK)!.accent).toBe('#f0f');
   });
 
   it('treats a theme with no multiplier as light, which is the default', () => {

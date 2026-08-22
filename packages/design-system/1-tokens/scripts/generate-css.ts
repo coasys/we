@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import type { animation as animationTokens } from '../src/animation.js';
 import type { border as borderTokens } from '../src/border.js';
 import type { color as colorTokens } from '../src/color.js';
-import { CHROMA_CEILING, CHROMA_PER_SATURATION, chromaTaper } from '../src/color.js';
+import { CHROMA_CEILING, CHROMA_PER_SATURATION, chromaTaper, RAMP } from '../src/color.js';
 import type { component as componentTokens } from '../src/component.js';
 import type { font as fontTokens } from '../src/font.js';
 import type { layout as layoutTokens } from '../src/layout.js';
@@ -153,7 +153,16 @@ export function generateColorCSS(color: typeof colorTokens) {
   const lightnessVars = Object.entries(color.lightness)
     .map(
       ([key, value]) =>
-        `  --we-color-lightness-${key}: calc((${value} - var(--we-color-subtractor)) * var(--we-color-multiplier));`,
+        /*
+          Where this step lands between the theme's floor and ceiling.
+
+          `t` is the fraction of the way up the ramp, and polarity decides which end the scale's own
+          numbering starts from — light counts up from the floor, dark counts down from the ceiling.
+          Both are folded into two internal numbers so the whole thing stays one multiply-add that
+          CSS can evaluate, but neither is authored: a theme says `polarity`, `lightnessFloor` and
+          `lightnessCeiling`, which are the three things somebody can actually picture.
+        */
+        `  --we-color-lightness-${key}: calc(var(--we-color-lightness-floor) + (${parseFloat(value) / 100} - var(--we-color-ramp-offset)) * var(--we-color-ramp-direction) * (var(--we-color-lightness-ceiling) - var(--we-color-lightness-floor)));`,
     )
     .join('\n');
 
@@ -188,8 +197,10 @@ ${paletteVars}`;
 
 :root {
   /* Color System Configuration */
-  --we-color-multiplier: ${color.config.multiplier};
-  --we-color-subtractor: ${color.config.subtractor};
+  --we-color-lightness-floor: ${color.config.lightnessFloor};
+  --we-color-lightness-ceiling: ${color.config.lightnessCeiling};
+  --we-color-ramp-offset: ${RAMP[color.config.polarity].offset};
+  --we-color-ramp-direction: ${RAMP[color.config.polarity].direction};
   --we-color-saturation: ${color.config.saturation};
   --we-color-neutral-saturation: ${color.config.neutralSaturation};
 

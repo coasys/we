@@ -66,7 +66,8 @@ export type { SizeToken, SizeValue, RadiusToken, RadiusValue, ComponentSize } fr
 export type { SpaceToken, SpaceValue } from './space.js';
 export type { ZIndexLayer, ZIndexValue } from './z-index.js';
 export type { LayoutToken } from './layout.js';
-export { CHROMA_CEILING, CHROMA_PER_SATURATION, chromaTaper } from './color.js';
+export { CHROMA_CEILING, CHROMA_PER_SATURATION, chromaTaper, RAMP } from './color.js';
+export type { Polarity } from './color.js';
 export type { RoleToken } from './role.js';
 
 /**

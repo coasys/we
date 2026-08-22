@@ -29,21 +29,22 @@ function fakeRoot() {
 describe('applyThemeVars', () => {
   it('writes a theme as custom properties', () => {
     const { el, props } = fakeRoot();
-    applyThemeVars(el, { multiplier: -1, subtractor: '108%' });
+    applyThemeVars(el, { polarity: 'dark', lightnessFloor: '12%' });
 
-    expect(props.get('--we-color-multiplier')).toBe('-1');
-    expect(props.get('--we-color-subtractor')).toBe('108%');
+    expect(props.get('--we-color-lightness-floor')).toBe('12%');
+    // `polarity` is one authored word that expands to the two numbers the ramp multiplies by.
+    expect(props.get('--we-color-ramp-direction')).toBe('-1');
   });
 
   it('clears variables the previous theme set and this one does not', () => {
     const { el, props } = fakeRoot();
-    applyThemeVars(el, { primaryHue: 230, multiplier: -1 });
+    applyThemeVars(el, { primaryHue: 230, polarity: 'dark' });
     expect(props.has('--we-color-primary-hue')).toBe(true);
 
-    applyThemeVars(el, { multiplier: 1 });
+    applyThemeVars(el, { polarity: 'light' });
 
     expect(props.has('--we-color-primary-hue')).toBe(false);
-    expect(props.get('--we-color-multiplier')).toBe('1');
+    expect(props.get('--we-color-ramp-direction')).toBe('1');
   });
 
   it('leaves variables it never set alone', () => {
@@ -52,8 +53,8 @@ describe('applyThemeVars', () => {
     const { el, props } = fakeRoot();
     props.set('--we-dock-right', '320px');
 
-    applyThemeVars(el, { multiplier: -1 });
-    applyThemeVars(el, { multiplier: 1 });
+    applyThemeVars(el, { polarity: 'dark' as const });
+    applyThemeVars(el, { polarity: 'light' as const });
 
     expect(props.get('--we-dock-right')).toBe('320px');
   });
@@ -63,8 +64,8 @@ describe('applyThemeVars', () => {
     const a = fakeRoot();
     const b = fakeRoot();
     applyThemeVars(a.el, { primaryHue: 230 });
-    applyThemeVars(b.el, { multiplier: -1 });
-    applyThemeVars(b.el, { multiplier: 1 });
+    applyThemeVars(b.el, { polarity: 'dark' as const });
+    applyThemeVars(b.el, { polarity: 'light' as const });
 
     expect(a.props.has('--we-color-primary-hue')).toBe(true);
   });
@@ -91,23 +92,23 @@ describe('applyThemeVars cross-fade window', () => {
 
   it('does not open a window on the first application, which is the initial paint', () => {
     const { el, props } = fakeRoot();
-    applyThemeVars(el, { multiplier: -1 });
+    applyThemeVars(el, { polarity: 'dark' as const });
 
     expect(props.has(DURATION)).toBe(false);
   });
 
   it('opens one on a later application, when there is something to fade from', () => {
     const { el, props } = fakeRoot();
-    applyThemeVars(el, { multiplier: -1 });
-    applyThemeVars(el, { multiplier: 1 });
+    applyThemeVars(el, { polarity: 'dark' as const });
+    applyThemeVars(el, { polarity: 'light' as const });
 
     expect(props.get(DURATION)).toBe('250ms');
   });
 
   it('closes the window afterwards, so a hover exit never inherits a duration', () => {
     const { el, props } = fakeRoot();
-    applyThemeVars(el, { multiplier: -1 });
-    applyThemeVars(el, { multiplier: 1 });
+    applyThemeVars(el, { polarity: 'dark' as const });
+    applyThemeVars(el, { polarity: 'light' as const });
 
     vi.advanceTimersByTime(400);
     expect(props.has(DURATION)).toBe(false);
@@ -115,11 +116,11 @@ describe('applyThemeVars cross-fade window', () => {
 
   it('restarts the window when a second switch lands mid-fade, rather than closing early', () => {
     const { el, props } = fakeRoot();
-    applyThemeVars(el, { multiplier: -1 });
-    applyThemeVars(el, { multiplier: 1 });
+    applyThemeVars(el, { polarity: 'dark' as const });
+    applyThemeVars(el, { polarity: 'light' as const });
 
     vi.advanceTimersByTime(300);
-    applyThemeVars(el, { multiplier: -1 });
+    applyThemeVars(el, { polarity: 'dark' as const });
 
     // The first switch's timer would have fired by now had it not been cleared.
     vi.advanceTimersByTime(200);
@@ -132,9 +133,9 @@ describe('applyThemeVars cross-fade window', () => {
   it('tracks the window per root, so two subtrees do not close each other', () => {
     const a = fakeRoot();
     const b = fakeRoot();
-    applyThemeVars(a.el, { multiplier: -1 });
-    applyThemeVars(a.el, { multiplier: 1 });
-    applyThemeVars(b.el, { multiplier: -1 });
+    applyThemeVars(a.el, { polarity: 'dark' as const });
+    applyThemeVars(a.el, { polarity: 'light' as const });
+    applyThemeVars(b.el, { polarity: 'dark' as const });
 
     expect(a.props.get(DURATION)).toBe('250ms');
     expect(b.props.has(DURATION)).toBe(false);
@@ -153,8 +154,8 @@ describe('a named theme brings its own parameters', () => {
     const style = themeToStyle({ themeName: 'cyberpunk' });
     const preset = THEME_PRESETS.cyberpunk.parameters;
 
-    expect(style['--we-color-multiplier']).toBe(String(preset.multiplier));
-    expect(style['--we-color-subtractor']).toBe(String(preset.subtractor));
+    expect(style['--we-color-lightness-floor']).toBe(String(preset.lightnessFloor));
+    expect(style['--we-color-lightness-ceiling']).toBe(String(preset.lightnessCeiling));
     expect(style['--we-color-saturation']).toBe(String(preset.saturation));
   });
 
@@ -163,18 +164,18 @@ describe('a named theme brings its own parameters', () => {
     const style = themeToStyle({ themeName: 'cyberpunk', primaryHue: 320 });
 
     expect(style['--we-color-primary-hue']).toBe('320');
-    expect(style['--we-color-multiplier']).toBe(String(THEME_PRESETS.cyberpunk.parameters.multiplier));
+    expect(style['--we-color-lightness-floor']).toBe(String(THEME_PRESETS.cyberpunk.parameters.lightnessFloor));
   });
 
   it('leaves an unknown name alone rather than inventing parameters', () => {
     // A marketplace theme's id is not a preset key; its inputs come from its own CSS.
     const style = themeToStyle({ themeName: 'some-installed-theme' });
-    expect(style['--we-color-multiplier']).toBeUndefined();
+    expect(style['--we-color-lightness-floor']).toBeUndefined();
   });
 
   it('still re-declares the formulas, which is what it always did', () => {
     const style = themeToStyle({ themeName: 'cyberpunk' });
-    expect(style['--we-color-lightness-500']).toContain('var(--we-color-subtractor)');
+    expect(style['--we-color-lightness-500']).toContain('var(--we-color-lightness-floor)');
   });
 });
 
@@ -186,7 +187,7 @@ describe('color-scheme follows the lightness polarity', () => {
   */
   it('declares dark when the multiplier inverts the scale', () => {
     expect(themeToStyle({ themeName: 'dark' })['color-scheme']).toBe('dark');
-    expect(themeToStyle({ multiplier: -1, subtractor: '108%' })['color-scheme']).toBe('dark');
+    expect(themeToStyle({ polarity: 'dark' as const })['color-scheme']).toBe('dark');
   });
 
   it('declares light when it does not', () => {
@@ -207,7 +208,7 @@ describe('roles resolve against the theme they belong to', () => {
     its wrapper and still paint its unpinned surfaces from the personal theme's scale.
   */
   it('re-declares every role default, so an unpinned role follows this theme', () => {
-    const style = themeToStyle({ multiplier: -1, subtractor: '108%' });
+    const style = themeToStyle({ polarity: 'dark' as const });
     expect(style['--we-role-text-muted']).toBe('var(--we-color-neutral-600)');
     // The elevation stack is a relationship, not a scale position — and it has to be re-declared
     // for the same reason, or a scoped theme's cards are measured off the ambient theme's page.

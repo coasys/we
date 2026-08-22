@@ -74,8 +74,25 @@ export type ThemeOverrides = {
    */
   saturation?: number; // --we-color-saturation
   neutralSaturation?: number; // --we-color-neutral-saturation
-  multiplier?: number; // --we-color-multiplier
-  subtractor?: string; // --we-color-subtractor  (e.g. "108%")
+  /**
+   * Which end of the ramp the scale starts from. The whole of "is this a dark theme".
+   *
+   * Replaces `multiplier`, which was only ever 1 or -1 — a boolean typed as a number — and
+   * `subtractor`, which said "reflect the ramp and offset it by this much" and meant nothing to
+   * anybody reading it. What an author actually wants to state is where the two ends sit, so they
+   * state that.
+   */
+  polarity?: 'light' | 'dark';
+  /**
+   * The darkest and lightest lightness this theme uses, as percentages.
+   *
+   * Together they are also the contrast control the old model had by accident and could not reach:
+   * a narrower span is a softer theme, a full 0–100 span is a stark one. `subtractor: '112%'` was
+   * this, obfuscated — it meant "floor at 12%" — which is why tuning a dark theme meant guessing at
+   * a number and looking.
+   */
+  lightnessFloor?: string;
+  lightnessCeiling?: string;
   ringColor?: string; // --we-ring-color  (focus ring / accent color)
 
   // Semantic roles — pin individual role variables (--we-role-*) to any CSS color or var().

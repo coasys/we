@@ -116,9 +116,9 @@ export interface ThemeStore {
   clearSpaceTheme: () => void;
   startEditing: (themeId?: string) => void;
   /**
-   * Change the base preset while editing. Clears explicit multiplier/subtractor overrides so
-   * the new preset's natural light/dark mode shows through, then repopulates them from the
-   * preset's computed CSS so the Light/Dark buttons reflect reality.
+   * Change the base preset while editing. Takes the new preset's polarity and lightness range so
+   * its natural light/dark mode shows through, then repopulates the rest from the preset's computed
+   * CSS so the panel's controls reflect reality.
    */
   changeBasePreset: (preset: string | undefined) => void;
   updateEditingOverrides: (overrides: Partial<ThemeOverrides>) => void;
@@ -327,8 +327,8 @@ const OVERRIDE_CSS_VARS: Partial<Record<keyof ThemeOverrides, string>> = {
   neutralHue: '--we-color-neutral-hue',
   saturation: '--we-color-saturation',
   neutralSaturation: '--we-color-neutral-saturation',
-  subtractor: '--we-color-subtractor',
-  multiplier: '--we-color-multiplier',
+  lightnessFloor: '--we-color-lightness-floor',
+  lightnessCeiling: '--we-color-lightness-ceiling',
   // Typography — fontFamily intentionally omitted: the base theme CSS may set it directly,
   // causing populateMissingOverrides to store a font string the user never explicitly chose.
   letterSpacing: '--we-theme-letter-spacing',
@@ -375,11 +375,12 @@ function populateMissingOverrides(overrides: ThemeOverrides): ThemeOverrides {
     }
     if (!raw || raw.startsWith('var(')) continue;
 
-    if (key === 'multiplier' || (key as string).endsWith('Hue')) {
+    // Hues and saturations are plain numbers; a lightness bound is a percentage string.
+    if ((key as string).endsWith('Hue') || (key as string).toLowerCase().includes('saturation')) {
       const n = Number(raw);
       if (!isNaN(n)) writable[key] = n;
     } else {
-      writable[key] = raw; // percentage string e.g. '60%'
+      writable[key] = raw;
     }
   }
 
@@ -853,8 +854,9 @@ export function ThemeStoreProvider(props: ParentProps) {
 
     const updated: ThemeOverrides = {
       ...existing,
-      multiplier: presetDefaults.multiplier,
-      subtractor: presetDefaults.subtractor,
+      polarity: presetDefaults.polarity,
+      lightnessFloor: presetDefaults.lightnessFloor,
+      lightnessCeiling: presetDefaults.lightnessCeiling,
     };
 
     /*

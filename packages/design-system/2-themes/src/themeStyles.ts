@@ -1,6 +1,14 @@
 import { contrastRatio, parseColor, type Rgba } from '@we/design-utils';
 import type { ColorHueToken, ColorLightnessToken } from '@we/tokens';
-import { CHROMA_CEILING, CHROMA_PER_SATURATION, chromaTaper, color, role, ROLE_ELEVATION_FALLBACK } from '@we/tokens';
+import {
+  CHROMA_CEILING,
+  CHROMA_PER_SATURATION,
+  chromaTaper,
+  color,
+  RAMP,
+  role,
+  ROLE_ELEVATION_FALLBACK,
+} from '@we/tokens';
 
 import type { ThemeOverrides, ThemeRole } from './overrides';
 import { isThemeName, THEME_PRESETS } from './presets';
@@ -13,7 +21,14 @@ type ParametricKey = Exclude<
   keyof ThemeOverrides,
   // `schemaVersion` is bookkeeping rather than a value — it says which vocabulary the theme was
   // written against and never becomes a custom property.
-  'themeName' | 'shadowIntensity' | 'animationSpeed' | 'surfaceBlur' | 'fontScale' | 'roles' | 'schemaVersion'
+  | 'themeName'
+  | 'polarity'
+  | 'shadowIntensity'
+  | 'animationSpeed'
+  | 'surfaceBlur'
+  | 'fontScale'
+  | 'roles'
+  | 'schemaVersion'
 >;
 
 /** camelCase role name → --we-role-<kebab-case> custom property. */
@@ -97,8 +112,8 @@ const THEME_CSS_MAP: Record<ParametricKey, string> = {
   neutralHue: '--we-color-neutral-hue',
   saturation: '--we-color-saturation',
   neutralSaturation: '--we-color-neutral-saturation',
-  multiplier: '--we-color-multiplier',
-  subtractor: '--we-color-subtractor',
+  lightnessFloor: '--we-color-lightness-floor',
+  lightnessCeiling: '--we-color-lightness-ceiling',
   ringColor: '--we-ring-color',
   // Typography
   fontFamily: '--we-font-family',
@@ -201,6 +216,13 @@ export function themeToStyle(overrides: ThemeOverrides): Record<string, string> 
     if (value !== undefined) style[cssVar] = String(value);
   }
 
+  // `polarity` is the one authored key that is a word rather than a value; it expands to the two
+  // numbers the ramp formula multiplies by. See RAMP in @we/tokens for why those are not authored.
+  if (theme.polarity !== undefined) {
+    style['--we-color-ramp-offset'] = String(RAMP[theme.polarity].offset);
+    style['--we-color-ramp-direction'] = String(RAMP[theme.polarity].direction);
+  }
+
   // shadowIntensity → --we-theme-shadow (used by Card and other surface components)
   if (theme.shadowIntensity) {
     style['--we-theme-shadow'] = SHADOW_INTENSITY_VALUES[theme.shadowIntensity];
@@ -231,12 +253,12 @@ export function themeToStyle(overrides: ThemeOverrides): Record<string, string> 
     Everything the UA draws itself — the popup behind a time input's showPicker(), scrollbars,
     a <select>'s native dropdown — is coloured for `color-scheme`, not for any token, and no CSS
     reaches it. A dark theme that never says so gets light-scheme widgets: a white time picker over
-    a dark panel. Darkness here is not a separate flag to keep in sync — a negative multiplier *is*
-    the inversion of the lightness scale, so it is read from that. A theme that does not touch the
-    multiplier inherits the ambient scheme, which is also right: it did not change the polarity.
+    a dark panel. Darkness here is not a separate flag to keep in sync — it is read from `polarity`,
+    which is the same thing said once. A theme that does not state a polarity inherits the ambient
+    scheme, which is also right: it did not change one.
   */
-  if (theme.multiplier !== undefined) {
-    style['color-scheme'] = Number(theme.multiplier) < 0 ? 'dark' : 'light';
+  if (theme.polarity !== undefined) {
+    style['color-scheme'] = theme.polarity;
   }
 
   // 2. Re-declare neutral-hue linkage when primaryHue is explicitly overridden
@@ -245,13 +267,18 @@ export function themeToStyle(overrides: ThemeOverrides): Record<string, string> 
   }
 
   // 3. Re-declare lightness scale
-  // Named themes may change multiplier/subtractor via CSS, so always re-declare.
-  const affectsLightness = hasNamedTheme || theme.multiplier !== undefined || theme.subtractor !== undefined;
+  // A named theme may move the ramp from its own CSS, so always re-declare.
+  const affectsLightness =
+    hasNamedTheme ||
+    theme.polarity !== undefined ||
+    theme.lightnessFloor !== undefined ||
+    theme.lightnessCeiling !== undefined;
   if (affectsLightness) {
     for (const step of LIGHTNESS_STEPS) {
       const base = parseFloat(color.lightness[step]);
       style[`--we-color-lightness-${step}`] =
-        `calc((${base}% - var(--we-color-subtractor)) * var(--we-color-multiplier))`;
+        `calc(var(--we-color-lightness-floor) + (${base / 100} - var(--we-color-ramp-offset)) * ` +
+        `var(--we-color-ramp-direction) * (var(--we-color-lightness-ceiling) - var(--we-color-lightness-floor)))`;
     }
   }
 
@@ -518,7 +545,7 @@ export function surfacesForPolarity(
   return Object.keys(next).length ? next : undefined;
 }
 
-export const isDarkPolarity = (overrides: Pick<ThemeOverrides, 'multiplier'>) => (overrides.multiplier ?? 1) === -1;
+export const isDarkPolarity = (overrides: Pick<ThemeOverrides, 'polarity'>) => overrides.polarity === 'dark';
 
 /**
  * The roles to keep when a theme changes base preset.
@@ -532,7 +559,7 @@ export const isDarkPolarity = (overrides: Pick<ThemeOverrides, 'multiplier'>) =>
  */
 export function reconcileSurfaces(
   existing: ThemeOverrides,
-  preset: Pick<ThemeOverrides, 'multiplier'>,
+  preset: Pick<ThemeOverrides, 'polarity'>,
 ): Partial<Record<ThemeRole, string>> | undefined {
   if (isDarkPolarity(existing) === isDarkPolarity(preset)) return existing.roles;
   return surfacesForPolarity(isDarkPolarity(preset) ? 'dark' : 'light', existing.roles);

@@ -13,7 +13,7 @@ export type ColorHueToken = 'neutral' | 'primary' | 'success' | 'warning' | 'dan
 /** Semantic variant scale used by component variant props — maps 1:1 to color hues */
 export type ComponentVariant = ColorHueToken;
 export type ColorBaseToken = 'white' | 'black';
-export type ColorConfigToken = 'multiplier' | 'subtractor' | 'saturation' | 'neutralSaturation';
+export type ColorConfigToken = 'polarity' | 'lightnessFloor' | 'lightnessCeiling' | 'saturation' | 'neutralSaturation';
 export type ColorLightnessToken =
   '0' | '25' | '50' | '75' | '100' | '200' | '300' | '400' | '500' | '600' | '700' | '800' | '900' | '1000';
 
@@ -36,11 +36,26 @@ export type ColorValue = ColorToken | (string & {});
  * type moves; `migrate.ts` converts stored themes.
  */
 export const colorConfig = {
-  multiplier: 1,
-  subtractor: '0%',
+  polarity: 'light',
+  lightnessFloor: '0%',
+  lightnessCeiling: '100%',
   saturation: 60,
   neutralSaturation: 10,
-} satisfies Record<ColorConfigToken, number | Percentage>;
+} satisfies Record<ColorConfigToken, number | Percentage | Polarity>;
+
+export type Polarity = 'light' | 'dark';
+
+/**
+ * Polarity, as the two numbers the ramp formula multiplies by.
+ *
+ * `offset`/`direction` are an implementation detail of "which end does the scale count from" —
+ * light counts up from the floor, dark counts down from the ceiling. They exist because CSS has to
+ * evaluate the ramp as arithmetic, and they are deliberately not part of what a theme states.
+ */
+export const RAMP = {
+  light: { offset: 0, direction: 1 },
+  dark: { offset: 1, direction: -1 },
+} satisfies Record<Polarity, { offset: number; direction: number }>;
 
 /**
  * Base hue values for semantic colors, as OKLCH hue angles (0-360).
@@ -137,9 +152,11 @@ export const colorBase = {
  * Helper function to calculate the HSL color string for a given hue, saturation, and lightness level
  */
 function calculateColor(hue: number, saturation: number, lightnessKey: ColorLightnessToken): string {
-  const lightnessNum = parseFloat(colorLightness[lightnessKey]);
-  const subtractorValue = parseFloat(colorConfig.subtractor.replace('%', '') || '0');
-  const adjustedLightness = (lightnessNum - subtractorValue) * colorConfig.multiplier;
+  const floor = parseFloat(colorConfig.lightnessFloor);
+  const ceiling = parseFloat(colorConfig.lightnessCeiling);
+  const { offset, direction } = RAMP[colorConfig.polarity];
+  const t = (parseFloat(colorLightness[lightnessKey]) / 100 - offset) * direction;
+  const adjustedLightness = floor + t * (ceiling - floor);
   const chroma = Math.min(saturation * CHROMA_PER_SATURATION, CHROMA_CEILING) * chromaTaper(lightnessKey);
   return `oklch(${adjustedLightness}% ${chroma.toFixed(4)} ${hue})`;
 }

@@ -92,6 +92,46 @@ const MIGRATIONS: ((overrides: Versioned) => Versioned)[] = [
     }
     return next;
   },
+
+  /*
+    v3 → v4: the ramp says where its ends are, instead of encoding them.
+
+    `multiplier` was only ever 1 or -1 — a boolean typed as a number — and `subtractor` meant
+    "reflect the ramp and offset it by this much", which is not a thing anybody can picture. What
+    the pair actually described is the polarity and the two lightnesses the ramp runs between, so
+    that is what a theme states now. The arithmetic is identical; the conversion is exact.
+
+    `subtractor: '112%'` with `multiplier: -1` meant a floor at 12% — which is how tuning a dark
+    theme came to involve guessing at a number and looking at the result.
+  */
+  (overrides) => {
+    const legacy = overrides as Versioned & { multiplier?: number; subtractor?: string };
+    if (legacy.multiplier === undefined && legacy.subtractor === undefined) return overrides;
+
+    const multiplier = legacy.multiplier ?? 1;
+    const subtractor = parseFloat(legacy.subtractor ?? '0%') || 0;
+    const next: Versioned = { ...overrides };
+    delete (next as { multiplier?: number }).multiplier;
+    delete (next as { subtractor?: string }).subtractor;
+
+    next.polarity = multiplier === -1 ? 'dark' : 'light';
+    /*
+      Converted exactly, including the part that looks wrong.
+
+      A dark theme's ceiling comes out above 100% — `subtractor: '112%'` becomes a ceiling of 112 —
+      because that is what the old ramp did: it ran past white and only the last step clamped. The
+      alternative, clamping the ceiling to 100 here, is *not* the same ramp; it redistributes every
+      step in between and takes about nine points of lightness off a dark theme's body text.
+
+      A ceiling above 100 is legal and means "the top of this ramp is white, and the steps near it
+      are compressed against it". A theme is free to state a real one instead, and the built-ins
+      will when they are next tuned.
+    */
+    const [floor, ceiling] = multiplier === -1 ? [subtractor - 100, subtractor] : [-subtractor, 100 - subtractor];
+    next.lightnessFloor = `${Math.max(0, floor)}%`;
+    next.lightnessCeiling = `${ceiling}%`;
+    return next;
+  },
 ];
 
 /**

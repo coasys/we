@@ -121,7 +121,7 @@ const INPUT_SPACING_OPTIONS = [
  * Every semantic role, grouped the way somebody designing a theme thinks about them.
  *
  * Roles are the difference between a theme that recolours and a theme that is designed: the
- * lightness scale steps evenly, so no combination of hue, saturation, multiplier and subtractor can
+ * lightness scale steps evenly, so no combination of hue, saturation, polarity and range can
  * say "raised surfaces are lighter than the page by 6 but the rail is darker by 3.5". Both built-in
  * reference themes (channels, timeline) reach for roles to express exactly that, and until now the
  * only way for anyone else to do it was hand-writing the theme's CSS.
@@ -485,7 +485,7 @@ export function ThemePanel() {
   /**
    * A 0–N slider over a theme key, which may be stored as a percentage string or a plain number.
    *
-   * Both spellings exist on purpose. `subtractor` is a lightness and stays a percentage, because
+   * Both spellings exist on purpose. A lightness bound stays a percentage, because
    * that is what it is; `saturation` became a plain number when the ramp moved to OKLCH, where it
    * scales an absolute chroma rather than expressing a proportion. `unit` says which to write back,
    * so the slider itself does not have to know why.
@@ -1002,12 +1002,13 @@ export function ThemePanel() {
               <Row gap="200">
                 <we-button
                   size="sm"
-                  variant={(overrides().multiplier ?? 1) === 1 ? 'secondary' : 'ghost'}
+                  variant={(overrides().polarity ?? 'light') === 'light' ? 'secondary' : 'ghost'}
                   flex="1"
                   onClick={() => {
                     setOverrides({
-                      multiplier: 1,
-                      subtractor: '0%',
+                      polarity: 'light',
+                      lightnessFloor: '0%',
+                      lightnessCeiling: '100%',
                       roles: surfacesForPolarity('light', overrides().roles),
                     });
                   }}
@@ -1017,12 +1018,13 @@ export function ThemePanel() {
                 </we-button>
                 <we-button
                   size="sm"
-                  variant={(overrides().multiplier ?? 1) === -1 ? 'secondary' : 'ghost'}
+                  variant={overrides().polarity === 'dark' ? 'secondary' : 'ghost'}
                   flex="1"
                   onClick={() => {
                     setOverrides({
-                      multiplier: -1,
-                      subtractor: '108%',
+                      polarity: 'dark',
+                      lightnessFloor: '12%',
+                      lightnessCeiling: '112%',
                       roles: surfacesForPolarity('dark', overrides().roles),
                     });
                   }}
@@ -1054,9 +1056,19 @@ export function ThemePanel() {
               </Column>
               <Column gap="200">
                 <we-text fontSize="200" color="text-faint">
-                  Lightness
+                  Lightness range
                 </we-text>
-                {percentSlider('Subtractor', 'subtractor', 0, 200, 0)}
+                {/*
+                  The two ends of the ramp, stated rather than encoded.
+
+                  These replaced a single "Subtractor 0–200" slider, which is what the old model
+                  exposed and which meant nothing on its own — `112` was "floor at 12%", and finding
+                  that out took dragging it and looking. Together they are also the contrast control
+                  the system had by accident and could not reach: a narrow span is a soft theme, a
+                  full one is stark.
+                */}
+                {percentSlider('Darkest', 'lightnessFloor', 0, 100, 0)}
+                {percentSlider('Lightest', 'lightnessCeiling', 0, 120, 100)}
               </Column>
             </CollapsibleSection>
 

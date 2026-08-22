@@ -66,8 +66,9 @@ export const THEME_PRESETS = {
     icon: 'sun',
     parameters: {
       schemaVersion: THEME_SCHEMA_VERSION,
-      multiplier: 1,
-      subtractor: '0%',
+      polarity: 'light',
+      lightnessFloor: '0%',
+      lightnessCeiling: '100%',
       saturation: 60,
       neutralSaturation: 10,
     },
@@ -84,8 +85,9 @@ export const THEME_PRESETS = {
     // *lighter* instead of casting a shadow — a relationship the uniform inversion cannot express.
     parameters: {
       schemaVersion: THEME_SCHEMA_VERSION,
-      multiplier: -1,
-      subtractor: '112%',
+      polarity: 'dark',
+      lightnessFloor: '12%',
+      lightnessCeiling: '112%',
       saturation: 50,
       neutralSaturation: 20,
       roles: {
@@ -102,8 +104,9 @@ export const THEME_PRESETS = {
     icon: 'square',
     parameters: {
       schemaVersion: THEME_SCHEMA_VERSION,
-      multiplier: -1,
-      subtractor: '100%',
+      polarity: 'dark',
+      lightnessFloor: '0%',
+      lightnessCeiling: '100%',
       saturation: 50,
       neutralSaturation: 20,
       /*
@@ -135,8 +138,9 @@ export const THEME_PRESETS = {
     parameters: {
       schemaVersion: THEME_SCHEMA_VERSION,
       primaryHue: 271,
-      multiplier: 1,
-      subtractor: '0%',
+      polarity: 'light',
+      lightnessFloor: '0%',
+      lightnessCeiling: '100%',
       saturation: 60,
       neutralSaturation: 10,
     },
@@ -146,8 +150,9 @@ export const THEME_PRESETS = {
     icon: 'cpu',
     parameters: {
       schemaVersion: THEME_SCHEMA_VERSION,
-      multiplier: -1,
-      subtractor: '110%',
+      polarity: 'dark',
+      lightnessFloor: '10%',
+      lightnessCeiling: '110%',
       saturation: 60,
       neutralSaturation: 10,
       roles: {
@@ -187,8 +192,9 @@ export const THEME_PRESETS = {
       saturation: 85,
       neutralSaturation: 6,
       schemaVersion: THEME_SCHEMA_VERSION,
-      multiplier: -1,
-      subtractor: '106%',
+      polarity: 'dark',
+      lightnessFloor: '6%',
+      lightnessCeiling: '106%',
       roles: {
         page: neutral(22.7),
         surface: neutral(22.7),
@@ -231,8 +237,9 @@ export const THEME_PRESETS = {
       saturation: 89,
       neutralSaturation: 9,
       schemaVersion: THEME_SCHEMA_VERSION,
-      multiplier: 1,
-      subtractor: '0%',
+      polarity: 'light',
+      lightnessFloor: '0%',
+      lightnessCeiling: '100%',
       roles: {
         page: '#ffffff',
         surface: '#ffffff',

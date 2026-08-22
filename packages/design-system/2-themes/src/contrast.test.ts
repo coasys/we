@@ -22,7 +22,7 @@ import {
   rgbToOklch,
 } from '@we/design-utils';
 import type { ColorLightnessToken } from '@we/tokens';
-import { CHROMA_CEILING, CHROMA_PER_SATURATION, chromaTaper, color, role } from '@we/tokens';
+import { CHROMA_CEILING, CHROMA_PER_SATURATION, chromaTaper, color, RAMP, role } from '@we/tokens';
 import { describe, expect, it } from 'vitest';
 
 import type { ThemeOverrides, ThemeRole } from './overrides';
@@ -45,10 +45,11 @@ const HUE_DEFAULTS: Record<string, number> = { primary: 220, success: 142, warni
 
 /** The lightness the CSS would compute for one step, given a theme's multiplier and subtractor. */
 function lightness(step: string, theme: ThemeOverrides): number {
-  const base = parseFloat(color.lightness[step as keyof typeof color.lightness]);
-  const subtractor = parseFloat(theme.subtractor ?? '0%');
-  const multiplier = theme.multiplier ?? 1;
-  return Math.min(100, Math.max(0, (base - subtractor) * multiplier));
+  const floor = parseFloat(theme.lightnessFloor ?? '0%');
+  const ceiling = parseFloat(theme.lightnessCeiling ?? '100%');
+  const { offset, direction } = RAMP[theme.polarity ?? 'light'];
+  const t = (parseFloat(color.lightness[step as keyof typeof color.lightness]) / 100 - offset) * direction;
+  return Math.min(100, Math.max(0, floor + t * (ceiling - floor)));
 }
 
 function hueOf(family: string, theme: ThemeOverrides): number {

@@ -5,8 +5,10 @@ exports[`token CSS generation > color.css — hues, lightness ramp, palettes, ro
 
 :root {
   /* Color System Configuration */
-  --we-color-multiplier: 1;
-  --we-color-subtractor: 0%;
+  --we-color-lightness-floor: 0%;
+  --we-color-lightness-ceiling: 100%;
+  --we-color-ramp-offset: 0;
+  --we-color-ramp-direction: 1;
   --we-color-saturation: 60;
   --we-color-neutral-saturation: 10;
 
@@ -18,20 +20,20 @@ exports[`token CSS generation > color.css — hues, lightness ramp, palettes, ro
   --we-color-danger-hue: 17;
 
   /* Lightness Scale */
-  --we-color-lightness-0: calc((100% - var(--we-color-subtractor)) * var(--we-color-multiplier));
-  --we-color-lightness-25: calc((98% - var(--we-color-subtractor)) * var(--we-color-multiplier));
-  --we-color-lightness-50: calc((96% - var(--we-color-subtractor)) * var(--we-color-multiplier));
-  --we-color-lightness-75: calc((94.5% - var(--we-color-subtractor)) * var(--we-color-multiplier));
-  --we-color-lightness-100: calc((92.5% - var(--we-color-subtractor)) * var(--we-color-multiplier));
-  --we-color-lightness-200: calc((84.5% - var(--we-color-subtractor)) * var(--we-color-multiplier));
-  --we-color-lightness-300: calc((76.5% - var(--we-color-subtractor)) * var(--we-color-multiplier));
-  --we-color-lightness-400: calc((68.5% - var(--we-color-subtractor)) * var(--we-color-multiplier));
-  --we-color-lightness-500: calc((60% - var(--we-color-subtractor)) * var(--we-color-multiplier));
-  --we-color-lightness-600: calc((51% - var(--we-color-subtractor)) * var(--we-color-multiplier));
-  --we-color-lightness-700: calc((42% - var(--we-color-subtractor)) * var(--we-color-multiplier));
-  --we-color-lightness-800: calc((32% - var(--we-color-subtractor)) * var(--we-color-multiplier));
-  --we-color-lightness-900: calc((21.5% - var(--we-color-subtractor)) * var(--we-color-multiplier));
-  --we-color-lightness-1000: calc((0% - var(--we-color-subtractor)) * var(--we-color-multiplier));
+  --we-color-lightness-0: calc(var(--we-color-lightness-floor) + (1 - var(--we-color-ramp-offset)) * var(--we-color-ramp-direction) * (var(--we-color-lightness-ceiling) - var(--we-color-lightness-floor)));
+  --we-color-lightness-25: calc(var(--we-color-lightness-floor) + (0.98 - var(--we-color-ramp-offset)) * var(--we-color-ramp-direction) * (var(--we-color-lightness-ceiling) - var(--we-color-lightness-floor)));
+  --we-color-lightness-50: calc(var(--we-color-lightness-floor) + (0.96 - var(--we-color-ramp-offset)) * var(--we-color-ramp-direction) * (var(--we-color-lightness-ceiling) - var(--we-color-lightness-floor)));
+  --we-color-lightness-75: calc(var(--we-color-lightness-floor) + (0.945 - var(--we-color-ramp-offset)) * var(--we-color-ramp-direction) * (var(--we-color-lightness-ceiling) - var(--we-color-lightness-floor)));
+  --we-color-lightness-100: calc(var(--we-color-lightness-floor) + (0.925 - var(--we-color-ramp-offset)) * var(--we-color-ramp-direction) * (var(--we-color-lightness-ceiling) - var(--we-color-lightness-floor)));
+  --we-color-lightness-200: calc(var(--we-color-lightness-floor) + (0.845 - var(--we-color-ramp-offset)) * var(--we-color-ramp-direction) * (var(--we-color-lightness-ceiling) - var(--we-color-lightness-floor)));
+  --we-color-lightness-300: calc(var(--we-color-lightness-floor) + (0.765 - var(--we-color-ramp-offset)) * var(--we-color-ramp-direction) * (var(--we-color-lightness-ceiling) - var(--we-color-lightness-floor)));
+  --we-color-lightness-400: calc(var(--we-color-lightness-floor) + (0.685 - var(--we-color-ramp-offset)) * var(--we-color-ramp-direction) * (var(--we-color-lightness-ceiling) - var(--we-color-lightness-floor)));
+  --we-color-lightness-500: calc(var(--we-color-lightness-floor) + (0.6 - var(--we-color-ramp-offset)) * var(--we-color-ramp-direction) * (var(--we-color-lightness-ceiling) - var(--we-color-lightness-floor)));
+  --we-color-lightness-600: calc(var(--we-color-lightness-floor) + (0.51 - var(--we-color-ramp-offset)) * var(--we-color-ramp-direction) * (var(--we-color-lightness-ceiling) - var(--we-color-lightness-floor)));
+  --we-color-lightness-700: calc(var(--we-color-lightness-floor) + (0.42 - var(--we-color-ramp-offset)) * var(--we-color-ramp-direction) * (var(--we-color-lightness-ceiling) - var(--we-color-lightness-floor)));
+  --we-color-lightness-800: calc(var(--we-color-lightness-floor) + (0.32 - var(--we-color-ramp-offset)) * var(--we-color-ramp-direction) * (var(--we-color-lightness-ceiling) - var(--we-color-lightness-floor)));
+  --we-color-lightness-900: calc(var(--we-color-lightness-floor) + (0.215 - var(--we-color-ramp-offset)) * var(--we-color-ramp-direction) * (var(--we-color-lightness-ceiling) - var(--we-color-lightness-floor)));
+  --we-color-lightness-1000: calc(var(--we-color-lightness-floor) + (0 - var(--we-color-ramp-offset)) * var(--we-color-ramp-direction) * (var(--we-color-lightness-ceiling) - var(--we-color-lightness-floor)));
 
   /* Neutral Colors */
   --we-color-neutral-0: oklch(var(--we-color-lightness-0) calc(min(var(--we-color-neutral-saturation) * 0.0035, 0.18) * 0) var(--we-color-neutral-hue));

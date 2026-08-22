@@ -128,3 +128,44 @@ describe('the 2 → 3 move to OKLCH', () => {
     expect(migrateOverrides(once)).toEqual(once);
   });
 });
+
+/**
+ * v3 → v4: the ramp states where its ends are.
+ *
+ * The conversion has to be *exact*, not merely sensible — a dark theme's ceiling comes out above
+ * 100% because that is what the old ramp did, and rounding it down to white redistributes every
+ * step in between.
+ */
+describe('the 3 → 4 move to an explicit lightness range', () => {
+  const v3 = (o: Record<string, unknown>) => ({ schemaVersion: 3, ...o }) as unknown as ThemeOverrides;
+
+  it('reads a light theme as a full-range light ramp', () => {
+    const out = migrateOverrides(v3({ multiplier: 1, subtractor: '0%' }));
+    expect(out.polarity).toBe('light');
+    expect(out.lightnessFloor).toBe('0%');
+    expect(out.lightnessCeiling).toBe('100%');
+  });
+
+  it('turns a dark theme’s subtractor into the floor it always meant', () => {
+    // `subtractor: '112%'` with multiplier -1 is "floor at 12%" — which nobody could tell by reading.
+    const out = migrateOverrides(v3({ multiplier: -1, subtractor: '112%' }));
+    expect(out.polarity).toBe('dark');
+    expect(out.lightnessFloor).toBe('12%');
+  });
+
+  it('keeps a ceiling above white rather than clamping it, because the ramp really did run past', () => {
+    expect(migrateOverrides(v3({ multiplier: -1, subtractor: '112%' })).lightnessCeiling).toBe('112%');
+  });
+
+  it('drops the keys it replaced, so nothing reads them by accident', () => {
+    const out = migrateOverrides(v3({ multiplier: -1, subtractor: '112%' })) as Record<string, unknown>;
+    expect(out.multiplier).toBeUndefined();
+    expect(out.subtractor).toBeUndefined();
+  });
+
+  it('leaves a theme that set neither alone', () => {
+    const out = migrateOverrides(v3({ primaryHue: 263 }));
+    expect(out.polarity).toBeUndefined();
+    expect(out.primaryHue).toBe(263);
+  });
+});
