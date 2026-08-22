@@ -58,7 +58,7 @@ const ELEMENT_STATES: ElementState[] = ['hover', 'focus', 'active', 'disabled'];
  * e.g. button's size-aware radius chain, or wrapper components that have no r/px
  * in DEFAULT_PROPS but still need a non-zero cascade fallback.
  */
-interface ComponentCascade {
+export interface ComponentCascade {
   radiusGroup?: string; // e.g. '--we-theme-control-radius'
   radiusDefault?: string; // explicit override; omit to auto-derive from DEFAULT_PROPS
   paddingGroup?: string; // e.g. '--we-theme-control-padding-x'
@@ -68,6 +68,19 @@ interface ComponentCascade {
   gapDefault?: string; // explicit override; omit to auto-derive from DEFAULT_PROPS
 }
 
+/**
+ * Which theme group each component takes its shape and density from.
+ *
+ * Open to registration rather than a closed literal, which matters more here than it would in most
+ * design systems. WE's premise is that modules are the developer layer beneath templates — "lower
+ * volume, but they raise the ceiling on what every template above can express" — and until now they
+ * could raise it for layout and behaviour and not for theming. A module could *read*
+ * `--we-theme-control-radius`, and had no way to say "my surface is its own kind of thing, and here
+ * is the group it should follow". Its options were to borrow a core group whose meaning did not
+ * quite fit, or to hardcode.
+ *
+ * See `registerComponentCascade` for the contract, including when it has to be called.
+ */
 const COMPONENT_CASCADE: Record<string, ComponentCascade> = {
   // Media
   //
@@ -172,6 +185,31 @@ const COMPONENT_CASCADE: Record<string, ComponentCascade> = {
   blockquote: { radiusGroup: '--we-theme-surface-radius', paddingGroup: '--we-theme-surface-padding' },
   code: { radiusGroup: '--we-theme-surface-radius' },
 };
+
+/**
+ * Register a component's theme cascade — for components that do not ship with the design system.
+ *
+ * A feature module owns components the core has never heard of, and those components have shape and
+ * density decisions like any other. Registering says which theme group they follow, so a theme
+ * setting "surfaces are square" reaches them too rather than stopping at the boundary of what
+ * shipped in the box.
+ *
+ * **Call it before the component first renders** — module setup, or the module file's top level.
+ * The cascade is read while building a component's styles, so a registration that lands afterwards
+ * has no effect on anything already on screen and no way to say so.
+ *
+ * Re-registering the same name replaces the entry. That is deliberate: a module reloading during
+ * development should not accumulate, and there is no meaningful merge between two answers to "which
+ * group does this follow".
+ */
+export function registerComponentCascade(componentName: string, cascade: ComponentCascade): void {
+  COMPONENT_CASCADE[componentName] = cascade;
+}
+
+/** What a component name currently resolves to, or undefined. Exposed for tests and diagnostics. */
+export function componentCascadeFor(componentName: string): ComponentCascade | undefined {
+  return COMPONENT_CASCADE[componentName];
+}
 
 /**
  * What a state change is allowed to animate.

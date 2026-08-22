@@ -51,3 +51,11 @@ import './primitives/timestamp';
 import './primitives/video';
 
 export { buildCdnUrl, setIconResolver } from './primitives/icon';
+
+/**
+ * The theme cascade, open to components the design system has never heard of.
+ *
+ * A feature module owning its own components can say which theme group they follow, so a theme that
+ * squares off its surfaces reaches them too. See registerComponentCascade for when to call it.
+ */
+export { type ComponentCascade, componentCascadeFor, registerComponentCascade } from './shared/helpers';

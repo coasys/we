@@ -1894,7 +1894,7 @@ export const contextData: ContextData = {
         cornerBackground: 'transparent',
         thumbBoxShadow: 'none',
         thumbBorderRadius: 'var(--we-radius-pill)',
-        thumbBackground: 'var(--we-color-neutral-100)',
+        thumbBackground: 'var(--we-role-control-surface)',
       },
     },
     {

@@ -11,6 +11,8 @@ import { join } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
+import { componentCascadeFor, registerComponentCascade } from './shared/helpers';
+
 const SRC = join(__dirname);
 
 const sourceFiles = () =>
@@ -59,5 +61,45 @@ describe('multi-part elements', () => {
       }
     }
     expect(offenders).toEqual([]);
+  });
+});
+
+/**
+ * The theme cascade, open to components the design system does not ship.
+ *
+ * WE's premise is that modules raise the ceiling on what templates can express, and until this was
+ * open they could do that for layout and behaviour but not for theming: a module could read
+ * `--we-theme-control-radius` and had no way to say "my surface is its own kind of thing, and here
+ * is the group it follows". Its options were to borrow a core group whose meaning did not fit, or
+ * to hardcode — and a hardcode is invisible to every theme anybody writes afterwards.
+ */
+describe('registerComponentCascade', () => {
+  it('makes a component the core has never heard of follow a theme group', () => {
+    registerComponentCascade('acme-timeline', { radiusGroup: '--we-theme-surface-radius' });
+    expect(componentCascadeFor('acme-timeline')?.radiusGroup).toBe('--we-theme-surface-radius');
+  });
+
+  /*
+    Replacement, not merge. A module reloading in development must not accumulate entries, and there
+    is no meaningful middle between two answers to "which group does this follow".
+  */
+  it('replaces a previous registration rather than merging with it', () => {
+    registerComponentCascade('acme-panel', {
+      radiusGroup: '--we-theme-control-radius',
+      gapGroup: '--we-theme-control-gap',
+    });
+    registerComponentCascade('acme-panel', { radiusGroup: '--we-theme-surface-radius' });
+
+    expect(componentCascadeFor('acme-panel')).toEqual({ radiusGroup: '--we-theme-surface-radius' });
+  });
+
+  it('leaves the components that ship with the system alone', () => {
+    // Registering next to `avatar` must not disturb the reason avatar has its own group at all.
+    registerComponentCascade('acme-badge', { radiusGroup: '--we-theme-control-radius' });
+    expect(componentCascadeFor('avatar')?.radiusGroup).toBe('--we-theme-avatar-radius');
+  });
+
+  it('reports nothing for a name that was never registered', () => {
+    expect(componentCascadeFor('acme-never-registered')).toBeUndefined();
   });
 });

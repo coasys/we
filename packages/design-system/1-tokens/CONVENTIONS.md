@@ -195,6 +195,28 @@ Two consequences worth knowing when writing a theme by hand:
   0.259 and a teal 0.103 — so a flat ceiling made one number mean different things depending on
   where the hue slider was. 100 means "as colourful as this hue gets".
 
+### Two scales, and what each actually moves
+
+`fontScale` and `spacingScale` are separate controls, but not symmetrically. The space steps are in
+`rem` and `fontScale` sets the root font size, so **type carries spacing with it** and only the
+reverse is independent: you can make a layout denser without shrinking the text, not the other way
+round. That is deliberate rather than unfinished — rem-based spacing is what respects a reader's own
+font-size preference, and cutting that tie to gain symmetry would trade an accessibility property
+for a tidier API. To scale type alone, set both.
+
+There is no `radiusScale` to match them, also deliberately: radius does not scale usefully by a
+ratio — doubling a 2px radius and a 16px one produces two different design decisions — which is why
+shape is offered as four groups and a set of presets instead.
+
+### Components the design system does not ship
+
+A feature module can register its own components into the theme cascade with
+`registerComponentCascade(name, { radiusGroup, paddingGroup, gapGroup })`, so a theme that squares
+off its surfaces reaches them too. Call it before the component first renders; the cascade is read
+while a component's styles are built, and a later registration has no effect on what is already on
+screen. Without this a module's only options were to borrow a core group whose meaning did not fit
+or to hardcode — and a hardcode is invisible to every theme written afterwards.
+
 ### Contrast is checked twice
 
 WCAG 2 **and** APCA, with the stricter governing. WCAG 2 stays because it may be the compliance
