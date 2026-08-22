@@ -1,4 +1,14 @@
-import { contrastRatio, maxChromaFor, parseColor, type Rgba } from '@we/design-utils';
+import {
+  APCA_MINIMUM,
+  apcaContrast,
+  type ContrastLevel,
+  contrastRatio,
+  maxChromaFor,
+  oklchToRgb,
+  parseColor,
+  type Rgba,
+  rgbToOklch,
+} from '@we/design-utils';
 import type { ColorHueToken, ColorLightnessToken } from '@we/tokens';
 import {
   CHROMA_CEILING,
@@ -413,7 +423,7 @@ export function applyThemeVars(root: HTMLElement, theme: ThemeOverrides): void {
   // Tracked alongside the rest, so the next theme clears them: a derived value from the old theme
   // outliving it would be worse than never deriving one.
   const ceilings = applyChromaCeilings(root);
-  const derived = [...applyAutoContrast(root, theme), ...ceilings];
+  const derived = [...applyAutoContrast(root, theme), ...applyLegibleForegrounds(root, theme), ...ceilings];
   appliedThemeVars.set(root, new Set([...Object.keys(styles), ...derived]));
 }
 
@@ -451,6 +461,74 @@ function applyChromaCeilings(root: HTMLElement): string[] {
 
 /** Where chroma peaks on the ramp, and so where the family's ceiling is measured. */
 const CHROMA_PEAK_LIGHTNESS = 0.6;
+
+/**
+ * Foregrounds that keep their hue and move their lightness until they are legible.
+ *
+ * The other derivation picks between two candidates — near-white or near-black — which is right for
+ * a label on a fill. It is wrong for these: `dangerText` must stay *red*, so choosing black would
+ * lose the thing it is for. What moves is the lightness alone.
+ *
+ * They are here because a fixed step cannot serve both polarities. A dark theme's background is
+ * near its floor, and WCAG 2's flat 0.05 makes every ratio there look better than it reads — which
+ * is how this branch came to pin `black`'s muted text and lift `dark`'s floor, both of which moved
+ * the score and not the legibility. Measured against APCA instead, every dark built-in failed:
+ * muted text at Lc 32–36 against a threshold of 60. No choice of step fixes that, because the step
+ * that works in the dark is wrong in the light. Deriving does.
+ */
+const LEGIBLE_FOREGROUNDS: { fg: ThemeRole; on: ThemeRole; level: ContrastLevel }[] = [
+  { fg: 'textMuted', on: 'surface', level: 'body' },
+  { fg: 'textFaint', on: 'surface', level: 'ui' },
+  { fg: 'accentText', on: 'surface', level: 'body' },
+  { fg: 'dangerText', on: 'dangerSurface', level: 'body' },
+  { fg: 'successText', on: 'successSurface', level: 'body' },
+  { fg: 'warningText', on: 'warningSurface', level: 'body' },
+];
+
+/**
+ * Walk a colour's lightness away from its background until it clears, keeping hue and chroma.
+ *
+ * Both directions are tried and the one that gets there first wins, because which way is "away"
+ * depends on the theme: muted text darkens on a light card and lightens on a dark one, and that is
+ * the whole reason a fixed step could not do this job. Exported for the tests, which have to model
+ * what actually renders rather than what is declared.
+ */
+export function deriveLegible(fg: Rgba, bg: Rgba, minimum: number): string | null {
+  const { c, h } = rgbToOklch(fg);
+  const start = rgbToOklch(fg).l;
+  for (let step = 0; step <= 100; step++) {
+    for (const direction of [1, -1]) {
+      const l = start + direction * step * 0.01;
+      if (l < 0 || l > 1) continue;
+      const candidate = { ...oklchToRgb(l, c, h), a: fg.a };
+      if (apcaContrast(candidate, bg) >= minimum)
+        return `oklch(${(l * 100).toFixed(1)}% ${c.toFixed(4)} ${h.toFixed(1)})`;
+    }
+  }
+  return null;
+}
+
+function applyLegibleForegrounds(root: HTMLElement, theme: ThemeOverrides): string[] {
+  const written: string[] = [];
+  if (typeof getComputedStyle !== 'function' || root?.nodeType !== 1 || !root.isConnected) return written;
+  const computed = getComputedStyle(root);
+
+  for (const { fg, on, level } of LEGIBLE_FOREGROUNDS) {
+    // A pin is the author overruling the derivation, which they are entitled to do.
+    if (theme.roles?.[fg] !== undefined) continue;
+    const text = parseColor(computed.getPropertyValue(roleVar(fg)).trim());
+    const background = parseColor(computed.getPropertyValue(roleVar(on)).trim());
+    if (!text || !background) continue;
+    if (apcaContrast(text, background) >= APCA_MINIMUM[level]) continue;
+
+    const fixed = deriveLegible(text, background, APCA_MINIMUM[level]);
+    if (!fixed) continue;
+    const prop = roleVar(fg);
+    root.style.setProperty(prop, fixed);
+    written.push(prop);
+  }
+  return written;
+}
 
 /**
  * Foregrounds whose colour is a *consequence* of the fill they sit on, not a separate decision.

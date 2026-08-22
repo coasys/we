@@ -1,5 +1,7 @@
 import { CodeEditor, Column, Row } from '@we/components/solid';
 import {
+  APCA_MINIMUM,
+  apcaContrast,
   CONTRAST_MINIMUM,
   type ContrastLevel,
   contrastRatio,
@@ -718,9 +720,20 @@ export function ThemePanel() {
       const fg = parseColor(colors[pair.fg] ?? '');
       const bg = parseColor(colors[pair.bg] ?? '');
       if (!fg || !bg) return [];
+      /*
+        Both measures, and the stricter one governs.
+
+        WCAG 2 stays because it may be the obligation. APCA is here because WCAG 2 is measurably
+        wrong in the dark — it adds a flat 0.05 to both sides, which dominates the denominator
+        against a near-black background, so a dark theme scores far better than it reads. Every
+        dark built-in passed WCAG 2 and failed APCA before the foregrounds were derived.
+      */
       const ratio = contrastRatio(fg, bg);
       const required = CONTRAST_MINIMUM[pair.level];
-      return ratio < required ? [{ ...pair, ratio, required }] : [];
+      const lc = apcaContrast(fg, bg);
+      const lcRequired = APCA_MINIMUM[pair.level];
+      if (ratio >= required && lc >= lcRequired) return [];
+      return [{ ...pair, ratio, required, lc, lcRequired, apcaOnly: ratio >= required }];
     });
   });
 
@@ -1096,7 +1109,10 @@ export function ThemePanel() {
                   <For each={contrastFailures()}>
                     {(f) => (
                       <we-text fontSize="100" color="text-muted" lineHeight="1.4">
-                        {f.what} — {f.ratio.toFixed(1)}:1, needs {f.required}:1
+                        {f.what} —{' '}
+                        {f.apcaOnly
+                          ? `Lc ${f.lc.toFixed(0)}, needs Lc ${f.lcRequired}`
+                          : `${f.ratio.toFixed(1)}:1, needs ${f.required}:1`}
                       </we-text>
                     )}
                   </For>

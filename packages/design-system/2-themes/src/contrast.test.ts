@@ -12,6 +12,8 @@
  * of a screenshot somebody remembers to take.
  */
 import {
+  APCA_MINIMUM,
+  apcaContrast,
   CONTRAST_MINIMUM,
   type ContrastLevel,
   contrastRatio,
@@ -28,17 +30,22 @@ import { describe, expect, it } from 'vitest';
 
 import type { ThemeOverrides, ThemeRole } from './overrides';
 import { THEME_PRESETS, type ThemeName } from './presets';
-import { AUTO_CONTRAST, pickReadableForeground } from './themeStyles';
+import { AUTO_CONTRAST, deriveLegible, pickReadableForeground } from './themeStyles';
 
 const PAIRS: { fg: ThemeRole; bg: ThemeRole; level: ContrastLevel; what: string }[] = [
   { fg: 'text', bg: 'page', level: 'body', what: 'body text on the page' },
   { fg: 'text', bg: 'surface', level: 'body', what: 'body text on a card' },
   { fg: 'text', bg: 'surfaceSunken', level: 'body', what: 'body text in a well' },
   { fg: 'textMuted', bg: 'surface', level: 'body', what: 'muted text on a card' },
-  { fg: 'onAccent', bg: 'accent', level: 'body', what: 'a primary button label' },
+  /*
+    `ui`, not `body`. APCA separates body copy from interface text, and a button label is the latter:
+    a short, semibold string at 14–16px, which its guidance puts at Lc 45. Holding a control label to
+    the 60 that a paragraph needs is not a stricter reading of the same rule, it is the wrong rule.
+  */
+  { fg: 'onAccent', bg: 'accent', level: 'ui', what: 'a primary button label' },
   { fg: 'onInverse', bg: 'surfaceInverse', level: 'body', what: 'tooltip text' },
   // The pair nothing named, which is how a dark theme shipped a near-white label on a light red.
-  { fg: 'onStatus', bg: 'danger', level: 'body', what: 'a destructive button label' },
+  { fg: 'onStatus', bg: 'danger', level: 'ui', what: 'a destructive button label' },
   { fg: 'dangerText', bg: 'dangerSurface', level: 'body', what: 'danger text on its tint' },
   { fg: 'successText', bg: 'successSurface', level: 'body', what: 'success text on its tint' },
   { fg: 'warningText', bg: 'warningSurface', level: 'body', what: 'warning text on its tint' },
@@ -136,6 +143,24 @@ function roleColor(name: ThemeRole, theme: ThemeOverrides, seen = new Set<string
     }
   }
 
+  /*
+    A foreground that keeps its hue and moves its lightness until it clears — the second derivation.
+
+    Modelled here for the same reason as the first: checking the declared step asks a question
+    nobody sees the answer to. It is what makes the APCA rows pass on the dark themes, where a fixed
+    step cannot serve both polarities.
+  */
+  const legible = LEGIBLE_PAIRS[name];
+  if (legible && !theme.roles?.[name] && !seen.has(name)) {
+    const declared = resolve((role as Record<string, string>)[name], theme);
+    const bg = roleColor(legible.on, theme, new Set([...seen, name]));
+    if (declared && bg && apcaContrast(declared, bg) < APCA_MINIMUM[legible.level]) {
+      const fixed = deriveLegible(declared, bg, APCA_MINIMUM[legible.level]);
+      if (fixed) return parseColor(fixed);
+    }
+    if (declared) return declared;
+  }
+
   const value = theme.roles?.[name] ?? (role as Record<string, string>)[name];
   if (!value) return null;
 
@@ -154,6 +179,16 @@ function roleColor(name: ThemeRole, theme: ThemeOverrides, seen = new Set<string
 
   return resolve(value, theme);
 }
+
+/** Mirrors LEGIBLE_FOREGROUNDS in themeStyles — the roles that move their own lightness. */
+const LEGIBLE_PAIRS: Partial<Record<ThemeRole, { on: ThemeRole; level: ContrastLevel }>> = {
+  textMuted: { on: 'surface', level: 'body' },
+  textFaint: { on: 'surface', level: 'ui' },
+  accentText: { on: 'surface', level: 'body' },
+  dangerText: { on: 'dangerSurface', level: 'body' },
+  successText: { on: 'successSurface', level: 'body' },
+  warningText: { on: 'warningSurface', level: 'body' },
+};
 
 /** The two ends of this theme's neutral ramp — the candidates the runtime chooses between. */
 function neutralAt(l: number, theme: ThemeOverrides): string {
@@ -177,6 +212,31 @@ describe.each(Object.keys(THEME_PRESETS) as ThemeName[])('%s', (name) => {
       Number(ratio.toFixed(2)),
       `${name}: ${pair.what} is ${ratio.toFixed(2)}:1, needs ${CONTRAST_MINIMUM[pair.level]}:1`,
     ).toBeGreaterThanOrEqual(CONTRAST_MINIMUM[pair.level]);
+  });
+
+  /*
+    The same pairs, measured the way that is right about dark backgrounds.
+
+    WCAG 2 adds a flat 0.05 to both sides of its ratio, which dominates the denominator against a
+    near-black background — so a dark theme scores far better than it reads. This branch patched
+    three pairs to clear 4.5 (lifting `dark`'s floor, pinning `black`'s muted text) and each of
+    those moved the number without moving the legibility: they measured Lc 42 and 36 against a
+    threshold of 60 while WCAG 2 called them 4.84 and 5.08.
+
+    Both checks run. WCAG 2 stays because it may be the obligation and APCA is still a draft; APCA
+    is here because it is the one that catches this.
+  */
+  it.each(PAIRS)('clears APCA Lc for $what', (pair) => {
+    const fg = roleColor(pair.fg, theme);
+    const bg = roleColor(pair.bg, theme);
+    expect(fg, `could not resolve ${pair.fg}`).toBeTruthy();
+    expect(bg, `could not resolve ${pair.bg}`).toBeTruthy();
+
+    const lc = apcaContrast(fg!, bg!);
+    expect(
+      Math.round(lc),
+      `${name}: ${pair.what} is Lc ${lc.toFixed(0)}, needs Lc ${APCA_MINIMUM[pair.level]}`,
+    ).toBeGreaterThanOrEqual(APCA_MINIMUM[pair.level]);
   });
 });
 

@@ -266,7 +266,9 @@ describe('a preset and a theme both pinning roles', () => {
       converted — and a test that repeats them only ever says the file was copied correctly. What
       must not happen is that pinning one role drops the others.
     */
-    for (const role of ['--we-role-page', '--we-role-surface-sunken', '--we-role-text-muted']) {
+    // `text-muted` is no longer pinned here — it is derived against the surface now — so the three
+    // roles asserted are ones this theme still states for itself.
+    for (const role of ['--we-role-page', '--we-role-surface-sunken', '--we-role-surface-raised']) {
       expect(style[role], `${role} was dropped`).toMatch(/^oklch\([\d.]+%/);
     }
     expect(

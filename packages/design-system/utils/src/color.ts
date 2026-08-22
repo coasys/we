@@ -288,3 +288,42 @@ function rawInGamut(l: number, c: number, h: number): boolean {
   ];
   return channels.every((v) => v >= -0.001 && v <= 1.001);
 }
+
+/**
+ * APCA lightness contrast (Lc), the WCAG 3 candidate.
+ *
+ * Kept alongside WCAG 2 rather than replacing it, for two reasons. WCAG 2 may be the compliance
+ * obligation, and APCA is still a draft. But WCAG 2 is measurably wrong in the dark: it adds a flat
+ * 0.05 to both sides of the ratio, which dominates the denominator against a near-black background,
+ * so dark themes score far better than they read. Two of this repo's own themes measured 4.84 and
+ * 5.08 — comfortably "passing" — while their muted text sits at Lc 42 and 36 against a threshold
+ * of 60. Both had been *patched* to reach those WCAG numbers, which moved the score and not the
+ * legibility.
+ *
+ * Unsigned: the sign carries polarity (dark-on-light vs light-on-dark) and every caller here asks
+ * "is this legible", not "which way round is it".
+ */
+export function apcaContrast(text: Rgba, background: Rgba): number {
+  const y = ({ r, g, b }: Rgba) => 0.2126 * (r / 255) ** 2.4 + 0.7152 * (g / 255) ** 2.4 + 0.0722 * (b / 255) ** 2.4;
+  const soft = (v: number) => (v < 0.022 ? v + (0.022 - v) ** 1.414 : v);
+  const yt = soft(y(text));
+  const yb = soft(y(background));
+
+  let lc: number;
+  if (yb > yt) {
+    lc = (yb ** 0.56 - yt ** 0.57) * 1.14;
+    lc = lc < 0.1 ? 0 : lc - 0.027;
+  } else {
+    lc = (yb ** 0.65 - yt ** 0.62) * 1.14;
+    lc = lc > -0.1 ? 0 : lc + 0.027;
+  }
+  return Math.abs(lc * 100);
+}
+
+/**
+ * The Lc each kind of text needs, from APCA's own guidance.
+ *
+ * Deliberately one notch below what APCA calls ideal for body text (75): these are thresholds a
+ * whole existing design has to clear, and a bar nothing passes gets turned off rather than met.
+ */
+export const APCA_MINIMUM: Record<ContrastLevel, number> = { body: 60, large: 45, ui: 45 };
