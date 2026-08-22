@@ -249,14 +249,14 @@ export function railItem(opts: RailItemOptions): SchemaNode {
       hoverProps: {
         $if: {
           condition: active,
-          then: { bg: 'surface-active', color: 'accent-strong' },
+          then: { bg: 'surface-active', color: 'accent-text' },
           else: { bg: 'surface-hover', color: 'text' },
         },
       },
       activeProps: {
         $if: {
           condition: active,
-          then: { bg: 'surface-active', color: 'accent-strong' },
+          then: { bg: 'surface-active', color: 'accent-text' },
           else: { bg: 'surface-active', color: 'text' },
         },
       },
@@ -289,7 +289,7 @@ export function railItem(opts: RailItemOptions): SchemaNode {
                 ? [
                     {
                       type: 'we-badge',
-                      props: { size: 'sm', fontWeight: '600', bg: 'accent', color: 'text-inverse' },
+                      props: { size: 'sm', fontWeight: '600', bg: 'accent', color: 'on-inverse' },
                       children: [opts.badge],
                     },
                   ]

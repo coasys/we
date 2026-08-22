@@ -61,13 +61,13 @@ const styles = css`
   input[part='native']::-webkit-slider-runnable-track {
     height: var(--track-height);
     border-radius: var(--we-radius-pill);
-    background: var(--we-role-surface-active);
+    background: var(--we-role-control-surface);
   }
 
   input[part='native']::-moz-range-track {
     height: var(--track-height);
     border-radius: var(--we-radius-pill);
-    background: var(--we-role-surface-active);
+    background: var(--we-role-control-surface);
   }
 
   input[part='native']::-webkit-slider-thumb {

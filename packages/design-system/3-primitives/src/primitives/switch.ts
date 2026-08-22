@@ -37,7 +37,7 @@ const styles = css`
   [part='track'] {
     position: relative;
     border-radius: var(--we-radius-pill);
-    background: var(--we-role-surface-active);
+    background: var(--we-role-control-surface);
     transition: background var(--we-transition-200, 150ms) ease;
     flex-shrink: 0;
   }

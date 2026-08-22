@@ -6,4 +6,11 @@
  * schema-shared a consumer of the vocabulary, not its owner. The implementation (and its tests) now
  * sit beside the presets in `@we/themes`; this module re-exports so existing imports keep working.
  */
-export { applyThemeVars, roleVar, themeToStyle } from '@we/themes/presets';
+export {
+  applyThemeVars,
+  migrateOverrides,
+  parseOverrides,
+  roleVar,
+  THEME_SCHEMA_VERSION,
+  themeToStyle,
+} from '@we/themes/presets';

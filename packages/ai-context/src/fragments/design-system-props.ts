@@ -31,6 +31,12 @@ in dark rather than casting a shadow — and a scale position cannot express tha
 scale flips together. Templates written with roles restyle correctly under any theme; templates
 written with \`neutral-100\` are frozen into one theme's idea of what that grey meant.
 
+Two naming conventions run through the table. A bare noun is a **fill or a foreground in its own
+right** (\`surface\`, \`accent\`, \`text\`). \`on<Fill>\` is a foreground that sits **on** a
+specific fill and exists to contrast with it (\`on-accent\`, \`on-inverse\`) — so \`accent-text\`
+is the accent *used as* text, and \`on-accent\` is the text *placed on* the accent. They are
+different colours and the prefix is what tells you which you want.
+
 **Use a role for every \`bg\`, \`color\` and border colour.** Reach for a scale position only when the
 colour is a *palette* rather than a meaning — a graph's node colours by category, a chart series,
 a user-chosen swatch.
@@ -42,6 +48,7 @@ a user-chosen swatch.
 | \`surface-raised\` | Something floating above the page — a popover, a floating bar, a docked rail with a shadow. |
 | \`surface-sunken\` | A well recessed into a surface — an inset box, a code block, an input trough. |
 | \`surface-hover\` / \`surface-active\` | Row and item feedback. Use inside \`hoverProps\` / \`activeProps\`. |
+| \`control-surface\` | The filled neutral of a *control* — a slider or switch track, a progress trough, a scrollbar thumb, a secondary button, a count chip. Not a surface and not a state. |
 | \`text\` | Primary body and heading text. |
 | \`text-muted\` | Secondary text — captions, labels, metadata. |
 | \`text-faint\` | Tertiary text — placeholders, disabled labels, decorative icons. |
@@ -51,8 +58,8 @@ a user-chosen swatch.
 | \`border-strong\` | Emphasised separation. |
 | \`accent\` | An accent *fill* — a primary button, a selected disc. |
 | \`accent-hover\` / \`accent-active\` | Hover and pressed states of an accent fill. |
-| \`accent-text\` | Text or an icon **on top of** an accent fill. |
-| \`accent-strong\` | An accent-coloured heading or icon **on an ordinary surface**, where \`accent\` is often too light to read. |
+| \`on-accent\` | Text or an icon **on top of** an accent fill. |
+| \`accent-text\` | The accent used **as text** — an accented heading or icon on an ordinary surface, where \`accent\` is often too light to read. |
 | \`accent-muted\` | An accent-tinted fill — a selected row, a subtle highlight. |
 | \`focus\` | The focus ring. Rarely set directly; \`--we-ring-color\` already resolves to it. |
 | \`danger-text\` / \`success-text\` / \`warning-text\` | Status as a **foreground** — an error message, a warning icon, a "connected" tick. |

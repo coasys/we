@@ -22,7 +22,7 @@ const VARIANT_DEFAULTS: Record<ComponentVariant, Partial<DesignSystemProps>> = {
   // `surfaceSunken`, not `page`: an alert is a tinted panel, and the three status variants beside
   // it are tints. `page` won this slot only because neutral-50 happened to be the value here.
   neutral: { bg: 'surface-sunken', color: 'text' },
-  primary: { bg: 'accent-muted', color: 'accent-strong' },
+  primary: { bg: 'accent-muted', color: 'accent-text' },
   success: { bg: 'success-surface', color: 'success-text' },
   warning: { bg: 'warning-surface', color: 'warning-text' },
   danger: { bg: 'danger-surface', color: 'danger-text' },

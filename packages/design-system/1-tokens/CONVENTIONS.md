@@ -111,7 +111,7 @@ The `scripts/generate-css.ts` script runs as a post-build hook (via tsup). It:
 ## Roles vs scale positions
 
 `color.ts` holds the **scale** — `neutral-0` … `neutral-1000`, one ramp per hue. `role.ts` holds the
-**vocabulary**: `surface`, `text-muted`, `border`, `accent-strong`, `danger-text`. A scale position says
+**vocabulary**: `surface`, `text-muted`, `border`, `accent-text`, `danger-text`. A scale position says
 which grey; a role says what the colour is *for*.
 
 **Anything with a meaning takes a role.** Every `bg`, `color` and border colour in a template, in the
@@ -155,7 +155,7 @@ set, and why the theme editor names the rung each role is on rather than showing
 leaving you to guess.
 
 Two roles are deliberately written the third way in `role.ts` itself: `surfaceInverse` and
-`textInverse`. A tooltip has to stay opposite to the page in *both* polarities, and no expression
+`onInverse`. A tooltip has to stay opposite to the page in *both* polarities, and no expression
 over the scale can do that, because the whole ramp inverts together.
 
 ## Runtime Consumption

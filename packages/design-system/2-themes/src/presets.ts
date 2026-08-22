@@ -170,7 +170,7 @@ export const THEME_PRESETS = {
         textMuted: neutral(44),
         textFaint: neutral(55),
         accent: 'hsl(203 89% 53%)',
-        accentText: '#ffffff',
+        onAccent: '#ffffff',
       },
       controlRadius: 'var(--we-radius-pill)',
       surfaceRadius: '16px',
@@ -190,4 +190,5 @@ export function isThemeName(value: string): value is ThemeName {
 
 // The vocabulary and its mapping live beside the presets — one JS entry for the package.
 export type { ThemeOverrides, ThemeRole } from './overrides';
+export { migrateOverrides, parseOverrides, THEME_SCHEMA_VERSION } from './migrate';
 export { applyThemeVars, roleVar, themeToStyle } from './themeStyles';

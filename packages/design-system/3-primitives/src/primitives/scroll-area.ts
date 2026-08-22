@@ -43,7 +43,7 @@ const styles = css`
   }
 
   [part='base']::-webkit-scrollbar-thumb {
-    background: var(--we-role-surface-active);
+    background: var(--we-role-control-surface);
     border-radius: var(--we-radius-pill);
   }
 

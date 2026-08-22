@@ -28,9 +28,9 @@ const DEFAULT_PROPS: Partial<DesignSystemProps> = {
 const VARIANT_DEFAULTS: Record<ButtonVariant, Partial<DesignSystemProps>> = {
   primary: {
     bg: 'accent',
-    color: 'accent-text',
-    hoverProps: { bg: 'accent-hover', color: 'accent-text' },
-    activeProps: { bg: 'accent-active', color: 'accent-text' },
+    color: 'on-accent',
+    hoverProps: { bg: 'accent-hover', color: 'on-accent' },
+    activeProps: { bg: 'accent-active', color: 'on-accent' },
   },
   /*
     The ladder by mixing, not by two more roles.
@@ -43,16 +43,16 @@ const VARIANT_DEFAULTS: Record<ButtonVariant, Partial<DesignSystemProps>> = {
     and neutral-400 that were here to within a point.
   */
   secondary: {
-    bg: 'surface-active',
+    bg: 'control-surface',
     color: 'text',
-    hoverProps: { bg: 'color-mix(in srgb, var(--we-role-surface-active) 88%, var(--we-role-text))', color: 'text' },
-    activeProps: { bg: 'color-mix(in srgb, var(--we-role-surface-active) 76%, var(--we-role-text))', color: 'text' },
+    hoverProps: { bg: 'color-mix(in srgb, var(--we-role-control-surface) 88%, var(--we-role-text))', color: 'text' },
+    activeProps: { bg: 'color-mix(in srgb, var(--we-role-control-surface) 76%, var(--we-role-text))', color: 'text' },
   },
   ghost: {
     bg: 'transparent',
     color: 'text',
     hoverProps: { bg: 'surface-hover', color: 'text' },
-    activeProps: { bg: 'surface-active', color: 'text' },
+    activeProps: { bg: 'control-surface', color: 'text' },
   },
   /*
     Deliberately still on the scale. A status *fill* has no role — `dangerText` is the foreground of
@@ -62,16 +62,16 @@ const VARIANT_DEFAULTS: Record<ButtonVariant, Partial<DesignSystemProps>> = {
   */
   danger: {
     bg: 'danger-500',
-    color: 'text-inverse',
-    hoverProps: { bg: 'danger-600', color: 'text-inverse' },
-    activeProps: { bg: 'danger-700', color: 'text-inverse' },
+    color: 'on-inverse',
+    hoverProps: { bg: 'danger-600', color: 'on-inverse' },
+    activeProps: { bg: 'danger-700', color: 'on-inverse' },
   },
   outline: {
     bg: 'transparent',
     color: 'text',
     border: '1px solid var(--we-role-border)',
     hoverProps: { bg: 'surface-hover', color: 'text', border: '1px solid var(--we-role-border-strong)' },
-    activeProps: { bg: 'surface-active', color: 'text', border: '1px solid var(--we-role-border-strong)' },
+    activeProps: { bg: 'control-surface', color: 'text', border: '1px solid var(--we-role-border-strong)' },
   },
   // The appearance-free member of the scale: button semantics, no chrome. For wrapping arbitrary
   // content in a real <button> — the styling then lives on the wrapped Column/Card, which is

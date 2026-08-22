@@ -42,7 +42,7 @@ export const consentPrompt: SchemaNode = {
               type: 'Row',
               props: { gap: '300', ay: 'center' },
               children: [
-                { type: 'we-icon', props: { name: 'shield-check', color: 'accent-strong' } },
+                { type: 'we-icon', props: { name: 'shield-check', color: 'accent-text' } },
                 {
                   type: 'we-text',
                   props: { variant: 'heading-sm' },
@@ -161,7 +161,7 @@ export const consentPrompt: SchemaNode = {
                   type: 'we-button',
                   props: {
                     text: 'Approve',
-                    color: 'accent-text',
+                    color: 'on-accent',
                     bg: 'accent',
                     loading: { $store: 'runtimeStore.loading' },
                     onClick: { $action: 'runtimeStore.approveConsent' },
@@ -206,7 +206,7 @@ export const consentSecret: SchemaNode = {
           type: 'Column',
           props: { bg: 'surface', r: '400', p: '600', gap: '400', maxWidth: '420px', shadow: 'xl', ax: 'center' },
           children: [
-            { type: 'we-icon', props: { name: 'key', color: 'accent-strong', size: 'lg' } },
+            { type: 'we-icon', props: { name: 'key', color: 'accent-text', size: 'lg' } },
             { type: 'we-text', props: { variant: 'heading-sm' }, children: ['Confirmation code'] },
             {
               type: 'we-text',
@@ -227,7 +227,7 @@ export const consentSecret: SchemaNode = {
               type: 'we-button',
               props: {
                 text: 'Done',
-                color: 'accent-text',
+                color: 'on-accent',
                 bg: 'accent',
                 onClick: { $action: 'runtimeStore.dismissConsentSecret' },
               },

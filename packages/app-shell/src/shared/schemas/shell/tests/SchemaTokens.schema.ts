@@ -39,7 +39,7 @@ function section(token: string, title: string, children: (SchemaNode | string)[]
         type: 'Row',
         props: { gap: '200', ay: 'center', pb: '200' },
         children: [
-          { type: 'we-text', props: { fontWeight: '600', color: 'accent-strong' }, children: [token] },
+          { type: 'we-text', props: { fontWeight: '600', color: 'accent-text' }, children: [token] },
           { type: 'we-text', props: { color: 'text-muted' }, children: [`- ${title}`] },
         ],
       },
@@ -95,7 +95,7 @@ function interactiveLabel(label: string): SchemaNode {
     type: 'Row',
     props: { gap: '200', ay: 'center', py: '50' },
     children: [
-      { type: 'we-icon', props: { name: 'arrow-clockwise', size: 'xs', color: 'accent-strong' } },
+      { type: 'we-icon', props: { name: 'arrow-clockwise', size: 'xs', color: 'accent-text' } },
       { type: 'we-text', children: [label] },
     ],
   };
@@ -230,7 +230,7 @@ const actionTest = section('$action', 'Trigger store mutations', [
       { type: 'we-text', children: ['Counter:'] },
       {
         type: 'we-text',
-        props: { color: 'accent-strong' },
+        props: { color: 'accent-text' },
         children: [{ $store: 'testStore.counter' }],
       },
     ],
@@ -384,7 +384,7 @@ const ifTest = section('$if', 'Conditional rendering (prop + node level)', [
           { type: 'we-icon', props: { name: 'sparkle', color: 'accent' } },
           {
             type: 'we-text',
-            props: { color: 'accent-strong' },
+            props: { color: 'accent-text' },
             children: ['Animated content (fade in 1000ms / out 1000ms)'],
           },
         ],
@@ -778,7 +778,7 @@ const localStateBasicTest: SchemaNode = {
       type: 'Row',
       props: { gap: '200', ay: 'center', pb: '200' },
       children: [
-        { type: 'we-text', props: { fontWeight: '600', color: 'accent-strong' }, children: ['$localState'] },
+        { type: 'we-text', props: { fontWeight: '600', color: 'accent-text' }, children: ['$localState'] },
         { type: 'we-text', props: { color: 'text-muted' }, children: ['- Scoped ephemeral state'] },
       ],
     },
@@ -894,7 +894,7 @@ const formValidationBasicTest: SchemaNode = {
       type: 'Row',
       props: { gap: '200', ay: 'center', pb: '200' },
       children: [
-        { type: 'we-text', props: { fontWeight: '600', color: 'accent-strong' }, children: ['$error / $valid'] },
+        { type: 'we-text', props: { fontWeight: '600', color: 'accent-text' }, children: ['$error / $valid'] },
         { type: 'we-text', props: { color: 'text-muted' }, children: ['- Field validation with touch gating'] },
       ],
     },
@@ -1054,7 +1054,7 @@ const formValidationActionsTest: SchemaNode = {
       type: 'Row',
       props: { gap: '200', ay: 'center', pb: '200' },
       children: [
-        { type: 'we-text', props: { fontWeight: '600', color: 'accent-strong' }, children: ['$touch / $resetLocal'] },
+        { type: 'we-text', props: { fontWeight: '600', color: 'accent-text' }, children: ['$touch / $resetLocal'] },
         { type: 'we-text', props: { color: 'text-muted' }, children: ['- Touch all, reset, and handler arrays'] },
       ],
     },
@@ -1189,7 +1189,7 @@ const formValidationMatchTest: SchemaNode = {
       type: 'Row',
       props: { gap: '200', ay: 'center', pb: '200' },
       children: [
-        { type: 'we-text', props: { fontWeight: '600', color: 'accent-strong' }, children: ['match rule'] },
+        { type: 'we-text', props: { fontWeight: '600', color: 'accent-text' }, children: ['match rule'] },
         { type: 'we-text', props: { color: 'text-muted' }, children: ['- Cross-field password confirmation'] },
       ],
     },
@@ -1281,7 +1281,7 @@ const formValidationStylingTest: SchemaNode = {
       type: 'Row',
       props: { gap: '200', ay: 'center', pb: '200' },
       children: [
-        { type: 'we-text', props: { fontWeight: '600', color: 'accent-strong' }, children: ['Conditional styling'] },
+        { type: 'we-text', props: { fontWeight: '600', color: 'accent-text' }, children: ['Conditional styling'] },
         {
           type: 'we-text',
           props: { color: 'text-muted' },
@@ -1471,7 +1471,7 @@ const fragmentTest = section('Fragment (no type)', 'Node without type renders as
   },
   {
     children: [
-      { type: 'we-text', props: { color: 'accent-strong' }, children: ['Fragment child 1 (Primary)'] },
+      { type: 'we-text', props: { color: 'accent-text' }, children: ['Fragment child 1 (Primary)'] },
       { type: 'we-text', props: { color: 'success-text' }, children: ['Fragment child 2 (Green)'] },
     ],
   } as SchemaNode,
@@ -1648,7 +1648,7 @@ export const schemaTokensTemplate: TemplateSchema = {
       children: [
         {
           type: 'we-text',
-          props: { fontSize: '700', fontWeight: '700', color: 'accent-strong' },
+          props: { fontSize: '700', fontWeight: '700', color: 'accent-text' },
           children: ['Token Integration Tests'],
         },
         {

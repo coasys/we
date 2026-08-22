@@ -68,11 +68,11 @@ const CSS_STYLES = css`
     font-size: var(--we-font-size-200, 14px);
     font-weight: 500;
     padding: var(--we-space-300, 8px) var(--we-space-300, 8px);
-    /* The inverse pair. Not text/textInverse: those are scale positions, so they flip with the
+    /* The inverse pair. Not text/onInverse: those are scale positions, so they flip with the
        theme and a dark tooltip in light mode became a white one in dark. Both halves of this pair
        hold a fixed lightness, so the tooltip stays opposite to the page in either polarity. */
     background: var(--we-role-surface-inverse);
-    color: var(--we-role-text-inverse);
+    color: var(--we-role-on-inverse);
     border-radius: var(--we-border-radius, 4px);
     box-shadow: 0 2px 8px color-mix(in srgb, var(--we-role-shadow-color) 15%, transparent);
     pointer-events: none;

@@ -294,7 +294,7 @@ const welcomeHeading: SchemaNode = {
   type: 'Column',
   props: { gap: '300', ax: 'center', maxWidth: '420px' },
   children: [
-    { type: 'we-text', props: { variant: 'heading-lg', color: 'accent-strong' }, children: ['Welcome'] },
+    { type: 'we-text', props: { variant: 'heading-lg', color: 'accent-text' }, children: ['Welcome'] },
     {
       type: 'we-text',
       props: { fontSize: '500', color: 'text-muted', textAlign: 'center' },
@@ -429,7 +429,7 @@ const unlockForm: SchemaNode = {
           type: 'Row',
           props: { gap: '300', ay: 'center' },
           children: [
-            { type: 'we-icon', props: { name: 'key', color: 'accent-strong' } },
+            { type: 'we-icon', props: { name: 'key', color: 'accent-text' } },
             {
               type: 'we-text',
               props: { variant: 'heading-sm', fontWeight: 'regular' },
@@ -764,7 +764,7 @@ export const bootScreen: SchemaNode = {
                               type: 'Row',
                               props: { gap: '300', ay: 'center' },
                               children: [
-                                { type: 'we-icon', props: { name: 'user-plus', color: 'accent-strong' } },
+                                { type: 'we-icon', props: { name: 'user-plus', color: 'accent-text' } },
                                 {
                                   type: 'we-text',
                                   props: { variant: 'heading-md', fontWeight: 'regular' },

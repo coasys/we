@@ -11,7 +11,7 @@ import {
   Theme,
 } from '@we/models';
 import type { ThemeOverrides } from '@we/schema-shared';
-import { applyThemeVars } from '@we/schema-shared';
+import { applyThemeVars, parseOverrides, THEME_SCHEMA_VERSION } from '@we/schema-shared';
 import type { SanitiseCssOptions } from '@we/themes/sanitiseCss';
 import { sanitiseCss } from '@we/themes/sanitiseCss';
 import {
@@ -291,7 +291,7 @@ function injectCssString(id: string, css: string, options: SanitiseCssOptions = 
 }
 
 function applyThemeToDOM(theme: ThemeData) {
-  const overrides: ThemeOverrides = theme.overrides ? JSON.parse(theme.overrides) : {};
+  const overrides: ThemeOverrides = parseOverrides(theme.overrides);
   // Normalize legacy fontFamily: 'base' sentinel saved before the font-family fix
   if (overrides.fontFamily === 'base') delete overrides.fontFamily;
 
@@ -823,7 +823,7 @@ export function ThemeStoreProvider(props: ParentProps) {
     const base = themeId ? allThemes().find((t) => t.id === themeId) : currentTheme();
     if (!base) return;
     clearHistory();
-    const storedOverrides: ThemeOverrides = base.overrides ? JSON.parse(base.overrides) : {};
+    const storedOverrides: ThemeOverrides = parseOverrides(base.overrides);
     let initialOverrides: ThemeOverrides;
     if (themeScope() === 'scoped') {
       // documentElement has the personal theme in scoped mode, not the space theme being edited.
@@ -844,7 +844,7 @@ export function ThemeStoreProvider(props: ParentProps) {
     if (!current) return;
     captureSnapshot();
 
-    const existing: ThemeOverrides = current.overrides ? JSON.parse(current.overrides) : {};
+    const existing: ThemeOverrides = parseOverrides(current.overrides);
 
     // Pull mode-defining vars directly from the registry — they are no longer in the CSS
     // files so populateMissingOverrides can't read them from computed style.
@@ -874,8 +874,11 @@ export function ThemeStoreProvider(props: ParentProps) {
     captureSnapshot();
     setEditingTheme((prev) => {
       if (!prev) return prev;
-      const existing: ThemeOverrides = prev.overrides ? JSON.parse(prev.overrides) : {};
-      const merged = { ...existing, ...patch };
+      const existing: ThemeOverrides = parseOverrides(prev.overrides);
+      // Stamped on write, not on read: `parseOverrides` migrates a theme in memory and leaves what
+      // is stored alone, so an installed theme nobody edits is never rewritten under them. The
+      // moment an author does change something, what they save is current.
+      const merged = { ...existing, ...patch, schemaVersion: THEME_SCHEMA_VERSION };
       return { ...prev, overrides: JSON.stringify(merged), isDirty: true };
     });
   }
@@ -916,7 +919,7 @@ export function ThemeStoreProvider(props: ParentProps) {
       // the source theme's computed CSS (it is already applied to the DOM at this point).
       let initialOverrides: ThemeOverrides | null = null;
       if (source) {
-        const base: ThemeOverrides = source.overrides ? JSON.parse(source.overrides) : {};
+        const base: ThemeOverrides = parseOverrides(source.overrides);
         if (source.origin === 'built-in' && sourceId) base.themeName = sourceId;
         initialOverrides = populateMissingOverrides(base);
       }

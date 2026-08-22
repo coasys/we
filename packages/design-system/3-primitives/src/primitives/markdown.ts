@@ -107,7 +107,7 @@ const styles = css`
 
   /* Links */
   [part='base'] a {
-    color: var(--we-role-accent-strong);
+    color: var(--we-role-accent-text);
     text-decoration: underline;
   }
 

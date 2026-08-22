@@ -130,7 +130,7 @@ const styles = css`
 
   [part='tab'][aria-selected='true'] {
     background: var(--we-role-accent-muted);
-    color: var(--we-role-accent-strong);
+    color: var(--we-role-accent-text);
   }
 
   [part='tokens'] {
@@ -255,7 +255,7 @@ const styles = css`
 
   [part='format'][aria-pressed='true'] {
     background: var(--we-role-accent-muted);
-    color: var(--we-role-accent-strong);
+    color: var(--we-role-accent-text);
   }
 
   [part='dropper'] {
@@ -272,7 +272,7 @@ const styles = css`
   }
 
   [part='dropper']:hover {
-    color: var(--we-role-accent-strong);
+    color: var(--we-role-accent-text);
     border-color: var(--we-role-accent);
   }
 

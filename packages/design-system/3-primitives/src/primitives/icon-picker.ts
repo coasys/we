@@ -221,7 +221,7 @@ const styles = css`
 
   [part='tab'][aria-selected='true'] {
     background: var(--we-role-accent-muted);
-    color: var(--we-role-accent-strong);
+    color: var(--we-role-accent-text);
   }
 
   /* Search */

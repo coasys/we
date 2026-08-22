@@ -10,7 +10,9 @@ import { isThemeName, THEME_PRESETS } from './presets';
  */
 type ParametricKey = Exclude<
   keyof ThemeOverrides,
-  'themeName' | 'shadowIntensity' | 'animationSpeed' | 'surfaceBlur' | 'fontScale' | 'roles'
+  // `schemaVersion` is bookkeeping rather than a value — it says which vocabulary the theme was
+  // written against and never becomes a custom property.
+  'themeName' | 'shadowIntensity' | 'animationSpeed' | 'surfaceBlur' | 'fontScale' | 'roles' | 'schemaVersion'
 >;
 
 /** camelCase role name → --we-role-<kebab-case> custom property. */

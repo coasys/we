@@ -39,13 +39,13 @@ export const role = {
    *
    * Hue and saturation stay parametric, so it still follows a theme's neutral tint.
    */
-  textInverse: 'hsl(var(--we-color-neutral-hue) var(--we-color-neutral-saturation) 98%)',
+  onInverse: 'hsl(var(--we-color-neutral-hue) var(--we-color-neutral-saturation) 98%)',
 
   /**
    * A surface deliberately opposite to the page — the tooltip, and anything else that must read as
    * "not part of the document".
    *
-   * Like `textInverse`, pinned in lightness so it does not flip. The tooltip hardcoded `#222` for
+   * Like `onInverse`, pinned in lightness so it does not flip. The tooltip hardcoded `#222` for
    * exactly this reason and the dark theme carried a CSS override to undo it in dark mode; both are
    * gone, and a theme can now move the pair together.
    */
@@ -56,20 +56,20 @@ export const role = {
   borderStrong: 'var(--we-color-neutral-500)',
   /** The accent (interactive emphasis). */
   accent: 'var(--we-color-primary-500)',
-  /** Text/icon colour on top of the accent. */
-  accentText: 'var(--we-color-neutral-0)',
+  /** Text/icon colour on top of an accent fill. Named for what it sits *on*, not what it is. */
+  onAccent: 'var(--we-color-neutral-0)',
   /** A de-emphasised accent — accent-tinted fills, selected rows, subtle highlights. */
   accentMuted: 'var(--we-color-primary-100)',
   /**
    * The accent at text contrast — an accented heading, an accent-coloured icon on a surface.
    *
    * Distinct from `accent` because that one is sized for a *fill*, where the text sits on top of it
-   * and `accentText` supplies the contrast. Used as a foreground on an ordinary surface the same
+   * and `onAccent` supplies the contrast. Used as a foreground on an ordinary surface the same
    * value is often too light to read, which is why templates reached past it for primary-600/700.
    * A theme with a pale accent has to move this further than `accent` to stay legible; one with a
    * dark accent may set them equal. Only a second role can say either.
    */
-  accentStrong: 'var(--we-color-primary-700)',
+  accentText: 'var(--we-color-primary-700)',
   /**
    * Hover and pressed states for an accent *fill* — the primary button, chiefly.
    *
@@ -85,6 +85,17 @@ export const role = {
   surfaceHover: 'var(--we-color-neutral-100)',
   /** Pressed tint on a surface. */
   surfaceActive: 'var(--we-color-neutral-200)',
+
+  /**
+   * The filled neutral of a *control* — a slider track, a switch track, a progress trough, a
+   * scrollbar thumb, a secondary button, a count chip.
+   *
+   * Added because all of those were borrowing `surfaceActive`, which is a *pressed state*: of its
+   * dozen uses only two were ever a press. That made the name a lie and, worse, coupled two things
+   * a theme wants to move independently — darkening your pressed state should not darken every
+   * slider on the page. The default is the value they were all borrowing, so nothing moves.
+   */
+  controlSurface: 'var(--we-color-neutral-200)',
 
   /**
    * The scrim behind a modal or drawer.

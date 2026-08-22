@@ -200,7 +200,7 @@ const styles = css`
      of markers rather than a column of dark glyphs. */
   [part='option'] we-icon,
   [part='value'] we-icon {
-    color: var(--we-role-accent-strong);
+    color: var(--we-role-accent-text);
   }
 
   [part='group-heading'] {

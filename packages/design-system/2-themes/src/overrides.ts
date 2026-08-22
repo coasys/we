@@ -24,17 +24,18 @@ export type ThemeRole =
   | 'surfaceSunken'
   | 'surfaceHover'
   | 'surfaceActive'
+  | 'controlSurface'
   | 'text'
   | 'textMuted'
   | 'textFaint'
-  | 'textInverse'
+  | 'onInverse'
   | 'surfaceInverse'
   | 'border'
   | 'borderStrong'
   | 'accent'
-  | 'accentText'
+  | 'onAccent'
   | 'accentMuted'
-  | 'accentStrong'
+  | 'accentText'
   | 'accentHover'
   | 'accentActive'
   | 'overlay'
@@ -48,6 +49,13 @@ export type ThemeRole =
   | 'warningText';
 
 export type ThemeOverrides = {
+  /**
+   * The vocabulary version this theme was written against — see `migrate.ts`.
+   *
+   * Written on save, read on load. Absent means "before versioning", which is version 1.
+   */
+  schemaVersion?: number;
+
   // Named preset
   themeName?: string; // Named theme preset (e.g. 'dark', 'cyberpunk', 'retro') — sets data-we-theme attribute
 

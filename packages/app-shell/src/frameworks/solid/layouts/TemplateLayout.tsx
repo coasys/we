@@ -41,7 +41,7 @@ import { MemoryRouter, Route, useLocation, useNavigate } from '@solidjs/router';
 import { Column } from '@we/components/solid';
 import { panelResizing } from '@we/editor/runtime';
 import type { TemplateSchema } from '@we/schema-shared';
-import { themeToStyle } from '@we/schema-shared';
+import { parseOverrides, themeToStyle } from '@we/schema-shared';
 import { lazy } from 'solid-js';
 
 const EditorOverlay = lazy(() => import('@we/editor').then((m) => ({ default: m.EditorOverlay })));
@@ -214,7 +214,7 @@ export function TemplateLayout(
   const spaceThemeStyle = createMemo(() => {
     const td = stores.themeStore.activeTemplateTheme();
     if (!td) return {};
-    const overrides = td.overrides ? JSON.parse(td.overrides) : {};
+    const overrides = parseOverrides(td.overrides);
     if (isValidThemeKey(td.id) && !overrides.themeName) overrides.themeName = td.id;
     return {
       ...themeToStyle(overrides),
@@ -242,7 +242,7 @@ export function TemplateLayout(
   const spaceThemeName = createMemo(() => {
     const td = stores.themeStore.activeTemplateTheme();
     if (!td) return undefined;
-    const overrides = td.overrides ? JSON.parse(td.overrides) : {};
+    const overrides = parseOverrides(td.overrides);
     return (overrides.themeName as string | undefined) ?? (isValidThemeKey(td.id) ? td.id : undefined);
   });
 

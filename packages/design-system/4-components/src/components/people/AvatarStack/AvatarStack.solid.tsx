@@ -120,7 +120,7 @@ export function AvatarStack(props: AvatarStackProps) {
             // faces, so a theme that squares them off has to square this too or the row ends in an
             // odd one out. Safe as a percentage for the same reason the avatars are — it is square.
             'border-radius': 'var(--we-theme-avatar-radius, 50%)',
-            background: 'var(--we-role-surface-active)',
+            background: 'var(--we-role-control-surface)',
             color: 'var(--we-role-text)',
             'font-size': 'var(--we-font-size-100)',
             'font-weight': '600',

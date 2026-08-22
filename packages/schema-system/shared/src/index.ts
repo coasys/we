@@ -86,7 +86,14 @@ export {
 export type { LocalFieldMeta, LocalMetaMap, MapProp } from './propResolvers';
 export { hasToken } from './predicates';
 export { isPropsSchemaNode, isSchemaChild, replaceNodeInTree } from './treeUtils';
-export { applyThemeVars, roleVar, themeToStyle } from './themeStyles';
+export {
+  applyThemeVars,
+  migrateOverrides,
+  parseOverrides,
+  roleVar,
+  THEME_SCHEMA_VERSION,
+  themeToStyle,
+} from './themeStyles';
 export { validateField } from './validation';
 export {
   computeSectionIndex,

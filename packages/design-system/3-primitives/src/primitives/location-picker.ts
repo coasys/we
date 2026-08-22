@@ -110,7 +110,7 @@ const styles = css`
     all: unset;
     cursor: pointer;
     background: var(--we-role-accent);
-    color: var(--we-role-text-inverse);
+    color: var(--we-role-on-inverse);
     font-size: var(--we-font-size-200);
     font-weight: 500;
     padding: var(--we-space-200) var(--we-space-400);
@@ -119,7 +119,7 @@ const styles = css`
   }
 
   [part='confirm']:hover {
-    background: var(--we-role-accent-strong);
+    background: var(--we-role-accent-text);
   }
 
   [part='confirm'][disabled] {

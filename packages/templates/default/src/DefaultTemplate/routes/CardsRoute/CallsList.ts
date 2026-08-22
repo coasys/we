@@ -81,7 +81,7 @@ function extracted(query: object, label: string, icon: string, as: string): Sche
             type: 'Row',
             props: { gap: '200', ay: 'center' },
             children: [
-              { type: 'we-icon', props: { name: icon, color: 'accent-strong' } },
+              { type: 'we-icon', props: { name: icon, color: 'accent-text' } },
               {
                 type: 'we-text',
                 props: { variant: 'footnote', color: 'text-muted', uppercase: true },
@@ -158,7 +158,7 @@ export const callsList: SchemaNode = {
               type: 'Row',
               props: { ay: 'center', gap: '300' },
               children: [
-                { type: 'we-icon', props: { name: 'phone', color: 'accent-strong' } },
+                { type: 'we-icon', props: { name: 'phone', color: 'accent-text' } },
                 {
                   type: 'Column',
                   props: { gap: '100' },

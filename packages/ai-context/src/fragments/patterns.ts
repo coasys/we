@@ -361,7 +361,7 @@ the route's background reaches the edges, the inner holds the measure.
       "type": "Row",
       "props": { "ay": "center", "gap": "400", "py": "100" },
       "children": [
-        { "type": "we-icon", "props": { "name": "globe", "color": "accentStrong" } },
+        { "type": "we-icon", "props": { "name": "globe", "color": "accentText" } },
         {
           "type": "Column",
           "props": { "gap": "100" },

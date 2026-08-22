@@ -1039,7 +1039,7 @@ const shapeRow: SchemaNode = {
               type: 'we-icon',
               props: {
                 name: { $if: { condition: '$shape.icon', then: '$shape.icon', else: 'cube' } },
-                color: 'accent-strong',
+                color: 'accent-text',
               },
             },
             {

@@ -108,7 +108,7 @@ const baseThemeSpec: Record<string, Record<string, string>> = {
     height: '26px',
   },
   '.cm-search button:hover': {
-    background: 'var(--we-role-surface-active)',
+    background: 'var(--we-role-control-surface)',
   },
   '.cm-panel.cm-search [name=close]': {
     background: 'none',
@@ -140,7 +140,7 @@ const baseThemeSpec: Record<string, Record<string, string>> = {
     is UI and does take roles. (Comments are the one crossover: faint text is faint text.)
   */
   // Syntax tokens (.tok-* classes from classHighlighter)
-  '.tok-propertyName': { color: 'var(--we-role-accent-strong)' },
+  '.tok-propertyName': { color: 'var(--we-role-accent-text)' },
   '.tok-string': { color: 'var(--we-color-success-600)' },
   '.tok-number, .tok-integer, .tok-float': { color: 'var(--we-color-warning-600)' },
   '.tok-bool, .tok-null, .tok-atom': { color: 'var(--we-color-danger-500)' },

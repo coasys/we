@@ -76,14 +76,14 @@ self-documenting and keeps it visually parallel to its recipe in `@we/ai-context
 ## Colour — roles only
 
 Every `bg`, `color` and border colour a fragment emits names a **semantic role** (`surface`,
-`text-muted`, `border`, `accent-strong`, `danger-text`), never a scale position. A fragment is the
+`text-muted`, `border`, `accent-text`, `danger-text`), never a scale position. A fragment is the
 shape many templates inherit, so a `neutral-100` here is a theme-independence bug reproduced at
 every call site at once — which is the same reason fragments exist.
 
 `page` / `surface` / `surface-raised` / `surface-sunken` say where the box sits, so pick by what the
 fragment actually renders rather than by which grey looked right: a floating panel is `surface-raised`
 whatever its shadow, and an inset well inside a card is `surface-sunken`. Text on an accent fill is
-`accent-text`; an accent-coloured heading on an ordinary surface is `accent-strong`. The full table is
+`on-accent`; an accent-coloured heading on an ordinary surface is `accent-text`. The full table is
 in `@we/ai-context`'s Design System Props fragment, and the reasoning is in
 `packages/design-system/1-tokens/CONVENTIONS.md`.
 

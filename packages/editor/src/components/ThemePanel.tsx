@@ -118,63 +118,120 @@ const INPUT_SPACING_OPTIONS = [
  * reference themes (channels, timeline) reach for roles to express exactly that, and until now the
  * only way for anyone else to do it was hand-writing the theme's CSS.
  */
-const ROLE_GROUPS: { label: string; roles: { role: ThemeRole; label: string }[] }[] = [
+const ROLE_GROUPS: { label: string; hint: string; roles: { role: ThemeRole; label: string; hint: string }[] }[] = [
   {
-    label: 'Surfaces',
+    label: 'Elevation',
+    hint: 'How far a thing sits from the page. Ordered here the way they stack.',
     roles: [
-      { role: 'page', label: 'Page' },
-      { role: 'surface', label: 'Surface' },
-      { role: 'surfaceRaised', label: 'Raised' },
-      { role: 'surfaceSunken', label: 'Sunken' },
-      { role: 'surfaceHover', label: 'Hover' },
-      { role: 'surfaceActive', label: 'Pressed' },
-      { role: 'surfaceInverse', label: 'Inverse' },
+      { role: 'page', label: 'Page', hint: 'The background behind everything, including the window itself.' },
+      {
+        role: 'surfaceSunken',
+        label: 'Sunken',
+        hint: 'A well recessed into a surface — an inset box, a code block, an input trough.',
+      },
+      {
+        role: 'surface',
+        label: 'Surface',
+        hint: 'A card, panel or sheet sitting on the page. Most content sits on this.',
+      },
+      {
+        role: 'surfaceRaised',
+        label: 'Raised',
+        hint: 'Something floating above the page — a popover, a menu, a docked rail, a floating bar.',
+      },
+    ],
+  },
+  {
+    label: 'Interaction',
+    hint: 'Feedback under the pointer. These are states, not places — they apply to rows, tabs, menu items and buttons alike.',
+    roles: [
+      { role: 'surfaceHover', label: 'Hover', hint: 'The tint a row or a ghost button takes under the pointer.' },
+      { role: 'surfaceActive', label: 'Pressed', hint: 'The tint while it is actually being pressed.' },
+      {
+        role: 'controlSurface',
+        label: 'Control fill',
+        hint: 'The filled neutral of a control — a slider or switch track, a progress trough, a scrollbar thumb, a secondary button.',
+      },
+      { role: 'focus', label: 'Focus ring', hint: 'The ring around whatever the keyboard is on.' },
     ],
   },
   {
     label: 'Text',
+    hint: 'Three levels of emphasis, plus the one that sits on a dark surface.',
     roles: [
-      { role: 'text', label: 'Primary' },
-      { role: 'textMuted', label: 'Muted' },
-      { role: 'textFaint', label: 'Faint' },
-      { role: 'textInverse', label: 'On inverse' },
-    ],
-  },
-  {
-    label: 'Lines',
-    roles: [
-      { role: 'border', label: 'Border' },
-      { role: 'borderStrong', label: 'Strong border' },
+      {
+        role: 'text',
+        label: 'Primary',
+        hint: 'Body copy and headings. Most text in the app inherits this without asking.',
+      },
+      { role: 'textMuted', label: 'Muted', hint: 'Secondary text — captions, labels, metadata, timestamps.' },
+      { role: 'textFaint', label: 'Faint', hint: 'Tertiary text — placeholders, disabled labels, decorative icons.' },
+      {
+        role: 'onInverse',
+        label: 'On inverse',
+        hint: 'Text on the inverse surface — a tooltip. Holds its lightness in both light and dark.',
+      },
     ],
   },
   {
     label: 'Accent',
+    hint: 'Your brand colour, in the four jobs it has to do.',
     roles: [
-      { role: 'accent', label: 'Accent' },
-      { role: 'accentHover', label: 'Accent hover' },
-      { role: 'accentActive', label: 'Accent pressed' },
-      { role: 'accentStrong', label: 'Accent text' },
-      { role: 'accentText', label: 'On accent' },
-      { role: 'accentMuted', label: 'Accent tint' },
-      { role: 'focus', label: 'Focus ring' },
+      { role: 'accent', label: 'Accent fill', hint: 'A filled accent — a primary button, a selected disc.' },
+      { role: 'accentHover', label: 'Fill hover', hint: 'That fill under the pointer.' },
+      { role: 'accentActive', label: 'Fill pressed', hint: 'That fill while pressed.' },
+      { role: 'onAccent', label: 'On accent', hint: 'Text and icons placed ON an accent fill. Usually near-white.' },
+      {
+        role: 'accentText',
+        label: 'Accent text',
+        hint: 'The accent used AS text — a coloured heading or icon on an ordinary surface, where the fill colour is often too light to read.',
+      },
+      {
+        role: 'accentMuted',
+        label: 'Accent tint',
+        hint: 'An accent-tinted fill — a selected row, a subtle highlight.',
+      },
+    ],
+  },
+  {
+    label: 'Lines',
+    hint: 'Borders and dividers.',
+    roles: [
+      { role: 'border', label: 'Border', hint: 'Default borders, dividers and hairlines.' },
+      {
+        role: 'borderStrong',
+        label: 'Strong border',
+        hint: 'Emphasised separation, and the outline a control takes on hover.',
+      },
     ],
   },
   {
     label: 'Status',
+    hint: 'Each status has a foreground and a tint. The foreground is the message; the tint is the panel behind it.',
     roles: [
-      { role: 'dangerText', label: 'Danger' },
-      { role: 'dangerSurface', label: 'Danger tint' },
-      { role: 'successText', label: 'Success' },
-      { role: 'successSurface', label: 'Success tint' },
-      { role: 'warningText', label: 'Warning' },
-      { role: 'warningSurface', label: 'Warning tint' },
+      { role: 'dangerText', label: 'Danger', hint: 'Error text, a destructive icon, a failed state.' },
+      { role: 'dangerSurface', label: 'Danger tint', hint: 'The panel behind danger content.' },
+      { role: 'successText', label: 'Success', hint: 'A confirmation, a connected tick.' },
+      { role: 'successSurface', label: 'Success tint', hint: 'The panel behind success content.' },
+      { role: 'warningText', label: 'Warning', hint: 'A caution, something needing attention.' },
+      { role: 'warningSurface', label: 'Warning tint', hint: 'The panel behind warning content.' },
     ],
   },
   {
-    label: 'Depth',
+    label: 'Depth & inversion',
+    hint: 'The things that are deliberately not on the light/dark ramp.',
     roles: [
-      { role: 'overlay', label: 'Scrim' },
-      { role: 'shadowColor', label: 'Shadow' },
+      {
+        role: 'surfaceInverse',
+        label: 'Inverse surface',
+        hint: 'A surface deliberately opposite to the page — a tooltip. Stays dark in a dark theme too.',
+      },
+      { role: 'overlay', label: 'Scrim', hint: 'The dimming behind a modal or drawer. Carries its own transparency.' },
+      {
+        role: 'shadowColor',
+        label: 'Shadow',
+        hint: 'The colour shadows are built from. Tint it to match a coloured theme.',
+      },
     ],
   },
 ];
@@ -614,7 +671,7 @@ export function ThemePanel() {
     saveTheme();
   }
 
-  function roleRow(role: ThemeRole, label: string) {
+  function roleRow(role: ThemeRole, label: string, hint: string) {
     const pinned = () => overrides().roles?.[role];
     // Unpinned, the swatch shows what the role currently resolves to — sampled with its alpha, so
     // opening the scrim's picker starts on a translucent colour rather than an opaque guess.
@@ -629,9 +686,16 @@ export function ThemePanel() {
           on:change={(e: CustomEvent) => setRole(role, e.detail as string)}
         />
         <Column flex="1" gap="0">
-          <we-text fontSize="300" color={pinned() ? 'text' : 'text-muted'}>
-            {label}
-          </we-text>
+          {/*
+            The tooltip hangs off the label rather than an info icon beside it: every row would
+            need one, and a column of forty ⓘ glyphs is noise standing in for an explanation. The
+            label is already the thing you point at when you are wondering what it means.
+          */}
+          <we-tooltip title={hint} placement="left">
+            <we-text fontSize="300" color={pinned() ? 'text' : 'text-muted'} cursor="help">
+              {label}
+            </we-text>
+          </we-tooltip>
           <we-text fontSize="100" color="text-faint" truncate>
             {roleTierLabel(pinned())}
           </we-text>
@@ -811,7 +875,11 @@ export function ThemePanel() {
                     <we-text fontSize="200" color="text-faint">
                       {group.label}
                     </we-text>
-                    <For each={group.roles}>{(entry) => roleRow(entry.role, entry.label)}</For>
+                    {/* What the group is *for*, once, rather than repeated on every row inside it. */}
+                    <we-text fontSize="100" color="text-faint" lineHeight="1.4">
+                      {group.hint}
+                    </we-text>
+                    <For each={group.roles}>{(entry) => roleRow(entry.role, entry.label, entry.hint)}</For>
                   </Column>
                 )}
               </For>

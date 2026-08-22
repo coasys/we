@@ -230,7 +230,7 @@ function pageHeader(card: (typeof CTA_CARDS)[0]) {
         type: 'Row',
         props: { ay: 'center', gap: '400' },
         children: [
-          { type: 'we-icon', props: { name: card.icon, size: 'lg', color: 'accent-strong' } },
+          { type: 'we-icon', props: { name: card.icon, size: 'lg', color: 'accent-text' } },
           {
             type: 'we-text',
             props: { variant: 'heading-md', textTransform: 'uppercase' },
@@ -266,7 +266,7 @@ function subHeader(text: string, icon?: string) {
       props: { gap: '10px', ay: 'center', mb: '-10px' },
       children: [
         { type: 'we-icon', props: { name: icon, size: '36px', gradient: 'primary' } },
-        { type: 'we-text', props: { variant: 'heading-sm', color: 'accent-strong' }, children: [text] },
+        { type: 'we-text', props: { variant: 'heading-sm', color: 'accent-text' }, children: [text] },
       ],
     };
   }
@@ -331,7 +331,7 @@ function ctaCard(card: (typeof CTA_CARDS)[0], imageLeft: boolean) {
             props: {
               name: card.icon,
               size: 'lg',
-              color: 'accent-strong',
+              color: 'accent-text',
               // gradient: 'primary',
             },
           }, // color: 'text-muted'
@@ -339,7 +339,7 @@ function ctaCard(card: (typeof CTA_CARDS)[0], imageLeft: boolean) {
             type: 'we-text',
             props: {
               variant: 'heading-md',
-              // color: 'accent-strong',
+              // color: 'accent-text',
               // gradient: 'primary',
               textTransform: 'uppercase',
               // letterSpacing: '0.08em',
@@ -462,7 +462,7 @@ function roadmapItem(item: { title: string; description: string }, status: Roadm
             props: {
               variant: 'subheading',
               fontWeight: 'bold',
-              color: 'accent-strong',
+              color: 'accent-text',
               // lineHeight: '1.5',
             },
             children: [item.title],

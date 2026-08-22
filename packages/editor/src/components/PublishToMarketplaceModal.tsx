@@ -111,7 +111,7 @@ export function PublishToMarketplaceModal(props: Props) {
   return (
     <we-modal close={props.onClose} width="100%" maxWidth="600px">
       <Column ax="center" gap="200">
-        <we-icon name={isTheme() ? 'paint-bucket' : 'cloud-arrow-up'} size="xl" color="accent-strong" />
+        <we-icon name={isTheme() ? 'paint-bucket' : 'cloud-arrow-up'} size="xl" color="accent-text" />
         <we-text variant="heading-md">{isTheme() ? 'Publish theme to marketplace' : 'Publish to marketplace'}</we-text>
       </Column>
 

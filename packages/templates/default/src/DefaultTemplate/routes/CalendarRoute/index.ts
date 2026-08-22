@@ -149,7 +149,7 @@ const monthPicker: SchemaNode = {
                     ],
                     // The real current month stays marked even while another year is on screen,
                     // so "where am I relative to now" survives paging away.
-                    color: { $if: { condition: '$month.isThisMonth', then: 'accent-strong', else: '' } },
+                    color: { $if: { condition: '$month.isThisMonth', then: 'accent-text', else: '' } },
                   },
                   children: ['$month.label'],
                 },
@@ -391,7 +391,7 @@ const monthGrid: SchemaNode = {
                         color: {
                           $if: {
                             condition: '$cell.isToday',
-                            then: 'accent-text',
+                            then: 'on-accent',
                             else: { $if: { condition: '$cell.inMonth', then: 'text', else: 'text-faint' } },
                           },
                         },
@@ -437,7 +437,7 @@ const monthGrid: SchemaNode = {
                         // Faded for the neighbouring months, so a busy 1st of next month does not
                         // read as part of the month being looked at.
                         bg: { $if: { condition: '$cell.inMonth', then: 'accent-muted', else: 'surface-sunken' } },
-                        color: { $if: { condition: '$cell.inMonth', then: 'accent-strong', else: 'text-muted' } },
+                        color: { $if: { condition: '$cell.inMonth', then: 'accent-text', else: 'text-muted' } },
                       },
                     },
                   ],
@@ -492,7 +492,7 @@ const eventRow: SchemaNode = {
       type: 'Row',
       props: { gap: '300', ay: 'center' },
       children: [
-        { type: 'we-icon', props: { name: 'calendar', color: 'accent-strong' } },
+        { type: 'we-icon', props: { name: 'calendar', color: 'accent-text' } },
         { type: 'we-text', props: { fontWeight: 'semibold' }, children: ['$event.title'] },
         {
           type: 'we-text',
