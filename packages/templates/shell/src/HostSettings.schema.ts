@@ -189,7 +189,7 @@ export const hostSection: SchemaNode = {
         },
         {
           type: 'Card',
-          props: { bg: 'surface-sunken' },
+          props: { bg: 'surface' },
           children: [
             {
               type: 'Column',

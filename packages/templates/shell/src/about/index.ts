@@ -302,7 +302,7 @@ function bulletItem(text: string) {
 function boxSection(children: SchemaNode['children']) {
   return {
     type: 'Card',
-    props: { bg: 'surface-sunken', border: '1px solid var(--we-role-border)' },
+    props: { bg: 'surface', border: '1px solid var(--we-role-border)' },
     children,
   };
 }
@@ -380,7 +380,7 @@ function ctaCard(card: (typeof CTA_CARDS)[0], imageLeft: boolean) {
       border: '1px solid var(--we-role-border)',
       width: '100%',
       p: '0',
-      bg: 'surface-sunken',
+      bg: 'surface',
     },
     children: [imageCol, contentCol],
   };
@@ -404,7 +404,7 @@ function roadmapCard(
     type: 'Card',
     props: {
       p: '700',
-      bg: 'surface-sunken',
+      bg: 'surface',
       border: '1px solid var(--we-role-border)',
       width: '100%',
     },
@@ -440,7 +440,7 @@ function roadmapItem(item: { title: string; description: string }, status: Roadm
       direction: 'row',
       ay: 'center',
       p: '400',
-      bg: 'surface-sunken',
+      bg: 'surface',
       border: '1px solid var(--we-role-border)', //  done ? '1px solid var(--we-role-border)' : '2px dashed var(--we-color-neutral-400)',
     },
     children: [
@@ -747,7 +747,7 @@ export const landingPageTemplate: TemplateSchema = {
               front: {
                 type: 'Card',
                 props: {
-                  bg: 'surface-sunken',
+                  bg: 'surface',
                   height: '100%',
                   border: '1px solid var(--we-role-border)',
                 },
@@ -1242,7 +1242,7 @@ export const landingPageTemplate: TemplateSchema = {
               children: BLOCK_TYPES.map((block) => ({
                 type: 'Card',
                 props: {
-                  bg: 'surface-sunken',
+                  bg: 'surface',
                   border: '1px solid var(--we-role-border)',
                   width: '180px',
                   height: '180px',

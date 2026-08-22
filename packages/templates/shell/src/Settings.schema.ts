@@ -42,7 +42,7 @@ const accountSection: SchemaNode = {
     { type: 'we-text', props: { fontWeight: 'semibold' }, children: ['Account'] },
     {
       type: 'Card',
-      props: { bg: 'surface-sunken' },
+      props: { bg: 'surface' },
       children: [
         {
           type: 'Row',

@@ -17,7 +17,7 @@ import type { SchemaNode } from '@we/schema-shared';
 /** The row for one account: who it is, and whether it can be removed. */
 const accountRow: SchemaNode = {
   type: 'Card',
-  props: { bg: 'surface-sunken' },
+  props: { bg: 'surface' },
   children: [
     {
       type: 'Row',

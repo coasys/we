@@ -218,8 +218,15 @@ describe('roles resolve against the theme they belong to', () => {
   });
 
   it('carries the pins a named preset brings with it', () => {
-    // `dark` is the case in point: raised surfaces get lighter instead of casting a shadow.
-    expect(themeToStyle({ themeName: 'dark' })['--we-role-surface-raised']).toBe('var(--we-color-neutral-100)');
+    /*
+      `dark` is the case in point: raised surfaces get lighter instead of casting a shadow. Asserted
+      as "it pins a lightness" rather than as one exact string — the value is a design decision that
+      moves (it has once already), and a test that repeats it only says the file was copied
+      correctly. That the *ordering* is right is checked in contrast.test.ts, which is the property
+      that actually matters.
+    */
+    const raised = themeToStyle({ themeName: 'dark' })['--we-role-surface-raised'];
+    expect(raised).toMatch(/^hsl\(var\(--we-color-neutral-hue\)/);
   });
 });
 

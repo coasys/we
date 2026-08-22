@@ -36,7 +36,7 @@ const marketplaceBrowser = {
     // Header
     {
       type: 'Column',
-      props: { bg: 'surface-sunken', ax: 'center', px: '500', pt: '900', borderBottom: '1px solid border' },
+      props: { bg: 'surface', ax: 'center', px: '500', pt: '900', borderBottom: '1px solid border' },
       children: [
         {
           type: 'Column',

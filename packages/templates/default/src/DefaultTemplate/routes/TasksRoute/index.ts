@@ -157,9 +157,10 @@ const card: SchemaNode = {
 const column = (spec: (typeof COLUMNS)[number]): SchemaNode => ({
   type: 'Column',
   props: {
-    // A column has to read as a surface even when it is empty, or a board with one card in it looks
-    // like a card with a stray heading. Hence the minimum height and the border: `neutral-100`
-    // alone is nearly invisible against the page, which is what made the columns disappear.
+    // A column has to read as a *trough* even when it is empty, or a board with one card in it
+    // looks like a card with a stray heading. Hence the minimum height and the border. Sunken is
+    // right here and the cards inside it are `surface`: the column is the one place on this route
+    // that genuinely is recessed into the page rather than sitting on it.
     width: '300px',
     minHeight: '200px',
     gap: '300',

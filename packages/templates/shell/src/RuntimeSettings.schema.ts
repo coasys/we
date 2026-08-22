@@ -69,7 +69,7 @@ export const connectedApps: SchemaNode = {
                   children: [
                     {
                       type: 'Card',
-                      props: { bg: 'surface-sunken' },
+                      props: { bg: 'surface' },
                       children: [
                         {
                           type: 'Row',

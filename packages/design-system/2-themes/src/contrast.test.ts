@@ -11,7 +11,14 @@
  * the colour without a DOM. That is what makes this a unit test that runs on every commit instead
  * of a screenshot somebody remembers to take.
  */
-import { CONTRAST_MINIMUM, type ContrastLevel, contrastRatio, parseColor, type Rgba } from '@we/design-utils';
+import {
+  CONTRAST_MINIMUM,
+  type ContrastLevel,
+  contrastRatio,
+  parseColor,
+  relativeLuminance,
+  type Rgba,
+} from '@we/design-utils';
 import { color, role } from '@we/tokens';
 import { describe, expect, it } from 'vitest';
 
@@ -93,6 +100,45 @@ describe.each(Object.keys(THEME_PRESETS) as ThemeName[])('%s', (name) => {
       Number(ratio.toFixed(2)),
       `${name}: ${pair.what} is ${ratio.toFixed(2)}:1, needs ${CONTRAST_MINIMUM[pair.level]}:1`,
     ).toBeGreaterThanOrEqual(CONTRAST_MINIMUM[pair.level]);
+  });
+});
+
+/**
+ * Elevation has to survive the inversion, and until now nothing said so.
+ *
+ * `page` and `surface` are both scale positions by default (neutral-50 and neutral-0), and the whole
+ * scale flips together — so the *ordering* between them flips too. In a light theme a card is white
+ * on a grey page; run the same two tokens through `multiplier: -1` and the card is the darker of the
+ * two, which is the opposite of what every dark interface does.
+ *
+ * It went unnoticed for as long as it did because the templates painted their cards with
+ * `surface-sunken`, which inverts to *lighter* than the page and therefore looked right in dark by
+ * accident. Correcting those cards to `surface` is what surfaced this, and it is why the check
+ * belongs here rather than in a template: it is a property of the vocabulary.
+ *
+ * Equal is allowed. A flat design where the page and its cards share one colour and separation comes
+ * from borders is a real design — `channels` is one — and this is not the place to overrule it.
+ */
+describe.each(Object.keys(THEME_PRESETS) as ThemeName[])('%s elevation', (name) => {
+  const theme = THEME_PRESETS[name].parameters as ThemeOverrides;
+  const lum = (r: ThemeRole) => {
+    const c = roleColor(r, theme);
+    expect(c, `could not resolve ${r}`).toBeTruthy();
+    return relativeLuminance(c!);
+  };
+
+  it('does not put a card below the page it sits on', () => {
+    expect(
+      Number(lum('surface').toFixed(4)),
+      `${name}: surface is darker than page, so a card reads as a hole rather than an object`,
+    ).toBeGreaterThanOrEqual(Number(lum('page').toFixed(4)));
+  });
+
+  it('keeps raised above surface and sunken below it', () => {
+    expect(lum('surfaceRaised'), `${name}: a raised surface is not above the surface`).toBeGreaterThanOrEqual(
+      lum('surface'),
+    );
+    expect(lum('surfaceSunken'), `${name}: a sunken well is not below the surface`).toBeLessThanOrEqual(lum('surface'));
   });
 });
 
