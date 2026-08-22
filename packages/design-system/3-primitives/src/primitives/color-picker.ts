@@ -56,15 +56,32 @@ const PALETTE = [
   '#ead1dc',
 ];
 
-/* A grey chequerboard, so a translucent colour reads as translucent rather than as a pale one. */
-const CHECKERBOARD =
-  'repeating-conic-gradient(var(--we-role-surface-active) 0% 25%, var(--we-role-surface) 0% 50%) 50% / 12px 12px';
+/*
+  A grey chequerboard, so a translucent colour reads as translucent rather than as a pale one.
+
+  Kept as an *image* with its size applied separately, because the colour has to sit on top of it as
+  another image layer: `background: <colour>, <image>` is invalid CSS — a colour is only legal in the
+  final layer — and the whole declaration is dropped, which is why the swatch painted nothing at all.
+  `linear-gradient(c, c)` is the standard way to spell "this colour, as a layer".
+*/
+const CHECKER_IMAGE = 'repeating-conic-gradient(var(--we-role-surface-active) 0% 25%, var(--we-role-surface) 0% 50%)';
+
+/** A colour as a background layer, over the chequerboard. */
+function swatchLayers(color: string) {
+  return {
+    'background-image': `linear-gradient(${color}, ${color}), ${CHECKER_IMAGE}`,
+    'background-size': 'auto, 12px 12px',
+  };
+}
 
 const styles = css`
   [part='preview'] {
     all: unset;
-    width: 48px;
-    height: 48px;
+    display: block;
+    /* Square by construction and settable, so a caller wanting a 28px row swatch asks for one
+       instead of squeezing the host and getting a rectangle. */
+    width: var(--we-color-picker-swatch, 48px);
+    height: var(--we-color-picker-swatch, 48px);
     border-radius: var(--we-radius-400);
     border: 2px solid var(--we-role-border);
     cursor: pointer;
@@ -128,8 +145,12 @@ const styles = css`
     gap: 4px;
   }
 
-  [part='swatch'] {
+  [part~='swatch'] {
     all: unset;
+    /* all:unset makes a button display:inline, which ignores width and height. Grid blockifies its
+       children so this is belt-and-braces — but it is the difference between a swatch and a 4px
+       sliver the moment one is rendered outside a grid. */
+    display: block;
     width: 24px;
     height: 24px;
     border-radius: var(--we-radius-300);
@@ -139,19 +160,19 @@ const styles = css`
     transition: border-color var(--we-transition-200, 150ms) ease;
   }
 
-  [part='token'] {
+  [part~='token'] {
     width: 18px;
     height: 18px;
     border-radius: var(--we-radius-200);
   }
 
-  [part='swatch']:hover,
-  [part='token']:hover {
+  [part~='swatch']:hover,
+  [part~='token']:hover {
     border-color: var(--we-role-border-strong);
   }
 
-  [part='swatch'][aria-selected='true'],
-  [part='token'][aria-selected='true'] {
+  [part~='swatch'][aria-selected='true'],
+  [part~='token'][aria-selected='true'] {
     border-color: var(--we-role-accent);
   }
 
@@ -195,8 +216,7 @@ const styles = css`
     gap: var(--we-space-200);
   }
 
-  [part='fields'] input,
-  [part='fields'] select {
+  [part='fields'] input {
     all: unset;
     box-sizing: border-box;
     border: 1px solid var(--we-role-border);
@@ -204,16 +224,56 @@ const styles = css`
     padding: var(--we-space-100) var(--we-space-200);
     font-size: 0.875em;
     color: var(--we-role-text);
-  }
-
-  [part='fields'] input {
     flex: 1;
     min-width: 0;
     font-family: monospace;
   }
 
-  [part='fields'] select {
+  /*
+    A segmented control rather than a <select>.
+
+    A native select renders its list with the user agent's own colours, which take the platform
+    scheme rather than the theme's — in a dark theme it came out white-on-white and the current
+    option was unreadable until you highlighted it. Nothing inside that popup is reachable from CSS,
+    so the only fix that actually themes it is not to use one.
+  */
+  [part='formats'] {
+    display: flex;
+    border: 1px solid var(--we-role-border);
+    border-radius: var(--we-radius-400);
+    overflow: hidden;
+  }
+
+  [part='format'] {
+    all: unset;
+    display: block;
     cursor: pointer;
+    padding: var(--we-space-100) var(--we-space-200);
+    font-size: 0.75em;
+    color: var(--we-role-text-muted);
+  }
+
+  [part='format'][aria-pressed='true'] {
+    background: var(--we-role-accent-muted);
+    color: var(--we-role-accent-strong);
+  }
+
+  [part='dropper'] {
+    all: unset;
+    display: grid;
+    place-items: center;
+    width: 28px;
+    height: 28px;
+    flex: 0 0 auto;
+    border: 1px solid var(--we-role-border);
+    border-radius: var(--we-radius-400);
+    cursor: pointer;
+    color: var(--we-role-text-muted);
+  }
+
+  [part='dropper']:hover {
+    color: var(--we-role-accent-strong);
+    border-color: var(--we-role-accent);
   }
 
   :host([disabled]) {
@@ -256,6 +316,72 @@ export default class ColorPicker extends DesignSystemElement {
 
   static getDefaultProps() {
     return DEFAULT_PROPS;
+  }
+
+  /**
+   * Whether the browser will let us sample a pixel from anywhere on screen.
+   *
+   * `EyeDropper` is a real platform API — it opens the OS-level magnifier and returns the pixel the
+   * user clicks, from *any* window, which is the whole point: the colour somebody wants is usually
+   * in a screenshot or another app, not already in this document. Chromium-only for now, so the
+   * button is absent rather than present-and-broken where it is not.
+   */
+  private static get _canDrop(): boolean {
+    return typeof window !== 'undefined' && 'EyeDropper' in window;
+  }
+
+  private async _pickFromScreen() {
+    type Dropper = { open: () => Promise<{ sRGBHex: string }> };
+    const Ctor = (window as unknown as { EyeDropper: new () => Dropper }).EyeDropper;
+    try {
+      const { sRGBHex } = await new Ctor().open();
+      const parsed = parseColor(sRGBHex);
+      if (!parsed) return;
+      this._hsv = rgbToHsv(parsed);
+      // The API samples what is on screen, which is always opaque; keep whatever alpha was set
+      // rather than silently making a translucent role solid.
+      this._draft = null;
+      this._emitCurrent();
+    } catch {
+      // The user pressed Escape out of the magnifier. Not an error, and nothing to report.
+    }
+  }
+
+  /*
+    Close on a click anywhere else, and on Escape.
+
+    The listener is on the document because the click that should close this lands on something
+    else entirely; `composedPath` rather than `contains` because the popover is inside a shadow root
+    and a plain target check sees only the host. Bound while open and dropped when not, so a page
+    with forty swatch pickers is not forty live listeners.
+  */
+  private _onDocPointer = (e: Event) => {
+    if (!e.composedPath().includes(this)) this._open = false;
+  };
+
+  private _onKey = (e: KeyboardEvent) => {
+    if (e.key === 'Escape' && this._open) {
+      this._open = false;
+      this.shadowRoot?.querySelector<HTMLElement>('[part="preview"]')?.focus();
+    }
+  };
+
+  updated(changed: Map<PropertyKey, unknown>) {
+    super.updated(changed);
+    if (!changed.has('_open')) return;
+    if (this._open) {
+      document.addEventListener('pointerdown', this._onDocPointer);
+      document.addEventListener('keydown', this._onKey);
+    } else {
+      document.removeEventListener('pointerdown', this._onDocPointer);
+      document.removeEventListener('keydown', this._onKey);
+    }
+  }
+
+  disconnectedCallback() {
+    super.disconnectedCallback();
+    document.removeEventListener('pointerdown', this._onDocPointer);
+    document.removeEventListener('keydown', this._onKey);
   }
 
   /** The token this value names, if it names one — which is also what selects the Tokens tab. */
@@ -385,7 +511,10 @@ export default class ColorPicker extends DesignSystemElement {
         this.alpha
           ? html`<div
               part="slider"
-              style=${styleMap({ background: `linear-gradient(to right, transparent, ${hex}), ${CHECKERBOARD}` })}
+              style=${styleMap({
+                'background-image': `linear-gradient(to right, transparent, ${hex}), ${CHECKER_IMAGE}`,
+                'background-size': 'auto, 12px 12px',
+              })}
               @pointerdown=${(e: PointerEvent) =>
                 this._track(e, (fx) => {
                   this._alpha = Math.round(fx * 100) / 100;
@@ -397,19 +526,22 @@ export default class ColorPicker extends DesignSystemElement {
       }
 
       <div part="fields">
-        <select
-          aria-label="Colour format"
-          .value=${this._format}
-          @change=${(e: Event) => {
-            this._format = (e.target as HTMLSelectElement).value as ColorFormat;
-            this._draft = null;
-            this._emitCurrent();
-          }}
-        >
-          <option value="hex">HEX</option>
-          <option value="rgb">RGB</option>
-          <option value="hsl">HSL</option>
-        </select>
+        <div part="formats" role="group" aria-label="Colour format">
+          ${(['hex', 'rgb', 'hsl'] as const).map(
+            (f) =>
+              html`<button
+                part="format"
+                aria-pressed=${this._format === f ? 'true' : 'false'}
+                @click=${() => {
+                  this._format = f;
+                  this._draft = null;
+                  this._emitCurrent();
+                }}
+              >
+                ${f.toUpperCase()}
+              </button>`,
+          )}
+        </div>
         <input
           aria-label="Colour value"
           spellcheck="false"
@@ -417,6 +549,13 @@ export default class ColorPicker extends DesignSystemElement {
           @input=${(e: Event) => this._onText(e)}
           @blur=${() => (this._draft = null)}
         />
+        ${
+          ColorPicker._canDrop
+            ? html`<button part="dropper" title="Pick a colour from the screen" @click=${() => this._pickFromScreen()}>
+                <we-icon name="eyedropper" size="xs"></we-icon>
+              </button>`
+            : ''
+        }
       </div>
     `;
   }
@@ -429,7 +568,7 @@ export default class ColorPicker extends DesignSystemElement {
         aria-haspopup="dialog"
         aria-expanded=${this._open ? 'true' : 'false'}
         aria-label=${`Colour: ${this.value}`}
-        style=${styleMap({ background: `${this.value}, ${CHECKERBOARD}` })}
+        style=${styleMap(swatchLayers(this.value || 'transparent'))}
         ?disabled=${this.disabled}
         @click=${() => (this._open ? (this._open = false) : this._openPopover())}
       ></button>

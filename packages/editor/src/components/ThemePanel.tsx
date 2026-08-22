@@ -618,8 +618,7 @@ export function ThemePanel() {
         <we-color-picker
           tokens
           alpha
-          width="28px"
-          height="28px"
+          styles={{ '--we-color-picker-swatch': '28px' }}
           value={shown()}
           on:change={(e: CustomEvent) => setRole(role, e.detail as string)}
         />
