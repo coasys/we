@@ -16,6 +16,7 @@ import { createEffect, createMemo, createSignal, For, onCleanup, Show } from 'so
 
 import { composeRing, parseRing, RING_THEME_ACCENT } from '../helpers';
 import { type EditorImage, useEditorHost } from '../host';
+import { paintedRoles } from '../paintedRoles';
 import { deepClone } from '../utils';
 import { ConditionEditor } from './ConditionEditor';
 import { ContentEditor } from './ContentEditor';
@@ -566,6 +567,91 @@ export function InspectorPanel() {
 // NodeProperties
 // -----------------------------------------------------------------------
 
+/**
+ * The strip under the node's name that says what is painting it.
+ *
+ * Deliberately in the header rather than filed under a "Colors" section: it is a readout, not a
+ * control, and its job is to be answering the question before anybody goes looking for where to ask
+ * it. Each entry is a button because the useful next move is almost never "change this node" — it
+ * is "change what this role means", which is a different panel, and the jump is the only affordance
+ * that makes that discoverable.
+ */
+function ThemeRoleReadout(props: { node: SchemaNode }) {
+  const host = useEditorHost();
+  const templateStore = host.template;
+
+  const painted = createMemo(() => {
+    const ancestors: SchemaNode[] = [];
+    let info = props.node.id ? findNodeById(templateStore.currentTemplate, props.node.id) : null;
+    // Ancestry is walked by re-finding each parent by id — the same climb EditorOverlay does, and
+    // the only one available: findNodeById reports one parent, not a path.
+    while (info?.parent) {
+      ancestors.push(info.parent);
+      if (!info.parent.id) break;
+      info = findNodeById(templateStore.currentTemplate, info.parent.id);
+    }
+    return paintedRoles(props.node, ancestors);
+  });
+
+  return (
+    <Show when={painted().length > 0}>
+      <Row gap="150" wrap ay="center" pt="100">
+        <For each={painted()}>
+          {(entry) => (
+            <we-tooltip
+              title={
+                isRole(entry.value)
+                  ? `${entry.what}: “${entry.value}”${entry.from ? `, inherited from ${entry.from}` : ''} — click to edit it for the whole theme`
+                  : `${entry.what}: “${entry.value}” is a fixed scale position, so it does not follow the theme`
+              }
+            >
+              <we-button
+                variant="bare"
+                onClick={() => {
+                  if (!isRole(entry.value)) return;
+                  host.theme.startEditing();
+                  host.session.enterThemeEditing();
+                }}
+              >
+                <Row
+                  gap="150"
+                  ay="center"
+                  px="150"
+                  py="100"
+                  r="200"
+                  bg="surface-sunken"
+                  border={`1px solid ${'var(--we-role-border)'}`}
+                >
+                  <div
+                    style={{
+                      width: '10px',
+                      height: '10px',
+                      'flex-shrink': '0',
+                      'border-radius': '2px',
+                      background: isRole(entry.value)
+                        ? `var(--we-role-${entry.value})`
+                        : `var(--we-color-${entry.value})`,
+                      border: '1px solid var(--we-role-border)',
+                    }}
+                  />
+                  <we-text fontSize="100" color={entry.from ? 'text-faint' : 'text-muted'}>
+                    {entry.value}
+                  </we-text>
+                  {/* An inherited colour is the common case and the one people misread, so it is
+                      marked rather than left to look like a property of this node. */}
+                  <Show when={entry.from}>
+                    <we-icon name="arrow-bend-left-up" size="xs" color="text-faint" />
+                  </Show>
+                </Row>
+              </we-button>
+            </we-tooltip>
+          )}
+        </For>
+      </Row>
+    </Show>
+  );
+}
+
 function NodeProperties(props: {
   node: SchemaNode;
   onPropChange: (key: string, value: unknown) => void;
@@ -657,6 +743,7 @@ function NodeProperties(props: {
             id: {props.node.id}
           </we-text>
         </Show>
+        <ThemeRoleReadout node={props.node} />
       </Column>
 
       {/* Scrollable content */}

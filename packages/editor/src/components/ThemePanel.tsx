@@ -6,6 +6,7 @@ import type { JSX } from 'solid-js';
 import { createEffect, createMemo, createSignal, For, onCleanup, Show } from 'solid-js';
 
 import { useEditorHost } from '../host';
+import { nextRoles, roleTierLabel, surfacesForPolarity } from '../themeRoles';
 
 const SAVE_DEBOUNCE_MS = 600;
 
@@ -237,56 +238,6 @@ const ROLE_GROUPS: { label: string; hint: string; roles: { role: ThemeRole; labe
 ];
 
 /**
- * Which rung of the ladder a stored role value sits on.
- *
- * The string says it, so nothing needs to be remembered alongside it. It matters because the rungs
- * behave differently under everything else a theme can change: a `token` follows the hue sliders and
- * the light/dark polarity, a `lightness` pin (the form the built-in presets use) follows hue and
- * saturation but holds its lightness against a polarity flip, and a `custom` colour follows nothing
- * at all. Only the last is really "opting out", and the editor should say so rather than making it
- * the silent default.
- */
-export type RoleTier = 'auto' | 'token' | 'lightness' | 'relative' | 'custom';
-
-export function roleTier(value: string | undefined): RoleTier {
-  if (!value) return 'auto';
-  if (/^var\(--we-color-[a-z]+-\d+\)$/.test(value.trim())) return 'token';
-  if (/^hsl\(\s*var\(--we-color-[a-z]+-hue\)/.test(value.trim())) return 'lightness';
-  // A value expressed *against another role* — "a step lighter than the surface". It survives more
-  // than any other pin: a change to the role it references carries through, and because the thing
-  // it mixes toward inverts with the theme, so does the direction.
-  if (/^color-mix\(/.test(value.trim())) return 'relative';
-  return 'custom';
-}
-
-/** What to show beside the swatch: the token's name, or the rung. */
-export function roleTierLabel(value: string | undefined): string {
-  const tier = roleTier(value);
-  if (tier === 'token') return /var\(--we-color-([a-z]+-\d+)\)/.exec(value!)![1];
-  if (tier === 'lightness') return 'theme tint';
-  if (tier === 'relative') return 'relative to another role';
-  if (tier === 'custom') return 'custom';
-  return 'auto';
-}
-
-/**
- * The `roles` value to store after setting one role — `undefined` once nothing is pinned.
- *
- * An empty object would persist as `"roles":{}`, which reads as "this theme pins roles" to anything
- * inspecting it and never becomes false again.
- */
-export function nextRoles(
-  current: Partial<Record<ThemeRole, string>> | undefined,
-  role: ThemeRole,
-  value: string | undefined,
-): Partial<Record<ThemeRole, string>> | undefined {
-  const next = { ...(current ?? {}) };
-  if (value === undefined) delete next[role];
-  else next[role] = value;
-  return Object.keys(next).length ? next : undefined;
-}
-
-/**
  * The pairs the vocabulary already declares, and what each has to clear.
  *
  * This is the check nothing was doing: you could pin `text` to the same colour as `surface` and the
@@ -404,6 +355,35 @@ function SectionLabel(props: { children: string }) {
   );
 }
 
+/**
+ * A preference that outlives the session, kept out of the theme itself.
+ *
+ * Whether somebody wants the preview on screen is about them, not about the theme they are editing
+ * — so it must not travel with a published theme, and it should still be true tomorrow.
+ */
+function persistedFlag(key: string, fallback: boolean) {
+  const read = () => {
+    try {
+      const v = localStorage.getItem(key);
+      return v === null ? fallback : v === '1';
+    } catch {
+      return fallback; // Private mode, or no storage at all. A preference is not worth throwing over.
+    }
+  };
+  const [value, setValue] = createSignal(read());
+  return [
+    value,
+    (next: boolean) => {
+      setValue(next);
+      try {
+        localStorage.setItem(key, next ? '1' : '0');
+      } catch {
+        /* as above */
+      }
+    },
+  ] as const;
+}
+
 function CollapsibleSection(props: { title: string; defaultOpen?: boolean; children: JSX.Element }) {
   const [open, setOpen] = createSignal(props.defaultOpen ?? false);
   return (
@@ -435,6 +415,7 @@ export function ThemePanel() {
 
   const [cssEditing, setCssEditing] = createSignal(false);
   const [cssValue, setCssValue] = createSignal('');
+  const [previewOpen, setPreviewOpen] = persistedFlag('we.themePanel.preview', true);
 
   let saveTimer: ReturnType<typeof setTimeout> | undefined;
 
@@ -745,7 +726,7 @@ export function ThemePanel() {
     );
     return (
       <div style={{ ...probeStyle(), 'border-radius': tokenVar('radius', '300'), overflow: 'hidden' }}>
-        <Column bg="page" p="300" gap="300">
+        <Column bg="page" p="300" gap="300" border={'1px solid var(--we-role-border)'} r="300">
           <Column bg="surface" p="300" r="300" gap="200" border={`1px solid ${'var(--we-role-border)'}`}>
             <we-text fontSize="300" fontWeight="600" color="text">
               A card on the page
@@ -918,6 +899,45 @@ export function ThemePanel() {
               </Row>
             </Column>
 
+            {/*
+              ── Preview ──
+
+              Sticky, and above every section rather than inside the Roles one.
+
+              A theme is not a list of settings, it is a thing that looks like something, and the
+              gap between the two is the whole difficulty of editing one: the panel occupies the
+              side of the screen, so the app behind it is half-covered and the surface you are
+              adjusting is often not on the route you happen to be on. Every control here benefits
+              from somewhere to look — a hue slider and a radius slider and a shadow toggle all land
+              in the same small gallery — which is why it belongs at the top rather than filed under
+              the one section it was written for.
+
+              Sticky because a preview you have scrolled past is a preview you do not have. Shape
+              and Typography sit far enough down the panel that anchoring it to the top of the
+              document would leave exactly the sections with the most visible effects looking at
+              nothing.
+
+              Collapsible, and remembered, because it costs real height on a narrow dock and
+              somebody working on one number does not need it.
+            */}
+            <Column
+              position="sticky"
+              top="0"
+              zIndex={2}
+              bg="surface"
+              borderBottom={`1px solid ${tokenVar('color', 'neutral-100')}`}
+              pb="300"
+              pt="300"
+            >
+              <Row ay="center" ax="between" onClick={() => setPreviewOpen(!previewOpen())} cursor="pointer">
+                <SectionLabel>Preview</SectionLabel>
+                <we-icon name={previewOpen() ? 'caret-up' : 'caret-down'} size="sm" color="text-faint" />
+              </Row>
+              <Show when={previewOpen()}>
+                <Column pt="300">{previewStrip()}</Column>
+              </Show>
+            </Column>
+
             {/* ── Base preset ── */}
             <CollapsibleSection title="Base preset">
               <we-select
@@ -935,7 +955,11 @@ export function ThemePanel() {
                   variant={(overrides().multiplier ?? 1) === 1 ? 'secondary' : 'ghost'}
                   flex="1"
                   onClick={() => {
-                    setOverrides({ multiplier: 1, subtractor: '0%' });
+                    setOverrides({
+                      multiplier: 1,
+                      subtractor: '0%',
+                      roles: surfacesForPolarity('light', overrides().roles),
+                    });
                   }}
                 >
                   <we-icon name="sun" />
@@ -946,7 +970,11 @@ export function ThemePanel() {
                   variant={(overrides().multiplier ?? 1) === -1 ? 'secondary' : 'ghost'}
                   flex="1"
                   onClick={() => {
-                    setOverrides({ multiplier: -1, subtractor: '108%' });
+                    setOverrides({
+                      multiplier: -1,
+                      subtractor: '108%',
+                      roles: surfacesForPolarity('dark', overrides().roles),
+                    });
                   }}
                 >
                   <we-icon name="moon" />
@@ -989,7 +1017,6 @@ export function ThemePanel() {
                 and lightness above — pin one to redesign a relationship the scale cannot express, such as raised
                 surfaces getting lighter in a dark theme instead of casting a shadow.
               </we-text>
-              {previewStrip()}
 
               {/*
                 Shown where the decisions are made rather than on a separate audit screen: a
