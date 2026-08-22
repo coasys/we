@@ -82,6 +82,36 @@ export const RAMP = {
  * and the polarity key is kept only so a theme can still ask for different magnitudes light and
  * dark. Only `Math.abs` of these is read.
  */
+/**
+ * Where each fill lives — an absolute lightness per family, not a step on the neutral ramp.
+ *
+ * ## Why a fill leaves the ramp entirely
+ *
+ * The surface stack is defined *relative to the page* and so must invert with the theme. A fill is
+ * not: a red is red in a light theme and in a dark one. Step 500 is the ramp's polarity fixed point
+ * (L 60.0 light, L 60.4 dark, where 700 swings 36.6 points), so it looked like the answer — but it
+ * is one lightness for every hue, and that is the thing OKLCH makes impossible to ignore.
+ *
+ * **Hues are not equally light.** Violet at L 0.60 is a strong colour; yellow at L 0.60 is olive.
+ * The old HSL ramp hid this by calling both "50% lightness" while rendering them 20 perceptual
+ * points apart — which is the defect that motivated the move to OKLCH, and also, accidentally, the
+ * reason the old palette's amber looked like amber. Putting every fill at one lightness fixes the
+ * measurement and breaks the colours.
+ *
+ * So each family sits where its hue is actually itself. These are the lightnesses the pre-OKLCH
+ * palette rendered, measured off it rather than chosen: violet is a dark colour and gold is a light
+ * one, and both were already true before anybody wrote it down.
+ *
+ * Absolute, so they do not move with polarity — which is what makes a brand colour a brand colour.
+ * `saturation` still scales their chroma, so a theme turning itself down turns its fills down too.
+ */
+export const FILL_LIGHTNESS = {
+  primary: 0.55,
+  danger: 0.62,
+  success: 0.75,
+  warning: 0.76,
+} as const;
+
 export const STATE_STEPS = {
   light: { hover: -0.05, active: -0.09 },
   dark: { hover: -0.05, active: -0.09 },

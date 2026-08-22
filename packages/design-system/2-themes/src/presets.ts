@@ -113,80 +113,56 @@ export const THEME_PRESETS = {
       lightnessCeiling: '121%',
       saturation: 75,
       neutralSaturation: 26,
+      /*
+        Two statements. Everything else in this theme is derived from them and from the four
+        numbers above, which is the whole of what a preset should be.
+
+        It reached eight pins while being brought back to the appearance it had, and seven of those
+        turned out to be compensating for two defects rather than saying anything: fills defaulted
+        to step 700, which inverts to a pale lavender in a dark theme, and a stated label switched
+        the fill derivation off instead of constraining it. Both are fixed in the layers below, and
+        the pins that were working around them are gone.
+      */
       roles: {
         /*
-          The accent, at the colour it was.
+          The identity colour, stated exactly.
 
-          The shared default is step 700, which is the only step whose *light*-theme value carries a
-          label — but a step inverts, so in a dark theme 700 lands at 80% lightness and this theme's
-          indigo came out a pale lavender. Stated here instead: the lightness, chroma and hue the old
-          theme actually rendered, measured rather than guessed, and it clears with the near-black
-          label this theme already pins.
+          The default now sits at its own lightness rather than on the ramp (see FILL_LIGHTNESS in
+          @we/tokens), which lands at rgb(127,114,206) — about twenty units off the indigo this
+          theme is known by. So it is worth stating; it is not worth deriving something close and
+          calling it the same colour. This is the one thing a theme really does have to say.
         */
         accent: 'oklch(55.3% 0.16 288)',
-        // The surface stack is derived from `page` now — see the note in @we/tokens' role.ts. This
-        // theme pinned four lightnesses that the formula reproduces to within a point, which is
-        // what suggested the formula. `page` and `surface` land within 2 units of what this theme
-        // used to render and are left to the formula; the two below it do not, and are stated.
-
         /*
-          A trough, at the depth it was.
+          A near-black label on the accent, which is this theme's character.
 
-          The derived default is `page` minus 3.5 lightness points. This theme's actual gap was 5.1
-          — `neutral-0` against a `neutral-50` page — and the difference is visible on exactly the
-          controls a trough is for: the cards-route search field and the sort/order selects came out
-          rgb(23,21,36) against the original rgb(18,16,24), which reads as a field that has not
-          quite recessed. Stated rather than moving the shared default, because 3.5 is the right
-          general answer and 5.1 is this theme's.
-        */
-        surfaceSunken: 'oklch(17.9% 0.0165 296.2)',
-        /*
-          A popover, at the colour it was.
+          Left to choose, `applyAutoContrast` picks white here — white measures Lc 80 on this indigo
+          against near-black's 29 — and it would be right on the numbers and wrong about the theme.
+          A mid-tone fill carrying dark text is what makes this read as itself rather than as a
+          generic dark theme.
 
-          Equal to `surface` rather than above it, which the elevation invariant allows and this
-          theme has always done: its raised role was `neutral-100`, the same step its cards use. The
-          derived default lifts a further 10 points, which is right where a popover must read as
-          floating *over* a card, and wrong here — the select dropdowns and menus came out
-          rgb(55,54,71) against the original rgb(40,37,55), a grey noticeably paler than anything
-          else on screen.
+          Deliberate and measured: Lc 29 against a UI floor of 45. The editor shows that live per
+          pair and `contrast.test.ts` records it by name, so the suite still fails on any further
+          drift. It is the only recorded breach left in the whole suite.
 
-          Written as `surface`'s own expression rather than as the measured `oklch(27.6% 0.0331
-          291.7)`, which is the same colour to within two units but sits 0.9 points *under* the
-          derived surface — enough to trip the `raised >= surface` invariant for a difference nobody
-          can see. Equality is what this theme means and what the invariant allows, so it says
-          equality instead of landing just short of it by arithmetic accident.
-
-          Note this role is no longer what paints the chrome rail or the call bar. Those are `page`,
-          which is what they always were; see the note in ChromeRail.schema.ts.
-        */
-        surfaceRaised: 'oklch(from var(--we-role-page) calc(l + 0.045) c h)',
-
-        /*
-          The labels on a fill, and the fills under them: this theme's own convention, restated.
-
-          Every filled control here was a mid-tone at step 500 carrying a **near-black** label —
-          `bg: 'primary-500', color: 'neutral-0'` in the button primitive, and the same shape for
-          danger, success and warning. The derivations do not reach that arrangement on their own,
-          and would not: measured with APCA, near-black on this accent is Lc 45, which clears the
-          large/UI floor and sits under the 60 a body label wants, so the auto-contrast pass picks
-          white instead (Lc 80) and the fill derivation then pushes the status colours lighter still
-          looking for room that the white label does not need. That is why the leave button in the
-          call bar turned pale pink.
-
-          Both passes step aside for a role the theme states — `applyAutoContrast` and
-          `applyLegibleFills` each skip anything in `theme.roles` — so pinning the four fills and
-          the two on-fill labels reproduces the original exactly and switches off the search that
-          was moving them.
-
-          This is a deliberate, measured exception rather than an oversight, and `contrast.test.ts`
-          records it by name with the numbers, so it stays visible and any *further* drift still
-          fails. See DELIBERATE_UI_LEVEL there.
+          Note this covers the *accent* only. The status labels are left to derive, and pick white on the
+          status fills — which is what keeps the destructive button a true red. Stating dark there
+          too would be consistent-looking and would cost the colour: a fill has to climb to about
+          L 0.75 to carry near-black at the floor, and a red that light is pink. Consistency between
+          the primary and destructive buttons is not worth a destructive button that does not read
+          as destructive.
         */
         onAccent: 'oklch(17.9% 0.0165 296.2)',
-        onStatus: 'oklch(17.9% 0.0165 296.2)',
-        danger: 'oklch(61.7% 0.1368 11.5)',
-        success: 'oklch(75.1% 0.1601 147.3)',
-        warning: 'oklch(76.0% 0.1055 92.0)',
+        /*
+          Not stated here, and each for a reason worth keeping:
+
+          - **The status fills.** At step 500 they are already the mid-tones this theme wants, and
+            they now follow the ramp rather than a pin — so moving `saturation` moves them.
+          - **The elevation stack.** This theme used to pin four lightnesses and the formula in
+            role.ts reproduces them to within a couple of units, which is what suggested the formula.
+            A theme that states its whole stack cannot be tuned, only rewritten.
+          - **The status labels, `accentHover`, `accentActive`.** All derived from what is above.
+        */
       },
     },
   },
@@ -253,10 +229,23 @@ export const THEME_PRESETS = {
       lightnessCeiling: '110%',
       saturation: 97,
       neutralSaturation: 16,
-      roles: {
-        // A bright accent needs a dark label: white measures 3.5:1 on it, near-black 4.8.
-        onAccent: neutral(21.6),
-      },
+      /*
+        No pins, and the one it used to carry is worth recording as a warning.
+
+        It pinned `onAccent` to near-black, on the note "a bright accent needs a dark label: white
+        measures 3.5:1 on it, near-black 4.8". Both figures were true and both were about a *fill
+        that no longer exists*: with fills defaulting to step 700 this theme's accent inverted to a
+        pale lavender, and a pale lavender does need a dark label.
+
+        Fills now sit at their own lightness, so the accent is the vivid violet the theme is named
+        for — and white on it measures Lc 82. Keeping the pin would have held a dark label on a
+        saturated violet and, worse, dragged the fill back up to pale: a stated label constrains the
+        fill derivation now, so the pin was actively pulling the accent toward the colour it was
+        written to compensate for. Measured: chroma 0.12 with the pin, 0.26 without it.
+
+        The general lesson: a pin written against a defect outlives the defect. This one was three
+        role-layer changes stale and nothing but a measurement would have said so.
+      */
     },
   },
 
@@ -358,9 +347,19 @@ export const THEME_PRESETS = {
         text: neutral(17.0),
         textFaint: neutral(64.1),
         accent: 'hsl(203 89% 53%)',
-        // Was '#ffffff', which measures 2.7:1 on that blue — the theme shipped a primary button
-        // label below AA. Near-black measures 6.2. See contrast.test.ts.
-        onAccent: neutral(21.6),
+        /*
+          `onAccent` is not pinned, and the pin that was here is a good illustration of why the two
+          contrast metrics cannot be mixed.
+
+          It held a near-black label, on the note that white measured 2.7:1 on this blue and
+          near-black 6.2 — both correct WCAG 2 figures. Under APCA the order reverses: white is
+          Lc 59 and near-black Lc 48, because WCAG's flat +0.05 penalises light-on-mid pairings in
+          a way that does not match what a reader experiences. The derivation now scores with APCA,
+          the same metric the suite grades with, and picks white.
+
+          Which is also the right answer by eye — white on a bright blue is what this kind of
+          timeline looks like everywhere it appears.
+        */
       },
       controlRadius: 'var(--we-radius-pill)',
       surfaceRadius: '16px',

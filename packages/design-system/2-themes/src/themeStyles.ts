@@ -1,6 +1,7 @@
 import {
   APCA_MINIMUM,
   apcaContrast,
+  CONTRAST_MINIMUM,
   type ContrastLevel,
   contrastRatio,
   type Gamut,
@@ -14,12 +15,13 @@ import type { ColorHueToken, ColorLightnessToken } from '@we/tokens';
 import {
   CHROMA_CEILING,
   CHROMA_PER_SATURATION,
-  chromaTaper,
-  color,
+  FILL_LIGHTNESS,
   RAMP,
-  role,
   ROLE_RELATIVE_FALLBACK,
   STATE_STEPS,
+  chromaTaper,
+  color,
+  role,
 } from '@we/tokens';
 
 import type { ThemeOverrides, ThemeRole } from './overrides';
@@ -50,6 +52,52 @@ type ParametricKey = Exclude<
 /** camelCase role name → --we-role-<kebab-case> custom property. */
 export function roleVar(role: ThemeRole): string {
   return `--we-role-${role.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`)}`;
+}
+
+/**
+ * What a role *renders as* — which is not what `getPropertyValue` returns.
+ *
+ * ## The bug this exists to fix
+ *
+ * A custom property has no type. `getComputedStyle(root).getPropertyValue('--we-role-text-muted')`
+ * hands back the declaration's **token stream**, substituted but unevaluated — for a parametric role
+ * that is the literal string `oklch(calc(0.2 + (0.51 - 1) * -1 * (1.21 - 0.2)) calc(26 / 100 * …) 288)`.
+ * `parseColor` returns null for it, every derivation that read a role this way hit its `continue`,
+ * and the whole measure-and-correct layer quietly did nothing.
+ *
+ * It was invisible because it *degrades to the declared default*, which is a plausible colour. And
+ * it worked in exactly the cases somebody would spot-check: a role pinned to a literal parses, so
+ * a theme that hand-pinned its way out of a problem measured correctly, while the parametric
+ * defaults the derivations exist to correct never got corrected. `contrast.test.ts` resolves those
+ * expressions arithmetically itself, so it modelled derivations that were not running and went
+ * green over it.
+ *
+ * ## Why a probe element
+ *
+ * The only thing that evaluates a `var()`/`calc()` chain is the browser, and it will only do it for
+ * a property that has a type. So assign the role to a real colour property on a real element and
+ * read *that* back: `backgroundColor` computes to an `rgb()` string whatever the chain contained.
+ *
+ * The probe lives inside `root` so it inherits the theme being applied — a probe on `document.body`
+ * would read the ambient theme when a scoped theme is what is being measured. It is inert: no size,
+ * no paint, no pointer, and `position: absolute` keeps it out of layout.
+ */
+function createRoleProbe(root: HTMLElement): { read: (role: ThemeRole) => Rgba | null; dispose: () => void } {
+  const probe = root.ownerDocument.createElement('div');
+  probe.style.cssText = 'position:absolute;width:0;height:0;visibility:hidden;pointer-events:none';
+  root.appendChild(probe);
+  const view = root.ownerDocument.defaultView;
+  return {
+    read(role) {
+      probe.style.backgroundColor = '';
+      probe.style.backgroundColor = `var(${roleVar(role)})`;
+      const painted = view?.getComputedStyle(probe).backgroundColor ?? '';
+      return parseColor(painted.trim());
+    },
+    dispose() {
+      probe.remove();
+    },
+  };
 }
 
 /**
@@ -450,13 +498,32 @@ export function applyThemeVars(root: HTMLElement, theme: ThemeOverrides): void {
   // Tracked alongside the rest, so the next theme clears them: a derived value from the old theme
   // outliving it would be worse than never deriving one.
   const ceilings = applyChromaCeilings(root);
+
+  /*
+    One probe for all four derivations, and the guard they used to each repeat.
+
+    Each of them needs to know what a role *renders as*, which only the browser can answer — see
+    createRoleProbe. Sharing one element keeps the DOM churn to a single append/remove per theme
+    change, and the sequencing still works because each derivation writes to `root.style` and the
+    next one reads through a child of `root`.
+  */
+  const measurable =
+    typeof getComputedStyle === 'function' && root?.nodeType === 1 && root.isConnected;
+  if (!measurable) {
+    appliedThemeVars.set(root, new Set([...Object.keys(styles), ...ceilings]));
+    return;
+  }
+  const probe = createRoleProbe(root);
   // Order matters: the fill settles first, then the label is chosen against where it landed, then
   // the foregrounds that sit on other surfaces.
-  const fills = applyLegibleFills(root, theme);
-  const labels = applyAutoContrast(root, theme);
+  const fills = applyLegibleFills(root, theme, probe);
+  const labels = applyAutoContrast(root, theme, probe);
   // After the label, necessarily: which way a hover moves is decided by where the label ended up.
-  const states = applyStateDirection(root);
-  const derived = [...fills, ...labels, ...states, ...applyLegibleForegrounds(root, theme), ...ceilings];
+  const states = applyStateDirection(root, probe);
+  const foregrounds = applyLegibleForegrounds(root, theme, probe);
+  probe.dispose();
+
+  const derived = [...fills, ...labels, ...states, ...foregrounds, ...ceilings];
   appliedThemeVars.set(root, new Set([...Object.keys(styles), ...derived]));
 }
 
@@ -503,6 +570,22 @@ function applyChromaCeilings(root: HTMLElement): string[] {
     const prop = `--we-color-${family}-chroma-max`;
     root.style.setProperty(prop, maxChromaFor(CHROMA_PEAK_LIGHTNESS, hue, gamut).toFixed(4));
     written.push(prop);
+
+    /*
+      A second ceiling, measured where that family's *fill* sits.
+
+      The one above serves the ramp, and is measured at L 0.6 because that is where the ramp's
+      chroma peaks. A fill does not live on the ramp — it sits at its own lightness (see
+      FILL_LIGHTNESS in @we/tokens) — and how much chroma a hue can hold moves a long way with
+      lightness: green holds 0.19 at L 0.6 and 0.22 at L 0.75, yellow 0.12 and 0.16. Scaling the
+      ramp's ceiling would have asked green and gold for more than they have at 0.6 and less than
+      they have where they actually are, which is how a warning fill ends up looking like a stone.
+    */
+    const fillLightness = FILL_LIGHTNESS[family as keyof typeof FILL_LIGHTNESS];
+    if (fillLightness === undefined) continue;
+    const fillProp = `--we-color-${family}-fill-chroma-max`;
+    root.style.setProperty(fillProp, maxChromaFor(fillLightness, hue, gamut).toFixed(4));
+    written.push(fillProp);
   }
   return written;
 }
@@ -607,13 +690,14 @@ export function labelCandidates(hue: string): string[] {
 /**
  * Which label sits on which fill — and so, below, which way that fill's states move.
  *
- * One label serves all three status fills, which is why `onStatus` appears three times.
+ * One label per fill — see the note on `onDanger` in @we/tokens for why the three status fills
+ * stopped sharing one.
  */
 export const FILL_LABELS: { fill: ThemeRole; label: ThemeRole }[] = [
   { fill: 'accent', label: 'onAccent' },
-  { fill: 'danger', label: 'onStatus' },
-  { fill: 'success', label: 'onStatus' },
-  { fill: 'warning', label: 'onStatus' },
+  { fill: 'danger', label: 'onDanger' },
+  { fill: 'success', label: 'onSuccess' },
+  { fill: 'warning', label: 'onWarning' },
 ];
 
 /**
@@ -669,14 +753,12 @@ export function stateDelta(fill: Rgba, label: Rgba, state: 'hover' | 'active'): 
  * into the light label it is most likely to be paired with. The cost is that it occasionally moves
  * a fill further than a lightening state would have required.
  */
-function applyStateDirection(root: HTMLElement): string[] {
+function applyStateDirection(root: HTMLElement, probe: ReturnType<typeof createRoleProbe>): string[] {
   const written: string[] = [];
-  if (typeof getComputedStyle !== 'function' || root?.nodeType !== 1 || !root.isConnected) return written;
-  const computed = getComputedStyle(root);
 
   for (const { fill, label } of FILL_LABELS) {
-    const fillColor = parseColor(computed.getPropertyValue(roleVar(fill)).trim());
-    const labelColor = parseColor(computed.getPropertyValue(roleVar(label)).trim());
+    const fillColor = probe.read(fill);
+    const labelColor = probe.read(label);
     if (!fillColor || !labelColor) continue;
 
     // The four fill roles are single lowercase words, so the role name *is* the variable suffix.
@@ -689,21 +771,48 @@ function applyStateDirection(root: HTMLElement): string[] {
   return written;
 }
 
-function applyLegibleFills(root: HTMLElement, theme: ThemeOverrides): string[] {
+function applyLegibleFills(root: HTMLElement, theme: ThemeOverrides, probe: ReturnType<typeof createRoleProbe>): string[] {
   const written: string[] = [];
-  if (typeof getComputedStyle !== 'function' || root?.nodeType !== 1 || !root.isConnected) return written;
   const computed = getComputedStyle(root);
 
+  // A plain number, so reading the custom property directly is fine here — it is only colours that
+  // need the probe.
   const hue = computed.getPropertyValue('--we-color-neutral-hue').trim() || '264';
-  const labels = labelCandidates(hue)
+  const free = labelCandidates(hue)
     .map((css) => parseColor(css))
     .filter((c): c is Rgba => !!c);
-  if (!labels.length) return written;
+  if (!free.length) return written;
 
   for (const role of DERIVED_FILLS) {
     if (theme.roles?.[role] !== undefined) continue;
-    const fill = parseColor(computed.getPropertyValue(roleVar(role)).trim());
+    const fill = probe.read(role);
     if (!fill) continue;
+
+    /*
+      A stated label is a *constraint on this search*, not a reason to abandon it.
+
+      This used to offer both candidates regardless, so a theme that pinned a near-black label could
+      still have its fill moved to somewhere only white worked — and then have the near-black label
+      dropped on top of it. The pin and the derivation were solving for different things and neither
+      knew it.
+
+      So when the label this fill carries is stated, it becomes the only candidate: move the fill
+      until *that* label reads. The author has said what the text will be; where the fill goes is
+      still ours to answer, and answering it with the wrong text in mind is answering a different
+      question.
+
+      Where the author has stated the fill too, we skip above and nothing is derived — which is the
+      whole design intact rather than overruled. Both stated means they meant both; the editor shows
+      the measurement live, and for a built-in preset `contrast.test.ts` records it by name.
+    */
+    const labelRole = FILL_LABELS.find((entry) => entry.fill === role)?.label;
+    // Read the *resolved* colour, not the declared string: a pin is usually an `oklch(…)` over the
+    // theme's own hue variables, which only computed style can turn into a number.
+    const stated =
+      labelRole && theme.roles?.[labelRole] !== undefined
+        ? probe.read(labelRole)
+        : null;
+    const labels = stated ? [stated] : free;
 
     const moved = deriveFill(fill, labels, APCA_MINIMUM.ui, fillStateDeltas(theme.polarity));
     if (!moved || moved === fill) continue;
@@ -762,16 +871,14 @@ export function deriveLegible(fg: Rgba, bg: Rgba, minimum: number): string | nul
   return null;
 }
 
-function applyLegibleForegrounds(root: HTMLElement, theme: ThemeOverrides): string[] {
+function applyLegibleForegrounds(root: HTMLElement, theme: ThemeOverrides, probe: ReturnType<typeof createRoleProbe>): string[] {
   const written: string[] = [];
-  if (typeof getComputedStyle !== 'function' || root?.nodeType !== 1 || !root.isConnected) return written;
-  const computed = getComputedStyle(root);
 
   for (const { fg, on, level } of LEGIBLE_FOREGROUNDS) {
     // A pin is the author overruling the derivation, which they are entitled to do.
     if (theme.roles?.[fg] !== undefined) continue;
-    const text = parseColor(computed.getPropertyValue(roleVar(fg)).trim());
-    const background = parseColor(computed.getPropertyValue(roleVar(on)).trim());
+    const text = probe.read(fg);
+    const background = probe.read(on);
     if (!text || !background) continue;
     if (apcaContrast(text, background) >= APCA_MINIMUM[level]) continue;
 
@@ -787,30 +894,33 @@ function applyLegibleForegrounds(root: HTMLElement, theme: ThemeOverrides): stri
 /**
  * Foregrounds whose colour is a *consequence* of the fill they sit on, not a separate decision.
  *
- * Each entry is a foreground role, the fills it has to stay readable against, and the two candidates
- * to choose between. The worst of the fills wins the vote: a primary button's label has to work at
- * rest, on hover and while pressed, and a label chosen against the rest state alone goes unreadable
- * halfway through a click.
+ * Each entry is a foreground role and the fills it has to stay readable against.
+ *
+ * ## Rest states only, and why that is now sufficient
+ *
+ * This used to list every hover and pressed variant too — nine fills for `onStatus` — on the rule
+ * that "the worst of the fills wins the vote", because a label chosen against the rest state alone
+ * went unreadable halfway through a click. That was true while the states moved in a fixed
+ * direction: a label could be picked for the rest fill and then have the fill slide underneath it.
+ *
+ * `applyStateDirection` removes the possibility. A state now moves *away* from whatever label
+ * landed on the fill, so hover and pressed are strictly higher contrast than rest, and rest is the
+ * worst case by construction. Listing the states as well does not make the choice safer — it makes
+ * it wrong, because they are read here *before* the direction has been decided, so they still hold
+ * the default deepening. On `timeline`, whose accent is pinned to a sky blue, that mattered: the
+ * label was chosen against three fills that were about to move the other way, and it picked white
+ * (2.85:1, failing AA) over the near-black that is correct for the fill as it actually renders.
+ *
+ * The ordering constraint is now one-way and simple. Fills settle, the label is chosen against
+ * them, and the states follow from the label.
  */
 export const AUTO_CONTRAST: { fg: ThemeRole; against: ThemeRole[] }[] = [
-  { fg: 'onAccent', against: ['accent', 'accentHover', 'accentActive'] },
+  { fg: 'onAccent', against: ['accent'] },
   { fg: 'onInverse', against: ['surfaceInverse'] },
-  // All three, because one label serves whichever status fill it lands on and the weakest decides.
-  // Every state of every status fill: one label serves all of them, so the worst decides.
-  {
-    fg: 'onStatus',
-    against: [
-      'danger',
-      'dangerHover',
-      'dangerActive',
-      'success',
-      'successHover',
-      'successActive',
-      'warning',
-      'warningHover',
-      'warningActive',
-    ],
-  },
+  // One each, against the fill it actually sits on — see the note on `onDanger` in @we/tokens.
+  { fg: 'onDanger', against: ['danger'] },
+  { fg: 'onSuccess', against: ['success'] },
+  { fg: 'onWarning', against: ['warning'] },
 ];
 
 /**
@@ -830,7 +940,33 @@ export function pickReadableForeground(candidates: string[], fills: Rgba[]): str
   for (const candidate of candidates) {
     const colour = parseColor(candidate);
     if (!colour) continue;
-    const score = Math.min(...fills.map((fill) => contrastRatio(colour, fill)));
+    /*
+      Scored against *both* metrics, as a fraction of what each one asks for.
+
+      This used to score with WCAG 2 alone while `contrast.test.ts` graded the outcome with APCA as
+      well, so the label was chosen by one standard and marked by two. On a mid-tone fill the two
+      disagree outright — a red at L 0.62 is Lc 72 under white and Lc 38 under near-black, while
+      WCAG's flat +0.05 compresses the light end and hands the win to near-black — so the derivation
+      picked the label that scored worse by the standard it would be judged on, and reported a
+      failure it had caused. Scoring with APCA alone just moves the problem: `timeline`'s sky blue
+      takes white at Lc 59 and 2.85:1, which passes APCA and fails AA.
+
+      Normalising each measurement by its own threshold puts them on one scale, and taking the worse
+      of the two picks the candidate that comes closest to satisfying both. It reproduces every
+      hand-pinned label the built-ins had arrived at independently, which is the check that it is
+      the right rule rather than a rule that happens to pass today.
+
+      `ui` thresholds, because this is always a label on a fill — a short interface string, which is
+      what that level is for.
+    */
+    const score = Math.min(
+      ...fills.map((fill) =>
+        Math.min(
+          apcaContrast(colour, fill) / APCA_MINIMUM.ui,
+          contrastRatio(colour, fill) / CONTRAST_MINIMUM.ui,
+        ),
+      ),
+    );
     if (score > bestScore) {
       bestScore = score;
       best = candidate;
@@ -854,11 +990,7 @@ export function pickReadableForeground(candidates: string[], fills: Rgba[]): str
  * Runs after the variables are applied because it has to *measure*: the fill is usually a `var()`
  * chain over a parametric ramp, and the only thing that knows what that resolves to is the browser.
  */
-function applyAutoContrast(root: HTMLElement, theme: ThemeOverrides): string[] {
-  // Needs a real element in a real document: the whole point is to measure what a `var()` chain
-  // resolves to, and only the browser knows. Anywhere else — a test stub, a server render — the
-  // roles keep their declared defaults, which is the correct answer when nothing can be measured.
-  if (typeof getComputedStyle !== 'function' || root?.nodeType !== 1 || !root.isConnected) return [];
+function applyAutoContrast(root: HTMLElement, theme: ThemeOverrides, probe: ReturnType<typeof createRoleProbe>): string[] {
   const computed = getComputedStyle(root);
   const written: string[] = [];
 
@@ -866,7 +998,7 @@ function applyAutoContrast(root: HTMLElement, theme: ThemeOverrides): string[] {
     if (theme.roles?.[fg] !== undefined) continue;
 
     const fills = against
-      .map((role) => parseColor(computed.getPropertyValue(roleVar(role)).trim()))
+      .map((role) => probe.read(role))
       .filter((c): c is Rgba => c !== null);
     if (!fills.length) continue;
 

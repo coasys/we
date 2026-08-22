@@ -6,7 +6,7 @@
 // Import all token modules
 import { animation } from './animation.js';
 import { border } from './border.js';
-import { color } from './color.js';
+import { FILL_LIGHTNESS, color } from './color.js';
 import { component } from './component.js';
 import { font } from './font.js';
 import { layout } from './layout.js';
@@ -19,18 +19,19 @@ import { zIndex } from './z-index.js';
 // Re-export all token objects
 export {
   animation,
+  avatarSize,
   border,
   color,
   component,
+  componentHeight,
+  FILL_LIGHTNESS,
   font,
   layout,
-  shadow,
+  radius,
   role,
   ROLE_RELATIVE_FALLBACK,
+  shadow,
   size,
-  radius,
-  avatarSize,
-  componentHeight,
   space,
   zIndex,
 };

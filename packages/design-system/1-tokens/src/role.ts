@@ -104,13 +104,30 @@ export const role = {
   /**
    * The accent (interactive emphasis) — a filled button, a selected disc.
    *
-   * 700 rather than a mid step, and the reason is a rule worth stating: a filled control wants to
-   * be *away* from the middle of the ramp. At 600 the fill lands near 50% lightness, where neither
-   * a near-white nor a near-black label clears AA — `black` measured 3.83:1 and `channels` 4.10:1
-   * with the derivation already picking the better of the two. There is no label that rescues a fill
-   * in that band; the fill has to move.
+   * ## Off the ramp entirely, because a fill is a colour and not a position
+   *
+   * The surface stack is defined *relative to the page* behind it, so it must invert with the
+   * theme. A fill is not: a red is red in a light theme and in a dark one, and an accent is the
+   * product's colour rather than a distance from its background. So a fill states its own
+   * lightness — see FILL_LIGHTNESS in `color.ts` for why each family sits where it does — and takes
+   * only its hue and its chroma budget from the theme.
+   *
+   * This was step 700, on the rule that "a filled control wants to be away from the middle of the
+   * ramp", because at mid lightness neither a near-white nor a near-black label cleared **WCAG 2**
+   * AA. That rule does not survive the move to APCA: white on this accent measures Lc 80, well
+   * clear of the 45 a UI label needs. It was really a fact about WCAG's flat +0.05, which
+   * compresses every ratio near black and made mid-tones score worse than they read.
+   *
+   * What 700 actually did was invert — L 42 in a light theme and L 78.6 in a dark one — so every
+   * dark theme's accent came out a pale lavender and its destructive button a pale pink. `dark`,
+   * `cyberpunk` and `timeline` each pinned their way out of it. A default that three of seven
+   * presets override is a default that is wrong.
+   *
+   * The chroma ceiling is the *fill* one, measured at this lightness rather than at the ramp's
+   * peak: how much chroma a hue can hold moves a long way with lightness, and using the ramp's
+   * figure asked gold for more than it has at L 0.6 and less than it has at L 0.76.
    */
-  accent: 'var(--we-color-primary-700)',
+  accent: 'oklch(55% calc(var(--we-color-saturation) / 100 * var(--we-color-primary-fill-chroma-max, 0.2663)) var(--we-color-primary-hue))',
   /**
    * Text and icons placed *on* an accent fill. Named for what it sits on, not what it is.
    *
@@ -228,12 +245,13 @@ export const role = {
    * hardcoded to `danger-500` — themeable only through the hue that owns it, which is not the same
    * as being able to say "make destructive actions look like this".
    */
-  // 700, matching `accent`, and for the same reason: a filled control near the middle of the ramp
-  // has no readable label at either end. `cyberpunk` measured 4.42:1 with the derivation already
-  // picking the better of the two.
-  danger: 'var(--we-color-danger-700)',
-  success: 'var(--we-color-success-700)',
-  warning: 'var(--we-color-warning-700)',
+  // Absolute lightnesses, matching `accent` and for the same reason — see the long note there and
+  // FILL_LIGHTNESS in color.ts. Each sits where its own hue is most itself rather than where a
+  // shared step would put it: gold at the violet's lightness is a stone, and violet at the gold's
+  // is a lilac. At step 700 a dark theme's destructive button was pale pink rather than red.
+  danger: 'oklch(62% calc(var(--we-color-saturation) / 100 * var(--we-color-danger-fill-chroma-max, 0.2491)) var(--we-color-danger-hue))',
+  success: 'oklch(75% calc(var(--we-color-saturation) / 100 * var(--we-color-success-fill-chroma-max, 0.2365)) var(--we-color-success-hue))',
+  warning: 'oklch(76% calc(var(--we-color-saturation) / 100 * var(--we-color-warning-fill-chroma-max, 0.1558)) var(--we-color-warning-hue))',
 
   /**
    * Hover and pressed for each fill, as steps *from* it.
@@ -259,17 +277,29 @@ export const role = {
   warningActive: 'oklch(from var(--we-role-warning) calc(l + var(--we-state-active-warning, var(--we-state-active))) c h)',
 
   /**
-   * Text and icons on a status fill — the destructive button's label.
+   * Text and icons on each status fill — the destructive button's label, and its siblings.
    *
-   * One role between the three fills rather than three `on*` roles: exactly one component puts text
-   * on a status fill, the three fills are siblings at the same step, and `applyAutoContrast` picks
-   * this against the worst of them, so it is both sufficient and self-correcting.
+   * ## Three roles, where there was one
    *
-   * It exists because the audit found the button was a near-white label on `danger-500` — and a
-   * scale step *inverts*, so in a dark theme that fill lands light and the label sat on it at about
-   * 2:1. Nothing caught it because no contrast pair named the button. One does now.
+   * This was a single `onStatus` shared between all three fills, on the reasoning that they were
+   * "siblings at the same step" so one label could serve them and `applyAutoContrast` would pick it
+   * against the worst. The premise was true and is not any more: fills sit at their own lightness
+   * now (see FILL_LIGHTNESS), and those lightnesses are not close — danger is at L 0.62, success at
+   * 0.75, warning at 0.76, because that is where those hues actually live.
+   *
+   * One label across that spread is a compromise rather than a choice. Near-black wins on the two
+   * light fills by enough to carry the vote, and lands on the red at Lc 38 — below the 45 floor,
+   * and precisely the pale-label-on-red the original `onStatus` was introduced to fix, arrived at
+   * from the other direction. Split, each is derived against the fill it actually sits on: white on
+   * the red at Lc 72, near-black on gold and green.
+   *
+   * The three are not merged back the moment they agree. `onAccent` is a separate role from these
+   * for the same reason — a label belongs to the fill under it, and sharing one is only ever
+   * correct by coincidence.
    */
-  onStatus: 'oklch(100% 0 var(--we-color-neutral-hue))',
+  onDanger: 'oklch(100% 0 var(--we-color-neutral-hue))',
+  onSuccess: 'oklch(100% 0 var(--we-color-neutral-hue))',
+  onWarning: 'oklch(100% 0 var(--we-color-neutral-hue))',
 
   /** Tinted surfaces behind status content (alerts, badges, destructive confirmations). */
   dangerSurface: 'var(--we-color-danger-50)',

@@ -57,7 +57,9 @@ const PAIRS: { fg: ThemeRole; bg: ThemeRole; level: ContrastLevel; what: string 
   { fg: 'onAccent', bg: 'accent', level: 'ui', what: 'a primary button label' },
   { fg: 'onInverse', bg: 'surfaceInverse', level: 'body', what: 'tooltip text' },
   // The pair nothing named, which is how a dark theme shipped a near-white label on a light red.
-  { fg: 'onStatus', bg: 'danger', level: 'ui', what: 'a destructive button label' },
+  { fg: 'onDanger', bg: 'danger', level: 'ui', what: 'a destructive button label' },
+  { fg: 'onSuccess', bg: 'success', level: 'ui', what: 'a success fill label' },
+  { fg: 'onWarning', bg: 'warning', level: 'ui', what: 'a warning fill label' },
   { fg: 'dangerText', bg: 'dangerSurface', level: 'body', what: 'danger text on its tint' },
   { fg: 'successText', bg: 'successSurface', level: 'body', what: 'success text on its tint' },
   { fg: 'warningText', bg: 'warningSurface', level: 'body', what: 'warning text on its tint' },
@@ -77,15 +79,20 @@ const HUE_DEFAULTS: Record<string, number> = color.hues;
 /**
  * Pairs a theme states outright, below the floor, on purpose — recorded rather than exempted.
  *
- * `dark` reproduces WE's pre-OKLCH appearance, and that appearance put a **near-black label on a
- * mid-tone fill**: `bg: 'primary-500', color: 'neutral-0'` in the button primitive, and the same
- * for danger, success and warning. Measured with APCA those pairings are Lc 29 and Lc 37 against a
- * UI floor of 45 — which is precisely why the auto-contrast pass picks white (Lc 80) when left to
- * choose, and why this theme has to pin `onAccent` and `onStatus` to get its own look back.
+ * One entry, and the fact that it is only one is the point.
  *
- * That is a real legibility cost and it is deliberate: the alternative is either a white label,
- * which is not the theme, or an accent lightened to about L 0.78, which is a pastel and also not
- * the theme. Both were measured before choosing.
+ * `dark` states a near-black label on its fills, which is its character. Left to choose, the
+ * auto-contrast pass picks white on an accent that deep, because white measures Lc 80 against
+ * near-black's 29. So the label is stated — and because a stated label now *constrains* the fill
+ * derivation rather than switching it off, the three status fills move themselves until they carry
+ * it. The destructive button used to sit here at Lc 37 with its fill pinned; derived against the
+ * stated label it reaches Lc 60, and needs no exemption at all.
+ *
+ * What is left is the pair where the theme has stated *both* sides: `accent` is this theme's
+ * identity colour and the label on it is near-black, so there is nothing for a derivation to move.
+ * The cost is real and deliberate — the alternative is either a white label, which is not the
+ * theme, or an accent lightened to about L 0.78, which is a pastel and also not the theme. Both
+ * were measured before choosing.
  *
  * Keyed by theme and pair, and asserted as an **equality** rather than skipped. A skip would let
  * these drift to anything at all; the recorded number means the suite still fails if a change makes
@@ -95,7 +102,6 @@ const HUE_DEFAULTS: Record<string, number> = color.hues;
  */
 const ACCEPTED_BELOW_FLOOR: Record<string, number> = {
   'dark:a primary button label': 29,
-  'dark:a destructive button label': 37,
 };
 
 /** The lightness the CSS would compute for one step, given a theme's multiplier and subtractor. */
@@ -148,11 +154,24 @@ function resolve(value: string, theme: ThemeOverrides): Rgba | null {
   if (pinned) {
     const [, l, chromaExpr, hueFamily, alpha] = pinned;
     const lightnessFraction = parseFloat(l) / 100;
+    const hue = hueOf(hueFamily, theme);
+
+    /*
+      A *fill* is untapered, and measured at its own lightness.
+
+      The taper exists to make the neutral ramp converge on white and black at its ends, which is
+      the one thing a fill must not do — a warning that fades toward the background as the theme
+      gets lighter has stopped being a warning. So the fill roles name a `-fill-chroma-max`
+      variable, and that name is what tells the two forms apart here.
+    */
+    const isFill = chromaExpr.includes('-fill-chroma-max');
     const taper = 2 * Math.min(lightnessFraction, 1 - lightnessFraction);
     const chroma = /^[\d.]+$/.test(chromaExpr)
       ? parseFloat(chromaExpr)
-      : (saturationOf('neutral', theme) / 100) * maxChromaFor(0.6, hueOf('neutral', theme)) * taper;
-    return parseColor(`oklch(${l}% ${chroma.toFixed(4)} ${hueOf(hueFamily, theme)}${alpha ? ` / ${alpha}` : ''})`);
+      : isFill
+        ? (saturationOf(hueFamily, theme) / 100) * maxChromaFor(lightnessFraction, hue)
+        : (saturationOf('neutral', theme) / 100) * maxChromaFor(0.6, hueOf('neutral', theme)) * taper;
+    return parseColor(`oklch(${l}% ${chroma.toFixed(4)} ${hue}${alpha ? ` / ${alpha}` : ''})`);
   }
 
   return parseColor(value);
@@ -174,7 +193,7 @@ function roleColor(name: ThemeRole, theme: ThemeOverrides, seen = new Set<string
   /*
     A derived foreground is resolved the way the runtime derives it, not from its declared default.
 
-    `onAccent` and `onStatus` are chosen by measurement at theme-apply time, so checking their
+    `onAccent` and the three `on<Status>` roles are chosen by measurement at theme-apply time, so checking their
     static value asks a question nobody sees the answer to — and gets it wrong in both directions:
     it fails a theme whose bright fill would have been given a dark label, and it would pass one
     where the derivation had no good option. Only when the theme has not pinned it, since a pin is
@@ -199,9 +218,19 @@ function roleColor(name: ThemeRole, theme: ThemeOverrides, seen = new Set<string
   if (DERIVED_FILLS.includes(name) && !theme.roles?.[name] && !seen.has(name)) {
     const fill = resolve((role as Record<string, string>)[name], theme);
     if (fill) {
-      const labels = labelCandidates(String(hueOf('neutral', theme)))
-        .map((css) => parseColor(css))
-        .filter((c): c is Rgba => !!c);
+      // A stated label constrains the search to itself — mirroring `applyLegibleFills`. Resolved
+      // through `roleColor` rather than `resolve`, since a pin may be an expression over the
+      // theme's own variables.
+      const labelRole = FILL_LABELS.find((entry) => entry.fill === name)?.label;
+      const stated =
+        labelRole && theme.roles?.[labelRole] !== undefined
+          ? roleColor(labelRole, theme, new Set([...seen, name]))
+          : null;
+      const labels = stated
+        ? [stated]
+        : labelCandidates(String(hueOf('neutral', theme)))
+            .map((css) => parseColor(css))
+            .filter((c): c is Rgba => !!c);
       return deriveFill(fill, labels, APCA_MINIMUM.ui, fillStateDeltas(theme.polarity)) ?? fill;
     }
   }
@@ -251,7 +280,7 @@ function roleColor(name: ThemeRole, theme: ThemeOverrides, seen = new Set<string
       An interaction state moves away from the fill's own label, so resolving one means resolving
       that label first — and calling the runtime's `stateDelta` rather than deciding here.
 
-      The label is `onAccent` for the accent and `onStatus` for all three status fills, which is
+      The label is `onAccent` for the accent and a matching `on<Status>` for each status fill, which is
       what FILL_LABELS says; reading it from there rather than restating the mapping means a fifth
       fill added later is picked up by the suite without touching it. If the label cannot be
       resolved the state is left where it is, which keeps a partial theme from failing every row.
