@@ -148,7 +148,23 @@ export function themeToStyle(overrides: ThemeOverrides): Record<string, string> 
   */
   const preset =
     overrides.themeName && isThemeName(overrides.themeName) ? THEME_PRESETS[overrides.themeName].parameters : undefined;
-  const theme: ThemeOverrides = preset ? { ...preset, ...stripUndefined(overrides) } : overrides;
+  /*
+    `roles` merges key by key; every other override replaces.
+
+    A shallow spread was clobbering: pinning one role on a preset that pins its own discarded all of
+    them. Editing the accent on `channels` dropped the twelve measured surface and text pins that
+    make it look like `channels` at all, and the theme fell apart from a single colour click. The
+    user's pin still wins per role — it is the *unpinned* ones that keep the preset's value now,
+    which is what "override" means everywhere else in this object.
+  */
+  const explicit = stripUndefined(overrides);
+  const theme: ThemeOverrides = preset
+    ? {
+        ...preset,
+        ...explicit,
+        ...(preset.roles || explicit.roles ? { roles: { ...preset.roles, ...explicit.roles } } : {}),
+      }
+    : overrides;
 
   // Role defaults first, so an explicit pin below overwrites its own default rather than sitting
   // beside it. See ROLE_DEFAULT_VARS for why they are re-declared at all.

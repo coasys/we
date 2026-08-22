@@ -240,3 +240,28 @@ describe('the shape, density and typography keys added alongside the roles edito
     expect(style['--we-font-family']).toBeUndefined();
   });
 });
+
+describe('a preset and a theme both pinning roles', () => {
+  /*
+    `roles` is the one override that merges rather than replaces. A shallow spread meant pinning a
+    single role on a preset that pins its own threw the rest away: editing the accent on `channels`
+    dropped the twelve measured surface and text pins that make it that theme, and it came apart
+    from one click in the colour picker.
+  */
+  it('keeps the preset’s pins for roles the theme does not mention', () => {
+    const style = themeToStyle({ themeName: 'channels', roles: { accent: '#ff0000' } });
+    expect(style['--we-role-page']).toContain('11%');
+    expect(style['--we-role-surface-sunken']).toContain('7.5%');
+    expect(style['--we-role-text-muted']).toContain('72%');
+  });
+
+  it('still lets the theme win on the role it does pin', () => {
+    expect(themeToStyle({ themeName: 'channels', roles: { accent: '#ff0000' } })['--we-role-accent']).toBe('#ff0000');
+  });
+
+  it('leaves a theme with no roles of its own exactly as the preset had it', () => {
+    const bare = themeToStyle({ themeName: 'channels' });
+    const withOther = themeToStyle({ themeName: 'channels', primaryHue: 100 });
+    expect(withOther['--we-role-page']).toBe(bare['--we-role-page']);
+  });
+});

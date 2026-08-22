@@ -177,6 +177,17 @@ function isRawCSSValue(value: string): boolean {
   // back as `var(--we-space-calc(100% - 8px))` — a variable name built out of an expression,
   // which resolves to nothing. Applies to every token-resolved prop, not just offsets.
   if (/^(calc|min|max|clamp|env)\(/i.test(value)) return true;
+  /*
+    `color-mix()` is how a control's hover and pressed steps stay inside the theme.
+
+    A neutral filled control needs three steps and the vocabulary has roles for one of them — a
+    fourth and fifth role for "secondary button, pressed" would be vocabulary nobody would ever pin.
+    Mixing the rest state toward `text` gives the ladder for free and, because `text` inverts with
+    the theme, it darkens in a light theme and lightens in a dark one without being told which it is.
+    Without this line it fell through to the token branch and came back as
+    `var(--we-color-color-mix(…))`, a variable name built out of an expression.
+  */
+  if (/^color-mix\(/i.test(value)) return true;
   return /^-?(var\(|#|rgba?|hsla?|\d+(\.\d+)?(px|rem|em|%|vh|vw|vmin|vmax|ch|ex|\s))/.test(value);
 }
 
