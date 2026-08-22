@@ -423,7 +423,10 @@ export function applyThemeVars(root: HTMLElement, theme: ThemeOverrides): void {
   // Tracked alongside the rest, so the next theme clears them: a derived value from the old theme
   // outliving it would be worse than never deriving one.
   const ceilings = applyChromaCeilings(root);
-  const derived = [...applyAutoContrast(root, theme), ...applyLegibleForegrounds(root, theme), ...ceilings];
+  // Order matters: the fill settles first, then the label is chosen against where it landed, then
+  // the foregrounds that sit on other surfaces.
+  const fills = applyLegibleFills(root, theme);
+  const derived = [...fills, ...applyAutoContrast(root, theme), ...applyLegibleForegrounds(root, theme), ...ceilings];
   appliedThemeVars.set(root, new Set([...Object.keys(styles), ...derived]));
 }
 
@@ -461,6 +464,90 @@ function applyChromaCeilings(root: HTMLElement): string[] {
 
 /** Where chroma peaks on the ramp, and so where the family's ceiling is measured. */
 const CHROMA_PEAK_LIGHTNESS = 0.6;
+
+/**
+ * Fills that move until a label can sit on them.
+ *
+ * The mirror of the foreground derivation, and the reason it is needed: a filled control near the
+ * middle of its theme's ramp has *no* readable label, because both candidates — near-white and
+ * near-black — are equidistant from it. No choice of foreground rescues that; the fill has to move.
+ *
+ * Where "the middle" falls depends on the theme's range, which is why this cannot be a step chosen
+ * once. `black` runs the full 0–100 and put the shared step at 58%; `channels` put it at 64%. Both
+ * had to pin their way out before this existed, and a theme author would have had to learn the rule
+ * to author a dark theme at all.
+ *
+ * Runs before the label derivation, which then chooses against the fill this settled on.
+ */
+/**
+ * The lightness steps a fill's hover and pressed states sit at, relative to the fill.
+ *
+ * Shared with `accentHover`/`accentActive` in @we/tokens rather than restated: a fill is only
+ * legible if a label works across all three states, so the derivation has to know where the other
+ * two land. Moving the fill until the *rest* state clears is not enough — that was `channels`,
+ * whose rest state reached Lc 45 and whose pressed state pulled the choice back to 40.
+ */
+export const FILL_STATE_DELTAS = [0, -0.05, -0.09];
+
+export const DERIVED_FILLS: ThemeRole[] = ['accent', 'danger', 'success', 'warning'];
+
+function applyLegibleFills(root: HTMLElement, theme: ThemeOverrides): string[] {
+  const written: string[] = [];
+  if (typeof getComputedStyle !== 'function' || root?.nodeType !== 1 || !root.isConnected) return written;
+  const computed = getComputedStyle(root);
+
+  const hue = computed.getPropertyValue('--we-color-neutral-hue').trim() || '264';
+  // The full range, not the ends of the neutral ramp.
+  //
+  // A label on a fill is the one place a theme's own lightness bounds should not apply: the fill
+  // is arbitrary, and clipping the label to a 98/10 window throws away the few points of contrast
+  // that decide whether a mid-range fill is usable at all. Hue is kept so the label still belongs
+  // to the theme; chroma goes to zero, because at either extreme there is no room for it anyway.
+  const labels = [`oklch(100% 0 ${hue})`, `oklch(0% 0 ${hue})`]
+    .map((css) => parseColor(css))
+    .filter((c): c is Rgba => !!c);
+  if (!labels.length) return written;
+
+  /** The best any available label manages across a fill and its hover and pressed states. */
+  const bestLabel = (fill: Rgba) => {
+    const { c, h, l } = rgbToOklch(fill);
+    const states = FILL_STATE_DELTAS.map((d) => ({ ...oklchToRgb(Math.min(1, Math.max(0, l + d)), c, h), a: fill.a }));
+    return Math.max(...labels.map((label) => Math.min(...states.map((state) => apcaContrast(label, state)))));
+  };
+
+  for (const role of DERIVED_FILLS) {
+    if (theme.roles?.[role] !== undefined) continue;
+    const fill = parseColor(computed.getPropertyValue(roleVar(role)).trim());
+    if (!fill || bestLabel(fill) >= APCA_MINIMUM.ui) continue;
+
+    const { c, h, l: start } = rgbToOklch(fill);
+    for (let step = 1; step <= 100; step++) {
+      // Both directions: a light theme's fill escapes downward and a dark theme's upward, and which
+      // is which is precisely the thing that depends on the theme rather than on the role.
+      /*
+        Chroma is clamped to what the new lightness can hold, which is not a detail.
+
+        Carrying the original chroma upward pushes the colour out of sRGB, where it clips — and a
+        clipped colour's luminance barely moves, so the search walks a hundred steps and finds
+        nothing. A saturated accent simply cannot stay that saturated as it approaches white, and
+        pretending otherwise is what made the loop look broken.
+      */
+      const candidates = [start + step * 0.01, start - step * 0.01].filter((v) => v >= 0 && v <= 1);
+      const at = (v: number) => ({ l: v, c: Math.min(c, maxChromaFor(v, h)) });
+      const moved = candidates.find((v) => {
+        const { l, c: cc } = at(v);
+        return bestLabel({ ...oklchToRgb(l, cc, h), a: fill.a }) >= APCA_MINIMUM.ui;
+      });
+      if (moved === undefined) continue;
+      const prop = roleVar(role);
+      const { c: finalC } = at(moved);
+      root.style.setProperty(prop, `oklch(${(moved * 100).toFixed(1)}% ${finalC.toFixed(4)} ${h.toFixed(1)})`);
+      written.push(prop);
+      break;
+    }
+  }
+  return written;
+}
 
 /**
  * Foregrounds that keep their hue and move their lightness until they are legible.
@@ -542,7 +629,7 @@ export const AUTO_CONTRAST: { fg: ThemeRole; against: ThemeRole[] }[] = [
   { fg: 'onAccent', against: ['accent', 'accentHover', 'accentActive'] },
   { fg: 'onInverse', against: ['surfaceInverse'] },
   // All three, because one label serves whichever status fill it lands on and the weakest decides.
-  { fg: 'onStatus', against: ['danger', 'success', 'warning'] },
+  { fg: 'onStatus', against: ['danger', 'dangerHover', 'dangerActive', 'success', 'warning'] },
 ];
 
 /**
@@ -602,14 +689,10 @@ function applyAutoContrast(root: HTMLElement, theme: ThemeOverrides): string[] {
       .filter((c): c is Rgba => c !== null);
     if (!fills.length) continue;
 
-    // Hue and saturation follow the theme's neutral so the label still belongs to it; only the
-    // lightness is being decided.
-    const hue = computed.getPropertyValue('--we-color-neutral-hue').trim() || '220';
-    const saturation = parseFloat(computed.getPropertyValue('--we-color-neutral-saturation')) || 10;
-    // The two ends of the neutral ramp, at the chroma this theme's saturation allows there.
-    const chromaAt = (l: number) =>
-      (Math.min(saturation * CHROMA_PER_SATURATION, CHROMA_CEILING) * (2 * Math.min(l, 1 - l))).toFixed(4);
-    const candidates = [`oklch(98% ${chromaAt(0.98)} ${hue})`, `oklch(10% ${chromaAt(0.1)} ${hue})`];
+    // The hue follows the theme's neutral so the label still belongs to it; only the lightness is
+    // being decided, and it is allowed the full range — see the note in `applyLegibleFills`.
+    const hue = computed.getPropertyValue('--we-color-neutral-hue').trim() || '264';
+    const candidates = [`oklch(100% 0 ${hue})`, `oklch(0% 0 ${hue})`];
 
     const prop = roleVar(fg);
     root.style.setProperty(prop, pickReadableForeground(candidates, fills));

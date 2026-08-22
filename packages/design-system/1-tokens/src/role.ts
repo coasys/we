@@ -137,9 +137,16 @@ export const role = {
    * argument: a theme that pins `accent` but leaves its states on the scale gets a button that
    * jumps to an unrelated colour under the pointer, because the pin and the scale no longer agree
    * about what the accent is.
+   *
+   * Steps *from* the accent rather than steps on the scale, which is what makes the label safe. The
+   * label is chosen against the worst of rest/hover/pressed — it has to stay readable through a
+   * click — so three independent scale positions meant three chances to drift somewhere no single
+   * label reaches. `black` did exactly that: its rest state was fine and its pressed state at 78.5%
+   * lightness dragged the whole choice down to Lc 35. Tied to the fill, they move with it, including
+   * when the fill is itself derived out of the middle of the ramp.
    */
-  accentHover: 'var(--we-color-primary-800)',
-  accentActive: 'var(--we-color-primary-900)',
+  accentHover: 'oklch(from var(--we-role-accent) calc(l - 0.05) c h)',
+  accentActive: 'oklch(from var(--we-role-accent) calc(l - 0.09) c h)',
 
   /** Hover tint on a surface (menu items, list rows, ghost buttons). */
   surfaceHover: 'var(--we-color-neutral-100)',
@@ -196,6 +203,8 @@ export const role = {
   // has no readable label at either end. `cyberpunk` measured 4.42:1 with the derivation already
   // picking the better of the two.
   danger: 'var(--we-color-danger-700)',
+  dangerHover: 'oklch(from var(--we-role-danger) calc(l - 0.05) c h)',
+  dangerActive: 'oklch(from var(--we-role-danger) calc(l - 0.09) c h)',
   success: 'var(--we-color-success-700)',
   warning: 'var(--we-color-warning-700)',
 

@@ -42,6 +42,8 @@ export type ThemeRole =
   | 'shadowColor'
   | 'focus'
   | 'danger'
+  | 'dangerHover'
+  | 'dangerActive'
   | 'success'
   | 'warning'
   | 'onStatus'

@@ -137,8 +137,8 @@ exports[`token CSS generation > color.css — hues, lightness ramp, palettes, ro
   --we-role-on-accent: oklch(100% 0 var(--we-color-neutral-hue));
   --we-role-accent-muted: var(--we-color-primary-100);
   --we-role-accent-text: var(--we-color-primary-700);
-  --we-role-accent-hover: var(--we-color-primary-800);
-  --we-role-accent-active: var(--we-color-primary-900);
+  --we-role-accent-hover: oklch(from var(--we-role-accent) calc(l - 0.05) c h);
+  --we-role-accent-active: oklch(from var(--we-role-accent) calc(l - 0.09) c h);
   --we-role-surface-hover: var(--we-color-neutral-100);
   --we-role-surface-active: var(--we-color-neutral-200);
   --we-role-control-surface: var(--we-color-neutral-200);
@@ -146,6 +146,8 @@ exports[`token CSS generation > color.css — hues, lightness ramp, palettes, ro
   --we-role-shadow-color: oklch(4% calc(min(var(--we-color-neutral-saturation) * 0.0035, 0.18) * 0.0800) var(--we-color-neutral-hue));
   --we-role-focus: var(--we-color-primary-500);
   --we-role-danger: var(--we-color-danger-700);
+  --we-role-danger-hover: oklch(from var(--we-role-danger) calc(l - 0.05) c h);
+  --we-role-danger-active: oklch(from var(--we-role-danger) calc(l - 0.09) c h);
   --we-role-success: var(--we-color-success-700);
   --we-role-warning: var(--we-color-warning-700);
   --we-role-on-status: oklch(100% 0 var(--we-color-neutral-hue));
@@ -226,7 +228,7 @@ exports[`token CSS generation > component.css — scrollbar values come from the
   --we-scrollbar-corner-background: transparent;
   --we-scrollbar-thumb-box-shadow: none;
   --we-scrollbar-thumb-border-radius: var(--we-radius-pill);
-  --we-scrollbar-thumb-background: var(--we-color-neutral-100);
+  --we-scrollbar-thumb-background: var(--we-role-control-surface);
 }"
 `;
 

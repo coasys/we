@@ -136,16 +136,6 @@ export const THEME_PRESETS = {
           shared 700 lands at 58% for this ramp; 800 clears it. The same reasoning as `accent`
           moving off 600, applied to a theme whose range is the reason.
         */
-        /*
-          The accent, further out than the shared step.
-
-          A filled control has to sit away from the middle of its theme's ramp or no label reads on
-          it, and where "the middle" falls depends on the range — this theme's puts the shared 700
-          in exactly that band. The general fix is to derive a fill against a readable label the way
-          foregrounds already are; until then, the two themes it bites pin their way out.
-        */
-        accent: 'var(--we-color-primary-900)',
-        danger: 'var(--we-color-danger-800)',
       },
     },
   },
@@ -217,9 +207,15 @@ export const THEME_PRESETS = {
         surface: neutral(22.7),
         surfaceSunken: neutral(18.7),
         surfaceRaised: neutral(29.0),
-        // Out of the mid-ramp band, for the reason given on `black`'s accent above.
-        accent: 'var(--we-color-primary-900)',
-        danger: 'var(--we-color-danger-900)',
+        /*
+          Pinned, like 's. This theme's ramp puts the shared accent step in the band where
+          no label reads — the derivation would move it, but a designed theme should say what its
+          accent *is* rather than have it inferred. L 53% is the lightness that carries a label
+          across rest, hover and pressed; the hue and chroma are the theme's own.
+        */
+        accent: 'oklch(53% 0.18 266)',
+        // Same band, same reason — this theme's ramp puts the shared danger step where no label reads.
+        danger: 'oklch(53% 0.16 27)',
         surfaceHover: neutral(27.0),
         surfaceActive: neutral(32.1),
         border: neutral(32.1),

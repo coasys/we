@@ -30,7 +30,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { ThemeOverrides, ThemeRole } from './overrides';
 import { THEME_PRESETS, type ThemeName } from './presets';
-import { AUTO_CONTRAST, deriveLegible, pickReadableForeground } from './themeStyles';
+import { AUTO_CONTRAST, DERIVED_FILLS, deriveLegible, FILL_STATE_DELTAS, pickReadableForeground } from './themeStyles';
 
 const PAIRS: { fg: ThemeRole; bg: ThemeRole; level: ContrastLevel; what: string }[] = [
   { fg: 'text', bg: 'page', level: 'body', what: 'body text on the page' },
@@ -132,13 +132,56 @@ function roleColor(name: ThemeRole, theme: ThemeOverrides, seen = new Set<string
     where the derivation had no good option. Only when the theme has not pinned it, since a pin is
     the author overruling the derivation.
   */
+  /*
+    A fill that no label can sit on moves until one can — checked here because it is what renders.
+
+    Both label candidates are equidistant from a fill in the middle of the ramp, so no choice of
+    foreground rescues it. Where the middle falls depends on the theme's range, which is why two
+    themes had to pin their way out before the derivation existed.
+  */
+  if (DERIVED_FILLS.includes(name) && !theme.roles?.[name] && !seen.has(name)) {
+    const fill = resolve((role as Record<string, string>)[name], theme);
+    if (fill) {
+      const ends = [parseColor('oklch(100% 0 0)'), parseColor('oklch(0% 0 0)')].filter((c): c is Rgba => !!c);
+      // Across the fill and both of its states, as the runtime does — a rest state that just
+      // clears is no use if the pressed state drags the label choice back under.
+      const best = (candidate: Rgba) => {
+        const { c: cc, h: hh, l: ll } = rgbToOklch(candidate);
+        const states = FILL_STATE_DELTAS.map((d) => ({
+          ...oklchToRgb(Math.min(1, Math.max(0, ll + d)), cc, hh),
+          a: candidate.a,
+        }));
+        return Math.max(...ends.map((e) => Math.min(...states.map((st) => apcaContrast(e, st)))));
+      };
+      if (best(fill) < APCA_MINIMUM.ui) {
+        const { c, h, l: start } = rgbToOklch(fill);
+        for (let step = 1; step <= 100; step++) {
+          // Chroma clamped to the new lightness, as the runtime does — carrying it upward clips,
+          // and a clipped colour's luminance hardly moves, so the search would find nothing.
+          const at = (v: number) => ({ l: v, c: Math.min(c, maxChromaFor(v, h)) });
+          const moved = [start + step * 0.01, start - step * 0.01]
+            .filter((v) => v >= 0 && v <= 1)
+            .find((v) => {
+              const { l, c: cc } = at(v);
+              return best({ ...oklchToRgb(l, cc, h), a: fill.a }) >= APCA_MINIMUM.ui;
+            });
+          if (moved !== undefined) {
+            const { l, c: cc } = at(moved);
+            return { ...oklchToRgb(l, cc, h), a: fill.a };
+          }
+        }
+      }
+      return fill;
+    }
+  }
+
   const derived = AUTO_CONTRAST.find((entry) => entry.fg === name);
   if (derived && !theme.roles?.[name] && !seen.has(name)) {
     const fills = derived.against
       .map((fill) => roleColor(fill, theme, new Set([...seen, name])))
       .filter((c): c is Rgba => !!c);
     if (fills.length) {
-      const ends = [neutralAt(98, theme), neutralAt(10, theme)];
+      const ends = ['oklch(100% 0 0)', 'oklch(0% 0 0)'];
       return parseColor(pickReadableForeground(ends, fills));
     }
   }
@@ -189,13 +232,6 @@ const LEGIBLE_PAIRS: Partial<Record<ThemeRole, { on: ThemeRole; level: ContrastL
   successText: { on: 'successSurface', level: 'body' },
   warningText: { on: 'warningSurface', level: 'body' },
 };
-
-/** The two ends of this theme's neutral ramp — the candidates the runtime chooses between. */
-function neutralAt(l: number, theme: ThemeOverrides): string {
-  const taper = 2 * Math.min(l / 100, 1 - l / 100);
-  const chroma = (saturationOf('neutral', theme) / 100) * maxChromaFor(0.6, hueOf('neutral', theme)) * taper;
-  return `oklch(${l}% ${chroma.toFixed(4)} ${hueOf('neutral', theme)})`;
-}
 
 describe.each(Object.keys(THEME_PRESETS) as ThemeName[])('%s', (name) => {
   const theme = THEME_PRESETS[name].parameters as ThemeOverrides;

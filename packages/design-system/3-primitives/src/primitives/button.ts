@@ -67,8 +67,10 @@ const VARIANT_DEFAULTS: Record<ButtonVariant, Partial<DesignSystemProps>> = {
   danger: {
     bg: 'danger',
     color: 'on-status',
-    hoverProps: { bg: 'danger-700', color: 'on-status' },
-    activeProps: { bg: 'danger-800', color: 'on-status' },
+    // Steps from the fill, not positions on the scale — see `accentHover` in @we/tokens for why:
+    // the label is chosen against the worst of the three states, so they have to stay together.
+    hoverProps: { bg: 'var(--we-role-danger-hover)', color: 'on-status' },
+    activeProps: { bg: 'var(--we-role-danger-active)', color: 'on-status' },
   },
   outline: {
     bg: 'transparent',
