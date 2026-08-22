@@ -175,14 +175,41 @@ across the hue slider at one nominal step, which meant changing a hue silently c
 accent read, and the three status *text* roles had to sit at three different steps to compensate.
 They share one step now.
 
+### What a theme states
+
+    polarity           'light' | 'dark'   — which end the ramp counts from
+    lightnessFloor     '12%'              — the darkest lightness this theme uses
+    lightnessCeiling   '112%'             — the lightest; may exceed 100, which clamps at white
+    saturation         0–100              — the fraction of the chroma this hue can actually hold
+
+The floor and ceiling are also the contrast control: a narrow span is a soft theme, a full one is
+stark. They replaced `multiplier` (only ever ±1 — a boolean typed as a number) and `subtractor`
+(which meant "reflect and offset", and could only be understood by dragging it).
+
 Two consequences worth knowing when writing a theme by hand:
 
 - **A hue is an OKLCH angle**, which is not the HSL angle for the same colour — 220 (blue) is 263,
   and 45 (amber) is 90. `migrate.ts` converts stored themes; a number typed fresh is an OKLCH angle.
-- **Saturation is a plain 0–100 number**, not a percentage, because it scales an absolute chroma
-  rather than expressing a proportion. It is capped: sRGB runs out of colour before OKLCH does, and
-  past the boundary the browser gamut-maps — which is how `saturation: 85` on a blue once produced a
-  magenta accent.
+- **Saturation is a fraction of what the hue can hold**, measured per theme rather than capped at a
+  constant. sRGB holds very different amounts by hue — at mid lightness a violet reaches chroma
+  0.259 and a teal 0.103 — so a flat ceiling made one number mean different things depending on
+  where the hue slider was. 100 means "as colourful as this hue gets".
+
+### Contrast is checked twice
+
+WCAG 2 **and** APCA, with the stricter governing. WCAG 2 stays because it may be the compliance
+obligation; APCA is there because WCAG 2 adds a flat 0.05 to both sides of its ratio, which
+dominates the denominator against a near-black background — so dark themes score far better than
+they read. Every dark built-in passed WCAG 2 and failed APCA.
+
+Which is why six foregrounds are **derived rather than pinned**: `textMuted`, `textFaint`,
+`accentText` and the three status texts keep their hue and walk their lightness away from their
+background until they clear. A fixed step cannot serve both polarities — the step that reads in the
+dark is wrong in the light — and pinning one per theme is what the derivation replaced.
+
+A filled control (`accent`, `danger`, `success`, `warning`) has to sit **away from the middle of its
+theme's ramp**, or no label reads on it at either end. Where the middle falls depends on the range,
+which is why two themes pin their way out of it.
 
 The last row is the only one that really leaves the system, and it is the one a colour picker
 produces by default — which is why `we-color-picker` opens on the **token grid** when `tokens` is
