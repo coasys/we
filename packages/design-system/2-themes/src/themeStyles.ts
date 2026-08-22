@@ -35,6 +35,8 @@ type ParametricKey = Exclude<
   // written against and never becomes a custom property.
   | 'themeName'
   | 'polarity'
+  | 'lightnessFloor'
+  | 'lightnessCeiling'
   | 'shadowIntensity'
   | 'animationSpeed'
   | 'surfaceBlur'
@@ -126,8 +128,7 @@ const THEME_CSS_MAP: Record<ParametricKey, string> = {
   neutralHue: '--we-color-neutral-hue',
   saturation: '--we-color-saturation',
   neutralSaturation: '--we-color-neutral-saturation',
-  lightnessFloor: '--we-color-lightness-floor',
-  lightnessCeiling: '--we-color-lightness-ceiling',
+
   borderWidth: '--we-theme-border-width',
   focusRingWidth: '--we-theme-focus-ring-width',
   // Typography
@@ -231,6 +232,22 @@ export function themeToStyle(overrides: ThemeOverrides): Record<string, string> 
     if (value !== undefined) style[cssVar] = String(value);
   }
 
+  /*
+    The lightness bounds, authored as percentages and emitted as numbers.
+
+    A theme says `lightnessFloor: '19.5%'`, which is what somebody can picture. The ramp needs it
+    unitless, because the chroma taper is `2 × max(0, min(l, 1 − l))` and `calc()` cannot divide a
+    percentage into the number a chroma has to be. `oklch()` accepts either form for lightness, so
+    the conversion happens here and nothing downstream has to care.
+  */
+  for (const [key, cssVar] of [
+    ['lightnessFloor', '--we-color-lightness-floor'],
+    ['lightnessCeiling', '--we-color-lightness-ceiling'],
+  ] as const) {
+    const value = theme[key];
+    if (value !== undefined) style[cssVar] = String(parseFloat(value) / 100);
+  }
+
   // `polarity` is the one authored key that is a word rather than a value; it expands to the two
   // numbers the ramp formula multiplies by. See RAMP in @we/tokens for why those are not authored.
   if (theme.polarity !== undefined) {
@@ -318,10 +335,13 @@ export function themeToStyle(overrides: ThemeOverrides): Record<string, string> 
 
     const satVar = FAMILY_SAT_VAR[family];
     for (const step of LIGHTNESS_STEPS) {
-      const taper = chromaTaper(step);
+      // The taper reads the step's *rendered* lightness, exactly as the generated CSS does — baked
+      // from the base lightness it inverts along the ramp. See the note in generate-css.ts.
+      const l = `var(--we-color-lightness-${step})`;
       style[`--we-color-${family}-${step}`] =
-        `oklch(var(--we-color-lightness-${step}) ` +
-        `calc(var(${satVar}) / 100 * var(--we-color-${family}-chroma-max, ${CHROMA_CEILING}) * ${taper}) ` +
+        `oklch(${l} ` +
+        `calc(var(${satVar}) / 100 * var(--we-color-${family}-chroma-max, ${CHROMA_CEILING}) * ` +
+        `2 * max(0, min(${l}, 1 - ${l}))) ` +
         `var(--we-color-${family}-hue))`;
     }
   }

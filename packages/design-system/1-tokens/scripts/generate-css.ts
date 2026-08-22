@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import type { animation as animationTokens } from '../src/animation.js';
 import type { border as borderTokens } from '../src/border.js';
 import type { color as colorTokens } from '../src/color.js';
-import { CHROMA_CEILING, chromaTaper, RAMP, STATE_STEPS } from '../src/color.js';
+import { CHROMA_CEILING, RAMP, STATE_STEPS } from '../src/color.js';
 import type { component as componentTokens } from '../src/component.js';
 import type { font as fontTokens } from '../src/font.js';
 import type { layout as layoutTokens } from '../src/layout.js';
@@ -176,15 +176,20 @@ export function generateColorCSS(color: typeof colorTokens) {
           const saturationVar =
             type === 'neutral' ? 'var(--we-color-neutral-saturation)' : 'var(--we-color-saturation)';
           /*
-            The chroma taper is a literal, not a var().
+            The taper is computed in CSS, from the lightness this step actually renders at.
 
-            It has to be the same whichever way the ramp runs — it describes how much colour a step
-            at *that position* can carry before leaving sRGB — and a taper written in CSS would have
-            to read the post-inversion lightness, which flips it. Baking it here also keeps the
-            expression to one multiply, where the CSS form would need a `min()` over a percentage
-            and a division that `calc()` does not allow.
+            It used to be baked here from the step's *base* lightness, on the reasoning that
+            `min(L, 1−L)` is unchanged when the ramp flips. That is true only for an exact
+            reflection, and stopped being true the moment a theme could state its own floor and
+            ceiling: `neutral-0` has a base lightness of 1 (taper 0) and renders near-*black* in a
+            dark theme, where the taper should be about 0.4. The whole ramp came out with its colour
+            inverted — nothing at the dark end, too much at the light end — which is a flat grey
+            where a violet-grey belonged.
+
+            Doing it in CSS needs the lightness to be unitless, since `calc()` cannot divide a
+            percentage into the number a chroma has to be. `oklch()` takes either, so the ramp emits
+            numbers and the taper reads them.
           */
-          const taper = chromaTaper(lightnessKey as Parameters<typeof chromaTaper>[0]);
           /*
             Saturation as a fraction of what this hue can hold, not of a flat constant.
 
@@ -193,6 +198,10 @@ export function generateColorCSS(color: typeof colorTokens) {
             which is what the static CSS has to use before any theme is applied — and what an
             unthemed page keeps.
           */
+          const l = `var(--we-color-lightness-${lightnessKey})`;
+          // max(0, …) because a ceiling above 1 puts the top of the ramp past white, where the
+          // taper would otherwise go negative and take the chroma with it.
+          const taper = `2 * max(0, min(${l}, 1 - ${l}))`;
           const chroma = `calc(${saturationVar} / 100 * var(--we-color-${type}-chroma-max, ${CHROMA_CEILING}) * ${taper})`;
           return `  --we-color-${type}-${lightnessKey}: oklch(var(--we-color-lightness-${lightnessKey}) ${chroma} var(--we-color-${type}-hue));`;
         })
@@ -207,8 +216,11 @@ ${paletteVars}`;
 
 :root {
   /* Color System Configuration */
-  --we-color-lightness-floor: ${color.config.lightnessFloor};
-  --we-color-lightness-ceiling: ${color.config.lightnessCeiling};
+  /* Unitless, so the chroma taper can be arithmetic on them. What a theme *states* is still a
+     percentage — themeToStyle converts on the way out. A backtick in this comment would end the
+     template literal it lives in, which is the fifth time that has happened in this repo. */
+  --we-color-lightness-floor: ${parseFloat(color.config.lightnessFloor) / 100};
+  --we-color-lightness-ceiling: ${parseFloat(color.config.lightnessCeiling) / 100};
   --we-color-ramp-offset: ${RAMP[color.config.polarity].offset};
   --we-color-ramp-direction: ${RAMP[color.config.polarity].direction};
   --we-state-hover: ${STATE_STEPS[color.config.polarity].hover};

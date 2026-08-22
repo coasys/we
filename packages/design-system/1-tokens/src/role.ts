@@ -85,7 +85,7 @@ export const role = {
    * the only way a units mistake inside a fixed constant shows up at all.
    */
   onInverse:
-    'oklch(98.5% calc(min(var(--we-color-neutral-saturation) * 0.0035, 0.18) * 0.0300) var(--we-color-neutral-hue))',
+    'oklch(98.5% calc(var(--we-color-neutral-saturation) / 100 * var(--we-color-neutral-chroma-max, 0.18) * 0.0300) var(--we-color-neutral-hue))',
 
   /**
    * A surface deliberately opposite to the page — the tooltip, and anything else that must read as
@@ -96,7 +96,7 @@ export const role = {
    * gone, and a theme can now move the pair together.
    */
   surfaceInverse:
-    'oklch(24.8% calc(min(var(--we-color-neutral-saturation) * 0.0035, 0.18) * 0.4960) var(--we-color-neutral-hue))',
+    'oklch(24.8% calc(var(--we-color-neutral-saturation) / 100 * var(--we-color-neutral-chroma-max, 0.18) * 0.4960) var(--we-color-neutral-hue))',
   /** Default border/divider. */
   border: 'var(--we-color-neutral-200)',
   /** Emphasised border (focus-adjacent, strong separation). */
@@ -177,7 +177,7 @@ export const role = {
    * Alpha is baked in because a scrim is a finished colour, not a base to tint from.
    */
   overlay:
-    'oklch(14.6% calc(min(var(--we-color-neutral-saturation) * 0.0035, 0.18) * 0.2920) var(--we-color-neutral-hue) / 60%)',
+    'oklch(14.6% calc(var(--we-color-neutral-saturation) / 100 * var(--we-color-neutral-chroma-max, 0.18) * 0.2920) var(--we-color-neutral-hue) / 60%)',
 
   /**
    * The colour shadows are built from — opaque, with the consumer supplying alpha:
@@ -190,7 +190,7 @@ export const role = {
    * instead. Pinning this lets a theme tint or lighten shadows rather than work around them.
    */
   shadowColor:
-    'oklch(14.6% calc(min(var(--we-color-neutral-saturation) * 0.0035, 0.18) * 0.2920) var(--we-color-neutral-hue))',
+    'oklch(14.6% calc(var(--we-color-neutral-saturation) / 100 * var(--we-color-neutral-chroma-max, 0.18) * 0.2920) var(--we-color-neutral-hue))',
 
   /** The focus ring. `--we-ring-color` resolves to this, so the two cannot drift. */
   focus: 'var(--we-color-primary-500)',

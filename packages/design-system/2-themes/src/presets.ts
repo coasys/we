@@ -20,7 +20,7 @@
  * space — those are host concerns and stay in the app.
  */
 
-import { CHROMA_CEILING, CHROMA_PER_SATURATION } from '@we/tokens';
+import { CHROMA_CEILING } from '@we/tokens';
 
 import { THEME_SCHEMA_VERSION } from './migrate';
 import type { ThemeOverrides } from './overrides';
@@ -57,7 +57,10 @@ export interface ThemePreset {
  */
 const neutral = (lightness: number) => {
   const taper = 2 * Math.min(lightness / 100, 1 - lightness / 100);
-  return `oklch(${lightness}% calc(min(var(--we-color-neutral-saturation) * ${CHROMA_PER_SATURATION}, ${CHROMA_CEILING}) * ${taper.toFixed(4)}) var(--we-color-neutral-hue))`;
+  // The same chroma expression the ramp uses — a pin that computes its colour a different way is a
+  // second model, and the two drift. This one was 1.5× more chromatic than the ramp at the same
+  // saturation, which is why the modal scrim came out violet.
+  return `oklch(${lightness}% calc(var(--we-color-neutral-saturation) / 100 * var(--we-color-neutral-chroma-max, ${CHROMA_CEILING}) * ${taper.toFixed(4)}) var(--we-color-neutral-hue))`;
 };
 
 export const THEME_PRESETS = {
@@ -91,6 +94,11 @@ export const THEME_PRESETS = {
       rendered colours were measured and the parameters solved for: a least-squares fit of floor and
       ceiling over eight neutral roles lands within 0.7 lightness points across all of them, and the
       saturations are fitted the same way against what the tint and the accent used to be.
+
+      `neutralSaturation` was refitted once the chroma taper was corrected — the first fit was made
+      against a ramp whose colour was inverted end for end, so it came out half again too high. The
+      weighting is by how much of a screen each step paints: an unweighted fit treats `neutral-900`,
+      a few pixels of text, as equal to `neutral-50`, which is the entire background.
     */
     parameters: {
       schemaVersion: THEME_SCHEMA_VERSION,
@@ -98,7 +106,7 @@ export const THEME_PRESETS = {
       lightnessFloor: '19.5%',
       lightnessCeiling: '125%',
       saturation: 75,
-      neutralSaturation: 33,
+      neutralSaturation: 26,
       roles: {
         /*
           The accent, at the colour it was.

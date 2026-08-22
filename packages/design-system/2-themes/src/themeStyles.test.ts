@@ -31,7 +31,8 @@ describe('applyThemeVars', () => {
     const { el, props } = fakeRoot();
     applyThemeVars(el, { polarity: 'dark', lightnessFloor: '12%' });
 
-    expect(props.get('--we-color-lightness-floor')).toBe('12%');
+    // Authored as a percentage, emitted unitless — see the note in themeToStyle.
+    expect(props.get('--we-color-lightness-floor')).toBe('0.12');
     // `polarity` is one authored word that expands to the two numbers the ramp multiplies by.
     expect(props.get('--we-color-ramp-direction')).toBe('-1');
   });
@@ -154,8 +155,8 @@ describe('a named theme brings its own parameters', () => {
     const style = themeToStyle({ themeName: 'cyberpunk' });
     const preset = THEME_PRESETS.cyberpunk.parameters;
 
-    expect(style['--we-color-lightness-floor']).toBe(String(preset.lightnessFloor));
-    expect(style['--we-color-lightness-ceiling']).toBe(String(preset.lightnessCeiling));
+    expect(style['--we-color-lightness-floor']).toBe(String(parseFloat(preset.lightnessFloor!) / 100));
+    expect(style['--we-color-lightness-ceiling']).toBe(String(parseFloat(preset.lightnessCeiling!) / 100));
     expect(style['--we-color-saturation']).toBe(String(preset.saturation));
   });
 
@@ -164,7 +165,9 @@ describe('a named theme brings its own parameters', () => {
     const style = themeToStyle({ themeName: 'cyberpunk', primaryHue: 320 });
 
     expect(style['--we-color-primary-hue']).toBe('320');
-    expect(style['--we-color-lightness-floor']).toBe(String(THEME_PRESETS.cyberpunk.parameters.lightnessFloor));
+    expect(style['--we-color-lightness-floor']).toBe(
+      String(parseFloat(THEME_PRESETS.cyberpunk.parameters.lightnessFloor!) / 100),
+    );
   });
 
   it('leaves an unknown name alone rather than inventing parameters', () => {
