@@ -27,6 +27,8 @@ type ParametricKey = Exclude<
   | 'animationSpeed'
   | 'surfaceBlur'
   | 'fontScale'
+  | 'spacingScale'
+  | 'disabledOpacity'
   | 'roles'
   | 'schemaVersion'
 >;
@@ -114,7 +116,7 @@ const THEME_CSS_MAP: Record<ParametricKey, string> = {
   neutralSaturation: '--we-color-neutral-saturation',
   lightnessFloor: '--we-color-lightness-floor',
   lightnessCeiling: '--we-color-lightness-ceiling',
-  ringColor: '--we-ring-color',
+  borderWidth: '--we-theme-border-width',
   // Typography
   fontFamily: '--we-font-family',
   headingFontFamily: '--we-theme-heading-font-family',
@@ -129,10 +131,10 @@ const THEME_CSS_MAP: Record<ParametricKey, string> = {
   // Density
   controlPaddingX: '--we-theme-control-padding-x',
   controlGap: '--we-theme-control-gap',
-  controlHeight: '--we-theme-control-height-offset',
-  surfaceSpacing: '--we-theme-surface-spacing',
+  controlHeightOffset: '--we-theme-control-height-offset',
+  surfacePadding: '--we-theme-surface-padding',
   surfaceGap: '--we-theme-surface-gap',
-  inputSpacing: '--we-theme-input-spacing',
+  inputPadding: '--we-theme-input-padding',
   // Effects
   surfaceOpacity: '--we-theme-surface-opacity',
 };
@@ -323,7 +325,6 @@ export function themeToStyle(overrides: ThemeOverrides): Record<string, string> 
   // resolved value. Re-declaring them here as formulas ensures they stay in sync
   // with any primary colour change on this element.
   if (affectsPrimaryGradient) {
-    if (theme.ringColor === undefined) style['--we-ring-color'] = 'var(--we-color-primary-500)';
     style['--we-color-focus'] = 'var(--we-color-primary-500)';
     style['--we-focus-outline'] = '0 0 0 2px var(--we-color-focus)';
   }
@@ -332,6 +333,10 @@ export function themeToStyle(overrides: ThemeOverrides): Record<string, string> 
   if (theme.fontScale !== undefined) {
     style['font-size'] = `${theme.fontScale * 16}px`;
   }
+
+  // Spacing scales on its own, so "denser" does not have to mean "smaller text".
+  if (theme.spacingScale !== undefined) style['--we-theme-spacing-scale'] = String(theme.spacingScale);
+  if (theme.disabledOpacity !== undefined) style['--we-theme-disabled-opacity'] = String(theme.disabledOpacity);
 
   return style;
 }
@@ -419,9 +424,11 @@ export function applyThemeVars(root: HTMLElement, theme: ThemeOverrides): void {
  * rest, on hover and while pressed, and a label chosen against the rest state alone goes unreadable
  * halfway through a click.
  */
-const AUTO_CONTRAST: { fg: ThemeRole; against: ThemeRole[] }[] = [
+export const AUTO_CONTRAST: { fg: ThemeRole; against: ThemeRole[] }[] = [
   { fg: 'onAccent', against: ['accent', 'accentHover', 'accentActive'] },
   { fg: 'onInverse', against: ['surfaceInverse'] },
+  // All three, because one label serves whichever status fill it lands on and the weakest decides.
+  { fg: 'onStatus', against: ['danger', 'success', 'warning'] },
 ];
 
 /**

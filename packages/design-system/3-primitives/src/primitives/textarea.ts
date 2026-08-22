@@ -56,7 +56,7 @@ const styles = css`
     outline: none;
     padding: var(
       --we-textarea-padding,
-      var(--we-theme-textarea-padding, var(--we-theme-input-spacing, var(--we-space-200) var(--we-space-300)))
+      var(--we-theme-textarea-padding, var(--we-theme-input-padding, var(--we-space-200) var(--we-space-300)))
     );
     min-width: 0;
     resize: vertical;

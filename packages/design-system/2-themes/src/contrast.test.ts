@@ -27,7 +27,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { ThemeOverrides, ThemeRole } from './overrides';
 import { THEME_PRESETS, type ThemeName } from './presets';
-import { pickReadableForeground } from './themeStyles';
+import { AUTO_CONTRAST, pickReadableForeground } from './themeStyles';
 
 const PAIRS: { fg: ThemeRole; bg: ThemeRole; level: ContrastLevel; what: string }[] = [
   { fg: 'text', bg: 'page', level: 'body', what: 'body text on the page' },
@@ -36,6 +36,8 @@ const PAIRS: { fg: ThemeRole; bg: ThemeRole; level: ContrastLevel; what: string 
   { fg: 'textMuted', bg: 'surface', level: 'body', what: 'muted text on a card' },
   { fg: 'onAccent', bg: 'accent', level: 'body', what: 'a primary button label' },
   { fg: 'onInverse', bg: 'surfaceInverse', level: 'body', what: 'tooltip text' },
+  // The pair nothing named, which is how a dark theme shipped a near-white label on a light red.
+  { fg: 'onStatus', bg: 'danger', level: 'body', what: 'a destructive button label' },
   { fg: 'dangerText', bg: 'dangerSurface', level: 'body', what: 'danger text on its tint' },
   { fg: 'successText', bg: 'successSurface', level: 'body', what: 'success text on its tint' },
   { fg: 'warningText', bg: 'warningSurface', level: 'body', what: 'warning text on its tint' },
@@ -112,6 +114,26 @@ function resolve(value: string, theme: ThemeOverrides): Rgba | null {
 const RELATIVE = /^oklch\(from\s+var\(--we-role-([a-z-]+)\)\s+calc\(l\s*([+-])\s*([\d.]+)\)\s+c\s+h\)$/;
 
 function roleColor(name: ThemeRole, theme: ThemeOverrides, seen = new Set<string>()): Rgba | null {
+  /*
+    A derived foreground is resolved the way the runtime derives it, not from its declared default.
+
+    `onAccent` and `onStatus` are chosen by measurement at theme-apply time, so checking their
+    static value asks a question nobody sees the answer to — and gets it wrong in both directions:
+    it fails a theme whose bright fill would have been given a dark label, and it would pass one
+    where the derivation had no good option. Only when the theme has not pinned it, since a pin is
+    the author overruling the derivation.
+  */
+  const derived = AUTO_CONTRAST.find((entry) => entry.fg === name);
+  if (derived && !theme.roles?.[name] && !seen.has(name)) {
+    const fills = derived.against
+      .map((fill) => roleColor(fill, theme, new Set([...seen, name])))
+      .filter((c): c is Rgba => !!c);
+    if (fills.length) {
+      const ends = [neutralAt(98, theme), neutralAt(10, theme)];
+      return parseColor(pickReadableForeground(ends, fills));
+    }
+  }
+
   const value = theme.roles?.[name] ?? (role as Record<string, string>)[name];
   if (!value) return null;
 
@@ -129,6 +151,13 @@ function roleColor(name: ThemeRole, theme: ThemeOverrides, seen = new Set<string
   }
 
   return resolve(value, theme);
+}
+
+/** The two ends of this theme's neutral ramp — the candidates the runtime chooses between. */
+function neutralAt(l: number, theme: ThemeOverrides): string {
+  const taper = 2 * Math.min(l / 100, 1 - l / 100);
+  const chroma = Math.min(saturationOf('neutral', theme) * CHROMA_PER_SATURATION, CHROMA_CEILING) * taper;
+  return `oklch(${l}% ${chroma.toFixed(4)} ${hueOf('neutral', theme)})`;
 }
 
 describe.each(Object.keys(THEME_PRESETS) as ThemeName[])('%s', (name) => {

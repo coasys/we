@@ -96,8 +96,16 @@ export const role = {
   border: 'var(--we-color-neutral-200)',
   /** Emphasised border (focus-adjacent, strong separation). */
   borderStrong: 'var(--we-color-neutral-500)',
-  /** The accent (interactive emphasis). */
-  accent: 'var(--we-color-primary-600)',
+  /**
+   * The accent (interactive emphasis) — a filled button, a selected disc.
+   *
+   * 700 rather than a mid step, and the reason is a rule worth stating: a filled control wants to
+   * be *away* from the middle of the ramp. At 600 the fill lands near 50% lightness, where neither
+   * a near-white nor a near-black label clears AA — `black` measured 3.83:1 and `channels` 4.10:1
+   * with the derivation already picking the better of the two. There is no label that rescues a fill
+   * in that band; the fill has to move.
+   */
+  accent: 'var(--we-color-primary-700)',
   /**
    * Text and icons placed *on* an accent fill. Named for what it sits on, not what it is.
    *
@@ -130,8 +138,8 @@ export const role = {
    * jumps to an unrelated colour under the pointer, because the pin and the scale no longer agree
    * about what the accent is.
    */
-  accentHover: 'var(--we-color-primary-700)',
-  accentActive: 'var(--we-color-primary-800)',
+  accentHover: 'var(--we-color-primary-800)',
+  accentActive: 'var(--we-color-primary-900)',
 
   /** Hover tint on a surface (menu items, list rows, ghost buttons). */
   surfaceHover: 'var(--we-color-neutral-100)',
@@ -174,6 +182,32 @@ export const role = {
 
   /** The focus ring. `--we-ring-color` resolves to this, so the two cannot drift. */
   focus: 'var(--we-color-primary-500)',
+
+  /**
+   * Status as a *fill* — the destructive button, a filled badge, a solid status dot.
+   *
+   * The vocabulary was asymmetric without these: `accent` had a fill, hover, pressed, foreground,
+   * tint and text-weight variant, while danger had a foreground and a tint. So a theme could
+   * completely restyle the primary button and could not touch the *delete* button, which was
+   * hardcoded to `danger-500` — themeable only through the hue that owns it, which is not the same
+   * as being able to say "make destructive actions look like this".
+   */
+  danger: 'var(--we-color-danger-600)',
+  success: 'var(--we-color-success-600)',
+  warning: 'var(--we-color-warning-600)',
+
+  /**
+   * Text and icons on a status fill — the destructive button's label.
+   *
+   * One role between the three fills rather than three `on*` roles: exactly one component puts text
+   * on a status fill, the three fills are siblings at the same step, and `applyAutoContrast` picks
+   * this against the worst of them, so it is both sufficient and self-correcting.
+   *
+   * It exists because the audit found the button was a near-white label on `danger-500` — and a
+   * scale step *inverts*, so in a dark theme that fill lands light and the label sat on it at about
+   * 2:1. Nothing caught it because no contrast pair named the button. One does now.
+   */
+  onStatus: 'oklch(100% 0 var(--we-color-neutral-hue))',
 
   /** Tinted surfaces behind status content (alerts, badges, destructive confirmations). */
   dangerSurface: 'var(--we-color-danger-50)',

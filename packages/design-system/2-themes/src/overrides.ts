@@ -41,6 +41,10 @@ export type ThemeRole =
   | 'overlay'
   | 'shadowColor'
   | 'focus'
+  | 'danger'
+  | 'success'
+  | 'warning'
+  | 'onStatus'
   | 'dangerSurface'
   | 'successSurface'
   | 'warningSurface'
@@ -93,7 +97,30 @@ export type ThemeOverrides = {
    */
   lightnessFloor?: string;
   lightnessCeiling?: string;
-  ringColor?: string; // --we-ring-color  (focus ring / accent color)
+  /**
+   * Stroke weight, themeable at last.
+   *
+   * Radius had four groups and stroke had none, which left a whole axis of visual identity outside
+   * the system — hairline and heavy are as much a style decision as round and square, and a theme
+   * could say nothing about it.
+   */
+  borderWidth?: string;
+  /**
+   * How far a disabled control fades.
+   *
+   * A control rather than a role, and the distinction matters: one colour cannot serve a disabled
+   * *ghost* button and a disabled *danger* one, because they start from different fills. What is
+   * genuinely shared — and genuinely a design decision — is how far off "off" reads.
+   */
+  disabledOpacity?: number;
+  /**
+   * Scales the spacing tokens, independently of type.
+   *
+   * `fontScale` already moved spacing as a side effect, since the space tokens are in `rem` and it
+   * sets the root font size — so "make this denser" was only reachable by also shrinking the text.
+   * Two scales, two decisions.
+   */
+  spacingScale?: number;
 
   // Semantic roles — pin individual role variables (--we-role-*) to any CSS color or var().
   // Roles not listed keep their parametric default over the scale.
@@ -145,19 +172,19 @@ export type ThemeOverrides = {
   // Density — padding/gap cascade: component p=/gap= prop → component theme → group theme → size default
   controlPaddingX?: string; // --we-theme-control-padding-x  (button / badge / tag horizontal padding)
   controlGap?: string; // --we-theme-control-gap  (button / badge internal icon-text gap)
-  controlHeight?: string; // --we-theme-control-height-offset  (px offset added to all fixed-height controls, e.g. '4px', '-4px')
-  surfaceSpacing?: string; // --we-theme-surface-spacing  (card / modal / drawer padding)
+  controlHeightOffset?: string; // --we-theme-control-height-offset  (px offset added to all fixed-height controls, e.g. '4px', '-4px')
+  surfacePadding?: string; // --we-theme-surface-padding  (card / modal / drawer padding)
   surfaceGap?: string; // --we-theme-surface-gap  (card / modal / drawer child gap)
 
   /**
-   * --we-theme-input-spacing (input, textarea, select, number/date/colour pickers).
+   * --we-theme-input-padding (input, textarea, select, number/date/colour pickers).
    *
    * A full padding shorthand rather than an x-only value like `controlPaddingX`, because textarea
    * is in this group and has no fixed height to supply the vertical from. The components have
    * consumed this variable since the cascade was written; what was missing was any way to set it,
    * so inputs had a themeable radius and un-themeable padding.
    */
-  inputSpacing?: string;
+  inputPadding?: string;
 
   // Effects
   shadowIntensity?: 'flat' | 'subtle' | 'elevated' | 'dramatic'; // maps to --we-theme-shadow-preset

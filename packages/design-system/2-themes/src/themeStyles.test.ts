@@ -240,8 +240,8 @@ describe('the shape, density and typography keys added alongside the roles edito
     expect(style['--we-theme-surface-radius']).toBe('16px');
   });
 
-  it('maps inputSpacing, which nothing could set before', () => {
-    expect(themeToStyle({ inputSpacing: '4px 8px' })['--we-theme-input-spacing']).toBe('4px 8px');
+  it('maps inputPadding, which nothing could set before', () => {
+    expect(themeToStyle({ inputPadding: '4px 8px' })['--we-theme-input-padding']).toBe('4px 8px');
   });
 
   it('maps headingFontFamily without touching the body face', () => {

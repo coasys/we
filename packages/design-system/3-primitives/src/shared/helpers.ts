@@ -112,37 +112,37 @@ const COMPONENT_CASCADE: Record<string, ComponentCascade> = {
   },
   'progress-bar': { radiusGroup: '--we-theme-control-radius' },
   // Inputs
-  input: { radiusGroup: '--we-theme-input-radius', paddingGroup: '--we-theme-input-spacing' },
+  input: { radiusGroup: '--we-theme-input-radius', paddingGroup: '--we-theme-input-padding' },
   textarea: { radiusGroup: '--we-theme-input-radius', nativePadding: true },
   select: {
     radiusGroup: '--we-theme-input-radius',
     radiusDefault: 'var(--we-radius-300)', // Explicit: wrapper — no r in DEFAULT_PROPS
-    paddingGroup: '--we-theme-input-spacing',
+    paddingGroup: '--we-theme-input-padding',
     paddingDefault: '0', // Explicit: wrapper div — inner parts own their own padding
   },
   'number-input': {
     radiusGroup: '--we-theme-input-radius',
     radiusDefault: 'var(--we-radius-300)', // Explicit: intentionally matches input theme, not DEFAULT_PROPS r:'400'
-    paddingGroup: '--we-theme-input-spacing',
+    paddingGroup: '--we-theme-input-padding',
     paddingDefault: '0 var(--we-space-300)', // Explicit: no px in DEFAULT_PROPS
   },
   'date-picker': {
     radiusGroup: '--we-theme-input-radius',
     radiusDefault: 'var(--we-radius-300)', // Explicit: wrapper — no r in DEFAULT_PROPS
-    paddingGroup: '--we-theme-input-spacing',
+    paddingGroup: '--we-theme-input-padding',
     paddingDefault: '0', // Explicit: wrapper div — inner parts own their own padding
   },
   'color-picker': {
     radiusGroup: '--we-theme-input-radius',
     radiusDefault: 'var(--we-radius-300)', // Explicit: wrapper — no r in DEFAULT_PROPS
-    paddingGroup: '--we-theme-input-spacing',
+    paddingGroup: '--we-theme-input-padding',
     paddingDefault: '0', // Explicit: wrapper div — inner parts own their own padding
   },
   'icon-picker': {
     radiusGroup: '--we-theme-input-radius',
     radiusDefault: 'var(--we-radius-300)', // Explicit: wrapper — no r in DEFAULT_PROPS
   },
-  'file-upload': { radiusGroup: '--we-theme-input-radius', paddingGroup: '--we-theme-surface-spacing' },
+  'file-upload': { radiusGroup: '--we-theme-input-radius', paddingGroup: '--we-theme-surface-padding' },
   'form-field': {
     radiusGroup: '--we-theme-input-radius',
     radiusDefault: 'var(--we-radius-300)', // Explicit: wrapper — no r in DEFAULT_PROPS
@@ -155,21 +155,21 @@ const COMPONENT_CASCADE: Record<string, ComponentCascade> = {
   // Surfaces
   modal: {
     radiusGroup: '--we-theme-surface-radius',
-    paddingGroup: '--we-theme-surface-spacing',
+    paddingGroup: '--we-theme-surface-padding',
     gapGroup: '--we-theme-surface-gap',
   },
   drawer: {
     radiusGroup: '--we-theme-surface-radius',
-    paddingGroup: '--we-theme-surface-spacing',
+    paddingGroup: '--we-theme-surface-padding',
     gapGroup: '--we-theme-surface-gap',
   },
   menu: { radiusGroup: '--we-theme-surface-radius', nativePadding: true },
   alert: {
     radiusGroup: '--we-theme-surface-radius',
-    paddingGroup: '--we-theme-surface-spacing',
+    paddingGroup: '--we-theme-surface-padding',
     gapGroup: '--we-theme-surface-gap',
   },
-  blockquote: { radiusGroup: '--we-theme-surface-radius', paddingGroup: '--we-theme-surface-spacing' },
+  blockquote: { radiusGroup: '--we-theme-surface-radius', paddingGroup: '--we-theme-surface-padding' },
   code: { radiusGroup: '--we-theme-surface-radius' },
 };
 

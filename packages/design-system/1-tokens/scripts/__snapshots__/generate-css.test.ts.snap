@@ -133,18 +133,22 @@ exports[`token CSS generation > color.css — hues, lightness ramp, palettes, ro
   --we-role-surface-inverse: oklch(13% calc(min(var(--we-color-neutral-saturation) * 0.0035, 0.18) * 0.2600) var(--we-color-neutral-hue));
   --we-role-border: var(--we-color-neutral-200);
   --we-role-border-strong: var(--we-color-neutral-500);
-  --we-role-accent: var(--we-color-primary-600);
+  --we-role-accent: var(--we-color-primary-700);
   --we-role-on-accent: oklch(100% 0 var(--we-color-neutral-hue));
   --we-role-accent-muted: var(--we-color-primary-100);
   --we-role-accent-text: var(--we-color-primary-700);
-  --we-role-accent-hover: var(--we-color-primary-700);
-  --we-role-accent-active: var(--we-color-primary-800);
+  --we-role-accent-hover: var(--we-color-primary-800);
+  --we-role-accent-active: var(--we-color-primary-900);
   --we-role-surface-hover: var(--we-color-neutral-100);
   --we-role-surface-active: var(--we-color-neutral-200);
   --we-role-control-surface: var(--we-color-neutral-200);
   --we-role-overlay: oklch(4% calc(min(var(--we-color-neutral-saturation) * 0.0035, 0.18) * 0.0800) var(--we-color-neutral-hue) / 60%);
   --we-role-shadow-color: oklch(4% calc(min(var(--we-color-neutral-saturation) * 0.0035, 0.18) * 0.0800) var(--we-color-neutral-hue));
   --we-role-focus: var(--we-color-primary-500);
+  --we-role-danger: var(--we-color-danger-600);
+  --we-role-success: var(--we-color-success-600);
+  --we-role-warning: var(--we-color-warning-600);
+  --we-role-on-status: oklch(100% 0 var(--we-color-neutral-hue));
   --we-role-danger-surface: var(--we-color-danger-50);
   --we-role-success-surface: var(--we-color-success-50);
   --we-role-warning-surface: var(--we-color-warning-50);
@@ -340,16 +344,16 @@ exports[`token CSS generation > space.css 1`] = `
 :root {
   /* Spacing Values */
   --we-space-0: 0rem;
-  --we-space-100: 0.25rem;
-  --we-space-200: 0.5rem;
-  --we-space-300: 0.75rem;
-  --we-space-400: 1rem;
-  --we-space-500: 1.5rem;
-  --we-space-600: 2rem;
-  --we-space-700: 2.5rem;
-  --we-space-800: 3rem;
-  --we-space-900: 4rem;
-  --we-space-1000: 6rem;
+  --we-space-100: calc(0.25rem * var(--we-theme-spacing-scale, 1));
+  --we-space-200: calc(0.5rem * var(--we-theme-spacing-scale, 1));
+  --we-space-300: calc(0.75rem * var(--we-theme-spacing-scale, 1));
+  --we-space-400: calc(1rem * var(--we-theme-spacing-scale, 1));
+  --we-space-500: calc(1.5rem * var(--we-theme-spacing-scale, 1));
+  --we-space-600: calc(2rem * var(--we-theme-spacing-scale, 1));
+  --we-space-700: calc(2.5rem * var(--we-theme-spacing-scale, 1));
+  --we-space-800: calc(3rem * var(--we-theme-spacing-scale, 1));
+  --we-space-900: calc(4rem * var(--we-theme-spacing-scale, 1));
+  --we-space-1000: calc(6rem * var(--we-theme-spacing-scale, 1));
 }"
 `;
 

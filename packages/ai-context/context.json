@@ -5151,10 +5151,11 @@
     },
     {
       "name": "color.config",
-      "type": "Record<ColorConfigToken, number | Percentage>",
+      "type": "Record<ColorConfigToken, number | Percentage | Polarity>",
       "values": {
-        "multiplier": "1",
-        "subtractor": "0%",
+        "polarity": "light",
+        "lightnessFloor": "0%",
+        "lightnessCeiling": "100%",
         "saturation": "60",
         "neutralSaturation": "10"
       }
@@ -5310,6 +5311,14 @@
         "900": "2rem",
         "pill": "9999px",
         "full": "50%"
+      }
+    },
+    {
+      "name": "RAMP",
+      "type": "Record<Polarity, { offset: number; direction: number }>",
+      "values": {
+        "light": "{ offset: 0, direction: 1 }",
+        "dark": "{ offset: 1, direction: -1 }"
       }
     },
     {

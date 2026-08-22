@@ -132,6 +132,36 @@ const MIGRATIONS: ((overrides: Versioned) => Versioned)[] = [
     next.lightnessCeiling = `${ceiling}%`;
     return next;
   },
+
+  /*
+    v4 → v5: the density keys say the same thing the same way, and `ringColor` goes.
+
+    Three names for "the padding inside this" — `controlPaddingX`, `surfaceSpacing`, `inputSpacing` —
+    with `controlHeight` mapping to an *offset*. And `ringColor` was a second way to say the `focus`
+    role, with no stated precedence, which is how two spellings of one value drift apart.
+
+    A theme that set `ringColor` has it moved into `roles.focus`, where it will actually be honoured
+    rather than racing the role for the same variable.
+  */
+  (overrides) => {
+    const legacy = overrides as Versioned & Record<string, unknown>;
+    const next: Versioned = { ...overrides };
+    const renames: Record<string, string> = {
+      surfaceSpacing: 'surfacePadding',
+      inputSpacing: 'inputPadding',
+      controlHeight: 'controlHeightOffset',
+    };
+    for (const [from, to] of Object.entries(renames)) {
+      if (legacy[from] === undefined) continue;
+      (next as Record<string, unknown>)[to] = legacy[from];
+      delete (next as Record<string, unknown>)[from];
+    }
+    if (typeof legacy.ringColor === 'string') {
+      next.roles = { focus: legacy.ringColor, ...next.roles };
+      delete (next as Record<string, unknown>).ringColor;
+    }
+    return next;
+  },
 ];
 
 /**

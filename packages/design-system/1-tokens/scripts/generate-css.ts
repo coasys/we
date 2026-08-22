@@ -124,7 +124,8 @@ export function generateBorderCSS(border: typeof borderTokens) {
 
 :root {
   /* Border Width */
-  --we-border-width: ${border.width};
+  /* Themeable: a theme sets --we-theme-border-width to move every stroke at once. */
+  --we-border-width: var(--we-theme-border-width, ${border.width});
 
   /* Semantic border radius alias (override in themes) */
   --we-border-radius: var(--we-radius-400);
@@ -134,7 +135,8 @@ export function generateBorderCSS(border: typeof borderTokens) {
   --we-border-color-strong: var(--we-color-neutral-200);
 
   /* Focus ring color — resolves to the focus role, so a theme pinning that role moves the ring
-     with it. Themes may still override this variable directly (ThemeOverrides.ringColor). */
+     with it. There is deliberately no separate theme key: two ways to say one thing is how they
+     drift, and the role is the one that belongs to the vocabulary. */
   --we-ring-color: var(--we-role-focus);
 }`;
 
@@ -442,8 +444,20 @@ ${componentHeightVars}
 }
 
 export function generateSpaceCSS(space: typeof spaceTokens) {
+  /*
+    Every step carries the theme's spacing scale.
+
+    Multiplied here rather than left to `fontScale`, which moved spacing as a side effect: the steps
+    are in `rem` and `fontScale` sets the root font size, so the only way to ask for a denser layout
+    was to also shrink the text. `0` stays `0` — scaling nothing is still nothing, and a `calc()`
+    there would turn a plain zero into a length for no reason.
+  */
   const spaceVars = Object.entries(space)
-    .map(([key, value]) => `  --we-space-${key}: ${value};`)
+    .map(([key, value]) =>
+      parseFloat(String(value)) === 0
+        ? `  --we-space-${key}: ${value};`
+        : `  --we-space-${key}: calc(${value} * var(--we-theme-spacing-scale, 1));`,
+    )
     .join('\n');
 
   const css = `/* SPACE TOKENS - Generated from JS tokens */

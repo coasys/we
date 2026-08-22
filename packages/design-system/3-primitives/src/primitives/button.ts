@@ -22,7 +22,7 @@ const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   // a fixed token, matching we-input, so a theme restyles both together and we-form-field's
   // danger-state override reaches buttons nested inside it.
   focusProps: { ring: '0 0 0 2px var(--we-ring-color)' },
-  disabledProps: { cursor: 'default', opacity: 0.5 },
+  disabledProps: { cursor: 'default', opacity: 'var(--we-theme-disabled-opacity, 0.5)' },
 };
 
 const VARIANT_DEFAULTS: Record<ButtonVariant, Partial<DesignSystemProps>> = {
@@ -55,16 +55,20 @@ const VARIANT_DEFAULTS: Record<ButtonVariant, Partial<DesignSystemProps>> = {
     activeProps: { bg: 'control-surface', color: 'text' },
   },
   /*
-    Deliberately still on the scale. A status *fill* has no role — `dangerText` is the foreground of
-    an error message, and a theme pinning it means "make my error text this", not "make the delete
-    button this". The scale is not a hardcode: danger-500/600/700 already follow `dangerHue` and the
-    theme's polarity, so this stays themeable through the parameter that owns it.
+    On the `danger` role, which exists now.
+
+    It was on the scale for a long time, with a comment arguing that a status fill had no role and
+    that `danger-500` stayed themeable through `dangerHue`. That was true and not enough: it meant a
+    theme could restyle the primary button completely and could not say anything about the
+    destructive one beyond its hue. Hover and pressed stay on the scale deliberately — they are
+    steps *from* the fill, and giving each its own role would add two more things to keep in sync
+    for a state nobody themes separately.
   */
   danger: {
-    bg: 'danger-500',
-    color: 'on-inverse',
-    hoverProps: { bg: 'danger-600', color: 'on-inverse' },
-    activeProps: { bg: 'danger-700', color: 'on-inverse' },
+    bg: 'danger',
+    color: 'on-status',
+    hoverProps: { bg: 'danger-700', color: 'on-status' },
+    activeProps: { bg: 'danger-800', color: 'on-status' },
   },
   outline: {
     bg: 'transparent',

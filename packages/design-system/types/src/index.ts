@@ -110,7 +110,11 @@ export interface DesignSystemProps {
   color?: ColorValue;
 
   // Visual Effects
-  opacity?: number;
+  /**
+   * 0–1, or a `var()` so a theme can own the value — which is how the disabled fade is themeable
+   * without inventing a colour role that could not serve a ghost button and a danger one at once.
+   */
+  opacity?: number | `var(${string})`;
   border?: string;
   borderColor?: ColorValue;
   borderTop?: string;

@@ -1436,7 +1436,7 @@ border.color: 'base', 'strong'
 
 color.base: 'white', 'black'
 
-color.config: 'multiplier', 'subtractor', 'saturation', 'neutralSaturation'
+color.config: 'polarity', 'lightnessFloor', 'lightnessCeiling', 'saturation', 'neutralSaturation'
 
 color.hues: 'neutral', 'primary', 'success', 'warning', 'danger'
 
@@ -1459,6 +1459,8 @@ font.weight: '100', '200', '300', '400', '500', '600', '700', '800', '900', 'reg
 layout: 'xs', 'sm', 'md', 'lg'
 
 radius: '0', '100', '200', '300', '400', '500', '600', '700', '800', '900', 'pill', 'full'
+
+RAMP: 'light', 'dark'
 
 shadow: 'sm', 'md', 'lg', 'xl'
 

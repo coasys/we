@@ -1850,8 +1850,14 @@ export const contextData: ContextData = {
     { name: 'color.base', type: 'Record<ColorBaseToken, HexColor>', values: { white: '#ffffff', black: '#000000' } },
     {
       name: 'color.config',
-      type: 'Record<ColorConfigToken, number | Percentage>',
-      values: { multiplier: '1', subtractor: '0%', saturation: '60', neutralSaturation: '10' },
+      type: 'Record<ColorConfigToken, number | Percentage | Polarity>',
+      values: {
+        polarity: 'light',
+        lightnessFloor: '0%',
+        lightnessCeiling: '100%',
+        saturation: '60',
+        neutralSaturation: '10',
+      },
     },
     {
       name: 'color.hues',
@@ -1974,6 +1980,11 @@ export const contextData: ContextData = {
         pill: '9999px',
         full: '50%',
       },
+    },
+    {
+      name: 'RAMP',
+      type: 'Record<Polarity, { offset: number; direction: number }>',
+      values: { light: '{ offset: 0, direction: 1 }', dark: '{ offset: 1, direction: -1 }' },
     },
     {
       name: 'shadow',

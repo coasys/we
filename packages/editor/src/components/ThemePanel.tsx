@@ -311,26 +311,26 @@ const SPACING_PRESETS = {
   compact: {
     controlPaddingX: 'var(--we-space-200)',
     controlGap: 'var(--we-space-100)',
-    controlHeight: '-4px',
-    surfaceSpacing: 'var(--we-space-300)',
+    controlHeightOffset: '-4px',
+    surfacePadding: 'var(--we-space-300)',
     surfaceGap: 'var(--we-space-200)',
-    inputSpacing: 'var(--we-space-100) var(--we-space-200)',
+    inputPadding: 'var(--we-space-100) var(--we-space-200)',
   },
   comfortable: {
     controlPaddingX: undefined,
     controlGap: undefined,
-    controlHeight: undefined,
-    surfaceSpacing: undefined,
+    controlHeightOffset: undefined,
+    surfacePadding: undefined,
     surfaceGap: undefined,
-    inputSpacing: undefined,
+    inputPadding: undefined,
   },
   spacious: {
     controlPaddingX: 'var(--we-space-600)',
     controlGap: 'var(--we-space-400)',
-    controlHeight: '8px',
-    surfaceSpacing: 'var(--we-space-900)',
+    controlHeightOffset: '8px',
+    surfacePadding: 'var(--we-space-900)',
     surfaceGap: 'var(--we-space-600)',
-    inputSpacing: 'var(--we-space-300) var(--we-space-500)',
+    inputPadding: 'var(--we-space-300) var(--we-space-500)',
   },
 } as const;
 
@@ -652,10 +652,10 @@ export function ThemePanel() {
       if (
         (o.controlPaddingX ?? undefined) === vals.controlPaddingX &&
         (o.controlGap ?? undefined) === vals.controlGap &&
-        (o.controlHeight ?? undefined) === vals.controlHeight &&
-        (o.surfaceSpacing ?? undefined) === vals.surfaceSpacing &&
+        (o.controlHeightOffset ?? undefined) === vals.controlHeightOffset &&
+        (o.surfacePadding ?? undefined) === vals.surfacePadding &&
         (o.surfaceGap ?? undefined) === vals.surfaceGap &&
-        (o.inputSpacing ?? undefined) === vals.inputSpacing
+        (o.inputPadding ?? undefined) === vals.inputPadding
       ) {
         return name;
       }
@@ -1212,10 +1212,10 @@ export function ThemePanel() {
                 </we-text>
                 {selectControl('Control padding', 'controlPaddingX', SPACING_OPTIONS, '120px')}
                 {selectControl('Control gap', 'controlGap', SPACING_OPTIONS, '120px')}
-                {selectControl('Control height', 'controlHeight', HEIGHT_OPTIONS, '120px')}
-                {selectControl('Surface padding', 'surfaceSpacing', SPACING_OPTIONS, '120px')}
+                {selectControl('Control height', 'controlHeightOffset', HEIGHT_OPTIONS, '120px')}
+                {selectControl('Surface padding', 'surfacePadding', SPACING_OPTIONS, '120px')}
                 {selectControl('Surface gap', 'surfaceGap', SPACING_OPTIONS, '120px')}
-                {selectControl('Input padding', 'inputSpacing', INPUT_SPACING_OPTIONS, '120px')}
+                {selectControl('Input padding', 'inputPadding', INPUT_SPACING_OPTIONS, '120px')}
               </Column>
             </CollapsibleSection>
 

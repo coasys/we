@@ -341,10 +341,10 @@ const OVERRIDE_CSS_VARS: Partial<Record<keyof ThemeOverrides, string>> = {
   // Density
   controlPaddingX: '--we-theme-control-padding-x',
   controlGap: '--we-theme-control-gap',
-  controlHeight: '--we-theme-control-height-offset',
-  surfaceSpacing: '--we-theme-surface-spacing',
+  controlHeightOffset: '--we-theme-control-height-offset',
+  surfacePadding: '--we-theme-surface-padding',
   surfaceGap: '--we-theme-surface-gap',
-  inputSpacing: '--we-theme-input-spacing',
+  inputPadding: '--we-theme-input-padding',
   // Effects
   surfaceOpacity: '--we-theme-surface-opacity',
 };

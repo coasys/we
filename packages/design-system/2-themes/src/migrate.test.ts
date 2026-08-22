@@ -169,3 +169,33 @@ describe('the 3 → 4 move to an explicit lightness range', () => {
     expect(out.primaryHue).toBe(263);
   });
 });
+
+describe('the 4 → 5 tidy of the control surface', () => {
+  const v4 = (o: Record<string, unknown>) => ({ schemaVersion: 4, ...o }) as unknown as ThemeOverrides;
+
+  it('renames the density keys that each said "padding" differently', () => {
+    const out = migrateOverrides(v4({ surfaceSpacing: '20px', inputSpacing: '4px 8px' })) as Record<string, unknown>;
+    expect(out.surfacePadding).toBe('20px');
+    expect(out.inputPadding).toBe('4px 8px');
+    expect(out.surfaceSpacing).toBeUndefined();
+  });
+
+  it('says what controlHeight actually was', () => {
+    expect((migrateOverrides(v4({ controlHeight: '4px' })) as Record<string, unknown>).controlHeightOffset).toBe('4px');
+  });
+
+  /*
+    `ringColor` and the `focus` role wrote the same variable with no stated precedence. Moving the
+    value into the role keeps the author's choice and leaves one way to say it.
+  */
+  it('folds ringColor into the focus role rather than dropping it', () => {
+    const out = migrateOverrides(v4({ ringColor: '#ff00ff' })) as Record<string, unknown>;
+    expect((out.roles as Record<string, string>).focus).toBe('#ff00ff');
+    expect(out.ringColor).toBeUndefined();
+  });
+
+  it('lets a role the theme already pinned win over the old key', () => {
+    const out = migrateOverrides(v4({ ringColor: '#ff00ff', roles: { focus: '#00ff00' } }));
+    expect(out.roles?.focus).toBe('#00ff00');
+  });
+});
