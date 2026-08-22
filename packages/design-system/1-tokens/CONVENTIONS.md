@@ -175,6 +175,9 @@ across the hue slider at one nominal step, which meant changing a hue silently c
 accent read, and the three status *text* roles had to sit at three different steps to compensate.
 They share one step now.
 
+> Authoring a theme? See `packages/design-system/2-themes/THEME_AUTHORING.md`, which is the
+> author-facing version of this. What follows is the reasoning underneath it.
+
 ### What a theme states
 
     polarity           'light' | 'dark'   — which end the ramp counts from

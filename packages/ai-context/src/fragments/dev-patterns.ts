@@ -222,6 +222,12 @@ Each package may have a \`CONVENTIONS.md\` at its root with package-specific rul
 Always read \`CONVENTIONS.md\` before creating or modifying files in that package.
 
 Key packages with conventions files:
+- \`packages/design-system/2-themes/THEME_AUTHORING.md\` — **read this before writing or editing a
+  theme.** A theme is an object of numbers, not a stylesheet: polarity plus a lightness range, hues
+  as OKLCH angles (blue is 263, not 220), saturation as a fraction of what the hue can hold, and
+  roles pinned only where the parametric default is wrong. Several roles are *derived at apply time*
+  — foregrounds, fills and interaction states all correct themselves — so pinning them is overruling
+  a measurement, which is occasionally right and usually not.
 - \`packages/models/CONVENTIONS.md\` — model authoring: entities vs blocks, predicates, @Flag, WeNode, Model.create() pattern
 - \`packages/templates/kit/CONVENTIONS.md\` — fragment authoring: what belongs in the kit, extraction threshold, options-object API, body style
 

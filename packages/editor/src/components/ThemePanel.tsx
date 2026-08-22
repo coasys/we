@@ -98,6 +98,41 @@ const RADIUS_OPTIONS = [
  */
 const AVATAR_RADIUS_OPTIONS = [...RADIUS_OPTIONS, { value: 'var(--we-radius-full)', label: 'Circle' }];
 
+/**
+ * Stroke weight, as the three answers anybody actually wants.
+ *
+ * A free length would be more expressive and worse: the interesting decisions here are hairline,
+ * standard and heavy, and offering a number invites 1.5px, which renders as a smeared 2px on a
+ * non-integer device pixel ratio.
+ */
+const BORDER_WIDTH_OPTIONS = [
+  { value: '', label: 'Default' },
+  { value: '1px', label: 'Hairline' },
+  { value: '2px', label: 'Medium' },
+  { value: '3px', label: 'Heavy' },
+];
+
+const RING_WIDTH_OPTIONS = [
+  { value: '', label: 'Default' },
+  { value: '1px', label: 'Thin' },
+  { value: '2px', label: 'Medium' },
+  { value: '4px', label: 'Thick' },
+];
+
+const DISABLED_OPACITY_OPTIONS = [
+  { value: '', label: 'Default' },
+  { value: '0.7', label: 'Subtle' },
+  { value: '0.5', label: 'Standard' },
+  { value: '0.3', label: 'Strong' },
+];
+
+const SPACING_SCALE_OPTIONS = [
+  { value: '', label: 'Default' },
+  { value: '0.85', label: 'Compact' },
+  { value: '1.15', label: 'Roomy' },
+  { value: '1.3', label: 'Spacious' },
+];
+
 const SPACING_OPTIONS = [
   { value: '', label: 'Default' },
   { value: 'var(--we-space-100)', label: 'XS' },
@@ -1221,6 +1256,16 @@ export function ThemePanel() {
                 {selectControl('Inputs', 'inputRadius', RADIUS_OPTIONS, '80px')}
                 {selectControl('Avatars', 'avatarRadius', AVATAR_RADIUS_OPTIONS, '80px')}
               </Column>
+              <Column gap="200">
+                <we-text fontSize="200" color="text-faint">
+                  Strokes
+                </we-text>
+                {/* Beside the radii, because "what shape is this" is one question and a stroke is
+                    half the answer. A theme that rounds everything and cannot thicken a line is
+                    only half-themed. */}
+                {selectControl('Borders', 'borderWidth', BORDER_WIDTH_OPTIONS)}
+                {selectControl('Focus ring', 'focusRingWidth', RING_WIDTH_OPTIONS)}
+              </Column>
             </CollapsibleSection>
 
             {/* ── Typography ── */}
@@ -1271,10 +1316,28 @@ export function ThemePanel() {
                 {selectControl('Surface gap', 'surfaceGap', SPACING_OPTIONS, '120px')}
                 {selectControl('Input padding', 'inputPadding', INPUT_SPACING_OPTIONS, '120px')}
               </Column>
+              <Column gap="200">
+                <we-text fontSize="200" color="text-faint">
+                  Overall scale
+                </we-text>
+                {/* Mirrors `fontScale` in Typography. It scales spacing *on top of* whatever the
+                    type scale already did — the steps are in rem — so this is the control for
+                    "denser at the same text size". */}
+                {selectControl('Spacing', 'spacingScale', SPACING_SCALE_OPTIONS)}
+              </Column>
             </CollapsibleSection>
 
             {/* ── Effects & Motion ── */}
             <CollapsibleSection title="Effects & Motion">
+              <Column gap="200">
+                <we-text fontSize="200" color="text-faint">
+                  States
+                </we-text>
+                {/* How far "off" reads. A control rather than a role: one colour cannot serve a
+                    disabled ghost button and a disabled danger one, since they start from
+                    different fills. */}
+                {selectControl('Disabled', 'disabledOpacity', DISABLED_OPACITY_OPTIONS)}
+              </Column>
               <Column gap="200">
                 <we-text fontSize="200" color="text-faint">
                   Shadow intensity
