@@ -128,7 +128,7 @@ export function mediaGrid(opts: MediaGridOptions): SchemaNode {
                                         p: '200',
                                         gap: '300',
                                         ay: 'center',
-                                        color: 'white',
+                                        color: 'text-inverse',
                                         styles: {
                                           background: 'linear-gradient(transparent, rgba(0,0,0,0.6))',
                                         },

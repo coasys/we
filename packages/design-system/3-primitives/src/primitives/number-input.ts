@@ -13,7 +13,7 @@ const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   ay: 'center',
   r: '400',
   border: '1px solid var(--we-role-border)',
-  bg: 'white',
+  bg: 'page',
   fontSize: '300',
   color: 'text',
 };
