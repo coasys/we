@@ -9,7 +9,7 @@ import { CHROMA_CEILING, RAMP, STATE_STEPS } from '../src/color.js';
 import type { component as componentTokens } from '../src/component.js';
 import type { font as fontTokens } from '../src/font.js';
 import type { layout as layoutTokens } from '../src/layout.js';
-import { role as roleTokens, ROLE_ELEVATION_FALLBACK } from '../src/role.js';
+import { role as roleTokens, ROLE_RELATIVE_FALLBACK } from '../src/role.js';
 import type { shadow as shadowTokens } from '../src/shadow.js';
 import type {
   avatarSize as avatarSizeTokens,
@@ -318,15 +318,13 @@ const roleVars = Object.entries(roleTokens)
   .join('\n');
 
 /*
-  The elevation stack, for a browser that cannot express it as a relationship.
+  Every relative-colour role, restated for a browser that cannot read one.
 
-  Relative colour syntax landed in Chrome 119, Safari 16.4 and Firefox 128, and Electron has had it
-  throughout — so this is for an old web visitor and nobody else. Falling back to the scale
-  positions puts them exactly where every browser was before the change: correct in light, inverted
-  in dark. Worth having anyway, because the failure mode without it is not "slightly off", it is a
-  declaration the parser drops entirely, leaving cards with no background at all.
+  Worth having because the failure mode is not "slightly off" — it is a declaration the parser drops
+  entirely, leaving cards with no background and captions with no colour. See the note on
+  ROLE_RELATIVE_FALLBACK for what each entry degrades to and why.
 */
-const roleFallbackVars = Object.entries(ROLE_ELEVATION_FALLBACK)
+const roleFallbackVars = Object.entries(ROLE_RELATIVE_FALLBACK)
   .map(([key, value]) => `    --we-role-${camelToKebab(key)}: ${value};`)
   .join('\n');
 

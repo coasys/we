@@ -781,21 +781,32 @@ export const landingPageTemplate: TemplateSchema = {
                 type: 'Card',
                 props: { ay: 'center', bg: 'gradient-primary', height: '100%' },
                 children: [
-                  { type: 'we-icon', props: { name: card.back.icon, size: 'xl', color: 'text-faint' } },
+                  { type: 'we-icon', props: { name: card.back.icon, size: 'xl', color: 'on-accent' } },
                   {
                     type: 'we-text',
                     props: {
                       fontSize: '500',
                       fontWeight: '600',
                       textAlign: 'center',
-                      color: 'text-faint',
+                      /*
+                        On the accent gradient, not on a surface — so the foreground has to be an
+                        on-fill role, and the two below it are the tiers of that one rather than
+                        text/text-muted, which are measured against the page.
+
+                        Both were `neutral-100`, which the role migration read as "faint text". It
+                        never meant that: a scale position *inverts*, so `neutral-100` was dark in a
+                        dark theme — the dark half of a light-fill/dark-text pair. Read as
+                        text-faint it turns light in a dark theme and measures Lc 8 on this
+                        gradient, which is text that is in the DOM and not on the screen.
+                      */
+                      color: 'on-accent',
                       lineHeight: '1.4',
                     },
                     children: [card.back.title],
                   },
                   {
                     type: 'we-text',
-                    props: { fontSize: '200', textAlign: 'center', color: 'text-faint', lineHeight: '1.6' },
+                    props: { fontSize: '200', textAlign: 'center', color: 'on-accent-muted', lineHeight: '1.6' },
                     children: [card.back.body],
                   },
                 ],

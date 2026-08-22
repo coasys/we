@@ -1282,6 +1282,7 @@ a user-chosen swatch.
 | `accent` | An accent *fill* — a primary button, a selected disc. |
 | `accent-hover` / `accent-active` | Hover and pressed states of an accent fill. |
 | `on-accent` | Text or an icon **on top of** an accent fill. |
+| `on-accent-muted` | Secondary text on an accent fill — a caption under a heading on an accent panel, or on `gradient-primary`. The `text-muted` of fills, and the **only** correct choice there: `text-muted` and `text-faint` are measured against the *page*, so on a fill they are measured against the wrong thing and can vanish entirely. |
 | `accent-text` | The accent used **as text** — an accented heading or icon on an ordinary surface, where `accent` is often too light to read. |
 | `accent-muted` | An accent-tinted fill — a selected row, a subtle highlight. |
 | `focus` | The focus ring. Rarely set directly; `--we-ring-color` already resolves to it. |

@@ -123,6 +123,24 @@ export const role = {
    * measures between 2.7 and 3.6:1.
    */
   onAccent: 'oklch(100% 0 var(--we-color-neutral-hue))',
+  /**
+   * Secondary text on an accent fill — the `textMuted` of fills.
+   *
+   * The rung that was missing. A surface has three foreground tiers (`text`, `textMuted`,
+   * `textFaint`); a fill had exactly one, so a caption under a heading on an accent panel had no
+   * role to use. What templates reached for instead was `textMuted` — which is derived against the
+   * *page*, so on a fill it is measured against the wrong thing entirely. On the primary gradient
+   * `textFaint` came out at Lc 8: present in the DOM, invisible on screen.
+   *
+   * Alpha over `onAccent` rather than a second derived colour, because the fill it must sit on is
+   * often not a role at all — `gradient-primary` is two stops, and a derivation has nothing single
+   * to measure against. Compositing solves both stops at once, and any fill added later, for free.
+   *
+   * 0.8 is measured, not guessed: it holds Lc 55–61 across the gradient's ends and the flat accent —
+   * a clear tier below `onAccent`'s 72–80, so the hierarchy reads, and clear of the 45 large/UI
+   * floor everywhere. 0.7 falls to 47 on the gradient, which is too near the edge to spend.
+   */
+  onAccentMuted: 'oklch(from var(--we-role-on-accent) l c h / 0.8)',
   /** A de-emphasised accent — accent-tinted fills, selected rows, subtle highlights. */
   accentMuted: 'var(--we-color-primary-100)',
   /**
@@ -272,18 +290,41 @@ export const role = {
 export type RoleToken = keyof typeof role;
 
 /**
- * The stack as scale positions, for a browser without relative colour syntax.
+ * Every role built with relative colour syntax, restated without it.
  *
- * Correct in light and inverted in dark — which is exactly the behaviour before the change, so an
- * old browser is no worse off than it was, and every current one gets a stack that holds. Relative
- * colour syntax landed in Chrome 119, Safari 16.4 and Firefox 128; Electron has had it throughout.
+ * Relative colour syntax landed in Chrome 119, Safari 16.4 and Firefox 128, and Electron has had it
+ * throughout — so this is for an old web visitor and nobody else. It has to be *complete*, though,
+ * and for a while it was not: it covered the three elevation roles and left the nine others to a
+ * parser that drops what it cannot read. A dropped `--we-role-surface` is a card with no background;
+ * a dropped `--we-role-on-accent-muted` is a caption that inherits whatever is above it, which on an
+ * accent fill is text nobody can see. Same defect, less visible, so it lasted longer.
+ *
+ * Each entry degrades rather than approximates:
+ *
+ * - The **elevation stack** falls back to scale positions — correct in light and inverted in dark,
+ *   which is exactly where every browser was before the change, so nobody is worse off than they
+ *   were.
+ * - The **interaction states** fall back to their own base role. A button that does not lighten
+ *   under the pointer has lost its feedback; one whose hover declaration was dropped has lost its
+ *   *fill*, and flashes transparent mid-click.
+ * - **`onAccentMuted`** falls back to `onAccent`. The tier is gone and the hierarchy flattens, but
+ *   every word is still legible, which is the property worth keeping when only one can be.
  *
  * Deliberately not `color-mix`, which is more widely supported and wrong for the job: mixing a
  * percentage toward white moves by a share of the distance remaining, so the same 8% is 0.4 points
  * from a near-white page and 7 points from a dark one — less even than the HSL it would replace.
  */
-export const ROLE_ELEVATION_FALLBACK = {
+export const ROLE_RELATIVE_FALLBACK = {
   surface: 'var(--we-color-neutral-0)',
   surfaceRaised: 'var(--we-color-neutral-0)',
   surfaceSunken: 'var(--we-color-neutral-100)',
+  onAccentMuted: 'var(--we-role-on-accent)',
+  accentHover: 'var(--we-role-accent)',
+  accentActive: 'var(--we-role-accent)',
+  dangerHover: 'var(--we-role-danger)',
+  dangerActive: 'var(--we-role-danger)',
+  successHover: 'var(--we-role-success)',
+  successActive: 'var(--we-role-success)',
+  warningHover: 'var(--we-role-warning)',
+  warningActive: 'var(--we-role-warning)',
 } as const;

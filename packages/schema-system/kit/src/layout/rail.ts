@@ -289,7 +289,12 @@ export function railItem(opts: RailItemOptions): SchemaNode {
                 ? [
                     {
                       type: 'we-badge',
-                      props: { size: 'sm', fontWeight: '600', bg: 'accent', color: 'on-inverse' },
+                      // `on-accent`, not `on-inverse`: the fill under it is the accent, and
+                      // `on-inverse` belongs to `surface-inverse` (the tooltip). The two are
+                      // near-identical in a dark theme and diverge completely in a light one,
+                      // where `on-inverse` stays light and the accent may not be dark enough to
+                      // carry it. `on-accent` is derived against this exact fill, so it follows.
+                      props: { size: 'sm', fontWeight: '600', bg: 'accent', color: 'on-accent' },
                       children: [opts.badge],
                     },
                   ]

@@ -1,10 +1,27 @@
 import type { OperatorToken, SchemaNode, SchemaProp } from '@we/schema-shared';
 import { field } from '@we/template-kit';
 
-// Chroma for a step, written out: the ramp tapers it toward the ends and CSS cannot compute
-// that taper itself, since it would have to divide a percentage into a unitless number.
-const GRADIENT_CHROMA_100 = 'calc(min(var(--we-color-saturation) * 0.0035, 0.18) * 0.15)';
-const GRADIENT_CHROMA_200 = 'calc(min(var(--we-color-saturation) * 0.0035, 0.18) * 0.31)';
+/**
+ * A scale step, rotated off the primary hue.
+ *
+ * Reads the *palette* step and changes only the hue, which is what the pre-OKLCH version did:
+ * `hsl(primary-hue ± 25, saturation, lightness-N)` names the same saturation and lightness the step
+ * itself is built from, so the sweep was always the step, turned. Restating it as literal numbers
+ * lost that — the chroma got a damping factor (0.15 and 0.31) chosen by eye to imitate the old
+ * appearance, and it undershot by a lot: step 200 rotated came out `rgb(70,51,81)`, a grey mauve,
+ * where the original is `rgb(78,36,107)`. Hence a sign-in screen that read as washed-out grey rather
+ * than deep purple.
+ *
+ * Reading `from` the palette variable also inherits the ramp, the chroma taper and the per-hue
+ * normalisation, so a theme that moves its polarity, range or saturation moves this with it — none
+ * of which a hand-built `oklch()` tracks.
+ *
+ * The fields are made soft by `bgImageOpacity` at the call site, not by weakening the colour. That
+ * is the difference between a pale colour and a strong one at low opacity, and only the second one
+ * still looks like the theme.
+ */
+const sweep = (step: '100' | '200', hueOffset: string) =>
+  `oklch(from var(--we-color-primary-${step}) l c calc(h ${hueOffset}))`;
 
 /**
  * The boot screen: the four states a session can be in before the app is usable.
@@ -42,8 +59,8 @@ const GRADIENT_CHROMA_200 = 'calc(min(var(--we-color-saturation) * 0.0035, 0.18)
  * turned radial — so the screen and the logo are lit by one idea rather than two.
  *
  * Lightness is what differs, and must: at 500 the sweep is a saturated mid-tone, right for a 38px
- * mark and unreadable behind a form. Built from the hue and saturation custom properties, so a
- * theme that moves the primary hue moves this with it.
+ * mark and unreadable behind a form. Built from the scale step rather than from literal numbers, so
+ * a theme that moves its primary hue, polarity or saturation moves this with it.
  *
  * `circle` rather than the default ellipse, so it does not stretch with the window's aspect.
  */
@@ -54,8 +71,8 @@ export const hueSweepBackground = [
   'var(--we-color-neutral-0) 0%,',
   // The sweep is squeezed into the middle of the radius rather than spanning it. Two stops can
   // travel the hue or land on a colour, not both; four buy a clean start and a clean finish.
-  `oklch(var(--we-color-lightness-100) ${GRADIENT_CHROMA_100} calc(var(--we-color-primary-hue) + 25)) 40%,`,
-  `oklch(var(--we-color-lightness-100) ${GRADIENT_CHROMA_100} calc(var(--we-color-primary-hue) - 25)) 60%,`,
+  `${sweep('100', '+ 25')} 40%,`,
+  `${sweep('100', '- 25')} 60%,`,
   // Named rather than `transparent`. Identical here, since `bg` beneath is the same token — but it
   // says what it means and does not depend on what happens to be painted under it.
   'var(--we-color-neutral-0) 80%)',
@@ -70,7 +87,7 @@ export const hueSweepBackground = [
 const blob = (at: string, size: string, hueOffset: string) =>
   [
     `radial-gradient(${size} at ${at},`,
-    `oklch(var(--we-color-lightness-200) ${GRADIENT_CHROMA_200} calc(var(--we-color-primary-hue) ${hueOffset})) 0%,`,
+    `${sweep('200', hueOffset)} 0%,`,
     'transparent 70%)',
   ].join(' ');
 
@@ -631,7 +648,7 @@ export const bootScreen: SchemaNode = {
         // Colour beneath, fields above: `bg` emits the `background` shorthand but is assigned
         // before `background-image`, so the two compose. Swap `blobBackground` for
         // `hueSweepBackground` for the concentric version.
-        bg: 'surface',
+        bg: 'surface-sunken',
         bgImage: blobBackground,
         // Not `opacity`, which would take the heading and the form down with the background.
         bgImageOpacity: 0.3,

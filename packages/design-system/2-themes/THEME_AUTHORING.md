@@ -56,7 +56,9 @@ Several roles are **derived at apply time** and will overrule a bad default — 
 them unset:
 
 - **Foregrounds on a fill** (`onAccent`, `onStatus`) are chosen by measuring, so a bright accent
-  gets a dark label automatically.
+  gets a dark label automatically. `onAccentMuted` is the secondary tier of that — `onAccent` at
+  0.8 alpha, so it composites over whatever the fill happens to be and follows the measured choice
+  without a second measurement. Pin `onAccent` and it follows the pin.
 - **Foregrounds on a surface** (`textMuted`, `textFaint`, `accentText`, and the status texts) keep
   their hue and move their lightness until they clear.
 - **Fills** (`accent`, `danger`, `success`, `warning`) move if no label can sit on them at all.

@@ -34,6 +34,7 @@ export type ThemeRole =
   | 'borderStrong'
   | 'accent'
   | 'onAccent'
+  | 'onAccentMuted'
   | 'accentMuted'
   | 'accentText'
   | 'accentHover'
