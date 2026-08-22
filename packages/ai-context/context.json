@@ -5220,7 +5220,8 @@
       "values": {
         "base": "'DM Sans', sans-serif",
         "mozilla": "'Mozilla Text', serif",
-        "boldonse": "'Boldonse', serif"
+        "boldonse": "'Boldonse', serif",
+        "mono": "ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace"
       }
     },
     {

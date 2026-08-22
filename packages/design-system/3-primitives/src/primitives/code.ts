@@ -8,7 +8,7 @@ import { DesignSystemElement } from '../shared/design-system-element';
 import sharedStyles from '../shared/styles';
 
 const DEFAULT_PROPS: Partial<DesignSystemProps> = {
-  fontFamily: 'monospace',
+  fontFamily: 'var(--we-font-mono)',
   fontSize: '200',
   r: '300',
 };

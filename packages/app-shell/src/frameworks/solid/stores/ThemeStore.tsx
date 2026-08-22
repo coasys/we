@@ -221,6 +221,27 @@ function getInitialThemeId(): string {
 }
 
 /**
+ * The id meaning "whichever of light and dark the operating system is asking for".
+ *
+ * Stored like any other theme id, so a preference, a space pin and a share link all carry it
+ * without knowing it is special — it is resolved at the point of use rather than at the point of
+ * choice, which is the whole difference between following the system and copying it once.
+ */
+export const SYSTEM_THEME_ID = 'system';
+
+/** Tracks `prefers-color-scheme` for as long as the app is open, not just at boot. */
+function createSystemScheme(): Accessor<'light' | 'dark'> {
+  if (typeof window === 'undefined' || !window.matchMedia) return () => 'light';
+  const query = window.matchMedia('(prefers-color-scheme: dark)');
+  const [scheme, setScheme] = createSignal<'light' | 'dark'>(query.matches ? 'dark' : 'light');
+  const onChange = (e: MediaQueryListEvent) => setScheme(e.matches ? 'dark' : 'light');
+  query.addEventListener('change', onChange);
+  // Never removed: the store lives for the life of the document, and dropping it on an HMR pass
+  // would leave the app pinned to whatever the scheme was when the module reloaded.
+  return scheme;
+}
+
+/**
  * The attribute marking the element a scoped theme is confined to — the template content wrapper in
  * `TemplateLayout`, which is also the element carrying `data-we-theme` and painting the page.
  *
@@ -369,12 +390,33 @@ export function ThemeStoreProvider(props: ParentProps) {
   const session = useSessionStore();
   const datasetStore = useDatasetStore();
 
-  const builtInThemes: Accessor<ThemeData[]> = () => Object.keys(themeRegistry).map(registryToThemeData);
+  /*
+    "Follow system" is offered as a theme because that is how somebody thinks of it — one more row
+    in the same list, chosen the same way. It carries no parameters of its own; `resolveThemeData`
+    answers it at the point of use, so the app tracks the OS while it is open rather than copying
+    the setting once at the moment of the click.
+  */
+  const systemThemeEntry = (): ThemeData => ({
+    id: SYSTEM_THEME_ID,
+    slug: SYSTEM_THEME_ID,
+    name: 'Follow system',
+    icon: 'circle-half',
+    origin: 'built-in',
+    version: 1,
+    overrides: null,
+    css: null,
+  });
+
+  const builtInThemes: Accessor<ThemeData[]> = () => [
+    systemThemeEntry(),
+    ...Object.keys(themeRegistry).map(registryToThemeData),
+  ];
 
   const [installedThemes, setInstalledThemes] = createSignal<ThemeData[]>([]);
   // IDs of custom themes visible in pickers (subset of installedThemes)
   const [visibleThemeIds, setVisibleThemeIds] = createSignal<Set<string>>(new Set());
   const [spaceThemes, setSpaceThemes] = createSignal<ThemeData[]>([]);
+  const systemScheme = createSystemScheme();
   const [currentThemeId, setCurrentThemeId] = createSignal<string>(getInitialThemeId());
   /**
    * Whether a space's theme covers the whole window, or only the space's own content.
@@ -638,9 +680,10 @@ export function ThemeStoreProvider(props: ParentProps) {
   applyThemeToDOM(registryToThemeData(isValidThemeKey(initialId) ? initialId : 'light'));
 
   function resolveThemeData(themeId: string): ThemeData {
-    return (
-      allThemes().find((t) => t.id === themeId) ?? registryToThemeData(isValidThemeKey(themeId) ? themeId : 'light')
-    );
+    // `system` is not a theme, it is a question — asked here rather than remembered, so the answer
+    // follows the OS while the app is open instead of being fixed at whatever it was on the click.
+    const id = themeId === SYSTEM_THEME_ID ? systemScheme() : themeId;
+    return allThemes().find((t) => t.id === id) ?? registryToThemeData(isValidThemeKey(id) ? id : 'light');
   }
 
   /*

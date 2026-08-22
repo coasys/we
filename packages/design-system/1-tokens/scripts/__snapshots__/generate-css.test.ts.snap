@@ -155,7 +155,49 @@ exports[`token CSS generation > color.css — hues, lightness ramp, palettes, ro
 
   /* Gradient */
   --we-gradient-primary: linear-gradient(135deg, hsl(calc(var(--we-color-primary-hue) - 25) var(--we-color-saturation) var(--we-color-lightness-500)) 0%, hsl(calc(var(--we-color-primary-hue) + 25) var(--we-color-saturation) var(--we-color-lightness-500)) 100%);
-}"
+}
+
+/*
+  Forced-colors mode (Windows High Contrast, and its equivalents).
+
+  Somebody in this mode has asked the operating system to replace every colour with a small,
+  guaranteed-legible set, usually because the alternative is not readable for them. The right
+  response is not to theme it — it is to stop competing with it and fix what flattening breaks.
+
+  What breaks is anything distinguished by *background alone*: the browser replaces the fill, so a
+  filled button, a selected row and a plain surface all end up the same colour with nothing between
+  them. Giving those a border in a system colour restores the boundary the fill was carrying. The
+  role variables are deliberately left alone — they still resolve, and \`forced-color-adjust\` is
+  what actually decides what paints.
+*/
+@media (forced-colors: active) {
+  :root {
+    --we-role-focus: Highlight;
+    --we-ring-color: Highlight;
+    --we-role-border: CanvasText;
+    --we-role-border-strong: CanvasText;
+  }
+
+  we-button::part(base),
+  we-input::part(base),
+  we-textarea::part(base),
+  we-select::part(base),
+  we-tag::part(base),
+  we-badge::part(base),
+  we-alert::part(base),
+  we-modal::part(base),
+  we-drawer::part(base),
+  we-menu::part(base) {
+    border: 1px solid CanvasText;
+  }
+
+  /* A focus ring drawn as a box-shadow disappears here — shadows are not painted. */
+  :focus-visible {
+    outline: 2px solid Highlight;
+    outline-offset: 2px;
+  }
+}
+"
 `;
 
 exports[`token CSS generation > component.css — scrollbar values come from the token source 1`] = `
@@ -181,9 +223,14 @@ exports[`token CSS generation > font.css — families, sizes, weights, line heig
   --we-font-family-base: 'DM Sans', sans-serif;
   --we-font-family-mozilla: 'Mozilla Text', serif;
   --we-font-family-boldonse: 'Boldonse', serif;
+  --we-font-family-mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
 
   /* Active font family — used by all components; themes can override this */
   --we-font-family: var(--we-font-family-base);
+
+  /* Active code face. Read by we-code, we-markdown and we-html, all of which asked for it long
+     before anything declared it. */
+  --we-font-mono: var(--we-font-family-mono);
 
   /* Font Sizes */
   --we-font-base-size: 16px;

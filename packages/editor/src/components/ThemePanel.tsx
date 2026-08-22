@@ -37,6 +37,12 @@ const HEADING_FONT_OPTIONS = [
   { value: "'Boldonse', serif", label: 'Boldonse' },
 ];
 
+const MONO_FONT_OPTIONS = [
+  { value: 'system', label: 'System mono' },
+  { value: "'Courier New', monospace", label: 'Courier' },
+  { value: "ui-monospace, 'Cascadia Code', monospace", label: 'Cascadia' },
+];
+
 const LETTER_SPACING_OPTIONS = [
   { value: '-0.02em', label: 'Tight' },
   { value: 'default', label: 'Default' },
@@ -841,6 +847,7 @@ export function ThemePanel() {
             <CollapsibleSection title="Typography">
               {selectControl('Font family', 'fontFamily', FONT_OPTIONS, '100px', 'default')}
               {selectControl('Heading font', 'headingFontFamily', HEADING_FONT_OPTIONS, '100px', 'match')}
+              {selectControl('Code font', 'monoFontFamily', MONO_FONT_OPTIONS, '100px', 'system')}
               {selectControl('Letter spacing', 'letterSpacing', LETTER_SPACING_OPTIONS, '100px', 'default')}
               {selectControl('Line height', 'lineHeight', LINE_HEIGHT_OPTIONS, '100px', 'default')}
               <Column gap="200">

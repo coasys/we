@@ -79,11 +79,40 @@ export function generateAnimationCSS(animation: typeof animationTokens) {
     .map(([key, value]) => `  --we-transition-${key}: ${value};`)
     .join('\n');
 
+  const reducedVars = Object.keys(animation.transition)
+    .map((key) => `    --we-transition-${key}: 0ms !important;`)
+    .join('\n');
+
   const css = `/* ANIMATION TOKENS - Generated from JS tokens */
 
 :root {
   /* Transition Speeds */
 ${transitionVars}
+}
+
+/*
+  Somebody who has asked their operating system for less motion has asked everything, including a
+  theme they installed. This is the one place \`!important\` is correct in this system, and the
+  reason is mechanical rather than stylistic: a theme's \`animationSpeed\` is applied as an *inline*
+  style on the document element, and nothing but \`!important\` outranks an inline style. Without it
+  the preference would be honoured by the default theme and quietly discarded by every other one.
+
+  Zeroing the duration tokens covers every transition in the system, since they all read one.
+  \`animation\` is stopped separately: a theme's own keyframes do not go through the tokens.
+*/
+@media (prefers-reduced-motion: reduce) {
+  :root {
+${reducedVars}
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }`;
 
   return css;
@@ -175,7 +204,49 @@ ${roleVars}
 
   /* Gradient */
   --we-gradient-primary: linear-gradient(135deg, hsl(calc(var(--we-color-primary-hue) - 25) var(--we-color-saturation) var(--we-color-lightness-500)) 0%, hsl(calc(var(--we-color-primary-hue) + 25) var(--we-color-saturation) var(--we-color-lightness-500)) 100%);
-}`;
+}
+
+/*
+  Forced-colors mode (Windows High Contrast, and its equivalents).
+
+  Somebody in this mode has asked the operating system to replace every colour with a small,
+  guaranteed-legible set, usually because the alternative is not readable for them. The right
+  response is not to theme it — it is to stop competing with it and fix what flattening breaks.
+
+  What breaks is anything distinguished by *background alone*: the browser replaces the fill, so a
+  filled button, a selected row and a plain surface all end up the same colour with nothing between
+  them. Giving those a border in a system colour restores the boundary the fill was carrying. The
+  role variables are deliberately left alone — they still resolve, and \`forced-color-adjust\` is
+  what actually decides what paints.
+*/
+@media (forced-colors: active) {
+  :root {
+    --we-role-focus: Highlight;
+    --we-ring-color: Highlight;
+    --we-role-border: CanvasText;
+    --we-role-border-strong: CanvasText;
+  }
+
+  we-button::part(base),
+  we-input::part(base),
+  we-textarea::part(base),
+  we-select::part(base),
+  we-tag::part(base),
+  we-badge::part(base),
+  we-alert::part(base),
+  we-modal::part(base),
+  we-drawer::part(base),
+  we-menu::part(base) {
+    border: 1px solid CanvasText;
+  }
+
+  /* A focus ring drawn as a box-shadow disappears here — shadows are not painted. */
+  :focus-visible {
+    outline: 2px solid Highlight;
+    outline-offset: 2px;
+  }
+}
+`;
 
   return css;
 }
@@ -233,6 +304,10 @@ ${fontFamilyVars}
 
   /* Active font family — used by all components; themes can override this */
   --we-font-family: var(--we-font-family-base);
+
+  /* Active code face. Read by we-code, we-markdown and we-html, all of which asked for it long
+     before anything declared it. */
+  --we-font-mono: var(--we-font-family-mono);
 
   /* Font Sizes */
   --we-font-base-size: ${font.size.base};

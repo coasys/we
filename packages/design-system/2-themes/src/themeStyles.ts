@@ -82,6 +82,7 @@ const THEME_CSS_MAP: Record<ParametricKey, string> = {
   // Typography
   fontFamily: '--we-font-family',
   headingFontFamily: '--we-theme-heading-font-family',
+  monoFontFamily: '--we-font-mono',
   letterSpacing: '--we-theme-letter-spacing',
   lineHeight: '--we-theme-line-height',
   // Shape

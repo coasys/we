@@ -1899,7 +1899,12 @@ export const contextData: ContextData = {
     {
       name: 'font.family',
       type: 'Record<FontFamilyToken, string>',
-      values: { base: "'DM Sans', sans-serif", mozilla: "'Mozilla Text', serif", boldonse: "'Boldonse', serif" },
+      values: {
+        base: "'DM Sans', sans-serif",
+        mozilla: "'Mozilla Text', serif",
+        boldonse: "'Boldonse', serif",
+        mono: "ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace",
+      },
     },
     {
       name: 'font.letterSpacing',

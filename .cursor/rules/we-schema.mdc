@@ -1439,7 +1439,7 @@ component.scrollbar: 'width', 'backgroundImage', 'background', 'cornerBackground
 
 componentHeight: 'xs', 'sm', 'md', 'lg', 'xl'
 
-font.family: 'base', 'mozilla', 'boldonse'
+font.family: 'base', 'mozilla', 'boldonse', 'mono'
 
 font.letterSpacing: 'tighter', 'tight', 'normal', 'wide', 'wider', 'widest'
 

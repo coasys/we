@@ -77,6 +77,15 @@ export type ThemeOverrides = {
    * headings" was reachable only through a theme's raw CSS.
    */
   headingFontFamily?: string;
+  /**
+   * --we-font-mono — the face code is set in.
+   *
+   * Separate from the body face because it is chosen for different reasons: a code block wants
+   * fixed advance widths and a clear 0/O and 1/l, which is a property of the typeface rather than
+   * a matter of the theme's voice. A theme that only sets `fontFamily` should not silently change
+   * what a code block looks like.
+   */
+  monoFontFamily?: string;
   letterSpacing?: string; // --we-theme-letter-spacing  (e.g. "0.05em" for airy headlines)
   lineHeight?: string; // --we-theme-line-height  (e.g. "1.5" or "relaxed")
   fontScale?: number; // scales root font-size (1 = 100%, 1.125 = 112.5%) — affects all rem-based tokens
