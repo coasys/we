@@ -146,10 +146,14 @@ exports[`token CSS generation > color.css — hues, lightness ramp, palettes, ro
   --we-role-shadow-color: oklch(4% calc(min(var(--we-color-neutral-saturation) * 0.0035, 0.18) * 0.0800) var(--we-color-neutral-hue));
   --we-role-focus: var(--we-color-primary-500);
   --we-role-danger: var(--we-color-danger-700);
-  --we-role-danger-hover: oklch(from var(--we-role-danger) calc(l - 0.05) c h);
-  --we-role-danger-active: oklch(from var(--we-role-danger) calc(l - 0.09) c h);
   --we-role-success: var(--we-color-success-700);
   --we-role-warning: var(--we-color-warning-700);
+  --we-role-danger-hover: oklch(from var(--we-role-danger) calc(l - 0.05) c h);
+  --we-role-danger-active: oklch(from var(--we-role-danger) calc(l - 0.09) c h);
+  --we-role-success-hover: oklch(from var(--we-role-success) calc(l - 0.05) c h);
+  --we-role-success-active: oklch(from var(--we-role-success) calc(l - 0.09) c h);
+  --we-role-warning-hover: oklch(from var(--we-role-warning) calc(l - 0.05) c h);
+  --we-role-warning-active: oklch(from var(--we-role-warning) calc(l - 0.09) c h);
   --we-role-on-status: oklch(100% 0 var(--we-color-neutral-hue));
   --we-role-danger-surface: var(--we-color-danger-50);
   --we-role-success-surface: var(--we-color-success-50);
@@ -160,7 +164,10 @@ exports[`token CSS generation > color.css — hues, lightness ramp, palettes, ro
 
   /* Focus Colors */
   --we-color-focus: var(--we-color-primary-500);
-  --we-focus-outline: 0 0 0 2px var(--we-color-focus);
+  /* Themeable width, like --we-border-width: a focus ring is a stroke, and a theme that
+     thickens its borders and cannot thicken its rings looks half-converted. */
+  --we-focus-ring-width: var(--we-theme-focus-ring-width, 2px);
+  --we-focus-outline: 0 0 0 var(--we-focus-ring-width) var(--we-color-focus);
 
   /* Gradient */
   --we-gradient-primary: linear-gradient(135deg, oklch(var(--we-color-lightness-500) calc(min(var(--we-color-saturation) * 0.0035, 0.18) * 0.8) calc(var(--we-color-primary-hue) - 25)) 0%, oklch(var(--we-color-lightness-500) calc(min(var(--we-color-saturation) * 0.0035, 0.18) * 0.8) calc(var(--we-color-primary-hue) + 25)) 100%);

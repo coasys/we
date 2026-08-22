@@ -44,6 +44,10 @@ export type ThemeRole =
   | 'danger'
   | 'dangerHover'
   | 'dangerActive'
+  | 'successHover'
+  | 'successActive'
+  | 'warningHover'
+  | 'warningActive'
   | 'success'
   | 'warning'
   | 'onStatus'
@@ -99,30 +103,6 @@ export type ThemeOverrides = {
    */
   lightnessFloor?: string;
   lightnessCeiling?: string;
-  /**
-   * Stroke weight, themeable at last.
-   *
-   * Radius had four groups and stroke had none, which left a whole axis of visual identity outside
-   * the system — hairline and heavy are as much a style decision as round and square, and a theme
-   * could say nothing about it.
-   */
-  borderWidth?: string;
-  /**
-   * How far a disabled control fades.
-   *
-   * A control rather than a role, and the distinction matters: one colour cannot serve a disabled
-   * *ghost* button and a disabled *danger* one, because they start from different fills. What is
-   * genuinely shared — and genuinely a design decision — is how far off "off" reads.
-   */
-  disabledOpacity?: number;
-  /**
-   * Scales the spacing tokens, independently of type.
-   *
-   * `fontScale` already moved spacing as a side effect, since the space tokens are in `rem` and it
-   * sets the root font size — so "make this denser" was only reachable by also shrinking the text.
-   * Two scales, two decisions.
-   */
-  spacingScale?: number;
 
   // Semantic roles — pin individual role variables (--we-role-*) to any CSS color or var().
   // Roles not listed keep their parametric default over the scale.
@@ -170,6 +150,19 @@ export type ThemeOverrides = {
    * the rounded-square look sets a length here instead (`var(--we-radius-400)`).
    */
   avatarRadius?: string;
+  /**
+   * Stroke weight, themeable at last.
+   *
+   * Radius had four groups and stroke had none, which left a whole axis of visual identity outside
+   * the system — hairline and heavy are as much a style decision as round and square, and a theme
+   * could say nothing about it.
+   */
+  borderWidth?: string;
+  /**
+   * Focus ring thickness. A ring is a stroke, and a theme that can thicken its borders and not its
+   * rings looks half-converted — which it was, until `borderWidth` made the asymmetry visible.
+   */
+  focusRingWidth?: string;
 
   // Density — padding/gap cascade: component p=/gap= prop → component theme → group theme → size default
   controlPaddingX?: string; // --we-theme-control-padding-x  (button / badge / tag horizontal padding)
@@ -187,8 +180,24 @@ export type ThemeOverrides = {
    * so inputs had a themeable radius and un-themeable padding.
    */
   inputPadding?: string;
+  /**
+   * Scales the spacing tokens, independently of type.
+   *
+   * `fontScale` already moved spacing as a side effect, since the space tokens are in `rem` and it
+   * sets the root font size — so "make this denser" was only reachable by also shrinking the text.
+   * Two scales, two decisions.
+   */
+  spacingScale?: number;
 
   // Effects
+  /**
+   * How far a disabled control fades.
+   *
+   * A control rather than a role, and the distinction matters: one colour cannot serve a disabled
+   * *ghost* button and a disabled *danger* one, because they start from different fills. What is
+   * genuinely shared — and genuinely a design decision — is how far off "off" reads.
+   */
+  disabledOpacity?: number;
   shadowIntensity?: 'flat' | 'subtle' | 'elevated' | 'dramatic'; // maps to --we-theme-shadow-preset
   surfaceOpacity?: number; // --we-theme-surface-opacity  (0–1, background alpha for surfaces)
   surfaceBlur?: number; // --we-theme-surface-blur  (px, backdrop-filter blur for frosted glass)

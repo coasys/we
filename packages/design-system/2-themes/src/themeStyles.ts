@@ -127,6 +127,7 @@ const THEME_CSS_MAP: Record<ParametricKey, string> = {
   lightnessFloor: '--we-color-lightness-floor',
   lightnessCeiling: '--we-color-lightness-ceiling',
   borderWidth: '--we-theme-border-width',
+  focusRingWidth: '--we-theme-focus-ring-width',
   // Typography
   fontFamily: '--we-font-family',
   headingFontFamily: '--we-theme-heading-font-family',
@@ -629,7 +630,21 @@ export const AUTO_CONTRAST: { fg: ThemeRole; against: ThemeRole[] }[] = [
   { fg: 'onAccent', against: ['accent', 'accentHover', 'accentActive'] },
   { fg: 'onInverse', against: ['surfaceInverse'] },
   // All three, because one label serves whichever status fill it lands on and the weakest decides.
-  { fg: 'onStatus', against: ['danger', 'dangerHover', 'dangerActive', 'success', 'warning'] },
+  // Every state of every status fill: one label serves all of them, so the worst decides.
+  {
+    fg: 'onStatus',
+    against: [
+      'danger',
+      'dangerHover',
+      'dangerActive',
+      'success',
+      'successHover',
+      'successActive',
+      'warning',
+      'warningHover',
+      'warningActive',
+    ],
+  },
 ];
 
 /**

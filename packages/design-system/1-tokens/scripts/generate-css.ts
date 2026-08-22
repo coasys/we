@@ -233,7 +233,10 @@ ${roleVars}
 
   /* Focus Colors */
   --we-color-focus: var(--we-color-primary-500);
-  --we-focus-outline: 0 0 0 2px var(--we-color-focus);
+  /* Themeable width, like --we-border-width: a focus ring is a stroke, and a theme that
+     thickens its borders and cannot thicken its rings looks half-converted. */
+  --we-focus-ring-width: var(--we-theme-focus-ring-width, 2px);
+  --we-focus-outline: 0 0 0 var(--we-focus-ring-width) var(--we-color-focus);
 
   /* Gradient */
   --we-gradient-primary: linear-gradient(135deg, oklch(var(--we-color-lightness-500) ${GRADIENT_CHROMA} calc(var(--we-color-primary-hue) - 25)) 0%, oklch(var(--we-color-lightness-500) ${GRADIENT_CHROMA} calc(var(--we-color-primary-hue) + 25)) 100%);

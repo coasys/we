@@ -203,10 +203,31 @@ export const role = {
   // has no readable label at either end. `cyberpunk` measured 4.42:1 with the derivation already
   // picking the better of the two.
   danger: 'var(--we-color-danger-700)',
-  dangerHover: 'oklch(from var(--we-role-danger) calc(l - 0.05) c h)',
-  dangerActive: 'oklch(from var(--we-role-danger) calc(l - 0.09) c h)',
   success: 'var(--we-color-success-700)',
   warning: 'var(--we-color-warning-700)',
+
+  /**
+   * Hover and pressed for each fill, as steps *from* it.
+   *
+   * One rule rather than a special case: **every fill role has a hover and an active, derived from
+   * it.** `danger` grew them first because the destructive button needed them, and leaving `success`
+   * and `warning` without was an asymmetry with no reason behind it — a module building a filled
+   * success control would have found the vocabulary simply stops.
+   *
+   * Steps from the fill rather than positions on the scale, which is what keeps them safe: the
+   * label is chosen against the worst of rest/hover/pressed, so three independent scale positions
+   * meant three chances to drift somewhere no single label reaches. Tied to the fill, they follow
+   * it — including when the fill is itself moved out of the middle of the ramp.
+   *
+   * Nobody has to set these. They exist so that pinning a fill moves its states with it, and so
+   * that a theme *can* separate them if it wants to.
+   */
+  dangerHover: 'oklch(from var(--we-role-danger) calc(l - 0.05) c h)',
+  dangerActive: 'oklch(from var(--we-role-danger) calc(l - 0.09) c h)',
+  successHover: 'oklch(from var(--we-role-success) calc(l - 0.05) c h)',
+  successActive: 'oklch(from var(--we-role-success) calc(l - 0.09) c h)',
+  warningHover: 'oklch(from var(--we-role-warning) calc(l - 0.05) c h)',
+  warningActive: 'oklch(from var(--we-role-warning) calc(l - 0.09) c h)',
 
   /**
    * Text and icons on a status fill — the destructive button's label.
