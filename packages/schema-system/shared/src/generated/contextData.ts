@@ -1862,7 +1862,7 @@ export const contextData: ContextData = {
     {
       name: 'color.hues',
       type: 'Record<ColorHueToken, number>',
-      values: { neutral: '281', primary: '281', success: '145', warning: '90', danger: '17' },
+      values: { neutral: '288', primary: '288', success: '145', warning: '90', danger: '17' },
     },
     {
       name: 'color.lightness',
@@ -2017,6 +2017,11 @@ export const contextData: ContextData = {
         '900': '4rem',
         '1000': '6rem',
       },
+    },
+    {
+      name: 'STATE_STEPS',
+      type: 'Record<Polarity, { hover: number; active: number }>',
+      values: { light: '{ hover: -0.05, active: -0.09 }', dark: '{ hover: -0.05, active: -0.09 }' },
     },
     {
       name: 'zIndex',

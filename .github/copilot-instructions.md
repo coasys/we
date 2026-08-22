@@ -1468,6 +1468,8 @@ size: 'xxs', 'xs', 'sm', 'md', 'lg', 'xl', 'xxl'
 
 space: '0', '100', '200', '300', '400', '500', '600', '700', '800', '900', '1000'
 
+STATE_STEPS: 'light', 'dark'
+
 zIndex: 'dropdown', 'sticky', 'chrome', 'modal', 'popover', 'toast', 'tooltip'
 
 ---
