@@ -119,6 +119,8 @@ export const contextData: ContextData = {
           default:
             "[ '#000000', '#434343', '#666666', '#999999', '#b7b7b7', '#cccccc', '#d9d9d9', '#ffffff', '#980000', '#ff0000', '#ff9900', '#ffff00', '#00ff00', '#00ffff', '#4a86e8', '#0000ff', '#9900ff', '#ff00ff', '#e6b8af', '#f4cccc', '#fce5cd', '#fff2cc', '#d9ead3', '#d0e0e3', '#c9daf8', '#cfe2f3', '#d9d2e9', '#ead1dc', ]",
         },
+        { name: 'tokens', type: 'boolean', optional: false, default: 'false' },
+        { name: 'alpha', type: 'boolean', optional: false, default: 'false' },
       ],
     },
     {

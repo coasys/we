@@ -137,6 +137,27 @@ When adding a role, give it a parametric default over the scale so every existin
 working untouched, and say in its doc comment what relationship it exists to express — if the answer
 is only "a slightly different grey", it is a scale position and does not belong here.
 
+### Four ways to pin one, and what each survives
+
+A theme overrides a role by giving it a value, and *which kind* of value decides how much of the
+theme still reaches it afterwards. In descending order of how much survives:
+
+| Written as | Survives | Use for |
+| --- | --- | --- |
+| unset | everything | the default; the role follows the scale |
+| `var(--we-color-neutral-200)` | hue, saturation, light/dark polarity | "surfaces sit two steps down" — most theme edits mean this |
+| `hsl(var(--we-color-neutral-hue) var(--we-color-neutral-saturation) 11%)` | hue and saturation; holds its lightness against a polarity flip | a designed theme whose surface ramp is uneven — `channels`, `timeline` |
+| `#1a1a1e` | nothing | a brand colour that must not move |
+
+The last row is the only one that really leaves the system, and it is the one a colour picker
+produces by default — which is why `we-color-picker` opens on the **token grid** when `tokens` is
+set, and why the theme editor names the rung each role is on rather than showing a swatch and
+leaving you to guess.
+
+Two roles are deliberately written the third way in `role.ts` itself: `surfaceInverse` and
+`textInverse`. A tooltip has to stay opposite to the page in *both* polarities, and no expression
+over the scale can do that, because the whole ramp inverts together.
+
 ## Runtime Consumption
 
 Tokens are consumed at runtime via two mechanisms in `@we/design-utils`:

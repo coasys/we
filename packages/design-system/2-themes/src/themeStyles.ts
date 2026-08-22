@@ -146,7 +146,9 @@ export function themeToStyle(overrides: ThemeOverrides): Record<string, string> 
     with no per-theme edit. Explicit overrides still win, so `{ themeName: 'cyberpunk', primaryHue:
     320 }` is cyberpunk with a different accent, which is what it reads as.
   */
-  const preset =
+  // Widened to the vocabulary: `THEME_PRESETS` is `as const`, so its inferred union only carries
+  // `roles` on the members that happen to pin one, and reading it off the union does not typecheck.
+  const preset: ThemeOverrides | undefined =
     overrides.themeName && isThemeName(overrides.themeName) ? THEME_PRESETS[overrides.themeName].parameters : undefined;
   /*
     `roles` merges key by key; every other override replaces.

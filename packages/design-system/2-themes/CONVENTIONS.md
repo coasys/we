@@ -191,6 +191,9 @@ not in the theme's CSS file. Two reasons:
   `builtInThemes.sanitise.test.ts` enforces that they agree; if you add a role to a CSS file, add it
   to the preset too or that test will tell you.
 
+`roles` is the one override that **merges** with a preset's rather than replacing it, so a theme may
+pin one role on top of `channels` without discarding the twelve that make it `channels`.
+
 Pin the *lightness* and leave hue and saturation variable — the `neutral()` helper in `presets.ts`
 exists for this, so changing `neutralHue` still moves the whole theme together. A role pinned to a
 literal hex freezes one colour out of the parametric system and the theme comes apart around it.
