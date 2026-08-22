@@ -203,7 +203,27 @@ export const chromeRail: SchemaNode = {
         gap: '100',
         p: '200',
         ay: 'center',
-        bg: 'surface-raised',
+        /*
+          Page-toned, and lifted by the border and the shadow rather than by tone.
+
+          `surface-raised` looks like the role for this — the docs even name "a docked rail with a
+          shadow" — and it is the wrong one, because it belongs to the *tonal ladder*: the sequence
+          page → card → popover, where each step is read against the one it covers. A popover has to
+          clear the card underneath it, so the role lifts a full 10 lightness points. This rail
+          covers nothing. It sits on the page, with air on both sides, and taking a ladder rung
+          meant for occluding a card painted it 11 points lighter than everything around it — the
+          washed-out grey strip that prompted this.
+
+          Chrome is separated by *edge*, not by tone, which is what the border and the shadow are
+          doing here and why the rail still reads as floating without them being redundant. It is
+          also what this rail always did (`neutral-50`, the page step), and the same choice the
+          hover-rail pattern in the schema docs makes.
+
+          The call bar in @we/module-call does the same thing for the same reason; keep the two in
+          step. A genuinely occluding surface — a menu, a select dropdown — still wants
+          `surface-raised`, and that is the distinction the two are now on opposite sides of.
+        */
+        bg: 'page',
         border: '1px solid border',
         rtl: '400',
         rbl: '400',

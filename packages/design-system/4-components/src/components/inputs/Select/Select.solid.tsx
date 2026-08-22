@@ -99,12 +99,22 @@ export function Select(allProps: SelectProps) {
   return (
     <div style={wrapperStyle()}>
       <we-popover ref={popoverRef} placement="bottom-start">
+        {/*
+          The two halves of this control are deliberately different materials: the label is
+          `surface` and the field beside it is `surface-sunken`.
+
+          The label is a *cap* — it names what the field is and cannot be typed into, so it sits at
+          card level. The field is a trough. It was `neutral-100` against the field's `neutral-0`,
+          and the gap between those two steps is exactly this distinction, which is the thing a
+          scale position could not name and a role can. The role migration read both as the trough,
+          which flattened the sort and order controls into one dark slab.
+        */}
         <Row slot="trigger" gap="0" ay="stretch">
           <Show when={props.label}>
             <we-text
               variant="label"
               color="text-muted"
-              bg="surface-sunken"
+              bg="surface"
               border="1px solid var(--we-role-border)"
               borderRight="none"
               rl="var(--we-theme-control-radius, var(--we-radius-400))"

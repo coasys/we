@@ -126,7 +126,67 @@ export const THEME_PRESETS = {
         accent: 'oklch(55.3% 0.16 288)',
         // The surface stack is derived from `page` now — see the note in @we/tokens' role.ts. This
         // theme pinned four lightnesses that the formula reproduces to within a point, which is
-        // what suggested the formula.
+        // what suggested the formula. `page` and `surface` land within 2 units of what this theme
+        // used to render and are left to the formula; the two below it do not, and are stated.
+
+        /*
+          A trough, at the depth it was.
+
+          The derived default is `page` minus 3.5 lightness points. This theme's actual gap was 5.1
+          — `neutral-0` against a `neutral-50` page — and the difference is visible on exactly the
+          controls a trough is for: the cards-route search field and the sort/order selects came out
+          rgb(23,21,36) against the original rgb(18,16,24), which reads as a field that has not
+          quite recessed. Stated rather than moving the shared default, because 3.5 is the right
+          general answer and 5.1 is this theme's.
+        */
+        surfaceSunken: 'oklch(17.9% 0.0165 296.2)',
+        /*
+          A popover, at the colour it was.
+
+          Equal to `surface` rather than above it, which the elevation invariant allows and this
+          theme has always done: its raised role was `neutral-100`, the same step its cards use. The
+          derived default lifts a further 10 points, which is right where a popover must read as
+          floating *over* a card, and wrong here — the select dropdowns and menus came out
+          rgb(55,54,71) against the original rgb(40,37,55), a grey noticeably paler than anything
+          else on screen.
+
+          Written as `surface`'s own expression rather than as the measured `oklch(27.6% 0.0331
+          291.7)`, which is the same colour to within two units but sits 0.9 points *under* the
+          derived surface — enough to trip the `raised >= surface` invariant for a difference nobody
+          can see. Equality is what this theme means and what the invariant allows, so it says
+          equality instead of landing just short of it by arithmetic accident.
+
+          Note this role is no longer what paints the chrome rail or the call bar. Those are `page`,
+          which is what they always were; see the note in ChromeRail.schema.ts.
+        */
+        surfaceRaised: 'oklch(from var(--we-role-page) calc(l + 0.045) c h)',
+
+        /*
+          The labels on a fill, and the fills under them: this theme's own convention, restated.
+
+          Every filled control here was a mid-tone at step 500 carrying a **near-black** label —
+          `bg: 'primary-500', color: 'neutral-0'` in the button primitive, and the same shape for
+          danger, success and warning. The derivations do not reach that arrangement on their own,
+          and would not: measured with APCA, near-black on this accent is Lc 45, which clears the
+          large/UI floor and sits under the 60 a body label wants, so the auto-contrast pass picks
+          white instead (Lc 80) and the fill derivation then pushes the status colours lighter still
+          looking for room that the white label does not need. That is why the leave button in the
+          call bar turned pale pink.
+
+          Both passes step aside for a role the theme states — `applyAutoContrast` and
+          `applyLegibleFills` each skip anything in `theme.roles` — so pinning the four fills and
+          the two on-fill labels reproduces the original exactly and switches off the search that
+          was moving them.
+
+          This is a deliberate, measured exception rather than an oversight, and `contrast.test.ts`
+          records it by name with the numbers, so it stays visible and any *further* drift still
+          fails. See DELIBERATE_UI_LEVEL there.
+        */
+        onAccent: 'oklch(17.9% 0.0165 296.2)',
+        onStatus: 'oklch(17.9% 0.0165 296.2)',
+        danger: 'oklch(61.7% 0.1368 11.5)',
+        success: 'oklch(75.1% 0.1601 147.3)',
+        warning: 'oklch(76.0% 0.1055 92.0)',
       },
     },
   },

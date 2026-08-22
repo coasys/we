@@ -453,7 +453,10 @@ export function applyThemeVars(root: HTMLElement, theme: ThemeOverrides): void {
   // Order matters: the fill settles first, then the label is chosen against where it landed, then
   // the foregrounds that sit on other surfaces.
   const fills = applyLegibleFills(root, theme);
-  const derived = [...fills, ...applyAutoContrast(root, theme), ...applyLegibleForegrounds(root, theme), ...ceilings];
+  const labels = applyAutoContrast(root, theme);
+  // After the label, necessarily: which way a hover moves is decided by where the label ended up.
+  const states = applyStateDirection(root);
+  const derived = [...fills, ...labels, ...states, ...applyLegibleForegrounds(root, theme), ...ceilings];
   appliedThemeVars.set(root, new Set([...Object.keys(styles), ...derived]));
 }
 
@@ -599,6 +602,91 @@ export function labelCandidates(hue: string): string[] {
     decide whether a mid-range fill is usable at all.
   */
   return [`oklch(100% 0 ${hue})`, `oklch(0% 0 ${hue})`];
+}
+
+/**
+ * Which label sits on which fill — and so, below, which way that fill's states move.
+ *
+ * One label serves all three status fills, which is why `onStatus` appears three times.
+ */
+export const FILL_LABELS: { fill: ThemeRole; label: ThemeRole }[] = [
+  { fill: 'accent', label: 'onAccent' },
+  { fill: 'danger', label: 'onStatus' },
+  { fill: 'success', label: 'onStatus' },
+  { fill: 'warning', label: 'onStatus' },
+];
+
+/**
+ * How far, and which way, one interaction state moves a fill — given the label that sits on it.
+ *
+ * Pure and exported for the same reason `deriveFill` is: the contrast suite has to know what the
+ * states will render as, and the last time it kept its own copy of a derivation the copy drifted
+ * and the suite went green over a theme the browser drew differently. The runtime feeds this
+ * colours read off computed style and the test feeds it colours resolved arithmetically; the
+ * decision itself is shared and cannot disagree.
+ *
+ * Away from the label: a label darker than its fill means the fill brightens under the pointer, a
+ * lighter one means it deepens. Equal lightness cannot arise in practice — a label matching its
+ * fill would be invisible at rest — and deepening is the safe default if it ever did.
+ */
+export function stateDelta(fill: Rgba, label: Rgba, state: 'hover' | 'active'): number {
+  const sign = rgbToOklch(label).l < rgbToOklch(fill).l ? 1 : -1;
+  return sign * Math.abs(STATE_STEPS.light[state]);
+}
+
+/**
+ * A hover moves the fill *away from its label*, whichever way that turns out to be.
+ *
+ * The rule is not "dark themes lighten". It is that a state which deepens the gap between a fill
+ * and the text on it gains contrast, and one that closes the gap loses it — precisely when you are
+ * pressing the control and most want to read it. Under the old scale-position scheme this happened
+ * by accident, because a fill and its label sat at opposite ends of the ramp, so "one step further
+ * along" was always away. Restating the steps as signed lightness deltas lost the accident, and
+ * polarity was standing in for it.
+ *
+ * Polarity is a bad proxy and the failure is not hypothetical either way round. Assume dark themes
+ * lighten and a dark theme with a mid accent — which gets a near-*white* label from the derivation
+ * — walks its hover into that label: `dark` measured Lc 29 and `black` Lc 33 doing exactly this.
+ * Assume everything deepens, which is what shipped instead, and a theme that *pins* a near-black
+ * label gets a hover that deepens toward it, which is the same mistake mirrored. That is what
+ * turned the selected nav tab the wrong way: `dark` pins a near-black label, so its hover has to
+ * lighten, and it was darkening.
+ *
+ * This was documented as needing a fixed point — the label is derived from the fill, so deriving
+ * the states from the label looks circular. It is not, because the order already resolves it: the
+ * fill settles first, the label is chosen against where it landed, and only then is there a
+ * direction to ask about. Running here, after `applyAutoContrast`, the label is a fact.
+ *
+ * Written per family rather than globally because the answer genuinely differs between them — a
+ * theme can pin a dark label on its accent and leave the derivation to give its danger fill a white
+ * one. Each variable falls back to the global pair, so a theme that never needed this is untouched
+ * and nothing has to be emitted for the common case.
+ *
+ * The magnitudes are unchanged; only the sign is decided here.
+ *
+ * Note `deriveFill` still probes with the deepening direction while it looks for a legible fill.
+ * That stays conservative on purpose: it runs before any label exists, and deepening can never walk
+ * into the light label it is most likely to be paired with. The cost is that it occasionally moves
+ * a fill further than a lightening state would have required.
+ */
+function applyStateDirection(root: HTMLElement): string[] {
+  const written: string[] = [];
+  if (typeof getComputedStyle !== 'function' || root?.nodeType !== 1 || !root.isConnected) return written;
+  const computed = getComputedStyle(root);
+
+  for (const { fill, label } of FILL_LABELS) {
+    const fillColor = parseColor(computed.getPropertyValue(roleVar(fill)).trim());
+    const labelColor = parseColor(computed.getPropertyValue(roleVar(label)).trim());
+    if (!fillColor || !labelColor) continue;
+
+    // The four fill roles are single lowercase words, so the role name *is* the variable suffix.
+    for (const state of ['hover', 'active'] as const) {
+      const prop = `--we-state-${state}-${fill}`;
+      root.style.setProperty(prop, String(stateDelta(fillColor, labelColor, state)));
+      written.push(prop);
+    }
+  }
+  return written;
 }
 
 function applyLegibleFills(root: HTMLElement, theme: ThemeOverrides): string[] {

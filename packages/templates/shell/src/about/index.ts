@@ -806,7 +806,19 @@ export const landingPageTemplate: TemplateSchema = {
                   },
                   {
                     type: 'we-text',
-                    props: { fontSize: '200', textAlign: 'center', color: 'on-accent-muted', lineHeight: '1.6' },
+                    /*
+                      `on-accent`, the same as the title above it, so size and weight carry the
+                      hierarchy and colour carries none — which is what this card always did.
+
+                      Not `on-accent-muted`, even though a caption under a heading is exactly what
+                      that role is for. It mutes by compositing the label at 0.8 alpha over the
+                      fill, so how much separation it buys depends on how far apart the two already
+                      are: a white label on this gradient drops Lc 72 → 55, a clear tier, while
+                      this theme's near-black label drops Lc 37 → 34, which is not a tier, it is
+                      rounding. Spending contrast to buy a distinction nobody can see is the wrong
+                      trade on a face that is already the low-contrast one.
+                    */
+                    props: { fontSize: '200', textAlign: 'center', color: 'on-accent', lineHeight: '1.6' },
                     children: [card.back.body],
                   },
                 ],

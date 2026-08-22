@@ -103,7 +103,15 @@ const BAR_RADIUS = 'var(--we-theme-control-radius, var(--we-radius-400))';
  * whatever a space happens to be showing, and a border alone against a busy background is not a
  * separation.
  */
-const BAR_SURFACE = { bg: 'surface-raised', border: '1px solid border', shadow: 'md' } as const;
+/*
+  Page-toned, like the module rail it sits beside — see the long note in ChromeRail.schema.ts.
+
+  The short version: `surface-raised` is a rung on the tonal ladder (page → card → popover), sized
+  so a popover clears the card it covers. This bar covers nothing, so taking that rung painted it 11
+  lightness points above its surroundings. Chrome separates by edge, which is what the border and
+  shadow below are for, and what this bar always did (`neutral-50`).
+*/
+const BAR_SURFACE = { bg: 'page', border: '1px solid border', shadow: 'md' } as const;
 
 /**
  * The bar's extension point, for chrome that belongs *in a call* rather than at a screen edge.

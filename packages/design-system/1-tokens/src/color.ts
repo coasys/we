@@ -63,23 +63,24 @@ export const RAMP = {
  * Published as variables rather than written into the roles as literals, because which way a state
  * should move is a property of the theme and `oklch(from …)` cannot branch on one.
  *
- * ## Why both polarities move the same way, for now
+ * ## These are magnitudes; the sign is decided at apply time
  *
- * The correct rule is *away from the label*: a state that deepens the fill gains contrast, and one
- * that moves toward the label loses it. Under the old scale-position scheme that happened by
- * accident — the accent and its label sat at opposite ends of the ramp, so "further along the ramp"
- * was always away — which is why the old dark theme's hover went lighter and the old light theme's
- * went darker, and both were right.
+ * The rule is *away from the label*: a state that widens the gap between a fill and the text on it
+ * gains contrast, and one that closes it loses contrast exactly while the control is being pressed.
+ * Under the old scale-position scheme that held by accident — a fill and its label sat at opposite
+ * ends of the ramp, so "one step further along" was always away — which is why the old dark theme's
+ * hover lightened and the old light theme's darkened, and both were right.
  *
- * Polarity is a *proxy* for that rule and it breaks where the label is not what polarity implies.
- * A dark theme with a mid-lightness accent gets a near-white label from the derivation, and moving
- * its states lighter then walks them into the label: `dark` measured Lc 29 and `black` Lc 33 on
- * their primary buttons with polarity-dependent steps.
+ * Polarity is a proxy for that rule and it fails in both directions. Assume dark themes lighten and
+ * a dark theme with a mid accent, which the derivation gives a near-*white* label, walks its hover
+ * into that label — `dark` measured Lc 29 and `black` Lc 33 doing this. Assume everything deepens
+ * and a theme that *pins* a near-black label deepens toward it instead: the same mistake mirrored,
+ * and what turned the `dark` preset's selected nav tab the wrong way.
  *
- * Doing it properly means deriving the label from the rest state first, then moving the states away
- * from *it*, then re-checking — which is tractable but is a cycle that wants care, since the label
- * is already derived from the fill. Until then both polarities deepen, which is never wrong and is
- * occasionally less lively than it could be in the dark.
+ * So the numbers below are the *distance* a state travels, and `applyStateDirection` in @we/themes
+ * decides the sign per fill family once the label is known. Both entries are therefore identical
+ * and the polarity key is kept only so a theme can still ask for different magnitudes light and
+ * dark. Only `Math.abs` of these is read.
  */
 export const STATE_STEPS = {
   light: { hover: -0.05, active: -0.09 },

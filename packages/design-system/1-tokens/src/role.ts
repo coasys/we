@@ -139,6 +139,12 @@ export const role = {
    * 0.8 is measured, not guessed: it holds Lc 55–61 across the gradient's ends and the flat accent —
    * a clear tier below `onAccent`'s 72–80, so the hierarchy reads, and clear of the 45 large/UI
    * floor everywhere. 0.7 falls to 47 on the gradient, which is too near the edge to spend.
+   *
+   * Know its one limitation before reaching for it: compositing buys separation in proportion to
+   * how far the label already is from the fill, so it works on a *light* label over a mid fill and
+   * barely registers on a dark one. The `dark` theme pins `onAccent` near-black to reproduce its
+   * pre-OKLCH look, and there this drops Lc 37 → 34 — not a tier, rounding. On a fill whose label
+   * is dark, carry the hierarchy with size and weight and leave both at `onAccent`.
    */
   onAccentMuted: 'oklch(from var(--we-role-on-accent) l c h / 0.8)',
   /** A de-emphasised accent — accent-tinted fills, selected rows, subtle highlights. */
@@ -168,8 +174,8 @@ export const role = {
    * lightness dragged the whole choice down to Lc 35. Tied to the fill, they move with it, including
    * when the fill is itself derived out of the middle of the ramp.
    */
-  accentHover: 'oklch(from var(--we-role-accent) calc(l + var(--we-state-hover)) c h)',
-  accentActive: 'oklch(from var(--we-role-accent) calc(l + var(--we-state-active)) c h)',
+  accentHover: 'oklch(from var(--we-role-accent) calc(l + var(--we-state-hover-accent, var(--we-state-hover))) c h)',
+  accentActive: 'oklch(from var(--we-role-accent) calc(l + var(--we-state-active-accent, var(--we-state-active))) c h)',
 
   /** Hover tint on a surface (menu items, list rows, ghost buttons). */
   surfaceHover: 'var(--we-color-neutral-100)',
@@ -245,12 +251,12 @@ export const role = {
    * Nobody has to set these. They exist so that pinning a fill moves its states with it, and so
    * that a theme *can* separate them if it wants to.
    */
-  dangerHover: 'oklch(from var(--we-role-danger) calc(l + var(--we-state-hover)) c h)',
-  dangerActive: 'oklch(from var(--we-role-danger) calc(l + var(--we-state-active)) c h)',
-  successHover: 'oklch(from var(--we-role-success) calc(l + var(--we-state-hover)) c h)',
-  successActive: 'oklch(from var(--we-role-success) calc(l + var(--we-state-active)) c h)',
-  warningHover: 'oklch(from var(--we-role-warning) calc(l + var(--we-state-hover)) c h)',
-  warningActive: 'oklch(from var(--we-role-warning) calc(l + var(--we-state-active)) c h)',
+  dangerHover: 'oklch(from var(--we-role-danger) calc(l + var(--we-state-hover-danger, var(--we-state-hover))) c h)',
+  dangerActive: 'oklch(from var(--we-role-danger) calc(l + var(--we-state-active-danger, var(--we-state-active))) c h)',
+  successHover: 'oklch(from var(--we-role-success) calc(l + var(--we-state-hover-success, var(--we-state-hover))) c h)',
+  successActive: 'oklch(from var(--we-role-success) calc(l + var(--we-state-active-success, var(--we-state-active))) c h)',
+  warningHover: 'oklch(from var(--we-role-warning) calc(l + var(--we-state-hover-warning, var(--we-state-hover))) c h)',
+  warningActive: 'oklch(from var(--we-role-warning) calc(l + var(--we-state-active-warning, var(--we-state-active))) c h)',
 
   /**
    * Text and icons on a status fill — the destructive button's label.

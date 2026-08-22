@@ -35,11 +35,13 @@ import { THEME_PRESETS, type ThemeName } from './presets';
 import {
   AUTO_CONTRAST,
   DERIVED_FILLS,
+  FILL_LABELS,
   deriveFill,
   deriveLegible,
   fillStateDeltas,
   labelCandidates,
   pickReadableForeground,
+  stateDelta,
 } from './themeStyles';
 
 const PAIRS: { fg: ThemeRole; bg: ThemeRole; level: ContrastLevel; what: string }[] = [
@@ -71,6 +73,30 @@ const PAIRS: { fg: ThemeRole; bg: ThemeRole; level: ContrastLevel; what: string 
   the tests that are supposed to be guarding it.
 */
 const HUE_DEFAULTS: Record<string, number> = color.hues;
+
+/**
+ * Pairs a theme states outright, below the floor, on purpose — recorded rather than exempted.
+ *
+ * `dark` reproduces WE's pre-OKLCH appearance, and that appearance put a **near-black label on a
+ * mid-tone fill**: `bg: 'primary-500', color: 'neutral-0'` in the button primitive, and the same
+ * for danger, success and warning. Measured with APCA those pairings are Lc 29 and Lc 37 against a
+ * UI floor of 45 — which is precisely why the auto-contrast pass picks white (Lc 80) when left to
+ * choose, and why this theme has to pin `onAccent` and `onStatus` to get its own look back.
+ *
+ * That is a real legibility cost and it is deliberate: the alternative is either a white label,
+ * which is not the theme, or an accent lightened to about L 0.78, which is a pastel and also not
+ * the theme. Both were measured before choosing.
+ *
+ * Keyed by theme and pair, and asserted as an **equality** rather than skipped. A skip would let
+ * these drift to anything at all; the recorded number means the suite still fails if a change makes
+ * them worse, and fails if a change makes them better without this note being updated — so the list
+ * cannot rot into a set of forgotten exemptions. Nothing else in the suite is relaxed: every other
+ * pair on `dark`, and every pair on every other theme, is held to the full threshold.
+ */
+const ACCEPTED_BELOW_FLOOR: Record<string, number> = {
+  'dark:a primary button label': 29,
+  'dark:a destructive button label': 37,
+};
 
 /** The lightness the CSS would compute for one step, given a theme's multiplier and subtractor. */
 function lightness(step: string, theme: ThemeOverrides): number {
@@ -142,7 +168,7 @@ function resolve(value: string, theme: ThemeOverrides): Rgba | null {
 // The delta is a literal for the elevation stack and a variable for the interaction states, since
 // which way a state moves depends on polarity and `oklch(from …)` cannot branch on it.
 const RELATIVE =
-  /^oklch\(from\s+var\(--we-role-([a-z-]+)\)\s+calc\(l\s*([+-])\s*(?:([\d.]+)|var\(--we-state-(hover|active)\))\)\s+c\s+h\)$/;
+  /^oklch\(from\s+var\(--we-role-([a-z-]+)\)\s+calc\(l\s*([+-])\s*(?:([\d.]+)|var\(--we-state-(hover|active)-([a-z]+),\s*var\(--we-state-(?:hover|active)\)\))\)\s+c\s+h\)$/;
 
 function roleColor(name: ThemeRole, theme: ThemeOverrides, seen = new Set<string>()): Rgba | null {
   /*
@@ -214,15 +240,31 @@ function roleColor(name: ThemeRole, theme: ThemeOverrides, seen = new Set<string
 
   const relative = RELATIVE.exec(value.trim());
   if (relative) {
-    const [, base, sign, amount, stateKey] = relative;
-    const delta = stateKey
-      ? STATE_STEPS[theme.polarity ?? 'light'][stateKey as 'hover' | 'active']
-      : (sign === '-' ? -1 : 1) * parseFloat(amount);
+    const [, base, sign, amount, stateKey, stateFamily] = relative;
     // A role defined in terms of itself would spin forever; a theme can do that by hand.
     if (seen.has(name)) return null;
     const camel = base.replace(/-([a-z])/g, (_, c: string) => c.toUpperCase()) as ThemeRole;
     const from = roleColor(camel, theme, new Set([...seen, name]));
     if (!from) return null;
+
+    /*
+      An interaction state moves away from the fill's own label, so resolving one means resolving
+      that label first — and calling the runtime's `stateDelta` rather than deciding here.
+
+      The label is `onAccent` for the accent and `onStatus` for all three status fills, which is
+      what FILL_LABELS says; reading it from there rather than restating the mapping means a fifth
+      fill added later is picked up by the suite without touching it. If the label cannot be
+      resolved the state is left where it is, which keeps a partial theme from failing every row.
+    */
+    let delta: number;
+    if (stateKey) {
+      const pairing = FILL_LABELS.find((entry) => entry.fill === stateFamily);
+      const label = pairing ? roleColor(pairing.label, theme, new Set([...seen, name])) : null;
+      if (!label) return null;
+      delta = stateDelta(from, label, stateKey as 'hover' | 'active');
+    } else {
+      delta = (sign === '-' ? -1 : 1) * parseFloat(amount);
+    }
     const { l, c, h } = rgbToOklch(from);
     const moved = Math.min(1, Math.max(0, l + delta));
     return { ...oklchToRgb(moved, c, h), a: from.a };
@@ -277,6 +319,17 @@ describe.each(Object.keys(THEME_PRESETS) as ThemeName[])('%s', (name) => {
     expect(bg, `could not resolve ${pair.bg}`).toBeTruthy();
 
     const lc = apcaContrast(fg!, bg!);
+    const accepted = ACCEPTED_BELOW_FLOOR[`${name}:${pair.what}`];
+    if (accepted !== undefined) {
+      // Held at the value that was signed off, not merely allowed to be low: a pin that drifts
+      // further down still fails, and one that improves fails too, so the number here cannot
+      // quietly stop describing the theme.
+      expect(
+        Math.round(lc),
+        `${name}: ${pair.what} is Lc ${lc.toFixed(0)}, recorded as Lc ${accepted} — see ACCEPTED_BELOW_FLOOR`,
+      ).toBe(accepted);
+      return;
+    }
     expect(
       Math.round(lc),
       `${name}: ${pair.what} is Lc ${lc.toFixed(0)}, needs Lc ${APCA_MINIMUM[pair.level]}`,
