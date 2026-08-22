@@ -1276,7 +1276,7 @@ a user-chosen swatch.
 | `text-muted` | Secondary text — captions, labels, metadata. |
 | `text-faint` | Tertiary text — placeholders, disabled labels, decorative icons. |
 | `surface-inverse` | A surface deliberately opposite to the page — a tooltip. Holds a fixed lightness, so it does *not* flip with the theme. |
-| `text-inverse` | Text on `surface-inverse`. **Not** for text on the accent — that is `accent-text`. |
+| `on-inverse` | Text or an icon **on top of** `surface-inverse` — a tooltip's own text. **Not** for text on the accent, which is `on-accent`. |
 | `border` | Default borders and dividers. |
 | `border-strong` | Emphasised separation. |
 | `accent` | An accent *fill* — a primary button, a selected disc. |
