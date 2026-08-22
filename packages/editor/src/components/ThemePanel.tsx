@@ -1,5 +1,12 @@
 import { CodeEditor, Column, Row } from '@we/components/solid';
-import { CONTRAST_MINIMUM, type ContrastLevel, contrastRatio, parseColor, tokenVar } from '@we/design-utils';
+import {
+  CONTRAST_MINIMUM,
+  type ContrastLevel,
+  contrastRatio,
+  parseColor,
+  relativeLuminance,
+  tokenVar,
+} from '@we/design-utils';
 import type { ThemeOverrides, ThemeRole } from '@we/schema-shared';
 import { roleVar, surfacesForPolarity, themeToStyle } from '@we/schema-shared';
 import type { JSX } from 'solid-js';
@@ -702,6 +709,34 @@ export function ThemePanel() {
     });
   });
 
+  /**
+   * The same elevation ordering the built-in themes are held to, applied to the theme on screen.
+   *
+   * The presets are covered by a unit test; a theme somebody builds here is not, and every wiring
+   * fix has a hole the same shape — an author can always pin the four surfaces by hand in the wrong
+   * direction, and nothing about the result announces itself. It does not look broken, it looks
+   * *flat*, and the natural conclusion is that the theme is not very good rather than that it is
+   * upside down.
+   *
+   * Sampled from the probe like the contrast check, so it judges what the theme resolves to rather
+   * than what it stores.
+   */
+  const elevationFailures = createMemo(() => {
+    const colors = roleColors();
+    const lum = (r: ThemeRole) => {
+      const c = parseColor(colors[r] ?? '');
+      return c ? relativeLuminance(c) : null;
+    };
+    const [page, surface, raised, sunken] = (['page', 'surface', 'surfaceRaised', 'surfaceSunken'] as const).map(lum);
+    if (page === null || surface === null || raised === null || sunken === null) return [];
+    const out: string[] = [];
+    // Equal is fine throughout — a flat design where separation comes from borders is a design.
+    if (surface < page) out.push('Cards sit below the page, so they read as holes rather than objects.');
+    if (raised < surface) out.push('Floating panels sit below the cards they float over.');
+    if (sunken > surface) out.push('Wells sit above the surface they are recessed into.');
+    return out;
+  });
+
   function setRole(role: ThemeRole, value: string | undefined) {
     themeStore.updateEditingOverrides({ roles: nextRoles(overrides().roles, role, value) });
     saveTheme();
@@ -1035,6 +1070,30 @@ export function ThemePanel() {
                     {(f) => (
                       <we-text fontSize="100" color="text-muted" lineHeight="1.4">
                         {f.what} — {f.ratio.toFixed(1)}:1, needs {f.required}:1
+                      </we-text>
+                    )}
+                  </For>
+                </Column>
+              </Show>
+
+              {/*
+                Elevation, beside contrast because it is the same kind of mistake: a relationship the
+                vocabulary declares, broken in a way the screen does not report. An upside-down stack
+                does not look broken, it looks flat — and flat reads as "this theme is not very good"
+                rather than "this theme is inverted".
+              */}
+              <Show when={elevationFailures().length}>
+                <Column gap="100" p="300" r="200" bg="warning-surface">
+                  <Row ay="center" gap="200">
+                    <we-icon name="stack" size="xs" color="warning-text" />
+                    <we-text fontSize="200" fontWeight="600" color="warning-text">
+                      Elevation is inverted
+                    </we-text>
+                  </Row>
+                  <For each={elevationFailures()}>
+                    {(f) => (
+                      <we-text fontSize="100" color="text-muted" lineHeight="1.4">
+                        {f}
                       </we-text>
                     )}
                   </For>
