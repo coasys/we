@@ -6,7 +6,9 @@ import {
   type ContrastLevel,
   contrastRatio,
   parseColor,
+  perceptualDistance,
   relativeLuminance,
+  simulateVision,
   tokenVar,
 } from '@we/design-utils';
 import type { ThemeOverrides, ThemeRole } from '@we/schema-shared';
@@ -765,6 +767,26 @@ export function ThemePanel() {
     return out;
   });
 
+  /**
+   * Whether this theme's danger and success read as one colour to a red-green viewer.
+   *
+   * Advice, not a failure. Red and green at the same lightness *are* the same colour to about one
+   * man in twelve, and that is true of every palette built on them — the app answers it with an icon
+   * per status rather than by moving the hues. But an author dragging `successHue` toward
+   * `dangerHue` is making it *worse* with no feedback at all, and that is worth saying.
+   */
+  const statusCollapse = createMemo(() => {
+    const colors = roleColors();
+    const danger = parseColor(colors.danger ?? '');
+    const success = parseColor(colors.success ?? '');
+    if (!danger || !success) return null;
+    const distance = perceptualDistance(
+      simulateVision(danger, 'deuteranopia'),
+      simulateVision(success, 'deuteranopia'),
+    );
+    return distance < 0.06 ? distance : null;
+  });
+
   function setRole(role: ThemeRole, value: string | undefined) {
     themeStore.updateEditingOverrides({ roles: nextRoles(overrides().roles, role, value) });
     saveTheme();
@@ -1116,6 +1138,22 @@ export function ThemePanel() {
                       </we-text>
                     )}
                   </For>
+                </Column>
+              </Show>
+
+              <Show when={statusCollapse() !== null}>
+                <Column gap="100" p="300" r="200" bg="surface-sunken">
+                  <Row ay="center" gap="200">
+                    <we-icon name="eye" size="xs" color="text-muted" />
+                    <we-text fontSize="200" fontWeight="600" color="text-muted">
+                      Danger and success read alike to a red-green viewer
+                    </we-text>
+                  </Row>
+                  <we-text fontSize="100" color="text-faint" lineHeight="1.4">
+                    True of most palettes built on red and green, and the app answers it with an icon per status — so
+                    this is worth knowing rather than fixing. Moving the two hues further apart, or setting them at
+                    different lightnesses, widens the gap if you want it wider.
+                  </we-text>
                 </Column>
               </Show>
 

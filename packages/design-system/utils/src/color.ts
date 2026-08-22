@@ -262,30 +262,62 @@ export const CONTRAST_MINIMUM: Record<ContrastLevel, number> = { body: 4.5, larg
  * Found by bisection rather than by formula: the sRGB boundary in OKLCH is a genuinely awkward
  * shape, and twenty halvings resolve it far finer than an 8-bit channel can show.
  */
-export function maxChromaFor(lightness: number, hue: number): number {
+export function maxChromaFor(lightness: number, hue: number, gamut: Gamut = 'srgb'): number {
   let lo = 0;
-  let hi = 0.4;
+  let hi = 0.5;
   for (let i = 0; i < 20; i++) {
     const mid = (lo + hi) / 2;
-    if (rawInGamut(lightness, mid, hue)) lo = mid;
+    if (rawInGamut(lightness, mid, hue, gamut)) lo = mid;
     else hi = mid;
   }
   return lo;
 }
 
-/** Whether oklch(l c h) lands inside sRGB without the clipping `oklchToRgb` applies. */
-function rawInGamut(l: number, c: number, h: number): boolean {
+/**
+ * The gamuts a display might have.
+ *
+ * `p3` is not a different colour *space* here — the ramp is OKLCH either way — only a different
+ * boundary for how much chroma is reachable. Display P3 holds roughly 25% more of it, and on a
+ * modern laptop or phone that is the difference between an accent that looks considered and one
+ * that looks slightly washed. sRGB stays the default and the fallback: nothing is *lost* on an
+ * older display, the ceiling is simply lower there.
+ */
+export type Gamut = 'srgb' | 'p3';
+
+/** Linear-light RGB → XYZ (D65), then XYZ → the target gamut's linear RGB. */
+const P3_FROM_XYZ = [
+  [2.4934969119, -0.9313836179, -0.4027107845],
+  [-0.8294889696, 1.7626640603, 0.023624686],
+  [0.0358458302, -0.0761723893, 0.956884524],
+];
+const XYZ_FROM_SRGB_LINEAR = [
+  [0.4123907993, 0.3575843394, 0.1804807884],
+  [0.212639006, 0.7151686788, 0.0721923154],
+  [0.0193308187, 0.1191947798, 0.9505321522],
+];
+
+/** Whether oklch(l c h) lands inside the given gamut, without the clipping `oklchToRgb` applies. */
+function rawInGamut(l: number, c: number, h: number, gamut: Gamut = 'srgb'): boolean {
   const rad = (h * Math.PI) / 180;
   const a = c * Math.cos(rad);
   const bb = c * Math.sin(rad);
   const L = (l + 0.3963377774 * a + 0.2158037573 * bb) ** 3;
   const M = (l - 0.1055613458 * a - 0.0638541728 * bb) ** 3;
   const S = (l - 0.0894841775 * a - 1.291485548 * bb) ** 3;
-  const channels = [
+  const linearSrgb = [
     4.0767416621 * L - 3.3077115913 * M + 0.2309699292 * S,
     -1.2684380046 * L + 2.6097574011 * M - 0.3413193965 * S,
     -0.0041960863 * L - 0.7034186147 * M + 1.707614701 * S,
   ];
+  // P3 shares sRGB's white point and transfer curve, so the boundary test is the same one taken
+  // through a wider set of primaries: sRGB linear → XYZ → P3 linear.
+  const channels =
+    gamut === 'srgb'
+      ? linearSrgb
+      : (() => {
+          const xyz = XYZ_FROM_SRGB_LINEAR.map((row) => row.reduce((sum, k, i) => sum + k * linearSrgb[i], 0));
+          return P3_FROM_XYZ.map((row) => row.reduce((sum, k, i) => sum + k * xyz[i], 0));
+        })();
   return channels.every((v) => v >= -0.001 && v <= 1.001);
 }
 
@@ -327,3 +359,76 @@ export function apcaContrast(text: Rgba, background: Rgba): number {
  * whole existing design has to clear, and a bar nothing passes gets turned off rather than met.
  */
 export const APCA_MINIMUM: Record<ContrastLevel, number> = { body: 60, large: 45, ui: 45 };
+
+/**
+ * The three common forms of inherited colour-vision deficiency.
+ *
+ * Together roughly 8% of men and 0.5% of women. Deuteranomaly is by far the most common, and it is
+ * the one that matters most here: it collapses exactly the red/green distinction that "danger" and
+ * "success" are built on.
+ */
+export type VisionDeficiency = 'protanopia' | 'deuteranopia' | 'tritanopia';
+
+/*
+  Viénot, Brettel and Mollon's LMS projections — the standard simulation.
+
+  A projection rather than a filter: the missing cone type means a whole plane of colours maps to
+  the same perceived colour, and these matrices are that collapse. Applied in linear light, which is
+  the only place it is meaningful.
+*/
+const LMS_FROM_LINEAR = [
+  [0.31399022, 0.63951294, 0.04649755],
+  [0.15537241, 0.75789446, 0.08670142],
+  [0.01775239, 0.10944209, 0.87256922],
+];
+const LINEAR_FROM_LMS = [
+  [5.47221206, -4.6419601, 0.16963708],
+  [-1.1252419, 2.29317094, -0.1678952],
+  [0.02980165, -0.19318073, 1.16364789],
+];
+const COLLAPSE: Record<VisionDeficiency, number[][]> = {
+  protanopia: [
+    [0, 1.05118294, -0.05116099],
+    [0, 1, 0],
+    [0, 0, 1],
+  ],
+  deuteranopia: [
+    [1, 0, 0],
+    [0.9513092, 0, 0.04866992],
+    [0, 0, 1],
+  ],
+  tritanopia: [
+    [1, 0, 0],
+    [0, 1, 0],
+    [-0.86744736, 1.86727089, 0],
+  ],
+};
+
+const apply = (m: number[][], v: number[]) => m.map((row) => row.reduce((sum, k, i) => sum + k * v[i], 0));
+
+/** What a colour looks like to someone with the given deficiency. */
+export function simulateVision(color: Rgba, deficiency: VisionDeficiency): Rgba {
+  const toLinear = (v: number) => (v / 255 <= 0.04045 ? v / 255 / 12.92 : ((v / 255 + 0.055) / 1.055) ** 2.4);
+  const toSrgb = (v: number) => {
+    const clamped = Math.min(1, Math.max(0, v));
+    return Math.round(255 * (clamped <= 0.0031308 ? clamped * 12.92 : 1.055 * clamped ** (1 / 2.4) - 0.055));
+  };
+  const linear = [toLinear(color.r), toLinear(color.g), toLinear(color.b)];
+  const seen = apply(LINEAR_FROM_LMS, apply(COLLAPSE[deficiency], apply(LMS_FROM_LINEAR, linear)));
+  return { r: toSrgb(seen[0]), g: toSrgb(seen[1]), b: toSrgb(seen[2]), a: color.a };
+}
+
+/**
+ * How far apart two colours are perceptually, as an OKLab distance.
+ *
+ * OKLab rather than plain RGB because the whole question is what someone *perceives*, and an RGB
+ * distance answers a different one — two colours can be far apart in channel values and land in the
+ * same place for a viewer.
+ */
+export function perceptualDistance(a: Rgba, b: Rgba): number {
+  const oa = rgbToOklch(a);
+  const ob = rgbToOklch(b);
+  const [ax, ay] = [oa.c * Math.cos((oa.h * Math.PI) / 180), oa.c * Math.sin((oa.h * Math.PI) / 180)];
+  const [bx, by] = [ob.c * Math.cos((ob.h * Math.PI) / 180), ob.c * Math.sin((ob.h * Math.PI) / 180)];
+  return Math.hypot(oa.l - ob.l, ax - bx, ay - by);
+}

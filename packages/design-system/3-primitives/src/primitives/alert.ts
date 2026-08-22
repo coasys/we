@@ -28,7 +28,15 @@ const VARIANT_DEFAULTS: Record<ComponentVariant, Partial<DesignSystemProps>> = {
   danger: { bg: 'danger-surface', color: 'danger-text' },
 };
 
-const VARIANT_ICONS: Record<ComponentVariant, string> = {
+/**
+ * One icon per variant, exported so the theme suite can assert it.
+ *
+ * This is what makes a status readable to someone who cannot tell red from green: WCAG 1.4.1 asks
+ * that colour never be the only visual means of conveying information, and for a palette built on
+ * red and green that redundancy is the whole answer — the colours themselves cannot be pulled apart
+ * without ceasing to be red and green.
+ */
+export const ALERT_VARIANT_ICONS: Record<ComponentVariant, string> = {
   neutral: 'info',
   primary: 'info',
   success: 'check-circle',
@@ -88,7 +96,7 @@ export default class Alert extends DesignSystemElement {
   }
 
   render() {
-    const icon = VARIANT_ICONS[this.variant];
+    const icon = ALERT_VARIANT_ICONS[this.variant];
     const border = VARIANT_BORDER[this.variant];
 
     return html`

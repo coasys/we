@@ -20,9 +20,11 @@ import {
   maxChromaFor,
   oklchToRgb,
   parseColor,
+  perceptualDistance,
   relativeLuminance,
   type Rgba,
   rgbToOklch,
+  simulateVision,
 } from '@we/design-utils';
 import type { ColorLightnessToken } from '@we/tokens';
 import { chromaTaper, color, RAMP, role } from '@we/tokens';
@@ -30,7 +32,14 @@ import { describe, expect, it } from 'vitest';
 
 import type { ThemeOverrides, ThemeRole } from './overrides';
 import { THEME_PRESETS, type ThemeName } from './presets';
-import { AUTO_CONTRAST, DERIVED_FILLS, deriveLegible, FILL_STATE_DELTAS, pickReadableForeground } from './themeStyles';
+import {
+  AUTO_CONTRAST,
+  DERIVED_FILLS,
+  deriveFill,
+  deriveLegible,
+  labelCandidates,
+  pickReadableForeground,
+} from './themeStyles';
 
 const PAIRS: { fg: ThemeRole; bg: ThemeRole; level: ContrastLevel; what: string }[] = [
   { fg: 'text', bg: 'page', level: 'body', what: 'body text on the page' },
@@ -139,39 +148,22 @@ function roleColor(name: ThemeRole, theme: ThemeOverrides, seen = new Set<string
     foreground rescues it. Where the middle falls depends on the theme's range, which is why two
     themes had to pin their way out before the derivation existed.
   */
+  /*
+    A fill that no label can sit on moves until one can.
+
+    Calls the runtime's own `deriveFill` rather than repeating its logic. This block used to be a
+    copy, and the copy drifted — it checked only the rest state and held chroma constant, so the
+    suite passed while the browser rendered something else. What is still resolved separately here
+    is the *colour*, which is inherent: the test computes it arithmetically and the runtime reads it
+    off computed style. The decision made from that colour is now shared.
+  */
   if (DERIVED_FILLS.includes(name) && !theme.roles?.[name] && !seen.has(name)) {
     const fill = resolve((role as Record<string, string>)[name], theme);
     if (fill) {
-      const ends = [parseColor('oklch(100% 0 0)'), parseColor('oklch(0% 0 0)')].filter((c): c is Rgba => !!c);
-      // Across the fill and both of its states, as the runtime does — a rest state that just
-      // clears is no use if the pressed state drags the label choice back under.
-      const best = (candidate: Rgba) => {
-        const { c: cc, h: hh, l: ll } = rgbToOklch(candidate);
-        const states = FILL_STATE_DELTAS.map((d) => ({
-          ...oklchToRgb(Math.min(1, Math.max(0, ll + d)), cc, hh),
-          a: candidate.a,
-        }));
-        return Math.max(...ends.map((e) => Math.min(...states.map((st) => apcaContrast(e, st)))));
-      };
-      if (best(fill) < APCA_MINIMUM.ui) {
-        const { c, h, l: start } = rgbToOklch(fill);
-        for (let step = 1; step <= 100; step++) {
-          // Chroma clamped to the new lightness, as the runtime does — carrying it upward clips,
-          // and a clipped colour's luminance hardly moves, so the search would find nothing.
-          const at = (v: number) => ({ l: v, c: Math.min(c, maxChromaFor(v, h)) });
-          const moved = [start + step * 0.01, start - step * 0.01]
-            .filter((v) => v >= 0 && v <= 1)
-            .find((v) => {
-              const { l, c: cc } = at(v);
-              return best({ ...oklchToRgb(l, cc, h), a: fill.a }) >= APCA_MINIMUM.ui;
-            });
-          if (moved !== undefined) {
-            const { l, c: cc } = at(moved);
-            return { ...oklchToRgb(l, cc, h), a: fill.a };
-          }
-        }
-      }
-      return fill;
+      const labels = labelCandidates(String(hueOf('neutral', theme)))
+        .map((css) => parseColor(css))
+        .filter((c): c is Rgba => !!c);
+      return deriveFill(fill, labels, APCA_MINIMUM.ui) ?? fill;
     }
   }
 
@@ -181,7 +173,7 @@ function roleColor(name: ThemeRole, theme: ThemeOverrides, seen = new Set<string
       .map((fill) => roleColor(fill, theme, new Set([...seen, name])))
       .filter((c): c is Rgba => !!c);
     if (fills.length) {
-      const ends = ['oklch(100% 0 0)', 'oklch(0% 0 0)'];
+      const ends = labelCandidates(String(hueOf('neutral', theme)));
       return parseColor(pickReadableForeground(ends, fills));
     }
   }
@@ -340,5 +332,44 @@ describe('pickReadableForeground', () => {
 
   it('falls back to the first candidate when none can be parsed', () => {
     expect(pickReadableForeground([LIGHT, 'not-a-colour'], fill('#000'))).toBe(LIGHT);
+  });
+});
+
+/**
+ * What colour-vision deficiency actually requires of a palette — and what it does not.
+ *
+ * The obvious check is that `danger` and `success` stay far apart under deuteranopia. It was
+ * written, and it failed every theme by a small margin, and the failure was correct: red and green
+ * at the same lightness *are* the same colour to about one man in twelve, because deuteranopia
+ * removes the axis they differ on. Putting them at different steps did not rescue it either — the
+ * fill derivation moves both toward wherever a label fits, which pulls them back together.
+ *
+ * That is a property of every design system with red/green status, not a defect in this one, and
+ * the standard says so: WCAG 1.4.1 asks that colour never be the *only* visual means of conveying
+ * information. The requirement is redundancy, not separability — which is a structural property
+ * this can check, where the colorimetric one could only be met by abandoning red and green.
+ *
+ * So the distance functions stay — the editor reports them to an author choosing hues — and the
+ * assertion that a status never travels as colour alone lives in `@we/primitives`, next to the
+ * component that provides the redundancy. It cannot live here: themes is layer 2 and primitives is
+ * layer 3, and importing upward would invert the dependency the layering exists to hold.
+ */
+describe('how close a theme\u2019s status colours come under colour-vision deficiency', () => {
+  /*
+    Kept as a *diagnostic* rather than an assertion: it records how close a theme's status colours
+    come, which is worth knowing when picking hues, without pretending the palette could be fixed by
+    moving them.
+  */
+  it('reports how close danger and success come under deuteranopia', () => {
+    const rows = (Object.keys(THEME_PRESETS) as ThemeName[]).map((name) => {
+      const theme = THEME_PRESETS[name].parameters as ThemeOverrides;
+      const danger = roleColor('danger', theme);
+      const success = roleColor('success', theme);
+      if (!danger || !success) return `${name}: unresolved`;
+      const d = perceptualDistance(simulateVision(danger, 'deuteranopia'), simulateVision(success, 'deuteranopia'));
+      return `${name}: ${d.toFixed(3)}`;
+    });
+    // Every theme resolves; the numbers themselves are informational.
+    expect(rows.every((r) => !r.endsWith('unresolved'))).toBe(true);
   });
 });

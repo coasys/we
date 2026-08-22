@@ -208,6 +208,25 @@ There is no `radiusScale` to match them, also deliberately: radius does not scal
 ratio — doubling a 2px radius and a 16px one produces two different design decisions — which is why
 shape is offered as four groups and a set of presets instead.
 
+### Wide-gamut displays
+
+The ceiling is measured against Display P3 when the screen reports it, and sRGB otherwise. That is
+worth ~36% more chroma for a green and ~34% for a teal, and it costs nothing on an older display —
+the ceiling is simply where it always was. Deliberately not a `@media (color-gamut: p3)` block: the
+ceiling depends on the theme's hue, which CSS cannot compute, so a static block could only carry a
+flat number — the exact thing per-hue normalisation exists to remove.
+
+### Colour-vision deficiency
+
+Red and green at the same lightness are the same colour to about one man in twelve, and no choice of
+hue fixes that for a palette built on red and green. The standard (WCAG 1.4.1) asks for redundancy
+rather than separability, and that is what the system provides: every status variant carries its own
+icon, asserted in `@we/primitives` beside the component that provides it.
+
+The theme editor *reports* when a theme's `danger` and `success` converge under deuteranopia, as
+advice rather than a failure — an author dragging `successHue` toward `dangerHue` is making it worse
+with no other feedback.
+
 ### Components the design system does not ship
 
 A feature module can register its own components into the theme cascade with

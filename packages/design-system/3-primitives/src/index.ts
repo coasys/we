@@ -59,3 +59,6 @@ export { buildCdnUrl, setIconResolver } from './primitives/icon';
  * squares off its surfaces reaches them too. See registerComponentCascade for when to call it.
  */
 export { type ComponentCascade, componentCascadeFor, registerComponentCascade } from './shared/helpers';
+
+/** One icon per status variant — the redundancy that carries status without colour. */
+export { ALERT_VARIANT_ICONS } from './primitives/alert';

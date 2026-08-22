@@ -11,6 +11,7 @@ import { join } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
+import { ALERT_VARIANT_ICONS } from './primitives/alert';
 import { componentCascadeFor, registerComponentCascade } from './shared/helpers';
 
 const SRC = join(__dirname);
@@ -101,5 +102,30 @@ describe('registerComponentCascade', () => {
 
   it('reports nothing for a name that was never registered', () => {
     expect(componentCascadeFor('acme-never-registered')).toBeUndefined();
+  });
+});
+
+/**
+ * A status never travels as colour alone.
+ *
+ * The check the theme suite cannot make, and the one that matters. Red and green at the same
+ * lightness *are* the same colour to about one man in twelve — deuteranopia removes the axis they
+ * differ on — and no amount of hue-picking fixes that for a palette built on red and green. WCAG
+ * 1.4.1 asks for redundancy rather than separability, and this is where the redundancy lives.
+ */
+describe('status variants carry a non-colour signal', () => {
+  const STATUSES = ['danger', 'success', 'warning'] as const;
+
+  it('gives each status its own icon', () => {
+    // The three that mean something, not all five: `neutral` and `primary` share `info` on purpose —
+    // they are informational rather than status, and nothing depends on telling them apart.
+    const icons = STATUSES.map((s) => ALERT_VARIANT_ICONS[s]);
+    expect(new Set(icons).size, 'two statuses share an icon, so colour is all that separates them').toBe(icons.length);
+  });
+
+  it('leaves none of them relying on colour', () => {
+    for (const variant of STATUSES) {
+      expect(ALERT_VARIANT_ICONS[variant], `${variant} has no icon`).toBeTruthy();
+    }
   });
 });
