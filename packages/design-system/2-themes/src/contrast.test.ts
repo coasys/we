@@ -21,7 +21,8 @@ import {
   type Rgba,
   rgbToOklch,
 } from '@we/design-utils';
-import { color, role } from '@we/tokens';
+import type { ColorLightnessToken } from '@we/tokens';
+import { CHROMA_CEILING, CHROMA_PER_SATURATION, chromaTaper, color, role } from '@we/tokens';
 import { describe, expect, it } from 'vitest';
 
 import type { ThemeOverrides, ThemeRole } from './overrides';
@@ -60,7 +61,7 @@ function hueOf(family: string, theme: ThemeOverrides): number {
 }
 
 function saturationOf(family: string, theme: ThemeOverrides): number {
-  return parseFloat((family === 'neutral' ? theme.neutralSaturation : theme.saturation) ?? '50%');
+  return (family === 'neutral' ? theme.neutralSaturation : theme.saturation) ?? 50;
 }
 
 /** Resolve a role's value — a token reference, a pinned lightness, or a literal — to RGB. */
@@ -68,17 +69,35 @@ function resolve(value: string, theme: ThemeOverrides): Rgba | null {
   const token = /^var\(--we-color-([a-z]+)-(\d+)\)$/.exec(value.trim());
   if (token) {
     const [, family, step] = token;
-    return parseColor(`hsl(${hueOf(family, theme)} ${saturationOf(family, theme)}% ${lightness(step, theme)}%)`);
+    // The same expression the generated CSS builds: a step's lightness, the theme's saturation
+    // scaled by that step's chroma taper, and the family's hue.
+    const chroma =
+      Math.min(saturationOf(family, theme) * CHROMA_PER_SATURATION, CHROMA_CEILING) *
+      chromaTaper(step as ColorLightnessToken);
+    return parseColor(`oklch(${lightness(step, theme)}% ${chroma.toFixed(4)} ${hueOf(family, theme)})`);
   }
-  const pinned = /^hsl\(var\(--we-color-([a-z]+)-hue\)\s+var\([^)]+\)\s+([\d.]+)%\s*(?:\/\s*([\d.%]+))?\)$/.exec(
+  // A pin at an exact lightness: `oklch(13% calc(var(--we-color-neutral-saturation) * k) var(…hue))`
+  /*
+    A pin at an exact lightness, e.g. `oklch(13% calc(min(var(--we-…-saturation) * k, ceil) * t) var(--we-…-hue))`.
+
+    The chroma is recomputed rather than parsed out of the string. Everything inside that `calc` is
+    derivable from the lightness — it is the same taper the ramp applies — so reading it back would
+    only be re-deriving it through a regex that has to be kept in step with the generator. A bare
+    number is used as-is: that is the form at the very ends, where the taper reaches zero.
+  */
+  const pinned = /^oklch\(([\d.]+)%\s+(.+?)\s+var\(--we-color-([a-z]+)-hue\)\s*(?:\/\s*([\d.%]+))?\)$/.exec(
     value.trim(),
   );
   if (pinned) {
-    const [, family, l, alpha] = pinned;
-    return parseColor(
-      `hsl(${hueOf(family, theme)} ${saturationOf(family, theme)}% ${l}%${alpha ? ` / ${alpha}` : ''})`,
-    );
+    const [, l, chromaExpr, hueFamily, alpha] = pinned;
+    const lightnessFraction = parseFloat(l) / 100;
+    const taper = 2 * Math.min(lightnessFraction, 1 - lightnessFraction);
+    const chroma = /^[\d.]+$/.test(chromaExpr)
+      ? parseFloat(chromaExpr)
+      : Math.min(saturationOf('neutral', theme) * CHROMA_PER_SATURATION, CHROMA_CEILING) * taper;
+    return parseColor(`oklch(${l}% ${chroma.toFixed(4)} ${hueOf(hueFamily, theme)}${alpha ? ` / ${alpha}` : ''})`);
   }
+
   return parseColor(value);
 }
 

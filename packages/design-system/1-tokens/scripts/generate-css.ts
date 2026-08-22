@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import type { animation as animationTokens } from '../src/animation.js';
 import type { border as borderTokens } from '../src/border.js';
 import type { color as colorTokens } from '../src/color.js';
+import { CHROMA_CEILING, CHROMA_PER_SATURATION, chromaTaper } from '../src/color.js';
 import type { component as componentTokens } from '../src/component.js';
 import type { font as fontTokens } from '../src/font.js';
 import type { layout as layoutTokens } from '../src/layout.js';
@@ -163,7 +164,18 @@ export function generateColorCSS(color: typeof colorTokens) {
         .map((lightnessKey) => {
           const saturationVar =
             type === 'neutral' ? 'var(--we-color-neutral-saturation)' : 'var(--we-color-saturation)';
-          return `  --we-color-${type}-${lightnessKey}: hsl(var(--we-color-${type}-hue) ${saturationVar} var(--we-color-lightness-${lightnessKey}));`;
+          /*
+            The chroma taper is a literal, not a var().
+
+            It has to be the same whichever way the ramp runs — it describes how much colour a step
+            at *that position* can carry before leaving sRGB — and a taper written in CSS would have
+            to read the post-inversion lightness, which flips it. Baking it here also keeps the
+            expression to one multiply, where the CSS form would need a `min()` over a percentage
+            and a division that `calc()` does not allow.
+          */
+          const taper = chromaTaper(lightnessKey as Parameters<typeof chromaTaper>[0]);
+          const chroma = `calc(min(${saturationVar} * ${CHROMA_PER_SATURATION}, ${CHROMA_CEILING}) * ${taper})`;
+          return `  --we-color-${type}-${lightnessKey}: oklch(var(--we-color-lightness-${lightnessKey}) ${chroma} var(--we-color-${type}-hue));`;
         })
         .join('\n');
 
@@ -190,8 +202,8 @@ ${lightnessVars}
 ${colorPalettes}
 
   /* Base Colors */
-  --we-color-white: hsl(var(--we-color-neutral-hue) var(--we-color-neutral-saturation) var(--we-color-lightness-0));
-  --we-color-black: hsl(var(--we-color-neutral-hue) var(--we-color-neutral-saturation) var(--we-color-lightness-1000));
+  --we-color-white: oklch(var(--we-color-lightness-0) 0 var(--we-color-neutral-hue));
+  --we-color-black: oklch(var(--we-color-lightness-1000) 0 var(--we-color-neutral-hue));
 
   /* Semantic Roles — intent over scale position. Defaults are parametric expressions
      so every theme keeps working untouched; themes may pin individual roles
@@ -203,7 +215,7 @@ ${roleVars}
   --we-focus-outline: 0 0 0 2px var(--we-color-focus);
 
   /* Gradient */
-  --we-gradient-primary: linear-gradient(135deg, hsl(calc(var(--we-color-primary-hue) - 25) var(--we-color-saturation) var(--we-color-lightness-500)) 0%, hsl(calc(var(--we-color-primary-hue) + 25) var(--we-color-saturation) var(--we-color-lightness-500)) 100%);
+  --we-gradient-primary: linear-gradient(135deg, oklch(var(--we-color-lightness-500) ${GRADIENT_CHROMA} calc(var(--we-color-primary-hue) - 25)) 0%, oklch(var(--we-color-lightness-500) ${GRADIENT_CHROMA} calc(var(--we-color-primary-hue) + 25)) 100%);
 }
 
 @supports not (color: oklch(from red calc(l + 0.1) c h)) {
@@ -260,6 +272,8 @@ ${roleFallbackVars}
 function camelToKebab(str: string): string {
   return str.replace(/[A-Z]/g, (m) => `-${m.toLowerCase()}`);
 }
+
+const GRADIENT_CHROMA = `calc(min(var(--we-color-saturation) * 0.0035, 0.18) * 0.8)`;
 
 const roleVars = Object.entries(roleTokens)
   .map(([key, value]) => `  --we-role-${camelToKebab(key)}: ${value};`)

@@ -482,11 +482,26 @@ export function ThemePanel() {
     );
   }
 
-  function percentSlider(label: string, key: keyof ThemeOverrides, min: number, max: number, defaultVal: number) {
-    const raw = () => overrides()[key] as string | undefined;
+  /**
+   * A 0–N slider over a theme key, which may be stored as a percentage string or a plain number.
+   *
+   * Both spellings exist on purpose. `subtractor` is a lightness and stays a percentage, because
+   * that is what it is; `saturation` became a plain number when the ramp moved to OKLCH, where it
+   * scales an absolute chroma rather than expressing a proportion. `unit` says which to write back,
+   * so the slider itself does not have to know why.
+   */
+  function percentSlider(
+    label: string,
+    key: keyof ThemeOverrides,
+    min: number,
+    max: number,
+    defaultVal: number,
+    unit: '%' | '' = '%',
+  ) {
+    const raw = () => overrides()[key] as string | number | undefined;
     const numVal = () => {
       const r = raw();
-      return r !== undefined ? parseFloat(r) : defaultVal;
+      return r !== undefined ? parseFloat(String(r)) : defaultVal;
     };
     return (
       <Row ay="center" gap="300">
@@ -499,7 +514,7 @@ export function ThemePanel() {
           min={min}
           max={max}
           step={1}
-          on:input={(e: CustomEvent) => setOverride(key, `${e.detail}%`)}
+          on:input={(e: CustomEvent) => setOverride(key, unit === '%' ? `${e.detail}%` : Number(e.detail))}
           on:change={() => saveTheme()}
         />
         <we-text minWidth="36px" fontSize="200" color="text-muted" textAlign="right">
@@ -1034,8 +1049,8 @@ export function ThemePanel() {
                 <we-text fontSize="200" color="text-faint">
                   Saturation
                 </we-text>
-                {percentSlider('Colors', 'saturation', 0, 100, 50)}
-                {percentSlider('Neutrals', 'neutralSaturation', 0, 100, 20)}
+                {percentSlider('Colors', 'saturation', 0, 100, 50, '')}
+                {percentSlider('Neutrals', 'neutralSaturation', 0, 100, 20, '')}
               </Column>
               <Column gap="200">
                 <we-text fontSize="200" color="text-faint">

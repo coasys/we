@@ -232,7 +232,7 @@ export function schemaMutationActions(
     if (dynamicArea.theme) {
       delete dynamicArea.theme;
     } else {
-      dynamicArea.theme = { primaryHue: 280, saturation: '80%' };
+      dynamicArea.theme = { primaryHue: 312, saturation: 80 };
     }
     applyUpdate(newSchema);
   }

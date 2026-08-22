@@ -7,115 +7,115 @@ exports[`token CSS generation > color.css — hues, lightness ramp, palettes, ro
   /* Color System Configuration */
   --we-color-multiplier: 1;
   --we-color-subtractor: 0%;
-  --we-color-saturation: 60%;
-  --we-color-neutral-saturation: 10%;
+  --we-color-saturation: 60;
+  --we-color-neutral-saturation: 10;
 
   /* Color Hues */
   --we-color-neutral-hue: var(--we-color-primary-hue);
-  --we-color-primary-hue: 250;
-  --we-color-success-hue: 130;
-  --we-color-warning-hue: 45;
-  --we-color-danger-hue: 350;
+  --we-color-primary-hue: 281;
+  --we-color-success-hue: 145;
+  --we-color-warning-hue: 90;
+  --we-color-danger-hue: 17;
 
   /* Lightness Scale */
   --we-color-lightness-0: calc((100% - var(--we-color-subtractor)) * var(--we-color-multiplier));
-  --we-color-lightness-25: calc((97.5% - var(--we-color-subtractor)) * var(--we-color-multiplier));
-  --we-color-lightness-50: calc((95% - var(--we-color-subtractor)) * var(--we-color-multiplier));
-  --we-color-lightness-75: calc((92.5% - var(--we-color-subtractor)) * var(--we-color-multiplier));
-  --we-color-lightness-100: calc((90% - var(--we-color-subtractor)) * var(--we-color-multiplier));
-  --we-color-lightness-200: calc((80% - var(--we-color-subtractor)) * var(--we-color-multiplier));
-  --we-color-lightness-300: calc((70% - var(--we-color-subtractor)) * var(--we-color-multiplier));
-  --we-color-lightness-400: calc((60% - var(--we-color-subtractor)) * var(--we-color-multiplier));
-  --we-color-lightness-500: calc((50% - var(--we-color-subtractor)) * var(--we-color-multiplier));
-  --we-color-lightness-600: calc((40% - var(--we-color-subtractor)) * var(--we-color-multiplier));
-  --we-color-lightness-700: calc((30% - var(--we-color-subtractor)) * var(--we-color-multiplier));
-  --we-color-lightness-800: calc((20% - var(--we-color-subtractor)) * var(--we-color-multiplier));
-  --we-color-lightness-900: calc((10% - var(--we-color-subtractor)) * var(--we-color-multiplier));
+  --we-color-lightness-25: calc((98% - var(--we-color-subtractor)) * var(--we-color-multiplier));
+  --we-color-lightness-50: calc((96% - var(--we-color-subtractor)) * var(--we-color-multiplier));
+  --we-color-lightness-75: calc((94.5% - var(--we-color-subtractor)) * var(--we-color-multiplier));
+  --we-color-lightness-100: calc((92.5% - var(--we-color-subtractor)) * var(--we-color-multiplier));
+  --we-color-lightness-200: calc((84.5% - var(--we-color-subtractor)) * var(--we-color-multiplier));
+  --we-color-lightness-300: calc((76.5% - var(--we-color-subtractor)) * var(--we-color-multiplier));
+  --we-color-lightness-400: calc((68.5% - var(--we-color-subtractor)) * var(--we-color-multiplier));
+  --we-color-lightness-500: calc((60% - var(--we-color-subtractor)) * var(--we-color-multiplier));
+  --we-color-lightness-600: calc((51% - var(--we-color-subtractor)) * var(--we-color-multiplier));
+  --we-color-lightness-700: calc((42% - var(--we-color-subtractor)) * var(--we-color-multiplier));
+  --we-color-lightness-800: calc((32% - var(--we-color-subtractor)) * var(--we-color-multiplier));
+  --we-color-lightness-900: calc((21.5% - var(--we-color-subtractor)) * var(--we-color-multiplier));
   --we-color-lightness-1000: calc((0% - var(--we-color-subtractor)) * var(--we-color-multiplier));
 
   /* Neutral Colors */
-  --we-color-neutral-0: hsl(var(--we-color-neutral-hue) var(--we-color-neutral-saturation) var(--we-color-lightness-0));
-  --we-color-neutral-25: hsl(var(--we-color-neutral-hue) var(--we-color-neutral-saturation) var(--we-color-lightness-25));
-  --we-color-neutral-50: hsl(var(--we-color-neutral-hue) var(--we-color-neutral-saturation) var(--we-color-lightness-50));
-  --we-color-neutral-75: hsl(var(--we-color-neutral-hue) var(--we-color-neutral-saturation) var(--we-color-lightness-75));
-  --we-color-neutral-100: hsl(var(--we-color-neutral-hue) var(--we-color-neutral-saturation) var(--we-color-lightness-100));
-  --we-color-neutral-200: hsl(var(--we-color-neutral-hue) var(--we-color-neutral-saturation) var(--we-color-lightness-200));
-  --we-color-neutral-300: hsl(var(--we-color-neutral-hue) var(--we-color-neutral-saturation) var(--we-color-lightness-300));
-  --we-color-neutral-400: hsl(var(--we-color-neutral-hue) var(--we-color-neutral-saturation) var(--we-color-lightness-400));
-  --we-color-neutral-500: hsl(var(--we-color-neutral-hue) var(--we-color-neutral-saturation) var(--we-color-lightness-500));
-  --we-color-neutral-600: hsl(var(--we-color-neutral-hue) var(--we-color-neutral-saturation) var(--we-color-lightness-600));
-  --we-color-neutral-700: hsl(var(--we-color-neutral-hue) var(--we-color-neutral-saturation) var(--we-color-lightness-700));
-  --we-color-neutral-800: hsl(var(--we-color-neutral-hue) var(--we-color-neutral-saturation) var(--we-color-lightness-800));
-  --we-color-neutral-900: hsl(var(--we-color-neutral-hue) var(--we-color-neutral-saturation) var(--we-color-lightness-900));
-  --we-color-neutral-1000: hsl(var(--we-color-neutral-hue) var(--we-color-neutral-saturation) var(--we-color-lightness-1000));
+  --we-color-neutral-0: oklch(var(--we-color-lightness-0) calc(min(var(--we-color-neutral-saturation) * 0.0035, 0.18) * 0) var(--we-color-neutral-hue));
+  --we-color-neutral-25: oklch(var(--we-color-lightness-25) calc(min(var(--we-color-neutral-saturation) * 0.0035, 0.18) * 0.04) var(--we-color-neutral-hue));
+  --we-color-neutral-50: oklch(var(--we-color-lightness-50) calc(min(var(--we-color-neutral-saturation) * 0.0035, 0.18) * 0.08) var(--we-color-neutral-hue));
+  --we-color-neutral-75: oklch(var(--we-color-lightness-75) calc(min(var(--we-color-neutral-saturation) * 0.0035, 0.18) * 0.11) var(--we-color-neutral-hue));
+  --we-color-neutral-100: oklch(var(--we-color-lightness-100) calc(min(var(--we-color-neutral-saturation) * 0.0035, 0.18) * 0.15) var(--we-color-neutral-hue));
+  --we-color-neutral-200: oklch(var(--we-color-lightness-200) calc(min(var(--we-color-neutral-saturation) * 0.0035, 0.18) * 0.31) var(--we-color-neutral-hue));
+  --we-color-neutral-300: oklch(var(--we-color-lightness-300) calc(min(var(--we-color-neutral-saturation) * 0.0035, 0.18) * 0.47) var(--we-color-neutral-hue));
+  --we-color-neutral-400: oklch(var(--we-color-lightness-400) calc(min(var(--we-color-neutral-saturation) * 0.0035, 0.18) * 0.63) var(--we-color-neutral-hue));
+  --we-color-neutral-500: oklch(var(--we-color-lightness-500) calc(min(var(--we-color-neutral-saturation) * 0.0035, 0.18) * 0.8) var(--we-color-neutral-hue));
+  --we-color-neutral-600: oklch(var(--we-color-lightness-600) calc(min(var(--we-color-neutral-saturation) * 0.0035, 0.18) * 0.98) var(--we-color-neutral-hue));
+  --we-color-neutral-700: oklch(var(--we-color-lightness-700) calc(min(var(--we-color-neutral-saturation) * 0.0035, 0.18) * 0.84) var(--we-color-neutral-hue));
+  --we-color-neutral-800: oklch(var(--we-color-lightness-800) calc(min(var(--we-color-neutral-saturation) * 0.0035, 0.18) * 0.64) var(--we-color-neutral-hue));
+  --we-color-neutral-900: oklch(var(--we-color-lightness-900) calc(min(var(--we-color-neutral-saturation) * 0.0035, 0.18) * 0.43) var(--we-color-neutral-hue));
+  --we-color-neutral-1000: oklch(var(--we-color-lightness-1000) calc(min(var(--we-color-neutral-saturation) * 0.0035, 0.18) * 0) var(--we-color-neutral-hue));
 
   /* Primary Colors */
-  --we-color-primary-0: hsl(var(--we-color-primary-hue) var(--we-color-saturation) var(--we-color-lightness-0));
-  --we-color-primary-25: hsl(var(--we-color-primary-hue) var(--we-color-saturation) var(--we-color-lightness-25));
-  --we-color-primary-50: hsl(var(--we-color-primary-hue) var(--we-color-saturation) var(--we-color-lightness-50));
-  --we-color-primary-75: hsl(var(--we-color-primary-hue) var(--we-color-saturation) var(--we-color-lightness-75));
-  --we-color-primary-100: hsl(var(--we-color-primary-hue) var(--we-color-saturation) var(--we-color-lightness-100));
-  --we-color-primary-200: hsl(var(--we-color-primary-hue) var(--we-color-saturation) var(--we-color-lightness-200));
-  --we-color-primary-300: hsl(var(--we-color-primary-hue) var(--we-color-saturation) var(--we-color-lightness-300));
-  --we-color-primary-400: hsl(var(--we-color-primary-hue) var(--we-color-saturation) var(--we-color-lightness-400));
-  --we-color-primary-500: hsl(var(--we-color-primary-hue) var(--we-color-saturation) var(--we-color-lightness-500));
-  --we-color-primary-600: hsl(var(--we-color-primary-hue) var(--we-color-saturation) var(--we-color-lightness-600));
-  --we-color-primary-700: hsl(var(--we-color-primary-hue) var(--we-color-saturation) var(--we-color-lightness-700));
-  --we-color-primary-800: hsl(var(--we-color-primary-hue) var(--we-color-saturation) var(--we-color-lightness-800));
-  --we-color-primary-900: hsl(var(--we-color-primary-hue) var(--we-color-saturation) var(--we-color-lightness-900));
-  --we-color-primary-1000: hsl(var(--we-color-primary-hue) var(--we-color-saturation) var(--we-color-lightness-1000));
+  --we-color-primary-0: oklch(var(--we-color-lightness-0) calc(min(var(--we-color-saturation) * 0.0035, 0.18) * 0) var(--we-color-primary-hue));
+  --we-color-primary-25: oklch(var(--we-color-lightness-25) calc(min(var(--we-color-saturation) * 0.0035, 0.18) * 0.04) var(--we-color-primary-hue));
+  --we-color-primary-50: oklch(var(--we-color-lightness-50) calc(min(var(--we-color-saturation) * 0.0035, 0.18) * 0.08) var(--we-color-primary-hue));
+  --we-color-primary-75: oklch(var(--we-color-lightness-75) calc(min(var(--we-color-saturation) * 0.0035, 0.18) * 0.11) var(--we-color-primary-hue));
+  --we-color-primary-100: oklch(var(--we-color-lightness-100) calc(min(var(--we-color-saturation) * 0.0035, 0.18) * 0.15) var(--we-color-primary-hue));
+  --we-color-primary-200: oklch(var(--we-color-lightness-200) calc(min(var(--we-color-saturation) * 0.0035, 0.18) * 0.31) var(--we-color-primary-hue));
+  --we-color-primary-300: oklch(var(--we-color-lightness-300) calc(min(var(--we-color-saturation) * 0.0035, 0.18) * 0.47) var(--we-color-primary-hue));
+  --we-color-primary-400: oklch(var(--we-color-lightness-400) calc(min(var(--we-color-saturation) * 0.0035, 0.18) * 0.63) var(--we-color-primary-hue));
+  --we-color-primary-500: oklch(var(--we-color-lightness-500) calc(min(var(--we-color-saturation) * 0.0035, 0.18) * 0.8) var(--we-color-primary-hue));
+  --we-color-primary-600: oklch(var(--we-color-lightness-600) calc(min(var(--we-color-saturation) * 0.0035, 0.18) * 0.98) var(--we-color-primary-hue));
+  --we-color-primary-700: oklch(var(--we-color-lightness-700) calc(min(var(--we-color-saturation) * 0.0035, 0.18) * 0.84) var(--we-color-primary-hue));
+  --we-color-primary-800: oklch(var(--we-color-lightness-800) calc(min(var(--we-color-saturation) * 0.0035, 0.18) * 0.64) var(--we-color-primary-hue));
+  --we-color-primary-900: oklch(var(--we-color-lightness-900) calc(min(var(--we-color-saturation) * 0.0035, 0.18) * 0.43) var(--we-color-primary-hue));
+  --we-color-primary-1000: oklch(var(--we-color-lightness-1000) calc(min(var(--we-color-saturation) * 0.0035, 0.18) * 0) var(--we-color-primary-hue));
 
   /* Success Colors */
-  --we-color-success-0: hsl(var(--we-color-success-hue) var(--we-color-saturation) var(--we-color-lightness-0));
-  --we-color-success-25: hsl(var(--we-color-success-hue) var(--we-color-saturation) var(--we-color-lightness-25));
-  --we-color-success-50: hsl(var(--we-color-success-hue) var(--we-color-saturation) var(--we-color-lightness-50));
-  --we-color-success-75: hsl(var(--we-color-success-hue) var(--we-color-saturation) var(--we-color-lightness-75));
-  --we-color-success-100: hsl(var(--we-color-success-hue) var(--we-color-saturation) var(--we-color-lightness-100));
-  --we-color-success-200: hsl(var(--we-color-success-hue) var(--we-color-saturation) var(--we-color-lightness-200));
-  --we-color-success-300: hsl(var(--we-color-success-hue) var(--we-color-saturation) var(--we-color-lightness-300));
-  --we-color-success-400: hsl(var(--we-color-success-hue) var(--we-color-saturation) var(--we-color-lightness-400));
-  --we-color-success-500: hsl(var(--we-color-success-hue) var(--we-color-saturation) var(--we-color-lightness-500));
-  --we-color-success-600: hsl(var(--we-color-success-hue) var(--we-color-saturation) var(--we-color-lightness-600));
-  --we-color-success-700: hsl(var(--we-color-success-hue) var(--we-color-saturation) var(--we-color-lightness-700));
-  --we-color-success-800: hsl(var(--we-color-success-hue) var(--we-color-saturation) var(--we-color-lightness-800));
-  --we-color-success-900: hsl(var(--we-color-success-hue) var(--we-color-saturation) var(--we-color-lightness-900));
-  --we-color-success-1000: hsl(var(--we-color-success-hue) var(--we-color-saturation) var(--we-color-lightness-1000));
+  --we-color-success-0: oklch(var(--we-color-lightness-0) calc(min(var(--we-color-saturation) * 0.0035, 0.18) * 0) var(--we-color-success-hue));
+  --we-color-success-25: oklch(var(--we-color-lightness-25) calc(min(var(--we-color-saturation) * 0.0035, 0.18) * 0.04) var(--we-color-success-hue));
+  --we-color-success-50: oklch(var(--we-color-lightness-50) calc(min(var(--we-color-saturation) * 0.0035, 0.18) * 0.08) var(--we-color-success-hue));
+  --we-color-success-75: oklch(var(--we-color-lightness-75) calc(min(var(--we-color-saturation) * 0.0035, 0.18) * 0.11) var(--we-color-success-hue));
+  --we-color-success-100: oklch(var(--we-color-lightness-100) calc(min(var(--we-color-saturation) * 0.0035, 0.18) * 0.15) var(--we-color-success-hue));
+  --we-color-success-200: oklch(var(--we-color-lightness-200) calc(min(var(--we-color-saturation) * 0.0035, 0.18) * 0.31) var(--we-color-success-hue));
+  --we-color-success-300: oklch(var(--we-color-lightness-300) calc(min(var(--we-color-saturation) * 0.0035, 0.18) * 0.47) var(--we-color-success-hue));
+  --we-color-success-400: oklch(var(--we-color-lightness-400) calc(min(var(--we-color-saturation) * 0.0035, 0.18) * 0.63) var(--we-color-success-hue));
+  --we-color-success-500: oklch(var(--we-color-lightness-500) calc(min(var(--we-color-saturation) * 0.0035, 0.18) * 0.8) var(--we-color-success-hue));
+  --we-color-success-600: oklch(var(--we-color-lightness-600) calc(min(var(--we-color-saturation) * 0.0035, 0.18) * 0.98) var(--we-color-success-hue));
+  --we-color-success-700: oklch(var(--we-color-lightness-700) calc(min(var(--we-color-saturation) * 0.0035, 0.18) * 0.84) var(--we-color-success-hue));
+  --we-color-success-800: oklch(var(--we-color-lightness-800) calc(min(var(--we-color-saturation) * 0.0035, 0.18) * 0.64) var(--we-color-success-hue));
+  --we-color-success-900: oklch(var(--we-color-lightness-900) calc(min(var(--we-color-saturation) * 0.0035, 0.18) * 0.43) var(--we-color-success-hue));
+  --we-color-success-1000: oklch(var(--we-color-lightness-1000) calc(min(var(--we-color-saturation) * 0.0035, 0.18) * 0) var(--we-color-success-hue));
 
   /* Warning Colors */
-  --we-color-warning-0: hsl(var(--we-color-warning-hue) var(--we-color-saturation) var(--we-color-lightness-0));
-  --we-color-warning-25: hsl(var(--we-color-warning-hue) var(--we-color-saturation) var(--we-color-lightness-25));
-  --we-color-warning-50: hsl(var(--we-color-warning-hue) var(--we-color-saturation) var(--we-color-lightness-50));
-  --we-color-warning-75: hsl(var(--we-color-warning-hue) var(--we-color-saturation) var(--we-color-lightness-75));
-  --we-color-warning-100: hsl(var(--we-color-warning-hue) var(--we-color-saturation) var(--we-color-lightness-100));
-  --we-color-warning-200: hsl(var(--we-color-warning-hue) var(--we-color-saturation) var(--we-color-lightness-200));
-  --we-color-warning-300: hsl(var(--we-color-warning-hue) var(--we-color-saturation) var(--we-color-lightness-300));
-  --we-color-warning-400: hsl(var(--we-color-warning-hue) var(--we-color-saturation) var(--we-color-lightness-400));
-  --we-color-warning-500: hsl(var(--we-color-warning-hue) var(--we-color-saturation) var(--we-color-lightness-500));
-  --we-color-warning-600: hsl(var(--we-color-warning-hue) var(--we-color-saturation) var(--we-color-lightness-600));
-  --we-color-warning-700: hsl(var(--we-color-warning-hue) var(--we-color-saturation) var(--we-color-lightness-700));
-  --we-color-warning-800: hsl(var(--we-color-warning-hue) var(--we-color-saturation) var(--we-color-lightness-800));
-  --we-color-warning-900: hsl(var(--we-color-warning-hue) var(--we-color-saturation) var(--we-color-lightness-900));
-  --we-color-warning-1000: hsl(var(--we-color-warning-hue) var(--we-color-saturation) var(--we-color-lightness-1000));
+  --we-color-warning-0: oklch(var(--we-color-lightness-0) calc(min(var(--we-color-saturation) * 0.0035, 0.18) * 0) var(--we-color-warning-hue));
+  --we-color-warning-25: oklch(var(--we-color-lightness-25) calc(min(var(--we-color-saturation) * 0.0035, 0.18) * 0.04) var(--we-color-warning-hue));
+  --we-color-warning-50: oklch(var(--we-color-lightness-50) calc(min(var(--we-color-saturation) * 0.0035, 0.18) * 0.08) var(--we-color-warning-hue));
+  --we-color-warning-75: oklch(var(--we-color-lightness-75) calc(min(var(--we-color-saturation) * 0.0035, 0.18) * 0.11) var(--we-color-warning-hue));
+  --we-color-warning-100: oklch(var(--we-color-lightness-100) calc(min(var(--we-color-saturation) * 0.0035, 0.18) * 0.15) var(--we-color-warning-hue));
+  --we-color-warning-200: oklch(var(--we-color-lightness-200) calc(min(var(--we-color-saturation) * 0.0035, 0.18) * 0.31) var(--we-color-warning-hue));
+  --we-color-warning-300: oklch(var(--we-color-lightness-300) calc(min(var(--we-color-saturation) * 0.0035, 0.18) * 0.47) var(--we-color-warning-hue));
+  --we-color-warning-400: oklch(var(--we-color-lightness-400) calc(min(var(--we-color-saturation) * 0.0035, 0.18) * 0.63) var(--we-color-warning-hue));
+  --we-color-warning-500: oklch(var(--we-color-lightness-500) calc(min(var(--we-color-saturation) * 0.0035, 0.18) * 0.8) var(--we-color-warning-hue));
+  --we-color-warning-600: oklch(var(--we-color-lightness-600) calc(min(var(--we-color-saturation) * 0.0035, 0.18) * 0.98) var(--we-color-warning-hue));
+  --we-color-warning-700: oklch(var(--we-color-lightness-700) calc(min(var(--we-color-saturation) * 0.0035, 0.18) * 0.84) var(--we-color-warning-hue));
+  --we-color-warning-800: oklch(var(--we-color-lightness-800) calc(min(var(--we-color-saturation) * 0.0035, 0.18) * 0.64) var(--we-color-warning-hue));
+  --we-color-warning-900: oklch(var(--we-color-lightness-900) calc(min(var(--we-color-saturation) * 0.0035, 0.18) * 0.43) var(--we-color-warning-hue));
+  --we-color-warning-1000: oklch(var(--we-color-lightness-1000) calc(min(var(--we-color-saturation) * 0.0035, 0.18) * 0) var(--we-color-warning-hue));
 
   /* Danger Colors */
-  --we-color-danger-0: hsl(var(--we-color-danger-hue) var(--we-color-saturation) var(--we-color-lightness-0));
-  --we-color-danger-25: hsl(var(--we-color-danger-hue) var(--we-color-saturation) var(--we-color-lightness-25));
-  --we-color-danger-50: hsl(var(--we-color-danger-hue) var(--we-color-saturation) var(--we-color-lightness-50));
-  --we-color-danger-75: hsl(var(--we-color-danger-hue) var(--we-color-saturation) var(--we-color-lightness-75));
-  --we-color-danger-100: hsl(var(--we-color-danger-hue) var(--we-color-saturation) var(--we-color-lightness-100));
-  --we-color-danger-200: hsl(var(--we-color-danger-hue) var(--we-color-saturation) var(--we-color-lightness-200));
-  --we-color-danger-300: hsl(var(--we-color-danger-hue) var(--we-color-saturation) var(--we-color-lightness-300));
-  --we-color-danger-400: hsl(var(--we-color-danger-hue) var(--we-color-saturation) var(--we-color-lightness-400));
-  --we-color-danger-500: hsl(var(--we-color-danger-hue) var(--we-color-saturation) var(--we-color-lightness-500));
-  --we-color-danger-600: hsl(var(--we-color-danger-hue) var(--we-color-saturation) var(--we-color-lightness-600));
-  --we-color-danger-700: hsl(var(--we-color-danger-hue) var(--we-color-saturation) var(--we-color-lightness-700));
-  --we-color-danger-800: hsl(var(--we-color-danger-hue) var(--we-color-saturation) var(--we-color-lightness-800));
-  --we-color-danger-900: hsl(var(--we-color-danger-hue) var(--we-color-saturation) var(--we-color-lightness-900));
-  --we-color-danger-1000: hsl(var(--we-color-danger-hue) var(--we-color-saturation) var(--we-color-lightness-1000));
+  --we-color-danger-0: oklch(var(--we-color-lightness-0) calc(min(var(--we-color-saturation) * 0.0035, 0.18) * 0) var(--we-color-danger-hue));
+  --we-color-danger-25: oklch(var(--we-color-lightness-25) calc(min(var(--we-color-saturation) * 0.0035, 0.18) * 0.04) var(--we-color-danger-hue));
+  --we-color-danger-50: oklch(var(--we-color-lightness-50) calc(min(var(--we-color-saturation) * 0.0035, 0.18) * 0.08) var(--we-color-danger-hue));
+  --we-color-danger-75: oklch(var(--we-color-lightness-75) calc(min(var(--we-color-saturation) * 0.0035, 0.18) * 0.11) var(--we-color-danger-hue));
+  --we-color-danger-100: oklch(var(--we-color-lightness-100) calc(min(var(--we-color-saturation) * 0.0035, 0.18) * 0.15) var(--we-color-danger-hue));
+  --we-color-danger-200: oklch(var(--we-color-lightness-200) calc(min(var(--we-color-saturation) * 0.0035, 0.18) * 0.31) var(--we-color-danger-hue));
+  --we-color-danger-300: oklch(var(--we-color-lightness-300) calc(min(var(--we-color-saturation) * 0.0035, 0.18) * 0.47) var(--we-color-danger-hue));
+  --we-color-danger-400: oklch(var(--we-color-lightness-400) calc(min(var(--we-color-saturation) * 0.0035, 0.18) * 0.63) var(--we-color-danger-hue));
+  --we-color-danger-500: oklch(var(--we-color-lightness-500) calc(min(var(--we-color-saturation) * 0.0035, 0.18) * 0.8) var(--we-color-danger-hue));
+  --we-color-danger-600: oklch(var(--we-color-lightness-600) calc(min(var(--we-color-saturation) * 0.0035, 0.18) * 0.98) var(--we-color-danger-hue));
+  --we-color-danger-700: oklch(var(--we-color-lightness-700) calc(min(var(--we-color-saturation) * 0.0035, 0.18) * 0.84) var(--we-color-danger-hue));
+  --we-color-danger-800: oklch(var(--we-color-lightness-800) calc(min(var(--we-color-saturation) * 0.0035, 0.18) * 0.64) var(--we-color-danger-hue));
+  --we-color-danger-900: oklch(var(--we-color-lightness-900) calc(min(var(--we-color-saturation) * 0.0035, 0.18) * 0.43) var(--we-color-danger-hue));
+  --we-color-danger-1000: oklch(var(--we-color-lightness-1000) calc(min(var(--we-color-saturation) * 0.0035, 0.18) * 0) var(--we-color-danger-hue));
 
   /* Base Colors */
-  --we-color-white: hsl(var(--we-color-neutral-hue) var(--we-color-neutral-saturation) var(--we-color-lightness-0));
-  --we-color-black: hsl(var(--we-color-neutral-hue) var(--we-color-neutral-saturation) var(--we-color-lightness-1000));
+  --we-color-white: oklch(var(--we-color-lightness-0) 0 var(--we-color-neutral-hue));
+  --we-color-black: oklch(var(--we-color-lightness-1000) 0 var(--we-color-neutral-hue));
 
   /* Semantic Roles — intent over scale position. Defaults are parametric expressions
      so every theme keeps working untouched; themes may pin individual roles
@@ -127,27 +127,27 @@ exports[`token CSS generation > color.css — hues, lightness ramp, palettes, ro
   --we-role-text: var(--we-color-neutral-900);
   --we-role-text-muted: var(--we-color-neutral-600);
   --we-role-text-faint: var(--we-color-neutral-400);
-  --we-role-on-inverse: hsl(var(--we-color-neutral-hue) var(--we-color-neutral-saturation) 98%);
-  --we-role-surface-inverse: hsl(var(--we-color-neutral-hue) var(--we-color-neutral-saturation) 13%);
+  --we-role-on-inverse: oklch(98% calc(min(var(--we-color-neutral-saturation) * 0.0035, 0.18) * 0.0400) var(--we-color-neutral-hue));
+  --we-role-surface-inverse: oklch(13% calc(min(var(--we-color-neutral-saturation) * 0.0035, 0.18) * 0.2600) var(--we-color-neutral-hue));
   --we-role-border: var(--we-color-neutral-200);
   --we-role-border-strong: var(--we-color-neutral-500);
-  --we-role-accent: var(--we-color-primary-500);
-  --we-role-on-accent: hsl(var(--we-color-neutral-hue) var(--we-color-neutral-saturation) 98%);
+  --we-role-accent: var(--we-color-primary-600);
+  --we-role-on-accent: oklch(100% 0 var(--we-color-neutral-hue));
   --we-role-accent-muted: var(--we-color-primary-100);
   --we-role-accent-text: var(--we-color-primary-700);
-  --we-role-accent-hover: var(--we-color-primary-600);
-  --we-role-accent-active: var(--we-color-primary-700);
+  --we-role-accent-hover: var(--we-color-primary-700);
+  --we-role-accent-active: var(--we-color-primary-800);
   --we-role-surface-hover: var(--we-color-neutral-100);
   --we-role-surface-active: var(--we-color-neutral-200);
   --we-role-control-surface: var(--we-color-neutral-200);
-  --we-role-overlay: hsl(var(--we-color-neutral-hue) var(--we-color-neutral-saturation) 4% / 60%);
-  --we-role-shadow-color: hsl(var(--we-color-neutral-hue) var(--we-color-neutral-saturation) 4%);
+  --we-role-overlay: oklch(4% calc(min(var(--we-color-neutral-saturation) * 0.0035, 0.18) * 0.0800) var(--we-color-neutral-hue) / 60%);
+  --we-role-shadow-color: oklch(4% calc(min(var(--we-color-neutral-saturation) * 0.0035, 0.18) * 0.0800) var(--we-color-neutral-hue));
   --we-role-focus: var(--we-color-primary-500);
   --we-role-danger-surface: var(--we-color-danger-50);
   --we-role-success-surface: var(--we-color-success-50);
   --we-role-warning-surface: var(--we-color-warning-50);
-  --we-role-danger-text: var(--we-color-danger-600);
-  --we-role-success-text: var(--we-color-success-800);
+  --we-role-danger-text: var(--we-color-danger-700);
+  --we-role-success-text: var(--we-color-success-700);
   --we-role-warning-text: var(--we-color-warning-700);
 
   /* Focus Colors */
@@ -155,7 +155,7 @@ exports[`token CSS generation > color.css — hues, lightness ramp, palettes, ro
   --we-focus-outline: 0 0 0 2px var(--we-color-focus);
 
   /* Gradient */
-  --we-gradient-primary: linear-gradient(135deg, hsl(calc(var(--we-color-primary-hue) - 25) var(--we-color-saturation) var(--we-color-lightness-500)) 0%, hsl(calc(var(--we-color-primary-hue) + 25) var(--we-color-saturation) var(--we-color-lightness-500)) 100%);
+  --we-gradient-primary: linear-gradient(135deg, oklch(var(--we-color-lightness-500) calc(min(var(--we-color-saturation) * 0.0035, 0.18) * 0.8) calc(var(--we-color-primary-hue) - 25)) 0%, oklch(var(--we-color-lightness-500) calc(min(var(--we-color-saturation) * 0.0035, 0.18) * 0.8) calc(var(--we-color-primary-hue) + 25)) 100%);
 }
 
 @supports not (color: oklch(from red calc(l + 0.1) c h)) {

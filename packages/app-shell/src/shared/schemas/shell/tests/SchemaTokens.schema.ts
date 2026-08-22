@@ -1484,7 +1484,7 @@ const fragmentThemeTest = section('Fragment + theme', 'Themeable fragment wraps 
     children: ['A fragment with theme overrides wraps children in a themed div:'],
   },
   {
-    theme: { primaryHue: 200, saturation: '80%' },
+    theme: { primaryHue: 234, saturation: 80 },
     children: [
       { type: 'we-text', props: { color: 'accent' }, children: ['Fragment themed child (should be blue-ish)'] },
     ],
@@ -1499,7 +1499,7 @@ const tokenThemeTest: SchemaNode = {
   type: 'Column',
   props: { gap: '300', p: '400', r: '400', bg: 'surface-sunken', border: '1px solid var(--we-role-accent-muted)' },
   // Apply theme overrides to this section
-  theme: { primaryHue: 320, saturation: '90%' },
+  theme: { primaryHue: 344, saturation: 90 },
   children: [
     {
       type: 'Row',
@@ -1513,7 +1513,7 @@ const tokenThemeTest: SchemaNode = {
     {
       type: 'we-text',
       props: { color: 'text-faint' },
-      children: ['This section has primaryHue: 320 (pink) — the "primary" colors below should appear pink:'],
+      children: ['This section has primaryHue: 344 (pink) — the "primary" colors below should appear pink:'],
     },
     {
       type: 'Row',

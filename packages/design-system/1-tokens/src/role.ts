@@ -79,7 +79,8 @@ export const role = {
    *
    * Hue and saturation stay parametric, so it still follows a theme's neutral tint.
    */
-  onInverse: 'hsl(var(--we-color-neutral-hue) var(--we-color-neutral-saturation) 98%)',
+  onInverse:
+    'oklch(98% calc(min(var(--we-color-neutral-saturation) * 0.0035, 0.18) * 0.0400) var(--we-color-neutral-hue))',
 
   /**
    * A surface deliberately opposite to the page — the tooltip, and anything else that must read as
@@ -89,13 +90,14 @@ export const role = {
    * exactly this reason and the dark theme carried a CSS override to undo it in dark mode; both are
    * gone, and a theme can now move the pair together.
    */
-  surfaceInverse: 'hsl(var(--we-color-neutral-hue) var(--we-color-neutral-saturation) 13%)',
+  surfaceInverse:
+    'oklch(13% calc(min(var(--we-color-neutral-saturation) * 0.0035, 0.18) * 0.2600) var(--we-color-neutral-hue))',
   /** Default border/divider. */
   border: 'var(--we-color-neutral-200)',
   /** Emphasised border (focus-adjacent, strong separation). */
   borderStrong: 'var(--we-color-neutral-500)',
   /** The accent (interactive emphasis). */
-  accent: 'var(--we-color-primary-500)',
+  accent: 'var(--we-color-primary-600)',
   /**
    * Text and icons placed *on* an accent fill. Named for what it sits on, not what it is.
    *
@@ -107,7 +109,7 @@ export const role = {
    * dark end instead — `dark`, `cyberpunk` and `timeline` all do, because white on their accent
    * measures between 2.7 and 3.6:1.
    */
-  onAccent: 'hsl(var(--we-color-neutral-hue) var(--we-color-neutral-saturation) 98%)',
+  onAccent: 'oklch(100% 0 var(--we-color-neutral-hue))',
   /** A de-emphasised accent — accent-tinted fills, selected rows, subtle highlights. */
   accentMuted: 'var(--we-color-primary-100)',
   /**
@@ -128,8 +130,8 @@ export const role = {
    * jumps to an unrelated colour under the pointer, because the pin and the scale no longer agree
    * about what the accent is.
    */
-  accentHover: 'var(--we-color-primary-600)',
-  accentActive: 'var(--we-color-primary-700)',
+  accentHover: 'var(--we-color-primary-700)',
+  accentActive: 'var(--we-color-primary-800)',
 
   /** Hover tint on a surface (menu items, list rows, ghost buttons). */
   surfaceHover: 'var(--we-color-neutral-100)',
@@ -154,7 +156,8 @@ export const role = {
    * rather than by decision, and a scrim that varies by which overlay opened it reads as a bug.
    * Alpha is baked in because a scrim is a finished colour, not a base to tint from.
    */
-  overlay: 'hsl(var(--we-color-neutral-hue) var(--we-color-neutral-saturation) 4% / 60%)',
+  overlay:
+    'oklch(4% calc(min(var(--we-color-neutral-saturation) * 0.0035, 0.18) * 0.0800) var(--we-color-neutral-hue) / 60%)',
 
   /**
    * The colour shadows are built from — opaque, with the consumer supplying alpha:
@@ -166,7 +169,8 @@ export const role = {
    * a near-black surface, which is why a dark theme has to reach for elevation-by-lightness
    * instead. Pinning this lets a theme tint or lighten shadows rather than work around them.
    */
-  shadowColor: 'hsl(var(--we-color-neutral-hue) var(--we-color-neutral-saturation) 4%)',
+  shadowColor:
+    'oklch(4% calc(min(var(--we-color-neutral-saturation) * 0.0035, 0.18) * 0.0800) var(--we-color-neutral-hue))',
 
   /** The focus ring. `--we-ring-color` resolves to this, so the two cannot drift. */
   focus: 'var(--we-color-primary-500)',
@@ -185,11 +189,11 @@ export const role = {
    * do the thing a single value cannot — keep a status legible against its own tint, where the two
    * must move in opposite directions as the theme darkens.
    */
-  dangerText: 'var(--we-color-danger-600)',
+  dangerText: 'var(--we-color-danger-700)',
   // Green and yellow carry far more luminance than red at the same step, so -600 measured 3.0 and
   // 3.7 against their own tints where danger-600 measured comfortably over 4.5. These are the
   // lowest steps that clear AA in every built-in theme.
-  successText: 'var(--we-color-success-800)',
+  successText: 'var(--we-color-success-700)',
   warningText: 'var(--we-color-warning-700)',
 } as const;
 

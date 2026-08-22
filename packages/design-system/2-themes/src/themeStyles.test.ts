@@ -228,7 +228,7 @@ describe('roles resolve against the theme they belong to', () => {
       which is the property that matters.
     */
     const raised = themeToStyle({ themeName: 'black' })['--we-role-surface-raised'];
-    expect(raised).toMatch(/^hsl\(var\(--we-color-neutral-hue\)/);
+    expect(raised).toMatch(/^oklch\(\d/);
   });
 });
 
@@ -259,9 +259,18 @@ describe('a preset and a theme both pinning roles', () => {
   */
   it('keeps the preset’s pins for roles the theme does not mention', () => {
     const style = themeToStyle({ themeName: 'channels', roles: { accent: '#ff0000' } });
-    expect(style['--we-role-page']).toContain('11%');
-    expect(style['--we-role-surface-sunken']).toContain('7.5%');
-    expect(style['--we-role-text-muted']).toContain('72%');
+    /*
+      Asserted as "three distinct pins survived" rather than as three exact lightnesses. The numbers
+      moved once already, when the ramp went to OKLCH and every hand-measured percentage had to be
+      converted — and a test that repeats them only ever says the file was copied correctly. What
+      must not happen is that pinning one role drops the others.
+    */
+    for (const role of ['--we-role-page', '--we-role-surface-sunken', '--we-role-text-muted']) {
+      expect(style[role], `${role} was dropped`).toMatch(/^oklch\([\d.]+%/);
+    }
+    expect(
+      new Set([style['--we-role-page'], style['--we-role-surface-sunken'], style['--we-role-text-muted']]).size,
+    ).toBe(3);
   });
 
   it('still lets the theme win on the role it does pin', () => {

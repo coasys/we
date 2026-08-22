@@ -151,7 +151,7 @@ theme still reaches it afterwards. In descending order of how much survives:
 | --- | --- | --- |
 | unset | everything | the default; the role follows the scale |
 | `var(--we-color-neutral-200)` | hue, saturation, light/dark polarity | "surfaces sit two steps down" — most theme edits mean this |
-| `hsl(var(--we-color-neutral-hue) var(--we-color-neutral-saturation) 11%)` | hue and saturation; holds its lightness against a polarity flip | a designed theme whose surface ramp is uneven — `channels`, `timeline` |
+| `oklch(22.7% calc(min(var(--we-color-neutral-saturation) * 0.0035, 0.18) * 0.454) var(--we-color-neutral-hue))` | hue and saturation; holds its lightness against a polarity flip | a designed theme whose surface ramp is uneven — `channels`, `timeline` |
 | `color-mix(in srgb, var(--we-role-surface) 88%, var(--we-role-text))` | everything, *including a later change to the role it references* | "a step darker than the surface" — a relationship rather than a value |
 | `oklch(from var(--we-role-page) calc(l + 0.045) c h)` | the same, and stays an even step at any lightness or hue | "one step above the page" — how the elevation stack is written |
 | `#1a1a1e` | nothing | a brand colour that must not move |
@@ -169,8 +169,20 @@ dark one. `calc(l + n)` in OKLCH moves by a fixed *perceptual* amount instead, w
 thing that means the same in a light theme and a dark one. It also carries `c` and `h` through, so
 a theme that tints its neutrals gets a tinted stack without saying so.
 
-Note this puts OKLCH in the *relationships* only. The fourteen scale steps are still HSL: respacing
-those changes how every theme looks and is a separate decision.
+The ramp itself is OKLCH too, for the same reason at a different scale. Under HSL a step was a
+*coordinate*, so the same "500" landed at L* 46 for blue and L* 69 for green — a 39-point swing
+across the hue slider at one nominal step, which meant changing a hue silently changed how heavy the
+accent read, and the three status *text* roles had to sit at three different steps to compensate.
+They share one step now.
+
+Two consequences worth knowing when writing a theme by hand:
+
+- **A hue is an OKLCH angle**, which is not the HSL angle for the same colour — 220 (blue) is 263,
+  and 45 (amber) is 90. `migrate.ts` converts stored themes; a number typed fresh is an OKLCH angle.
+- **Saturation is a plain 0–100 number**, not a percentage, because it scales an absolute chroma
+  rather than expressing a proportion. It is capped: sRGB runs out of colour before OKLCH does, and
+  past the boundary the browser gamut-maps — which is how `saturation: 85` on a blue once produced a
+  magenta accent.
 
 The last row is the only one that really leaves the system, and it is the one a colour picker
 produces by default — which is why `we-color-picker` opens on the **token grid** when `tokens` is

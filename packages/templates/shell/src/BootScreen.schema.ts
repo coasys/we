@@ -1,6 +1,11 @@
 import type { OperatorToken, SchemaNode, SchemaProp } from '@we/schema-shared';
 import { field } from '@we/template-kit';
 
+// Chroma for a step, written out: the ramp tapers it toward the ends and CSS cannot compute
+// that taper itself, since it would have to divide a percentage into a unitless number.
+const GRADIENT_CHROMA_100 = 'calc(min(var(--we-color-saturation) * 0.0035, 0.18) * 0.15)';
+const GRADIENT_CHROMA_200 = 'calc(min(var(--we-color-saturation) * 0.0035, 0.18) * 0.31)';
+
 /**
  * The boot screen: the four states a session can be in before the app is usable.
  *
@@ -49,8 +54,8 @@ export const hueSweepBackground = [
   'var(--we-color-neutral-0) 0%,',
   // The sweep is squeezed into the middle of the radius rather than spanning it. Two stops can
   // travel the hue or land on a colour, not both; four buy a clean start and a clean finish.
-  'hsl(calc(var(--we-color-primary-hue) + 25) var(--we-color-saturation) var(--we-color-lightness-100)) 40%,',
-  'hsl(calc(var(--we-color-primary-hue) - 25) var(--we-color-saturation) var(--we-color-lightness-100)) 60%,',
+  `oklch(var(--we-color-lightness-100) ${GRADIENT_CHROMA_100} calc(var(--we-color-primary-hue) + 25)) 40%,`,
+  `oklch(var(--we-color-lightness-100) ${GRADIENT_CHROMA_100} calc(var(--we-color-primary-hue) - 25)) 60%,`,
   // Named rather than `transparent`. Identical here, since `bg` beneath is the same token — but it
   // says what it means and does not depend on what happens to be painted under it.
   'var(--we-color-neutral-0) 80%)',
@@ -65,7 +70,7 @@ export const hueSweepBackground = [
 const blob = (at: string, size: string, hueOffset: string) =>
   [
     `radial-gradient(${size} at ${at},`,
-    `hsl(calc(var(--we-color-primary-hue) ${hueOffset}) var(--we-color-saturation) var(--we-color-lightness-200)) 0%,`,
+    `oklch(var(--we-color-lightness-200) ${GRADIENT_CHROMA_200} calc(var(--we-color-primary-hue) ${hueOffset})) 0%,`,
     'transparent 70%)',
   ].join(' ');
 

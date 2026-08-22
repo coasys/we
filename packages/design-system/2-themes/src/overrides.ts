@@ -65,8 +65,15 @@ export type ThemeOverrides = {
   warningHue?: number; // --we-color-warning-hue
   dangerHue?: number; // --we-color-danger-hue
   neutralHue?: number; // --we-color-neutral-hue
-  saturation?: string; // --we-color-saturation  (e.g. "50%")
-  neutralSaturation?: string; // --we-color-neutral-saturation
+  /**
+   * 0–100, as a number rather than a percentage string.
+   *
+   * OKLCH takes an absolute chroma, and `calc()` cannot turn a percentage into the unitless value
+   * a chroma has to be. The range is unchanged, so the editor's slider is unaffected; `migrate.ts`
+   * converts stored themes.
+   */
+  saturation?: number; // --we-color-saturation
+  neutralSaturation?: number; // --we-color-neutral-saturation
   multiplier?: number; // --we-color-multiplier
   subtractor?: string; // --we-color-subtractor  (e.g. "108%")
   ringColor?: string; // --we-ring-color  (focus ring / accent color)

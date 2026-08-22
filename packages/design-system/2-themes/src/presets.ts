@@ -20,6 +20,9 @@
  * space — those are host concerns and stay in the app.
  */
 
+import { CHROMA_CEILING, CHROMA_PER_SATURATION } from '@we/tokens';
+
+import { THEME_SCHEMA_VERSION } from './migrate';
 import type { ThemeOverrides } from './overrides';
 
 /**
@@ -44,33 +47,53 @@ export interface ThemePreset {
  * every surface *except* the pinned ones and the theme would come apart. This fixes only the number
  * that is actually the design decision.
  */
-const neutral = (lightness: number) =>
-  `hsl(var(--we-color-neutral-hue) var(--we-color-neutral-saturation) ${lightness}%)`;
+/**
+ * A pinned neutral at an exact lightness, in OKLCH.
+ *
+ * The chroma is derived the same way the ramp derives it — the theme's saturation, tapered by how
+ * close the lightness sits to either end — so a pin picks up a theme's neutral tint instead of
+ * going flat grey. Written out here rather than read from a variable because `calc()` cannot take
+ * `min()` over a percentage and divide it into the unitless number a chroma has to be.
+ */
+const neutral = (lightness: number) => {
+  const taper = 2 * Math.min(lightness / 100, 1 - lightness / 100);
+  return `oklch(${lightness}% calc(min(var(--we-color-neutral-saturation) * ${CHROMA_PER_SATURATION}, ${CHROMA_CEILING}) * ${taper.toFixed(4)}) var(--we-color-neutral-hue))`;
+};
 
 export const THEME_PRESETS = {
   light: {
     name: 'Light',
     icon: 'sun',
-    parameters: { multiplier: 1, subtractor: '0%', saturation: '60%', neutralSaturation: '10%' },
+    parameters: {
+      schemaVersion: THEME_SCHEMA_VERSION,
+      multiplier: 1,
+      subtractor: '0%',
+      saturation: 60,
+      neutralSaturation: 10,
+    },
   },
   dark: {
     name: 'Dark',
     icon: 'moon',
-    // 108 rather than 100 so the darkest step lands short of pure black. A hand-tuned constant, and a
-    // sign that a linear inversion is an approximation of a dark theme rather than a design of one.
+    // 112 rather than 100 so the darkest step lands short of pure black — and further short than
+    // the 108 it used to be. WCAG adds a constant 0.05 to both sides of a contrast ratio, which
+    // compresses every ratio measured against a near-black background: at 108 the muted text on a
+    // card came to 4.41:1, and no choice of *step* fixes that, because the step above is far darker
+    // than muted text should be in a light theme. Lifting the floor is what the ratio responds to.
     // The role override is the first step past that approximation: in dark, a raised surface gets
     // *lighter* instead of casting a shadow — a relationship the uniform inversion cannot express.
     parameters: {
+      schemaVersion: THEME_SCHEMA_VERSION,
       multiplier: -1,
-      subtractor: '108%',
-      saturation: '50%',
-      neutralSaturation: '20%',
+      subtractor: '112%',
+      saturation: 50,
+      neutralSaturation: 20,
       roles: {
         // The surface stack is derived from `page` now — see the note in @we/tokens' role.ts. This
         // theme pinned four lightnesses that the formula reproduces to within a point, which is
         // what suggested the formula.
         // White on this accent measures 3.6:1; the dark end measures 4.7. See contrast.test.ts.
-        onAccent: neutral(10),
+        onAccent: neutral(21.6),
       },
     },
   },
@@ -78,35 +101,58 @@ export const THEME_PRESETS = {
     name: 'Black',
     icon: 'square',
     parameters: {
+      schemaVersion: THEME_SCHEMA_VERSION,
       multiplier: -1,
       subtractor: '100%',
-      saturation: '50%',
-      neutralSaturation: '20%',
+      saturation: 50,
+      neutralSaturation: 20,
       /*
         The one theme that still has to state its stack, and for a reason no formula can route
         around: its page is pure black, and a +0.045 OKLCH step from there rounds to the same 8-bit
         sRGB value. At the floor there is no room for the relationship, so the numbers are the
         design. Built upwards from the page rather than around it, for the same reason.
       */
-      roles: { page: neutral(0), surface: neutral(5), surfaceSunken: neutral(2), surfaceRaised: neutral(10) },
+      roles: {
+        page: neutral(0.0),
+        surface: neutral(15.8),
+        surfaceSunken: neutral(11.6),
+        surfaceRaised: neutral(21.6),
+        /*
+          One step lighter than the vocabulary's default, and only here.
+
+          WCAG adds 0.05 to both sides of a ratio, so against a literal black card the denominator
+          is essentially that constant and the only way to move the ratio is to lift the text. At
+          the default step muted text measures 3.43:1; this clears AA. Every other theme sits far
+          enough off the floor not to need it.
+        */
+        textMuted: 'var(--we-color-neutral-700)',
+      },
     },
   },
   retro: {
     name: 'Retro',
     icon: 'floppy-disk',
-    parameters: { primaryHue: 230, multiplier: 1, subtractor: '0%', saturation: '60%', neutralSaturation: '10%' },
+    parameters: {
+      schemaVersion: THEME_SCHEMA_VERSION,
+      primaryHue: 271,
+      multiplier: 1,
+      subtractor: '0%',
+      saturation: 60,
+      neutralSaturation: 10,
+    },
   },
   cyberpunk: {
     name: 'Cyberpunk',
     icon: 'cpu',
     parameters: {
+      schemaVersion: THEME_SCHEMA_VERSION,
       multiplier: -1,
       subtractor: '110%',
-      saturation: '60%',
-      neutralSaturation: '10%',
+      saturation: 60,
+      neutralSaturation: 10,
       roles: {
         // A bright accent needs a dark label: white measures 3.5:1 on it, near-black 4.8.
-        onAccent: neutral(10),
+        onAccent: neutral(21.6),
       },
     },
   },
@@ -136,26 +182,28 @@ export const THEME_PRESETS = {
     name: 'Channels',
     icon: 'hash',
     parameters: {
-      primaryHue: 235,
-      neutralHue: 240,
-      saturation: '85%',
-      neutralSaturation: '6%',
+      primaryHue: 266,
+      neutralHue: 266,
+      saturation: 85,
+      neutralSaturation: 6,
+      schemaVersion: THEME_SCHEMA_VERSION,
       multiplier: -1,
       subtractor: '106%',
       roles: {
-        page: neutral(11),
-        surface: neutral(11),
-        surfaceSunken: neutral(7.5),
-        surfaceRaised: neutral(17),
-        surfaceHover: neutral(15),
-        surfaceActive: neutral(20),
-        border: neutral(20),
-        borderStrong: neutral(26),
-        text: neutral(100),
-        textMuted: neutral(72),
-        textFaint: neutral(53),
-        overlay: 'hsl(var(--we-color-neutral-hue) var(--we-color-neutral-saturation) 4% / 72%)',
-        shadowColor: neutral(2),
+        page: neutral(22.7),
+        surface: neutral(22.7),
+        surfaceSunken: neutral(18.7),
+        surfaceRaised: neutral(29.0),
+        surfaceHover: neutral(27.0),
+        surfaceActive: neutral(32.1),
+        border: neutral(32.1),
+        borderStrong: neutral(38.0),
+        text: neutral(100.0),
+        textMuted: neutral(78.1),
+        textFaint: neutral(62.4),
+        overlay:
+          'oklch(4% calc(min(var(--we-color-neutral-saturation) * 0.0035, 0.18) * 0.08) var(--we-color-neutral-hue) / 72%)',
+        shadowColor: neutral(11.6),
       },
       controlRadius: '4px',
       surfaceRadius: '8px',
@@ -178,28 +226,29 @@ export const THEME_PRESETS = {
     name: 'Timeline',
     icon: 'list-dashes',
     parameters: {
-      primaryHue: 203,
-      neutralHue: 210,
-      saturation: '89%',
-      neutralSaturation: '9%',
+      primaryHue: 245,
+      neutralHue: 255,
+      saturation: 89,
+      neutralSaturation: 9,
+      schemaVersion: THEME_SCHEMA_VERSION,
       multiplier: 1,
       subtractor: '0%',
       roles: {
         page: '#ffffff',
         surface: '#ffffff',
-        surfaceSunken: neutral(97),
+        surfaceSunken: neutral(97.7),
         surfaceRaised: '#ffffff',
-        surfaceHover: neutral(97),
-        surfaceActive: neutral(94),
-        border: neutral(94),
-        borderStrong: neutral(85),
-        text: neutral(6),
-        textMuted: neutral(44),
-        textFaint: neutral(55),
+        surfaceHover: neutral(97.7),
+        surfaceActive: neutral(95.4),
+        border: neutral(95.4),
+        borderStrong: neutral(88.5),
+        text: neutral(17.0),
+        textMuted: neutral(54.6),
+        textFaint: neutral(64.1),
         accent: 'hsl(203 89% 53%)',
         // Was '#ffffff', which measures 2.7:1 on that blue — the theme shipped a primary button
         // label below AA. Near-black measures 6.2. See contrast.test.ts.
-        onAccent: neutral(10),
+        onAccent: neutral(21.6),
       },
       controlRadius: 'var(--we-radius-pill)',
       surfaceRadius: '16px',

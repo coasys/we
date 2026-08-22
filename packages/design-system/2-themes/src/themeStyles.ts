@@ -1,6 +1,6 @@
 import { contrastRatio, parseColor, type Rgba } from '@we/design-utils';
 import type { ColorHueToken, ColorLightnessToken } from '@we/tokens';
-import { color, role, ROLE_ELEVATION_FALLBACK } from '@we/tokens';
+import { CHROMA_CEILING, CHROMA_PER_SATURATION, chromaTaper, color, role, ROLE_ELEVATION_FALLBACK } from '@we/tokens';
 
 import type { ThemeOverrides, ThemeRole } from './overrides';
 import { isThemeName, THEME_PRESETS } from './presets';
@@ -272,8 +272,11 @@ export function themeToStyle(overrides: ThemeOverrides): Record<string, string> 
 
     const satVar = FAMILY_SAT_VAR[family];
     for (const step of LIGHTNESS_STEPS) {
+      const taper = chromaTaper(step);
       style[`--we-color-${family}-${step}`] =
-        `hsl(var(--we-color-${family}-hue) var(${satVar}) var(--we-color-lightness-${step}))`;
+        `oklch(var(--we-color-lightness-${step}) ` +
+        `calc(min(var(${satVar}) * ${CHROMA_PER_SATURATION}, ${CHROMA_CEILING}) * ${taper}) ` +
+        `var(--we-color-${family}-hue))`;
     }
   }
 
@@ -282,7 +285,9 @@ export function themeToStyle(overrides: ThemeOverrides): Record<string, string> 
     hasNamedTheme || theme.primaryHue !== undefined || theme.saturation !== undefined || affectsLightness;
   if (affectsPrimaryGradient) {
     style['--we-gradient-primary'] =
-      'linear-gradient(135deg, hsl(calc(var(--we-color-primary-hue) - 30) var(--we-color-saturation) var(--we-color-lightness-500)) 0%, hsl(calc(var(--we-color-primary-hue) + 30) var(--we-color-saturation) var(--we-color-lightness-500)) 100%)';
+      `linear-gradient(135deg, ` +
+      `oklch(var(--we-color-lightness-500) calc(min(var(--we-color-saturation) * ${CHROMA_PER_SATURATION}, ${CHROMA_CEILING}) * ${chromaTaper('500')}) calc(var(--we-color-primary-hue) - 30)) 0%, ` +
+      `oklch(var(--we-color-lightness-500) calc(min(var(--we-color-saturation) * ${CHROMA_PER_SATURATION}, ${CHROMA_CEILING}) * ${chromaTaper('500')}) calc(var(--we-color-primary-hue) + 30)) 100%)`;
   }
 
   // 6. Re-declare semantic tokens that alias --we-color-primary-500.
@@ -452,8 +457,11 @@ function applyAutoContrast(root: HTMLElement, theme: ThemeOverrides): string[] {
     // Hue and saturation follow the theme's neutral so the label still belongs to it; only the
     // lightness is being decided.
     const hue = computed.getPropertyValue('--we-color-neutral-hue').trim() || '220';
-    const saturation = computed.getPropertyValue('--we-color-neutral-saturation').trim() || '10%';
-    const candidates = [`hsl(${hue} ${saturation} 98%)`, `hsl(${hue} ${saturation} 10%)`];
+    const saturation = parseFloat(computed.getPropertyValue('--we-color-neutral-saturation')) || 10;
+    // The two ends of the neutral ramp, at the chroma this theme's saturation allows there.
+    const chromaAt = (l: number) =>
+      (Math.min(saturation * CHROMA_PER_SATURATION, CHROMA_CEILING) * (2 * Math.min(l, 1 - l))).toFixed(4);
+    const candidates = [`oklch(98% ${chromaAt(0.98)} ${hue})`, `oklch(10% ${chromaAt(0.1)} ${hue})`];
 
     const prop = roleVar(fg);
     root.style.setProperty(prop, pickReadableForeground(candidates, fills));
@@ -484,8 +492,14 @@ function applyAutoContrast(root: HTMLElement, theme: ThemeOverrides): string[] {
  * a stack tuned for one polarity is not merely stale after a flip, it is inverted, and silently
  * keeping it is what produces a "dark" theme with white cards.
  */
-const neutralAt = (lightness: number) =>
-  `hsl(var(--we-color-neutral-hue) var(--we-color-neutral-saturation) ${lightness}%)`;
+const neutralAt = (lightness: number) => {
+  const taper = (2 * Math.min(lightness / 100, 1 - lightness / 100)).toFixed(4);
+  return (
+    `oklch(${lightness}% ` +
+    `calc(min(var(--we-color-neutral-saturation) * ${CHROMA_PER_SATURATION}, ${CHROMA_CEILING}) * ${taper}) ` +
+    `var(--we-color-neutral-hue))`
+  );
+};
 
 export const DARK_SURFACES: Partial<Record<ThemeRole, string>> = {
   page: neutralAt(10),

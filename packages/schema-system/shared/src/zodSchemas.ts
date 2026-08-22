@@ -14,8 +14,9 @@ const zThemeOverrides = z
     warningHue: z.number().optional(),
     dangerHue: z.number().optional(),
     neutralHue: z.number().optional(),
-    saturation: z.string().optional(),
-    neutralSaturation: z.string().optional(),
+    // 0–100 numbers, not percentage strings: OKLCH takes an absolute chroma. See @we/tokens.
+    saturation: z.number().optional(),
+    neutralSaturation: z.number().optional(),
     multiplier: z.number().optional(),
     subtractor: z.string().optional(),
     fontFamily: z.string().optional(),

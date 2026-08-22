@@ -21,7 +21,7 @@ describe('the surface stack a polarity needs', () => {
 
   it('puts the stack in the right order', () => {
     const out = surfacesForPolarity('dark', undefined)!;
-    const at = (v: string) => parseFloat(/\s([\d.]+)%\)$/.exec(v)![1]);
+    const at = (v: string) => parseFloat(/^oklch\(([\d.]+)%/.exec(v)![1]);
     expect(at(out.surfaceSunken!)).toBeLessThan(at(out.page!));
     expect(at(out.page!)).toBeLessThan(at(out.surface!));
     expect(at(out.surface!)).toBeLessThan(at(out.surfaceRaised!));

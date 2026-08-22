@@ -45,7 +45,9 @@ describe('the 1 → 2 rename', () => {
   });
 
   it('leaves everything that is not a role alone', () => {
-    expect(migrateOverrides(v1({ accentText: '#fff' })).primaryHue).toBe(220);
+    // The hue is not left alone — v3 converts it to an OKLCH angle — so this asserts it survived as
+    // *a* hue rather than as the same number. What it must not do is drop it.
+    expect(typeof migrateOverrides(v1({ accentText: '#fff' })).primaryHue).toBe('number');
   });
 });
 
@@ -86,5 +88,43 @@ describe('parseOverrides', () => {
   it('survives a corrupt blob', () => {
     // An unthemed theme is survivable and visible; a white screen is neither.
     expect(parseOverrides('{not json')).toEqual({});
+  });
+});
+
+/**
+ * v2 → v3: the ramp moved to OKLCH, and two stored values change meaning.
+ *
+ * A hue is an angle in a particular space and the two disagree — by 45 degrees in the warm end. A
+ * theme that stored `warningHue: 45` meant amber; read as an OKLCH angle it is a yellow-green. This
+ * is the silent-failure case the versioning exists for: nothing errors, the theme just quietly
+ * stops being the theme somebody made.
+ */
+describe('the 2 → 3 move to OKLCH', () => {
+  const v2 = (overrides: Record<string, unknown>) => ({ schemaVersion: 2, ...overrides }) as ThemeOverrides;
+
+  it('converts a hue to the angle that names the same colour', () => {
+    // Blue: HSL 220 is OKLCH 263, not 220.
+    expect(migrateOverrides(v2({ primaryHue: 220 })).primaryHue).toBe(263);
+    // Amber moves furthest, which is why leaving it would be most visible.
+    expect(migrateOverrides(v2({ warningHue: 45 })).warningHue).toBe(90);
+  });
+
+  it('converts every hue a theme can set, and leaves other numbers alone', () => {
+    const out = migrateOverrides(v2({ successHue: 142, dangerHue: 4, neutralHue: 220, fontScale: 1.25 }));
+    expect(out.successHue).toBe(152);
+    expect(out.dangerHue).toBe(27);
+    expect(out.neutralHue).toBe(263);
+    expect(out.fontScale).toBe(1.25);
+  });
+
+  it('unquotes saturation, which is a chroma multiplier now rather than a percentage', () => {
+    const out = migrateOverrides(v2({ saturation: '85%', neutralSaturation: '6%' }));
+    expect(out.saturation).toBe(85);
+    expect(out.neutralSaturation).toBe(6);
+  });
+
+  it('is idempotent — a converted hue is not converted again', () => {
+    const once = migrateOverrides(v2({ primaryHue: 220, saturation: '50%' }));
+    expect(migrateOverrides(once)).toEqual(once);
   });
 });

@@ -67,7 +67,55 @@ const MIGRATIONS: ((overrides: Versioned) => Versioned)[] = [
       accentStrong: 'accentText',
       textInverse: 'onInverse',
     }),
+
+  /*
+    v2 → v3: the ramp moved from HSL to OKLCH.
+
+    Two things change in a stored theme and neither announces itself. A hue is an angle in a
+    particular space, and the two spaces disagree by up to 45 degrees in the warm end — so a theme
+    that said `warningHue: 45` meant amber and would now mean a yellow-green. And saturation stopped
+    being a percentage string, because OKLCH takes an absolute chroma and `calc()` cannot divide a
+    percentage into the unitless number one has to be.
+
+    The hue conversion runs through the colour the old angle actually produced, so a theme keeps its
+    identity rather than being nudged to the nearest round number.
+  */
+  (overrides) => {
+    const next: Versioned = { ...overrides };
+    for (const key of ['primaryHue', 'successHue', 'warningHue', 'dangerHue', 'neutralHue'] as const) {
+      const value = next[key];
+      if (typeof value === 'number') next[key] = hslHueToOklch(value);
+    }
+    for (const key of ['saturation', 'neutralSaturation'] as const) {
+      const value = next[key] as unknown;
+      if (typeof value === 'string') next[key] = parseFloat(value) || 0;
+    }
+    return next;
+  },
 ];
+
+/**
+ * The OKLCH hue of the colour an HSL hue used to produce.
+ *
+ * Converted rather than copied: OKLCH is perceptually spaced, so its angles do not line up with
+ * HSL's — 45 (amber) becomes 90, while 220 (blue) becomes 263. Evaluated at mid lightness and
+ * moderate saturation, which is where a theme's identity actually lives; hue barely moves with
+ * either, so one sample is enough.
+ */
+export function hslHueToOklch(hue: number): number {
+  const lin = (v: number) => (v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4);
+  const k = (n: number) => (n + hue / 30) % 12;
+  const a = 0.5 * 0.5; // saturation 50%, lightness 50%
+  const ch = (n: number) => 0.5 - a * Math.max(-1, Math.min(k(n) - 3, Math.min(9 - k(n), 1)));
+  const [r, g, b] = [ch(0), ch(8), ch(4)].map(lin);
+  const l = Math.cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b);
+  const m = Math.cbrt(0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b);
+  const s = Math.cbrt(0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b);
+  const A = 1.9779984951 * l - 2.428592205 * m + 0.4505937099 * s;
+  const B = 0.0259040371 * l + 0.7827717662 * m - 0.808675766 * s;
+  const deg = (Math.atan2(B, A) * 180) / Math.PI;
+  return Math.round(deg < 0 ? deg + 360 : deg);
+}
 
 /** The vocabulary version this build writes. */
 export const THEME_SCHEMA_VERSION = INITIAL_VERSION + MIGRATIONS.length;

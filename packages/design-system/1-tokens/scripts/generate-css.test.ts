@@ -71,7 +71,7 @@ describe('token CSS generation', () => {
         indirection and the same guarantee.
       */
       expect(declaration![1], `role '${name}' hardcodes a colour`).toMatch(
-        /^(var\(--we-color-|hsl\(var\(--we-color-|oklch\(from var\(--we-role-)/,
+        /^(var\(--we-color-|oklch\([\d.]+% (calc\(min\(var\(--we-color-|[\d.]+ var\(--we-color-)|oklch\(from var\(--we-role-)/,
       );
     }
   });
