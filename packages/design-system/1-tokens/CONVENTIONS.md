@@ -133,6 +133,11 @@ a user-picked swatch. A node painted `warning-100` because it is a note is not a
 nothing about a theme should recolour it as one. Those are the only scale positions left in the
 templates, deliberately.
 
+Colours may be written in `oklch()` anywhere a colour is accepted; it is parsed and converted to
+sRGB like any other notation. The *ramps* are still HSL — moving those is a separate decision that
+changes how every theme looks — but an author pasting a value from a modern palette tool should not
+be told it is unparseable, and OKLCH is the space in which a contrast check would like to reason.
+
 When adding a role, give it a parametric default over the scale so every existing theme keeps
 working untouched, and say in its doc comment what relationship it exists to express — if the answer
 is only "a slightly different grey", it is a scale position and does not belong here.
@@ -147,7 +152,14 @@ theme still reaches it afterwards. In descending order of how much survives:
 | unset | everything | the default; the role follows the scale |
 | `var(--we-color-neutral-200)` | hue, saturation, light/dark polarity | "surfaces sit two steps down" — most theme edits mean this |
 | `hsl(var(--we-color-neutral-hue) var(--we-color-neutral-saturation) 11%)` | hue and saturation; holds its lightness against a polarity flip | a designed theme whose surface ramp is uneven — `channels`, `timeline` |
+| `color-mix(in srgb, var(--we-role-surface) 88%, var(--we-role-text))` | everything, *including a later change to the role it references* | "a step darker than the surface" — a relationship rather than a value |
 | `#1a1a1e` | nothing | a brand colour that must not move |
+
+The `color-mix` row is worth reading twice: it is the only form that expresses a *relationship*
+rather than a value, so it survives a change to the role it names — and because it mixes toward a
+role that inverts with the theme, "a step darker" in a light theme becomes "a step lighter" in a
+dark one without being told. The secondary button's hover and pressed states are written this way,
+which is why they need no roles of their own.
 
 The last row is the only one that really leaves the system, and it is the one a colour picker
 produces by default — which is why `we-color-picker` opens on the **token grid** when `tokens` is

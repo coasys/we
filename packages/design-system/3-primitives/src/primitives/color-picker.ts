@@ -527,7 +527,7 @@ export default class ColorPicker extends DesignSystemElement {
 
       <div part="fields">
         <div part="formats" role="group" aria-label="Colour format">
-          ${(['hex', 'rgb', 'hsl'] as const).map(
+          ${(['hex', 'rgb', 'hsl', 'oklch'] as const).map(
             (f) =>
               html`<button
                 part="format"

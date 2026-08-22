@@ -246,12 +246,16 @@ const ROLE_GROUPS: { label: string; hint: string; roles: { role: ThemeRole; labe
  * at all. Only the last is really "opting out", and the editor should say so rather than making it
  * the silent default.
  */
-export type RoleTier = 'auto' | 'token' | 'lightness' | 'custom';
+export type RoleTier = 'auto' | 'token' | 'lightness' | 'relative' | 'custom';
 
 export function roleTier(value: string | undefined): RoleTier {
   if (!value) return 'auto';
   if (/^var\(--we-color-[a-z]+-\d+\)$/.test(value.trim())) return 'token';
   if (/^hsl\(\s*var\(--we-color-[a-z]+-hue\)/.test(value.trim())) return 'lightness';
+  // A value expressed *against another role* — "a step lighter than the surface". It survives more
+  // than any other pin: a change to the role it references carries through, and because the thing
+  // it mixes toward inverts with the theme, so does the direction.
+  if (/^color-mix\(/.test(value.trim())) return 'relative';
   return 'custom';
 }
 
@@ -260,6 +264,7 @@ export function roleTierLabel(value: string | undefined): string {
   const tier = roleTier(value);
   if (tier === 'token') return /var\(--we-color-([a-z]+-\d+)\)/.exec(value!)![1];
   if (tier === 'lightness') return 'theme tint';
+  if (tier === 'relative') return 'relative to another role';
   if (tier === 'custom') return 'custom';
   return 'auto';
 }

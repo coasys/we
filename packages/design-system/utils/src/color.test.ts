@@ -126,3 +126,43 @@ describe('contrast', () => {
     expect(relativeLuminance(c('#808080'))).toBeCloseTo(0.2159, 3);
   });
 });
+
+describe('oklch', () => {
+  it('reads both the 0–1 and percentage spellings of lightness', () => {
+    expect(rgbToHex(parseColor('oklch(0.7 0.15 250)')!)).toBe(rgbToHex(parseColor('oklch(70% 0.15 250)')!));
+  });
+
+  it('round-trips an sRGB colour exactly', () => {
+    for (const hex of ['#3366ff', '#ff8000', '#ffffff', '#000000', '#7f7f7f']) {
+      const written = formatColor(parseColor(hex)!, 'oklch');
+      expect(rgbToHex(parseColor(written)!)).toBe(hex);
+    }
+  });
+
+  it('carries alpha', () => {
+    expect(parseColor('oklch(0.5 0.2 30 / 0.5)')!.a).toBe(0.5);
+  });
+
+  /*
+    The property that makes OKLCH worth accepting at all: equal lightness reads as equal brightness
+    whatever the hue. In HSL the same 50% is far brighter for yellow than for blue, which is why a
+    contrast check over an HSL ramp is only ever approximate.
+  */
+  it('is perceptually even across hues, where HSL is not', () => {
+    const spread = (fn: (h: number) => string) => {
+      const ls = [30, 120, 210, 300].map((h) => relativeLuminance(parseColor(fn(h))!));
+      return Math.max(...ls) - Math.min(...ls);
+    };
+    const oklchSpread = spread((h) => `oklch(0.6 0.12 ${h})`);
+    const hslSpread = spread((h) => `hsl(${h} 60% 50%)`);
+    expect(oklchSpread).toBeLessThan(hslSpread);
+  });
+
+  it('clips an out-of-gamut colour rather than refusing it, as a browser does', () => {
+    const c = parseColor('oklch(0.9 0.4 140)')!;
+    for (const channel of [c.r, c.g, c.b]) {
+      expect(channel).toBeGreaterThanOrEqual(0);
+      expect(channel).toBeLessThanOrEqual(255);
+    }
+  });
+});

@@ -12,8 +12,8 @@
 
 export type Rgba = { r: number; g: number; b: number; a: number };
 
-/** Colour notations a person can type or paste. `token` is WE's own `var(--we-color-…)` form. */
-export type ColorFormat = 'hex' | 'rgb' | 'hsl';
+/** Colour notations a person can type or paste. */
+export type ColorFormat = 'hex' | 'rgb' | 'hsl' | 'oklch';
 
 const clamp = (n: number, lo = 0, hi = 255) => Math.min(hi, Math.max(lo, n));
 const hex2 = (n: number) => Math.round(clamp(n)).toString(16).padStart(2, '0');
@@ -58,6 +58,62 @@ export function hsvToRgb(h: number, s: number, v: number): Pick<Rgba, 'r' | 'g' 
   return { r: (r + m) * 255, g: (g + m) * 255, b: (b + m) * 255 };
 }
 
+/*
+  OKLCH ⇄ sRGB.
+
+  Worth having even while the token ramps are still HSL, and for a reason that is not "it is
+  newer": OKLCH lightness is *perceptual*, so two colours at the same L look equally bright
+  whatever their hue, where HSL's 50% is far brighter for yellow than for blue. That is exactly the
+  property a colour picker and a contrast check want, and it is why an author pasting an oklch()
+  value from a modern palette tool should not be told it is unparseable.
+
+  Converting rather than storing: everything downstream — the swatches, the contrast maths, the
+  browser — speaks sRGB, so this is a front door, not a new internal representation. Moving the
+  *ramps* to OKLCH is a separate decision that changes how every theme looks; this does not.
+*/
+function oklchToRgb(l: number, c: number, hDeg: number): Pick<Rgba, 'r' | 'g' | 'b'> {
+  const h = (hDeg * Math.PI) / 180;
+  const a = c * Math.cos(h);
+  const bb = c * Math.sin(h);
+
+  // OKLab → LMS (cube of the intermediate), → linear sRGB.
+  const l_ = (l + 0.3963377774 * a + 0.2158037573 * bb) ** 3;
+  const m_ = (l - 0.1055613458 * a - 0.0638541728 * bb) ** 3;
+  const s_ = (l - 0.0894841775 * a - 1.291485548 * bb) ** 3;
+
+  const lr = +4.0767416621 * l_ - 3.3077115913 * m_ + 0.2309699292 * s_;
+  const lg = -1.2684380046 * l_ + 2.6097574011 * m_ - 0.3413193965 * s_;
+  const lb = -0.0041960863 * l_ - 0.7034186147 * m_ + 1.707614701 * s_;
+
+  // Linear → gamma-encoded sRGB, clipped to the gamut. An out-of-gamut oklch() is clipped rather
+  // than rejected, which is what a browser does with one.
+  const enc = (v: number) => {
+    const g = v <= 0.0031308 ? 12.92 * v : 1.055 * Math.max(v, 0) ** (1 / 2.4) - 0.055;
+    return Math.min(255, Math.max(0, g * 255));
+  };
+  return { r: enc(lr), g: enc(lg), b: enc(lb) };
+}
+
+function rgbToOklch({ r, g, b }: Pick<Rgba, 'r' | 'g' | 'b'>): { l: number; c: number; h: number } {
+  const dec = (v: number) => {
+    const s = v / 255;
+    return s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+  };
+  const [lr, lg, lb] = [dec(r), dec(g), dec(b)];
+
+  const l_ = Math.cbrt(0.4122214708 * lr + 0.5363325363 * lg + 0.0514459929 * lb);
+  const m_ = Math.cbrt(0.2119034982 * lr + 0.6806995451 * lg + 0.1073969566 * lb);
+  const s_ = Math.cbrt(0.0883024619 * lr + 0.2817188376 * lg + 0.6299787005 * lb);
+
+  const L = 0.2104542553 * l_ + 0.793617785 * m_ - 0.0040720468 * s_;
+  const A = 1.9779984951 * l_ - 2.428592205 * m_ + 0.4505937099 * s_;
+  const B = 0.0259040371 * l_ + 0.7827717662 * m_ - 0.808675766 * s_;
+
+  const c = Math.sqrt(A * A + B * B);
+  const h = c < 1e-6 ? 0 : ((Math.atan2(B, A) * 180) / Math.PI + 360) % 360;
+  return { l: L, c, h };
+}
+
 function hslToRgb(h: number, s: number, l: number): Pick<Rgba, 'r' | 'g' | 'b'> {
   // Via HSV, so there is one conversion to be wrong in rather than two.
   const v = l + s * Math.min(l, 1 - l);
@@ -89,8 +145,8 @@ export function parseColor(input: string): Rgba | null {
     return { r, g, b, a: a === undefined ? 1 : a / 255 };
   }
 
-  // rgb()/rgba()/hsl()/hsla(), comma-separated or the modern space-separated form with `/ alpha`.
-  const fn = /^(rgba?|hsla?)\(([^)]+)\)$/.exec(value);
+  // rgb()/rgba()/hsl()/hsla()/oklch(), comma-separated or the modern space-separated form.
+  const fn = /^(rgba?|hsla?|oklch)\(([^)]+)\)$/.exec(value);
   if (!fn) return null;
   const parts = fn[2]
     .replace(/\//g, ' ')
@@ -103,6 +159,11 @@ export function parseColor(input: string): Rgba | null {
   if (fn[1].startsWith('rgb')) {
     const [r, g, b] = parts.slice(0, 3).map((p) => (p.endsWith('%') ? (num(p) / 100) * 255 : num(p)));
     return { r, g, b, a: alpha };
+  }
+  if (fn[1] === 'oklch') {
+    // L may be written 0–1 or as a percentage; C is absolute, H in degrees.
+    const l = parts[0].endsWith('%') ? num(parts[0]) / 100 : num(parts[0]);
+    return { ...oklchToRgb(l, num(parts[1]), num(parts[2])), a: alpha };
   }
   const h = ((num(parts[0]) % 360) + 360) % 360;
   return { ...hslToRgb(h, num(parts[1]) / 100, num(parts[2]) / 100), a: alpha };
@@ -120,6 +181,11 @@ export function formatColor(c: Rgba, format: ColorFormat): string {
     const l = v * (1 - s / 2);
     const sl = l === 0 || l === 1 ? 0 : (v - l) / Math.min(l, 1 - l);
     const out = `hsl(${Math.round(h)} ${Math.round(sl * 100)}% ${Math.round(l * 100)}%`;
+    return a < 1 ? `${out} / ${a})` : `${out})`;
+  }
+  if (format === 'oklch') {
+    const { l, c: chroma, h } = rgbToOklch(c);
+    const out = `oklch(${(l * 100).toFixed(1)}% ${chroma.toFixed(3)} ${h.toFixed(1)}`;
     return a < 1 ? `${out} / ${a})` : `${out})`;
   }
   // Hex cannot carry alpha in the form most people expect to paste back, so a translucent colour
