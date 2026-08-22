@@ -1,6 +1,6 @@
 import { contrastRatio, parseColor, type Rgba } from '@we/design-utils';
 import type { ColorHueToken, ColorLightnessToken } from '@we/tokens';
-import { color, role } from '@we/tokens';
+import { color, role, ROLE_ELEVATION_FALLBACK } from '@we/tokens';
 
 import type { ThemeOverrides, ThemeRole } from './overrides';
 import { isThemeName, THEME_PRESETS } from './presets';
@@ -33,8 +33,26 @@ export function roleVar(role: ThemeRole): string {
  * put an explicit `color:` on the scoped wrapper in TemplateLayout.
  */
 const ROLE_DEFAULT_VARS: Record<string, string> = Object.fromEntries(
-  Object.entries(role).map(([name, value]) => [roleVar(name as ThemeRole), value]),
+  Object.entries<string>({ ...role, ...(supportsRelativeColor() ? {} : ROLE_ELEVATION_FALLBACK) }).map(
+    ([name, value]) => [roleVar(name as ThemeRole), value],
+  ),
 );
+
+/**
+ * Whether the elevation stack can be expressed as a relationship, or has to fall back to the scale.
+ *
+ * The tokens CSS carries an `@supports` fallback of its own, but these are written as *inline*
+ * custom properties on the theme root, and an inline declaration beats any stylesheet — so without
+ * the same test here the fallback would be overwritten by the thing it exists to replace.
+ *
+ * Unknown counts as supported. Off a browser — a test, a build step — there is no rendering to be
+ * wrong about, and answering "unsupported" there would mean every unit test measured the fallback
+ * rather than what ships.
+ */
+function supportsRelativeColor(): boolean {
+  if (typeof CSS === 'undefined' || typeof CSS.supports !== 'function') return true;
+  return CSS.supports('color', 'oklch(from red calc(l + 0.1) c h)');
+}
 
 /** Maps shadowIntensity preset to the CSS box-shadow value emitted as --we-theme-shadow. */
 const SHADOW_INTENSITY_VALUES: Record<NonNullable<ThemeOverrides['shadowIntensity']>, string> = {

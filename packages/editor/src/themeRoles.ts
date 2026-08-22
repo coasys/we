@@ -19,7 +19,7 @@ export function roleTier(value: string | undefined): RoleTier {
   // A value expressed *against another role* — "a step lighter than the surface". It survives more
   // than any other pin: a change to the role it references carries through, and because the thing
   // it mixes toward inverts with the theme, so does the direction.
-  if (/^color-mix\(/.test(value.trim())) return 'relative';
+  if (/^(color-mix\(|oklch\(from\s)/.test(value.trim())) return 'relative';
   return 'custom';
 }
 

@@ -62,9 +62,17 @@ describe('token CSS generation', () => {
       const declaration = new RegExp(`--we-role-${cssName}: (.+);`).exec(css);
       expect(declaration, `role '${name}' is not emitted`).not.toBeNull();
 
-      // Either a scale position or an expression over the hue/saturation variables — never a
-      // literal, which is what makes a role themeable at all.
-      expect(declaration![1], `role '${name}' hardcodes a colour`).toMatch(/^(var\(--we-color-|hsl\(var\(--we-color-)/);
+      /*
+        A scale position, an expression over the hue/saturation variables, or a step from another
+        role — never a literal, which is what makes a role themeable at all.
+
+        The third form is the elevation stack: `oklch(from var(--we-role-page) calc(l + 0.045) c h)`
+        follows the theme through `page` rather than through the scale directly, which is a longer
+        indirection and the same guarantee.
+      */
+      expect(declaration![1], `role '${name}' hardcodes a colour`).toMatch(
+        /^(var\(--we-color-|hsl\(var\(--we-color-|oklch\(from var\(--we-role-)/,
+      );
     }
   });
 

@@ -153,13 +153,24 @@ theme still reaches it afterwards. In descending order of how much survives:
 | `var(--we-color-neutral-200)` | hue, saturation, light/dark polarity | "surfaces sit two steps down" — most theme edits mean this |
 | `hsl(var(--we-color-neutral-hue) var(--we-color-neutral-saturation) 11%)` | hue and saturation; holds its lightness against a polarity flip | a designed theme whose surface ramp is uneven — `channels`, `timeline` |
 | `color-mix(in srgb, var(--we-role-surface) 88%, var(--we-role-text))` | everything, *including a later change to the role it references* | "a step darker than the surface" — a relationship rather than a value |
+| `oklch(from var(--we-role-page) calc(l + 0.045) c h)` | the same, and stays an even step at any lightness or hue | "one step above the page" — how the elevation stack is written |
 | `#1a1a1e` | nothing | a brand colour that must not move |
 
-The `color-mix` row is worth reading twice: it is the only form that expresses a *relationship*
+The two relative rows are worth reading twice: they are the only forms that express a *relationship*
 rather than a value, so it survives a change to the role it names — and because it mixes toward a
 role that inverts with the theme, "a step darker" in a light theme becomes "a step lighter" in a
 dark one without being told. The secondary button's hover and pressed states are written this way,
 which is why they need no roles of their own.
+
+The `oklch(from …)` row is the stronger of the two and is why the elevation stack is written that
+way. `color-mix` interpolates *between two colours*, so a fixed percentage moves by a share of the
+distance remaining — 8% toward white is 0.4 lightness points from a near-white page and 7 from a
+dark one. `calc(l + n)` in OKLCH moves by a fixed *perceptual* amount instead, which is the only
+thing that means the same in a light theme and a dark one. It also carries `c` and `h` through, so
+a theme that tints its neutrals gets a tinted stack without saying so.
+
+Note this puts OKLCH in the *relationships* only. The fourteen scale steps are still HSL: respacing
+those changes how every theme looks and is a separate decision.
 
 The last row is the only one that really leaves the system, and it is the one a colour picker
 produces by default — which is why `we-color-picker` opens on the **token grid** when `tokens` is

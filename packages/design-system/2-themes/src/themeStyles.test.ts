@@ -208,8 +208,10 @@ describe('roles resolve against the theme they belong to', () => {
   */
   it('re-declares every role default, so an unpinned role follows this theme', () => {
     const style = themeToStyle({ multiplier: -1, subtractor: '108%' });
-    expect(style['--we-role-surface']).toBe('var(--we-color-neutral-0)');
     expect(style['--we-role-text-muted']).toBe('var(--we-color-neutral-600)');
+    // The elevation stack is a relationship, not a scale position — and it has to be re-declared
+    // for the same reason, or a scoped theme's cards are measured off the ambient theme's page.
+    expect(style['--we-role-surface']).toBe('oklch(from var(--we-role-page) calc(l + 0.045) c h)');
   });
 
   it('lets a pin win over the default it replaces, rather than sitting beside it', () => {
@@ -219,13 +221,13 @@ describe('roles resolve against the theme they belong to', () => {
 
   it('carries the pins a named preset brings with it', () => {
     /*
-      `dark` is the case in point: raised surfaces get lighter instead of casting a shadow. Asserted
-      as "it pins a lightness" rather than as one exact string — the value is a design decision that
-      moves (it has once already), and a test that repeats it only says the file was copied
-      correctly. That the *ordering* is right is checked in contrast.test.ts, which is the property
-      that actually matters.
+      `black` is the case that has to pin: its page is at the sRGB floor, where the derived step and
+      the page round to the same 8-bit value. Asserted as "it pins a lightness" rather than as one
+      exact string — the numbers are a design decision that moves, and a test repeating them only
+      says the file was copied correctly. That the *ordering* holds is checked in contrast.test.ts,
+      which is the property that matters.
     */
-    const raised = themeToStyle({ themeName: 'dark' })['--we-role-surface-raised'];
+    const raised = themeToStyle({ themeName: 'black' })['--we-role-surface-raised'];
     expect(raised).toMatch(/^hsl\(var\(--we-color-neutral-hue\)/);
   });
 });

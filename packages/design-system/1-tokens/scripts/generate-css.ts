@@ -8,7 +8,7 @@ import type { color as colorTokens } from '../src/color.js';
 import type { component as componentTokens } from '../src/component.js';
 import type { font as fontTokens } from '../src/font.js';
 import type { layout as layoutTokens } from '../src/layout.js';
-import { role as roleTokens } from '../src/role.js';
+import { role as roleTokens, ROLE_ELEVATION_FALLBACK } from '../src/role.js';
 import type { shadow as shadowTokens } from '../src/shadow.js';
 import type {
   avatarSize as avatarSizeTokens,
@@ -206,6 +206,12 @@ ${roleVars}
   --we-gradient-primary: linear-gradient(135deg, hsl(calc(var(--we-color-primary-hue) - 25) var(--we-color-saturation) var(--we-color-lightness-500)) 0%, hsl(calc(var(--we-color-primary-hue) + 25) var(--we-color-saturation) var(--we-color-lightness-500)) 100%);
 }
 
+@supports not (color: oklch(from red calc(l + 0.1) c h)) {
+  :root {
+${roleFallbackVars}
+  }
+}
+
 /*
   Forced-colors mode (Windows High Contrast, and its equivalents).
 
@@ -257,6 +263,19 @@ function camelToKebab(str: string): string {
 
 const roleVars = Object.entries(roleTokens)
   .map(([key, value]) => `  --we-role-${camelToKebab(key)}: ${value};`)
+  .join('\n');
+
+/*
+  The elevation stack, for a browser that cannot express it as a relationship.
+
+  Relative colour syntax landed in Chrome 119, Safari 16.4 and Firefox 128, and Electron has had it
+  throughout — so this is for an old web visitor and nobody else. Falling back to the scale
+  positions puts them exactly where every browser was before the change: correct in light, inverted
+  in dark. Worth having anyway, because the failure mode without it is not "slightly off", it is a
+  declaration the parser drops entirely, leaving cards with no background at all.
+*/
+const roleFallbackVars = Object.entries(ROLE_ELEVATION_FALLBACK)
+  .map(([key, value]) => `    --we-role-${camelToKebab(key)}: ${value};`)
   .join('\n');
 
 export function generateComponentCSS(component: typeof componentTokens) {

@@ -121,9 +121,9 @@ exports[`token CSS generation > color.css — hues, lightness ramp, palettes, ro
      so every theme keeps working untouched; themes may pin individual roles
      (ThemeOverrides.roles in @we/themes → --we-role-*). */
   --we-role-page: var(--we-color-neutral-50);
-  --we-role-surface: var(--we-color-neutral-0);
-  --we-role-surface-raised: var(--we-color-neutral-0);
-  --we-role-surface-sunken: var(--we-color-neutral-100);
+  --we-role-surface: oklch(from var(--we-role-page) calc(l + 0.045) c h);
+  --we-role-surface-raised: oklch(from var(--we-role-page) calc(l + 0.1) c h);
+  --we-role-surface-sunken: oklch(from var(--we-role-page) calc(l - 0.035) c h);
   --we-role-text: var(--we-color-neutral-900);
   --we-role-text-muted: var(--we-color-neutral-600);
   --we-role-text-faint: var(--we-color-neutral-400);
@@ -156,6 +156,14 @@ exports[`token CSS generation > color.css — hues, lightness ramp, palettes, ro
 
   /* Gradient */
   --we-gradient-primary: linear-gradient(135deg, hsl(calc(var(--we-color-primary-hue) - 25) var(--we-color-saturation) var(--we-color-lightness-500)) 0%, hsl(calc(var(--we-color-primary-hue) + 25) var(--we-color-saturation) var(--we-color-lightness-500)) 100%);
+}
+
+@supports not (color: oklch(from red calc(l + 0.1) c h)) {
+  :root {
+    --we-role-surface: var(--we-color-neutral-0);
+    --we-role-surface-raised: var(--we-color-neutral-0);
+    --we-role-surface-sunken: var(--we-color-neutral-100);
+  }
 }
 
 /*

@@ -71,7 +71,7 @@ export function hsvToRgb(h: number, s: number, v: number): Pick<Rgba, 'r' | 'g' 
   browser — speaks sRGB, so this is a front door, not a new internal representation. Moving the
   *ramps* to OKLCH is a separate decision that changes how every theme looks; this does not.
 */
-function oklchToRgb(l: number, c: number, hDeg: number): Pick<Rgba, 'r' | 'g' | 'b'> {
+export function oklchToRgb(l: number, c: number, hDeg: number): Pick<Rgba, 'r' | 'g' | 'b'> {
   const h = (hDeg * Math.PI) / 180;
   const a = c * Math.cos(h);
   const bb = c * Math.sin(h);
@@ -94,7 +94,7 @@ function oklchToRgb(l: number, c: number, hDeg: number): Pick<Rgba, 'r' | 'g' | 
   return { r: enc(lr), g: enc(lg), b: enc(lb) };
 }
 
-function rgbToOklch({ r, g, b }: Pick<Rgba, 'r' | 'g' | 'b'>): { l: number; c: number; h: number } {
+export function rgbToOklch({ r, g, b }: Pick<Rgba, 'r' | 'g' | 'b'>): { l: number; c: number; h: number } {
   const dec = (v: number) => {
     const s = v / 255;
     return s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;

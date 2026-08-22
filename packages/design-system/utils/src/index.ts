@@ -190,6 +190,9 @@ function isRawCSSValue(value: string): boolean {
     `var(--we-color-color-mix(…))`, a variable name built out of an expression.
   */
   if (/^color-mix\(/i.test(value)) return true;
+  // `oklch(from …)` — the elevation stack, expressed as a step from another role. Same hazard as
+  // color-mix: read as a token name it becomes `var(--we-color-oklch(from …))`, which is nothing.
+  if (/^oklch\(from\s/i.test(value)) return true;
   return /^-?(var\(|#|rgba?|hsla?|\d+(\.\d+)?(px|rem|em|%|vh|vw|vmin|vmax|ch|ex|\s))/.test(value);
 }
 

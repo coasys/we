@@ -68,3 +68,16 @@ describe('the roles object a theme stores', () => {
     expect(before).toEqual({ page: '#fff' });
   });
 });
+
+describe('the relative rung covers both forms of "a step from another role"', () => {
+  it('recognises the elevation stack, not only color-mix', () => {
+    expect(roleTier('oklch(from var(--we-role-page) calc(l + 0.045) c h)')).toBe('relative');
+    expect(roleTierLabel('oklch(from var(--we-role-page) calc(l + 0.045) c h)')).toBe('relative to another role');
+  });
+
+  // An ordinary oklch() colour is a literal — it follows nothing, and saying otherwise would tell
+  // an author their pinned brand colour still tracks the theme.
+  it('does not mistake a plain oklch() literal for a relationship', () => {
+    expect(roleTier('oklch(0.7 0.15 250)')).toBe('custom');
+  });
+});

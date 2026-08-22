@@ -66,23 +66,9 @@ export const THEME_PRESETS = {
       saturation: '50%',
       neutralSaturation: '20%',
       roles: {
-        /*
-          The surface stack, pinned rather than inherited.
-
-          Left to the scale it comes out upside down: `page` is neutral-50 and `surface` is
-          neutral-0, and the inversion flips their order, so a card lands *darker* than the page it
-          sits on and a "sunken" well lands lighter than both. Every dark interface does the
-          opposite — depth is carried by light, because there is no darker left to go.
-
-          Four pinned lightnesses are all it takes, and they are what `contrast.test.ts` checks the
-          ordering of. The alternative — deriving them — needs a step that stays perceptually even
-          across the inversion, which the scale does not give and this file is not the place to
-          invent.
-        */
-        page: neutral(10),
-        surface: neutral(14),
-        surfaceSunken: neutral(8),
-        surfaceRaised: neutral(19),
+        // The surface stack is derived from `page` now — see the note in @we/tokens' role.ts. This
+        // theme pinned four lightnesses that the formula reproduces to within a point, which is
+        // what suggested the formula.
         // White on this accent measures 3.6:1; the dark end measures 4.7. See contrast.test.ts.
         onAccent: neutral(10),
       },
@@ -96,8 +82,12 @@ export const THEME_PRESETS = {
       subtractor: '100%',
       saturation: '50%',
       neutralSaturation: '20%',
-      // The page stays pure black — that is the theme — so the stack is built upwards from it
-      // rather than around it. See the note on `dark` for why it has to be pinned at all.
+      /*
+        The one theme that still has to state its stack, and for a reason no formula can route
+        around: its page is pure black, and a +0.045 OKLCH step from there rounds to the same 8-bit
+        sRGB value. At the floor there is no room for the relationship, so the numbers are the
+        design. Built upwards from the page rather than around it, for the same reason.
+      */
       roles: { page: neutral(0), surface: neutral(5), surfaceSunken: neutral(2), surfaceRaised: neutral(10) },
     },
   },
@@ -115,11 +105,6 @@ export const THEME_PRESETS = {
       saturation: '60%',
       neutralSaturation: '10%',
       roles: {
-        // As `dark`: the stack has to be pinned or the inversion turns it upside down.
-        page: neutral(11),
-        surface: neutral(15),
-        surfaceSunken: neutral(8),
-        surfaceRaised: neutral(21),
         // A bright accent needs a dark label: white measures 3.5:1 on it, near-black 4.8.
         onAccent: neutral(10),
       },

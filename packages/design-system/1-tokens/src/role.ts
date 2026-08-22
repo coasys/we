@@ -13,15 +13,49 @@
  * `ThemeOverrides.roles` in `@we/themes` (emitted as `--we-role-*` custom properties).
  */
 
+/**
+ * The elevation stack, as a relationship rather than three more scale positions.
+ *
+ * `page` names a step on the scale; the other three are *a constant perceptual distance from it*.
+ * That is the only formulation that survives the light/dark inversion, and the reason is worth
+ * stating because the obvious alternative looks fine and is not:
+ *
+ * As scale positions (`page` = neutral-50, `surface` = neutral-0) the whole scale flips together, so
+ * their *order* flips too — in dark, a card lands below the page it sits on and a sunken well lands
+ * above both. The stack is upside down, and it does not look broken, it looks flat, so what somebody
+ * concludes is that the theme is poor rather than inverted.
+ *
+ * Writing it as a fixed lightness offset in HSL does not fix it either: HSL lightness is a
+ * coordinate, not a brightness, so the same five points is 3.6 L* near black and 6.3 L* in the
+ * mid-dark range. One constant cannot serve themes sitting at different places on that curve.
+ *
+ * OKLCH lightness *is* perceptual, so `calc(l + 0.045)` means the same visible step everywhere, at
+ * any hue. The relative form also inherits `c` and `h` from whatever `page` resolves to, so a theme
+ * that tints its neutrals gets a tinted stack for free — which the scale positions did not do, and
+ * which three hand-pinned presets were approximating by eye.
+ *
+ * Only the *relationship* is in OKLCH. The ramp underneath is still HSL: how the fourteen scale
+ * steps are spaced is a separate decision, and one that changes how every theme looks.
+ *
+ * Two themes still pin their stacks and both have a reason. `black` sits at the sRGB floor, where a
+ * +0.045 step and the page round to the same 8-bit value — no formula can help there. `channels`
+ * wants its page and its cards identical, separating them with borders, which is a design.
+ */
 export const role = {
-  /** The page/app background behind everything. */
+  /** The page/app background behind everything. The stack below is measured from this. */
   page: 'var(--we-color-neutral-50)',
-  /** Default surface (cards, panels). */
-  surface: 'var(--we-color-neutral-0)',
+  /** Default surface (cards, panels) — one step above the page, in both polarities. */
+  surface: 'oklch(from var(--we-role-page) calc(l + 0.045) c h)',
   /** A surface elevated above its parent. Light themes pair it with shadow; dark themes lighten it. */
-  surfaceRaised: 'var(--we-color-neutral-0)',
-  /** A surface recessed below its parent (wells, input troughs). */
-  surfaceSunken: 'var(--we-color-neutral-100)',
+  surfaceRaised: 'oklch(from var(--we-role-page) calc(l + 0.1) c h)',
+  /**
+   * A surface recessed below its parent (wells, input troughs).
+   *
+   * Measured from `page`, not from `surface`, although it is semantically recessed into a surface:
+   * in a light theme `surface` is clamped at white, so a step down from it lands *above* the page
+   * and the well disappears. Measuring from the page keeps the three in order at both ends.
+   */
+  surfaceSunken: 'oklch(from var(--we-role-page) calc(l - 0.035) c h)',
   /** Primary text. */
   text: 'var(--we-color-neutral-900)',
   /**
@@ -160,3 +194,20 @@ export const role = {
 } as const;
 
 export type RoleToken = keyof typeof role;
+
+/**
+ * The stack as scale positions, for a browser without relative colour syntax.
+ *
+ * Correct in light and inverted in dark — which is exactly the behaviour before the change, so an
+ * old browser is no worse off than it was, and every current one gets a stack that holds. Relative
+ * colour syntax landed in Chrome 119, Safari 16.4 and Firefox 128; Electron has had it throughout.
+ *
+ * Deliberately not `color-mix`, which is more widely supported and wrong for the job: mixing a
+ * percentage toward white moves by a share of the distance remaining, so the same 8% is 0.4 points
+ * from a near-white page and 7 points from a dark one — less even than the HSL it would replace.
+ */
+export const ROLE_ELEVATION_FALLBACK = {
+  surface: 'var(--we-color-neutral-0)',
+  surfaceRaised: 'var(--we-color-neutral-0)',
+  surfaceSunken: 'var(--we-color-neutral-100)',
+} as const;

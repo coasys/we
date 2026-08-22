@@ -15,9 +15,11 @@ import {
   CONTRAST_MINIMUM,
   type ContrastLevel,
   contrastRatio,
+  oklchToRgb,
   parseColor,
   relativeLuminance,
   type Rgba,
+  rgbToOklch,
 } from '@we/design-utils';
 import { color, role } from '@we/tokens';
 import { describe, expect, it } from 'vitest';
@@ -80,9 +82,33 @@ function resolve(value: string, theme: ThemeOverrides): Rgba | null {
   return parseColor(value);
 }
 
-function roleColor(name: ThemeRole, theme: ThemeOverrides): Rgba | null {
+/**
+ * `oklch(from var(--we-role-x) calc(l ± n) c h)` — the elevation stack's relative form.
+ *
+ * Resolved with the same arithmetic the browser does, so the check stays a unit test: read the role
+ * it names, convert to OKLCH, move the lightness, convert back. Without this the resolver returns
+ * null for three of the four surfaces and the elevation test asserts on nothing.
+ */
+const RELATIVE = /^oklch\(from\s+var\(--we-role-([a-z-]+)\)\s+calc\(l\s*([+-])\s*([\d.]+)\)\s+c\s+h\)$/;
+
+function roleColor(name: ThemeRole, theme: ThemeOverrides, seen = new Set<string>()): Rgba | null {
   const value = theme.roles?.[name] ?? (role as Record<string, string>)[name];
-  return value ? resolve(value, theme) : null;
+  if (!value) return null;
+
+  const relative = RELATIVE.exec(value.trim());
+  if (relative) {
+    const [, base, sign, amount] = relative;
+    // A role defined in terms of itself would spin forever; a theme can do that by hand.
+    if (seen.has(name)) return null;
+    const camel = base.replace(/-([a-z])/g, (_, c: string) => c.toUpperCase()) as ThemeRole;
+    const from = roleColor(camel, theme, new Set([...seen, name]));
+    if (!from) return null;
+    const { l, c, h } = rgbToOklch(from);
+    const moved = Math.min(1, Math.max(0, l + (sign === '-' ? -1 : 1) * parseFloat(amount)));
+    return { ...oklchToRgb(moved, c, h), a: from.a };
+  }
+
+  return resolve(value, theme);
 }
 
 describe.each(Object.keys(THEME_PRESETS) as ThemeName[])('%s', (name) => {
