@@ -15,6 +15,7 @@ import {
   CONTRAST_MINIMUM,
   type ContrastLevel,
   contrastRatio,
+  maxChromaFor,
   oklchToRgb,
   parseColor,
   relativeLuminance,
@@ -22,7 +23,7 @@ import {
   rgbToOklch,
 } from '@we/design-utils';
 import type { ColorLightnessToken } from '@we/tokens';
-import { CHROMA_CEILING, CHROMA_PER_SATURATION, chromaTaper, color, RAMP, role } from '@we/tokens';
+import { chromaTaper, color, RAMP, role } from '@we/tokens';
 import { describe, expect, it } from 'vitest';
 
 import type { ThemeOverrides, ThemeRole } from './overrides';
@@ -75,7 +76,8 @@ function resolve(value: string, theme: ThemeOverrides): Rgba | null {
     // The same expression the generated CSS builds: a step's lightness, the theme's saturation
     // scaled by that step's chroma taper, and the family's hue.
     const chroma =
-      Math.min(saturationOf(family, theme) * CHROMA_PER_SATURATION, CHROMA_CEILING) *
+      (saturationOf(family, theme) / 100) *
+      maxChromaFor(0.6, hueOf(family, theme)) *
       chromaTaper(step as ColorLightnessToken);
     return parseColor(`oklch(${lightness(step, theme)}% ${chroma.toFixed(4)} ${hueOf(family, theme)})`);
   }
@@ -97,7 +99,7 @@ function resolve(value: string, theme: ThemeOverrides): Rgba | null {
     const taper = 2 * Math.min(lightnessFraction, 1 - lightnessFraction);
     const chroma = /^[\d.]+$/.test(chromaExpr)
       ? parseFloat(chromaExpr)
-      : Math.min(saturationOf('neutral', theme) * CHROMA_PER_SATURATION, CHROMA_CEILING) * taper;
+      : (saturationOf('neutral', theme) / 100) * maxChromaFor(0.6, hueOf('neutral', theme)) * taper;
     return parseColor(`oklch(${l}% ${chroma.toFixed(4)} ${hueOf(hueFamily, theme)}${alpha ? ` / ${alpha}` : ''})`);
   }
 
@@ -156,7 +158,7 @@ function roleColor(name: ThemeRole, theme: ThemeOverrides, seen = new Set<string
 /** The two ends of this theme's neutral ramp — the candidates the runtime chooses between. */
 function neutralAt(l: number, theme: ThemeOverrides): string {
   const taper = 2 * Math.min(l / 100, 1 - l / 100);
-  const chroma = Math.min(saturationOf('neutral', theme) * CHROMA_PER_SATURATION, CHROMA_CEILING) * taper;
+  const chroma = (saturationOf('neutral', theme) / 100) * maxChromaFor(0.6, hueOf('neutral', theme)) * taper;
   return `oklch(${l}% ${chroma.toFixed(4)} ${hueOf('neutral', theme)})`;
 }
 

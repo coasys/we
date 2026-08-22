@@ -1,4 +1,4 @@
-import { contrastRatio, parseColor, type Rgba } from '@we/design-utils';
+import { contrastRatio, maxChromaFor, parseColor, type Rgba } from '@we/design-utils';
 import type { ColorHueToken, ColorLightnessToken } from '@we/tokens';
 import {
   CHROMA_CEILING,
@@ -304,7 +304,7 @@ export function themeToStyle(overrides: ThemeOverrides): Record<string, string> 
       const taper = chromaTaper(step);
       style[`--we-color-${family}-${step}`] =
         `oklch(var(--we-color-lightness-${step}) ` +
-        `calc(min(var(${satVar}) * ${CHROMA_PER_SATURATION}, ${CHROMA_CEILING}) * ${taper}) ` +
+        `calc(var(${satVar}) / 100 * var(--we-color-${family}-chroma-max, ${CHROMA_CEILING}) * ${taper}) ` +
         `var(--we-color-${family}-hue))`;
     }
   }
@@ -412,9 +412,45 @@ export function applyThemeVars(root: HTMLElement, theme: ThemeOverrides): void {
 
   // Tracked alongside the rest, so the next theme clears them: a derived value from the old theme
   // outliving it would be worse than never deriving one.
-  const derived = applyAutoContrast(root, theme);
+  const ceilings = applyChromaCeilings(root);
+  const derived = [...applyAutoContrast(root, theme), ...ceilings];
   appliedThemeVars.set(root, new Set([...Object.keys(styles), ...derived]));
 }
+
+/**
+ * How much chroma each family may use, given the hue this theme actually chose.
+ *
+ * A flat ceiling made `saturation` mean different things at different hues, because chroma is
+ * absolute where HSL saturation was relative: at mid lightness a violet reaches 0.259 and a teal
+ * 0.103, so 100 gave the violet 70% of its range and stopped doing anything to the teal at about
+ * 29. Normalising against what the hue can actually hold makes the slider mean one thing —
+ * "this fraction of as colourful as this hue gets" — which is what it always read as.
+ *
+ * Computed here rather than in CSS because the sRGB boundary in OKLCH has no closed form worth
+ * writing, and because this is the same shape as the contrast derivation: measure once when the
+ * theme is applied, publish a variable, let the ramp use it.
+ *
+ * Measured at the lightness where chroma peaks, so one number serves the whole ramp; the per-step
+ * taper then scales it down toward both ends exactly as before.
+ */
+function applyChromaCeilings(root: HTMLElement): string[] {
+  const written: string[] = [];
+  // Same guard as the contrast derivation: nothing to measure off a stub, and asking anyway throws.
+  if (typeof getComputedStyle !== 'function' || root?.nodeType !== 1 || !root.isConnected) return written;
+  const computed = getComputedStyle(root);
+
+  for (const family of COLOR_FAMILIES) {
+    const hue = parseFloat(computed.getPropertyValue(`--we-color-${family}-hue`));
+    if (Number.isNaN(hue)) continue;
+    const prop = `--we-color-${family}-chroma-max`;
+    root.style.setProperty(prop, maxChromaFor(CHROMA_PEAK_LIGHTNESS, hue).toFixed(4));
+    written.push(prop);
+  }
+  return written;
+}
+
+/** Where chroma peaks on the ramp, and so where the family's ceiling is measured. */
+const CHROMA_PEAK_LIGHTNESS = 0.6;
 
 /**
  * Foregrounds whose colour is a *consequence* of the fill they sit on, not a separate decision.

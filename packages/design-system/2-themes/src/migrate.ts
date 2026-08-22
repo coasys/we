@@ -162,6 +162,28 @@ const MIGRATIONS: ((overrides: Versioned) => Versioned)[] = [
     }
     return next;
   },
+
+  /*
+    v5 → v6: saturation is a fraction of what the hue can hold, not a multiple of a flat constant.
+
+    A flat ceiling made one number mean different things at different hues, because chroma is
+    absolute where HSL saturation was relative: at mid lightness a violet reaches 0.259 and a teal
+    0.103, so `saturation: 100` gave the violet 70% of its range and stopped affecting the teal at
+    about 29. Now 100 means "as colourful as this hue gets", which is what the slider always read as.
+
+    Rescaled on the primary family, since that is where a theme's identity sits, and clamped: a
+    theme asking for more chroma than its hue can hold was already being gamut-mapped, and 100 says
+    so honestly. `channels` was one — 85 on the old scale asked for chroma 0.30 on a blue, which is
+    how it once came out magenta.
+  */
+  (overrides) => {
+    const next: Versioned = { ...overrides };
+    for (const key of ['saturation', 'neutralSaturation'] as const) {
+      const value = next[key];
+      if (typeof value === 'number') next[key] = Math.min(100, Math.round(value * 1.6129));
+    }
+    return next;
+  },
 ];
 
 /**

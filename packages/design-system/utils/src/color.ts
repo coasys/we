@@ -249,3 +249,42 @@ export type ContrastLevel = 'body' | 'large' | 'ui';
 
 /** WCAG 2 AA thresholds: 4.5 for body text, 3 for large text and for non-text UI. */
 export const CONTRAST_MINIMUM: Record<ContrastLevel, number> = { body: 4.5, large: 3, ui: 3 };
+
+/**
+ * The most chroma sRGB can hold at a given OKLCH lightness and hue.
+ *
+ * Needed because chroma is *absolute* where HSL saturation was relative, so one flat ceiling means
+ * one number does different things at different hues: at L 0.6 a violet can reach 0.259 and a teal
+ * only 0.103, so `saturation: 100` gave the violet 70% of its range and stopped affecting the teal
+ * at about 29. That is the same "one number, different meanings" problem the ramp had for
+ * lightness, one axis over.
+ *
+ * Found by bisection rather than by formula: the sRGB boundary in OKLCH is a genuinely awkward
+ * shape, and twenty halvings resolve it far finer than an 8-bit channel can show.
+ */
+export function maxChromaFor(lightness: number, hue: number): number {
+  let lo = 0;
+  let hi = 0.4;
+  for (let i = 0; i < 20; i++) {
+    const mid = (lo + hi) / 2;
+    if (rawInGamut(lightness, mid, hue)) lo = mid;
+    else hi = mid;
+  }
+  return lo;
+}
+
+/** Whether oklch(l c h) lands inside sRGB without the clipping `oklchToRgb` applies. */
+function rawInGamut(l: number, c: number, h: number): boolean {
+  const rad = (h * Math.PI) / 180;
+  const a = c * Math.cos(rad);
+  const bb = c * Math.sin(rad);
+  const L = (l + 0.3963377774 * a + 0.2158037573 * bb) ** 3;
+  const M = (l - 0.1055613458 * a - 0.0638541728 * bb) ** 3;
+  const S = (l - 0.0894841775 * a - 1.291485548 * bb) ** 3;
+  const channels = [
+    4.0767416621 * L - 3.3077115913 * M + 0.2309699292 * S,
+    -1.2684380046 * L + 2.6097574011 * M - 0.3413193965 * S,
+    -0.0041960863 * L - 0.7034186147 * M + 1.707614701 * S,
+  ];
+  return channels.every((v) => v >= -0.001 && v <= 1.001);
+}

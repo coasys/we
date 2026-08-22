@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import type { animation as animationTokens } from '../src/animation.js';
 import type { border as borderTokens } from '../src/border.js';
 import type { color as colorTokens } from '../src/color.js';
-import { CHROMA_CEILING, CHROMA_PER_SATURATION, chromaTaper, RAMP } from '../src/color.js';
+import { CHROMA_CEILING, chromaTaper, RAMP } from '../src/color.js';
 import type { component as componentTokens } from '../src/component.js';
 import type { font as fontTokens } from '../src/font.js';
 import type { layout as layoutTokens } from '../src/layout.js';
@@ -185,7 +185,15 @@ export function generateColorCSS(color: typeof colorTokens) {
             and a division that `calc()` does not allow.
           */
           const taper = chromaTaper(lightnessKey as Parameters<typeof chromaTaper>[0]);
-          const chroma = `calc(min(${saturationVar} * ${CHROMA_PER_SATURATION}, ${CHROMA_CEILING}) * ${taper})`;
+          /*
+            Saturation as a fraction of what this hue can hold, not of a flat constant.
+
+            `--we-color-<family>-chroma-max` is published by `applyThemeVars`, which measures the
+            sRGB boundary for the hue the theme actually chose. The fallback is the flat ceiling,
+            which is what the static CSS has to use before any theme is applied — and what an
+            unthemed page keeps.
+          */
+          const chroma = `calc(${saturationVar} / 100 * var(--we-color-${type}-chroma-max, ${CHROMA_CEILING}) * ${taper})`;
           return `  --we-color-${type}-${lightnessKey}: oklch(var(--we-color-lightness-${lightnessKey}) ${chroma} var(--we-color-${type}-hue));`;
         })
         .join('\n');

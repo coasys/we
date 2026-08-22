@@ -69,8 +69,8 @@ export const THEME_PRESETS = {
       polarity: 'light',
       lightnessFloor: '0%',
       lightnessCeiling: '100%',
-      saturation: 60,
-      neutralSaturation: 10,
+      saturation: 97,
+      neutralSaturation: 16,
     },
   },
   dark: {
@@ -88,8 +88,8 @@ export const THEME_PRESETS = {
       polarity: 'dark',
       lightnessFloor: '12%',
       lightnessCeiling: '112%',
-      saturation: 50,
-      neutralSaturation: 20,
+      saturation: 81,
+      neutralSaturation: 32,
       roles: {
         // The surface stack is derived from `page` now — see the note in @we/tokens' role.ts. This
         // theme pinned four lightnesses that the formula reproduces to within a point, which is
@@ -107,8 +107,8 @@ export const THEME_PRESETS = {
       polarity: 'dark',
       lightnessFloor: '0%',
       lightnessCeiling: '100%',
-      saturation: 50,
-      neutralSaturation: 20,
+      saturation: 81,
+      neutralSaturation: 32,
       /*
         The one theme that still has to state its stack, and for a reason no formula can route
         around: its page is pure black, and a +0.045 OKLCH step from there rounds to the same 8-bit
@@ -129,6 +129,16 @@ export const THEME_PRESETS = {
           enough off the floor not to need it.
         */
         textMuted: 'var(--we-color-neutral-700)',
+        /*
+          The status roles, a step further out, and only here.
+
+          A filled control needs to sit away from the middle of the ramp or no label reads on it —
+          and `black` runs the full 0–100, which makes its dead zone the widest of any theme. The
+          shared 700 lands at 58% for this ramp; 800 clears it. The same reasoning as `accent`
+          moving off 600, applied to a theme whose range is the reason.
+        */
+        danger: 'var(--we-color-danger-800)',
+        dangerText: 'var(--we-color-danger-800)',
       },
     },
   },
@@ -141,8 +151,8 @@ export const THEME_PRESETS = {
       polarity: 'light',
       lightnessFloor: '0%',
       lightnessCeiling: '100%',
-      saturation: 60,
-      neutralSaturation: 10,
+      saturation: 97,
+      neutralSaturation: 16,
     },
   },
   cyberpunk: {
@@ -153,8 +163,8 @@ export const THEME_PRESETS = {
       polarity: 'dark',
       lightnessFloor: '10%',
       lightnessCeiling: '110%',
-      saturation: 60,
-      neutralSaturation: 10,
+      saturation: 97,
+      neutralSaturation: 16,
       roles: {
         // A bright accent needs a dark label: white measures 3.5:1 on it, near-black 4.8.
         onAccent: neutral(21.6),
@@ -189,8 +199,8 @@ export const THEME_PRESETS = {
     parameters: {
       primaryHue: 266,
       neutralHue: 266,
-      saturation: 85,
-      neutralSaturation: 6,
+      saturation: 100,
+      neutralSaturation: 10,
       schemaVersion: THEME_SCHEMA_VERSION,
       polarity: 'dark',
       lightnessFloor: '6%',
@@ -234,8 +244,8 @@ export const THEME_PRESETS = {
     parameters: {
       primaryHue: 245,
       neutralHue: 255,
-      saturation: 89,
-      neutralSaturation: 9,
+      saturation: 100,
+      neutralSaturation: 15,
       schemaVersion: THEME_SCHEMA_VERSION,
       polarity: 'light',
       lightnessFloor: '0%',

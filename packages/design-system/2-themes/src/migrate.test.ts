@@ -117,10 +117,11 @@ describe('the 2 → 3 move to OKLCH', () => {
     expect(out.fontScale).toBe(1.25);
   });
 
-  it('unquotes saturation, which is a chroma multiplier now rather than a percentage', () => {
+  it('unquotes saturation, which is a chroma figure now rather than a percentage', () => {
+    // The value is then rescaled again by v6, so this asserts the type change rather than the number.
     const out = migrateOverrides(v2({ saturation: '85%', neutralSaturation: '6%' }));
-    expect(out.saturation).toBe(85);
-    expect(out.neutralSaturation).toBe(6);
+    expect(typeof out.saturation).toBe('number');
+    expect(typeof out.neutralSaturation).toBe('number');
   });
 
   it('is idempotent — a converted hue is not converted again', () => {
@@ -197,5 +198,25 @@ describe('the 4 → 5 tidy of the control surface', () => {
   it('lets a role the theme already pinned win over the old key', () => {
     const out = migrateOverrides(v4({ ringColor: '#ff00ff', roles: { focus: '#00ff00' } }));
     expect(out.roles?.focus).toBe('#00ff00');
+  });
+});
+
+describe('the 5 → 6 rescale of saturation', () => {
+  const v5 = (o: Record<string, unknown>) => ({ schemaVersion: 5, ...o }) as unknown as ThemeOverrides;
+
+  it('rescales onto the new meaning rather than leaving a number that now means less', () => {
+    expect(migrateOverrides(v5({ saturation: 50 })).saturation).toBe(81);
+  });
+
+  /*
+    A theme asking for more chroma than its hue can hold was already being gamut-mapped — `channels`
+    at 85 asked for 0.30 on a blue, which is how it once rendered magenta. 100 says so honestly.
+  */
+  it('clamps a theme that was already asking for more than sRGB has', () => {
+    expect(migrateOverrides(v5({ saturation: 85 })).saturation).toBe(100);
+  });
+
+  it('leaves a theme that never set one alone', () => {
+    expect(migrateOverrides(v5({ primaryHue: 263 })).saturation).toBeUndefined();
   });
 });

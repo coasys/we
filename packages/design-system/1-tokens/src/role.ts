@@ -192,9 +192,12 @@ export const role = {
    * hardcoded to `danger-500` — themeable only through the hue that owns it, which is not the same
    * as being able to say "make destructive actions look like this".
    */
-  danger: 'var(--we-color-danger-600)',
-  success: 'var(--we-color-success-600)',
-  warning: 'var(--we-color-warning-600)',
+  // 700, matching `accent`, and for the same reason: a filled control near the middle of the ramp
+  // has no readable label at either end. `cyberpunk` measured 4.42:1 with the derivation already
+  // picking the better of the two.
+  danger: 'var(--we-color-danger-700)',
+  success: 'var(--we-color-success-700)',
+  warning: 'var(--we-color-warning-700)',
 
   /**
    * Text and icons on a status fill — the destructive button's label.
