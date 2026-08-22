@@ -27,7 +27,7 @@ import {
   simulateVision,
 } from '@we/design-utils';
 import type { ColorLightnessToken } from '@we/tokens';
-import { chromaTaper, color, RAMP, role } from '@we/tokens';
+import { chromaTaper, color, RAMP, role, STATE_STEPS } from '@we/tokens';
 import { describe, expect, it } from 'vitest';
 
 import type { ThemeOverrides, ThemeRole } from './overrides';
@@ -37,6 +37,7 @@ import {
   DERIVED_FILLS,
   deriveFill,
   deriveLegible,
+  fillStateDeltas,
   labelCandidates,
   pickReadableForeground,
 } from './themeStyles';
@@ -60,7 +61,16 @@ const PAIRS: { fg: ThemeRole; bg: ThemeRole; level: ContrastLevel; what: string 
   { fg: 'warningText', bg: 'warningSurface', level: 'body', what: 'warning text on its tint' },
 ];
 
-const HUE_DEFAULTS: Record<string, number> = { primary: 220, success: 142, warning: 38, danger: 4, neutral: 220 };
+/*
+  The token defaults, read rather than restated.
+
+  These were hardcoded, and they were *wrong* — 220/142/38/4 against the tokens' own
+  250/130/45/350 — so the suite had been checking a palette the app never rendered. It went
+  unnoticed because being thirty degrees out on a hue rarely changes whether a pair clears AA. The
+  fix is to stop keeping a second copy: `color.hues` is the source, and a change there now reaches
+  the tests that are supposed to be guarding it.
+*/
+const HUE_DEFAULTS: Record<string, number> = color.hues;
 
 /** The lightness the CSS would compute for one step, given a theme's multiplier and subtractor. */
 function lightness(step: string, theme: ThemeOverrides): number {
@@ -129,7 +139,10 @@ function resolve(value: string, theme: ThemeOverrides): Rgba | null {
  * it names, convert to OKLCH, move the lightness, convert back. Without this the resolver returns
  * null for three of the four surfaces and the elevation test asserts on nothing.
  */
-const RELATIVE = /^oklch\(from\s+var\(--we-role-([a-z-]+)\)\s+calc\(l\s*([+-])\s*([\d.]+)\)\s+c\s+h\)$/;
+// The delta is a literal for the elevation stack and a variable for the interaction states, since
+// which way a state moves depends on polarity and `oklch(from …)` cannot branch on it.
+const RELATIVE =
+  /^oklch\(from\s+var\(--we-role-([a-z-]+)\)\s+calc\(l\s*([+-])\s*(?:([\d.]+)|var\(--we-state-(hover|active)\))\)\s+c\s+h\)$/;
 
 function roleColor(name: ThemeRole, theme: ThemeOverrides, seen = new Set<string>()): Rgba | null {
   /*
@@ -163,7 +176,7 @@ function roleColor(name: ThemeRole, theme: ThemeOverrides, seen = new Set<string
       const labels = labelCandidates(String(hueOf('neutral', theme)))
         .map((css) => parseColor(css))
         .filter((c): c is Rgba => !!c);
-      return deriveFill(fill, labels, APCA_MINIMUM.ui) ?? fill;
+      return deriveFill(fill, labels, APCA_MINIMUM.ui, fillStateDeltas(theme.polarity)) ?? fill;
     }
   }
 
@@ -201,14 +214,17 @@ function roleColor(name: ThemeRole, theme: ThemeOverrides, seen = new Set<string
 
   const relative = RELATIVE.exec(value.trim());
   if (relative) {
-    const [, base, sign, amount] = relative;
+    const [, base, sign, amount, stateKey] = relative;
+    const delta = stateKey
+      ? STATE_STEPS[theme.polarity ?? 'light'][stateKey as 'hover' | 'active']
+      : (sign === '-' ? -1 : 1) * parseFloat(amount);
     // A role defined in terms of itself would spin forever; a theme can do that by hand.
     if (seen.has(name)) return null;
     const camel = base.replace(/-([a-z])/g, (_, c: string) => c.toUpperCase()) as ThemeRole;
     const from = roleColor(camel, theme, new Set([...seen, name]));
     if (!from) return null;
     const { l, c, h } = rgbToOklch(from);
-    const moved = Math.min(1, Math.max(0, l + (sign === '-' ? -1 : 1) * parseFloat(amount)));
+    const moved = Math.min(1, Math.max(0, l + delta));
     return { ...oklchToRgb(moved, c, h), a: from.a };
   }
 

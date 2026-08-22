@@ -58,17 +58,49 @@ export const RAMP = {
 } satisfies Record<Polarity, { offset: number; direction: number }>;
 
 /**
+ * How far a fill's hover and pressed states move, and which way.
+ *
+ * Published as variables rather than written into the roles as literals, because which way a state
+ * should move is a property of the theme and `oklch(from …)` cannot branch on one.
+ *
+ * ## Why both polarities move the same way, for now
+ *
+ * The correct rule is *away from the label*: a state that deepens the fill gains contrast, and one
+ * that moves toward the label loses it. Under the old scale-position scheme that happened by
+ * accident — the accent and its label sat at opposite ends of the ramp, so "further along the ramp"
+ * was always away — which is why the old dark theme's hover went lighter and the old light theme's
+ * went darker, and both were right.
+ *
+ * Polarity is a *proxy* for that rule and it breaks where the label is not what polarity implies.
+ * A dark theme with a mid-lightness accent gets a near-white label from the derivation, and moving
+ * its states lighter then walks them into the label: `dark` measured Lc 29 and `black` Lc 33 on
+ * their primary buttons with polarity-dependent steps.
+ *
+ * Doing it properly means deriving the label from the rest state first, then moving the states away
+ * from *it*, then re-checking — which is tractable but is a cycle that wants care, since the label
+ * is already derived from the fill. Until then both polarities deepen, which is never wrong and is
+ * occasionally less lively than it could be in the dark.
+ */
+export const STATE_STEPS = {
+  light: { hover: -0.05, active: -0.09 },
+  dark: { hover: -0.05, active: -0.09 },
+} satisfies Record<Polarity, { hover: number; active: number }>;
+
+/**
  * Base hue values for semantic colors, as OKLCH hue angles (0-360).
  *
  * Not the same numbers as the HSL angles they replace, and not a rename: the two spaces disagree
  * about where a hue sits, by as much as 45 degrees in the warm end. Each value here is the OKLCH
  * hue of the sRGB colour the old HSL angle actually produced, so the palette keeps its identity —
- * 250 became 281 because that is where "that blue" lives in OKLCH, not because the blue changed.
+ * 250 became 288 because that is where "that blue" lives in OKLCH, not because the blue changed.
+ * Measured off the rendered accent rather than converted at a nominal mid-point: an HSL hue maps to
+ * a small *range* of OKLCH hues depending on lightness and saturation, and the one that matters is
+ * where the accent actually sits.
  * Stored themes are converted by `migrate.ts`; a hue somebody types is now an OKLCH angle.
  */
 export const colorHues = {
-  neutral: 281,
-  primary: 281,
+  neutral: 288,
+  primary: 288,
   success: 145,
   warning: 90,
   danger: 17,

@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import type { animation as animationTokens } from '../src/animation.js';
 import type { border as borderTokens } from '../src/border.js';
 import type { color as colorTokens } from '../src/color.js';
-import { CHROMA_CEILING, chromaTaper, RAMP } from '../src/color.js';
+import { CHROMA_CEILING, chromaTaper, RAMP, STATE_STEPS } from '../src/color.js';
 import type { component as componentTokens } from '../src/component.js';
 import type { font as fontTokens } from '../src/font.js';
 import type { layout as layoutTokens } from '../src/layout.js';
@@ -211,6 +211,8 @@ ${paletteVars}`;
   --we-color-lightness-ceiling: ${color.config.lightnessCeiling};
   --we-color-ramp-offset: ${RAMP[color.config.polarity].offset};
   --we-color-ramp-direction: ${RAMP[color.config.polarity].direction};
+  --we-state-hover: ${STATE_STEPS[color.config.polarity].hover};
+  --we-state-active: ${STATE_STEPS[color.config.polarity].active};
   --we-color-saturation: ${color.config.saturation};
   --we-color-neutral-saturation: ${color.config.neutralSaturation};
 

@@ -83,19 +83,36 @@ export const THEME_PRESETS = {
     // than muted text should be in a light theme. Lifting the floor is what the ratio responds to.
     // The role override is the first step past that approximation: in dark, a raised surface gets
     // *lighter* instead of casting a shadow — a relationship the uniform inversion cannot express.
+    /*
+      The four numbers, fitted rather than guessed.
+
+      The ramp move to OKLCH changed how every step lands, and this theme came out noticeably darker
+      and less blue than it had been. Rather than nudge until it looked right, the old theme's
+      rendered colours were measured and the parameters solved for: a least-squares fit of floor and
+      ceiling over eight neutral roles lands within 0.7 lightness points across all of them, and the
+      saturations are fitted the same way against what the tint and the accent used to be.
+    */
     parameters: {
       schemaVersion: THEME_SCHEMA_VERSION,
       polarity: 'dark',
-      lightnessFloor: '12%',
-      lightnessCeiling: '112%',
-      saturation: 81,
-      neutralSaturation: 32,
+      lightnessFloor: '19.5%',
+      lightnessCeiling: '125%',
+      saturation: 75,
+      neutralSaturation: 33,
       roles: {
+        /*
+          The accent, at the colour it was.
+
+          The shared default is step 700, which is the only step whose *light*-theme value carries a
+          label — but a step inverts, so in a dark theme 700 lands at 80% lightness and this theme's
+          indigo came out a pale lavender. Stated here instead: the lightness, chroma and hue the old
+          theme actually rendered, measured rather than guessed, and it clears with the near-black
+          label this theme already pins.
+        */
+        accent: 'oklch(55.3% 0.16 288)',
         // The surface stack is derived from `page` now — see the note in @we/tokens' role.ts. This
         // theme pinned four lightnesses that the formula reproduces to within a point, which is
         // what suggested the formula.
-        // White on this accent measures 3.6:1; the dark end measures 4.7. See contrast.test.ts.
-        onAccent: neutral(21.6),
       },
     },
   },
@@ -213,9 +230,9 @@ export const THEME_PRESETS = {
           accent *is* rather than have it inferred. L 53% is the lightness that carries a label
           across rest, hover and pressed; the hue and chroma are the theme's own.
         */
-        accent: 'oklch(53% 0.18 266)',
+        accent: 'oklch(40% 0.18 266)',
         // Same band, same reason — this theme's ramp puts the shared danger step where no label reads.
-        danger: 'oklch(53% 0.16 27)',
+        danger: 'oklch(40% 0.16 27)',
         surfaceHover: neutral(27.0),
         surfaceActive: neutral(32.1),
         border: neutral(32.1),

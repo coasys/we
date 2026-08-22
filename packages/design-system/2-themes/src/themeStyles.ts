@@ -19,6 +19,7 @@ import {
   RAMP,
   role,
   ROLE_ELEVATION_FALLBACK,
+  STATE_STEPS,
 } from '@we/tokens';
 
 import type { ThemeOverrides, ThemeRole } from './overrides';
@@ -235,6 +236,10 @@ export function themeToStyle(overrides: ThemeOverrides): Record<string, string> 
   if (theme.polarity !== undefined) {
     style['--we-color-ramp-offset'] = String(RAMP[theme.polarity].offset);
     style['--we-color-ramp-direction'] = String(RAMP[theme.polarity].direction);
+    // Which way a hover moves is polarity's business too: away from the page, and the page is at
+    // the opposite end in each.
+    style['--we-state-hover'] = String(STATE_STEPS[theme.polarity].hover);
+    style['--we-state-active'] = String(STATE_STEPS[theme.polarity].active);
   }
 
   // shadowIntensity → --we-theme-shadow (used by Card and other surface components)
@@ -506,6 +511,13 @@ const CHROMA_PEAK_LIGHTNESS = 0.6;
  */
 export const FILL_STATE_DELTAS = [0, -0.05, -0.09];
 
+/** The same, for a given polarity — the derivation has to check the states this theme will render. */
+export const fillStateDeltas = (polarity: 'light' | 'dark' = 'light') => [
+  0,
+  STATE_STEPS[polarity].hover,
+  STATE_STEPS[polarity].active,
+];
+
 export const DERIVED_FILLS: ThemeRole[] = ['accent', 'danger', 'success', 'warning'];
 
 /**
@@ -521,7 +533,7 @@ export const DERIVED_FILLS: ThemeRole[] = ['accent', 'danger', 'success', 'warni
  * Returns null when nothing in range works, which is the honest answer for a hue whose whole track
  * is too close to both labels.
  */
-export function deriveFill(fill: Rgba, labels: Rgba[], minimum: number): Rgba | null {
+export function deriveFill(fill: Rgba, labels: Rgba[], minimum: number, deltas = FILL_STATE_DELTAS): Rgba | null {
   const { c, h, l: start } = rgbToOklch(fill);
 
   /*
@@ -536,7 +548,7 @@ export function deriveFill(fill: Rgba, labels: Rgba[], minimum: number): Rgba | 
   /** The best any label manages across a fill and both of its derived states. */
   const best = (candidate: Rgba): number => {
     const { c: cc, h: hh, l: ll } = rgbToOklch(candidate);
-    const states = FILL_STATE_DELTAS.map((d) => {
+    const states = deltas.map((d) => {
       const l = Math.min(1, Math.max(0, ll + d));
       return { ...oklchToRgb(l, Math.min(cc, maxChromaFor(l, hh)), hh), a: candidate.a };
     });
@@ -585,7 +597,7 @@ function applyLegibleFills(root: HTMLElement, theme: ThemeOverrides): string[] {
     const fill = parseColor(computed.getPropertyValue(roleVar(role)).trim());
     if (!fill) continue;
 
-    const moved = deriveFill(fill, labels, APCA_MINIMUM.ui);
+    const moved = deriveFill(fill, labels, APCA_MINIMUM.ui, fillStateDeltas(theme.polarity));
     if (!moved || moved === fill) continue;
 
     const { l, c, h } = rgbToOklch(moved);

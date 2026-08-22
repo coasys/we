@@ -78,9 +78,14 @@ export const role = {
    * and the two hold their relationship in both polarities.
    *
    * Hue and saturation stay parametric, so it still follows a theme's neutral tint.
+   *
+   * The number is an *OKLCH* lightness. It was an HSL one, carried across unconverted when the ramp
+   * moved, which is not a rename: 13% HSL is 24.8% OKLCH, so the tooltip came out roughly half as
+   * light as it had been. Found by diffing the rendered theme against what it used to be, which is
+   * the only way a units mistake inside a fixed constant shows up at all.
    */
   onInverse:
-    'oklch(98% calc(min(var(--we-color-neutral-saturation) * 0.0035, 0.18) * 0.0400) var(--we-color-neutral-hue))',
+    'oklch(98.5% calc(min(var(--we-color-neutral-saturation) * 0.0035, 0.18) * 0.0300) var(--we-color-neutral-hue))',
 
   /**
    * A surface deliberately opposite to the page — the tooltip, and anything else that must read as
@@ -91,7 +96,7 @@ export const role = {
    * gone, and a theme can now move the pair together.
    */
   surfaceInverse:
-    'oklch(13% calc(min(var(--we-color-neutral-saturation) * 0.0035, 0.18) * 0.2600) var(--we-color-neutral-hue))',
+    'oklch(24.8% calc(min(var(--we-color-neutral-saturation) * 0.0035, 0.18) * 0.4960) var(--we-color-neutral-hue))',
   /** Default border/divider. */
   border: 'var(--we-color-neutral-200)',
   /** Emphasised border (focus-adjacent, strong separation). */
@@ -145,8 +150,8 @@ export const role = {
    * lightness dragged the whole choice down to Lc 35. Tied to the fill, they move with it, including
    * when the fill is itself derived out of the middle of the ramp.
    */
-  accentHover: 'oklch(from var(--we-role-accent) calc(l - 0.05) c h)',
-  accentActive: 'oklch(from var(--we-role-accent) calc(l - 0.09) c h)',
+  accentHover: 'oklch(from var(--we-role-accent) calc(l + var(--we-state-hover)) c h)',
+  accentActive: 'oklch(from var(--we-role-accent) calc(l + var(--we-state-active)) c h)',
 
   /** Hover tint on a surface (menu items, list rows, ghost buttons). */
   surfaceHover: 'var(--we-color-neutral-100)',
@@ -172,7 +177,7 @@ export const role = {
    * Alpha is baked in because a scrim is a finished colour, not a base to tint from.
    */
   overlay:
-    'oklch(4% calc(min(var(--we-color-neutral-saturation) * 0.0035, 0.18) * 0.0800) var(--we-color-neutral-hue) / 60%)',
+    'oklch(14.6% calc(min(var(--we-color-neutral-saturation) * 0.0035, 0.18) * 0.2920) var(--we-color-neutral-hue) / 60%)',
 
   /**
    * The colour shadows are built from — opaque, with the consumer supplying alpha:
@@ -185,7 +190,7 @@ export const role = {
    * instead. Pinning this lets a theme tint or lighten shadows rather than work around them.
    */
   shadowColor:
-    'oklch(4% calc(min(var(--we-color-neutral-saturation) * 0.0035, 0.18) * 0.0800) var(--we-color-neutral-hue))',
+    'oklch(14.6% calc(min(var(--we-color-neutral-saturation) * 0.0035, 0.18) * 0.2920) var(--we-color-neutral-hue))',
 
   /** The focus ring. `--we-ring-color` resolves to this, so the two cannot drift. */
   focus: 'var(--we-color-primary-500)',
@@ -222,12 +227,12 @@ export const role = {
    * Nobody has to set these. They exist so that pinning a fill moves its states with it, and so
    * that a theme *can* separate them if it wants to.
    */
-  dangerHover: 'oklch(from var(--we-role-danger) calc(l - 0.05) c h)',
-  dangerActive: 'oklch(from var(--we-role-danger) calc(l - 0.09) c h)',
-  successHover: 'oklch(from var(--we-role-success) calc(l - 0.05) c h)',
-  successActive: 'oklch(from var(--we-role-success) calc(l - 0.09) c h)',
-  warningHover: 'oklch(from var(--we-role-warning) calc(l - 0.05) c h)',
-  warningActive: 'oklch(from var(--we-role-warning) calc(l - 0.09) c h)',
+  dangerHover: 'oklch(from var(--we-role-danger) calc(l + var(--we-state-hover)) c h)',
+  dangerActive: 'oklch(from var(--we-role-danger) calc(l + var(--we-state-active)) c h)',
+  successHover: 'oklch(from var(--we-role-success) calc(l + var(--we-state-hover)) c h)',
+  successActive: 'oklch(from var(--we-role-success) calc(l + var(--we-state-active)) c h)',
+  warningHover: 'oklch(from var(--we-role-warning) calc(l + var(--we-state-hover)) c h)',
+  warningActive: 'oklch(from var(--we-role-warning) calc(l + var(--we-state-active)) c h)',
 
   /**
    * Text and icons on a status fill — the destructive button's label.
