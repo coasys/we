@@ -25,7 +25,7 @@
   },
   "main": "electron/main.js",
   "dependencies": {
-    "@coasys/ad4m": "0.13.0-test-9",
+    "@coasys/ad4m": "0.13.0-test-interpretation-2",
     "@we/app-shell": "workspace:*",
     "electron-context-menu": "^4.1.1",
     "express": "^5.2.1",

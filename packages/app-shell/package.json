@@ -37,7 +37,7 @@
     }
   },
   "dependencies": {
-    "@coasys/ad4m": "0.13.0-test-9",
+    "@coasys/ad4m": "0.13.0-test-interpretation-2",
     "@solidjs/router": "^0.15.3",
     "@we/ai-context": "workspace:*",
     "@we/block-shared": "workspace:*",

@@ -40,10 +40,13 @@ describe('addresses', () => {
   });
 
   it('survives ids containing the delimiter', () => {
-    // AD4M ids are URLs, so this is the normal case rather than an adversarial one.
-    const id = 'literal://string:hello/world';
-    const address = entityAddress('ds', 'Thing', id);
-    expect(parseAddress(address)?.id).toBe(id);
+    // AD4M ids are URLs, so this is the normal case rather than an adversarial one. Both shapes
+    // AD4M has minted are covered: `ad4m://obj/…` is what it mints now, `literal:string:…` is what
+    // it minted before typed-literal storage, and spaces written then still hold ids of that form.
+    for (const id of ['ad4m://obj/abc123/nested', 'literal://string:hello/world']) {
+      const address = entityAddress('ds', 'Thing', id);
+      expect(parseAddress(address)?.id).toBe(id);
+    }
   });
 
   it('does not let an id forge a deeper address', () => {

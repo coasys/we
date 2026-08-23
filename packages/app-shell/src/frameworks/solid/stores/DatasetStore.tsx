@@ -270,10 +270,11 @@ export function DatasetStoreProvider(props: ParentProps) {
   interpreted twice.
 
   Reduced to letters, digits and dashes because the id becomes part of a URI — the engine mints its
-  processor node at `ad4m://autoprocessor/<id>`. A WE collection id is itself a `literal:string:…`
-  URL, so passing it through raw produced `ad4m://autoprocessor/we-call:literal:string:…`: a URI
-  with `literal:` inside it, on a layer that decides literal-from-URI by exactly that prefix. Not
-  proven to be the problem, but not worth leaving in the picture while diagnosing one.
+  processor node at `ad4m://autoprocessor/<id>`, and a record id is itself a URL. It was written
+  against ids of the form `literal:string:…`, which nested a second `literal:` inside the processor
+  URI on a layer that decides literal-from-URI by exactly that prefix. AD4M now mints `ad4m://obj/…`
+  instead, so that particular collision is gone — but the reduction stays, because what an id looks
+  like is AD4M's business and has changed once already.
 */
   const watchIdFor = (collectionId: string) => `we-call-${collectionId.replace(/[^a-zA-Z0-9]+/g, '-')}`;
 

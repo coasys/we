@@ -90,8 +90,10 @@ describe('file-valued properties', () => {
     expect(blob.resolveLanguage, 'still stored as a file').toBe(FILE_STORAGE_LANGUAGE);
     expect(blob.transform, 'but handed back for the caller to decode').toBeUndefined();
 
-    // A plain scalar keeps the decorator's default storage and gains no transform.
-    expect(caption.resolveLanguage).toBe('literal');
+    // A plain scalar declares no storage language at all, and gains no transform. Absence is the
+    // declaration: AD4M reads an unset `resolveLanguage` as "store this as a deterministic typed
+    // literal" — the indexed fast path — where `'literal'` would ask for a signed envelope.
+    expect(caption.resolveLanguage).toBeUndefined();
     expect(caption.transform).toBeUndefined();
   });
 

@@ -17,7 +17,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@coasys/ad4m": "0.13.0-test-9",
+    "@coasys/ad4m": "0.13.0-test-interpretation-2",
     "@tauri-apps/api": "2.7.0",
     "@we/app-shell": "workspace:*",
     "solid-js": "^1.9.5",

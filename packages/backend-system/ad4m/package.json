@@ -25,7 +25,7 @@
     "@coasys/ad4m": "*"
   },
   "devDependencies": {
-    "@coasys/ad4m": "0.13.0-test-9",
+    "@coasys/ad4m": "0.13.0-test-interpretation-2",
     "@types/node": "^24.10.0",
     "@we/cli": "workspace:*",
     "tsup": "^8.5.1",
