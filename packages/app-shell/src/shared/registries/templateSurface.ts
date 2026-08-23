@@ -555,6 +555,8 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
 
   themeStore: {
     automaticThemes: state('appearance'),
+    systemThemes: state('appearance'),
+    systemThemeOptions: state('appearance'),
     builtInThemes: state('appearance'),
     installedThemes: state('appearance'),
     spaceThemes: state('appearance'),
@@ -575,6 +577,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     activeTemplateTheme: state('view-state'),
     setCurrentTheme: action('appearance'),
     setDefaultTheme: action('library'),
+    setSystemTheme: action('agent'),
     setThemeInstalled: action('library'),
     previewThemeScope: action('editor'),
     setThemeScopeGlobal: action('agent'),

@@ -509,6 +509,51 @@ export const settingsRoute: RouteSchema = {
                 props: { items: { $store: 'themeStore.automaticThemes' }, as: 'theme' },
                 children: [themeRow],
               },
+              /*
+                Which two themes it chooses between.
+
+                Without these the row above means "match my machine, using the two built-ins" — so
+                an agent who had made their own pair could follow their machine or wear their own
+                themes and never both. "Built-in" is the way back out; it is an option from the
+                store rather than a row here, because a schema can map a list into options and
+                cannot prepend one.
+              */
+              {
+                type: 'Row',
+                props: { gap: '300', ay: 'center', wrap: true },
+                children: [
+                  {
+                    type: 'we-form-field',
+                    props: { label: 'When my system is light', size: 'sm', flex: '1', minWidth: '180px' },
+                    children: [
+                      {
+                        type: 'we-select',
+                        props: {
+                          size: 'sm',
+                          options: { $store: 'themeStore.systemThemeOptions' },
+                          value: { $store: 'themeStore.systemThemes.light' },
+                          onChange: { $action: 'themeStore.setSystemTheme', args: ['light', '$arg.detail'] },
+                        },
+                      },
+                    ],
+                  },
+                  {
+                    type: 'we-form-field',
+                    props: { label: 'When my system is dark', size: 'sm', flex: '1', minWidth: '180px' },
+                    children: [
+                      {
+                        type: 'we-select',
+                        props: {
+                          size: 'sm',
+                          options: { $store: 'themeStore.systemThemeOptions' },
+                          value: { $store: 'themeStore.systemThemes.dark' },
+                          onChange: { $action: 'themeStore.setSystemTheme', args: ['dark', '$arg.detail'] },
+                        },
+                      },
+                    ],
+                  },
+                ],
+              },
             ],
           },
 

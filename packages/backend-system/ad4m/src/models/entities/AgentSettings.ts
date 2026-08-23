@@ -27,6 +27,25 @@ export class AgentSettings extends Ad4mModel {
   @Property({ through: 'we://default_theme' })
   defaultThemeId: string = 'default';
 
+  /**
+   * Which two themes "Follow system" chooses between.
+   *
+   * `system` is not a theme, it is a question, and until now it was a question with only two
+   * possible answers: the built-in `light` and the built-in `dark`. So an agent who had built
+   * their own pair could follow the OS or wear their own themes, never both — and the setting
+   * that looked like it meant "match my machine" quietly meant "match my machine using somebody
+   * else's palette".
+   *
+   * Empty means the built-in of that polarity, which is what every existing agent gets and what
+   * the feature already did. Stored as ids rather than as a resolved theme, because the point of
+   * following is that the answer is given at the moment of use.
+   */
+  @Property({ through: 'we://system_light_theme' })
+  systemLightThemeId: string = '';
+
+  @Property({ through: 'we://system_dark_theme' })
+  systemDarkThemeId: string = '';
+
   @Property({ through: 'we://claude_api_key' })
   claudeApiKey: string = '';
 

@@ -435,6 +435,48 @@ export function themePicker(): SchemaNode {
               selected, or two surfaces end up disagreeing about what is on screen.
             */
             themeSection('Automatic', 'themeStore.automaticThemes'),
+            /*
+              And which two it chooses between, beside it rather than in settings — the row above is
+              meaningless without them. Left out, "Follow system" means "match my machine using the
+              two built-ins", so an agent who made their own pair could follow their machine or wear
+              their own themes and never both.
+            */
+            {
+              type: 'Row',
+              props: { gap: '200', ay: 'center', px: '200' },
+              children: [
+                {
+                  type: 'we-form-field',
+                  props: { label: 'Light', size: 'sm', flex: '1' },
+                  children: [
+                    {
+                      type: 'we-select',
+                      props: {
+                        size: 'sm',
+                        options: { $store: 'themeStore.systemThemeOptions' },
+                        value: { $store: 'themeStore.systemThemes.light' },
+                        onChange: { $action: 'themeStore.setSystemTheme', args: ['light', '$arg.detail'] },
+                      },
+                    },
+                  ],
+                },
+                {
+                  type: 'we-form-field',
+                  props: { label: 'Dark', size: 'sm', flex: '1' },
+                  children: [
+                    {
+                      type: 'we-select',
+                      props: {
+                        size: 'sm',
+                        options: { $store: 'themeStore.systemThemeOptions' },
+                        value: { $store: 'themeStore.systemThemes.dark' },
+                        onChange: { $action: 'themeStore.setSystemTheme', args: ['dark', '$arg.detail'] },
+                      },
+                    },
+                  ],
+                },
+              ],
+            },
           ],
         },
         footer: {

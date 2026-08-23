@@ -23,6 +23,8 @@ export interface AgentSettingsModel extends ModelInstance {
   defaultTemplateId: string;
   currentThemeId: string;
   defaultThemeId: string;
+  systemLightThemeId: string;
+  systemDarkThemeId: string;
   claudeApiKey: string;
   datasetOrder: string;
   globalSpaceJoined: boolean;

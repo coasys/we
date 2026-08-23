@@ -1485,6 +1485,8 @@ AgentSettings extends Ad4mModel:
   - defaultTemplateId: string = 'default' [we://default_template]
   - currentThemeId: string = 'default' [we://current_theme]
   - defaultThemeId: string = 'default' [we://default_theme]
+  - systemLightThemeId: string [we://system_light_theme]
+  - systemDarkThemeId: string [we://system_dark_theme]
   - claudeApiKey: string [we://claude_api_key]
   - datasetOrder: string [we://dataset_order]
   - globalSpaceJoined: boolean = false [we://global_space_joined]
@@ -2303,6 +2305,8 @@ ThemeStore:
   - themeManagementList: ThemeManagementItem[] — flat list of all themes (built-in + all custom) with management metadata (id, name, icon, isBuiltIn, isInstalled, isDefault)
   - editingTheme: unknown
   - operationLoading: string | null — the id of the theme operation currently in flight, namespaced by kind (e.g. 'marketplace-install:<themeId>'), or null when idle. A key rather than a boolean so one row's spinner does not appear on every row — compare it against the row you are rendering
+  - systemThemes: unknown
+  - systemThemeOptions: unknown
   - themeScope: unknown
   - themeScopePreference: unknown
   - themeScopeGlobal: unknown
@@ -2316,6 +2320,7 @@ ThemeStore:
   - applySnapshot(): unknown
   - setCurrentTheme(themeId: string): sets and persists the active theme
   - setDefaultTheme(themeId: string): sets the preferred default theme (persists to AgentSettings.defaultThemeId)
+  - setSystemTheme(): unknown
   - setThemeInstalled(themeId: string, visible: boolean): shows or hides a custom theme in the pickers; does not delete it. Takes the value rather than toggling, so a `we-switch` can pass `$event.detail` straight through
   - previewThemeScope(scope: 'global' | 'scoped' | null): previews a scope for the current theme-editing session without writing the preference; null drops the preview. Cleared when editing ends
   - setThemeScopeGlobal(global: boolean): persists whether a space's theme covers the whole window (true) or only the space's own content (false, the default). Takes a boolean because a switch emits one and a schema cannot map it to a string — `$if` in an action's args resolves at render time, before the event exists

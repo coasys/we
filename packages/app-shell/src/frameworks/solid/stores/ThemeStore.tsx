@@ -35,6 +35,17 @@ import { useDatasetStore } from './DatasetStore';
 import { useSessionStore } from './SessionStore';
 
 const THEME_KEY = 'we.theme';
+/*
+  The two halves of "Follow system", cached the same way the current theme is.
+
+  The pair lives in AgentSettings, which arrives seconds after the first paint, and the whole point
+  of following the system is that the answer is given at the moment of use — including the first
+  one. Without a cache the boot screen resolves `system` to the built-in of that polarity and then
+  swaps to the agent's own theme once the settings land, which is the light-flash bug wearing a
+  different hat.
+*/
+const SYSTEM_LIGHT_KEY = 'we.system-light';
+const SYSTEM_DARK_KEY = 'we.system-dark';
 const EDITING_THEME_KEY = 'we.editing-theme';
 
 export type ThemeManagementItem = {
@@ -70,6 +81,18 @@ export interface ThemeStore {
   // Actions
   setCurrentTheme: (themeId: string) => void;
   setDefaultTheme: (themeId: string) => void;
+  /**
+   * Which two themes "Follow system" chooses between, and the ids currently on each side.
+   *
+   * `light`/`dark` are the ids as *chosen*, empty for a side left at the built-in — what the control
+   * that sets them needs, so "Built-in" shows as selected rather than as an option that appears to
+   * do nothing. `resolved` is which of the two the OS is asking for right now.
+   */
+  systemThemes: Accessor<{ light: string; dark: string; resolved: 'light' | 'dark' }>;
+  /** Set one side of the pair. An empty id returns that side to the built-in. */
+  setSystemTheme: (polarity: 'light' | 'dark', themeId: string) => void;
+  /** Options for either side, with a "Built-in" entry a schema could not prepend itself. */
+  systemThemeOptions: Accessor<{ label: string; value: string }[]>;
   /**
    * Show or hide a custom theme in the pickers. Does not delete it.
    *
@@ -449,6 +472,68 @@ export function ThemeStoreProvider(props: ParentProps) {
   const builtInThemes: Accessor<ThemeData[]> = () => Object.keys(themeRegistry).map(registryToThemeData);
 
   /**
+   * Which theme "Follow system" currently means.
+   *
+   * `system` used to resolve straight to the string `'light'` or `'dark'`, which happened to be the
+   * ids of two built-ins — so an agent who had made their own dark theme could follow their machine
+   * or wear their own theme, never both, and the setting that reads as "match my machine" quietly
+   * meant "match my machine, using somebody else's palette".
+   *
+   * An unset half falls back to the built-in of that polarity, which is what every existing agent
+   * has and exactly what this did before. The localStorage copies answer the frames before
+   * AgentSettings arrives; without them the boot screen resolves the built-in and then swaps.
+   */
+  const systemThemeId = createMemo(() => {
+    const prefs = datasetStore.agentSettings();
+    const dark = systemScheme() === 'dark';
+    const stored = prefs?.[dark ? 'systemDarkThemeId' : 'systemLightThemeId'];
+    const cached = typeof window !== 'undefined' ? localStorage.getItem(dark ? SYSTEM_DARK_KEY : SYSTEM_LIGHT_KEY) : null;
+    const chosen = stored || cached || '';
+    // Never `system` itself: a pair pointing at the thing being resolved would not terminate.
+    return chosen && chosen !== SYSTEM_THEME_ID ? chosen : dark ? 'dark' : 'light';
+  });
+
+  /**
+   * Both sides of the pair as *chosen*, for the control that sets them.
+   *
+   * Deliberately not resolved: an unset side reads as `''`, which is the "Built-in" option, so the
+   * select shows the choice that was made and returning to it visibly does something. Reporting the
+   * fallback here instead would show "Light" for an unset light side — truthful about the outcome
+   * and wrong about the control, since picking "Built-in" would then appear to do nothing at all.
+   * `systemThemeId` is where the fallback belongs, and it is the only place it happens.
+   */
+  const systemThemes = createMemo(() => {
+    const prefs = datasetStore.agentSettings();
+    const side = (polarity: 'light' | 'dark') => {
+      const stored = prefs?.[polarity === 'dark' ? 'systemDarkThemeId' : 'systemLightThemeId'];
+      const cached =
+        typeof window !== 'undefined'
+          ? localStorage.getItem(polarity === 'dark' ? SYSTEM_DARK_KEY : SYSTEM_LIGHT_KEY)
+          : null;
+      const chosen = stored || cached || '';
+      return chosen === SYSTEM_THEME_ID ? '' : chosen;
+    };
+    return { light: side('light'), dark: side('dark'), resolved: systemScheme() };
+  });
+
+  /**
+   * What either half of the pair may be set to, ready for a `we-select`.
+   *
+   * Built in the store rather than `$map`ped in the schema for the reason `themeOverrideOptions`
+   * documents: a schema can map a store array into options and cannot prepend one, and without the
+   * "Built-in" entry there would be no way back out of a choice — the nearest thing available would
+   * be picking the built-in by name and hoping it is still the same theme next release.
+   *
+   * "Follow system" is excluded, being the thing this resolves.
+   */
+  const systemThemeOptions: Accessor<{ label: string; value: string }[]> = createMemo(() => [
+    { label: 'Built-in light or dark', value: '' },
+    ...allThemes()
+      .filter((t) => t.id !== SYSTEM_THEME_ID)
+      .map((t) => ({ label: t.name, value: String(t.id) })),
+  ]);
+
+  /**
    * "Follow system", on its own, because it is not one of the built-ins.
    *
    * It used to be the first entry of `builtInThemes`, which put it at the head of the only section a
@@ -642,6 +727,20 @@ export function ThemeStoreProvider(props: ParentProps) {
     localStorage.setItem(THEME_KEY, prefs.defaultThemeId);
   });
 
+  // The same, for the two halves of "Follow system" — the boot screen has to resolve `system`
+  // before AgentSettings exists, and resolving it to the built-in and then swapping is a flash.
+  createEffect(() => {
+    const prefs = datasetStore.agentSettings();
+    if (!prefs) return;
+    for (const [key, value] of [
+      [SYSTEM_LIGHT_KEY, prefs.systemLightThemeId],
+      [SYSTEM_DARK_KEY, prefs.systemDarkThemeId],
+    ] as const) {
+      if (value) localStorage.setItem(key, value);
+      else localStorage.removeItem(key);
+    }
+  });
+
   /**
    * The agent's own theme — what the shell wears in scoped mode, and what a space falls back to.
    *
@@ -676,7 +775,7 @@ export function ThemeStoreProvider(props: ParentProps) {
 
   /** Can this id be *answered*, or would resolving it be a guess? */
   function canResolveTheme(themeId: string): boolean {
-    const id = themeId === SYSTEM_THEME_ID ? systemScheme() : themeId;
+    const id = themeId === SYSTEM_THEME_ID ? systemThemeId() : themeId;
     return isValidThemeKey(id) || allThemes().some((t) => t.id === id);
   }
 
@@ -785,7 +884,7 @@ export function ThemeStoreProvider(props: ParentProps) {
   function resolveThemeData(themeId: string): ThemeData {
     // `system` is not a theme, it is a question — asked here rather than remembered, so the answer
     // follows the OS while the app is open instead of being fixed at whatever it was on the click.
-    const id = themeId === SYSTEM_THEME_ID ? systemScheme() : themeId;
+    const id = themeId === SYSTEM_THEME_ID ? systemThemeId() : themeId;
     const found = allThemes().find((t) => t.id === id);
     if (found) return found;
     if (isValidThemeKey(id)) return registryToThemeData(id);
@@ -881,6 +980,26 @@ export function ThemeStoreProvider(props: ParentProps) {
     localStorage.setItem(THEME_KEY, themeId);
     setCurrentThemeId(themeId);
     datasetStore.updateAgentSettings({ defaultThemeId: themeId });
+  }
+
+  /**
+   * Choose which theme "Follow system" means on one side of the switch.
+   *
+   * An empty id clears the choice back to the built-in of that polarity, so the control has a way
+   * out that is not "pick the built-in and hope it is still the same theme next release".
+   *
+   * `system` itself is refused rather than sanitised at read time only: a pair naming the thing
+   * being resolved is the one input that cannot be answered, and the resolver's own guard should
+   * not be the only thing standing between a click and a loop.
+   */
+  function setSystemTheme(polarity: 'light' | 'dark', themeId: string) {
+    if (themeId === SYSTEM_THEME_ID) return;
+    const key = polarity === 'dark' ? SYSTEM_DARK_KEY : SYSTEM_LIGHT_KEY;
+    if (themeId) localStorage.setItem(key, themeId);
+    else localStorage.removeItem(key);
+    datasetStore.updateAgentSettings(
+      polarity === 'dark' ? { systemDarkThemeId: themeId } : { systemLightThemeId: themeId },
+    );
   }
 
   async function setThemeInstalled(themeId: string, visible: boolean) {
@@ -1576,6 +1695,9 @@ export function ThemeStoreProvider(props: ParentProps) {
     applySnapshot,
     setCurrentTheme,
     setDefaultTheme,
+    setSystemTheme,
+    systemThemes,
+    systemThemeOptions,
     setThemeInstalled,
     replaceTheme,
     restorePersonalTheme,
