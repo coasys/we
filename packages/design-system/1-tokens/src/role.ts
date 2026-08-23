@@ -46,8 +46,20 @@ export const role = {
   page: 'var(--we-color-neutral-50)',
   /** Default surface (cards, panels) — one step above the page, in both polarities. */
   surface: 'oklch(from var(--we-role-page) calc(l + 0.045) c h)',
-  /** A surface elevated above its parent. Light themes pair it with shadow; dark themes lighten it. */
-  surfaceRaised: 'oklch(from var(--we-role-page) calc(l + 0.1) c h)',
+  /**
+   * A surface elevated above its parent. Light themes pair it with shadow; dark themes lighten it.
+   *
+   * The step above `surface` is deliberately *smaller* than the step from `page` to `surface`
+   * (0.015 against 0.045). Elevation tapers: the first level has to establish that there is a
+   * stack at all, the second only has to sit above one, and it is not competing with the page.
+   * This was `+0.1` — a second step of 0.055, wider than the first — which is felt almost entirely
+   * in dark themes, where lightness is the only elevation currency (a shadow is invisible on a
+   * near-black page) and a floating panel read as glowing rather than raised.
+   *
+   * The other half of the separation is the border a popover already carries, which is the same
+   * bargain `channels` makes deliberately when it sets its page and its cards to one value.
+   */
+  surfaceRaised: 'oklch(from var(--we-role-page) calc(l + 0.06) c h)',
   /**
    * A surface recessed below its parent (wells, input troughs).
    *

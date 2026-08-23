@@ -129,7 +129,7 @@ exports[`token CSS generation > color.css — hues, lightness ramp, palettes, ro
      (ThemeOverrides.roles in @we/themes → --we-role-*). */
   --we-role-page: var(--we-color-neutral-50);
   --we-role-surface: oklch(from var(--we-role-page) calc(l + 0.045) c h);
-  --we-role-surface-raised: oklch(from var(--we-role-page) calc(l + 0.1) c h);
+  --we-role-surface-raised: oklch(from var(--we-role-page) calc(l + 0.06) c h);
   --we-role-surface-sunken: oklch(from var(--we-role-page) calc(l - 0.035) c h);
   --we-role-text: var(--we-color-neutral-900);
   --we-role-text-muted: var(--we-color-neutral-600);
