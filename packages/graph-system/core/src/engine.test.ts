@@ -339,9 +339,12 @@ describe('refreshing keeps the graph the user is looking at', () => {
     let runs = 0;
     const counted: SeedSource = {
       id: 'test',
-      async seed() {
+      // Forwards what it was handed rather than calling bare: `SeedSource.seed` takes options and a
+      // context, and a counting wrapper that drops them is only accidentally equivalent to the thing
+      // it wraps — today, because `mutableSeed` reads neither.
+      async seed(options, context, signal) {
         runs += 1;
-        return seed.seed();
+        return seed.seed(options, context, signal);
       },
     };
     const registry = new PluginRegistry({ seeds: [counted], layouts });
