@@ -720,21 +720,15 @@ export function ThemePanel() {
   /**
    * True from the moment a pointer goes down in this panel until it comes back up.
    *
-   * ## Why the audit has to hold still while you drag
+   * Holds the role *swatches* still during a drag. They are sampled by reading eighteen resolved
+   * roles off a probe element, which is one forced style recalculation plus seventeen cached reads —
+   * cheap, but paid on every frame of a drag, for values nobody can read while the colour is still
+   * moving.
    *
-   * The contrast and elevation reports render *above* the role rows, so the list growing by one
-   * line pushes every colour picker below it down by that line. Drag inside a picker's saturation
-   * square, gain an issue, and the square moves out from under the pointer — which changes the
-   * colour, which changes the issue list, which moves it again. A real feedback loop, and it makes
-   * the picker impossible to aim.
-   *
-   * Freezing the sample for the duration of the gesture breaks it: the panel below the pointer
-   * cannot reflow while the pointer is down, and the report catches up the instant it lifts. That
-   * is also when the answer is worth reading — an audit of the colours you passed *through* on the
-   * way to the one you wanted is noise.
-   *
-   * It happens to skip eighteen probe reads per frame of the drag as well, but that is a side
-   * benefit rather than the reason; the cost of a theme change is in `applyThemeVars`, not here.
+   * This began as a fix for something worse: the audit used to render above the role rows, so
+   * gaining an issue pushed every picker down and moved the square being dragged out from under the
+   * pointer. That is solved properly now — the audit is on-demand and lives in the preview section —
+   * so what is left here is only the saving, which is worth keeping and is no longer load-bearing.
    */
   const [dragging, setDragging] = createSignal(false);
   {
@@ -786,7 +780,47 @@ export function ThemePanel() {
    * theme that pins nothing is still checked, and so is one whose failure comes from a hue slider
    * two sections up rather than from a role at all.
    */
-  const contrastFailures = createMemo(() => {
+  /*
+    The audit is *run*, not watched.
+
+    It used to be two live memos rendered above the role rows, which made it a layout problem rather
+    than an information one: gaining an issue grew a block sitting above every colour picker and
+    pushed them all down. Open a picker, change a colour, and the square you were dragging in moved
+    out from under the pointer — which changed the colour again. Freezing it for the length of a
+    gesture was not enough, because the list still settled the moment the pointer came up and moved
+    the next thing you reached for.
+
+    So it lives in the preview section behind a button, and clears itself on any change. That second
+    half matters more than it sounds: a result computed against colours you have since edited is not
+    stale information, it is *wrong* information, and showing it beside the controls that invalidated
+    it is worse than showing nothing. The button's label carries the state instead — "Test theme"
+    when there is nothing to show, "Re-test" when a result has been thrown away — which costs no
+    layout at all.
+  */
+  const [auditRun, setAuditRun] = createSignal(false);
+  const [auditResults, setAuditResults] = createSignal<{
+    contrast: ReturnType<typeof measureContrast>;
+    elevation: string[];
+  } | null>(null);
+
+  /*
+    Any change at all invalidates the last run.
+
+    Tracks `probeStyle()`, which is the whole theme — so a hue, a pin, a shape preset, anything.
+    Deliberately blunt: working out which parameters could affect which pairs would be a second model
+    of the derivations, and the two would drift.
+  */
+  createEffect(() => {
+    probeStyle();
+    setAuditResults(null);
+  });
+
+  function runAudit() {
+    setAuditRun(true);
+    setAuditResults({ contrast: measureContrast(), elevation: measureElevation() });
+  }
+
+  const measureContrast = () => {
     const colors = roleColors();
     return CONTRAST_PAIRS.flatMap((pair) => {
       const fg = parseColor(colors[pair.fg] ?? '');
@@ -807,7 +841,7 @@ export function ThemePanel() {
       if (ratio >= required && lc >= lcRequired) return [];
       return [{ ...pair, ratio, required, lc, lcRequired, apcaOnly: ratio >= required }];
     });
-  });
+  };
 
   /**
    * The same elevation ordering the built-in themes are held to, applied to the theme on screen.
@@ -821,7 +855,7 @@ export function ThemePanel() {
    * Sampled from the probe like the contrast check, so it judges what the theme resolves to rather
    * than what it stores.
    */
-  const elevationFailures = createMemo(() => {
+  const measureElevation = (): string[] => {
     const colors = roleColors();
     const lum = (r: ThemeRole) => {
       const c = parseColor(colors[r] ?? '');
@@ -835,7 +869,7 @@ export function ThemePanel() {
     if (raised < surface) out.push('Floating panels sit below the cards they float over.');
     if (sunken > surface) out.push('Wells sit above the surface they are recessed into.');
     return out;
-  });
+  };
 
   /**
    * Whether this theme's danger and success read as one colour to a red-green viewer.
@@ -1103,7 +1137,117 @@ export function ThemePanel() {
                 <we-icon name={previewOpen() ? 'caret-up' : 'caret-down'} size="sm" color="text-faint" />
               </Row>
               <Show when={previewOpen()}>
-                <Column pt="300">{previewStrip()}</Column>
+                <Column pt="300" gap="300">
+                  {previewStrip()}
+
+                  {/*
+                    The audit, run on request and thrown away on any change.
+
+                    Here rather than among the roles because its height varies and the roles are full
+                    of things you drag — see the note on `auditRun`. A fixed height keeps even
+                    *showing* a result from moving anything below it by a variable amount: the block
+                    is the same size whether it holds one finding or nine, and scrolls internally
+                    past that.
+                  */}
+                  <Row ay="center" gap="200">
+                    <we-button size="sm" variant="secondary" onClick={runAudit}>
+                      {auditResults() ? 'Re-test' : auditRun() ? 'Re-test' : 'Test theme'}
+                    </we-button>
+                    <Show when={auditResults()}>
+                      <we-button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => setAuditResults(null)}
+                        title="Hide these results"
+                      >
+                        Hide
+                      </we-button>
+                    </Show>
+                    <Show when={auditRun() && !auditResults()}>
+                      <we-text fontSize="100" color="text-faint">
+                        Changed since last test
+                      </we-text>
+                    </Show>
+                  </Row>
+
+                  <Show when={auditResults()}>
+                    {(results) => (
+                      <Column
+                        gap="200"
+                        p="300"
+                        r="200"
+                        bg="surface-sunken"
+                        height="132px"
+                        overflow="auto"
+                        styles={{ 'flex-shrink': '0' }}
+                      >
+                        <Show
+                          when={results().contrast.length || results().elevation.length || statusCollapse() !== null}
+                          fallback={
+                            <Row ay="center" gap="200">
+                              <we-icon name="check-circle" size="xs" color="success-text" />
+                              <we-text fontSize="200" color="text-muted">
+                                Every declared pair clears its threshold.
+                              </we-text>
+                            </Row>
+                          }
+                        >
+                          <Show when={results().contrast.length}>
+                            <Row ay="center" gap="200">
+                              <we-icon name="warning" size="xs" color="warning-text" />
+                              <we-text fontSize="200" fontWeight="600" color="warning-text">
+                                {results().contrast.length} contrast{' '}
+                                {results().contrast.length === 1 ? 'issue' : 'issues'}
+                              </we-text>
+                            </Row>
+                            <For each={results().contrast}>
+                              {(f) => (
+                                <we-text fontSize="100" color="text-muted" lineHeight="1.4">
+                                  {f.what} —{' '}
+                                  {f.apcaOnly
+                                    ? `Lc ${f.lc.toFixed(0)}, needs Lc ${f.lcRequired}`
+                                    : `${f.ratio.toFixed(1)}:1, needs ${f.required}:1`}
+                                </we-text>
+                              )}
+                            </For>
+                          </Show>
+
+                          <Show when={results().elevation.length}>
+                            <Row ay="center" gap="200">
+                              <we-icon name="stack" size="xs" color="warning-text" />
+                              <we-text fontSize="200" fontWeight="600" color="warning-text">
+                                Elevation is inverted
+                              </we-text>
+                            </Row>
+                            <For each={results().elevation}>
+                              {(f) => (
+                                <we-text fontSize="100" color="text-muted" lineHeight="1.4">
+                                  {f}
+                                </we-text>
+                              )}
+                            </For>
+                          </Show>
+
+                          {/*
+                            Advice rather than a failure — see `statusCollapse`. Read live rather
+                            than captured, because it depends only on two hues and says the same
+                            thing whenever it is true.
+                          */}
+                          <Show when={statusCollapse() !== null}>
+                            <Row ay="center" gap="200">
+                              <we-icon name="eye" size="xs" color="text-muted" />
+                              <we-text fontSize="100" color="text-faint" lineHeight="1.4">
+                                Danger and success read alike to a red-green viewer. True of most palettes built on
+                                red and green, and the app answers it with an icon per status — worth knowing rather
+                                than fixing.
+                              </we-text>
+                            </Row>
+                          </Show>
+                        </Show>
+                      </Column>
+                    )}
+                  </Show>
+                </Column>
               </Show>
             </Column>
 
@@ -1160,7 +1304,16 @@ export function ThemePanel() {
                 <we-text fontSize="200" color="text-faint">
                   Hues
                 </we-text>
-                {hueSlider('Primary', 'primaryHue', 220)}
+                {/*
+                  "Brand" rather than "Primary", because of what it actually moves.
+
+                  `primary` is a hue *family* — it generates a whole ramp, and the accent fill, the
+                  accent text, the muted tint, the focus ring and the gradients are all built from
+                  it, as are the greys unless a theme separates `neutralHue`. Labelling it "Primary"
+                  beside an "Accent" group made the two read as a matched pair of colours when one
+                  is the source of the other, and it is the first thing anyone asks about.
+                */}
+                {hueSlider('Brand', 'primaryHue', 220)}
                 {hueSlider('Success', 'successHue', 142)}
                 {hueSlider('Warning', 'warningHue', 38)}
                 {hueSlider('Danger', 'dangerHue', 4)}
@@ -1175,7 +1328,7 @@ export function ThemePanel() {
               </Column>
               <Column gap="200">
                 <we-text fontSize="200" color="text-faint">
-                  Accent
+                  Accent fill
                 </we-text>
                 {/*
                   The third axis of the accent, and the one that was missing.
@@ -1216,73 +1369,6 @@ export function ThemePanel() {
                 and lightness above — pin one to redesign a relationship the scale cannot express, such as raised
                 surfaces getting lighter in a dark theme instead of casting a shadow.
               </we-text>
-
-              {/*
-                Shown where the decisions are made rather than on a separate audit screen: a
-                warning you have to go and look for is one nobody looks for. It reports the *result*,
-                so a failure caused by the hue sliders reads the same as one caused by a pin.
-              */}
-              <Show when={contrastFailures().length}>
-                <Column gap="100" p="300" r="200" bg="warning-surface">
-                  <Row ay="center" gap="200">
-                    <we-icon name="warning" size="xs" color="warning-text" />
-                    <we-text fontSize="200" fontWeight="600" color="warning-text">
-                      {contrastFailures().length} contrast {contrastFailures().length === 1 ? 'issue' : 'issues'}
-                    </we-text>
-                  </Row>
-                  <For each={contrastFailures()}>
-                    {(f) => (
-                      <we-text fontSize="100" color="text-muted" lineHeight="1.4">
-                        {f.what} —{' '}
-                        {f.apcaOnly
-                          ? `Lc ${f.lc.toFixed(0)}, needs Lc ${f.lcRequired}`
-                          : `${f.ratio.toFixed(1)}:1, needs ${f.required}:1`}
-                      </we-text>
-                    )}
-                  </For>
-                </Column>
-              </Show>
-
-              <Show when={statusCollapse() !== null}>
-                <Column gap="100" p="300" r="200" bg="surface-sunken">
-                  <Row ay="center" gap="200">
-                    <we-icon name="eye" size="xs" color="text-muted" />
-                    <we-text fontSize="200" fontWeight="600" color="text-muted">
-                      Danger and success read alike to a red-green viewer
-                    </we-text>
-                  </Row>
-                  <we-text fontSize="100" color="text-faint" lineHeight="1.4">
-                    True of most palettes built on red and green, and the app answers it with an icon per status — so
-                    this is worth knowing rather than fixing. Moving the two hues further apart, or setting them at
-                    different lightnesses, widens the gap if you want it wider.
-                  </we-text>
-                </Column>
-              </Show>
-
-              {/*
-                Elevation, beside contrast because it is the same kind of mistake: a relationship the
-                vocabulary declares, broken in a way the screen does not report. An upside-down stack
-                does not look broken, it looks flat — and flat reads as "this theme is not very good"
-                rather than "this theme is inverted".
-              */}
-              <Show when={elevationFailures().length}>
-                <Column gap="100" p="300" r="200" bg="warning-surface">
-                  <Row ay="center" gap="200">
-                    <we-icon name="stack" size="xs" color="warning-text" />
-                    <we-text fontSize="200" fontWeight="600" color="warning-text">
-                      Elevation is inverted
-                    </we-text>
-                  </Row>
-                  <For each={elevationFailures()}>
-                    {(f) => (
-                      <we-text fontSize="100" color="text-muted" lineHeight="1.4">
-                        {f}
-                      </we-text>
-                    )}
-                  </For>
-                </Column>
-              </Show>
-
               <For each={ROLE_GROUPS}>
                 {(group) => (
                   <Column gap="200">

@@ -11,6 +11,23 @@ const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   display: 'inline-flex',
   direction: 'column',
   gap: '200',
+  /*
+    The host is the popover's containing block, and it has to be declared *here* to be one.
+
+    The popover is absolutely positioned and is a direct child of the shadow root, so whatever
+    positions the host decides where it can be placed and — the part that actually bit — which
+    scrolling box it belongs to. Left static, its containing block escaped the component entirely:
+    inside a we-scroll-area the panel scrolled and the popover did not, so a swatch two thirds of
+    the way down a scrolled list opened its picker several hundred pixels away from itself.
+
+    Declared as a default *prop* rather than as a :host rule in this file's styles, because a
+    :host rule loses. The generated design-system stylesheet emits `position: var(--we-<name>-position)`
+    for every element that takes layout props, with no fallback, which computes to the initial value
+    when nothing sets it — and it comes later in the cascade, so it silently beat a hand-written
+    :host { position: relative } sitting right above it. Setting the prop populates that variable
+    instead of fighting it, and a consumer passing `position` still wins, as it should.
+  */
+  position: 'relative',
 };
 
 /**
