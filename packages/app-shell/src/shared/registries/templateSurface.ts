@@ -771,6 +771,27 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     clearActivity: action('presence'),
   },
 
+  /*
+    Grouped under `presence`, not `content`.
+
+    Everything here is transient agent-to-agent state — who is doing what, right now — which is what
+    that group already means, and it rides the same ephemeral transport presence does. None of it
+    survives a refresh and none of it is queryable, so classifying it with the durable content a
+    template reads would be claiming a permanence it does not have.
+
+    `setShareDetail` is the one member that changes what leaves this machine, and it is still
+    presence-tier: what it broadcasts is this agent's own prompts, built from a transcript every
+    member of the space already holds.
+  */
+  interpretationStore: {
+    activity: state('presence'),
+    runningCount: state('presence'),
+    hasActivity: state('presence'),
+    shareDetail: state('presence'),
+    setShareDetail: action('presence'),
+    dismissSettled: action('view-state'),
+  },
+
   appStore: {
     apps: state('navigation'),
     appsWithWe: state('navigation'),

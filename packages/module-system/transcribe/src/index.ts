@@ -44,10 +44,12 @@
 import { defineModule, type ModuleStoreDeps } from '@we/module-shared';
 
 import { CALL_CONTROLS_ANCHOR, callControl } from './CallControl.schema';
+import { CALL_STATUS_ANCHOR, extractionStatus } from './ExtractionStatus.schema';
 import { panel } from './Panel.schema';
 import { createTranscribeStore } from './store';
 
 export { CALL_CONTROLS_ANCHOR, callControl } from './CallControl.schema';
+export { CALL_STATUS_ANCHOR, extractionStatus } from './ExtractionStatus.schema';
 export { panel } from './Panel.schema';
 export { CALL_KIND, CALL_PREDICATE, createTranscribeStore, TRANSCRIBE_ACTIVITY, type TranscribeStatus } from './store';
 export { WORKLET_NAME, WORKLET_SOURCE } from './workletSource';
@@ -69,6 +71,15 @@ export const transcribeModule = defineModule({
   slots: [
     // Into the call module's own bar. It declares the anchor; we never name the module.
     { anchor: CALL_CONTROLS_ANCHOR, node: callControl, order: 10 },
+    /*
+      And under it, where a thing that takes minutes can report on itself.
+
+      A separate anchor rather than a second entry in the bar, because the bar is a row of controls
+      and this is a sentence. Contributed by *this* module rather than by the host: extraction from
+      a call is what this module is for, and the host has no opinion about where a readout of it
+      belongs. A deployment without the call module gets no bar and loses nothing else.
+    */
+    { anchor: CALL_STATUS_ANCHOR, node: extractionStatus, order: 10 },
   ],
 
   /**

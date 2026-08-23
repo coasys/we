@@ -124,6 +124,24 @@ const BAR_SURFACE = { bg: 'page', border: '1px solid border', shadow: 'md' } as 
 export const CALL_CONTROLS_ANCHOR = 'call-controls';
 
 /**
+ * A second extension point, under the bar rather than inside it — for chrome that *reports* rather
+ * than chrome you press.
+ *
+ * The bar is a row of controls and everything in it is one, so anything with a sentence to say has
+ * nowhere to go: an extraction in progress, a model downloading, a sync catching up. Each of those
+ * is a strip of text with a duration, and each would otherwise arrive as its own floating bar with
+ * its own guess at how far below this one to sit.
+ *
+ * Under it rather than over: the bar is the thing being used, and a status line that pushed the
+ * controls down would move a target somebody was reaching for. Contributions stack in a column, so
+ * two modules reporting at once read as two rows rather than as a fight over one position.
+ *
+ * The gap is the column's, not each contributor's. A contributor that had to space itself from the
+ * bar would need to know the bar exists, which is the coupling both anchors are here to avoid.
+ */
+export const CALL_STATUS_ANCHOR = 'call-status';
+
+/**
  * A participant's volatile flag, looked up rather than read off the tile.
  *
  * The tile object carries only identity and stream, because `$each` renders through a
@@ -759,8 +777,21 @@ const bar: SchemaNode = {
     },
 
     // ── In a call ────────────────────────────────────────────────────────────
+    /*
+      A column holding the bar, rather than the bar itself.
+
+      Everything about *where* this floats — the top offset, the dock-aware centring, the transition
+      between them — moved up here, and the bar keeps only what it looks like. That split is what
+      lets `call-status` sit directly beneath it: a second fixed element would have to compute its
+      own top from this one's height, which depends on the controls in it and on whatever a theme
+      does to a button, so it would be a number that is wrong the first time anything changes.
+
+      `ax: 'center'` because a status row is narrower or wider than the bar and should be centred on
+      it either way. The column paints nothing and takes no room beyond its children, so with
+      nothing contributed this renders exactly as the bar alone did.
+    */
     then: {
-      type: 'Row',
+      type: 'Column',
       props: {
         position: 'fixed',
         /*
@@ -790,30 +821,40 @@ const bar: SchemaNode = {
         left: 'calc(50% + (var(--we-sidebar-width, 0px) + var(--we-dock-left, 0px) - var(--we-dock-right, 0px)) / 2)',
         transform: 'translateX(-50%)',
         transition: 'left var(--we-chrome-transition, 300ms) ease, top var(--we-chrome-transition, 300ms) ease',
-        ...BAR_SURFACE,
-        r: BAR_RADIUS,
-        p: '200',
-        gap: '200',
-        ay: 'center',
+        // One step of the spacing scale, which is the nearest thing to the ~10px this wants and is
+        // the only sort of value that follows a theme's density. Wide enough that the status row
+        // reads as a separate object rather than as a second tier of the bar.
+        gap: '300',
+        ax: 'center',
         zIndex: 'sticky',
       },
       children: [
-        mediaToggle({
-          on: 'microphone',
-          off: 'microphone-slash',
-          enabled: 'modules.call.media.audioEnabled',
-          action: 'modules.call.toggleAudio',
-          tip: { on: 'Mute', off: 'Unmute' },
-        }),
-        mediaToggle({
-          on: 'video-camera',
-          off: 'video-camera-slash',
-          enabled: 'modules.call.media.videoEnabled',
-          action: 'modules.call.toggleVideo',
-          tip: { on: 'Turn camera off', off: 'Turn camera on' },
-        }),
-        mediaToggle({
-          /*
+        {
+          type: 'Row',
+          props: {
+            ...BAR_SURFACE,
+            r: BAR_RADIUS,
+            p: '200',
+            gap: '200',
+            ay: 'center',
+          },
+          children: [
+            mediaToggle({
+              on: 'microphone',
+              off: 'microphone-slash',
+              enabled: 'modules.call.media.audioEnabled',
+              action: 'modules.call.toggleAudio',
+              tip: { on: 'Mute', off: 'Unmute' },
+            }),
+            mediaToggle({
+              on: 'video-camera',
+              off: 'video-camera-slash',
+              enabled: 'modules.call.media.videoEnabled',
+              action: 'modules.call.toggleVideo',
+              tip: { on: 'Turn camera off', off: 'Turn camera on' },
+            }),
+            mediaToggle({
+              /*
             The same glyph in both states, unlike the mute and camera buttons beside it.
 
             `monitor-arrow-up` is a *subject*, not a state: it is your screen, going out. Dropping the
@@ -824,20 +865,20 @@ const bar: SchemaNode = {
             Sharing is also the one toggle here with no honest "off" icon: you are either sending a
             screen or sending nothing, so a slash would be describing a state that does not exist.
           */
-          on: 'monitor-arrow-up',
-          off: 'monitor-arrow-up',
-          enabled: 'modules.call.media.screenShareEnabled',
-          action: 'modules.call.toggleScreenShare',
-          tip: { on: 'Stop sharing your screen', off: 'Share your screen' },
-        }),
-        {
-          // Where other modules put their call controls — see `anchors` below. The marker is replaced
-          // by whatever is contributed, or by nothing at all, so the bar has no gap when no module
-          // has joined it and this module never learns which ones did.
-          type: '$slot',
-          props: { anchor: CALL_CONTROLS_ANCHOR },
-        },
-        /*
+              on: 'monitor-arrow-up',
+              off: 'monitor-arrow-up',
+              enabled: 'modules.call.media.screenShareEnabled',
+              action: 'modules.call.toggleScreenShare',
+              tip: { on: 'Stop sharing your screen', off: 'Share your screen' },
+            }),
+            {
+              // Where other modules put their call controls — see `anchors` below. The marker is replaced
+              // by whatever is contributed, or by nothing at all, so the bar has no gap when no module
+              // has joined it and this module never learns which ones did.
+              type: '$slot',
+              props: { anchor: CALL_CONTROLS_ANCHOR },
+            },
+            /*
           Show/hide sits with the devices, not with the call.
 
           It was on the right, beside the participant readout, on the grounds that it is about the
@@ -846,23 +887,31 @@ const bar: SchemaNode = {
           microphone, your camera, your screen, your transcript, and whether you are looking at the
           video. Everything right of it is the call itself — who is in it, and how much room it has.
         */
-        participantsToggle,
-        // Two thirds of a control's height, so it reads as a separator between groups rather than as
-        // a rule drawn down the whole bar. It moved with the buttons: at 20px against `sm` it was
-        // that already, and left alone against `md` it would have been half.
-        { type: 'we-divider', props: { orientation: 'vertical', height: '26px' } },
-        participants,
-        {
-          type: 'we-tooltip',
-          props: { title: 'Leave the call', placement: 'bottom' },
-          children: [
+            participantsToggle,
+            // Two thirds of a control's height, so it reads as a separator between groups rather than as
+            // a rule drawn down the whole bar. It moved with the buttons: at 20px against `sm` it was
+            // that already, and left alone against `md` it would have been half.
+            { type: 'we-divider', props: { orientation: 'vertical', height: '26px' } },
+            participants,
             {
-              // Square like the toggles at the other end, being an icon and nothing else.
-              type: 'we-button',
-              props: { square: true, variant: 'danger', onClick: { $action: 'modules.call.leave' } },
-              children: [{ type: 'we-icon', props: { name: 'phone-x' } }],
+              type: 'we-tooltip',
+              props: { title: 'Leave the call', placement: 'bottom' },
+              children: [
+                {
+                  // Square like the toggles at the other end, being an icon and nothing else.
+                  type: 'we-button',
+                  props: { square: true, variant: 'danger', onClick: { $action: 'modules.call.leave' } },
+                  children: [{ type: 'we-icon', props: { name: 'phone-x' } }],
+                },
+              ],
             },
           ],
+        },
+        {
+          // Where modules report on something that is taking a while — see `anchors` below. Renders
+          // nothing at all when nobody has contributed, so the bar keeps its own shape.
+          type: '$slot',
+          props: { anchor: CALL_STATUS_ANCHOR },
         },
       ],
     },
@@ -993,7 +1042,7 @@ export const callModule = defineModule({
 
   // Opens the control bar to other modules. Declared so the registry can report chrome aimed at an
   // anchor nobody provides, which otherwise renders nowhere and looks like a module switched off.
-  anchors: [CALL_CONTROLS_ANCHOR],
+  anchors: [CALL_CONTROLS_ANCHOR, CALL_STATUS_ANCHOR],
 
   // Drawn by the host's module rail. No `activeWhen`: this starts a call rather than toggling a
   // panel, and once you are in one the call bar is the thing that shows it — a highlighted rail tab
