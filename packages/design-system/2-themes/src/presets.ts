@@ -40,13 +40,23 @@ export interface ThemePreset {
   parameters: ThemeOverrides;
 }
 
-/**
- * A role pinned to one lightness, with the theme's own hue and saturation left variable.
- *
- * Pinning a role to a literal hex would freeze the whole colour, so changing `neutralHue` would move
- * every surface *except* the pinned ones and the theme would come apart. This fixes only the number
- * that is actually the design decision.
- */
+/*
+  Two helpers for stating a role, and one rule behind both.
+
+  A theme states a role by putting a value in `roles: {}` — that is all "pinning" means, and it says
+  nothing about how *fixed* the result is. What decides that is how much of the value is written as
+  a literal: a colour written out in full freezes hue, chroma and lightness together, so moving any
+  slider repaints everything around it and leaves that one role behind, and the theme comes apart.
+
+  So a pin should be literal only where the design decision actually is, and read a variable
+  everywhere else. `neutral()` fixes a lightness on the neutral ramp; `fill()` fixes a lightness and
+  a saturation *fraction* for the accent. Both leave the hue to the theme.
+
+  Note the unpinned defaults have exactly this shape too — `accent`'s default fixes its lightness at
+  55% and takes chroma and hue from variables. A pin is not a different kind of thing from a
+  default; it is the same kind of expression, written by the theme instead of by the system.
+*/
+
 /**
  * A pinned neutral at an exact lightness, in OKLCH.
  *
@@ -62,6 +72,28 @@ const neutral = (lightness: number) => {
   // saturation, which is why the modal scrim came out violet.
   return `oklch(${lightness}% calc(var(--we-color-neutral-saturation) / 100 * var(--we-color-neutral-chroma-max, ${CHROMA_CEILING}) * ${taper.toFixed(4)}) var(--we-color-neutral-hue))`;
 };
+
+/**
+ * A pinned *fill* at an exact lightness — `neutral()`'s counterpart for the accent.
+ *
+ * Same principle and it had to be learned twice. Three themes stated their accent as a fully
+ * literal colour (`oklch(55.3% 0.16 288)`, `hsl(203 89% 53%)`), which froze the hue along with
+ * everything else — so moving the primary-hue slider repainted the whole ramp, the focus ring and
+ * every accent-coloured icon, and left the primary button exactly where it was. The one control
+ * a person reaches for first was the one control that could not respond.
+ *
+ * `chromaFactor` is the fraction of what the theme's own `saturation` would give at this hue. That
+ * is the part of an accent that is genuinely a design decision — "a little calmer than the rest of
+ * my palette" — where the absolute chroma is just that decision with the slider baked in. 1 means
+ * "exactly as saturated as this theme says it is".
+ *
+ * The ceiling is the fill one, published at FILL_LIGHTNESS.primary, so a pin at some other
+ * lightness is scaled against that rather than against its own maximum. The factor absorbs the
+ * difference, and reading a single published number keeps this the same expression the unpinned
+ * default uses.
+ */
+const fill = (lightness: number, chromaFactor: number) =>
+  `oklch(${lightness}% calc(var(--we-color-saturation) / 100 * var(--we-color-primary-fill-chroma-max, 0.2663) * ${chromaFactor}) var(--we-color-primary-hue))`;
 
 export const THEME_PRESETS = {
   light: {
@@ -132,7 +164,7 @@ export const THEME_PRESETS = {
           theme is known by. So it is worth stating; it is not worth deriving something close and
           calling it the same colour. This is the one thing a theme really does have to say.
         */
-        accent: 'oklch(55.3% 0.16 288)',
+        accent: fill(55.3, 0.801),
         /*
           A near-black label on the accent, which is this theme's character.
 
@@ -293,7 +325,7 @@ export const THEME_PRESETS = {
           accent *is* rather than have it inferred. L 53% is the lightness that carries a label
           across rest, hover and pressed; the hue and chroma are the theme's own.
         */
-        accent: 'oklch(40% 0.18 266)',
+        accent: fill(40, 0.725),
         // Same band, same reason — this theme's ramp puts the shared danger step where no label reads.
         danger: 'oklch(40% 0.16 27)',
         surfaceHover: neutral(27.0),
@@ -346,7 +378,7 @@ export const THEME_PRESETS = {
         borderStrong: neutral(88.5),
         text: neutral(17.0),
         textFaint: neutral(64.1),
-        accent: 'hsl(203 89% 53%)',
+        accent: fill(67.9, 1.172),
         /*
           `onAccent` is not pinned, and the pin that was here is a good illustration of why the two
           contrast metrics cannot be mixed.

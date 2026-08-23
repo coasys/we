@@ -506,6 +506,23 @@ export function applyThemeVars(root: HTMLElement, theme: ThemeOverrides): void {
     createRoleProbe. Sharing one element keeps the DOM churn to a single append/remove per theme
     change, and the sequencing still works because each derivation writes to `root.style` and the
     next one reads through a child of `root`.
+
+    ## Each derivation must read everything before it writes anything
+
+    A write to `root.style` invalidates the whole document; the next `getComputedStyle` then forces
+    a synchronous recalculation of it. So a loop that reads a role, computes, writes it, and reads
+    the next one pays a full recalc *per iteration*.
+
+    Measured on a 583-node document: thirty reads interleaved with writes cost 71.8 ms, and the
+    same thirty reads with a single write in front of them cost 0.1 ms. The reads are free; only
+    the interleaving is not. Across the four derivations that was about nineteen recalcs per theme
+    change, which is what made dragging a colour slider unusable — every frame of the drag applies
+    the theme again.
+
+    So each of them below is read-all, then compute, then write-all. That leaves one recalc per
+    derivation — four in total, because they genuinely are sequential: fills settle, the label is
+    chosen against where they landed, the states follow from the label. Adding a read into the
+    middle of a write loop puts the 70 ms back.
   */
   const measurable =
     typeof getComputedStyle === 'function' && root?.nodeType === 1 && root.isConnected;
@@ -756,11 +773,15 @@ export function stateDelta(fill: Rgba, label: Rgba, state: 'hover' | 'active'): 
 function applyStateDirection(root: HTMLElement, probe: ReturnType<typeof createRoleProbe>): string[] {
   const written: string[] = [];
 
-  for (const { fill, label } of FILL_LABELS) {
-    const fillColor = probe.read(fill);
-    const labelColor = probe.read(label);
-    if (!fillColor || !labelColor) continue;
+  // Read first, write after — see `applyThemeVars` for why the two must not interleave.
+  const measured = FILL_LABELS.map(({ fill, label }) => ({
+    fill,
+    fillColor: probe.read(fill),
+    labelColor: probe.read(label),
+  }));
 
+  for (const { fill, fillColor, labelColor } of measured) {
+    if (!fillColor || !labelColor) continue;
     // The four fill roles are single lowercase words, so the role name *is* the variable suffix.
     for (const state of ['hover', 'active'] as const) {
       const prop = `--we-state-${state}-${fill}`;
@@ -783,9 +804,24 @@ function applyLegibleFills(root: HTMLElement, theme: ThemeOverrides, probe: Retu
     .filter((c): c is Rgba => !!c);
   if (!free.length) return written;
 
-  for (const role of DERIVED_FILLS) {
-    if (theme.roles?.[role] !== undefined) continue;
-    const fill = probe.read(role);
+  /*
+    Every colour this needs, read before anything is written — see `applyThemeVars`.
+
+    `deriveFill` is pure arithmetic once it has its inputs, so the whole search can happen between
+    the reads and the writes.
+  */
+  const measured = DERIVED_FILLS.filter((role) => theme.roles?.[role] === undefined).map((role) => {
+    const labelRole = FILL_LABELS.find((entry) => entry.fill === role)?.label;
+    return {
+      role,
+      fill: probe.read(role),
+      // Read the *resolved* colour, not the declared string: a pin is usually an `oklch(…)` over the
+      // theme's own hue variables, which only computed style can turn into a number.
+      stated: labelRole && theme.roles?.[labelRole] !== undefined ? probe.read(labelRole) : null,
+    };
+  });
+
+  for (const { role, fill, stated } of measured) {
     if (!fill) continue;
 
     /*
@@ -805,13 +841,6 @@ function applyLegibleFills(root: HTMLElement, theme: ThemeOverrides, probe: Retu
       whole design intact rather than overruled. Both stated means they meant both; the editor shows
       the measurement live, and for a built-in preset `contrast.test.ts` records it by name.
     */
-    const labelRole = FILL_LABELS.find((entry) => entry.fill === role)?.label;
-    // Read the *resolved* colour, not the declared string: a pin is usually an `oklch(…)` over the
-    // theme's own hue variables, which only computed style can turn into a number.
-    const stated =
-      labelRole && theme.roles?.[labelRole] !== undefined
-        ? probe.read(labelRole)
-        : null;
     const labels = stated ? [stated] : free;
 
     const moved = deriveFill(fill, labels, APCA_MINIMUM.ui, fillStateDeltas(theme.polarity));
@@ -874,11 +903,13 @@ export function deriveLegible(fg: Rgba, bg: Rgba, minimum: number): string | nul
 function applyLegibleForegrounds(root: HTMLElement, theme: ThemeOverrides, probe: ReturnType<typeof createRoleProbe>): string[] {
   const written: string[] = [];
 
-  for (const { fg, on, level } of LEGIBLE_FOREGROUNDS) {
+  // Read first, write after — see `applyThemeVars`.
+  const measured = LEGIBLE_FOREGROUNDS
     // A pin is the author overruling the derivation, which they are entitled to do.
-    if (theme.roles?.[fg] !== undefined) continue;
-    const text = probe.read(fg);
-    const background = probe.read(on);
+    .filter(({ fg }) => theme.roles?.[fg] === undefined)
+    .map((pair) => ({ ...pair, text: probe.read(pair.fg), background: probe.read(pair.on) }));
+
+  for (const { fg, level, text, background } of measured) {
     if (!text || !background) continue;
     if (apcaContrast(text, background) >= APCA_MINIMUM[level]) continue;
 
@@ -994,12 +1025,13 @@ function applyAutoContrast(root: HTMLElement, theme: ThemeOverrides, probe: Retu
   const computed = getComputedStyle(root);
   const written: string[] = [];
 
-  for (const { fg, against } of AUTO_CONTRAST) {
-    if (theme.roles?.[fg] !== undefined) continue;
+  // Read first, write after — see `applyThemeVars`.
+  const measured = AUTO_CONTRAST.filter(({ fg }) => theme.roles?.[fg] === undefined).map(({ fg, against }) => ({
+    fg,
+    fills: against.map((role) => probe.read(role)).filter((c): c is Rgba => c !== null),
+  }));
 
-    const fills = against
-      .map((role) => probe.read(role))
-      .filter((c): c is Rgba => c !== null);
+  for (const { fg, fills } of measured) {
     if (!fills.length) continue;
 
     // The hue follows the theme's neutral so the label still belongs to it; only the lightness is

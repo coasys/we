@@ -27,7 +27,7 @@ import {
   simulateVision,
 } from '@we/design-utils';
 import type { ColorLightnessToken } from '@we/tokens';
-import { chromaTaper, color, RAMP, role, STATE_STEPS } from '@we/tokens';
+import { chromaTaper, color, FILL_LIGHTNESS, RAMP, role, STATE_STEPS } from '@we/tokens';
 import { describe, expect, it } from 'vitest';
 
 import type { ThemeOverrides, ThemeRole } from './overrides';
@@ -157,19 +157,31 @@ function resolve(value: string, theme: ThemeOverrides): Rgba | null {
     const hue = hueOf(hueFamily, theme);
 
     /*
-      A *fill* is untapered, and measured at its own lightness.
+      A *fill* is untapered, and scaled against the ceiling published for its family.
 
       The taper exists to make the neutral ramp converge on white and black at its ends, which is
       the one thing a fill must not do — a warning that fades toward the background as the theme
       gets lighter has stopped being a warning. So the fill roles name a `-fill-chroma-max`
       variable, and that name is what tells the two forms apart here.
+
+      Two details, both of which this got wrong first time and the recorded-value assertion caught:
+
+      - The ceiling is measured at `FILL_LIGHTNESS[family]`, not at the role's own lightness. That
+        is what `applyChromaCeilings` publishes, and a theme pinning its accent at some other
+        lightness is still scaled against that one number.
+      - A pin may carry a trailing `* <factor>` — the fraction of the theme's saturation it wants
+        (see `fill()` in presets.ts). Ignoring it modelled `dark`'s accent at chroma 0.20 where the
+        browser paints 0.16.
     */
     const isFill = chromaExpr.includes('-fill-chroma-max');
+    const factor = parseFloat(/\*\s*([\d.]+)\s*\)?\s*$/.exec(chromaExpr)?.[1] ?? '1');
     const taper = 2 * Math.min(lightnessFraction, 1 - lightnessFraction);
     const chroma = /^[\d.]+$/.test(chromaExpr)
       ? parseFloat(chromaExpr)
       : isFill
-        ? (saturationOf(hueFamily, theme) / 100) * maxChromaFor(lightnessFraction, hue)
+        ? (saturationOf(hueFamily, theme) / 100) *
+          maxChromaFor(FILL_LIGHTNESS[hueFamily as keyof typeof FILL_LIGHTNESS] ?? lightnessFraction, hue) *
+          factor
         : (saturationOf('neutral', theme) / 100) * maxChromaFor(0.6, hueOf('neutral', theme)) * taper;
     return parseColor(`oklch(${l}% ${chroma.toFixed(4)} ${hue}${alpha ? ` / ${alpha}` : ''})`);
   }

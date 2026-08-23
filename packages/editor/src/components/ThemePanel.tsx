@@ -718,6 +718,38 @@ export function ThemePanel() {
   const probeStyle = createMemo(() => themeToStyle(overrides()) as Record<string, string>);
 
   /**
+   * True from the moment a pointer goes down in this panel until it comes back up.
+   *
+   * ## Why the audit has to hold still while you drag
+   *
+   * The contrast and elevation reports render *above* the role rows, so the list growing by one
+   * line pushes every colour picker below it down by that line. Drag inside a picker's saturation
+   * square, gain an issue, and the square moves out from under the pointer — which changes the
+   * colour, which changes the issue list, which moves it again. A real feedback loop, and it makes
+   * the picker impossible to aim.
+   *
+   * Freezing the sample for the duration of the gesture breaks it: the panel below the pointer
+   * cannot reflow while the pointer is down, and the report catches up the instant it lifts. That
+   * is also when the answer is worth reading — an audit of the colours you passed *through* on the
+   * way to the one you wanted is noise.
+   *
+   * It happens to skip eighteen probe reads per frame of the drag as well, but that is a side
+   * benefit rather than the reason; the cost of a theme change is in `applyThemeVars`, not here.
+   */
+  const [dragging, setDragging] = createSignal(false);
+  {
+    const up = () => setDragging(false);
+    // On `window`, not the panel: a drag very often ends with the pointer outside the control it
+    // started in, and a listener on the panel alone would never hear about it and stay frozen.
+    window.addEventListener('pointerup', up);
+    window.addEventListener('pointercancel', up);
+    onCleanup(() => {
+      window.removeEventListener('pointerup', up);
+      window.removeEventListener('pointercancel', up);
+    });
+  }
+
+  /**
    * Resolve any CSS colour — an hsl(), a var() chain, a hex — to what the browser paints.
    *
    * Returned as the computed string rather than a hex, so a role that carries transparency keeps
@@ -732,6 +764,9 @@ export function ThemePanel() {
 
   createEffect(() => {
     probeStyle(); // re-sample whenever any part of the theme changes
+    // Held still for the length of a drag — see `dragging`. Reading the signal here is what makes
+    // the effect re-run, and re-sample, the moment the pointer lifts.
+    if (dragging()) return;
     if (!roleProbe) return;
     const computed = getComputedStyle(roleProbe);
     const next: Record<string, string> = {};
@@ -952,7 +987,21 @@ export function ThemePanel() {
   // ── Render ──────────────────────────────────────────────────────────────────
 
   return (
-    <Column height="100%" width="100%" bg="surface-raised" overflow="hidden">
+    <Column
+      height="100%"
+      width="100%"
+      bg="surface-raised"
+      overflow="hidden"
+      /*
+        Any press inside the panel starts a gesture, not just one on a slider.
+
+        Captured at the root rather than wired onto each control: the pickers, sliders and swatches
+        are a mix of Lit primitives and native inputs, and a drag that begins on any of them has the
+        same problem — see `dragging`. One listener here covers every present and future control,
+        and a press that turns out not to be a drag simply clears on the next pointerup.
+      */
+      onPointerDown={() => setDragging(true)}
+    >
       {/* Header */}
       <Row
         ax="between"
