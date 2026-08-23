@@ -463,11 +463,10 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
       Which sections the space has, and in what order — the community's decision, so the same tier
       and the same arity guard as `setModuleEnabled`.
 
-      `spaceViewSettings` is the list a settings page renders, and reads as `space-admin` rather
-      than `space-settings` because it carries the *disabled* sections too: what a space has turned
-      off is a configuration surface, not something an ordinary member's view needs.
+      The settings *list* — every section with both layers' answers — travels on each `spaceList`
+      row rather than being a member of its own, exactly as `modules` does: the page configures the
+      space you clicked, which is usually not the one you are standing in.
     */
-    spaceViewSettings: state('space-admin'),
     setViewEnabled: hereOnly('space-settings', 2),
     reorderViews: hereOnly('space-settings', 1),
     removeSpaceFromGlobal: destructive('space-admin'),

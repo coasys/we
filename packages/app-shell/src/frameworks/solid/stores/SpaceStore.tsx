@@ -1,7 +1,6 @@
 import { containmentPredicate, gatherTranscriptTurns, type TurnModel } from '@shared/interpretation/transcriptTurns';
 import { moduleRegistry, moduleStores, type ModuleSurface, moduleSurface } from '@shared/registries/moduleRegistry';
 import { defaultViewOrder, viewRegistry } from '@shared/registries/viewRegistry';
-import type { ResolvedView, TemplateSchema } from '@we/schema-shared';
 import {
   isSpaceSelf,
   type LocationData,
@@ -34,6 +33,7 @@ import {
   Space,
   SpacePreference,
 } from '@we/models';
+import type { ResolvedView, TemplateSchema } from '@we/schema-shared';
 import {
   Accessor,
   createContext,
@@ -86,6 +86,13 @@ export interface SpaceListEntry {
    * an id. Precomputing puts the answer where the row's context already reaches it.
    */
   modules: ModuleSetting[];
+  /**
+   * This space's sections, with both layers' answers — the community's and this agent's.
+   *
+   * On the row for the same reason `modules` is: `$store` resolves a literal path, so a settings
+   * page rendered per row cannot ask for the sections of "that row's space".
+   */
+  views: ViewSetting[];
   /** What the community set, so a picker can label the "follow the space" option with it. */
   defaultTemplateId: string;
   defaultThemeId: string;
@@ -209,6 +216,27 @@ export interface ModuleSetting {
   visible: boolean;
   /** All of the above agreeing — whether it actually renders here for this agent. */
   active: boolean;
+}
+
+/**
+ * One section, with both layers' answers for one space.
+ *
+ * Shorter than {@link ModuleSetting} by exactly one field, and the missing one is the point: a
+ * module has an agent-wide "installed" layer because it is a capability you choose to run anywhere,
+ * while a section is part of what a space *is*. There is no third answer for a view — only what the
+ * community put here, and whether you are looking at it.
+ */
+export interface ViewSetting {
+  id: string;
+  name: string;
+  description: string;
+  icon: string;
+  /** The community's decision for this space — shared with every member. */
+  enabled: boolean;
+  /** This agent's decision, here. Private. Positively phrased so a switch binds to it directly. */
+  visible: boolean;
+  /** Compiled into this build, as opposed to installed — shown so a list can say where it came from. */
+  builtIn: boolean;
 }
 
 export interface SpaceMetaUpdate {
@@ -443,18 +471,6 @@ export interface SpaceStore {
   spaceViews: Accessor<ResolvedView[]>;
   /** The same list as a nav strip reads it — one source, so routes and nav cannot disagree. */
   viewNav: Accessor<{ id: string; segment: string; label: string; icon: string; path: string }[]>;
-  /** Every available section with both layers' answers, for the space on screen. */
-  spaceViewSettings: Accessor<
-    {
-      id: string;
-      name: string;
-      description: string;
-      icon: string;
-      enabled: boolean;
-      visible: boolean;
-      builtIn: boolean;
-    }[]
-  >;
 
   // Actions
   createSpace: (
@@ -830,6 +846,45 @@ export function SpaceStoreProvider(props: ParentProps) {
     ];
   });
 
+  /**
+   * Every view this agent could put in a space: the ones compiled in, plus the ones installed.
+   *
+   * A view installed at runtime is an ordinary `Template` record whose `meta.role` is `'view'` —
+   * the same record a shell is stored as, which is what lets one marketplace, one install flow and
+   * one publish path serve both. The registry is consulted first so a built-in id keeps meaning the
+   * built-in view even if somebody installs a template sharing its id.
+   */
+  const availableViews = createMemo<Map<string, TemplateSchema>>(() => {
+    const out = new Map<string, TemplateSchema>(Object.entries(viewRegistry));
+    for (const template of templateStore.allTemplates()) {
+      if (template.meta?.role !== 'view' || !template.id || out.has(template.id)) continue;
+      out.set(template.id, template);
+    }
+    return out;
+  });
+
+  /**
+   * Every available view with both layers' answers, for one space — what a settings list renders.
+   *
+   * Both answers travel together for the reason `moduleSettingsFrom` explains: "the community
+   * turned this off" and "you hid this for yourself" are different situations with different
+   * remedies, and one boolean cannot tell them apart.
+   */
+  const viewSettingsFor = (spaceUuid: string | undefined, raw: string | undefined) => {
+    const available = availableViews();
+    const enabled = new Set(resolveEnabledViews(raw, (id) => available.has(id)));
+    const hidden = new Set(hiddenViewsFor(spaceUuid));
+    return [...available.entries()].map(([id, schema]) => ({
+      id,
+      name: schema.meta?.name ?? id,
+      description: schema.meta?.description ?? '',
+      icon: schema.meta?.icon || 'square',
+      enabled: enabled.has(id),
+      visible: !hidden.has(id),
+      builtIn: id in viewRegistry,
+    }));
+  };
+
   /** `installedModules` as a set — the shape both the list and the intersection want. */
   const installedSet = createMemo(() => new Set(installedModules()));
 
@@ -853,6 +908,9 @@ export function SpaceStoreProvider(props: ParentProps) {
         isWeSpace: Boolean(space),
         canAdminister: space ? canAdministerSpace(space.uuid) : false,
         modules: space ? moduleSettingsFrom(space.enabledModules, installedSet(), new Set(mutedModulesFor(ds.id))) : [],
+        // Per row rather than a "current space" memo, for the reason this whole page exists: it
+        // configures whichever space you clicked, which is usually not the one you are standing in.
+        views: space ? viewSettingsFor(ds.id, space.enabledViews) : [],
         defaultTemplateId: space?.defaultTemplateId ?? '',
         defaultThemeId: space?.defaultThemeId ?? '',
         templateOverride: templateOverrideFor(ds.id),
@@ -1709,23 +1767,6 @@ export function SpaceStoreProvider(props: ParentProps) {
   });
 
   /**
-   * Every view this agent could put in a space: the ones compiled in, plus the ones installed.
-   *
-   * A view installed at runtime is an ordinary `Template` record whose `meta.role` is `'view'` —
-   * the same record a shell is stored as, which is what lets one marketplace, one install flow and
-   * one publish path serve both. The registry is consulted first so a built-in id keeps meaning the
-   * built-in view even if somebody installs a template sharing its id.
-   */
-  const availableViews = createMemo<Map<string, TemplateSchema>>(() => {
-    const out = new Map<string, TemplateSchema>(Object.entries(viewRegistry));
-    for (const template of templateStore.allTemplates()) {
-      if (template.meta?.role !== 'view' || !template.id || out.has(template.id)) continue;
-      out.set(template.id, template);
-    }
-    return out;
-  });
-
-  /**
    * The space's sections, resolved: which view renders, at which segment, in which order.
    *
    * Community layer minus personal layer — `Space.enabledViews` says what the space *has*, and this
@@ -1780,33 +1821,6 @@ export function SpaceStoreProvider(props: ParentProps) {
       icon: view.schema.meta?.icon || 'square',
       path: `./${view.segment}`,
     })),
-  );
-
-  /**
-   * Every available view with both layers' answers, for one space — what a settings list renders.
-   *
-   * Both answers travel together for the reason `moduleSettingsFrom` explains: "the community
-   * turned this off" and "you hid this for yourself" are different situations with different
-   * remedies, and one boolean cannot tell them apart.
-   */
-  const viewSettingsFor = (spaceUuid: string | undefined, raw: string | undefined) => {
-    const available = availableViews();
-    const enabled = new Set(resolveEnabledViews(raw, (id) => available.has(id)));
-    const hidden = new Set(hiddenViewsFor(spaceUuid));
-    return [...available.entries()].map(([id, schema]) => ({
-      id,
-      name: schema.meta?.name ?? id,
-      description: schema.meta?.description ?? '',
-      icon: schema.meta?.icon || 'square',
-      enabled: enabled.has(id),
-      visible: !hidden.has(id),
-      builtIn: id in viewRegistry,
-    }));
-  };
-
-  /** The section settings for the space on screen. */
-  const spaceViewSettings = createMemo(() =>
-    viewSettingsFor(datasetStore.currentDataset()?.id, currentSpace()?.enabledViews),
   );
 
   // AppStore mounts above this one, so it is handed the set rather than reaching for it — the same
@@ -2811,7 +2825,6 @@ export function SpaceStoreProvider(props: ParentProps) {
     moduleLaunchers,
     spaceViews,
     viewNav,
-    spaceViewSettings,
     foreignSpacePrefill,
 
     // Actions

@@ -1,5 +1,9 @@
 import type { SchemaNode } from '@we/schema-shared';
 
+import { spaceDefaultsSection } from './SpaceDefaults.ts';
+import { spaceSectionsSection } from './SpaceSections.ts';
+import { spaceVocabularySection } from './SpaceVocabulary.ts';
+
 /**
  * Settings for one space, reached from its card in the spaces list.
  *
@@ -8,11 +12,21 @@ import type { SchemaNode } from '@we/schema-shared';
  * that one place, and only for as long as you stayed. Keying off the row you clicked decouples
  * configuring a space from being in it — you can set up several in one sitting.
  *
- * The space's own template may also offer these controls in context (the default template's
- * `/settings` route does). That is not duplication in any load-bearing sense: both render the same
- * store actions, and two presentations of one set of actions is what the schema system is for. What
- * this page adds is that the controls exist for *every* space, including one whose template never
- * thought to provide them.
+ * ## One page, two doors
+ *
+ * The default template used to carry a `/settings` section of its own rendering the same actions.
+ * Two presentations of one set of actions is what the schema system is for, so that was defensible
+ * while it lasted — but the two had already diverged (the route offered vocabulary and the space's
+ * default template; this page offered modules and the personal overrides), and a member's answer to
+ * "where do I change this" depended on which they happened to open.
+ *
+ * So the route is gone and this is the only one, reached two ways: from the spaces list, to
+ * configure any space without going to it, and from the gear in a space's own header, which opens
+ * this page already keyed to that space. Same page, same URL inside the overlay, two ways in.
+ *
+ * That it lives outside every template is now load-bearing rather than incidental. With sections
+ * installable, most shells will not provide a settings surface at all — and a community that
+ * installs one which does not must still be able to change their template back.
  */
 
 /** Read the space this page is for out of the route. `/spaces/<uuid>` → segments[1]. */
@@ -552,6 +566,39 @@ const shareExtractionDetailSection: SchemaNode = {
 };
 
 /**
+ * A rule and a label saying who the controls beneath it affect.
+ *
+ * Light chrome on purpose — the page is already a stack of bordered cards, and a heavier grouping
+ * device on top of that reads as two nesting systems arguing. A label, a muted line and a rule is
+ * enough to say "everything under here has the same audience".
+ *
+ * `readOnlyWhen` names a condition under which the group is visible but not editable, so the heading
+ * can say so once instead of every card repeating it.
+ */
+const groupHeading = (label: string, description: string, editableWhen?: string): SchemaNode => ({
+  type: 'Column',
+  props: { gap: '100', pt: '200', borderTop: '1px solid border' },
+  children: [
+    { type: 'we-text', props: { variant: 'label', color: 'text' }, children: [label] },
+    {
+      type: 'we-text',
+      props: { variant: 'footnote', color: 'text-faint' },
+      children: [
+        editableWhen
+          ? {
+              $if: {
+                condition: editableWhen,
+                then: description,
+                else: `${description} Changing them needs someone who administers the space.`,
+              },
+            }
+          : description,
+      ],
+    },
+  ],
+});
+
+/**
  * The page body, rendered per matching row.
  *
  * `$each` over a one-item filter rather than a `$find`, because it is the context variable that is
@@ -576,14 +623,39 @@ export const spaceSettingsPage: SchemaNode = {
             condition: '$space.isWeSpace',
             then: {
               type: 'Column',
-              props: { gap: '400' },
+              props: { gap: '500' },
               children: [
-                shareSection,
-                personalAppearanceSection,
+                /*
+                  Three groups, in this order, because the question people get wrong on a page like
+                  this is "who sees this change?" — and the answer is what the grouping is for.
+
+                  Flat, the page was five cards in the order they happened to be written, with a
+                  personal one sandwiched between two community ones. Sorting them by audience means
+                  the answer is legible before any individual control is read.
+
+                  The middle group carries both answers at once and keeps them side by side rather
+                  than splitting each row across two groups: "the community removed this" and "you
+                  hid this" are the two situations a member has to tell apart, and they are only
+                  distinguishable when shown together. See `moduleRow`.
+                */
+                groupHeading(
+                  'Everyone in this space',
+                  'Changes here are visible to every member.',
+                  '$space.canAdminister',
+                ),
                 communitySection,
-                modulesSection,
+                shareSection,
+                spaceDefaultsSection,
                 autoInterpretSection,
                 shareExtractionDetailSection,
+                spaceVocabularySection,
+
+                groupHeading('What this space has', 'Two answers per row: yours, and the community’s.'),
+                spaceSectionsSection,
+                modulesSection,
+
+                groupHeading('Just for you, here', 'Nobody else is affected by anything in this group.'),
+                personalAppearanceSection,
               ],
             },
             else: notAWeSpaceNotice,

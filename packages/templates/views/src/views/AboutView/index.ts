@@ -21,6 +21,32 @@ export const aboutView: TemplateSchema = {
     children: [
       sectionCard({
         title: 'About this space',
+        /*
+          A pencil, not an edit mode.
+
+          These fields had two renderings — read-only here and as inputs on a sibling Settings tab —
+          which meant one form to keep in step with another and a space's name spelled twice in the
+          UI. Only the settings page writes now, and this leads there: the same pattern as a profile
+          page and its edit screen, and the reason there is exactly one set of inputs.
+
+          Shown to everyone rather than gated on `canAdministerSpace`: the page it opens shows what
+          the space is configured as either way, and a control that vanishes for most members makes
+          "where do I see this" depend on who is asking. The page itself decides what is editable.
+        */
+        aside: {
+          type: 'we-button',
+          props: {
+            variant: 'ghost',
+            size: 'sm',
+            square: true,
+            title: 'Space settings',
+            onClick: {
+              $action: 'shellStore.openShellView',
+              args: ['settings', { $concat: ['/spaces/', { $store: 'routeStore.segments.1' }] }],
+            },
+          },
+          children: [{ type: 'we-icon', props: { name: 'pencil-simple' } }],
+        },
         children: [
           // Name field
           {
