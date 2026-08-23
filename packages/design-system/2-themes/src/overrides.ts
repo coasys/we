@@ -88,6 +88,25 @@ export type ThemeOverrides = {
   saturation?: number; // --we-color-saturation
   neutralSaturation?: number; // --we-color-neutral-saturation
   /**
+   * How light the accent fill is, 0–100.
+   *
+   * The third axis of a colour, and until now the one a theme author could not reach. Hue and
+   * saturation had sliders; lightness did not, because fills deliberately sit off the neutral ramp
+   * (see FILL_LIGHTNESS in @we/tokens) so that a red stays red in both polarities. That is right for
+   * polarity and it quietly froze the accent at one lightness for everybody.
+   *
+   * The cost was concrete: forking the dark theme and dragging the hue to green gave `#3a862d`, and
+   * nothing in the editor could brighten it. The saturation slider only adds chroma, and the
+   * lightness *range* sliders govern the neutral ramp rather than the fills — so the one control
+   * that looked like it should help was the one that could not. A bright green lives at about L 75%;
+   * the accent was pinned at 55%.
+   *
+   * Unset means the theme's own default: whatever lightness its `accent` states, or the shared
+   * FILL_LIGHTNESS.primary if it states none. Only the accent takes this. `danger`, `success` and
+   * `warning` sit where their hues live and are not brand decisions to be dragged around.
+   */
+  accentLightness?: number; // --we-accent-lightness
+  /**
    * Which end of the ramp the scale starts from. The whole of "is this a dark theme".
    *
    * Replaces `multiplier`, which was only ever 1 or -1 — a boolean typed as a number — and

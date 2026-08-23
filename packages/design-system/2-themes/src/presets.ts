@@ -93,7 +93,7 @@ const neutral = (lightness: number) => {
  * default uses.
  */
 const fill = (lightness: number, chromaFactor: number) =>
-  `oklch(${lightness}% calc(var(--we-color-saturation) / 100 * var(--we-color-primary-fill-chroma-max, 0.2663) * ${chromaFactor}) var(--we-color-primary-hue))`;
+  `oklch(calc(var(--we-accent-lightness, ${lightness}) * 1%) calc(var(--we-color-saturation) / 100 * var(--we-color-primary-fill-chroma-max, 0.2663) * ${chromaFactor}) var(--we-color-primary-hue))`;
 
 export const THEME_PRESETS = {
   light: {
@@ -414,6 +414,7 @@ export type { ThemeOverrides, ThemeRole } from './overrides';
 export { migrateOverrides, parseOverrides, THEME_SCHEMA_VERSION } from './migrate';
 export {
   applyThemeVars,
+  clearThemeVars,
   DARK_SURFACES,
   isDarkPolarity,
   reconcileSurfaces,

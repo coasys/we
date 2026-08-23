@@ -41,7 +41,7 @@ import { MemoryRouter, Route, useLocation, useNavigate } from '@solidjs/router';
 import { Column } from '@we/components/solid';
 import { panelResizing } from '@we/editor/runtime';
 import type { TemplateSchema } from '@we/schema-shared';
-import { parseOverrides, themeToStyle } from '@we/schema-shared';
+import { applyThemeVars, clearThemeVars, parseOverrides } from '@we/schema-shared';
 import { lazy } from 'solid-js';
 
 const EditorOverlay = lazy(() => import('@we/editor').then((m) => ({ default: m.EditorOverlay })));
@@ -211,13 +211,49 @@ export function TemplateLayout(
   // Scoped space theme — applied to the template content area only.
   // activeTemplateTheme() returns the editing theme (when editing in scoped mode) or the
   // space theme, and null in global mode (template inherits from documentElement).
-  const spaceThemeStyle = createMemo(() => {
+  /*
+    The scoped theme is *applied*, not merely declared.
+
+    This used to spread `themeToStyle(overrides)` into the wrapper's style, which writes the theme's
+    parameters and stops there — no chroma ceilings, no legible fills, no chosen labels, no state
+    directions, no corrected foregrounds. Every one of those is a measurement, and measuring needs a
+    real element, so none of them could happen from a style object.
+
+    The effect was that scoping a theme changed how the template looked. In global mode the template
+    inherits documentElement, which has been through the whole pipeline; scoped, it got the raw
+    parametric values — muted text at Lc 45 instead of 60, and a chroma ceiling falling back to a
+    flat 0.18 for every hue. Toggling the scope switch was supposed to move the *chrome* and instead
+    restyled the content, which is how it was noticed.
+
+    Applying to the wrapper element runs the identical derivation the root gets. The one thing that
+    cannot come from here is the inherited text colour, which is why `color` stays below.
+  */
+  let scopeEl: HTMLElement | undefined;
+  let lastScopedThemeId: string | null = null;
+
+  createEffect(() => {
     const td = stores.themeStore.activeTemplateTheme();
-    if (!td) return {};
+    if (!scopeEl) return;
+    if (!td) {
+      // Global mode: the wrapper must go back to *inheriting* the document theme. Writing a default
+      // palette here instead would cut it off from the root — see `clearThemeVars`.
+      clearThemeVars(scopeEl);
+      lastScopedThemeId = null;
+      return;
+    }
     const overrides = parseOverrides(td.overrides);
     if (isValidThemeKey(td.id) && !overrides.themeName) overrides.themeName = td.id;
+    // Editing keeps the id and changes parameters; switching changes the id. Only the second
+    // cross-fades — the same distinction the document root makes, and for the same reason.
+    const isSwitch = td.id !== lastScopedThemeId;
+    lastScopedThemeId = td.id;
+    applyThemeVars(scopeEl, overrides, { crossFade: isSwitch });
+  });
+
+  const spaceThemeStyle = createMemo((): Record<string, string> => {
+    const td = stores.themeStore.activeTemplateTheme();
+    if (!td) return {};
     return {
-      ...themeToStyle(overrides),
       /**
        * Re-resolve the inherited text colour against this wrapper's own tokens.
        *
@@ -309,6 +345,8 @@ export function TemplateLayout(
           // present, not conditional on there being a scoped theme: it marks where the edge of the
           // template content is, which is true whether or not anything is currently scoped to it.
           {...{ [THEME_SCOPE_ATTRIBUTE]: '' }}
+          // The element a scoped theme is applied to — see the effect above.
+          ref={(el: HTMLElement) => (scopeEl = el)}
           styles={spaceThemeStyle()}
         >
           {/*

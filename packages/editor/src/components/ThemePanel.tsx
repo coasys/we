@@ -1175,6 +1175,24 @@ export function ThemePanel() {
               </Column>
               <Column gap="200">
                 <we-text fontSize="200" color="text-faint">
+                  Accent
+                </we-text>
+                {/*
+                  The third axis of the accent, and the one that was missing.
+
+                  Hue and saturation had sliders; lightness did not, because fills sit off the
+                  neutral ramp so a red stays red in both polarities — which is right, and quietly
+                  meant nobody could choose how light their accent was. The "Lightness range" group
+                  below governs the *neutral* ramp, so it looked like the control for this and is
+                  not: dragging it to 120% left a green accent at exactly the same #3a862d.
+
+                  The default reads 55 because that is where the shared fill lightness sits; a theme
+                  stating its own — `dark` states 55.3 — shows that instead until this is touched.
+                */}
+                {percentSlider('Lightness', 'accentLightness', 20, 95, 55, '')}
+              </Column>
+              <Column gap="200">
+                <we-text fontSize="200" color="text-faint">
                   Lightness range
                 </we-text>
                 {/*

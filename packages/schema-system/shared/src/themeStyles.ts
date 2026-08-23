@@ -8,6 +8,7 @@
  */
 export {
   applyThemeVars,
+  clearThemeVars,
   DARK_SURFACES,
   isDarkPolarity,
   migrateOverrides,

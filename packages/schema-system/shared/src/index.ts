@@ -88,6 +88,7 @@ export { hasToken } from './predicates';
 export { isPropsSchemaNode, isSchemaChild, replaceNodeInTree } from './treeUtils';
 export {
   applyThemeVars,
+  clearThemeVars,
   DARK_SURFACES,
   migrateOverrides,
   parseOverrides,

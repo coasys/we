@@ -127,7 +127,8 @@ export const role = {
    * peak: how much chroma a hue can hold moves a long way with lightness, and using the ramp's
    * figure asked gold for more than it has at L 0.6 and less than it has at L 0.76.
    */
-  accent: 'oklch(55% calc(var(--we-color-saturation) / 100 * var(--we-color-primary-fill-chroma-max, 0.2663)) var(--we-color-primary-hue))',
+  accent:
+    'oklch(calc(var(--we-accent-lightness, 55) * 1%) calc(var(--we-color-saturation) / 100 * var(--we-color-primary-fill-chroma-max, 0.2663)) var(--we-color-primary-hue))',
   /**
    * Text and icons placed *on* an accent fill. Named for what it sits on, not what it is.
    *

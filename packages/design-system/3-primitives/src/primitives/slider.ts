@@ -122,10 +122,25 @@ export default class Slider extends DesignSystemElement {
     return mergeProps(usedProps, mergeProps(sizeDefaults, DEFAULT_PROPS)) as Partial<DesignSystemProps>;
   }
 
-  /** Fires continuously while dragging — does NOT persist to `this.value`. */
+  /**
+   * Fires continuously while dragging.
+   *
+   * `this.value` is updated here, and that is not incidental — leaving it stale is what made the
+   * thumb trail behind the pointer. `render()` binds `.value=${String(this.value)}`, so any
+   * re-render during a drag wrote the *old* number back onto the native input and yanked the thumb
+   * backwards; it only caught up once the consumer's own state had round-tripped and pushed a new
+   * `value` down. On a slider driving something expensive — a theme's colours, say — that round trip
+   * is long enough to see, and it reads as the whole app being slow rather than as the control
+   * fighting itself.
+   *
+   * Updating optimistically means the element always agrees with the input inside it. A consumer
+   * that wants to reject or clamp the value still can: it sets `value` back, and that wins, exactly
+   * as it did before.
+   */
   private _onInput(e: Event) {
     e.stopPropagation();
     const val = Number((e.target as HTMLInputElement).value);
+    this.value = val;
     this.dispatchEvent(new CustomEvent('input', { detail: val, bubbles: true, composed: true }));
   }
 

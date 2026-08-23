@@ -148,11 +148,19 @@ function resolve(value: string, theme: ThemeOverrides): Rgba | null {
     only be re-deriving it through a regex that has to be kept in step with the generator. A bare
     number is used as-is: that is the form at the very ends, where the taper reaches zero.
   */
-  const pinned = /^oklch\(([\d.]+)%\s+(.+?)\s+var\(--we-color-([a-z]+)-hue\)\s*(?:\/\s*([\d.%]+))?\)$/.exec(
-    value.trim(),
-  );
+  /*
+    The lightness is either a literal (`55%`) or the accent's variable with the theme's own value as
+    its fallback (`calc(var(--we-accent-lightness, 55) * 1%)`). The second form is what lets an
+    author brighten the accent — see `accentLightness` — and it resolves to the theme's setting when
+    it has one, or to the fallback the preset wrote.
+  */
+  const pinned =
+    /^oklch\((?:([\d.]+)%|calc\(var\(--we-accent-lightness,\s*([\d.]+)\)\s*\*\s*1%\))\s+(.+?)\s+var\(--we-color-([a-z]+)-hue\)\s*(?:\/\s*([\d.%]+))?\)$/.exec(
+      value.trim(),
+    );
   if (pinned) {
-    const [, l, chromaExpr, hueFamily, alpha] = pinned;
+    const [, literalL, fallbackL, chromaExpr, hueFamily, alpha] = pinned;
+    const l = literalL ?? String(theme.accentLightness ?? parseFloat(fallbackL));
     const lightnessFraction = parseFloat(l) / 100;
     const hue = hueOf(hueFamily, theme);
 
@@ -180,7 +188,14 @@ function resolve(value: string, theme: ThemeOverrides): Rgba | null {
       ? parseFloat(chromaExpr)
       : isFill
         ? (saturationOf(hueFamily, theme) / 100) *
-          maxChromaFor(FILL_LIGHTNESS[hueFamily as keyof typeof FILL_LIGHTNESS] ?? lightnessFraction, hue) *
+          // Mirrors applyChromaCeilings: the accent's ceiling follows its own lightness, which a
+          // theme can move; the status fills sit at the shared FILL_LIGHTNESS for their family.
+          maxChromaFor(
+            hueFamily === 'primary' && theme.accentLightness !== undefined
+              ? theme.accentLightness / 100
+              : (FILL_LIGHTNESS[hueFamily as keyof typeof FILL_LIGHTNESS] ?? lightnessFraction),
+            hue,
+          ) *
           factor
         : (saturationOf('neutral', theme) / 100) * maxChromaFor(0.6, hueOf('neutral', theme)) * taper;
     return parseColor(`oklch(${l}% ${chroma.toFixed(4)} ${hue}${alpha ? ` / ${alpha}` : ''})`);

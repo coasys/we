@@ -176,6 +176,7 @@ const THEME_CSS_MAP: Record<ParametricKey, string> = {
   neutralHue: '--we-color-neutral-hue',
   saturation: '--we-color-saturation',
   neutralSaturation: '--we-color-neutral-saturation',
+  accentLightness: '--we-accent-lightness',
 
   borderWidth: '--we-theme-border-width',
   focusRingWidth: '--we-theme-focus-ring-width',
@@ -442,6 +443,26 @@ export function themeToStyle(overrides: ThemeOverrides): Record<string, string> 
 const appliedThemeVars = new WeakMap<HTMLElement, Set<string>>();
 
 /**
+ * Remove every variable a previous `applyThemeVars` put on this element.
+ *
+ * The counterpart to applying, and needed because "no theme here" is a real state rather than a
+ * theme of its own: a scoped space theme is applied to the template wrapper, and turning scoping off
+ * has to leave that wrapper *inheriting* from the document root again. Writing the default theme
+ * onto it instead would declare a whole palette there and cut it off from the document — which
+ * looks like it works, until the document theme changes underneath and the template does not follow.
+ *
+ * Only what was applied is removed. The wrapper carries layout variables the shell publishes on the
+ * same element, and clearing `style.cssText` would take those with it — the same hazard
+ * `applyThemeVars` documents for the root.
+ */
+export function clearThemeVars(root: HTMLElement): void {
+  const previous = appliedThemeVars.get(root);
+  if (!previous) return;
+  for (const prop of previous) root.style.removeProperty(prop);
+  appliedThemeVars.delete(root);
+}
+
+/**
  * How long the switch itself cross-fades for, and how long the window stays open.
  *
  * The window has to outlast the fade or the duration is withdrawn mid-flight and everything jumps to
@@ -512,7 +533,7 @@ export function applyThemeVars(root: HTMLElement, theme: ThemeOverrides, options
 
   // Tracked alongside the rest, so the next theme clears them: a derived value from the old theme
   // outliving it would be worse than never deriving one.
-  const ceilings = applyChromaCeilings(root);
+  const ceilings = applyChromaCeilings(root, theme);
 
   /*
     One read of the browser, then all the maths, then one round of writes.
@@ -577,7 +598,7 @@ export function applyThemeVars(root: HTMLElement, theme: ThemeOverrides, options
  * Measured at the lightness where chroma peaks, so one number serves the whole ramp; the per-step
  * taper then scales it down toward both ends exactly as before.
  */
-function applyChromaCeilings(root: HTMLElement): string[] {
+function applyChromaCeilings(root: HTMLElement, theme: ThemeOverrides): string[] {
   const written: string[] = [];
   // Same guard as the contrast derivation: nothing to measure off a stub, and asking anyway throws.
   if (typeof getComputedStyle !== 'function' || root?.nodeType !== 1 || !root.isConnected) return written;
@@ -615,7 +636,17 @@ function applyChromaCeilings(root: HTMLElement): string[] {
       ramp's ceiling would have asked green and gold for more than they have at 0.6 and less than
       they have where they actually are, which is how a warning fill ends up looking like a stone.
     */
-    const fillLightness = FILL_LIGHTNESS[family as keyof typeof FILL_LIGHTNESS];
+    /*
+      The accent's ceiling follows the accent's own lightness, which a theme can move.
+
+      How much chroma a hue can hold changes a long way with lightness — a green holds 0.17 at L 0.55
+      and 0.24 at L 0.75 — so a theme that brightens its accent and kept the L 0.55 ceiling would be
+      told it had less colour available than it does, and a bright green would come out muted at
+      exactly the point somebody had asked for it to be bright.
+    */
+    const declared = family === 'primary' ? theme.accentLightness : undefined;
+    const fillLightness =
+      declared !== undefined ? declared / 100 : FILL_LIGHTNESS[family as keyof typeof FILL_LIGHTNESS];
     if (fillLightness === undefined) continue;
     const fillProp = `--we-color-${family}-fill-chroma-max`;
     root.style.setProperty(fillProp, maxChromaFor(fillLightness, hue, gamut).toFixed(4));
