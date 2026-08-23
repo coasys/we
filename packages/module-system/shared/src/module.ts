@@ -690,12 +690,63 @@ export interface ModuleInterpretationAccess {
    * where there was nothing to repair, including on a backend that parents its own results.
    */
   reconcileCollection: (collectionId: string, request: { classes: string[] }) => Promise<number>;
+  /**
+   * What extraction is doing in this space right now — this agent's passes and its peers'.
+   *
+   * Read-only and reactive, like {@link ModuleIdentityAccess.get}: a module reading it inside a
+   * derived value re-runs as phases arrive. Empty is the ordinary case, and means "nothing is
+   * running" rather than "not supported" — a backend that cannot report progress and a quiet
+   * afternoon look the same from here, and neither is worth a module branching on.
+   *
+   * A module may read this and cannot start, stop or subscribe to anything. Same rule as `watch`
+   * being absent from this interface: the feed follows the dataset and outlives the panel that
+   * started a pass, so its lifetime is the host's. What a module has is a place to render it.
+   */
+  activity: () => InterpretationActivitySummary[];
+
   /** Suggestions staged in this dataset, awaiting a human. */
   proposals: () => Promise<InterpretationProposal[]>;
   /** Commit a staged suggestion — the whole record, or one property by name. */
   accept: (id: string, property?: string) => Promise<boolean>;
   /** Drop a staged suggestion. */
   reject: (id: string, property?: string) => Promise<boolean>;
+}
+
+/**
+ * One running or finished extraction pass, as a module sees it.
+ *
+ * Every field is a string or a boolean because the consumer is a schema, which has no arithmetic
+ * and no date formatting — the host computes `label` and `elapsed` for the same reason
+ * `runtimeStore.aiModels` carries its own `statusText`.
+ *
+ * Deliberately not the host's own view type. A module contract that named an app-shell type would
+ * couple every module to the shell's internals; this is the subset a module can act on, which is
+ * also all of it that means anything outside the shell.
+ */
+export interface InterpretationActivitySummary {
+  passId: string;
+  /** The runner's agent id, or `''` when the backend could only say somebody is working. Pair it
+   *  with {@link ModuleIdentityAccess} for a face. */
+  runner: string;
+  /** Their display name, never blank — this is a sentence subject, so it falls back to "Someone". */
+  name: string;
+  avatar: string;
+  /** Whether this agent is running the pass. Only a pass of this agent's can carry `prompt` or
+   *  `response`, so this is what a UI checks before offering to show them. */
+  mine: boolean;
+  /** True while the pass is in flight. */
+  running: boolean;
+  /** A whole clause: "Anna is waiting on the model", "Extracted 3 records". */
+  label: string;
+  /** `m:ss` since the pass started, empty once it has settled. */
+  elapsed: string;
+  /** Why, for a pass that skipped or failed. Empty otherwise. */
+  detail: string;
+  prompt: string;
+  response: string;
+  /** Whether there is anything behind a disclosure — so a UI can disable the control with a reason
+   *  rather than opening an empty panel. */
+  hasDetail: boolean;
 }
 
 /**

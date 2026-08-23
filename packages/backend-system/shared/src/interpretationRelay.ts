@@ -76,8 +76,13 @@ export interface RelayOptions {
   /**
    * Include the raw prompt and response in what is broadcast. Default `false` — see the module
    * docs on why this is a bandwidth switch rather than a privacy one.
+   *
+   * Accepts a function so a host can bind it to a live setting. Read per publish rather than at
+   * construction, because the alternative is tearing down and rebuilding the relay when somebody
+   * flips a switch — which would drop every row it is holding, including the pass they turned the
+   * switch on to look at.
    */
-  shareDetail?: boolean;
+  shareDetail?: boolean | (() => boolean);
   /** Injectable for tests. */
   now?: () => number;
   /** How long a peer's unsettled row is believed. Defaults to
@@ -115,6 +120,8 @@ export function createInterpretationRelay(
 ): InterpretationRelay {
   const now = options.now ?? (() => Date.now());
   const ttlMs = options.ttlMs ?? INTERPRETATION_ACTIVITY_TTL_MS;
+  const sharingDetail = () =>
+    typeof options.shareDetail === 'function' ? options.shareDetail() : (options.shareDetail ?? false);
   const rows = new Map<string, InterpretationActivity>();
   const watchers = new Set<(rows: InterpretationActivity[]) => void>();
 
@@ -184,9 +191,7 @@ export function createInterpretationRelay(
         phase: activity.phase,
         ids: activity.ids,
         detail: activity.detail,
-        ...(options.shareDetail
-          ? { prompt: activity.llm?.prompt, response: activity.llm?.response }
-          : {}),
+        ...(sharingDetail() ? { prompt: activity.llm?.prompt, response: activity.llm?.response } : {}),
       };
       // Fire and forget, matching the channel's own contract. A dropped update costs one frame of
       // staleness on a peer's bar and is corrected by the next phase; awaiting it here would make
