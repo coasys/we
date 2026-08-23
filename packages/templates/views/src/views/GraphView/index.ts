@@ -1,4 +1,4 @@
-import type { RouteSchema, SchemaNode } from '@we/schema-shared';
+import type { SchemaNode, TemplateSchema } from '@we/schema-shared';
 import { recordFormModal } from '@we/template-kit';
 
 import { boardBar, boardCanvas, boardQuery } from './Board';
@@ -233,8 +233,14 @@ const picker = (field: string, options: readonly { value: string; label: string 
   })),
 });
 
-export const graphRoute: RouteSchema = {
-  path: '/graph',
+export const graphView: TemplateSchema = {
+  meta: {
+    name: 'Graph',
+    description: 'The same space read as a map — what it holds, and how it connects',
+    icon: 'graph',
+    role: 'view',
+    segment: 'graph',
+  },
   type: 'Column',
   props: { width: '100%', height: '100%', gap: '0' },
   /*

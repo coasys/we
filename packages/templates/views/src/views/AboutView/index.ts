@@ -1,8 +1,22 @@
-import type { RouteSchema } from '@we/schema-shared';
+import type { TemplateSchema } from '@we/schema-shared';
 import { attributeRow, pageShell, sectionCard } from '@we/template-kit';
 
-export const aboutRoute: RouteSchema = {
-  path: '/about',
+/**
+ * A space's public face — what it is, who is in it, where it is.
+ *
+ * Read-only by design. The same fields are editable in Settings → Spaces & data, and this used to
+ * render them a second time as inputs on a sibling tab, so a space's name had two spellings in the
+ * UI and each had to be kept in step with the other. The pencil here leads to the one place that
+ * writes; nothing on this page does.
+ */
+export const aboutView: TemplateSchema = {
+  meta: {
+    name: 'About',
+    description: "A space's public face — its description, its people, and where it is",
+    icon: 'book-open',
+    role: 'view',
+    segment: 'about',
+  },
   ...pageShell({
     children: [
       sectionCard({

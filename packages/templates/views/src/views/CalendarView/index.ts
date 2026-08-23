@@ -1,4 +1,4 @@
-import type { RouteSchema, SchemaNode } from '@we/schema-shared';
+import type { SchemaNode, TemplateSchema } from '@we/schema-shared';
 import { agentByline, emptyState, field } from '@we/template-kit';
 
 /**
@@ -586,8 +586,14 @@ const composer: SchemaNode = {
   },
 };
 
-export const calendarRoute: RouteSchema = {
-  path: '/calendar',
+export const calendarView: TemplateSchema = {
+  meta: {
+    name: 'Calendar',
+    description: "The space's events on a month grid",
+    icon: 'calendar',
+    role: 'view',
+    segment: 'calendar',
+  },
   type: 'Column',
   props: { width: '100%', ax: 'center', p: '500' },
   $localState: {

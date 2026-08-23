@@ -6,6 +6,7 @@
   "type": "module",
   "scripts": {
     "generate-templates": "node scripts/generateTemplateRegistry.mjs",
+    "generate-views": "node scripts/generateViewRegistry.mjs",
     "publish-templates": "tsx scripts/publishTemplates.mjs",
     "build:steps": "tsup",
     "build": "we-build",
@@ -63,6 +64,7 @@
     "@we/backend-ad4m": "workspace:*",
     "@we/template-default": "workspace:*",
     "@we/template-showcase": "workspace:*",
+    "@we/template-views": "workspace:*",
     "@we/template-shell": "workspace:*",
     "@we/editor": "workspace:*",
     "@we/globe-widget": "workspace:*",

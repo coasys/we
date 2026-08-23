@@ -1,10 +1,16 @@
-import type { RouteSchema } from '@we/schema-shared';
+import type { TemplateSchema } from '@we/schema-shared';
 
 import { channelList } from './ChannelList.ts';
 import { conversationList } from './ConversationList.ts';
 
-export const fluxRoute: RouteSchema = {
-  path: '/flux',
+export const fluxView: TemplateSchema = {
+  meta: {
+    name: 'Flux',
+    description: "A Flux community's own channels and conversations, read natively",
+    icon: 'chat-circle',
+    role: 'view',
+    segment: 'flux',
+  },
   type: 'Column',
   props: { p: '600', gap: '600', bg: 'page' },
   children: [

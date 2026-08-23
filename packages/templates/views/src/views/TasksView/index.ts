@@ -1,4 +1,4 @@
-import type { RouteSchema, SchemaNode } from '@we/schema-shared';
+import type { SchemaNode, TemplateSchema } from '@we/schema-shared';
 import { emptyState, field } from '@we/template-kit';
 
 /**
@@ -281,8 +281,14 @@ const composer: SchemaNode = {
   },
 };
 
-export const tasksRoute: RouteSchema = {
-  path: '/tasks',
+export const tasksView: TemplateSchema = {
+  meta: {
+    name: 'Tasks',
+    description: "The space's tasks, grouped by status and filterable by assignee",
+    icon: 'check-square',
+    role: 'view',
+    segment: 'tasks',
+  },
   type: 'Column',
   props: { width: '100%', ax: 'center', p: '500' },
   $localState: {

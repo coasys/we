@@ -67,6 +67,23 @@ export interface WeSeedFile {
    */
   templates?: string[];
 
+  /**
+   * Built-in view ids this deployment ships — a space's *sections*, as opposed to `templates`, which
+   * are whole interfaces.
+   *
+   * Same mechanism, one tier down, and the tier is what it buys: a deployment that wants the default
+   * arrangement but not the globe used to have to fork the default template to remove one route.
+   * Now it drops `"globe"` from this list and the Cesium view leaves the bundle entirely.
+   *
+   * **The order is the default section order.** A space that has never been configured shows its
+   * sections in the order written here, so arranging a deployment's nav is done by writing this
+   * array rather than by a second setting.
+   *
+   * Omit to ship every bundled view. An empty array is a deployment whose spaces have no sections at
+   * all — legal, and what a kiosk or a single-purpose landing shell wants.
+   */
+  views?: string[];
+
   /** Host app customization (WE shell) — optional white-labeling */
   host?: {
     /** Theme overrides for the host */

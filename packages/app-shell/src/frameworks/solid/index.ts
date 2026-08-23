@@ -25,6 +25,7 @@ export { default as TemplateProvider } from './providers/TemplateProvider';
 // Registries
 export * from './registries/componentRegistry';
 export * from '../../shared/registries/templateRegistry';
+export * from '../../shared/registries/viewRegistry';
 export * from '../../shared/registries/themeRegistry';
 
 // Schemas

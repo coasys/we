@@ -1,4 +1,4 @@
-import type { RouteSchema } from '@we/schema-shared';
+import type { TemplateSchema } from '@we/schema-shared';
 import { pageShell } from '@we/template-kit';
 
 import { blocksList } from './BlocksList.ts';
@@ -32,8 +32,14 @@ const NON_BLOCK_CONTENT_TYPES = [
   'flux-messages',
 ];
 
-export const cardsRoute: RouteSchema = {
-  path: '/cards',
+export const cardsView: TemplateSchema = {
+  meta: {
+    name: 'Cards',
+    description: "Everything in the space as a filterable, sortable feed — posts, people, calls and the rest",
+    icon: 'cards-three',
+    role: 'view',
+    segment: 'cards',
+  },
   $localState: {
     createPostOpen: { type: 'boolean', initial: false },
     // The routing conventions' tiers (docs/architecture/routing-and-view-state.md):

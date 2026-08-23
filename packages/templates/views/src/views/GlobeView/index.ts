@@ -4,14 +4,22 @@
  * Cesium globe view
  */
 
-import type { RouteSchema } from '@we/schema-shared';
+import type { TemplateSchema } from '@we/schema-shared';
 
 import { agentModal } from './AgentModal.ts';
 import { spaceModal } from './SpaceModal.ts';
 
-export const globeRoute: RouteSchema = {
-  path: '/globe',
-  keepAlive: true,
+export const globeView: TemplateSchema = {
+  meta: {
+    name: 'Globe',
+    description: 'Members and spaces placed on the earth',
+    icon: 'globe-hemisphere-west',
+    role: 'view',
+    segment: 'globe',
+    // The narrow case `keepAlive` exists for: rebuilding a Cesium viewer on every return to this
+    // section costs a visible reload of the whole globe.
+    keepAlive: true,
+  },
   type: 'Column',
   props: { width: '100%', height: '100%' },
   $localState: {
