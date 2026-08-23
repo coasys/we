@@ -262,6 +262,14 @@ function themeColors(theme: ThemeOverrides): Map<ThemeRole, Rgba> {
   const resolveDeclared = (name: ThemeRole, seen: Set<string>): Rgba | null => {
     const value = declared(name);
     if (!value) return null;
+    // A role stated as another role — `surface: var(--we-role-page)`, how a theme says "this has no
+    // elevation" rather than freezing the page's lightness into three more places.
+    const alias = /^var\(--we-role-([a-z-]+)\)$/.exec(value.trim());
+    if (alias) {
+      if (seen.has(name)) return null;
+      const to = alias[1].replace(/-([a-z])/g, (_, c: string) => c.toUpperCase()) as ThemeRole;
+      return resolveDeclared(to, new Set([...seen, name]));
+    }
     const relative = RELATIVE.exec(value.trim());
     if (!relative) return resolve(value, theme);
 
@@ -398,6 +406,62 @@ describe.each(Object.keys(THEME_PRESETS) as ThemeName[])('%s', (name) => {
  * Equal is allowed. A flat design where the page and its cards share one colour and separation comes
  * from borders is a real design — `channels` is one — and this is not the place to overrule it.
  */
+/**
+ * A pin that lands where the theme's own parameters already land is not stating anything.
+ *
+ * Every preset here was authored by measuring a rendered screen and writing the numbers down, which
+ * is a reasonable way to start and leaves behind pins that were never decisions. Seven of them were:
+ * `channels` pinned its page, sunken surface, hover tint and text within half a point of what its
+ * own floor and ceiling produce, and `timeline` pinned a sunken surface within 1.2. All seven cost
+ * the theme its ability to follow its parameters — move the ramp and a pinned role stays put — and
+ * none of them changed a single rendered colour, which a browser confirmed after they were dropped.
+ *
+ * Stated as "removing this pin changes the colour" rather than as a lightness comparison, because
+ * that is the question: a pin earns its place by making a difference. The check runs the same
+ * resolver the rest of the suite does, so it accounts for the relative surfaces and the pipeline.
+ *
+ * One rgb unit of tolerance — below that the browser paints the same pixel, and the pin is decoration
+ * around a number the theme already had.
+ */
+describe.each(Object.keys(THEME_PRESETS) as ThemeName[])('%s pins', (name) => {
+  const theme = THEME_PRESETS[name].parameters as ThemeOverrides;
+  const pinned = Object.keys(theme.roles ?? {}) as ThemeRole[];
+
+  // `light`, `black`, `retro` and `cyberpunk` pin nothing at all — `it.each([])` is an empty suite,
+  // which vitest reports as a failure, so they get one assertion saying what is true of them.
+  if (!pinned.length) {
+    it('pins nothing — the parameters carry the whole theme', () => {
+      expect(pinned).toEqual([]);
+    });
+    return;
+  }
+
+  it.each(pinned)('%s pin changes what the theme renders', (pin) => {
+    /*
+      A pin stated over another role is exempt, and the exemption is the point rather than a let-off.
+      This asks whether a pin is a frozen measurement; `surface: var(--we-role-page)` is not a number
+      at all, it is the statement "this theme has no elevation", and it holds when the page moves.
+      Timeline's two are the case: they resolve to white today only because the parametric default is
+      `page + 10%`, which at a white page is L 110% and clamps back. Judged on today's colour they
+      look redundant, and dropping them would leave two surfaces floating pure white over any page
+      the theme later darkened — which is the failure the old spelling actually had.
+    */
+    if (/^var\(--we-role-/.test(theme.roles?.[pin] ?? '')) return;
+    const withPin = roleColor(pin, theme);
+    const rest = { ...theme.roles } as Record<string, string>;
+    delete rest[pin];
+    const withoutPin = roleColor(pin, { ...theme, roles: rest } as ThemeOverrides);
+    // A role with no parametric default at all cannot be compared — the pin is the only value there.
+    if (!withPin || !withoutPin) return;
+    const distance = Math.max(
+      Math.abs(withPin.r - withoutPin.r),
+      Math.abs(withPin.g - withoutPin.g),
+      Math.abs(withPin.b - withoutPin.b),
+    );
+    expect(distance, `pinning '${pin}' produces the same colour the parameters already do`).toBeGreaterThan(1);
+  });
+});
+
 describe.each(Object.keys(THEME_PRESETS) as ThemeName[])('%s elevation', (name) => {
   const theme = THEME_PRESETS[name].parameters as ThemeOverrides;
   const lum = (r: ThemeRole) => {

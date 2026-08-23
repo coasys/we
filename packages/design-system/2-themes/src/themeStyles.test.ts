@@ -304,13 +304,19 @@ describe('a preset and a theme both pinning roles', () => {
       converted — and a test that repeats them only ever says the file was copied correctly. What
       must not happen is that pinning one role drops the others.
     */
-    // `text-muted` is no longer pinned here — it is derived against the surface now — so the three
-    // roles asserted are ones this theme still states for itself.
-    for (const role of ['--we-role-page', '--we-role-surface-sunken', '--we-role-surface-raised']) {
+    // Named rather than derived from the preset, so this keeps asserting something after a pin is
+    // dropped. `text-muted` went when it became derived; `page`, `surface-sunken`, `surface-hover`
+    // and `text` went in the pin audit, where each measured within half a point of what the theme's
+    // own ramp already produced. These three are ones channels still states for itself.
+    for (const role of ['--we-role-surface-raised', '--we-role-surface-active', '--we-role-border-strong']) {
       expect(style[role], `${role} was dropped`).toMatch(/^oklch\([\d.]+%/);
     }
     expect(
-      new Set([style['--we-role-page'], style['--we-role-surface-sunken'], style['--we-role-text-muted']]).size,
+      new Set([
+        style['--we-role-surface-raised'],
+        style['--we-role-surface-active'],
+        style['--we-role-border-strong'],
+      ]).size,
     ).toBe(3);
   });
 
@@ -361,6 +367,6 @@ describe('a preset and a theme both pinning roles', () => {
   it('leaves a theme with no roles of its own exactly as the preset had it', () => {
     const bare = themeParametersToStyle({ themeName: 'channels' });
     const withOther = themeParametersToStyle({ themeName: 'channels', primaryHue: 100 });
-    expect(withOther['--we-role-page']).toBe(bare['--we-role-page']);
+    expect(withOther['--we-role-surface-raised']).toBe(bare['--we-role-surface-raised']);
   });
 });

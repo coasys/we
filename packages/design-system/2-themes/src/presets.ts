@@ -317,9 +317,18 @@ export const THEME_PRESETS = {
       lightnessFloor: '19%',
       lightnessCeiling: '121.5%',
       roles: {
-        page: neutral(22.7),
-        surface: neutral(22.7),
-        surfaceSunken: neutral(18.7),
+        /*
+          `page`, `surfaceSunken`, `surfaceHover` and `text` used to be pinned here too, at L 22.7,
+          18.7, 27.0 and 100.0 — which is where this theme's own ramp already puts them, within half
+          a point in every case. They were measured off the old build and frozen, and all four did
+          nothing but stop the theme following its own floor and ceiling.
+
+          `surface` is now stated as the page rather than as a number that happened to equal it. The
+          design is that the channel list and the page are one sheet, and saying so means moving the
+          page still moves both; the old spelling would have left a card floating at 22.7 over
+          whatever the page became.
+        */
+        surface: 'var(--we-role-page)',
         surfaceRaised: neutral(29.0),
         /*
           Pinned, like 's. This theme's ramp puts the shared accent step in the band where
@@ -330,11 +339,13 @@ export const THEME_PRESETS = {
         accent: fill(40, 0.725),
         // Same band, same reason — this theme's ramp puts the shared danger step where no label reads.
         danger: 'oklch(40% 0.16 27)',
-        surfaceHover: neutral(27.0),
+        // A pressed tint and a border at the same lightness — this theme draws its separation with
+        // the same grey it presses with, which is 2.8 points below where the ramp would put either.
         surfaceActive: neutral(32.1),
         border: neutral(32.1),
+        // 22 points below neutral-500: an emphasised rule here is barely stronger than an ordinary
+        // one, which is what keeps a dense channel list from turning into a grid.
         borderStrong: neutral(38.0),
-        text: neutral(100.0),
         textFaint: neutral(62.4),
         overlay:
           'oklch(4% calc(min(var(--we-color-neutral-saturation) * 0.0035, 0.18) * 0.08) var(--we-color-neutral-hue) / 72%)',
@@ -371,9 +382,18 @@ export const THEME_PRESETS = {
       lightnessCeiling: '100%',
       roles: {
         page: '#ffffff',
-        surface: '#ffffff',
-        surfaceSunken: neutral(97.7),
-        surfaceRaised: '#ffffff',
+        /*
+          Both surfaces *are* the page. This theme has no card and no elevation — the whole column is
+          one sheet, which is what `shadowIntensity: 'flat'` is also saying — so they are stated as
+          the page rather than as a second and third `#ffffff`.
+
+          The old spelling worked by accident: the parametric default is `page + 10%`, which at a
+          white page is L 110% and clamps back to white. Relying on that meant a theme darkening its
+          page would keep two pure-white surfaces floating on it. `surfaceSunken` was pinned too, at
+          1.2 points from where the default puts it — a frozen measurement, and now dropped.
+        */
+        surface: 'var(--we-role-page)',
+        surfaceRaised: 'var(--we-role-page)',
         surfaceHover: neutral(97.7),
         surfaceActive: neutral(95.4),
         border: neutral(95.4),
