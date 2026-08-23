@@ -1134,7 +1134,19 @@ export function ThemePanel() {
               position="sticky"
               top="0"
               zIndex={2}
-              bg="surface"
+              /*
+                Opaque, and the same material as the panel behind it.
+
+                It cannot simply go transparent — being sticky, the sections scroll *under* it, and
+                anything see-through would show them sliding past behind the preview. So it has to
+                paint something, and the something has to be whatever the panel body is: it was
+                `surface`, which sat a step above the body and made the preview read as a card
+                floating in a panel rather than as part of it.
+
+                Tied to the frame's choice by hand, which is the weak part. If the dock frame ever
+                paints something else this has to follow, and nothing enforces that.
+              */
+              bg="surface-sunken"
               borderBottom={`1px solid ${tokenVar('color', 'neutral-100')}`}
               pb="300"
               pt="300"
