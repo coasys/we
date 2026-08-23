@@ -295,6 +295,22 @@ const ROLE_GROUPS: { label: string; hint: string; roles: { role: ThemeRole; labe
  * `ui` pairs are the 3:1 ones: a border or a focus ring is not text, and holding it to 4.5 would
  * fail every reasonable design. `large` is for text that is always rendered big.
  */
+/**
+ * A measurement rendered so it can never read as passing.
+ *
+ * `toFixed` rounds, and every one of these numbers is printed *because it fell short* — so a
+ * `dangerText` at Lc 59.6 printed "Lc 60, needs Lc 60", which reads as a warning about a pair that
+ * is fine. Truncating instead means the number shown is never above the true one, so a reported
+ * failure always looks like one.
+ *
+ * Only correct for values known to be non-negative, which these are: `apcaContrast` returns an
+ * absolute Lc and a contrast ratio starts at 1.
+ */
+function shortfall(value: number, decimals = 0): string {
+  const scale = 10 ** decimals;
+  return (Math.floor(value * scale) / scale).toFixed(decimals);
+}
+
 const CONTRAST_PAIRS: { fg: ThemeRole; bg: ThemeRole; level: ContrastLevel; what: string }[] = [
   { fg: 'text', bg: 'page', level: 'body', what: 'Body text on the page' },
   { fg: 'text', bg: 'surface', level: 'body', what: 'Body text on a card' },
@@ -1306,8 +1322,8 @@ export function ThemePanel() {
                                 <we-text fontSize="100" color="text-muted" lineHeight="1.4">
                                   {f.what} —{' '}
                                   {f.apcaOnly
-                                    ? `Lc ${f.lc.toFixed(0)}, needs Lc ${f.lcRequired}`
-                                    : `${f.ratio.toFixed(1)}:1, needs ${f.required}:1`}
+                                    ? `Lc ${shortfall(f.lc)}, needs Lc ${f.lcRequired}`
+                                    : `${shortfall(f.ratio, 1)}:1, needs ${f.required}:1`}
                                 </we-text>
                               )}
                             </For>

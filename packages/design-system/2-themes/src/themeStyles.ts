@@ -877,13 +877,29 @@ export function deriveLegible(fg: Rgba, bg: Rgba, minimum: number, wcagMinimum: 
 // Exported so the contrast suite can assert it is *covered* — every foreground corrected here has
 // to be measured by a pair there, or the correction could stop working and nothing would say so.
 // That check found `textFaint` and `accentText` unasserted the first time it ran.
-export const LEGIBLE_FOREGROUNDS: { fg: ThemeRole; on: ThemeRole; level: ContrastLevel }[] = [
-  { fg: 'textMuted', on: 'surface', level: 'body' },
-  { fg: 'textFaint', on: 'surface', level: 'ui' },
-  { fg: 'accentText', on: 'surface', level: 'body' },
-  { fg: 'dangerText', on: 'dangerSurface', level: 'body' },
-  { fg: 'successText', on: 'successSurface', level: 'body' },
-  { fg: 'warningText', on: 'warningSurface', level: 'body' },
+export const LEGIBLE_FOREGROUNDS: { fg: ThemeRole; on: ThemeRole[]; level: ContrastLevel }[] = [
+  { fg: 'textMuted', on: ['surface'], level: 'body' },
+  { fg: 'textFaint', on: ['surface'], level: 'ui' },
+  { fg: 'accentText', on: ['surface'], level: 'body' },
+  /*
+    Two backgrounds each, and the worst one governs.
+
+    These named only the tint, on the reading that a status colour belongs on its own panel. It does
+    not: an error under a form field, a "connected" tick in a settings row, a warning icon beside a
+    label — all of those sit on an ordinary card, and that is the *more* common placement of the
+    three. Correcting against the tint alone left the commoner case uncorrected, and in a dark theme
+    the card is the harder background of the two, so it landed just short every time: `dark`'s danger
+    text measured Lc 58.5 on a card against 60.4 on its tint, `cyberpunk`'s 58.6 against 61.1, and
+    `black`'s 59.9 and 59.5 for danger and success. Near-misses, which is why they survived — a theme
+    editor reporting "Lc 60, needs Lc 60" reads as a rounding artefact rather than a real shortfall,
+    and it was one, but the shortfall was real too.
+
+    `textMuted` and the rest keep a single background because they have one: muted text on a tint is
+    not a thing the vocabulary offers.
+  */
+  { fg: 'dangerText', on: ['dangerSurface', 'surface'], level: 'body' },
+  { fg: 'successText', on: ['successSurface', 'surface'], level: 'body' },
+  { fg: 'warningText', on: ['warningSurface', 'surface'], level: 'body' },
 ];
 
 /**
@@ -1046,7 +1062,7 @@ const ROLES_TO_RESOLVE: ThemeRole[] = [
     ...DERIVED_FILLS,
     ...FILL_LABELS.flatMap(({ fill, label }) => [fill, label]),
     ...AUTO_CONTRAST.flatMap(({ fg, against }) => [fg, ...against]),
-    ...LEGIBLE_FOREGROUNDS.flatMap(({ fg, on }) => [fg, on]),
+    ...LEGIBLE_FOREGROUNDS.flatMap(({ fg, on }) => [fg, ...on]),
   ]),
 ];
 
@@ -1138,8 +1154,19 @@ export function deriveRoleVars(
     // A pin is the author overruling the derivation, which they are entitled to do.
     if (theme.roles?.[fg] !== undefined) continue;
     const text = resolved.get(fg);
-    const background = resolved.get(on);
-    if (!text || !background) continue;
+    const backgrounds = on.map((role) => resolved.get(role)).filter((c): c is Rgba => !!c);
+    if (!text || !backgrounds.length) continue;
+    /*
+      The worst background wins, the same rule the fills use.
+
+      A foreground corrected against one of the surfaces it appears on is legible on that one, which
+      is not what the role promises. Picking the hardest and satisfying it satisfies the rest by
+      construction — and which is hardest depends on the theme, so it has to be measured rather than
+      declared: in a light theme the tint is the harder of the two, in a dark one the plain card is.
+    */
+    const background = backgrounds.reduce((worst, candidate) =>
+      apcaContrast(text, candidate) < apcaContrast(text, worst) ? candidate : worst,
+    );
     /*
       Both metrics, because the suite grades on both and this used to satisfy only one.
 

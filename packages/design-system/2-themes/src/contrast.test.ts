@@ -70,6 +70,15 @@ const PAIRS: { fg: ThemeRole; bg: ThemeRole; level: ContrastLevel; what: string 
   { fg: 'dangerText', bg: 'dangerSurface', level: 'body', what: 'danger text on its tint' },
   { fg: 'successText', bg: 'successSurface', level: 'body', what: 'success text on its tint' },
   { fg: 'warningText', bg: 'warningSurface', level: 'body', what: 'warning text on its tint' },
+  /*
+    And on an ordinary card, which is where a status message usually is — an error under a form
+    field, a tick in a settings row. Only the tint was asserted, and in a dark theme the card is the
+    harder of the two, so three built-ins sat just under the floor on the commoner placement:
+    `dark` 58.5, `cyberpunk` 58.6, `black` 59.9 and 59.5.
+  */
+  { fg: 'dangerText', bg: 'surface', level: 'body', what: 'danger text on a card' },
+  { fg: 'successText', bg: 'surface', level: 'body', what: 'success text on a card' },
+  { fg: 'warningText', bg: 'surface', level: 'body', what: 'warning text on a card' },
 ];
 
 /*
@@ -362,10 +371,23 @@ describe('what the derivations cover, the assertions cover', () => {
     ).toBe(true);
   });
 
-  // Read from the runtime's own table rather than restated, so a foreground added there arrives here
-  // as a failing test rather than as silent absence.
-  it.each(LEGIBLE_FOREGROUNDS)('$fg is measured against $on', ({ fg }) => {
+  /*
+    Read from the runtime's own table rather than restated, so a foreground added there arrives here
+    as a failing test rather than as silent absence.
+
+    Every *background* too, not just the foreground: the correction takes the worst of the surfaces
+    a role appears on, so a background listed there and unasserted here is one the theme is being
+    held to and nothing is checking. That is exactly how `dangerText` on a card came to be a
+    near-miss in three themes — the pair existed in the editor's audit and in no test.
+  */
+  it.each(LEGIBLE_FOREGROUNDS)('$fg is measured on every surface it is corrected against', ({ fg, on }) => {
     expect(asserted.has(fg), `${fg} is corrected at apply time but never measured`).toBe(true);
+    for (const bg of on) {
+      expect(
+        PAIRS.some((pair) => pair.fg === fg && pair.bg === bg),
+        `${fg} is corrected against ${bg} and nothing asserts that pair`,
+      ).toBe(true);
+    }
   });
 });
 
