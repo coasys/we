@@ -93,6 +93,7 @@ export {
   migrateOverrides,
   parseOverrides,
   reconcileSurfaces,
+  role,
   roleVar,
   surfacesForPolarity,
   THEME_SCHEMA_VERSION,

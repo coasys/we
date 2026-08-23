@@ -123,7 +123,16 @@ export function EditingBar() {
           <Row
             ay="center"
             gap="100"
-            bg="surface-raised"
+            /*
+              Page-toned, like every other floating cluster — the chrome rail and the call bar.
+
+              These are chrome: they sit on the page with air around them and cover nothing, so they
+              separate by edge (the border below) rather than by tone. `surface-raised` is a rung on
+              the tonal ladder, sized so a popover clears the card it covers, and taking it painted
+              these ten lightness points above their surroundings. The call module's own note names
+              these bars as the thing it was matching, so they are meant to agree.
+            */
+            bg="page"
             border="1px solid border"
             r="var(--we-theme-control-radius, var(--we-radius-400))"
             p="200"
@@ -145,7 +154,7 @@ export function EditingBar() {
             <Row
               ay="center"
               gap="100"
-              bg="surface-raised"
+              bg="page"
               border="1px solid border"
               r="var(--we-theme-control-radius, var(--we-radius-400))"
               p="200"
@@ -183,7 +192,7 @@ export function EditingBar() {
           <Row
             ay="center"
             gap="100"
-            bg="surface-raised"
+            bg="page"
             border="1px solid border"
             r="var(--we-theme-control-radius, var(--we-radius-400))"
             p="200"
@@ -233,7 +242,7 @@ export function EditingBar() {
             <Row
               ay="center"
               gap="100"
-              bg="surface-raised"
+              bg="page"
               border="1px solid border"
               r="var(--we-theme-control-radius, var(--we-radius-400))"
               p="200"

@@ -949,7 +949,7 @@ export function ThemePanel() {
             <Column bg="surface-raised" px="300" py="200" r="300" shadow="md" fontSize="100" color="text">
               Raised
             </Column>
-            <Column bg="surface" px="300" py="200" r="300" fontSize="100" color="text-muted">
+            <Column bg="surface-sunken" px="300" py="200" r="300" fontSize="100" color="text-muted">
               Sunken
             </Column>
             <Column bg="surface-inverse" px="300" py="200" r="300" fontSize="100" color="on-inverse">
@@ -961,6 +961,23 @@ export function ThemePanel() {
     );
   }
 
+  /**
+   * The edited theme's *colour scale*, for anything that has to show it rather than the app's.
+   *
+   * A picker's Tokens tab paints its swatches from `var(--we-color-<family>-<step>)`, which resolve
+   * wherever the picker happens to be — and the picker is editor chrome, so in scoped mode it
+   * resolves against the personal theme. Editing a green space theme from a purple personal one
+   * offered a grid of purples and then applied green: the swatch you clicked was not the colour you
+   * got, which is the one thing a colour picker must never do.
+   *
+   * Only the `--we-color-*` half of the theme. The roles are deliberately left alone so the picker's
+   * own surfaces, borders and text stay part of the editor rather than flipping to the theme being
+   * edited — a light space theme should not turn the picker's popover white inside a dark app.
+   */
+  const editedPalette = createMemo(() =>
+    Object.fromEntries(Object.entries(probeStyle()).filter(([prop]) => prop.startsWith('--we-color-'))),
+  );
+
   function roleRow(role: ThemeRole, label: string, hint: string) {
     const pinned = () => overrides().roles?.[role];
     // Unpinned, the swatch shows what the role currently resolves to — sampled with its alpha, so
@@ -971,7 +988,7 @@ export function ThemePanel() {
         <we-color-picker
           tokens
           alpha
-          styles={{ '--we-color-picker-swatch': '28px' }}
+          styles={{ ...editedPalette(), '--we-color-picker-swatch': '28px' }}
           value={shown()}
           on:change={(e: CustomEvent) => setRole(role, e.detail as string)}
         />
@@ -987,7 +1004,7 @@ export function ThemePanel() {
             </we-text>
           </we-tooltip>
           <we-text fontSize="100" color="text-faint" truncate>
-            {roleTierLabel(pinned())}
+            {roleTierLabel(pinned(), role)}
           </we-text>
         </Column>
         <Show when={pinned()}>

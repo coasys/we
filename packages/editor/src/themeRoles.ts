@@ -1,4 +1,5 @@
 import type { ThemeRole } from '@we/schema-shared';
+import { role } from '@we/schema-shared';
 
 /**
  * Which rung of the ladder a stored role value sits on.
@@ -23,9 +24,43 @@ export function roleTier(value: string | undefined): RoleTier {
   return 'custom';
 }
 
-/** What to show beside the swatch: the token's name, or the rung. */
-export function roleTierLabel(value: string | undefined): string {
+/**
+ * Which role each derived role is measured *from*, read out of the defaults themselves.
+ *
+ * Parsed rather than listed, so it cannot drift from what the roles actually do — a role that starts
+ * or stops being relative changes this by changing itself.
+ *
+ * It exists because "auto" was hiding a relationship people need to see. Every surface in the
+ * elevation stack is a fixed distance from `page`, so moving the page moves all three — which is the
+ * point, and is baffling if nothing says so. It reads as being unable to change the page without
+ * also changing the cards.
+ */
+const DERIVED_FROM: Partial<Record<ThemeRole, ThemeRole>> = Object.fromEntries(
+  Object.entries(role)
+    .map(([name, value]) => {
+      const match = /^oklch\(from var\(--we-role-([a-z-]+)\)/.exec(String(value));
+      if (!match) return null;
+      return [name, match[1].replace(/-([a-z])/g, (_, c: string) => c.toUpperCase())];
+    })
+    .filter((entry): entry is [string, string] => entry !== null),
+);
+
+/** Sentence-case a role name for display — `surfaceRaised` → `Surface raised`. */
+function roleLabel(role: string): string {
+  const spaced = role.replace(/([A-Z])/g, ' $1').toLowerCase();
+  return spaced.charAt(0).toUpperCase() + spaced.slice(1);
+}
+
+/**
+ * What to show beside the swatch: the token's name, or the rung.
+ *
+ * `role` is optional and only changes the "auto" case, where naming what the value follows is the
+ * difference between a relationship being visible and being a surprise. Setting the role explicitly
+ * is what detaches it — which the reset button beside it then offers to undo.
+ */
+export function roleTierLabel(value: string | undefined, role?: ThemeRole): string {
   const tier = roleTier(value);
+  if (tier === 'auto' && role && DERIVED_FROM[role]) return `follows ${roleLabel(DERIVED_FROM[role]!)}`;
   if (tier === 'token') return /var\(--we-color-([a-z]+-\d+)\)/.exec(value!)![1];
   if (tier === 'lightness') return 'theme tint';
   if (tier === 'relative') return 'relative to another role';
