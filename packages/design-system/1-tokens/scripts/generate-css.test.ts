@@ -79,7 +79,7 @@ describe('token CSS generation', () => {
         naming the legal shapes is what catches a new way of doing that.
       */
       expect(declaration![1], `role '${name}' hardcodes a colour`).toMatch(
-        /^(var\(--we-color-|oklch\([\d.]+% (calc\(var\(--we-color-|[\d.]+ var\(--we-color-)|oklch\(calc\(var\(--we-|oklch\(from var\(--we-role-)/,
+        /^(var\(--we-(color|role)-|oklch\([\d.]+% (calc\(var\(--we-color-|[\d.]+ var\(--we-color-)|oklch\(calc\(var\(--we-|oklch\(from var\(--we-role-)/,
       );
     }
   });

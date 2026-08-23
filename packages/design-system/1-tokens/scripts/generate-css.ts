@@ -9,7 +9,7 @@ import { CHROMA_CEILING, RAMP, STATE_STEPS } from '../src/color.js';
 import type { component as componentTokens } from '../src/component.js';
 import type { font as fontTokens } from '../src/font.js';
 import type { layout as layoutTokens } from '../src/layout.js';
-import { role as roleTokens, ROLE_RELATIVE_FALLBACK } from '../src/role.js';
+import { role as roleTokens, ROLE_ALIASES, ROLE_RELATIVE_FALLBACK } from '../src/role.js';
 import type { shadow as shadowTokens } from '../src/shadow.js';
 import type {
   avatarSize as avatarSizeTokens,
@@ -131,13 +131,12 @@ export function generateBorderCSS(border: typeof borderTokens) {
   --we-border-radius: var(--we-radius-400);
 
   /* Border Colors */
-  --we-border-color: var(--we-color-neutral-100);
-  --we-border-color-strong: var(--we-color-neutral-200);
+${aliasVars(['--we-border-color', '--we-border-color-strong'])}
 
   /* Focus ring color — resolves to the focus role, so a theme pinning that role moves the ring
      with it. There is deliberately no separate theme key: two ways to say one thing is how they
      drift, and the role is the one that belongs to the vocabulary. */
-  --we-ring-color: var(--we-role-focus);
+${aliasVars(['--we-ring-color'])}
 }`;
 
   return css;
@@ -246,11 +245,11 @@ ${colorPalettes}
 ${roleVars}
 
   /* Focus Colors */
-  --we-color-focus: var(--we-color-primary-500);
+${aliasVars(['--we-color-focus'])}
   /* Themeable width, like --we-border-width: a focus ring is a stroke, and a theme that
      thickens its borders and cannot thicken its rings looks half-converted. */
   --we-focus-ring-width: var(--we-theme-focus-ring-width, 2px);
-  --we-focus-outline: 0 0 0 var(--we-focus-ring-width) var(--we-color-focus);
+${aliasVars(['--we-focus-outline'])}
 
   /* Gradient */
   --we-gradient-primary: linear-gradient(135deg, oklch(var(--we-color-lightness-500) ${GRADIENT_CHROMA} calc(var(--we-color-primary-hue) - 25)) 0%, oklch(var(--we-color-lightness-500) ${GRADIENT_CHROMA} calc(var(--we-color-primary-hue) + 25)) 100%);
@@ -305,6 +304,17 @@ ${roleFallbackVars}
 `;
 
   return css;
+}
+
+/**
+ * Emit named aliases from the shared list — see ROLE_ALIASES.
+ *
+ * Taken from there rather than written out here, because the same names have to be re-declared by
+ * `themeParametersToStyle` for a scoped theme to reach them, and two lists that must agree is how
+ * five of them came to be emitted and none restated.
+ */
+function aliasVars(names: string[]): string {
+  return names.map((name) => `  ${name}: ${ROLE_ALIASES[name]};`).join('\n');
 }
 
 function camelToKebab(str: string): string {

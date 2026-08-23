@@ -17,9 +17,11 @@ import {
   CHROMA_PER_SATURATION,
   chromaTaper,
   color,
+  component,
   FILL_LIGHTNESS,
   RAMP,
   role,
+  ROLE_ALIASES,
   ROLE_RELATIVE_FALLBACK,
   STATE_STEPS,
 } from '@we/tokens';
@@ -435,11 +437,9 @@ export function themeParametersToStyle(overrides: ThemeOverrides): Record<string
     Cheap to over-apply and expensive to miss, so they go out with every theme rather than being
     gated on which parameters changed.
   */
-  style['--we-color-focus'] = 'var(--we-color-primary-500)';
-  style['--we-ring-color'] = 'var(--we-role-focus)';
-  style['--we-border-color'] = 'var(--we-color-neutral-100)';
-  style['--we-border-color-strong'] = 'var(--we-color-neutral-200)';
-  style['--we-scrollbar-thumb-background'] = 'var(--we-role-control-surface)';
+  for (const [prop, value] of Object.entries(ROLE_ALIASES)) style[prop] = value;
+  // Its own token rather than an alias entry — see the note on ROLE_ALIASES for why it is not there.
+  style['--we-scrollbar-thumb-background'] = component.scrollbar.thumbBackground;
 
   // 5. Re-declare gradient when primary hue or saturation may have changed
   const affectsPrimaryGradient =
@@ -449,16 +449,6 @@ export function themeParametersToStyle(overrides: ThemeOverrides): Record<string
       `linear-gradient(135deg, ` +
       `oklch(var(--we-color-lightness-500) calc(min(var(--we-color-saturation) * ${CHROMA_PER_SATURATION}, ${CHROMA_CEILING}) * ${chromaTaper('500')}) calc(var(--we-color-primary-hue) - 30)) 0%, ` +
       `oklch(var(--we-color-lightness-500) calc(min(var(--we-color-saturation) * ${CHROMA_PER_SATURATION}, ${CHROMA_CEILING}) * ${chromaTaper('500')}) calc(var(--we-color-primary-hue) + 30)) 100%)`;
-  }
-
-  // 6. Re-declare semantic tokens that alias --we-color-primary-500.
-  // These are defined at :root as var() references, but an inline style baked by
-  // populateMissingOverrides() or a named theme's CSS rule can pin them to a stale
-  // resolved value. Re-declaring them here as formulas ensures they stay in sync
-  // with any primary colour change on this element.
-  if (affectsPrimaryGradient) {
-    style['--we-color-focus'] = 'var(--we-color-primary-500)';
-    style['--we-focus-outline'] = '0 0 0 2px var(--we-color-focus)';
   }
 
   // fontScale: sets font-size on the root element, scaling all rem-based tokens

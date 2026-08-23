@@ -10,7 +10,7 @@ import { color, FILL_LIGHTNESS } from './color.js';
 import { component } from './component.js';
 import { font } from './font.js';
 import { layout } from './layout.js';
-import { role, ROLE_RELATIVE_FALLBACK } from './role.js';
+import { role, ROLE_ALIASES, ROLE_RELATIVE_FALLBACK } from './role.js';
 import { shadow } from './shadow.js';
 import { avatarSize, componentHeight, radius, size } from './size.js';
 import { space } from './space.js';
@@ -29,6 +29,7 @@ export {
   layout,
   radius,
   role,
+  ROLE_ALIASES,
   ROLE_RELATIVE_FALLBACK,
   shadow,
   size,

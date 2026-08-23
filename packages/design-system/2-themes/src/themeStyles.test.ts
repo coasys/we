@@ -9,6 +9,8 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { component, ROLE_ALIASES } from '@we/tokens';
+
 import { THEME_PRESETS } from './presets';
 import { applyThemeVars, themeParametersToStyle } from './themeStyles';
 
@@ -310,6 +312,25 @@ describe('a preset and a theme both pinning roles', () => {
     expect(
       new Set([style['--we-role-page'], style['--we-role-surface-sunken'], style['--we-role-text-muted']]).size,
     ).toBe(3);
+  });
+
+  /*
+    A `:root` alias over a role is resolved where it is *declared*, so one left at `:root` belongs to
+    the document theme forever and a scoped theme can never reach it. Five of them sat there for the
+    whole of this branch and the symptom was a focus ring that would not follow its own slider.
+
+    `generate-css.ts` and this function are the two ends; ROLE_ALIASES is the one list between them,
+    which is what makes an alias reach both by existing. This asserts the re-statement end — a new
+    entry emitted at `:root` but not restated here fails, rather than silently belonging to the
+    document.
+  */
+  it('restates every :root alias over a role, so a scoped theme can reach them', () => {
+    const style = themeParametersToStyle({ themeName: 'dark' });
+    for (const [prop, value] of Object.entries(ROLE_ALIASES)) {
+      expect(style[prop], `${prop} is declared at :root but not restated per theme`).toBe(value);
+    }
+    // Owned by `component.ts` rather than by the list, so it is asserted against its source.
+    expect(style['--we-scrollbar-thumb-background']).toBe(component.scrollbar.thumbBackground);
   });
 
   it('still lets the theme win on the role it does pin', () => {

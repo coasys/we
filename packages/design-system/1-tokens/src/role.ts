@@ -234,8 +234,20 @@ export const role = {
   shadowColor:
     'oklch(14.6% calc(var(--we-color-neutral-saturation) / 100 * var(--we-color-neutral-chroma-max, 0.18) * 0.2920) var(--we-color-neutral-hue))',
 
-  /** The focus ring. `--we-ring-color` resolves to this, so the two cannot drift. */
-  focus: 'var(--we-color-primary-500)',
+  /**
+   * The focus ring. `--we-ring-color` resolves to this, so the two cannot drift.
+   *
+   * The accent itself, rather than `primary-500`. A scale position reaches past the vocabulary to
+   * the ramp underneath it, so a theme that states its accent — three of the built-ins do — got a
+   * ring in a colour it had not chosen and could not change. Whatever "the interactive colour" means
+   * for a theme, the ring is that colour; naming the role is what keeps the two together.
+   *
+   * It is deliberately not lightened or darkened from the accent. A ring is drawn *beside* what it
+   * surrounds rather than on top of it, so it has no label to stay legible against and nothing to
+   * derive from — and a theme wanting a distinct ring can state one, which is now a distinction it
+   * can express rather than the default it was stuck with.
+   */
+  focus: 'var(--we-role-accent)',
 
   /**
    * Status as a *fill* — the destructive button, a filled badge, a solid status dot.
@@ -330,6 +342,39 @@ export const role = {
 } as const;
 
 export type RoleToken = keyof typeof role;
+
+/**
+ * Variables other stylesheets declare *in terms of* a role — one list, read by both ends.
+ *
+ * A custom property is substituted where it is **declared**. `--we-ring-color: var(--we-role-focus)`
+ * lives at `:root`, so it resolves against documentElement's focus role and inherits downward as a
+ * finished colour — correct for the document theme and wrong for every scoped one. A space theme
+ * could move its accent, watch `--we-role-focus` follow on its own wrapper, and still paint every
+ * ring in the personal theme's colour, because the alias had been resolved a level up before the
+ * scoped theme was ever consulted.
+ *
+ * The fix is to restate them wherever a theme is applied, and the hazard is that the generator and
+ * the re-statement are two lists that have to agree. They were, and they did not: five of these were
+ * emitted at `:root` and none restated, until a ring that would not follow its slider gave it away.
+ * So there is one list, `generate-css.ts` emits it and `themeParametersToStyle` re-declares it, and a
+ * new alias reaches both by existing.
+ *
+ * Anything added here must be expressible as a plain value — it is written verbatim into both.
+ *
+ * `--we-scrollbar-thumb-background` is deliberately absent: it already has a single source in
+ * `component.ts`, and listing it here would put its ownership in two places to solve a problem it
+ * does not have. `themeParametersToStyle` restates it from that token, and a test holds both.
+ */
+export const ROLE_ALIASES: Record<string, string> = {
+  '--we-color-focus': 'var(--we-role-focus)',
+  // Not itself a role, but it resolves through one, so it carries the same hazard — and it had
+  // already drifted: the generator's width came from `--we-focus-ring-width` and the re-statement
+  // said `2px`, so a theme widening its ring got the wrong ring on every scoped element.
+  '--we-focus-outline': '0 0 0 var(--we-focus-ring-width) var(--we-color-focus)',
+  '--we-ring-color': 'var(--we-role-focus)',
+  '--we-border-color': 'var(--we-role-border)',
+  '--we-border-color-strong': 'var(--we-role-border-strong)',
+};
 
 /**
  * Every role built with relative colour syntax, restated without it.
