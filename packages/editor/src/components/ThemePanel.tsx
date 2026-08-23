@@ -1278,7 +1278,9 @@ export function ThemePanel() {
                         bg="surface"
                         height="132px"
                         overflow="auto"
-                        styles={{ 'flex-shrink': '0' }}
+                        // Fixed height, and it must not be squeezed out of it: the point is that the
+                        // box is the same size whether it holds one finding or nine.
+                        flex="0 0 auto"
                       >
                         <Show
                           when={results().contrast.length || results().elevation.length || statusCollapse() !== null}
@@ -1336,9 +1338,9 @@ export function ThemePanel() {
                             <Row ay="center" gap="200">
                               <we-icon name="eye" size="xs" color="text-muted" />
                               <we-text fontSize="100" color="text-faint" lineHeight="1.4">
-                                Danger and success read alike to a red-green viewer. True of most palettes built on
-                                red and green, and the app answers it with an icon per status — worth knowing rather
-                                than fixing.
+                                Danger and success read alike to a red-green viewer. True of most palettes built on red
+                                and green, and the app answers it with an icon per status — worth knowing rather than
+                                fixing.
                               </we-text>
                             </Row>
                           </Show>

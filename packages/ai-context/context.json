@@ -6486,6 +6486,9 @@
         "themeScopePreviewing": {
           "type": "boolean"
         },
+        "templateThemePending": {
+          "type": "boolean"
+        },
         "useTemplateTheme": {
           "type": "boolean"
         },

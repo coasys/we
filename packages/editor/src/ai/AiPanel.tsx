@@ -79,13 +79,7 @@ export function AiPanel() {
 
       {/* API Key Setup */}
       <Show when={!session.apiKeyConfigured()}>
-        <Column
-          gap="200"
-          p="400"
-          bg="surface"
-          borderBottom={`1px solid ${tokenVar('color', 'ui-200')}`}
-          flexShrink="0"
-        >
+        <Column gap="200" p="400" bg="surface" borderBottom={`1px solid ${tokenVar('color', 'ui-200')}`} flexShrink="0">
           <we-text fontSize="300" fontWeight="600" color="text">
             Claude API Key
           </we-text>

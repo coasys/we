@@ -676,7 +676,7 @@ export function ThemeStoreProvider(props: ParentProps) {
   */
   const documentThemeId = createMemo(() =>
     themeScope() === 'scoped'
-      ? (datasetStore.agentSettings()?.defaultThemeId || getInitialThemeId())
+      ? datasetStore.agentSettings()?.defaultThemeId || getInitialThemeId()
       : (editingTheme()?.id ?? currentThemeId()),
   );
   const templateThemeId = createMemo(() => editingTheme()?.id ?? currentThemeId());

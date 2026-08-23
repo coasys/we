@@ -2668,6 +2668,7 @@ export const contextData: ContextData = {
         themeScopePreference: { type: 'string' },
         themeScopeGlobal: { type: 'boolean' },
         themeScopePreviewing: { type: 'boolean' },
+        templateThemePending: { type: 'boolean' },
         useTemplateTheme: { type: 'boolean' },
         activeTemplateTheme: { type: 'object' },
         saveEditingTheme: { type: 'object' },

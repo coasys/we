@@ -9,6 +9,7 @@ import type {
   ValidationRule,
 } from '@we/schema-shared';
 import {
+  applyThemeVars,
   deepUnwrap,
   hasToken,
   markReactive,
@@ -17,7 +18,6 @@ import {
   REACTIVE_ACCESSOR,
   resolveProp,
   resolveQueryProp,
-  applyThemeVars,
   validateField,
 } from '@we/schema-shared';
 import { batch, createEffect, createMemo, createSignal, For, JSX, onCleanup, Show } from 'solid-js';
@@ -692,7 +692,11 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
         if (themeEl) applyThemeVars(themeEl, themed);
       });
       return (
-        <div ref={(el: HTMLDivElement) => (themeEl = el)} style={{ display: 'contents' }} data-we-theme={themed.themeName}>
+        <div
+          ref={(el: HTMLDivElement) => (themeEl = el)}
+          style={{ display: 'contents' }}
+          data-we-theme={themed.themeName}
+        >
           {fragment}
         </div>
       );

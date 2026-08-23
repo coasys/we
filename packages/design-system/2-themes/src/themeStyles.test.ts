@@ -313,7 +313,9 @@ describe('a preset and a theme both pinning roles', () => {
   });
 
   it('still lets the theme win on the role it does pin', () => {
-    expect(themeParametersToStyle({ themeName: 'channels', roles: { accent: '#ff0000' } })['--we-role-accent']).toBe('#ff0000');
+    expect(themeParametersToStyle({ themeName: 'channels', roles: { accent: '#ff0000' } })['--we-role-accent']).toBe(
+      '#ff0000',
+    );
   });
 
   it('leaves a theme with no roles of its own exactly as the preset had it', () => {

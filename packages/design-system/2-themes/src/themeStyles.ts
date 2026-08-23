@@ -15,13 +15,13 @@ import type { ColorHueToken, ColorLightnessToken } from '@we/tokens';
 import {
   CHROMA_CEILING,
   CHROMA_PER_SATURATION,
-  FILL_LIGHTNESS,
-  RAMP,
-  ROLE_RELATIVE_FALLBACK,
-  STATE_STEPS,
   chromaTaper,
   color,
+  FILL_LIGHTNESS,
+  RAMP,
   role,
+  ROLE_RELATIVE_FALLBACK,
+  STATE_STEPS,
 } from '@we/tokens';
 
 import type { ThemeOverrides, ThemeRole } from './overrides';
@@ -829,9 +829,6 @@ export function stateDelta(fill: Rgba, label: Rgba, state: 'hover' | 'active'): 
   return sign * Math.abs(STATE_STEPS.light[state]);
 }
 
-
-
-
 /**
  * Walk a colour's lightness away from its background until it clears, keeping hue and chroma.
  *
@@ -877,7 +874,6 @@ const LEGIBLE_FOREGROUNDS: { fg: ThemeRole; on: ThemeRole; level: ContrastLevel 
   { fg: 'successText', on: 'successSurface', level: 'body' },
   { fg: 'warningText', on: 'warningSurface', level: 'body' },
 ];
-
 
 /**
  * Foregrounds whose colour is a *consequence* of the fill they sit on, not a separate decision.
@@ -949,10 +945,7 @@ export function pickReadableForeground(candidates: string[], fills: Rgba[]): str
     */
     const score = Math.min(
       ...fills.map((fill) =>
-        Math.min(
-          apcaContrast(colour, fill) / APCA_MINIMUM.ui,
-          contrastRatio(colour, fill) / CONTRAST_MINIMUM.ui,
-        ),
+        Math.min(apcaContrast(colour, fill) / APCA_MINIMUM.ui, contrastRatio(colour, fill) / CONTRAST_MINIMUM.ui),
       ),
     );
     if (score > bestScore) {
@@ -962,7 +955,6 @@ export function pickReadableForeground(candidates: string[], fills: Rgba[]): str
   }
   return best;
 }
-
 
 /**
  * The surface stack a polarity needs.

@@ -6,7 +6,7 @@ exports[`token CSS generation > color.css — hues, lightness ramp, palettes, ro
 :root {
   /* Color System Configuration */
   /* Unitless, so the chroma taper can be arithmetic on them. What a theme *states* is still a
-     percentage — themeToStyle converts on the way out. A backtick in this comment would end the
+     percentage — themeParametersToStyle converts on the way out. A backtick in this comment would end the
      template literal it lives in, which is the fifth time that has happened in this repo. */
   --we-color-lightness-floor: 0;
   --we-color-lightness-ceiling: 1;
@@ -138,28 +138,31 @@ exports[`token CSS generation > color.css — hues, lightness ramp, palettes, ro
   --we-role-surface-inverse: oklch(24.8% calc(var(--we-color-neutral-saturation) / 100 * var(--we-color-neutral-chroma-max, 0.18) * 0.4960) var(--we-color-neutral-hue));
   --we-role-border: var(--we-color-neutral-200);
   --we-role-border-strong: var(--we-color-neutral-500);
-  --we-role-accent: var(--we-color-primary-700);
+  --we-role-accent: oklch(calc(var(--we-accent-lightness, 55) * 1%) calc(var(--we-color-saturation) / 100 * var(--we-color-primary-fill-chroma-max, 0.2663)) var(--we-color-primary-hue));
   --we-role-on-accent: oklch(100% 0 var(--we-color-neutral-hue));
+  --we-role-on-accent-muted: oklch(from var(--we-role-on-accent) l c h / 0.8);
   --we-role-accent-muted: var(--we-color-primary-100);
   --we-role-accent-text: var(--we-color-primary-700);
-  --we-role-accent-hover: oklch(from var(--we-role-accent) calc(l + var(--we-state-hover)) c h);
-  --we-role-accent-active: oklch(from var(--we-role-accent) calc(l + var(--we-state-active)) c h);
+  --we-role-accent-hover: oklch(from var(--we-role-accent) calc(l + var(--we-state-hover-accent, var(--we-state-hover))) c h);
+  --we-role-accent-active: oklch(from var(--we-role-accent) calc(l + var(--we-state-active-accent, var(--we-state-active))) c h);
   --we-role-surface-hover: var(--we-color-neutral-100);
   --we-role-surface-active: var(--we-color-neutral-200);
   --we-role-control-surface: var(--we-color-neutral-200);
   --we-role-overlay: oklch(14.6% calc(var(--we-color-neutral-saturation) / 100 * var(--we-color-neutral-chroma-max, 0.18) * 0.2920) var(--we-color-neutral-hue) / 60%);
   --we-role-shadow-color: oklch(14.6% calc(var(--we-color-neutral-saturation) / 100 * var(--we-color-neutral-chroma-max, 0.18) * 0.2920) var(--we-color-neutral-hue));
   --we-role-focus: var(--we-color-primary-500);
-  --we-role-danger: var(--we-color-danger-700);
-  --we-role-success: var(--we-color-success-700);
-  --we-role-warning: var(--we-color-warning-700);
-  --we-role-danger-hover: oklch(from var(--we-role-danger) calc(l + var(--we-state-hover)) c h);
-  --we-role-danger-active: oklch(from var(--we-role-danger) calc(l + var(--we-state-active)) c h);
-  --we-role-success-hover: oklch(from var(--we-role-success) calc(l + var(--we-state-hover)) c h);
-  --we-role-success-active: oklch(from var(--we-role-success) calc(l + var(--we-state-active)) c h);
-  --we-role-warning-hover: oklch(from var(--we-role-warning) calc(l + var(--we-state-hover)) c h);
-  --we-role-warning-active: oklch(from var(--we-role-warning) calc(l + var(--we-state-active)) c h);
-  --we-role-on-status: oklch(100% 0 var(--we-color-neutral-hue));
+  --we-role-danger: oklch(62% calc(var(--we-color-saturation) / 100 * var(--we-color-danger-fill-chroma-max, 0.2491)) var(--we-color-danger-hue));
+  --we-role-success: oklch(75% calc(var(--we-color-saturation) / 100 * var(--we-color-success-fill-chroma-max, 0.2365)) var(--we-color-success-hue));
+  --we-role-warning: oklch(76% calc(var(--we-color-saturation) / 100 * var(--we-color-warning-fill-chroma-max, 0.1558)) var(--we-color-warning-hue));
+  --we-role-danger-hover: oklch(from var(--we-role-danger) calc(l + var(--we-state-hover-danger, var(--we-state-hover))) c h);
+  --we-role-danger-active: oklch(from var(--we-role-danger) calc(l + var(--we-state-active-danger, var(--we-state-active))) c h);
+  --we-role-success-hover: oklch(from var(--we-role-success) calc(l + var(--we-state-hover-success, var(--we-state-hover))) c h);
+  --we-role-success-active: oklch(from var(--we-role-success) calc(l + var(--we-state-active-success, var(--we-state-active))) c h);
+  --we-role-warning-hover: oklch(from var(--we-role-warning) calc(l + var(--we-state-hover-warning, var(--we-state-hover))) c h);
+  --we-role-warning-active: oklch(from var(--we-role-warning) calc(l + var(--we-state-active-warning, var(--we-state-active))) c h);
+  --we-role-on-danger: oklch(100% 0 var(--we-color-neutral-hue));
+  --we-role-on-success: oklch(100% 0 var(--we-color-neutral-hue));
+  --we-role-on-warning: oklch(100% 0 var(--we-color-neutral-hue));
   --we-role-danger-surface: var(--we-color-danger-50);
   --we-role-success-surface: var(--we-color-success-50);
   --we-role-warning-surface: var(--we-color-warning-50);
@@ -183,6 +186,15 @@ exports[`token CSS generation > color.css — hues, lightness ramp, palettes, ro
     --we-role-surface: var(--we-color-neutral-0);
     --we-role-surface-raised: var(--we-color-neutral-0);
     --we-role-surface-sunken: var(--we-color-neutral-100);
+    --we-role-on-accent-muted: var(--we-role-on-accent);
+    --we-role-accent-hover: var(--we-role-accent);
+    --we-role-accent-active: var(--we-role-accent);
+    --we-role-danger-hover: var(--we-role-danger);
+    --we-role-danger-active: var(--we-role-danger);
+    --we-role-success-hover: var(--we-role-success);
+    --we-role-success-active: var(--we-role-success);
+    --we-role-warning-hover: var(--we-role-warning);
+    --we-role-warning-active: var(--we-role-warning);
   }
 }
 

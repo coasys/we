@@ -27,7 +27,7 @@ import {
   simulateVision,
 } from '@we/design-utils';
 import type { ColorLightnessToken } from '@we/tokens';
-import { chromaTaper, color, FILL_LIGHTNESS, RAMP, role, STATE_STEPS } from '@we/tokens';
+import { chromaTaper, color, FILL_LIGHTNESS, RAMP, role } from '@we/tokens';
 import { describe, expect, it } from 'vitest';
 
 import type { ThemeOverrides, ThemeRole } from './overrides';
@@ -35,9 +35,9 @@ import { THEME_PRESETS, type ThemeName } from './presets';
 import {
   AUTO_CONTRAST,
   DERIVED_FILLS,
-  FILL_LABELS,
   deriveFill,
   deriveLegible,
+  FILL_LABELS,
   fillStateDeltas,
   labelCandidates,
   pickReadableForeground,

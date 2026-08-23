@@ -250,9 +250,12 @@ export const role = {
   // FILL_LIGHTNESS in color.ts. Each sits where its own hue is most itself rather than where a
   // shared step would put it: gold at the violet's lightness is a stone, and violet at the gold's
   // is a lilac. At step 700 a dark theme's destructive button was pale pink rather than red.
-  danger: 'oklch(62% calc(var(--we-color-saturation) / 100 * var(--we-color-danger-fill-chroma-max, 0.2491)) var(--we-color-danger-hue))',
-  success: 'oklch(75% calc(var(--we-color-saturation) / 100 * var(--we-color-success-fill-chroma-max, 0.2365)) var(--we-color-success-hue))',
-  warning: 'oklch(76% calc(var(--we-color-saturation) / 100 * var(--we-color-warning-fill-chroma-max, 0.1558)) var(--we-color-warning-hue))',
+  danger:
+    'oklch(62% calc(var(--we-color-saturation) / 100 * var(--we-color-danger-fill-chroma-max, 0.2491)) var(--we-color-danger-hue))',
+  success:
+    'oklch(75% calc(var(--we-color-saturation) / 100 * var(--we-color-success-fill-chroma-max, 0.2365)) var(--we-color-success-hue))',
+  warning:
+    'oklch(76% calc(var(--we-color-saturation) / 100 * var(--we-color-warning-fill-chroma-max, 0.1558)) var(--we-color-warning-hue))',
 
   /**
    * Hover and pressed for each fill, as steps *from* it.
@@ -273,9 +276,11 @@ export const role = {
   dangerHover: 'oklch(from var(--we-role-danger) calc(l + var(--we-state-hover-danger, var(--we-state-hover))) c h)',
   dangerActive: 'oklch(from var(--we-role-danger) calc(l + var(--we-state-active-danger, var(--we-state-active))) c h)',
   successHover: 'oklch(from var(--we-role-success) calc(l + var(--we-state-hover-success, var(--we-state-hover))) c h)',
-  successActive: 'oklch(from var(--we-role-success) calc(l + var(--we-state-active-success, var(--we-state-active))) c h)',
+  successActive:
+    'oklch(from var(--we-role-success) calc(l + var(--we-state-active-success, var(--we-state-active))) c h)',
   warningHover: 'oklch(from var(--we-role-warning) calc(l + var(--we-state-hover-warning, var(--we-state-hover))) c h)',
-  warningActive: 'oklch(from var(--we-role-warning) calc(l + var(--we-state-active-warning, var(--we-state-active))) c h)',
+  warningActive:
+    'oklch(from var(--we-role-warning) calc(l + var(--we-state-active-warning, var(--we-state-active))) c h)',
 
   /**
    * Text and icons on each status fill — the destructive button's label, and its siblings.

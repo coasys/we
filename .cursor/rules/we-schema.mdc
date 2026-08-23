@@ -2306,6 +2306,7 @@ ThemeStore:
   - themeScopePreference: unknown
   - themeScopeGlobal: unknown
   - themeScopePreviewing: unknown
+  - templateThemePending: unknown
   - useTemplateTheme: unknown
   - activeTemplateTheme: unknown
   - saveEditingTheme: unknown

@@ -52,7 +52,13 @@ describe('dock registry notifications', () => {
   it('announces dock registration, for a dock declared after the first resolve', () => {
     let notified = 0;
     const off = onDockRegistryChanged(() => (notified += 1));
-    dockRegistry.register({ id: 'test:dock', moduleId: 'editor', edge: 'themeDockEdge', node: { type: 'div' }, order: 1 });
+    dockRegistry.register({
+      id: 'test:dock',
+      moduleId: 'editor',
+      edge: 'themeDockEdge',
+      node: { type: 'div' },
+      order: 1,
+    });
     expect(notified).toBe(1);
     dockRegistry.remove('test:dock');
     expect(notified).toBe(2);

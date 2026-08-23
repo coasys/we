@@ -6,7 +6,7 @@
 // Import all token modules
 import { animation } from './animation.js';
 import { border } from './border.js';
-import { FILL_LIGHTNESS, color } from './color.js';
+import { color, FILL_LIGHTNESS } from './color.js';
 import { component } from './component.js';
 import { font } from './font.js';
 import { layout } from './layout.js';

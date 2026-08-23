@@ -85,11 +85,7 @@ export const hueSweepBackground = [
  * paint white over whatever is beneath, turning soft overlaps into hard crescents.
  */
 const blob = (at: string, size: string, hueOffset: string) =>
-  [
-    `radial-gradient(${size} at ${at},`,
-    `${sweep('200', hueOffset)} 0%,`,
-    'transparent 70%)',
-  ].join(' ');
+  [`radial-gradient(${size} at ${at},`, `${sweep('200', hueOffset)} 0%,`, 'transparent 70%)'].join(' ');
 
 /**
  * The alternative to `hueSweepBackground`: a few large fields placed by hand rather than one
