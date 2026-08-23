@@ -615,10 +615,28 @@ function ThemeRoleReadout(props: { node: SchemaNode }) {
         <For each={painted()}>
           {(entry) => (
             <we-tooltip
+              /*
+                The second line used to read "is a fixed scale position, so it does not follow the
+                theme", which is false and was spotted as false the first time somebody read it.
+
+                A scale position follows the theme perfectly well: it is computed from the neutral
+                hue, the saturation, the floor and ceiling and the polarity, so it moves whenever any
+                of those do and it inverts with the ramp. What it does not follow is what the theme
+                *decides*. A theme pins roles, not steps — `channels` sets its surface equal to its
+                page, `timeline` sets its to pure white — and a node naming a step cannot hear any of
+                that: in `channels` a card painted `neutral-100` measures [7,8,11] against a surface
+                of [26,28,33], a dark hole punched in a design whose premise is that the card and the
+                page are one sheet.
+
+                The other half matters as much and was not said at all: the measure-and-correct pass
+                at apply time operates on roles. A label coloured `neutral-600` is never measured
+                against what is behind it, never walked toward legibility, and never appears in the
+                audit either. "Does not follow the theme" is both wrong and quieter than the truth.
+              */
               title={
                 isRole(entry.value)
                   ? `${entry.what}: “${entry.value}”${entry.from ? `, inherited from ${entry.from}` : ''} — click to edit it for the whole theme`
-                  : `${entry.what}: “${entry.value}” is a fixed scale position, so it does not follow the theme`
+                  : `${entry.what}: “${entry.value}” is a scale position. It follows the theme’s hue and lightness, but not what the theme decides a surface or a label should be — and the contrast corrections skip it. A role would do both.`
               }
             >
               <we-button
