@@ -83,7 +83,7 @@ export function ImageLightbox(props: ImageLightboxProps) {
                       width: i() === index() ? '10px' : '7px',
                       height: i() === index() ? '10px' : '7px',
                       'border-radius': '50%',
-                      background: i() === index() ? 'var(--we-color-neutral-700)' : 'var(--we-color-neutral-300)',
+                      background: i() === index() ? 'var(--we-role-text)' : 'var(--we-role-border)',
                       cursor: 'pointer',
                       transition: 'all 150ms ease',
                       'flex-shrink': '0',

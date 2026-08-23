@@ -74,7 +74,7 @@ export function marketplaceList(opts: MarketplaceListOptions): SchemaNode {
           {
             type: 'Search',
             props: {
-              ...(grid && { bg: 'neutral-0', border: '1px solid neutral-300', maxWidth: '300px' }),
+              ...(grid && { bg: 'surface-sunken', border: '1px solid border-strong', maxWidth: '300px' }),
               placeholder: `Search ${opts.label}…`,
               value: { $local: 'search' },
               // `$arg` rather than `$event.detail`: `Search` is a layer-4 component and calls its
@@ -133,7 +133,7 @@ export function marketplaceList(opts: MarketplaceListOptions): SchemaNode {
                   condition: { $local: 'search' },
                   then: gatePrompt({
                     icon: 'magnifying-glass',
-                    iconColor: 'neutral-300',
+                    iconColor: 'text-faint',
                     title: `No ${opts.label} match your search`,
                     body: 'Try a different word, or clear the search to see everything.',
                     fill: false,
@@ -142,7 +142,7 @@ export function marketplaceList(opts: MarketplaceListOptions): SchemaNode {
                   }),
                   else: gatePrompt({
                     icon: opts.emptyIcon,
-                    iconColor: 'neutral-300',
+                    iconColor: 'text-faint',
                     title: `No ${opts.label} available yet`,
                     body: opts.emptyBody,
                     fill: false,

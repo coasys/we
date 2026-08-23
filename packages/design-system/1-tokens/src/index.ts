@@ -6,11 +6,11 @@
 // Import all token modules
 import { animation } from './animation.js';
 import { border } from './border.js';
-import { color } from './color.js';
+import { color, FILL_LIGHTNESS } from './color.js';
 import { component } from './component.js';
 import { font } from './font.js';
 import { layout } from './layout.js';
-import { role } from './role.js';
+import { role, ROLE_ALIASES, ROLE_RELATIVE_FALLBACK } from './role.js';
 import { shadow } from './shadow.js';
 import { avatarSize, componentHeight, radius, size } from './size.js';
 import { space } from './space.js';
@@ -19,17 +19,20 @@ import { zIndex } from './z-index.js';
 // Re-export all token objects
 export {
   animation,
+  avatarSize,
   border,
   color,
   component,
+  componentHeight,
+  FILL_LIGHTNESS,
   font,
   layout,
-  shadow,
-  role,
-  size,
   radius,
-  avatarSize,
-  componentHeight,
+  role,
+  ROLE_ALIASES,
+  ROLE_RELATIVE_FALLBACK,
+  shadow,
+  size,
   space,
   zIndex,
 };
@@ -65,6 +68,8 @@ export type { SizeToken, SizeValue, RadiusToken, RadiusValue, ComponentSize } fr
 export type { SpaceToken, SpaceValue } from './space.js';
 export type { ZIndexLayer, ZIndexValue } from './z-index.js';
 export type { LayoutToken } from './layout.js';
+export { CHROMA_CEILING, CHROMA_PER_SATURATION, chromaTaper, RAMP, STATE_STEPS } from './color.js';
+export type { Polarity } from './color.js';
 export type { RoleToken } from './role.js';
 
 /**

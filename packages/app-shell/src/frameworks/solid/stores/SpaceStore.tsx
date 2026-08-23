@@ -2090,7 +2090,9 @@ export function SpaceStoreProvider(props: ParentProps) {
     await updateSpacePreference(uuid, { themeId } as Partial<SpacePreference>);
     if (datasetStore.currentDataset()?.id !== uuid) return;
     const effective = resolveThemeFor(uuid);
-    if (effective) themeStore.replaceTheme(effective);
+    // Explicit: this is only reached by someone choosing a theme, so it outranks an editing
+    // session on a different one. The recompute-on-entering-a-space path deliberately does not.
+    if (effective) themeStore.replaceTheme(effective, { explicit: true });
     else themeStore.clearSpaceTheme();
   }
 

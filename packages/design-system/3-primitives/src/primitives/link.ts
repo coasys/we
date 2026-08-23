@@ -9,7 +9,7 @@ import sharedStyles from '../shared/styles';
 
 const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   display: 'inline',
-  color: 'primary-600',
+  color: 'accent-text',
   cursor: 'pointer',
 };
 

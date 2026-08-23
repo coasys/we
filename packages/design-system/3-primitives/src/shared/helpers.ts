@@ -58,7 +58,7 @@ const ELEMENT_STATES: ElementState[] = ['hover', 'focus', 'active', 'disabled'];
  * e.g. button's size-aware radius chain, or wrapper components that have no r/px
  * in DEFAULT_PROPS but still need a non-zero cascade fallback.
  */
-interface ComponentCascade {
+export interface ComponentCascade {
   radiusGroup?: string; // e.g. '--we-theme-control-radius'
   radiusDefault?: string; // explicit override; omit to auto-derive from DEFAULT_PROPS
   paddingGroup?: string; // e.g. '--we-theme-control-padding-x'
@@ -68,9 +68,35 @@ interface ComponentCascade {
   gapDefault?: string; // explicit override; omit to auto-derive from DEFAULT_PROPS
 }
 
+/**
+ * Which theme group each component takes its shape and density from.
+ *
+ * Open to registration rather than a closed literal, which matters more here than it would in most
+ * design systems. WE's premise is that modules are the developer layer beneath templates — "lower
+ * volume, but they raise the ceiling on what every template above can express" — and until now they
+ * could raise it for layout and behaviour and not for theming. A module could *read*
+ * `--we-theme-control-radius`, and had no way to say "my surface is its own kind of thing, and here
+ * is the group it should follow". Its options were to borrow a core group whose meaning did not
+ * quite fit, or to hardcode.
+ *
+ * See `registerComponentCascade` for the contract, including when it has to be called.
+ */
 const COMPONENT_CASCADE: Record<string, ComponentCascade> = {
   // Media
-  avatar: { radiusDefault: '50%' },
+  //
+  // Avatars take their own group rather than the media/surface one: they are the only components
+  // guaranteed square (width and height both come from --we-avatar-size), which is what makes a
+  // percentage radius safe here and unsafe on a video. See ThemeOverrides.avatarRadius.
+  avatar: { radiusGroup: '--we-theme-avatar-radius', radiusDefault: '50%' },
+  // Rectangular embedded content joins the *surface* group rather than taking one of its own.
+  // A theme that rounds its panels to 16px wants its photos at 16px — they are one visual
+  // language — and a fifth group would be a row in every theme editor for a distinction
+  // ("sharp panels, soft photos") nobody has asked for. Explicit '0' defaults because these
+  // three declare no radius in DEFAULT_PROPS, so there is nothing to auto-derive from and the
+  // cascade would otherwise reset border-radius to its initial value.
+  image: { radiusGroup: '--we-theme-surface-radius', radiusDefault: '0' },
+  video: { radiusGroup: '--we-theme-surface-radius', radiusDefault: '0' },
+  iframe: { radiusGroup: '--we-theme-surface-radius', radiusDefault: '0' },
   // Controls
   button: {
     radiusGroup: '--we-theme-control-radius',
@@ -99,37 +125,37 @@ const COMPONENT_CASCADE: Record<string, ComponentCascade> = {
   },
   'progress-bar': { radiusGroup: '--we-theme-control-radius' },
   // Inputs
-  input: { radiusGroup: '--we-theme-input-radius', paddingGroup: '--we-theme-input-spacing' },
+  input: { radiusGroup: '--we-theme-input-radius', paddingGroup: '--we-theme-input-padding' },
   textarea: { radiusGroup: '--we-theme-input-radius', nativePadding: true },
   select: {
     radiusGroup: '--we-theme-input-radius',
     radiusDefault: 'var(--we-radius-300)', // Explicit: wrapper — no r in DEFAULT_PROPS
-    paddingGroup: '--we-theme-input-spacing',
+    paddingGroup: '--we-theme-input-padding',
     paddingDefault: '0', // Explicit: wrapper div — inner parts own their own padding
   },
   'number-input': {
     radiusGroup: '--we-theme-input-radius',
     radiusDefault: 'var(--we-radius-300)', // Explicit: intentionally matches input theme, not DEFAULT_PROPS r:'400'
-    paddingGroup: '--we-theme-input-spacing',
+    paddingGroup: '--we-theme-input-padding',
     paddingDefault: '0 var(--we-space-300)', // Explicit: no px in DEFAULT_PROPS
   },
   'date-picker': {
     radiusGroup: '--we-theme-input-radius',
     radiusDefault: 'var(--we-radius-300)', // Explicit: wrapper — no r in DEFAULT_PROPS
-    paddingGroup: '--we-theme-input-spacing',
+    paddingGroup: '--we-theme-input-padding',
     paddingDefault: '0', // Explicit: wrapper div — inner parts own their own padding
   },
   'color-picker': {
     radiusGroup: '--we-theme-input-radius',
     radiusDefault: 'var(--we-radius-300)', // Explicit: wrapper — no r in DEFAULT_PROPS
-    paddingGroup: '--we-theme-input-spacing',
+    paddingGroup: '--we-theme-input-padding',
     paddingDefault: '0', // Explicit: wrapper div — inner parts own their own padding
   },
   'icon-picker': {
     radiusGroup: '--we-theme-input-radius',
     radiusDefault: 'var(--we-radius-300)', // Explicit: wrapper — no r in DEFAULT_PROPS
   },
-  'file-upload': { radiusGroup: '--we-theme-input-radius', paddingGroup: '--we-theme-surface-spacing' },
+  'file-upload': { radiusGroup: '--we-theme-input-radius', paddingGroup: '--we-theme-surface-padding' },
   'form-field': {
     radiusGroup: '--we-theme-input-radius',
     radiusDefault: 'var(--we-radius-300)', // Explicit: wrapper — no r in DEFAULT_PROPS
@@ -137,27 +163,53 @@ const COMPONENT_CASCADE: Record<string, ComponentCascade> = {
     gapDefault: 'var(--we-space-100)',
   },
   // Tabs
-  tab: { radiusGroup: '--we-theme-control-radius', paddingGroup: '--we-theme-tab-spacing' },
+  // Padding is owned by CSS_STYLES (own vertical, control-group horizontal) — see the note there.
+  tab: { radiusGroup: '--we-theme-control-radius', nativePadding: true },
   // Surfaces
   modal: {
     radiusGroup: '--we-theme-surface-radius',
-    paddingGroup: '--we-theme-surface-spacing',
+    paddingGroup: '--we-theme-surface-padding',
     gapGroup: '--we-theme-surface-gap',
   },
   drawer: {
     radiusGroup: '--we-theme-surface-radius',
-    paddingGroup: '--we-theme-surface-spacing',
+    paddingGroup: '--we-theme-surface-padding',
     gapGroup: '--we-theme-surface-gap',
   },
   menu: { radiusGroup: '--we-theme-surface-radius', nativePadding: true },
   alert: {
     radiusGroup: '--we-theme-surface-radius',
-    paddingGroup: '--we-theme-surface-spacing',
+    paddingGroup: '--we-theme-surface-padding',
     gapGroup: '--we-theme-surface-gap',
   },
-  blockquote: { radiusGroup: '--we-theme-surface-radius', paddingGroup: '--we-theme-surface-spacing' },
+  blockquote: { radiusGroup: '--we-theme-surface-radius', paddingGroup: '--we-theme-surface-padding' },
   code: { radiusGroup: '--we-theme-surface-radius' },
 };
+
+/**
+ * Register a component's theme cascade — for components that do not ship with the design system.
+ *
+ * A feature module owns components the core has never heard of, and those components have shape and
+ * density decisions like any other. Registering says which theme group they follow, so a theme
+ * setting "surfaces are square" reaches them too rather than stopping at the boundary of what
+ * shipped in the box.
+ *
+ * **Call it before the component first renders** — module setup, or the module file's top level.
+ * The cascade is read while building a component's styles, so a registration that lands afterwards
+ * has no effect on anything already on screen and no way to say so.
+ *
+ * Re-registering the same name replaces the entry. That is deliberate: a module reloading during
+ * development should not accumulate, and there is no meaningful merge between two answers to "which
+ * group does this follow".
+ */
+export function registerComponentCascade(componentName: string, cascade: ComponentCascade): void {
+  COMPONENT_CASCADE[componentName] = cascade;
+}
+
+/** What a component name currently resolves to, or undefined. Exposed for tests and diagnostics. */
+export function componentCascadeFor(componentName: string): ComponentCascade | undefined {
+  return COMPONENT_CASCADE[componentName];
+}
 
 /**
  * What a state change is allowed to animate.

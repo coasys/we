@@ -261,7 +261,7 @@ const editing: SchemaNode = {
       type: '$if',
       props: {
         condition: { $and: ['$link.description', { $not: { $local: 'editOpen' } }] },
-        then: { type: 'we-text', props: { color: 'neutral-600' }, children: ['$link.description'] },
+        then: { type: 'we-text', props: { color: 'text-muted' }, children: ['$link.description'] },
       },
     },
   ],
@@ -295,7 +295,7 @@ export const edgeDetailModal: SchemaNode = {
                   props: { gap: '200', ay: 'center', wrap: true, width: '100%' },
                   children: [
                     { type: 'we-badge', props: { size: 'xs' }, children: ['$link.sourceType'] },
-                    { type: 'we-icon', props: { name: 'arrow-right', size: 'xs', color: 'neutral-400' } },
+                    { type: 'we-icon', props: { name: 'arrow-right', size: 'xs', color: 'text-faint' } },
                     { type: 'we-badge', props: { size: 'xs' }, children: ['$link.targetType'] },
                   ],
                 },
@@ -326,7 +326,7 @@ export const edgeDetailModal: SchemaNode = {
                       props: {
                         size: 'sm',
                         variant: 'ghost',
-                        color: 'danger-600',
+                        color: 'danger-text',
                         ml: 'auto',
                         onClick: {
                           $action: 'model.delete',

@@ -154,7 +154,7 @@ export const createSignalTypeModal = {
     // Live preview
     {
       type: 'Column',
-      props: { gap: '200', my: '400', ax: 'center', border: '1px solid neutral-200', p: '400', r: '500' },
+      props: { gap: '200', my: '400', ax: 'center', border: '1px solid border', p: '400', r: '500' },
       children: [
         { type: 'we-text', children: ['Preview'] },
         {

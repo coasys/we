@@ -41,9 +41,9 @@ const spaceCard: SchemaNode = {
     ay: 'center',
     gap: '300',
     p: '300',
-    bg: 'neutral-0',
+    bg: 'surface-sunken',
     r: '300',
-    border: '1px solid neutral-200',
+    border: '1px solid border',
   },
   children: [
     // `bare` rather than a Row with onClick: appearance-free, but still a real button, so it keeps
@@ -85,7 +85,7 @@ const spaceCard: SchemaNode = {
                     condition: '$space.description',
                     then: {
                       type: 'we-text',
-                      props: { variant: 'footnote', color: 'neutral-400', truncate: true },
+                      props: { variant: 'footnote', color: 'text-faint', truncate: true },
                       children: ['$space.description'],
                     },
                   },

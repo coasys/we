@@ -37,7 +37,7 @@ export const initializeSpaceGate: SchemaNode = gatePrompt({
                 fit: 'cover',
                 width: '150px',
                 height: '150px',
-                r: 'full',
+                r: 'avatar',
                 ring: '0 0 0 2px var(--we-ring-color)',
                 placeholderIcon: 'users-three',
                 uploadLabel: 'Add image',

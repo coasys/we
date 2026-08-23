@@ -67,6 +67,13 @@ export function createStandaloneEditorHost(initial: TemplateSchema): {
       setCurrentTheme: setCurrentThemeId,
       editingTheme: () => null,
       startEditing: () => {},
+      /*
+        The playground has no theme editor to reveal a role in, so this is inert rather than stubbed
+        out — the port exists to let the inspector's role chips *ask*, and a host that cannot answer
+        says so by never reporting one.
+      */
+      focusedRole: () => '',
+      focusRole: () => {},
       createAndStartEditing: () => false,
       changeBasePreset: () => {},
       updateEditingOverrides: () => {},

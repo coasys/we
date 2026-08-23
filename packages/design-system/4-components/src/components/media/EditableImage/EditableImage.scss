@@ -1,6 +1,6 @@
 .editable-image__overlay {
   inset: 0;
-  background: rgba(0, 0, 0, 0.5);
+  background: var(--we-role-overlay);
   opacity: 0;
   // The token rather than a hardcoded duration, so this follows the theme's animationSpeed like
   // every other transition. It was 0.5s, slow enough on a hover to read as lag.

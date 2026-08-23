@@ -14,7 +14,7 @@ const md = new Marked({ breaks: true });
 const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   display: 'block',
   fontSize: '300',
-  color: 'neutral-800',
+  color: 'text',
 };
 
 const styles = css`
@@ -73,7 +73,7 @@ const styles = css`
   /* Inline code */
   [part='base'] code {
     font-family: var(--we-font-mono, monospace);
-    background: var(--we-color-neutral-100);
+    background: var(--we-role-surface-sunken);
     padding: 0.1em 0.35em;
     border-radius: 3px;
     font-size: 0.9em;
@@ -81,7 +81,7 @@ const styles = css`
 
   /* Code blocks */
   [part='base'] pre {
-    background: var(--we-color-neutral-100);
+    background: var(--we-role-surface-sunken);
     padding: 0.75em;
     border-radius: 6px;
     overflow-x: auto;
@@ -101,20 +101,20 @@ const styles = css`
   [part='base'] blockquote {
     margin: var(--we-markdown-gap, 0.5em) 0;
     padding-left: 0.75em;
-    border-left: 3px solid var(--we-color-neutral-300);
+    border-left: 3px solid var(--we-role-border);
     color: var(--we-color-neutral-600);
   }
 
   /* Links */
   [part='base'] a {
-    color: var(--we-color-primary-600);
+    color: var(--we-role-accent-text);
     text-decoration: underline;
   }
 
   /* Horizontal rule */
   [part='base'] hr {
     border: none;
-    border-top: 1px solid var(--we-color-neutral-200);
+    border-top: 1px solid var(--we-role-border);
     margin: var(--we-markdown-gap, 0.5em) 0;
   }
 
@@ -135,7 +135,7 @@ const styles = css`
     color: var(--we-color-neutral-600);
     background: linear-gradient(
       90deg,
-      var(--we-color-neutral-500) 40%,
+      var(--we-role-border) 40%,
       rgba(255, 255, 255, 0.8) 50%,
       var(--we-color-neutral-500) 60%
     );

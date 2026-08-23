@@ -41,7 +41,7 @@ export function VideoDisplay(props: VideoDisplayProps) {
                 <we-link href={props.url} target="_blank" textDecoration="none" color="inherit">
                   <Row gap="200" ay="center">
                     <we-icon name="youtube-logo" size="lg" />
-                    <we-text fontSize="400" color="neutral-700">
+                    <we-text fontSize="400" color="text">
                       {props.title || props.url}
                     </we-text>
                   </Row>
@@ -68,7 +68,7 @@ export function VideoDisplay(props: VideoDisplayProps) {
           </div>
         </Show>
         <Show when={props.title}>
-          <we-text fontSize="400" color="neutral-700">
+          <we-text fontSize="400" color="text">
             {props.title}
           </we-text>
         </Show>

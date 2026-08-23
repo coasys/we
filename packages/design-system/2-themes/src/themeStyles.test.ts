@@ -7,10 +7,11 @@
  * silently deletes the host's own state, which is how a docked panel's chrome ends up snapped to the
  * window edge until something forces a recompute.
  */
+import { component, ROLE_ALIASES } from '@we/tokens';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { THEME_PRESETS } from './presets';
-import { applyThemeVars, themeToStyle } from './themeStyles';
+import { applyThemeVars, themeParametersToStyle } from './themeStyles';
 
 /** A minimal stand-in for an element's inline style, so this needs no DOM. */
 function fakeRoot() {
@@ -29,21 +30,23 @@ function fakeRoot() {
 describe('applyThemeVars', () => {
   it('writes a theme as custom properties', () => {
     const { el, props } = fakeRoot();
-    applyThemeVars(el, { multiplier: -1, subtractor: '108%' });
+    applyThemeVars(el, { polarity: 'dark', lightnessFloor: '12%' });
 
-    expect(props.get('--we-color-multiplier')).toBe('-1');
-    expect(props.get('--we-color-subtractor')).toBe('108%');
+    // Authored as a percentage, emitted unitless — see the note in themeParametersToStyle.
+    expect(props.get('--we-color-lightness-floor')).toBe('0.12');
+    // `polarity` is one authored word that expands to the two numbers the ramp multiplies by.
+    expect(props.get('--we-color-ramp-direction')).toBe('-1');
   });
 
   it('clears variables the previous theme set and this one does not', () => {
     const { el, props } = fakeRoot();
-    applyThemeVars(el, { primaryHue: 230, multiplier: -1 });
+    applyThemeVars(el, { primaryHue: 230, polarity: 'dark' });
     expect(props.has('--we-color-primary-hue')).toBe(true);
 
-    applyThemeVars(el, { multiplier: 1 });
+    applyThemeVars(el, { polarity: 'light' });
 
     expect(props.has('--we-color-primary-hue')).toBe(false);
-    expect(props.get('--we-color-multiplier')).toBe('1');
+    expect(props.get('--we-color-ramp-direction')).toBe('1');
   });
 
   it('leaves variables it never set alone', () => {
@@ -52,8 +55,8 @@ describe('applyThemeVars', () => {
     const { el, props } = fakeRoot();
     props.set('--we-dock-right', '320px');
 
-    applyThemeVars(el, { multiplier: -1 });
-    applyThemeVars(el, { multiplier: 1 });
+    applyThemeVars(el, { polarity: 'dark' as const });
+    applyThemeVars(el, { polarity: 'light' as const });
 
     expect(props.get('--we-dock-right')).toBe('320px');
   });
@@ -63,8 +66,8 @@ describe('applyThemeVars', () => {
     const a = fakeRoot();
     const b = fakeRoot();
     applyThemeVars(a.el, { primaryHue: 230 });
-    applyThemeVars(b.el, { multiplier: -1 });
-    applyThemeVars(b.el, { multiplier: 1 });
+    applyThemeVars(b.el, { polarity: 'dark' as const });
+    applyThemeVars(b.el, { polarity: 'light' as const });
 
     expect(a.props.has('--we-color-primary-hue')).toBe(true);
   });
@@ -91,35 +94,60 @@ describe('applyThemeVars cross-fade window', () => {
 
   it('does not open a window on the first application, which is the initial paint', () => {
     const { el, props } = fakeRoot();
-    applyThemeVars(el, { multiplier: -1 });
+    applyThemeVars(el, { polarity: 'dark' as const });
 
     expect(props.has(DURATION)).toBe(false);
   });
 
   it('opens one on a later application, when there is something to fade from', () => {
     const { el, props } = fakeRoot();
-    applyThemeVars(el, { multiplier: -1 });
-    applyThemeVars(el, { multiplier: 1 });
+    applyThemeVars(el, { polarity: 'dark' as const });
+    applyThemeVars(el, { polarity: 'light' as const });
 
     expect(props.get(DURATION)).toBe('250ms');
   });
 
   it('closes the window afterwards, so a hover exit never inherits a duration', () => {
     const { el, props } = fakeRoot();
-    applyThemeVars(el, { multiplier: -1 });
-    applyThemeVars(el, { multiplier: 1 });
+    applyThemeVars(el, { polarity: 'dark' as const });
+    applyThemeVars(el, { polarity: 'light' as const });
 
     vi.advanceTimersByTime(400);
     expect(props.has(DURATION)).toBe(false);
   });
 
+  /*
+    An edit is not a switch, and conflating them is what made the theme editor feel broken.
+
+    The editor re-applies on every frame of a slider drag. Each application re-armed the window, so
+    anything whose background animates — every primitive, the primary button most visibly — spent
+    the drag transitioning toward a colour that had already moved again. Beside it, plain text and
+    the focus ring updated instantly, because they do not animate. It read as the colour derivations
+    being slow; it was a 250ms fade being restarted sixty times a second.
+  */
+  it('does not open a window when the caller says this is an edit rather than a switch', () => {
+    const { el, props } = fakeRoot();
+    applyThemeVars(el, { polarity: 'dark' as const });
+    applyThemeVars(el, { polarity: 'dark' as const, primaryHue: 200 }, { crossFade: false });
+
+    expect(props.has(DURATION)).toBe(false);
+  });
+
+  it('still opens one for a switch, which is what the window is for', () => {
+    const { el, props } = fakeRoot();
+    applyThemeVars(el, { polarity: 'dark' as const });
+    applyThemeVars(el, { polarity: 'light' as const }, { crossFade: true });
+
+    expect(props.get(DURATION)).toBe('250ms');
+  });
+
   it('restarts the window when a second switch lands mid-fade, rather than closing early', () => {
     const { el, props } = fakeRoot();
-    applyThemeVars(el, { multiplier: -1 });
-    applyThemeVars(el, { multiplier: 1 });
+    applyThemeVars(el, { polarity: 'dark' as const });
+    applyThemeVars(el, { polarity: 'light' as const });
 
     vi.advanceTimersByTime(300);
-    applyThemeVars(el, { multiplier: -1 });
+    applyThemeVars(el, { polarity: 'dark' as const });
 
     // The first switch's timer would have fired by now had it not been cleared.
     vi.advanceTimersByTime(200);
@@ -132,9 +160,9 @@ describe('applyThemeVars cross-fade window', () => {
   it('tracks the window per root, so two subtrees do not close each other', () => {
     const a = fakeRoot();
     const b = fakeRoot();
-    applyThemeVars(a.el, { multiplier: -1 });
-    applyThemeVars(a.el, { multiplier: 1 });
-    applyThemeVars(b.el, { multiplier: -1 });
+    applyThemeVars(a.el, { polarity: 'dark' as const });
+    applyThemeVars(a.el, { polarity: 'light' as const });
+    applyThemeVars(b.el, { polarity: 'dark' as const });
 
     expect(a.props.get(DURATION)).toBe('250ms');
     expect(b.props.has(DURATION)).toBe(false);
@@ -150,31 +178,33 @@ describe('a named theme brings its own parameters', () => {
     on that theme.
   */
   it('resolves a known name to its preset parameters', () => {
-    const style = themeToStyle({ themeName: 'cyberpunk' });
+    const style = themeParametersToStyle({ themeName: 'cyberpunk' });
     const preset = THEME_PRESETS.cyberpunk.parameters;
 
-    expect(style['--we-color-multiplier']).toBe(String(preset.multiplier));
-    expect(style['--we-color-subtractor']).toBe(String(preset.subtractor));
+    expect(style['--we-color-lightness-floor']).toBe(String(parseFloat(preset.lightnessFloor!) / 100));
+    expect(style['--we-color-lightness-ceiling']).toBe(String(parseFloat(preset.lightnessCeiling!) / 100));
     expect(style['--we-color-saturation']).toBe(String(preset.saturation));
   });
 
   it('lets an explicit override win over the preset', () => {
     // `{ themeName: 'cyberpunk', primaryHue: 320 }` should read as "cyberpunk, different accent".
-    const style = themeToStyle({ themeName: 'cyberpunk', primaryHue: 320 });
+    const style = themeParametersToStyle({ themeName: 'cyberpunk', primaryHue: 320 });
 
     expect(style['--we-color-primary-hue']).toBe('320');
-    expect(style['--we-color-multiplier']).toBe(String(THEME_PRESETS.cyberpunk.parameters.multiplier));
+    expect(style['--we-color-lightness-floor']).toBe(
+      String(parseFloat(THEME_PRESETS.cyberpunk.parameters.lightnessFloor!) / 100),
+    );
   });
 
   it('leaves an unknown name alone rather than inventing parameters', () => {
     // A marketplace theme's id is not a preset key; its inputs come from its own CSS.
-    const style = themeToStyle({ themeName: 'some-installed-theme' });
-    expect(style['--we-color-multiplier']).toBeUndefined();
+    const style = themeParametersToStyle({ themeName: 'some-installed-theme' });
+    expect(style['--we-color-lightness-floor']).toBeUndefined();
   });
 
   it('still re-declares the formulas, which is what it always did', () => {
-    const style = themeToStyle({ themeName: 'cyberpunk' });
-    expect(style['--we-color-lightness-500']).toContain('var(--we-color-subtractor)');
+    const style = themeParametersToStyle({ themeName: 'cyberpunk' });
+    expect(style['--we-color-lightness-500']).toContain('var(--we-color-lightness-floor)');
   });
 });
 
@@ -185,15 +215,154 @@ describe('color-scheme follows the lightness polarity', () => {
     a white time picker floating over a dark panel.
   */
   it('declares dark when the multiplier inverts the scale', () => {
-    expect(themeToStyle({ themeName: 'dark' })['color-scheme']).toBe('dark');
-    expect(themeToStyle({ multiplier: -1, subtractor: '108%' })['color-scheme']).toBe('dark');
+    expect(themeParametersToStyle({ themeName: 'dark' })['color-scheme']).toBe('dark');
+    expect(themeParametersToStyle({ polarity: 'dark' as const })['color-scheme']).toBe('dark');
   });
 
   it('declares light when it does not', () => {
-    expect(themeToStyle({ themeName: 'light' })['color-scheme']).toBe('light');
+    expect(themeParametersToStyle({ themeName: 'light' })['color-scheme']).toBe('light');
   });
 
   it('stays silent when the theme leaves the polarity alone, inheriting the ambient scheme', () => {
-    expect(themeToStyle({ primaryHue: 320 })['color-scheme']).toBeUndefined();
+    expect(themeParametersToStyle({ primaryHue: 320 })['color-scheme']).toBeUndefined();
+  });
+});
+
+describe('roles resolve against the theme they belong to', () => {
+  /*
+    A custom property containing var() is substituted where it is *declared*. The tokens CSS
+    declares the role defaults at :root, so a role left unpinned computes against :root's colours
+    and inherits downward as a finished value — which is invisible for the document theme and wrong
+    for every other application of one. A scoped space theme could redeclare each colour token on
+    its wrapper and still paint its unpinned surfaces from the personal theme's scale.
+  */
+  it('re-declares every role default, so an unpinned role follows this theme', () => {
+    const style = themeParametersToStyle({ polarity: 'dark' as const });
+    expect(style['--we-role-text-muted']).toBe('var(--we-color-neutral-600)');
+    // The elevation stack is a relationship, not a scale position — and it has to be re-declared
+    // for the same reason, or a scoped theme's cards are measured off the ambient theme's page.
+    expect(style['--we-role-surface']).toBe('oklch(from var(--we-role-page) calc(l + 0.045) c h)');
+  });
+
+  it('lets a pin win over the default it replaces, rather than sitting beside it', () => {
+    const style = themeParametersToStyle({ roles: { surfaceRaised: 'var(--we-color-neutral-100)' } });
+    expect(style['--we-role-surface-raised']).toBe('var(--we-color-neutral-100)');
+  });
+
+  it('carries the pins a named preset brings with it', () => {
+    /*
+      `channels` is a reproduction of a real chat client, measured rather than designed by eye, and
+      its surfaces are uneven in a way no single lightness range can express — page and cards
+      identical, the rail further out. That is what a pin is *for*, so it is the honest example here.
+
+      It used to be `black`, on the reasoning that a page at the sRGB floor leaves no room for a
+      derived step. That was true and the floor was wrong: it had been mistranslated from an HSL
+      lightness to an OKLCH one, putting the page at literal #000000 rather than the rgb(11,10,15)
+      it used to render. Refitting the ramp gave the relationship its room back and the four pins
+      went with it — so a test asserting that `black` pins was asserting a defect.
+
+      Asserted as "it pins a lightness" rather than as one exact string: the numbers are a design
+      decision that moves, and a test repeating them only says the file was copied correctly. That
+      the *ordering* holds is checked in contrast.test.ts, which is the property that matters.
+    */
+    const raised = themeParametersToStyle({ themeName: 'channels' })['--we-role-surface-raised'];
+    expect(raised).toMatch(/^oklch\(\d/);
+  });
+});
+
+describe('the shape, density and typography keys added alongside the roles editor', () => {
+  it('maps avatarRadius to its own group, separate from surfaces', () => {
+    const style = themeParametersToStyle({ avatarRadius: '0', surfaceRadius: '16px' });
+    expect(style['--we-theme-avatar-radius']).toBe('0');
+    expect(style['--we-theme-surface-radius']).toBe('16px');
+  });
+
+  it('maps inputPadding, which nothing could set before', () => {
+    expect(themeParametersToStyle({ inputPadding: '4px 8px' })['--we-theme-input-padding']).toBe('4px 8px');
+  });
+
+  it('maps headingFontFamily without touching the body face', () => {
+    const style = themeParametersToStyle({ headingFontFamily: "'Boldonse', serif" });
+    expect(style['--we-theme-heading-font-family']).toBe("'Boldonse', serif");
+    expect(style['--we-font-family']).toBeUndefined();
+  });
+});
+
+describe('a preset and a theme both pinning roles', () => {
+  /*
+    `roles` is the one override that merges rather than replaces. A shallow spread meant pinning a
+    single role on a preset that pins its own threw the rest away: editing the accent on `channels`
+    dropped the twelve measured surface and text pins that make it that theme, and it came apart
+    from one click in the colour picker.
+  */
+  it('keeps the preset’s pins for roles the theme does not mention', () => {
+    const style = themeParametersToStyle({ themeName: 'channels', roles: { accent: '#ff0000' } });
+    /*
+      Asserted as "three distinct pins survived" rather than as three exact lightnesses. The numbers
+      moved once already, when the ramp went to OKLCH and every hand-measured percentage had to be
+      converted — and a test that repeats them only ever says the file was copied correctly. What
+      must not happen is that pinning one role drops the others.
+    */
+    // Named rather than derived from the preset, so this keeps asserting something after a pin is
+    // dropped. `text-muted` went when it became derived; `page`, `surface-sunken`, `surface-hover`
+    // and `text` went in the pin audit, where each measured within half a point of what the theme's
+    // own ramp already produced. These three are ones channels still states for itself.
+    for (const role of ['--we-role-surface-raised', '--we-role-surface-active', '--we-role-border-strong']) {
+      expect(style[role], `${role} was dropped`).toMatch(/^oklch\([\d.]+%/);
+    }
+    expect(
+      new Set([style['--we-role-surface-raised'], style['--we-role-surface-active'], style['--we-role-border-strong']])
+        .size,
+    ).toBe(3);
+  });
+
+  /*
+    A `:root` alias over a role is resolved where it is *declared*, so one left at `:root` belongs to
+    the document theme forever and a scoped theme can never reach it. Five of them sat there for the
+    whole of this branch and the symptom was a focus ring that would not follow its own slider.
+
+    `generate-css.ts` and this function are the two ends; ROLE_ALIASES is the one list between them,
+    which is what makes an alias reach both by existing. This asserts the re-statement end — a new
+    entry emitted at `:root` but not restated here fails, rather than silently belonging to the
+    document.
+  */
+  it('restates every :root alias over a role, so a scoped theme can reach them', () => {
+    const style = themeParametersToStyle({ themeName: 'dark' });
+    for (const [prop, value] of Object.entries(ROLE_ALIASES)) {
+      expect(style[prop], `${prop} is declared at :root but not restated per theme`).toBe(value);
+    }
+    // Owned by `component.ts` rather than by the list, so it is asserted against its source.
+    expect(style['--we-scrollbar-thumb-background']).toBe(component.scrollbar.thumbBackground);
+  });
+
+  /*
+    `accent` got a themeable lightness first and the other three fills did not, so a theme could
+    brighten its brand and not its destructive button — and the only way to move one was to pin the
+    role, which discards the label and state derivations that keep the button usable. These assert
+    the plumbing for all four, since three of them are new and nothing else reads them.
+  */
+  it('emits a lightness variable for every fill, not just the accent', () => {
+    const style = themeParametersToStyle({
+      accentLightness: 70,
+      dangerLightness: 48,
+      successLightness: 66,
+      warningLightness: 80,
+    });
+    expect(style['--we-accent-lightness']).toBe('70');
+    expect(style['--we-danger-lightness']).toBe('48');
+    expect(style['--we-success-lightness']).toBe('66');
+    expect(style['--we-warning-lightness']).toBe('80');
+  });
+
+  it('still lets the theme win on the role it does pin', () => {
+    expect(themeParametersToStyle({ themeName: 'channels', roles: { accent: '#ff0000' } })['--we-role-accent']).toBe(
+      '#ff0000',
+    );
+  });
+
+  it('leaves a theme with no roles of its own exactly as the preset had it', () => {
+    const bare = themeParametersToStyle({ themeName: 'channels' });
+    const withOther = themeParametersToStyle({ themeName: 'channels', primaryHue: 100 });
+    expect(withOther['--we-role-surface-raised']).toBe(bare['--we-role-surface-raised']);
   });
 });

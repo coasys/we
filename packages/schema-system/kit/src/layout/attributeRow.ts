@@ -28,7 +28,7 @@ export function attributeRow(opts: AttributeRowOptions): SchemaNode {
     type: 'Row',
     props: { ay: 'center', gap: '400', py: '100' },
     children: [
-      { type: 'we-icon', props: { name: opts.icon, color: opts.iconColor ?? 'primary-600' } },
+      { type: 'we-icon', props: { name: opts.icon, color: opts.iconColor ?? 'accent-text' } },
       {
         type: 'Column',
         props: { gap: '100' },
@@ -37,7 +37,7 @@ export function attributeRow(opts: AttributeRowOptions): SchemaNode {
             type: 'Row',
             props: { gap: '300' },
             children: [
-              { type: 'we-text', props: { fontWeight: 'bold', color: 'neutral-700' }, children: [`${opts.label}:`] },
+              { type: 'we-text', props: { fontWeight: 'bold', color: 'text' }, children: [`${opts.label}:`] },
               { type: 'we-text', props: { fontWeight: 'bold' }, children: [opts.value] },
             ],
           },

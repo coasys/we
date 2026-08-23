@@ -136,8 +136,8 @@ export function FileInput(props: FileInputProps) {
 
             <Show when={!isEditing()}>
               <we-file-upload on:change={handleModalFileChange} width="100%">
-                <we-icon name="paperclip" color="neutral-500" size="lg" />
-                <we-text color="neutral-500" fontSize="400">
+                <we-icon name="paperclip" color="text-muted" size="lg" />
+                <we-text color="text-muted" fontSize="400">
                   {pendingFile() ? pendingFile()!.name : 'Drop a file or click to browse'}
                 </we-text>
               </we-file-upload>

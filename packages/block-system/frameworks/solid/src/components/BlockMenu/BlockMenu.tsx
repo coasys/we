@@ -136,7 +136,7 @@ export default function BlockTypeMenu(props: {
       onKeyDown={onMenuKeyDown}
     >
       <Row ay="center" gap="200" p="200">
-        <we-icon name="magnifying-glass" size="xs" color="neutral-400" />
+        <we-icon name="magnifying-glass" size="xs" color="text-faint" />
         <input
           ref={filterRef}
           class="we-block-menu-filter"
@@ -167,7 +167,7 @@ export default function BlockTypeMenu(props: {
             <>
               {index > 0 && <div class="we-block-menu-divider" />}
 
-              <we-text fontSize="100" fontWeight="600" textTransform="uppercase" color="neutral-600" mb="100">
+              <we-text fontSize="100" fontWeight="600" textTransform="uppercase" color="text-muted" mb="100">
                 {category.title}
               </we-text>
 
@@ -182,10 +182,10 @@ export default function BlockTypeMenu(props: {
                   onKeyDown={(e) => onOptionKeyDown(e, option.type)}
                 >
                   <Row ay="center" gap="300">
-                    <we-icon name={option.icon} weight="bold" color="neutral-400" size="sm" />
+                    <we-icon name={option.icon} weight="bold" color="text-faint" size="sm" />
                     <we-text fontSize="200">{option.label}</we-text>
                   </Row>
-                  <we-text fontSize="200" color="neutral-500">
+                  <we-text fontSize="200" color="text-muted">
                     {option.md}
                   </we-text>
                 </button>

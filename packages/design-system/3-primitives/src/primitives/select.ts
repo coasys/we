@@ -84,15 +84,17 @@ const styles = css`
     position: relative;
     display: flex;
     align-items: center;
-    border: 1px solid var(--we-color-neutral-300);
+    border: 1px solid var(--we-role-border);
     border-radius: var(--we-theme-input-radius, var(--we-radius-400));
-    background: var(--we-color-neutral-0);
+    /* Recessed, not raised. This was neutral-0 — the *darkest* step in a dark theme, i.e. a well —
+       and reading it as "the lightest, therefore a card" inverted it. */
+    background: var(--we-role-surface-sunken);
     transition: border-color var(--we-transition-200, 150ms) ease;
   }
 
   [part='input-wrapper']:focus-within {
-    border-color: var(--we-color-primary-500);
-    outline: 2px solid var(--we-color-primary-100);
+    border-color: var(--we-role-accent);
+    outline: 2px solid var(--we-role-accent-muted);
     outline-offset: -1px;
   }
 
@@ -163,7 +165,7 @@ const styles = css`
 
   /* A placeholder reads as absent text, not as a value. */
   [part='value'][data-placeholder] {
-    color: var(--we-color-neutral-400);
+    color: var(--we-role-text-faint);
   }
 
   /*
@@ -200,7 +202,7 @@ const styles = css`
      of markers rather than a column of dark glyphs. */
   [part='option'] we-icon,
   [part='value'] we-icon {
-    color: var(--we-color-primary-700);
+    color: var(--we-role-accent-text);
   }
 
   [part='group-heading'] {
@@ -208,18 +210,18 @@ const styles = css`
     font-size: 0.75em;
     text-transform: uppercase;
     letter-spacing: 0.05em;
-    color: var(--we-color-neutral-400);
+    color: var(--we-role-text-faint);
     pointer-events: none;
   }
 
   [part='group-heading']:not(:first-child) {
     margin-top: var(--we-space-100);
-    border-top: 1px solid var(--we-color-neutral-100);
+    border-top: 1px solid var(--we-role-border);
   }
 
   [part='option']:hover,
   [part='option'][aria-selected='true'] {
-    background: var(--we-color-primary-50);
+    background: var(--we-role-accent-muted);
   }
 
   /*
@@ -228,7 +230,7 @@ const styles = css`
     nothing. Stronger than the selected tint so the two read apart when they are on the same row.
   */
   [part='option'][data-active='true'] {
-    background: var(--we-color-primary-100);
+    background: var(--we-role-accent-muted);
   }
 
   [part='option'][aria-disabled='true'] {
@@ -238,7 +240,7 @@ const styles = css`
 
   [part='empty'] {
     padding: var(--we-space-300);
-    color: var(--we-color-neutral-500);
+    color: var(--we-role-text-muted);
     text-align: center;
   }
 

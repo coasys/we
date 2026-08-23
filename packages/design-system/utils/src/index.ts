@@ -1,6 +1,8 @@
 import type { DesignSystemProps, FlexDirection } from '@we/design-types';
 import { font, role } from '@we/tokens';
 
+export * from './color';
+
 // --- Shared sub-arrays (used by CSS helpers directly) ---
 export const paddingKeys = ['p', 'px', 'py', 'pt', 'pr', 'pb', 'pl'] as const;
 export const marginKeys = ['m', 'mx', 'my', 'mt', 'mr', 'mb', 'ml'] as const;
@@ -177,6 +179,20 @@ function isRawCSSValue(value: string): boolean {
   // back as `var(--we-space-calc(100% - 8px))` — a variable name built out of an expression,
   // which resolves to nothing. Applies to every token-resolved prop, not just offsets.
   if (/^(calc|min|max|clamp|env)\(/i.test(value)) return true;
+  /*
+    `color-mix()` is how a control's hover and pressed steps stay inside the theme.
+
+    A neutral filled control needs three steps and the vocabulary has roles for one of them — a
+    fourth and fifth role for "secondary button, pressed" would be vocabulary nobody would ever pin.
+    Mixing the rest state toward `text` gives the ladder for free and, because `text` inverts with
+    the theme, it darkens in a light theme and lightens in a dark one without being told which it is.
+    Without this line it fell through to the token branch and came back as
+    `var(--we-color-color-mix(…))`, a variable name built out of an expression.
+  */
+  if (/^color-mix\(/i.test(value)) return true;
+  // `oklch(from …)` — the elevation stack, expressed as a step from another role. Same hazard as
+  // color-mix: read as a token name it becomes `var(--we-color-oklch(from …))`, which is nothing.
+  if (/^oklch\(from\s/i.test(value)) return true;
   return /^-?(var\(|#|rgba?|hsla?|\d+(\.\d+)?(px|rem|em|%|vh|vw|vmin|vmax|ch|ex|\s))/.test(value);
 }
 
@@ -222,6 +238,17 @@ export const resolveFontFamily = makeTokenResolver(new Set(Object.keys(font.fami
  */
 const ROLE_NAMES = new Set(Object.keys(role).map((name) => name.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`)));
 
+/**
+ * Radius names that resolve to a theme group rather than a scale position — see `SemanticRadius`.
+ *
+ * Each carries the same fallback the corresponding primitive's cascade uses, so a component
+ * written with `r="avatar"` matches `we-avatar` exactly in a theme that sets nothing.
+ */
+const SEMANTIC_RADIUS: Record<string, string> = {
+  avatar: 'var(--we-theme-avatar-radius, 50%)',
+  media: 'var(--we-theme-surface-radius, 0px)',
+};
+
 export function tokenVar(prefix: string, token?: string, fallback = '0') {
   // If no token, return fallback
   if (!token) return fallback;
@@ -234,6 +261,9 @@ export function tokenVar(prefix: string, token?: string, fallback = '0') {
 
   // A colour prop may name a semantic role instead of a scale position.
   if (prefix === 'color' && ROLE_NAMES.has(token)) return `var(--we-role-${token})`;
+
+  // A radius prop may name a theme group instead of a scale position, on the same principle.
+  if (prefix === 'radius' && SEMANTIC_RADIUS[token]) return SEMANTIC_RADIUS[token];
 
   // Otherwise return CSS variable
   return `var(--we-${prefix}-${token})`;

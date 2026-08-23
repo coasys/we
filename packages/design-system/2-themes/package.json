@@ -54,5 +54,8 @@
   "style": "./dist/index.css",
   "sideEffects": [
     "*.css"
-  ]
+  ],
+  "dependencies": {
+    "@we/design-utils": "workspace:*"
+  }
 }

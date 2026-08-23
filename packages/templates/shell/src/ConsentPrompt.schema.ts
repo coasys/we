@@ -34,7 +34,7 @@ export const consentPrompt: SchemaNode = {
       children: [
         {
           type: 'Column',
-          props: { bg: 'neutral-0', r: '400', p: '600', gap: '400', maxWidth: '420px', shadow: 'xl' },
+          props: { bg: 'surface-sunken', r: '400', p: '600', gap: '400', maxWidth: '420px', shadow: 'xl' },
           children: [
             // Heading — the backend's own title, so a request type we don't specifically
             // recognise still says something true rather than nothing.
@@ -42,7 +42,7 @@ export const consentPrompt: SchemaNode = {
               type: 'Row',
               props: { gap: '300', ay: 'center' },
               children: [
-                { type: 'we-icon', props: { name: 'shield-check', color: 'primary-600' } },
+                { type: 'we-icon', props: { name: 'shield-check', color: 'accent-text' } },
                 {
                   type: 'we-text',
                   props: { variant: 'heading-sm' },
@@ -79,7 +79,7 @@ export const consentPrompt: SchemaNode = {
                             },
                             {
                               type: 'we-text',
-                              props: { variant: 'footnote', color: 'neutral-500' },
+                              props: { variant: 'footnote', color: 'text-muted' },
                               children: [{ $store: 'runtimeStore.pendingConsent.app.url' }],
                             },
                           ],
@@ -88,7 +88,7 @@ export const consentPrompt: SchemaNode = {
                     },
                     {
                       type: 'we-text',
-                      props: { variant: 'label', color: 'neutral-600' },
+                      props: { variant: 'label', color: 'text-muted' },
                       children: ['Wants permission to:'],
                     },
                     {
@@ -103,7 +103,7 @@ export const consentPrompt: SchemaNode = {
                               type: 'Row',
                               props: { gap: '200', ay: 'center' },
                               children: [
-                                { type: 'we-icon', props: { name: 'check', color: 'success-600' } },
+                                { type: 'we-icon', props: { name: 'check', color: 'success-text' } },
                                 { type: 'we-text', props: { variant: 'body' }, children: ['$cap'] },
                               ],
                             },
@@ -135,7 +135,7 @@ export const consentPrompt: SchemaNode = {
                       type: 'we-text',
                       props: {
                         variant: 'footnote',
-                        color: 'neutral-600',
+                        color: 'text-muted',
                         styles: { 'word-break': 'break-all' },
                       },
                       children: [{ $store: 'runtimeStore.pendingConsent.peerId' }],
@@ -161,8 +161,8 @@ export const consentPrompt: SchemaNode = {
                   type: 'we-button',
                   props: {
                     text: 'Approve',
-                    color: 'neutral-0',
-                    bg: 'primary-500',
+                    color: 'on-accent',
+                    bg: 'accent',
                     loading: { $store: 'runtimeStore.loading' },
                     onClick: { $action: 'runtimeStore.approveConsent' },
                   },
@@ -204,13 +204,21 @@ export const consentSecret: SchemaNode = {
       children: [
         {
           type: 'Column',
-          props: { bg: 'neutral-0', r: '400', p: '600', gap: '400', maxWidth: '420px', shadow: 'xl', ax: 'center' },
+          props: {
+            bg: 'surface-sunken',
+            r: '400',
+            p: '600',
+            gap: '400',
+            maxWidth: '420px',
+            shadow: 'xl',
+            ax: 'center',
+          },
           children: [
-            { type: 'we-icon', props: { name: 'key', color: 'primary-600', size: 'lg' } },
+            { type: 'we-icon', props: { name: 'key', color: 'accent-text', size: 'lg' } },
             { type: 'we-text', props: { variant: 'heading-sm' }, children: ['Confirmation code'] },
             {
               type: 'we-text',
-              props: { variant: 'body', color: 'neutral-600', textAlign: 'center' },
+              props: { variant: 'body', color: 'text-muted', textAlign: 'center' },
               children: ['Enter this code in the app that requested access.'],
             },
             {
@@ -227,8 +235,8 @@ export const consentSecret: SchemaNode = {
               type: 'we-button',
               props: {
                 text: 'Done',
-                color: 'neutral-0',
-                bg: 'primary-500',
+                color: 'on-accent',
+                bg: 'accent',
                 onClick: { $action: 'runtimeStore.dismissConsentSecret' },
               },
             },

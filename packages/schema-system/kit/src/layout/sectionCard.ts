@@ -28,7 +28,7 @@ export function sectionCard(opts: SectionCardOptions): SchemaNode {
 
   return {
     type: 'Card',
-    props: { bg: 'neutral-100', border: '1px solid neutral-200' },
+    props: { bg: 'surface', border: '1px solid border' },
     children: [
       opts.aside ? { type: 'Row', props: { ax: 'between', ay: 'center' }, children: [heading, opts.aside] } : heading,
       ...opts.children,

@@ -123,8 +123,17 @@ export function EditingBar() {
           <Row
             ay="center"
             gap="100"
-            bg="neutral-50"
-            border="1px solid neutral-200"
+            /*
+              Page-toned, like every other floating cluster — the chrome rail and the call bar.
+
+              These are chrome: they sit on the page with air around them and cover nothing, so they
+              separate by edge (the border below) rather than by tone. `surface-raised` is a rung on
+              the tonal ladder, sized so a popover clears the card it covers, and taking it painted
+              these ten lightness points above their surroundings. The call module's own note names
+              these bars as the thing it was matching, so they are meant to agree.
+            */
+            bg="page"
+            border="1px solid border"
             r="var(--we-theme-control-radius, var(--we-radius-400))"
             p="200"
           >
@@ -145,8 +154,8 @@ export function EditingBar() {
             <Row
               ay="center"
               gap="100"
-              bg="neutral-50"
-              border="1px solid neutral-200"
+              bg="page"
+              border="1px solid border"
               r="var(--we-theme-control-radius, var(--we-radius-400))"
               p="200"
             >
@@ -183,8 +192,8 @@ export function EditingBar() {
           <Row
             ay="center"
             gap="100"
-            bg="neutral-50"
-            border="1px solid neutral-200"
+            bg="page"
+            border="1px solid border"
             r="var(--we-theme-control-radius, var(--we-radius-400))"
             p="200"
           >
@@ -233,8 +242,8 @@ export function EditingBar() {
             <Row
               ay="center"
               gap="100"
-              bg="neutral-50"
-              border="1px solid neutral-200"
+              bg="page"
+              border="1px solid border"
               r="var(--we-theme-control-radius, var(--we-radius-400))"
               p="200"
             >
@@ -266,8 +275,8 @@ export function EditingBar() {
                 top="100%"
                 right="0"
                 mt="100"
-                bg="neutral-0"
-                border="1px solid neutral-200"
+                bg="surface-sunken"
+                border="1px solid border"
                 r="var(--we-theme-surface-radius, var(--we-radius-400))"
                 shadow="md"
                 overflow="hidden"
@@ -283,13 +292,13 @@ export function EditingBar() {
                         px="300"
                         py="200"
                         cursor="pointer"
-                        hoverProps={{ bg: 'neutral-100' }}
+                        hoverProps={{ bg: 'surface-sunken' }}
                         onClick={exportJson}
                       >
-                        <we-icon name="download-simple" color="neutral-600" />
+                        <we-icon name="download-simple" color="text-muted" />
                         <Column gap="0">
-                          <we-text color="neutral-800">Export as JSON</we-text>
-                          <we-text variant="footnote" color="neutral-500">
+                          <we-text color="text">Export as JSON</we-text>
+                          <we-text variant="footnote" color="text-muted">
                             Download template file
                           </we-text>
                         </Column>
@@ -302,7 +311,7 @@ export function EditingBar() {
                       py="200"
                       cursor={identity.marketplaceJoined() ? 'pointer' : 'not-allowed'}
                       opacity={identity.marketplaceJoined() ? 1 : 0.4}
-                      hoverProps={identity.marketplaceJoined() ? { bg: 'neutral-100' } : undefined}
+                      hoverProps={identity.marketplaceJoined() ? { bg: 'surface-sunken' } : undefined}
                       onClick={
                         identity.marketplaceJoined()
                           ? () => {
@@ -313,10 +322,10 @@ export function EditingBar() {
                           : undefined
                       }
                     >
-                      <we-icon name="storefront" color="neutral-600" />
+                      <we-icon name="storefront" color="text-muted" />
                       <Column gap="0">
-                        <we-text color="neutral-800">Upload to marketplace</we-text>
-                        <we-text variant="footnote" color="neutral-500">
+                        <we-text color="text">Upload to marketplace</we-text>
+                        <we-text variant="footnote" color="text-muted">
                           {identity.marketplaceJoined() ? 'Publish for others to install' : 'Marketplace not connected'}
                         </we-text>
                       </Column>
@@ -327,17 +336,17 @@ export function EditingBar() {
                       px="300"
                       py="200"
                       cursor="pointer"
-                      hoverProps={{ bg: 'neutral-100' }}
+                      hoverProps={{ bg: 'surface-sunken' }}
                       onClick={() => setShareView('space')}
                     >
-                      <we-icon name="users" color="neutral-600" />
+                      <we-icon name="users" color="text-muted" />
                       <Column gap="0" flex="1">
-                        <we-text color="neutral-800">Share to a space</we-text>
-                        <we-text variant="footnote" color="neutral-500">
+                        <we-text color="text">Share to a space</we-text>
+                        <we-text variant="footnote" color="text-muted">
                           Copy it into a space's library
                         </we-text>
                       </Column>
-                      <we-icon name="caret-right" color="neutral-400" size="sm" />
+                      <we-icon name="caret-right" color="text-faint" size="sm" />
                     </Row>
                   </Column>
                 </Show>
@@ -348,7 +357,7 @@ export function EditingBar() {
                       <we-button variant="ghost" square size="sm" onClick={() => setShareView('main')}>
                         <we-icon name="arrow-left" />
                       </we-button>
-                      <we-text fontWeight="600" color="neutral-800">
+                      <we-text fontWeight="600" color="text">
                         Choose a space
                       </we-text>
                     </Row>
@@ -364,11 +373,11 @@ export function EditingBar() {
                               px="300"
                               py="200"
                               cursor="pointer"
-                              hoverProps={{ bg: 'neutral-100' }}
+                              hoverProps={{ bg: 'surface-sunken' }}
                               onClick={() => void shareToSpace(space.uuid, space.name)}
                             >
                               <we-avatar image={space.avatar} initials={space.name} size="sm" />
-                              <we-text color="neutral-700" flex="1">
+                              <we-text color="text" flex="1">
                                 {space.name}
                               </we-text>
                               <Show when={shareLoading() === space.uuid}>
@@ -378,7 +387,7 @@ export function EditingBar() {
                           )}
                         </For>
                         <Show when={filteredSpaces().length === 0}>
-                          <we-text variant="footnote" color="neutral-400" px="300" py="200">
+                          <we-text variant="footnote" color="text-faint" px="300" py="200">
                             No spaces found
                           </we-text>
                         </Show>

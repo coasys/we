@@ -14,14 +14,74 @@ Most @we/primitives inherit **all** layers below. Props use design token values 
 | Token Type | Valid Values |
 |---|---|
 | SpaceValue | "0", "100", "200", "300", "400", "500", "600", "700", "800", "900", "1000" (or CSS length e.g. "16px") |
-| ColorValue | "{hue}-{shade}" where hue = neutral, primary, success, warning, danger and shade = 0, 25, 50, 75, 100, 200–900, 1000. Also "white", "black". (or CSS color) |
-| RadiusValue | "0", "100", "200", "300", "400", "500", "600", "700", "800", "900", "pill", "full" (or CSS length) |
+| ColorValue | A **role** — see the table below — or a scale position "{hue}-{shade}" where hue = neutral, primary, success, warning, danger and shade = 0, 25, 50, 75, 100, 200–900, 1000. Also "white", "black". (or CSS color). **Prefer a role.** |
+| RadiusValue | "0", "100", "200", "300", "400", "500", "600", "700", "800", "900", "pill", "full" (or CSS length). Also two *semantic* values that follow the theme instead of naming a size: "avatar" (circular by default; use for anything square that reads as a profile picture) and "media" (square by default; images, video, embeds). Prefer these on an \`EditableImage\` or a raw element standing in for one — a pinned "full" or "pill" cannot follow a theme's shape settings. Note "full" is 50%, so it is an ellipse on any box that is not square; reach for "pill" on wide boxes. |
 | ShadowValue | "sm", "md", "lg", "xl" |
 | FontSizeValue | "base", "100", "200", "300", "400", "500", "600", "700", "800", "900", "1000" (or CSS length) |
 | FontFamilyValue | "base" (or CSS font-family) |
 | LineHeightValue | "none", "tight", "snug", "normal", "relaxed", "loose" (or CSS value) |
 | LetterSpacingValue | "tighter", "tight", "normal", "wide", "wider", "widest" (or CSS value) |
 | FontWeightValue | Named tokens: "regular" (400), "medium" (500), "semibold" (600), "bold" (700). Numeric: "100"–"900". CSS pass-through: "light", "normal", "bolder". |
+
+### Semantic Colour Roles — reach for these before a scale position
+
+A scale position says *which grey*. A role says *what the colour is for*, and that is what a theme
+can redesign. Some relationships invert between light and dark — a raised surface gets **lighter**
+in dark rather than casting a shadow — and a scale position cannot express that, because the whole
+scale flips together. Templates written with roles restyle correctly under any theme; templates
+written with \`neutral-100\` are frozen into one theme's idea of what that grey meant.
+
+Two naming conventions run through the table. A bare noun is a **fill or a foreground in its own
+right** (\`surface\`, \`accent\`, \`text\`). \`on<Fill>\` is a foreground that sits **on** a
+specific fill and exists to contrast with it (\`on-accent\`, \`on-inverse\`) — so \`accent-text\`
+is the accent *used as* text, and \`on-accent\` is the text *placed on* the accent. They are
+different colours and the prefix is what tells you which you want.
+
+**Use a role for every \`bg\`, \`color\` and border colour.** Reach for a scale position only when the
+colour is a *palette* rather than a meaning — a graph's node colours by category, a chart series,
+a user-chosen swatch.
+
+| Role | Use for |
+|---|---|
+| \`page\` | The app/route background behind everything. Set it on a template's root node. |
+| \`surface\` | A card, panel or sheet sitting on the page. |
+| \`surface-raised\` | Something floating above the page — a popover, a floating bar, a docked rail with a shadow. |
+| \`surface-sunken\` | A well recessed into a surface — an inset box, a code block, an input trough. |
+| \`surface-hover\` / \`surface-active\` | Row and item feedback. Use inside \`hoverProps\` / \`activeProps\`. |
+| \`control-surface\` | The filled neutral of a *control* — a slider or switch track, a progress trough, a scrollbar thumb, a secondary button, a count chip. Not a surface and not a state. |
+| \`text\` | Primary body and heading text. |
+| \`text-muted\` | Secondary text — captions, labels, metadata. |
+| \`text-faint\` | Tertiary text — placeholders, disabled labels, decorative icons. |
+| \`surface-inverse\` | A surface deliberately opposite to the page — a tooltip. Holds a fixed lightness, so it does *not* flip with the theme. |
+| \`on-inverse\` | Text or an icon **on top of** \`surface-inverse\` — a tooltip's own text. **Not** for text on the accent, which is \`on-accent\`. |
+| \`border\` | Default borders and dividers. |
+| \`border-strong\` | Emphasised separation. |
+| \`accent\` | An accent *fill* — a primary button, a selected disc. |
+| \`accent-hover\` / \`accent-active\` | Hover and pressed states of an accent fill. |
+| \`on-accent\` | Text or an icon **on top of** an accent fill. |
+| \`on-accent-muted\` | Secondary text on an accent fill — a caption under a heading on an accent panel, or on \`gradient-primary\`. The \`text-muted\` of fills, and the **only** correct choice there: \`text-muted\` and \`text-faint\` are measured against the *page*, so on a fill they are measured against the wrong thing and can vanish entirely. |
+| \`accent-text\` | The accent used **as text** — an accented heading or icon on an ordinary surface, where \`accent\` is often too light to read. |
+| \`accent-muted\` | An accent-tinted fill — a selected row, a subtle highlight. |
+| \`focus\` | The focus ring. Rarely set directly; \`--we-ring-color\` already resolves to it. |
+| \`danger-text\` / \`success-text\` / \`warning-text\` | Status as a **foreground** — an error message, a warning icon, a "connected" tick. |
+| \`danger-surface\` / \`success-surface\` / \`warning-surface\` | The tinted **panel** behind status content. |
+| \`overlay\` | The scrim behind a modal or drawer. Carries its own alpha. |
+| \`shadow-color\` | The colour shadows are built from. |
+
+\`\`\`json
+{ "type": "Column", "props": { "bg": "surface", "border": "1px solid border" }, "children": [
+  { "type": "we-text", "props": { "variant": "heading-md", "color": "text" }, "children": ["Title"] },
+  { "type": "we-text", "props": { "color": "text-muted" }, "children": ["Supporting line"] }
+]}
+\`\`\`
+
+Roles work anywhere a colour token does, including inside a border shorthand
+(\`"1px solid border"\`) and behind \`$if\` (\`{ "$if": { "condition": …, "then": "accent-muted", "else": "surface-sunken" } }\`).
+
+**Always kebab-case: \`"surface-sunken"\`, never \`"surfaceSunken"\`.** The camelCase spelling is the
+TypeScript key of a \`ThemeRole\`; a schema writes the CSS spelling. Getting it wrong fails silently —
+the value resolves to a variable that does not exist and the element paints nothing at all — so the
+validator rejects it with the right spelling rather than letting it through.
 
 **Layout-only primitives** — these accept only Layout props (not Visual, Flex, Typography, or State):
 we-divider, we-icon, we-menu-group, we-popover, we-spinner, we-tooltip

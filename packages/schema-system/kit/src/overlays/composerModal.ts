@@ -89,7 +89,7 @@ export function composerModal(opts: ComposerModalOptions): SchemaNode {
           {
             type: 'Column',
             // `pl` clears the composer's own left gutter, where the slash-command affordance sits.
-            props: { width: '100%', bg: 'neutral-25', p: '600', pl: '900', r: '400', overflow: 'auto' },
+            props: { width: '100%', bg: 'surface-raised', p: '600', pl: '900', r: '400', overflow: 'auto' },
             children: [
               {
                 type: 'BlockComposer',

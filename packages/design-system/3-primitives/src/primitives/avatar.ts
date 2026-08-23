@@ -20,8 +20,10 @@ const styles = css`
     --we-avatar-height: var(--we-avatar-size);
     --we-avatar-size: var(--we-avatar-size-md);
     --we-avatar-border: none;
-    --we-avatar-color: var(--we-color-black);
-    --we-avatar-bg: var(--we-color-neutral-100);
+    --we-avatar-color: var(--we-role-text);
+    /* The disc behind an identicon or initials — a sunken surface, whose default is the
+       neutral-100 that was here, so nothing moves. */
+    --we-avatar-bg: var(--we-role-surface-sunken);
   }
   /* The disc exists for the identicon/initials/icon fallbacks; a picture covers it
      entirely, so it is dropped when there is one. Keyed off the marker attribute rather
@@ -30,7 +32,7 @@ const styles = css`
     --we-avatar-bg: transparent;
   }
   :host([selected]) {
-    --we-avatar-box-shadow: 0px 0px 0px 2px var(--we-color-primary-500);
+    --we-avatar-box-shadow: 0px 0px 0px 2px var(--we-role-accent);
   }
   :host([online]) [part='base']:before {
     position: absolute;
@@ -41,7 +43,7 @@ const styles = css`
     width: 25%;
     height: 25%;
     border-radius: 50%;
-    background: var(--we-color-primary-500);
+    background: var(--we-role-accent);
   }
   :host([size='xxs']) {
     --we-avatar-size: var(--we-avatar-size-xxs);
@@ -80,10 +82,13 @@ const styles = css`
     --we-icon-size: calc(var(--we-avatar-size) * 0.6);
   }
 
+  /* inherit, not a second 50%: the host's radius is themeable (--we-theme-avatar-radius) and a
+     hardcoded circle here would win for exactly the avatars that have a picture — so a theme asking
+     for rounded-square avatars got squares everywhere except where it mattered most. */
   [part='img'] {
     width: 100%;
     height: 100%;
-    border-radius: 50%;
+    border-radius: inherit;
     object-fit: cover;
   }
 

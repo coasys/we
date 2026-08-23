@@ -11,7 +11,13 @@ import {
   Theme,
 } from '@we/models';
 import type { ThemeOverrides } from '@we/schema-shared';
-import { applyThemeVars } from '@we/schema-shared';
+import {
+  applyThemeVars,
+  parseOverrides,
+  reconcileSurfaces,
+  THEME_SCHEMA_VERSION,
+  themeParametersToStyle,
+} from '@we/schema-shared';
 import type { SanitiseCssOptions } from '@we/themes/sanitiseCss';
 import { sanitiseCss } from '@we/themes/sanitiseCss';
 import {
@@ -29,6 +35,17 @@ import { useDatasetStore } from './DatasetStore';
 import { useSessionStore } from './SessionStore';
 
 const THEME_KEY = 'we.theme';
+/*
+  The two halves of "Follow system", cached the same way the current theme is.
+
+  The pair lives in AgentSettings, which arrives seconds after the first paint, and the whole point
+  of following the system is that the answer is given at the moment of use — including the first
+  one. Without a cache the boot screen resolves `system` to the built-in of that polarity and then
+  swaps to the agent's own theme once the settings land, which is the light-flash bug wearing a
+  different hat.
+*/
+const SYSTEM_LIGHT_KEY = 'we.system-light';
+const SYSTEM_DARK_KEY = 'we.system-dark';
 const EDITING_THEME_KEY = 'we.editing-theme';
 
 export type ThemeManagementItem = {
@@ -47,6 +64,8 @@ export type EditingTheme = ThemeData & {
 export interface ThemeStore {
   // State
   builtInThemes: Accessor<ThemeData[]>;
+  /** Modes that resolve to a theme rather than being one — currently just "Follow system". */
+  automaticThemes: Accessor<ThemeData[]>;
   installedThemes: Accessor<ThemeData[]>;
   spaceThemes: Accessor<ThemeData[]>;
   allThemes: Accessor<ThemeData[]>;
@@ -63,6 +82,33 @@ export interface ThemeStore {
   setCurrentTheme: (themeId: string) => void;
   setDefaultTheme: (themeId: string) => void;
   /**
+   * The role the theme editor should jump to, kebab-case, or empty.
+   *
+   * Set by whatever sent somebody to the panel — the inspector's role readout, chiefly, where the
+   * whole gesture is "this colour is wrong, take me to it". Without it the jump lands at the top of
+   * a panel holding some forty roles with nothing marking the one you came for, which is a worse
+   * answer than not offering the jump.
+   *
+   * Notifies on every set, including a repeat of the same role: clicking the same chip twice is a
+   * person saying "again, I lost it", and a signal that dedupes would answer the second click with
+   * silence.
+   */
+  focusedRole: Accessor<string>;
+  /** Ask the theme editor to reveal a role. Kebab-case, as a schema and the readout spell it. */
+  focusRole: (role: string) => void;
+  /**
+   * Which two themes "Follow system" chooses between, and the ids currently on each side.
+   *
+   * `light`/`dark` are the ids as *chosen*, empty for a side left at the built-in — what the control
+   * that sets them needs, so "Built-in" shows as selected rather than as an option that appears to
+   * do nothing. `resolved` is which of the two the OS is asking for right now.
+   */
+  systemThemes: Accessor<{ light: string; dark: string; resolved: 'light' | 'dark' }>;
+  /** Set one side of the pair. An empty id returns that side to the built-in. */
+  setSystemTheme: (polarity: 'light' | 'dark', themeId: string) => void;
+  /** Options for either side, with a "Built-in" entry a schema could not prepend itself. */
+  systemThemeOptions: Accessor<{ label: string; value: string }[]>;
+  /**
    * Show or hide a custom theme in the pickers. Does not delete it.
    *
    * Takes the value rather than toggling, so a `we-switch` can pass `$event.detail` straight
@@ -78,6 +124,13 @@ export interface ThemeStore {
   themeScopeGlobal: Accessor<boolean>;
   /** True while a session preview is masking the preference — worth saying so in the UI. */
   themeScopePreviewing: Accessor<boolean>;
+  /**
+   * True while the template's theme cannot yet be resolved and might still arrive.
+   *
+   * Whatever applies the scoped theme should hold what is on screen rather than paint a fallback —
+   * see the note where it is computed.
+   */
+  templateThemePending: Accessor<boolean>;
   /** Preview a scope for this editing session without changing the preference; null drops it. */
   previewThemeScope: (scope: 'global' | 'scoped' | null) => void;
   /**
@@ -103,17 +156,22 @@ export interface ThemeStore {
    * space's. Null in global mode, where the template inherits documentElement.
    */
   activeTemplateTheme: Accessor<ThemeData | null>;
-  /** Apply a theme temporarily (space default) without persisting to AgentSettings. */
-  replaceTheme: (themeId: string) => void;
+  /**
+   * Apply a theme temporarily (space default) without persisting to AgentSettings.
+   *
+   * `explicit` marks a choice somebody made, as opposed to a recompute — only the former may end an
+   * editing session on a different theme. See the implementation for why the difference matters.
+   */
+  replaceTheme: (themeId: string, opts?: { explicit?: boolean }) => void;
   /** Restore the persisted personal theme (called when leaving a space with a default theme). */
   restorePersonalTheme: () => void;
   /** Clear the scoped space theme without restoring the personal theme (used when entering a space with no default theme). */
   clearSpaceTheme: () => void;
   startEditing: (themeId?: string) => void;
   /**
-   * Change the base preset while editing. Clears explicit multiplier/subtractor overrides so
-   * the new preset's natural light/dark mode shows through, then repopulates them from the
-   * preset's computed CSS so the Light/Dark buttons reflect reality.
+   * Change the base preset while editing. Takes the new preset's polarity and lightness range so
+   * its natural light/dark mode shows through, then repopulates the rest from the preset's computed
+   * CSS so the panel's controls reflect reality.
    */
   changeBasePreset: (preset: string | undefined) => void;
   updateEditingOverrides: (overrides: Partial<ThemeOverrides>) => void;
@@ -216,6 +274,27 @@ function getInitialThemeId(): string {
 }
 
 /**
+ * The id meaning "whichever of light and dark the operating system is asking for".
+ *
+ * Stored like any other theme id, so a preference, a space pin and a share link all carry it
+ * without knowing it is special — it is resolved at the point of use rather than at the point of
+ * choice, which is the whole difference between following the system and copying it once.
+ */
+export const SYSTEM_THEME_ID = 'system';
+
+/** Tracks `prefers-color-scheme` for as long as the app is open, not just at boot. */
+function createSystemScheme(): Accessor<'light' | 'dark'> {
+  if (typeof window === 'undefined' || !window.matchMedia) return () => 'light';
+  const query = window.matchMedia('(prefers-color-scheme: dark)');
+  const [scheme, setScheme] = createSignal<'light' | 'dark'>(query.matches ? 'dark' : 'light');
+  const onChange = (e: MediaQueryListEvent) => setScheme(e.matches ? 'dark' : 'light');
+  query.addEventListener('change', onChange);
+  // Never removed: the store lives for the life of the document, and dropping it on an HMR pass
+  // would leave the app pinned to whatever the scheme was when the module reloaded.
+  return scheme;
+}
+
+/**
  * The attribute marking the element a scoped theme is confined to — the template content wrapper in
  * `TemplateLayout`, which is also the element carrying `data-we-theme` and painting the page.
  *
@@ -264,8 +343,17 @@ function injectCssString(id: string, css: string, options: SanitiseCssOptions = 
   styleEl.textContent = safe;
 }
 
+/**
+ * The last theme written to the document, so an *edit* can be told from a *switch*.
+ *
+ * Editing keeps the theme's id and changes its parameters; switching changes the id. Only the
+ * second is a cross-fade — see `ApplyThemeOptions.crossFade`. Without the distinction every frame
+ * of a slider drag re-armed a 250ms fade and the primary button spent the whole drag catching up.
+ */
+let lastAppliedThemeId: string | null = null;
+
 function applyThemeToDOM(theme: ThemeData) {
-  const overrides: ThemeOverrides = theme.overrides ? JSON.parse(theme.overrides) : {};
+  const overrides: ThemeOverrides = parseOverrides(theme.overrides);
   // Normalize legacy fontFamily: 'base' sentinel saved before the font-family fix
   if (overrides.fontFamily === 'base') delete overrides.fontFamily;
 
@@ -284,7 +372,9 @@ function applyThemeToDOM(theme: ThemeData) {
     guards against is documented there: clearing `style.cssText` outright also deletes the layout
     variables the shell publishes on the same root.
   */
-  applyThemeVars(document.documentElement, overrides);
+  const isSwitch = theme.id !== lastAppliedThemeId;
+  lastAppliedThemeId = theme.id;
+  applyThemeVars(document.documentElement, overrides, { crossFade: isSwitch });
 
   // Inject the theme's CSS string (component-level rules + any non-parametric vars). Unscoped: this
   // is the whole window, which is what the document theme is for. Namespaced all the same, so the
@@ -301,8 +391,8 @@ const OVERRIDE_CSS_VARS: Partial<Record<keyof ThemeOverrides, string>> = {
   neutralHue: '--we-color-neutral-hue',
   saturation: '--we-color-saturation',
   neutralSaturation: '--we-color-neutral-saturation',
-  subtractor: '--we-color-subtractor',
-  multiplier: '--we-color-multiplier',
+  lightnessFloor: '--we-color-lightness-floor',
+  lightnessCeiling: '--we-color-lightness-ceiling',
   // Typography — fontFamily intentionally omitted: the base theme CSS may set it directly,
   // causing populateMissingOverrides to store a font string the user never explicitly chose.
   letterSpacing: '--we-theme-letter-spacing',
@@ -311,12 +401,14 @@ const OVERRIDE_CSS_VARS: Partial<Record<keyof ThemeOverrides, string>> = {
   controlRadius: '--we-theme-control-radius',
   surfaceRadius: '--we-theme-surface-radius',
   inputRadius: '--we-theme-input-radius',
+  avatarRadius: '--we-theme-avatar-radius',
   // Density
   controlPaddingX: '--we-theme-control-padding-x',
   controlGap: '--we-theme-control-gap',
-  controlHeight: '--we-theme-control-height-offset',
-  surfaceSpacing: '--we-theme-surface-spacing',
+  controlHeightOffset: '--we-theme-control-height-offset',
+  surfacePadding: '--we-theme-surface-padding',
   surfaceGap: '--we-theme-surface-gap',
+  inputPadding: '--we-theme-input-padding',
   // Effects
   surfaceOpacity: '--we-theme-surface-opacity',
 };
@@ -324,16 +416,28 @@ const OVERRIDE_CSS_VARS: Partial<Record<keyof ThemeOverrides, string>> = {
 /**
  * For any override keys missing from `overrides`, reads their actual computed CSS values so
  * sliders initialise at the position matching what the user sees, not hardcoded defaults.
- * Must be called while the target theme is already applied to the DOM.
+ *
+ * `from` is the element carrying the theme being read. It used to be documentElement, always, with
+ * the caller responsible for applying the theme there first — which is exactly what went wrong: in
+ * scoped mode the theme being edited is *not* the document's, so `startEditing` applied it to the
+ * document to take this reading and relied on a later effect to put it back. That effect only fires
+ * in global mode, where `documentTheme` depends on the theme being edited. In scoped mode it
+ * depends on `personalTheme`, which had not changed, so nothing re-ran and the app chrome simply
+ * kept the theme being edited until the scope toggle was flipped and back.
+ *
+ * Reading from a caller-supplied element removes the need to disturb anything.
  */
-function populateMissingOverrides(overrides: ThemeOverrides): ThemeOverrides {
+function populateMissingOverrides(
+  overrides: ThemeOverrides,
+  from: HTMLElement = document.documentElement,
+): ThemeOverrides {
   const result = { ...overrides };
   // Every override is read back out of CSS as a string, then narrowed to a number for the
   // numeric ones. Naming that shape once keeps the writes below typed.
   const writable = result as Record<keyof ThemeOverrides, string | number>;
   // Normalize legacy fontFamily: 'base' sentinel saved before the font-family fix
   if (result.fontFamily === 'base') delete result.fontFamily;
-  const styles = getComputedStyle(document.documentElement);
+  const styles = getComputedStyle(from);
 
   for (const [key, cssVar] of Object.entries(OVERRIDE_CSS_VARS) as [keyof ThemeOverrides, string][]) {
     if (result[key] !== undefined) continue;
@@ -347,11 +451,12 @@ function populateMissingOverrides(overrides: ThemeOverrides): ThemeOverrides {
     }
     if (!raw || raw.startsWith('var(')) continue;
 
-    if (key === 'multiplier' || (key as string).endsWith('Hue')) {
+    // Hues and saturations are plain numbers; a lightness bound is a percentage string.
+    if ((key as string).endsWith('Hue') || (key as string).toLowerCase().includes('saturation')) {
       const n = Number(raw);
       if (!isNaN(n)) writable[key] = n;
     } else {
-      writable[key] = raw; // percentage string e.g. '60%'
+      writable[key] = raw;
     }
   }
 
@@ -362,12 +467,112 @@ export function ThemeStoreProvider(props: ParentProps) {
   const session = useSessionStore();
   const datasetStore = useDatasetStore();
 
+  /*
+    "Follow system" is offered as a theme because that is how somebody thinks of it — one more row
+    in the same list, chosen the same way. It carries no parameters of its own; `resolveThemeData`
+    answers it at the point of use, so the app tracks the OS while it is open rather than copying
+    the setting once at the moment of the click.
+  */
+  const systemThemeEntry = (): ThemeData => ({
+    id: SYSTEM_THEME_ID,
+    slug: SYSTEM_THEME_ID,
+    name: 'Follow system',
+    icon: 'circle-half',
+    origin: 'built-in',
+    version: 1,
+    overrides: null,
+    css: null,
+  });
+
   const builtInThemes: Accessor<ThemeData[]> = () => Object.keys(themeRegistry).map(registryToThemeData);
 
+  /**
+   * "Follow system", on its own, because it is not one of the built-ins.
+   *
+   * It used to be the first entry of `builtInThemes`, which put it at the head of the only section a
+   * fresh agent sees — the most prominent row in the picker, above every actual theme, under a
+   * heading that says it is a built-in one. It is not a theme at all: it carries no parameters and
+   * is answered at the point of use by asking the operating system. The first question anyone asked
+   * about it was what it was.
+   *
+   * An array rather than a single value so the picker's existing section helper can render it, and
+   * so a second automatic mode later — following a schedule, say — needs no new machinery.
+   */
+  const automaticThemes: Accessor<ThemeData[]> = () => [systemThemeEntry()];
+
   const [installedThemes, setInstalledThemes] = createSignal<ThemeData[]>([]);
+  /**
+   * Whether custom themes have been read from the root dataset yet.
+   *
+   * Boot caches the *id* of the theme to wear, which is enough for a built-in — the registry holds
+   * its parameters — and not enough for a custom one, where an id without its record means nothing.
+   * So there is a window on every load where a pinned personal theme is referenced by an id nothing
+   * can answer, and the resolver has to make something up.
+   *
+   * What it made up was `light`, and since the token CSS's `:root` defaults *are* the light theme, a
+   * wrong answer here is maximally visible: dark boot screen, white flash, then the real theme.
+   * Intermittent, because it is a race — sometimes the records arrive first.
+   */
+  const [themesLoaded, setThemesLoaded] = createSignal(false);
   // IDs of custom themes visible in pickers (subset of installedThemes)
   const [visibleThemeIds, setVisibleThemeIds] = createSignal<Set<string>>(new Set());
   const [spaceThemes, setSpaceThemes] = createSignal<ThemeData[]>([]);
+  const systemScheme = createSystemScheme();
+
+  /*
+    These three sit *after* `systemScheme` deliberately.
+
+    `createMemo` runs its computation on creation, so a memo reading `systemScheme` from above the
+    line that defines it throws `Cannot access before initialization` and takes the whole store with
+    it — a blank app, from an ordering mistake that typechecks and that no unit test sees, because
+    nothing but a browser actually constructs the store.
+  */
+  /**
+   * Which theme "Follow system" currently means.
+   *
+   * `system` used to resolve straight to the string `'light'` or `'dark'`, which happened to be the
+   * ids of two built-ins — so an agent who had made their own dark theme could follow their machine
+   * or wear their own theme, never both, and the setting that reads as "match my machine" quietly
+   * meant "match my machine, using somebody else's palette".
+   *
+   * An unset half falls back to the built-in of that polarity, which is what every existing agent
+   * has and exactly what this did before. The localStorage copies answer the frames before
+   * AgentSettings arrives; without them the boot screen resolves the built-in and then swaps.
+   */
+  const systemThemeId = createMemo(() => {
+    const prefs = datasetStore.agentSettings();
+    const dark = systemScheme() === 'dark';
+    const stored = prefs?.[dark ? 'systemDarkThemeId' : 'systemLightThemeId'];
+    const cached =
+      typeof window !== 'undefined' ? localStorage.getItem(dark ? SYSTEM_DARK_KEY : SYSTEM_LIGHT_KEY) : null;
+    const chosen = stored || cached || '';
+    // Never `system` itself: a pair pointing at the thing being resolved would not terminate.
+    return chosen && chosen !== SYSTEM_THEME_ID ? chosen : dark ? 'dark' : 'light';
+  });
+
+  /**
+   * Both sides of the pair as *chosen*, for the control that sets them.
+   *
+   * Deliberately not resolved: an unset side reads as `''`, which is the "Built-in" option, so the
+   * select shows the choice that was made and returning to it visibly does something. Reporting the
+   * fallback here instead would show "Light" for an unset light side — truthful about the outcome
+   * and wrong about the control, since picking "Built-in" would then appear to do nothing at all.
+   * `systemThemeId` is where the fallback belongs, and it is the only place it happens.
+   */
+  const systemThemes = createMemo(() => {
+    const prefs = datasetStore.agentSettings();
+    const side = (polarity: 'light' | 'dark') => {
+      const stored = prefs?.[polarity === 'dark' ? 'systemDarkThemeId' : 'systemLightThemeId'];
+      const cached =
+        typeof window !== 'undefined'
+          ? localStorage.getItem(polarity === 'dark' ? SYSTEM_DARK_KEY : SYSTEM_LIGHT_KEY)
+          : null;
+      const chosen = stored || cached || '';
+      return chosen === SYSTEM_THEME_ID ? '' : chosen;
+    };
+    return { light: side('light'), dark: side('dark'), resolved: systemScheme() };
+  });
+
   const [currentThemeId, setCurrentThemeId] = createSignal<string>(getInitialThemeId());
   /**
    * Whether a space's theme covers the whole window, or only the space's own content.
@@ -436,6 +641,23 @@ export function ThemeStoreProvider(props: ParentProps) {
     return [...builtInThemes(), ...visible, ...spaceThemes()];
   };
 
+  /**
+   * What either half of the pair may be set to, ready for a `we-select`.
+   *
+   * Built in the store rather than `$map`ped in the schema for the reason `themeOverrideOptions`
+   * documents: a schema can map a store array into options and cannot prepend one, and without the
+   * "Built-in" entry there would be no way back out of a choice — the nearest thing available would
+   * be picking the built-in by name and hoping it is still the same theme next release.
+   *
+   * "Follow system" is excluded, being the thing this resolves.
+   */
+  const systemThemeOptions: Accessor<{ label: string; value: string }[]> = createMemo(() => [
+    { label: 'Built-in light or dark', value: '' },
+    ...allThemes()
+      .filter((t) => t.id !== SYSTEM_THEME_ID)
+      .map((t) => ({ label: t.name, value: String(t.id) })),
+  ]);
+
   const currentTheme: Accessor<ThemeData> = () =>
     allThemes().find((t) => t.id === currentThemeId()) ?? registryToThemeData('light');
 
@@ -459,11 +681,15 @@ export function ThemeStoreProvider(props: ParentProps) {
 
   async function loadInstalledThemes() {
     const perspective = datasetStore.rootDataset()?.handle;
+    // Deliberately does *not* open the gate below: with no root dataset there is nothing to load
+    // yet, and saying "loaded" here would let a custom theme's id be guessed at before its record
+    // has had any chance to arrive.
     if (!perspective) return;
     try {
       const models = await Theme.findAll(perspective);
       for (const model of models) themeModelMap.set(model.id, model);
       setInstalledThemes(models.map(modelToThemeData));
+      setThemesLoaded(true);
 
       // Build visible set from AgentSettings.installedThemes HasMany
       const prefs = datasetStore.agentSettings();
@@ -526,6 +752,20 @@ export function ThemeStoreProvider(props: ParentProps) {
     localStorage.setItem(THEME_KEY, prefs.defaultThemeId);
   });
 
+  // The same, for the two halves of "Follow system" — the boot screen has to resolve `system`
+  // before AgentSettings exists, and resolving it to the built-in and then swapping is a flash.
+  createEffect(() => {
+    const prefs = datasetStore.agentSettings();
+    if (!prefs) return;
+    for (const [key, value] of [
+      [SYSTEM_LIGHT_KEY, prefs.systemLightThemeId],
+      [SYSTEM_DARK_KEY, prefs.systemDarkThemeId],
+    ] as const) {
+      if (value) localStorage.setItem(key, value);
+      else localStorage.removeItem(key);
+    }
+  });
+
   /**
    * The agent's own theme — what the shell wears in scoped mode, and what a space falls back to.
    *
@@ -558,7 +798,43 @@ export function ThemeStoreProvider(props: ParentProps) {
     themeScope() === 'scoped' ? (editingTheme() ?? currentTheme()) : null,
   );
 
-  createEffect(() => applyThemeToDOM(documentTheme()));
+  /** Can this id be *answered*, or would resolving it be a guess? */
+  function canResolveTheme(themeId: string): boolean {
+    const id = themeId === SYSTEM_THEME_ID ? systemThemeId() : themeId;
+    return isValidThemeKey(id) || allThemes().some((t) => t.id === id);
+  }
+
+  /*
+    The ids each surface is *asking* for, as opposed to what they currently resolve to.
+
+    Needed because `resolveThemeData` always answers with something, so its result cannot tell a
+    real match from a fallback. These mirror the branches in `documentTheme` and
+    `activeTemplateTheme` — if either of those changes, these have to follow.
+  */
+  const documentThemeId = createMemo(() =>
+    themeScope() === 'scoped'
+      ? datasetStore.agentSettings()?.defaultThemeId || getInitialThemeId()
+      : (editingTheme()?.id ?? currentThemeId()),
+  );
+  const templateThemeId = createMemo(() => editingTheme()?.id ?? currentThemeId());
+
+  /**
+   * True while the theme a surface wants cannot be resolved and might still arrive.
+   *
+   * Read by whatever applies a theme, so it holds what is already on screen instead of painting a
+   * guess over it. The wrong guess is not a neutral placeholder — with the token CSS's `:root`
+   * defaults being the light theme, it is a white flash in the middle of a dark one.
+   *
+   * Only until the records load. After that an unknown id really is unknown, a fallback is the
+   * honest answer, and this stops holding anything back.
+   */
+  const templateThemePending = createMemo(() => !themesLoaded() && !canResolveTheme(templateThemeId()));
+
+  createEffect(() => {
+    const theme = documentTheme();
+    if (!themesLoaded() && !canResolveTheme(documentThemeId())) return;
+    applyThemeToDOM(theme);
+  });
 
   /*
     In scoped mode, the space/editing theme's component-level CSS goes into its own style tag,
@@ -631,9 +907,29 @@ export function ThemeStoreProvider(props: ParentProps) {
   applyThemeToDOM(registryToThemeData(isValidThemeKey(initialId) ? initialId : 'light'));
 
   function resolveThemeData(themeId: string): ThemeData {
-    return (
-      allThemes().find((t) => t.id === themeId) ?? registryToThemeData(isValidThemeKey(themeId) ? themeId : 'light')
-    );
+    // `system` is not a theme, it is a question — asked here rather than remembered, so the answer
+    // follows the OS while the app is open instead of being fixed at whatever it was on the click.
+    const id = themeId === SYSTEM_THEME_ID ? systemThemeId() : themeId;
+    const found = allThemes().find((t) => t.id === id);
+    if (found) return found;
+    if (isValidThemeKey(id)) return registryToThemeData(id);
+
+    /*
+      An id nothing answers to — which, for the first second of every load, is any custom theme.
+
+      `installedThemes` comes out of the root dataset asynchronously, so a pinned personal theme is
+      referenced by an id that is not in `allThemes()` yet. This used to answer `light` outright,
+      which is why a refresh went dark (the boot screen, correct), flashed light for a beat as the
+      template resolved, then landed on the pinned theme once its record arrived. The flash was not a
+      loading state; it was a hardcoded guess.
+
+      Answering with the agent's own default instead makes the interval invisible in the common case,
+      because that is the theme the boot screen was already wearing. `light` remains the last resort
+      for an agent who has no default either — there has to be *some* answer, and a wrong one that
+      matches what is already on screen beats a wrong one that does not.
+    */
+    const preferred = datasetStore.agentSettings()?.defaultThemeId ?? getInitialThemeId();
+    return registryToThemeData(isValidThemeKey(preferred) ? preferred : 'light');
   }
 
   /*
@@ -705,10 +1001,38 @@ export function ThemeStoreProvider(props: ParentProps) {
     await datasetStore.updateAgentSettings({ useTemplateTheme: enabled });
   }
 
+  /*
+    `{ equals: false }` so the same role set twice still notifies — see `focusedRole` in the contract.
+  */
+  const [focusedRole, setFocusedRole] = createSignal('', { equals: false });
+  function focusRole(role: string) {
+    setFocusedRole(role);
+  }
+
   function setDefaultTheme(themeId: string) {
     localStorage.setItem(THEME_KEY, themeId);
     setCurrentThemeId(themeId);
     datasetStore.updateAgentSettings({ defaultThemeId: themeId });
+  }
+
+  /**
+   * Choose which theme "Follow system" means on one side of the switch.
+   *
+   * An empty id clears the choice back to the built-in of that polarity, so the control has a way
+   * out that is not "pick the built-in and hope it is still the same theme next release".
+   *
+   * `system` itself is refused rather than sanitised at read time only: a pair naming the thing
+   * being resolved is the one input that cannot be answered, and the resolver's own guard should
+   * not be the only thing standing between a click and a loop.
+   */
+  function setSystemTheme(polarity: 'light' | 'dark', themeId: string) {
+    if (themeId === SYSTEM_THEME_ID) return;
+    const key = polarity === 'dark' ? SYSTEM_DARK_KEY : SYSTEM_LIGHT_KEY;
+    if (themeId) localStorage.setItem(key, themeId);
+    else localStorage.removeItem(key);
+    datasetStore.updateAgentSettings(
+      polarity === 'dark' ? { systemDarkThemeId: themeId } : { systemLightThemeId: themeId },
+    );
   }
 
   async function setThemeInstalled(themeId: string, visible: boolean) {
@@ -745,9 +1069,19 @@ export function ThemeStoreProvider(props: ParentProps) {
    * back to the agent's own theme rather than a light default, so a slow load reads as "not themed
    * yet" instead of flashing white.
    */
-  function replaceTheme(themeId: string) {
-    // Don't disturb an editing preview — it outranks the space theme on both surfaces.
-    if (untrack(() => editingTheme())) return;
+  function replaceTheme(themeId: string, opts?: { explicit?: boolean }) {
+    /*
+      An editing session outranks the space theme on both surfaces, so a recompute must not steal
+      it: walking into a space while editing should keep showing what you are editing.
+
+      A *pick* is the opposite, and the two arrive here by the same door. Without the distinction
+      the theme picker looked broken — it writes the pin, the recompute lands here, the guard drops
+      it, `currentThemeId` never moves, and nothing downstream notices; the editing theme kept
+      masking `documentTheme` and the picker appeared stuck on it. Told which it is, an explicit
+      choice moves `currentThemeId`, and EditorStore's effect on that ends the session and closes
+      the panel — flushing any debounced edit on the way out.
+    */
+    if (!opts?.explicit && untrack(() => editingTheme())) return;
     setCurrentThemeId(themeId);
   }
 
@@ -763,15 +1097,28 @@ export function ThemeStoreProvider(props: ParentProps) {
     const base = themeId ? allThemes().find((t) => t.id === themeId) : currentTheme();
     if (!base) return;
     clearHistory();
-    const storedOverrides: ThemeOverrides = base.overrides ? JSON.parse(base.overrides) : {};
+    const storedOverrides: ThemeOverrides = parseOverrides(base.overrides);
     let initialOverrides: ThemeOverrides;
     if (themeScope() === 'scoped') {
-      // documentElement has the personal theme in scoped mode, not the space theme being edited.
-      // Temporarily apply the editing base so populateMissingOverrides reads the right computed
-      // values. Nothing restores it here: `setEditingTheme` below moves `documentTheme`, and its
-      // effect rewrites documentElement before the browser paints.
-      applyThemeToDOM(base);
-      initialOverrides = populateMissingOverrides(storedOverrides);
+      /*
+        In scoped mode documentElement wears the *personal* theme, not the one being edited, so the
+        slider values have to be read from somewhere else.
+
+        A throwaway element carrying the base theme, rather than applying it to the document and
+        hoping something puts it back. That is what this used to do, on the reasoning that
+        `setEditingTheme` moves `documentTheme` and its effect rewrites the document before paint —
+        true in global mode and false here, because in scoped mode `documentTheme` follows
+        `personalTheme`, which has not changed. Nothing re-ran, and the app chrome kept the theme
+        being edited until the scope toggle was flipped twice.
+      */
+      const probe = document.createElement('div');
+      probe.style.cssText = 'position:absolute;width:0;height:0;visibility:hidden;pointer-events:none';
+      for (const [prop, value] of Object.entries(themeParametersToStyle(storedOverrides))) {
+        probe.style.setProperty(prop, value);
+      }
+      document.body.appendChild(probe);
+      initialOverrides = populateMissingOverrides(storedOverrides, probe);
+      probe.remove();
     } else {
       initialOverrides = populateMissingOverrides(storedOverrides);
     }
@@ -784,7 +1131,7 @@ export function ThemeStoreProvider(props: ParentProps) {
     if (!current) return;
     captureSnapshot();
 
-    const existing: ThemeOverrides = current.overrides ? JSON.parse(current.overrides) : {};
+    const existing: ThemeOverrides = parseOverrides(current.overrides);
 
     // Pull mode-defining vars directly from the registry — they are no longer in the CSS
     // files so populateMissingOverrides can't read them from computed style.
@@ -793,9 +1140,20 @@ export function ThemeStoreProvider(props: ParentProps) {
 
     const updated: ThemeOverrides = {
       ...existing,
-      multiplier: presetDefaults.multiplier,
-      subtractor: presetDefaults.subtractor,
+      polarity: presetDefaults.polarity,
+      lightnessFloor: presetDefaults.lightnessFloor,
+      lightnessCeiling: presetDefaults.lightnessCeiling,
     };
+
+    /*
+      Reconcile the surface stack when the preset flips polarity.
+
+      `...existing` carries the author's own role pins forward, which is right for almost all of
+      them. It is wrong for the four surfaces: a stack tuned for dark is not merely stale under a
+      light preset, it is upside down. Choosing Dark and then picking a light base preset left
+      near-black cards under a light theme's near-black text — 1.12:1, three clicks in.
+    */
+    updated.roles = reconcileSurfaces(existing, presetDefaults);
     if (preset) updated.themeName = preset;
     else delete updated.themeName;
 
@@ -814,8 +1172,11 @@ export function ThemeStoreProvider(props: ParentProps) {
     captureSnapshot();
     setEditingTheme((prev) => {
       if (!prev) return prev;
-      const existing: ThemeOverrides = prev.overrides ? JSON.parse(prev.overrides) : {};
-      const merged = { ...existing, ...patch };
+      const existing: ThemeOverrides = parseOverrides(prev.overrides);
+      // Stamped on write, not on read: `parseOverrides` migrates a theme in memory and leaves what
+      // is stored alone, so an installed theme nobody edits is never rewritten under them. The
+      // moment an author does change something, what they save is current.
+      const merged = { ...existing, ...patch, schemaVersion: THEME_SCHEMA_VERSION };
       return { ...prev, overrides: JSON.stringify(merged), isDirty: true };
     });
   }
@@ -856,7 +1217,7 @@ export function ThemeStoreProvider(props: ParentProps) {
       // the source theme's computed CSS (it is already applied to the DOM at this point).
       let initialOverrides: ThemeOverrides | null = null;
       if (source) {
-        const base: ThemeOverrides = source.overrides ? JSON.parse(source.overrides) : {};
+        const base: ThemeOverrides = parseOverrides(source.overrides);
         if (source.origin === 'built-in' && sourceId) base.themeName = sourceId;
         initialOverrides = populateMissingOverrides(base);
       }
@@ -1342,6 +1703,7 @@ export function ThemeStoreProvider(props: ParentProps) {
   }
 
   const store: ThemeStore = {
+    automaticThemes,
     builtInThemes,
     installedThemes,
     spaceThemes,
@@ -1350,6 +1712,7 @@ export function ThemeStoreProvider(props: ParentProps) {
     currentTheme,
     defaultThemeId,
     themeScope,
+    templateThemePending,
     themeScopePreference,
     themeScopeGlobal,
     useTemplateTheme,
@@ -1365,6 +1728,11 @@ export function ThemeStoreProvider(props: ParentProps) {
     applySnapshot,
     setCurrentTheme,
     setDefaultTheme,
+    focusedRole,
+    focusRole,
+    setSystemTheme,
+    systemThemes,
+    systemThemeOptions,
     setThemeInstalled,
     replaceTheme,
     restorePersonalTheme,

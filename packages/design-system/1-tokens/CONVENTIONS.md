@@ -108,6 +108,162 @@ The `scripts/generate-css.ts` script runs as a post-build hook (via tsup). It:
 - `--we-font-size-400`
 - `--we-radius-400`
 
+## Roles vs scale positions
+
+`color.ts` holds the **scale** — `neutral-0` … `neutral-1000`, one ramp per hue. `role.ts` holds the
+**vocabulary**: `surface`, `text-muted`, `border`, `accent-text`, `danger-text`. A scale position says
+which grey; a role says what the colour is *for*.
+
+**Anything with a meaning takes a role.** Every `bg`, `color` and border colour in a template, in the
+app chrome and in a feature module names a role, and `tokenVar('color', …)` resolves role names to
+`--we-role-*` exactly as it resolves scale positions to `--we-color-*`, so they are interchangeable
+at every call site — including inside a border shorthand and behind `$if`.
+
+Two reasons it matters, and only the second is obvious:
+
+1. A role is what a theme can redefine. `ThemeOverrides.roles` pins any of them; the theme editor
+   exposes all of them.
+2. Some relationships **invert** between light and dark and a scale position cannot express that,
+   because the whole ramp flips together. A raised surface gets *lighter* in dark rather than
+   casting a shadow; a rail that must stay darker than its page in both modes cannot be written as
+   `neutral-100` over `neutral-50`. This is the reason roles exist, not a nicety.
+
+**Scale positions remain right for a palette** — a graph's node colours by category, a chart series,
+a user-picked swatch. A node painted `warning-100` because it is a note is not a warning, and
+nothing about a theme should recolour it as one. Those are the only scale positions left in the
+templates, deliberately.
+
+Colours may be written in `oklch()` anywhere a colour is accepted; it is parsed and converted to
+sRGB like any other notation. The *ramps* are still HSL — moving those is a separate decision that
+changes how every theme looks — but an author pasting a value from a modern palette tool should not
+be told it is unparseable, and OKLCH is the space in which a contrast check would like to reason.
+
+When adding a role, give it a parametric default over the scale so every existing theme keeps
+working untouched, and say in its doc comment what relationship it exists to express — if the answer
+is only "a slightly different grey", it is a scale position and does not belong here.
+
+### Four ways to pin one, and what each survives
+
+A theme overrides a role by giving it a value, and *which kind* of value decides how much of the
+theme still reaches it afterwards. In descending order of how much survives:
+
+| Written as | Survives | Use for |
+| --- | --- | --- |
+| unset | everything | the default; the role follows the scale |
+| `var(--we-color-neutral-200)` | hue, saturation, light/dark polarity | "surfaces sit two steps down" — most theme edits mean this |
+| `oklch(22.7% calc(min(var(--we-color-neutral-saturation) * 0.0035, 0.18) * 0.454) var(--we-color-neutral-hue))` | hue and saturation; holds its lightness against a polarity flip | a designed theme whose surface ramp is uneven — `channels`, `timeline` |
+| `color-mix(in srgb, var(--we-role-surface) 88%, var(--we-role-text))` | everything, *including a later change to the role it references* | "a step darker than the surface" — a relationship rather than a value |
+| `oklch(from var(--we-role-page) calc(l + 0.045) c h)` | the same, and stays an even step at any lightness or hue | "one step above the page" — how the elevation stack is written |
+| `#1a1a1e` | nothing | a brand colour that must not move |
+
+The two relative rows are worth reading twice: they are the only forms that express a *relationship*
+rather than a value, so it survives a change to the role it names — and because it mixes toward a
+role that inverts with the theme, "a step darker" in a light theme becomes "a step lighter" in a
+dark one without being told. The secondary button's hover and pressed states are written this way,
+which is why they need no roles of their own.
+
+The `oklch(from …)` row is the stronger of the two and is why the elevation stack is written that
+way. `color-mix` interpolates *between two colours*, so a fixed percentage moves by a share of the
+distance remaining — 8% toward white is 0.4 lightness points from a near-white page and 7 from a
+dark one. `calc(l + n)` in OKLCH moves by a fixed *perceptual* amount instead, which is the only
+thing that means the same in a light theme and a dark one. It also carries `c` and `h` through, so
+a theme that tints its neutrals gets a tinted stack without saying so.
+
+The ramp itself is OKLCH too, for the same reason at a different scale. Under HSL a step was a
+*coordinate*, so the same "500" landed at L* 46 for blue and L* 69 for green — a 39-point swing
+across the hue slider at one nominal step, which meant changing a hue silently changed how heavy the
+accent read, and the three status *text* roles had to sit at three different steps to compensate.
+They share one step now.
+
+> Authoring a theme? See `packages/design-system/2-themes/THEME_AUTHORING.md`, which is the
+> author-facing version of this. What follows is the reasoning underneath it.
+
+### What a theme states
+
+    polarity           'light' | 'dark'   — which end the ramp counts from
+    lightnessFloor     '12%'              — the darkest lightness this theme uses
+    lightnessCeiling   '112%'             — the lightest; may exceed 100, which clamps at white
+    saturation         0–100              — the fraction of the chroma this hue can actually hold
+
+The floor and ceiling are also the contrast control: a narrow span is a soft theme, a full one is
+stark. They replaced `multiplier` (only ever ±1 — a boolean typed as a number) and `subtractor`
+(which meant "reflect and offset", and could only be understood by dragging it).
+
+Two consequences worth knowing when writing a theme by hand:
+
+- **A hue is an OKLCH angle**, which is not the HSL angle for the same colour — 220 (blue) is 263,
+  and 45 (amber) is 90. `migrate.ts` converts stored themes; a number typed fresh is an OKLCH angle.
+- **Saturation is a fraction of what the hue can hold**, measured per theme rather than capped at a
+  constant. sRGB holds very different amounts by hue — at mid lightness a violet reaches chroma
+  0.259 and a teal 0.103 — so a flat ceiling made one number mean different things depending on
+  where the hue slider was. 100 means "as colourful as this hue gets".
+
+### Two scales, and what each actually moves
+
+`fontScale` and `spacingScale` are separate controls, but not symmetrically. The space steps are in
+`rem` and `fontScale` sets the root font size, so **type carries spacing with it** and only the
+reverse is independent: you can make a layout denser without shrinking the text, not the other way
+round. That is deliberate rather than unfinished — rem-based spacing is what respects a reader's own
+font-size preference, and cutting that tie to gain symmetry would trade an accessibility property
+for a tidier API. To scale type alone, set both.
+
+There is no `radiusScale` to match them, also deliberately: radius does not scale usefully by a
+ratio — doubling a 2px radius and a 16px one produces two different design decisions — which is why
+shape is offered as four groups and a set of presets instead.
+
+### Wide-gamut displays
+
+The ceiling is measured against Display P3 when the screen reports it, and sRGB otherwise. That is
+worth ~36% more chroma for a green and ~34% for a teal, and it costs nothing on an older display —
+the ceiling is simply where it always was. Deliberately not a `@media (color-gamut: p3)` block: the
+ceiling depends on the theme's hue, which CSS cannot compute, so a static block could only carry a
+flat number — the exact thing per-hue normalisation exists to remove.
+
+### Colour-vision deficiency
+
+Red and green at the same lightness are the same colour to about one man in twelve, and no choice of
+hue fixes that for a palette built on red and green. The standard (WCAG 1.4.1) asks for redundancy
+rather than separability, and that is what the system provides: every status variant carries its own
+icon, asserted in `@we/primitives` beside the component that provides it.
+
+The theme editor *reports* when a theme's `danger` and `success` converge under deuteranopia, as
+advice rather than a failure — an author dragging `successHue` toward `dangerHue` is making it worse
+with no other feedback.
+
+### Components the design system does not ship
+
+A feature module can register its own components into the theme cascade with
+`registerComponentCascade(name, { radiusGroup, paddingGroup, gapGroup })`, so a theme that squares
+off its surfaces reaches them too. Call it before the component first renders; the cascade is read
+while a component's styles are built, and a later registration has no effect on what is already on
+screen. Without this a module's only options were to borrow a core group whose meaning did not fit
+or to hardcode — and a hardcode is invisible to every theme written afterwards.
+
+### Contrast is checked twice
+
+WCAG 2 **and** APCA, with the stricter governing. WCAG 2 stays because it may be the compliance
+obligation; APCA is there because WCAG 2 adds a flat 0.05 to both sides of its ratio, which
+dominates the denominator against a near-black background — so dark themes score far better than
+they read. Every dark built-in passed WCAG 2 and failed APCA.
+
+Which is why six foregrounds are **derived rather than pinned**: `textMuted`, `textFaint`,
+`accentText` and the three status texts keep their hue and walk their lightness away from their
+background until they clear. A fixed step cannot serve both polarities — the step that reads in the
+dark is wrong in the light — and pinning one per theme is what the derivation replaced.
+
+A filled control (`accent`, `danger`, `success`, `warning`) has to sit **away from the middle of its
+theme's ramp**, or no label reads on it at either end. Where the middle falls depends on the range,
+which is why two themes pin their way out of it.
+
+The last row is the only one that really leaves the system, and it is the one a colour picker
+produces by default — which is why `we-color-picker` opens on the **token grid** when `tokens` is
+set, and why the theme editor names the rung each role is on rather than showing a swatch and
+leaving you to guess.
+
+Two roles are deliberately written the third way in `role.ts` itself: `surfaceInverse` and
+`onInverse`. A tooltip has to stay opposite to the page in *both* polarities, and no expression
+over the scale can do that, because the whole ramp inverts together.
+
 ## Runtime Consumption
 
 Tokens are consumed at runtime via two mechanisms in `@we/design-utils`:

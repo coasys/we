@@ -53,13 +53,54 @@ export const hostDockStores: Record<string, Record<string, unknown>> = {};
 
 const entries = new Map<string, DockEntry>();
 
+/**
+ * Registration is observable, because a plain object cannot be depended on.
+ *
+ * A dock names its `edge` as a *string key* into a store, and the shell resolves it by looking that
+ * store up in `hostDockStores` and calling the accessor. When the store is not there yet the lookup
+ * yields nothing — and, crucially, the memo doing the looking never touches the accessor, so it
+ * registers no dependency on it and has nothing to re-run for. It cannot recover on its own.
+ *
+ * That is not hypothetical ordering paranoia: `ShellStoreProvider` wraps `EditorStoreProvider`, so
+ * the shell's dock geometry is computed before the editor store exists. The theme panel could not be
+ * opened at all — its flag went true, the memo never re-read the edge, and no amount of clicking or
+ * reloading helped. Opening any *other* panel fixed it, because that changed something the memo did
+ * depend on, and the re-run finally found the editor's store.
+ *
+ * Framework-neutral on purpose: this file is shared, so it publishes a subscription and lets the
+ * host turn it into whatever reactive primitive it uses.
+ */
+const listeners = new Set<() => void>();
+function announce(): void {
+  for (const listener of listeners) listener();
+}
+
+/** Subscribe to registration changes. Returns an unsubscribe. */
+export function onDockRegistryChanged(listener: () => void): () => void {
+  listeners.add(listener);
+  return () => listeners.delete(listener);
+}
+
+/** Publish a host store the dock entries can name — see `hostDockStores`. */
+export function registerHostDockStore(id: string, store: Record<string, unknown>): void {
+  hostDockStores[id] = store;
+  announce();
+}
+
+export function unregisterHostDockStore(id: string): void {
+  delete hostDockStores[id];
+  announce();
+}
+
 export const dockRegistry = {
   register(entry: DockEntry): void {
     entries.set(entry.id, entry);
+    announce();
   },
 
   remove(id: string): void {
     entries.delete(id);
+    announce();
   },
 
   get(id: string): DockEntry | undefined {
@@ -133,8 +174,8 @@ export function dockFrame(entry: DockEntry, node: SchemaNode): SchemaNode {
               // The panel's own surface. A module's node fills it and need not paint a background, a
               // border or a radius of its own — which is what stops two docked modules from looking
               // like two different applications.
-              bg: 'neutral-0',
-              border: '1px solid neutral-200',
+              bg: 'surface-sunken',
+              border: '1px solid border',
               // Rounded and lifted only while floating. A card over the app should read as being on
               // top; a panel that has taken room *from* the app meets it edge to edge, where a radius
               // would leave slivers of background in the corners and a shadow would fall on content
@@ -195,8 +236,8 @@ function titleBar(entry: DockEntry): SchemaNode {
       gap: '100',
       px: '200',
       py: '100',
-      bg: 'neutral-50',
-      borderBottom: '1px solid neutral-200',
+      bg: 'page',
+      borderBottom: '1px solid border',
       /*
         Double-click to maximise, the other half of the convention the grip completes.
 
@@ -436,8 +477,8 @@ function insertLines(id: string): SchemaNode {
                   condition: {
                     $eq: [{ $store: 'shellStore.activeInsert' }, { $concat: ['$slot.edge', ':', '$slot.index'] }],
                   },
-                  then: 'primary-500',
-                  else: 'neutral-300',
+                  then: 'accent',
+                  else: 'surface-active',
                 },
               },
               opacity: {
@@ -506,7 +547,7 @@ function snapTargets(id: string): SchemaNode {
               bg: {
                 $if: {
                   condition: { $eq: [{ $store: 'shellStore.activeSnap' }, '$target.id'] },
-                  then: 'primary-100',
+                  then: 'accent-muted',
                   else: 'transparent',
                 },
               },

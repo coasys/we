@@ -112,7 +112,7 @@ function channelRow(opts: ChannelRailOptions, as: string): SchemaNode {
         type: 'Row',
         props: { gap: '200', ay: 'center', minWidth: '0' },
         children: [
-          { type: 'we-icon', props: { name: 'hash', color: 'neutral-400' } },
+          { type: 'we-icon', props: { name: 'hash', color: 'text-faint' } },
           { type: 'we-text', props: { truncate: true }, children: [`$${as}.title`] },
         ],
       },
@@ -122,7 +122,7 @@ function channelRow(opts: ChannelRailOptions, as: string): SchemaNode {
           condition: unread,
           then: {
             type: 'Column',
-            props: { width: '8px', height: '8px', r: 'full', bg: 'primary-500', flex: '0 0 auto' },
+            props: { width: '8px', height: '8px', r: 'full', bg: 'accent', flex: '0 0 auto' },
           },
         },
       },

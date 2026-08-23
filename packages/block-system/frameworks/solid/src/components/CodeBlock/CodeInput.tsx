@@ -40,7 +40,7 @@ export function CodeInput(props: CodeInputProps) {
 
   return (
     <Column class="we-code-block" gap="0">
-      <Row ay="center" p="200" bg="neutral-100" r="300">
+      <Row ay="center" p="200" bg="surface-sunken" r="300">
         <we-select value={language()} options={LANGUAGE_OPTIONS} onChange={handleLanguageChange} size="xs" />
       </Row>
       <we-textarea

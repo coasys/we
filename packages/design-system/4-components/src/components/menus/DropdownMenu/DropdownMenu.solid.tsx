@@ -144,7 +144,7 @@ export function DropdownMenu(props: SolidDropdownMenuProps) {
         </Show>
         <we-text fontSize={metrics().fontSize}>{item.label}</we-text>
         <Show when={checked()}>
-          <we-icon name="check" size="xs" weight="bold" color="primary-500" />
+          <we-icon name="check" size="xs" weight="bold" color="accent" />
         </Show>
       </we-menu-item>
     );
@@ -163,7 +163,7 @@ export function DropdownMenu(props: SolidDropdownMenuProps) {
             on:select={() => !group.disabled && toggleGroup(group.id)}
             opacity={group.disabled ? 0.5 : 1}
             cursor={group.disabled ? 'not-allowed' : 'pointer'}
-            color="neutral-400"
+            color="text-faint"
             prop:hoverProps={{ color: 'neutral-500' }}
           >
             <we-icon name={collapsed() ? 'caret-right' : 'caret-down'} size="xs" />
@@ -173,7 +173,7 @@ export function DropdownMenu(props: SolidDropdownMenuProps) {
 
         {/* Non-collapsible header */}
         <Show when={group.collapsible === false}>
-          <we-menu-item color="neutral-500" cursor="default" pointerEvents="none">
+          <we-menu-item color="text-muted" cursor="default" pointerEvents="none">
             <we-text>{group.label}</we-text>
           </we-menu-item>
         </Show>
@@ -217,7 +217,7 @@ export function DropdownMenu(props: SolidDropdownMenuProps) {
       placement={props.placement || 'bottom'}
       data-we-menu
     >
-      <we-button slot="trigger" size={props.size} bg="neutral-200" color="neutral-800">
+      <we-button slot="trigger" size={props.size} bg="surface-active" color="text">
         <Show when={props.triggerIcon}>
           <we-icon name={props.triggerIcon!} />
         </Show>

@@ -11,7 +11,7 @@ export function CodeDisplay(props: CodeDisplayProps) {
   return (
     <Column class="we-code-block" gap="0">
       <Show when={props.language || props.title}>
-        <Row p="200" bg="neutral-100" r="300">
+        <Row p="200" bg="surface-sunken" r="300">
           <we-text variant="footnote">{props.title || props.language}</we-text>
         </Row>
       </Show>

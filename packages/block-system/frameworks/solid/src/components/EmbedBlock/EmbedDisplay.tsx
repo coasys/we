@@ -16,7 +16,7 @@ export function EmbedDisplay(props: EmbedDisplayProps) {
       <Show
         when={embedUrl()}
         fallback={
-          <we-text variant="footnote" color="neutral-400">
+          <we-text variant="footnote" color="text-faint">
             No embed URL
           </we-text>
         }
@@ -25,7 +25,7 @@ export function EmbedDisplay(props: EmbedDisplayProps) {
           when={props.displayMode !== 'card'}
           fallback={
             <we-link href={embedUrl()} target="_blank" textDecoration="none" color="inherit">
-              <Row gap="300" ay="center" p="300" border="1px solid neutral-200" r="300">
+              <Row gap="300" ay="center" p="300" border="1px solid border" r="300">
                 <we-icon name="link" size="lg" />
                 <we-text>{embedUrl()}</we-text>
               </Row>

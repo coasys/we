@@ -64,7 +64,7 @@ export function swatchRow(options: { current: SchemaProp; pick: (token: string) 
                   r: '200',
                   ax: 'center',
                   ay: 'center',
-                  bg: { $if: { condition: '$swatch.token', then: '$swatch.token', else: 'neutral-0' } },
+                  bg: { $if: { condition: '$swatch.token', then: '$swatch.token', else: 'surface-sunken' } },
                   border: {
                     $if: {
                       condition: { $eq: [options.current, '$swatch.token'] },
@@ -80,7 +80,7 @@ export function swatchRow(options: { current: SchemaProp; pick: (token: string) 
                     type: '$if',
                     props: {
                       condition: { $not: '$swatch.token' },
-                      then: { type: 'we-icon', props: { name: 'x', size: 'xs', color: 'neutral-400' } },
+                      then: { type: 'we-icon', props: { name: 'x', size: 'xs', color: 'text-faint' } },
                     },
                   },
                 ],

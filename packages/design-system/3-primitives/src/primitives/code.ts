@@ -8,13 +8,13 @@ import { DesignSystemElement } from '../shared/design-system-element';
 import sharedStyles from '../shared/styles';
 
 const DEFAULT_PROPS: Partial<DesignSystemProps> = {
-  fontFamily: 'monospace',
+  fontFamily: 'var(--we-font-mono)',
   fontSize: '200',
   r: '300',
 };
 
 const MODE_DEFAULTS: Record<'inline' | 'block', Partial<DesignSystemProps>> = {
-  inline: { display: 'inline', bg: 'neutral-100', color: 'neutral-800', px: '100', py: '50' },
+  inline: { display: 'inline', bg: 'surface-sunken', color: 'text', px: '100', py: '50' },
   block: {
     display: 'block',
     // A block of code reads as a terminal: dark in every theme. Scale tokens can't say
@@ -22,8 +22,8 @@ const MODE_DEFAULTS: Record<'inline' | 'block', Partial<DesignSystemProps>> = {
     // rendered this near-white in dark mode. Pinning the lightness and keeping only
     // hue/saturation parametric holds the terminal look while still tinting with the
     // theme (same move as the dark theme's tooltip inversion).
-    bg: 'hsl(var(--we-color-neutral-hue) var(--we-color-neutral-saturation) 14%)',
-    color: 'hsl(var(--we-color-neutral-hue) var(--we-color-neutral-saturation) 92%)',
+    bg: 'oklch(14% calc(min(var(--we-color-neutral-saturation) * 0.0035, 0.18) * 0.28) var(--we-color-neutral-hue))',
+    color: 'oklch(92% calc(min(var(--we-color-neutral-saturation) * 0.0035, 0.18) * 0.16) var(--we-color-neutral-hue))',
     px: '400',
     py: '300',
   },

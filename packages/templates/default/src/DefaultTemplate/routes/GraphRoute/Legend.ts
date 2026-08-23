@@ -79,14 +79,14 @@ const typeRow: SchemaNode = {
                 r: '100',
                 // Falls back to the neutral every unstyled card is drawn in, so the key never shows
                 // a colour the board is not using.
-                bg: { $if: { condition: colorOf, then: colorOf, else: 'primary-100' } },
-                border: '1px solid neutral-300',
+                bg: { $if: { condition: colorOf, then: colorOf, else: 'accent-muted' } },
+                border: '1px solid border-strong',
               },
             },
             { type: 'we-text', props: { variant: 'label', truncate: true }, children: ['$placement.nodeType'] },
             {
               type: 'we-text',
-              props: { variant: 'footnote', color: 'neutral-500', ml: 'auto' },
+              props: { variant: 'footnote', color: 'text-muted', ml: 'auto' },
               children: [
                 {
                   $count: {
@@ -104,7 +104,7 @@ const typeRow: SchemaNode = {
               type: 'we-icon',
               props: {
                 size: 'xs',
-                color: 'neutral-400',
+                color: 'text-faint',
                 name: {
                   $if: {
                     condition: { $in: ['$placement.nodeType', { $local: 'openTypes' }] },
@@ -209,8 +209,8 @@ export const boardLegend: SchemaNode = {
             maxWidth: '100%',
             // The same surface as the detail panel on the other edge, for the same reason: the
             // canvas paints its own `neutral-0`, so there is nothing lighter to be.
-            bg: 'neutral-25',
-            borderLeft: '1px solid neutral-200',
+            bg: 'surface-raised',
+            borderLeft: '1px solid border',
             shadow: 'lg',
             pointerEvents: 'auto',
           },
@@ -223,7 +223,7 @@ export const boardLegend: SchemaNode = {
                 width: '100%',
                 px: '400',
                 py: '300',
-                borderBottom: '1px solid neutral-100',
+                borderBottom: '1px solid border',
               },
               children: [
                 { type: 'we-text', props: { variant: 'label' }, children: ['Key'] },
@@ -274,7 +274,7 @@ export const boardLegend: SchemaNode = {
                         },
                         else: {
                           type: 'we-text',
-                          props: { variant: 'footnote', color: 'neutral-400' },
+                          props: { variant: 'footnote', color: 'text-faint' },
                           children: ['Nothing placed on this board yet.'],
                         },
                       },

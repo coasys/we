@@ -121,7 +121,7 @@ export function ConditionEditor(props: {
   return (
     <Column gap="200" px="400" py="200">
       <Row ay="center" ax="between" gap="200">
-        <we-text fontSize="100" fontWeight="600" textTransform="uppercase" letterSpacing="0.06em" color="neutral-400">
+        <we-text fontSize="100" fontWeight="600" textTransform="uppercase" letterSpacing="0.06em" color="text-faint">
           {props.label ?? 'Condition'}
         </we-text>
         <Show when={!unsupported()}>
@@ -139,8 +139,8 @@ export function ConditionEditor(props: {
           <Column gap="100">
             <Show when={unsupported()}>
               <Row ay="center" gap="100">
-                <we-icon name="info" size="xs" color="neutral-400" />
-                <we-text fontSize="100" color="neutral-400">
+                <we-icon name="info" size="xs" color="text-faint" />
+                <we-text fontSize="100" color="text-faint">
                   Custom expression — edit as JSON
                 </we-text>
               </Row>
@@ -162,7 +162,7 @@ export function ConditionEditor(props: {
         <Column gap="200">
           <Show when={rows().length > 1}>
             <Row ay="center" gap="200">
-              <we-text fontSize="200" color="neutral-500">
+              <we-text fontSize="200" color="text-muted">
                 Match
               </we-text>
               <we-select
@@ -175,7 +175,7 @@ export function ConditionEditor(props: {
                 ]}
                 on:change={(e: CustomEvent) => setGroupOperator(e.detail === 'or' ? 'or' : 'and')}
               />
-              <we-text fontSize="200" color="neutral-500">
+              <we-text fontSize="200" color="text-muted">
                 of these
               </we-text>
             </Row>
@@ -247,16 +247,16 @@ function ConditionRow(props: {
     <Show
       when={comparison()}
       fallback={
-        <Row ay="center" gap="200" px="200" py="100" bg="neutral-50" r="200">
-          <we-icon name="brackets-curly" size="xs" color="neutral-400" />
-          <we-text flex="1" fontSize="200" color="neutral-500" truncate>
+        <Row ay="center" gap="200" px="200" py="100" bg="surface-sunken" r="200">
+          <we-icon name="brackets-curly" size="xs" color="text-faint" />
+          <we-text flex="1" fontSize="200" color="text-muted" truncate>
             Grouped condition — edit as JSON
           </we-text>
         </Row>
       }
     >
       {(cmp) => (
-        <Column gap="100" p="200" bg="neutral-50" r="200">
+        <Column gap="100" p="200" bg="surface-sunken" r="200">
           <Row ay="center" gap="100">
             <Column flex="1" minWidth="0">
               {/* No text entry on the left: this side names what is being tested, and a

@@ -21,6 +21,10 @@ const CSS_STYLES = css`
     width: 100%;
     height: 100%;
     display: block;
+    /* The DS radius lands on [part='base']; without this the video paints square corners over it.
+       inherit rather than the variable itself so it holds in both the in-flow and the absolutely
+       positioned (fit) case, and follows an r= prop as readily as the theme. */
+    border-radius: inherit;
   }
 
   /*

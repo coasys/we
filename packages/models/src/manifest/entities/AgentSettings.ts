@@ -11,6 +11,21 @@ export const AgentSettings: CoreEntityDef = {
       defaultTemplateId: { type: 'string', predicate: 'we://default_template', default: 'default' },
       currentThemeId: { type: 'string', predicate: 'we://current_theme', default: 'default' },
       defaultThemeId: { type: 'string', predicate: 'we://default_theme', default: 'default' },
+      /**
+       * Which two themes "Follow system" chooses between.
+       *
+       * `system` is not a theme, it is a question, and until now it was a question with only two
+       * possible answers: the built-in `light` and the built-in `dark`. So an agent who had built
+       * their own pair could follow the OS or wear their own themes, never both — and the setting
+       * that looked like it meant "match my machine" quietly meant "match my machine using somebody
+       * else's palette".
+       *
+       * Empty means the built-in of that polarity, which is what every existing agent gets and what
+       * the feature already did. Stored as ids rather than as a resolved theme, because the point of
+       * following is that the answer is given at the moment of use.
+       */
+      systemLightThemeId: { type: 'string', predicate: 'we://system_light_theme', default: '' },
+      systemDarkThemeId: { type: 'string', predicate: 'we://system_dark_theme', default: '' },
       claudeApiKey: { type: 'string', predicate: 'we://claude_api_key', default: '' },
       datasetOrder: { type: 'string', predicate: 'we://dataset_order', default: '' },
       globalSpaceJoined: { type: 'boolean', predicate: 'we://global_space_joined', default: false },

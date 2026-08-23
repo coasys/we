@@ -109,7 +109,7 @@ export function CollapsedContent(props: CollapsedContentProps) {
               'align-items': 'center',
               gap: '4px',
               'border-radius': '6px',
-              color: 'var(--we-color-neutral-500)',
+              color: 'var(--we-role-text-muted)',
               'font-size': 'var(--we-font-size-300)',
             }}
           >

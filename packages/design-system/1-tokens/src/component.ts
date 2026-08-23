@@ -24,7 +24,9 @@ export const scrollbar = {
   cornerBackground: 'transparent',
   thumbBoxShadow: 'none',
   thumbBorderRadius: 'var(--we-radius-pill)',
-  thumbBackground: 'var(--we-color-neutral-100)',
+  // The role that names exactly this — see `controlSurface`, whose own documentation lists a
+  // scrollbar thumb. It was the last scale position left in the token layer after the migration.
+  thumbBackground: 'var(--we-role-control-surface)',
 } satisfies Record<ScrollbarToken, string>;
 
 /**

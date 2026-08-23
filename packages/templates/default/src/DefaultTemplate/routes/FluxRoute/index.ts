@@ -6,7 +6,7 @@ import { conversationList } from './ConversationList.ts';
 export const fluxRoute: RouteSchema = {
   path: '/flux',
   type: 'Column',
-  props: { p: '600', gap: '600', bg: 'neutral-50' },
+  props: { p: '600', gap: '600', bg: 'page' },
   children: [
     // Header
     {

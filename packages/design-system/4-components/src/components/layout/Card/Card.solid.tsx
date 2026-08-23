@@ -5,7 +5,7 @@ import type { CardProps } from './Card.types';
 const render = createLayoutComponent<CardProps>({
   defaults: {
     r: 'var(--we-theme-surface-radius, var(--we-radius-400))',
-    p: 'var(--we-theme-surface-spacing, var(--we-space-500))',
+    p: 'var(--we-theme-surface-padding, var(--we-space-500))',
     gap: 'var(--we-theme-surface-gap, var(--we-space-400))',
     shadow: 'var(--we-theme-shadow, none)',
   },

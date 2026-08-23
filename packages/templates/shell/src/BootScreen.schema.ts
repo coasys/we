@@ -2,6 +2,28 @@ import type { OperatorToken, SchemaNode, SchemaProp } from '@we/schema-shared';
 import { field } from '@we/template-kit';
 
 /**
+ * A scale step, rotated off the primary hue.
+ *
+ * Reads the *palette* step and changes only the hue, which is what the pre-OKLCH version did:
+ * `hsl(primary-hue ± 25, saturation, lightness-N)` names the same saturation and lightness the step
+ * itself is built from, so the sweep was always the step, turned. Restating it as literal numbers
+ * lost that — the chroma got a damping factor (0.15 and 0.31) chosen by eye to imitate the old
+ * appearance, and it undershot by a lot: step 200 rotated came out `rgb(70,51,81)`, a grey mauve,
+ * where the original is `rgb(78,36,107)`. Hence a sign-in screen that read as washed-out grey rather
+ * than deep purple.
+ *
+ * Reading `from` the palette variable also inherits the ramp, the chroma taper and the per-hue
+ * normalisation, so a theme that moves its polarity, range or saturation moves this with it — none
+ * of which a hand-built `oklch()` tracks.
+ *
+ * The fields are made soft by `bgImageOpacity` at the call site, not by weakening the colour. That
+ * is the difference between a pale colour and a strong one at low opacity, and only the second one
+ * still looks like the theme.
+ */
+const sweep = (step: '100' | '200', hueOffset: string) =>
+  `oklch(from var(--we-color-primary-${step}) l c calc(h ${hueOffset}))`;
+
+/**
  * The boot screen: the four states a session can be in before the app is usable.
  *
  * Modelled on an OS sign-in screen, because that is the thing it actually is — pick an account,
@@ -37,8 +59,8 @@ import { field } from '@we/template-kit';
  * turned radial — so the screen and the logo are lit by one idea rather than two.
  *
  * Lightness is what differs, and must: at 500 the sweep is a saturated mid-tone, right for a 38px
- * mark and unreadable behind a form. Built from the hue and saturation custom properties, so a
- * theme that moves the primary hue moves this with it.
+ * mark and unreadable behind a form. Built from the scale step rather than from literal numbers, so
+ * a theme that moves its primary hue, polarity or saturation moves this with it.
  *
  * `circle` rather than the default ellipse, so it does not stretch with the window's aspect.
  */
@@ -49,8 +71,8 @@ export const hueSweepBackground = [
   'var(--we-color-neutral-0) 0%,',
   // The sweep is squeezed into the middle of the radius rather than spanning it. Two stops can
   // travel the hue or land on a colour, not both; four buy a clean start and a clean finish.
-  'hsl(calc(var(--we-color-primary-hue) + 25) var(--we-color-saturation) var(--we-color-lightness-100)) 40%,',
-  'hsl(calc(var(--we-color-primary-hue) - 25) var(--we-color-saturation) var(--we-color-lightness-100)) 60%,',
+  `${sweep('100', '+ 25')} 40%,`,
+  `${sweep('100', '- 25')} 60%,`,
   // Named rather than `transparent`. Identical here, since `bg` beneath is the same token — but it
   // says what it means and does not depend on what happens to be painted under it.
   'var(--we-color-neutral-0) 80%)',
@@ -63,11 +85,7 @@ export const hueSweepBackground = [
  * paint white over whatever is beneath, turning soft overlaps into hard crescents.
  */
 const blob = (at: string, size: string, hueOffset: string) =>
-  [
-    `radial-gradient(${size} at ${at},`,
-    `hsl(calc(var(--we-color-primary-hue) ${hueOffset}) var(--we-color-saturation) var(--we-color-lightness-200)) 0%,`,
-    'transparent 70%)',
-  ].join(' ');
+  [`radial-gradient(${size} at ${at},`, `${sweep('200', hueOffset)} 0%,`, 'transparent 70%)'].join(' ');
 
 /**
  * The alternative to `hueSweepBackground`: a few large fields placed by hand rather than one
@@ -103,7 +121,7 @@ function accountBadge(account: string): SchemaNode {
           image: { $store: `${account}.avatar` },
           initials: { $store: `${account}.name` },
           size: '120px',
-          bg: 'primary-100',
+          bg: 'accent-muted',
         },
       },
       {
@@ -191,7 +209,7 @@ const firstRunSplash: SchemaNode = {
       props: { gap: '300', ay: 'center', height: '40px' },
       children: [
         { type: 'we-spinner', props: { size: 'sm' } },
-        { type: 'we-text', props: { fontSize: '400', color: 'neutral-600' }, children: ['Loading...'] },
+        { type: 'we-text', props: { fontSize: '400', color: 'text-muted' }, children: ['Loading...'] },
       ],
     },
   ],
@@ -223,7 +241,7 @@ function accountSwitcher(): SchemaNode {
     type: 'we-button',
     // Deliberately not disabled mid-switch: the fade out and back is its own flicker, and switching
     // again is a reasonable thing to want. The store handles it.
-    props: { variant: 'bare', ax: 'start', p: '300', hoverProps: { bg: 'neutral-25' }, onClick },
+    props: { variant: 'bare', ax: 'start', p: '300', hoverProps: { bg: 'surface-hover' }, onClick },
     children: [
       {
         type: 'Row',
@@ -255,7 +273,7 @@ function accountSwitcher(): SchemaNode {
             '$account.name',
             {
               type: 'we-avatar',
-              props: { image: '$account.avatar', initials: '$account.name', size: 'lg', bg: 'primary-200' },
+              props: { image: '$account.avatar', initials: '$account.name', size: 'lg', bg: 'accent-muted' },
             },
             { $action: 'accountStore.switchAccount', args: ['$account.id'] },
           ),
@@ -273,7 +291,7 @@ function accountSwitcher(): SchemaNode {
           // corner.
           then: tile(
             'New account',
-            { type: 'we-avatar', props: { icon: 'plus', size: 'lg', bg: 'neutral-100' } },
+            { type: 'we-avatar', props: { icon: 'plus', size: 'lg', bg: 'surface-sunken' } },
             { $action: 'accountStore.createAccount' },
           ),
         },
@@ -294,15 +312,15 @@ const welcomeHeading: SchemaNode = {
   type: 'Column',
   props: { gap: '300', ax: 'center', maxWidth: '420px' },
   children: [
-    { type: 'we-text', props: { variant: 'heading-lg', color: 'primary-700' }, children: ['Welcome'] },
+    { type: 'we-text', props: { variant: 'heading-lg', color: 'accent-text' }, children: ['Welcome'] },
     {
       type: 'we-text',
-      props: { fontSize: '500', color: 'neutral-600', textAlign: 'center' },
+      props: { fontSize: '500', color: 'text-muted', textAlign: 'center' },
       children: ['Create an account to get started.'],
     },
     {
       type: 'we-text',
-      props: { color: 'neutral-600', textAlign: 'center' },
+      props: { color: 'text-muted', textAlign: 'center' },
       children: [
         'All your data lives on this device. Only content added to shared spaces is synced with their members.',
       ],
@@ -339,7 +357,7 @@ const creatingAccountState: SchemaNode = {
   props: { gap: '300', ay: 'center' },
   children: [
     { type: 'we-spinner', props: { size: 'sm' } },
-    { type: 'we-text', props: { color: 'neutral-600' }, children: ['Preparing new account...'] },
+    { type: 'we-text', props: { color: 'text-muted' }, children: ['Preparing new account...'] },
   ],
 };
 
@@ -406,7 +424,7 @@ function knownAccountState(account: string): SchemaNode {
         props: { gap: '300', ay: 'center', height: '40px' },
         children: [
           { type: 'we-spinner', props: { size: 'sm' } },
-          { type: 'we-text', props: { color: 'neutral-600' }, children: ['Loading account...'] },
+          { type: 'we-text', props: { color: 'text-muted' }, children: ['Loading account...'] },
         ],
       },
     ],
@@ -429,7 +447,7 @@ const unlockForm: SchemaNode = {
           type: 'Row',
           props: { gap: '300', ay: 'center' },
           children: [
-            { type: 'we-icon', props: { name: 'key', color: 'primary-600' } },
+            { type: 'we-icon', props: { name: 'key', color: 'accent-text' } },
             {
               type: 'we-text',
               props: { variant: 'heading-sm', fontWeight: 'regular' },
@@ -577,7 +595,7 @@ const bootFailure: SchemaNode = {
           type: 'Row',
           props: { gap: '300', ay: 'center' },
           children: [
-            { type: 'we-icon', props: { name: 'warning', color: 'danger-500' } },
+            { type: 'we-icon', props: { name: 'warning', color: 'danger-text' } },
             {
               type: 'we-text',
               props: { variant: 'heading-sm', fontWeight: 'regular' },
@@ -587,7 +605,7 @@ const bootFailure: SchemaNode = {
         },
         {
           type: 'we-text',
-          props: { color: 'neutral-600', textAlign: 'center' },
+          props: { color: 'text-muted', textAlign: 'center' },
           children: ['WE could not connect to the data layer that holds your account.'],
         },
         {
@@ -626,7 +644,7 @@ export const bootScreen: SchemaNode = {
         // Colour beneath, fields above: `bg` emits the `background` shorthand but is assigned
         // before `background-image`, so the two compose. Swap `blobBackground` for
         // `hueSweepBackground` for the concentric version.
-        bg: 'neutral-0',
+        bg: 'surface-sunken',
         bgImage: blobBackground,
         // Not `opacity`, which would take the heading and the form down with the background.
         bgImageOpacity: 0.3,
@@ -764,7 +782,7 @@ export const bootScreen: SchemaNode = {
                               type: 'Row',
                               props: { gap: '300', ay: 'center' },
                               children: [
-                                { type: 'we-icon', props: { name: 'user-plus', color: 'primary-700' } },
+                                { type: 'we-icon', props: { name: 'user-plus', color: 'accent-text' } },
                                 {
                                   type: 'we-text',
                                   props: { variant: 'heading-md', fontWeight: 'regular' },
@@ -792,7 +810,7 @@ export const bootScreen: SchemaNode = {
                                 fontSize: '200',
                                 width: '120px',
                                 height: '120px',
-                                r: 'full',
+                                r: 'avatar',
                                 alignSelf: 'center',
                                 // mb: '100',
                                 onImageChange: { $action: 'profileStore.setPendingAvatar', args: ['$arg'] },

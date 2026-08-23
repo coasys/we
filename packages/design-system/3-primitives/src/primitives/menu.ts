@@ -8,7 +8,7 @@ import sharedStyles from '../shared/styles';
 
 const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   direction: 'column',
-  bg: 'white',
+  bg: 'surface-raised',
   r: '400',
   overflow: 'hidden',
   border: '1px solid var(--we-border-color)',

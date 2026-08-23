@@ -6,7 +6,7 @@
  * readable rules instead of one nested condition. Get the merge wrong and the last rule silently wins
  * everything.
  */
-import type { GraphNode } from '@we/graph-protocol';
+import type { GraphNode, GraphValue } from '@we/graph-protocol';
 import { describe, expect, it } from 'vitest';
 
 import { edgeVisual, matches, nodeVisual, resolveColor, resolveNumber, resolveStyle } from './style';
@@ -82,7 +82,9 @@ describe('style resolution', () => {
 });
 
 describe('field references', () => {
-  const card = (data: Record<string, unknown>): GraphNode => ({ id: 'c', kind: 'entity', type: 'Card', data });
+  // `GraphValue`, not `unknown`: a node's data is what style rules read, and the whole point of the
+  // narrower type is that a rule can resolve a field without a runtime check.
+  const card = (data: Record<string, GraphValue>): GraphNode => ({ id: 'c', kind: 'entity', type: 'Card', data });
 
   it('reads a size and a colour off the node itself', () => {
     const visual = nodeVisual(
@@ -161,7 +163,9 @@ describe('field references', () => {
 
 describe('metric references', () => {
   const metrics = new Map([['degree', new Map([['a', 0.5]])]]);
-  const a = { id: 'a', type: 'Task' };
+  // Typed as the thing it is passed as. Untyped it inferred `{ id, type }`, which satisfies neither
+  // `GraphNode` (no `kind`) nor `GraphEdge` (no ends), and the error named the second.
+  const a: GraphNode = { id: 'a', kind: 'entity', type: 'Task' };
 
   it('maps a metric onto a numeric range', () => {
     expect(resolveNumber({ metric: 'degree', range: [10, 30] }, a, metrics, 12)).toBe(20);

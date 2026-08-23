@@ -43,7 +43,7 @@ const header: SchemaNode = {
             { type: 'we-text', props: { variant: 'heading-sm' }, children: ['$space.name'] },
             {
               type: 'we-text',
-              props: { variant: 'footnote', color: 'neutral-400' },
+              props: { variant: 'footnote', color: 'text-faint' },
               children: [
                 {
                   $if: {
@@ -85,12 +85,12 @@ const header: SchemaNode = {
  */
 const notAWeSpaceNotice: SchemaNode = {
   type: 'Column',
-  props: { gap: '200', p: '400', bg: 'neutral-0', r: '300', border: '1px solid neutral-200' },
+  props: { gap: '200', p: '400', bg: 'surface-sunken', r: '300', border: '1px solid border' },
   children: [
     { type: 'we-text', props: { variant: 'label' }, children: ['Nothing to configure yet'] },
     {
       type: 'we-text',
-      props: { variant: 'footnote', color: 'neutral-400' },
+      props: { variant: 'footnote', color: 'text-faint' },
       children: ['This dataset was synced in from another app and has no WE space in it. Open it to initialize one.'],
     },
   ],
@@ -119,7 +119,7 @@ const communitySection: SchemaNode = {
     condition: '$space.canAdminister',
     then: {
       type: 'Column',
-      props: { gap: '300', p: '400', bg: 'neutral-0', r: '300', border: '1px solid neutral-200' },
+      props: { gap: '300', p: '400', bg: 'surface-sunken', r: '300', border: '1px solid border' },
       $localState: {
         editName: { type: 'string', initial: '$space.name' },
         editDescription: { type: 'string', initial: '$space.description' },
@@ -133,7 +133,7 @@ const communitySection: SchemaNode = {
             { type: 'we-text', props: { variant: 'label' }, children: ['Community'] },
             {
               type: 'we-text',
-              props: { variant: 'footnote', color: 'neutral-400' },
+              props: { variant: 'footnote', color: 'text-faint' },
               children: ['Changes here are visible to everyone in this space.'],
             },
           ],
@@ -191,7 +191,7 @@ const moduleStatus: SchemaNode = {
     condition: { $and: ['$mod.enabled', { $not: '$mod.installed' }] },
     then: {
       type: 'we-text',
-      props: { variant: 'footnote', color: 'warning-600' },
+      props: { variant: 'footnote', color: 'warning-text' },
       children: ['Run here, but not installed for you — turn it on in Settings → Modules.'],
     },
     else: {
@@ -200,7 +200,7 @@ const moduleStatus: SchemaNode = {
         condition: { $and: ['$mod.installed', { $not: '$mod.enabled' }] },
         then: {
           type: 'we-text',
-          props: { variant: 'footnote', color: 'neutral-400' },
+          props: { variant: 'footnote', color: 'text-faint' },
           children: ['Not run in this space.'],
         },
       },
@@ -221,7 +221,7 @@ const shareSection: SchemaNode = {
     condition: '$space.shareLink',
     then: {
       type: 'Column',
-      props: { gap: '300', p: '400', bg: 'neutral-0', r: '300', border: '1px solid neutral-200' },
+      props: { gap: '300', p: '400', bg: 'surface-sunken', r: '300', border: '1px solid border' },
       children: [
         {
           type: 'Column',
@@ -230,7 +230,7 @@ const shareSection: SchemaNode = {
             { type: 'we-text', props: { variant: 'label' }, children: ['Invite'] },
             {
               type: 'we-text',
-              props: { variant: 'footnote', color: 'neutral-400' },
+              props: { variant: 'footnote', color: 'text-faint' },
               children: ['Anyone with this link can open the space and choose to join it.'],
             },
           ],
@@ -246,7 +246,7 @@ const shareSection: SchemaNode = {
                 flex: '1',
                 truncate: true,
                 p: '200',
-                bg: 'neutral-50',
+                bg: 'surface-sunken',
                 r: '200',
                 styles: { 'word-break': 'break-all' },
               },
@@ -284,7 +284,7 @@ const shareSection: SchemaNode = {
  */
 const personalAppearanceSection: SchemaNode = {
   type: 'Column',
-  props: { gap: '300', p: '400', bg: 'neutral-0', r: '300', border: '1px solid neutral-200' },
+  props: { gap: '300', p: '400', bg: 'surface-sunken', r: '300', border: '1px solid border' },
   children: [
     {
       type: 'Column',
@@ -293,7 +293,7 @@ const personalAppearanceSection: SchemaNode = {
         { type: 'we-text', props: { variant: 'label' }, children: ['Appearance, for you'] },
         {
           type: 'we-text',
-          props: { variant: 'footnote', color: 'neutral-400' },
+          props: { variant: 'footnote', color: 'text-faint' },
           children: ['How this space looks when you open it. Only you see these.'],
         },
       ],
@@ -351,7 +351,7 @@ const moduleRow: SchemaNode = {
             { type: 'we-text', props: { variant: 'label' }, children: ['$mod.name'] },
             {
               type: 'we-text',
-              props: { variant: 'footnote', color: 'neutral-400' },
+              props: { variant: 'footnote', color: 'text-faint' },
               children: ['$mod.description'],
             },
             moduleStatus,
@@ -369,7 +369,7 @@ const moduleRow: SchemaNode = {
           type: 'Column',
           props: { gap: '100', ax: 'center' },
           children: [
-            { type: 'we-text', props: { variant: 'footnote', color: 'neutral-400' }, children: ['For me'] },
+            { type: 'we-text', props: { variant: 'footnote', color: 'text-faint' }, children: ['For me'] },
             {
               type: 'we-switch',
               props: {
@@ -393,7 +393,7 @@ const moduleRow: SchemaNode = {
           type: 'Column',
           props: { gap: '100', ax: 'center' },
           children: [
-            { type: 'we-text', props: { variant: 'footnote', color: 'neutral-400' }, children: ['For everyone'] },
+            { type: 'we-text', props: { variant: 'footnote', color: 'text-faint' }, children: ['For everyone'] },
             {
               type: 'we-switch',
               props: {
@@ -415,7 +415,7 @@ const moduleRow: SchemaNode = {
 
 const modulesSection: SchemaNode = {
   type: 'Column',
-  props: { gap: '200', p: '400', bg: 'neutral-0', r: '300', border: '1px solid neutral-200' },
+  props: { gap: '200', p: '400', bg: 'surface-sunken', r: '300', border: '1px solid border' },
   children: [
     {
       type: 'Column',
@@ -424,7 +424,7 @@ const modulesSection: SchemaNode = {
         { type: 'we-text', props: { variant: 'label' }, children: ['Modules'] },
         {
           type: 'we-text',
-          props: { variant: 'footnote', color: 'neutral-400' },
+          props: { variant: 'footnote', color: 'text-faint' },
           children: [
             {
               $if: {
@@ -454,7 +454,7 @@ const modulesSection: SchemaNode = {
  */
 const autoInterpretSection: SchemaNode = {
   type: 'Column',
-  props: { gap: '200', p: '400', bg: 'neutral-0', r: '300', border: '1px solid neutral-200' },
+  props: { gap: '200', p: '400', bg: 'surface-sunken', r: '300', border: '1px solid border' },
   children: [
     {
       type: 'Row',
@@ -467,7 +467,7 @@ const autoInterpretSection: SchemaNode = {
             { type: 'we-text', props: { variant: 'label' }, children: ['Extract from calls automatically'] },
             {
               type: 'we-text',
-              props: { variant: 'footnote', color: 'neutral-400' },
+              props: { variant: 'footnote', color: 'text-faint' },
               children: [
                 {
                   $if: {

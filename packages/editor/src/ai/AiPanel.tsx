@@ -30,7 +30,14 @@ export function AiPanel() {
 
   return (
     <Column
-      bg="neutral-25"
+      /*
+        No background of its own: the dock frame paints the panel's surface.
+
+        Every dock is wrapped in a frame that sets `surface-sunken`, precisely so a docked panel does
+        not have to decide what it is made of — see the note in dockRegistry.ts. The editor's panels
+        painted `surface-raised` over the top of it, ten lightness points above the page, so they read
+        as a different material from every module panel docked at the same edge.
+      */
       width="100%"
       height="100%"
       borderLeft={`1px solid ${tokenVar('color', 'ui-200')}`}
@@ -72,17 +79,11 @@ export function AiPanel() {
 
       {/* API Key Setup */}
       <Show when={!session.apiKeyConfigured()}>
-        <Column
-          gap="200"
-          p="400"
-          bg="neutral-50"
-          borderBottom={`1px solid ${tokenVar('color', 'ui-200')}`}
-          flexShrink="0"
-        >
-          <we-text fontSize="300" fontWeight="600" color="neutral-700">
+        <Column gap="200" p="400" bg="surface" borderBottom={`1px solid ${tokenVar('color', 'ui-200')}`} flexShrink="0">
+          <we-text fontSize="300" fontWeight="600" color="text">
             Claude API Key
           </we-text>
-          <we-text fontSize="200" color="neutral-500">
+          <we-text fontSize="200" color="text-muted">
             Enter your Anthropic API key to enable AI chat. The key is stored locally in your agent settings.
           </we-text>
           <Row gap="200">
@@ -91,7 +92,7 @@ export function AiPanel() {
               value={apiKeyInput()}
               placeholder="sk-ant-..."
               size="sm"
-              bg="neutral-0"
+              bg="surface"
               flex="1"
               on:input={(e: CustomEvent) => setApiKeyInput(e.detail)}
               on:keydown={(e: CustomEvent) => {
@@ -233,7 +234,7 @@ function MessageBubble(props: { message: ChatMessage; isStreaming?: boolean; str
         <we-markdown content={displayContent()} markdownGap="400" />
       </Show>
       <Show when={props.message.status === 'error'}>
-        <we-text fontSize="300" color="danger-500" mt="4px">
+        <we-text fontSize="300" color="danger-text" mt="4px">
           Failed to send
         </we-text>
       </Show>

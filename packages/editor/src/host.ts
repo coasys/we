@@ -74,6 +74,15 @@ export interface ThemePort {
 
   editingTheme: () => EditorEditingTheme | null;
   startEditing: (themeId?: string) => void;
+  /**
+   * The role the panel should reveal, kebab-case, or empty.
+   *
+   * `startEditing` opens the editor; this says what you came for. The inspector's role readout is
+   * the caller that needs it — its whole gesture is "this colour is wrong, take me to it", and
+   * landing at the top of a panel of forty roles is a worse answer than not offering the jump.
+   */
+  focusedRole: () => string;
+  focusRole: (role: string) => void;
   createAndStartEditing: (
     name: string,
     icon: string,

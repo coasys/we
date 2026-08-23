@@ -11,7 +11,7 @@ import type { ComponentSize, ComponentVariant } from '../types';
 const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   display: 'flex',
   r: 'pill',
-  bg: 'neutral-200',
+  bg: 'control-surface',
 };
 
 const VARIANT_COLORS: Record<ComponentVariant, string> = {

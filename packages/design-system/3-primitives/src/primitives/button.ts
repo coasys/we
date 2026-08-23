@@ -22,40 +22,62 @@ const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   // a fixed token, matching we-input, so a theme restyles both together and we-form-field's
   // danger-state override reaches buttons nested inside it.
   focusProps: { ring: '0 0 0 2px var(--we-ring-color)' },
-  disabledProps: { cursor: 'default', opacity: 0.5 },
+  disabledProps: { cursor: 'default', opacity: 'var(--we-theme-disabled-opacity, 0.5)' },
 };
 
 const VARIANT_DEFAULTS: Record<ButtonVariant, Partial<DesignSystemProps>> = {
   primary: {
-    bg: 'primary-500',
-    color: 'neutral-0',
-    hoverProps: { bg: 'primary-600', color: 'neutral-0' },
-    activeProps: { bg: 'primary-700', color: 'neutral-0' },
+    bg: 'accent',
+    color: 'on-accent',
+    hoverProps: { bg: 'accent-hover', color: 'on-accent' },
+    activeProps: { bg: 'accent-active', color: 'on-accent' },
   },
+  /*
+    The ladder by mixing, not by two more roles.
+
+    A filled neutral control needs three steps and the vocabulary has a role for the first. Naming
+    the other two would mean roles ("secondary button, pressed") nobody would ever pin, and leaving
+    them on the scale meant the rest state followed a theme's pin while hover jumped somewhere else.
+    Mixing toward `text` gives both, and because `text` inverts with the theme the same expression
+    darkens in a light theme and lightens in a dark one. The percentages reproduce the neutral-300
+    and neutral-400 that were here to within a point.
+  */
   secondary: {
-    bg: 'neutral-200',
-    color: 'neutral-800',
-    hoverProps: { bg: 'neutral-300', color: 'neutral-900' },
-    activeProps: { bg: 'neutral-400', color: 'neutral-900' },
+    bg: 'control-surface',
+    color: 'text',
+    hoverProps: { bg: 'color-mix(in srgb, var(--we-role-control-surface) 88%, var(--we-role-text))', color: 'text' },
+    activeProps: { bg: 'color-mix(in srgb, var(--we-role-control-surface) 76%, var(--we-role-text))', color: 'text' },
   },
   ghost: {
     bg: 'transparent',
-    color: 'neutral-700',
-    hoverProps: { bg: 'neutral-100', color: 'neutral-900' },
-    activeProps: { bg: 'neutral-200', color: 'neutral-900' },
+    color: 'text',
+    hoverProps: { bg: 'surface-hover', color: 'text' },
+    activeProps: { bg: 'control-surface', color: 'text' },
   },
+  /*
+    On the `danger` role, which exists now.
+
+    It was on the scale for a long time, with a comment arguing that a status fill had no role and
+    that `danger-500` stayed themeable through `dangerHue`. That was true and not enough: it meant a
+    theme could restyle the primary button completely and could not say anything about the
+    destructive one beyond its hue. Hover and pressed stay on the scale deliberately — they are
+    steps *from* the fill, and giving each its own role would add two more things to keep in sync
+    for a state nobody themes separately.
+  */
   danger: {
-    bg: 'danger-500',
-    color: 'neutral-0',
-    hoverProps: { bg: 'danger-600', color: 'neutral-0' },
-    activeProps: { bg: 'danger-700', color: 'neutral-0' },
+    bg: 'danger',
+    color: 'on-danger',
+    // Steps from the fill, not positions on the scale — see `accentHover` in @we/tokens for why:
+    // the label is chosen against the worst of the three states, so they have to stay together.
+    hoverProps: { bg: 'var(--we-role-danger-hover)', color: 'on-danger' },
+    activeProps: { bg: 'var(--we-role-danger-active)', color: 'on-danger' },
   },
   outline: {
     bg: 'transparent',
-    color: 'neutral-700',
-    border: '1px solid var(--we-color-neutral-300)',
-    hoverProps: { bg: 'neutral-100', color: 'neutral-900', border: '1px solid var(--we-color-neutral-500)' },
-    activeProps: { bg: 'neutral-200', color: 'neutral-900', border: '1px solid var(--we-color-neutral-500)' },
+    color: 'text',
+    border: '1px solid var(--we-role-border)',
+    hoverProps: { bg: 'surface-hover', color: 'text', border: '1px solid var(--we-role-border-strong)' },
+    activeProps: { bg: 'control-surface', color: 'text', border: '1px solid var(--we-role-border-strong)' },
   },
   // The appearance-free member of the scale: button semantics, no chrome. For wrapping arbitrary
   // content in a real <button> — the styling then lives on the wrapped Column/Card, which is

@@ -19,11 +19,11 @@ const DEFAULT_PROPS: Partial<DesignSystemProps> = {
 };
 
 const VARIANT_DEFAULTS: Record<ComponentVariant, Partial<DesignSystemProps>> = {
-  neutral: { bg: 'neutral-100', color: 'neutral-700' },
-  primary: { bg: 'primary-100', color: 'primary-700' },
-  success: { bg: 'success-100', color: 'success-700' },
-  warning: { bg: 'warning-100', color: 'warning-700' },
-  danger: { bg: 'danger-100', color: 'danger-700' },
+  neutral: { bg: 'surface-sunken', color: 'text' },
+  primary: { bg: 'accent-muted', color: 'accent-text' },
+  success: { bg: 'success-surface', color: 'success-text' },
+  warning: { bg: 'warning-surface', color: 'warning-text' },
+  danger: { bg: 'danger-surface', color: 'danger-text' },
 };
 
 const styles = css`

@@ -34,7 +34,7 @@ const defaultPickerRow = (opts: {
       ax: 'between',
       p: '300',
       r: '300',
-      bg: { $if: { condition: isDefault, then: 'neutral-200', else: 'neutral-50' } },
+      bg: { $if: { condition: isDefault, then: 'surface-active', else: 'page' } },
     },
     children: [
       {
@@ -146,7 +146,7 @@ export const settingsRoute: RouteSchema = {
             type: 'Column',
             props: { gap: '100' },
             children: [
-              { type: 'we-text', props: { color: 'neutral-700' }, children: ['Name'] },
+              { type: 'we-text', props: { color: 'text' }, children: ['Name'] },
               {
                 type: 'we-form-field',
                 children: [
@@ -174,7 +174,7 @@ export const settingsRoute: RouteSchema = {
             type: 'Column',
             props: { gap: '100' },
             children: [
-              { type: 'we-text', props: { color: 'neutral-700' }, children: ['Description'] },
+              { type: 'we-text', props: { color: 'text' }, children: ['Description'] },
               {
                 type: 'we-form-field',
                 children: [
@@ -495,6 +495,25 @@ export const settingsRoute: RouteSchema = {
               {
                 type: '$each',
                 props: { items: { $store: 'themeStore.builtInThemes' }, as: 'theme' },
+                children: [themeRow],
+              },
+              /*
+                "Follow system" is not one of them — see `automaticThemes` — but it is a choice made
+                in the same place, so it is offered here under its own heading rather than dropped.
+
+                Here it means "this space's default is: follow each member's own system". *Which two
+                themes* that picks between is each member's own setting, and lives in the shell's
+                picker — a control for it in a space's settings would let a community repoint what
+                "Follow system" means for everybody who opened their template.
+              */
+              {
+                type: 'we-text',
+                props: { variant: 'body', fontWeight: 'semibold', textTransform: 'uppercase' },
+                children: ['Automatic'],
+              },
+              {
+                type: '$each',
+                props: { items: { $store: 'themeStore.automaticThemes' }, as: 'theme' },
                 children: [themeRow],
               },
             ],

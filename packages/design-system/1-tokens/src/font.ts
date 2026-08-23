@@ -4,7 +4,7 @@
  */
 
 // Literal union types for font tokens
-export type FontFamilyToken = 'base' | 'mozilla' | 'boldonse';
+export type FontFamilyToken = 'base' | 'mozilla' | 'boldonse' | 'mono';
 export type FontFamilyValue = FontFamilyToken | (string & {});
 export type FontSizeToken = 'base' | '100' | '200' | '300' | '400' | '500' | '600' | '700' | '800' | '900' | '1000';
 export type FontSizeValue = FontSizeToken | (string & {});
@@ -23,6 +23,15 @@ export const fontFamily = {
   base: "'DM Sans', sans-serif",
   mozilla: "'Mozilla Text', serif",
   boldonse: "'Boldonse', serif",
+  /*
+    The code face. A system stack rather than a webfont, so it costs nothing to ship and looks
+    native everywhere; a theme wanting its own monospace overrides `--we-font-mono`.
+
+    It existed only as a fallback before: `we-markdown` and `we-html` both read
+    `var(--we-font-mono, monospace)` for a variable nothing declared, and `we-code` hardcoded
+    `monospace` — so the one face a theme could not change was the one code is set in.
+  */
+  mono: "ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace",
 } satisfies Record<FontFamilyToken, string>;
 
 /**

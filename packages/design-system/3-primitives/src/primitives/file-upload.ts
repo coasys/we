@@ -14,8 +14,8 @@ const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   gap: '300',
   p: '700',
   r: '500',
-  border: '2px dashed var(--we-color-neutral-300)',
-  color: 'neutral-500',
+  border: '2px dashed var(--we-role-border)',
+  color: 'text-muted',
   fontSize: '300',
   cursor: 'pointer',
 };
@@ -29,8 +29,8 @@ const styles = css`
   }
 
   :host([dragover]) [part='base'] {
-    border-color: var(--we-color-primary-500);
-    background: var(--we-color-primary-50);
+    border-color: var(--we-role-accent);
+    background: var(--we-role-accent-muted);
   }
 
   input[part='native'] {
@@ -49,10 +49,10 @@ const styles = css`
     align-items: center;
     gap: var(--we-space-200);
     padding: var(--we-space-100) var(--we-space-200);
-    background: var(--we-color-neutral-50);
+    background: var(--we-role-page);
     border-radius: var(--we-radius-400);
     font-size: 0.875em;
-    color: var(--we-color-neutral-700);
+    color: var(--we-role-text);
   }
 
   [part='remove'] {

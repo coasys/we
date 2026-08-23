@@ -230,7 +230,7 @@ function pageHeader(card: (typeof CTA_CARDS)[0]) {
         type: 'Row',
         props: { ay: 'center', gap: '400' },
         children: [
-          { type: 'we-icon', props: { name: card.icon, size: 'lg', color: 'primary-700' } },
+          { type: 'we-icon', props: { name: card.icon, size: 'lg', color: 'accent-text' } },
           {
             type: 'we-text',
             props: { variant: 'heading-md', textTransform: 'uppercase' },
@@ -266,7 +266,7 @@ function subHeader(text: string, icon?: string) {
       props: { gap: '10px', ay: 'center', mb: '-10px' },
       children: [
         { type: 'we-icon', props: { name: icon, size: '36px', gradient: 'primary' } },
-        { type: 'we-text', props: { variant: 'heading-sm', color: 'primary-700' }, children: [text] },
+        { type: 'we-text', props: { variant: 'heading-sm', color: 'accent-text' }, children: [text] },
       ],
     };
   }
@@ -302,7 +302,7 @@ function bulletItem(text: string) {
 function boxSection(children: SchemaNode['children']) {
   return {
     type: 'Card',
-    props: { bg: 'neutral-100', border: '1px solid var(--we-color-neutral-200)' },
+    props: { bg: 'surface', border: '1px solid var(--we-role-border)' },
     children,
   };
 }
@@ -331,15 +331,15 @@ function ctaCard(card: (typeof CTA_CARDS)[0], imageLeft: boolean) {
             props: {
               name: card.icon,
               size: 'lg',
-              color: 'primary-700',
+              color: 'accent-text',
               // gradient: 'primary',
             },
-          }, // color: 'neutral-500'
+          }, // color: 'text-muted'
           {
             type: 'we-text',
             props: {
               variant: 'heading-md',
-              // color: 'primary-700',
+              // color: 'accent-text',
               // gradient: 'primary',
               textTransform: 'uppercase',
               // letterSpacing: '0.08em',
@@ -377,10 +377,10 @@ function ctaCard(card: (typeof CTA_CARDS)[0], imageLeft: boolean) {
       reverse: !imageLeft,
       wrap: true,
       overflow: 'hidden',
-      border: '1px solid var(--we-color-neutral-200)',
+      border: '1px solid var(--we-role-border)',
       width: '100%',
       p: '0',
-      bg: 'neutral-100',
+      bg: 'surface',
     },
     children: [imageCol, contentCol],
   };
@@ -404,8 +404,8 @@ function roadmapCard(
     type: 'Card',
     props: {
       p: '700',
-      bg: 'neutral-100',
-      border: '1px solid var(--we-color-neutral-200)',
+      bg: 'surface',
+      border: '1px solid var(--we-role-border)',
       width: '100%',
     },
     children: [
@@ -440,8 +440,8 @@ function roadmapItem(item: { title: string; description: string }, status: Roadm
       direction: 'row',
       ay: 'center',
       p: '400',
-      bg: 'neutral-75',
-      border: '1px solid var(--we-color-neutral-200)', //  done ? '1px solid var(--we-color-neutral-200)' : '2px dashed var(--we-color-neutral-400)',
+      bg: 'surface',
+      border: '1px solid var(--we-role-border)', //  done ? '1px solid var(--we-role-border)' : '2px dashed var(--we-color-neutral-400)',
     },
     children: [
       {
@@ -462,7 +462,7 @@ function roadmapItem(item: { title: string; description: string }, status: Roadm
             props: {
               variant: 'subheading',
               fontWeight: 'bold',
-              color: 'primary-700',
+              color: 'accent-text',
               // lineHeight: '1.5',
             },
             children: [item.title],
@@ -482,7 +482,7 @@ function roadmapItem(item: { title: string; description: string }, status: Roadm
 export const landingPageTemplate: TemplateSchema = {
   meta: { name: 'About WE', description: 'What WE is and why it exists', icon: 'info' },
   type: 'Column',
-  props: { width: '100%', minHeight: '100%', bg: 'neutral-50', ax: 'center' },
+  props: { width: '100%', minHeight: '100%', bg: 'page', ax: 'center' },
   children: [
     {
       type: 'Column',
@@ -508,7 +508,7 @@ export const landingPageTemplate: TemplateSchema = {
                     fontSize: '52px',
                     // fontFamily: 'boldonse',
                     fontWeight: 'bold',
-                    color: 'neutral-900',
+                    color: 'text',
                     textAlign: 'center',
                     // lineHeight: '0.8',
                     // letterSpacing: '0.2em',
@@ -535,7 +535,7 @@ export const landingPageTemplate: TemplateSchema = {
                     // fontFamily: 'boldonse',
                     fontSize: '52px',
                     fontWeight: 'bold',
-                    color: 'neutral-900',
+                    color: 'text',
                     textAlign: 'center',
                     // letterSpacing: '0.1em',
                     // textTransform: 'uppercase',
@@ -551,7 +551,7 @@ export const landingPageTemplate: TemplateSchema = {
             //   children: [
             //     {
             //       type: 'we-text',
-            //       props: { fontSize: '50px', fontWeight: 'bold', color: 'neutral-900', textAlign: 'center' },
+            //       props: { fontSize: '50px', fontWeight: 'bold', color: 'text', textAlign: 'center' },
             //       children: [
             //         'Social infrastructure for the ',
             //         {
@@ -565,7 +565,7 @@ export const landingPageTemplate: TemplateSchema = {
             // },
             // {
             //   type: 'we-text',
-            //   props: { fontSize: '50px', fontWeight: 'bold', color: 'neutral-900', textAlign: 'center' },
+            //   props: { fontSize: '50px', fontWeight: 'bold', color: 'text', textAlign: 'center' },
             //   children: ['An open environment for community-built interfaces.'],
             // },
             // {
@@ -573,19 +573,19 @@ export const landingPageTemplate: TemplateSchema = {
             //   children: [
             //     {
             //       type: 'we-text',
-            //       props: { fontSize: '50px', fontWeight: 'bold', color: 'neutral-900', textAlign: 'center' },
+            //       props: { fontSize: '50px', fontWeight: 'bold', color: 'text', textAlign: 'center' },
             //       children: ['An open environment'],
             //     },
             //     {
             //       type: 'we-text',
-            //       props: { fontSize: '50px', fontWeight: 'bold', color: 'neutral-900', textAlign: 'center' },
+            //       props: { fontSize: '50px', fontWeight: 'bold', color: 'text', textAlign: 'center' },
             //       children: ['for community-built interfaces.'],
             //     },
             //   ],
             // },
             // {
             //   type: 'we-text',
-            //   props: { fontSize: '50px', fontWeight: 'bold', color: 'neutral-900', textAlign: 'center' },
+            //   props: { fontSize: '50px', fontWeight: 'bold', color: 'text', textAlign: 'center' },
             //   children: ['The interface layer for the living web'],
             // },
             {
@@ -595,7 +595,7 @@ export const landingPageTemplate: TemplateSchema = {
                 textAlign: 'center',
                 fontWeight: 'medium',
                 mb: '500',
-                color: 'neutral-800',
+                color: 'text',
                 // italic: true,
                 // fontStyle: 'italic',
               },
@@ -610,7 +610,7 @@ export const landingPageTemplate: TemplateSchema = {
             //   type: 'we-text',
             //   props: {
             //     fontSize: '700',
-            //     color: 'neutral-700',
+            //     color: 'text',
             //     textAlign: 'center',
             //     fontWeight: 'medium',
             //     mb: '500',
@@ -631,7 +631,7 @@ export const landingPageTemplate: TemplateSchema = {
                 fontSize: '18px',
                 textAlign: 'center',
                 maxWidth: '800px',
-                color: 'neutral-700',
+                color: 'text',
                 lineHeight: '1.8',
                 italic: true,
               },
@@ -727,10 +727,10 @@ export const landingPageTemplate: TemplateSchema = {
                 },
                 {
                   type: 'we-icon',
-                  props: { name: 'hand-pointing', size: '28px', color: 'neutral-400' },
+                  props: { name: 'hand-pointing', size: '28px', color: 'text-faint' },
                   // styles: { transform: 'rotate(180deg)' },
                 },
-                // { type: 'we-icon', props: { name: 'arrow-down', color: 'neutral-400' } },
+                // { type: 'we-icon', props: { name: 'arrow-down', color: 'text-faint' } },
               ],
             },
           ],
@@ -747,9 +747,9 @@ export const landingPageTemplate: TemplateSchema = {
               front: {
                 type: 'Card',
                 props: {
-                  bg: 'neutral-100',
+                  bg: 'surface',
                   height: '100%',
-                  border: '1px solid var(--we-color-neutral-200)',
+                  border: '1px solid var(--we-role-border)',
                 },
                 children: [
                   { type: 'we-icon', props: { name: card.front.icon, size: 'xl', gradient: 'primary' } },
@@ -759,7 +759,7 @@ export const landingPageTemplate: TemplateSchema = {
                       fontSize: '500',
                       fontWeight: 'semibold',
                       textAlign: 'center',
-                      color: 'neutral-900',
+                      color: 'text',
                       lineHeight: '1.4',
                     },
                     children: [card.front.title],
@@ -769,7 +769,7 @@ export const landingPageTemplate: TemplateSchema = {
                     props: {
                       variant: 'body',
                       fontSize: '200',
-                      color: 'neutral-700',
+                      color: 'text',
                       textAlign: 'center',
                       lineHeight: '1.6',
                     },
@@ -781,21 +781,44 @@ export const landingPageTemplate: TemplateSchema = {
                 type: 'Card',
                 props: { ay: 'center', bg: 'gradient-primary', height: '100%' },
                 children: [
-                  { type: 'we-icon', props: { name: card.back.icon, size: 'xl', color: 'neutral-100' } },
+                  { type: 'we-icon', props: { name: card.back.icon, size: 'xl', color: 'on-accent' } },
                   {
                     type: 'we-text',
                     props: {
                       fontSize: '500',
                       fontWeight: '600',
                       textAlign: 'center',
-                      color: 'neutral-100',
+                      /*
+                        On the accent gradient, not on a surface — so the foreground has to be an
+                        on-fill role, and the two below it are the tiers of that one rather than
+                        text/text-muted, which are measured against the page.
+
+                        Both were `neutral-100`, which the role migration read as "faint text". It
+                        never meant that: a scale position *inverts*, so `neutral-100` was dark in a
+                        dark theme — the dark half of a light-fill/dark-text pair. Read as
+                        text-faint it turns light in a dark theme and measures Lc 8 on this
+                        gradient, which is text that is in the DOM and not on the screen.
+                      */
+                      color: 'on-accent',
                       lineHeight: '1.4',
                     },
                     children: [card.back.title],
                   },
                   {
                     type: 'we-text',
-                    props: { fontSize: '200', textAlign: 'center', color: 'neutral-100', lineHeight: '1.6' },
+                    /*
+                      `on-accent`, the same as the title above it, so size and weight carry the
+                      hierarchy and colour carries none — which is what this card always did.
+
+                      Not `on-accent-muted`, even though a caption under a heading is exactly what
+                      that role is for. It mutes by compositing the label at 0.8 alpha over the
+                      fill, so how much separation it buys depends on how far apart the two already
+                      are: a white label on this gradient drops Lc 72 → 55, a clear tier, while
+                      this theme's near-black label drops Lc 37 → 34, which is not a tier, it is
+                      rounding. Spending contrast to buy a distinction nobody can see is the wrong
+                      trade on a face that is already the low-contrast one.
+                    */
+                    props: { fontSize: '200', textAlign: 'center', color: 'on-accent', lineHeight: '1.6' },
                     children: [card.back.body],
                   },
                 ],
@@ -824,15 +847,15 @@ export const landingPageTemplate: TemplateSchema = {
                 //   children: [
                 //     {
                 //       type: 'we-text',
-                //       props: { fontSize: '600', color: 'neutral-600', textAlign: 'center' },
+                //       props: { fontSize: '600', color: 'text-muted', textAlign: 'center' },
                 //       children: ['Click "learn more" on each card for a deeper dive'],
                 //     },
                 //     {
                 //       type: 'we-icon',
-                //       props: { name: 'hand-pointing', size: '28px', color: 'neutral-400' },
+                //       props: { name: 'hand-pointing', size: '28px', color: 'text-faint' },
                 //       // styles: { transform: 'rotate(180deg)' },
                 //     },
-                //     // { type: 'we-icon', props: { name: 'arrow-down', color: 'neutral-400' } },
+                //     // { type: 'we-icon', props: { name: 'arrow-down', color: 'text-faint' } },
                 //   ],
                 // },
                 {
@@ -926,7 +949,7 @@ export const landingPageTemplate: TemplateSchema = {
                 //   props: {
                 //     name: 'arrow-down',
                 //     // size: 'sm',
-                //     color: 'neutral-500',
+                //     color: 'text-muted',
                 //     // gradient: 'primary',
                 //   },
                 // },
@@ -1066,7 +1089,7 @@ export const landingPageTemplate: TemplateSchema = {
           ],
         },
 
-        { type: 'we-divider', props: { color: 'neutral-200', thickness: '2px', mt: '100px' } },
+        { type: 'we-divider', props: { color: 'text-faint', thickness: '2px', mt: '100px' } },
 
         // For Builders
         {
@@ -1145,7 +1168,7 @@ export const landingPageTemplate: TemplateSchema = {
           ],
         },
 
-        { type: 'we-divider', props: { color: 'neutral-200', thickness: '2px', mt: '100px' } },
+        { type: 'we-divider', props: { color: 'text-faint', thickness: '2px', mt: '100px' } },
 
         // How It Works
         {
@@ -1242,8 +1265,8 @@ export const landingPageTemplate: TemplateSchema = {
               children: BLOCK_TYPES.map((block) => ({
                 type: 'Card',
                 props: {
-                  bg: 'neutral-100',
-                  border: '1px solid var(--we-color-neutral-200)',
+                  bg: 'surface',
+                  border: '1px solid var(--we-role-border)',
                   width: '180px',
                   height: '180px',
                   ay: 'center',
@@ -1293,7 +1316,7 @@ export const landingPageTemplate: TemplateSchema = {
           ],
         },
 
-        { type: 'we-divider', props: { color: 'neutral-200', thickness: '2px', mt: '100px' } },
+        { type: 'we-divider', props: { color: 'text-faint', thickness: '2px', mt: '100px' } },
 
         // See It In Practice
         {

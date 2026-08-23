@@ -9,6 +9,7 @@ import type {
   ValidationRule,
 } from '@we/schema-shared';
 import {
+  applyThemeVars,
   deepUnwrap,
   hasToken,
   markReactive,
@@ -17,7 +18,6 @@ import {
   REACTIVE_ACCESSOR,
   resolveProp,
   resolveQueryProp,
-  themeToStyle,
   validateField,
 } from '@we/schema-shared';
 import { batch, createEffect, createMemo, createSignal, For, JSX, onCleanup, Show } from 'solid-js';
@@ -671,9 +671,32 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
   if (!node.type) {
     const fragment = <>{renderChildren(node.children)}</>;
     if (node.theme) {
-      const style = { display: 'contents' as const, ...themeToStyle(node.theme) };
+      /*
+        Applied, not declared.
+
+        Spreading the parameters into `style` writes a theme's inputs and its role defaults and stops
+        there. Everything that has to be *measured* — the per-hue chroma ceilings, a fill moved until
+        a label fits, the label chosen against where it landed, the corrected foregrounds, which way
+        a hover travels — happens at apply time and needs a real element.
+
+        Left out they do not go missing: custom properties inherit, so a themed node quietly rendered
+        through the *ambient* theme's measurements. A green theme inside a violet app was drawn with
+        the violet's chroma ceilings.
+
+        `display: contents` still generates no box, so this changes nothing about layout — the
+        element exists to carry variables and to be something the derivation can measure against.
+      */
+      const themed = node.theme;
+      let themeEl: HTMLDivElement | undefined;
+      createEffect(() => {
+        if (themeEl) applyThemeVars(themeEl, themed);
+      });
       return (
-        <div style={style} data-we-theme={node.theme.themeName}>
+        <div
+          ref={(el: HTMLDivElement) => (themeEl = el)}
+          style={{ display: 'contents' }}
+          data-we-theme={themed.themeName}
+        >
           {fragment}
         </div>
       );
@@ -1099,11 +1122,10 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
   // but still scopes CSS custom properties. `styles` is the raw-CSS escape hatch — when present
   // the wrapper participates in layout (no display:contents) so transforms, filters, etc. work.
   const wrapperStyle = createMemo(() => {
-    const themeVars = node.theme ? { display: 'contents' as const, ...themeToStyle(node.theme) } : null;
+    // The theme's variables are *applied* to this element below rather than spread in here — see
+    // the effect under `wrapperRef`. Only layout belongs in the style object.
     const ns = node.styles;
-    if (themeVars && ns) return { ...themeVars, ...ns };
-    if (themeVars) return themeVars;
-    if (ns) return ns;
+    if (ns) return node.theme ? { display: 'contents' as const, ...ns } : ns;
     return { display: 'contents' as const };
   });
   const themeAttr = createMemo(() => node.theme?.themeName);
@@ -1116,6 +1138,24 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
     if (visualEditor.enabled && node.id && wrapperRef) {
       return visualEditor.registerNode(node.id, wrapperRef);
     }
+  });
+
+  /*
+    A themed node is *applied*, not declared — the same distinction the document root, the scoped
+    template wrapper, the theme editor's preview and its role swatches all needed.
+
+    Spreading a theme's parameters into a style object writes its inputs and its role defaults and
+    stops there. Everything measured — the per-hue chroma ceilings, a fill moved until a label fits,
+    the label chosen against where it landed, the corrected foregrounds, the direction a hover
+    travels — happens at apply time and needs a real element to measure against.
+
+    Left out, those variables do not go missing: custom properties inherit, so a themed node rendered
+    through the *ambient* theme's measurements. A green theme inside a violet app was drawn with a
+    violet's chroma ceilings.
+  */
+  createEffect(() => {
+    const themed = node.theme;
+    if (themed && wrapperRef) applyThemeVars(wrapperRef, themed);
   });
 
   /**

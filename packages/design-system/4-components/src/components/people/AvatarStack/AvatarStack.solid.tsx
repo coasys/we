@@ -14,6 +14,13 @@ import type { AvatarInfo, AvatarStackProps, AvatarTone } from './AvatarStack.typ
  * lightness there — a black ring around every stacked avatar. Separation is the caller's call to
  * make against the surface they know they are on: pass `ring`, or set `overlap: 0`.
  */
+/*
+  A palette, not the UI's semantics — which is why these stay scale positions.
+
+  `tone` labels an avatar by a category the caller assigns (available, away, busy, …), and a theme
+  pinning `dangerText` means "make my error text this", not "recolour whoever is marked busy". They
+  still follow the hue and polarity parameters, so a retinted theme carries them along.
+*/
 const TONE_RING: Record<AvatarTone, string> = {
   success: '0 0 0 2px var(--we-color-success-500)',
   warning: '0 0 0 2px var(--we-color-warning-500)',
@@ -109,9 +116,12 @@ export function AvatarStack(props: AvatarStackProps) {
             'flex-shrink': '0',
             width: sizeVar(),
             height: sizeVar(),
-            'border-radius': '50%',
-            background: 'var(--we-color-neutral-200)',
-            color: 'var(--we-color-neutral-800)',
+            // The avatar group, not a literal circle: this chip sits in the row *as* one of the
+            // faces, so a theme that squares them off has to square this too or the row ends in an
+            // odd one out. Safe as a percentage for the same reason the avatars are — it is square.
+            'border-radius': 'var(--we-theme-avatar-radius, 50%)',
+            background: 'var(--we-role-control-surface)',
+            color: 'var(--we-role-text)',
             'font-size': 'var(--we-font-size-100)',
             'font-weight': '600',
             'box-shadow': props.ring ?? '',

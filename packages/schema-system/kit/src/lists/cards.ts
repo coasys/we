@@ -72,8 +72,8 @@ export function cardShell(opts: CardShellOptions): SchemaNode {
     },
     type: 'Card',
     props: {
-      bg: 'neutral-100',
-      border: '1px solid neutral-200',
+      bg: 'surface',
+      border: '1px solid border',
       width: '100%',
     },
     children: [

@@ -147,8 +147,8 @@ export function AudioInput(props: AudioInputProps) {
               when={pendingPreviewUrl()}
               fallback={
                 <we-file-upload accept="audio/*" on:change={handleModalFileChange} width="100%">
-                  <we-icon name="music-note" color="neutral-500" size="lg" />
-                  <we-text color="neutral-500" fontSize="400">
+                  <we-icon name="music-note" color="text-muted" size="lg" />
+                  <we-text color="text-muted" fontSize="400">
                     Drop an audio file or click to browse
                   </we-text>
                 </we-file-upload>

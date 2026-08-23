@@ -15,11 +15,11 @@
   pointer-events: auto;
   display: flex;
   flex-direction: column;
-  background-color: var(--we-color-neutral-0);
+  background-color: var(--we-role-surface);
   padding: 10px;
   border-radius: 10px;
   font-family: var(--we-font-family);
-  border: 1px solid var(--we-color-neutral-200);
+  border: 1px solid var(--we-role-border);
   min-width: 250px;
   max-height: min(400px, 60vh);
   overflow-y: auto;
@@ -27,7 +27,7 @@
   .we-block-menu-filter {
     all: unset;
     font-size: var(--we-font-size-200);
-    color: var(--we-color-neutral-900);
+    color: var(--we-role-text);
 
     &::placeholder {
       color: var(--we-color-neutral-300);
@@ -36,7 +36,7 @@
 
   .we-block-menu-empty {
     font-size: var(--we-font-size-200);
-    color: var(--we-color-neutral-400);
+    color: var(--we-role-text-faint);
     padding: 8px;
     text-align: center;
   }
@@ -52,7 +52,7 @@
     padding: 5px 8px;
 
     &.we-block-menu-focused {
-      background-color: var(--we-color-neutral-50);
+      background-color: var(--we-role-page);
     }
   }
 
@@ -60,6 +60,6 @@
     width: 100%;
     height: 1px;
     margin: 10px 0;
-    background-color: var(--we-color-neutral-100);
+    background-color: var(--we-role-surface-sunken);
   }
 }

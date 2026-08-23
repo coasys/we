@@ -86,8 +86,8 @@ export const cardsHeader: SchemaNode = {
         {
           type: 'Search',
           props: {
-            bg: 'neutral-0',
-            border: '1px solid neutral-300',
+            bg: 'surface-sunken',
+            border: '1px solid border-strong',
             placeholder: 'Search…',
             value: { $local: 'searchText' },
             onSearch: { $setLocal: 'searchText', from: '$event' },

@@ -31,7 +31,7 @@ const styles = css`
   }
 
   [part='summary']:hover {
-    color: var(--we-color-neutral-700);
+    color: var(--we-role-text);
   }
   :host([collapsible]) [part='summary']:after {
     top: 50%;
@@ -39,8 +39,8 @@ const styles = css`
     position: absolute;
     display: block;
     content: '';
-    border-right: 1px solid var(--we-color-neutral-500);
-    border-bottom: 1px solid var(--we-color-neutral-500);
+    border-right: 1px solid var(--we-role-border-strong);
+    border-bottom: 1px solid var(--we-role-border-strong);
     width: 4px;
     height: 4px;
     transition: all var(--we-transition-300, 250ms) ease;
@@ -53,7 +53,7 @@ const styles = css`
   [part='title'] {
     text-transform: uppercase;
     font-size: var(--we-font-size-400);
-    color: var(--we-color-neutral-400);
+    color: var(--we-role-text-faint);
     font-weight: 500;
     flex: 1;
     white-space: nowrap;

@@ -805,7 +805,7 @@ Most @we/primitives also accept Design System Props (see next section for detail
 - we-code (DesignSystemElement)
   Props: block: boolean = false
 - we-color-picker (DesignSystemElement)
-  Props: value: string = '#000000', disabled: boolean = false, name: string = '', palette: array = [ '#000000', '#434343', '#666666', '#999999', '#b7b7b7', '#cccccc', '#d9d9d9', '#ffffff', '#980000', '#ff0000', '#ff9900', '#ffff00', '#00ff00', '#00ffff', '#4a86e8', '#0000ff', '#9900ff', '#ff00ff', '#e6b8af', '#f4cccc', '#fce5cd', '#fff2cc', '#d9ead3', '#d0e0e3', '#c9daf8', '#cfe2f3', '#d9d2e9', '#ead1dc', ]
+  Props: value: string = '#000000', disabled: boolean = false, name: string = '', palette: array = [ '#000000', '#434343', '#666666', '#999999', '#b7b7b7', '#cccccc', '#d9d9d9', '#ffffff', '#980000', '#ff0000', '#ff9900', '#ffff00', '#00ff00', '#00ffff', '#4a86e8', '#0000ff', '#9900ff', '#ff00ff', '#e6b8af', '#f4cccc', '#fce5cd', '#fff2cc', '#d9ead3', '#d0e0e3', '#c9daf8', '#cfe2f3', '#d9d2e9', '#ead1dc', ], tokens: boolean = false, alpha: boolean = false
 - we-date-picker (DesignSystemElement)
   Props: value: string = '', showTime: boolean = false, placeholder: string = 'Select date', disabled: boolean = false, name: string = '', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md'
 - we-divider (LayoutElement)
@@ -1237,14 +1237,74 @@ Most @we/primitives inherit **all** layers below. Props use design token values 
 | Token Type | Valid Values |
 |---|---|
 | SpaceValue | "0", "100", "200", "300", "400", "500", "600", "700", "800", "900", "1000" (or CSS length e.g. "16px") |
-| ColorValue | "{hue}-{shade}" where hue = neutral, primary, success, warning, danger and shade = 0, 25, 50, 75, 100, 200–900, 1000. Also "white", "black". (or CSS color) |
-| RadiusValue | "0", "100", "200", "300", "400", "500", "600", "700", "800", "900", "pill", "full" (or CSS length) |
+| ColorValue | A **role** — see the table below — or a scale position "{hue}-{shade}" where hue = neutral, primary, success, warning, danger and shade = 0, 25, 50, 75, 100, 200–900, 1000. Also "white", "black". (or CSS color). **Prefer a role.** |
+| RadiusValue | "0", "100", "200", "300", "400", "500", "600", "700", "800", "900", "pill", "full" (or CSS length). Also two *semantic* values that follow the theme instead of naming a size: "avatar" (circular by default; use for anything square that reads as a profile picture) and "media" (square by default; images, video, embeds). Prefer these on an `EditableImage` or a raw element standing in for one — a pinned "full" or "pill" cannot follow a theme's shape settings. Note "full" is 50%, so it is an ellipse on any box that is not square; reach for "pill" on wide boxes. |
 | ShadowValue | "sm", "md", "lg", "xl" |
 | FontSizeValue | "base", "100", "200", "300", "400", "500", "600", "700", "800", "900", "1000" (or CSS length) |
 | FontFamilyValue | "base" (or CSS font-family) |
 | LineHeightValue | "none", "tight", "snug", "normal", "relaxed", "loose" (or CSS value) |
 | LetterSpacingValue | "tighter", "tight", "normal", "wide", "wider", "widest" (or CSS value) |
 | FontWeightValue | Named tokens: "regular" (400), "medium" (500), "semibold" (600), "bold" (700). Numeric: "100"–"900". CSS pass-through: "light", "normal", "bolder". |
+
+### Semantic Colour Roles — reach for these before a scale position
+
+A scale position says *which grey*. A role says *what the colour is for*, and that is what a theme
+can redesign. Some relationships invert between light and dark — a raised surface gets **lighter**
+in dark rather than casting a shadow — and a scale position cannot express that, because the whole
+scale flips together. Templates written with roles restyle correctly under any theme; templates
+written with `neutral-100` are frozen into one theme's idea of what that grey meant.
+
+Two naming conventions run through the table. A bare noun is a **fill or a foreground in its own
+right** (`surface`, `accent`, `text`). `on<Fill>` is a foreground that sits **on** a
+specific fill and exists to contrast with it (`on-accent`, `on-inverse`) — so `accent-text`
+is the accent *used as* text, and `on-accent` is the text *placed on* the accent. They are
+different colours and the prefix is what tells you which you want.
+
+**Use a role for every `bg`, `color` and border colour.** Reach for a scale position only when the
+colour is a *palette* rather than a meaning — a graph's node colours by category, a chart series,
+a user-chosen swatch.
+
+| Role | Use for |
+|---|---|
+| `page` | The app/route background behind everything. Set it on a template's root node. |
+| `surface` | A card, panel or sheet sitting on the page. |
+| `surface-raised` | Something floating above the page — a popover, a floating bar, a docked rail with a shadow. |
+| `surface-sunken` | A well recessed into a surface — an inset box, a code block, an input trough. |
+| `surface-hover` / `surface-active` | Row and item feedback. Use inside `hoverProps` / `activeProps`. |
+| `control-surface` | The filled neutral of a *control* — a slider or switch track, a progress trough, a scrollbar thumb, a secondary button, a count chip. Not a surface and not a state. |
+| `text` | Primary body and heading text. |
+| `text-muted` | Secondary text — captions, labels, metadata. |
+| `text-faint` | Tertiary text — placeholders, disabled labels, decorative icons. |
+| `surface-inverse` | A surface deliberately opposite to the page — a tooltip. Holds a fixed lightness, so it does *not* flip with the theme. |
+| `on-inverse` | Text or an icon **on top of** `surface-inverse` — a tooltip's own text. **Not** for text on the accent, which is `on-accent`. |
+| `border` | Default borders and dividers. |
+| `border-strong` | Emphasised separation. |
+| `accent` | An accent *fill* — a primary button, a selected disc. |
+| `accent-hover` / `accent-active` | Hover and pressed states of an accent fill. |
+| `on-accent` | Text or an icon **on top of** an accent fill. |
+| `on-accent-muted` | Secondary text on an accent fill — a caption under a heading on an accent panel, or on `gradient-primary`. The `text-muted` of fills, and the **only** correct choice there: `text-muted` and `text-faint` are measured against the *page*, so on a fill they are measured against the wrong thing and can vanish entirely. |
+| `accent-text` | The accent used **as text** — an accented heading or icon on an ordinary surface, where `accent` is often too light to read. |
+| `accent-muted` | An accent-tinted fill — a selected row, a subtle highlight. |
+| `focus` | The focus ring. Rarely set directly; `--we-ring-color` already resolves to it. |
+| `danger-text` / `success-text` / `warning-text` | Status as a **foreground** — an error message, a warning icon, a "connected" tick. |
+| `danger-surface` / `success-surface` / `warning-surface` | The tinted **panel** behind status content. |
+| `overlay` | The scrim behind a modal or drawer. Carries its own alpha. |
+| `shadow-color` | The colour shadows are built from. |
+
+```json
+{ "type": "Column", "props": { "bg": "surface", "border": "1px solid border" }, "children": [
+  { "type": "we-text", "props": { "variant": "heading-md", "color": "text" }, "children": ["Title"] },
+  { "type": "we-text", "props": { "color": "text-muted" }, "children": ["Supporting line"] }
+]}
+```
+
+Roles work anywhere a colour token does, including inside a border shorthand
+(`"1px solid border"`) and behind `$if` (`{ "$if": { "condition": …, "then": "accent-muted", "else": "surface-sunken" } }`).
+
+**Always kebab-case: `"surface-sunken"`, never `"surfaceSunken"`.** The camelCase spelling is the
+TypeScript key of a `ThemeRole`; a schema writes the CSS spelling. Getting it wrong fails silently —
+the value resolves to a variable that does not exist and the element paints nothing at all — so the
+validator rejects it with the right spelling rather than letting it through.
 
 **Layout-only primitives** — these accept only Layout props (not Visual, Flex, Typography, or State):
 we-divider, we-icon, we-menu-group, we-popover, we-spinner, we-tooltip
@@ -1377,7 +1437,7 @@ border.color: 'base', 'strong'
 
 color.base: 'white', 'black'
 
-color.config: 'multiplier', 'subtractor', 'saturation', 'neutralSaturation'
+color.config: 'polarity', 'lightnessFloor', 'lightnessCeiling', 'saturation', 'neutralSaturation'
 
 color.hues: 'neutral', 'primary', 'success', 'warning', 'danger'
 
@@ -1387,7 +1447,7 @@ component.scrollbar: 'width', 'backgroundImage', 'background', 'cornerBackground
 
 componentHeight: 'xs', 'sm', 'md', 'lg', 'xl'
 
-font.family: 'base', 'mozilla', 'boldonse'
+font.family: 'base', 'mozilla', 'boldonse', 'mono'
 
 font.letterSpacing: 'tighter', 'tight', 'normal', 'wide', 'wider', 'widest'
 
@@ -1401,11 +1461,15 @@ layout: 'xs', 'sm', 'md', 'lg'
 
 radius: '0', '100', '200', '300', '400', '500', '600', '700', '800', '900', 'pill', 'full'
 
+RAMP: 'light', 'dark'
+
 shadow: 'sm', 'md', 'lg', 'xl'
 
 size: 'xxs', 'xs', 'sm', 'md', 'lg', 'xl', 'xxl'
 
 space: '0', '100', '200', '300', '400', '500', '600', '700', '800', '900', '1000'
+
+STATE_STEPS: 'light', 'dark'
 
 zIndex: 'dropdown', 'sticky', 'chrome', 'modal', 'popover', 'toast', 'tooltip'
 
@@ -1421,6 +1485,8 @@ AgentSettings extends Ad4mModel:
   - defaultTemplateId: string = 'default' [we://default_template]
   - currentThemeId: string = 'default' [we://current_theme]
   - defaultThemeId: string = 'default' [we://default_theme]
+  - systemLightThemeId: string [we://system_light_theme]
+  - systemDarkThemeId: string [we://system_dark_theme]
   - claudeApiKey: string [we://claude_api_key]
   - datasetOrder: string [we://dataset_order]
   - globalSpaceJoined: boolean = false [we://global_space_joined]
@@ -2229,6 +2295,7 @@ TemplateStore:
 ThemeStore:
 - State:
   - builtInThemes: array of ThemeData objects — built-in registry themes (origin: "built-in", always available)
+  - automaticThemes: array of ThemeData objects — modes that *resolve to* a theme rather than being one, currently just "Follow system". Listed separately because they carry no parameters: the id is answered at the point of use (by asking the OS) and resolves to one of the built-ins. Render them under their own heading, after the themes
   - installedThemes: array of ThemeData objects — user-installed themes from root perspective (origin: "custom" | "marketplace")
   - spaceThemes: array of ThemeData objects — themes stored in the current space perspective (origin: "custom")
   - allThemes: array of ThemeData objects — union of builtInThemes + visible installedThemes + spaceThemes (hidden themes filtered out)
@@ -2238,10 +2305,14 @@ ThemeStore:
   - themeManagementList: ThemeManagementItem[] — flat list of all themes (built-in + all custom) with management metadata (id, name, icon, isBuiltIn, isInstalled, isDefault)
   - editingTheme: unknown
   - operationLoading: string | null — the id of the theme operation currently in flight, namespaced by kind (e.g. 'marketplace-install:<themeId>'), or null when idle. A key rather than a boolean so one row's spinner does not appear on every row — compare it against the row you are rendering
+  - focusedRole: unknown
+  - systemThemes: unknown
+  - systemThemeOptions: unknown
   - themeScope: unknown
   - themeScopePreference: unknown
   - themeScopeGlobal: unknown
   - themeScopePreviewing: unknown
+  - templateThemePending: unknown
   - useTemplateTheme: unknown
   - activeTemplateTheme: unknown
   - saveEditingTheme: unknown
@@ -2250,6 +2321,8 @@ ThemeStore:
   - applySnapshot(): unknown
   - setCurrentTheme(themeId: string): sets and persists the active theme
   - setDefaultTheme(themeId: string): sets the preferred default theme (persists to AgentSettings.defaultThemeId)
+  - focusRole(): unknown
+  - setSystemTheme(): unknown
   - setThemeInstalled(themeId: string, visible: boolean): shows or hides a custom theme in the pickers; does not delete it. Takes the value rather than toggling, so a `we-switch` can pass `$event.detail` straight through
   - previewThemeScope(scope: 'global' | 'scoped' | null): previews a scope for the current theme-editing session without writing the preference; null drops the preview. Cleared when editing ends
   - setThemeScopeGlobal(global: boolean): persists whether a space's theme covers the whole window (true) or only the space's own content (false, the default). Takes a boolean because a switch emits one and a schema cannot map it to a string — `$if` in an action's args resolves at render time, before the event exists
@@ -2506,7 +2579,7 @@ Use literal arrays for fixed/sample data:
   "children": [
     {
       "type": "Column",
-      "props": { "bg": "neutral-0", "r": "400", "border": "1px solid neutral-200", "p": "400", "gap": "300" },
+      "props": { "bg": "surface", "r": "400", "border": "1px solid border", "p": "400", "gap": "300" },
       "children": [
         {
           "type": "Row",
@@ -2651,10 +2724,10 @@ looks identical to a page still loading, and the reader cannot tell which.
       "type": "Column",
       "props": { "ax": "center", "ay": "center", "gap": "200", "p": "600", "width": "100%" },
       "children": [
-        { "type": "we-icon", "props": { "name": "newspaper", "size": "lg", "color": "neutral-400" } },
+        { "type": "we-icon", "props": { "name": "newspaper", "size": "lg", "color": "textFaint" } },
         {
           "type": "we-text",
-          "props": { "color": "neutral-400", "textAlign": "center" },
+          "props": { "color": "textFaint", "textAlign": "center" },
           "children": ["This space doesn't have any posts."]
         }
       ]
@@ -2729,9 +2802,15 @@ placeholder and the grid can never disagree about how many rows there are.
 }
 ```
 
-Use `gradient` on the icon when there is something to do, and a flat `color` (`neutral-300`,
-or `warning`) when there is not — the two read apart at a glance, and a dead end that looks like
-an invitation is worse than one that looks like a dead end.
+Use `gradient` on the icon when there is something to do, and a flat `color` (`text-faint`,
+or `warning-text`) when there is not — the two read apart at a glance, and a dead end that looks
+like an invitation is worse than one that looks like a dead end.
+
+This line used to recommend `neutral-300`, and every gate prompt in the repo copied it. A scale
+position is not frozen — it follows the theme's hue, saturation and polarity — but it cannot follow
+what a theme *decides* a faint foreground is, and the contrast corrections at apply time skip it
+entirely, so nothing ever measures it against what is behind it. Guidance that names a step
+reproduces that in every template written from it.
 
 ### Confirm dialog
 
@@ -2878,7 +2957,7 @@ with the value itself as `$arg`.
       "children": [
         { "type": "we-avatar", "props": { "size": "sm", "image": "$author.avatar", "hash": "$author.did" } },
         { "type": "we-text", "props": { "fontWeight": "semibold" }, "children": ["$author.name"] },
-        { "type": "we-timestamp", "props": { "value": "$post.createdAt", "relative": true, "color": "neutral-500" } }
+        { "type": "we-timestamp", "props": { "value": "$post.createdAt", "relative": true, "color": "textMuted" } }
       ]
     }
   ]
@@ -2955,7 +3034,7 @@ the route's background reaches the edges, the inner holds the measure.
 ```json
 {
   "type": "Card",
-  "props": { "bg": "neutral-100", "border": "1px solid neutral-200" },
+  "props": { "bg": "surfaceSunken", "border": "1px solid border" },
   "children": [
     {
       "type": "Column",
@@ -2981,7 +3060,7 @@ the route's background reaches the edges, the inner holds the measure.
       "type": "Row",
       "props": { "ay": "center", "gap": "400", "py": "100" },
       "children": [
-        { "type": "we-icon", "props": { "name": "globe", "color": "primary-600" } },
+        { "type": "we-icon", "props": { "name": "globe", "color": "accentText" } },
         {
           "type": "Column",
           "props": { "gap": "100" },
@@ -2990,7 +3069,7 @@ the route's background reaches the edges, the inner holds the measure.
               "type": "Row",
               "props": { "gap": "300" },
               "children": [
-                { "type": "we-text", "props": { "fontWeight": "bold", "color": "neutral-700" }, "children": ["Discovery:"] },
+                { "type": "we-text", "props": { "fontWeight": "bold", "color": "text" }, "children": ["Discovery:"] },
                 { "type": "we-text", "props": { "fontWeight": "bold" }, "children": ["Listed"] }
               ]
             },
@@ -3029,7 +3108,7 @@ themselves come from a `$query`.
     "height": "100%",
     "overflow": "hidden",
     "position": "fixed",
-    "bg": "neutral-50",
+    "bg": "page",
     "onMouseEnter": { "$setLocal": "expanded", "value": true },
     "onMouseLeave": { "$setLocal": "expanded", "value": false }
   },
@@ -3251,7 +3330,8 @@ WRONG icon names (Heroicons/Material — do NOT use):
 - "menu" → use "list"
 - All schemas must be valid JSON with property names and string values in double quotes.
 - The meta property at the root is required: { "meta": { "name": "...", "description": "...", "icon": "..." } }
-- Always set `bg: 'neutral-50'` on root-level schema nodes (templates, pages). This ensures proper background in all themes — without it, dark mode renders white backgrounds.
+- Always set `bg: 'page'` on root-level schema nodes (templates, pages). Without a background, dark mode renders white. Use the role, not `neutral-50`: the role is what a theme redefines, and a theme that wants a page darker than its cards cannot say so through a scale position.
+- Colour every `bg`, `color` and border with a **semantic role** — `surface`, `text-muted`, `border`, `accent-text`, `danger-text` — rather than a scale position. See "Semantic Colour Roles" in the Design System Props section for the full table and what each is for. Scale positions are for palettes (a graph's node colours by category, a chart series), not for meanings.
 - Use `we-text`'s `loading` prop for text bound to data that has not arrived — never a hand-authored `$if` + `we-skeleton` beside it. A separate placeholder needs a height nobody can derive from the schema, and any value you measure drifts the moment a theme changes `fontScale` or the type scale. `we-text` sizes its own placeholder from the line it would occupy, so it stays right. Set `loadingWidth` (default `'100%'`) for the one thing the element cannot infer: how wide the absent text would have been.
 - An empty `we-text` already reserves one line, so text that simply arrives late does not shift the layout even without `loading`. Only `inline` text still collapses, which is correct for a run inside a sentence.
 - Distinguish "not loaded yet" from "loaded and empty" when the difference is visible. A condition like `{ $store: 'spaceStore.currentSpace.description' }` is falsy in both cases, so an `else` branch saying "No description" asserts it about a space that has not arrived. Test the container first (`currentSpace`), then its field.
@@ -3417,6 +3497,41 @@ that work directly with AD4M model classes. They do NOT apply to JSON template s
 
 ---
 
+### Rebuilding — scope it to what changed
+
+A full `pnpm build` walks the whole monorepo and takes minutes. Reserve it for the end of a piece of
+work, where the point is to prove the packages still agree. During iteration, rebuild only what you
+touched and what depends on it:
+
+```sh
+pnpm --filter @we/tokens --filter @we/themes build     # a design-token change
+pnpm --filter @we/primitives build                      # a Lit primitive
+```
+
+**Do rebuild, though — a stale `dist` is invisible and wastes more time than the build saves.** Two
+symptoms worth recognising, both of which have happened here:
+
+- *"I changed the source and the app is unchanged."* The package ships a `dist` and it was not
+  rebuilt. Note that packages differ: `@we/template-shell` has no `dist` and is consumed as source,
+  so a change there lands immediately, while `@we/module-call` does — which is how the call bar and
+  the chrome rail, which are meant to match, ended up different colours from one edit.
+- *"The build says it failed but the error names a package I did not touch."* A dependency's types
+  moved. Rebuild the chain in dependency order — tokens, then themes, then schema-shared, then
+  whatever consumes them.
+
+To find what is stale rather than guessing:
+
+```sh
+for d in $(find packages -name dist -maxdepth 3 -type d | grep -v node_modules); do
+  p=$(dirname $d)
+  [ -f "$d/index.js" ] && [ -n "$(find $p/src -newer $d/index.js -name '*.ts*' 2>/dev/null | head -1)" ] && echo "STALE: $p"
+done
+```
+
+Vite caches too. If a rebuilt package still is not picked up by a running dev server, clear
+`node_modules/.vite` in the app and restart it — an `ERR_MODULE_NOT_FOUND` or a "does not provide an
+export named X" for something that plainly is exported is the tell.
+
 ### Running Schema Validation (no build needed)
 
 During codebase work, use the `pnpm validate` script in `schema-system/shared` — it runs
@@ -3496,6 +3611,12 @@ Each package may have a `CONVENTIONS.md` at its root with package-specific rules
 Always read `CONVENTIONS.md` before creating or modifying files in that package.
 
 Key packages with conventions files:
+- `packages/design-system/2-themes/THEME_AUTHORING.md` — **read this before writing or editing a
+  theme.** A theme is an object of numbers, not a stylesheet: polarity plus a lightness range, hues
+  as OKLCH angles (blue is 263, not 220), saturation as a fraction of what the hue can hold, and
+  roles pinned only where the parametric default is wrong. Several roles are *derived at apply time*
+  — foregrounds, fills and interaction states all correct themselves — so pinning them is overruling
+  a measurement, which is occasionally right and usually not.
 - `packages/models/CONVENTIONS.md` — model authoring: entities vs blocks, predicates, @Flag, WeNode, Model.create() pattern
 - `packages/templates/kit/CONVENTIONS.md` — fragment authoring: what belongs in the kit, extraction threshold, options-object API, body style
 

@@ -281,7 +281,7 @@ export default function TemplateProvider() {
 
   const notFoundNode = {
     type: 'Column',
-    props: { ax: 'center', bg: 'neutral-0', p: '500' },
+    props: { ax: 'center', bg: 'surface-sunken', p: '500' },
     children: [{ type: 'we-text', props: { size: '600' }, children: ['Page not found :_('] }],
   };
 

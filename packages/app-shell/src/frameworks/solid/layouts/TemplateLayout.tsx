@@ -41,7 +41,7 @@ import { MemoryRouter, Route, useLocation, useNavigate } from '@solidjs/router';
 import { Column } from '@we/components/solid';
 import { panelResizing } from '@we/editor/runtime';
 import type { TemplateSchema } from '@we/schema-shared';
-import { themeToStyle } from '@we/schema-shared';
+import { applyThemeVars, clearThemeVars, parseOverrides } from '@we/schema-shared';
 import { lazy } from 'solid-js';
 
 const EditorOverlay = lazy(() => import('@we/editor').then((m) => ({ default: m.EditorOverlay })));
@@ -211,34 +211,85 @@ export function TemplateLayout(
   // Scoped space theme — applied to the template content area only.
   // activeTemplateTheme() returns the editing theme (when editing in scoped mode) or the
   // space theme, and null in global mode (template inherits from documentElement).
-  const spaceThemeStyle = createMemo(() => {
+  /*
+    The scoped theme is *applied*, not merely declared.
+
+    This used to spread `themeParametersToStyle(overrides)` into the wrapper's style, which writes the theme's
+    parameters and stops there — no chroma ceilings, no legible fills, no chosen labels, no state
+    directions, no corrected foregrounds. Every one of those is a measurement, and measuring needs a
+    real element, so none of them could happen from a style object.
+
+    The effect was that scoping a theme changed how the template looked. In global mode the template
+    inherits documentElement, which has been through the whole pipeline; scoped, it got the raw
+    parametric values — muted text at Lc 45 instead of 60, and a chroma ceiling falling back to a
+    flat 0.18 for every hue. Toggling the scope switch was supposed to move the *chrome* and instead
+    restyled the content, which is how it was noticed.
+
+    Applying to the wrapper element runs the identical derivation the root gets. The one thing that
+    cannot come from here is the inherited text colour, which is why `color` stays below.
+  */
+  let scopeEl: HTMLElement | undefined;
+  let lastScopedThemeId: string | null = null;
+
+  createEffect(() => {
+    const td = stores.themeStore.activeTemplateTheme();
+    if (!scopeEl) return;
+    /*
+      Hold what is on screen while the answer is still coming.
+
+      A pinned personal theme is referenced by an id whose record loads asynchronously, so for a
+      moment `activeTemplateTheme()` is a *fallback* rather than the theme asked for. Painting it
+      here is what produced the white flash between the boot screen and the pinned theme — the token
+      CSS's `:root` defaults are the light theme, so the fallback is about as visible as a wrong
+      answer can be. Doing nothing leaves the template inheriting the document, which is already
+      wearing something sensible.
+    */
+    if (stores.themeStore.templateThemePending()) return;
+    if (!td) {
+      // Global mode: the wrapper must go back to *inheriting* the document theme. Writing a default
+      // palette here instead would cut it off from the root — see `clearThemeVars`.
+      clearThemeVars(scopeEl);
+      lastScopedThemeId = null;
+      return;
+    }
+    const overrides = parseOverrides(td.overrides);
+    if (isValidThemeKey(td.id) && !overrides.themeName) overrides.themeName = td.id;
+    // Editing keeps the id and changes parameters; switching changes the id. Only the second
+    // cross-fades — the same distinction the document root makes, and for the same reason.
+    const isSwitch = td.id !== lastScopedThemeId;
+    lastScopedThemeId = td.id;
+    applyThemeVars(scopeEl, overrides, { crossFade: isSwitch });
+  });
+
+  const spaceThemeStyle = createMemo((): Record<string, string> => {
     const td = stores.themeStore.activeTemplateTheme();
     if (!td) return {};
-    const overrides = td.overrides ? JSON.parse(td.overrides) : {};
-    if (isValidThemeKey(td.id) && !overrides.themeName) overrides.themeName = td.id;
     return {
-      ...themeToStyle(overrides),
       /**
        * Re-resolve the inherited text colour against this wrapper's own tokens.
        *
-       * The global stylesheet sets `color: var(--we-color-neutral-1000)` on `html, body, #root`.
-       * A custom property is substituted where the declaration lives, so that resolves against
+       * The global stylesheet sets `color: var(--we-role-text)` on `html, body, #root`. A custom
+       * property is substituted where the declaration lives, so that resolves against
        * documentElement — the *personal* theme in scoped mode — and then inherits down as a
        * finished colour. Re-declaring the token on this wrapper does not re-run that substitution,
        * so a light space under a dark personal theme rendered light surfaces with white text on
        * anything that did not set its own colour.
        *
+       * It must name the same thing the global rule does, which is now the role rather than a scale
+       * position — otherwise a space theme pinning `text` would be overridden here by the scale,
+       * for every element that inherits rather than setting its own colour, which is most of them.
+       *
        * `background-color` needs no equivalent: it does not inherit, so the wrapper's own surfaces
        * paint from the tokens it declares.
        */
-      color: 'var(--we-color-neutral-1000)',
+      color: 'var(--we-role-text)',
     };
   });
 
   const spaceThemeName = createMemo(() => {
     const td = stores.themeStore.activeTemplateTheme();
     if (!td) return undefined;
-    const overrides = td.overrides ? JSON.parse(td.overrides) : {};
+    const overrides = parseOverrides(td.overrides);
     return (overrides.themeName as string | undefined) ?? (isValidThemeKey(td.id) ? td.id : undefined);
   });
 
@@ -305,6 +356,8 @@ export function TemplateLayout(
           // present, not conditional on there being a scoped theme: it marks where the edge of the
           // template content is, which is true whether or not anything is currently scoped to it.
           {...{ [THEME_SCOPE_ATTRIBUTE]: '' }}
+          // The element a scoped theme is applied to — see the effect above.
+          ref={(el: HTMLElement) => (scopeEl = el)}
           styles={spaceThemeStyle()}
         >
           {/*

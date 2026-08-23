@@ -13,12 +13,12 @@ const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   ay: 'center',
   px: '300',
   fontSize: '300',
-  bg: 'neutral-50',
+  bg: 'page',
   r: '300',
-  color: 'neutral-1000',
-  hoverProps: { bg: 'neutral-75', ring: '0 0 0 2px var(--we-ring-color, var(--we-color-primary-500))' },
-  activeProps: { bg: 'neutral-75', ring: '0 0 0 2px var(--we-ring-color, var(--we-color-primary-500))' },
-  focusProps: { bg: 'neutral-75', ring: '0 0 0 2px var(--we-ring-color, var(--we-color-primary-500))' },
+  color: 'text',
+  hoverProps: { bg: 'surface-hover', ring: '0 0 0 2px var(--we-ring-color, var(--we-role-focus))' },
+  activeProps: { bg: 'surface-hover', ring: '0 0 0 2px var(--we-ring-color, var(--we-role-focus))' },
+  focusProps: { bg: 'surface-hover', ring: '0 0 0 2px var(--we-ring-color, var(--we-role-focus))' },
 };
 
 const SIZE_DEFAULTS: Record<ComponentSize, Partial<DesignSystemProps>> = {
@@ -98,7 +98,7 @@ const styles = css`
   }
 
   [part='input']::placeholder {
-    color: var(--we-color-neutral-400);
+    color: var(--we-role-text-faint);
   }
 
   /* The reveal toggle sits in the field's own flex row, so it needs no absolute positioning and
@@ -112,7 +112,7 @@ const styles = css`
     margin: 0;
     border: none;
     background: transparent;
-    color: var(--we-color-neutral-500);
+    color: var(--we-role-text-muted);
     cursor: pointer;
     transition:
       color var(--we-transition-200, 150ms) ease,
@@ -120,7 +120,7 @@ const styles = css`
   }
 
   [part='reveal']:hover {
-    color: var(--we-color-neutral-700);
+    color: var(--we-role-text);
   }
 
   [part='reveal']:disabled {

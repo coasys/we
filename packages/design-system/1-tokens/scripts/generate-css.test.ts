@@ -62,9 +62,25 @@ describe('token CSS generation', () => {
       const declaration = new RegExp(`--we-role-${cssName}: (.+);`).exec(css);
       expect(declaration, `role '${name}' is not emitted`).not.toBeNull();
 
-      // Either a scale position or an expression over the hue/saturation variables — never a
-      // literal, which is what makes a role themeable at all.
-      expect(declaration![1], `role '${name}' hardcodes a colour`).toMatch(/^(var\(--we-color-|hsl\(var\(--we-color-)/);
+      /*
+        A scale position, an expression over the theme's variables, or a step from another role —
+        never a literal, which is what makes a role themeable at all.
+
+        Four accepted forms, and the shape of each matters:
+          var(--we-color-…)                        a scale position
+          oklch(<number>% calc(var(--we-color-…     a pinned lightness, parametric chroma and hue
+          oklch(calc(var(--we-…                     a lightness that is itself a variable
+          oklch(from var(--we-role-…                a step from another role
+
+        The third was added for the accent, whose lightness became a theme parameter — it is *more*
+        parametric than the second, not less, so a pattern that only allowed a literal lightness was
+        rejecting the wrong thing. Written as an alternation of prefixes rather than "not a hex",
+        because the failure being guarded against is a role that stops following the theme, and
+        naming the legal shapes is what catches a new way of doing that.
+      */
+      expect(declaration![1], `role '${name}' hardcodes a colour`).toMatch(
+        /^(var\(--we-(color|role)-|oklch\([\d.]+% (calc\(var\(--we-color-|[\d.]+ var\(--we-color-)|oklch\(calc\(var\(--we-|oklch\(from var\(--we-role-)/,
+      );
     }
   });
 

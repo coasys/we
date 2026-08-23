@@ -2,7 +2,7 @@ import type { SchemaNode } from '@we/schema-shared';
 
 export const spaceSidebar: SchemaNode = {
   type: 'Column',
-  props: { flex: '0 0 400px', gap: '200', bg: 'neutral-25' },
+  props: { flex: '0 0 400px', gap: '200', bg: 'surface-raised' },
   children: [
     // Cover image
     {
@@ -33,7 +33,7 @@ export const spaceSidebar: SchemaNode = {
             fit: 'cover',
             width: '120px',
             height: '120px',
-            r: 'pill',
+            r: 'avatar',
             ring: '0 0 0 2px var(--we-ring-color)',
             placeholderIcon: 'users-three',
             uploadLabel: 'Add image',

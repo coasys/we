@@ -139,7 +139,7 @@ export function ImageInput(props: ImageInputProps) {
                 </we-button>
               )}
             </For>
-            <we-divider orientation="vertical" my="300" mx="100" color="neutral-100" />
+            <we-divider orientation="vertical" my="300" mx="100" color="text-faint" />
             <we-button square variant="ghost" onClick={handleDelete}>
               <we-icon name="x" size="xs" />
             </we-button>
@@ -156,8 +156,8 @@ export function ImageInput(props: ImageInputProps) {
             </we-text>
 
             <we-file-upload accept="image/*" on:change={handleModalFileChange} width="100%">
-              <we-icon name="image" color="neutral-500" size="lg" />
-              <we-text color="neutral-500" fontSize="400">
+              <we-icon name="image" color="text-muted" size="lg" />
+              <we-text color="text-muted" fontSize="400">
                 Drop an image or click to browse
               </we-text>
             </we-file-upload>

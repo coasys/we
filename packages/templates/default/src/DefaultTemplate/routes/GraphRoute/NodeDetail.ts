@@ -130,7 +130,7 @@ const cardStyle: SchemaNode = {
       props: { gap: '300', width: '100%' },
       children: [
         { type: 'we-divider' },
-        { type: 'we-text', props: { variant: 'footnote', color: 'neutral-500' }, children: ['Card'] },
+        { type: 'we-text', props: { variant: 'footnote', color: 'text-muted' }, children: ['Card'] },
         swatchRow({
           current: { $local: 'selected.data.boardColor' },
           pick: (token) => setStyle('color', token),
@@ -204,7 +204,7 @@ const fieldRow: SchemaNode = {
   type: 'Column',
   props: { gap: '100', width: '100%' },
   children: [
-    { type: 'we-text', props: { variant: 'footnote', color: 'neutral-500' }, children: ['$field.name'] },
+    { type: 'we-text', props: { variant: 'footnote', color: 'text-muted' }, children: ['$field.name'] },
     {
       type: 'we-text',
       // A value with no spaces in it — a URI, an id, a hash — has nowhere to break, so without this
@@ -298,7 +298,7 @@ const actions: SchemaNode = {
                   props: {
                     size: 'xs',
                     variant: 'ghost',
-                    color: 'danger-600',
+                    color: 'danger-text',
                     // Recursive, and kind-agnostic: the one delete that serves every collection.
                     onClick: {
                       $action: 'spaceStore.deleteCollection',
@@ -330,7 +330,7 @@ const actions: SchemaNode = {
                   props: {
                     size: 'xs',
                     variant: 'ghost',
-                    color: 'danger-600',
+                    color: 'danger-text',
                     ml: 'auto',
                     onClick: {
                       $action: 'recordStore.removeFromBoard',
@@ -409,8 +409,8 @@ export const nodeDetailPanel: SchemaNode = {
               instead: quiet enough not to compete with the map, separate enough that the border is not
               the only thing telling you where the canvas stops.
             */
-            bg: 'neutral-25',
-            borderRight: '1px solid neutral-200',
+            bg: 'surface-raised',
+            borderRight: '1px solid border',
             shadow: 'lg',
           },
           children: [
@@ -422,7 +422,7 @@ export const nodeDetailPanel: SchemaNode = {
                 width: '100%',
                 px: '400',
                 py: '300',
-                borderBottom: '1px solid neutral-100',
+                borderBottom: '1px solid border',
               },
               children: [
                 { type: 'we-badge', props: { size: 'xs' }, children: [{ $local: 'selected.type' }] },

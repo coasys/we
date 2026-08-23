@@ -1,19 +1,9 @@
 [data-we-theme='dark'] {
-  --we-color-primary-50: hsl(var(--we-color-primary-hue) var(--we-color-saturation) var(--we-color-lightness-50));
-
-  /* Elevation inverts in dark: a raised surface gets lighter instead of casting a
-     shadow. Mirrors the `roles` override in the dark preset (presets.ts), so
-     CSS-only consumers of data-we-theme="dark" get the same relationship. */
-  --we-role-surface-raised: var(--we-color-neutral-100);
+  --we-color-primary-50: oklch(var(--we-color-lightness-50) calc(min(var(--we-color-saturation) * 0.0035, 0.18) * 0.08) var(--we-color-primary-hue));
 }
 
 [data-we-theme='dark'] we-modal::part(base) {
-  box-shadow: 0 0 40px 20px hsl(var(--we-color-primary-hue) var(--we-color-saturation) 20% / 5%);
-}
-
-[data-we-theme='dark'] we-tooltip::part(tooltip) {
-  background: var(--we-color-neutral-50);
-  color: var(--we-color-black);
+  box-shadow: 0 0 40px 20px oklch(20% calc(min(var(--we-color-saturation) * 0.0035, 0.18) * 0.4) var(--we-color-primary-hue) / 5%);
 }
 
 [data-we-theme='dark'] we-text[variant='heading-md'] {

@@ -12,10 +12,10 @@ const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   display: 'inline-flex',
   ay: 'center',
   r: '400',
-  border: '1px solid var(--we-color-neutral-300)',
-  bg: 'white',
+  border: '1px solid var(--we-role-border)',
+  bg: 'page',
   fontSize: '300',
-  color: 'neutral-800',
+  color: 'text',
 };
 
 const SIZE_DEFAULTS: Record<ComponentSize, Partial<DesignSystemProps>> = {

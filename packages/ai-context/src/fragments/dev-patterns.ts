@@ -143,6 +143,41 @@ that work directly with AD4M model classes. They do NOT apply to JSON template s
 
 ---
 
+### Rebuilding — scope it to what changed
+
+A full \`pnpm build\` walks the whole monorepo and takes minutes. Reserve it for the end of a piece of
+work, where the point is to prove the packages still agree. During iteration, rebuild only what you
+touched and what depends on it:
+
+\`\`\`sh
+pnpm --filter @we/tokens --filter @we/themes build     # a design-token change
+pnpm --filter @we/primitives build                      # a Lit primitive
+\`\`\`
+
+**Do rebuild, though — a stale \`dist\` is invisible and wastes more time than the build saves.** Two
+symptoms worth recognising, both of which have happened here:
+
+- *"I changed the source and the app is unchanged."* The package ships a \`dist\` and it was not
+  rebuilt. Note that packages differ: \`@we/template-shell\` has no \`dist\` and is consumed as source,
+  so a change there lands immediately, while \`@we/module-call\` does — which is how the call bar and
+  the chrome rail, which are meant to match, ended up different colours from one edit.
+- *"The build says it failed but the error names a package I did not touch."* A dependency's types
+  moved. Rebuild the chain in dependency order — tokens, then themes, then schema-shared, then
+  whatever consumes them.
+
+To find what is stale rather than guessing:
+
+\`\`\`sh
+for d in $(find packages -name dist -maxdepth 3 -type d | grep -v node_modules); do
+  p=$(dirname $d)
+  [ -f "$d/index.js" ] && [ -n "$(find $p/src -newer $d/index.js -name '*.ts*' 2>/dev/null | head -1)" ] && echo "STALE: $p"
+done
+\`\`\`
+
+Vite caches too. If a rebuilt package still is not picked up by a running dev server, clear
+\`node_modules/.vite\` in the app and restart it — an \`ERR_MODULE_NOT_FOUND\` or a "does not provide an
+export named X" for something that plainly is exported is the tell.
+
 ### Running Schema Validation (no build needed)
 
 During codebase work, use the \`pnpm validate\` script in \`schema-system/shared\` — it runs
@@ -222,6 +257,12 @@ Each package may have a \`CONVENTIONS.md\` at its root with package-specific rul
 Always read \`CONVENTIONS.md\` before creating or modifying files in that package.
 
 Key packages with conventions files:
+- \`packages/design-system/2-themes/THEME_AUTHORING.md\` — **read this before writing or editing a
+  theme.** A theme is an object of numbers, not a stylesheet: polarity plus a lightness range, hues
+  as OKLCH angles (blue is 263, not 220), saturation as a fraction of what the hue can hold, and
+  roles pinned only where the parametric default is wrong. Several roles are *derived at apply time*
+  — foregrounds, fills and interaction states all correct themselves — so pinning them is overruling
+  a measurement, which is occasionally right and usually not.
 - \`packages/models/CONVENTIONS.md\` — model authoring: entities vs blocks, predicates, @Flag, WeNode, Model.create() pattern
 - \`packages/templates/kit/CONVENTIONS.md\` — fragment authoring: what belongs in the kit, extraction threshold, options-object API, body style
 

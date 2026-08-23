@@ -13,7 +13,7 @@ const styles = css`
     --we-spinner-host-display: inline-flex;
     --we-spinner-size: var(--we-size-md);
     --we-spinner-stroke: 2px;
-    --we-spinner-color: var(--we-color-primary-500);
+    --we-spinner-color: var(--we-role-accent);
   }
 
   :host([size='xs']) {

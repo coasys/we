@@ -19,14 +19,24 @@ const DEFAULT_PROPS: Partial<DesignSystemProps> = {
 };
 
 const VARIANT_DEFAULTS: Record<ComponentVariant, Partial<DesignSystemProps>> = {
-  neutral: { bg: 'neutral-50', color: 'neutral-800' },
-  primary: { bg: 'primary-50', color: 'primary-800' },
-  success: { bg: 'success-50', color: 'success-800' },
-  warning: { bg: 'warning-50', color: 'warning-800' },
-  danger: { bg: 'danger-50', color: 'danger-800' },
+  // `surfaceSunken`, not `page`: an alert is a tinted panel, and the three status variants beside
+  // it are tints. `page` won this slot only because neutral-50 happened to be the value here.
+  neutral: { bg: 'surface-sunken', color: 'text' },
+  primary: { bg: 'accent-muted', color: 'accent-text' },
+  success: { bg: 'success-surface', color: 'success-text' },
+  warning: { bg: 'warning-surface', color: 'warning-text' },
+  danger: { bg: 'danger-surface', color: 'danger-text' },
 };
 
-const VARIANT_ICONS: Record<ComponentVariant, string> = {
+/**
+ * One icon per variant, exported so the theme suite can assert it.
+ *
+ * This is what makes a status readable to someone who cannot tell red from green: WCAG 1.4.1 asks
+ * that colour never be the only visual means of conveying information, and for a palette built on
+ * red and green that redundancy is the whole answer — the colours themselves cannot be pulled apart
+ * without ceasing to be red and green.
+ */
+export const ALERT_VARIANT_ICONS: Record<ComponentVariant, string> = {
   neutral: 'info',
   primary: 'info',
   success: 'check-circle',
@@ -35,7 +45,7 @@ const VARIANT_ICONS: Record<ComponentVariant, string> = {
 };
 
 const VARIANT_BORDER: Record<ComponentVariant, string> = {
-  neutral: '1px solid var(--we-color-neutral-200)',
+  neutral: '1px solid var(--we-role-border)',
   primary: '1px solid var(--we-color-primary-200)',
   success: '1px solid var(--we-color-success-200)',
   warning: '1px solid var(--we-color-warning-200)',
@@ -86,7 +96,7 @@ export default class Alert extends DesignSystemElement {
   }
 
   render() {
-    const icon = VARIANT_ICONS[this.variant];
+    const icon = ALERT_VARIANT_ICONS[this.variant];
     const border = VARIANT_BORDER[this.variant];
 
     return html`

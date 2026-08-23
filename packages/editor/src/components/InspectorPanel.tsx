@@ -16,6 +16,7 @@ import { createEffect, createMemo, createSignal, For, onCleanup, Show } from 'so
 
 import { composeRing, parseRing, RING_THEME_ACCENT } from '../helpers';
 import { type EditorImage, useEditorHost } from '../host';
+import { paintedRoles } from '../paintedRoles';
 import { deepClone } from '../utils';
 import { ConditionEditor } from './ConditionEditor';
 import { ContentEditor } from './ContentEditor';
@@ -139,6 +140,33 @@ const TEXT_CONTENT_TYPES = new Set([
 ]);
 
 const COLOR_HUES = ['neutral', 'primary', 'success', 'warning', 'danger'] as const;
+
+/**
+ * The roles this picker offers, and the reason it leads with them.
+ *
+ * Every colour a template sets should name a role: a scale position is frozen into one theme's idea
+ * of what that grey meant, and a role is what a theme can redesign. This picker offered *only*
+ * scale positions, which meant anything authored through the visual editor came out unthemeable —
+ * quietly undoing, one node at a time, the migration that made the rest of the app follow a theme.
+ *
+ * Ordered by how often a template needs one, not alphabetically, and kept to the roles a *template*
+ * legitimately reaches for. The states (`surface-hover`, `accent-active`) and the internals
+ * (`control-surface`, `shadow-color`) are the design system's business, not a node's.
+ */
+function isRole(value: string): boolean {
+  return COLOR_ROLES.some((g) => g.roles.includes(value));
+}
+
+const COLOR_ROLES: { group: string; roles: string[] }[] = [
+  { group: 'Surfaces', roles: ['page', 'surface', 'surface-raised', 'surface-sunken', 'surface-inverse'] },
+  { group: 'Text', roles: ['text', 'text-muted', 'text-faint', 'on-inverse'] },
+  { group: 'Accent', roles: ['accent', 'accent-text', 'on-accent', 'accent-muted'] },
+  { group: 'Lines', roles: ['border', 'border-strong'] },
+  {
+    group: 'Status',
+    roles: ['danger-text', 'danger-surface', 'success-text', 'success-surface', 'warning-text', 'warning-surface'],
+  },
+];
 const COLOR_SHADES = ['0', '25', '50', '75', '100', '200', '300', '400', '500', '600', '700', '800', '900', '1000'];
 
 // -----------------------------------------------------------------------
@@ -271,7 +299,7 @@ function TreeNode(props: TreeNodeProps) {
           }}
         >
           <Show when={hasKids()}>
-            <we-icon name={isCollapsed() ? 'caret-right' : 'caret-down'} size="xs" color="neutral-400" />
+            <we-icon name={isCollapsed() ? 'caret-right' : 'caret-down'} size="xs" color="text-faint" />
           </Show>
         </div>
 
@@ -284,7 +312,7 @@ function TreeNode(props: TreeNodeProps) {
 
         {/* Context label: route path, slot name, or prop name */}
         <Show when={props.contextLabel}>
-          <we-text fontSize="10px" lineHeight="1" flexShrink="0" whiteSpace="nowrap" color="neutral-400">
+          <we-text fontSize="10px" lineHeight="1" flexShrink="0" whiteSpace="nowrap" color="text-faint">
             {props.contextLabel}:
           </we-text>
         </Show>
@@ -459,11 +487,19 @@ export function InspectorPanel() {
     <Column
       width="100%"
       height="100%"
+      /*
+        No background of its own: the dock frame paints the panel's surface.
+
+        The same correction the code and theme panels already carry. Every dock is wrapped in a frame
+        that sets `surface-sunken`, precisely so a docked panel does not have to decide what it is
+        made of — see the note in dockRegistry.ts. This one still painted `surface` over the top, so
+        it sat lighter than every other panel docked at the same edge and read as a different
+        material. It was the last of the three.
+      */
       overflow="hidden"
-      bg="neutral-0"
       fontFamily="base"
       fontSize="200"
-      color="neutral-800"
+      color="text"
     >
       {/* Header */}
       <Row
@@ -494,8 +530,8 @@ export function InspectorPanel() {
           flex="none"
           borderBottom={`1px solid ${tokenVar('color', 'neutral-100')}`}
         >
-          <we-icon name="list" size="xs" color="neutral-400" />
-          <we-text fontSize="100" fontWeight="600" textTransform="uppercase" letterSpacing="widest" color="neutral-400">
+          <we-icon name="list" size="xs" color="text-faint" />
+          <we-text fontSize="100" fontWeight="600" textTransform="uppercase" letterSpacing="widest" color="text-faint">
             Layers
           </we-text>
         </Row>
@@ -511,7 +547,7 @@ export function InspectorPanel() {
           height: '4px',
           cursor: 'row-resize',
           'flex-shrink': '0',
-          background: dividerResizing() ? 'var(--we-color-primary-300)' : 'var(--we-color-neutral-100)',
+          background: dividerResizing() ? 'var(--we-color-primary-300)' : 'var(--we-role-border)',
         }}
       />
 
@@ -521,8 +557,8 @@ export function InspectorPanel() {
           when={selectedNode()}
           fallback={
             <Column flex="1" ax="center" ay="center" gap="200" p="500" textAlign="center">
-              <we-icon name="cursor-click" size="lg" color="neutral-300" />
-              <we-text fontSize="200" color="neutral-400">
+              <we-icon name="cursor-click" size="lg" color="text-faint" />
+              <we-text fontSize="200" color="text-faint">
                 Click a node to inspect it
               </we-text>
             </Column>
@@ -546,6 +582,136 @@ export function InspectorPanel() {
 // -----------------------------------------------------------------------
 // NodeProperties
 // -----------------------------------------------------------------------
+
+/**
+ * The strip under the node's name that says what is painting it.
+ *
+ * Deliberately in the header rather than filed under a "Colors" section: it is a readout, not a
+ * control, and its job is to be answering the question before anybody goes looking for where to ask
+ * it. Each entry is a button because the useful next move is almost never "change this node" — it
+ * is "change what this role means", which is a different panel, and the jump is the only affordance
+ * that makes that discoverable.
+ */
+function ThemeRoleReadout(props: { node: SchemaNode }) {
+  const host = useEditorHost();
+  const templateStore = host.template;
+
+  const painted = createMemo(() => {
+    const ancestors: SchemaNode[] = [];
+    let info = props.node.id ? findNodeById(templateStore.currentTemplate, props.node.id) : null;
+    // Ancestry is walked by re-finding each parent by id — the same climb EditorOverlay does, and
+    // the only one available: findNodeById reports one parent, not a path.
+    while (info?.parent) {
+      ancestors.push(info.parent);
+      if (!info.parent.id) break;
+      info = findNodeById(templateStore.currentTemplate, info.parent.id);
+    }
+    return paintedRoles(props.node, ancestors);
+  });
+
+  return (
+    <Show when={painted().length > 0}>
+      <Row gap="200" wrap ay="center" pt="100">
+        <For each={painted()}>
+          {(entry) => (
+            <we-tooltip
+              /*
+                The second line used to read "is a fixed scale position, so it does not follow the
+                theme", which is false and was spotted as false the first time somebody read it.
+
+                A scale position follows the theme perfectly well: it is computed from the neutral
+                hue, the saturation, the floor and ceiling and the polarity, so it moves whenever any
+                of those do and it inverts with the ramp. What it does not follow is what the theme
+                *decides*. A theme pins roles, not steps — `channels` sets its surface equal to its
+                page, `timeline` sets its to pure white — and a node naming a step cannot hear any of
+                that: in `channels` a card painted `neutral-100` measures [7,8,11] against a surface
+                of [26,28,33], a dark hole punched in a design whose premise is that the card and the
+                page are one sheet.
+
+                The other half matters as much and was not said at all: the measure-and-correct pass
+                at apply time operates on roles. A label coloured `neutral-600` is never measured
+                against what is behind it, never walked toward legibility, and never appears in the
+                audit either. "Does not follow the theme" is both wrong and quieter than the truth.
+              */
+              title={
+                isRole(entry.value)
+                  ? `${entry.what}: “${entry.value}”${
+                      entry.fromDocument
+                        ? ' — nothing in the template sets one, so it inherits the document’s role. A component in between may still paint its own.'
+                        : entry.from
+                          ? `, inherited from ${entry.from}`
+                          : ''
+                    } — click to edit it for the whole theme`
+                  : `${entry.what}: “${entry.value}” is a scale position. It follows the theme’s hue and lightness, but not what the theme decides a surface or a label should be — and the contrast corrections skip it. A role would do both.`
+              }
+            >
+              <we-button
+                variant="bare"
+                onClick={() => {
+                  if (!isRole(entry.value)) return;
+                  host.theme.startEditing();
+                  host.session.enterThemeEditing();
+                  /*
+                    And say which role, which the jump used to drop on the floor.
+
+                    The tooltip promises "click to edit it for the whole theme" and the panel holds
+                    some forty roles across five collapsed groups, so arriving at the top of it left
+                    somebody to find by hand the thing they had just pointed at. The panel opens the
+                    group, scrolls the row up and rings it.
+                  */
+                  host.theme.focusRole(entry.value);
+                }}
+              >
+                <Row
+                  gap="100"
+                  ay="center"
+                  px="200"
+                  py="100"
+                  r="200"
+                  bg="surface-sunken"
+                  border={`1px solid ${'var(--we-role-border)'}`}
+                >
+                  <div
+                    style={{
+                      width: '10px',
+                      height: '10px',
+                      'flex-shrink': '0',
+                      'border-radius': '2px',
+                      background: isRole(entry.value)
+                        ? `var(--we-role-${entry.value})`
+                        : `var(--we-color-${entry.value})`,
+                      border: '1px solid var(--we-role-border)',
+                    }}
+                  />
+                  {/*
+                    Which of the three this is, on the chip rather than only in the tooltip.
+
+                    The strip showed a swatch and a role name and nothing else, so two chips read as
+                    two colours with no way to tell the background from the foreground without
+                    hovering each one. That is most of the confusion selecting a `we-text` produced:
+                    the background it sits on is genuinely useful — it is what its contrast is
+                    measured against — and unlabelled beside a text colour it just looks wrong.
+                  */}
+                  <we-text fontSize="100" color="text-faint">
+                    {entry.what === 'Background' ? 'bg' : entry.what.toLowerCase()}
+                  </we-text>
+                  <we-text fontSize="100" color={entry.from || entry.fromDocument ? 'text-faint' : 'text-muted'}>
+                    {entry.value}
+                  </we-text>
+                  {/* An inherited colour is the common case and the one people misread, so it is
+                      marked rather than left to look like a property of this node. */}
+                  <Show when={entry.from || entry.fromDocument}>
+                    <we-icon name="arrow-bend-left-up" size="xs" color="text-faint" />
+                  </Show>
+                </Row>
+              </we-button>
+            </we-tooltip>
+          )}
+        </For>
+      </Row>
+    </Show>
+  );
+}
 
 function NodeProperties(props: {
   node: SchemaNode;
@@ -629,22 +795,23 @@ function NodeProperties(props: {
   return (
     <>
       {/* Header */}
-      <Column px="400" pt="300" pb="200" gap="100" borderBottom="1px solid neutral-100" flex="none">
-        <we-text fontSize="300" fontWeight="600" color="neutral-900">
+      <Column px="400" pt="300" pb="200" gap="100" borderBottom="1px solid border" flex="none">
+        <we-text fontSize="300" fontWeight="600" color="text">
           {props.node.type ?? '(no type)'}
         </we-text>
         <Show when={props.node.id}>
-          <we-text fontSize="100" color="neutral-400">
+          <we-text fontSize="100" color="text-faint">
             id: {props.node.id}
           </we-text>
         </Show>
+        <ThemeRoleReadout node={props.node} />
       </Column>
 
       {/* Scrollable content */}
       <we-scroll-area flex="1">
         {/* Content — text, a bound value, or a value-level conditional */}
         <Show when={showContent()}>
-          <Column py="200" borderBottom="1px solid neutral-100">
+          <Column py="200" borderBottom="1px solid border">
             <ContentEditor
               content={props.node.children}
               nodeId={props.node.id}
@@ -658,7 +825,7 @@ function NodeProperties(props: {
 
         {/* Logic — condition builder for $if, in place of raw JSON */}
         <Show when={props.node.type === '$if'}>
-          <Column py="100" borderBottom="1px solid neutral-100">
+          <Column py="100" borderBottom="1px solid border">
             <ConditionEditor
               label="Show when"
               condition={currentProps().condition}
@@ -735,7 +902,7 @@ function NodeProperties(props: {
 
         {/* Unknown component — show any primitive props that are set */}
         <Show when={!meta() && usedProps().size === 0 && complexProps().length === 0}>
-          <we-text py="400" px="14px" color="neutral-400">
+          <we-text py="400" px="14px" color="text-faint">
             No props
           </we-text>
         </Show>
@@ -748,7 +915,7 @@ function NodeProperties(props: {
             <For each={complexProps().map(([key]) => key)}>
               {(key) => (
                 <Column px="400" py="100" gap="100">
-                  <we-text fontSize="100" fontWeight="500" color="neutral-500">
+                  <we-text fontSize="100" fontWeight="500" color="text-muted">
                     {key}
                   </we-text>
                   <ValueEditor
@@ -776,8 +943,8 @@ function CollapsibleSection(props: { label: string; children: JSX.Element }) {
   return (
     <Column borderTop="1px solid neutral-50">
       <Row ay="center" gap="100" px="400" py="100" cursor="pointer" onClick={() => setOpen((v) => !v)}>
-        <we-icon name={open() ? 'caret-down' : 'caret-right'} size="xs" color="neutral-400" />
-        <we-text fontSize="100" fontWeight="600" textTransform="uppercase" letterSpacing="0.06em" color="neutral-400">
+        <we-icon name={open() ? 'caret-down' : 'caret-right'} size="xs" color="text-faint" />
+        <we-text fontSize="100" fontWeight="600" textTransform="uppercase" letterSpacing="0.06em" color="text-faint">
           {props.label}
         </we-text>
       </Row>
@@ -801,7 +968,7 @@ function SectionLabel(props: { children: string }) {
       fontWeight="600"
       textTransform="uppercase"
       letterSpacing="0.06em"
-      color="neutral-400"
+      color="text-faint"
     >
       {props.children}
     </we-text>
@@ -942,7 +1109,10 @@ function ColorSwatchPicker(props: { value: string; onChange: (v: string) => void
     onCleanup(() => document.removeEventListener('mousedown', handler));
   });
 
-  const swatchBg = (value: string) => (value ? `var(--we-color-${value})` : 'transparent');
+  const host = useEditorHost();
+  // A role and a scale position are different variables; a single guess paints one of them nothing.
+  const swatchBg = (value: string) =>
+    !value ? 'transparent' : isRole(value) ? `var(--we-role-${value})` : `var(--we-color-${value})`;
 
   return (
     <div ref={ref} style={{ position: 'relative' }}>
@@ -962,7 +1132,7 @@ function ColorSwatchPicker(props: { value: string; onChange: (v: string) => void
           <we-text flex="1" truncate color={props.value ? 'neutral-800' : 'neutral-400'} fontSize="200">
             {props.value || '—'}
           </we-text>
-          <we-icon name={open() ? 'caret-up' : 'caret-down'} size="xs" color="neutral-400" />
+          <we-icon name={open() ? 'caret-up' : 'caret-down'} size="xs" color="text-faint" />
         </Row>
       </we-button>
 
@@ -988,9 +1158,74 @@ function ColorSwatchPicker(props: { value: string; onChange: (v: string) => void
                     setOpen(false);
                   }}
                 >
-                  <we-text color="neutral-400">(unset)</we-text>
+                  <we-text color="text-faint">(unset)</we-text>
                 </we-menu-item>
               </Show>
+
+              {/*
+                The bridge from a node to the theme.
+
+                Somebody looking at a wrong colour is not thinking "surfaceRaised", they are
+                thinking "that panel". Having arrived here by clicking the thing, the useful second
+                option is to change it *everywhere* rather than only here — which is the difference
+                between patching one node and fixing the theme.
+              */}
+              <Show when={props.value && isRole(props.value)}>
+                <we-menu-item
+                  on:select={() => {
+                    host.theme.startEditing();
+                    host.session.enterThemeEditing();
+                    setOpen(false);
+                  }}
+                >
+                  <Row gap="200" ay="center">
+                    <we-icon name="paint-bucket" size="xs" color="accent-text" />
+                    <we-text fontSize="200">Edit “{props.value}” for the whole theme</we-text>
+                  </Row>
+                </we-menu-item>
+              </Show>
+
+              {/* Roles first: this is what a template should be reaching for. */}
+              <Column gap="100">
+                <we-text fontSize="100" color="text-faint">
+                  Roles — follow the theme
+                </we-text>
+                <For each={COLOR_ROLES}>
+                  {(g) => (
+                    <Row gap="100" wrap>
+                      <For each={g.roles}>
+                        {(v) => (
+                          <we-tooltip title={`${v} · ${g.group}`} placement="top">
+                            <button
+                              onClick={() => {
+                                props.onChange(v);
+                                setOpen(false);
+                              }}
+                              onMouseEnter={() => setHovered(v)}
+                              onMouseLeave={() => setHovered(null)}
+                              style={{
+                                all: 'unset',
+                                width: '20px',
+                                height: '20px',
+                                background: `var(--we-role-${v})`,
+                                'box-shadow': `0 0 0 1px var(--we-role-${hovered() === v ? 'accent' : 'border'})`,
+                                'border-radius': '3px',
+                                cursor: 'pointer',
+                                padding: '0',
+                                transition: 'all 0.3s',
+                              }}
+                            />
+                          </we-tooltip>
+                        )}
+                      </For>
+                    </Row>
+                  )}
+                </For>
+              </Column>
+
+              <we-text fontSize="100" color="text-faint">
+                Scale — a fixed colour, for a palette
+              </we-text>
 
               {/* White + black */}
               <Row gap="100">
@@ -1134,7 +1369,7 @@ function RingPicker(props: { value: string; onChange: (v: string) => void }) {
           width: size,
           height: size,
           'flex-shrink': '0',
-          background: `var(--we-color-${v})`,
+          background: isRole(v) ? `var(--we-role-${v})` : `var(--we-color-${v})`,
           'box-shadow':
             color() === v
               ? `0 0 0 2px var(--we-color-primary-600)`
@@ -1168,7 +1403,7 @@ function RingPicker(props: { value: string; onChange: (v: string) => void }) {
               ? `${widthPx()}px · ${color() === RING_THEME_ACCENT ? 'theme accent' : color() || 'custom'}`
               : '—'}
           </we-text>
-          <we-icon name={open() ? 'caret-up' : 'caret-down'} size="xs" color="neutral-400" />
+          <we-icon name={open() ? 'caret-up' : 'caret-down'} size="xs" color="text-faint" />
         </Row>
       </we-button>
 
@@ -1194,7 +1429,7 @@ function RingPicker(props: { value: string; onChange: (v: string) => void }) {
                     setOpen(false);
                   }}
                 >
-                  <we-text color="neutral-400">(unset)</we-text>
+                  <we-text color="text-faint">(unset)</we-text>
                 </we-menu-item>
               </Show>
 
@@ -1204,7 +1439,7 @@ function RingPicker(props: { value: string; onChange: (v: string) => void }) {
                   <we-text
                     fontSize="100"
                     fontWeight="600"
-                    color="neutral-400"
+                    color="text-faint"
                     textTransform="uppercase"
                     letterSpacing="0.06em"
                   >
@@ -1223,7 +1458,7 @@ function RingPicker(props: { value: string; onChange: (v: string) => void }) {
                   <we-text
                     fontSize="100"
                     fontWeight="600"
-                    color="neutral-400"
+                    color="text-faint"
                     textTransform="uppercase"
                     letterSpacing="0.06em"
                   >
@@ -1245,7 +1480,7 @@ function RingPicker(props: { value: string; onChange: (v: string) => void }) {
                 <we-text
                   fontSize="100"
                   fontWeight="600"
-                  color="neutral-400"
+                  color="text-faint"
                   textTransform="uppercase"
                   letterSpacing="0.06em"
                 >
@@ -1279,6 +1514,48 @@ function RingPicker(props: { value: string; onChange: (v: string) => void }) {
                     <we-text fontSize="200">Theme accent</we-text>
                   </button>
                 </we-tooltip>
+
+                {/* Roles first: this is what a template should be reaching for. */}
+                <Column gap="100">
+                  <we-text fontSize="100" color="text-faint">
+                    Roles — follow the theme
+                  </we-text>
+                  <For each={COLOR_ROLES}>
+                    {(g) => (
+                      <Row gap="100" wrap>
+                        <For each={g.roles}>
+                          {(v) => (
+                            <we-tooltip title={`${v} · ${g.group}`} placement="top">
+                              <button
+                                onClick={() => {
+                                  props.onChange(v);
+                                  setOpen(false);
+                                }}
+                                onMouseEnter={() => setHovered(v)}
+                                onMouseLeave={() => setHovered(null)}
+                                style={{
+                                  all: 'unset',
+                                  width: '20px',
+                                  height: '20px',
+                                  background: `var(--we-role-${v})`,
+                                  'box-shadow': `0 0 0 1px var(--we-role-${hovered() === v ? 'accent' : 'border'})`,
+                                  'border-radius': '3px',
+                                  cursor: 'pointer',
+                                  padding: '0',
+                                  transition: 'all 0.3s',
+                                }}
+                              />
+                            </we-tooltip>
+                          )}
+                        </For>
+                      </Row>
+                    )}
+                  </For>
+                </Column>
+
+                <we-text fontSize="100" color="text-faint">
+                  Scale — a fixed colour, for a palette
+                </we-text>
 
                 {/* White + black */}
                 <Row gap="100">{['white', 'black'].map((v) => swatch(v))}</Row>
@@ -1384,7 +1661,7 @@ function BgImagePicker(props: {
     'background-image': src ? `url("${src}")` : undefined,
     'background-size': 'cover',
     'background-position': 'center',
-    'background-color': 'var(--we-color-neutral-100)',
+    'background-color': 'var(--we-role-border)',
   });
 
   // Long unbroken strings (data URIs, or just long URLs) can blow out an ancestor's
@@ -1420,7 +1697,7 @@ function BgImagePicker(props: {
           <we-text flex="1" minWidth="0" truncate color={props.value ? 'neutral-800' : 'neutral-400'} fontSize="200">
             {triggerLabel()}
           </we-text>
-          <we-icon name={open() ? 'caret-up' : 'caret-down'} size="xs" color="neutral-400" />
+          <we-icon name={open() ? 'caret-up' : 'caret-down'} size="xs" color="text-faint" />
         </Row>
       </we-button>
 
@@ -1446,7 +1723,7 @@ function BgImagePicker(props: {
                     setOpen(false);
                   }}
                 >
-                  <we-text color="neutral-400">(unset)</we-text>
+                  <we-text color="text-faint">(unset)</we-text>
                 </we-menu-item>
               </Show>
 
@@ -1479,7 +1756,7 @@ function BgImagePicker(props: {
                   <Show
                     when={images().length > 0}
                     fallback={
-                      <we-text color="neutral-400" fontSize="200" textAlign="center">
+                      <we-text color="text-faint" fontSize="200" textAlign="center">
                         No images in this space yet
                       </we-text>
                     }
@@ -1521,8 +1798,8 @@ function BgImagePicker(props: {
                   }
                 >
                   <we-file-upload accept="image/*" on:change={handleFileInputChange} width="100%">
-                    <we-icon name="image" color="neutral-500" size="lg" />
-                    <we-text color="neutral-500" fontSize="200">
+                    <we-icon name="image" color="text-muted" size="lg" />
+                    <we-text color="text-muted" fontSize="200">
                       Drop an image or click to browse
                     </we-text>
                   </we-file-upload>
@@ -1549,19 +1826,19 @@ function BgImagePicker(props: {
               {/* Opacity/tint — persistent regardless of active tab, since they apply to
                   whichever image is currently selected, not to the picking process itself. */}
               <Show when={props.value}>
-                <Column gap="200" borderTop="1px solid neutral-100" pt="300">
+                <Column gap="200" borderTop="1px solid border" pt="300">
                   <Row ay="center" gap="200">
                     <we-text
                       fontSize="100"
                       fontWeight="600"
-                      color="neutral-400"
+                      color="text-faint"
                       textTransform="uppercase"
                       letterSpacing="0.06em"
                       flex="1"
                     >
                       Opacity
                     </we-text>
-                    <we-text fontSize="100" color="neutral-400">
+                    <we-text fontSize="100" color="text-faint">
                       {Math.round((props.opacity ?? 1) * 100)}%
                     </we-text>
                   </Row>
@@ -1582,14 +1859,14 @@ function BgImagePicker(props: {
                     <we-text
                       fontSize="100"
                       fontWeight="600"
-                      color="neutral-400"
+                      color="text-faint"
                       textTransform="uppercase"
                       letterSpacing="0.06em"
                     >
                       Fade to
                     </we-text>
                     <ColorSwatchPicker value={props.tint ?? ''} onChange={(v) => props.onTintChange(v)} />
-                    <we-text fontSize="100" color="neutral-400">
+                    <we-text fontSize="100" color="text-faint">
                       {props.tint ? '' : `Defaults to ${props.bg ?? 'neutral-0'} (this element's own bg)`}
                     </we-text>
                   </Show>
@@ -1609,23 +1886,23 @@ function BgImagePicker(props: {
 
 const BOX_MARGIN = {
   bg: 'var(--we-color-warning-200)',
-  border: 'var(--we-color-warning-400)',
+  border: 'var(--we-role-warning-text)',
   label: 'var(--we-color-warning-800)',
   value: 'var(--we-color-warning-800)',
-  placeholder: 'var(--we-color-warning-400)',
+  placeholder: 'var(--we-role-warning-text)',
 };
 
 const BOX_PADDING = {
   bg: 'var(--we-color-success-200)',
-  border: 'var(--we-color-success-400)',
+  border: 'var(--we-role-success-text)',
   label: 'var(--we-color-success-800)',
   value: 'var(--we-color-success-800)',
-  placeholder: 'var(--we-color-success-400)',
+  placeholder: 'var(--we-role-success-text)',
 };
 
 const BOX_ELEMENT = {
-  bg: 'var(--we-color-primary-200)',
-  border: 'var(--we-color-primary-400)',
+  bg: 'var(--we-role-accent-muted)',
+  border: 'var(--we-role-accent)',
   text: 'var(--we-color-primary-800)',
 };
 
@@ -1707,7 +1984,7 @@ function BoxModel(props: {
 
   return (
     <Show when={hasPadding() || hasMargin()}>
-      <Column px="400" py="200" borderBottom="1px solid neutral-100">
+      <Column px="400" py="200" borderBottom="1px solid border">
         {/* Shorthand row: all / x-axis / y-axis setters */}
         <Column gap="100" mb="200">
           <Show when={hasMargin()}>
@@ -1917,7 +2194,7 @@ function PropRow(props: {
     // unbroken string (a URL, a data URI) in the input column, which pushes the whole
     // row wider than the panel and shoves the prop-key label out of view.
     <Grid template="minmax(0, 1fr) minmax(0, 1.2fr)" gap="200" ay="center" px="400" py="100">
-      <we-text title={props.propKey} fontSize="200" fontWeight="500" color="neutral-600" truncate minWidth="0">
+      <we-text title={props.propKey} fontSize="200" fontWeight="500" color="text-muted" truncate minWidth="0">
         {props.propKey}
       </we-text>
       {renderInput()}

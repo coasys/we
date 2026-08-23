@@ -76,13 +76,13 @@ const videoCard: SchemaNode = {
                   type: 'Column',
                   props: {
                     width: '100%',
-                    bg: 'neutral-200',
+                    bg: 'surface-active',
                     r: '300',
                     ax: 'center',
                     ay: 'center',
                     styles: { 'aspect-ratio': '16 / 9' },
                   },
-                  children: [{ type: 'we-icon', props: { name: 'play', size: 'lg', color: 'neutral-400' } }],
+                  children: [{ type: 'we-icon', props: { name: 'play', size: 'lg', color: 'text-faint' } }],
                 },
               },
             },
@@ -255,7 +255,7 @@ const playlistsRoute: RouteSchema = {
           children: [
             {
               type: 'Column',
-              props: { gap: '100', p: '400', bg: 'neutral-0', r: '400', border: '1px solid neutral-200' },
+              props: { gap: '100', p: '400', bg: 'surface-sunken', r: '400', border: '1px solid border' },
               children: [
                 { type: 'we-text', props: { fontWeight: 'semibold', truncate: true }, children: ['$playlist.title'] },
                 {
@@ -265,7 +265,7 @@ const playlistsRoute: RouteSchema = {
                     { type: 'we-number', props: { value: '$playlist.$count' } },
                     {
                       type: 'we-text',
-                      props: { variant: 'footnote', color: 'neutral-400' },
+                      props: { variant: 'footnote', color: 'text-faint' },
                       children: [{ $plural: { count: '$playlist.$count', one: 'video', other: 'videos' } }],
                     },
                   ],
@@ -294,7 +294,7 @@ export const youtubeTemplate: TemplateSchema = {
     themeId: 'dark',
   },
   type: 'Column',
-  props: { bg: 'neutral-50', width: '100%', minHeight: '100%' },
+  props: { bg: 'page', width: '100%', minHeight: '100%' },
   $localState: { composeOpen: { type: 'boolean', initial: false } },
   children: [
     {
@@ -305,8 +305,8 @@ export const youtubeTemplate: TemplateSchema = {
         ay: 'center',
         px: '500',
         py: '300',
-        bg: 'neutral-0',
-        borderBottom: '1px solid neutral-200',
+        bg: 'surface-sunken',
+        borderBottom: '1px solid border',
       },
       children: [
         {
@@ -365,7 +365,7 @@ export const youtubeTemplate: TemplateSchema = {
     watchRoute,
     {
       path: '*',
-      ...gatePrompt({ icon: 'video-camera', iconColor: 'neutral-300', title: 'Not found' }),
+      ...gatePrompt({ icon: 'video-camera', iconColor: 'text-faint', title: 'Not found' }),
     },
   ],
 };

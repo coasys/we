@@ -86,9 +86,9 @@ export function TemplateCard(props: Props) {
   // ── Compact (list-row) mode ──────────────────────────────────────────────
   if (mode() === 'compact') {
     return (
-      <Row ay="center" ax="between" p="400" r="300" border="1px solid neutral-200" bg="neutral-50" gap="300">
+      <Row ay="center" ax="between" p="400" r="300" border="1px solid border" bg="surface" gap="300">
         <Row ay="center" gap="400" flex="1" minWidth="0">
-          <we-icon name={props.template.icon ?? 'layout'} color="primary-500" />
+          <we-icon name={props.template.icon ?? 'layout'} color="accent" />
           <Column gap="100" flex="1" minWidth="0">
             <Row gap="300" ay="center">
               <we-text fontWeight="600" truncate>
@@ -101,11 +101,11 @@ export function TemplateCard(props: Props) {
             <Show when={author()}>
               <Row ay="center" gap="200">
                 <we-avatar size="xs" image={author()?.avatar} initials={authorName()} />
-                <we-text fontSize="300" color="neutral-500" truncate>
+                <we-text fontSize="300" color="text-muted" truncate>
                   {authorName()}
                 </we-text>
                 <Show when={props.template.createdAt}>
-                  <we-timestamp value={props.template.createdAt} relative color="neutral-400" fontSize="300" />
+                  <we-timestamp value={props.template.createdAt} relative color="text-faint" fontSize="300" />
                 </Show>
               </Row>
             </Show>
@@ -139,15 +139,15 @@ export function TemplateCard(props: Props) {
   // ── Grid card mode (marketplace + preview) ───────────────────────────────
   return (
     <Card
-      bg="neutral-0"
-      border="1px solid neutral-200"
+      bg="surface-sunken"
+      border="1px solid border"
       transition="box-shadow 150ms ease"
-      hoverProps={mode() === 'marketplace' ? { border: '1px solid primary-300', shadow: 'sm' } : undefined}
+      hoverProps={mode() === 'marketplace' ? { border: '1px solid accent', shadow: 'sm' } : undefined}
     >
       {/* Header */}
       <Row ay="center" ax="between">
         <Row gap="300" ay="center" flex="1" minWidth="0">
-          <we-icon name={props.template.icon ?? 'layout'} size="md" color="primary-500" />
+          <we-icon name={props.template.icon ?? 'layout'} size="md" color="accent" />
           <we-text fontWeight="600" truncate>
             {props.template.name}
           </we-text>
@@ -168,7 +168,7 @@ export function TemplateCard(props: Props) {
 
       {/* Description */}
       <Show when={props.template.description}>
-        <we-text fontSize="300" color="neutral-500">
+        <we-text fontSize="300" color="text-muted">
           {props.template.description}
         </we-text>
       </Show>
@@ -179,7 +179,7 @@ export function TemplateCard(props: Props) {
           v{props.template.version}
         </we-badge>
         <Show when={props.template.slug}>
-          <we-text fontSize="300" color="neutral-400" truncate>
+          <we-text fontSize="300" color="text-faint" truncate>
             {props.template.slug}
           </we-text>
         </Show>
@@ -213,12 +213,12 @@ export function TemplateCard(props: Props) {
         <Row ay="center" gap="200" flex="1" minWidth="0">
           <Show when={author()}>
             <we-avatar size="xs" image={author()?.avatar} initials={authorName()} />
-            <we-text fontSize="300" color="neutral-600" truncate>
+            <we-text fontSize="300" color="text-muted" truncate>
               {authorName()}
             </we-text>
           </Show>
           <Show when={props.template.createdAt}>
-            <we-timestamp value={props.template.createdAt} relative color="neutral-400" fontSize="300" />
+            <we-timestamp value={props.template.createdAt} relative color="text-faint" fontSize="300" />
           </Show>
         </Row>
         <Show when={mode() === 'marketplace'}>

@@ -31,10 +31,10 @@ looks identical to a page still loading, and the reader cannot tell which.
       "type": "Column",
       "props": { "ax": "center", "ay": "center", "gap": "200", "p": "600", "width": "100%" },
       "children": [
-        { "type": "we-icon", "props": { "name": "newspaper", "size": "lg", "color": "neutral-400" } },
+        { "type": "we-icon", "props": { "name": "newspaper", "size": "lg", "color": "textFaint" } },
         {
           "type": "we-text",
-          "props": { "color": "neutral-400", "textAlign": "center" },
+          "props": { "color": "textFaint", "textAlign": "center" },
           "children": ["This space doesn't have any posts."]
         }
       ]
@@ -109,9 +109,15 @@ placeholder and the grid can never disagree about how many rows there are.
 }
 \`\`\`
 
-Use \`gradient\` on the icon when there is something to do, and a flat \`color\` (\`neutral-300\`,
-or \`warning\`) when there is not — the two read apart at a glance, and a dead end that looks like
-an invitation is worse than one that looks like a dead end.
+Use \`gradient\` on the icon when there is something to do, and a flat \`color\` (\`text-faint\`,
+or \`warning-text\`) when there is not — the two read apart at a glance, and a dead end that looks
+like an invitation is worse than one that looks like a dead end.
+
+This line used to recommend \`neutral-300\`, and every gate prompt in the repo copied it. A scale
+position is not frozen — it follows the theme's hue, saturation and polarity — but it cannot follow
+what a theme *decides* a faint foreground is, and the contrast corrections at apply time skip it
+entirely, so nothing ever measures it against what is behind it. Guidance that names a step
+reproduces that in every template written from it.
 
 ### Confirm dialog
 
@@ -258,7 +264,7 @@ with the value itself as \`$arg\`.
       "children": [
         { "type": "we-avatar", "props": { "size": "sm", "image": "$author.avatar", "hash": "$author.did" } },
         { "type": "we-text", "props": { "fontWeight": "semibold" }, "children": ["$author.name"] },
-        { "type": "we-timestamp", "props": { "value": "$post.createdAt", "relative": true, "color": "neutral-500" } }
+        { "type": "we-timestamp", "props": { "value": "$post.createdAt", "relative": true, "color": "textMuted" } }
       ]
     }
   ]
@@ -335,7 +341,7 @@ the route's background reaches the edges, the inner holds the measure.
 \`\`\`json
 {
   "type": "Card",
-  "props": { "bg": "neutral-100", "border": "1px solid neutral-200" },
+  "props": { "bg": "surfaceSunken", "border": "1px solid border" },
   "children": [
     {
       "type": "Column",
@@ -361,7 +367,7 @@ the route's background reaches the edges, the inner holds the measure.
       "type": "Row",
       "props": { "ay": "center", "gap": "400", "py": "100" },
       "children": [
-        { "type": "we-icon", "props": { "name": "globe", "color": "primary-600" } },
+        { "type": "we-icon", "props": { "name": "globe", "color": "accentText" } },
         {
           "type": "Column",
           "props": { "gap": "100" },
@@ -370,7 +376,7 @@ the route's background reaches the edges, the inner holds the measure.
               "type": "Row",
               "props": { "gap": "300" },
               "children": [
-                { "type": "we-text", "props": { "fontWeight": "bold", "color": "neutral-700" }, "children": ["Discovery:"] },
+                { "type": "we-text", "props": { "fontWeight": "bold", "color": "text" }, "children": ["Discovery:"] },
                 { "type": "we-text", "props": { "fontWeight": "bold" }, "children": ["Listed"] }
               ]
             },
@@ -409,7 +415,7 @@ themselves come from a \`$query\`.
     "height": "100%",
     "overflow": "hidden",
     "position": "fixed",
-    "bg": "neutral-50",
+    "bg": "page",
     "onMouseEnter": { "$setLocal": "expanded", "value": true },
     "onMouseLeave": { "$setLocal": "expanded", "value": false }
   },

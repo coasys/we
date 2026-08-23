@@ -52,7 +52,7 @@ export const fluxConversationSubgroupsList: SchemaNode = {
               type: '$if',
               props: {
                 condition: '$subgroup.summary',
-                then: { type: 'we-text', props: { color: 'neutral-600' }, children: ['$subgroup.summary'] },
+                then: { type: 'we-text', props: { color: 'text-muted' }, children: ['$subgroup.summary'] },
               },
             },
             peopleRow({ items: '$subgroup.participants', dids: true, noun: 'Participant' }),

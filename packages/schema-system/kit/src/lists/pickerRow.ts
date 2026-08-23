@@ -73,7 +73,7 @@ export function pickerRow(opts: PickerRowOptions): SchemaNode {
       // accessor the style layer does not call, so a conditional here would be a hover colour that
       // silently never applied — and the selected row briefly reading as unselected under the
       // pointer is the same thing the old rows did.
-      hoverProps: { bg: 'neutral-100' },
+      hoverProps: { bg: 'surface-hover' },
     },
     children: [
       {
@@ -84,8 +84,8 @@ export function pickerRow(opts: PickerRowOptions): SchemaNode {
             type: 'Row',
             props: { ay: 'center', gap: '200', width: '100%' },
             children: [
-              { type: 'we-icon', props: { name: opts.icon, size: 'sm', color: 'neutral-600' } },
-              { type: 'we-text', props: { color: 'neutral-700', truncate: true, flex: '1' }, children: [opts.label] },
+              { type: 'we-icon', props: { name: opts.icon, size: 'sm', color: 'text-muted' } },
+              { type: 'we-text', props: { color: 'text', truncate: true, flex: '1' }, children: [opts.label] },
               {
                 type: '$if',
                 props: {
@@ -93,7 +93,7 @@ export function pickerRow(opts: PickerRowOptions): SchemaNode {
                   then: {
                     type: 'we-tooltip',
                     props: { title: "This space's default", placement: 'top' },
-                    children: [{ type: 'we-icon', props: { name: 'star', weight: 'fill', color: 'warning-500' } }],
+                    children: [{ type: 'we-icon', props: { name: 'star', weight: 'fill', color: 'warning-text' } }],
                   },
                 },
               },
@@ -112,8 +112,8 @@ export function pickerRow(opts: PickerRowOptions): SchemaNode {
                 variant: 'ghost',
                 square: true,
                 size: 'sm',
-                color: 'neutral-400',
-                hoverProps: { color: 'neutral-700' },
+                color: 'text-faint',
+                hoverProps: { color: 'text' },
                 onClick: action.onClick,
               },
               children: [{ type: 'we-icon', props: { name: action.icon, weight: action.weight ?? 'regular' } }],

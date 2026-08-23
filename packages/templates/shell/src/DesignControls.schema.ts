@@ -75,7 +75,7 @@ function section(label: string, rows: SchemaProp, body: SchemaNode): SchemaNode 
         children: [
           {
             type: 'we-text',
-            props: { variant: 'footnote', color: 'neutral-400', px: '200', pt: '200' },
+            props: { variant: 'footnote', color: 'text-faint', px: '200', pt: '200' },
             children: [label],
           },
           body,
@@ -101,7 +101,7 @@ function destinationToggle(): SchemaNode {
     type: 'Column',
     props: { gap: '100' },
     children: [
-      { type: 'we-text', props: { variant: 'footnote', color: 'neutral-600' }, children: ['Save to'] },
+      { type: 'we-text', props: { variant: 'footnote', color: 'text-muted' }, children: ['Save to'] },
       {
         type: 'Row',
         props: { gap: '200' },
@@ -422,6 +422,61 @@ export function themePicker(): SchemaNode {
             themeSection('Space themes', 'themeStore.spaceThemes'),
             themeSection('My themes', 'themeStore.installedThemes'),
             themeSection('Built-in', 'themeStore.builtInThemes'),
+            /*
+              Last, and under its own heading, because it is not a theme.
+
+              It carries no parameters — it is a question, answered at the point of use by asking the
+              operating system, and it resolves to one of the built-ins above. Listed among them it
+              was the first row a fresh agent saw, above every actual theme, labelled as a built-in
+              one; the first thing anyone asked about it was what it was.
+
+              Still in the picker rather than moved to settings, because it is *mutually exclusive*
+              with choosing a theme: whatever sets it has to be somewhere the picker can show as
+              selected, or two surfaces end up disagreeing about what is on screen.
+            */
+            themeSection('Automatic', 'themeStore.automaticThemes'),
+            /*
+              And which two it chooses between, beside it rather than in settings — the row above is
+              meaningless without them. Left out, "Follow system" means "match my machine using the
+              two built-ins", so an agent who made their own pair could follow their machine or wear
+              their own themes and never both.
+            */
+            {
+              type: 'Row',
+              props: { gap: '200', ay: 'center', px: '200' },
+              children: [
+                {
+                  type: 'we-form-field',
+                  props: { label: 'Light', size: 'sm', flex: '1' },
+                  children: [
+                    {
+                      type: 'we-select',
+                      props: {
+                        size: 'sm',
+                        options: { $store: 'themeStore.systemThemeOptions' },
+                        value: { $store: 'themeStore.systemThemes.light' },
+                        onChange: { $action: 'themeStore.setSystemTheme', args: ['light', '$arg.detail'] },
+                      },
+                    },
+                  ],
+                },
+                {
+                  type: 'we-form-field',
+                  props: { label: 'Dark', size: 'sm', flex: '1' },
+                  children: [
+                    {
+                      type: 'we-select',
+                      props: {
+                        size: 'sm',
+                        options: { $store: 'themeStore.systemThemeOptions' },
+                        value: { $store: 'themeStore.systemThemes.dark' },
+                        onChange: { $action: 'themeStore.setSystemTheme', args: ['dark', '$arg.detail'] },
+                      },
+                    },
+                  ],
+                },
+              ],
+            },
           ],
         },
         footer: {
@@ -460,7 +515,7 @@ export function themePicker(): SchemaNode {
                     { type: 'we-text', props: { variant: 'label' }, children: ['Apply across the whole app'] },
                     {
                       type: 'we-text',
-                      props: { variant: 'footnote', color: 'neutral-500' },
+                      props: { variant: 'footnote', color: 'text-muted' },
                       children: ["Off, it themes only this space's content"],
                     },
                   ],

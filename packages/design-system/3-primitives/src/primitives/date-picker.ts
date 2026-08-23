@@ -36,9 +36,9 @@ const styles = css`
   [part='input-wrapper'] {
     display: flex;
     align-items: center;
-    border: 1px solid var(--we-color-neutral-300);
+    border: 1px solid var(--we-role-border);
     border-radius: var(--we-radius-400);
-    background: var(--we-color-neutral-0);
+    background: var(--we-role-surface);
     padding: 0 var(--we-space-300);
     /* The clear button and the calendar icon sat flush against each other, reading as one control. */
     gap: var(--we-space-200);
@@ -47,7 +47,7 @@ const styles = css`
   }
 
   [part='input-wrapper']:focus-within {
-    border-color: var(--we-color-primary-500);
+    border-color: var(--we-role-accent);
   }
 
   [part='clear'] {
@@ -55,15 +55,15 @@ const styles = css`
     display: flex;
     align-items: center;
     cursor: pointer;
-    color: var(--we-color-neutral-400);
+    color: var(--we-role-text-faint);
     border-radius: var(--we-radius-full);
     /* A bare 14px glyph is a target most people miss; the padding is the hit area, not decoration. */
     padding: var(--we-space-100);
   }
 
   [part='clear']:hover {
-    color: var(--we-color-neutral-700);
-    background: var(--we-color-neutral-100);
+    color: var(--we-role-text);
+    background: var(--we-role-surface-sunken);
   }
 
   input[part='display'] {
@@ -120,7 +120,7 @@ const styles = css`
   }
 
   [part='month-nav']:hover {
-    background: var(--we-color-neutral-100);
+    background: var(--we-role-surface-sunken);
   }
 
   [part='grid'] {
@@ -132,7 +132,7 @@ const styles = css`
 
   [part='day-header'] {
     font-size: 0.75em;
-    color: var(--we-color-neutral-500);
+    color: var(--we-role-text-muted);
     padding: var(--we-space-100);
   }
 
@@ -149,16 +149,16 @@ const styles = css`
   }
 
   [part='day']:hover {
-    background: var(--we-color-neutral-100);
+    background: var(--we-role-surface-sunken);
   }
 
   [part='day'][aria-selected='true'] {
-    background: var(--we-color-primary-500);
+    background: var(--we-role-accent);
     color: white;
   }
 
   [part='day'][data-other-month] {
-    color: var(--we-color-neutral-400);
+    color: var(--we-role-text-faint);
   }
 
   [part='time-row'] {
@@ -239,7 +239,7 @@ const styles = css`
   [part='time-option']:hover,
   [part='time-option']:focus-visible,
   [part='time-option'][aria-selected='true'] {
-    background: var(--we-color-primary-50);
+    background: var(--we-role-accent-muted);
   }
 
   [part='time-toggle'] {

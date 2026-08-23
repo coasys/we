@@ -231,12 +231,20 @@ export function railItem(opts: RailItemOptions): SchemaNode {
       p: '300',
       ...(opts.disabled !== undefined && { disabled: opts.disabled }),
       ...(opts.onClick !== undefined && { onClick: opts.onClick }),
-      bg: { $if: { condition: active, then: 'neutral-100', else: '' } },
-      color: { $if: { condition: active, then: 'primary-600', else: 'neutral-700' } },
+      /*
+        Roles, not steps. `accent-muted` is the role for a selected row and `accent-text` the accent
+        used as a foreground; the steps these replace could not follow a theme's decision about
+        either, and a rail is the most-looked-at chrome in the app.
+
+        `accent-muted` is a small chroma shift from the `neutral-100` it replaces rather than a
+        redesign — same lightness, the theme's primary saturation instead of its neutral one.
+      */
+      bg: { $if: { condition: active, then: 'accent-muted', else: '' } },
+      color: { $if: { condition: active, then: 'accent-text', else: 'text-muted' } },
       /*
         The current row deepens on hover rather than losing its colour.
 
-        `ghost` carries hover and active states of its own — `color: 'neutral-900'`, which is
+        `ghost` carries hover and active states of its own — `color: 'text'`, which is
         near-white in a dark theme — and a state object from the caller *replaces* the variant's
         rather than merging with it (see `getInstanceProps` in button.ts). So the row that had just
         been marked as where-you-are flashed back to looking like every other row the moment the
@@ -249,15 +257,15 @@ export function railItem(opts: RailItemOptions): SchemaNode {
       hoverProps: {
         $if: {
           condition: active,
-          then: { bg: 'neutral-200', color: 'primary-700' },
-          else: { bg: 'neutral-100', color: 'neutral-900' },
+          then: { bg: 'surface-active', color: 'accent-text' },
+          else: { bg: 'surface-hover', color: 'text' },
         },
       },
       activeProps: {
         $if: {
           condition: active,
-          then: { bg: 'neutral-200', color: 'primary-700' },
-          else: { bg: 'neutral-200', color: 'neutral-900' },
+          then: { bg: 'surface-active', color: 'accent-text' },
+          else: { bg: 'surface-active', color: 'text' },
         },
       },
     },
@@ -289,7 +297,12 @@ export function railItem(opts: RailItemOptions): SchemaNode {
                 ? [
                     {
                       type: 'we-badge',
-                      props: { size: 'sm', fontWeight: '600', bg: 'primary-500', color: 'neutral-0' },
+                      // `on-accent`, not `on-inverse`: the fill under it is the accent, and
+                      // `on-inverse` belongs to `surface-inverse` (the tooltip). The two are
+                      // near-identical in a dark theme and diverge completely in a light one,
+                      // where `on-inverse` stays light and the accent may not be dark enough to
+                      // carry it. `on-accent` is derived against this exact fill, so it follows.
+                      props: { size: 'sm', fontWeight: '600', bg: 'accent', color: 'on-accent' },
                       children: [opts.badge],
                     },
                   ]
@@ -415,19 +428,19 @@ export function railGroup(opts: RailGroupOptions): SchemaNode {
                 props: {
                   name: { $if: { condition: isCollapsed, then: 'caret-right', else: 'caret-down' } },
                   size: 'xs',
-                  color: 'neutral-400',
+                  color: 'text-faint',
                 },
               },
               {
                 type: 'we-text',
-                props: { fontSize: '200', fontWeight: '600', color: 'neutral-400', truncate: true },
+                props: { fontSize: '200', fontWeight: '600', color: 'text-faint', truncate: true },
                 children: [opts.label],
               },
               ...(opts.badge !== undefined
                 ? [
                     {
                       type: 'we-badge',
-                      props: { size: 'sm', bg: 'neutral-200', color: 'neutral-600' },
+                      props: { size: 'sm', bg: 'surface-active', color: 'text-muted' },
                       children: [opts.badge],
                     },
                   ]

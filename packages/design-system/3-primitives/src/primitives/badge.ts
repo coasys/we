@@ -9,8 +9,8 @@ import sharedStyles from '../shared/styles';
 import type { ComponentSize, ComponentVariant } from '../types';
 
 const DEFAULT_PROPS: Partial<DesignSystemProps> = {
-  bg: 'neutral-100',
-  color: 'neutral-500',
+  bg: 'surface-sunken',
+  color: 'text-muted',
   fontSize: '300',
   fontWeight: '400',
   r: '400',
@@ -20,11 +20,11 @@ const DEFAULT_PROPS: Partial<DesignSystemProps> = {
 };
 
 const VARIANT_DEFAULTS: Record<ComponentVariant, Partial<DesignSystemProps>> = {
-  neutral: { bg: 'neutral-100', color: 'neutral-500' },
-  primary: { bg: 'primary-100', color: 'primary-600' },
-  success: { bg: 'success-100', color: 'success-600' },
-  warning: { bg: 'warning-100', color: 'warning-600' },
-  danger: { bg: 'danger-100', color: 'danger-600' },
+  neutral: { bg: 'surface-sunken', color: 'text-muted' },
+  primary: { bg: 'accent-muted', color: 'accent-text' },
+  success: { bg: 'success-surface', color: 'success-text' },
+  warning: { bg: 'warning-surface', color: 'warning-text' },
+  danger: { bg: 'danger-surface', color: 'danger-text' },
 };
 
 const SIZE_DEFAULTS: Record<ComponentSize, Partial<DesignSystemProps>> = {

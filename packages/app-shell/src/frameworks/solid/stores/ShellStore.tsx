@@ -33,7 +33,7 @@ import {
   TITLE_BAR_PX,
   TOP_CHROME_PX,
 } from '@shared/dockGeometry';
-import { dockRegistry, hostDockStores } from '@shared/registries/dockRegistry';
+import { dockRegistry, hostDockStores, onDockRegistryChanged } from '@shared/registries/dockRegistry';
 import { moduleStores } from '@shared/registries/moduleRegistry';
 import type { DockAspect, DockEdge, DockSize } from '@we/module-shared';
 import {
@@ -328,8 +328,19 @@ export function ShellStoreProvider(props: ParentProps) {
   const placementOf = (request: DockRequest): FloatPlacement =>
     placements()[request.id] ?? seedPlacement(request, viewport());
 
-  const dockRequests = createMemo<DockRequest[]>(() =>
-    dockRegistry.ordered().map((entry) => {
+  /*
+    A dependency on *registration itself*, so a store that arrives late is picked up.
+
+    Without it the memo below can evaluate while `hostDockStores` is still empty, read no accessor,
+    and therefore have nothing to re-run for — see the note in dockRegistry.ts. The counter is the
+    dependency; nothing reads its value.
+  */
+  const [dockRegistryVersion, setDockRegistryVersion] = createSignal(0);
+  onCleanup(onDockRegistryChanged(() => setDockRegistryVersion((v) => v + 1)));
+
+  const dockRequests = createMemo<DockRequest[]>(() => {
+    dockRegistryVersion();
+    return dockRegistry.ordered().map((entry) => {
       const request: DockRequest = {
         id: entry.id,
         edge: (readModuleKey(entry.moduleId, entry.edge) as DockEdge) ?? null,
@@ -337,8 +348,8 @@ export function ShellStoreProvider(props: ParentProps) {
         float: Boolean(readModuleKey(entry.moduleId, entry.float)),
       };
       return { ...request, placement: placementOf(request) };
-    }),
-  );
+    });
+  });
 
   /**
    * What one panel has to keep clear of — the rule itself is in `dockGeometry`, pure and tested.

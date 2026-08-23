@@ -71,7 +71,7 @@ export const fluxChannelsList: SchemaNode = {
               type: '$if',
               props: {
                 condition: '$channel.description',
-                then: { type: 'we-text', props: { color: 'neutral-600' }, children: ['$channel.description'] },
+                then: { type: 'we-text', props: { color: 'text-muted' }, children: ['$channel.description'] },
               },
             },
             {

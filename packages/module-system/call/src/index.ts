@@ -103,7 +103,15 @@ const BAR_RADIUS = 'var(--we-theme-control-radius, var(--we-radius-400))';
  * whatever a space happens to be showing, and a border alone against a busy background is not a
  * separation.
  */
-const BAR_SURFACE = { bg: 'neutral-50', border: '1px solid neutral-200', shadow: 'md' } as const;
+/*
+  Page-toned, like the module rail it sits beside — see the long note in ChromeRail.schema.ts.
+
+  The short version: `surface-raised` is a rung on the tonal ladder (page → card → popover), sized
+  so a popover clears the card it covers. This bar covers nothing, so taking that rung painted it 11
+  lightness points above its surroundings. Chrome separates by edge, which is what the border and
+  shadow below are for, and what this bar always did (`neutral-50`).
+*/
+const BAR_SURFACE = { bg: 'page', border: '1px solid border', shadow: 'md' } as const;
 
 /**
  * The bar's extension point, for chrome that belongs *in a call* rather than at a screen edge.
@@ -199,7 +207,7 @@ const tile: SchemaNode = {
         // Low-numbered, so it stays a recessed surface under both themes — see the note on `stage`.
         // It shows only where a picture cannot fill 16:9, which is a screen share letterboxed inside
         // its own frame rather than a grey box around every camera.
-        bg: 'neutral-100',
+        bg: 'surface-sunken',
         r: '400',
         overflow: 'hidden',
         ax: 'center',
@@ -331,7 +339,7 @@ const tile: SchemaNode = {
                         { type: 'we-spinner', props: { size: 'xs' } },
                         {
                           type: 'we-text',
-                          props: { variant: 'footnote', color: 'neutral-500' },
+                          props: { variant: 'footnote', color: 'text-muted' },
                           children: ['Connecting…'],
                         },
                       ],
@@ -347,10 +355,10 @@ const tile: SchemaNode = {
                           type: 'Row',
                           props: { gap: '100', ay: 'center' },
                           children: [
-                            { type: 'we-icon', props: { name: 'warning', size: 'xs', color: 'danger-500' } },
+                            { type: 'we-icon', props: { name: 'warning', size: 'xs', color: 'danger-text' } },
                             {
                               type: 'we-text',
-                              props: { variant: 'footnote', color: 'danger-500' },
+                              props: { variant: 'footnote', color: 'danger-text' },
                               children: ["Couldn't connect"],
                             },
                           ],
@@ -637,7 +645,7 @@ const participants: SchemaNode = peopleTooltip({
         },
         {
           type: 'we-text',
-          props: { color: 'neutral-600' },
+          props: { color: 'text-muted' },
           children: [
             { type: 'we-number', props: { value: { $count: { items: { $store: 'modules.call.tiles' } } } } },
             ' in the call',

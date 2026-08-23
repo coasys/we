@@ -39,8 +39,8 @@ export const conversationList: SchemaNode = {
             {
               type: 'Card',
               props: {
-                bg: 'neutral-0',
-                border: '1px solid neutral-200',
+                bg: 'surface-sunken',
+                border: '1px solid border',
                 minWidth: '200px',
                 maxWidth: '280px',
                 flex: '1',
@@ -73,7 +73,7 @@ export const conversationList: SchemaNode = {
                       type: 'we-text',
                       props: {
                         variant: 'footnote',
-                        color: 'neutral-400',
+                        color: 'text-faint',
                         styles: {
                           display: '-webkit-box',
                           '-webkit-line-clamp': '3',

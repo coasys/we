@@ -24,9 +24,9 @@ const styles = css`
     display: inline-flex;
     align-items: center;
     gap: var(--we-space-300);
-    border: 1px solid var(--we-color-neutral-300);
+    border: 1px solid var(--we-role-border);
     border-radius: var(--we-radius-400);
-    background: var(--we-color-neutral-0);
+    background: var(--we-role-surface);
     padding: 0 var(--we-space-300);
     height: calc(var(--we-component-height-md) + var(--we-theme-control-height-offset, 0px));
     cursor: pointer;
@@ -36,17 +36,17 @@ const styles = css`
   }
 
   [part='trigger']:hover:not([disabled]) {
-    border-color: var(--we-color-neutral-400);
+    border-color: var(--we-role-border-strong);
   }
 
   [part='trigger']:focus-visible {
-    border-color: var(--we-color-primary-500);
-    outline: 2px solid var(--we-color-primary-100);
+    border-color: var(--we-role-accent);
+    outline: 2px solid var(--we-role-accent-muted);
     outline-offset: -1px;
   }
 
   [part='pin-icon'] {
-    color: var(--we-color-primary-500);
+    color: var(--we-role-accent);
     flex-shrink: 0;
     display: flex;
     align-items: center;
@@ -55,7 +55,7 @@ const styles = css`
   [part='label'] {
     flex: 1;
     font-size: var(--we-font-size-300);
-    color: var(--we-color-neutral-700);
+    color: var(--we-role-text);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -64,7 +64,7 @@ const styles = css`
   [part='placeholder'] {
     flex: 1;
     font-size: var(--we-font-size-300);
-    color: var(--we-color-neutral-400);
+    color: var(--we-role-text-faint);
   }
 
   [part='popover'] {
@@ -95,13 +95,13 @@ const styles = css`
     align-items: center;
     justify-content: space-between;
     padding: var(--we-space-300) var(--we-space-400);
-    border-top: 1px solid var(--we-color-neutral-100);
+    border-top: 1px solid var(--we-role-border);
     gap: var(--we-space-300);
   }
 
   [part='coords'] {
     font-size: var(--we-font-size-200);
-    color: var(--we-color-neutral-500);
+    color: var(--we-role-text-muted);
     font-variant-numeric: tabular-nums;
     flex: 1;
   }
@@ -109,8 +109,8 @@ const styles = css`
   [part='confirm'] {
     all: unset;
     cursor: pointer;
-    background: var(--we-color-primary-500);
-    color: var(--we-color-neutral-0);
+    background: var(--we-role-accent);
+    color: var(--we-role-on-inverse);
     font-size: var(--we-font-size-200);
     font-weight: 500;
     padding: var(--we-space-200) var(--we-space-400);
@@ -119,7 +119,7 @@ const styles = css`
   }
 
   [part='confirm']:hover {
-    background: var(--we-color-primary-600);
+    background: var(--we-role-accent-text);
   }
 
   [part='confirm'][disabled] {

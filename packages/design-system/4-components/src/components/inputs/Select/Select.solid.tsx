@@ -99,13 +99,23 @@ export function Select(allProps: SelectProps) {
   return (
     <div style={wrapperStyle()}>
       <we-popover ref={popoverRef} placement="bottom-start">
+        {/*
+          The two halves of this control are deliberately different materials: the label is
+          `surface` and the field beside it is `surface-sunken`.
+
+          The label is a *cap* — it names what the field is and cannot be typed into, so it sits at
+          card level. The field is a trough. It was `neutral-100` against the field's `neutral-0`,
+          and the gap between those two steps is exactly this distinction, which is the thing a
+          scale position could not name and a role can. The role migration read both as the trough,
+          which flattened the sort and order controls into one dark slab.
+        */}
         <Row slot="trigger" gap="0" ay="stretch">
           <Show when={props.label}>
             <we-text
               variant="label"
-              color="neutral-600"
-              bg="neutral-100"
-              border="1px solid var(--we-color-neutral-300)"
+              color="text-muted"
+              bg="surface"
+              border="1px solid var(--we-role-border)"
               borderRight="none"
               rl="var(--we-theme-control-radius, var(--we-radius-400))"
               px={TRIGGER_PADDING_X[size()]}
@@ -116,7 +126,7 @@ export function Select(allProps: SelectProps) {
           </Show>
           <we-button
             variant="outline"
-            bg="neutral-0"
+            bg="surface-sunken"
             size={size()}
             px={TRIGGER_PADDING_X[size()]}
             gap={TRIGGER_GAP[size()]}
@@ -136,7 +146,7 @@ export function Select(allProps: SelectProps) {
               <we-icon name={selectedOption()!.icon!} />
             </Show>
             <we-text>{selectedOption()?.label ?? props.placeholder ?? 'Select…'}</we-text>
-            <we-icon name="caret-down" color="neutral-500" size="xs" />
+            <we-icon name="caret-down" color="text-muted" size="xs" />
           </we-button>
         </Row>
 
@@ -151,7 +161,7 @@ export function Select(allProps: SelectProps) {
             <Show
               when={hasResults()}
               fallback={
-                <we-text variant="footnote" color="neutral-400" px="300" py="200">
+                <we-text variant="footnote" color="text-faint" px="300" py="200">
                   No results
                 </we-text>
               }
@@ -160,7 +170,7 @@ export function Select(allProps: SelectProps) {
                 {(group) => (
                   <>
                     <Show when={group.label !== null}>
-                      <we-menu-item cursor="default" pointerEvents="none" color="neutral-400" fontSize="100">
+                      <we-menu-item cursor="default" pointerEvents="none" color="text-faint" fontSize="100">
                         <we-text>{group.label}</we-text>
                       </we-menu-item>
                     </Show>
@@ -176,7 +186,7 @@ export function Select(allProps: SelectProps) {
                           </Show>
                           <we-text>{opt.label}</we-text>
                           <Show when={opt.value === props.value}>
-                            <we-icon slot="end" name="check" size="xs" weight="bold" color="primary-500" />
+                            <we-icon slot="end" name="check" size="xs" weight="bold" color="accent" />
                           </Show>
                         </we-menu-item>
                       )}

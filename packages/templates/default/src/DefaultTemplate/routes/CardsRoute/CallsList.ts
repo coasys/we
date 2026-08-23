@@ -81,10 +81,10 @@ function extracted(query: object, label: string, icon: string, as: string): Sche
             type: 'Row',
             props: { gap: '200', ay: 'center' },
             children: [
-              { type: 'we-icon', props: { name: icon, color: 'primary-700' } },
+              { type: 'we-icon', props: { name: icon, color: 'accent-text' } },
               {
                 type: 'we-text',
-                props: { variant: 'footnote', color: 'neutral-500', uppercase: true },
+                props: { variant: 'footnote', color: 'text-muted', uppercase: true },
                 children: [label],
               },
             ],
@@ -95,7 +95,7 @@ function extracted(query: object, label: string, icon: string, as: string): Sche
             children: [
               {
                 type: 'Row',
-                props: { gap: '200', ay: 'center', bg: 'neutral-50', r: '300', px: '300', py: '200' },
+                props: { gap: '200', ay: 'center', bg: 'surface-sunken', r: '300', px: '300', py: '200' },
                 children: [{ type: 'we-text', children: [`$${as}.title`] }],
               },
             ],
@@ -158,7 +158,7 @@ export const callsList: SchemaNode = {
               type: 'Row',
               props: { ay: 'center', gap: '300' },
               children: [
-                { type: 'we-icon', props: { name: 'phone', color: 'primary-700' } },
+                { type: 'we-icon', props: { name: 'phone', color: 'accent-text' } },
                 {
                   type: 'Column',
                   props: { gap: '100' },
@@ -174,7 +174,7 @@ export const callsList: SchemaNode = {
                     },
                     {
                       type: 'we-text',
-                      props: { fontSize: '200', color: 'neutral-700' },
+                      props: { fontSize: '200', color: 'text' },
                       // Relative, because what matters about a call is how long ago it was. The
                       // end is not stored — it is the last utterance's timestamp, derived rather
                       // than written so nobody has to remember to close the record and it cannot
@@ -223,7 +223,7 @@ export const callsList: SchemaNode = {
                       type: 'we-text',
                       props: {
                         fontSize: '200',
-                        color: 'neutral-700',
+                        color: 'text',
                         text: {
                           $concat: [
                             { $count: { items: utterances } },
@@ -275,10 +275,10 @@ export const callsList: SchemaNode = {
                           type: 'Row',
                           props: { gap: '100', ay: 'center' },
                           children: [
-                            { type: 'we-icon', props: { name: 'sparkle', color: 'neutral-400', size: 'xs' } },
+                            { type: 'we-icon', props: { name: 'sparkle', color: 'text-faint', size: 'xs' } },
                             {
                               type: 'we-text',
-                              props: { variant: 'footnote', color: 'neutral-400' },
+                              props: { variant: 'footnote', color: 'text-faint' },
                               children: ['Extracting automatically'],
                             },
                           ],
@@ -445,7 +445,7 @@ export const callsList: SchemaNode = {
                         condition: { $eq: [{ $store: 'modules.transcribe.extractingId' }, '$call.id'] },
                         then: {
                           type: 'we-text',
-                          props: { fontSize: '200', color: 'neutral-700' },
+                          props: { fontSize: '200', color: 'text' },
                           children: ['Reading…'],
                         },
                       },
@@ -461,7 +461,7 @@ export const callsList: SchemaNode = {
                         },
                         then: {
                           type: 'we-text',
-                          props: { fontSize: '200', color: 'neutral-700' },
+                          props: { fontSize: '200', color: 'text' },
                           children: [
                             {
                               // Whole sentences per branch rather than a count glued to a suffix.
@@ -521,7 +521,7 @@ export const callsList: SchemaNode = {
                           children: [
                             {
                               type: 'we-text',
-                              props: { fontSize: '200', color: 'danger-600' },
+                              props: { fontSize: '200', color: 'danger-text' },
                               children: ['Extraction failed'],
                             },
                           ],
@@ -677,7 +677,7 @@ export const callsList: SchemaNode = {
                     condition: '$call.description',
                     then: {
                       type: 'we-text',
-                      props: { color: 'neutral-700' },
+                      props: { color: 'text' },
                       children: ['$call.description'],
                     },
                   },
@@ -792,13 +792,11 @@ export const callsList: SchemaNode = {
                           did: '$utterance.author',
                           as: 'speaker',
                           stacked: true,
-                          nameColor: 'neutral-600',
+                          nameColor: 'text-muted',
                           // When each utterance was written — which is when it was *said*, since a
                           // block is flushed as the speaker finishes.
                           timestamp: '$utterance.createdAt',
-                          children: [
-                            { type: 'we-text', props: { color: 'neutral-900' }, children: ['$utterance.text'] },
-                          ],
+                          children: [{ type: 'we-text', props: { color: 'text' }, children: ['$utterance.text'] }],
                         }),
                       ],
                     },
