@@ -7,8 +7,9 @@ import { OverlayElement } from '../shared/overlay-element';
 import sharedStyles from '../shared/styles';
 import type { DrawerPosition } from '../types';
 
+/* `surface`, not `surfaceRaised` — a scrimmed sheet, for the reason set out on `we-modal`. */
 const DEFAULT_PROPS: Partial<DesignSystemProps> = {
-  bg: 'var(--we-role-surface-raised)',
+  bg: 'var(--we-role-surface)',
   r: '600',
   p: '600',
   direction: 'column',

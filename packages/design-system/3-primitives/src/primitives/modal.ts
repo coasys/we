@@ -5,8 +5,15 @@ import { customElement, property } from 'lit/decorators.js';
 import { OverlayElement } from '../shared/overlay-element';
 import sharedStyles from '../shared/styles';
 
+/*
+  `surface`, not `surfaceRaised`. A raised surface is one floating above the page with nothing
+  between it and the page — a popover, a floating bar — and it buys that separation with lightness,
+  which is the only currency a dark theme has for elevation (a shadow is invisible on a near-black
+  page). A modal is not in that situation: the `overlay` scrim sits between it and the page and has
+  already done the separating, so the lift is paid for twice and the sheet reads as glowing.
+*/
 const DEFAULT_PROPS: Partial<DesignSystemProps> = {
-  bg: 'var(--we-role-surface-raised)',
+  bg: 'var(--we-role-surface)',
   r: '600',
   p: '900',
   ax: 'stretch',
