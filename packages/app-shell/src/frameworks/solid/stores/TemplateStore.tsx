@@ -104,6 +104,15 @@ export interface TemplateStore {
   getTemplateModel: (templateId: string) => Template | undefined;
 }
 
+/**
+ * The `role` mirror to store beside a saved schema. See `Template.role`.
+ *
+ * `''` rather than `'shell'` for a shell, so a record written here is indistinguishable from one
+ * written before the field existed — which is what lets the marketplace's template list ask for
+ * `not: 'view'` and get both.
+ */
+const roleOf = (schema: { meta?: { role?: string } }): string => (schema.meta?.role === 'view' ? 'view' : '');
+
 const TemplateContext = createContext<TemplateStore>();
 
 const SPACE_PREFIX = 'space::';
@@ -782,6 +791,7 @@ export function TemplateStoreProvider(props: ParentProps) {
           slug: templateId,
           version: newVersion,
           schema: asFileField(schemaBlob),
+          role: roleOf(schemaToInstall),
         });
         savedTemplateMap.set(templateId, newTemplate);
 
@@ -874,6 +884,7 @@ export function TemplateStoreProvider(props: ParentProps) {
         slug: templateId,
         version: marketplaceTemplate.version || 1,
         schema: asFileField(schemaBlob),
+        role: roleOf(schemaToInstall),
       });
 
       await loadSpaceTemplates(spaceDs!);
@@ -932,6 +943,7 @@ export function TemplateStoreProvider(props: ParentProps) {
           slug: templateId,
           version: 1,
           schema: asFileField(schemaBlob),
+          role: roleOf(schemaToSave),
         });
         savedTemplateMap.set(templateId, newTemplate);
 
@@ -998,6 +1010,7 @@ export function TemplateStoreProvider(props: ParentProps) {
           slug: templateId,
           version: 1,
           schema: asFileField(schemaBlob),
+          role: roleOf(schemaToSave),
         });
         targetMap.set(templateId, newTemplate);
 
@@ -1145,6 +1158,7 @@ export function TemplateStoreProvider(props: ParentProps) {
         slug: templateId,
         version: 1,
         schema: asFileField(schemaBlob),
+        role: roleOf(schema),
       });
       toastService.success(`Template "${schema.meta.name}" shared to space "${spaceName}"`);
       return true;

@@ -5,6 +5,9 @@ export const templatesRoute: SchemaNode = marketplaceList({
   entity: 'Template',
   as: 'template',
   label: 'templates',
+  // `not: 'view'` rather than `'shell'`: every template published before views existed has no role
+  // stored, and asking for the positive value would empty the shelf of everything already on it.
+  where: { role: { not: 'view' } },
   emptyIcon: 'layout',
   emptyBody: 'Be the first to publish a template to the marketplace.',
   sortable: true,

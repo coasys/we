@@ -14,6 +14,19 @@ export const Template: CoreEntityDef = {
       slug: { type: 'string', predicate: 'we://slug', default: '' },
       schema: { type: 'string', predicate: 'we://template_schema', format: 'file', default: null },
       themeId: { type: 'string', predicate: 'we://theme_id', default: '' },
+      /**
+       * Whether this record is a whole interface or one section of one — `'shell'` or `'view'`.
+       *
+       * The queryable mirror of `TemplateMeta.role`, written on every save and publish, exactly as
+       * `themeId` mirrors `meta.themeId` and for the same reason: the authoritative copy lives
+       * inside the serialized `schema` blob, and a marketplace cannot filter on a field it would
+       * have to parse every record to read.
+       *
+       * **Absent means shell**, and that asymmetry is deliberate. Every template published before
+       * views existed has no value here, so the marketplace's template list asks for `not: 'view'`
+       * rather than `'shell'` — anything else would empty the shelf of everything already on it.
+       */
+      role: { type: 'string', predicate: 'we://template_role', default: '' },
     },
     relations: {
       screenshots: { target: 'ImageBlock', cardinality: 'many', predicate: 'we://screenshot' },

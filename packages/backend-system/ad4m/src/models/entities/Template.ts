@@ -39,6 +39,21 @@ export class Template extends WeNode {
   @Property({ through: 'we://theme_id' })
   themeId: string = '';
 
+  /**
+   * Whether this record is a whole interface or one section of one — `'shell'` or `'view'`.
+   *
+   * The queryable mirror of `TemplateMeta.role`, written on every save and publish, exactly as
+   * `themeId` mirrors `meta.themeId` and for the same reason: the authoritative copy lives
+   * inside the serialized `schema` blob, and a marketplace cannot filter on a field it would
+   * have to parse every record to read.
+   *
+   * **Absent means shell**, and that asymmetry is deliberate. Every template published before
+   * views existed has no value here, so the marketplace's template list asks for `not: 'view'`
+   * rather than `'shell'` — anything else would empty the shelf of everything already on it.
+   */
+  @Property({ through: 'we://template_role' })
+  role: string = '';
+
   @HasMany(() => ImageBlock, { through: 'we://screenshot' })
   screenshots: string[] = [];
 }

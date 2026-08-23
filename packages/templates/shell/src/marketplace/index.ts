@@ -5,9 +5,11 @@ import { blocksRoute } from './routes/BlocksRoute';
 import { componentsRoute } from './routes/ComponentsRoute';
 import { templatesRoute } from './routes/TemplatesRoute';
 import { themesRoute } from './routes/ThemesRoute';
+import { viewsRoute } from './routes/ViewsRoute';
 
 const tabs = [
   { key: 'templates', label: 'Templates', path: '/templates' },
+  { key: 'views', label: 'Sections', path: '/views' },
   { key: 'themes', label: 'Themes', path: '/themes' },
   { key: 'blocks', label: 'Blocks', path: '/blocks' },
   { key: 'components', label: 'Components', path: '/components' },
@@ -87,6 +89,7 @@ export const marketplaceTemplate: TemplateSchema = {
   routes: [
     { path: '/', redirect: '/templates' },
     { path: '/templates', ...templatesRoute },
+    { path: '/views', ...viewsRoute },
     { path: '/themes', ...themesRoute },
     { path: '/blocks', ...blocksRoute },
     { path: '/components', ...componentsRoute },

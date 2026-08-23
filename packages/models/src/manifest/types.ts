@@ -291,6 +291,7 @@ export interface TemplateModel extends WeNodeModel {
   slug: string;
   schema: string | null;
   themeId: string;
+  role: string;
   screenshots: string[];
   addScreenshots(value: string | { id: string }, batch?: string): Promise<unknown>;
   removeScreenshots(value: string | { id: string }, batch?: string): Promise<unknown>;

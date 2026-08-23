@@ -23,6 +23,16 @@ export interface MarketplaceListOptions {
   sortable?: boolean;
   /** Relations to hydrate — screenshots, on the pages that show them. */
   include?: Record<string, unknown>;
+  /**
+   * Narrow which records of `entity` this shelf holds.
+   *
+   * One entity can back more than one shelf: a section and a whole interface are both `Template`
+   * records, distinguished by `role`, because everything about installing, versioning and publishing
+   * them is identical and a second entity type would have bought a second copy of all of it. They
+   * still belong on separate shelves, since "what should this space look like" and "what should it
+   * have in it" are not alternatives.
+   */
+  where?: Record<string, unknown>;
 }
 
 /**
@@ -62,6 +72,7 @@ export function marketplaceList(opts: MarketplaceListOptions): SchemaNode {
         entity: opts.entity,
         dataset: 'datasetStore.marketplaceDataset',
         subscribe: true,
+        ...(opts.where && { where: opts.where }),
         ...(opts.sortable && { order: { createdAt: { $local: 'sort' } } }),
         ...(opts.include && { include: opts.include }),
       },

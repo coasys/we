@@ -10,6 +10,8 @@ import {
 } from '@shared/spaceSync';
 import { resolveSpaceTheme, type ThemeResolutionInput } from '@shared/themeResolution';
 import { deriveSlug } from '@shared/utils';
+import type { ViewSetting } from '@shared/viewResolution';
+import { parseIdList, resolveEnabledViews, resolveSections, viewSettings } from '@shared/viewResolution';
 import type { AgentProfileSummary, DatasetRef } from '@we/backend-shared';
 import type { SerializedBlockNode } from '@we/block-shared';
 import { createBlocks, deleteBlocks, reconcileBlocks } from '@we/block-shared';
@@ -133,42 +135,6 @@ function resolveEnabledModules(raw: string | undefined): string[] {
 }
 
 /**
- * Which sections a space has, in the order it wants them.
- *
- * The same three rules `resolveEnabledModules` follows, and they matter more here because a section
- * is the whole of what a member can navigate to:
- *
- * - **Unset means "not decided", never "none"** — see `Space.enabledViews`. Every space predating
- *   views falls back to the bundled set, so this ships as no change rather than as every space
- *   losing every tab.
- * - **Malformed is a corrupt setting, not a decision.** Same fallback.
- * - **Order is content, not presentation.** The stored list is the nav order, so it is preserved
- *   exactly rather than sorted or re-derived from the registry.
- *
- * Ids naming a view this build does not have are dropped rather than rendered as a dead tab: a
- * space configured on a deployment that ships the globe, opened on one that does not, should be
- * missing that section and nothing else. The id survives in the stored list, so the section comes
- * back if they open it somewhere the view exists — dropping it here and not there is what makes
- * that reversible.
- *
- * A plain function over the stored string rather than a memo, because the settings page answers
- * this for spaces the agent is not standing in.
- */
-function resolveEnabledViews(raw: string | undefined, known: (id: string) => boolean): string[] {
-  if (raw) {
-    try {
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) {
-        return parsed.filter((id): id is string => typeof id === 'string').filter(known);
-      }
-    } catch {
-      console.warn('space.enabledViews is not valid JSON; falling back to the bundled set');
-    }
-  }
-  return defaultViewOrder().filter(known);
-}
-
-/**
  * Every registered module, with each layer's answer for one space — the shape a settings list renders.
  *
  * All three answers travel together because the settings page has to explain *why* a module is not
@@ -216,27 +182,6 @@ export interface ModuleSetting {
   visible: boolean;
   /** All of the above agreeing — whether it actually renders here for this agent. */
   active: boolean;
-}
-
-/**
- * One section, with both layers' answers for one space.
- *
- * Shorter than {@link ModuleSetting} by exactly one field, and the missing one is the point: a
- * module has an agent-wide "installed" layer because it is a capability you choose to run anywhere,
- * while a section is part of what a space *is*. There is no third answer for a view — only what the
- * community put here, and whether you are looking at it.
- */
-export interface ViewSetting {
-  id: string;
-  name: string;
-  description: string;
-  icon: string;
-  /** The community's decision for this space — shared with every member. */
-  enabled: boolean;
-  /** This agent's decision, here. Private. Positively phrased so a switch binds to it directly. */
-  visible: boolean;
-  /** Compiled into this build, as opposed to installed — shown so a list can say where it came from. */
-  builtIn: boolean;
 }
 
 export interface SpaceMetaUpdate {
@@ -766,19 +711,11 @@ export function SpaceStoreProvider(props: ParentProps) {
   /**
    * Sections this agent has hidden in one space — the private half of the section list.
    *
-   * Exclusions, like `mutedModulesFor`: a section the community adds later shows up, because
-   * silence about a view is "no opinion" rather than "no".
+   * Exclusions, like `mutedModulesFor`: a section the community adds later shows up, because silence
+   * about a view is "no opinion" rather than "no".
    */
-  const hiddenViewsFor = (spaceUuid: string | undefined): string[] => {
-    const raw = preferenceFor(spaceUuid)?.hiddenViews;
-    if (!raw) return [];
-    try {
-      const parsed = JSON.parse(raw);
-      return Array.isArray(parsed) ? parsed.filter((id): id is string => typeof id === 'string') : [];
-    } catch {
-      return [];
-    }
-  };
+  const hiddenViewsFor = (spaceUuid: string | undefined): string[] =>
+    parseIdList(preferenceFor(spaceUuid)?.hiddenViews);
 
   /**
    * This agent's template/theme override for a space, normalised to one of the three values a
@@ -870,20 +807,14 @@ export function SpaceStoreProvider(props: ParentProps) {
    * turned this off" and "you hid this for yourself" are different situations with different
    * remedies, and one boolean cannot tell them apart.
    */
-  const viewSettingsFor = (spaceUuid: string | undefined, raw: string | undefined) => {
-    const available = availableViews();
-    const enabled = new Set(resolveEnabledViews(raw, (id) => available.has(id)));
-    const hidden = new Set(hiddenViewsFor(spaceUuid));
-    return [...available.entries()].map(([id, schema]) => ({
-      id,
-      name: schema.meta?.name ?? id,
-      description: schema.meta?.description ?? '',
-      icon: schema.meta?.icon || 'square',
-      enabled: enabled.has(id),
-      visible: !hidden.has(id),
-      builtIn: id in viewRegistry,
-    }));
-  };
+  const viewSettingsFor = (spaceUuid: string | undefined, raw: string | undefined): ViewSetting[] =>
+    viewSettings({
+      enabledRaw: raw,
+      hidden: hiddenViewsFor(spaceUuid),
+      available: availableViews(),
+      fallbackOrder: defaultViewOrder(),
+      isBuiltIn: (id) => id in viewRegistry,
+    });
 
   /** `installedModules` as a set — the shape both the list and the intersection want. */
   const installedSet = createMemo(() => new Set(installedModules()));
@@ -1780,28 +1711,14 @@ export function SpaceStoreProvider(props: ParentProps) {
    * here rather than read at the render site so the routes and the nav strip cannot disagree about
    * where a section lives — which is the drift this whole mechanism exists to end.
    */
-  const spaceViews = createMemo<ResolvedView[]>(() => {
-    const available = availableViews();
-    const hidden = new Set(hiddenViewsFor(datasetStore.currentDataset()?.id));
-    const taken = new Set<string>();
-
-    return resolveEnabledViews(currentSpace()?.enabledViews, (id) => available.has(id))
-      .filter((id) => !hidden.has(id))
-      .map((id) => {
-        const schema = available.get(id)!;
-        /*
-          Two views can want the same segment — one installed beside a built-in that already has it,
-          or a fork that kept its parent's. First in the list keeps it and the later one falls back
-          to its id, which is unique by construction. Silently renaming beats the alternatives: a
-          duplicate path makes the router match whichever it reaches first, so one of the two
-          sections would be unreachable with nothing on screen to say which or why.
-        */
-        let segment = schema.meta?.segment || id;
-        if (taken.has(segment)) segment = id;
-        taken.add(segment);
-        return { id, segment, schema };
-      });
-  });
+  const spaceViews = createMemo<ResolvedView[]>(() =>
+    resolveSections({
+      enabledRaw: currentSpace()?.enabledViews,
+      hidden: hiddenViewsFor(datasetStore.currentDataset()?.id),
+      available: availableViews(),
+      fallbackOrder: defaultViewOrder(),
+    }),
+  );
 
   /**
    * The same list, as the nav strip reads it.
@@ -2099,7 +2016,22 @@ export function SpaceStoreProvider(props: ParentProps) {
    * Derived from the components the schema actually mounts, so it is right without any template
    * author declaring anything — see `moduleRegistry.requiredBy`.
    */
-  const requiredModules = createMemo<string[]>(() => moduleRegistry.requiredBy(templateStore.currentTemplate));
+  /**
+   * Modules the interface on screen mounts components from — the shell *and* its sections.
+   *
+   * The sections have to be walked separately now that they are not part of the shell's own schema.
+   * Missing them would break two things quietly: `missingModules` would stop reporting a real gap,
+   * and — worse — the guard in `setModuleInstalled` would stop refusing. Uninstalling the globe
+   * module while a space has the globe section enabled would then succeed, and that section would
+   * render nothing with nothing to say why, which is exactly the failure the guard exists for.
+   */
+  const requiredModules = createMemo<string[]>(() => {
+    const required = new Set(moduleRegistry.requiredBy(templateStore.currentTemplate));
+    for (const view of spaceViews()) {
+      for (const id of moduleRegistry.requiredBy(view.schema)) required.add(id);
+    }
+    return [...required];
+  });
 
   /**
    * Modules this template needs that the agent has not installed.
@@ -2483,7 +2415,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     const space = ds ? mySpaces().find((s) => isSpaceSelf(s, ds)) : undefined;
     if (!ds || !space) return;
     const available = availableViews();
-    const current = resolveEnabledViews(space.enabledViews, (id) => available.has(id));
+    const current = resolveEnabledViews(space.enabledViews, (id) => available.has(id), defaultViewOrder());
     const next = enabled
       ? current.includes(viewId)
         ? current
