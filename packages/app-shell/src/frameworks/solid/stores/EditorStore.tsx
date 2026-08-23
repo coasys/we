@@ -539,7 +539,23 @@ export function EditorStoreProvider(props: ParentProps) {
   // Derived from ThemeStore — single source of truth for whether a theme is being edited.
   const isEditingTheme: Accessor<boolean> = () => !!themeStore.editingTheme();
 
+  /**
+   * Open the theme editor, and make sure there is something for it to edit.
+   *
+   * The panel docks only when its flag *and* an editing session are both live — see `dockedWhen`.
+   * That invariant used to be held by convention at four call sites, each remembering to call
+   * `themeStore.startEditing()` first, and anything that hid the panel without ending the session
+   * left the two disagreeing. From there the editor was unreachable: the flag was already true, so
+   * setting it again changed nothing, and no amount of clicking or refreshing produced a panel.
+   * Opening a *different* panel was the only way out, because that re-ran the layout with the pair
+   * in agreement again.
+   *
+   * Starting a session here makes the function do what its name says, and makes the invariant the
+   * state machine's problem rather than every caller's. Calling it with a session already open is a
+   * no-op, so the existing call sites keep working unchanged.
+   */
   function enterThemeEditing() {
+    if (!themeStore.editingTheme()) themeStore.startEditing();
     setThemePanelOpen(true);
     setIsOpen(false);
     setCodePanelOpen(false);
@@ -565,8 +581,17 @@ export function EditorStoreProvider(props: ParentProps) {
   });
   onCleanup(() => setLocalWarningSink(null));
 
+  /**
+   * Toggle on what is *visible*, not on whether a session happens to be open.
+   *
+   * Keyed on `isEditingTheme` this inverted the moment the two fell out of step: with a session
+   * running and the panel hidden — which is what `enterTemplateEditing` and switching to visual mode
+   * both leave behind — the first press "closed" something already closed, and the second reopened a
+   * panel that could not dock. Reading the dock edge asks the question the user is actually asking,
+   * which is whether they can see the thing.
+   */
   function toggleThemeEditing() {
-    if (isEditingTheme()) {
+    if (themeDockEdge()) {
       exitThemeEditing();
     } else {
       enterThemeEditing();

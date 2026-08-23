@@ -11,7 +11,13 @@ import {
   Theme,
 } from '@we/models';
 import type { ThemeOverrides } from '@we/schema-shared';
-import { applyThemeVars, parseOverrides, reconcileSurfaces, THEME_SCHEMA_VERSION } from '@we/schema-shared';
+import {
+  applyThemeVars,
+  parseOverrides,
+  reconcileSurfaces,
+  THEME_SCHEMA_VERSION,
+  themeToStyle,
+} from '@we/schema-shared';
 import type { SanitiseCssOptions } from '@we/themes/sanitiseCss';
 import { sanitiseCss } from '@we/themes/sanitiseCss';
 import {
@@ -363,16 +369,28 @@ const OVERRIDE_CSS_VARS: Partial<Record<keyof ThemeOverrides, string>> = {
 /**
  * For any override keys missing from `overrides`, reads their actual computed CSS values so
  * sliders initialise at the position matching what the user sees, not hardcoded defaults.
- * Must be called while the target theme is already applied to the DOM.
+ *
+ * `from` is the element carrying the theme being read. It used to be documentElement, always, with
+ * the caller responsible for applying the theme there first — which is exactly what went wrong: in
+ * scoped mode the theme being edited is *not* the document's, so `startEditing` applied it to the
+ * document to take this reading and relied on a later effect to put it back. That effect only fires
+ * in global mode, where `documentTheme` depends on the theme being edited. In scoped mode it
+ * depends on `personalTheme`, which had not changed, so nothing re-ran and the app chrome simply
+ * kept the theme being edited until the scope toggle was flipped and back.
+ *
+ * Reading from a caller-supplied element removes the need to disturb anything.
  */
-function populateMissingOverrides(overrides: ThemeOverrides): ThemeOverrides {
+function populateMissingOverrides(
+  overrides: ThemeOverrides,
+  from: HTMLElement = document.documentElement,
+): ThemeOverrides {
   const result = { ...overrides };
   // Every override is read back out of CSS as a string, then narrowed to a number for the
   // numeric ones. Naming that shape once keeps the writes below typed.
   const writable = result as Record<keyof ThemeOverrides, string | number>;
   // Normalize legacy fontFamily: 'base' sentinel saved before the font-family fix
   if (result.fontFamily === 'base') delete result.fontFamily;
-  const styles = getComputedStyle(document.documentElement);
+  const styles = getComputedStyle(from);
 
   for (const [key, cssVar] of Object.entries(OVERRIDE_CSS_VARS) as [keyof ThemeOverrides, string][]) {
     if (result[key] !== undefined) continue;
@@ -695,7 +713,26 @@ export function ThemeStoreProvider(props: ParentProps) {
     // `system` is not a theme, it is a question — asked here rather than remembered, so the answer
     // follows the OS while the app is open instead of being fixed at whatever it was on the click.
     const id = themeId === SYSTEM_THEME_ID ? systemScheme() : themeId;
-    return allThemes().find((t) => t.id === id) ?? registryToThemeData(isValidThemeKey(id) ? id : 'light');
+    const found = allThemes().find((t) => t.id === id);
+    if (found) return found;
+    if (isValidThemeKey(id)) return registryToThemeData(id);
+
+    /*
+      An id nothing answers to — which, for the first second of every load, is any custom theme.
+
+      `installedThemes` comes out of the root dataset asynchronously, so a pinned personal theme is
+      referenced by an id that is not in `allThemes()` yet. This used to answer `light` outright,
+      which is why a refresh went dark (the boot screen, correct), flashed light for a beat as the
+      template resolved, then landed on the pinned theme once its record arrived. The flash was not a
+      loading state; it was a hardcoded guess.
+
+      Answering with the agent's own default instead makes the interval invisible in the common case,
+      because that is the theme the boot screen was already wearing. `light` remains the last resort
+      for an agent who has no default either — there has to be *some* answer, and a wrong one that
+      matches what is already on screen beats a wrong one that does not.
+    */
+    const preferred = datasetStore.agentSettings()?.defaultThemeId ?? getInitialThemeId();
+    return registryToThemeData(isValidThemeKey(preferred) ? preferred : 'light');
   }
 
   /*
@@ -838,12 +875,25 @@ export function ThemeStoreProvider(props: ParentProps) {
     const storedOverrides: ThemeOverrides = parseOverrides(base.overrides);
     let initialOverrides: ThemeOverrides;
     if (themeScope() === 'scoped') {
-      // documentElement has the personal theme in scoped mode, not the space theme being edited.
-      // Temporarily apply the editing base so populateMissingOverrides reads the right computed
-      // values. Nothing restores it here: `setEditingTheme` below moves `documentTheme`, and its
-      // effect rewrites documentElement before the browser paints.
-      applyThemeToDOM(base);
-      initialOverrides = populateMissingOverrides(storedOverrides);
+      /*
+        In scoped mode documentElement wears the *personal* theme, not the one being edited, so the
+        slider values have to be read from somewhere else.
+
+        A throwaway element carrying the base theme, rather than applying it to the document and
+        hoping something puts it back. That is what this used to do, on the reasoning that
+        `setEditingTheme` moves `documentTheme` and its effect rewrites the document before paint —
+        true in global mode and false here, because in scoped mode `documentTheme` follows
+        `personalTheme`, which has not changed. Nothing re-ran, and the app chrome kept the theme
+        being edited until the scope toggle was flipped twice.
+      */
+      const probe = document.createElement('div');
+      probe.style.cssText = 'position:absolute;width:0;height:0;visibility:hidden;pointer-events:none';
+      for (const [prop, value] of Object.entries(themeToStyle(storedOverrides))) {
+        probe.style.setProperty(prop, value);
+      }
+      document.body.appendChild(probe);
+      initialOverrides = populateMissingOverrides(storedOverrides, probe);
+      probe.remove();
     } else {
       initialOverrides = populateMissingOverrides(storedOverrides);
     }
