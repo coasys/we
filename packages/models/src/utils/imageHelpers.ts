@@ -119,9 +119,15 @@ export async function compressImageToFileData(file: File, name: string, maxSize?
  *
  * Takes a data URI because that is what the caller already has: the picture has been compressed and
  * published by then, and the original File is long gone.
+ *
+ * Decoded with `dataURItoBlob` rather than `fetch(dataUri)`. The two are equivalent in a bare
+ * browser, but a `fetch` — even of a `data:` URI, which touches no network — is governed by
+ * `connect-src`, and no CSP that lists actual origins also lists `data:`. So the fetch form throws
+ * `TypeError: Failed to fetch` under the app's own policy, which is how it reached production: it
+ * works everywhere the CSP does not.
  */
 export async function shrinkDataUri(dataUri: string, maxSize: number): Promise<string> {
-  const blob = await (await fetch(dataUri)).blob();
+  const blob = dataURItoBlob(dataUri);
   // Percentage 1: already inside the ceiling means leave it alone, not shrink it again.
   const resized = await resizeImage(blob, 1, maxSize);
   return `data:image/png;base64,${await blobToDataURL(resized)}`;
