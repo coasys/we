@@ -84,6 +84,13 @@ export interface ThemeStore {
   themeScopeGlobal: Accessor<boolean>;
   /** True while a session preview is masking the preference — worth saying so in the UI. */
   themeScopePreviewing: Accessor<boolean>;
+  /**
+   * True while the template's theme cannot yet be resolved and might still arrive.
+   *
+   * Whatever applies the scoped theme should hold what is on screen rather than paint a fallback —
+   * see the note where it is computed.
+   */
+  templateThemePending: Accessor<boolean>;
   /** Preview a scope for this editing session without changing the preference; null drops it. */
   previewThemeScope: (scope: 'global' | 'scoped' | null) => void;
   /**
@@ -443,6 +450,19 @@ export function ThemeStoreProvider(props: ParentProps) {
   ];
 
   const [installedThemes, setInstalledThemes] = createSignal<ThemeData[]>([]);
+  /**
+   * Whether custom themes have been read from the root dataset yet.
+   *
+   * Boot caches the *id* of the theme to wear, which is enough for a built-in — the registry holds
+   * its parameters — and not enough for a custom one, where an id without its record means nothing.
+   * So there is a window on every load where a pinned personal theme is referenced by an id nothing
+   * can answer, and the resolver has to make something up.
+   *
+   * What it made up was `light`, and since the token CSS's `:root` defaults *are* the light theme, a
+   * wrong answer here is maximally visible: dark boot screen, white flash, then the real theme.
+   * Intermittent, because it is a race — sometimes the records arrive first.
+   */
+  const [themesLoaded, setThemesLoaded] = createSignal(false);
   // IDs of custom themes visible in pickers (subset of installedThemes)
   const [visibleThemeIds, setVisibleThemeIds] = createSignal<Set<string>>(new Set());
   const [spaceThemes, setSpaceThemes] = createSignal<ThemeData[]>([]);
@@ -538,11 +558,15 @@ export function ThemeStoreProvider(props: ParentProps) {
 
   async function loadInstalledThemes() {
     const perspective = datasetStore.rootDataset()?.handle;
+    // Deliberately does *not* open the gate below: with no root dataset there is nothing to load
+    // yet, and saying "loaded" here would let a custom theme's id be guessed at before its record
+    // has had any chance to arrive.
     if (!perspective) return;
     try {
       const models = await Theme.findAll(perspective);
       for (const model of models) themeModelMap.set(model.id, model);
       setInstalledThemes(models.map(modelToThemeData));
+      setThemesLoaded(true);
 
       // Build visible set from AgentSettings.installedThemes HasMany
       const prefs = datasetStore.agentSettings();
@@ -637,7 +661,43 @@ export function ThemeStoreProvider(props: ParentProps) {
     themeScope() === 'scoped' ? (editingTheme() ?? currentTheme()) : null,
   );
 
-  createEffect(() => applyThemeToDOM(documentTheme()));
+  /** Can this id be *answered*, or would resolving it be a guess? */
+  function canResolveTheme(themeId: string): boolean {
+    const id = themeId === SYSTEM_THEME_ID ? systemScheme() : themeId;
+    return isValidThemeKey(id) || allThemes().some((t) => t.id === id);
+  }
+
+  /*
+    The ids each surface is *asking* for, as opposed to what they currently resolve to.
+
+    Needed because `resolveThemeData` always answers with something, so its result cannot tell a
+    real match from a fallback. These mirror the branches in `documentTheme` and
+    `activeTemplateTheme` — if either of those changes, these have to follow.
+  */
+  const documentThemeId = createMemo(() =>
+    themeScope() === 'scoped'
+      ? (datasetStore.agentSettings()?.defaultThemeId || getInitialThemeId())
+      : (editingTheme()?.id ?? currentThemeId()),
+  );
+  const templateThemeId = createMemo(() => editingTheme()?.id ?? currentThemeId());
+
+  /**
+   * True while the theme a surface wants cannot be resolved and might still arrive.
+   *
+   * Read by whatever applies a theme, so it holds what is already on screen instead of painting a
+   * guess over it. The wrong guess is not a neutral placeholder — with the token CSS's `:root`
+   * defaults being the light theme, it is a white flash in the middle of a dark one.
+   *
+   * Only until the records load. After that an unknown id really is unknown, a fallback is the
+   * honest answer, and this stops holding anything back.
+   */
+  const templateThemePending = createMemo(() => !themesLoaded() && !canResolveTheme(templateThemeId()));
+
+  createEffect(() => {
+    const theme = documentTheme();
+    if (!themesLoaded() && !canResolveTheme(documentThemeId())) return;
+    applyThemeToDOM(theme);
+  });
 
   /*
     In scoped mode, the space/editing theme's component-level CSS goes into its own style tag,
@@ -1486,6 +1546,7 @@ export function ThemeStoreProvider(props: ParentProps) {
     currentTheme,
     defaultThemeId,
     themeScope,
+    templateThemePending,
     themeScopePreference,
     themeScopeGlobal,
     useTemplateTheme,

@@ -234,6 +234,17 @@ export function TemplateLayout(
   createEffect(() => {
     const td = stores.themeStore.activeTemplateTheme();
     if (!scopeEl) return;
+    /*
+      Hold what is on screen while the answer is still coming.
+
+      A pinned personal theme is referenced by an id whose record loads asynchronously, so for a
+      moment `activeTemplateTheme()` is a *fallback* rather than the theme asked for. Painting it
+      here is what produced the white flash between the boot screen and the pinned theme — the token
+      CSS's `:root` defaults are the light theme, so the fallback is about as visible as a wrong
+      answer can be. Doing nothing leaves the template inheriting the document, which is already
+      wearing something sensible.
+    */
+    if (stores.themeStore.templateThemePending()) return;
     if (!td) {
       // Global mode: the wrapper must go back to *inheriting* the document theme. Writing a default
       // palette here instead would cut it off from the root — see `clearThemeVars`.

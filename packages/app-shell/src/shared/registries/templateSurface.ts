@@ -568,6 +568,8 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     themeScopePreference: state('view-state'),
     themeScopeGlobal: state('view-state'),
     themeScopePreviewing: state('editor'),
+    // Boot timing, not a preference a template should be reading — see ThemeStore.
+    templateThemePending: state('editor'),
     useTemplateTheme: state('view-state'),
     activeTemplateTheme: state('view-state'),
     setCurrentTheme: action('appearance'),
