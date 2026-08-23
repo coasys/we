@@ -554,6 +554,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
   },
 
   themeStore: {
+    automaticThemes: state('appearance'),
     builtInThemes: state('appearance'),
     installedThemes: state('appearance'),
     spaceThemes: state('appearance'),

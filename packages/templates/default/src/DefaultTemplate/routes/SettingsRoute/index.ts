@@ -497,6 +497,18 @@ export const settingsRoute: RouteSchema = {
                 props: { items: { $store: 'themeStore.builtInThemes' }, as: 'theme' },
                 children: [themeRow],
               },
+              // "Follow system" is not one of them — see `automaticThemes` — but it is a choice made
+              // in the same place, so it is offered here under its own heading rather than dropped.
+              {
+                type: 'we-text',
+                props: { variant: 'body', fontWeight: 'semibold', textTransform: 'uppercase' },
+                children: ['Automatic'],
+              },
+              {
+                type: '$each',
+                props: { items: { $store: 'themeStore.automaticThemes' }, as: 'theme' },
+                children: [themeRow],
+              },
             ],
           },
 

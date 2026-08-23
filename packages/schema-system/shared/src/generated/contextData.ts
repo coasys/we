@@ -2652,6 +2652,7 @@ export const contextData: ContextData = {
       name: 'themeStore',
       state: {
         builtInThemes: { type: 'array', properties: ['id', 'name', 'icon', 'origin'] },
+        automaticThemes: { type: 'array', properties: ['id', 'name', 'icon', 'origin'] },
         installedThemes: { type: 'array', properties: ['id', 'name', 'icon', 'origin'] },
         spaceThemes: { type: 'array', properties: ['id', 'name', 'icon', 'origin'] },
         allThemes: { type: 'array', properties: ['id', 'name', 'icon', 'origin'] },

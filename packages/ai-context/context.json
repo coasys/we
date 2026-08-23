@@ -6442,6 +6442,10 @@
           "type": "array",
           "properties": ["id", "name", "icon", "origin"]
         },
+        "automaticThemes": {
+          "type": "array",
+          "properties": ["id", "name", "icon", "origin"]
+        },
         "installedThemes": {
           "type": "array",
           "properties": ["id", "name", "icon", "origin"]

@@ -422,6 +422,19 @@ export function themePicker(): SchemaNode {
             themeSection('Space themes', 'themeStore.spaceThemes'),
             themeSection('My themes', 'themeStore.installedThemes'),
             themeSection('Built-in', 'themeStore.builtInThemes'),
+            /*
+              Last, and under its own heading, because it is not a theme.
+
+              It carries no parameters — it is a question, answered at the point of use by asking the
+              operating system, and it resolves to one of the built-ins above. Listed among them it
+              was the first row a fresh agent saw, above every actual theme, labelled as a built-in
+              one; the first thing anyone asked about it was what it was.
+
+              Still in the picker rather than moved to settings, because it is *mutually exclusive*
+              with choosing a theme: whatever sets it has to be somewhere the picker can show as
+              selected, or two surfaces end up disagreeing about what is on screen.
+            */
+            themeSection('Automatic', 'themeStore.automaticThemes'),
           ],
         },
         footer: {

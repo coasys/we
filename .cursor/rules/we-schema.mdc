@@ -2293,6 +2293,7 @@ TemplateStore:
 ThemeStore:
 - State:
   - builtInThemes: array of ThemeData objects — built-in registry themes (origin: "built-in", always available)
+  - automaticThemes: array of ThemeData objects — modes that *resolve to* a theme rather than being one, currently just "Follow system". Listed separately because they carry no parameters: the id is answered at the point of use (by asking the OS) and resolves to one of the built-ins. Render them under their own heading, after the themes
   - installedThemes: array of ThemeData objects — user-installed themes from root perspective (origin: "custom" | "marketplace")
   - spaceThemes: array of ThemeData objects — themes stored in the current space perspective (origin: "custom")
   - allThemes: array of ThemeData objects — union of builtInThemes + visible installedThemes + spaceThemes (hidden themes filtered out)

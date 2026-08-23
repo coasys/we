@@ -53,6 +53,8 @@ export type EditingTheme = ThemeData & {
 export interface ThemeStore {
   // State
   builtInThemes: Accessor<ThemeData[]>;
+  /** Modes that resolve to a theme rather than being one — currently just "Follow system". */
+  automaticThemes: Accessor<ThemeData[]>;
   installedThemes: Accessor<ThemeData[]>;
   spaceThemes: Accessor<ThemeData[]>;
   allThemes: Accessor<ThemeData[]>;
@@ -444,10 +446,21 @@ export function ThemeStoreProvider(props: ParentProps) {
     css: null,
   });
 
-  const builtInThemes: Accessor<ThemeData[]> = () => [
-    systemThemeEntry(),
-    ...Object.keys(themeRegistry).map(registryToThemeData),
-  ];
+  const builtInThemes: Accessor<ThemeData[]> = () => Object.keys(themeRegistry).map(registryToThemeData);
+
+  /**
+   * "Follow system", on its own, because it is not one of the built-ins.
+   *
+   * It used to be the first entry of `builtInThemes`, which put it at the head of the only section a
+   * fresh agent sees — the most prominent row in the picker, above every actual theme, under a
+   * heading that says it is a built-in one. It is not a theme at all: it carries no parameters and
+   * is answered at the point of use by asking the operating system. The first question anyone asked
+   * about it was what it was.
+   *
+   * An array rather than a single value so the picker's existing section helper can render it, and
+   * so a second automatic mode later — following a schedule, say — needs no new machinery.
+   */
+  const automaticThemes: Accessor<ThemeData[]> = () => [systemThemeEntry()];
 
   const [installedThemes, setInstalledThemes] = createSignal<ThemeData[]>([]);
   /**
@@ -1538,6 +1551,7 @@ export function ThemeStoreProvider(props: ParentProps) {
   }
 
   const store: ThemeStore = {
+    automaticThemes,
     builtInThemes,
     installedThemes,
     spaceThemes,
