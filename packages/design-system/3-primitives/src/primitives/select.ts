@@ -219,7 +219,15 @@ const styles = css`
     border-top: 1px solid var(--we-role-border);
   }
 
-  [part='option']:hover,
+  /*
+    Pointer feedback, and surfaceHover is the role for precisely that. This shared accentMuted
+    with the selected row below, so hovering anything looked like choosing it — three different
+    questions (pointer here, keyboard here, this one is chosen) answered in one colour.
+  */
+  [part='option']:hover {
+    background: var(--we-role-surface-hover);
+  }
+
   [part='option'][aria-selected='true'] {
     background: var(--we-role-accent-muted);
   }
@@ -227,10 +235,18 @@ const styles = css`
   /*
     Where the keyboard is, which is not the same question as which option is chosen — moving the
     highlight with the arrows must be visible before Enter commits it, or the keys appear to do
-    nothing. Stronger than the selected tint so the two read apart when they are on the same row.
+    nothing.
+
+    That was the stated intent and the rule then painted accentMuted, the identical value the
+    selected row carries. Since the highlight *starts* on the current value, arrowing moved it from
+    a tinted row to an identically tinted row: the arrows genuinely did appear to do nothing.
+
+    A ring rather than a fill, so it stacks on the selected tint instead of replacing it and the two
+    read apart on the same row — the case the original comment was worried about. Inset, or the
+    listbox's own edge would clip it.
   */
   [part='option'][data-active='true'] {
-    background: var(--we-role-accent-muted);
+    box-shadow: inset 0 0 0 2px var(--we-ring-color);
   }
 
   [part='option'][aria-disabled='true'] {
@@ -326,17 +342,37 @@ export default class Select extends DesignSystemElement {
     this.style.width = fitting ? 'fit-content' : '';
     this.style.minWidth = fitting ? '0' : '';
 
-    if (!changed.has('_open')) return;
-    if (this._open) {
-      const trigger = this.shadowRoot?.querySelector('[part="input-wrapper"]') as HTMLElement | null;
-      const listbox = this.shadowRoot?.querySelector('[part="listbox"]') as HTMLElement | null;
-      // Matching the trigger's width is what keeps it looking like part of the control now that it
-      // is no longer inside it.
-      if (trigger && listbox) listbox.style.minWidth = `${trigger.getBoundingClientRect().width}px`;
-      this._closeFloating = openFloatingPanel(trigger, listbox);
-    } else {
-      this._closeFloating?.();
-      this._closeFloating = undefined;
+    if (changed.has('_open')) {
+      if (this._open) {
+        const trigger = this.shadowRoot?.querySelector('[part="input-wrapper"]') as HTMLElement | null;
+        const listbox = this.shadowRoot?.querySelector('[part="listbox"]') as HTMLElement | null;
+        // Matching the trigger's width is what keeps it looking like part of the control now that it
+        // is no longer inside it.
+        if (trigger && listbox) listbox.style.minWidth = `${trigger.getBoundingClientRect().width}px`;
+        this._closeFloating = openFloatingPanel(trigger, listbox);
+      } else {
+        this._closeFloating?.();
+        this._closeFloating = undefined;
+      }
+    }
+
+    /*
+      Keep the highlight where it can be seen.
+
+      `_move` only changes an index. On any list taller than the panel — the content-type select is
+      a dozen options across three groups — the arrows then walked the highlight off the bottom,
+      which from the outside is indistinguishable from the arrows doing nothing at all.
+
+      After the `_open` block, not before it: on the frame that opens the listbox both flags change,
+      and until `openFloatingPanel` has promoted and positioned the panel there is nothing
+      meaningful to scroll within. `nearest` moves the listbox and leaves the page alone.
+    */
+    if (this._open && this._active >= 0 && (changed.has('_active') || changed.has('_open'))) {
+      const active = this.shadowRoot?.querySelector(`#${this._optionId(this._active)}`);
+      // Called optionally although the DOM types promise it: the implementation the tests run
+      // against has no layout and omits scrollIntoView entirely, and a highlight that cannot be
+      // scrolled into view is not worth throwing out of a render for.
+      active?.scrollIntoView?.({ block: 'nearest' });
     }
   }
 
