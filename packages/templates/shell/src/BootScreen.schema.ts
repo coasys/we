@@ -678,6 +678,11 @@ export const bootScreen: SchemaNode = {
                 // Matched to the form's own fade below, so the heading and the fields it belongs to
                 // arrive as one thing rather than in sequence.
                 enterTransition: { type: 'fade', duration: 300 },
+                // Arriving fades; leaving does not. An omitted exit mirrors the enter, which keeps
+                // this mounted for 300ms after the state that justified it has gone — and the states
+                // that replace it (`switchingState`, `settingUpState`) carry no transition, so they
+                // paint immediately, above this one, while it fades. See the form below.
+                exitTransition: { type: 'fade', duration: 0 },
                 then: welcomeHeading,
               },
             },
@@ -734,6 +739,20 @@ export const bootScreen: SchemaNode = {
                   ],
                 },
                 enterTransition: { type: 'fade', duration: 300 },
+                /*
+                  Leaving is instant, arriving fades.
+
+                  Both ways out of this form hand over to a node that paints immediately —
+                  `switchingState` when another account is clicked, `settingUpState` when this one
+                  is submitted. An omitted `exitTransition` mirrors the enter, so the form stayed
+                  mounted and fading for 300ms after either, and both are siblings *above* it in
+                  this column: the account you just clicked appeared over the form you had just
+                  left, for long enough to read as a glitch rather than a transition.
+
+                  Fading out only works against something that is also fading in. Where the
+                  replacement is instant, so is the departure.
+                */
+                exitTransition: { type: 'fade', duration: 0 },
                 then: {
                   type: 'Column',
                   props: { gap: '700', ax: 'center', width: '100%', maxWidth: '300px' },
