@@ -819,13 +819,27 @@ export const bootScreen: SchemaNode = {
                             // The profile's name, not a separate local label. One DID, one
                             // identity, one thing to type.
                             field({ name: 'name', label: 'Name', placeholder: 'Name...', validated: true }),
-                            // Password + confirm
-                            field({ name: 'password', label: 'Password', placeholder: 'Password...', validated: true }),
+                            // Password + confirm.
+                            //
+                            // `type: 'password'` is not decoration here: `field` passes no type, so
+                            // `we-input` defaulted to `text` and both of these rendered the password
+                            // in the clear while it was typed — on the one screen where it is typed
+                            // twice. `revealable` is the input's own toggle, matching the unlock
+                            // form; on a field you cannot see, being able to check what you typed is
+                            // worth more than on one you are only re-entering.
+                            field({
+                              name: 'password',
+                              label: 'Password',
+                              placeholder: 'Password...',
+                              validated: true,
+                              props: { type: 'password', revealable: true },
+                            }),
                             field({
                               name: 'confirm',
                               label: 'Confirm password',
                               placeholder: 'Confirm password...',
                               validated: true,
+                              props: { type: 'password', revealable: true },
                             }),
                           ],
                         },
