@@ -32,11 +32,23 @@ describe('paintedRoles', () => {
   */
   it('takes the nearest painting ancestor, not the furthest', () => {
     const out = paintedRoles(node('we-text'), [node('Card', { bg: 'surface' }), node('Column', { bg: 'page' })]);
-    expect(out).toEqual([{ what: 'Background', value: 'surface', from: 'Card' }]);
+    expect(out).toEqual([
+      { what: 'Background', value: 'surface', from: 'Card' },
+      { what: 'Text', value: 'text', fromDocument: true },
+    ]);
   });
 
-  it('reports nothing rather than guessing when no ancestor paints', () => {
-    expect(paintedRoles(node('we-text'), [node('Row'), node('Column')])).toEqual([]);
+  /*
+    A background genuinely may be absent — nothing above paints, and claiming `page` would be a guess
+    about a root the fragment cannot see. A text colour never is: `index.scss` sets
+    `body { color: var(--we-role-text) }`, so text with no prop anywhere in its chain is painted by
+    the document. Reporting nothing there was the readout's worst answer — selecting a `we-text`
+    showed a background and no foreground, which is the one thing you were looking for.
+  */
+  it('falls back to the document’s role for text, and still guesses no background', () => {
+    expect(paintedRoles(node('we-text'), [node('Row'), node('Column')])).toEqual([
+      { what: 'Text', value: 'text', fromDocument: true },
+    ]);
   });
 
   /*
@@ -50,12 +62,16 @@ describe('paintedRoles', () => {
 
   it("reports the node's own border", () => {
     const out = paintedRoles(node('Card', { border: '1px solid border-strong' }), []);
-    expect(out).toEqual([{ what: 'Border', value: 'border-strong' }]);
+    expect(out).toEqual([
+      { what: 'Text', value: 'text', fromDocument: true },
+      { what: 'Border', value: 'border-strong' },
+    ]);
   });
 
   it('reports a scale position too — knowing a colour is pinned is the point', () => {
     expect(paintedRoles(node('Column', { bg: 'neutral-100' }), [])).toEqual([
       { what: 'Background', value: 'neutral-100', from: undefined },
+      { what: 'Text', value: 'text', fromDocument: true },
     ]);
   });
 });

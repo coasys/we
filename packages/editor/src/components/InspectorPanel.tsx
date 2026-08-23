@@ -635,7 +635,13 @@ function ThemeRoleReadout(props: { node: SchemaNode }) {
               */
               title={
                 isRole(entry.value)
-                  ? `${entry.what}: “${entry.value}”${entry.from ? `, inherited from ${entry.from}` : ''} — click to edit it for the whole theme`
+                  ? `${entry.what}: “${entry.value}”${
+                      entry.fromDocument
+                        ? ' — nothing in the template sets one, so it inherits the document’s role. A component in between may still paint its own.'
+                        : entry.from
+                          ? `, inherited from ${entry.from}`
+                          : ''
+                    } — click to edit it for the whole theme`
                   : `${entry.what}: “${entry.value}” is a scale position. It follows the theme’s hue and lightness, but not what the theme decides a surface or a label should be — and the contrast corrections skip it. A role would do both.`
               }
             >
@@ -677,12 +683,24 @@ function ThemeRoleReadout(props: { node: SchemaNode }) {
                       border: '1px solid var(--we-role-border)',
                     }}
                   />
-                  <we-text fontSize="100" color={entry.from ? 'text-faint' : 'text-muted'}>
+                  {/*
+                    Which of the three this is, on the chip rather than only in the tooltip.
+
+                    The strip showed a swatch and a role name and nothing else, so two chips read as
+                    two colours with no way to tell the background from the foreground without
+                    hovering each one. That is most of the confusion selecting a `we-text` produced:
+                    the background it sits on is genuinely useful — it is what its contrast is
+                    measured against — and unlabelled beside a text colour it just looks wrong.
+                  */}
+                  <we-text fontSize="100" color="text-faint">
+                    {entry.what === 'Background' ? 'bg' : entry.what.toLowerCase()}
+                  </we-text>
+                  <we-text fontSize="100" color={entry.from || entry.fromDocument ? 'text-faint' : 'text-muted'}>
                     {entry.value}
                   </we-text>
                   {/* An inherited colour is the common case and the one people misread, so it is
                       marked rather than left to look like a property of this node. */}
-                  <Show when={entry.from}>
+                  <Show when={entry.from || entry.fromDocument}>
                     <we-icon name="arrow-bend-left-up" size="xs" color="text-faint" />
                   </Show>
                 </Row>

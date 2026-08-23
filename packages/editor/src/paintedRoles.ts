@@ -20,7 +20,31 @@ export interface PaintedRole {
   value: string;
   /** The node type it was set on, when that is not the selected node itself. */
   from?: string;
+  /**
+   * Nothing in the template sets this — it comes from the document's own stylesheet.
+   *
+   * Only ever true of the text colour, and it is the *common* case for text: `index.scss` sets
+   * `body { color: var(--we-role-text) }`, and most text in the app says nothing about its colour
+   * and inherits from there. Reported rather than omitted, because "no node sets one" was
+   * indistinguishable from "this element has no text colour" — so selecting a `we-text` that had not
+   * been given a colour showed a background and no foreground at all, which is the one thing you
+   * were looking for and the one thing missing.
+   *
+   * A caveat this cannot see: a component between the node and the document may paint its own colour
+   * in its shadow root — a `ghost` button does — in which case the document's role is not what
+   * lands. The readout only ever consults the schema, so it says where the *template* leaves it.
+   */
+  fromDocument?: boolean;
 }
+
+/**
+ * What the document paints text with when no node says otherwise — `index.scss`'s `body` rule.
+ *
+ * A constant here rather than a lookup, because the readout has no stylesheet to consult and the
+ * rule is one line that has not moved since the role migration. If it ever does, this is wrong in
+ * the direction of naming a real role that is no longer the default, which is a readable mistake.
+ */
+const DOCUMENT_TEXT_ROLE = 'text';
 
 /** The colour a border shorthand names, if it names one: "1px solid border" → "border". */
 export function borderColorOf(props: Record<string, unknown>): string | undefined {
@@ -46,13 +70,19 @@ export function paintedRoles(
       const value = read(chain[i].props ?? {});
       if (typeof value === 'string' && value) {
         out.push({ what, value, from: i === 0 ? undefined : (chain[i].type ?? '?') });
-        return;
+        return true;
       }
     }
+    return false;
   };
 
+  // A background genuinely may not exist: nothing above this node paints, so it is on the page and
+  // saying `page` would be a guess about a root this fragment cannot see.
   inherited('Background', (p) => (typeof p.bg === 'string' ? p.bg : undefined));
-  inherited('Text', (p) => (typeof p.color === 'string' ? p.color : undefined));
+  // Text always exists — see `fromDocument`. The template merely may not be the one deciding it.
+  if (!inherited('Text', (p) => (typeof p.color === 'string' ? p.color : undefined))) {
+    out.push({ what: 'Text', value: DOCUMENT_TEXT_ROLE, fromDocument: true });
+  }
   // A border is not inherited, so only the node's own counts — an ancestor's border is not this
   // element's, and reporting one would send somebody to change a line they are not looking at.
   const own = borderColorOf(node.props ?? {});
