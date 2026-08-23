@@ -32,6 +32,7 @@ import type { DatasetProxy } from '@we/models';
 import { getModel } from '@we/models';
 import { CORE_MANIFEST } from '@we/models/manifest';
 import type { TemplateSchema } from '@we/schema-shared';
+import { expandViewRoutes, hasViewsMarker } from '@we/schema-shared';
 import type { VisualEditorContextValue } from '@we/schema-solid';
 import { RenderSchema, VisualEditorProvider } from '@we/schema-solid';
 import { CHROME_RAIL_WIDTH } from '@we/template-shell';
@@ -290,6 +291,39 @@ export default function TemplateProvider() {
 
   const templateSchema = templateStore.currentTemplate;
 
+  /**
+   * The template's routes with its `$views` marker replaced by the space's own sections.
+   *
+   * Done here, once, before `buildRoutes` — rather than inside the route builder — because the
+   * expansion is a property of the *schema*, not of the walk: everything downstream (the router,
+   * `keepAlive` stubs, the `$nav` base depths) then sees an ordinary route tree and needs to know
+   * nothing about views at all.
+   *
+   * A template with no marker passes through untouched, so this costs nothing for the showcase
+   * templates and for anything installed that predates views.
+   */
+  const routesWithViews = createMemo(() => {
+    const routes = templateSchema.routes ?? [];
+    return hasViewsMarker(routes) ? expandViewRoutes(routes, spaceStore.spaceViews()) : routes;
+  });
+
+  /**
+   * What the Router is keyed on — the template, plus the shape of its section list.
+   *
+   * Ids and segments rather than the resolved objects: a view's *schema* changing (someone editing
+   * it live in the editor) must not tear the router down, while a section being added, removed,
+   * renamed or reordered must, because the route table itself is different. Keying on identity
+   * would rebuild on every edit keystroke; keying on the count alone would miss a reorder.
+   */
+  const routeKey = createMemo(() => {
+    const id = templateSchema.id || 'empty';
+    if (!hasViewsMarker(templateSchema.routes ?? [])) return id;
+    return `${id}|${spaceStore
+      .spaceViews()
+      .map((view) => `${view.id}:${view.segment}`)
+      .join(',')}`;
+  });
+
   // Any theme the template names by `theme: { themeName }` needs its stylesheet present before the
   // section that names it paints. Re-run on template switch, since the next one names different ones.
   createEffect(() => themeStore.requestNamedThemes(templateStore.currentTemplate));
@@ -390,18 +424,18 @@ export default function TemplateProvider() {
         {/* Shell chrome — stable, never remounts. Chrome tier: this is host-authored. */}
         <RenderSchema node={shellSchema} stores={chromeBag} registry={registry} />
 
-        {/* Router — keyed on template ID so buildRoutes reruns when the template changes.
-           Template switching is a rare intentional action; the full remount is acceptable. */}
-        <Show when={templateSchema.id || 'empty'} keyed>
-          {(_id) => (
+        {/* Router — keyed on the template ID *and* the resolved section list, since both decide what
+           `buildRoutes` produces. Adding, removing or reordering a section remounts the space's
+           content, which is the same trade template switching already makes: both are rare,
+           deliberate acts, and a router whose route table changed underneath it is worse. */}
+        <Show when={routeKey()} keyed>
+          {(_key) => (
             <Router root={Layout}>
-              {buildRoutes(templateBag, templateSchema.routes ?? [])}
+              {buildRoutes(templateBag, routesWithViews())}
               <Route
                 path="*"
                 component={() =>
-                  templateSchema.routes?.length
-                    ? RenderSchema({ node: notFoundNode, stores: templateBag, registry })
-                    : null
+                  routesWithViews().length ? RenderSchema({ node: notFoundNode, stores: templateBag, registry }) : null
                 }
               />
             </Router>

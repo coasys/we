@@ -246,6 +246,7 @@ export interface SpaceModel extends WeNodeModel {
   defaultTemplateId: string;
   defaultThemeId: string;
   enabledModules: string;
+  enabledViews: string;
   autoInterpret: boolean;
   shareExtractionDetail: boolean;
   location?: LocationBlockModel;
@@ -255,6 +256,7 @@ export interface SpaceModel extends WeNodeModel {
 export interface SpacePreferenceModel extends WeNodeModel {
   spaceUuid: string;
   mutedModules: string;
+  hiddenViews: string;
   templateId: string;
   themeId: string;
 }

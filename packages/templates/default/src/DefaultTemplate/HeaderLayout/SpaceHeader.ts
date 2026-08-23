@@ -182,20 +182,12 @@ export const spaceNavBar: SchemaNode = {
               props: { gap: '200' },
               children: [
                 {
+                  // The space's own section list, not a literal one. This array used to be written
+                  // out here and again in the sidebar layout, and the two had drifted: this one
+                  // carried About and Settings with Flux commented out, the sidebar carried Flux and
+                  // neither of the others. Both now read what the routes are built from.
                   type: '$each',
-                  props: {
-                    items: [
-                      { label: 'About', icon: 'book-open', segment: 'about', path: './about' },
-                      { label: 'Cards', icon: 'cards-three', segment: 'cards', path: './cards' },
-                      { label: 'Graph', icon: 'graph', segment: 'graph', path: './graph' },
-                      { label: 'Globe', icon: 'globe-hemisphere-west', segment: 'globe', path: './globe' },
-                      { label: 'Tasks', icon: 'check-square', segment: 'tasks', path: './tasks' },
-                      { label: 'Calendar', icon: 'calendar', segment: 'calendar', path: './calendar' },
-                      { label: 'Settings', icon: 'gear', segment: 'settings', path: './settings' },
-                      // { label: 'Flux', icon: 'chat-circle', segment: 'flux', path: './flux' },
-                    ],
-                    as: 'view',
-                  },
+                  props: { items: { $store: 'spaceStore.viewNav' }, as: 'view' },
                   children: [
                     {
                       type: 'we-button',

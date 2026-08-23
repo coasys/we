@@ -28,6 +28,23 @@ export const Space: CoreEntityDef = {
        */
       enabledModules: { type: 'string', predicate: 'we://enabled_modules', default: '' },
       /**
+       * Which sections this community's spaces have, and in what order — a JSON array of view ids.
+       *
+       * The community's decision, exactly as `enabledModules` is: every member sees the same
+       * sections, because "what is in this space" is a fact about the space rather than a preference
+       * about it. An agent's own hiding lives in `SpacePreference.hiddenViews`, which is private.
+       *
+       * **Empty means "not decided", not "none"** — the same rule, and it exists for the same
+       * reason. A space that predates views must show the sections it always had, so an unset value
+       * falls back to the deployment's bundled set in seed order. Reading empty as "none" would land
+       * as every existing space silently losing every tab.
+       *
+       * Ordered, and the order is the nav order: this is the one field a community reorders its own
+       * sections by. A JSON string rather than a relation because the values are ids from a registry
+       * or a marketplace, not entities in the perspective — the shape `datasetOrder` already uses.
+       */
+      enabledViews: { type: 'string', predicate: 'we://enabled_views', default: '' },
+      /**
        * Whether calls in this space are interpreted as they happen, rather than only when somebody
        * presses Extract.
        *

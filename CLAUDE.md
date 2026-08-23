@@ -1698,6 +1698,7 @@ Space extends WeNode:
   - defaultTemplateId: string [we://default_template_id]
   - defaultThemeId: string [we://default_theme_id]
   - enabledModules: string [we://enabled_modules]
+  - enabledViews: string [we://enabled_views]
   - autoInterpret: boolean = false [we://auto_interpret]
   - shareExtractionDetail: boolean = false [we://share_extraction_detail]
   Relations:
@@ -1707,6 +1708,7 @@ SpacePreference extends WeNode:
   Fields:
   - spaceUuid: string [we://space_uuid]
   - mutedModules: string [we://muted_modules]
+  - hiddenViews: string [we://hidden_views]
   - templateId: string [we://template_id]
   - themeId: string [we://theme_id]
 
@@ -2217,6 +2219,9 @@ SpaceStore:
   - activeModules: string[] — what actually renders here for this agent: registered ∩ installed ∩ enabled, less the modules muted in this space. Module chrome and the launcher rail gate on this; enabledModules alone is not sufficient
   - moduleInstallSettings: { id, name, description, icon, installed, surface, switchable }[] — every registered module and whether this agent wants it anywhere. The global Settings → Modules list, and the only place an 'app' or 'capability' module is decided about: a contribution is gated at the layer where it renders, and only 'chrome' renders inside a space. `surface` is derived from what the module contributes. Its per-space counterpart is `modules` on each spaceList row, which carries enabled/installed/visible/active together and lists chrome modules only
   - moduleLaunchers: { id, icon, label, active }[] — launchers for the modules enabled here and available in this space; what the host module rail renders. Pair with { $action: "spaceStore.launchModule", args: ["$mod.id"] }
+  - spaceViews: unknown
+  - viewNav: unknown
+  - spaceViewSettings: unknown
   - mutedDids: unknown
   - mutedAgents: unknown
   - readMarkers: unknown
@@ -2246,6 +2251,9 @@ SpaceStore:
   - setShareExtractionDetail(): unknown
   - setModuleInstalled(moduleId: string, installed: boolean): turns a module on or off for this agent in every space. Personal — writes AgentSettings.installedModules in the root dataset, so no other member sees it
   - setModuleVisible(moduleId: string, visible: boolean, spaceUuid?): shows or hides a module for this agent in one space, without changing what the community runs. Private: written to the root dataset, never to the space. Phrased positively so a switch can pass `$event.detail` bare — wrapping it in an operator such as `$not` would evaluate at render time and send a constant
+  - setViewEnabled(): unknown
+  - reorderViews(): unknown
+  - setViewVisible(): unknown
   - setSpaceTemplateOverride(templateId: string, spaceUuid?): sets the template THIS AGENT sees in one space, overriding the community's default. Three values: 'space-default' follows the space, 'agent-default' follows your own global default (tracking later changes to it), or a concrete template id pins that one. Private, and applied immediately when that space is the one on screen. Note the sentinels are named values, not '' — the ORM skips empty strings on update, so '' cannot clear a property
   - setSpaceThemeOverride(themeId: string, spaceUuid?): sets the theme THIS AGENT sees in one space. Same three values as setSpaceTemplateOverride. Private
   - applyTheme(themeId: string): applies a theme where the agent is — pinned to the space on screen, or set as their global default when there is no space. What a theme picker in chrome should call: it persists, where setCurrentTheme only sets a signal that the next resolution overwrites. Which of the two it does is decided at click time, so a schema cannot express it with $if (whose args resolve at render time)

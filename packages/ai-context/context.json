@@ -4674,6 +4674,12 @@
           "required": false
         },
         {
+          "name": "enabledViews",
+          "type": "string",
+          "predicate": "we://enabled_views",
+          "required": false
+        },
+        {
           "name": "autoInterpret",
           "type": "boolean",
           "predicate": "we://auto_interpret",
@@ -4712,6 +4718,12 @@
           "name": "mutedModules",
           "type": "string",
           "predicate": "we://muted_modules",
+          "required": false
+        },
+        {
+          "name": "hiddenViews",
+          "type": "string",
+          "predicate": "we://hidden_views",
           "required": false
         },
         {
@@ -6342,6 +6354,15 @@
           "type": "array",
           "properties": ["id", "icon", "label", "active"]
         },
+        "spaceViews": {
+          "type": "array"
+        },
+        "viewNav": {
+          "type": "array"
+        },
+        "spaceViewSettings": {
+          "type": "array"
+        },
         "mutedDids": {
           "type": "array"
         },
@@ -6387,6 +6408,9 @@
         "setShareExtractionDetail",
         "setModuleInstalled",
         "setModuleVisible",
+        "setViewEnabled",
+        "reorderViews",
+        "setViewVisible",
         "setSpaceTemplateOverride",
         "setSpaceThemeOverride",
         "applyTheme",

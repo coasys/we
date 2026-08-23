@@ -405,6 +405,17 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     activeModules: state('navigation'),
     moduleLaunchers: state('navigation'),
     launchModule: action('navigation'),
+    /*
+      The space's sections, and the nav projection over them — both `navigation`, which is the
+      lowest tier any shell needs and deliberately so.
+
+      A shell template's entire job includes drawing the nav strip, so refusing it here would mean
+      no template could render its own sections without an elevated grant. There is nothing to
+      protect: the list is what the space already shows every member, and `spaceViews` carries the
+      view schemas the renderer is about to walk anyway.
+    */
+    spaceViews: state('navigation'),
+    viewNav: state('navigation'),
     requiredModules: state('navigation'),
     missingModules: state('navigation'),
 
@@ -448,12 +459,25 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     setSpaceDefaultTheme: hereOnly('space-settings', 1),
     setModuleEnabled: hereOnly('space-settings', 2),
     setAutoInterpret: hereOnly('space-settings', 1),
+    /*
+      Which sections the space has, and in what order — the community's decision, so the same tier
+      and the same arity guard as `setModuleEnabled`.
+
+      `spaceViewSettings` is the list a settings page renders, and reads as `space-admin` rather
+      than `space-settings` because it carries the *disabled* sections too: what a space has turned
+      off is a configuration surface, not something an ordinary member's view needs.
+    */
+    spaceViewSettings: state('space-admin'),
+    setViewEnabled: hereOnly('space-settings', 2),
+    reorderViews: hereOnly('space-settings', 1),
     removeSpaceFromGlobal: destructive('space-admin'),
 
     // ── agent: this agent's own preferences, private to them ──
     installedModules: state('agent'),
     setModuleInstalled: action('agent'),
     setModuleVisible: hereOnly('space-settings', 2),
+    /** Hiding a section for yourself. Private, and never removes it for anybody else. */
+    setViewVisible: hereOnly('space-settings', 2),
     setSpaceTemplateOverride: hereOnly('appearance', 1),
     setSpaceThemeOverride: hereOnly('appearance', 1),
     /*
