@@ -53,13 +53,54 @@ export const hostDockStores: Record<string, Record<string, unknown>> = {};
 
 const entries = new Map<string, DockEntry>();
 
+/**
+ * Registration is observable, because a plain object cannot be depended on.
+ *
+ * A dock names its `edge` as a *string key* into a store, and the shell resolves it by looking that
+ * store up in `hostDockStores` and calling the accessor. When the store is not there yet the lookup
+ * yields nothing — and, crucially, the memo doing the looking never touches the accessor, so it
+ * registers no dependency on it and has nothing to re-run for. It cannot recover on its own.
+ *
+ * That is not hypothetical ordering paranoia: `ShellStoreProvider` wraps `EditorStoreProvider`, so
+ * the shell's dock geometry is computed before the editor store exists. The theme panel could not be
+ * opened at all — its flag went true, the memo never re-read the edge, and no amount of clicking or
+ * reloading helped. Opening any *other* panel fixed it, because that changed something the memo did
+ * depend on, and the re-run finally found the editor's store.
+ *
+ * Framework-neutral on purpose: this file is shared, so it publishes a subscription and lets the
+ * host turn it into whatever reactive primitive it uses.
+ */
+const listeners = new Set<() => void>();
+function announce(): void {
+  for (const listener of listeners) listener();
+}
+
+/** Subscribe to registration changes. Returns an unsubscribe. */
+export function onDockRegistryChanged(listener: () => void): () => void {
+  listeners.add(listener);
+  return () => listeners.delete(listener);
+}
+
+/** Publish a host store the dock entries can name — see `hostDockStores`. */
+export function registerHostDockStore(id: string, store: Record<string, unknown>): void {
+  hostDockStores[id] = store;
+  announce();
+}
+
+export function unregisterHostDockStore(id: string): void {
+  delete hostDockStores[id];
+  announce();
+}
+
 export const dockRegistry = {
   register(entry: DockEntry): void {
     entries.set(entry.id, entry);
+    announce();
   },
 
   remove(id: string): void {
     entries.delete(id);
+    announce();
   },
 
   get(id: string): DockEntry | undefined {

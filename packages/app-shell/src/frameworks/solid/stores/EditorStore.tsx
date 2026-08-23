@@ -11,7 +11,7 @@
  */
 import { formatExternalManifestForPrompt, sendClaudeRequest } from '@shared/ai/aiInfra';
 import { applySchemaPatches, type SchemaPatch } from '@shared/ai/schemaPatches';
-import { hostDockStores } from '@shared/registries/dockRegistry';
+import { registerHostDockStore, unregisterHostDockStore } from '@shared/registries/dockRegistry';
 import { EDITOR_STORE_ID } from '@shared/registries/editorDocks';
 import { deepClone } from '@shared/utils';
 import { type EditingTheme, useDatasetStore, useTemplateStore, useThemeStore } from '@solid/stores';
@@ -1357,8 +1357,8 @@ export function EditorStoreProvider(props: ParentProps) {
     store named by its entry — normally a module's. The editor is not a module, so the shell registers
     it here under the id those entries name. See `hostDockStores`.
   */
-  hostDockStores[EDITOR_STORE_ID] = store as unknown as Record<string, unknown>;
-  onCleanup(() => delete hostDockStores[EDITOR_STORE_ID]);
+  registerHostDockStore(EDITOR_STORE_ID, store as unknown as Record<string, unknown>);
+  onCleanup(() => unregisterHostDockStore(EDITOR_STORE_ID));
 
   return <EditorContext.Provider value={store}>{props.children}</EditorContext.Provider>;
 }
