@@ -201,41 +201,29 @@ export const THEME_PRESETS = {
   black: {
     name: 'Black',
     icon: 'square',
+    /*
+      Fitted against what this theme used to render — see the note on `cyberpunk` for the defect.
+
+      Measured before: 12.7 lightness points of mean error across the neutral ramp, up to 14.9 at
+      step 700. The page had gone to literal `#000000` where it used to be rgb(11,10,15).
+
+      That difference is why the pins below are gone. This theme carried four of them, on the
+      reasoning that "its page is pure black, and a +0.045 OKLCH step from there rounds to the same
+      8-bit sRGB value" — true, and only true because the floor had been mistranslated to 0%. Dev
+      pinned nothing here; the stack came off the ramp like every other theme's. With the floor back
+      where it belongs there is room for the relationship again, so the derived stack works and the
+      pins that were compensating for the mistranslation go with it.
+
+      Worth keeping as a warning: a pin written to work around a defect reads exactly like a pin
+      written to express a design, and the comment justifying it was perfectly convincing.
+    */
     parameters: {
       schemaVersion: THEME_SCHEMA_VERSION,
       polarity: 'dark',
-      lightnessFloor: '0%',
-      lightnessCeiling: '100%',
-      saturation: 81,
-      neutralSaturation: 32,
-      /*
-        The one theme that still has to state its stack, and for a reason no formula can route
-        around: its page is pure black, and a +0.045 OKLCH step from there rounds to the same 8-bit
-        sRGB value. At the floor there is no room for the relationship, so the numbers are the
-        design. Built upwards from the page rather than around it, for the same reason.
-      */
-      roles: {
-        page: neutral(0.0),
-        surface: neutral(15.8),
-        surfaceSunken: neutral(11.6),
-        surfaceRaised: neutral(21.6),
-        /*
-          One step lighter than the vocabulary's default, and only here.
-
-          WCAG adds 0.05 to both sides of a ratio, so against a literal black card the denominator
-          is essentially that constant and the only way to move the ratio is to lift the text. At
-          the default step muted text measures 3.43:1; this clears AA. Every other theme sits far
-          enough off the floor not to need it.
-        */
-        /*
-          The status roles, a step further out, and only here.
-
-          A filled control needs to sit away from the middle of the ramp or no label reads on it —
-          and `black` runs the full 0–100, which makes its dead zone the widest of any theme. The
-          shared 700 lands at 58% for this ramp; 800 clears it. The same reasoning as `accent`
-          moving off 600, applied to a theme whose range is the reason.
-        */
-      },
+      lightnessFloor: '10.5%',
+      lightnessCeiling: '116%',
+      saturation: 78,
+      neutralSaturation: 31,
     },
   },
   retro: {
@@ -254,13 +242,27 @@ export const THEME_PRESETS = {
   cyberpunk: {
     name: 'Cyberpunk',
     icon: 'cpu',
+    /*
+      Fitted against what this theme used to render, the same way `dark` was.
+
+      Everything else came across by arithmetic: `subtractor: 110%` became floor 10% / ceiling 110%,
+      which reads an HSL lightness as though it were an OKLCH one. They are not the same quantity —
+      the conversion is the reason a pin of 13% came out at half the lightness it should have — so
+      every theme carried over that way renders darker than it did. Measured here: 13.7 lightness
+      points of mean error across the neutral ramp, up to 15.9 at step 500, on a theme with no pins
+      to hide it.
+
+      Solved by least squares over the neutral steps, weighted by how much of a screen each one
+      paints, and rejecting any ramp that clips a step to white. The same script reproduces `dark`'s
+      hand-fitted 20% / 121% from its measurements, which is what says the method is sound.
+    */
     parameters: {
       schemaVersion: THEME_SCHEMA_VERSION,
       polarity: 'dark',
-      lightnessFloor: '10%',
-      lightnessCeiling: '110%',
-      saturation: 97,
-      neutralSaturation: 16,
+      lightnessFloor: '23.5%',
+      lightnessCeiling: '120%',
+      saturation: 92,
+      neutralSaturation: 15,
       /*
         No pins, and the one it used to carry is worth recording as a warning.
 
@@ -312,8 +314,8 @@ export const THEME_PRESETS = {
       neutralSaturation: 10,
       schemaVersion: THEME_SCHEMA_VERSION,
       polarity: 'dark',
-      lightnessFloor: '6%',
-      lightnessCeiling: '106%',
+      lightnessFloor: '19%',
+      lightnessCeiling: '121.5%',
       roles: {
         page: neutral(22.7),
         surface: neutral(22.7),

@@ -250,13 +250,21 @@ describe('roles resolve against the theme they belong to', () => {
 
   it('carries the pins a named preset brings with it', () => {
     /*
-      `black` is the case that has to pin: its page is at the sRGB floor, where the derived step and
-      the page round to the same 8-bit value. Asserted as "it pins a lightness" rather than as one
-      exact string — the numbers are a design decision that moves, and a test repeating them only
-      says the file was copied correctly. That the *ordering* holds is checked in contrast.test.ts,
-      which is the property that matters.
+      `channels` is a reproduction of a real chat client, measured rather than designed by eye, and
+      its surfaces are uneven in a way no single lightness range can express — page and cards
+      identical, the rail further out. That is what a pin is *for*, so it is the honest example here.
+
+      It used to be `black`, on the reasoning that a page at the sRGB floor leaves no room for a
+      derived step. That was true and the floor was wrong: it had been mistranslated from an HSL
+      lightness to an OKLCH one, putting the page at literal #000000 rather than the rgb(11,10,15)
+      it used to render. Refitting the ramp gave the relationship its room back and the four pins
+      went with it — so a test asserting that `black` pins was asserting a defect.
+
+      Asserted as "it pins a lightness" rather than as one exact string: the numbers are a design
+      decision that moves, and a test repeating them only says the file was copied correctly. That
+      the *ordering* holds is checked in contrast.test.ts, which is the property that matters.
     */
-    const raised = themeToStyle({ themeName: 'black' })['--we-role-surface-raised'];
+    const raised = themeToStyle({ themeName: 'channels' })['--we-role-surface-raised'];
     expect(raised).toMatch(/^oklch\(\d/);
   });
 });
