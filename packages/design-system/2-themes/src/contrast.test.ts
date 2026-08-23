@@ -33,13 +33,9 @@ import { describe, expect, it } from 'vitest';
 import type { ThemeOverrides, ThemeRole } from './overrides';
 import { THEME_PRESETS, type ThemeName } from './presets';
 import {
-  AUTO_CONTRAST,
   DERIVED_FILLS,
-  deriveFill,
-  deriveLegible,
   FILL_LABELS,
-  fillStateDeltas,
-  labelCandidates,
+  deriveRoleVars,
   pickReadableForeground,
   stateDelta,
 } from './themeStyles';
@@ -216,117 +212,102 @@ function resolve(value: string, theme: ThemeOverrides): Rgba | null {
 const RELATIVE =
   /^oklch\(from\s+var\(--we-role-([a-z-]+)\)\s+calc\(l\s*([+-])\s*(?:([\d.]+)|var\(--we-state-(hover|active)-([a-z]+),\s*var\(--we-state-(?:hover|active)\)\))\)\s+c\s+h\)$/;
 
-function roleColor(name: ThemeRole, theme: ThemeOverrides, seen = new Set<string>()): Rgba | null {
-  /*
-    A derived foreground is resolved the way the runtime derives it, not from its declared default.
+/**
+ * Every role a theme resolves to, by running the *actual* derivation over resolved base colours.
+ *
+ * ## Why this stopped being modelled here
+ *
+ * The suite used to re-implement the pipeline: it found a fill that no label could sit on and moved
+ * it, chose a label against where it landed, walked a foreground until it cleared. Each of those was
+ * a second copy of a decision the runtime also makes, and the copies drifted — repeatedly, and once
+ * catastrophically. `applyThemeVars` spent an entire round doing *nothing at all*, because every
+ * derivation in it read a role through `getPropertyValue` and got back an unevaluated token stream;
+ * this suite modelled the derivations it believed were running and reported green throughout. Two
+ * smaller drifts followed (a chroma factor ignored, a ceiling read at the wrong lightness), each
+ * caught only because a recorded value happened to move.
+ *
+ * So the split is now along the one line that is inherent: **resolving a declared value to a colour**
+ * is done differently by necessity — the runtime asks a browser, this does the arithmetic — and
+ * **everything decided from those colours** is the same call, `deriveRoleVars`. There is no second
+ * implementation left to drift.
+ *
+ * The three passes mirror `applyThemeVars` exactly, and in the same order:
+ *
+ * 1. Resolve every role's declared value (a pin, or the vocabulary's default).
+ * 2. Run the pipeline, which mutates the fills and labels in place and returns what to write.
+ * 3. Resolve the interaction states, which could not be done in pass 1: which way a hover travels
+ *    depends on the label chosen in pass 2.
+ */
+const themeColorCache = new WeakMap<ThemeOverrides, Map<ThemeRole, Rgba>>();
 
-    `onAccent` and the three `on<Status>` roles are chosen by measurement at theme-apply time, so checking their
-    static value asks a question nobody sees the answer to — and gets it wrong in both directions:
-    it fails a theme whose bright fill would have been given a dark label, and it would pass one
-    where the derivation had no good option. Only when the theme has not pinned it, since a pin is
-    the author overruling the derivation.
-  */
-  /*
-    A fill that no label can sit on moves until one can — checked here because it is what renders.
+function themeColors(theme: ThemeOverrides): Map<ThemeRole, Rgba> {
+  const cached = themeColorCache.get(theme);
+  if (cached) return cached;
 
-    Both label candidates are equidistant from a fill in the middle of the ramp, so no choice of
-    foreground rescues it. Where the middle falls depends on the theme's range, which is why two
-    themes had to pin their way out before the derivation existed.
-  */
-  /*
-    A fill that no label can sit on moves until one can.
-
-    Calls the runtime's own `deriveFill` rather than repeating its logic. This block used to be a
-    copy, and the copy drifted — it checked only the rest state and held chroma constant, so the
-    suite passed while the browser rendered something else. What is still resolved separately here
-    is the *colour*, which is inherent: the test computes it arithmetically and the runtime reads it
-    off computed style. The decision made from that colour is now shared.
-  */
-  if (DERIVED_FILLS.includes(name) && !theme.roles?.[name] && !seen.has(name)) {
-    const fill = resolve((role as Record<string, string>)[name], theme);
-    if (fill) {
-      // A stated label constrains the search to itself — mirroring `applyLegibleFills`. Resolved
-      // through `roleColor` rather than `resolve`, since a pin may be an expression over the
-      // theme's own variables.
-      const labelRole = FILL_LABELS.find((entry) => entry.fill === name)?.label;
-      const stated =
-        labelRole && theme.roles?.[labelRole] !== undefined
-          ? roleColor(labelRole, theme, new Set([...seen, name]))
-          : null;
-      const labels = stated
-        ? [stated]
-        : labelCandidates(String(hueOf('neutral', theme)))
-            .map((css) => parseColor(css))
-            .filter((c): c is Rgba => !!c);
-      return deriveFill(fill, labels, APCA_MINIMUM.ui, fillStateDeltas(theme.polarity)) ?? fill;
-    }
-  }
-
-  const derived = AUTO_CONTRAST.find((entry) => entry.fg === name);
-  if (derived && !theme.roles?.[name] && !seen.has(name)) {
-    const fills = derived.against
-      .map((fill) => roleColor(fill, theme, new Set([...seen, name])))
-      .filter((c): c is Rgba => !!c);
-    if (fills.length) {
-      const ends = labelCandidates(String(hueOf('neutral', theme)));
-      return parseColor(pickReadableForeground(ends, fills));
-    }
-  }
+  const declared = (name: ThemeRole): string | undefined =>
+    theme.roles?.[name] ?? (role as Record<string, string>)[name];
 
   /*
-    A foreground that keeps its hue and moves its lightness until it clears — the second derivation.
-
-    Modelled here for the same reason as the first: checking the declared step asks a question
-    nobody sees the answer to. It is what makes the APCA rows pass on the dark themes, where a fixed
-    step cannot serve both polarities.
+    A declared value to a colour, following `oklch(from var(--we-role-x) calc(l ± n) c h)` through
+    whatever role it names. The state form is skipped here and handled in pass 3.
   */
-  const legible = LEGIBLE_PAIRS[name];
-  if (legible && !theme.roles?.[name] && !seen.has(name)) {
-    const declared = resolve((role as Record<string, string>)[name], theme);
-    const bg = roleColor(legible.on, theme, new Set([...seen, name]));
-    if (declared && bg && apcaContrast(declared, bg) < APCA_MINIMUM[legible.level]) {
-      const fixed = deriveLegible(declared, bg, APCA_MINIMUM[legible.level]);
-      if (fixed) return parseColor(fixed);
-    }
-    if (declared) return declared;
-  }
+  const resolveDeclared = (name: ThemeRole, seen: Set<string>): Rgba | null => {
+    const value = declared(name);
+    if (!value) return null;
+    const relative = RELATIVE.exec(value.trim());
+    if (!relative) return resolve(value, theme);
 
-  const value = theme.roles?.[name] ?? (role as Record<string, string>)[name];
-  if (!value) return null;
-
-  const relative = RELATIVE.exec(value.trim());
-  if (relative) {
-    const [, base, sign, amount, stateKey, stateFamily] = relative;
-    // A role defined in terms of itself would spin forever; a theme can do that by hand.
-    if (seen.has(name)) return null;
+    const [, base, sign, amount, stateKey] = relative;
+    if (stateKey) return null; // pass 3
+    if (seen.has(name)) return null; // a role defined in terms of itself
     const camel = base.replace(/-([a-z])/g, (_, c: string) => c.toUpperCase()) as ThemeRole;
-    const from = roleColor(camel, theme, new Set([...seen, name]));
+    const from = resolveDeclared(camel, new Set([...seen, name]));
     if (!from) return null;
-
-    /*
-      An interaction state moves away from the fill's own label, so resolving one means resolving
-      that label first — and calling the runtime's `stateDelta` rather than deciding here.
-
-      The label is `onAccent` for the accent and a matching `on<Status>` for each status fill, which is
-      what FILL_LABELS says; reading it from there rather than restating the mapping means a fifth
-      fill added later is picked up by the suite without touching it. If the label cannot be
-      resolved the state is left where it is, which keeps a partial theme from failing every row.
-    */
-    let delta: number;
-    if (stateKey) {
-      const pairing = FILL_LABELS.find((entry) => entry.fill === stateFamily);
-      const label = pairing ? roleColor(pairing.label, theme, new Set([...seen, name])) : null;
-      if (!label) return null;
-      delta = stateDelta(from, label, stateKey as 'hover' | 'active');
-    } else {
-      delta = (sign === '-' ? -1 : 1) * parseFloat(amount);
-    }
     const { l, c, h } = rgbToOklch(from);
-    const moved = Math.min(1, Math.max(0, l + delta));
+    const moved = Math.min(1, Math.max(0, l + (sign === '-' ? -1 : 1) * parseFloat(amount)));
     return { ...oklchToRgb(moved, c, h), a: from.a };
+  };
+
+  // ── 1. Declared values ────────────────────────────────────────────────────────────────────────
+  const colors = new Map<ThemeRole, Rgba>();
+  for (const name of Object.keys(role) as ThemeRole[]) {
+    const c = resolveDeclared(name, new Set());
+    if (c) colors.set(name, c);
   }
 
-  return resolve(value, theme);
+  // ── 2. The pipeline the runtime runs ──────────────────────────────────────────────────────────
+  const written = deriveRoleVars(colors, theme, String(hueOf('neutral', theme)));
+  for (const [prop, value] of Object.entries(written)) {
+    if (!prop.startsWith('--we-role-')) continue;
+    const name = prop.slice('--we-role-'.length).replace(/-([a-z])/g, (_, c: string) => c.toUpperCase()) as ThemeRole;
+    const parsed = parseColor(String(value));
+    if (parsed) colors.set(name, parsed);
+  }
+
+  // ── 3. Interaction states, which depend on the labels chosen above ────────────────────────────
+  for (const name of Object.keys(role) as ThemeRole[]) {
+    if (colors.has(name)) continue;
+    const value = declared(name);
+    const relative = value ? RELATIVE.exec(value.trim()) : null;
+    if (!relative) continue;
+    const [, base, , , stateKey, stateFamily] = relative;
+    if (!stateKey) continue;
+    const camel = base.replace(/-([a-z])/g, (_, c: string) => c.toUpperCase()) as ThemeRole;
+    const from = colors.get(camel);
+    const pairing = FILL_LABELS.find((entry) => entry.fill === stateFamily);
+    const label = pairing ? colors.get(pairing.label) : undefined;
+    if (!from || !label) continue;
+    const { l, c, h } = rgbToOklch(from);
+    const moved = Math.min(1, Math.max(0, l + stateDelta(from, label, stateKey as 'hover' | 'active')));
+    colors.set(name, { ...oklchToRgb(moved, c, h), a: from.a });
+  }
+
+  themeColorCache.set(theme, colors);
+  return colors;
+}
+
+function roleColor(name: ThemeRole, theme: ThemeOverrides): Rgba | null {
+  return themeColors(theme).get(name) ?? null;
 }
 
 /** Mirrors LEGIBLE_FOREGROUNDS in themeStyles — the roles that move their own lightness. */
