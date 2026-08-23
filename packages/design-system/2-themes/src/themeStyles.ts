@@ -395,6 +395,29 @@ export function themeToStyle(overrides: ThemeOverrides): Record<string, string> 
     }
   }
 
+  /*
+    4b. The aliases other stylesheets declare at `:root` in terms of a role.
+
+    A custom property is substituted where it is *declared*. `--we-ring-color: var(--we-role-focus)`
+    lives at `:root` in the tokens CSS, so it resolves against documentElement's focus role and
+    inherits downward as a finished colour — which is correct for the document theme and wrong for
+    every scoped one. A space theme could move its primary hue, watch `--we-role-focus` follow on its
+    own wrapper, and still paint every avatar ring in the *personal* theme's colour, because the
+    alias had already been resolved a level up.
+
+    That is the same hazard `TemplateLayout` re-declares `color` for, and the same one this function
+    already re-declares the colour formulas for. These are the rest of the family: an alias is only
+    safe if it is restated wherever the theme is.
+
+    Cheap to over-apply and expensive to miss, so they go out with every theme rather than being
+    gated on which parameters changed.
+  */
+  style['--we-color-focus'] = 'var(--we-color-primary-500)';
+  style['--we-ring-color'] = 'var(--we-role-focus)';
+  style['--we-border-color'] = 'var(--we-color-neutral-100)';
+  style['--we-border-color-strong'] = 'var(--we-color-neutral-200)';
+  style['--we-scrollbar-thumb-background'] = 'var(--we-role-control-surface)';
+
   // 5. Re-declare gradient when primary hue or saturation may have changed
   const affectsPrimaryGradient =
     hasNamedTheme || theme.primaryHue !== undefined || theme.saturation !== undefined || affectsLightness;
