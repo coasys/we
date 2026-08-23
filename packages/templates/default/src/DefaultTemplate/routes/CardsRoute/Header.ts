@@ -82,12 +82,13 @@ export const cardsHeader: SchemaNode = {
       type: 'Row',
       props: { gap: '300', ay: 'center', wrap: true },
       children: [
-        // Search
+        // Search. States no fill or outline of its own. The `Select`s beside it are outline buttons
+        // on `surface-sunken`, and `we-input` now defaults to the same, so the row agrees without
+        // being told to. This used to ask for `border-strong` — the *emphasised* role, against its
+        // neighbours' ordinary `border` — which is what made this one control read as brighter.
         {
           type: 'Search',
           props: {
-            bg: 'surface-sunken',
-            border: '1px solid border-strong',
             placeholder: 'Search…',
             value: { $local: 'searchText' },
             onSearch: { $setLocal: 'searchText', from: '$event' },

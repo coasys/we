@@ -13,12 +13,48 @@ const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   ay: 'center',
   px: '300',
   fontSize: '300',
-  bg: 'page',
+  /*
+    A recessed well with an outline, which is what `we-select` has always painted on its own
+    wrapper. These were `page` and no border, so an input standing beside a select was a different
+    kind of object — and every call site that wanted them to look like one row of controls restated
+    the select's two values by hand. Two did; the search field in the cards header was one, and it
+    is what surfaced this.
+
+    `page` also made the fill wrong on its own terms: an input is somewhere you put something, and
+    the elevation stack has a role for that. The role is `surfaceSunken`.
+  */
+  bg: 'surface-sunken',
+  border: '1px solid border',
   r: '300',
   color: 'text',
-  hoverProps: { bg: 'surface-hover', ring: '0 0 0 2px var(--we-ring-color, var(--we-role-focus))' },
-  activeProps: { bg: 'surface-hover', ring: '0 0 0 2px var(--we-ring-color, var(--we-role-focus))' },
-  focusProps: { bg: 'surface-hover', ring: '0 0 0 2px var(--we-ring-color, var(--we-role-focus))' },
+  /*
+    The ring belongs to focus alone, as it does on `we-button`.
+
+    All three states used to paint the same 2px ring, which cost the one indicator that has to be
+    unambiguous: a focus ring says where typing will go, and it cannot say that while the pointer
+    merely resting nearby says the same thing. Hover and press are a change of fill, which is what
+    the button has always done.
+
+    `--we-ring-color` is declared globally as `var(--we-role-focus)`, so the second fallback these
+    carried could never fire; stated bare, it matches the button and there is one spelling.
+  */
+  /*
+    Hover and press also lift the outline to `borderStrong`, which is what `we-button`'s `outline`
+    variant does — and that variant is what a `Select` trigger is, so an input sitting in a row of
+    them was the one control whose edge did not answer the pointer.
+  */
+  hoverProps: { bg: 'surface-hover', border: '1px solid border-strong' },
+  activeProps: { bg: 'surface-hover', border: '1px solid border-strong' },
+  focusProps: { bg: 'surface-hover', ring: '0 0 0 2px var(--we-ring-color)' },
+  /*
+    `ring` and `shadow` compose into one `box-shadow`, so that is the property to ease — and the
+    fill and the edge have to travel with it, or the ring fades in over a background and an outline
+    that have already snapped.
+
+    Durations are tokens, not `150ms`: `--we-transition-*` is what a theme's `animationSpeed`
+    preset overrides, so a token honours a reduced-motion choice where a literal overrides it.
+  */
+  transition: 'box-shadow 200 ease, background-color 200 ease, border-color 200 ease',
 };
 
 const SIZE_DEFAULTS: Record<ComponentSize, Partial<DesignSystemProps>> = {

@@ -13,12 +13,18 @@ const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   px: '300',
   py: '200',
   fontSize: '300',
-  bg: 'page',
+  // Recessed well with an outline, matching `we-input` and `we-select` — see the note on the
+  // former. A textarea beside an input has to be the same kind of object.
+  bg: 'surface-sunken',
+  border: '1px solid border',
   r: '300',
   color: 'text',
-  hoverProps: { bg: 'surface-hover', ring: '0 0 0 2px var(--we-ring-color, var(--we-role-focus))' },
-  activeProps: { bg: 'surface-hover', ring: '0 0 0 2px var(--we-ring-color, var(--we-role-focus))' },
-  focusProps: { bg: 'surface-hover', ring: '0 0 0 2px var(--we-ring-color, var(--we-role-focus))' },
+  // Ring on focus only; fill and outline on hover and press; all three eased — see the note on
+  // `we-input`, which carries the same states and has to look identical beside this.
+  hoverProps: { bg: 'surface-hover', border: '1px solid border-strong' },
+  activeProps: { bg: 'surface-hover', border: '1px solid border-strong' },
+  focusProps: { bg: 'surface-hover', ring: '0 0 0 2px var(--we-ring-color)' },
+  transition: 'box-shadow 200 ease, background-color 200 ease, border-color 200 ease',
 };
 
 const SIZE_DEFAULTS: Record<ComponentSize, Partial<DesignSystemProps>> = {

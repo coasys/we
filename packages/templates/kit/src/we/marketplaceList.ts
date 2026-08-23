@@ -74,7 +74,10 @@ export function marketplaceList(opts: MarketplaceListOptions): SchemaNode {
           {
             type: 'Search',
             props: {
-              ...(grid && { bg: 'surface-sunken', border: '1px solid border-strong', maxWidth: '300px' }),
+              // Only the width. The fill and outline used to be stated here too — the outline as
+              // `border-strong`, which read brighter than the controls beside it — and are now the
+              // input's own defaults.
+              ...(grid && { maxWidth: '300px' }),
               placeholder: `Search ${opts.label}…`,
               value: { $local: 'search' },
               // `$arg` rather than `$event.detail`: `Search` is a layer-4 component and calls its
