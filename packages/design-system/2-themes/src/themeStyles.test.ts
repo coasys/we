@@ -7,9 +7,8 @@
  * silently deletes the host's own state, which is how a docked panel's chrome ends up snapped to the
  * window edge until something forces a recompute.
  */
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-
 import { component, ROLE_ALIASES } from '@we/tokens';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { THEME_PRESETS } from './presets';
 import { applyThemeVars, themeParametersToStyle } from './themeStyles';
@@ -312,11 +311,8 @@ describe('a preset and a theme both pinning roles', () => {
       expect(style[role], `${role} was dropped`).toMatch(/^oklch\([\d.]+%/);
     }
     expect(
-      new Set([
-        style['--we-role-surface-raised'],
-        style['--we-role-surface-active'],
-        style['--we-role-border-strong'],
-      ]).size,
+      new Set([style['--we-role-surface-raised'], style['--we-role-surface-active'], style['--we-role-border-strong']])
+        .size,
     ).toBe(3);
   });
 

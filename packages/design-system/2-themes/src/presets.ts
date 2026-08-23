@@ -346,7 +346,12 @@ export const THEME_PRESETS = {
         // 22 points below neutral-500: an emphasised rule here is barely stronger than an ordinary
         // one, which is what keeps a dense channel list from turning into a grid.
         borderStrong: neutral(38.0),
-        textFaint: neutral(62.4),
+        // `textFaint` was pinned here at L 62.4 and is not any more. It looked like a design — 11
+        // points brighter than the ramp's neutral-400 — but it measured Lc 36 against this theme's
+        // card, against a floor of 45, so it was a value somebody hand-picked off a screenshot that
+        // happened to land short. A pin is the author overruling the derivation, which they are
+        // entitled to do; this was not an author overruling anything, it was the derivation being
+        // skipped. Unpinned, the same measure-and-correct pass every other theme gets applies.
         overlay:
           'oklch(4% calc(min(var(--we-color-neutral-saturation) * 0.0035, 0.18) * 0.08) var(--we-color-neutral-hue) / 72%)',
         shadowColor: neutral(11.6),

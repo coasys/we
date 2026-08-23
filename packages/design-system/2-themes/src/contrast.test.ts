@@ -34,8 +34,9 @@ import type { ThemeOverrides, ThemeRole } from './overrides';
 import { THEME_PRESETS, type ThemeName } from './presets';
 import {
   DERIVED_FILLS,
-  FILL_LABELS,
   deriveRoleVars,
+  FILL_LABELS,
+  LEGIBLE_FOREGROUNDS,
   pickReadableForeground,
   stateDelta,
 } from './themeStyles';
@@ -45,6 +46,16 @@ const PAIRS: { fg: ThemeRole; bg: ThemeRole; level: ContrastLevel; what: string 
   { fg: 'text', bg: 'surface', level: 'body', what: 'body text on a card' },
   { fg: 'text', bg: 'surfaceSunken', level: 'body', what: 'body text in a well' },
   { fg: 'textMuted', bg: 'surface', level: 'body', what: 'muted text on a card' },
+  /*
+    `ui`, not `body`. `textFaint` is placeholders, disabled labels and decorative icons — none of
+    which is a paragraph, and holding them to Lc 60 would mean a "faint" that is not faint.
+
+    Added because the coverage check below asked for it: it is corrected at apply time like every
+    other foreground, and until now nothing measured the result, so the correction could have
+    stopped working and no test would have said so.
+  */
+  { fg: 'textFaint', bg: 'surface', level: 'ui', what: 'placeholder text on a card' },
+  { fg: 'accentText', bg: 'surface', level: 'body', what: 'an accented heading on a card' },
   /*
     `ui`, not `body`. APCA separates body copy from interface text, and a button label is the latter:
     a short, semibold string at 14–16px, which its guidance puts at Lc 45. Holding a control label to
@@ -326,15 +337,37 @@ function roleColor(name: ThemeRole, theme: ThemeOverrides): Rgba | null {
   return themeColors(theme).get(name) ?? null;
 }
 
-/** Mirrors LEGIBLE_FOREGROUNDS in themeStyles — the roles that move their own lightness. */
-const LEGIBLE_PAIRS: Partial<Record<ThemeRole, { on: ThemeRole; level: ContrastLevel }>> = {
-  textMuted: { on: 'surface', level: 'body' },
-  textFaint: { on: 'surface', level: 'ui' },
-  accentText: { on: 'surface', level: 'body' },
-  dangerText: { on: 'dangerSurface', level: 'body' },
-  successText: { on: 'successSurface', level: 'body' },
-  warningText: { on: 'warningSurface', level: 'body' },
-};
+/**
+ * Coverage, not a second copy of the runtime's table.
+ *
+ * This used to be `LEGIBLE_PAIRS`, the suite's own list of which foreground is measured against
+ * which surface — one of several tables kept in step with `themeStyles` by hand, and the species of
+ * duplication that let the suite report green over derivations that were not running at all. The
+ * pipeline is called directly now, so the list is dead as an input.
+ *
+ * It is not dead as a question. `PAIRS` above is hand-written, so a role added to the runtime's
+ * derivations is corrected at apply time and asserted by nothing — the derivation would keep it
+ * legible and no test would notice if it stopped. So the check is inverted: every fill the runtime
+ * derives, and every label it derives for one, has to appear in `PAIRS`.
+ */
+describe('what the derivations cover, the assertions cover', () => {
+  const asserted = new Set(PAIRS.flatMap((pair) => [pair.fg, pair.bg]));
+
+  it.each(DERIVED_FILLS)('%s is measured against the label derived for it', (fill) => {
+    const pairing = FILL_LABELS.find((entry) => entry.fill === fill);
+    expect(pairing, `${fill} is derived but has no label in FILL_LABELS`).toBeTruthy();
+    expect(
+      PAIRS.some((pair) => pair.bg === fill && pair.fg === pairing!.label),
+      `nothing asserts ${pairing!.label} on ${fill} — the derivation could stop and no test would say so`,
+    ).toBe(true);
+  });
+
+  // Read from the runtime's own table rather than restated, so a foreground added there arrives here
+  // as a failing test rather than as silent absence.
+  it.each(LEGIBLE_FOREGROUNDS)('$fg is measured against $on', ({ fg }) => {
+    expect(asserted.has(fg), `${fg} is corrected at apply time but never measured`).toBe(true);
+  });
+});
 
 describe.each(Object.keys(THEME_PRESETS) as ThemeName[])('%s', (name) => {
   const theme = THEME_PRESETS[name].parameters as ThemeOverrides;

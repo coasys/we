@@ -845,7 +845,7 @@ export function stateDelta(fill: Rgba, label: Rgba, state: 'hover' | 'active'): 
  * the whole reason a fixed step could not do this job. Exported for the tests, which have to model
  * what actually renders rather than what is declared.
  */
-export function deriveLegible(fg: Rgba, bg: Rgba, minimum: number): string | null {
+export function deriveLegible(fg: Rgba, bg: Rgba, minimum: number, wcagMinimum: number): string | null {
   const { c, h } = rgbToOklch(fg);
   const start = rgbToOklch(fg).l;
   for (let step = 0; step <= 100; step++) {
@@ -853,7 +853,7 @@ export function deriveLegible(fg: Rgba, bg: Rgba, minimum: number): string | nul
       const l = start + direction * step * 0.01;
       if (l < 0 || l > 1) continue;
       const candidate = { ...oklchToRgb(l, c, h), a: fg.a };
-      if (apcaContrast(candidate, bg) >= minimum)
+      if (apcaContrast(candidate, bg) >= minimum && contrastRatio(candidate, bg) >= wcagMinimum)
         return `oklch(${(l * 100).toFixed(1)}% ${c.toFixed(4)} ${h.toFixed(1)})`;
     }
   }
@@ -874,7 +874,10 @@ export function deriveLegible(fg: Rgba, bg: Rgba, minimum: number): string | nul
  * muted text at Lc 32–36 against a threshold of 60. No choice of step fixes that, because the step
  * that works in the dark is wrong in the light. Deriving does.
  */
-const LEGIBLE_FOREGROUNDS: { fg: ThemeRole; on: ThemeRole; level: ContrastLevel }[] = [
+// Exported so the contrast suite can assert it is *covered* — every foreground corrected here has
+// to be measured by a pair there, or the correction could stop working and nothing would say so.
+// That check found `textFaint` and `accentText` unasserted the first time it ran.
+export const LEGIBLE_FOREGROUNDS: { fg: ThemeRole; on: ThemeRole; level: ContrastLevel }[] = [
   { fg: 'textMuted', on: 'surface', level: 'body' },
   { fg: 'textFaint', on: 'surface', level: 'ui' },
   { fg: 'accentText', on: 'surface', level: 'body' },
@@ -1137,9 +1140,23 @@ export function deriveRoleVars(
     const text = resolved.get(fg);
     const background = resolved.get(on);
     if (!text || !background) continue;
-    if (apcaContrast(text, background) >= APCA_MINIMUM[level]) continue;
+    /*
+      Both metrics, because the suite grades on both and this used to satisfy only one.
 
-    const fixed = deriveLegible(text, background, APCA_MINIMUM[level]);
+      `textFaint` on a card measured 2.84:1 in `light` and 2.83 in `retro` — comfortably past APCA's
+      Lc 45, a hair short of WCAG's 3:1 — so the correction ran, declared itself finished, and left
+      two built-in themes failing a floor the suite enforces. Stopping at the first metric to clear
+      is not a lighter reading of the rule, it is a foreground that satisfies whichever measure it
+      happened to be handed. The cost of requiring both is about two points of lightness on a
+      placeholder.
+    */
+    if (
+      apcaContrast(text, background) >= APCA_MINIMUM[level] &&
+      contrastRatio(text, background) >= CONTRAST_MINIMUM[level]
+    )
+      continue;
+
+    const fixed = deriveLegible(text, background, APCA_MINIMUM[level], CONTRAST_MINIMUM[level]);
     if (fixed) out[roleVar(fg)] = fixed;
   }
 

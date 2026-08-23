@@ -472,68 +472,6 @@ export function ThemeStoreProvider(props: ParentProps) {
   const builtInThemes: Accessor<ThemeData[]> = () => Object.keys(themeRegistry).map(registryToThemeData);
 
   /**
-   * Which theme "Follow system" currently means.
-   *
-   * `system` used to resolve straight to the string `'light'` or `'dark'`, which happened to be the
-   * ids of two built-ins — so an agent who had made their own dark theme could follow their machine
-   * or wear their own theme, never both, and the setting that reads as "match my machine" quietly
-   * meant "match my machine, using somebody else's palette".
-   *
-   * An unset half falls back to the built-in of that polarity, which is what every existing agent
-   * has and exactly what this did before. The localStorage copies answer the frames before
-   * AgentSettings arrives; without them the boot screen resolves the built-in and then swaps.
-   */
-  const systemThemeId = createMemo(() => {
-    const prefs = datasetStore.agentSettings();
-    const dark = systemScheme() === 'dark';
-    const stored = prefs?.[dark ? 'systemDarkThemeId' : 'systemLightThemeId'];
-    const cached = typeof window !== 'undefined' ? localStorage.getItem(dark ? SYSTEM_DARK_KEY : SYSTEM_LIGHT_KEY) : null;
-    const chosen = stored || cached || '';
-    // Never `system` itself: a pair pointing at the thing being resolved would not terminate.
-    return chosen && chosen !== SYSTEM_THEME_ID ? chosen : dark ? 'dark' : 'light';
-  });
-
-  /**
-   * Both sides of the pair as *chosen*, for the control that sets them.
-   *
-   * Deliberately not resolved: an unset side reads as `''`, which is the "Built-in" option, so the
-   * select shows the choice that was made and returning to it visibly does something. Reporting the
-   * fallback here instead would show "Light" for an unset light side — truthful about the outcome
-   * and wrong about the control, since picking "Built-in" would then appear to do nothing at all.
-   * `systemThemeId` is where the fallback belongs, and it is the only place it happens.
-   */
-  const systemThemes = createMemo(() => {
-    const prefs = datasetStore.agentSettings();
-    const side = (polarity: 'light' | 'dark') => {
-      const stored = prefs?.[polarity === 'dark' ? 'systemDarkThemeId' : 'systemLightThemeId'];
-      const cached =
-        typeof window !== 'undefined'
-          ? localStorage.getItem(polarity === 'dark' ? SYSTEM_DARK_KEY : SYSTEM_LIGHT_KEY)
-          : null;
-      const chosen = stored || cached || '';
-      return chosen === SYSTEM_THEME_ID ? '' : chosen;
-    };
-    return { light: side('light'), dark: side('dark'), resolved: systemScheme() };
-  });
-
-  /**
-   * What either half of the pair may be set to, ready for a `we-select`.
-   *
-   * Built in the store rather than `$map`ped in the schema for the reason `themeOverrideOptions`
-   * documents: a schema can map a store array into options and cannot prepend one, and without the
-   * "Built-in" entry there would be no way back out of a choice — the nearest thing available would
-   * be picking the built-in by name and hoping it is still the same theme next release.
-   *
-   * "Follow system" is excluded, being the thing this resolves.
-   */
-  const systemThemeOptions: Accessor<{ label: string; value: string }[]> = createMemo(() => [
-    { label: 'Built-in light or dark', value: '' },
-    ...allThemes()
-      .filter((t) => t.id !== SYSTEM_THEME_ID)
-      .map((t) => ({ label: t.name, value: String(t.id) })),
-  ]);
-
-  /**
    * "Follow system", on its own, because it is not one of the built-ins.
    *
    * It used to be the first entry of `builtInThemes`, which put it at the head of the only section a
@@ -565,6 +503,61 @@ export function ThemeStoreProvider(props: ParentProps) {
   const [visibleThemeIds, setVisibleThemeIds] = createSignal<Set<string>>(new Set());
   const [spaceThemes, setSpaceThemes] = createSignal<ThemeData[]>([]);
   const systemScheme = createSystemScheme();
+
+  /*
+    These three sit *after* `systemScheme` deliberately.
+
+    `createMemo` runs its computation on creation, so a memo reading `systemScheme` from above the
+    line that defines it throws `Cannot access before initialization` and takes the whole store with
+    it — a blank app, from an ordering mistake that typechecks and that no unit test sees, because
+    nothing but a browser actually constructs the store.
+  */
+  /**
+   * Which theme "Follow system" currently means.
+   *
+   * `system` used to resolve straight to the string `'light'` or `'dark'`, which happened to be the
+   * ids of two built-ins — so an agent who had made their own dark theme could follow their machine
+   * or wear their own theme, never both, and the setting that reads as "match my machine" quietly
+   * meant "match my machine, using somebody else's palette".
+   *
+   * An unset half falls back to the built-in of that polarity, which is what every existing agent
+   * has and exactly what this did before. The localStorage copies answer the frames before
+   * AgentSettings arrives; without them the boot screen resolves the built-in and then swaps.
+   */
+  const systemThemeId = createMemo(() => {
+    const prefs = datasetStore.agentSettings();
+    const dark = systemScheme() === 'dark';
+    const stored = prefs?.[dark ? 'systemDarkThemeId' : 'systemLightThemeId'];
+    const cached =
+      typeof window !== 'undefined' ? localStorage.getItem(dark ? SYSTEM_DARK_KEY : SYSTEM_LIGHT_KEY) : null;
+    const chosen = stored || cached || '';
+    // Never `system` itself: a pair pointing at the thing being resolved would not terminate.
+    return chosen && chosen !== SYSTEM_THEME_ID ? chosen : dark ? 'dark' : 'light';
+  });
+
+  /**
+   * Both sides of the pair as *chosen*, for the control that sets them.
+   *
+   * Deliberately not resolved: an unset side reads as `''`, which is the "Built-in" option, so the
+   * select shows the choice that was made and returning to it visibly does something. Reporting the
+   * fallback here instead would show "Light" for an unset light side — truthful about the outcome
+   * and wrong about the control, since picking "Built-in" would then appear to do nothing at all.
+   * `systemThemeId` is where the fallback belongs, and it is the only place it happens.
+   */
+  const systemThemes = createMemo(() => {
+    const prefs = datasetStore.agentSettings();
+    const side = (polarity: 'light' | 'dark') => {
+      const stored = prefs?.[polarity === 'dark' ? 'systemDarkThemeId' : 'systemLightThemeId'];
+      const cached =
+        typeof window !== 'undefined'
+          ? localStorage.getItem(polarity === 'dark' ? SYSTEM_DARK_KEY : SYSTEM_LIGHT_KEY)
+          : null;
+      const chosen = stored || cached || '';
+      return chosen === SYSTEM_THEME_ID ? '' : chosen;
+    };
+    return { light: side('light'), dark: side('dark'), resolved: systemScheme() };
+  });
+
   const [currentThemeId, setCurrentThemeId] = createSignal<string>(getInitialThemeId());
   /**
    * Whether a space's theme covers the whole window, or only the space's own content.
@@ -632,6 +625,23 @@ export function ThemeStoreProvider(props: ParentProps) {
     const visible = ids.size > 0 ? installedThemes().filter((t) => ids.has(t.id)) : installedThemes();
     return [...builtInThemes(), ...visible, ...spaceThemes()];
   };
+
+  /**
+   * What either half of the pair may be set to, ready for a `we-select`.
+   *
+   * Built in the store rather than `$map`ped in the schema for the reason `themeOverrideOptions`
+   * documents: a schema can map a store array into options and cannot prepend one, and without the
+   * "Built-in" entry there would be no way back out of a choice — the nearest thing available would
+   * be picking the built-in by name and hoping it is still the same theme next release.
+   *
+   * "Follow system" is excluded, being the thing this resolves.
+   */
+  const systemThemeOptions: Accessor<{ label: string; value: string }[]> = createMemo(() => [
+    { label: 'Built-in light or dark', value: '' },
+    ...allThemes()
+      .filter((t) => t.id !== SYSTEM_THEME_ID)
+      .map((t) => ({ label: t.name, value: String(t.id) })),
+  ]);
 
   const currentTheme: Accessor<ThemeData> = () =>
     allThemes().find((t) => t.id === currentThemeId()) ?? registryToThemeData('light');
