@@ -35,7 +35,7 @@ export function statChip(opts: StatChipOptions): SchemaNode {
     type: 'Row',
     props: { gap: '100', ay: 'center', flex: 'none' },
     children: [
-      { type: 'we-icon', props: { name: opts.icon, size: 'sm', color: opts.iconColor ?? 'neutral-600' } },
+      { type: 'we-icon', props: { name: opts.icon, size: 'sm', color: opts.iconColor ?? 'text-muted' } },
       ...(isCount
         ? [
             { type: 'we-number', props: { value: opts.count, shorten: true } } as SchemaNode,

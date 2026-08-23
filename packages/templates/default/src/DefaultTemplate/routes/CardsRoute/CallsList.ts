@@ -792,7 +792,7 @@ export const callsList: SchemaNode = {
                           did: '$utterance.author',
                           as: 'speaker',
                           stacked: true,
-                          nameColor: 'neutral-600',
+                          nameColor: 'text-muted',
                           // When each utterance was written — which is when it was *said*, since a
                           // block is flushed as the speaker finishes.
                           timestamp: '$utterance.createdAt',

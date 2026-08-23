@@ -133,7 +133,7 @@ export function marketplaceList(opts: MarketplaceListOptions): SchemaNode {
                   condition: { $local: 'search' },
                   then: gatePrompt({
                     icon: 'magnifying-glass',
-                    iconColor: 'neutral-300',
+                    iconColor: 'text-faint',
                     title: `No ${opts.label} match your search`,
                     body: 'Try a different word, or clear the search to see everything.',
                     fill: false,
@@ -142,7 +142,7 @@ export function marketplaceList(opts: MarketplaceListOptions): SchemaNode {
                   }),
                   else: gatePrompt({
                     icon: opts.emptyIcon,
-                    iconColor: 'neutral-300',
+                    iconColor: 'text-faint',
                     title: `No ${opts.label} available yet`,
                     body: opts.emptyBody,
                     fill: false,

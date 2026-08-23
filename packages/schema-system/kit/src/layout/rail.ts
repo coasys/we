@@ -231,8 +231,16 @@ export function railItem(opts: RailItemOptions): SchemaNode {
       p: '300',
       ...(opts.disabled !== undefined && { disabled: opts.disabled }),
       ...(opts.onClick !== undefined && { onClick: opts.onClick }),
-      bg: { $if: { condition: active, then: 'neutral-100', else: '' } },
-      color: { $if: { condition: active, then: 'primary-600', else: 'neutral-700' } },
+      /*
+        Roles, not steps. `accent-muted` is the role for a selected row and `accent-text` the accent
+        used as a foreground; the steps these replace could not follow a theme's decision about
+        either, and a rail is the most-looked-at chrome in the app.
+
+        `accent-muted` is a small chroma shift from the `neutral-100` it replaces rather than a
+        redesign — same lightness, the theme's primary saturation instead of its neutral one.
+      */
+      bg: { $if: { condition: active, then: 'accent-muted', else: '' } },
+      color: { $if: { condition: active, then: 'accent-text', else: 'text-muted' } },
       /*
         The current row deepens on hover rather than losing its colour.
 

@@ -109,9 +109,15 @@ placeholder and the grid can never disagree about how many rows there are.
 }
 \`\`\`
 
-Use \`gradient\` on the icon when there is something to do, and a flat \`color\` (\`neutral-300\`,
-or \`warning\`) when there is not — the two read apart at a glance, and a dead end that looks like
-an invitation is worse than one that looks like a dead end.
+Use \`gradient\` on the icon when there is something to do, and a flat \`color\` (\`text-faint\`,
+or \`warning-text\`) when there is not — the two read apart at a glance, and a dead end that looks
+like an invitation is worse than one that looks like a dead end.
+
+This line used to recommend \`neutral-300\`, and every gate prompt in the repo copied it. A scale
+position is not frozen — it follows the theme's hue, saturation and polarity — but it cannot follow
+what a theme *decides* a faint foreground is, and the contrast corrections at apply time skip it
+entirely, so nothing ever measures it against what is behind it. Guidance that names a step
+reproduces that in every template written from it.
 
 ### Confirm dialog
 

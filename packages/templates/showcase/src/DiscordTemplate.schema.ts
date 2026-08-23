@@ -254,7 +254,7 @@ export const discordTemplate: TemplateSchema = {
       path: '/',
       ...gatePrompt({
         icon: 'hash',
-        iconColor: 'neutral-300',
+        iconColor: 'text-faint',
         title: 'Pick a channel',
         // States the permission model rather than hiding it. Every member can read and write every
         // channel here — a collection is arrangement, not a boundary — so the honest answer to

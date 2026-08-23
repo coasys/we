@@ -365,7 +365,7 @@ export const youtubeTemplate: TemplateSchema = {
     watchRoute,
     {
       path: '*',
-      ...gatePrompt({ icon: 'video-camera', iconColor: 'neutral-300', title: 'Not found' }),
+      ...gatePrompt({ icon: 'video-camera', iconColor: 'text-faint', title: 'Not found' }),
     },
   ],
 };

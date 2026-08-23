@@ -97,7 +97,7 @@ export const homeRoute: RouteSchema = {
                 // gate does.
                 gatePrompt({
                   icon: 'plus-circle',
-                  iconColor: 'neutral-300',
+                  iconColor: 'text-faint',
                   title: 'No spaces yet',
                   body: 'Create or join a space to get started.',
                   fill: false,

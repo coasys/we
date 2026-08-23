@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit",
     "coverage": "vitest run --coverage",
     "validate": "tsx src/cli/we-validate-schemas.ts ../../app-shell/src/shared/schemas/ ../../templates/shell/src/ ../../templates/default/src/ ../../templates/showcase/src/ ../../module-system/",
-    "surface-audit": "tsx src/cli/surface-audit.ts ../../templates ../../app-shell/src/shared/schemas ../../module-system"
+    "surface-audit": "tsx src/cli/surface-audit.ts ../../templates ../../app-shell/src/shared/schemas ../../module-system",
+    "role-audit": "tsx src/cli/role-audit.ts ../../templates ../../app-shell/src/shared/schemas ../../module-system"
   },
   "bin": {
     "we-validate-schemas": "./dist/cli/we-validate-schemas.js"
