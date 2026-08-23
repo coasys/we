@@ -115,6 +115,31 @@ describe('applyThemeVars cross-fade window', () => {
     expect(props.has(DURATION)).toBe(false);
   });
 
+  /*
+    An edit is not a switch, and conflating them is what made the theme editor feel broken.
+
+    The editor re-applies on every frame of a slider drag. Each application re-armed the window, so
+    anything whose background animates — every primitive, the primary button most visibly — spent
+    the drag transitioning toward a colour that had already moved again. Beside it, plain text and
+    the focus ring updated instantly, because they do not animate. It read as the colour derivations
+    being slow; it was a 250ms fade being restarted sixty times a second.
+  */
+  it('does not open a window when the caller says this is an edit rather than a switch', () => {
+    const { el, props } = fakeRoot();
+    applyThemeVars(el, { polarity: 'dark' as const });
+    applyThemeVars(el, { polarity: 'dark' as const, primaryHue: 200 }, { crossFade: false });
+
+    expect(props.has(DURATION)).toBe(false);
+  });
+
+  it('still opens one for a switch, which is what the window is for', () => {
+    const { el, props } = fakeRoot();
+    applyThemeVars(el, { polarity: 'dark' as const });
+    applyThemeVars(el, { polarity: 'light' as const }, { crossFade: true });
+
+    expect(props.get(DURATION)).toBe('250ms');
+  });
+
   it('restarts the window when a second switch lands mid-fade, rather than closing early', () => {
     const { el, props } = fakeRoot();
     applyThemeVars(el, { polarity: 'dark' as const });

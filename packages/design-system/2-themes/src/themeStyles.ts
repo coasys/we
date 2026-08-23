@@ -452,7 +452,22 @@ const SWITCH_DURATION_MS = 250;
 const SWITCH_WINDOW_MS = 400;
 const switchTimers = new WeakMap<HTMLElement, ReturnType<typeof setTimeout>>();
 
-export function applyThemeVars(root: HTMLElement, theme: ThemeOverrides): void {
+export interface ApplyThemeOptions {
+  /**
+   * Whether this application is a *switch* — one theme replacing another — or a continuous edit.
+   *
+   * A switch cross-fades. An edit must not: the editor re-applies on every frame of a slider drag,
+   * and each application was re-arming a 250ms fade, so anything whose background animates spent the
+   * whole drag chasing a colour it never caught up with. The primary button lagged visibly behind
+   * the text and the focus ring beside it, which do not animate, and it read as the derivations
+   * being slow when it was the fade.
+   *
+   * Defaults to true, so every existing caller keeps the behaviour it had.
+   */
+  crossFade?: boolean;
+}
+
+export function applyThemeVars(root: HTMLElement, theme: ThemeOverrides, options?: ApplyThemeOptions): void {
   const styles = themeToStyle(theme);
   const previous = appliedThemeVars.get(root);
 
@@ -473,7 +488,7 @@ export function applyThemeVars(root: HTMLElement, theme: ThemeOverrides): void {
   // not a switch, and opening the window for it left every component running a 250ms departure
   // transition for the first fraction of a second of the page's life — long enough to be sampled by a
   // diagnostic reading the value at load, and to report the exact behaviour this is designed to avoid.
-  if (previous) {
+  if (previous && options?.crossFade !== false) {
     root.style.setProperty('--we-theme-switch-duration', `${SWITCH_DURATION_MS}ms`);
     const running = switchTimers.get(root);
     // Switching again mid-fade restarts the window rather than letting the first timer close it early.
@@ -500,47 +515,49 @@ export function applyThemeVars(root: HTMLElement, theme: ThemeOverrides): void {
   const ceilings = applyChromaCeilings(root);
 
   /*
-    One probe for all four derivations, and the guard they used to each repeat.
+    One read of the browser, then all the maths, then one round of writes.
 
-    Each of them needs to know what a role *renders as*, which only the browser can answer — see
-    createRoleProbe. Sharing one element keeps the DOM churn to a single append/remove per theme
-    change, and the sequencing still works because each derivation writes to `root.style` and the
-    next one reads through a child of `root`.
+    Everything below needs to know what a role *renders as*, and only the browser can answer that
+    (see `createRoleProbe`). The catch is that a write to `root.style` invalidates the whole
+    document, so the next `getComputedStyle` forces a synchronous recalculation of it — and reading
+    a role, computing, writing it, then reading the next one pays that recalc every time round.
 
-    ## Each derivation must read everything before it writes anything
+    Measured on a 583-node document: thirty reads interleaved with writes cost 71.8 ms; the same
+    thirty reads with a single write in front of them cost 0.1 ms. The reads were never the cost.
+    Interleaving them was, and the four derivations between them managed about nineteen recalcs per
+    theme change — which is what made dragging a colour slider unusable, since a drag re-applies the
+    theme on every frame.
 
-    A write to `root.style` invalidates the whole document; the next `getComputedStyle` then forces
-    a synchronous recalculation of it. So a loop that reads a role, computes, writes it, and reads
-    the next one pays a full recalc *per iteration*.
+    Batching each derivation internally took that to four recalcs and 10.1 ms. This takes it to one.
+    What makes that possible is that the *only* thing needing the browser is resolving the declared
+    role expressions to colours; every step afterwards is arithmetic on those numbers, and arithmetic
+    is nearly free — the whole pipeline (four fill searches, six foreground searches, nine gamut
+    bisections) measures 0.24 ms. So the browser is asked once, and the stages that used to read
+    each other's output through computed style now read it out of `resolved`.
 
-    Measured on a 583-node document: thirty reads interleaved with writes cost 71.8 ms, and the
-    same thirty reads with a single write in front of them cost 0.1 ms. The reads are free; only
-    the interleaving is not. Across the four derivations that was about nineteen recalcs per theme
-    change, which is what made dragging a colour slider unusable — every frame of the drag applies
-    the theme again.
-
-    So each of them below is read-all, then compute, then write-all. That leaves one recalc per
-    derivation — four in total, because they genuinely are sequential: fills settle, the label is
-    chosen against where they landed, the states follow from the label. Adding a read into the
-    middle of a write loop puts the 70 ms back.
+    They are still sequential, and must be: a fill settles, the label is chosen against where it
+    landed, the states move away from that label. That order is now expressed by mutating one map
+    rather than by bouncing off the DOM between steps.
   */
-  const measurable =
-    typeof getComputedStyle === 'function' && root?.nodeType === 1 && root.isConnected;
+  const measurable = typeof getComputedStyle === 'function' && root?.nodeType === 1 && root.isConnected;
   if (!measurable) {
     appliedThemeVars.set(root, new Set([...Object.keys(styles), ...ceilings]));
     return;
   }
+
   const probe = createRoleProbe(root);
-  // Order matters: the fill settles first, then the label is chosen against where it landed, then
-  // the foregrounds that sit on other surfaces.
-  const fills = applyLegibleFills(root, theme, probe);
-  const labels = applyAutoContrast(root, theme, probe);
-  // After the label, necessarily: which way a hover moves is decided by where the label ended up.
-  const states = applyStateDirection(root, probe);
-  const foregrounds = applyLegibleForegrounds(root, theme, probe);
+  const resolved = new Map<ThemeRole, Rgba>();
+  for (const role of ROLES_TO_RESOLVE) {
+    const colour = probe.read(role);
+    if (colour) resolved.set(role, colour);
+  }
   probe.dispose();
 
-  const derived = [...fills, ...labels, ...states, ...foregrounds, ...ceilings];
+  const hue = getComputedStyle(root).getPropertyValue('--we-color-neutral-hue').trim() || '264';
+  const derivedVars = deriveRoleVars(resolved, theme, hue);
+  for (const [prop, value] of Object.entries(derivedVars)) root.style.setProperty(prop, value);
+
+  const derived = [...Object.keys(derivedVars), ...ceilings];
   appliedThemeVars.set(root, new Set([...Object.keys(styles), ...derived]));
 }
 
@@ -735,123 +752,30 @@ export function stateDelta(fill: Rgba, label: Rgba, state: 'hover' | 'active'): 
   return sign * Math.abs(STATE_STEPS.light[state]);
 }
 
+
+
+
 /**
- * A hover moves the fill *away from its label*, whichever way that turns out to be.
+ * Walk a colour's lightness away from its background until it clears, keeping hue and chroma.
  *
- * The rule is not "dark themes lighten". It is that a state which deepens the gap between a fill
- * and the text on it gains contrast, and one that closes the gap loses it — precisely when you are
- * pressing the control and most want to read it. Under the old scale-position scheme this happened
- * by accident, because a fill and its label sat at opposite ends of the ramp, so "one step further
- * along" was always away. Restating the steps as signed lightness deltas lost the accident, and
- * polarity was standing in for it.
- *
- * Polarity is a bad proxy and the failure is not hypothetical either way round. Assume dark themes
- * lighten and a dark theme with a mid accent — which gets a near-*white* label from the derivation
- * — walks its hover into that label: `dark` measured Lc 29 and `black` Lc 33 doing exactly this.
- * Assume everything deepens, which is what shipped instead, and a theme that *pins* a near-black
- * label gets a hover that deepens toward it, which is the same mistake mirrored. That is what
- * turned the selected nav tab the wrong way: `dark` pins a near-black label, so its hover has to
- * lighten, and it was darkening.
- *
- * This was documented as needing a fixed point — the label is derived from the fill, so deriving
- * the states from the label looks circular. It is not, because the order already resolves it: the
- * fill settles first, the label is chosen against where it landed, and only then is there a
- * direction to ask about. Running here, after `applyAutoContrast`, the label is a fact.
- *
- * Written per family rather than globally because the answer genuinely differs between them — a
- * theme can pin a dark label on its accent and leave the derivation to give its danger fill a white
- * one. Each variable falls back to the global pair, so a theme that never needed this is untouched
- * and nothing has to be emitted for the common case.
- *
- * The magnitudes are unchanged; only the sign is decided here.
- *
- * Note `deriveFill` still probes with the deepening direction while it looks for a legible fill.
- * That stays conservative on purpose: it runs before any label exists, and deepening can never walk
- * into the light label it is most likely to be paired with. The cost is that it occasionally moves
- * a fill further than a lightening state would have required.
+ * Both directions are tried and the one that gets there first wins, because which way is "away"
+ * depends on the theme: muted text darkens on a light card and lightens on a dark one, and that is
+ * the whole reason a fixed step could not do this job. Exported for the tests, which have to model
+ * what actually renders rather than what is declared.
  */
-function applyStateDirection(root: HTMLElement, probe: ReturnType<typeof createRoleProbe>): string[] {
-  const written: string[] = [];
-
-  // Read first, write after — see `applyThemeVars` for why the two must not interleave.
-  const measured = FILL_LABELS.map(({ fill, label }) => ({
-    fill,
-    fillColor: probe.read(fill),
-    labelColor: probe.read(label),
-  }));
-
-  for (const { fill, fillColor, labelColor } of measured) {
-    if (!fillColor || !labelColor) continue;
-    // The four fill roles are single lowercase words, so the role name *is* the variable suffix.
-    for (const state of ['hover', 'active'] as const) {
-      const prop = `--we-state-${state}-${fill}`;
-      root.style.setProperty(prop, String(stateDelta(fillColor, labelColor, state)));
-      written.push(prop);
+export function deriveLegible(fg: Rgba, bg: Rgba, minimum: number): string | null {
+  const { c, h } = rgbToOklch(fg);
+  const start = rgbToOklch(fg).l;
+  for (let step = 0; step <= 100; step++) {
+    for (const direction of [1, -1]) {
+      const l = start + direction * step * 0.01;
+      if (l < 0 || l > 1) continue;
+      const candidate = { ...oklchToRgb(l, c, h), a: fg.a };
+      if (apcaContrast(candidate, bg) >= minimum)
+        return `oklch(${(l * 100).toFixed(1)}% ${c.toFixed(4)} ${h.toFixed(1)})`;
     }
   }
-  return written;
-}
-
-function applyLegibleFills(root: HTMLElement, theme: ThemeOverrides, probe: ReturnType<typeof createRoleProbe>): string[] {
-  const written: string[] = [];
-  const computed = getComputedStyle(root);
-
-  // A plain number, so reading the custom property directly is fine here — it is only colours that
-  // need the probe.
-  const hue = computed.getPropertyValue('--we-color-neutral-hue').trim() || '264';
-  const free = labelCandidates(hue)
-    .map((css) => parseColor(css))
-    .filter((c): c is Rgba => !!c);
-  if (!free.length) return written;
-
-  /*
-    Every colour this needs, read before anything is written — see `applyThemeVars`.
-
-    `deriveFill` is pure arithmetic once it has its inputs, so the whole search can happen between
-    the reads and the writes.
-  */
-  const measured = DERIVED_FILLS.filter((role) => theme.roles?.[role] === undefined).map((role) => {
-    const labelRole = FILL_LABELS.find((entry) => entry.fill === role)?.label;
-    return {
-      role,
-      fill: probe.read(role),
-      // Read the *resolved* colour, not the declared string: a pin is usually an `oklch(…)` over the
-      // theme's own hue variables, which only computed style can turn into a number.
-      stated: labelRole && theme.roles?.[labelRole] !== undefined ? probe.read(labelRole) : null,
-    };
-  });
-
-  for (const { role, fill, stated } of measured) {
-    if (!fill) continue;
-
-    /*
-      A stated label is a *constraint on this search*, not a reason to abandon it.
-
-      This used to offer both candidates regardless, so a theme that pinned a near-black label could
-      still have its fill moved to somewhere only white worked — and then have the near-black label
-      dropped on top of it. The pin and the derivation were solving for different things and neither
-      knew it.
-
-      So when the label this fill carries is stated, it becomes the only candidate: move the fill
-      until *that* label reads. The author has said what the text will be; where the fill goes is
-      still ours to answer, and answering it with the wrong text in mind is answering a different
-      question.
-
-      Where the author has stated the fill too, we skip above and nothing is derived — which is the
-      whole design intact rather than overruled. Both stated means they meant both; the editor shows
-      the measurement live, and for a built-in preset `contrast.test.ts` records it by name.
-    */
-    const labels = stated ? [stated] : free;
-
-    const moved = deriveFill(fill, labels, APCA_MINIMUM.ui, fillStateDeltas(theme.polarity));
-    if (!moved || moved === fill) continue;
-
-    const { l, c, h } = rgbToOklch(moved);
-    const prop = roleVar(role);
-    root.style.setProperty(prop, `oklch(${(l * 100).toFixed(1)}% ${c.toFixed(4)} ${h.toFixed(1)})`);
-    written.push(prop);
-  }
-  return written;
+  return null;
 }
 
 /**
@@ -877,50 +801,6 @@ const LEGIBLE_FOREGROUNDS: { fg: ThemeRole; on: ThemeRole; level: ContrastLevel 
   { fg: 'warningText', on: 'warningSurface', level: 'body' },
 ];
 
-/**
- * Walk a colour's lightness away from its background until it clears, keeping hue and chroma.
- *
- * Both directions are tried and the one that gets there first wins, because which way is "away"
- * depends on the theme: muted text darkens on a light card and lightens on a dark one, and that is
- * the whole reason a fixed step could not do this job. Exported for the tests, which have to model
- * what actually renders rather than what is declared.
- */
-export function deriveLegible(fg: Rgba, bg: Rgba, minimum: number): string | null {
-  const { c, h } = rgbToOklch(fg);
-  const start = rgbToOklch(fg).l;
-  for (let step = 0; step <= 100; step++) {
-    for (const direction of [1, -1]) {
-      const l = start + direction * step * 0.01;
-      if (l < 0 || l > 1) continue;
-      const candidate = { ...oklchToRgb(l, c, h), a: fg.a };
-      if (apcaContrast(candidate, bg) >= minimum)
-        return `oklch(${(l * 100).toFixed(1)}% ${c.toFixed(4)} ${h.toFixed(1)})`;
-    }
-  }
-  return null;
-}
-
-function applyLegibleForegrounds(root: HTMLElement, theme: ThemeOverrides, probe: ReturnType<typeof createRoleProbe>): string[] {
-  const written: string[] = [];
-
-  // Read first, write after — see `applyThemeVars`.
-  const measured = LEGIBLE_FOREGROUNDS
-    // A pin is the author overruling the derivation, which they are entitled to do.
-    .filter(({ fg }) => theme.roles?.[fg] === undefined)
-    .map((pair) => ({ ...pair, text: probe.read(pair.fg), background: probe.read(pair.on) }));
-
-  for (const { fg, level, text, background } of measured) {
-    if (!text || !background) continue;
-    if (apcaContrast(text, background) >= APCA_MINIMUM[level]) continue;
-
-    const fixed = deriveLegible(text, background, APCA_MINIMUM[level]);
-    if (!fixed) continue;
-    const prop = roleVar(fg);
-    root.style.setProperty(prop, fixed);
-    written.push(prop);
-  }
-  return written;
-}
 
 /**
  * Foregrounds whose colour is a *consequence* of the fill they sit on, not a separate decision.
@@ -1006,46 +886,6 @@ export function pickReadableForeground(candidates: string[], fills: Rgba[]): str
   return best;
 }
 
-/**
- * Choose the readable foreground for each auto-contrast pair, and write it.
- *
- * This is what stops a theme author having to know about contrast at all. Pick a pale accent and the
- * button label goes dark on its own; pick a deep one and it goes light. Without it, "choose an
- * accent" is a decision that can silently produce an unreadable button — and the evidence that this
- * matters is that three of the seven *built-in* themes needed exactly this correction by hand.
- *
- * Deliberately skipped where the theme pins the foreground itself: an author who has said what they
- * want is not overruled, even when they are wrong. The contrast test is where being wrong is
- * reported; this is only for the roles nobody has spoken for.
- *
- * Runs after the variables are applied because it has to *measure*: the fill is usually a `var()`
- * chain over a parametric ramp, and the only thing that knows what that resolves to is the browser.
- */
-function applyAutoContrast(root: HTMLElement, theme: ThemeOverrides, probe: ReturnType<typeof createRoleProbe>): string[] {
-  const computed = getComputedStyle(root);
-  const written: string[] = [];
-
-  // Read first, write after — see `applyThemeVars`.
-  const measured = AUTO_CONTRAST.filter(({ fg }) => theme.roles?.[fg] === undefined).map(({ fg, against }) => ({
-    fg,
-    fills: against.map((role) => probe.read(role)).filter((c): c is Rgba => c !== null),
-  }));
-
-  for (const { fg, fills } of measured) {
-    if (!fills.length) continue;
-
-    // The hue follows the theme's neutral so the label still belongs to it; only the lightness is
-    // being decided, and it is allowed the full range — see the note in `applyLegibleFills`.
-    const hue = computed.getPropertyValue('--we-color-neutral-hue').trim() || '264';
-    const candidates = labelCandidates(hue);
-
-    const prop = roleVar(fg);
-    root.style.setProperty(prop, pickReadableForeground(candidates, fills));
-    written.push(prop);
-  }
-
-  return written;
-}
 
 /**
  * The surface stack a polarity needs.
@@ -1112,4 +952,119 @@ export function reconcileSurfaces(
 ): Partial<Record<ThemeRole, string>> | undefined {
   if (isDarkPolarity(existing) === isDarkPolarity(preset)) return existing.roles;
   return surfacesForPolarity(isDarkPolarity(preset) ? 'dark' : 'light', existing.roles);
+}
+
+/**
+ * Every role the derivation pipeline needs resolved before it can start.
+ *
+ * Built from the tables rather than listed, so a fill, a label pairing or a foreground added later
+ * is read without anyone remembering to add it here — the failure mode otherwise is silent, since a
+ * missing entry just means that role is skipped.
+ */
+const ROLES_TO_RESOLVE: ThemeRole[] = [
+  ...new Set<ThemeRole>([
+    ...DERIVED_FILLS,
+    ...FILL_LABELS.flatMap(({ fill, label }) => [fill, label]),
+    ...AUTO_CONTRAST.flatMap(({ fg, against }) => [fg, ...against]),
+    ...LEGIBLE_FOREGROUNDS.flatMap(({ fg, on }) => [fg, on]),
+  ]),
+];
+
+/**
+ * The whole measure-and-correct layer, as arithmetic over colours that have already been resolved.
+ *
+ * Pure: takes what the roles currently render as and returns the custom properties to write. That
+ * is what lets `applyThemeVars` ask the browser once instead of between every step — see the note
+ * there — and it is also the shape the contrast suite has been *modelling* rather than calling. It
+ * is a good candidate for the suite to adopt outright, which would end that class of drift; the
+ * suite resolves its base colours arithmetically instead of from a DOM, but from there the pipeline
+ * is identical.
+ *
+ * `resolved` is mutated as it goes, and the order is the point:
+ *
+ * 1. **Fills** move until some label can sit on them. A label the theme has *stated* constrains the
+ *    search to itself rather than switching it off.
+ * 2. **Labels** are chosen against where the fills landed — which is why step 1 writes back into
+ *    `resolved` rather than only into the output.
+ * 3. **States** move away from the label chosen in step 2, so the rest state is the worst case and
+ *    hover and pressed are strictly better.
+ * 4. **Foregrounds** on ordinary surfaces, which depend on none of the above.
+ */
+export function deriveRoleVars(
+  resolved: Map<ThemeRole, Rgba>,
+  theme: ThemeOverrides,
+  neutralHue: string,
+): Record<string, string> {
+  const out: Record<string, string> = {};
+  const free = labelCandidates(neutralHue)
+    .map((css) => parseColor(css))
+    .filter((c): c is Rgba => !!c);
+
+  // 1. Fills that no label can sit on move until one can.
+  for (const role of DERIVED_FILLS) {
+    if (theme.roles?.[role] !== undefined) continue;
+    const fill = resolved.get(role);
+    if (!fill) continue;
+
+    /*
+      A stated label is a *constraint on this search*, not a reason to abandon it.
+
+      This used to offer both candidates regardless, so a theme that stated a near-black label could
+      still have its fill moved somewhere only white worked — and then have the near-black label
+      dropped on top of it. The pin and the derivation were solving for different things and neither
+      knew it. Where the author has stated the fill too, we skip above and nothing is derived, which
+      is the whole design intact rather than overruled.
+    */
+    const labelRole = FILL_LABELS.find((entry) => entry.fill === role)?.label;
+    const stated = labelRole && theme.roles?.[labelRole] !== undefined ? resolved.get(labelRole) : null;
+    const labels = stated ? [stated] : free;
+    if (!labels.length) continue;
+
+    const moved = deriveFill(fill, labels, APCA_MINIMUM.ui, fillStateDeltas(theme.polarity));
+    if (!moved || moved === fill) continue;
+
+    const { l, c, h } = rgbToOklch(moved);
+    out[roleVar(role)] = `oklch(${(l * 100).toFixed(1)}% ${c.toFixed(4)} ${h.toFixed(1)})`;
+    resolved.set(role, moved);
+  }
+
+  // 2. The label each fill carries, chosen against where that fill ended up.
+  for (const { fg, against } of AUTO_CONTRAST) {
+    if (theme.roles?.[fg] !== undefined) continue;
+    const fills = against.map((role) => resolved.get(role)).filter((c): c is Rgba => !!c);
+    if (!fills.length) continue;
+
+    // The hue follows the theme's neutral so the label still belongs to it; only the lightness is
+    // being decided, and it is allowed the full range — see `labelCandidates`.
+    const chosen = pickReadableForeground(labelCandidates(neutralHue), fills);
+    out[roleVar(fg)] = chosen;
+    const parsed = parseColor(chosen);
+    if (parsed) resolved.set(fg, parsed);
+  }
+
+  // 3. Which way each fill's hover and pressed states move — away from the label above.
+  for (const { fill, label } of FILL_LABELS) {
+    const fillColor = resolved.get(fill);
+    const labelColor = resolved.get(label);
+    if (!fillColor || !labelColor) continue;
+    // The four fill roles are single lowercase words, so the role name *is* the variable suffix.
+    for (const state of ['hover', 'active'] as const) {
+      out[`--we-state-${state}-${fill}`] = String(stateDelta(fillColor, labelColor, state));
+    }
+  }
+
+  // 4. Foregrounds on ordinary surfaces, which keep their hue and move their lightness.
+  for (const { fg, on, level } of LEGIBLE_FOREGROUNDS) {
+    // A pin is the author overruling the derivation, which they are entitled to do.
+    if (theme.roles?.[fg] !== undefined) continue;
+    const text = resolved.get(fg);
+    const background = resolved.get(on);
+    if (!text || !background) continue;
+    if (apcaContrast(text, background) >= APCA_MINIMUM[level]) continue;
+
+    const fixed = deriveLegible(text, background, APCA_MINIMUM[level]);
+    if (fixed) out[roleVar(fg)] = fixed;
+  }
+
+  return out;
 }

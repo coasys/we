@@ -290,6 +290,15 @@ function injectCssString(id: string, css: string, options: SanitiseCssOptions = 
   styleEl.textContent = safe;
 }
 
+/**
+ * The last theme written to the document, so an *edit* can be told from a *switch*.
+ *
+ * Editing keeps the theme's id and changes its parameters; switching changes the id. Only the
+ * second is a cross-fade — see `ApplyThemeOptions.crossFade`. Without the distinction every frame
+ * of a slider drag re-armed a 250ms fade and the primary button spent the whole drag catching up.
+ */
+let lastAppliedThemeId: string | null = null;
+
 function applyThemeToDOM(theme: ThemeData) {
   const overrides: ThemeOverrides = parseOverrides(theme.overrides);
   // Normalize legacy fontFamily: 'base' sentinel saved before the font-family fix
@@ -310,7 +319,9 @@ function applyThemeToDOM(theme: ThemeData) {
     guards against is documented there: clearing `style.cssText` outright also deletes the layout
     variables the shell publishes on the same root.
   */
-  applyThemeVars(document.documentElement, overrides);
+  const isSwitch = theme.id !== lastAppliedThemeId;
+  lastAppliedThemeId = theme.id;
+  applyThemeVars(document.documentElement, overrides, { crossFade: isSwitch });
 
   // Inject the theme's CSS string (component-level rules + any non-parametric vars). Unscoped: this
   // is the whole window, which is what the document theme is for. Namespaced all the same, so the
