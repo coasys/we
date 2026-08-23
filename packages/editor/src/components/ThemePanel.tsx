@@ -745,6 +745,15 @@ export function ThemePanel() {
     would show a swatch from the wrong theme entirely. One throwaway element carrying the edited
     overrides is the only place guaranteed to resolve them the way the space will.
   */
+  /*
+    A plain `let` here, unlike `previewEl` below, and the difference is worth naming.
+
+    That one is inside a `Show` the user can collapse, so its element is destroyed and recreated and
+    the effect has to depend on *which* element it has. This one is rendered once at panel level,
+    outside every toggle, so there is no second element to miss — and the effect re-runs on
+    `overrides()` and `dragging()`, both of which change constantly, so even a remount would be
+    corrected by the next edit rather than leaving a stale sample on screen.
+  */
   let roleProbe: HTMLDivElement | undefined;
   const [roleColors, setRoleColors] = createSignal<Record<string, string>>({});
   const probeStyle = createMemo(() => themeParametersToStyle(overrides()) as Record<string, string>);
@@ -988,12 +997,26 @@ export function ThemePanel() {
     Applying to the element runs the identical pipeline the real thing does, which is the only way a
     preview is worth looking at.
   */
-  let previewEl: HTMLDivElement | undefined;
+  /*
+    A signal, not a `let`, and that is the whole fix rather than a style preference.
+
+    The preview is inside a `Show`, so collapsing it unmounts the element and expanding it mounts a
+    *new* one. With a plain variable the effect tracked `overrides()` alone: reopening set the
+    variable and nothing re-ran, so the fresh element never had the theme applied and inherited the
+    ambient one — the panel showed you the app's chrome theme while you edited a space's.
+
+    Holding the element in a signal makes the effect depend on *which element* as well as on what to
+    put on it, so a remount re-applies by construction. It is not something a test could keep true
+    either: the failure is a dependency that is absent, and there is nothing to assert about an
+    absence except by rendering the panel and toggling it.
+  */
+  const [previewEl, setPreviewEl] = createSignal<HTMLDivElement>();
   createEffect(() => {
     const parameters = overrides();
-    if (!previewEl) return;
+    const el = previewEl();
+    if (!el) return;
     // Never a cross-fade: this re-applies on every frame of a slider drag.
-    applyThemeVars(previewEl, parameters, { crossFade: false });
+    applyThemeVars(el, parameters, { crossFade: false });
   });
 
   function previewStrip() {
@@ -1003,10 +1026,7 @@ export function ThemePanel() {
       </Column>
     );
     return (
-      <div
-        ref={(el: HTMLDivElement) => (previewEl = el)}
-        style={{ 'border-radius': tokenVar('radius', '300'), overflow: 'hidden' }}
-      >
+      <div ref={setPreviewEl} style={{ 'border-radius': tokenVar('radius', '300'), overflow: 'hidden' }}>
         <Column bg="page" p="300" gap="300" border={'1px solid var(--we-role-border)'} r="300">
           <Column bg="surface" p="300" r="300" gap="200" border={`1px solid ${'var(--we-role-border)'}`}>
             <we-text fontSize="300" fontWeight="600" color="text">
