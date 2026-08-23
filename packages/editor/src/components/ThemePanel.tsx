@@ -12,7 +12,7 @@ import {
   tokenVar,
 } from '@we/design-utils';
 import type { ThemeOverrides, ThemeRole } from '@we/schema-shared';
-import { roleVar, surfacesForPolarity, themeToStyle } from '@we/schema-shared';
+import { applyThemeVars, roleVar, surfacesForPolarity, themeToStyle } from '@we/schema-shared';
 import type { JSX } from 'solid-js';
 import { createEffect, createMemo, createSignal, For, onCleanup, Show } from 'solid-js';
 
@@ -756,12 +756,35 @@ export function ThemePanel() {
     return getComputedStyle(el).color;
   }
 
+  /**
+   * The per-hue chroma ceilings this theme resolves to, measured rather than assumed.
+   *
+   * They are computed at apply time — how much chroma a hue can hold has no closed form worth
+   * writing — so `themeToStyle` cannot carry them, and anything showing the theme's palette without
+   * them *inherits the document's*. A green theme edited from a violet app was being clipped to the
+   * violet's ceiling, which is a different green from the one it would render as.
+   *
+   * Read back off the probe rather than recomputed here: `applyThemeVars` has just written the real
+   * answer onto it, and a second implementation of the same measurement is a second thing to drift.
+   */
+  const [measuredCeilings, setMeasuredCeilings] = createSignal<Record<string, string>>({});
+
   createEffect(() => {
-    probeStyle(); // re-sample whenever any part of the theme changes
+    const parameters = overrides();
     // Held still for the length of a drag — see `dragging`. Reading the signal here is what makes
     // the effect re-run, and re-sample, the moment the pointer lifts.
     if (dragging()) return;
     if (!roleProbe) return;
+
+    /*
+      Applied, not declared — the same distinction the scoped template and the preview needed.
+
+      Sampling a probe that only carries `themeToStyle` reports the theme's *declared* roles: muted
+      text before it was corrected, a label before it was chosen, a fill before it was moved. The
+      swatch beside each role would then show something the theme never renders.
+    */
+    applyThemeVars(roleProbe, parameters, { crossFade: false });
+
     const computed = getComputedStyle(roleProbe);
     const next: Record<string, string> = {};
     for (const group of ROLE_GROUPS) {
@@ -771,6 +794,16 @@ export function ThemePanel() {
     }
     roleProbe.style.color = '';
     setRoleColors(next);
+
+    const ceilings: Record<string, string> = {};
+    for (const family of ['neutral', 'primary', 'danger', 'success', 'warning']) {
+      for (const suffix of ['chroma-max', 'fill-chroma-max']) {
+        const prop = `--we-color-${family}-${suffix}`;
+        const value = roleProbe.style.getPropertyValue(prop);
+        if (value) ceilings[prop] = value;
+      }
+    }
+    setMeasuredCeilings(ceilings);
   });
 
   /**
@@ -907,6 +940,30 @@ export function ThemePanel() {
    * It carries `probeStyle` for the same reason the sampling probe does: the panel is chrome, and
    * in scoped mode the theme being edited is not the one the chrome is wearing.
    */
+  /*
+    The preview is *applied*, not merely declared — the same distinction the scoped template needed.
+
+    `themeToStyle` writes a theme's parameters and its role defaults and stops there. Everything that
+    has to be *measured* — the per-hue chroma ceilings, the fills moved until a label fits, the label
+    chosen against where they landed, the corrected foregrounds, which way a hover travels — happens
+    at apply time and needs a real element.
+
+    Left out, those variables do not simply go missing: custom properties inherit, so the preview
+    picked up the *document's* ones. It was showing the edited theme's colours through the app
+    theme's chroma ceilings, which is why toggling the scope changed a preview of a theme that had
+    not changed. A green accent was being clipped to a violet's ceiling.
+
+    Applying to the element runs the identical pipeline the real thing does, which is the only way a
+    preview is worth looking at.
+  */
+  let previewEl: HTMLDivElement | undefined;
+  createEffect(() => {
+    const parameters = overrides();
+    if (!previewEl) return;
+    // Never a cross-fade: this re-applies on every frame of a slider drag.
+    applyThemeVars(previewEl, parameters, { crossFade: false });
+  });
+
   function previewStrip() {
     const chip = (bg: string, fg: string, text: string) => (
       <Column bg={bg} color={fg} px="200" py="100" r="200" fontSize="100">
@@ -914,7 +971,10 @@ export function ThemePanel() {
       </Column>
     );
     return (
-      <div style={{ ...probeStyle(), 'border-radius': tokenVar('radius', '300'), overflow: 'hidden' }}>
+      <div
+        ref={(el: HTMLDivElement) => (previewEl = el)}
+        style={{ 'border-radius': tokenVar('radius', '300'), overflow: 'hidden' }}
+      >
         <Column bg="page" p="300" gap="300" border={'1px solid var(--we-role-border)'} r="300">
           <Column bg="surface" p="300" r="300" gap="200" border={`1px solid ${'var(--we-role-border)'}`}>
             <we-text fontSize="300" fontWeight="600" color="text">
@@ -974,9 +1034,12 @@ export function ThemePanel() {
    * own surfaces, borders and text stay part of the editor rather than flipping to the theme being
    * edited — a light space theme should not turn the picker's popover white inside a dark app.
    */
-  const editedPalette = createMemo(() =>
-    Object.fromEntries(Object.entries(probeStyle()).filter(([prop]) => prop.startsWith('--we-color-'))),
-  );
+  const editedPalette = createMemo(() => ({
+    ...Object.fromEntries(Object.entries(probeStyle()).filter(([prop]) => prop.startsWith('--we-color-'))),
+    // Without these the swatches are drawn through whatever ceilings the *app* published, so a
+    // green theme edited from a violet one offers greens clipped to a violet's limit.
+    ...measuredCeilings(),
+  }));
 
   function roleRow(role: ThemeRole, label: string, hint: string) {
     const pinned = () => overrides().roles?.[role];
@@ -1098,7 +1161,7 @@ export function ThemePanel() {
         <div
           ref={roleProbe}
           aria-hidden="true"
-          style={{ ...probeStyle(), position: 'absolute', width: '0', height: '0', visibility: 'hidden' }}
+          style={{ position: 'absolute', width: '0', height: '0', visibility: 'hidden' }}
         />
 
         <we-scroll-area flex="1">
