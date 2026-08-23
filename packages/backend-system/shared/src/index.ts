@@ -168,10 +168,6 @@ export {
   isStale,
   mergeActivity,
 } from './interpretationActivity';
-export type {
-  InterpretationActivity,
-  InterpretationLlmExchange,
-  InterpretationPhase,
-} from './interpretationActivity';
+export type { InterpretationActivity, InterpretationLlmExchange, InterpretationPhase } from './interpretationActivity';
 export { createInterpretationRelay, INTERPRETATION_ACTIVITY_CHANNEL } from './interpretationRelay';
 export type { InterpretationRelay, RelayOptions } from './interpretationRelay';

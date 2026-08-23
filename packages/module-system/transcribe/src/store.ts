@@ -1126,6 +1126,14 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
      * would take "Extracted 3 records" with it before anyone saw it.
      */
     hasActivity: () => (interpretation?.activity() ?? []).length > 0,
+    /**
+     * Whether this agent's prompts reach the rest of the space.
+     *
+     * Offered next to somebody's own prompt rather than in settings, because that is the moment the
+     * question arises: you are reading what the model was asked, and the person beside you cannot.
+     */
+    shareDetail: () => interpretation?.shareDetail() ?? false,
+    setShareDetail: (share: boolean) => interpretation?.setShareDetail(share),
 
     // ── Actions ──────────────────────────────────────────────────────────────
     /**

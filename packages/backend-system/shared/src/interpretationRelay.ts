@@ -42,9 +42,9 @@
 
 import type { EphemeralChannel } from './ephemeral';
 import {
+  INTERPRETATION_ACTIVITY_TTL_MS,
   type InterpretationActivity,
   type InterpretationPhase,
-  INTERPRETATION_ACTIVITY_TTL_MS,
   isSettled,
   mergeActivity,
 } from './interpretationActivity';
@@ -114,10 +114,7 @@ export interface InterpretationRelay {
  * against the same code path AD4M runs in production — the reason the ephemeral port has a
  * reference implementation at all.
  */
-export function createInterpretationRelay(
-  channel: EphemeralChannel,
-  options: RelayOptions = {},
-): InterpretationRelay {
+export function createInterpretationRelay(channel: EphemeralChannel, options: RelayOptions = {}): InterpretationRelay {
   const now = options.now ?? (() => Date.now());
   const ttlMs = options.ttlMs ?? INTERPRETATION_ACTIVITY_TTL_MS;
   const sharingDetail = () =>

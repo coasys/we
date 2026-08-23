@@ -436,10 +436,7 @@ export function createAd4mInterpretationPort(selfId?: () => string | undefined):
           at: Date.now(),
           ids: event.step === 'processed' ? (event.bases ?? []) : undefined,
           detail: event.detail,
-          llm:
-            event.llmInput || event.llmOutput
-              ? { prompt: event.llmInput, response: event.llmOutput }
-              : undefined,
+          llm: event.llmInput || event.llmOutput ? { prompt: event.llmInput, response: event.llmOutput } : undefined,
         });
       }
 
@@ -499,7 +496,13 @@ export function createAd4mInterpretationPort(selfId?: () => string | undefined):
       if (observed) await attachListener(perspective);
       const passId = `one-shot/${crypto.randomUUID()}`;
 
-      const ids = await runObserved(perspective, withTime(turns), basePrefix, request.classes, observed ? passId : undefined);
+      const ids = await runObserved(
+        perspective,
+        withTime(turns),
+        basePrefix,
+        request.classes,
+        observed ? passId : undefined,
+      );
       if (ctl?.signal?.aborted) return { turns: turns.length, ids: [], proposed: [] };
 
       // Parent *after* the pass, because the engine has no notion of one. Sequential rather than

@@ -1937,6 +1937,16 @@ EditorStore:
   - clearHistory(): unknown
   - setApiKey(): unknown
 
+InterpretationStore:
+- State:
+  - activity: unknown
+  - runningCount: unknown
+  - hasActivity: unknown
+  - shareDetail: unknown
+- Actions:
+  - setShareDetail(): unknown
+  - dismissSettled(): unknown
+
 PresenceStore:
 - State:
   - peers: unknown

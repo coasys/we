@@ -2195,6 +2195,16 @@ export const contextData: ContextData = {
       ],
     },
     {
+      name: 'interpretationStore',
+      state: {
+        activity: { type: 'array' },
+        runningCount: { type: 'number' },
+        hasActivity: { type: 'boolean' },
+        shareDetail: { type: 'boolean' },
+      },
+      actions: ['setShareDetail', 'dismissSettled'],
+    },
+    {
       name: 'presenceStore',
       state: {
         peers: { type: 'array' },

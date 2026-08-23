@@ -8,12 +8,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createInMemoryEphemeralPort, InMemoryBus } from './ephemeral';
-import {
-  type InterpretationActivity,
-  isStale,
-  mergeActivity,
-  byActivityInterest,
-} from './interpretationActivity';
+import { byActivityInterest, type InterpretationActivity, isStale, mergeActivity } from './interpretationActivity';
 import { createInterpretationRelay, INTERPRETATION_ACTIVITY_CHANNEL } from './interpretationRelay';
 
 const dataset = { id: 'space-1' } as never;

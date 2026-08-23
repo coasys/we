@@ -40,8 +40,6 @@
  * may reasonably choose to share it — see `detail` on {@link InterpretationPort.observe}.
  */
 
-import type { DatasetHandle } from './dataSource';
-
 /**
  * How far a pass has got, in terms a UI can render without knowing which backend produced it.
  *

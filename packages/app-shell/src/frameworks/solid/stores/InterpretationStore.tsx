@@ -239,8 +239,7 @@ export function InterpretationStoreProvider(props: ParentProps) {
         const running = !isSettled(row.phase);
         const mine = row.mine || (!!me && row.runner === me);
         const profile = row.runner ? profileStore.profiles().find((p) => p.did === row.runner) : undefined;
-        const name =
-          [profile?.firstName, profile?.lastName].filter(Boolean).join(' ') || profile?.handle || 'Someone';
+        const name = [profile?.firstName, profile?.lastName].filter(Boolean).join(' ') || profile?.handle || 'Someone';
         const count = row.ids?.length ?? 0;
 
         return {
@@ -281,6 +280,8 @@ export function InterpretationStoreProvider(props: ParentProps) {
   */
   provideModuleHostServices({
     interpretationActivity: () => activity(),
+    interpretationShareDetail: () => shareDetail(),
+    setInterpretationShareDetail: setShareDetail,
   });
 
   const store: InterpretationStore = {
@@ -292,12 +293,15 @@ export function InterpretationStoreProvider(props: ParentProps) {
     // Only the settled ones, and only from this view: a running pass is not this agent's to
     // dismiss, and the rows themselves belong to whoever is running them.
     dismissSettled: () =>
-      setDismissed([...dismissed(), ...activity().filter((row) => !row.running).map((row) => row.passId)]),
+      setDismissed([
+        ...dismissed(),
+        ...activity()
+          .filter((row) => !row.running)
+          .map((row) => row.passId),
+      ]),
   };
 
-  return (
-    <InterpretationStoreContext.Provider value={store}>{props.children}</InterpretationStoreContext.Provider>
-  );
+  return <InterpretationStoreContext.Provider value={store}>{props.children}</InterpretationStoreContext.Provider>;
 }
 
 export function useInterpretationStore(): InterpretationStore {

@@ -60,7 +60,9 @@ const phaseIcon: SchemaNode = {
           $if: {
             condition: { $eq: ['$pass.phase', 'failed'] },
             then: 'warning',
-            else: { $if: { condition: { $eq: ['$pass.phase', 'skipped'] }, then: 'minus-circle', else: 'check-circle' } },
+            else: {
+              $if: { condition: { $eq: ['$pass.phase', 'skipped'] }, then: 'minus-circle', else: 'check-circle' },
+            },
           },
         },
         // A failure is the one outcome worth colouring. "Nothing to extract" is an ordinary answer
@@ -130,7 +132,7 @@ const detailToggle: SchemaNode = {
           $if: {
             condition: '$pass.mine',
             then: 'Nothing sent to the model yet',
-            else: "Only the person running a pass sees what it sent",
+            else: 'Only the person running a pass sees what it sent',
           },
         },
       },
@@ -150,7 +152,13 @@ const detailToggle: SchemaNode = {
         {
           type: 'we-icon',
           props: {
-            name: { $if: { condition: { $in: ['$pass.passId', { $local: 'openPasses' }] }, then: 'caret-up', else: 'caret-down' } },
+            name: {
+              $if: {
+                condition: { $in: ['$pass.passId', { $local: 'openPasses' }] },
+                then: 'caret-up',
+                else: 'caret-down',
+              },
+            },
           },
         },
       ],
@@ -193,6 +201,46 @@ function exchangePane(label: string, value: string): SchemaNode {
 }
 
 /**
+ * "Let the space see this too."
+ *
+ * Offered here, beneath somebody's own prompt, rather than in settings — because this is the moment
+ * the question arises. You are reading what the model was asked; the four other people in the call
+ * are looking at a row that says the same thing happened and cannot open it.
+ *
+ * Only on a pass of this agent's, since it governs what *this* machine broadcasts and would be
+ * meaningless attached to somebody else's row. It applies to every pass this agent runs, not just
+ * the one it is under, which the caption says outright: a switch that looked per-row would be a
+ * promise the store cannot keep.
+ */
+const shareToggle: SchemaNode = {
+  type: '$if',
+  props: {
+    condition: '$pass.mine',
+    then: {
+      type: 'Row',
+      props: { ay: 'center', ax: 'between', gap: '300', width: '100%', pt: '100' },
+      children: [
+        {
+          type: 'we-text',
+          props: { variant: 'footnote', color: 'text-muted' },
+          children: ['Share your prompts with this space'],
+        },
+        {
+          type: 'we-switch',
+          props: {
+            size: 'sm',
+            checked: { $store: 'modules.transcribe.shareDetail' },
+            // `$event.detail` passed bare. Wrapping it in an operator would resolve at render time
+            // and send a constant — the trap `setModuleVisible` documents for the same reason.
+            onChange: { $action: 'modules.transcribe.setShareDetail', args: ['$event.detail'] },
+          },
+        },
+      ],
+    },
+  },
+};
+
+/**
  * What opening a row shows.
  *
  * `$animate` with a `reveal` rather than `$if`, so the panes are never unmounted — a scroll position
@@ -212,6 +260,7 @@ const passDetail: SchemaNode = {
       children: [
         exchangePane('Prompt', '$pass.prompt'),
         exchangePane('Response', '$pass.response'),
+        shareToggle,
         {
           type: '$if',
           props: {
@@ -348,9 +397,7 @@ export const extractionStatus: SchemaNode = {
                     condition: { $local: 'listOpen' },
                     enterTransition: { type: 'reveal', duration: 200 },
                   },
-                  children: [
-                    { type: 'Column', props: { gap: '300', width: '100%' }, children: [passList] },
-                  ],
+                  children: [{ type: 'Column', props: { gap: '300', width: '100%' }, children: [passList] }],
                 },
               ],
             },
