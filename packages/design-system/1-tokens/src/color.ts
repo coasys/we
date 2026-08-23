@@ -198,9 +198,27 @@ export const CHROMA_PER_SATURATION = 0.0035;
  */
 export const CHROMA_CEILING = 0.18;
 
-export function chromaTaper(lightnessKey: ColorLightnessToken): number {
-  const l = parseFloat(colorLightness[lightnessKey]) / 100;
-  return Number((2 * Math.min(l, 1 - l)).toFixed(4));
+/**
+ * The taper, taken at the lightness a step actually lands on — **after** the ramp, not before it.
+ *
+ * This took a step name and read the *raw* table entry, on a comment saying the taper "must not
+ * follow the theme's inversion". The generated CSS has never agreed: it computes
+ * `2 * max(0, min(L, 1 - L))` from `--we-color-lightness-<step>`, which is the post-ramp value, so
+ * it follows the ramp exactly. Two models of the same number, and the browser only ever ran one.
+ *
+ * They agree in a theme whose ramp is the identity — floor 0, ceiling 100 — which is `light` and
+ * `retro`, and is why this survived. In `dark` they diverge 2.3×: step 200 lands at L 0.357, giving
+ * a taper of 0.713 where the raw step gives 0.310. Measured against Chrome, the post-ramp form is
+ * exact and the raw one is 12 rgb units out on the blue channel.
+ *
+ * The CSS is authoritative because the CSS is what renders, so the signature changed to make the
+ * mistake unspellable: it now takes a number, and a caller has to have resolved the lightness before
+ * it can ask. Chroma barely moves either contrast metric — both are lightness-dominated — which is
+ * why this never flipped a verdict, and is no reason for a suite that grades themes to be modelling
+ * a colour the browser does not paint.
+ */
+export function chromaTaper(lightness: number): number {
+  return Number((2 * Math.max(0, Math.min(lightness, 1 - lightness))).toFixed(4));
 }
 
 /**
@@ -220,7 +238,8 @@ function calculateColor(hue: number, saturation: number, lightnessKey: ColorLigh
   const { offset, direction } = RAMP[colorConfig.polarity];
   const t = (parseFloat(colorLightness[lightnessKey]) / 100 - offset) * direction;
   const adjustedLightness = floor + t * (ceiling - floor);
-  const chroma = Math.min(saturation * CHROMA_PER_SATURATION, CHROMA_CEILING) * chromaTaper(lightnessKey);
+  // Tapered at where the step lands, matching the emitted CSS — see chromaTaper.
+  const chroma = Math.min(saturation * CHROMA_PER_SATURATION, CHROMA_CEILING) * chromaTaper(adjustedLightness / 100);
   return `oklch(${adjustedLightness}% ${chroma.toFixed(4)} ${hue})`;
 }
 

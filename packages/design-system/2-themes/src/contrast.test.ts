@@ -26,7 +26,6 @@ import {
   rgbToOklch,
   simulateVision,
 } from '@we/design-utils';
-import type { ColorLightnessToken } from '@we/tokens';
 import { chromaTaper, color, FILL_LIGHTNESS, RAMP, role } from '@we/tokens';
 import { describe, expect, it } from 'vitest';
 
@@ -147,13 +146,18 @@ function resolve(value: string, theme: ThemeOverrides): Rgba | null {
   const token = /^var\(--we-color-([a-z]+)-(\d+)\)$/.exec(value.trim());
   if (token) {
     const [, family, step] = token;
-    // The same expression the generated CSS builds: a step's lightness, the theme's saturation
-    // scaled by that step's chroma taper, and the family's hue.
-    const chroma =
-      (saturationOf(family, theme) / 100) *
-      maxChromaFor(0.6, hueOf(family, theme)) *
-      chromaTaper(step as ColorLightnessToken);
-    return parseColor(`oklch(${lightness(step, theme)}% ${chroma.toFixed(4)} ${hueOf(family, theme)})`);
+    /*
+      The same expression the generated CSS builds: a step's lightness, the theme's saturation scaled
+      by the taper *at that lightness*, and the family's hue.
+
+      "At that lightness" is the part this had wrong. It tapered from the raw table entry while the
+      CSS tapers from the post-ramp value, so the two agreed only where the ramp is the identity —
+      `light` and `retro` — and diverged 2.3× on `dark`'s step 200. Against Chrome the post-ramp form
+      is exact and the raw one was 12 rgb out on blue.
+    */
+    const l = lightness(step, theme);
+    const chroma = (saturationOf(family, theme) / 100) * maxChromaFor(0.6, hueOf(family, theme)) * chromaTaper(l / 100);
+    return parseColor(`oklch(${l}% ${chroma.toFixed(4)} ${hueOf(family, theme)})`);
   }
   // A pin at an exact lightness: `oklch(13% calc(var(--we-color-neutral-saturation) * k) var(…hue))`
   /*
@@ -478,6 +482,45 @@ describe.each(Object.keys(THEME_PRESETS) as ThemeName[])('%s', (name) => {
  * One rgb unit of tolerance — below that the browser paints the same pixel, and the pin is decoration
  * around a number the theme already had.
  */
+/**
+ * The resolver against the browser, on recorded measurements.
+ *
+ * Everything else in this suite grades *from* `resolve()`, so a resolver that models a colour the
+ * browser does not paint reports confidently on the wrong theme, and nothing internal disagrees with
+ * it. That is not hypothetical: `resolve()` tapered chroma from the raw step table while the emitted
+ * CSS tapers from the post-ramp lightness, so the two agreed only where the ramp is the identity —
+ * `light` and `retro` — and were 2.3× apart on `dark`'s step 200. Every dark theme's scale positions
+ * were being measured against a colour 12 rgb units off, for the whole of this branch, with 397
+ * tests green.
+ *
+ * These numbers were read out of Chrome by painting each variable on a probe element and sampling
+ * the canvas — the same harness the theme comparisons use. They are the only assertion here that an
+ * internal change cannot satisfy by moving both sides at once.
+ *
+ * A tolerance of 1 covers rounding between the browser's OKLCH conversion and ours; a real
+ * divergence is not 1 unit, it is 12.
+ */
+const MEASURED: Record<string, Record<string, [number, number, number]>> = {
+  light: { 'neutral-200': [203, 203, 211], 'neutral-700': [76, 75, 94], 'primary-500': [126, 104, 228] },
+  dark: { 'neutral-200': [59, 57, 82], 'neutral-700': [184, 183, 201], 'primary-500': [127, 114, 206] },
+  black: { 'neutral-200': [37, 35, 56], 'neutral-700': [162, 160, 188], 'primary-500': [106, 83, 198] },
+  cyberpunk: { 'neutral-200': [67, 66, 81], 'neutral-700': [187, 187, 197], 'primary-500': [132, 114, 225] },
+  channels: { 'neutral-200': [54, 58, 66], 'neutral-700': [182, 185, 191], 'primary-500': [79, 120, 230] },
+};
+
+describe('the resolver agrees with the browser', () => {
+  for (const [themeName, steps] of Object.entries(MEASURED)) {
+    const theme = THEME_PRESETS[themeName as ThemeName].parameters as ThemeOverrides;
+    it.each(Object.entries(steps))(`${themeName} %s`, (token, expected) => {
+      const got = resolve(`var(--we-color-${token})`, theme);
+      expect(got, `${token} did not resolve`).toBeTruthy();
+      const channels = [got!.r, got!.g, got!.b].map(Math.round);
+      const off = channels.map((c, i) => Math.abs(c - expected[i]));
+      expect(Math.max(...off), `resolved rgb(${channels}) where Chrome paints rgb(${expected})`).toBeLessThanOrEqual(1);
+    });
+  }
+});
+
 describe.each(Object.keys(THEME_PRESETS) as ThemeName[])('%s pins', (name) => {
   const theme = THEME_PRESETS[name].parameters as ThemeOverrides;
   const pinned = Object.keys(theme.roles ?? {}) as ThemeRole[];

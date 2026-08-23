@@ -15,7 +15,6 @@ import type { ColorHueToken, ColorLightnessToken } from '@we/tokens';
 import {
   CHROMA_CEILING,
   CHROMA_PER_SATURATION,
-  chromaTaper,
   color,
   component,
   FILL_LIGHTNESS,
@@ -28,6 +27,20 @@ import {
 
 import type { ThemeOverrides, ThemeRole } from './overrides';
 import { isThemeName, THEME_PRESETS } from './presets';
+
+/**
+ * The chroma taper at step 500, as CSS rather than as a number computed here.
+ *
+ * The lightness beside it is already `var(--we-color-lightness-500)` — the post-ramp value, which
+ * moves with the theme's floor, ceiling and polarity — so a taper baked at build time is taken at a
+ * lightness this gradient is not being drawn at. Written as the same expression the generated ramp
+ * uses, so the two cannot disagree.
+ *
+ * At 500 the difference is small, because 500 is the ramp's polarity fixed point: 0.800 light and
+ * 0.792 dark. It is written this way anyway — a number that happens to be nearly right is how the
+ * JS and CSS models of this came to disagree by 2.3× at step 200 without anyone noticing.
+ */
+const TAPER_500 = '2 * max(0, min(var(--we-color-lightness-500), 1 - var(--we-color-lightness-500)))';
 
 /**
  * Parametric keys that map 1:1 to a CSS custom property.
@@ -450,8 +463,8 @@ export function themeParametersToStyle(overrides: ThemeOverrides): Record<string
   if (affectsPrimaryGradient) {
     style['--we-gradient-primary'] =
       `linear-gradient(135deg, ` +
-      `oklch(var(--we-color-lightness-500) calc(min(var(--we-color-saturation) * ${CHROMA_PER_SATURATION}, ${CHROMA_CEILING}) * ${chromaTaper('500')}) calc(var(--we-color-primary-hue) - 30)) 0%, ` +
-      `oklch(var(--we-color-lightness-500) calc(min(var(--we-color-saturation) * ${CHROMA_PER_SATURATION}, ${CHROMA_CEILING}) * ${chromaTaper('500')}) calc(var(--we-color-primary-hue) + 30)) 100%)`;
+      `oklch(var(--we-color-lightness-500) calc(min(var(--we-color-saturation) * ${CHROMA_PER_SATURATION}, ${CHROMA_CEILING}) * ${TAPER_500}) calc(var(--we-color-primary-hue) - 30)) 0%, ` +
+      `oklch(var(--we-color-lightness-500) calc(min(var(--we-color-saturation) * ${CHROMA_PER_SATURATION}, ${CHROMA_CEILING}) * ${TAPER_500}) calc(var(--we-color-primary-hue) + 30)) 100%)`;
   }
 
   // fontScale: sets font-size on the root element, scaling all rem-based tokens
