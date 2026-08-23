@@ -555,8 +555,19 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
 
   themeStore: {
     automaticThemes: state('appearance'),
-    systemThemes: state('appearance'),
-    systemThemeOptions: state('appearance'),
+    /*
+      The pairing is the agent's own, so it sits at the agent tier with `themeScope` and
+      `useTemplateTheme` rather than with `appearance`.
+
+      The distinction is worth being exact about, because the row it configures appears in two
+      places that look alike. In the shell's picker "Follow system" is *my* choice about *my*
+      window; in a space's settings it is the community saying "this space's default is: follow
+      each member's own system". A control repointing what "Follow system" means for me, reachable
+      from a template a community wrote, would let a space quietly restyle every session I open
+      afterwards. That is the whole thing the tier exists to refuse.
+    */
+    systemThemes: state('agent'),
+    systemThemeOptions: state('agent'),
     builtInThemes: state('appearance'),
     installedThemes: state('appearance'),
     spaceThemes: state('appearance'),
