@@ -21,12 +21,30 @@ const DEFAULT_PROPS: Partial<DesignSystemProps> = {
     bg: 'page',
     color: 'text',
   },
+  /*
+    Every item here is a real tab stop — [part='base'] carries tabindex="0" — and `all: unset` on
+    it drops the outline the browser would otherwise have drawn. Nothing replaced it, so tabbing
+    through an open menu moved focus with no indication of where it had got to: the arrows are not
+    bound, so the only way through the list is Tab, and it was invisible the whole way.
+
+    Inset, unlike the ring on a button or an input. A menu item is a full-width row inside a
+    scrolling panel, and an outset ring would be clipped against that container's edge exactly where
+    the list is long enough for it to matter.
+  */
+  focusProps: {
+    bg: 'page',
+    color: 'text',
+    ring: 'inset 0 0 0 2px var(--we-ring-color)',
+  },
 };
 
 const VARIANT_DEFAULTS: Partial<Record<MenuItemVariant, Partial<DesignSystemProps>>> = {
   danger: {
     color: 'danger-text',
     hoverProps: { bg: 'danger-surface', color: 'danger-text' },
+    // Restated rather than inherited: a variant's own state props replace the defaults wholesale,
+    // so omitting this would land a destructive item on the neutral fill when tabbed to.
+    focusProps: { bg: 'danger-surface', color: 'danger-text', ring: 'inset 0 0 0 2px var(--we-ring-color)' },
   },
 };
 
