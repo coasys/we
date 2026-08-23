@@ -484,7 +484,23 @@ export function InspectorPanel() {
   }
 
   return (
-    <Column width="100%" height="100%" overflow="hidden" bg="surface" fontFamily="base" fontSize="200" color="text">
+    <Column
+      width="100%"
+      height="100%"
+      /*
+        No background of its own: the dock frame paints the panel's surface.
+
+        The same correction the code and theme panels already carry. Every dock is wrapped in a frame
+        that sets `surface-sunken`, precisely so a docked panel does not have to decide what it is
+        made of — see the note in dockRegistry.ts. This one still painted `surface` over the top, so
+        it sat lighter than every other panel docked at the same edge and read as a different
+        material. It was the last of the three.
+      */
+      overflow="hidden"
+      fontFamily="base"
+      fontSize="200"
+      color="text"
+    >
       {/* Header */}
       <Row
         ax="between"
@@ -595,7 +611,7 @@ function ThemeRoleReadout(props: { node: SchemaNode }) {
 
   return (
     <Show when={painted().length > 0}>
-      <Row gap="150" wrap ay="center" pt="100">
+      <Row gap="200" wrap ay="center" pt="100">
         <For each={painted()}>
           {(entry) => (
             <we-tooltip
@@ -611,12 +627,21 @@ function ThemeRoleReadout(props: { node: SchemaNode }) {
                   if (!isRole(entry.value)) return;
                   host.theme.startEditing();
                   host.session.enterThemeEditing();
+                  /*
+                    And say which role, which the jump used to drop on the floor.
+
+                    The tooltip promises "click to edit it for the whole theme" and the panel holds
+                    some forty roles across five collapsed groups, so arriving at the top of it left
+                    somebody to find by hand the thing they had just pointed at. The panel opens the
+                    group, scrolls the row up and rings it.
+                  */
+                  host.theme.focusRole(entry.value);
                 }}
               >
                 <Row
-                  gap="150"
+                  gap="100"
                   ay="center"
-                  px="150"
+                  px="200"
                   py="100"
                   r="200"
                   bg="surface-sunken"

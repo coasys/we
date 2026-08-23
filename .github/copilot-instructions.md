@@ -2305,6 +2305,7 @@ ThemeStore:
   - themeManagementList: ThemeManagementItem[] — flat list of all themes (built-in + all custom) with management metadata (id, name, icon, isBuiltIn, isInstalled, isDefault)
   - editingTheme: unknown
   - operationLoading: string | null — the id of the theme operation currently in flight, namespaced by kind (e.g. 'marketplace-install:<themeId>'), or null when idle. A key rather than a boolean so one row's spinner does not appear on every row — compare it against the row you are rendering
+  - focusedRole: unknown
   - systemThemes: unknown
   - systemThemeOptions: unknown
   - themeScope: unknown
@@ -2320,6 +2321,7 @@ ThemeStore:
   - applySnapshot(): unknown
   - setCurrentTheme(themeId: string): sets and persists the active theme
   - setDefaultTheme(themeId: string): sets the preferred default theme (persists to AgentSettings.defaultThemeId)
+  - focusRole(): unknown
   - setSystemTheme(): unknown
   - setThemeInstalled(themeId: string, visible: boolean): shows or hides a custom theme in the pickers; does not delete it. Takes the value rather than toggling, so a `we-switch` can pass `$event.detail` straight through
   - previewThemeScope(scope: 'global' | 'scoped' | null): previews a scope for the current theme-editing session without writing the preference; null drops the preview. Cleared when editing ends

@@ -144,9 +144,22 @@ export function TemplateStoreProvider(props: ParentProps) {
     ...(import.meta.env.DEV ? [{ ...deepClone(schemaTestsTemplate), id: 'schema-tests' }] : []),
   ];
 
+  /*
+    Ensured here, not just on the paths that later replace it.
+
+    `node.id` is what the renderer stamps as `data-we-node-id`, and it is the only handle the visual
+    editor has — selection, the inspector, the role readout and every ancestry walk go through
+    `findNodeById`. A tree that never passed through `ensureNodeIds` renders identically and cannot
+    be clicked on at all, which does not read as a missing id, it reads as the visual editor being
+    broken.
+
+    Every other route into `currentTemplate` ensures. This one is a raw clone, so the boot template
+    was the one tree in the app that could not be edited visually.
+  */
   const initialTemplate = deepClone(
     builtInTemplates.find((t) => t.id === 'launcher') || builtInTemplates[0] || emptyTemplate,
   );
+  ensureNodeIds(initialTemplate as SchemaNode);
 
   // State
   const [allTemplates, setAllTemplates] = createSignal<TemplateSchema[]>([...builtInTemplates]);
@@ -505,14 +518,35 @@ export function TemplateStoreProvider(props: ParentProps) {
     if (bootId && bootId !== 'default' && bootId !== 'landing-page' && bootId !== currentTemplate.id) {
       const persisted = allTemplates().find((t) => t.id === bootId) || shellTemplates.find((t) => t.id === bootId);
       if (persisted) {
-        const clone = deepClone(persisted) as SchemaNode;
-        ensureNodeIds(clone);
-        setCurrentTemplate(reconcile(clone as TemplateSchema));
+        commitTemplate(persisted);
         initialRestoreDone = true;
       }
     }
     initialRestoreDone = true;
   });
+
+  /**
+   * The only way a schema becomes the live template.
+   *
+   * `node.id` is what the renderer stamps as `data-we-node-id`, and it is the whole handle the
+   * visual editor has: selection, the inspector, the role readout and every ancestry walk go through
+   * `findNodeById`. A tree that skipped `ensureNodeIds` renders identically and cannot be clicked at
+   * all — which does not read as a missing id, it reads as the visual editor being broken.
+   *
+   * There were six setters and three of them forgot. `saveTemplateAs` was the one that mattered:
+   * it is how both "Start fresh" and "Fork" arrive, and `starterTemplate` is hand-written with no
+   * ids, so a brand-new template was inert to the first click anybody gave it. `removeTemplate`
+   * dropped to a raw `emptyTemplate` the same way.
+   *
+   * So there is one committer and `setCurrentTemplate` is not called anywhere else. Ensuring at the
+   * point of commit rather than at each call site is what makes "did this path remember?" a question
+   * with one answer instead of six.
+   */
+  function commitTemplate(schema: TemplateSchema | SchemaNode) {
+    const clone = deepClone(schema) as SchemaNode;
+    ensureNodeIds(clone);
+    setCurrentTemplate(reconcile(clone as TemplateSchema));
+  }
 
   // Actions
   function updateTemplate(newTemplate: TemplateSchema) {
@@ -528,9 +562,7 @@ export function TemplateStoreProvider(props: ParentProps) {
    *  Preferred for AI updates where large structural changes (new routes, etc.) need
    *  reliable reactivity. Caller is responsible for pre-validating the schema. */
   function replaceTemplate(newTemplate: TemplateSchema) {
-    const clone = deepClone(newTemplate) as SchemaNode;
-    ensureNodeIds(clone);
-    setCurrentTemplate(reconcile(clone as TemplateSchema));
+    commitTemplate(newTemplate);
   }
 
   // Per-template last-view memory — remembers which view segment (e.g. 'globe', 'chat')
@@ -555,9 +587,7 @@ export function TemplateStoreProvider(props: ParentProps) {
       ? allTemplates().find((t) => t.id === realId && t._fromSpace)
       : allTemplates().find((t) => t.id === realId && !t._fromSpace) || shellTemplates.find((t) => t.id === realId);
     if (newTemplate) {
-      const clone = deepClone(newTemplate) as SchemaNode;
-      ensureNodeIds(clone);
-      setCurrentTemplate(reconcile(clone as TemplateSchema));
+      commitTemplate(newTemplate);
       const segs = routeStore.segments();
       const currentView = segs[0] === 'space' && segs[2] ? segs[2] : 'globe';
       const view = lastViewByTemplate.get(realId) ?? currentView;
@@ -593,7 +623,7 @@ export function TemplateStoreProvider(props: ParentProps) {
       template.delete?.().catch((err: unknown) => console.error('TemplateStore: delete error', err));
     }
 
-    setCurrentTemplate(reconcile(deepClone(emptyTemplate)));
+    commitTemplate(emptyTemplate);
   }
 
   /** Delete a template by ID (does not need to be the current template) */
@@ -627,9 +657,7 @@ export function TemplateStoreProvider(props: ParentProps) {
     // If we deleted the current template, switch to the default
     if (currentTemplate.id === templateId) {
       const fallback = allTemplates().find((t) => t.id === 'default') || allTemplates()[0] || emptyTemplate;
-      const clone = deepClone(fallback) as SchemaNode;
-      ensureNodeIds(clone);
-      setCurrentTemplate(reconcile(clone as TemplateSchema));
+      commitTemplate(fallback);
     }
     setOperationLoading(null);
   }
@@ -1006,7 +1034,7 @@ export function TemplateStoreProvider(props: ParentProps) {
         return next;
       });
 
-      setCurrentTemplate(reconcile(deepClone(schemaToSave)));
+      commitTemplate(schemaToSave);
       const p = datasetStore.currentDataset();
       if (p) {
         const spaceId = p.sharedId ?? p.id;

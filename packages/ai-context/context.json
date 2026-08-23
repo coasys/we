@@ -6490,6 +6490,9 @@
         "operationLoading": {
           "type": "string"
         },
+        "focusedRole": {
+          "type": "string"
+        },
         "systemThemes": {
           "type": "object"
         },
@@ -6526,6 +6529,7 @@
         "applySnapshot",
         "setCurrentTheme",
         "setDefaultTheme",
+        "focusRole",
         "setSystemTheme",
         "setThemeInstalled",
         "previewThemeScope",

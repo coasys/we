@@ -596,6 +596,10 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     restorePersonalTheme: action('library'),
     clearSpaceTheme: action('space-admin'),
     startEditing: action('editor'),
+    // The editor tier, with `startEditing` — this is the second half of the same gesture: open the
+    // theme editor, and say which role you came for. Nothing a template has any business setting.
+    focusedRole: state('editor'),
+    focusRole: action('editor'),
     changeBasePreset: action('editor'),
     updateEditingOverrides: action('editor'),
     updateEditingCss: action('editor'),

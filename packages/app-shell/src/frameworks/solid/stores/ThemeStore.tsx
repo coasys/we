@@ -82,6 +82,21 @@ export interface ThemeStore {
   setCurrentTheme: (themeId: string) => void;
   setDefaultTheme: (themeId: string) => void;
   /**
+   * The role the theme editor should jump to, kebab-case, or empty.
+   *
+   * Set by whatever sent somebody to the panel — the inspector's role readout, chiefly, where the
+   * whole gesture is "this colour is wrong, take me to it". Without it the jump lands at the top of
+   * a panel holding some forty roles with nothing marking the one you came for, which is a worse
+   * answer than not offering the jump.
+   *
+   * Notifies on every set, including a repeat of the same role: clicking the same chip twice is a
+   * person saying "again, I lost it", and a signal that dedupes would answer the second click with
+   * silence.
+   */
+  focusedRole: Accessor<string>;
+  /** Ask the theme editor to reveal a role. Kebab-case, as a schema and the readout spell it. */
+  focusRole: (role: string) => void;
+  /**
    * Which two themes "Follow system" chooses between, and the ids currently on each side.
    *
    * `light`/`dark` are the ids as *chosen*, empty for a side left at the built-in — what the control
@@ -986,6 +1001,14 @@ export function ThemeStoreProvider(props: ParentProps) {
     await datasetStore.updateAgentSettings({ useTemplateTheme: enabled });
   }
 
+  /*
+    `{ equals: false }` so the same role set twice still notifies — see `focusedRole` in the contract.
+  */
+  const [focusedRole, setFocusedRole] = createSignal('', { equals: false });
+  function focusRole(role: string) {
+    setFocusedRole(role);
+  }
+
   function setDefaultTheme(themeId: string) {
     localStorage.setItem(THEME_KEY, themeId);
     setCurrentThemeId(themeId);
@@ -1705,6 +1728,8 @@ export function ThemeStoreProvider(props: ParentProps) {
     applySnapshot,
     setCurrentTheme,
     setDefaultTheme,
+    focusedRole,
+    focusRole,
     setSystemTheme,
     systemThemes,
     systemThemeOptions,

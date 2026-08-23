@@ -446,8 +446,24 @@ function persistedFlag(key: string, fallback: boolean) {
   ] as const;
 }
 
-function CollapsibleSection(props: { title: string; defaultOpen?: boolean; children: JSX.Element }) {
+function CollapsibleSection(props: {
+  title: string;
+  defaultOpen?: boolean;
+  /**
+   * Opens the section when it turns truthy — for arriving at a row inside a collapsed group.
+   *
+   * A section owns whether it is open, which is right for a click on its header and useless for
+   * being sent to something inside it: the inspector's "take me to this role" landed on a row that
+   * was not rendered, so the scroll had nothing to scroll to and the jump silently did nothing.
+   * Only ever opens; it never closes a section somebody opened themselves.
+   */
+  openOn?: () => unknown;
+  children: JSX.Element;
+}) {
   const [open, setOpen] = createSignal(props.defaultOpen ?? false);
+  createEffect(() => {
+    if (props.openOn?.()) setOpen(true);
+  });
   return (
     <Column borderBottom={`1px solid ${tokenVar('color', 'neutral-100')}`} pb="0">
       <Row ay="center" ax="between" py="300" onClick={() => setOpen(!open())} cursor="pointer">
@@ -1057,43 +1073,102 @@ export function ThemePanel() {
     ...measuredCeilings(),
   }));
 
+  /*
+    Arriving at a role somebody asked for, from the inspector's readout.
+
+    Three things have to happen and each was missing: the group has to be open (a `Show` means a
+    collapsed section has no row to scroll to at all), the row has to come into view, and it has to
+    say which one it is — a scroll that lands a row mid-panel among forty identical ones has not
+    actually answered "take me to this".
+
+    The store hands over a kebab-case role because that is what a schema and the readout both spell;
+    the rows are keyed by the camelCase `ThemeRole`. A role the panel does not offer — the readout
+    lists a few a template may set that the editor does not expose — simply reveals nothing rather
+    than opening a section on an empty promise.
+  */
+  const roleRowEls = new Map<ThemeRole, HTMLElement>();
+  const [revealed, setRevealed] = createSignal<ThemeRole | null>(null);
+
+  const requestedRole = createMemo<ThemeRole | null>(() => {
+    const kebab = themeStore.focusedRole();
+    if (!kebab) return null;
+    const camel = kebab.replace(/-([a-z])/g, (_, c: string) => c.toUpperCase()) as ThemeRole;
+    return ROLE_GROUPS.some((g) => g.roles.some((r) => r.role === camel)) ? camel : null;
+  });
+
+  createEffect(() => {
+    const role = requestedRole();
+    if (!role) return;
+    /*
+      One frame's grace, because the section this row lives in may be opening in the same tick — the
+      element does not exist until that `Show` has rendered, so looking now finds nothing.
+    */
+    requestAnimationFrame(() => {
+      roleRowEls.get(role)?.firstElementChild?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      setRevealed(role);
+    });
+    const clear = setTimeout(() => setRevealed(null), 2000);
+    onCleanup(() => clearTimeout(clear));
+  });
+
   function roleRow(role: ThemeRole, label: string, hint: string) {
     const pinned = () => overrides().roles?.[role];
     // Unpinned, the swatch shows what the role currently resolves to — sampled with its alpha, so
     // opening the scrim's picker starts on a translucent colour rather than an opaque guess.
     const shown = () => pinned() ?? roleColors()[role] ?? '#000000';
     return (
-      <Row ay="center" gap="300">
-        <we-color-picker
-          tokens
-          alpha
-          styles={{ ...editedPalette(), '--we-color-picker-swatch': '28px' }}
-          value={shown()}
-          on:change={(e: CustomEvent) => setRole(role, e.detail as string)}
-        />
-        <Column flex="1" gap="0">
-          {/*
+      /*
+        A native wrapper purely to hold a ref: `Row` is a DS component and forwarding a ref through
+        it is not part of its contract, so the reveal below would be relying on something that
+        happens to work today. `display: contents` keeps it out of the layout entirely.
+      */
+      <div
+        ref={(el) => {
+          roleRowEls.set(role, el);
+          onCleanup(() => roleRowEls.delete(role));
+        }}
+        style={{ display: 'contents' }}
+      >
+        <Row
+          ay="center"
+          gap="300"
+          r="200"
+          // The ring is the whole point of the jump: it says "this is the one you clicked". Fades
+          // rather than snaps off, so it does not read as a glitch on a panel that is still moving.
+          transition="box-shadow 400 ease-out"
+          styles={revealed() === role ? { 'box-shadow': '0 0 0 2px var(--we-role-focus)' } : { 'box-shadow': 'none' }}
+        >
+          <we-color-picker
+            tokens
+            alpha
+            styles={{ ...editedPalette(), '--we-color-picker-swatch': '28px' }}
+            value={shown()}
+            on:change={(e: CustomEvent) => setRole(role, e.detail as string)}
+          />
+          <Column flex="1" gap="0">
+            {/*
             The tooltip hangs off the label rather than an info icon beside it: every row would
             need one, and a column of forty ⓘ glyphs is noise standing in for an explanation. The
             label is already the thing you point at when you are wondering what it means.
           */}
-          <we-tooltip title={hint} placement="left">
-            <we-text fontSize="300" color={pinned() ? 'text' : 'text-muted'} cursor="help">
-              {label}
+            <we-tooltip title={hint} placement="left">
+              <we-text fontSize="300" color={pinned() ? 'text' : 'text-muted'} cursor="help">
+                {label}
+              </we-text>
+            </we-tooltip>
+            <we-text fontSize="100" color="text-faint" truncate>
+              {roleTierLabel(pinned(), role)}
             </we-text>
-          </we-tooltip>
-          <we-text fontSize="100" color="text-faint" truncate>
-            {roleTierLabel(pinned(), role)}
-          </we-text>
-        </Column>
-        <Show when={pinned()}>
-          <we-tooltip title="Back to the parametric default">
-            <we-button variant="ghost" size="xs" onClick={() => setRole(role, undefined)}>
-              <we-icon name="arrow-counter-clockwise" />
-            </we-button>
-          </we-tooltip>
-        </Show>
-      </Row>
+          </Column>
+          <Show when={pinned()}>
+            <we-tooltip title="Back to the parametric default">
+              <we-button variant="ghost" size="xs" onClick={() => setRole(role, undefined)}>
+                <we-icon name="arrow-counter-clockwise" />
+              </we-button>
+            </we-tooltip>
+          </Show>
+        </Row>
+      </div>
     );
   }
 
@@ -1497,7 +1572,7 @@ export function ThemePanel() {
             </CollapsibleSection>
 
             {/* ── Roles ── */}
-            <CollapsibleSection title="Roles">
+            <CollapsibleSection title="Roles" openOn={requestedRole}>
               <we-text fontSize="200" color="text-muted" lineHeight="1.5">
                 What a colour <i>means</i>, rather than where it sits on the scale. Left alone, each follows the hues
                 and lightness above — pin one to redesign a relationship the scale cannot express, such as raised
