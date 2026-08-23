@@ -4,7 +4,7 @@
  * This lived in `@we/schema-shared` because schema nodes can carry a `theme`, but schema-shared is a
  * *consumer* of the vocabulary, not its owner: the keys map onto design-system CSS custom properties,
  * which is design-system knowledge. It lives here now, beside the presets that instantiate it and the
- * mapping (`themeToStyle`) that turns it into CSS; schema-shared re-exports it unchanged.
+ * mapping (`themeParametersToStyle`) that turns it into CSS; schema-shared re-exports it unchanged.
  */
 
 /**

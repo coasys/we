@@ -214,7 +214,7 @@ export function TemplateLayout(
   /*
     The scoped theme is *applied*, not merely declared.
 
-    This used to spread `themeToStyle(overrides)` into the wrapper's style, which writes the theme's
+    This used to spread `themeParametersToStyle(overrides)` into the wrapper's style, which writes the theme's
     parameters and stops there — no chroma ceilings, no legible fills, no chosen labels, no state
     directions, no corrected foregrounds. Every one of those is a measurement, and measuring needs a
     real element, so none of them could happen from a style object.

@@ -108,7 +108,7 @@ function createRoleProbe(root: HTMLElement): { read: (role: ThemeRole) => Rgba |
  * *declared*, so `--we-role-surface: var(--we-color-neutral-0)` computes against :root's colours and
  * inherits downward as a finished value — a scoped space theme could redeclare every colour token on
  * its wrapper and its unpinned roles would still be painted from the personal theme's scale. It is
- * the same hazard `themeToStyle` already re-declares the colour formulas for, and the same one that
+ * the same hazard `themeParametersToStyle` already re-declares the colour formulas for, and the same one that
  * put an explicit `color:` on the scoped wrapper in TemplateLayout.
  */
 const ROLE_DEFAULT_VARS: Record<string, string> = Object.fromEntries(
@@ -215,7 +215,30 @@ const LIGHTNESS_STEPS = Object.keys(color.lightness) as ColorLightnessToken[];
 const COLOR_FAMILIES = Object.keys(color.hues) as ColorHueToken[];
 
 /**
- * Convert a ThemeOverrides object to a CSS style record for inline application.
+ * A theme's **parameters** as CSS custom properties — its inputs and its role defaults, and nothing
+ * that has to be measured.
+ *
+ * ## This is not how you put a theme on an element
+ *
+ * Use `applyThemeVars` for that. The difference is not cosmetic and it is not discoverable from a
+ * return type: everything derived — the per-hue chroma ceilings, a fill moved until some label fits
+ * on it, the label chosen against where that fill landed, the corrected foregrounds, the direction a
+ * hover travels — is *measured* at apply time, because resolving a var()/calc() chain to a colour is
+ * something only a browser can do. None of it can come out of a function that returns an object.
+ *
+ * Left out, those variables do not go missing. Custom properties inherit, so an element carrying
+ * only these renders through **the ambient theme's** measurements — a green theme inside a violet
+ * app drawn with a violet's chroma ceilings, looking plausible and being wrong. It was written this
+ * way in six places before the distinction was understood: the document root, the scoped template
+ * wrapper, the theme editor's preview strip, its role swatches, its colour picker, and both of the
+ * renderer's themed-node wrappers. Every one of them looked correct until the ambient theme differed
+ * from the one being shown.
+ *
+ * What it is legitimately for: reading a theme's *parameters* back — the sliders' starting values,
+ * the palette a picker offers — where the derived half is not wanted.
+ *
+ * The old name was `themeToStyle`, which read as "turn this theme into a style you can apply", and
+ * six people-shaped decisions followed that reading.
  *
  * CSS custom properties are resolved at the element where they are DEFINED,
  * not where they are inherited.  :root defines derived tokens like
@@ -233,7 +256,7 @@ function stripUndefined(theme: ThemeOverrides): ThemeOverrides {
   return Object.fromEntries(Object.entries(theme).filter(([, value]) => value !== undefined)) as ThemeOverrides;
 }
 
-export function themeToStyle(overrides: ThemeOverrides): Record<string, string> {
+export function themeParametersToStyle(overrides: ThemeOverrides): Record<string, string> {
   /*
     A named theme brings its own parameters.
 
@@ -512,7 +535,7 @@ export interface ApplyThemeOptions {
 }
 
 export function applyThemeVars(root: HTMLElement, theme: ThemeOverrides, options?: ApplyThemeOptions): void {
-  const styles = themeToStyle(theme);
+  const styles = themeParametersToStyle(theme);
   const previous = appliedThemeVars.get(root);
 
   /*

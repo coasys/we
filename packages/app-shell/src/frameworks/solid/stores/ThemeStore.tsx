@@ -16,7 +16,7 @@ import {
   parseOverrides,
   reconcileSurfaces,
   THEME_SCHEMA_VERSION,
-  themeToStyle,
+  themeParametersToStyle,
 } from '@we/schema-shared';
 import type { SanitiseCssOptions } from '@we/themes/sanitiseCss';
 import { sanitiseCss } from '@we/themes/sanitiseCss';
@@ -948,7 +948,7 @@ export function ThemeStoreProvider(props: ParentProps) {
       */
       const probe = document.createElement('div');
       probe.style.cssText = 'position:absolute;width:0;height:0;visibility:hidden;pointer-events:none';
-      for (const [prop, value] of Object.entries(themeToStyle(storedOverrides))) {
+      for (const [prop, value] of Object.entries(themeParametersToStyle(storedOverrides))) {
         probe.style.setProperty(prop, value);
       }
       document.body.appendChild(probe);

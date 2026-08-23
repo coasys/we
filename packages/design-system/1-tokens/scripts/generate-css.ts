@@ -217,7 +217,7 @@ ${paletteVars}`;
 :root {
   /* Color System Configuration */
   /* Unitless, so the chroma taper can be arithmetic on them. What a theme *states* is still a
-     percentage — themeToStyle converts on the way out. A backtick in this comment would end the
+     percentage — themeParametersToStyle converts on the way out. A backtick in this comment would end the
      template literal it lives in, which is the fifth time that has happened in this repo. */
   --we-color-lightness-floor: ${parseFloat(color.config.lightnessFloor) / 100};
   --we-color-lightness-ceiling: ${parseFloat(color.config.lightnessCeiling) / 100};

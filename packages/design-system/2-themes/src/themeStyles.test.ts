@@ -10,7 +10,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { THEME_PRESETS } from './presets';
-import { applyThemeVars, themeToStyle } from './themeStyles';
+import { applyThemeVars, themeParametersToStyle } from './themeStyles';
 
 /** A minimal stand-in for an element's inline style, so this needs no DOM. */
 function fakeRoot() {
@@ -31,7 +31,7 @@ describe('applyThemeVars', () => {
     const { el, props } = fakeRoot();
     applyThemeVars(el, { polarity: 'dark', lightnessFloor: '12%' });
 
-    // Authored as a percentage, emitted unitless — see the note in themeToStyle.
+    // Authored as a percentage, emitted unitless — see the note in themeParametersToStyle.
     expect(props.get('--we-color-lightness-floor')).toBe('0.12');
     // `polarity` is one authored word that expands to the two numbers the ramp multiplies by.
     expect(props.get('--we-color-ramp-direction')).toBe('-1');
@@ -177,7 +177,7 @@ describe('a named theme brings its own parameters', () => {
     on that theme.
   */
   it('resolves a known name to its preset parameters', () => {
-    const style = themeToStyle({ themeName: 'cyberpunk' });
+    const style = themeParametersToStyle({ themeName: 'cyberpunk' });
     const preset = THEME_PRESETS.cyberpunk.parameters;
 
     expect(style['--we-color-lightness-floor']).toBe(String(parseFloat(preset.lightnessFloor!) / 100));
@@ -187,7 +187,7 @@ describe('a named theme brings its own parameters', () => {
 
   it('lets an explicit override win over the preset', () => {
     // `{ themeName: 'cyberpunk', primaryHue: 320 }` should read as "cyberpunk, different accent".
-    const style = themeToStyle({ themeName: 'cyberpunk', primaryHue: 320 });
+    const style = themeParametersToStyle({ themeName: 'cyberpunk', primaryHue: 320 });
 
     expect(style['--we-color-primary-hue']).toBe('320');
     expect(style['--we-color-lightness-floor']).toBe(
@@ -197,12 +197,12 @@ describe('a named theme brings its own parameters', () => {
 
   it('leaves an unknown name alone rather than inventing parameters', () => {
     // A marketplace theme's id is not a preset key; its inputs come from its own CSS.
-    const style = themeToStyle({ themeName: 'some-installed-theme' });
+    const style = themeParametersToStyle({ themeName: 'some-installed-theme' });
     expect(style['--we-color-lightness-floor']).toBeUndefined();
   });
 
   it('still re-declares the formulas, which is what it always did', () => {
-    const style = themeToStyle({ themeName: 'cyberpunk' });
+    const style = themeParametersToStyle({ themeName: 'cyberpunk' });
     expect(style['--we-color-lightness-500']).toContain('var(--we-color-lightness-floor)');
   });
 });
@@ -214,16 +214,16 @@ describe('color-scheme follows the lightness polarity', () => {
     a white time picker floating over a dark panel.
   */
   it('declares dark when the multiplier inverts the scale', () => {
-    expect(themeToStyle({ themeName: 'dark' })['color-scheme']).toBe('dark');
-    expect(themeToStyle({ polarity: 'dark' as const })['color-scheme']).toBe('dark');
+    expect(themeParametersToStyle({ themeName: 'dark' })['color-scheme']).toBe('dark');
+    expect(themeParametersToStyle({ polarity: 'dark' as const })['color-scheme']).toBe('dark');
   });
 
   it('declares light when it does not', () => {
-    expect(themeToStyle({ themeName: 'light' })['color-scheme']).toBe('light');
+    expect(themeParametersToStyle({ themeName: 'light' })['color-scheme']).toBe('light');
   });
 
   it('stays silent when the theme leaves the polarity alone, inheriting the ambient scheme', () => {
-    expect(themeToStyle({ primaryHue: 320 })['color-scheme']).toBeUndefined();
+    expect(themeParametersToStyle({ primaryHue: 320 })['color-scheme']).toBeUndefined();
   });
 });
 
@@ -236,7 +236,7 @@ describe('roles resolve against the theme they belong to', () => {
     its wrapper and still paint its unpinned surfaces from the personal theme's scale.
   */
   it('re-declares every role default, so an unpinned role follows this theme', () => {
-    const style = themeToStyle({ polarity: 'dark' as const });
+    const style = themeParametersToStyle({ polarity: 'dark' as const });
     expect(style['--we-role-text-muted']).toBe('var(--we-color-neutral-600)');
     // The elevation stack is a relationship, not a scale position — and it has to be re-declared
     // for the same reason, or a scoped theme's cards are measured off the ambient theme's page.
@@ -244,7 +244,7 @@ describe('roles resolve against the theme they belong to', () => {
   });
 
   it('lets a pin win over the default it replaces, rather than sitting beside it', () => {
-    const style = themeToStyle({ roles: { surfaceRaised: 'var(--we-color-neutral-100)' } });
+    const style = themeParametersToStyle({ roles: { surfaceRaised: 'var(--we-color-neutral-100)' } });
     expect(style['--we-role-surface-raised']).toBe('var(--we-color-neutral-100)');
   });
 
@@ -264,24 +264,24 @@ describe('roles resolve against the theme they belong to', () => {
       decision that moves, and a test repeating them only says the file was copied correctly. That
       the *ordering* holds is checked in contrast.test.ts, which is the property that matters.
     */
-    const raised = themeToStyle({ themeName: 'channels' })['--we-role-surface-raised'];
+    const raised = themeParametersToStyle({ themeName: 'channels' })['--we-role-surface-raised'];
     expect(raised).toMatch(/^oklch\(\d/);
   });
 });
 
 describe('the shape, density and typography keys added alongside the roles editor', () => {
   it('maps avatarRadius to its own group, separate from surfaces', () => {
-    const style = themeToStyle({ avatarRadius: '0', surfaceRadius: '16px' });
+    const style = themeParametersToStyle({ avatarRadius: '0', surfaceRadius: '16px' });
     expect(style['--we-theme-avatar-radius']).toBe('0');
     expect(style['--we-theme-surface-radius']).toBe('16px');
   });
 
   it('maps inputPadding, which nothing could set before', () => {
-    expect(themeToStyle({ inputPadding: '4px 8px' })['--we-theme-input-padding']).toBe('4px 8px');
+    expect(themeParametersToStyle({ inputPadding: '4px 8px' })['--we-theme-input-padding']).toBe('4px 8px');
   });
 
   it('maps headingFontFamily without touching the body face', () => {
-    const style = themeToStyle({ headingFontFamily: "'Boldonse', serif" });
+    const style = themeParametersToStyle({ headingFontFamily: "'Boldonse', serif" });
     expect(style['--we-theme-heading-font-family']).toBe("'Boldonse', serif");
     expect(style['--we-font-family']).toBeUndefined();
   });
@@ -295,7 +295,7 @@ describe('a preset and a theme both pinning roles', () => {
     from one click in the colour picker.
   */
   it('keeps the preset’s pins for roles the theme does not mention', () => {
-    const style = themeToStyle({ themeName: 'channels', roles: { accent: '#ff0000' } });
+    const style = themeParametersToStyle({ themeName: 'channels', roles: { accent: '#ff0000' } });
     /*
       Asserted as "three distinct pins survived" rather than as three exact lightnesses. The numbers
       moved once already, when the ramp went to OKLCH and every hand-measured percentage had to be
@@ -313,12 +313,12 @@ describe('a preset and a theme both pinning roles', () => {
   });
 
   it('still lets the theme win on the role it does pin', () => {
-    expect(themeToStyle({ themeName: 'channels', roles: { accent: '#ff0000' } })['--we-role-accent']).toBe('#ff0000');
+    expect(themeParametersToStyle({ themeName: 'channels', roles: { accent: '#ff0000' } })['--we-role-accent']).toBe('#ff0000');
   });
 
   it('leaves a theme with no roles of its own exactly as the preset had it', () => {
-    const bare = themeToStyle({ themeName: 'channels' });
-    const withOther = themeToStyle({ themeName: 'channels', primaryHue: 100 });
+    const bare = themeParametersToStyle({ themeName: 'channels' });
+    const withOther = themeParametersToStyle({ themeName: 'channels', primaryHue: 100 });
     expect(withOther['--we-role-page']).toBe(bare['--we-role-page']);
   });
 });

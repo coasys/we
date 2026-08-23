@@ -97,7 +97,7 @@ export {
   roleVar,
   surfacesForPolarity,
   THEME_SCHEMA_VERSION,
-  themeToStyle,
+  themeParametersToStyle,
 } from './themeStyles';
 export { validateField } from './validation';
 export {

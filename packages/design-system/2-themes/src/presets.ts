@@ -425,5 +425,5 @@ export {
   reconcileSurfaces,
   roleVar,
   surfacesForPolarity,
-  themeToStyle,
+  themeParametersToStyle,
 } from './themeStyles';

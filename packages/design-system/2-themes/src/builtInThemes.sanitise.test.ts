@@ -57,7 +57,7 @@ describe('the built-in themes', () => {
   /*
     A theme's CSS file and its preset parameters must agree about roles.
 
-    `themeToStyle` re-declares every role's parametric default so an unpinned role resolves against
+    `themeParametersToStyle` re-declares every role's parametric default so an unpinned role resolves against
     the theme it belongs to rather than against :root (see ROLE_DEFAULT_VARS). Those land as inline
     styles, which outrank an attribute-selector rule — so a role a theme declares *only* in its CSS
     file would be overwritten by its own default, and the theme would lose the relationship it was

@@ -12,7 +12,7 @@ import {
   tokenVar,
 } from '@we/design-utils';
 import type { ThemeOverrides, ThemeRole } from '@we/schema-shared';
-import { applyThemeVars, roleVar, surfacesForPolarity, themeToStyle } from '@we/schema-shared';
+import { applyThemeVars, roleVar, surfacesForPolarity, themeParametersToStyle } from '@we/schema-shared';
 import type { JSX } from 'solid-js';
 import { createEffect, createMemo, createSignal, For, onCleanup, Show } from 'solid-js';
 
@@ -715,7 +715,7 @@ export function ThemePanel() {
   */
   let roleProbe: HTMLDivElement | undefined;
   const [roleColors, setRoleColors] = createSignal<Record<string, string>>({});
-  const probeStyle = createMemo(() => themeToStyle(overrides()) as Record<string, string>);
+  const probeStyle = createMemo(() => themeParametersToStyle(overrides()) as Record<string, string>);
 
   /**
    * True from the moment a pointer goes down in this panel until it comes back up.
@@ -760,7 +760,7 @@ export function ThemePanel() {
    * The per-hue chroma ceilings this theme resolves to, measured rather than assumed.
    *
    * They are computed at apply time — how much chroma a hue can hold has no closed form worth
-   * writing — so `themeToStyle` cannot carry them, and anything showing the theme's palette without
+   * writing — so `themeParametersToStyle` cannot carry them, and anything showing the theme's palette without
    * them *inherits the document's*. A green theme edited from a violet app was being clipped to the
    * violet's ceiling, which is a different green from the one it would render as.
    *
@@ -779,7 +779,7 @@ export function ThemePanel() {
     /*
       Applied, not declared — the same distinction the scoped template and the preview needed.
 
-      Sampling a probe that only carries `themeToStyle` reports the theme's *declared* roles: muted
+      Sampling a probe that only carries `themeParametersToStyle` reports the theme's *declared* roles: muted
       text before it was corrected, a label before it was chosen, a fill before it was moved. The
       swatch beside each role would then show something the theme never renders.
     */
@@ -943,7 +943,7 @@ export function ThemePanel() {
   /*
     The preview is *applied*, not merely declared — the same distinction the scoped template needed.
 
-    `themeToStyle` writes a theme's parameters and its role defaults and stops there. Everything that
+    `themeParametersToStyle` writes a theme's parameters and its role defaults and stops there. Everything that
     has to be *measured* — the per-hue chroma ceilings, the fills moved until a label fits, the label
     chosen against where they landed, the corrected foregrounds, which way a hover travels — happens
     at apply time and needs a real element.
