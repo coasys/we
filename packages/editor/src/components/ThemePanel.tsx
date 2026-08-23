@@ -949,7 +949,7 @@ export function ThemePanel() {
             <Column bg="surface-raised" px="300" py="200" r="300" shadow="md" fontSize="100" color="text">
               Raised
             </Column>
-            <Column bg="surface-sunken" px="300" py="200" r="300" fontSize="100" color="text-muted">
+            <Column bg="surface" px="300" py="200" r="300" fontSize="100" color="text-muted">
               Sunken
             </Column>
             <Column bg="surface-inverse" px="300" py="200" r="300" fontSize="100" color="on-inverse">
@@ -1024,7 +1024,14 @@ export function ThemePanel() {
     <Column
       height="100%"
       width="100%"
-      bg="surface-raised"
+      /*
+        No background of its own: the dock frame paints the panel's surface.
+
+        Every dock is wrapped in a frame that sets `surface-sunken`, precisely so a docked panel does
+        not have to decide what it is made of — see the note in dockRegistry.ts. The editor's panels
+        painted `surface-raised` over the top of it, ten lightness points above the page, so they read
+        as a different material from every module panel docked at the same edge.
+      */
       overflow="hidden"
       /*
         Any press inside the panel starts a gesture, not just one on a slider.
@@ -1176,7 +1183,7 @@ export function ThemePanel() {
                         gap="200"
                         p="300"
                         r="200"
-                        bg="surface-sunken"
+                        bg="surface"
                         height="132px"
                         overflow="auto"
                         styles={{ 'flex-shrink': '0' }}

@@ -30,7 +30,14 @@ export function AiPanel() {
 
   return (
     <Column
-      bg="surface-raised"
+      /*
+        No background of its own: the dock frame paints the panel's surface.
+
+        Every dock is wrapped in a frame that sets `surface-sunken`, precisely so a docked panel does
+        not have to decide what it is made of — see the note in dockRegistry.ts. The editor's panels
+        painted `surface-raised` over the top of it, ten lightness points above the page, so they read
+        as a different material from every module panel docked at the same edge.
+      */
       width="100%"
       height="100%"
       borderLeft={`1px solid ${tokenVar('color', 'ui-200')}`}
@@ -75,7 +82,7 @@ export function AiPanel() {
         <Column
           gap="200"
           p="400"
-          bg="surface-sunken"
+          bg="surface"
           borderBottom={`1px solid ${tokenVar('color', 'ui-200')}`}
           flexShrink="0"
         >
@@ -91,7 +98,7 @@ export function AiPanel() {
               value={apiKeyInput()}
               placeholder="sk-ant-..."
               size="sm"
-              bg="surface-sunken"
+              bg="surface"
               flex="1"
               on:input={(e: CustomEvent) => setApiKeyInput(e.detail)}
               on:keydown={(e: CustomEvent) => {
