@@ -155,6 +155,8 @@ that declares `backends: ['ad4m']` — nothing else. See `docs/architecture/pack
 - AD4M wiring (query adapter, SDNA install, agent identity) → `packages/backend-system/ad4m/src/`.
 - The feature-module contract → `packages/module-system/shared/src/module.ts`; a module → `packages/module-system/<id>/`.
 - Data models (Space, blocks) → `packages/models/src/` (see packages/models/CONVENTIONS.md).
+- A space's sections (views) → `packages/templates/views/`; how they resolve →
+  `packages/app-shell/src/shared/viewResolution.ts` (see docs/architecture/views.md).
 - Graph engine (expanders, layouts, expansion state) → `packages/graph-system/` (see its README);
   its data binding lives at `packages/app-shell/src/frameworks/solid/components/GraphHost.tsx`.
 
@@ -162,6 +164,14 @@ For deeper detail (data sync/persistence, block & editor internals, the local de
 see docs/architecture/codebase-map.md.
 For how reusable template fragments work and where they are going, see
 docs/architecture/template-fragments.md.
+
+**A template is one of two things.** A *shell* owns a space's chrome, arrangement and route table;
+a *view* renders one section inside one. `meta.role` says which, and absent means shell. A shell
+marks where its sections go with `{ path: '$views' }` and the host expands that per space, from
+`Space.enabledViews` (the community's list, and its order) minus `SpacePreference.hiddenViews`
+(each agent's own). Do **not** hardcode a space's sections as routes, and do not write a nav strip
+from a literal array — read `spaceStore.viewNav`, which is the same resolved list the routes are
+built from. See docs/architecture/views.md.
 
 **Before adding a relation between two models, read docs/architecture/relations.md.** A connection
 can live in three places — a free-text label, a community-named `RelationshipType`, or a relation
@@ -1743,6 +1753,7 @@ Template extends WeNode:
   - slug: string [we://slug]
   - schema: string = null [we://template_schema]
   - themeId: string [we://theme_id]
+  - role: string [we://template_role]
   Relations:
   - screenshots: HasMany → ImageBlock [we://screenshot]
 
@@ -2221,7 +2232,6 @@ SpaceStore:
   - moduleLaunchers: { id, icon, label, active }[] — launchers for the modules enabled here and available in this space; what the host module rail renders. Pair with { $action: "spaceStore.launchModule", args: ["$mod.id"] }
   - spaceViews: unknown
   - viewNav: unknown
-  - spaceViewSettings: unknown
   - mutedDids: unknown
   - mutedAgents: unknown
   - readMarkers: unknown

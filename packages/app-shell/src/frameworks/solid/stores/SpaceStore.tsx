@@ -36,6 +36,7 @@ import {
   SpacePreference,
 } from '@we/models';
 import type { ResolvedView, TemplateSchema } from '@we/schema-shared';
+import { hasViewsMarker } from '@we/schema-shared';
 import {
   Accessor,
   createContext,
@@ -95,6 +96,13 @@ export interface SpaceListEntry {
    * page rendered per row cannot ask for the sections of "that row's space".
    */
   views: ViewSetting[];
+  /**
+   * Whether the interface this agent sees here has sections at all.
+   *
+   * False for a shell with a route table of its own and no `$views` marker — a showcase template,
+   * say. The settings page reads it so it can explain rather than offer switches nothing reads.
+   */
+  usesSections: boolean;
   /** What the community set, so a picker can label the "follow the space" option with it. */
   defaultTemplateId: string;
   defaultThemeId: string;
@@ -816,6 +824,35 @@ export function SpaceStoreProvider(props: ParentProps) {
       isBuiltIn: (id) => id in viewRegistry,
     });
 
+  /**
+   * Turn a stored override into the id that actually applies.
+   *
+   * `''` defers to the community's choice; {@link AGENT_DEFAULT} defers to this agent's global one,
+   * read live so it tracks a later change rather than freezing today's answer.
+   */
+  const resolveTemplateFor = (uuid: string): string => {
+    const override = templateOverrideFor(uuid);
+    if (override === AGENT_DEFAULT) return templateStore.defaultTemplateId();
+    if (override === FOLLOW_SPACE) return spaceForUuid(uuid)?.defaultTemplateId || '';
+    return override;
+  };
+
+  /**
+   * Does the interface this agent would see in that space have sections at all?
+   *
+   * Not every shell does. The showcase templates have route tables of their own and no `$views`
+   * marker anywhere in them — a Discord-shaped space has channels, not sections, and that is a
+   * legitimate design rather than an omission.
+   *
+   * Carried on the row so the settings page can say so instead of showing a Sections card whose
+   * switches would write a setting nothing reads. A control that does nothing is worse than an
+   * absent one: it teaches the reader something false about the space.
+   */
+  const usesSectionsFor = (uuid: string): boolean => {
+    const schema = templateStore.allTemplates().find((t) => t.id === resolveTemplateFor(uuid));
+    return hasViewsMarker(schema?.routes);
+  };
+
   /** `installedModules` as a set — the shape both the list and the intersection want. */
   const installedSet = createMemo(() => new Set(installedModules()));
 
@@ -842,6 +879,7 @@ export function SpaceStoreProvider(props: ParentProps) {
         // Per row rather than a "current space" memo, for the reason this whole page exists: it
         // configures whichever space you clicked, which is usually not the one you are standing in.
         views: space ? viewSettingsFor(ds.id, space.enabledViews) : [],
+        usesSections: usesSectionsFor(ds.id),
         defaultTemplateId: space?.defaultTemplateId ?? '',
         defaultThemeId: space?.defaultThemeId ?? '',
         templateOverride: templateOverrideFor(ds.id),
@@ -2102,19 +2140,6 @@ export function SpaceStoreProvider(props: ParentProps) {
     else next.add(moduleId);
     await updateSpacePreference(uuid, { mutedModules: JSON.stringify([...next]) } as Partial<SpacePreference>);
   }
-
-  /**
-   * Turn a stored override into the id that actually applies.
-   *
-   * `''` defers to the community's choice; {@link AGENT_DEFAULT} defers to this agent's global one,
-   * read live so it tracks a later change rather than freezing today's answer.
-   */
-  const resolveTemplateFor = (uuid: string): string => {
-    const override = templateOverrideFor(uuid);
-    if (override === AGENT_DEFAULT) return templateStore.defaultTemplateId();
-    if (override === FOLLOW_SPACE) return spaceForUuid(uuid)?.defaultTemplateId || '';
-    return override;
-  };
 
   /**
    * The theme a template asks to be seen in, if this agent allows it and actually has that theme.

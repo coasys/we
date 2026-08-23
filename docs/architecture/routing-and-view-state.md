@@ -14,6 +14,13 @@ sub-pages as child routes. The tabs-and-routing pattern in the generated
 reference is the canonical shape. Back/Forward must work; every path is a
 shareable address.
 
+A space's own sections are tier 1, and that is the reason they are routes rather
+than panels: which section you are looking at is a location, so a link carries
+it. Their _arrangement_ — which sections a space has, and in what order — is not
+view state either; it is a property of the space, stored on it and shared with
+every member. Each agent's private hiding of a section is tier 3. See
+`views.md`.
+
 **2. View state — how it's arranged → query params, via `syncParam`.**
 Selected content type, sort field/direction, active filters, search text: the
 things a link's recipient should see exactly as the sender does. Declared on
@@ -55,8 +62,8 @@ devices.
 **4. Ephemeral — in-the-moment → plain `$localState`.**
 Open modals, in-flight flags, drag state. Survives nothing, and shouldn't.
 
-The dividing question for any field: *"If I sent this URL to someone else,
-should they see the effect?"* Yes → tier 1 or 2. No, but future-me should →
+The dividing question for any field: _"If I sent this URL to someone else,
+should they see the effect?"_ Yes → tier 1 or 2. No, but future-me should →
 tier 3. No one → tier 4.
 
 ## Template & theme suggestions in links

@@ -150,7 +150,30 @@ const draggableRow: SchemaNode = {
   children: [sectionRow],
 };
 
-export const spaceSectionsSection: SchemaNode = {
+/**
+ * What to say when the space's interface has no sections at all.
+ *
+ * A shell with a route table of its own — any of the showcase templates — is a legitimate design,
+ * not an omission: a Discord-shaped space has channels, not sections. Saying so beats showing
+ * switches that write a setting nothing reads, which would teach the reader something false about
+ * the space.
+ */
+const noSectionsNotice: SchemaNode = {
+  type: 'Column',
+  props: { gap: '200', p: '400', bg: 'surface-sunken', r: '300', border: '1px solid border' },
+  children: [
+    { type: 'we-text', props: { variant: 'label' }, children: ['Sections'] },
+    {
+      type: 'we-text',
+      props: { variant: 'footnote', color: 'text-faint' },
+      children: [
+        'The template this space uses arranges its own pages rather than drawing from a section list, so there is nothing to configure here.',
+      ],
+    },
+  ],
+};
+
+const sectionsCard: SchemaNode = {
   type: 'Column',
   props: { gap: '200', p: '400', bg: 'surface-sunken', r: '300', border: '1px solid border' },
   children: [
@@ -193,4 +216,9 @@ export const spaceSectionsSection: SchemaNode = {
       ],
     },
   ],
+};
+
+export const spaceSectionsSection: SchemaNode = {
+  type: '$if',
+  props: { condition: '$space.usesSections', then: sectionsCard, else: noSectionsNotice },
 };

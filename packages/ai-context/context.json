@@ -4893,6 +4893,12 @@
           "type": "string",
           "predicate": "we://theme_id",
           "required": false
+        },
+        {
+          "name": "role",
+          "type": "string",
+          "predicate": "we://template_role",
+          "required": false
         }
       ],
       "relations": [
@@ -6358,9 +6364,6 @@
           "type": "array"
         },
         "viewNav": {
-          "type": "array"
-        },
-        "spaceViewSettings": {
           "type": "array"
         },
         "mutedDids": {
