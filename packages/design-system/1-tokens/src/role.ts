@@ -175,6 +175,20 @@ export const role = {
    * value is often too light to read, which is why templates reached past it for primary-600/700.
    * A theme with a pale accent has to move this further than `accent` to stay legible; one with a
    * dark accent may set them equal. Only a second role can say either.
+   *
+   * ## A scale position here, where `accent` needed an absolute lightness — and why that is right
+   *
+   * `accent` left the ramp for `FILL_LIGHTNESS` because a fill must *not* invert: a brand's violet
+   * is that violet in a light theme and in a dark one. This is the opposite case, and reading them
+   * as inconsistent has the reasoning backwards. This is a foreground on the *page*, and the page
+   * inverts, so a value that stayed put would be dark text on a dark background in half the themes.
+   * Step 700 is a long way from 500 precisely because it swings: L 42% light, L 58% dark, which is
+   * the accent reading dark on white and light on black. That is what a scale position is for.
+   *
+   * The rule underneath both: a role that names a *thing* is absolute, and a role that names a
+   * *relationship to the surface it sits on* is a scale position. `contrast.test.ts` measures every
+   * one of these against the background it is declared to sit on, in every built-in theme, which is
+   * what makes the claim checkable rather than an argument.
    */
   accentText: 'var(--we-color-primary-700)',
   /**
@@ -262,12 +276,21 @@ export const role = {
   // FILL_LIGHTNESS in color.ts. Each sits where its own hue is most itself rather than where a
   // shared step would put it: gold at the violet's lightness is a stone, and violet at the gold's
   // is a lilac. At step 700 a dark theme's destructive button was pale pink rather than red.
+  //
+  // Each takes its lightness from a variable with the FILL_LIGHTNESS figure as the fallback, exactly
+  // as `accent` does. The accent got that treatment first because it is the one a theme author
+  // reaches for, and the asymmetry then became the complaint: a theme could brighten its brand and
+  // not its destructive button, so a bright theme's delete button stayed the one muted control on
+  // the screen and the only way out was pinning the role — which discards the derivations that
+  // keep its label readable. The chroma ceiling follows the lightness (see applyChromaCeilings), so
+  // brightening one of these gets the colour actually available up there rather than the figure
+  // measured where it used to sit.
   danger:
-    'oklch(62% calc(var(--we-color-saturation) / 100 * var(--we-color-danger-fill-chroma-max, 0.2491)) var(--we-color-danger-hue))',
+    'oklch(calc(var(--we-danger-lightness, 62) * 1%) calc(var(--we-color-saturation) / 100 * var(--we-color-danger-fill-chroma-max, 0.2491)) var(--we-color-danger-hue))',
   success:
-    'oklch(75% calc(var(--we-color-saturation) / 100 * var(--we-color-success-fill-chroma-max, 0.2365)) var(--we-color-success-hue))',
+    'oklch(calc(var(--we-success-lightness, 75) * 1%) calc(var(--we-color-saturation) / 100 * var(--we-color-success-fill-chroma-max, 0.2365)) var(--we-color-success-hue))',
   warning:
-    'oklch(76% calc(var(--we-color-saturation) / 100 * var(--we-color-warning-fill-chroma-max, 0.1558)) var(--we-color-warning-hue))',
+    'oklch(calc(var(--we-warning-lightness, 76) * 1%) calc(var(--we-color-saturation) / 100 * var(--we-color-warning-fill-chroma-max, 0.1558)) var(--we-color-warning-hue))',
 
   /**
    * Hover and pressed for each fill, as steps *from* it.
@@ -337,6 +360,9 @@ export const role = {
   // Green and yellow carry far more luminance than red at the same step, so -600 measured 3.0 and
   // 3.7 against their own tints where danger-600 measured comfortably over 4.5. These are the
   // lowest steps that clear AA in every built-in theme.
+  //
+  // Scale positions rather than absolute lightnesses, for the reason given on `accentText`: these
+  // sit on the status *tints*, which invert with the theme, so these have to invert with them.
   successText: 'var(--we-color-success-700)',
   warningText: 'var(--we-color-warning-700)',
 } as const;

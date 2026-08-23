@@ -106,6 +106,9 @@ export type ThemeOverrides = {
    * `warning` sit where their hues live and are not brand decisions to be dragged around.
    */
   accentLightness?: number; // --we-accent-lightness
+  dangerLightness?: number; // --we-danger-lightness
+  successLightness?: number; // --we-success-lightness
+  warningLightness?: number; // --we-warning-lightness
   /**
    * Which end of the ramp the scale starts from. The whole of "is this a dark theme".
    *

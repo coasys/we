@@ -179,6 +179,9 @@ const THEME_CSS_MAP: Record<ParametricKey, string> = {
   saturation: '--we-color-saturation',
   neutralSaturation: '--we-color-neutral-saturation',
   accentLightness: '--we-accent-lightness',
+  dangerLightness: '--we-danger-lightness',
+  successLightness: '--we-success-lightness',
+  warningLightness: '--we-warning-lightness',
 
   borderWidth: '--we-theme-border-width',
   focusRingWidth: '--we-theme-focus-ring-width',
@@ -680,7 +683,9 @@ function applyChromaCeilings(root: HTMLElement, theme: ThemeOverrides): string[]
       told it had less colour available than it does, and a bright green would come out muted at
       exactly the point somebody had asked for it to be bright.
     */
-    const declared = family === 'primary' ? theme.accentLightness : undefined;
+    const declared = FILL_LIGHTNESS_KEY[family as keyof typeof FILL_LIGHTNESS_KEY]
+      ? theme[FILL_LIGHTNESS_KEY[family as keyof typeof FILL_LIGHTNESS_KEY]]
+      : undefined;
     const fillLightness =
       declared !== undefined ? declared / 100 : FILL_LIGHTNESS[family as keyof typeof FILL_LIGHTNESS];
     if (fillLightness === undefined) continue;
@@ -690,6 +695,19 @@ function applyChromaCeilings(root: HTMLElement, theme: ThemeOverrides): string[]
   }
   return written;
 }
+
+/**
+ * Which theme parameter moves each family's fill, when one is set.
+ *
+ * `primary` is spelt `accent` because that is what the role is called — the parameter names the
+ * role, not the hue family it happens to be built from, and a theme author sets an accent.
+ */
+const FILL_LIGHTNESS_KEY = {
+  primary: 'accentLightness',
+  danger: 'dangerLightness',
+  success: 'successLightness',
+  warning: 'warningLightness',
+} as const satisfies Record<keyof typeof FILL_LIGHTNESS, keyof ThemeOverrides>;
 
 /** Where chroma peaks on the ramp, and so where the family's ceiling is measured. */
 const CHROMA_PEAK_LIGHTNESS = 0.6;

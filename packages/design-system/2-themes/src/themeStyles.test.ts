@@ -333,6 +333,25 @@ describe('a preset and a theme both pinning roles', () => {
     expect(style['--we-scrollbar-thumb-background']).toBe(component.scrollbar.thumbBackground);
   });
 
+  /*
+    `accent` got a themeable lightness first and the other three fills did not, so a theme could
+    brighten its brand and not its destructive button — and the only way to move one was to pin the
+    role, which discards the label and state derivations that keep the button usable. These assert
+    the plumbing for all four, since three of them are new and nothing else reads them.
+  */
+  it('emits a lightness variable for every fill, not just the accent', () => {
+    const style = themeParametersToStyle({
+      accentLightness: 70,
+      dangerLightness: 48,
+      successLightness: 66,
+      warningLightness: 80,
+    });
+    expect(style['--we-accent-lightness']).toBe('70');
+    expect(style['--we-danger-lightness']).toBe('48');
+    expect(style['--we-success-lightness']).toBe('66');
+    expect(style['--we-warning-lightness']).toBe('80');
+  });
+
   it('still lets the theme win on the role it does pin', () => {
     expect(themeParametersToStyle({ themeName: 'channels', roles: { accent: '#ff0000' } })['--we-role-accent']).toBe(
       '#ff0000',

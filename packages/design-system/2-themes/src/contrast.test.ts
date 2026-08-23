@@ -145,18 +145,26 @@ function resolve(value: string, theme: ThemeOverrides): Rgba | null {
     number is used as-is: that is the form at the very ends, where the taper reaches zero.
   */
   /*
-    The lightness is either a literal (`55%`) or the accent's variable with the theme's own value as
-    its fallback (`calc(var(--we-accent-lightness, 55) * 1%)`). The second form is what lets an
-    author brighten the accent — see `accentLightness` — and it resolves to the theme's setting when
-    it has one, or to the fallback the preset wrote.
+    The lightness is either a literal (`55%`) or a fill's own variable with the theme's value as its
+    fallback (`calc(var(--we-accent-lightness, 55) * 1%)`, and the same for danger/success/warning).
+    The second form is what lets an author brighten a fill without pinning the role — which would
+    discard the label and state derivations that keep it usable. It resolves to the theme's setting
+    when it has one, or to the fallback the preset wrote.
+
+    The variable is captured rather than spelt out, so a fourth one added to `role.ts` is read here
+    by existing instead of silently falling through to the literal branch and being measured at the
+    wrong lightness.
   */
   const pinned =
-    /^oklch\((?:([\d.]+)%|calc\(var\(--we-accent-lightness,\s*([\d.]+)\)\s*\*\s*1%\))\s+(.+?)\s+var\(--we-color-([a-z]+)-hue\)\s*(?:\/\s*([\d.%]+))?\)$/.exec(
+    /^oklch\((?:([\d.]+)%|calc\(var\(--we-([a-z]+)-lightness,\s*([\d.]+)\)\s*\*\s*1%\))\s+(.+?)\s+var\(--we-color-([a-z]+)-hue\)\s*(?:\/\s*([\d.%]+))?\)$/.exec(
       value.trim(),
     );
   if (pinned) {
-    const [, literalL, fallbackL, chromaExpr, hueFamily, alpha] = pinned;
-    const l = literalL ?? String(theme.accentLightness ?? parseFloat(fallbackL));
+    const [, literalL, lightnessVar, fallbackL, chromaExpr, hueFamily, alpha] = pinned;
+    const declaredL = lightnessVar
+      ? (theme[`${lightnessVar}Lightness` as keyof ThemeOverrides] as number | undefined)
+      : undefined;
+    const l = literalL ?? String(declaredL ?? parseFloat(fallbackL));
     const lightnessFraction = parseFloat(l) / 100;
     const hue = hueOf(hueFamily, theme);
 
@@ -184,11 +192,11 @@ function resolve(value: string, theme: ThemeOverrides): Rgba | null {
       ? parseFloat(chromaExpr)
       : isFill
         ? (saturationOf(hueFamily, theme) / 100) *
-          // Mirrors applyChromaCeilings: the accent's ceiling follows its own lightness, which a
-          // theme can move; the status fills sit at the shared FILL_LIGHTNESS for their family.
+          // Mirrors applyChromaCeilings: a fill's ceiling follows its own lightness where the theme
+          // moved it, and the family's shared FILL_LIGHTNESS where it did not.
           maxChromaFor(
-            hueFamily === 'primary' && theme.accentLightness !== undefined
-              ? theme.accentLightness / 100
+            declaredL !== undefined
+              ? declaredL / 100
               : (FILL_LIGHTNESS[hueFamily as keyof typeof FILL_LIGHTNESS] ?? lightnessFraction),
             hue,
           ) *

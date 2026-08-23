@@ -1447,6 +1447,23 @@ export function ThemePanel() {
               </Column>
               <Column gap="200">
                 <we-text fontSize="200" color="text-faint">
+                  Status fills
+                </we-text>
+                {/*
+                  The same axis for the other three fills, which had the same gap for longer.
+
+                  Each default is where its own hue is most itself (FILL_LIGHTNESS in @we/tokens) —
+                  they differ because gold at violet's lightness is a stone. A theme that brightened
+                  its accent and left these alone used to end up with a delete button that read as
+                  the one muted control on the screen, and the only way out was pinning the role,
+                  which throws away the derivations that keep its label readable.
+                */}
+                {percentSlider('Danger', 'dangerLightness', 20, 95, 62, '')}
+                {percentSlider('Success', 'successLightness', 20, 95, 75, '')}
+                {percentSlider('Warning', 'warningLightness', 20, 95, 76, '')}
+              </Column>
+              <Column gap="200">
+                <we-text fontSize="200" color="text-faint">
                   Lightness range
                 </we-text>
                 {/*

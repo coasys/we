@@ -151,9 +151,9 @@ exports[`token CSS generation > color.css — hues, lightness ramp, palettes, ro
   --we-role-overlay: oklch(14.6% calc(var(--we-color-neutral-saturation) / 100 * var(--we-color-neutral-chroma-max, 0.18) * 0.2920) var(--we-color-neutral-hue) / 60%);
   --we-role-shadow-color: oklch(14.6% calc(var(--we-color-neutral-saturation) / 100 * var(--we-color-neutral-chroma-max, 0.18) * 0.2920) var(--we-color-neutral-hue));
   --we-role-focus: var(--we-role-accent);
-  --we-role-danger: oklch(62% calc(var(--we-color-saturation) / 100 * var(--we-color-danger-fill-chroma-max, 0.2491)) var(--we-color-danger-hue));
-  --we-role-success: oklch(75% calc(var(--we-color-saturation) / 100 * var(--we-color-success-fill-chroma-max, 0.2365)) var(--we-color-success-hue));
-  --we-role-warning: oklch(76% calc(var(--we-color-saturation) / 100 * var(--we-color-warning-fill-chroma-max, 0.1558)) var(--we-color-warning-hue));
+  --we-role-danger: oklch(calc(var(--we-danger-lightness, 62) * 1%) calc(var(--we-color-saturation) / 100 * var(--we-color-danger-fill-chroma-max, 0.2491)) var(--we-color-danger-hue));
+  --we-role-success: oklch(calc(var(--we-success-lightness, 75) * 1%) calc(var(--we-color-saturation) / 100 * var(--we-color-success-fill-chroma-max, 0.2365)) var(--we-color-success-hue));
+  --we-role-warning: oklch(calc(var(--we-warning-lightness, 76) * 1%) calc(var(--we-color-saturation) / 100 * var(--we-color-warning-fill-chroma-max, 0.1558)) var(--we-color-warning-hue));
   --we-role-danger-hover: oklch(from var(--we-role-danger) calc(l + var(--we-state-hover-danger, var(--we-state-hover))) c h);
   --we-role-danger-active: oklch(from var(--we-role-danger) calc(l + var(--we-state-active-danger, var(--we-state-active))) c h);
   --we-role-success-hover: oklch(from var(--we-role-success) calc(l + var(--we-state-hover-success, var(--we-state-hover))) c h);
