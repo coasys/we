@@ -1148,7 +1148,18 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
       progress, and deliberately so — the bar's `hasActivity` guard is the same either way.
     */
     activity: () => interpretation?.activity() ?? [],
+    /**
+     * The passes still in flight, and the ones already finished.
+     *
+     * Split rather than filtered in the schema because the two are shown differently: running
+     * passes are always listed, finished ones fold behind a count. A long call runs a pass every
+     * few minutes and each completed one used to stay on screen, so the bar grew all conversation
+     * and pushed the call's own chrome down to make room for a history nobody asked to see.
+     */
+    runningPasses: () => (interpretation?.activity() ?? []).filter((pass) => pass.running),
+    settledPasses: () => (interpretation?.activity() ?? []).filter((pass) => !pass.running),
     activityCount: () => (interpretation?.activity() ?? []).filter((pass) => pass.running).length,
+    settledCount: () => (interpretation?.activity() ?? []).filter((pass) => !pass.running).length,
     /**
      * Whether the status bar should exist at all.
      *

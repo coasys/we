@@ -47,15 +47,33 @@ const STATUS_RADIUS = 'var(--we-theme-control-radius, var(--we-radius-400))';
  */
 const STATUS_SURFACE = { bg: 'page', border: '1px solid border', shadow: 'md' } as const;
 
-/** A spinner while it runs, the outcome's own glyph once it stops. */
+/**
+ * How big the leading glyph is, whichever glyph it happens to be.
+ *
+ * Stated once and applied to both, because the spinner and the icon are swapped in place when a
+ * pass settles. `we-spinner` resolves `xs` to `--we-size-xs`; `we-icon` left unsized falls back to
+ * something larger, so the row grew by a few pixels at the exact moment the pass completed — a
+ * twitch on every row, in a bar that is meant to be glanceable.
+ */
+const GLYPH_SIZE = 'xs';
+
+/**
+ * A spinner while it runs, the outcome's own glyph once it stops.
+ *
+ * Three outcomes, three colours, and the middle one is the point: `done` is green because something
+ * was accomplished, `failed` is red because something broke, and `skipped` stays muted because "the
+ * conversation had nothing extractable in it" is an ordinary answer and colouring it would make a
+ * quiet meeting look like a problem.
+ */
 const phaseIcon: SchemaNode = {
   type: '$if',
   props: {
     condition: '$pass.running',
-    then: { type: 'we-spinner', props: { size: 'xs' } },
+    then: { type: 'we-spinner', props: { size: GLYPH_SIZE } },
     else: {
       type: 'we-icon',
       props: {
+        size: GLYPH_SIZE,
         name: {
           $if: {
             condition: { $eq: ['$pass.phase', 'failed'] },
@@ -65,9 +83,13 @@ const phaseIcon: SchemaNode = {
             },
           },
         },
-        // A failure is the one outcome worth colouring. "Nothing to extract" is an ordinary answer
-        // and painting it amber would make a quiet conversation look like a problem.
-        color: { $if: { condition: { $eq: ['$pass.phase', 'failed'] }, then: 'danger-text', else: 'text-muted' } },
+        color: {
+          $if: {
+            condition: { $eq: ['$pass.phase', 'failed'] },
+            then: 'danger-text',
+            else: { $if: { condition: { $eq: ['$pass.phase', 'done'] }, then: 'success-text', else: 'text-muted' } },
+          },
+        },
       },
     },
   },
@@ -114,56 +136,25 @@ const passRow: SchemaNode = {
 };
 
 /**
- * The disclosure control.
+ * The caret — an indicator, not a control.
  *
- * Present for every row and disabled where there is nothing behind it, with a tooltip that says
- * which of the two reasons applies. A pass of somebody else's has no exchange on this machine at
- * all; a pass of this agent's might simply not have reached the model yet.
+ * It was a button, and the whole row is one now, so a button here would nest one inside another:
+ * invalid, and the inner one swallows clicks the outer was meant to get. It keeps its position and
+ * its job of showing which way the row will move; the click target is the row.
  */
-const detailToggle: SchemaNode = {
-  type: 'we-tooltip',
+const disclosureCaret: SchemaNode = {
+  type: 'we-icon',
   props: {
-    placement: 'bottom',
-    title: {
+    size: GLYPH_SIZE,
+    color: { $if: { condition: '$pass.hasDetail', then: 'text-muted', else: 'text-faint' } },
+    name: {
       $if: {
-        condition: '$pass.hasDetail',
-        then: 'Show what the model was asked',
-        else: {
-          $if: {
-            condition: '$pass.mine',
-            then: 'Nothing sent to the model yet',
-            else: 'Only the person running a pass sees what it sent',
-          },
-        },
+        condition: { $in: ['$pass.passId', { $local: 'openPasses' }] },
+        then: 'caret-up',
+        else: 'caret-down',
       },
     },
   },
-  children: [
-    {
-      type: 'we-button',
-      props: {
-        variant: 'ghost',
-        size: 'xs',
-        square: true,
-        disabled: { $not: '$pass.hasDetail' },
-        onClick: { $toggleLocalIn: 'openPasses', value: '$pass.passId' },
-      },
-      children: [
-        {
-          type: 'we-icon',
-          props: {
-            name: {
-              $if: {
-                condition: { $in: ['$pass.passId', { $local: 'openPasses' }] },
-                then: 'caret-up',
-                else: 'caret-down',
-              },
-            },
-          },
-        },
-      ],
-    },
-  ],
 };
 
 /** The small caps heading above each pane. */
@@ -176,15 +167,15 @@ function paneLabel(label: string): SchemaNode {
 }
 
 /**
- * The prompt — prose, so rendered as prose.
+ * The prompt — also JSON, so given the same treatment as the response.
  *
- * It was a `we-code` block, which was wrong twice over. A prompt is not code, and `we-code[block]`
- * sets `white-space: pre` with `overflow-x: auto` on `[part=base]` — so it never wrapped, and
- * because a primitive's `:host` overflow is not DS-managed, the unwrapped line escaped the bar
- * entirely and ran off the screen until a hover reflowed it.
+ * It looked like prose and is not: `build_interpretation_input` hands the model a JSON object
+ * carrying the transcript, the target shapes and their hints. Rendered as text it was one enormous
+ * escaped string, which is how it came to overflow the bar in the first place.
  *
- * `pre-wrap` keeps the prompt's own line breaks, which carry its structure, while allowing long
- * lines to wrap. `break-word` handles the URIs, which are long and have nowhere natural to break.
+ * Same component as the response, so the two panes read as one exchange rather than two formats —
+ * and the fold arrows matter more here, since the shapes section dwarfs the turns and is rarely
+ * what somebody opened this to check.
  */
 const promptPane: SchemaNode = {
   type: '$if',
@@ -196,21 +187,13 @@ const promptPane: SchemaNode = {
       children: [
         paneLabel('Prompt'),
         {
-          // Capped and scrolled rather than clipped: a prompt runs to thousands of words and the
-          // point of showing it is that somebody can read all of it.
-          type: 'we-scroll-area',
-          props: { maxHeight: '200px', width: '100%' },
-          children: [
-            {
-              type: 'we-text',
-              props: {
-                variant: 'footnote',
-                width: '100%',
-                styles: { whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontFamily: 'var(--we-font-mono)' },
-              },
-              children: ['$pass.prompt'],
-            },
-          ],
+          type: 'CodeEditor',
+          props: {
+            code: '$pass.prompt',
+            language: 'json',
+            readOnly: true,
+            styles: { maxHeight: '240px', overflow: 'auto', width: '100%' },
+          },
         },
       ],
     },
@@ -332,65 +315,151 @@ const passDetail: SchemaNode = {
   },
 };
 
-/** A row, its disclosure, and what the disclosure opens. */
+/**
+ * A row, and what it opens.
+ *
+ * The whole row is the click target. It was a caret at the far right, which is a small target for a
+ * gesture that has a whole line's worth of obvious surface — and the line reads as one thing, so
+ * only part of it responding is the sort of detail that makes an interface feel arbitrary.
+ *
+ * `variant: 'bare'` because this must be a real `<button>` — keyboard-activatable, correctly
+ * announced, honouring `disabled` — while looking like nothing at all. A `Row` with an `onClick`
+ * would look identical and be none of those things.
+ *
+ * Disabled where there is nothing to open, with the tooltip saying which of the two reasons applies:
+ * somebody else's pass never sent its exchange to this machine, and one's own may not have reached
+ * the model yet.
+ */
 const passEntry: SchemaNode = {
   type: 'Column',
   props: { gap: '0', width: '100%' },
   children: [
     {
-      type: 'Row',
-      props: { ay: 'center', gap: '200', width: '100%' },
-      children: [passRow, detailToggle],
+      type: 'we-tooltip',
+      props: {
+        placement: 'bottom',
+        title: {
+          $if: {
+            condition: '$pass.hasDetail',
+            then: 'Show what the model was asked',
+            else: {
+              $if: {
+                condition: '$pass.mine',
+                then: 'Nothing sent to the model yet',
+                else: 'Only the person running a pass sees what it sent',
+              },
+            },
+          },
+        },
+      },
+      children: [
+        {
+          type: 'we-button',
+          props: {
+            variant: 'bare',
+            width: '100%',
+            disabled: { $not: '$pass.hasDetail' },
+            onClick: { $toggleLocalIn: 'openPasses', value: '$pass.passId' },
+          },
+          children: [
+            {
+              type: 'Row',
+              props: { ay: 'center', gap: '200', width: '100%' },
+              children: [passRow, disclosureCaret],
+            },
+          ],
+        },
+      ],
     },
     passDetail,
   ],
 };
 
+/** The passes still in flight. Always listed — this is the half somebody is waiting on. */
+const runningList: SchemaNode = {
+  type: '$each',
+  props: { items: { $store: 'modules.transcribe.runningPasses' }, as: 'pass' },
+  children: [passEntry],
+};
+
 /**
- * The collapsed summary, shown only when more than one pass is in flight.
+ * Everything already finished, folded behind a count.
  *
- * A count rather than a stack, because concurrent passes are the case where a growing bar would
- * shove the call's controls around while somebody was aiming at them. Clicking it opens the list;
- * the rows are the same ones a single pass shows.
+ * A long call runs a pass every few minutes, and each one that completed stayed on screen — so the
+ * bar grew all conversation, pushing the call's own chrome down to make room for a history nobody
+ * had asked to see. Collapsing them keeps the bar the size of what is happening now while leaving
+ * the record one click away.
+ *
+ * Deliberately not auto-dismissed after a delay. A result that vanishes on a timer is a result
+ * somebody can miss entirely, and "what did that extract?" is asked minutes later as often as
+ * immediately.
  */
-const collapsedSummary: SchemaNode = {
-  type: 'we-button',
-  props: { variant: 'bare', width: '100%', onClick: { $toggleLocal: 'listOpen' } },
-  children: [
-    {
-      type: 'Row',
-      props: { ay: 'center', gap: '200', width: '100%' },
+const settledSection: SchemaNode = {
+  type: '$if',
+  props: {
+    condition: { $store: 'modules.transcribe.settledCount' },
+    then: {
+      type: 'Column',
+      props: { gap: '200', width: '100%' },
       children: [
-        { type: 'we-spinner', props: { size: 'xs' } },
         {
-          type: 'we-text',
-          props: { variant: 'footnote', flex: '1', textAlign: 'left' },
+          type: 'we-button',
+          props: { variant: 'bare', width: '100%', onClick: { $toggleLocal: 'historyOpen' } },
           children: [
-            { $store: 'modules.transcribe.activityCount' },
-            ' ',
             {
-              $plural: {
-                count: { $store: 'modules.transcribe.activityCount' },
-                one: 'extraction running',
-                other: 'extractions running',
-              },
+              type: 'Row',
+              props: { ay: 'center', gap: '200', width: '100%' },
+              children: [
+                { type: 'we-icon', props: { size: GLYPH_SIZE, name: 'check-circle', color: 'text-faint' } },
+                {
+                  type: 'we-text',
+                  props: { variant: 'footnote', color: 'text-muted', flex: '1', textAlign: 'left' },
+                  children: [
+                    { $store: 'modules.transcribe.settledCount' },
+                    ' ',
+                    {
+                      $plural: {
+                        count: { $store: 'modules.transcribe.settledCount' },
+                        one: 'extraction processed',
+                        other: 'extractions processed',
+                      },
+                    },
+                  ],
+                },
+                {
+                  type: 'we-icon',
+                  props: {
+                    size: GLYPH_SIZE,
+                    color: 'text-muted',
+                    name: { $if: { condition: { $local: 'historyOpen' }, then: 'caret-up', else: 'caret-down' } },
+                  },
+                },
+              ],
             },
           ],
         },
         {
-          type: 'we-icon',
-          props: { name: { $if: { condition: { $local: 'listOpen' }, then: 'caret-up', else: 'caret-down' } } },
+          type: '$if',
+          props: {
+            condition: { $local: 'historyOpen' },
+            enterTransition: { type: 'reveal', duration: 200 },
+            exitTransition: { type: 'reveal', duration: 160 },
+            then: {
+              type: 'Column',
+              props: { gap: '200', width: '100%' },
+              children: [
+                {
+                  type: '$each',
+                  props: { items: { $store: 'modules.transcribe.settledPasses' }, as: 'pass' },
+                  children: [passEntry],
+                },
+              ],
+            },
+          },
         },
       ],
     },
-  ],
-};
-
-/** Every row, in the store's order — running first, then most recent. */
-const passList: SchemaNode = {
-  type: '$each',
-  props: { items: { $store: 'modules.transcribe.activity' }, as: 'pass' },
-  children: [passEntry],
+  },
 };
 
 /**
@@ -421,8 +490,14 @@ export const extractionStatus: SchemaNode = {
          * exist yet. `$toggleLocalIn` writes it and `$in` reads it back.
          */
         openPasses: { type: 'array', initial: [] },
-        /** Whether the collapsed multi-pass summary has been expanded into its list. */
-        listOpen: { type: 'boolean', initial: false },
+        /**
+         * Whether the finished-passes history is open.
+         *
+         * Starts closed, and stays closed as passes complete. Opening it is a deliberate act — the
+         * bar's job is to report what is happening, and a history that unfolded itself every time
+         * something finished would be the growth this collapse exists to stop.
+         */
+        historyOpen: { type: 'boolean', initial: false },
       },
       props: {
         ...STATUS_SURFACE,
@@ -435,31 +510,7 @@ export const extractionStatus: SchemaNode = {
         minWidth: '260px',
         maxWidth: '520px',
       },
-      children: [
-        {
-          type: '$if',
-          props: {
-            // One pass is its own row; several collapse to a count that opens.
-            condition: { $gt: [{ $store: 'modules.transcribe.activityCount' }, 1] },
-            then: {
-              type: 'Column',
-              props: { gap: '200', width: '100%' },
-              children: [
-                collapsedSummary,
-                {
-                  type: '$animate',
-                  props: {
-                    condition: { $local: 'listOpen' },
-                    enterTransition: { type: 'reveal', duration: 200 },
-                  },
-                  children: [{ type: 'Column', props: { gap: '300', width: '100%' }, children: [passList] }],
-                },
-              ],
-            },
-            else: passList,
-          },
-        },
-      ],
+      children: [runningList, settledSection],
     },
   },
 };

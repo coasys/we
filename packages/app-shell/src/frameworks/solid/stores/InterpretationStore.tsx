@@ -101,18 +101,19 @@ export interface InterpretationStore {
 const InterpretationStoreContext = createContext<InterpretationStore>();
 
 /**
- * The model's answer, indented if it is JSON and left alone if it is not.
+ * Indented if it is JSON, left alone if it is not.
  *
- * An interpretation response *is* JSON — it is parsed into proposed instances — but it arrives as
- * one unbroken line, which is unreadable at any width and overflows anything it is put in. Indenting
- * is what makes it a document rather than a string.
+ * Both halves of the exchange are JSON. The response is parsed into proposed instances; the prompt
+ * is the object `build_interpretation_input` assembles from the transcript, the target shapes and
+ * their hints. Both arrive as one unbroken line, which is unreadable at any width and overflows
+ * whatever it is put in — indenting is what makes each a document rather than a string.
  *
  * Left verbatim when it will not parse, and that case is worth keeping rather than swallowing: a
  * model that returned prose, or JSON wrapped in a code fence, is exactly the failure somebody opens
  * this pane to diagnose. Showing them the raw text answers the question; showing them nothing, or a
  * parse error, does not.
  */
-function formatResponse(raw: string): string {
+function formatJson(raw: string): string {
   if (!raw) return '';
   try {
     return JSON.stringify(JSON.parse(raw), null, 2);
@@ -315,8 +316,8 @@ export function InterpretationStoreProvider(props: ParentProps) {
           label: labelFor(row.phase, name, mine, count),
           elapsed: running ? formatElapsed(at - (startedAt.get(row.passId) ?? row.at)) : '',
           detail: row.detail ?? '',
-          prompt: row.llm?.prompt ?? '',
-          response: formatResponse(row.llm?.response ?? ''),
+          prompt: formatJson(row.llm?.prompt ?? ''),
+          response: formatJson(row.llm?.response ?? ''),
           hasDetail: !!(row.llm?.prompt || row.llm?.response),
         };
       });
