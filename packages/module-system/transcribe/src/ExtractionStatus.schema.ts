@@ -120,35 +120,37 @@ const runnerFace: SchemaNode = {
 };
 
 /**
- * One pass, as a single line.
+ * The row's contents, laid out by the button that wraps them.
  *
- * The elapsed time renders only while the pass is running, and the store returns `''` once it has
- * settled — a finished pass reports what it did, and how long it took stops being the question.
+ * These used to sit in a `Row` inside the button, which never stretched: `we-button`'s
+ * `[part='base']` is `all: unset`, so it shrink-wraps its content and a child asking for
+ * `width: '100%'` resolved that against the shrunken box. The caret ended up immediately after the
+ * text rather than at the end of the row.
+ *
+ * The button lays them out directly instead — it takes the same DS flex props, which is what every
+ * other full-width button here does (`width: '100%'` plus an alignment). One box fewer, and the
+ * caret lands under the history row's caret where it belongs.
+ *
+ * The elapsed time renders only while the pass is running — the store returns `''` once it has
+ * settled, since a finished pass reports what it did and how long it took stops being the question.
  */
-const passRow: SchemaNode = {
-  type: 'Row',
-  // `flex: '1'` rather than `width: '100%'`: as a flex child the latter still shrinks to content,
-  // which left the caret sitting immediately after the text instead of at the row's end. Growing to
-  // fill pushes it to the right edge, where it lines up with the history row's caret below.
-  props: { ay: 'center', gap: '200', flex: '1' },
-  children: [
-    phaseIcon,
-    runnerFace,
-    { type: 'we-text', props: { fontSize: '200', truncate: true, flex: '1' }, children: ['$pass.label'] },
-    {
-      type: '$if',
-      props: {
-        condition: '$pass.elapsed',
-        then: {
-          // Tabular, so the seconds column does not jitter the row every time it ticks.
-          type: 'we-text',
-          props: { fontSize: '200', color: 'text-faint', styles: { fontVariantNumeric: 'tabular-nums' } },
-          children: ['$pass.elapsed'],
-        },
+const passRowChildren: SchemaNode[] = [
+  phaseIcon,
+  runnerFace,
+  { type: 'we-text', props: { fontSize: '200', truncate: true, flex: '1' }, children: ['$pass.label'] },
+  {
+    type: '$if',
+    props: {
+      condition: '$pass.elapsed',
+      then: {
+        // Tabular, so the seconds column does not jitter the row every time it ticks.
+        type: 'we-text',
+        props: { fontSize: '200', color: 'text-faint', styles: { fontVariantNumeric: 'tabular-nums' } },
+        children: ['$pass.elapsed'],
       },
     },
-  ],
-};
+  },
+];
 
 /**
  * The caret — an indicator, not a control.
@@ -306,9 +308,14 @@ const responsePane: SchemaNode = codePane({
 /**
  * "Let the space see this too."
  *
- * Offered here, beneath somebody's own prompt, rather than in settings — because this is the moment
- * the question arises. You are reading what the model was asked; the four other people in the call
- * are looking at a row that says the same thing happened and cannot open it.
+ * Offered here, beneath somebody's own exchange, rather than in settings — because this is the
+ * moment the question arises. You are reading what the model was asked and what it answered; the
+ * four other people in the call are looking at a row that says the same thing happened and cannot
+ * open it.
+ *
+ * The label names both halves. It used to say "your prompts", which was simply inaccurate — the
+ * relay sends the response as well, and a switch that under-describes what it shares is the one
+ * kind of inaccuracy worth being pedantic about.
  *
  * Only on a pass of this agent's, since it governs what *this* machine broadcasts and would be
  * meaningless attached to somebody else's row. It applies to every pass this agent runs, not just
@@ -326,7 +333,7 @@ const shareToggle: SchemaNode = {
         {
           type: 'we-text',
           props: { fontSize: '200', color: 'text-muted' },
-          children: ['Share your prompts with this space'],
+          children: ['Share prompts and responses with this space'],
         },
         {
           type: 'we-switch',
@@ -425,16 +432,16 @@ const passEntry: SchemaNode = {
           props: {
             variant: 'bare',
             width: '100%',
+            // The button is the row. `ax: 'start'` alongside a full width is the pattern every other
+            // full-width button here uses, and it is what makes the base part lay its children out
+            // across the whole width instead of shrink-wrapping them.
+            ax: 'start',
+            ay: 'center',
+            gap: '200',
             disabled: { $not: '$pass.hasDetail' },
             onClick: { $toggleLocalIn: 'openPasses', value: '$pass.passId' },
           },
-          children: [
-            {
-              type: 'Row',
-              props: { ay: 'center', gap: '200', width: '100%' },
-              children: [passRow, disclosureCaret],
-            },
-          ],
+          children: [...passRowChildren, disclosureCaret],
         },
       ],
     },
@@ -595,6 +602,24 @@ export const extractionStatus: SchemaNode = {
         // stretching the bar past the one above it.
         minWidth: '260px',
         maxWidth: '520px',
+        /*
+          Full width as soon as anything is open, rather than growing with each pane.
+
+          Sized to content, the bar stepped wider every time a disclosure was opened — expand a row
+          and it jumps, open the prompt beneath it and it jumps again. Each step moves a floating
+          object somebody is reading.
+
+          Taking the cap the moment the first row opens makes it one movement instead of several:
+          every pane after that renders into space the bar already has. Closed, it still shrinks to
+          whatever the rows need, which is the point of the cap being a maximum in the first place.
+        */
+        width: {
+          $if: {
+            condition: { $count: { items: { $local: 'openPasses' } } },
+            then: '520px',
+            else: 'auto',
+          },
+        },
       },
       children: [runningList, settledSection],
     },
