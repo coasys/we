@@ -3,6 +3,9 @@
   "version": "0.1.0",
   "description": "WE's built-in space views — one section each, installable and forkable independently of the shell that arranges them",
   "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
   "exports": {
     ".": {
       "import": "./src/index.ts",
@@ -15,8 +18,5 @@
   },
   "devDependencies": {
     "@types/node": "^24.10.0"
-  },
-  "scripts": {
-    "typecheck": "tsc --noEmit"
   }
 }
