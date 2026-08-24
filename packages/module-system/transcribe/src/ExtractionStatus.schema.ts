@@ -419,6 +419,19 @@ const passEntry: SchemaNode = {
         ay: 'center',
         gap: '200',
         disabled: { $not: '$pass.openable' },
+        /*
+          Keep the row legible when it cannot be opened.
+
+          `we-button` fades its content to `--we-theme-disabled-opacity` when disabled, which is
+          right for a control whose label describes an unavailable action. Here the row is not a
+          label — it is the status itself, the thing somebody came to read — and a pass that has not
+          reached the model yet is still very much worth reading. Fading it made the newest row the
+          hardest to see.
+
+          `disabled` stays, so the button is genuinely inert and correctly announced. Only the
+          appearance is overridden.
+        */
+        disabledProps: { cursor: 'default', opacity: 1 },
         onClick: { $toggleLocalIn: 'openPasses', value: '$pass.passId' },
       },
       children: [...passRowChildren, disclosureCaret],

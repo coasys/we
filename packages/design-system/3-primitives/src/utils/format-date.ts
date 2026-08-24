@@ -5,11 +5,19 @@ const UNITS: [Intl.RelativeTimeFormatUnit, number][] = [
   ['day', 24 * 60 * 60 * 1000],
   ['hour', 60 * 60 * 1000],
   ['minute', 60 * 1000],
-  ['second', 1000],
 ];
 
 /**
  * Return a human-readable relative time string ("3 minutes ago", "in 2 days").
+ *
+ * Anything under a minute reads as "now" rather than counting seconds, and that is a correctness
+ * point rather than a style one. `we-timestamp`, the only consumer, refreshes once a minute — so a
+ * rendered "12 seconds ago" was frozen at twelve for the next fifty-eight, saying something false
+ * for almost all of the time it was on screen. A formatter cannot claim finer precision than the
+ * thing displaying it can refresh at.
+ *
+ * `numeric: 'auto'` is what turns the zero into "now" (and 1 into "yesterday" rather than "1 day
+ * ago") — the whole reason it is set.
  *
  * @param date   The target date
  * @param now    Reference point (default: current time)
@@ -19,9 +27,7 @@ export function formatRelativeTime(date: Date, now = new Date(), locale = 'en'):
   const rtf = new Intl.RelativeTimeFormat(locale, { numeric: 'auto', style: 'long' });
   const elapsed = date.getTime() - now.getTime();
   for (const [unit, ms] of UNITS) {
-    if (Math.abs(elapsed) >= ms || unit === 'second') {
-      return rtf.format(Math.round(elapsed / ms), unit);
-    }
+    if (Math.abs(elapsed) >= ms) return rtf.format(Math.round(elapsed / ms), unit);
   }
   return rtf.format(0, 'second');
 }
