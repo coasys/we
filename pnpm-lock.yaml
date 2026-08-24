@@ -5,7 +5,7 @@ settings:
   excludeLinksFromLockfile: false
 
 overrides:
-  '@coasys/ad4m': file:../ad4m/core
+  '@coasys/ad4m': 0.13.0-test-interpretation-2
   '@coasys/ad4m-connect': 0.13.0-test-interpretation-2
   prettier: 3.9.4
 
@@ -204,8 +204,8 @@ importers:
   apps/we-electron:
     dependencies:
       '@coasys/ad4m':
-        specifier: file:../../../ad4m/core
-        version: file:../ad4m/core
+        specifier: 0.13.0-test-interpretation-2
+        version: 0.13.0-test-interpretation-2
       '@we/app-shell':
         specifier: workspace:*
         version: link:../../packages/app-shell
@@ -299,8 +299,8 @@ importers:
   apps/we-tauri:
     dependencies:
       '@coasys/ad4m':
-        specifier: file:../../../ad4m/core
-        version: file:../ad4m/core
+        specifier: 0.13.0-test-interpretation-2
+        version: 0.13.0-test-interpretation-2
       '@tauri-apps/api':
         specifier: 2.7.0
         version: 2.7.0
@@ -342,8 +342,8 @@ importers:
   apps/we-web:
     dependencies:
       '@coasys/ad4m':
-        specifier: file:../../../ad4m/core
-        version: file:../ad4m/core
+        specifier: 0.13.0-test-interpretation-2
+        version: 0.13.0-test-interpretation-2
       '@coasys/ad4m-connect':
         specifier: 0.13.0-test-interpretation-2
         version: 0.13.0-test-interpretation-2
@@ -407,8 +407,8 @@ importers:
   packages/app-shell:
     dependencies:
       '@coasys/ad4m':
-        specifier: file:../../../ad4m/core
-        version: file:../ad4m/core
+        specifier: 0.13.0-test-interpretation-2
+        version: 0.13.0-test-interpretation-2
       '@solidjs/router':
         specifier: ^0.15.3
         version: 0.15.4(solid-js@1.9.14)
@@ -539,9 +539,6 @@ importers:
 
   packages/backend-system/ad4m:
     dependencies:
-      '@coasys/ad4m':
-        specifier: file:../../../../ad4m/core
-        version: file:../ad4m/core
       '@we/backend-shared':
         specifier: workspace:*
         version: link:../shared
@@ -549,6 +546,9 @@ importers:
         specifier: workspace:*
         version: link:../../models
     devDependencies:
+      '@coasys/ad4m':
+        specifier: 0.13.0-test-interpretation-2
+        version: 0.13.0-test-interpretation-2
       '@types/node':
         specifier: ^24.10.0
         version: 24.13.2
@@ -1686,8 +1686,8 @@ packages:
   '@coasys/ad4m-connect@0.13.0-test-interpretation-2':
     resolution: {integrity: sha512-EBk8nrAaLh6Lvp1Fa50yCBxd4advPMQqNydoJ/w/tMDZc+z7YvUSaqvgpLScVXOQKMNzElD5A/8Zh/RT7fILXQ==}
 
-  '@coasys/ad4m@file:../ad4m/core':
-    resolution: {directory: ../ad4m/core, type: directory}
+  '@coasys/ad4m@0.13.0-test-interpretation-2':
+    resolution: {integrity: sha512-/A3hDUPuBb7Y9Pq2rkO2/FSeYz6FvvxDogIR0+9rBHEP5tS/j/FOqCImYw4TDdFY2WwUKtgUWMM9hTWztMqXHQ==}
 
   '@codemirror/autocomplete@6.20.3':
     resolution: {integrity: sha512-tlosUqb+3BbxCxZdu4tKeRghPFC+QM7q4X5YhKV2eCmPG+1r2F3f4AaSz5sCrFqUtX4Jh20VFTKecl16MgiV9g==}
@@ -6973,7 +6973,7 @@ snapshots:
       auto-bind: 5.0.1
       lit: 2.8.0
 
-  '@coasys/ad4m@file:../ad4m/core':
+  '@coasys/ad4m@0.13.0-test-interpretation-2':
     dependencies:
       '@holochain/client': 0.16.0
       base64-js: 1.5.1
