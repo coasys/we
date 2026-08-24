@@ -8,6 +8,7 @@
  * app-level, because the controls that open an overlay render outside it.
  */
 import {
+  CHROME_RAIL_PX,
   type ContentInset,
   contentInset,
   displaces,
@@ -374,6 +375,43 @@ export function ShellStoreProvider(props: ParentProps) {
   });
 
   /**
+   * Chrome a floating panel must clear, live — see `DEFAULT_FLOAT_CHROME` for why floating and
+   * displacing panels get different answers.
+   *
+   * The right edge is the module rail, always: it follows `--we-chrome-right`, which only a
+   * displacing panel moves, so a floating one has to clear it itself.
+   *
+   * The top edge is whatever the modules say they are holding there. It was the constant
+   * `TOP_CHROME_PX`, sized for the call bar alone, and the call bar stopped being alone: the
+   * transcribe module contributes an extraction status panel into the same fixed column, so the
+   * band a panel had to clear grew and the number describing it did not. A panel snapped to the top
+   * centre landed under it.
+   *
+   * Declared rather than measured, deliberately. The status panel is a set of disclosures that grows
+   * as rows are opened, and it goes to some trouble not to grow in steps — because, in its own
+   * words, each step moves a floating object somebody is reading. A measured band would hand that
+   * problem to the panel instead and shove it down the screen mid-read. So a module declares the
+   * height of its chrome *collapsed*, the common case lands clear, and expanding a row may overlap
+   * something the person expanding it can see.
+   *
+   * Reservations at an edge sum rather than max, because an anchor is a column: the status panel is
+   * mounted below the call bar, not beside it.
+   */
+  const floatChrome = createMemo<ContentInset>(() => {
+    // The registration dependency, for the same reason `dockRequests` takes it: a module store read
+    // before its module registers has no accessor to have tracked, and so nothing to re-run for.
+    dockRegistryVersion();
+    let top = 0;
+    for (const store of Object.values(moduleStores)) {
+      const reserve = (store as Record<string, unknown> | undefined)?.chromeReserve;
+      const value = typeof reserve === 'function' ? (reserve as () => unknown)() : reserve;
+      const edges = value as Partial<ContentInset> | undefined;
+      top += edges?.top ?? 0;
+    }
+    return { left: 0, right: CHROME_RAIL_PX, top, bottom: 0 };
+  });
+
+  /**
    * What one panel has to keep clear of — the rule itself is in `dockGeometry`, pure and tested.
    *
    * Here it is only fed: the placements the panels currently have, and whatever non-dock chrome has
@@ -404,7 +442,7 @@ export function ShellStoreProvider(props: ParentProps) {
     const requests = dockRequests();
     const resolved: Record<string, DockGeometry> = {};
     requests.forEach((request, index) => {
-      resolved[request.id] = resolveDock(request, viewport(), occupiedOf(index, requests));
+      resolved[request.id] = resolveDock(request, viewport(), occupiedOf(index, requests), floatChrome());
     });
     return resolved;
   });
@@ -467,13 +505,40 @@ export function ShellStoreProvider(props: ParentProps) {
    * that is a few hundred pixels tall, so the rail moves, which is what this is for and what the
    * right edge already does with `--we-chrome-right`.
    *
-   * Zero while no panel is open, so the rail sits where it always has when there is nothing to clear.
-   * `TOP_CHROME_PX` is where the panel starts and `TITLE_BAR_PX` is how far its controls reach.
+   * `TOP_CHROME_PX` is where such a panel starts and `TITLE_BAR_PX` is how far its controls reach.
+   *
+   * ## Only when something is actually under the rail
+   *
+   * This used to fire for *any* open panel, wherever it was. Starting a call opens the video panel,
+   * so the rail dropped 98px the moment a call began — with the video floating in the bottom left,
+   * nowhere near it, and nothing on screen to explain why the rail had moved. The band is real but
+   * it is a collision, and a collision has a location.
+   *
+   * So it asks the resolved boxes instead: does any panel's titlebar strip actually overlap the
+   * rail's column, high enough up for the rail to be over it? Since a floating panel now clears the
+   * rail on its own (`floatChrome`), and a displacing one has already slid the rail aside, the
+   * answer is normally no — the case that remains is a maximised panel, which spans the content
+   * region including the rail's column, and which is exactly the case the band was written for.
    */
   createEffect(() => {
     if (typeof document === 'undefined') return;
-    const anyOpen = dockRequests().some((request) => request.edge !== null);
-    const band = anyOpen ? TOP_CHROME_PX + TITLE_BAR_PX : 0;
+
+    const { width } = viewport();
+    const railLeft = width - inset().right - CHROME_RAIL_PX;
+    const boxes = dockGeometry();
+
+    const underRail = dockRequests().some((request) => {
+      if (request.edge === null) return false;
+      const rect = rectOf(boxes[request.id], viewport(), request.placement ?? seedPlacement(request, viewport()));
+      // Horizontal overlap with the rail's own column, not merely "reaches past its left edge" — a
+      // panel docked on the right ends where the rail begins, and would otherwise count as under it.
+      const overlapsColumn = rect.x < railLeft + CHROME_RAIL_PX && rect.x + rect.w > railLeft;
+      // And high enough that the rail, which starts near the top, is over that titlebar rather than
+      // beside a panel much further down.
+      return overlapsColumn && rect.y < TOP_CHROME_PX + TITLE_BAR_PX;
+    });
+
+    const band = underRail ? TOP_CHROME_PX + TITLE_BAR_PX : 0;
     document.documentElement.style.setProperty('--we-panel-chrome-top', `${band}px`);
   });
 
@@ -730,7 +795,7 @@ export function ShellStoreProvider(props: ParentProps) {
         .filter((entry) => entry.area > 0)
         .sort((a, b) => b.area - a.area)[0]?.candidate;
       setActiveInsert(slot ? `${slot.edge}:${slot.index}` : null);
-      setActiveSnap(slot ? null : snapCandidate(next, viewport(), occupiedForId(id)));
+      setActiveSnap(slot ? null : snapCandidate(next, viewport(), occupiedForId(id), floatChrome()));
       writePlacement(id, next);
     },
 
@@ -861,7 +926,7 @@ export function ShellStoreProvider(props: ParentProps) {
     activeInsert,
 
     snapTargets: () =>
-      snapTargetRects(viewport(), occupiedForId(movingDock())).map((target) => ({
+      snapTargetRects(viewport(), occupiedForId(movingDock()), floatChrome()).map((target) => ({
         id: target.id,
         top: `${target.y}px`,
         left: `${target.x}px`,

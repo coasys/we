@@ -93,6 +93,23 @@ describe('call module — contributions', () => {
     expect(typeof store[callModule.launcher!.availableWhen!]).toBe('function');
   });
 
+  it('reports the band its bar occupies, so panels can keep clear of it', () => {
+    /*
+      The contract behind `ShellStore.floatChrome`, and it is a string on both ends: the shell reads
+      `chromeReserve` off every module store by name, so a rename here does not fail a build — it
+      makes the reserved band silently zero, and a panel snapped to the top centre lands under the
+      call bar with its own grip underneath it.
+
+      Zero with no call running, since the bar is not drawn then. The shell used to reserve this
+      band unconditionally, as a constant, whether or not anything was up there.
+    */
+    moduleRegistry.register(callModule, host, storeDeps);
+    const store = moduleStores.call as Record<string, unknown>;
+
+    expect(typeof store.chromeReserve).toBe('function');
+    expect((store.chromeReserve as () => { top: number })()).toEqual({ top: 0 });
+  });
+
   it('keeps volatile state off the tile, so a mute cannot remount the video', () => {
     // `$each` renders through a reference-keyed `<For>`, so any change to a tile object remounts that
     // row — and a remounted row builds a new `<video>`, dropping and re-attaching `srcObject`. Muting

@@ -47,6 +47,20 @@ export const SIDEBAR_PX = 80;
 export const RAIL_PX = 0;
 
 /**
+ * The module rail's width — what a *floating* panel must leave, where a displacing one leaves
+ * nothing. The asymmetry above is the whole reason both constants exist.
+ *
+ * The rail gets out of a panel's way by following `--we-chrome-right`, and only a **displacing**
+ * panel contributes to that. A floating one publishes no inset by definition, so nothing moves and
+ * it opens underneath a rail that paints above it — the panel visible, its controls not.
+ *
+ * Mirrors `CHROME_RAIL_WIDTH` in `@we/template-shell`, in pixels for arithmetic, exactly as
+ * `SIDEBAR_PX` mirrors `SHELL_SIDEBAR_WIDTH`. This file is where the shell's fixed furniture is
+ * written down.
+ */
+export const CHROME_RAIL_PX = 56;
+
+/**
  * The gap a *floating* panel sits off the edges by. A displacing one has none.
  *
  * The two want opposite things here. A floating panel is a card over the app, and a card needs air
@@ -80,6 +94,26 @@ export const NARROW_VIEWPORT_PX = 900;
  * recovered without knowing the keyboard shortcut.
  */
 export const TOP_CHROME_PX = 74;
+
+/**
+ * Chrome a **floating** panel must clear, per edge — as distinct from `occupied`, which is what
+ * every panel must clear.
+ *
+ * The two are different because of *who moves*. Chrome that follows `--we-chrome-<edge>` — the
+ * module rail, the editing bar — slides inwards when a panel displaces, so a displacing panel
+ * reserves nothing for it and takes the edge outright. A floating panel publishes no inset, so
+ * nothing slides and it has to do the clearing itself. Applying one shared inset to both is what
+ * `RAIL_PX = 0` was protecting against: a displacing panel that also left room for the rail would
+ * stop 56px short of an edge the rail had already vacated.
+ *
+ * So this is threaded only through the floating paths — `snapOrigin`, the targets drawn from it, the
+ * drag clamp, and the maximised box. Displacing thickness never sees it.
+ *
+ * The default keeps the behaviour this generalises: the top band the call bar occupies, and nothing
+ * on the other three edges. The shell passes a live one — see `ShellStore.floatChrome`, which adds
+ * the rail on the right and grows the top band for chrome that has appeared since.
+ */
+export const DEFAULT_FLOAT_CHROME: ContentInset = { left: 0, right: 0, top: TOP_CHROME_PX, bottom: 0 };
 
 /** How much room the content viewport gives up, per edge, in pixels. */
 export interface ContentInset {
@@ -385,13 +419,22 @@ export function snapOrigin(
   h: number,
   viewport: Viewport,
   occupied: ContentInset = NO_INSET,
+  chrome: ContentInset = DEFAULT_FLOAT_CHROME,
 ): { x: number; y: number } {
   const region = contentRegion(viewport, occupied);
-  const left = region.left + DOCK_GAP_PX;
-  const right = region.left + region.width - w - DOCK_GAP_PX;
-  const middleX = region.left + Math.round((region.width - w) / 2);
-  const top = region.top + TOP_CHROME_PX;
-  const bottom = region.height - h - DOCK_GAP_PX;
+  const left = region.left + chrome.left + DOCK_GAP_PX;
+  const right = region.left + region.width - chrome.right - w - DOCK_GAP_PX;
+  const middleX = region.left + chrome.left + Math.round((region.width - chrome.left - chrome.right - w) / 2);
+  const top = region.top + chrome.top;
+  const bottom = region.height - chrome.bottom - h - DOCK_GAP_PX;
+  /*
+    The vertical middle takes no chrome term, unlike the horizontal one.
+
+    A centred panel is not against the top or the bottom, so the band the call bar occupies is not
+    its problem — and subtracting it would push the "right" and "left" snaps visibly below centre for
+    a reason nobody could see. Where it *is* its problem, because the panel is tall enough to reach
+    into the band anyway, the clamp at the end of `resolveDock` catches it.
+  */
   const middleY = Math.round((region.height - h) / 2);
 
   switch (snap) {
@@ -438,9 +481,13 @@ export function snapTargetSize(viewport: Viewport, occupied: ContentInset = NO_I
 }
 
 /** Every landing spot, as a box — the same boxes the overlay draws and the drop test measures. */
-export function snapTargetRects(viewport: Viewport, occupied: ContentInset = NO_INSET): (Rect & { id: SnapPoint })[] {
+export function snapTargetRects(
+  viewport: Viewport,
+  occupied: ContentInset = NO_INSET,
+  chrome: ContentInset = DEFAULT_FLOAT_CHROME,
+): (Rect & { id: SnapPoint })[] {
   const { w, h } = snapTargetSize(viewport, occupied);
-  return SNAP_POINTS.map((snap) => ({ id: snap, ...snapOrigin(snap, w, h, viewport, occupied), w, h }));
+  return SNAP_POINTS.map((snap) => ({ id: snap, ...snapOrigin(snap, w, h, viewport, occupied, chrome), w, h }));
 }
 
 /** Area of the intersection of two boxes; zero when they do not touch. */
@@ -461,11 +508,16 @@ function overlap(a: Rect, b: Rect): number {
  * Now the drawn box is the rule: a target lights up when the panel overlaps it, and the winner is
  * whichever it overlaps most. Everywhere else is free positioning, which is most of the screen.
  */
-export function snapCandidate(rect: Rect, viewport: Viewport, occupied: ContentInset = NO_INSET): SnapPoint | null {
+export function snapCandidate(
+  rect: Rect,
+  viewport: Viewport,
+  occupied: ContentInset = NO_INSET,
+  chrome: ContentInset = DEFAULT_FLOAT_CHROME,
+): SnapPoint | null {
   let best: SnapPoint | null = null;
   let bestArea = 0;
 
-  for (const target of snapTargetRects(viewport, occupied)) {
+  for (const target of snapTargetRects(viewport, occupied, chrome)) {
     const area = overlap(rect, target);
     if (area > bestArea) {
       bestArea = area;
@@ -579,7 +631,12 @@ export function rectOf(box: DockGeometry | undefined, viewport: Viewport, fallba
  * two panels sharing an edge end up beside each other rather than on top of one another, and how a
  * floating or maximised one keeps clear of both.
  */
-export function resolveDock(request: DockRequest, viewport: Viewport, occupied: ContentInset = NO_INSET): DockGeometry {
+export function resolveDock(
+  request: DockRequest,
+  viewport: Viewport,
+  occupied: ContentInset = NO_INSET,
+  chrome: ContentInset = DEFAULT_FLOAT_CHROME,
+): DockGeometry {
   const { edge } = request;
   if (!edge) return { edge: null, floating: true };
 
@@ -601,10 +658,18 @@ export function resolveDock(request: DockRequest, viewport: Viewport, occupied: 
         that un-maximises it — underneath the call bar. It means as large as a panel can be given the
         chrome, which is what the constant has meant in the two places it was already applied.
       */
-      top: px(region.top + TOP_CHROME_PX),
-      bottom: px(region.bottom),
-      left: px(region.left),
-      right: px(region.right),
+      top: px(region.top + chrome.top),
+      bottom: px(region.bottom + chrome.bottom),
+      left: px(region.left + chrome.left),
+      /*
+        The one edge a maximised panel used to keep, and should not have.
+
+        It spans the content region, and the content region reserves nothing on the right because the
+        rail slides for a *displacing* panel. A maximised panel floats, so nothing slid, and the rail
+        sat on top of the panel's own position menu and un-maximise button — the two controls the
+        panel is recovered with. The same failure the top band exists to prevent, on the other axis.
+      */
+      right: px(region.right + chrome.right),
     };
   }
 
@@ -656,23 +721,31 @@ export function resolveDock(request: DockRequest, viewport: Viewport, occupied: 
     };
   }
 
-  const w = clamp(placement.w, MIN_FLOAT_PX, Math.max(MIN_FLOAT_PX, region.width - DOCK_GAP_PX * 2));
-  const h = clamp(placement.h, MIN_FLOAT_PX, Math.max(MIN_FLOAT_PX, region.height - DOCK_GAP_PX * 2));
+  const free = {
+    left: region.left + chrome.left,
+    top: region.top + chrome.top,
+    width: Math.max(0, region.width - chrome.left - chrome.right),
+    height: region.height - chrome.bottom,
+  };
+
+  const w = clamp(placement.w, MIN_FLOAT_PX, Math.max(MIN_FLOAT_PX, free.width - DOCK_GAP_PX * 2));
+  const h = clamp(placement.h, MIN_FLOAT_PX, Math.max(MIN_FLOAT_PX, region.height - chrome.top - DOCK_GAP_PX * 2));
   const origin = placement.snap
-    ? snapOrigin(placement.snap, w, h, viewport, occupied)
+    ? snapOrigin(placement.snap, w, h, viewport, occupied, chrome)
     : { x: placement.x, y: placement.y };
 
   /*
     Clamped into the region on both axes, always — a window that shrank, a display that changed, or a
     placement restored from a larger screen must not leave a panel with its controls off-screen.
 
-    The top clamp is `TOP_CHROME_PX` rather than a gap, so the band the app's floating controls occupy
-    is closed to dragging as well as to snapping. It was only closed to snapping, which made the rule
-    look arbitrary: the panel refused to *snap* under the call bar and then let you drop it there by
-    hand, where its own grip and menu were the parts that ended up underneath.
+    The clamps are the chrome bounds rather than a gap, so the bands the app's floating controls
+    occupy are closed to dragging as well as to snapping. The top was only closed to snapping, which
+    made the rule look arbitrary: the panel refused to *snap* under the call bar and then let you
+    drop it there by hand, where its own grip and menu were the parts that ended up underneath. The
+    right edge was closed to neither, which is how a panel dragged there ended up beneath the rail.
   */
-  const x = clamp(origin.x, region.left + DOCK_GAP_PX, Math.max(region.left, region.left + region.width - w));
-  const y = clamp(origin.y, region.top + TOP_CHROME_PX, Math.max(region.top + TOP_CHROME_PX, region.height - h));
+  const x = clamp(origin.x, free.left + DOCK_GAP_PX, Math.max(free.left, free.left + free.width - w));
+  const y = clamp(origin.y, free.top, Math.max(free.top, free.height - h));
 
   return {
     edge,

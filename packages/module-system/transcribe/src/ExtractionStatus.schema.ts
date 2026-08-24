@@ -36,8 +36,20 @@ import { type SchemaNode } from '@we/schema-shared';
  *  `CALL_CONTROLS_ANCHOR` explains at greater length. */
 export const CALL_STATUS_ANCHOR = 'call-status';
 
-/** The bar's own corners, following the theme the call bar above it follows. See `CallControl.schema`. */
-const STATUS_RADIUS = 'var(--we-theme-control-radius, var(--we-radius-400))';
+/**
+ * The panel's own corners — the theme's **surface** radius, not the control radius the bar above it
+ * takes.
+ *
+ * The two look interchangeable and are not. `control-radius` describes a capsule, and a capsule is
+ * only coherent on a box about one line tall: the call bar is exactly that, so it follows it and a
+ * `pill` theme rounds it beautifully. This panel is a stack of disclosures hundreds of pixels tall,
+ * and the same variable turned it into a lozenge with its own text running off both ends.
+ *
+ * `surface-radius` is the theme's answer for a box that is not a capsule — modals, drawers and
+ * alerts all take it — and every preset already caps it for that reason: WE's own `pill` preset sets
+ * controls to `pill` and surfaces to `600`.
+ */
+const STATUS_RADIUS = 'var(--we-theme-surface-radius, var(--we-radius-400))';
 
 /**
  * Matching the call bar's material exactly.

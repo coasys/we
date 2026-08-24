@@ -111,6 +111,12 @@ function summarise(values: Record<string, unknown>): string {
 const ELECTION_WAIT_MS = 5_000;
 
 /**
+ * The collapsed height of the extraction status panel, in pixels — see `chromeReserve` below for
+ * why it is the collapsed one and not the real one.
+ */
+const STATUS_RESERVE_PX = 56;
+
+/**
  * Flux's *effective* voice-activity thresholds, which are not the ones in its defaults file.
  *
  * `audio-processor.js` declares one set and `TranscriberWidget.vue` overwrites it over the port the
@@ -1177,6 +1183,24 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
      * would take "Extracted 3 records" with it before anyone saw it.
      */
     hasActivity: () => (interpretation?.activity() ?? []).length > 0,
+
+    /**
+     * The band this module's chrome adds to the top of the window, for panels to keep clear of.
+     *
+     * The status panel is contributed into the call bar's own fixed column, *below* the bar, so what
+     * a floating panel has to clear at the top is the two of them stacked — which is why the host
+     * sums reservations at an edge rather than taking the largest.
+     *
+     * Its **collapsed** height, deliberately, and this is the one number here that is a judgement
+     * rather than a measurement. The panel is a set of disclosures: open a pass and it grows, open
+     * the prompt inside it and it grows again. Reporting its live height would push any panel
+     * snapped below it down the screen on every one of those, which is the same jumping this
+     * panel's own width rule exists to avoid — so the common case is reserved and an expanded row is
+     * allowed to overlap something the person expanding it is looking straight at.
+     *
+     * The column's `300` gap (12px), plus `200` of padding a side (16px), plus a line of status.
+     */
+    chromeReserve: () => ({ top: (interpretation?.activity() ?? []).length > 0 ? STATUS_RESERVE_PX : 0 }),
 
     // ── Actions ──────────────────────────────────────────────────────────────
     /**

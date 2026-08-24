@@ -12,6 +12,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  CHROME_RAIL_PX,
   type ContentInset,
   contentInset,
   displaces,
@@ -689,5 +690,64 @@ describe('dockThickness', () => {
   it('never lets a drag outgrow the window it was not dragged on', () => {
     const laptopWide = { width: 1280, height: 800 };
     expect(dockThickness('right', 'md', laptopWide, 5_000)).toBeLessThanOrEqual(1280);
+  });
+});
+
+/**
+ * Chrome that does not move for a floating panel.
+ *
+ * The rule the file opens with, applied to the app's own furniture rather than to another panel:
+ * the module rail slides inwards by following `--we-chrome-right`, and only a *displacing* panel
+ * publishes that. A floating one takes no room, so nothing slides, so it has to do the clearing —
+ * and the two therefore need different answers about the same edge. `RAIL_PX = 0` is the displacing
+ * answer and `CHROME_RAIL_PX` is the floating one; the tests below are mostly the difference.
+ */
+describe('chrome a floating panel must clear', () => {
+  const chrome: ContentInset = { left: 0, right: CHROME_RAIL_PX, top: TOP_CHROME_PX, bottom: 0 };
+
+  it('keeps a right-hand snap clear of the rail', () => {
+    const origin = snapOrigin('right', 400, 300, desktop, NO_INSET, chrome);
+    expect(origin.x + 400).toBeLessThanOrEqual(desktop.width - CHROME_RAIL_PX);
+  });
+
+  it('moves the landing spots with it, so the marker is where the panel will go', () => {
+    // The markers are the rule, not decoration — `snapCandidate` hit-tests the drawn box. A target
+    // still at the window edge would light up over a rail the panel is no longer allowed to reach.
+    const target = snapTargetRects(desktop, NO_INSET, chrome).find((rect) => rect.id === 'top-right');
+    expect(target!.x + target!.w).toBeLessThanOrEqual(desktop.width - CHROME_RAIL_PX);
+  });
+
+  it('does not let a free drag put one there either', () => {
+    // The band was closed to snapping and open to dragging on the top edge once, which made the rule
+    // look arbitrary. The right edge was open to both.
+    const box = resolveDock(dock({ float: true }), desktop, NO_INSET, chrome);
+    expect(px(box.left)! + px(box.width)!).toBeLessThanOrEqual(desktop.width - CHROME_RAIL_PX);
+  });
+
+  it('keeps a maximised panel clear of it, since maximised floats', () => {
+    // "Full screen" cannot mean the whole screen while the app keeps permanent chrome over it: the
+    // rail sat on the panel's own position menu and un-maximise button, which are how it is recovered.
+    const box = resolveDock(
+      dock({ placement: placement({ maximised: true, displace: false }) }),
+      desktop,
+      NO_INSET,
+      chrome,
+    );
+    expect(px(box.right)).toBe(CHROME_RAIL_PX);
+    expect(px(box.top)).toBe(TOP_CHROME_PX);
+  });
+
+  it('leaves a displacing panel alone, which is the whole point of the split', () => {
+    // It has taken the edge, so the rail has already moved out of its way. A displacing panel that
+    // also cleared the rail would stop 56px short of an edge nothing is holding any more.
+    const box = resolveDock(dock({ placement: placement({ displace: true }) }), desktop, NO_INSET, chrome);
+    expect(px(box.right)).toBe(0);
+  });
+
+  it('grows the top band when a module says its chrome did', () => {
+    // What the constant could not do. `TOP_CHROME_PX` was sized for the call bar alone, and the
+    // transcribe module contributes an extraction panel into the same fixed column.
+    const taller: ContentInset = { ...chrome, top: TOP_CHROME_PX + 56 };
+    expect(snapOrigin('top', 400, 300, desktop, NO_INSET, taller).y).toBe(TOP_CHROME_PX + 56);
   });
 });
