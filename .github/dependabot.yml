@@ -1,0 +1,42 @@
+version: 2
+
+updates:
+  # ------------------------------------------------------------------ npm / pnpm workspace
+  - package-ecosystem: npm
+    directory: '/'
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    labels: ['dependencies']
+    # One PR for the routine noise, individual PRs for majors — which are the ones that
+    # actually need reading. Ungrouped, a workspace this size produces a dozen PRs a week
+    # and they stop being read at all.
+    groups:
+      minor-and-patch:
+        patterns: ['*']
+        update-types: ['minor', 'patch']
+    ignore:
+      # The AD4M SDK version is a deliberate pin, currently to a test tag
+      # (`0.13.0-test-interpretation-2`) carrying APIs that have not landed on AD4M `dev`.
+      # Moving it is a cross-repo decision, made against what `ad4m-compat.yaml` reports —
+      # not a routine bump, and a Dependabot PR proposing one would be wrong every time.
+      - dependency-name: '@coasys/*'
+
+  # ------------------------------------------------------------------ workflow actions
+  # These are the versions in .github/workflows and .github/actions. Nothing else updates
+  # them, so without this they sit on whatever was current the day they were written.
+  - package-ecosystem: github-actions
+    directory: '/'
+    schedule:
+      interval: weekly
+      day: monday
+    labels: ['dependencies']
+    groups:
+      actions:
+        patterns: ['*']
+# No cargo entry. `apps/we-tauri/src-tauri/Cargo.toml` is generated at build time from
+# `Cargo.toml.template` and is gitignored, so there is no manifest in the tree for Dependabot
+# to parse — configuring it here would produce a job that fails every week. `Cargo.lock` is
+# tracked, so if the Tauri crate deps are ever worth watching, the template is what would
+# need to become the tracked manifest first.

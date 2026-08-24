@@ -1,0 +1,6 @@
+# Review is auto-requested from the owner of a path when a PR touches it.
+#
+# `dev` has no branch protection, so nothing here *blocks* a merge — this decides who gets
+# asked, not who must approve.
+
+* @jhweir

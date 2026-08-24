@@ -1,0 +1,36 @@
+# Deploy-preview build for the `coasys-we` site — a preview of `apps/we-web` per pull
+# request. This file exists so those settings are reviewable in the repo rather than living
+# only in the Netlify UI, where nobody reading the codebase can see them and no change to
+# them shows up in a diff.
+#
+# NOTE: this file overrides the UI only for the fields it actually declares. Anything it
+# does not mention keeps whatever the UI holds, so a setting is not removed by being left
+# out of here — it just stops being visible. Two consequences worth knowing:
+#
+#   - "Package directory" has no netlify.toml equivalent at all. It was set to
+#     `apps/we-electron` — the desktop app, on a site that publishes the web app — and has
+#     been cleared in the UI. Netlify uses it to decide whether a build can be skipped, which
+#     is the likely reason previews reported "All files already uploaded".
+#   - "Functions directory" is still set in the UI to `netlify/functions`, a path that does
+#     not exist in this repo. Harmless — no functions get deployed either way — but it is
+#     live config rather than something this file removed. Declare a [functions] block here
+#     if the site ever grows some.
+
+[build]
+  # The build runs from the repo root: the web app is one package in a pnpm workspace and
+  # cannot be built without the 40-odd packages it depends on.
+  base = "/"
+  command = "pnpm build"
+  publish = "apps/we-web/dist"
+
+[build.environment]
+  # Pinned rather than relying on Netlify's `.nvmrc` detection, which depends on where it
+  # decides the base directory is. The value tracks .nvmrc — if you bump one, bump both.
+  NODE_VERSION = "24.14.0"
+  # pnpm's version comes from the `packageManager` field via corepack, the same way CI
+  # resolves it, so there is nothing to pin here.
+
+# No [[redirects]] here on purpose. Client-side routing already works via
+# apps/we-web/public/_redirects, which Netlify reads and which ships inside the built output
+# so the same rule applies on any other static host. Restating it here would be a second
+# place to change it and a first opportunity for the two to disagree.
