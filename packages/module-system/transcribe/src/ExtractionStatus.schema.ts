@@ -148,27 +148,64 @@ const passRowChildren: SchemaNode[] = [
         props: { fontSize: '200', color: 'text-faint', styles: { fontVariantNumeric: 'tabular-nums' } },
         children: ['$pass.elapsed'],
       },
+      /*
+        Once settled, when it happened rather than how long it took.
+
+        A finished pass reports what it found, and the reading that matters becomes its place in the
+        sequence — several results in a call read as a list of outcomes with no way to tell which
+        came from which part of the conversation.
+
+        `we-timestamp` rather than a string computed in the store: it re-renders itself every
+        minute, where a computed string would be right when the row settled and wrong from then on,
+        since the store's clock stops as soon as nothing is running.
+      */
+      else: {
+        type: '$if',
+        props: {
+          condition: '$pass.finishedAt',
+          then: {
+            type: 'we-timestamp',
+            props: { value: '$pass.finishedAt', relative: true, fontSize: '200', color: 'text-faint' },
+          },
+        },
+      },
     },
   },
 ];
 
 /**
- * The caret — an indicator, not a control.
+ * The caret — an indicator, not a control, and absent when there is nothing to indicate.
  *
- * It was a button, and the whole row is one now, so a button here would nest one inside another:
- * invalid, and the inner one swallows clicks the outer was meant to get. It keeps its position and
- * its job of showing which way the row will move; the click target is the row.
+ * It is not a button: the whole row is one, and nesting would be invalid markup with the inner
+ * element swallowing clicks meant for the outer. It shows which way the row will move; the row
+ * takes the click.
+ *
+ * Rendered only where the row actually opens. It used to show faintly on every row, including a
+ * pass whose exchange has not arrived and a peer's whose exchange never will — a control that looks
+ * clickable and is not, which reads as broken rather than as unavailable. Its presence now means
+ * "there is something here".
+ *
+ * On a running pass that means it appears partway through: the prompt lands at `thinking`, so a
+ * pass that is queued or gathering has nothing to show and gains a caret the moment it does. That
+ * is the intended behaviour rather than a flicker — watching the prompt while the model chews on it
+ * is the most useful thing this panel does.
  */
 const disclosureCaret: SchemaNode = {
-  type: 'we-icon',
+  type: '$if',
   props: {
-    size: CARET_SIZE,
-    color: { $if: { condition: '$pass.hasDetail', then: 'text-muted', else: 'text-faint' } },
-    name: {
-      $if: {
-        condition: { $in: ['$pass.passId', { $local: 'openPasses' }] },
-        then: 'caret-up',
-        else: 'caret-down',
+    condition: '$pass.hasDetail',
+    then: {
+      type: 'we-icon',
+      props: {
+        size: CARET_SIZE,
+        color: 'text-muted',
+        name: {
+          $if: {
+            condition: { $in: ['$pass.passId', { $local: 'openPasses' }] },
+            then: 'caret-up',
+            else: 'caret-down',
+          },
+        },
       },
     },
   },
@@ -558,6 +595,17 @@ export const extractionStatus: SchemaNode = {
             else: 'auto',
           },
         },
+        /*
+          Glide rather than snap, matching the reveals inside it.
+
+          Every vertical change here is a `reveal` transition, so the one horizontal change being
+          instant read as a glitch beside them. An animation token rather than `300ms`: a theme's
+          reduced-motion setting overrides the token and cannot touch a hardcoded duration.
+
+          Only `width` — the bar's other properties have no business animating, and a blanket
+          transition would drag the surface colour through a fade every time a theme changed.
+        */
+        transition: 'width 300 ease-in-out',
       },
       children: [
         runningList,

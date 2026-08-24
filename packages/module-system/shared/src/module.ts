@@ -740,6 +740,8 @@ export interface InterpretationActivitySummary {
   label: string;
   /** `m:ss` since the pass started, empty once it has settled. */
   elapsed: string;
+  /** When it settled, ISO-8601, for a relative reading beside the result. Empty while running. */
+  finishedAt: string;
   /** Why, for a pass that skipped or failed. Empty otherwise. */
   detail: string;
   prompt: string;

@@ -63,6 +63,15 @@ export interface InterpretationActivityView {
   /** `m:ss` since the pass was first seen. Empty once it has settled — a finished pass reports
    *  what it did, and how long it took stops being the question. */
   elapsed: string;
+  /**
+   * When the pass settled, ISO-8601, for a relative "2 minutes ago" beside the result. Empty while
+   * it is still running, where the elapsed clock is the more useful reading.
+   *
+   * An instant rather than a formatted string because `we-timestamp` re-renders itself every minute
+   * — a string computed here would be right when the row settled and wrong from then on, since the
+   * store's clock stops as soon as nothing is running.
+   */
+  finishedAt: string;
   /** Why, for a pass that skipped or failed. Empty otherwise. */
   detail: string;
   /** The raw prompt and response, when they are available at all. */
@@ -331,6 +340,7 @@ export function InterpretationStoreProvider(props: ParentProps) {
           running,
           label: labelFor(row.phase, name, mine, count),
           elapsed: running ? formatElapsed(at - (startedAt.get(row.passId) ?? row.at)) : '',
+          finishedAt: running ? '' : new Date(row.at).toISOString(),
           detail: row.detail ?? '',
           prompt: formatJson(row.llm?.prompt ?? ''),
           response: formatJson(row.llm?.response ?? ''),
