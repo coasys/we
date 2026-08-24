@@ -317,11 +317,26 @@ export default function TemplateProvider() {
    */
   const routeKey = createMemo(() => {
     const id = templateSchema.id || 'empty';
+    const views = spaceStore.spaceViews();
     if (!hasViewsMarker(templateSchema.routes ?? [])) return id;
-    return `${id}|${spaceStore
-      .spaceViews()
-      .map((view) => `${view.id}:${view.segment}`)
-      .join(',')}`;
+    /*
+      Sorted, plus the first segment on its own.
+
+      The route *table* does not depend on the order of the sections — the router matches a path,
+      it does not scan an array — with one exception: the index redirect points at whichever section
+      is first. So a reorder that moves the first one changes the table and a reorder below it does
+      not, and sorting is what tells those two apart.
+
+      That distinction is worth having because a remount is expensive and visible. Dragging rows in
+      the settings overlay tears down and rebuilds the space behind it on every drop, and the
+      overlay with it. The nav strip follows a reorder either way: `viewNav` is an ordinary memo and
+      needs no rebuild at all.
+    */
+    const table = views
+      .map((view) => `${view.id}:${view.segment}:${view.schema.meta?.keepAlive ? 'k' : ''}`)
+      .sort()
+      .join(',');
+    return `${id}|${views[0]?.segment ?? ''}|${table}`;
   });
 
   // Any theme the template names by `theme: { themeName }` needs its stylesheet present before the

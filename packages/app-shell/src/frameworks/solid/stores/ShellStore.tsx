@@ -67,6 +67,15 @@ export interface ShellStore {
    */
   takePendingPath: () => string | null;
   /**
+   * Report where the open overlay currently is, so a remount can put it back.
+   *
+   * Called by `ShellRouterRoot` as the overlay navigates. It lives up here rather than in
+   * `ShellRouteStore` because that store — and the `MemoryRouter` it mirrors — are mounted *inside*
+   * `TemplateLayout`, so both are torn down by anything that rebuilds the main route table. This
+   * store is above the Router, which is what makes it the only place the answer survives.
+   */
+  rememberShellPath: (path: string) => void;
+  /**
    * Whether the create-space modal is open.
    *
    * Shell state rather than a page's `$localState`, because more than one place opens it: the
@@ -258,6 +267,18 @@ function savePlacements(placements: Record<string, FloatPlacement>): void {
 export function ShellStoreProvider(props: ParentProps) {
   const [activeShellView, setActiveShellView] = createSignal<string | null>(initialShellView());
   const [pendingPath, setPendingPath] = createSignal<string | null>(null);
+  /**
+   * Where each shell view was last standing, so it can be put back after a remount.
+   *
+   * The overlay's `MemoryRouter` — and the store that mirrors it — both live *inside*
+   * `TemplateLayout`, which is the main Router's root. So anything that rebuilds the main route
+   * table takes the overlay down with it, and a `MemoryRouter` coming back up starts at `/`: you
+   * were on a space's settings page and you are now on the account page, having asked for neither.
+   *
+   * A plain object rather than a signal: nothing renders from it, it is read once on mount, and
+   * making it reactive would only invite an effect to depend on it.
+   */
+  const lastShellPath: Record<string, string> = {};
   const [createSpaceOpen, setCreateSpaceOpen] = createSignal(false);
 
   // Docks are sized against the window, so the window is state. Tracked here rather than in each
@@ -443,7 +464,9 @@ export function ShellStoreProvider(props: ParentProps) {
   const store: ShellStore = {
     activeShellView,
     openShellView: (id: string, path?: string) => {
-      setPendingPath(path ?? null);
+      // An explicit path wins; otherwise the view reopens where it was last left, which is what a
+      // person expects of somewhere they were half-way through configuring.
+      setPendingPath(path ?? lastShellPath[id] ?? null);
       setActiveShellView(id);
     },
     closeShellView: () => setActiveShellView(null),
@@ -452,7 +475,13 @@ export function ShellStoreProvider(props: ParentProps) {
     takePendingPath: () => {
       const path = pendingPath();
       setPendingPath(null);
-      return path;
+      // Not cleared from `lastShellPath`: a remount asks again with nothing pending, and the answer
+      // has to survive to be given.
+      return path ?? lastShellPath[activeShellView() ?? ''] ?? null;
+    },
+    rememberShellPath: (path: string) => {
+      const id = activeShellView();
+      if (id) lastShellPath[id] = path;
     },
     scrollToId: (id: string) => {
       document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });

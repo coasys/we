@@ -13,7 +13,7 @@
  */
 import { createMemoryHistory, MemoryRouter, Route } from '@solidjs/router';
 import { render, waitFor } from '@solidjs/testing-library';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { RouteStore } from '../src/frameworks/solid/stores/RouteStore';
 import {
@@ -22,9 +22,28 @@ import {
   useShellRouteStore,
 } from '../src/frameworks/solid/stores/ShellRouteStore';
 
-vi.mock('../src/frameworks/solid/stores/ShellStore', () => ({
-  useShellStore: () => ({ takePendingPath: () => undefined }),
+/**
+ * A stand-in for the store above the overlay, mutable so a test can steer it.
+ *
+ * Hoisted because `vi.mock` is: the factory runs before the module body, so it cannot close over an
+ * ordinary `const`.
+ */
+const shellMock = vi.hoisted(() => ({
+  pending: null as string | null,
+  remembered: [] as string[],
 }));
+
+vi.mock('../src/frameworks/solid/stores/ShellStore', () => ({
+  useShellStore: () => ({
+    takePendingPath: () => shellMock.pending,
+    rememberShellPath: (path: string) => shellMock.remembered.push(path),
+  }),
+}));
+
+beforeEach(() => {
+  shellMock.pending = null;
+  shellMock.remembered = [];
+});
 
 async function mountStore(initial = '/settings'): Promise<RouteStore> {
   let store!: RouteStore;
@@ -93,5 +112,48 @@ describe('shellRouteStore params', () => {
     await waitFor(() => expect(store.params()).toEqual({ tab: 'modules' }));
     expect(store.currentPath()).toBe('/settings');
     expect(store.segments()).toEqual(['settings']);
+  });
+});
+
+/**
+ * Surviving a remount.
+ *
+ * The overlay's `MemoryRouter` is mounted inside `TemplateLayout`, which is the main Router's root
+ * — so anything that rebuilds the main route table takes the overlay down with it, and a fresh
+ * `MemoryRouter` starts at `/`. Removing a section from a space did exactly that: you were on that
+ * space's settings page and landed on the account page, having asked for neither.
+ *
+ * The memory has to live in `ShellStore`, above the Router, because that is the only thing in the
+ * chain that outlives the overlay. These assert the overlay's half of that contract: it reports
+ * where it is, and it asks on the way back up.
+ */
+describe('shellRouteStore remount survival', () => {
+  it('reports where it is, so something above it can put it back', async () => {
+    await mountStore('/spaces/abc');
+
+    await waitFor(() => expect(shellMock.remembered).toContain('/spaces/abc'));
+  });
+
+  it('keeps reporting as the overlay moves, not only once on mount', async () => {
+    const store = await mountStore('/spaces');
+    store.navigate('/spaces/abc');
+
+    await waitFor(() => expect(shellMock.remembered.at(-1)).toBe('/spaces/abc'));
+  });
+
+  it('goes where it is sent on mount', async () => {
+    // The restore path: nothing pending from a click, so the store above answers with where the
+    // overlay was standing before it was torn down.
+    shellMock.pending = '/spaces/abc';
+    const store = await mountStore('/');
+
+    await waitFor(() => expect(store.currentPath()).toBe('/spaces/abc'));
+  });
+
+  it('stays put when it is already where it was sent', async () => {
+    shellMock.pending = '/spaces/abc';
+    const store = await mountStore('/spaces/abc');
+
+    await waitFor(() => expect(store.currentPath()).toBe('/spaces/abc'));
   });
 });

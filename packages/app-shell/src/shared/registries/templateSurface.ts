@@ -722,6 +722,12 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     activeShellView: state('navigation'),
     openShellView: action('navigation'),
     closeShellView: action('navigation'),
+    /*
+      Host wiring, not a capability. The overlay's own router calls this on every move so a remount
+      can put it back; a template has no overlay to report about, and letting one write another
+      surface's remembered location would be a way to redirect somebody else's page.
+    */
+    rememberShellPath: WIRING,
     createSpaceOpen: state('space-admin'),
     /*
       Opening the host's create-space dialog, which is not the same act as creating a space —
