@@ -3,10 +3,18 @@
 # only in the Netlify UI, where nobody reading the codebase can see them and no change to
 # them shows up in a diff.
 #
-# NOTE: a netlify.toml overrides the UI's build settings, but the UI's monorepo
-# "Package directory" field has no equivalent here and is NOT overridden by this file. It is
-# currently set to `apps/we-electron` — the desktop app, on a site that publishes the web
-# app — and must be cleared in the UI for this configuration to behave as written.
+# NOTE: this file overrides the UI only for the fields it actually declares. Anything it
+# does not mention keeps whatever the UI holds, so a setting is not removed by being left
+# out of here — it just stops being visible. Two consequences worth knowing:
+#
+#   - "Package directory" has no netlify.toml equivalent at all. It was set to
+#     `apps/we-electron` — the desktop app, on a site that publishes the web app — and has
+#     been cleared in the UI. Netlify uses it to decide whether a build can be skipped, which
+#     is the likely reason previews reported "All files already uploaded".
+#   - "Functions directory" is still set in the UI to `netlify/functions`, a path that does
+#     not exist in this repo. Harmless — no functions get deployed either way — but it is
+#     live config rather than something this file removed. Declare a [functions] block here
+#     if the site ever grows some.
 
 [build]
   # The build runs from the repo root: the web app is one package in a pnpm workspace and
