@@ -363,56 +363,25 @@ const passEntry: SchemaNode = {
   props: { gap: '0', width: '100%' },
   children: [
     {
-      type: 'we-tooltip',
+      type: 'we-button',
       props: {
-        placement: 'bottom',
-        /*
-          Full width, and this is what was stopping the caret reaching the right edge.
-
-          `we-tooltip` is `display: inline-flex`, so it shrink-wraps its trigger — which meant the
-          button's own `width: '100%'` was resolving against an already-shrunken box. The button was
-          faithfully filling its parent; the parent was the size of the text.
-
-          Worth remembering as a general trap: a wrapper that only adds behaviour still participates
-          in layout, and every full-width thing inside one needs it declared at the outermost box,
-          not just the innermost.
-        */
+        variant: 'bare',
         width: '100%',
-        title: {
-          $if: {
-            condition: '$pass.hasDetail',
-            then: 'Show the prompt and the response',
-            else: {
-              $if: {
-                condition: '$pass.mine',
-                then: 'Nothing sent to the model yet',
-                // Names the way out. This is the one moment somebody wants the setting, so it is
-                // the one moment worth mentioning that it exists — it lives in space settings, and
-                // nobody goes looking there for a control they have never seen.
-                else: 'Only the runner sees this — a space can share extraction detail in its settings',
-              },
-            },
-          },
-        },
+        // The button is the row: `ax: 'start'` with a full width is the pattern every other
+        // full-width button here uses, and it lays the children out across the whole width rather
+        // than shrink-wrapping them.
+        //
+        // It sits directly in the Column now. A `we-tooltip` used to wrap it, and that was what
+        // kept the caret pinned beside the text: the tooltip is `display: inline-flex` and its
+        // `[part='trigger']` is a plain flex box, so the button's `width: '100%'` resolved against
+        // a box the size of the text however many levels of width were declared above it.
+        ax: 'start',
+        ay: 'center',
+        gap: '200',
+        disabled: { $not: '$pass.hasDetail' },
+        onClick: { $toggleLocalIn: 'openPasses', value: '$pass.passId' },
       },
-      children: [
-        {
-          type: 'we-button',
-          props: {
-            variant: 'bare',
-            width: '100%',
-            // The button is the row. `ax: 'start'` alongside a full width is the pattern every other
-            // full-width button here uses, and it is what makes the base part lay its children out
-            // across the whole width instead of shrink-wrapping them.
-            ax: 'start',
-            ay: 'center',
-            gap: '200',
-            disabled: { $not: '$pass.hasDetail' },
-            onClick: { $toggleLocalIn: 'openPasses', value: '$pass.passId' },
-          },
-          children: [...passRowChildren, disclosureCaret],
-        },
-      ],
+      children: [...passRowChildren, disclosureCaret],
     },
     passDetail,
   ],
@@ -590,7 +559,35 @@ export const extractionStatus: SchemaNode = {
           },
         },
       },
-      children: [runningList, settledSection],
+      children: [
+        runningList,
+        settledSection,
+        /*
+          Why somebody else's row will not open, said once.
+
+          This was a tooltip on every row — the wrong place twice over: hover text is not where
+          anyone looks for an explanation of why a control is inert, and one setting's worth of
+          explanation was repeated per pass. It also happened to be the box that stopped the caret
+          reaching the right edge.
+
+          Shown only when there is a locked row to explain, and it names the way out: this is the
+          one moment somebody wants that setting, and settings is not where anyone looks for a
+          control they have never seen.
+        */
+        {
+          type: '$if',
+          props: {
+            condition: { $store: 'modules.transcribe.hasLockedPass' },
+            then: {
+              type: 'we-text',
+              props: { fontSize: '200', color: 'text-faint' },
+              children: [
+                'Other people’s prompts stay on their machine. A space can share extraction detail in its settings.',
+              ],
+            },
+          },
+        },
+      ],
     },
   },
 };

@@ -1161,6 +1161,15 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
     activityCount: () => (interpretation?.activity() ?? []).filter((pass) => pass.running).length,
     settledCount: () => (interpretation?.activity() ?? []).filter((pass) => !pass.running).length,
     /**
+     * Whether any row on show belongs to somebody else and has nothing to open.
+     *
+     * What the bar's one footnote is gated on. The explanation used to be a tooltip on every row,
+     * which put it where nobody reads and repeated it per pass; the fact it conveys — a peer's
+     * exchange never left their machine, and a space can choose otherwise — is worth saying exactly
+     * once, and only when there is a locked row to explain.
+     */
+    hasLockedPass: () => (interpretation?.activity() ?? []).some((pass) => !pass.mine && !pass.hasDetail),
+    /**
      * Whether the status bar should exist at all.
      *
      * Counts settled rows too, which the running count deliberately does not: a pass that just
