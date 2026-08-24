@@ -1939,13 +1939,13 @@ EditorStore:
 
 InterpretationStore:
 - State:
-  - activity: unknown
-  - runningCount: unknown
-  - hasActivity: unknown
-  - shareDetail: unknown
+  - activity: InterpretationActivityView[] — every extraction pass this agent knows about, its own and its peers’, running first then most recent. Each row carries display-ready strings: `label` is a whole clause ("Anna is waiting on the model", "Extracted 3 records"), `elapsed` is `m:ss` while running and empty once settled, `name`/`avatar`/`runner` identify who is running it, and `mine` says whether it is this agent’s. Only a row with `mine` can carry `prompt`/`response` — the exchange never left the runner’s machine — so gate a details affordance on `hasDetail` and explain the refusal rather than hiding it
+  - runningCount: number — how many passes are still in flight. What a collapsed "N extractions running" summary counts
+  - hasActivity: boolean — whether there is anything to show at all. Counts settled rows too, so a bar gated on it does not vanish the instant a pass finishes and take its result with it
+  - shareDetail: boolean — whether this agent broadcasts its prompts and responses to the rest of the space. Off by default on bandwidth grounds, not secrecy: in a call the prompt is built from a transcript every participant already holds
 - Actions:
-  - setShareDetail(): unknown
-  - dismissSettled(): unknown
+  - setShareDetail(share: boolean): turns that broadcasting on or off. Takes the value so a we-switch can pass `$event.detail` bare — wrapping it in an operator would resolve at render time and send a constant
+  - dismissSettled(): forgets every finished row, leaving anything still running. A running pass is not this agent’s to dismiss
 
 PresenceStore:
 - State:
