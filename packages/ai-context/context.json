@@ -6235,6 +6235,7 @@
       "actions": [
         "openShellView",
         "closeShellView",
+        "rememberShellPath",
         "setCreateSpaceOpen",
         "scrollToId",
         "setChromeInset",
@@ -6361,6 +6362,9 @@
           "properties": ["id", "icon", "label", "active"]
         },
         "spaceViews": {
+          "type": "array"
+        },
+        "routableViews": {
           "type": "array"
         },
         "viewNav": {

@@ -2513,6 +2513,7 @@ export const contextData: ContextData = {
       actions: [
         'openShellView',
         'closeShellView',
+        'rememberShellPath',
         'setCreateSpaceOpen',
         'scrollToId',
         'setChromeInset',
@@ -2579,6 +2580,7 @@ export const contextData: ContextData = {
         moduleInstallSettings: { type: 'array', properties: ['id', 'name', 'description', 'icon', 'installed'] },
         moduleLaunchers: { type: 'array', properties: ['id', 'icon', 'label', 'active'] },
         spaceViews: { type: 'array' },
+        routableViews: { type: 'array' },
         viewNav: { type: 'array' },
         mutedDids: { type: 'array' },
         mutedAgents: { type: 'array' },
