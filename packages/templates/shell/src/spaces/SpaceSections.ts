@@ -26,9 +26,11 @@ import type { SchemaNode } from '@we/schema-shared';
 /**
  * Why a section is not showing, when a switch alone would not say.
  *
- * The mirror of `moduleStatus`. Only one of the two cases needs saying — a section the community has
- * off is simply off, and the switch beside it already says so — but a section *you* hid inside a
- * space that still has it reads as a bug from the nav strip, where it is merely absent.
+ * One case only, and it is the one the layout cannot state for itself: a section the space *has*
+ * that this agent has hidden. Its row sits above the divider with every other section the space has,
+ * so without a word it reads as a section that should be in the nav and is not.
+ *
+ * The other case needs nothing — a section the space does not have is under a heading that says so.
  */
 const sectionStatus: SchemaNode = {
   type: '$if',
@@ -38,17 +40,6 @@ const sectionStatus: SchemaNode = {
       type: 'we-text',
       props: { variant: 'footnote', color: 'text-faint' },
       children: ['In this space, but hidden for you.'],
-    },
-    else: {
-      type: '$if',
-      props: {
-        condition: { $not: '$view.enabled' },
-        then: {
-          type: 'we-text',
-          props: { variant: 'footnote', color: 'text-faint' },
-          children: ['Not in this space.'],
-        },
-      },
     },
   },
 };
@@ -64,9 +55,32 @@ const sectionRow: SchemaNode = {
         {
           type: '$if',
           props: {
-            // The grab handle is only meaningful where a drag would change something everyone sees.
+            // Only meaningful where a drag would change something everyone sees.
             condition: '$space.canAdminister',
-            then: { type: 'we-icon', props: { name: 'dots-six-vertical', color: 'text-faint' } },
+            then: {
+              /*
+                A native carrier for `data-we-handle`, with a focusable control inside.
+
+                Two reasons it is not just an icon. `we-sortable` reads the attribute from the DOM,
+                and a web component's props are assigned as properties — so the attribute on a
+                `we-icon` would silently never exist. And without any handle at all the whole row is
+                the grab area, which is wrong here: the row ends in two switches, so a press meant
+                for one of them would start a drag, and a Space keypress would pick the row up
+                rather than toggle.
+
+                The button is what keeps the keyboard path open — Space on a focused handle picks
+                the row up, exactly as it does on a plain item.
+              */
+              type: 'div',
+              props: { 'data-we-handle': '', style: { display: 'flex', cursor: 'grab' } },
+              children: [
+                {
+                  type: 'we-button',
+                  props: { variant: 'bare', title: 'Reorder' },
+                  children: [{ type: 'we-icon', props: { name: 'dots-six-vertical', color: 'text-faint' } }],
+                },
+              ],
+            },
           },
         },
         { type: 'we-icon', props: { name: '$view.icon', size: '20px' } },
@@ -198,10 +212,18 @@ const sectionsCard: SchemaNode = {
       ],
     },
     {
+      /*
+        Only the sections the space *has* go in the drag zone.
+
+        A section it does not have has no position, so there is nothing for a drag to mean. Leaving
+        them in was not merely untidy: the zone reports every id it holds, so one drag handed the
+        disabled ones back as though they were part of the order — and writing that turned every one
+        of them on.
+      */
       type: 'we-sortable',
       props: {
-        // Locked for a member who may not administer the space: the rows are still readable and
-        // their "For me" switch still works, but the order is not theirs to change.
+        // Locked for a member who may not administer the space: the rows stay readable and their
+        // "For me" switch still works, but the order is not theirs to change.
         locked: { $not: '$space.canAdminister' },
         // `$arg.detail` is where we-sortable puts the reordered ids. The event is `reorder`, which
         // Solid reaches from `onReorder` by lowercasing.
@@ -210,10 +232,32 @@ const sectionsCard: SchemaNode = {
       children: [
         {
           type: '$each',
-          props: { items: '$space.views', as: 'view' },
+          props: { items: { $filter: { items: '$space.views', where: { enabled: true } } }, as: 'view' },
           children: [draggableRow],
         },
       ],
+    },
+    {
+      type: '$if',
+      props: {
+        condition: { $count: { items: { $filter: { items: '$space.views', where: { enabled: false } } } } },
+        then: {
+          type: 'Column',
+          props: { gap: '200', pt: '300', mt: '200', borderTop: '1px solid border' },
+          children: [
+            {
+              type: 'we-text',
+              props: { variant: 'footnote', fontWeight: 'semibold', textTransform: 'uppercase', color: 'text-faint' },
+              children: ['Not in this space'],
+            },
+            {
+              type: '$each',
+              props: { items: { $filter: { items: '$space.views', where: { enabled: false } } }, as: 'view' },
+              children: [sectionRow],
+            },
+          ],
+        },
+      },
     },
   ],
 };

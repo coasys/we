@@ -159,16 +159,34 @@ export function viewSettings(opts: {
   fallbackOrder: string[];
   isBuiltIn: (id: string) => boolean;
 }): ViewSetting[] {
-  const enabled = new Set(resolveEnabledViews(opts.enabledRaw, (id) => opts.available.has(id), opts.fallbackOrder));
+  const enabledOrder = resolveEnabledViews(opts.enabledRaw, (id) => opts.available.has(id), opts.fallbackOrder);
+  const enabled = new Set(enabledOrder);
   const hidden = new Set(opts.hidden);
 
-  return [...opts.available.entries()].map(([id, schema]) => ({
-    id,
-    name: schema.meta?.name ?? id,
-    description: schema.meta?.description ?? '',
-    icon: schema.meta?.icon || 'square',
-    enabled: enabled.has(id),
-    visible: !hidden.has(id),
-    builtIn: opts.isBuiltIn(id),
-  }));
+  /*
+    The space's own order first, then everything it does not have.
+
+    This used to iterate the available map, which is registry order — so the settings list showed one
+    order and the nav showed another, and the two disagreed the moment anybody reordered anything.
+    Worse, the list is what a drag reads its result from: reordering against a list that was never
+    showing the real order wrote an order nobody had arranged.
+
+    A section the space does not have has no position, so there is nothing to sort it by. Registry
+    order is the honest answer for that group, and keeping it separate is what lets the drag zone
+    hold only the sections that *have* an order.
+  */
+  const rest = [...opts.available.keys()].filter((id) => !enabled.has(id));
+
+  return [...enabledOrder, ...rest].map((id) => {
+    const schema = opts.available.get(id)!;
+    return {
+      id,
+      name: schema.meta?.name ?? id,
+      description: schema.meta?.description ?? '',
+      icon: schema.meta?.icon || 'square',
+      enabled: enabled.has(id),
+      visible: !hidden.has(id),
+      builtIn: opts.isBuiltIn(id),
+    };
+  });
 }

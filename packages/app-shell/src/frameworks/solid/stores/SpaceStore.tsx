@@ -2533,11 +2533,21 @@ export function SpaceStoreProvider(props: ParentProps) {
     const ds = targetDataset(spaceUuid);
     const space = ds ? mySpaces().find((s) => isSpaceSelf(s, ds)) : undefined;
     if (!ds || !space) return;
-    const available = availableViews();
+    /*
+      A reorder may only *reorder*. Intersecting with what is already enabled is what stops a drag
+      from turning sections on: the settings list holds every available section, so a drag handed
+      back the disabled ones too, and writing them wholesale enabled every one of them at a stroke.
+
+      The drag zone now holds only the enabled rows, so this is belt and braces — but it is the half
+      that cannot be undone by someone rearranging the schema later.
+    */
+    const enabled = new Set(
+      resolveEnabledViews(space.enabledViews, (id) => availableViews().has(id), defaultViewOrder()),
+    );
     await writeEnabledViews(
       ds,
       space,
-      viewIds.filter((id) => available.has(id)),
+      viewIds.filter((id) => enabled.has(id)),
     );
   }
 

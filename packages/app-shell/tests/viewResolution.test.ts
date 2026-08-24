@@ -206,6 +206,54 @@ describe('viewSettings', () => {
     expect(settings.map((s) => s.enabled)).toEqual([true, false, false]);
   });
 
+  it("puts the space's own sections first, in the space's own order", () => {
+    /*
+      This used to iterate the available map — registry order — so the settings list and the nav
+      strip showed two different orders and disagreed the moment anybody rearranged anything.
+
+      It matters more than a mismatch: the list is what a drag reads its result from, so reordering
+      against a list that was never showing the real order wrote an order nobody had arranged.
+    */
+    const settings = viewSettings({ ...opts, enabledRaw: '["graph","about"]', hidden: [] });
+
+    expect(settings.map((s) => s.id)).toEqual(['graph', 'about', 'cards']);
+  });
+
+  it('groups the sections the space does not have after the ones it does', () => {
+    // They have no position, so there is nothing to sort them by — and keeping them out of the
+    // ordered run is what lets the drag zone hold only the rows that have an order.
+    const settings = viewSettings({ ...opts, enabledRaw: '["cards"]', hidden: [] });
+
+    expect(settings.map((s) => [s.id, s.enabled])).toEqual([
+      ['cards', true],
+      ['about', false],
+      ['graph', false],
+    ]);
+  });
+
+  it('keeps a drag from turning sections on', () => {
+    /*
+      The half that lives in the store, asserted here on the shape it depends on: a reorder writes
+      the ids it was handed, and the settings list holds every available section. Before the drag
+      zone was narrowed to the enabled rows, one drag handed the disabled ones back as part of the
+      order — and writing that enabled every one of them at a stroke.
+
+      What makes the write safe is that it can be intersected with the current enabled set, which
+      requires the two groups to be distinguishable in the list. They are, by `enabled`.
+    */
+    const settings = viewSettings({ ...opts, enabledRaw: '["cards"]', hidden: [] });
+    const draggable = settings.filter((s) => s.enabled).map((s) => s.id);
+
+    expect(draggable).toEqual(['cards']);
+  });
+
+  it('orders by the space, not by which sections the agent has hidden', () => {
+    // Hiding is personal and positionless; it must not move a row for everybody looking at it.
+    const settings = viewSettings({ ...opts, enabledRaw: '["about","cards","graph"]', hidden: ['about'] });
+
+    expect(settings.map((s) => s.id)).toEqual(['about', 'cards', 'graph']);
+  });
+
   it('reports the two layers separately, so a row can say which one is off', () => {
     const settings = viewSettings({ ...opts, enabledRaw: '["about","cards"]', hidden: ['cards'] });
     const byId = Object.fromEntries(settings.map((s) => [s.id, s]));
