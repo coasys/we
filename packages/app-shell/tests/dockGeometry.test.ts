@@ -27,6 +27,8 @@ import {
   NARROW_VIEWPORT_PX,
   NO_INSET,
   occupiedFor,
+  RAIL_TOP_PX,
+  railBand,
   rectOf,
   resolveDock,
   seedPlacement,
@@ -36,6 +38,7 @@ import {
   type SnapPoint,
   snapTargetRects,
   snapTargetSize,
+  TITLE_BAR_PX,
   TOP_CHROME_PX,
 } from '../src/shared/dockGeometry';
 
@@ -749,5 +752,56 @@ describe('chrome a floating panel must clear', () => {
     // transcribe module contributes an extraction panel into the same fixed column.
     const taller: ContentInset = { ...chrome, top: TOP_CHROME_PX + 56 };
     expect(snapOrigin('top', 400, 300, desktop, NO_INSET, taller).y).toBe(TOP_CHROME_PX + 56);
+  });
+});
+
+/**
+ * How far the module rail drops to clear a panel's titlebar.
+ *
+ * The rail paints above the panels, so a panel reaching the top-right corner loses its grip, its
+ * position menu and its un-maximise button underneath it. It cannot dodge sideways without giving up
+ * a column of the window, so the rail moves.
+ */
+describe('the band under the module rail', () => {
+  const inset = (over: Partial<ContentInset> = {}): ContentInset => ({ ...NO_INSET, ...over });
+
+  it('stays put for a panel nowhere near it', () => {
+    // A video floating in the bottom left. The band used to fire for any open panel at all, so
+    // starting a call moved the rail for a panel in the opposite corner.
+    const bottomLeft = { x: 100, y: 500, w: 400, h: 300 };
+    expect(railBand([bottomLeft], desktop, inset())).toBe(0);
+  });
+
+  it('does not fire on the edge a docked panel shares with it', () => {
+    /*
+      The flicker. A panel docked on the right ends exactly where the rail begins, and the two numbers
+      being compared come from different places — the resolved box rounds to whole pixels, the inset
+      does not. So a strict test flipped on the fractional part of a drag, and resizing a right-hand
+      panel made the rail jump between its two positions once per pixel.
+
+      440.4 wide resolves to a 440px box against a 440.4px inset: a tenth of a pixel of contact.
+    */
+    const docked = { x: desktop.width - 440, y: 0, w: 440, h: desktop.height };
+    expect(railBand([docked], desktop, inset({ right: 440.4 }))).toBe(0);
+    expect(railBand([docked], desktop, inset({ right: 439.6 }))).toBe(0);
+  });
+
+  it('clears a maximised panel, which spans the rail on purpose', () => {
+    // The case the band was written for: maximised floats, so nothing slid the rail aside for it.
+    const maximised = { x: SIDEBAR_PX, y: TOP_CHROME_PX, w: desktop.width - SIDEBAR_PX, h: 700 };
+    // Far enough to clear that titlebar and no further — the rail sits exactly below it.
+    expect(railBand([maximised], desktop, inset())).toBe(TOP_CHROME_PX + TITLE_BAR_PX - RAIL_TOP_PX);
+  });
+
+  it('measures from the panel rather than assuming one height', () => {
+    // It was a constant, so a panel at the very top pushed the rail as far down as one starting
+    // below the call bar — the rail parked at an arbitrary height with nothing in the gap.
+    const atTheTop = { x: SIDEBAR_PX, y: 0, w: desktop.width - SIDEBAR_PX, h: 700 };
+    expect(railBand([atTheTop], desktop, inset())).toBe(TITLE_BAR_PX - RAIL_TOP_PX);
+  });
+
+  it('never pushes the rail further than the top chrome, whatever it finds', () => {
+    const wayDown = { x: SIDEBAR_PX, y: 4000, w: desktop.width - SIDEBAR_PX, h: 700 };
+    expect(railBand([wayDown], desktop, inset())).toBe(TOP_CHROME_PX + TITLE_BAR_PX);
   });
 });

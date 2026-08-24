@@ -22,6 +22,7 @@ import {
   MIN_FLOAT_PX,
   NO_INSET,
   occupiedFor,
+  railBand,
   type Rect,
   rectOf,
   type ResizeSide,
@@ -33,7 +34,6 @@ import {
   type SnapPoint,
   snapTargetRects,
   TITLE_BAR_PX,
-  TOP_CHROME_PX,
 } from '@shared/dockGeometry';
 import { dockRegistry, hostDockStores, onDockRegistryChanged } from '@shared/registries/dockRegistry';
 import { moduleStores } from '@shared/registries/moduleRegistry';
@@ -505,8 +505,6 @@ export function ShellStoreProvider(props: ParentProps) {
    * that is a few hundred pixels tall, so the rail moves, which is what this is for and what the
    * right edge already does with `--we-chrome-right`.
    *
-   * `TOP_CHROME_PX` is where such a panel starts and `TITLE_BAR_PX` is how far its controls reach.
-   *
    * ## Only when something is actually under the rail
    *
    * This used to fire for *any* open panel, wherever it was. Starting a call opens the video panel,
@@ -514,32 +512,36 @@ export function ShellStoreProvider(props: ParentProps) {
    * nowhere near it, and nothing on screen to explain why the rail had moved. The band is real but
    * it is a collision, and a collision has a location.
    *
-   * So it asks the resolved boxes instead: does any panel's titlebar strip actually overlap the
-   * rail's column, high enough up for the rail to be over it? Since a floating panel now clears the
-   * rail on its own (`floatChrome`), and a displacing one has already slid the rail aside, the
-   * answer is normally no — the case that remains is a maximised panel, which spans the content
-   * region including the rail's column, and which is exactly the case the band was written for.
+   * So it asks the resolved boxes instead. Since a floating panel now clears the rail on its own
+   * (`floatChrome`) and a displacing one has already slid it aside, the answer is normally no — what
+   * remains is a maximised panel, which spans the content region including the rail's column, and
+   * which is the case the band was written for.
+   *
+   * ## Two things a naive overlap test gets wrong
+   *
+   * **A shared edge is not an overlap.** A panel docked on the right ends exactly where the rail
+   * begins, so the two touch by definition — and the two numbers being compared come from different
+   * places: the resolved box rounds its width to whole pixels and `contentInset` does not. So the
+   * test flipped on the fractional part of a drag, and resizing a right-hand panel made the rail
+   * flicker between its two positions once per pixel. Hence a tolerance rather than a strict
+   * inequality: a couple of pixels of contact is two boxes meeting, not one covering the other.
+   *
+   * **The band is a distance, not a flag.** It was a constant, so a panel whose titlebar sat at the
+   * very top pushed the rail down as far as one sitting below the call bar — which read as the rail
+   * parking itself an arbitrary distance from the top with nothing in the gap. It is measured from
+   * the panel now: far enough to clear that titlebar and no further, capped so a panel somewhere
+   * unexpected can never push the rail off the screen.
    */
   createEffect(() => {
     if (typeof document === 'undefined') return;
 
-    const { width } = viewport();
-    const railLeft = width - inset().right - CHROME_RAIL_PX;
+    const view = viewport();
     const boxes = dockGeometry();
+    const panels = dockRequests()
+      .filter((request) => request.edge !== null)
+      .map((request) => rectOf(boxes[request.id], view, request.placement ?? seedPlacement(request, view)));
 
-    const underRail = dockRequests().some((request) => {
-      if (request.edge === null) return false;
-      const rect = rectOf(boxes[request.id], viewport(), request.placement ?? seedPlacement(request, viewport()));
-      // Horizontal overlap with the rail's own column, not merely "reaches past its left edge" — a
-      // panel docked on the right ends where the rail begins, and would otherwise count as under it.
-      const overlapsColumn = rect.x < railLeft + CHROME_RAIL_PX && rect.x + rect.w > railLeft;
-      // And high enough that the rail, which starts near the top, is over that titlebar rather than
-      // beside a panel much further down.
-      return overlapsColumn && rect.y < TOP_CHROME_PX + TITLE_BAR_PX;
-    });
-
-    const band = underRail ? TOP_CHROME_PX + TITLE_BAR_PX : 0;
-    document.documentElement.style.setProperty('--we-panel-chrome-top', `${band}px`);
+    document.documentElement.style.setProperty('--we-panel-chrome-top', `${railBand(panels, view, inset())}px`);
   });
 
   /**

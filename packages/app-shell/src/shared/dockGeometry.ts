@@ -61,6 +61,25 @@ export const RAIL_PX = 0;
 export const CHROME_RAIL_PX = 56;
 
 /**
+ * How far down the module rail sits when it has nothing to clear — `ChromeRail`'s own `16px`.
+ *
+ * Here because the band that pushes it further down is measured from it: "clear that panel's
+ * titlebar" is a distance from where the rail already is, not from the top of the window.
+ */
+export const RAIL_TOP_PX = 16;
+
+/**
+ * How much two boxes may share before they count as overlapping rather than touching.
+ *
+ * A panel docked against an edge ends exactly where the chrome beside it begins, so any test for
+ * "is this panel under that chrome" is asking about a boundary the two share by construction. Worse,
+ * the numbers on either side come from different places — a resolved box rounds to whole pixels and
+ * `contentInset` does not — so a strict comparison flips on the fractional part of a drag. The rail
+ * flickered between two positions, once per pixel, while a right-hand panel was resized.
+ */
+export const EDGE_CONTACT_PX = 2;
+
+/**
  * The gap a *floating* panel sits off the edges by. A displacing one has none.
  *
  * The two want opposite things here. A floating panel is a card over the app, and a card needs air
@@ -942,4 +961,42 @@ export function contentInset(requests: DockRequest[], viewport: Viewport): Conte
     inset[snapEdge] += clamp(thicknessOf(placement, snapEdge), MIN_DOCK_PX, vertical ? region.width : region.height);
   }
   return inset;
+}
+
+/**
+ * How far the module rail must drop to clear a panel's titlebar, in pixels — zero when nothing is
+ * under it.
+ *
+ * The rail is painted *above* the panels, which is right: it is persistent chrome and they come and
+ * go. The cost is that a panel reaching the top-right corner has its own titlebar covered — the
+ * grip, the position menu, and the button that un-maximises it, which are the three things it is
+ * recovered with. It cannot dodge sideways without giving up a column of the window, so the rail
+ * moves, exactly as it does for a displacing panel via `--we-chrome-right`.
+ *
+ * Two details carry the whole function.
+ *
+ * **A shared edge is not an overlap.** A panel docked on the right ends precisely where the rail
+ * begins, so any "is this under that" test is asking about a boundary the two share by construction
+ * — and the numbers being compared come from different places, the resolved box rounding to whole
+ * pixels where `contentInset` does not. A strict comparison therefore flipped on the fractional part
+ * of a drag, and resizing a right-hand panel made the rail flicker between two positions once per
+ * pixel. `EDGE_CONTACT_PX` is the difference between two boxes meeting and one covering the other.
+ *
+ * **The answer is a distance, not a flag.** It was a constant, so a panel at the very top pushed the
+ * rail as far down as one starting below the call bar, which read as the rail parking itself at an
+ * arbitrary height with nothing in the gap. Measured from the panel it clears, capped so a panel
+ * somewhere unexpected can never push the rail off the bottom of the screen.
+ */
+export function railBand(panels: Rect[], viewport: Viewport, inset: ContentInset): number {
+  const railRight = viewport.width - inset.right;
+  const railLeft = railRight - CHROME_RAIL_PX;
+  const railTop = RAIL_TOP_PX + inset.top;
+
+  let band = 0;
+  for (const rect of panels) {
+    const contact = Math.min(rect.x + rect.w, railRight) - Math.max(rect.x, railLeft);
+    if (contact <= EDGE_CONTACT_PX) continue;
+    band = Math.max(band, rect.y + TITLE_BAR_PX - railTop);
+  }
+  return Math.min(Math.max(0, Math.round(band)), TOP_CHROME_PX + TITLE_BAR_PX);
 }
