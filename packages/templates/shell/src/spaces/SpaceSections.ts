@@ -76,7 +76,25 @@ const sectionRow: SchemaNode = {
               children: [
                 {
                   type: 'we-button',
-                  props: { variant: 'bare', title: 'Reorder' },
+                  props: {
+                    variant: 'bare',
+                    title: 'Reorder',
+                    /*
+                      Stated on the button, not only on the carrier around it.
+
+                      `we-button` carries `cursor: 'pointer'` in its default props, and the pointer
+                      is over the button — so the carrier's `grab` was being answered by the hand
+                      the button asks for. An explicit prop beats a default.
+
+                      `:active` is exactly the span of a grab: held down is held on to. This is the
+                      same grab → grabbing pair `we-move-handle` gives the panels, said in DS props
+                      because this grip is a button rather than that primitive — `we-move-handle`
+                      reports pointer movement of its own, which is a second claim on a press that
+                      `we-sortable` is already handling.
+                    */
+                    cursor: 'grab',
+                    activeProps: { cursor: 'grabbing' },
+                  },
                   children: [{ type: 'we-icon', props: { name: 'dots-six-vertical', color: 'text-faint' } }],
                 },
               ],
