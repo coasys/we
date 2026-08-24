@@ -17,9 +17,11 @@
  */
 import { describe, expect, it } from 'vitest';
 
+import { bundledModules } from '../src/shared/registries/bundledModules';
 import { dockFrame } from '../src/shared/registries/dockRegistry';
 import { templateRegistry } from '../src/shared/registries/templateRegistry';
 import { CHROME_TIER, inspectTemplateSurface, SPACE_TIER } from '../src/shared/registries/templateSurface';
+import { viewRegistry } from '../src/shared/registries/viewRegistry';
 import {
   bootScreen,
   chromeRail,
@@ -52,6 +54,67 @@ describe('the bundled templates', () => {
     // under test is existence.
     const unknown = inspectTemplateSurface(template, CHROME_TIER).blocked.filter((r) => r.group === null);
     expect(unknown.map((reference) => reference.path)).toEqual([]);
+  });
+});
+
+/**
+ * A space's sections, which are schemas of their own now.
+ *
+ * They used to be part of the shell template that composed them, and were covered by the block
+ * above without anyone arranging it. Since `$views` started expanding per space from
+ * `Space.enabledViews`, a view is a separate `TemplateSchema` reached through its own registry — so
+ * `templateRegistry` stopped being "every schema a space renders" and nothing noticed, because the
+ * assertion above kept passing on a smaller set.
+ *
+ * `SpaceStore.requiredModules` hit exactly this and had to start walking `spaceViews()` separately.
+ * The same split applies here for the same reason, and the consequence is quieter: a view naming a
+ * store member that does not exist resolves to `undefined` and renders an empty section.
+ */
+describe("a space's views", () => {
+  const views = Object.entries(viewRegistry as Record<string, unknown>);
+
+  it('finds some, so the assertions below are not vacuous', () => {
+    expect(views.length).toBeGreaterThan(0);
+  });
+
+  it.each(views)('%s fits the space tier', (_id, view) => {
+    expect(inspectTemplateSurface(view, SPACE_TIER).blocked.map((r) => r.path)).toEqual([]);
+  });
+});
+
+/**
+ * Every bundled feature module's chrome.
+ *
+ * A module's bar, panel and launcher are schema exactly as a template is, and they name host store
+ * members — `spaceStore.members`, `shellStore.toggleMaximiseDock`, `presenceStore.peers`. Nothing
+ * checked them. `modules.<id>.…` is ungated by design (a module's own store is not in the manifest
+ * and cannot be), so what is under test is the *host* members a module reaches for: a renamed one,
+ * or one nobody classified, and the module's chrome quietly renders with a dead control in it.
+ *
+ * At the chrome tier, because that is where module chrome renders — a docked panel legitimately
+ * drives `host-layout`. The question here is existence and classification, not privilege.
+ */
+describe('bundled module chrome', () => {
+  // The globe and the graph take a component from the host; nothing here renders one, so a stub is
+  // enough to get the definition out of the factory.
+  const stub = { components: { CesiumGlobe: () => null, GraphView: () => null } };
+  const modules = Object.entries(bundledModules).map(([id, factory]) => [id, factory(stub)] as const);
+
+  it.each(modules)('%s can reach everything it names', (_id, definition) => {
+    const { blocked } = inspectTemplateSurface(definition, CHROME_TIER);
+    expect(blocked.map((reference) => reference.path)).toEqual([]);
+  });
+
+  it('reaches host members at all, so the assertion above is not vacuous', () => {
+    // Most modules name none — the call module's whole bar reads `modules.call.…`, which is ungated
+    // and rightly invisible here. So the case above passes trivially for those, and would keep
+    // passing if the walk stopped seeing module definitions entirely. Notes and transcribe are the
+    // ones with something to check; this asserts somebody still has.
+    const named = modules.flatMap(([, definition]) =>
+      inspectTemplateSurface(definition, CHROME_TIER).allowed.map((reference) => reference.path),
+    );
+
+    expect(named).toContain('datasetStore.currentDataset');
   });
 });
 
