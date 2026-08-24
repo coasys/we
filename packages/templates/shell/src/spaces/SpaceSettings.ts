@@ -20,9 +20,13 @@ import { spaceVocabularySection } from './SpaceVocabulary.ts';
  * default template; this page offered modules and the personal overrides), and a member's answer to
  * "where do I change this" depended on which they happened to open.
  *
- * So the route is gone and this is the only one, reached two ways: from the spaces list, to
- * configure any space without going to it, and from the gear in a space's own header, which opens
- * this page already keyed to that space. Same page, same URL inside the overlay, two ways in.
+ * So the route is gone and this is the only one, reached from the spaces list — via the chrome
+ * rail's own gear, which is present in every space and on every screen, so a second gear inside the
+ * space was a duplicate of something that could never be missing.
+ *
+ * The About view's pencil is the one exception, and it is not a general entry point: it sits on the
+ * fields it leads to, saying "these are edited over there" about a specific form rather than
+ * offering settings in general.
  *
  * That it lives outside every template is now load-bearing rather than incidental. With sections
  * installable, most shells will not provide a settings surface at all — and a community that

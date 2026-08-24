@@ -32,6 +32,12 @@ export const aboutView: TemplateSchema = {
           Shown to everyone rather than gated on `canAdministerSpace`: the page it opens shows what
           the space is configured as either way, and a control that vanishes for most members makes
           "where do I see this" depend on who is asking. The page itself decides what is editable.
+
+          The **dataset id**, not the route's space segment. `/space/:spaceId` carries whatever
+          `navigateToSpace` was given, which for a shared space is its neighbourhood CID — while the
+          settings page keys off `spaceList[].uuid`, which is always the dataset id. Passing the
+          segment matched no row and opened an empty page, and only for shared spaces, where the two
+          ids diverge.
         */
         aside: {
           type: 'we-button',
@@ -42,7 +48,7 @@ export const aboutView: TemplateSchema = {
             title: 'Space settings',
             onClick: {
               $action: 'shellStore.openShellView',
-              args: ['settings', { $concat: ['/spaces/', { $store: 'routeStore.segments.1' }] }],
+              args: ['settings', { $concat: ['/spaces/', { $store: 'datasetStore.currentDataset.id' }] }],
             },
           },
           children: [{ type: 'we-icon', props: { name: 'pencil-simple' } }],

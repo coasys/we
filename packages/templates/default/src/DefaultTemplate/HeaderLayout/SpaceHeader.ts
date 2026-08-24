@@ -1,8 +1,6 @@
 import type { SchemaNode } from '@we/schema-shared';
 import { peopleRow, peopleTooltip } from '@we/template-kit';
 
-import { spaceSettingsButton } from '../SpaceSettingsButton.ts';
-
 export const spaceHeader: SchemaNode = {
   type: 'Column',
   children: [
@@ -213,8 +211,6 @@ export const spaceNavBar: SchemaNode = {
                     },
                   ],
                 },
-                // Outside the `$each`, so it is not one of the sections — see its own docblock.
-                spaceSettingsButton,
               ],
             },
             // Live presence — who else is in this space right now. Hidden entirely in a personal

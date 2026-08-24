@@ -1,7 +1,5 @@
 import type { SchemaNode } from '@we/schema-shared';
 
-import { spaceSettingsButton } from '../SpaceSettingsButton.ts';
-
 export const spaceSidebar: SchemaNode = {
   type: 'Column',
   props: { flex: '0 0 400px', gap: '200', bg: 'surface-raised' },
@@ -101,8 +99,6 @@ export const spaceSidebar: SchemaNode = {
             },
           ],
         },
-        // Outside the section list, deliberately: settings is not a place in the space.
-        spaceSettingsButton,
       ],
     },
   ],
