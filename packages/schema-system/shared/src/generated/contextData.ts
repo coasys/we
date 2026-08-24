@@ -1072,6 +1072,7 @@ export const contextData: ContextData = {
         { name: 'readOnly', type: 'boolean', optional: true },
         { name: 'onChange', type: '((code: string) => void)', optional: true },
         { name: 'onSave', type: '((code: string) => void)', optional: true },
+        { name: 'maxHeight', type: 'string', optional: true },
         { name: 'styles', type: 'Record<string, string | number>', optional: true },
       ],
       source: 'components',

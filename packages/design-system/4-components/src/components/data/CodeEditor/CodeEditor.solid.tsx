@@ -16,6 +16,19 @@ import { createEffect, onCleanup, onMount } from 'solid-js';
 export type * from './CodeEditor.types';
 import type { CodeEditorProps } from './CodeEditor.types';
 
+/**
+ * The editor's own box.
+ *
+ * `height: 100%` by default, which is what a panel filling a dock needs. A caller that passes
+ * `maxHeight` gets the opposite arrangement — auto height with a ceiling — so a short document
+ * takes only the room it needs and a long one scrolls inside the cap rather than reserving the
+ * full height regardless.
+ */
+function themeSpecFor(maxHeight?: string): Record<string, Record<string, string>> {
+  if (!maxHeight) return baseThemeSpec;
+  return { ...baseThemeSpec, '&': { ...baseThemeSpec['&'], height: 'auto', maxHeight } };
+}
+
 const baseThemeSpec: Record<string, Record<string, string>> = {
   '&': {
     height: '100%',
@@ -192,7 +205,7 @@ export function CodeEditor(props: CodeEditorProps) {
             props.onChange?.(value);
           }
         }),
-        cmView.EditorView.theme(baseThemeSpec),
+        cmView.EditorView.theme(themeSpecFor(props.maxHeight)),
       ],
       parent: containerRef,
       root: containerRef.ownerDocument,

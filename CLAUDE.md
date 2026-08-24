@@ -1043,7 +1043,7 @@ when `relative` is enabled.
   Props: value?: string, events?: CalendarEvent[], onSelect?: ((date: string) => void), styles?: Record<string, string | number>
 - Card (DesignSystemElement)
 - CodeEditor
-  Props: code: string, language?: CodeEditorLanguage, readOnly?: boolean, onChange?: ((code: string) => void), onSave?: ((code: string) => void), styles?: Record<string, string | number>
+  Props: code: string, language?: CodeEditorLanguage, readOnly?: boolean, onChange?: ((code: string) => void), onSave?: ((code: string) => void), maxHeight?: string, styles?: Record<string, string | number>
 - CollapsedContent
   Props: collapsed: boolean, onExpandClick?: (() => void), showToggle?: boolean, icon?: string, maxHeight?: string, fadeColor?: string, children?: JSX.Element, class?: string, styles?: Record<string, string | number>
 - Column (DesignSystemElement)

@@ -193,7 +193,7 @@ const passRowChildren: SchemaNode[] = [
 const disclosureCaret: SchemaNode = {
   type: '$if',
   props: {
-    condition: '$pass.hasDetail',
+    condition: '$pass.openable',
     then: {
       type: 'we-icon',
       props: {
@@ -291,14 +291,17 @@ function codePane(options: {
                   // and a pane accepting keystrokes would imply it could be corrected and re-run.
                   readOnly: true,
                   /*
-                    A fixed height, not a maximum.
+                    A ceiling, and the editor shrinks to its content below it.
 
-                    `.cm-editor` is `height: 100%`, and a percentage resolves against `auto` as
-                    `auto` — so under `max-height` alone the editor grew to its content, the wrapper
-                    grew with it, and nothing scrolled. Given a real height, CodeMirror's own
-                    `.cm-scroller` takes over, which is how it is meant to be sized.
+                    A fixed height was the earlier fix for nothing scrolling, and it worked at the
+                    cost of reserving 240px for seven lines of JSON. `maxHeight` is a prop on the
+                    component now rather than a style on the wrapper — it sets the editor's own box
+                    to `height: auto` with a cap, which is the arrangement CodeMirror's scroller
+                    expects. A style on the wrapper could not reach that box, which is why the first
+                    attempt at a maximum did not scroll at all.
                   */
-                  styles: { height: '240px', width: '100%' },
+                  maxHeight: '240px',
+                  styles: { width: '100%' },
                 },
               },
             },
@@ -415,7 +418,7 @@ const passEntry: SchemaNode = {
         ax: 'start',
         ay: 'center',
         gap: '200',
-        disabled: { $not: '$pass.hasDetail' },
+        disabled: { $not: '$pass.openable' },
         onClick: { $toggleLocalIn: 'openPasses', value: '$pass.passId' },
       },
       children: [...passRowChildren, disclosureCaret],

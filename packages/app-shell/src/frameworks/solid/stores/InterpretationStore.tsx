@@ -80,6 +80,14 @@ export interface InterpretationActivityView {
   /** Whether there is anything behind the disclosure triangle — so a UI can disable it with an
    *  explanation rather than opening an empty panel. */
   hasDetail: boolean;
+  /**
+   * Whether the row should offer to open at all.
+   *
+   * `hasDetail` and either settled or slow enough to be worth investigating — see
+   * `OPENABLE_AFTER_MS`. One field rather than two conditions in the schema, so the caret's
+   * presence and the row's clickability cannot drift apart.
+   */
+  openable: boolean;
 }
 
 export interface InterpretationStore {
@@ -122,6 +130,22 @@ function formatJson(raw: string): string {
     return raw;
   }
 }
+
+/**
+ * How long a pass must have been running before its prompt is worth offering.
+ *
+ * A caret on every running row was unusable in practice: on a fast model the pass completes before
+ * anybody can click, so all it did was flicker, and everything it would have shown is on the
+ * settled row a moment later alongside the response.
+ *
+ * It still earns its place on a pass that is slow or stuck — a hung pass never settles, so without
+ * this its prompt would be unreachable for the ten minutes until it goes stale, and "what did we
+ * actually send it?" is the first question anybody asks about a hang.
+ *
+ * Twenty seconds carries no principle beyond "long enough that a person starts wondering". Move it
+ * freely; nothing else depends on the number.
+ */
+const OPENABLE_AFTER_MS = 20_000;
 
 /** `m:ss`, which is the range a pass actually occupies — seconds to a few minutes. */
 function formatElapsed(ms: number): string {
@@ -345,6 +369,9 @@ export function InterpretationStoreProvider(props: ParentProps) {
           prompt: formatJson(row.llm?.prompt ?? ''),
           response: formatJson(row.llm?.response ?? ''),
           hasDetail: !!(row.llm?.prompt || row.llm?.response),
+          openable:
+            !!(row.llm?.prompt || row.llm?.response) &&
+            (!running || at - (startedAt.get(row.passId) ?? row.at) >= OPENABLE_AFTER_MS),
         };
       });
   });

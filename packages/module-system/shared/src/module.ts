@@ -749,6 +749,12 @@ export interface InterpretationActivitySummary {
   /** Whether there is anything behind a disclosure — so a UI can disable the control with a reason
    *  rather than opening an empty panel. */
   hasDetail: boolean;
+  /**
+   * Whether the row should offer to open. `hasDetail`, and either settled or running long enough
+   * that somebody would want to look inside — a pass that finishes in two seconds offers nothing a
+   * person can act on, and its detail is on the settled row a moment later anyway.
+   */
+  openable: boolean;
 }
 
 /**

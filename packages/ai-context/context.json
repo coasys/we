@@ -2953,6 +2953,11 @@
           "optional": true
         },
         {
+          "name": "maxHeight",
+          "type": "string",
+          "optional": true
+        },
+        {
           "name": "styles",
           "type": "Record<string, string | number>",
           "optional": true
