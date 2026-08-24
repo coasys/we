@@ -94,6 +94,16 @@ export function ShellRouterRoot(props: ParentProps): JSX.Element {
   const navigate = useNavigate();
   const location = useLocation();
 
+  /*
+    Claimed synchronously, here in setup, rather than inside `onMount`.
+
+    Effects run in creation order and `onMount` is one of them, so the location effect below fires
+    first — with the *fresh* router's `/`, since a remounted `MemoryRouter` starts there. Asking
+    afterwards therefore returned `/`: the answer had been overwritten by the question. Reading it
+    before any effect exists is what makes the restore survive its own bookkeeping.
+  */
+  const restoreTo = shell.takePendingPath();
+
   createEffect(() => store.setNavigateFunction(() => navigate));
   createEffect(() => {
     store.setCurrentPath(location.pathname);
@@ -113,8 +123,7 @@ export function ShellRouterRoot(props: ParentProps): JSX.Element {
   // `MemoryRouter` starts at `/`. Without this you were on a space's settings page and are now on
   // the account page, having asked for neither.
   onMount(() => {
-    const path = shell.takePendingPath();
-    if (path && path !== location.pathname + location.search) navigate(path, { replace: true });
+    if (restoreTo && restoreTo !== location.pathname + location.search) navigate(restoreTo, { replace: true });
   });
 
   return <>{props.children}</>;

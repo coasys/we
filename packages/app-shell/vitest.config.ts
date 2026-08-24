@@ -18,6 +18,7 @@ const SOLID_TESTS = [
   'tests/routeStore.test.tsx',
   'tests/shellRouteStore.test.tsx',
   'tests/shellPathMemory.test.tsx',
+  'tests/shellOverlayRemount.test.tsx',
   // Not a component test, but it drives real `we-iframe` elements with shadow roots and real
   // `MessageEvent`s — the DOM is what is under test.
   'tests/appBridge.test.ts',
