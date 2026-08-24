@@ -12,7 +12,7 @@ describe('$plural', () => {
    * correct and the tests below cover each: a non-reactive consumer sees what it always saw, and a
    * renderer gets an accessor that re-picks the word.
    */
-  const keepThunk = (fn: () => unknown) => fn;
+  const keepThunk = <T>(fn: () => T) => fn as unknown as T;
 
   it('picks the singular at one and the plural otherwise', () => {
     // Default eager memo: a plain string, as a non-reactive consumer has always seen.
