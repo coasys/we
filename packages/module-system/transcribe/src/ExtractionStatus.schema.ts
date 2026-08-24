@@ -412,15 +412,27 @@ const passEntry: SchemaNode = {
       type: 'we-tooltip',
       props: {
         placement: 'bottom',
+        /*
+          Full width, and this is what was stopping the caret reaching the right edge.
+
+          `we-tooltip` is `display: inline-flex`, so it shrink-wraps its trigger — which meant the
+          button's own `width: '100%'` was resolving against an already-shrunken box. The button was
+          faithfully filling its parent; the parent was the size of the text.
+
+          Worth remembering as a general trap: a wrapper that only adds behaviour still participates
+          in layout, and every full-width thing inside one needs it declared at the outermost box,
+          not just the innermost.
+        */
+        width: '100%',
         title: {
           $if: {
             condition: '$pass.hasDetail',
-            then: 'Show what the model was asked',
+            then: 'Show the prompt and the response',
             else: {
               $if: {
                 condition: '$pass.mine',
                 then: 'Nothing sent to the model yet',
-                else: 'Only the person running a pass sees what it sent',
+                else: 'Only the person running a pass sees its prompt and response',
               },
             },
           },
