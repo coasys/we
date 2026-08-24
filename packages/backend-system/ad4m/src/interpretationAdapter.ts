@@ -19,7 +19,7 @@
  * Predicates that map to nothing are dropped rather than shown raw: a reviewer cannot make a good
  * accept/reject decision about `we://x_7` and should not be asked to.
  */
-import { AutoProcessorConfig, Link, LinkQuery, Literal, type PerspectiveProxy } from '@coasys/ad4m';
+import { Link, LinkQuery, Literal, type PerspectiveProxy } from '@coasys/ad4m';
 import type {
   DatasetHandle,
   InterpretationActivity,
@@ -798,24 +798,36 @@ export function createAd4mInterpretationPort(selfId?: () => string | undefined):
       */
       watchParents.delete(watchId);
       /*
-        Register the client's own shape before querying through it.
+        Delete the processor's links directly, without going through the ORM.
 
-        The engine registers this class under the name **`AutoProcessor`**; the ORM class is named
-        `AutoProcessorConfig`, and `findAll` resolves a shape *by name* — so without this it fails
-        with "No SHACL shape stored for class 'AutoProcessorConfig'". Two names over one set of
-        instances, which the model's own docs anticipate by telling callers to register it first.
+        This used to call `AutoProcessorConfig.register(perspective)` first, because `findAll`
+        resolves a shape by name and the client model is named differently from the class the
+        executor registers. But `register` *writes SDNA*: it installs the TypeScript model's SHACL
+        over the same target class the executor hard-wires, replacing a definition the engine owns
+        as a side effect of tidying up after a call.
 
-        The same disagreement about how a class is named that `targetClasses` exists for, one layer
-        along. Both are worth reading as one symptom.
+        The two shapes agree on property names and paths — there is a parity test for exactly that
+        — and that test compares nothing else. Setters, constructors and literal encoding are all
+        free to differ while it passes, and the write path is made of setters. So the class an
+        executor wrote through on one call could be a different class by the next one, with nothing
+        in between reporting a problem.
+
+        Whether or not that is what bit us, a delete has no business redefining a class. The node
+        URI is derived from the processor id (`processor_node` in the executor), so its links can be
+        removed directly — no shape lookup, no registration, nothing for the engine's own definition
+        to collide with.
       */
-      await (AutoProcessorConfig as unknown as { register(p: PerspectiveProxy): Promise<unknown> }).register(
-        perspective,
-      );
-
-      const configs = (await AutoProcessorConfig.findAll(perspective, {
-        where: { processorId: watchId },
-      })) as unknown as { delete(): Promise<unknown> }[];
-      for (const config of configs) await config.delete();
+      const node = `ad4m://autoprocessor/${watchId}`;
+      const links = await perspective.get(new LinkQuery({ source: node }));
+      for (const link of links) {
+        try {
+          await perspective.remove(link);
+        } catch (error) {
+          // One stubborn link should not strand the rest: what stops the watch is the required
+          // scalars going away, and a partial removal still achieves that.
+          console.warn('[interpretation] could not remove a watch config link', error);
+        }
+      }
     },
   };
 }
