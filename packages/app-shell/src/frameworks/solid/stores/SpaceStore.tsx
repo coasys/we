@@ -1,5 +1,6 @@
 import { containmentPredicate, gatherTranscriptTurns, type TurnModel } from '@shared/interpretation/transcriptTurns';
 import { moduleRegistry, moduleStores, type ModuleSurface, moduleSurface } from '@shared/registries/moduleRegistry';
+import { defaultViewOrder, viewRegistry } from '@shared/registries/viewRegistry';
 import {
   isSpaceSelf,
   type LocationData,
@@ -9,6 +10,14 @@ import {
 } from '@shared/spaceSync';
 import { resolveSpaceTheme, type ThemeResolutionInput } from '@shared/themeResolution';
 import { deriveSlug } from '@shared/utils';
+import type { ViewSetting } from '@shared/viewResolution';
+import {
+  activeSections,
+  parseIdList,
+  resolveEnabledViews,
+  routableSections,
+  viewSettings,
+} from '@shared/viewResolution';
 import type { AgentProfileSummary, DatasetRef } from '@we/backend-shared';
 import type { SerializedBlockNode } from '@we/block-shared';
 import { createBlocks, deleteBlocks, reconcileBlocks } from '@we/block-shared';
@@ -32,6 +41,8 @@ import {
   Space,
   SpacePreference,
 } from '@we/models';
+import type { ResolvedView, TemplateSchema } from '@we/schema-shared';
+import { hasViewsMarker } from '@we/schema-shared';
 import {
   Accessor,
   createContext,
@@ -84,6 +95,29 @@ export interface SpaceListEntry {
    * an id. Precomputing puts the answer where the row's context already reaches it.
    */
   modules: ModuleSetting[];
+  /**
+   * This space's sections, with both layers' answers — the community's and this agent's.
+   *
+   * On the row for the same reason `modules` is: `$store` resolves a literal path, so a settings
+   * page rendered per row cannot ask for the sections of "that row's space".
+   */
+  views: ViewSetting[];
+  /**
+   * Whether the interface this agent sees here has sections at all.
+   *
+   * False for a shell with a route table of its own and no `$views` marker — a showcase template,
+   * say. The settings page reads it so it can explain rather than offer switches nothing reads.
+   */
+  usesSections: boolean;
+  /** `'listed'` or `'hidden'` — whether this space appears on the global discovery globe. */
+  discovery: string;
+  /**
+   * Where this space says it is, hydrated, or null.
+   *
+   * On the row rather than read from `currentSpace` because the settings page edits whichever space
+   * was clicked. `loadSpaces` includes the relation for the same reason.
+   */
+  location: { latitude?: number; longitude?: number; city?: string; country?: string; countryCode?: string } | null;
   /** What the community set, so a picker can label the "follow the space" option with it. */
   defaultTemplateId: string;
   defaultThemeId: string;
@@ -396,6 +430,30 @@ export interface SpaceStore {
   >;
   /** Launchers for the modules enabled here — what the module rail renders. */
   moduleLaunchers: Accessor<{ id: string; icon: string; label: string; active: boolean }[]>;
+  /**
+   * This space's sections, resolved: which view renders at which segment, in the space's own order.
+   *
+   * Carries the view schemas, because the host builds the route tree out of them. What a template
+   * renders a nav strip from is `viewNav`, which is this without the payload.
+   */
+  spaceViews: Accessor<ResolvedView[]>;
+  /**
+   * Every view that *could* render here, at its permanent segment — what the host builds routes from.
+   *
+   * Separate from {@link spaceViews} because the two change on completely different clocks: this one
+   * when a view is installed, that one whenever somebody flicks a switch. Building the route table
+   * from the switch was what made toggling a section rebuild the whole application.
+   */
+  routableViews: Accessor<ResolvedView[]>;
+  /**
+   * Ids of the sections the community has in this space — what a route body is gated on.
+   *
+   * Not the nav list: that also drops this agent's hidden ones, and hiding a section for yourself
+   * must not make its URL refuse you. See `ViewGate`.
+   */
+  enabledViewIds: Accessor<string[]>;
+  /** The same list as a nav strip reads it — one source, so routes and nav cannot disagree. */
+  viewNav: Accessor<{ id: string; segment: string; label: string; icon: string; path: string }[]>;
 
   // Actions
   createSpace: (
@@ -535,6 +593,12 @@ export interface SpaceStore {
   setModuleInstalled: (moduleId: string, installed: boolean) => Promise<void>;
   /** Show or hide a module for this agent in one space. Private to this agent. */
   setModuleVisible: (moduleId: string, visible: boolean, spaceUuid?: string) => Promise<void>;
+  /** Add or remove a section from a space. The community's decision — every member sees it. */
+  setViewEnabled: (viewId: string, enabled: boolean, spaceUuid?: string) => Promise<void>;
+  /** Set the whole section order at once — what a drag-reorder writes. */
+  reorderViews: (viewIds: string[], spaceUuid?: string) => Promise<void>;
+  /** Show or hide a section for this agent in one space. Private to this agent. */
+  setViewVisible: (viewId: string, visible: boolean, spaceUuid?: string) => Promise<void>;
   /** Override the template this agent sees in one space; FOLLOW_SPACE follows its default. Private. */
   setSpaceTemplateOverride: (templateId: string, spaceUuid?: string) => Promise<void>;
   /** Override the theme this agent sees in one space; FOLLOW_SPACE follows its default. Private. */
@@ -683,6 +747,15 @@ export function SpaceStoreProvider(props: ParentProps) {
   };
 
   /**
+   * Sections this agent has hidden in one space — the private half of the section list.
+   *
+   * Exclusions, like `mutedModulesFor`: a section the community adds later shows up, because silence
+   * about a view is "no opinion" rather than "no".
+   */
+  const hiddenViewsFor = (spaceUuid: string | undefined): string[] =>
+    parseIdList(preferenceFor(spaceUuid)?.hiddenViews);
+
+  /**
    * This agent's template/theme override for a space, normalised to one of the three values a
    * picker offers.
    *
@@ -748,6 +821,68 @@ export function SpaceStoreProvider(props: ParentProps) {
     ];
   });
 
+  /**
+   * Every view this agent could put in a space: the ones compiled in, plus the ones installed.
+   *
+   * A view installed at runtime is an ordinary `Template` record whose `meta.role` is `'view'` —
+   * the same record a shell is stored as, which is what lets one marketplace, one install flow and
+   * one publish path serve both. The registry is consulted first so a built-in id keeps meaning the
+   * built-in view even if somebody installs a template sharing its id.
+   */
+  const availableViews = createMemo<Map<string, TemplateSchema>>(() => {
+    const out = new Map<string, TemplateSchema>(Object.entries(viewRegistry));
+    for (const template of templateStore.allTemplates()) {
+      if (template.meta?.role !== 'view' || !template.id || out.has(template.id)) continue;
+      out.set(template.id, template);
+    }
+    return out;
+  });
+
+  /**
+   * Every available view with both layers' answers, for one space — what a settings list renders.
+   *
+   * Both answers travel together for the reason `moduleSettingsFrom` explains: "the community
+   * turned this off" and "you hid this for yourself" are different situations with different
+   * remedies, and one boolean cannot tell them apart.
+   */
+  const viewSettingsFor = (spaceUuid: string | undefined, raw: string | undefined): ViewSetting[] =>
+    viewSettings({
+      enabledRaw: raw,
+      hidden: hiddenViewsFor(spaceUuid),
+      available: availableViews(),
+      fallbackOrder: defaultViewOrder(),
+      isBuiltIn: (id) => id in viewRegistry,
+    });
+
+  /**
+   * Turn a stored override into the id that actually applies.
+   *
+   * `''` defers to the community's choice; {@link AGENT_DEFAULT} defers to this agent's global one,
+   * read live so it tracks a later change rather than freezing today's answer.
+   */
+  const resolveTemplateFor = (uuid: string): string => {
+    const override = templateOverrideFor(uuid);
+    if (override === AGENT_DEFAULT) return templateStore.defaultTemplateId();
+    if (override === FOLLOW_SPACE) return spaceForUuid(uuid)?.defaultTemplateId || '';
+    return override;
+  };
+
+  /**
+   * Does the interface this agent would see in that space have sections at all?
+   *
+   * Not every shell does. The showcase templates have route tables of their own and no `$views`
+   * marker anywhere in them — a Discord-shaped space has channels, not sections, and that is a
+   * legitimate design rather than an omission.
+   *
+   * Carried on the row so the settings page can say so instead of showing a Sections card whose
+   * switches would write a setting nothing reads. A control that does nothing is worse than an
+   * absent one: it teaches the reader something false about the space.
+   */
+  const usesSectionsFor = (uuid: string): boolean => {
+    const schema = templateStore.allTemplates().find((t) => t.id === resolveTemplateFor(uuid));
+    return hasViewsMarker(schema?.routes);
+  };
+
   /** `installedModules` as a set — the shape both the list and the intersection want. */
   const installedSet = createMemo(() => new Set(installedModules()));
 
@@ -771,6 +906,12 @@ export function SpaceStoreProvider(props: ParentProps) {
         isWeSpace: Boolean(space),
         canAdminister: space ? canAdministerSpace(space.uuid) : false,
         modules: space ? moduleSettingsFrom(space.enabledModules, installedSet(), new Set(mutedModulesFor(ds.id))) : [],
+        // Per row rather than a "current space" memo, for the reason this whole page exists: it
+        // configures whichever space you clicked, which is usually not the one you are standing in.
+        views: space ? viewSettingsFor(ds.id, space.enabledViews) : [],
+        usesSections: usesSectionsFor(ds.id),
+        discovery: space?.discovery ?? 'hidden',
+        location: (space?.location as SpaceListEntry['location']) ?? null,
         defaultTemplateId: space?.defaultTemplateId ?? '',
         defaultThemeId: space?.defaultThemeId ?? '',
         templateOverride: templateOverrideFor(ds.id),
@@ -842,7 +983,12 @@ export function SpaceStoreProvider(props: ParentProps) {
       // real space's data (including avatars) until each is visited individually. Catch
       // per-dataset so one bad dataset can't poison the rest.
       const spaces = await Promise.all(
-        candidates.map(async (ds) => await Space.findOne(ds.handle, { where: spaceSelfWhere(ds) }).catch(() => null)),
+        candidates.map(
+          async (ds) =>
+            await Space.findOne(ds.handle, { where: spaceSelfWhere(ds), include: { location: true } }).catch(
+              () => null,
+            ),
+        ),
       );
       const filteredSpaces = spaces
         .filter((s): s is Space => !!s)
@@ -1435,6 +1581,13 @@ export function SpaceStoreProvider(props: ParentProps) {
         });
         await spaceModel.setLocation(newLoc);
       }
+      /*
+        The cached row carries the location now, and the write above deliberately excluded it from
+        `updateSpaceInCache` (a relation is not a scalar). Only the space *on screen* is refreshed by
+        the live subscription, so without this the settings page would show the old place — or "Not
+        set" — immediately after saving a space the agent is not standing in.
+      */
+      updateSpaceInCache(ds, { location: updates.location } as never);
     }
 
     const globalDs = datasetStore.globalDataset();
@@ -1625,6 +1778,79 @@ export function SpaceStoreProvider(props: ParentProps) {
     const muted = new Set(mutedModulesFor(datasetStore.currentDataset()?.id));
     return enabledModules().filter((id) => installed.has(id) && !muted.has(id));
   });
+
+  /**
+   * The space's sections, resolved: which view renders, at which segment, in which order.
+   *
+   * Community layer minus personal layer — `Space.enabledViews` says what the space *has*, and this
+   * agent's `hiddenViews` says which of those they bother to see. Deliberately **not** intersected
+   * with an "installed by me" layer the way `activeModules` is: a module is a capability an agent
+   * chooses to run, while a section is part of what the space *is*, and letting a missing personal
+   * install silently remove a tab would mean two members reading the same URL and one of them
+   * getting a 404.
+   *
+   * The segment comes from the view's own `meta.segment`, falling back to its id. It is resolved
+   * here rather than read at the render site so the routes and the nav strip cannot disagree about
+   * where a section lives — which is the drift this whole mechanism exists to end.
+   */
+  /**
+   * Every view that could render here, each at the segment it will always be at.
+   *
+   * What the route table is built from — see `routableSections` for why that is deliberately *not*
+   * the enabled list. It changes when a view is installed or uninstalled and at no other time, so
+   * flicking a section on or off no longer rebuilds the Router and everything mounted under it.
+   */
+  const routableViews = createMemo<ResolvedView[]>(() => routableSections(availableViews(), defaultViewOrder()));
+
+  const spaceViews = createMemo<ResolvedView[]>(() =>
+    activeSections({
+      routable: routableViews(),
+      enabledRaw: currentSpace()?.enabledViews,
+      hidden: hiddenViewsFor(datasetStore.currentDataset()?.id),
+      fallbackOrder: defaultViewOrder(),
+    }),
+  );
+
+  /**
+   * The ids of the sections **the community** has in this space — what a route body is gated on.
+   *
+   * Deliberately *not* the nav list. The two differ by this agent's hidden set, and those mean
+   * different things: the community removing a section takes it out of the space, while hiding one
+   * for yourself takes it out of your nav. Gating on the nav list would turn a personal tidy-up into
+   * a block — follow a link to something you had merely hidden and be told it is "not in this
+   * space", which is both a refusal you did not ask for and a lie about why.
+   *
+   * A bare id list rather than resolved views, because `$in` is what reads it and a schema cannot
+   * pluck a field out of each entry to compare against.
+   */
+  const enabledViewIds = createMemo<string[]>(() =>
+    activeSections({
+      routable: routableViews(),
+      enabledRaw: currentSpace()?.enabledViews,
+      hidden: [],
+      fallbackOrder: defaultViewOrder(),
+    }).map((view) => view.id),
+  );
+
+  /**
+   * The same list, as the nav strip reads it.
+   *
+   * A projection rather than a second source, which is the point: the header and the sidebar used to
+   * hold literal arrays of their own and had already drifted apart from each other and from the
+   * routes. Anything rendering a section list reads this, so there is one answer to what a space
+   * contains.
+   *
+   * `path` is relative (`./cards`) because a section is always addressed from inside its space.
+   */
+  const viewNav = createMemo(() =>
+    spaceViews().map((view) => ({
+      id: view.id,
+      segment: view.segment,
+      label: view.schema.meta?.name ?? view.id,
+      icon: view.schema.meta?.icon || 'square',
+      path: `./${view.segment}`,
+    })),
+  );
 
   // AppStore mounts above this one, so it is handed the set rather than reaching for it — the same
   // arrangement as `templateStore.provideSpaceLookup`. The *installed* set, not the active one: an
@@ -1902,7 +2128,22 @@ export function SpaceStoreProvider(props: ParentProps) {
    * Derived from the components the schema actually mounts, so it is right without any template
    * author declaring anything — see `moduleRegistry.requiredBy`.
    */
-  const requiredModules = createMemo<string[]>(() => moduleRegistry.requiredBy(templateStore.currentTemplate));
+  /**
+   * Modules the interface on screen mounts components from — the shell *and* its sections.
+   *
+   * The sections have to be walked separately now that they are not part of the shell's own schema.
+   * Missing them would break two things quietly: `missingModules` would stop reporting a real gap,
+   * and — worse — the guard in `setModuleInstalled` would stop refusing. Uninstalling the globe
+   * module while a space has the globe section enabled would then succeed, and that section would
+   * render nothing with nothing to say why, which is exactly the failure the guard exists for.
+   */
+  const requiredModules = createMemo<string[]>(() => {
+    const required = new Set(moduleRegistry.requiredBy(templateStore.currentTemplate));
+    for (const view of spaceViews()) {
+      for (const id of moduleRegistry.requiredBy(view.schema)) required.add(id);
+    }
+    return [...required];
+  });
 
   /**
    * Modules this template needs that the agent has not installed.
@@ -1973,19 +2214,6 @@ export function SpaceStoreProvider(props: ParentProps) {
     else next.add(moduleId);
     await updateSpacePreference(uuid, { mutedModules: JSON.stringify([...next]) } as Partial<SpacePreference>);
   }
-
-  /**
-   * Turn a stored override into the id that actually applies.
-   *
-   * `''` defers to the community's choice; {@link AGENT_DEFAULT} defers to this agent's global one,
-   * read live so it tracks a later change rather than freezing today's answer.
-   */
-  const resolveTemplateFor = (uuid: string): string => {
-    const override = templateOverrideFor(uuid);
-    if (override === AGENT_DEFAULT) return templateStore.defaultTemplateId();
-    if (override === FOLLOW_SPACE) return spaceForUuid(uuid)?.defaultTemplateId || '';
-    return override;
-  };
 
   /**
    * The theme a template asks to be seen in, if this agent allows it and actually has that theme.
@@ -2270,6 +2498,98 @@ export function SpaceStoreProvider(props: ParentProps) {
     );
   }
 
+  /**
+   * Add or remove a section from a space — the community's decision, shared with every member.
+   *
+   * The same shape as `setModuleEnabled`, including writing the *resolved* list rather than a diff,
+   * so the first toggle also pins whatever was on by fallback and a view added to a later build does
+   * not silently appear in a space that had already decided.
+   *
+   * Enabling appends. A section arriving at the end is the only placement that is obviously not a
+   * claim about importance — inserting it at a remembered index would be one, and there is nothing
+   * to remember for a view being turned on for the first time. Reordering is `reorderViews`.
+   */
+  async function setViewEnabled(viewId: string, enabled: boolean, spaceUuid?: string) {
+    const ds = targetDataset(spaceUuid);
+    const space = ds ? mySpaces().find((s) => isSpaceSelf(s, ds)) : undefined;
+    if (!ds || !space) return;
+    const available = availableViews();
+    const current = resolveEnabledViews(space.enabledViews, (id) => available.has(id), defaultViewOrder());
+    const next = enabled
+      ? current.includes(viewId)
+        ? current
+        : [...current, viewId]
+      : current.filter((id) => id !== viewId);
+    await writeEnabledViews(ds, space, next);
+  }
+
+  /**
+   * Set the whole section list at once — what a drag-reorder writes.
+   *
+   * Takes the order rather than a moved id, because `we-sortable` reports the resulting arrangement
+   * and re-deriving it from a move would be a second implementation of the same decision.
+   */
+  async function reorderViews(viewIds: string[], spaceUuid?: string) {
+    const ds = targetDataset(spaceUuid);
+    const space = ds ? mySpaces().find((s) => isSpaceSelf(s, ds)) : undefined;
+    if (!ds || !space) return;
+    /*
+      A reorder may only *reorder*. Intersecting with what is already enabled is what stops a drag
+      from turning sections on: the settings list holds every available section, so a drag handed
+      back the disabled ones too, and writing them wholesale enabled every one of them at a stroke.
+
+      The drag zone now holds only the enabled rows, so this is belt and braces — but it is the half
+      that cannot be undone by someone rearranging the schema later.
+    */
+    const enabled = new Set(
+      resolveEnabledViews(space.enabledViews, (id) => availableViews().has(id), defaultViewOrder()),
+    );
+    await writeEnabledViews(
+      ds,
+      space,
+      viewIds.filter((id) => enabled.has(id)),
+    );
+  }
+
+  /** The write half both of the above share — persist, cache, and republish the space on screen. */
+  async function writeEnabledViews(ds: AppDataset, space: Space, viewIds: string[]) {
+    const enabledViewsJson = JSON.stringify(viewIds);
+    try {
+      await Space.update(ds.handle, space.id, { enabledViews: enabledViewsJson });
+    } catch (error) {
+      console.error('SpaceStore: could not persist enabledViews', error);
+      toastService.error('Could not save this change for the space.');
+      throw error;
+    }
+    updateSpaceInCache(ds, { enabledViews: enabledViewsJson } as never);
+    if (!isCurrent(ds)) return;
+    // A new instance, for the reason `setModuleEnabled` spells out: `currentSpace` dedupes on `===`,
+    // so re-setting a mutated object notifies nothing and the nav strip keeps its old sections.
+    setCurrentSpace((prev) =>
+      prev
+        ? (Object.assign(Object.create(Object.getPrototypeOf(prev)), prev, {
+            enabledViews: enabledViewsJson,
+          }) as Space)
+        : prev,
+    );
+  }
+
+  /**
+   * Show or hide a section for **this agent only**, in one space.
+   *
+   * Private — written to the root dataset, never to the space, so hiding a tab for yourself cannot
+   * remove it for anybody else. Phrased positively so a `we-switch` can pass `$event.detail` bare;
+   * wrapping it in `$not` would evaluate at render time and send a constant.
+   */
+  async function setViewVisible(viewId: string, visible: boolean, spaceUuid?: string): Promise<void> {
+    const uuid = spaceUuid ?? datasetStore.currentDataset()?.id;
+    if (!uuid) return;
+    const next = new Set(hiddenViewsFor(uuid));
+    if (visible) next.delete(viewId);
+    else next.add(viewId);
+    await updateSpacePreference(uuid, { hiddenViews: JSON.stringify([...next]) } as Partial<SpacePreference>);
+  }
+
   // Subscribe to current space data reactively whenever the dataset changes.
   // include: { location: true } so AboutRoute can access location without a separate query.
   createEffect(() => {
@@ -2544,6 +2864,10 @@ export function SpaceStoreProvider(props: ParentProps) {
     spaceThemePinned,
     moduleInstallSettings,
     moduleLaunchers,
+    spaceViews,
+    routableViews,
+    enabledViewIds,
+    viewNav,
     foreignSpacePrefill,
 
     // Actions
@@ -2575,6 +2899,9 @@ export function SpaceStoreProvider(props: ParentProps) {
     setShareExtractionDetail,
     setModuleInstalled,
     setModuleVisible,
+    setViewEnabled,
+    setViewVisible,
+    reorderViews,
     setSpaceTemplateOverride,
     setSpaceThemeOverride,
     applyTheme,

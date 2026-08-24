@@ -339,6 +339,12 @@ export const zTemplateMeta: z.ZodType<TemplateMeta> = z
     icon: z.string(),
     /** A theme this template suggests. See `TemplateMeta.themeId` — a suggestion, not a setting. */
     themeId: z.string().optional(),
+    /** Whole interface, or one section inside one. See `TemplateMeta.role`. Absent means shell. */
+    role: z.enum(['shell', 'view']).optional(),
+    /** A view's default URL segment. See `TemplateMeta.segment`. */
+    segment: z.string().optional(),
+    /** A view that stays mounted across sibling navigation. See `TemplateMeta.keepAlive`. */
+    keepAlive: z.boolean().optional(),
     stores: z
       .union([
         z.array(z.string()),

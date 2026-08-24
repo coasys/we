@@ -25,6 +25,42 @@ export type TemplateMeta = {
    * not installed is reported once and ignored, exactly as `?theme=` in a share link is.
    */
   themeId?: string;
+  /**
+   * What this template *is* — a whole interface, or one section inside one.
+   *
+   * A `'shell'` (the default, and what every template was before this existed) owns the space's
+   * chrome, its route table and the arrangement everything sits in. A `'view'` owns a single
+   * section: it renders at one segment under the shell's `$views` marker, and knows nothing about
+   * what surrounds it.
+   *
+   * The distinction earns its place because it decides what a fork costs. A community that wants a
+   * seventh section used to fork the whole shell and drift from upstream forever; with views, the
+   * section is the unit — they install one, or write one, and the shell they share with everybody
+   * else keeps improving underneath them.
+   *
+   * Optional and defaulted rather than required, so every template that predates this keeps working
+   * unchanged and unannotated: absent means shell, which is what they all are.
+   */
+  role?: 'shell' | 'view';
+  /**
+   * For a `'view'`: the URL segment it renders at, and the identity a space enables or disables it
+   * by. Ignored on a shell.
+   *
+   * The template's own suggestion, not a fixed address — a space's section list pairs a segment
+   * with a view id, so two views can offer the same default segment and a community can put either
+   * one at `/cards` without either template knowing. What it must be is *stable*: it is in the URL,
+   * so changing it breaks every link anyone has shared.
+   */
+  segment?: string;
+  /**
+   * For a `'view'`: keep this section mounted when the user navigates to a sibling, rather than
+   * unmounting it. Becomes the route's `keepAlive`. Ignored on a shell.
+   *
+   * The expensive-to-rebuild case, and it is narrower than it looks — a Cesium globe, a live map, a
+   * running WebGL scene. Ordinary sections should not set it: a kept-alive view holds its
+   * subscriptions open for as long as the space is, which is the cost that buys the instant return.
+   */
+  keepAlive?: boolean;
   stores?: string[] | StoreDeclaration;
   components?: string[];
 };

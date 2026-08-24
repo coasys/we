@@ -487,6 +487,9 @@ importers:
       '@we/template-showcase':
         specifier: workspace:*
         version: link:../templates/showcase
+      '@we/template-views':
+        specifier: workspace:*
+        version: link:../templates/views
       '@we/themes':
         specifier: workspace:*
         version: link:../design-system/2-themes
@@ -1484,6 +1487,19 @@ importers:
         version: 24.13.2
 
   packages/templates/showcase:
+    dependencies:
+      '@we/schema-shared':
+        specifier: workspace:*
+        version: link:../../schema-system/shared
+      '@we/template-kit':
+        specifier: workspace:*
+        version: link:../kit
+    devDependencies:
+      '@types/node':
+        specifier: ^24.10.0
+        version: 24.13.2
+
+  packages/templates/views:
     dependencies:
       '@we/schema-shared':
         specifier: workspace:*

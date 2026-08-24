@@ -1,4 +1,9 @@
 import type { SchemaNode } from '@we/schema-shared';
+import { attributeRow } from '@we/template-kit';
+
+import { spaceDefaultsSection } from './SpaceDefaults.ts';
+import { spaceSectionsSection } from './SpaceSections.ts';
+import { spaceVocabularySection } from './SpaceVocabulary.ts';
 
 /**
  * Settings for one space, reached from its card in the spaces list.
@@ -8,11 +13,25 @@ import type { SchemaNode } from '@we/schema-shared';
  * that one place, and only for as long as you stayed. Keying off the row you clicked decouples
  * configuring a space from being in it — you can set up several in one sitting.
  *
- * The space's own template may also offer these controls in context (the default template's
- * `/settings` route does). That is not duplication in any load-bearing sense: both render the same
- * store actions, and two presentations of one set of actions is what the schema system is for. What
- * this page adds is that the controls exist for *every* space, including one whose template never
- * thought to provide them.
+ * ## One page, two doors
+ *
+ * The default template used to carry a `/settings` section of its own rendering the same actions.
+ * Two presentations of one set of actions is what the schema system is for, so that was defensible
+ * while it lasted — but the two had already diverged (the route offered vocabulary and the space's
+ * default template; this page offered modules and the personal overrides), and a member's answer to
+ * "where do I change this" depended on which they happened to open.
+ *
+ * So the route is gone and this is the only one, reached from the spaces list — via the chrome
+ * rail's own gear, which is present in every space and on every screen, so a second gear inside the
+ * space was a duplicate of something that could never be missing.
+ *
+ * The About view's pencil is the one exception, and it is not a general entry point: it sits on the
+ * fields it leads to, saying "these are edited over there" about a specific form rather than
+ * offering settings in general.
+ *
+ * That it lives outside every template is now load-bearing rather than incidental. With sections
+ * installable, most shells will not provide a settings surface at all — and a community that
+ * installs one which does not must still be able to change their template back.
  */
 
 /** Read the space this page is for out of the route. `/spaces/<uuid>` → segments[1]. */
@@ -96,18 +115,215 @@ const notAWeSpaceNotice: SchemaNode = {
   ],
 };
 
+/**
+ * Name and description save when the field is left, so the spinner is the only thing that says the
+ * change was taken.
+ *
+ * It sits by the section heading rather than by the field, because a blur has usually moved the
+ * cursor somewhere else by the time the write lands — a spinner where the cursor no longer is
+ * reports to nobody.
+ */
 const saveMetaOnBlur = [
   {
     $if: {
       condition: { $local: 'metaDirty' },
+      then: [
+        { $setLocal: 'saving', value: true },
+        {
+          $action: 'spaceStore.updateSpaceMeta',
+          args: [{ name: { $local: 'editName' }, description: { $local: 'editDescription' } }, '$space.uuid'],
+          onFinally: [
+            { $setLocal: 'metaDirty', value: false },
+            { $setLocal: 'saving', value: false },
+          ],
+        },
+      ],
+    },
+  },
+];
+
+const isListed = { $eq: ['$space.discovery', 'listed'] };
+
+/**
+ * Whether the space appears on the global discovery globe.
+ *
+ * Reads `$space.discovery` rather than `spaceStore.currentSpace.discovery` — the row being
+ * configured is usually not the space on screen, and the store accessor would answer for the wrong
+ * one. The write names the space for the same reason.
+ *
+ * The switch computes its next value from the current one at *click* time rather than binding
+ * `$event.detail`: `discovery` is a two-valued string, not a boolean, and there is no operator that
+ * maps one to the other in an argument position.
+ */
+const discoveryRow: SchemaNode = attributeRow({
+  icon: 'globe',
+  label: 'Discovery',
+  value: { $if: { condition: isListed, then: 'Listed', else: 'Hidden' } },
+  description: {
+    $if: {
+      condition: isListed,
+      then: 'Appears on the WE discovery globe',
+      else: 'Not shown in global discovery',
+    },
+  },
+  control: {
+    type: 'we-switch',
+    props: {
+      py: '400',
+      checked: isListed,
+      labelOn: 'Listed',
+      labelOff: 'Hidden',
+      onChange: {
+        $action: 'spaceStore.updateSpaceMeta',
+        args: [{ discovery: { $if: { condition: isListed, then: 'hidden', else: 'listed' } } }, '$space.uuid'],
+      },
+    },
+  },
+});
+
+const saveLocationOnBlur = [
+  {
+    $if: {
+      condition: { $local: 'locationDirty' },
       then: {
         $action: 'spaceStore.updateSpaceMeta',
-        args: [{ name: { $local: 'editName' }, description: { $local: 'editDescription' } }, '$space.uuid'],
-        onFinally: [{ $setLocal: 'metaDirty', value: false }],
+        args: [{ location: { $local: 'location' } }, '$space.uuid'],
+        onFinally: [{ $setLocal: 'locationDirty', value: false }],
       },
     },
   },
 ];
+
+/** Where the space says it is — the summary line, and the two buttons that change it. */
+const locationRow: SchemaNode = attributeRow({
+  icon: 'map-pin',
+  label: 'Location',
+  value: {
+    $if: {
+      condition: '$space.location',
+      then: { $concat: ['$space.location.city', ', ', '$space.location.country'] },
+      else: 'Not set',
+    },
+  },
+  control: {
+    type: 'Row',
+    props: { ay: 'center', gap: '300' },
+    children: [
+      {
+        type: 'we-button',
+        props: { variant: 'secondary', size: 'sm', onClick: { $toggleLocal: 'editLocation' } },
+        children: [{ $if: { condition: { $local: 'editLocation' }, then: 'Hide', else: 'Edit' } }],
+      },
+      {
+        type: '$if',
+        props: {
+          // Nothing to remove when there is no location, and a Remove button beside "Not set"
+          // reads as an offer that does nothing.
+          condition: '$space.location',
+          then: {
+            type: 'we-button',
+            props: {
+              size: 'sm',
+              variant: 'danger',
+              onClick: [
+                { $setLocal: 'location', value: null },
+                { $action: 'spaceStore.updateSpaceMeta', args: [{ location: null }, '$space.uuid'] },
+              ],
+            },
+            children: [
+              { type: 'we-icon', props: { name: 'trash' } },
+              { type: 'we-text', children: ['Remove'] },
+            ],
+          },
+        },
+      },
+    ],
+  },
+});
+
+/** The picker and the two name fields, opened by the row above. */
+const locationEditor: SchemaNode = {
+  type: '$if',
+  props: {
+    condition: { $local: 'editLocation' },
+    then: {
+      type: 'Column',
+      props: { gap: '300' },
+      children: [
+        {
+          type: 'we-form-field',
+          props: { label: 'Location' },
+          children: [
+            {
+              type: 'we-location-picker',
+              props: {
+                latitude: { $local: 'location.latitude' },
+                longitude: { $local: 'location.longitude' },
+                // Saved immediately rather than on blur: picking a place on a map is a deliberate,
+                // finished act, and there is no field to leave.
+                onChange: [
+                  { $setLocal: 'location', from: '$event.detail' },
+                  {
+                    $action: 'spaceStore.updateSpaceMeta',
+                    args: [{ location: { $local: 'location' } }, '$space.uuid'],
+                  },
+                ],
+              },
+            },
+          ],
+        },
+        {
+          type: '$if',
+          props: {
+            condition: { $local: 'location' },
+            then: {
+              type: 'Row',
+              props: { gap: '300' },
+              children: [
+                {
+                  type: 'we-form-field',
+                  props: { label: 'City', flex: '1' },
+                  children: [
+                    {
+                      type: 'we-input',
+                      props: {
+                        value: { $local: 'location.city' },
+                        placeholder: 'City…',
+                        onInput: [
+                          { $setLocal: 'location', merge: { city: '$event.detail' } },
+                          { $setLocal: 'locationDirty', value: true },
+                        ],
+                        onBlur: saveLocationOnBlur,
+                      },
+                    },
+                  ],
+                },
+                {
+                  type: 'we-form-field',
+                  props: { label: 'Country', flex: '1' },
+                  children: [
+                    {
+                      type: 'we-input',
+                      props: {
+                        value: { $local: 'location.country' },
+                        placeholder: 'Country…',
+                        onInput: [
+                          { $setLocal: 'location', merge: { country: '$event.detail' } },
+                          { $setLocal: 'locationDirty', value: true },
+                        ],
+                        onBlur: saveLocationOnBlur,
+                      },
+                    },
+                  ],
+                },
+              ],
+            },
+          },
+        },
+      ],
+    },
+  },
+};
 
 /**
  * What everyone in the space sees. Offered only where {@link canAdministerSpace} says so — which is
@@ -124,17 +340,33 @@ const communitySection: SchemaNode = {
         editName: { type: 'string', initial: '$space.name' },
         editDescription: { type: 'string', initial: '$space.description' },
         metaDirty: { type: 'boolean', initial: false },
+        saving: { type: 'boolean', initial: false },
+        // One object rather than five scalar fields, all of which would need the same `$if` on the
+        // space having a location at all. Read with dot notation, written with `merge`.
+        location: { type: 'object', initial: '$space.location' },
+        locationDirty: { type: 'boolean', initial: false },
+        editLocation: { type: 'boolean', initial: false },
       },
       children: [
         {
-          type: 'Column',
-          props: { gap: '100' },
+          type: 'Row',
+          props: { ax: 'between', ay: 'center', gap: '300' },
           children: [
-            { type: 'we-text', props: { variant: 'label' }, children: ['Community'] },
             {
-              type: 'we-text',
-              props: { variant: 'footnote', color: 'text-faint' },
-              children: ['Changes here are visible to everyone in this space.'],
+              type: 'Column',
+              props: { gap: '100' },
+              children: [
+                { type: 'we-text', props: { variant: 'label' }, children: ['Community'] },
+                {
+                  type: 'we-text',
+                  props: { variant: 'footnote', color: 'text-faint' },
+                  children: ['Changes here are visible to everyone in this space.'],
+                },
+              ],
+            },
+            {
+              type: '$if',
+              props: { condition: { $local: 'saving' }, then: { type: 'we-spinner', props: { size: 'sm' } } },
             },
           ],
         },
@@ -146,6 +378,7 @@ const communitySection: SchemaNode = {
               type: 'we-input',
               props: {
                 value: { $local: 'editName' },
+                disabled: { $local: 'saving' },
                 onInput: [
                   { $setLocal: 'editName', from: '$event.detail' },
                   { $setLocal: 'metaDirty', value: true },
@@ -163,6 +396,7 @@ const communitySection: SchemaNode = {
               type: 'we-textarea',
               props: {
                 value: { $local: 'editDescription' },
+                disabled: { $local: 'saving' },
                 onInput: [
                   { $setLocal: 'editDescription', from: '$event.detail' },
                   { $setLocal: 'metaDirty', value: true },
@@ -172,6 +406,9 @@ const communitySection: SchemaNode = {
             },
           ],
         },
+        discoveryRow,
+        locationRow,
+        locationEditor,
       ],
     },
   },
@@ -552,6 +789,39 @@ const shareExtractionDetailSection: SchemaNode = {
 };
 
 /**
+ * A rule and a label saying who the controls beneath it affect.
+ *
+ * Light chrome on purpose — the page is already a stack of bordered cards, and a heavier grouping
+ * device on top of that reads as two nesting systems arguing. A label, a muted line and a rule is
+ * enough to say "everything under here has the same audience".
+ *
+ * `readOnlyWhen` names a condition under which the group is visible but not editable, so the heading
+ * can say so once instead of every card repeating it.
+ */
+const groupHeading = (label: string, description: string, editableWhen?: string): SchemaNode => ({
+  type: 'Column',
+  props: { gap: '100', pt: '200', borderTop: '1px solid border' },
+  children: [
+    { type: 'we-text', props: { variant: 'label', color: 'text' }, children: [label] },
+    {
+      type: 'we-text',
+      props: { variant: 'footnote', color: 'text-faint' },
+      children: [
+        editableWhen
+          ? {
+              $if: {
+                condition: editableWhen,
+                then: description,
+                else: `${description} Changing them needs someone who administers the space.`,
+              },
+            }
+          : description,
+      ],
+    },
+  ],
+});
+
+/**
  * The page body, rendered per matching row.
  *
  * `$each` over a one-item filter rather than a `$find`, because it is the context variable that is
@@ -576,14 +846,39 @@ export const spaceSettingsPage: SchemaNode = {
             condition: '$space.isWeSpace',
             then: {
               type: 'Column',
-              props: { gap: '400' },
+              props: { gap: '500' },
               children: [
-                shareSection,
-                personalAppearanceSection,
+                /*
+                  Three groups, in this order, because the question people get wrong on a page like
+                  this is "who sees this change?" — and the answer is what the grouping is for.
+
+                  Flat, the page was five cards in the order they happened to be written, with a
+                  personal one sandwiched between two community ones. Sorting them by audience means
+                  the answer is legible before any individual control is read.
+
+                  The middle group carries both answers at once and keeps them side by side rather
+                  than splitting each row across two groups: "the community removed this" and "you
+                  hid this" are the two situations a member has to tell apart, and they are only
+                  distinguishable when shown together. See `moduleRow`.
+                */
+                groupHeading(
+                  'Everyone in this space',
+                  'Changes here are visible to every member.',
+                  '$space.canAdminister',
+                ),
                 communitySection,
-                modulesSection,
+                shareSection,
+                spaceDefaultsSection,
                 autoInterpretSection,
                 shareExtractionDetailSection,
+                spaceVocabularySection,
+
+                groupHeading('What this space has', 'Two answers per row: yours, and the community’s.'),
+                spaceSectionsSection,
+                modulesSection,
+
+                groupHeading('Just for you, here', 'Nobody else is affected by anything in this group.'),
+                personalAppearanceSection,
               ],
             },
             else: notAWeSpaceNotice,

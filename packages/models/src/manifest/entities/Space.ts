@@ -28,6 +28,23 @@ export const Space: CoreEntityDef = {
        */
       enabledModules: { type: 'string', predicate: 'we://enabled_modules', default: '' },
       /**
+       * Which sections this community's spaces have, and in what order — a JSON array of view ids.
+       *
+       * The community's decision, exactly as `enabledModules` is: every member sees the same
+       * sections, because "what is in this space" is a fact about the space rather than a preference
+       * about it. An agent's own hiding lives in `SpacePreference.hiddenViews`, which is private.
+       *
+       * **Empty means "not decided", not "none"** — the same rule, and it exists for the same
+       * reason. A space that predates views must show the sections it always had, so an unset value
+       * falls back to the deployment's bundled set in seed order. Reading empty as "none" would land
+       * as every existing space silently losing every tab.
+       *
+       * Ordered, and the order is the nav order: this is the one field a community reorders its own
+       * sections by. A JSON string rather than a relation because the values are ids from a registry
+       * or a marketplace, not entities in the perspective — the shape `datasetOrder` already uses.
+       */
+      enabledViews: { type: 'string', predicate: 'we://enabled_views', default: '' },
+      /**
        * Whether calls in this space are interpreted as they happen, rather than only when somebody
        * presses Extract.
        *
@@ -40,6 +57,21 @@ export const Space: CoreEntityDef = {
        * volunteering to run its extraction.
        */
       autoInterpret: { type: 'boolean', predicate: 'we://auto_interpret', default: false },
+      /**
+       * Whether extraction passes broadcast their prompt and response to the rest of the space.
+       *
+       * A property of the space for the same reason `autoInterpret` is, though a different one than
+       * might be assumed. It is not about secrecy: in a call the prompt is built from a transcript
+       * every participant already holds, so a member sharing theirs reveals nothing the others lack.
+       *
+       * It is about the state being *collective*. "I share and you do not" is an asymmetry with no
+       * use — the reason to turn this on is that a space is working on extraction and wants to see
+       * what it is doing, which is a decision about the space rather than about one member.
+       *
+       * Defaults off because the payload is tens of KB per pass and rides the ephemeral signalling
+       * transport, which exists for small last-write-wins messages. That is a poor default to impose
+       * on every space forever, and a very reasonable thing to switch on for an afternoon.
+       */
       shareExtractionDetail: {
         type: 'boolean',
         predicate: 'we://share_extraction_detail',

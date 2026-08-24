@@ -246,6 +246,7 @@ export interface SpaceModel extends WeNodeModel {
   defaultTemplateId: string;
   defaultThemeId: string;
   enabledModules: string;
+  enabledViews: string;
   autoInterpret: boolean;
   shareExtractionDetail: boolean;
   location?: LocationBlockModel;
@@ -255,6 +256,7 @@ export interface SpaceModel extends WeNodeModel {
 export interface SpacePreferenceModel extends WeNodeModel {
   spaceUuid: string;
   mutedModules: string;
+  hiddenViews: string;
   templateId: string;
   themeId: string;
 }
@@ -289,6 +291,7 @@ export interface TemplateModel extends WeNodeModel {
   slug: string;
   schema: string | null;
   themeId: string;
+  role: string;
   screenshots: string[];
   addScreenshots(value: string | { id: string }, batch?: string): Promise<unknown>;
   removeScreenshots(value: string | { id: string }, batch?: string): Promise<unknown>;

@@ -1,15 +1,8 @@
 import type { TemplateSchema } from '@we/schema-shared';
+import { VIEWS_MARKER } from '@we/schema-shared';
 
 import { initializeSpaceGate } from '../InitializeSpaceGate.ts';
-import { aboutRoute } from '../routes/AboutRoute/index.ts';
-import { calendarRoute } from '../routes/CalendarRoute/index.ts';
-import { cardsRoute } from '../routes/CardsRoute/index.ts';
-import { fluxRoute } from '../routes/FluxRoute/index.ts';
-import { globeRoute } from '../routes/GlobeRoute/index.ts';
-import { graphRoute } from '../routes/GraphRoute/index.ts';
 import { homeRoute } from '../routes/HomeRoute/index.ts';
-import { settingsRoute } from '../routes/SettingsRoute/index.ts';
-import { tasksRoute } from '../routes/TasksRoute/index.ts';
 import { spaceGate } from '../SpaceGate.ts';
 import { spaceHeader, spaceNavBar } from './SpaceHeader.ts';
 
@@ -72,17 +65,17 @@ export const headerLayout: TemplateSchema = {
           },
         },
       ],
-      routes: [
-        { path: '/', redirect: './about' },
-        aboutRoute,
-        globeRoute,
-        cardsRoute,
-        fluxRoute,
-        graphRoute,
-        tasksRoute,
-        calendarRoute,
-        settingsRoute,
-      ],
+      /*
+        The space's sections go here, whatever they turn out to be.
+
+        This was a written-out list of routes with a nav strip beside it repeating the same names,
+        and the two had drifted. Now the marker expands to one route per section from the space's own
+        list, and the nav reads that list too — so "what sections does this space have" has one
+        answer instead of three. The index redirect comes with the expansion rather than being
+        written here: it has to follow the list, or a community that turns off whichever section this
+        template happened to name would land on a 404 in their own space.
+      */
+      routes: [{ path: VIEWS_MARKER }],
     },
   ],
 };

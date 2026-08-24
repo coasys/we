@@ -60,6 +60,19 @@ export const SpacePreference: CoreEntityDef = {
        */
       mutedModules: { type: 'string', predicate: 'we://muted_modules', default: '' },
       /**
+       * View ids this agent has hidden here, as a JSON array.
+       *
+       * The private half of the section list: the community decides which sections a space *has*
+       * (`Space.enabledViews`), and this decides which of them one agent bothers to see. Kept apart
+       * because they answer to different people — hiding a section for yourself must never remove it
+       * for everybody, and the failure mode of conflating them is a member quietly deleting a tab
+       * out of a space they merely joined.
+       *
+       * Exclusions rather than inclusions, exactly as `mutedModules` is: a section the community
+       * adds later appears, because silence about a view means "no opinion", not "no".
+       */
+      hiddenViews: { type: 'string', predicate: 'we://hidden_views', default: '' },
+      /**
        * The template this agent wants when they open this space, overriding the space's default.
        *
        * One of {@link FOLLOW_SPACE}, {@link AGENT_DEFAULT}, or a template id. Deliberately not a boolean

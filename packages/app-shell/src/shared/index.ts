@@ -6,6 +6,7 @@ export * from './backend';
 
 // Registries
 export * from './registries/templateRegistry';
+export * from './registries/viewRegistry';
 export * from './registries/themeRegistry';
 
 // Schemas

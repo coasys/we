@@ -1,12 +1,58 @@
-import type { RouteSchema } from '@we/schema-shared';
+import type { TemplateSchema } from '@we/schema-shared';
 import { attributeRow, pageShell, sectionCard } from '@we/template-kit';
 
-export const aboutRoute: RouteSchema = {
-  path: '/about',
+/**
+ * A space's public face — what it is, who is in it, where it is.
+ *
+ * Read-only by design. The same fields are editable in Settings → Spaces & data, and this used to
+ * render them a second time as inputs on a sibling tab, so a space's name had two spellings in the
+ * UI and each had to be kept in step with the other. The pencil here leads to the one place that
+ * writes; nothing on this page does.
+ */
+export const aboutView: TemplateSchema = {
+  meta: {
+    name: 'About',
+    description: "A space's public face — its description, its people, and where it is",
+    icon: 'book-open',
+    role: 'view',
+    segment: 'about',
+  },
   ...pageShell({
     children: [
       sectionCard({
         title: 'About this space',
+        /*
+          A pencil, not an edit mode.
+
+          These fields had two renderings — read-only here and as inputs on a sibling Settings tab —
+          which meant one form to keep in step with another and a space's name spelled twice in the
+          UI. Only the settings page writes now, and this leads there: the same pattern as a profile
+          page and its edit screen, and the reason there is exactly one set of inputs.
+
+          Shown to everyone rather than gated on `canAdministerSpace`: the page it opens shows what
+          the space is configured as either way, and a control that vanishes for most members makes
+          "where do I see this" depend on who is asking. The page itself decides what is editable.
+
+          The **dataset id**, not the route's space segment. `/space/:spaceId` carries whatever
+          `navigateToSpace` was given, which for a shared space is its neighbourhood CID — while the
+          settings page keys off `spaceList[].uuid`, which is always the dataset id. Passing the
+          segment matched no row and opened an empty page, and only for shared spaces, where the two
+          ids diverge.
+        */
+        aside: {
+          type: 'we-button',
+          props: {
+            variant: 'ghost',
+            size: 'sm',
+            square: true,
+            title: 'Space settings',
+            onClick: {
+              $action: 'shellStore.openShellView',
+              args: ['settings', { $concat: ['/spaces/', { $store: 'datasetStore.currentDataset.id' }] }],
+            },
+          },
+          children: [{ type: 'we-icon', props: { name: 'pencil-simple' } }],
+        },
         children: [
           // Name field
           {

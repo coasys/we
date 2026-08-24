@@ -1,0 +1,22 @@
+{
+  "name": "@we/template-views",
+  "version": "0.1.0",
+  "description": "WE's built-in space views — one section each, installable and forkable independently of the shell that arranges them",
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "exports": {
+    ".": {
+      "import": "./src/index.ts",
+      "types": "./src/index.ts"
+    }
+  },
+  "dependencies": {
+    "@we/schema-shared": "workspace:*",
+    "@we/template-kit": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.0"
+  }
+}

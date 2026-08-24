@@ -4674,6 +4674,12 @@
           "required": false
         },
         {
+          "name": "enabledViews",
+          "type": "string",
+          "predicate": "we://enabled_views",
+          "required": false
+        },
+        {
           "name": "autoInterpret",
           "type": "boolean",
           "predicate": "we://auto_interpret",
@@ -4712,6 +4718,12 @@
           "name": "mutedModules",
           "type": "string",
           "predicate": "we://muted_modules",
+          "required": false
+        },
+        {
+          "name": "hiddenViews",
+          "type": "string",
+          "predicate": "we://hidden_views",
           "required": false
         },
         {
@@ -4880,6 +4892,12 @@
           "name": "themeId",
           "type": "string",
           "predicate": "we://theme_id",
+          "required": false
+        },
+        {
+          "name": "role",
+          "type": "string",
+          "predicate": "we://template_role",
           "required": false
         }
       ],
@@ -6217,6 +6235,7 @@
       "actions": [
         "openShellView",
         "closeShellView",
+        "rememberShellPath",
         "setCreateSpaceOpen",
         "scrollToId",
         "setChromeInset",
@@ -6342,6 +6361,18 @@
           "type": "array",
           "properties": ["id", "icon", "label", "active"]
         },
+        "spaceViews": {
+          "type": "array"
+        },
+        "routableViews": {
+          "type": "array"
+        },
+        "enabledViewIds": {
+          "type": "array"
+        },
+        "viewNav": {
+          "type": "array"
+        },
         "mutedDids": {
           "type": "array"
         },
@@ -6387,6 +6418,9 @@
         "setShareExtractionDetail",
         "setModuleInstalled",
         "setModuleVisible",
+        "setViewEnabled",
+        "reorderViews",
+        "setViewVisible",
         "setSpaceTemplateOverride",
         "setSpaceThemeOverride",
         "applyTheme",

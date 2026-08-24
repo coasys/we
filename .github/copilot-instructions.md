@@ -155,6 +155,8 @@ that declares `backends: ['ad4m']` — nothing else. See `docs/architecture/pack
 - AD4M wiring (query adapter, SDNA install, agent identity) → `packages/backend-system/ad4m/src/`.
 - The feature-module contract → `packages/module-system/shared/src/module.ts`; a module → `packages/module-system/<id>/`.
 - Data models (Space, blocks) → `packages/models/src/` (see packages/models/CONVENTIONS.md).
+- A space's sections (views) → `packages/templates/views/`; how they resolve →
+  `packages/app-shell/src/shared/viewResolution.ts` (see docs/architecture/views.md).
 - Graph engine (expanders, layouts, expansion state) → `packages/graph-system/` (see its README);
   its data binding lives at `packages/app-shell/src/frameworks/solid/components/GraphHost.tsx`.
 
@@ -162,6 +164,14 @@ For deeper detail (data sync/persistence, block & editor internals, the local de
 see docs/architecture/codebase-map.md.
 For how reusable template fragments work and where they are going, see
 docs/architecture/template-fragments.md.
+
+**A template is one of two things.** A *shell* owns a space's chrome, arrangement and route table;
+a *view* renders one section inside one. `meta.role` says which, and absent means shell. A shell
+marks where its sections go with `{ path: '$views' }` and the host expands that per space, from
+`Space.enabledViews` (the community's list, and its order) minus `SpacePreference.hiddenViews`
+(each agent's own). Do **not** hardcode a space's sections as routes, and do not write a nav strip
+from a literal array — read `spaceStore.viewNav`, which is the same resolved list the routes are
+built from. See docs/architecture/views.md.
 
 **Before adding a relation between two models, read docs/architecture/relations.md.** A connection
 can live in three places — a free-text label, a community-named `RelationshipType`, or a relation
@@ -1698,6 +1708,7 @@ Space extends WeNode:
   - defaultTemplateId: string [we://default_template_id]
   - defaultThemeId: string [we://default_theme_id]
   - enabledModules: string [we://enabled_modules]
+  - enabledViews: string [we://enabled_views]
   - autoInterpret: boolean = false [we://auto_interpret]
   - shareExtractionDetail: boolean = false [we://share_extraction_detail]
   Relations:
@@ -1707,6 +1718,7 @@ SpacePreference extends WeNode:
   Fields:
   - spaceUuid: string [we://space_uuid]
   - mutedModules: string [we://muted_modules]
+  - hiddenViews: string [we://hidden_views]
   - templateId: string [we://template_id]
   - themeId: string [we://theme_id]
 
@@ -1741,6 +1753,7 @@ Template extends WeNode:
   - slug: string [we://slug]
   - schema: string = null [we://template_schema]
   - themeId: string [we://theme_id]
+  - role: string [we://template_role]
   Relations:
   - screenshots: HasMany → ImageBlock [we://screenshot]
 
@@ -2174,6 +2187,7 @@ ShellStore:
 - Actions:
   - openShellView(id: string, path?: string): opens a shell overlay by id, optionally at a route inside it — the overlay keeps its own memory router, so this never touches the browser URL
   - closeShellView(): closes the currently open shell overlay
+  - rememberShellPath(): unknown
   - setCreateSpaceOpen(open: boolean): opens or closes the create-space modal. Shell state rather than a page’s $localState because more than one place opens it — the settings page and the sidebar’s spaces group — and a page-scoped flag could only be set from inside that page
   - scrollToId(id: string): smooth-scrolls the element with that DOM id into view
   - setChromeInset(): unknown
@@ -2217,6 +2231,10 @@ SpaceStore:
   - activeModules: string[] — what actually renders here for this agent: registered ∩ installed ∩ enabled, less the modules muted in this space. Module chrome and the launcher rail gate on this; enabledModules alone is not sufficient
   - moduleInstallSettings: { id, name, description, icon, installed, surface, switchable }[] — every registered module and whether this agent wants it anywhere. The global Settings → Modules list, and the only place an 'app' or 'capability' module is decided about: a contribution is gated at the layer where it renders, and only 'chrome' renders inside a space. `surface` is derived from what the module contributes. Its per-space counterpart is `modules` on each spaceList row, which carries enabled/installed/visible/active together and lists chrome modules only
   - moduleLaunchers: { id, icon, label, active }[] — launchers for the modules enabled here and available in this space; what the host module rail renders. Pair with { $action: "spaceStore.launchModule", args: ["$mod.id"] }
+  - spaceViews: unknown
+  - routableViews: unknown
+  - enabledViewIds: unknown
+  - viewNav: unknown
   - mutedDids: unknown
   - mutedAgents: unknown
   - readMarkers: unknown
@@ -2246,6 +2264,9 @@ SpaceStore:
   - setShareExtractionDetail(): unknown
   - setModuleInstalled(moduleId: string, installed: boolean): turns a module on or off for this agent in every space. Personal — writes AgentSettings.installedModules in the root dataset, so no other member sees it
   - setModuleVisible(moduleId: string, visible: boolean, spaceUuid?): shows or hides a module for this agent in one space, without changing what the community runs. Private: written to the root dataset, never to the space. Phrased positively so a switch can pass `$event.detail` bare — wrapping it in an operator such as `$not` would evaluate at render time and send a constant
+  - setViewEnabled(): unknown
+  - reorderViews(): unknown
+  - setViewVisible(): unknown
   - setSpaceTemplateOverride(templateId: string, spaceUuid?): sets the template THIS AGENT sees in one space, overriding the community's default. Three values: 'space-default' follows the space, 'agent-default' follows your own global default (tracking later changes to it), or a concrete template id pins that one. Private, and applied immediately when that space is the one on screen. Note the sentinels are named values, not '' — the ORM skips empty strings on update, so '' cannot clear a property
   - setSpaceThemeOverride(themeId: string, spaceUuid?): sets the theme THIS AGENT sees in one space. Same three values as setSpaceTemplateOverride. Private
   - applyTheme(themeId: string): applies a theme where the agent is — pinned to the space on screen, or set as their global default when there is no space. What a theme picker in chrome should call: it persists, where setCurrentTheme only sets a signal that the next resolution overwrites. Which of the two it does is decided at click time, so a schema cannot express it with $if (whose args resolve at render time)

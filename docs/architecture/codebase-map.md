@@ -29,7 +29,8 @@ WE is the UI layer of a three-part stack for distributed collective intelligence
 3. **Holochain** — trust, validation, and sync (how agreements are enforced, how peers sync).
 
 Contributions are **modules**, not apps, at every level of abstraction: design tokens →
-primitives → components → widgets → templates, plus blocks, themes, template fragments
+primitives → components → widgets → templates (whole interfaces) and views (one section of one —
+see `views.md`), plus blocks, themes, template fragments
 (`@we/template-kit` — see `template-fragments.md`), and feature modules (call, notes, transcribe,
 globe, graph). All are shareable through one module marketplace. A finished "app" is a **seed**
 that composes modules. See `VISION.md` for the full rationale.

@@ -405,6 +405,26 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     activeModules: state('navigation'),
     moduleLaunchers: state('navigation'),
     launchModule: action('navigation'),
+    /*
+      The space's sections, and the nav projection over them — both `navigation`, which is the
+      lowest tier any shell needs and deliberately so.
+
+      A shell template's entire job includes drawing the nav strip, so refusing it here would mean
+      no template could render its own sections without an elevated grant. There is nothing to
+      protect: the list is what the space already shows every member, and `spaceViews` carries the
+      view schemas the renderer is about to walk anyway.
+    */
+    spaceViews: state('navigation'),
+    viewNav: state('navigation'),
+    /*
+      Every view that could render here, as opposed to the ones this space offers.
+
+      Same tier: it is the host's route-building input rather than a secret, and a shell that wanted
+      to draw "sections you could turn on" is asking a reasonable question about its own space.
+    */
+    routableViews: state('navigation'),
+    /** The ids the community has here, which every section's own route body is gated on. */
+    enabledViewIds: state('navigation'),
     requiredModules: state('navigation'),
     missingModules: state('navigation'),
 
@@ -448,12 +468,24 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     setSpaceDefaultTheme: hereOnly('space-settings', 1),
     setModuleEnabled: hereOnly('space-settings', 2),
     setAutoInterpret: hereOnly('space-settings', 1),
+    /*
+      Which sections the space has, and in what order — the community's decision, so the same tier
+      and the same arity guard as `setModuleEnabled`.
+
+      The settings *list* — every section with both layers' answers — travels on each `spaceList`
+      row rather than being a member of its own, exactly as `modules` does: the page configures the
+      space you clicked, which is usually not the one you are standing in.
+    */
+    setViewEnabled: hereOnly('space-settings', 2),
+    reorderViews: hereOnly('space-settings', 1),
     removeSpaceFromGlobal: destructive('space-admin'),
 
     // ── agent: this agent's own preferences, private to them ──
     installedModules: state('agent'),
     setModuleInstalled: action('agent'),
     setModuleVisible: hereOnly('space-settings', 2),
+    /** Hiding a section for yourself. Private, and never removes it for anybody else. */
+    setViewVisible: hereOnly('space-settings', 2),
     setSpaceTemplateOverride: hereOnly('appearance', 1),
     setSpaceThemeOverride: hereOnly('appearance', 1),
     /*
@@ -699,6 +731,12 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     activeShellView: state('navigation'),
     openShellView: action('navigation'),
     closeShellView: action('navigation'),
+    /*
+      Host wiring, not a capability. The overlay's own router calls this on every move so a remount
+      can put it back; a template has no overlay to report about, and letting one write another
+      surface's remembered location would be a way to redirect somebody else's page.
+    */
+    rememberShellPath: WIRING,
     createSpaceOpen: state('space-admin'),
     /*
       Opening the host's create-space dialog, which is not the same act as creating a space —
