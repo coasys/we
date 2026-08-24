@@ -1,4 +1,5 @@
 import type { SchemaNode } from '@we/schema-shared';
+import { attributeRow } from '@we/template-kit';
 
 import { spaceDefaultsSection } from './SpaceDefaults.ts';
 import { spaceSectionsSection } from './SpaceSections.ts';
@@ -114,18 +115,215 @@ const notAWeSpaceNotice: SchemaNode = {
   ],
 };
 
+/**
+ * Name and description save when the field is left, so the spinner is the only thing that says the
+ * change was taken.
+ *
+ * It sits by the section heading rather than by the field, because a blur has usually moved the
+ * cursor somewhere else by the time the write lands — a spinner where the cursor no longer is
+ * reports to nobody.
+ */
 const saveMetaOnBlur = [
   {
     $if: {
       condition: { $local: 'metaDirty' },
+      then: [
+        { $setLocal: 'saving', value: true },
+        {
+          $action: 'spaceStore.updateSpaceMeta',
+          args: [{ name: { $local: 'editName' }, description: { $local: 'editDescription' } }, '$space.uuid'],
+          onFinally: [
+            { $setLocal: 'metaDirty', value: false },
+            { $setLocal: 'saving', value: false },
+          ],
+        },
+      ],
+    },
+  },
+];
+
+const isListed = { $eq: ['$space.discovery', 'listed'] };
+
+/**
+ * Whether the space appears on the global discovery globe.
+ *
+ * Reads `$space.discovery` rather than `spaceStore.currentSpace.discovery` — the row being
+ * configured is usually not the space on screen, and the store accessor would answer for the wrong
+ * one. The write names the space for the same reason.
+ *
+ * The switch computes its next value from the current one at *click* time rather than binding
+ * `$event.detail`: `discovery` is a two-valued string, not a boolean, and there is no operator that
+ * maps one to the other in an argument position.
+ */
+const discoveryRow: SchemaNode = attributeRow({
+  icon: 'globe',
+  label: 'Discovery',
+  value: { $if: { condition: isListed, then: 'Listed', else: 'Hidden' } },
+  description: {
+    $if: {
+      condition: isListed,
+      then: 'Appears on the WE discovery globe',
+      else: 'Not shown in global discovery',
+    },
+  },
+  control: {
+    type: 'we-switch',
+    props: {
+      py: '400',
+      checked: isListed,
+      labelOn: 'Listed',
+      labelOff: 'Hidden',
+      onChange: {
+        $action: 'spaceStore.updateSpaceMeta',
+        args: [{ discovery: { $if: { condition: isListed, then: 'hidden', else: 'listed' } } }, '$space.uuid'],
+      },
+    },
+  },
+});
+
+const saveLocationOnBlur = [
+  {
+    $if: {
+      condition: { $local: 'locationDirty' },
       then: {
         $action: 'spaceStore.updateSpaceMeta',
-        args: [{ name: { $local: 'editName' }, description: { $local: 'editDescription' } }, '$space.uuid'],
-        onFinally: [{ $setLocal: 'metaDirty', value: false }],
+        args: [{ location: { $local: 'location' } }, '$space.uuid'],
+        onFinally: [{ $setLocal: 'locationDirty', value: false }],
       },
     },
   },
 ];
+
+/** Where the space says it is — the summary line, and the two buttons that change it. */
+const locationRow: SchemaNode = attributeRow({
+  icon: 'map-pin',
+  label: 'Location',
+  value: {
+    $if: {
+      condition: '$space.location',
+      then: { $concat: ['$space.location.city', ', ', '$space.location.country'] },
+      else: 'Not set',
+    },
+  },
+  control: {
+    type: 'Row',
+    props: { ay: 'center', gap: '300' },
+    children: [
+      {
+        type: 'we-button',
+        props: { variant: 'secondary', size: 'sm', onClick: { $toggleLocal: 'editLocation' } },
+        children: [{ $if: { condition: { $local: 'editLocation' }, then: 'Hide', else: 'Edit' } }],
+      },
+      {
+        type: '$if',
+        props: {
+          // Nothing to remove when there is no location, and a Remove button beside "Not set"
+          // reads as an offer that does nothing.
+          condition: '$space.location',
+          then: {
+            type: 'we-button',
+            props: {
+              size: 'sm',
+              variant: 'danger',
+              onClick: [
+                { $setLocal: 'location', value: null },
+                { $action: 'spaceStore.updateSpaceMeta', args: [{ location: null }, '$space.uuid'] },
+              ],
+            },
+            children: [
+              { type: 'we-icon', props: { name: 'trash' } },
+              { type: 'we-text', children: ['Remove'] },
+            ],
+          },
+        },
+      },
+    ],
+  },
+});
+
+/** The picker and the two name fields, opened by the row above. */
+const locationEditor: SchemaNode = {
+  type: '$if',
+  props: {
+    condition: { $local: 'editLocation' },
+    then: {
+      type: 'Column',
+      props: { gap: '300' },
+      children: [
+        {
+          type: 'we-form-field',
+          props: { label: 'Location' },
+          children: [
+            {
+              type: 'we-location-picker',
+              props: {
+                latitude: { $local: 'location.latitude' },
+                longitude: { $local: 'location.longitude' },
+                // Saved immediately rather than on blur: picking a place on a map is a deliberate,
+                // finished act, and there is no field to leave.
+                onChange: [
+                  { $setLocal: 'location', from: '$event.detail' },
+                  {
+                    $action: 'spaceStore.updateSpaceMeta',
+                    args: [{ location: { $local: 'location' } }, '$space.uuid'],
+                  },
+                ],
+              },
+            },
+          ],
+        },
+        {
+          type: '$if',
+          props: {
+            condition: { $local: 'location' },
+            then: {
+              type: 'Row',
+              props: { gap: '300' },
+              children: [
+                {
+                  type: 'we-form-field',
+                  props: { label: 'City', flex: '1' },
+                  children: [
+                    {
+                      type: 'we-input',
+                      props: {
+                        value: { $local: 'location.city' },
+                        placeholder: 'City…',
+                        onInput: [
+                          { $setLocal: 'location', merge: { city: '$event.detail' } },
+                          { $setLocal: 'locationDirty', value: true },
+                        ],
+                        onBlur: saveLocationOnBlur,
+                      },
+                    },
+                  ],
+                },
+                {
+                  type: 'we-form-field',
+                  props: { label: 'Country', flex: '1' },
+                  children: [
+                    {
+                      type: 'we-input',
+                      props: {
+                        value: { $local: 'location.country' },
+                        placeholder: 'Country…',
+                        onInput: [
+                          { $setLocal: 'location', merge: { country: '$event.detail' } },
+                          { $setLocal: 'locationDirty', value: true },
+                        ],
+                        onBlur: saveLocationOnBlur,
+                      },
+                    },
+                  ],
+                },
+              ],
+            },
+          },
+        },
+      ],
+    },
+  },
+};
 
 /**
  * What everyone in the space sees. Offered only where {@link canAdministerSpace} says so — which is
@@ -142,17 +340,33 @@ const communitySection: SchemaNode = {
         editName: { type: 'string', initial: '$space.name' },
         editDescription: { type: 'string', initial: '$space.description' },
         metaDirty: { type: 'boolean', initial: false },
+        saving: { type: 'boolean', initial: false },
+        // One object rather than five scalar fields, all of which would need the same `$if` on the
+        // space having a location at all. Read with dot notation, written with `merge`.
+        location: { type: 'object', initial: '$space.location' },
+        locationDirty: { type: 'boolean', initial: false },
+        editLocation: { type: 'boolean', initial: false },
       },
       children: [
         {
-          type: 'Column',
-          props: { gap: '100' },
+          type: 'Row',
+          props: { ax: 'between', ay: 'center', gap: '300' },
           children: [
-            { type: 'we-text', props: { variant: 'label' }, children: ['Community'] },
             {
-              type: 'we-text',
-              props: { variant: 'footnote', color: 'text-faint' },
-              children: ['Changes here are visible to everyone in this space.'],
+              type: 'Column',
+              props: { gap: '100' },
+              children: [
+                { type: 'we-text', props: { variant: 'label' }, children: ['Community'] },
+                {
+                  type: 'we-text',
+                  props: { variant: 'footnote', color: 'text-faint' },
+                  children: ['Changes here are visible to everyone in this space.'],
+                },
+              ],
+            },
+            {
+              type: '$if',
+              props: { condition: { $local: 'saving' }, then: { type: 'we-spinner', props: { size: 'sm' } } },
             },
           ],
         },
@@ -164,6 +378,7 @@ const communitySection: SchemaNode = {
               type: 'we-input',
               props: {
                 value: { $local: 'editName' },
+                disabled: { $local: 'saving' },
                 onInput: [
                   { $setLocal: 'editName', from: '$event.detail' },
                   { $setLocal: 'metaDirty', value: true },
@@ -181,6 +396,7 @@ const communitySection: SchemaNode = {
               type: 'we-textarea',
               props: {
                 value: { $local: 'editDescription' },
+                disabled: { $local: 'saving' },
                 onInput: [
                   { $setLocal: 'editDescription', from: '$event.detail' },
                   { $setLocal: 'metaDirty', value: true },
@@ -190,6 +406,9 @@ const communitySection: SchemaNode = {
             },
           ],
         },
+        discoveryRow,
+        locationRow,
+        locationEditor,
       ],
     },
   },

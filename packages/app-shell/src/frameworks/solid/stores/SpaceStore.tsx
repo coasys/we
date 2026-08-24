@@ -103,6 +103,15 @@ export interface SpaceListEntry {
    * say. The settings page reads it so it can explain rather than offer switches nothing reads.
    */
   usesSections: boolean;
+  /** `'listed'` or `'hidden'` — whether this space appears on the global discovery globe. */
+  discovery: string;
+  /**
+   * Where this space says it is, hydrated, or null.
+   *
+   * On the row rather than read from `currentSpace` because the settings page edits whichever space
+   * was clicked. `loadSpaces` includes the relation for the same reason.
+   */
+  location: { latitude?: number; longitude?: number; city?: string; country?: string; countryCode?: string } | null;
   /** What the community set, so a picker can label the "follow the space" option with it. */
   defaultTemplateId: string;
   defaultThemeId: string;
@@ -880,6 +889,8 @@ export function SpaceStoreProvider(props: ParentProps) {
         // configures whichever space you clicked, which is usually not the one you are standing in.
         views: space ? viewSettingsFor(ds.id, space.enabledViews) : [],
         usesSections: usesSectionsFor(ds.id),
+        discovery: space?.discovery ?? 'hidden',
+        location: (space?.location as SpaceListEntry['location']) ?? null,
         defaultTemplateId: space?.defaultTemplateId ?? '',
         defaultThemeId: space?.defaultThemeId ?? '',
         templateOverride: templateOverrideFor(ds.id),
@@ -951,7 +962,12 @@ export function SpaceStoreProvider(props: ParentProps) {
       // real space's data (including avatars) until each is visited individually. Catch
       // per-dataset so one bad dataset can't poison the rest.
       const spaces = await Promise.all(
-        candidates.map(async (ds) => await Space.findOne(ds.handle, { where: spaceSelfWhere(ds) }).catch(() => null)),
+        candidates.map(
+          async (ds) =>
+            await Space.findOne(ds.handle, { where: spaceSelfWhere(ds), include: { location: true } }).catch(
+              () => null,
+            ),
+        ),
       );
       const filteredSpaces = spaces
         .filter((s): s is Space => !!s)
@@ -1544,6 +1560,13 @@ export function SpaceStoreProvider(props: ParentProps) {
         });
         await spaceModel.setLocation(newLoc);
       }
+      /*
+        The cached row carries the location now, and the write above deliberately excluded it from
+        `updateSpaceInCache` (a relation is not a scalar). Only the space *on screen* is refreshed by
+        the live subscription, so without this the settings page would show the old place — or "Not
+        set" — immediately after saving a space the agent is not standing in.
+      */
+      updateSpaceInCache(ds, { location: updates.location } as never);
     }
 
     const globalDs = datasetStore.globalDataset();

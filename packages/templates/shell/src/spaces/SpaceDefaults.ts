@@ -172,6 +172,17 @@ export const spaceDefaultsSection: SchemaNode = {
     ]),
     sectionBox('Default theme', 'The look members get when they open this space.', [
       group('Built-in', { $store: 'themeStore.builtInThemes' }, 'theme', themeRow),
+      /*
+        "Follow system" is not a built-in theme — it resolves to one rather than being one, which is
+        why `themeStore` keeps it in a list of its own — but it is a choice made in the same place,
+        so it is offered here under its own heading rather than dropped.
+
+        Here it means "this space's default is: follow each member's own system". *Which two themes*
+        that picks between is each member's own setting and lives in the shell's picker; a control
+        for it in a space's settings would let a community repoint what "Follow system" means for
+        everybody who opened their template.
+      */
+      group('Automatic', { $store: 'themeStore.automaticThemes' }, 'theme', themeRow),
       {
         type: '$if',
         props: {
