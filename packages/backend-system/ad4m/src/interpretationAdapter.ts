@@ -472,7 +472,20 @@ export function createAd4mInterpretationPort(selfId?: () => string | undefined):
           at: Date.now(),
           ids: event.step === 'processed' ? (event.bases ?? []) : undefined,
           detail: event.detail,
-          llm: event.llmInput || event.llmOutput ? { prompt: event.llmInput, response: event.llmOutput } : undefined,
+          /*
+            Only the field this event actually carries.
+
+            Writing both and letting one be `undefined` looks equivalent and is not: the merge on the
+            other side folds exchanges together, and a key that is present-and-undefined overwrites
+            what is already there. `llmRequestSent` carries the prompt and `llmResponseReceived` the
+            response, so the both-keys version deleted the prompt at the moment the response arrived
+            to be read against it.
+          */
+          llm: event.llmInput
+            ? { prompt: event.llmInput }
+            : event.llmOutput
+              ? { response: event.llmOutput }
+              : undefined,
         });
       }
 

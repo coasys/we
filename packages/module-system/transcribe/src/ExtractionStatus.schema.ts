@@ -166,39 +166,92 @@ const detailToggle: SchemaNode = {
   ],
 };
 
-/** One labelled pane of raw model text. */
-function exchangePane(label: string, value: string): SchemaNode {
+/** The small caps heading above each pane. */
+function paneLabel(label: string): SchemaNode {
   return {
-    type: '$if',
-    props: {
-      condition: value,
-      then: {
-        type: 'Column',
-        props: { gap: '100', width: '100%' },
-        children: [
-          {
-            type: 'we-text',
-            props: { variant: 'footnote', color: 'text-faint', uppercase: true, letterSpacing: 'wide' },
-            children: [label],
-          },
-          {
-            // Capped and scrolled rather than clipped: a prompt is thousands of lines and the point
-            // of showing it is that somebody can read all of it.
-            type: 'we-scroll-area',
-            props: { maxHeight: '180px' },
-            children: [
-              {
-                type: 'we-code',
-                props: { block: true, width: '100%' },
-                children: [value],
-              },
-            ],
-          },
-        ],
-      },
-    },
+    type: 'we-text',
+    props: { variant: 'footnote', color: 'text-faint', uppercase: true, letterSpacing: 'wide' },
+    children: [label],
   };
 }
+
+/**
+ * The prompt — prose, so rendered as prose.
+ *
+ * It was a `we-code` block, which was wrong twice over. A prompt is not code, and `we-code[block]`
+ * sets `white-space: pre` with `overflow-x: auto` on `[part=base]` — so it never wrapped, and
+ * because a primitive's `:host` overflow is not DS-managed, the unwrapped line escaped the bar
+ * entirely and ran off the screen until a hover reflowed it.
+ *
+ * `pre-wrap` keeps the prompt's own line breaks, which carry its structure, while allowing long
+ * lines to wrap. `break-word` handles the URIs, which are long and have nowhere natural to break.
+ */
+const promptPane: SchemaNode = {
+  type: '$if',
+  props: {
+    condition: '$pass.prompt',
+    then: {
+      type: 'Column',
+      props: { gap: '100', width: '100%' },
+      children: [
+        paneLabel('Prompt'),
+        {
+          // Capped and scrolled rather than clipped: a prompt runs to thousands of words and the
+          // point of showing it is that somebody can read all of it.
+          type: 'we-scroll-area',
+          props: { maxHeight: '200px', width: '100%' },
+          children: [
+            {
+              type: 'we-text',
+              props: {
+                variant: 'footnote',
+                width: '100%',
+                styles: { whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontFamily: 'var(--we-font-mono)' },
+              },
+              children: ['$pass.prompt'],
+            },
+          ],
+        },
+      ],
+    },
+  },
+};
+
+/**
+ * The response — JSON, so rendered as JSON.
+ *
+ * An interpretation response is a structured document that arrives as one unbroken line. The store
+ * indents it (a schema cannot); this gives it syntax colouring and fold arrows, so a reader can
+ * collapse the instances they are not interested in rather than scrolling past them.
+ *
+ * `CodeEditor` rather than `we-code` because folding is the thing that makes a long response
+ * navigable, and it is the same component the editor's own JSON panels use — one way of reading
+ * JSON in the app, not two.
+ */
+const responsePane: SchemaNode = {
+  type: '$if',
+  props: {
+    condition: '$pass.response',
+    then: {
+      type: 'Column',
+      props: { gap: '100', width: '100%' },
+      children: [
+        paneLabel('Response'),
+        {
+          type: 'CodeEditor',
+          props: {
+            code: '$pass.response',
+            language: 'json',
+            // Nothing here is editable: this is a record of what a model said, and a pane that
+            // accepted keystrokes would imply the text could be corrected and re-run.
+            readOnly: true,
+            styles: { maxHeight: '240px', overflow: 'auto', width: '100%' },
+          },
+        },
+      ],
+    },
+  },
+};
 
 /**
  * "Let the space see this too."
@@ -243,23 +296,25 @@ const shareToggle: SchemaNode = {
 /**
  * What opening a row shows.
  *
- * `$animate` with a `reveal` rather than `$if`, so the panes are never unmounted — a scroll position
- * halfway down a prompt survives a row being closed and reopened, which is exactly what somebody
- * comparing a prompt against a response is doing.
+ * `$if`, so a closed row holds nothing. That is a reversal: this was `$animate` precisely so the
+ * panes stayed mounted and a scroll position survived closing and reopening. Then the response pane
+ * became a CodeMirror instance, and keeping one alive per row — for every pass in the bar, open or
+ * not — costs far more than the scroll position is worth.
+ *
+ * The reveal still runs both ways, so the row opens and closes the same as it did.
  */
 const passDetail: SchemaNode = {
-  type: '$animate',
+  type: '$if',
   props: {
     condition: { $in: ['$pass.passId', { $local: 'openPasses' }] },
     enterTransition: { type: 'reveal', duration: 200 },
-  },
-  children: [
-    {
+    exitTransition: { type: 'reveal', duration: 160 },
+    then: {
       type: 'Column',
       props: { gap: '300', width: '100%', pt: '200' },
       children: [
-        exchangePane('Prompt', '$pass.prompt'),
-        exchangePane('Response', '$pass.response'),
+        promptPane,
+        responsePane,
         shareToggle,
         {
           type: '$if',
@@ -274,7 +329,7 @@ const passDetail: SchemaNode = {
         },
       ],
     },
-  ],
+  },
 };
 
 /** A row, its disclosure, and what the disclosure opens. */

@@ -82,6 +82,32 @@ describe('mergeActivity', () => {
     expect(rows.get('pass-1')?.llm).toEqual({ prompt: 'P', response: 'R' });
   });
 
+  it('keeps the prompt when the response update carries an explicit undefined prompt', () => {
+    /*
+      The shape the AD4M adapter actually emits, and the one the test above does not.
+
+      It builds the exchange from two optional event fields, so `llmRequestSent` produces
+      `{ prompt: 'P', response: undefined }` and `llmResponseReceived` the mirror image — keys
+      present and undefined, not absent. Object spread copies those, so the naive merge dropped the
+      prompt at the exact moment the response arrived to be read against it.
+
+      This passed in testing right up until somebody opened a real row and found only half of it.
+    */
+    mergeActivity(rows, activity({ phase: 'thinking', llm: { prompt: 'P', response: undefined } }));
+    mergeActivity(rows, activity({ phase: 'writing', llm: { prompt: undefined, response: 'R' } }));
+    expect(rows.get('pass-1')?.llm).toEqual({ prompt: 'P', response: 'R' });
+  });
+
+  it('carries the exchange through to the settled row', () => {
+    // `processed` carries no LLM fields at all, so the payload has to survive a final update that
+    // knows nothing about it — otherwise the detail vanishes the instant the pass completes, which
+    // is when somebody actually goes to read it.
+    mergeActivity(rows, activity({ phase: 'thinking', llm: { prompt: 'P', response: undefined } }));
+    mergeActivity(rows, activity({ phase: 'writing', llm: { prompt: undefined, response: 'R' } }));
+    mergeActivity(rows, activity({ phase: 'done', ids: ['task-1'] }));
+    expect(rows.get('pass-1')).toMatchObject({ phase: 'done', llm: { prompt: 'P', response: 'R' } });
+  });
+
   it('keeps ids and detail once they arrive', () => {
     mergeActivity(rows, activity({ phase: 'done', ids: ['a'], detail: 'why' }));
     mergeActivity(rows, activity({ phase: 'done' }));
@@ -166,6 +192,45 @@ describe('createInterpretationRelay', () => {
     const { anna, bo } = pair({ shareDetail: true });
     anna.publish(activity({ llm: { prompt: 'P', response: 'R' } }));
     expect(bo.rows()[0]?.llm).toEqual({ prompt: 'P', response: 'R' });
+  });
+
+  it('reaches a finished pass when sharing is turned on afterwards', () => {
+    /*
+      The switch is offered while somebody reads their own prompt, and the pass they are reading has
+      already finished — so a relay that only applied the flag to future publishes would fail on
+      exactly the pass it was turned on for.
+    */
+    let sharing = false;
+    const bus = new InMemoryBus();
+    const make = (agentId: string) => {
+      const scope = createInMemoryEphemeralPort(bus, agentId)(dataset);
+      if (!scope) throw new Error('the in-memory port always has a scope');
+      return createInterpretationRelay(scope.channel(INTERPRETATION_ACTIVITY_CHANNEL), {
+        now: () => clock,
+        shareDetail: () => sharing,
+      });
+    };
+    const anna = make('did:anna');
+    const bo = make('did:bo');
+
+    anna.publish(activity({ phase: 'done', ids: ['task-1'], llm: { prompt: 'P', response: 'R' } }));
+    expect(bo.rows()[0]?.llm).toBeUndefined();
+
+    sharing = true;
+    anna.resend();
+    expect(bo.rows()[0]?.llm).toEqual({ prompt: 'P', response: 'R' });
+  });
+
+  it('resends only its own rows, never a relayed one', () => {
+    // A peer's payload never reached this machine, so re-broadcasting their row would send a copy
+    // of nothing while putting this agent's name on their work.
+    const { anna, bo } = pair({ shareDetail: true });
+    anna.publish(activity({ passId: 'anna-pass', llm: { prompt: 'P' } }));
+    expect(bo.rows()).toHaveLength(1);
+
+    bo.resend();
+    // Anna never receives her own row back, so hers stays a single local row.
+    expect(anna.rows().filter((r) => !r.mine)).toHaveLength(0);
   });
 
   it('drops a peer row whose runner stopped reporting', () => {

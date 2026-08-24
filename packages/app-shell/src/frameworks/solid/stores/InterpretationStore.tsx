@@ -87,13 +87,39 @@ export interface InterpretationStore {
   capable: Accessor<boolean>;
   /** Whether this agent is broadcasting its prompts and responses to the space. */
   shareDetail: Accessor<boolean>;
-  /** Turn that broadcasting on or off. Takes the value so a `we-switch` can pass `$event.detail`. */
+  /**
+   * Turn that broadcasting on or off. Takes the value so a `we-switch` can pass `$event.detail`.
+   *
+   * Enabling also re-broadcasts this agent's current rows — see the implementation for why that is
+   * not optional.
+   */
   setShareDetail: (share: boolean) => void;
   /** Forget every settled row, leaving anything still running. What a "clear" affordance calls. */
   dismissSettled: () => void;
 }
 
 const InterpretationStoreContext = createContext<InterpretationStore>();
+
+/**
+ * The model's answer, indented if it is JSON and left alone if it is not.
+ *
+ * An interpretation response *is* JSON — it is parsed into proposed instances — but it arrives as
+ * one unbroken line, which is unreadable at any width and overflows anything it is put in. Indenting
+ * is what makes it a document rather than a string.
+ *
+ * Left verbatim when it will not parse, and that case is worth keeping rather than swallowing: a
+ * model that returned prose, or JSON wrapped in a code fence, is exactly the failure somebody opens
+ * this pane to diagnose. Showing them the raw text answers the question; showing them nothing, or a
+ * parse error, does not.
+ */
+function formatResponse(raw: string): string {
+  if (!raw) return '';
+  try {
+    return JSON.stringify(JSON.parse(raw), null, 2);
+  } catch {
+    return raw;
+  }
+}
 
 /** `m:ss`, which is the range a pass actually occupies — seconds to a few minutes. */
 function formatElapsed(ms: number): string {
@@ -290,7 +316,7 @@ export function InterpretationStoreProvider(props: ParentProps) {
           elapsed: running ? formatElapsed(at - (startedAt.get(row.passId) ?? row.at)) : '',
           detail: row.detail ?? '',
           prompt: row.llm?.prompt ?? '',
-          response: row.llm?.response ?? '',
+          response: formatResponse(row.llm?.response ?? ''),
           hasDetail: !!(row.llm?.prompt || row.llm?.response),
         };
       });
@@ -327,7 +353,18 @@ export function InterpretationStoreProvider(props: ParentProps) {
     runningCount: createMemo(() => activity().filter((row) => row.running).length),
     hasActivity: createMemo(() => activity().length > 0),
     shareDetail,
-    setShareDetail,
+    /*
+      Turning it on reaches the passes already on screen, not only the next one.
+
+      The relay reads the flag when it sends, and a finished pass sends nothing further — so without
+      the resend, enabling sharing would apply to every pass except the one somebody was looking at
+      when they enabled it. The switch lives under a prompt they have open; that pass is the whole
+      reason they touched it.
+    */
+    setShareDetail: (share: boolean) => {
+      setShareDetail(share);
+      if (share) relay?.resend();
+    },
     // Only the settled ones, and only from this view: a running pass is not this agent's to
     // dismiss, and the rows themselves belong to whoever is running them.
     dismissSettled: () =>

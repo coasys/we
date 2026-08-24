@@ -141,6 +141,29 @@ export interface InterpretationActivity {
  */
 export const INTERPRETATION_ACTIVITY_TTL_MS = 10 * 60 * 1000;
 
+/**
+ * Fold a newer exchange into an older one, keeping whatever the newer one does not supply.
+ *
+ * Object spread cannot do this, and the difference is not academic: it copies keys that are present
+ * *and* undefined, so `{...{prompt:'x', response:undefined}, ...{prompt:undefined, response:'y'}}`
+ * silently drops the prompt. That is exactly the shape the AD4M adapter produces — `llmRequestSent`
+ * carries an input and no output, `llmResponseReceived` the reverse — so a plain spread lost the
+ * prompt at the moment the response arrived to be compared against it.
+ *
+ * Worth stating because the naive version passes a test written with the keys absent rather than
+ * undefined, which is a shape nothing actually emits.
+ */
+function mergeExchange(
+  previous: InterpretationLlmExchange | undefined,
+  update: InterpretationLlmExchange | undefined,
+): InterpretationLlmExchange | undefined {
+  if (!previous && !update) return undefined;
+  const merged: InterpretationLlmExchange = { ...previous };
+  if (update?.prompt !== undefined) merged.prompt = update.prompt;
+  if (update?.response !== undefined) merged.response = update.response;
+  return merged;
+}
+
 /** Whether a phase means the pass is over, whatever the outcome. */
 export function isSettled(phase: InterpretationPhase): boolean {
   return phase === 'done' || phase === 'skipped' || phase === 'failed';
@@ -199,7 +222,7 @@ export function mergeActivity(
     const kept: InterpretationActivity = {
       ...previous,
       ids: update.ids ?? previous.ids,
-      llm: update.llm || previous.llm ? { ...previous.llm, ...update.llm } : undefined,
+      llm: mergeExchange(previous.llm, update.llm),
     };
     rows.set(kept.passId, kept);
     return kept;
@@ -216,7 +239,7 @@ export function mergeActivity(
     mine: previous?.mine || update.mine,
     ids: update.ids ?? previous?.ids,
     detail: update.detail ?? previous?.detail,
-    llm: update.llm || previous?.llm ? { ...previous?.llm, ...update.llm } : undefined,
+    llm: mergeExchange(previous?.llm, update.llm),
   };
   rows.set(merged.passId, merged);
   return merged;

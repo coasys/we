@@ -99,6 +99,18 @@ export interface InterpretationRelay {
   /** Every pass this peer knows about — its own and its neighbours' — freshest first is the
    *  consumer's business; this returns them keyed. */
   rows(): InterpretationActivity[];
+  /**
+   * Re-broadcast this peer's own rows.
+   *
+   * For the moment `shareDetail` is turned on. The flag is read per publish, and a finished pass
+   * publishes nothing further — so without this, enabling sharing reaches only passes that have not
+   * happened yet. Which is precisely backwards: the switch is offered while somebody is looking at a
+   * prompt, and the pass they are looking at is the one it would fail to share.
+   *
+   * Only rows this peer runs. A relayed row's payload never left the machine that produced it, so
+   * re-broadcasting somebody else's would send a copy of nothing while claiming their work as ours.
+   */
+  resend(): void;
   /** Called whenever `rows()` would return something different. */
   onChange(cb: (rows: InterpretationActivity[]) => void): () => void;
   /** Drop the subscription. Does not clear rows — a host disposing a relay is usually tearing down
@@ -137,6 +149,29 @@ export function createInterpretationRelay(channel: EphemeralChannel, options: Re
     if (watchers.size === 0) return;
     const snapshot = current();
     watchers.forEach((cb) => cb(snapshot));
+  }
+
+  /**
+   * Put one row on the wire.
+   *
+   * Shared by `publish` and `resend` so the two cannot disagree about what a peer receives — and
+   * `sharingDetail()` is read here, at send time, which is what makes the switch take effect on the
+   * next thing sent rather than on the next relay built.
+   */
+  function broadcast(activity: InterpretationActivity): void {
+    const message: ActivityMessage = {
+      k: 'activity',
+      passId: activity.passId,
+      watchId: activity.watchId,
+      phase: activity.phase,
+      ids: activity.ids,
+      detail: activity.detail,
+      ...(sharingDetail() ? { prompt: activity.llm?.prompt, response: activity.llm?.response } : {}),
+    };
+    // Fire and forget, matching the channel's own contract. A dropped update costs one frame of
+    // staleness on a peer's bar and is corrected by the next phase; awaiting it here would make
+    // every caller choose between blocking a pass on a broadcast and an unhandled rejection.
+    channel.publish(message);
   }
 
   /** Rows minus anything whose runner stopped reporting. See `INTERPRETATION_ACTIVITY_TTL_MS`. */
@@ -180,23 +215,14 @@ export function createInterpretationRelay(channel: EphemeralChannel, options: Re
     publish(activity) {
       mergeActivity(rows, activity);
       notify();
-
-      const message: ActivityMessage = {
-        k: 'activity',
-        passId: activity.passId,
-        watchId: activity.watchId,
-        phase: activity.phase,
-        ids: activity.ids,
-        detail: activity.detail,
-        ...(sharingDetail() ? { prompt: activity.llm?.prompt, response: activity.llm?.response } : {}),
-      };
-      // Fire and forget, matching the channel's own contract. A dropped update costs one frame of
-      // staleness on a peer's bar and is corrected by the next phase; awaiting it here would make
-      // every caller choose between blocking a pass on a broadcast and an unhandled rejection.
-      channel.publish(message);
+      broadcast(activity);
     },
 
     rows: current,
+
+    resend() {
+      for (const row of current()) if (row.mine) broadcast(row);
+    },
 
     onChange(cb) {
       watchers.add(cb);
