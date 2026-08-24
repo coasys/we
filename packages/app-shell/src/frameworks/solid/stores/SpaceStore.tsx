@@ -522,6 +522,15 @@ export interface SpaceStore {
   /** Whether this space has calls interpreted as they happen. A community decision; defaults off. */
   autoInterpret: Accessor<boolean>;
   setAutoInterpret: (enabled: boolean, spaceUuid?: string) => Promise<void>;
+  /**
+   * Whether extraction passes in this space broadcast their prompt and response to every member.
+   *
+   * A community decision rather than a personal one: "I share and you do not" is an asymmetry with
+   * no use, and the reason to turn it on — this space is working on extraction and wants to see
+   * what it is doing — is about the space. Defaults off; see the model for why.
+   */
+  shareExtractionDetail: Accessor<boolean>;
+  setShareExtractionDetail: (enabled: boolean, spaceUuid?: string) => Promise<void>;
   /** Turn a module on or off for this agent everywhere. */
   setModuleInstalled: (moduleId: string, installed: boolean) => Promise<void>;
   /** Show or hide a module for this agent in one space. Private to this agent. */
@@ -1598,6 +1607,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     decision to spend somebody's LLM budget.
   */
   const autoInterpret = createMemo<boolean>(() => currentSpace()?.autoInterpret === true);
+  const shareExtractionDetail = createMemo<boolean>(() => currentSpace()?.shareExtractionDetail === true);
   datasetStore.provideAutoInterpretGate(() => autoInterpret());
 
   /**
@@ -2193,6 +2203,35 @@ export function SpaceStoreProvider(props: ParentProps) {
     );
   }
 
+  /**
+   * Turn extraction diagnostics on or off for the space.
+   *
+   * Same shape and same failure handling as `setAutoInterpret`, which is the setting it sits beside
+   * — a switch that reports success without persisting is worse than one that fails visibly,
+   * because the next member to open the page sees the old decision.
+   */
+  async function setShareExtractionDetail(enabled: boolean, spaceUuid?: string) {
+    const ds = targetDataset(spaceUuid);
+    const space = ds ? mySpaces().find((s) => isSpaceSelf(s, ds)) : undefined;
+    if (!ds || !space) return;
+    try {
+      await Space.update(ds.handle, space.id, { shareExtractionDetail: enabled });
+    } catch (error) {
+      console.error('SpaceStore: could not persist shareExtractionDetail', error);
+      toastService.error('Could not save this change for the space.');
+      throw error;
+    }
+    updateSpaceInCache(ds, { shareExtractionDetail: enabled } as never);
+    if (!isCurrent(ds)) return;
+    setCurrentSpace((prev) =>
+      prev
+        ? (Object.assign(Object.create(Object.getPrototypeOf(prev)), prev, {
+            shareExtractionDetail: enabled,
+          }) as Space)
+        : prev,
+    );
+  }
+
   async function setModuleEnabled(moduleId: string, enabled: boolean, spaceUuid?: string) {
     const ds = targetDataset(spaceUuid);
     // Read the space from the cache rather than `currentSpace`, so this answers for a space being
@@ -2532,6 +2571,8 @@ export function SpaceStoreProvider(props: ParentProps) {
     setModuleEnabled,
     autoInterpret,
     setAutoInterpret,
+    shareExtractionDetail,
+    setShareExtractionDetail,
     setModuleInstalled,
     setModuleVisible,
     setSpaceTemplateOverride,

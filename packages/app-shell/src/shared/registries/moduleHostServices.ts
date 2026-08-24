@@ -27,7 +27,12 @@ import type {
   Peer,
   TranscriptionPort,
 } from '@we/backend-shared';
-import type { CreateEntityOptions, ModuleIdentityAccess, ModuleStoreDeps } from '@we/module-shared';
+import type {
+  CreateEntityOptions,
+  InterpretationActivitySummary,
+  ModuleIdentityAccess,
+  ModuleStoreDeps,
+} from '@we/module-shared';
 
 import { moduleRegistry, moduleStores } from './moduleRegistry';
 
@@ -53,6 +58,23 @@ export interface ModuleHostServices {
   watchCollection?: (collectionId: string, request: { classes: string[] }) => Promise<void>;
   unwatchCollection?: (collectionId: string) => Promise<void>;
   reconcileCollection?: (collectionId: string, request: { classes: string[] }) => Promise<number>;
+  /**
+   * Live extraction activity for the current space, published by the store that holds the feed.
+   *
+   * Separate from `interpretation` for the same reason `interpretCollection` is: the port reports
+   * only what this node can see, and merging in what peers report needs the ephemeral transport and
+   * the profile cache — neither of which the port has, and both of which the host does.
+   */
+  interpretationActivity?: () => InterpretationActivitySummary[];
+  /**
+   * Whether the backend can interpret, as the store learned it from the backend itself.
+   *
+   * Published separately from the port's own `available()` because the answer arrives
+   * asynchronously and has to be *reactive*: a module reads it inside a derived value, and the
+   * probe resolves a round trip after the dataset changes. A plain port call would be read once and
+   * never re-read.
+   */
+  interpretationAvailable?: () => boolean;
   /** The profile cache, so a module can put a face to an agent id. See `ModuleIdentityAccess`. */
   identities?: ModuleIdentityAccess;
   /** Write a record into the current dataset — the host's `model.create`, in imperative form. */
@@ -135,7 +157,18 @@ export function createModuleStoreDeps(framework: {
       // wrapper so late binding works, which makes `!== undefined` true even on a backend that
       // cannot interpret — the trap the transcription wrapper above still falls into. Delegating to
       // `available()` lets the forwarder answer for the backend actually connected.
-      available: () => services.interpretation?.available?.() ?? services.interpretation !== undefined,
+      /*
+        The store's answer first, the port's second, and "a port exists" last.
+
+        That order is the fix for what shipped: the last of the three is what actually ran, because
+        the adapter implemented no `available()` at all — so the question "can this node interpret"
+        was answered by "is a port object present", which is true on every node including one whose
+        executor has never heard of the feature.
+      */
+      available: () =>
+        services.interpretationAvailable?.() ??
+        services.interpretation?.available?.() ??
+        services.interpretation !== undefined,
       runOnCollection: async (collectionId, request) => {
         const run = services.interpretCollection;
         if (!run) throw new Error('interpretation: this backend cannot interpret');
@@ -163,6 +196,16 @@ export function createModuleStoreDeps(framework: {
       },
       reconcileCollection: async (collectionId, request) =>
         (await services.reconcileCollection?.(collectionId, request)) ?? 0,
+      /*
+        Reads through on every call rather than capturing, like every accessor here — a module store
+        outlives a space switch, and a captured array would keep showing the passes of the space the
+        user has left.
+
+        Empty when the store has not published yet, which a module must read as "nothing running".
+        It is indistinguishable from a backend that cannot report progress, and deliberately so:
+        neither is a state worth a module branching on.
+      */
+      activity: () => services.interpretationActivity?.() ?? [],
       proposals: async () => {
         const dataset = services.dataset?.();
         if (!dataset || !services.interpretation) return [];

@@ -40,6 +40,11 @@ export const Space: CoreEntityDef = {
        * volunteering to run its extraction.
        */
       autoInterpret: { type: 'boolean', predicate: 'we://auto_interpret', default: false },
+      shareExtractionDetail: {
+        type: 'boolean',
+        predicate: 'we://share_extraction_detail',
+        default: false,
+      },
     },
     relations: {
       location: { target: 'LocationBlock', cardinality: 'one', predicate: 'we://location' },

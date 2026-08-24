@@ -300,6 +300,34 @@ const extract: SchemaNode = {
             },
           },
         },
+        /*
+          Why nothing is being extracted on its own.
+
+          Reported here rather than nowhere, which is where it went before: the standing watch is
+          registered without anyone asking, so a failure had nothing on screen waiting on it and
+          read as a call in which nobody said anything worth extracting.
+
+          Phrased as a statement about the automatic pass, immediately above a button that still
+          works — because that is the actual situation, and "extraction is broken" would be wrong.
+        */
+        {
+          type: '$if',
+          props: {
+            condition: { $store: 'modules.transcribe.watchProblem' },
+            then: {
+              type: 'Row',
+              props: { gap: '200', ay: 'center' },
+              children: [
+                { type: 'we-icon', props: { name: 'info', color: 'text-faint' } },
+                {
+                  type: 'we-text',
+                  props: { variant: 'footnote', color: 'text-muted' },
+                  children: ['Automatic extraction is not running on this node — press Extract instead.'],
+                },
+              ],
+            },
+          },
+        },
         {
           type: '$if',
           props: {

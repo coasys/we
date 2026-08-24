@@ -297,6 +297,14 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
    */
   const [proposals, setProposals] = signal<ProposalView[]>([]);
   /**
+   * Why the standing watch is not running, when it is not.
+   *
+   * Empty in the ordinary case — including on a host that never had a watch to fail, since the
+   * affordance is not offered there either. See the catch in `syncWatch` for why this is recorded
+   * rather than only logged.
+   */
+  const [watchProblem, setWatchProblem] = signal<string>('');
+  /**
    * The call the current collection belongs to.
    *
    * The record's lifetime is the *call's*, not the recording toggle's. Tying it to the toggle meant
@@ -928,11 +936,26 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
     if (next && typeof interpretation?.watchCollection === 'function') {
       try {
         await interpretation.watchCollection(next, { classes: EXTRACT_CLASSES });
+        setWatchProblem('');
         console.debug('[transcribe] watching collection for auto-extraction', next);
       } catch (error) {
-        console.info('[transcribe] auto-extraction unavailable', error);
+        /*
+          Recorded, not just logged.
+
+          This swallowed the one failure worth reporting. A watch is registered without anyone
+          asking for it, so when it fails there is nothing on screen that was waiting on a result —
+          which meant a node whose executor could not auto-extract was indistinguishable, for three
+          days, from a call in which nobody happened to say anything extractable.
+
+          Still not thrown. The caller is a call starting, and a watch that cannot be registered is
+          not a reason to interrupt one — the Extract button remains the whole feature without it.
+          So it goes somewhere a surface can choose to show.
+        */
+        setWatchProblem(error instanceof Error ? error.message : String(error));
+        console.warn('[transcribe] could not watch this call for auto-extraction', error);
       }
     } else if (next) {
+      setWatchProblem('This host cannot run a standing extraction watch.');
       console.info('[transcribe] host has no watchCollection — auto-extraction unavailable');
     }
   }
@@ -1101,6 +1124,59 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
     extractable: () => interpretation?.available() ?? false,
     /** Suggestions staged for review. Empty is the ordinary case — see `refreshProposals`. */
     proposals,
+    /**
+     * Why auto-extraction is not running here, or empty when it is.
+     *
+     * Distinct from `extractable`, which answers whether the node can interpret at all. A watch can
+     * fail on a node that interprets perfectly well — the host may simply not coordinate standing
+     * watches — and the two want different sentences.
+     */
+    watchProblem,
+
+    // ── Live extraction ──────────────────────────────────────────────────────
+    /*
+      Forwarded from the host rather than tracked here, and every field already a string.
+
+      Three reasons this is a pass-through and not state. The feed covers passes this module did not
+      start — a standing watch runs whether or not anyone has this panel open, and a peer's pass is
+      not this module's to know about at all. It has to survive the panel closing, since the bar
+      that renders it lives under the call bar rather than in the transcript. And the strings it
+      carries ("0:42", "Extracted 3 records") need arithmetic and a clock, neither of which a schema
+      has.
+
+      Empty means nothing is running. It is indistinguishable from a backend that cannot report
+      progress, and deliberately so — the bar's `hasActivity` guard is the same either way.
+    */
+    activity: () => interpretation?.activity() ?? [],
+    /**
+     * The passes still in flight, and the ones already finished.
+     *
+     * Split rather than filtered in the schema because the two are shown differently: running
+     * passes are always listed, finished ones fold behind a count. A long call runs a pass every
+     * few minutes and each completed one used to stay on screen, so the bar grew all conversation
+     * and pushed the call's own chrome down to make room for a history nobody asked to see.
+     */
+    runningPasses: () => (interpretation?.activity() ?? []).filter((pass) => pass.running),
+    settledPasses: () => (interpretation?.activity() ?? []).filter((pass) => !pass.running),
+    activityCount: () => (interpretation?.activity() ?? []).filter((pass) => pass.running).length,
+    settledCount: () => (interpretation?.activity() ?? []).filter((pass) => !pass.running).length,
+    /**
+     * Whether any row on show belongs to somebody else and has nothing to open.
+     *
+     * What the bar's one footnote is gated on. The explanation used to be a tooltip on every row,
+     * which put it where nobody reads and repeated it per pass; the fact it conveys — a peer's
+     * exchange never left their machine, and a space can choose otherwise — is worth saying exactly
+     * once, and only when there is a locked row to explain.
+     */
+    hasLockedPass: () => (interpretation?.activity() ?? []).some((pass) => !pass.mine && !pass.hasDetail),
+    /**
+     * Whether the status bar should exist at all.
+     *
+     * Counts settled rows too, which the running count deliberately does not: a pass that just
+     * finished is the moment its result is worth reading, and a bar that vanished on completion
+     * would take "Extracted 3 records" with it before anyone saw it.
+     */
+    hasActivity: () => (interpretation?.activity() ?? []).length > 0,
 
     // ── Actions ──────────────────────────────────────────────────────────────
     /**

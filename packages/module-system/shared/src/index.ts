@@ -29,6 +29,7 @@ export type {
   ModuleDefinition,
   ModuleEmbed,
   ModuleIdentity,
+  InterpretationActivitySummary,
   ModuleIdentityAccess,
   ModuleLauncher,
   ModulePresenceAccess,

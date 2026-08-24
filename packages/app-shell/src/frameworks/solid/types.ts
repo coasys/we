@@ -3,6 +3,7 @@ import type {
   AppStore,
   DatasetStore,
   EditorStore,
+  InterpretationStore,
   PresenceStore,
   ProfileStore,
   RecordStore,
@@ -68,6 +69,7 @@ export interface Stores extends RendererStores {
   routeStore: RouteStore;
   shellStore: ShellStore;
   presenceStore: PresenceStore;
+  interpretationStore: InterpretationStore;
   model?: ModelStore;
   /** Neutral identity — the current agent (templates read `$me.did`). Backed by `sessionStore.me`;
    *  typed `unknown` so the seam stays backend-agnostic. Host-specific: not part of the data contract. */

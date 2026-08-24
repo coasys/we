@@ -19,9 +19,11 @@
  * Predicates that map to nothing are dropped rather than shown raw: a reviewer cannot make a good
  * accept/reject decision about `we://x_7` and should not be asked to.
  */
-import { AutoProcessorConfig, Link, LinkQuery, Literal, type PerspectiveProxy } from '@coasys/ad4m';
+import { Link, LinkQuery, Literal, type PerspectiveProxy } from '@coasys/ad4m';
 import type {
   DatasetHandle,
+  InterpretationActivity,
+  InterpretationPhase,
   InterpretationPort,
   InterpretationProposal,
   InterpretationRequest,
@@ -186,6 +188,29 @@ const UNSUPPORTED =
   'extraction stack; everything else in the app works normally without it.';
 
 /**
+ * Whether a rejection means "this executor has never heard of that method".
+ *
+ * The WS dispatcher answers an unregistered method with a 404 whose message is
+ * `Unknown type: <method>`, and that is a categorically different failure from the call being
+ * attempted and going wrong: it says the node is running a build that predates the feature, and no
+ * retry, model configuration or permission grant will change it.
+ *
+ * Both the status and the message are checked because only one of them is guaranteed to survive.
+ * The client raises a typed error carrying `status`, but that type is not exported from the package
+ * root, and an error crossing a transport or a rewrapping layer can arrive as a plain `Error` with
+ * the text intact and the status gone.
+ *
+ * Deliberately narrow. Anything broader would let an unrelated outage — a busy node, a dropped
+ * socket — be recorded as a permanent capability gap, which is the one mistake here that a user
+ * cannot recover from without reloading.
+ */
+function isMissingHandler(error: unknown): boolean {
+  const status = (error as { status?: unknown; code?: unknown })?.status ?? (error as { code?: unknown })?.code;
+  const message = error instanceof Error ? error.message : String(error ?? '');
+  return status === 404 || /unknown type/i.test(message);
+}
+
+/**
  * Whether the runtime can hold a standing watch, probed separately from `interpret`.
  *
  * Separately because the port declares them separately, and that is not a formality: one-shot
@@ -195,6 +220,100 @@ const UNSUPPORTED =
  */
 export function runtimeSupportsAutoProcessing(dataset: DatasetHandle): boolean {
   return typeof (proxy(dataset) as Partial<PerspectiveProxy>).addAutoProcessor === 'function';
+}
+
+/**
+ * Whether the runtime can report a pass while it runs.
+ *
+ * A third probe rather than folding into the two above, for the same reason those are separate: the
+ * event streams arrived after the engine did, so a build that interprets and watches perfectly well
+ * may still have nothing to say about either. A host that assumed otherwise would subscribe, never
+ * hear anything, and show a bar that is permanently empty rather than falling back to the local
+ * spinner it had before.
+ */
+export function runtimeSupportsObservation(dataset: DatasetHandle): boolean {
+  return typeof (proxy(dataset) as Partial<PerspectiveProxy>).addAutoProcessorEventListener === 'function';
+}
+
+/**
+ * AD4M's thirteen steps, as WE's seven phases.
+ *
+ * `null` means the event describes a pass that is **not happening here** — `backedOff`,
+ * `notCandidate` and `awaitingAuthor` are this executor announcing that somebody else has the work,
+ * or that nobody does. They are worth a log line and are not worth a row: a row per non-runner
+ * would put four "skipped" entries on every bar in a five-person call, for one pass.
+ */
+function phaseOf(step: string): InterpretationPhase | null {
+  switch (step) {
+    case 'batchReady':
+    case 'claimed':
+      return 'queued';
+    case 'gatheringTranscript':
+      return 'gathering';
+    // `runningInterpretation` fires just before the model call and `llmRequestSent` just after the
+    // prompt is built. Both are "waiting on the model" from outside, and the second only exists
+    // when debug events are on — so collapsing them means a bar reads the same either way.
+    case 'runningInterpretation':
+    case 'llmRequestSent':
+      return 'thinking';
+    case 'llmResponseReceived':
+      return 'writing';
+    case 'processed':
+      return 'done';
+    case 'shapesMissing':
+    case 'emptyTranscript':
+      return 'skipped';
+    case 'failed':
+      return 'failed';
+    default:
+      return null;
+  }
+}
+
+/**
+ * `runInterpretation`, asking for progress events where the runtime offers them.
+ *
+ * Wrapped rather than called inline because the options bag is newer than the pinned
+ * `@coasys/ad4m` — WE tracks a published tag, and this argument only exists on a build carrying the
+ * #903 follow-ups. Passing it is safe on either: an older client drops the extra argument at the
+ * JS call boundary, and an older executor's serde ignores the fields it does not know. What is not
+ * safe is the type, hence the widening here rather than at the call site, where it would read as a
+ * cast somebody forgot to remove.
+ *
+ * `emitDebugEvents` follows the observation rather than a separate switch. The payload travels over
+ * the local WebSocket to this client alone and never touches the graph, so it costs a message and
+ * nothing else — and having it already in hand is what lets somebody open a row and read the prompt
+ * without the pass having to be re-run with a different flag.
+ */
+async function runObserved(
+  perspective: PerspectiveProxy,
+  turns: { speaker: string; text: string }[],
+  basePrefix: string,
+  classes: string[],
+  observationId?: string,
+): Promise<string[]> {
+  type Observable = (
+    turns: { speaker: string; text: string }[],
+    basePrefix: string,
+    classes?: string[],
+    options?: { observe?: { observationId: string; emitDebugEvents?: boolean } },
+  ) => Promise<string[]>;
+  const run = perspective.runInterpretation.bind(perspective) as Observable;
+
+  if (!observationId) return run(turns, basePrefix, classes);
+  return run(turns, basePrefix, classes, { observe: { observationId, emitDebugEvents: true } });
+}
+
+/**
+ * What identifies a pass across the two streams.
+ *
+ * `batchKey` where the executor sends one — it is the only field both streams share, and it is what
+ * a consumer needs to say "this `llmRequestSent` belongs to the row that `claimed` opened". A
+ * pre-#903 executor sends none, and falling back to the processor id is the best available guess:
+ * wrong only when one processor runs two passes at once, which the claim mechanism already prevents.
+ */
+function passIdOf(event: { batchKey?: string; processorId: string }): string {
+  return event.batchKey ?? event.processorId;
 }
 
 const UNSUPPORTED_WATCH =
@@ -211,7 +330,48 @@ export function createAd4mInterpretationPort(selfId?: () => string | undefined):
     fact, and once that path exists this map is only an optimisation on the common case.
   */
   const watchParents = new Map<string, { id: string; predicate: string }>();
-  let listening = false;
+
+  /*
+    What the executor turned out to support, once anything has actually asked it.
+
+    `null` until then, and read as "assume yes" — a port that reported itself unavailable while the
+    answer was still unknown would hide the feature for the first frames of every session, which is
+    a worse lie than the one this replaces.
+
+    A property of the connection rather than of a dataset: one port serves one executor, and a build
+    either has the interpretation handlers or it does not. It cannot change without the node being
+    rebuilt, and a rebuild means a new connection, so this never needs invalidating.
+  */
+  let executorSupports: boolean | null = null;
+
+  /*
+    One subscription per perspective, shared by everything that wants the event stream.
+
+    It used to be a single `listening` boolean, which meant the first perspective to register a
+    watch was the only one ever subscribed — a second space silently got no listener at all, since
+    the flag was already true. Keyed by uuid, each perspective gets its own, and the map is also
+    what lets `observe` hand out an unsubscribe without tearing down the parenting the watch relies
+    on: subscribers come and go, the underlying AD4M listener does not.
+
+    That last part is not a choice. `addAutoProcessorEventListener` returns nothing to unsubscribe
+    with, so the one subscription per perspective has to be permanent and fan out in front of it.
+  */
+  type Observer = (activity: InterpretationActivity) => void;
+  interface DatasetStream {
+    observers: Set<{ cb: Observer; detail: boolean }>;
+    /**
+     * Passes this executor's own event stream has spoken about.
+     *
+     * The two streams overlap: for a local pass both fire, and the DID-scoped one is strictly more
+     * informative — it has the fine phases, the ids and the LLM payload, where the neighbourhood
+     * one has three phases and no detail. So the neighbourhood stream is only allowed to open a row
+     * nothing else has claimed. Without that rule its `abandoned` would land after a `failed` and
+     * relabel a broken pass as "nothing to extract", which is precisely the distinction the phase
+     * vocabulary exists to keep.
+     */
+    ownPasses: Set<string>;
+  }
+  const streams = new Map<string, DatasetStream>();
 
   /*
     Parent what a standing pass minted.
@@ -228,9 +388,55 @@ export function createAd4mInterpretationPort(selfId?: () => string | undefined):
     every online member would link the same records and the call would collect one duplicate edge
     per participant.
   */
-  async function attachListener(perspective: PerspectiveProxy): Promise<void> {
-    if (listening) return;
-    listening = true;
+  async function attachListener(perspective: PerspectiveProxy): Promise<DatasetStream> {
+    const existing = streams.get(perspective.uuid);
+    if (existing) return existing;
+    const stream: DatasetStream = { observers: new Set(), ownPasses: new Set() };
+    streams.set(perspective.uuid, stream);
+
+    /** Hand one row to everyone watching, withholding the model exchange from those who did not ask. */
+    const publish = (activity: InterpretationActivity): void => {
+      for (const { cb, detail } of stream.observers) {
+        try {
+          cb(detail ? activity : { ...activity, llm: undefined });
+        } catch (error) {
+          // One bad subscriber must not cost the others their update, nor the parenting below.
+          console.warn('[interpretation] an activity subscriber threw', error);
+        }
+      }
+    };
+
+    /*
+      The perspective-scoped stream, second and subordinate.
+
+      On a peer-to-peer node it carries nothing the stream below does not, because both are local to
+      this executor and every local pass appears on both. It earns its place on a *hosted* node,
+      where one executor runs passes for several agents and a client holding perspective read access
+      is not the pass owner — there, this is the only one of the two that arrives at all.
+
+      Best-effort: an executor with the fine-grained stream and not this one is a normal older
+      build, and failing the subscription would take the useful stream down with it.
+    */
+    if (typeof perspective.addAutoProcessorNeighbourhoodStateListener === 'function') {
+      try {
+        await perspective.addAutoProcessorNeighbourhoodStateListener((event) => {
+          const passId = passIdOf(event);
+          if (stream.ownPasses.has(passId)) return;
+          const phase = event.phase === 'claimed' ? 'queued' : event.phase === 'finished' ? 'done' : 'skipped';
+          publish({
+            passId,
+            watchId: event.processorId,
+            runner: event.claimantDid,
+            mine: event.claimantDid === selfId?.(),
+            phase,
+            at: Date.now(),
+          });
+        });
+      } catch (error) {
+        console.info('[interpretation] no neighbourhood-state stream on this runtime', error);
+      }
+    }
+
     await perspective.addAutoProcessorEventListener(async (event) => {
       /*
         Every step, not only the one this listener acts on.
@@ -249,6 +455,40 @@ export function createAd4mInterpretationPort(selfId?: () => string | undefined):
         detail: event.detail,
       });
 
+      const phase = phaseOf(event.step);
+      if (phase) {
+        const passId = passIdOf(event);
+        stream.ownPasses.add(passId);
+        publish({
+          passId,
+          watchId: event.processorId,
+          runner: event.agentDid,
+          // This stream is DID-filtered to the pass owner, so anything arriving here is this
+          // agent's own work — but `agentDid` is checked rather than assumed, because a hosted
+          // executor running passes for several managed users would deliver more than one DID's
+          // events to a client holding the right credential.
+          mine: !event.agentDid || event.agentDid === selfId?.(),
+          phase,
+          at: Date.now(),
+          ids: event.step === 'processed' ? (event.bases ?? []) : undefined,
+          detail: event.detail,
+          /*
+            Only the field this event actually carries.
+
+            Writing both and letting one be `undefined` looks equivalent and is not: the merge on the
+            other side folds exchanges together, and a key that is present-and-undefined overwrites
+            what is already there. `llmRequestSent` carries the prompt and `llmResponseReceived` the
+            response, so the both-keys version deleted the prompt at the moment the response arrived
+            to be read against it.
+          */
+          llm: event.llmInput
+            ? { prompt: event.llmInput }
+            : event.llmOutput
+              ? { response: event.llmOutput }
+              : undefined,
+        });
+      }
+
       if (event.step !== 'processed') return;
       const parent = watchParents.get(event.processorId);
       const me = selfId?.();
@@ -263,9 +503,61 @@ export function createAd4mInterpretationPort(selfId?: () => string | undefined):
         }
       }
     });
+
+    return stream;
   }
 
   return {
+    /**
+     * What the executor has actually been observed to support.
+     *
+     * Deliberately *not* the client-library check that used to stand in for this. That check is
+     * what shipped the bug: a bundled library's methods exist on every node, so it answered yes
+     * against an executor that had never heard of them, and the raw RPC error it was written to
+     * prevent reached the user instead.
+     *
+     * Nullary by contract, so it has no dataset to inspect even if it wanted one — which is the
+     * shape of the problem, and why the real question is asked by `checkAvailability` and merely
+     * reported here. `null` reads as yes: a port that called itself unavailable while the answer
+     * was still unknown would hide the feature for the first frames of every session, which is a
+     * worse lie than the one this replaces.
+     */
+    available(): boolean {
+      return executorSupports !== false;
+    },
+
+    /**
+     * Ask the executor, once, and remember.
+     *
+     * The probe is `interpretationOverlays` — a read that returns the passes awaiting review, which
+     * on a fresh space is an empty list. It is the right question to ask for two reasons: it landed
+     * in the same merge as `runInterpretation` and `addAutoProcessor`, so a node missing one is
+     * missing all three; and it costs a graph read rather than an LLM call, which rules out the
+     * obvious alternative of "just try a real pass and see".
+     *
+     * Only a missing handler is conclusive. Any other rejection — a busy node, a dropped socket, a
+     * permission the session lacks — leaves the answer unknown rather than recording a permanent
+     * gap, because a capability wrongly marked absent stays absent until the app is reloaded.
+     */
+    async checkAvailability(dataset: DatasetHandle): Promise<boolean> {
+      if (!runtimeSupportsInterpretation(dataset)) return false;
+      if (executorSupports !== null) return executorSupports;
+
+      try {
+        await proxy(dataset).interpretationOverlays();
+        executorSupports = true;
+      } catch (error) {
+        if (!isMissingHandler(error)) {
+          // Inconclusive. Left unset so the next dataset change asks again.
+          console.debug('[interpretation] capability probe inconclusive', error);
+          return true;
+        }
+        console.info('[interpretation] this node cannot interpret — its executor predates the extraction stack');
+        executorSupports = false;
+      }
+      return executorSupports;
+    },
+
     async interpret(
       dataset: DatasetHandle,
       turns: TranscriptTurn[],
@@ -287,7 +579,45 @@ export function createAd4mInterpretationPort(selfId?: () => string | undefined):
         request.basePrefix ??
         (request.parent ? `${DEFAULT_BASE_PREFIX}${encodeURIComponent(request.parent.id)}/` : DEFAULT_BASE_PREFIX);
 
-      const ids = await perspective.runInterpretation(withTime(turns), basePrefix, request.classes);
+      /*
+        Report the pass while it runs, not only when it returns.
+
+        The button is the surface somebody is actually sitting and waiting on, and it was the one
+        with no progress at all: a watch pass emitted a full step stream while a press emitted
+        nothing. The id is chosen here because `runInterpretation` is one blocking call — there is
+        no earlier response that could carry a server-minted one, so events tagged with one would
+        arrive with nothing to match them to.
+
+        Subscribing first, because the pass can reach the model before the await returns and an
+        observer attached afterwards would miss the phase it most wants.
+      */
+      const observed = runtimeSupportsObservation(dataset);
+      if (observed) await attachListener(perspective);
+      const passId = `one-shot/${crypto.randomUUID()}`;
+
+      /*
+        The backstop for a node the probe never got to ask.
+
+        `checkAvailability` runs when the dataset changes, but a session can reach here first — the
+        probe is one round trip and somebody can press Extract during it — and a node can in
+        principle be swapped underneath a live connection. Catching it here means the answer is
+        learned from whichever call gets there first, and the message a person sees is the one
+        written for it rather than `Unknown type: perspective.runInterpretation`.
+      */
+      let ids: string[];
+      try {
+        ids = await runObserved(
+          perspective,
+          withTime(turns),
+          basePrefix,
+          request.classes,
+          observed ? passId : undefined,
+        );
+      } catch (error) {
+        if (!isMissingHandler(error)) throw error;
+        executorSupports = false;
+        throw new Error(UNSUPPORTED);
+      }
       if (ctl?.signal?.aborted) return { turns: turns.length, ids: [], proposed: [] };
 
       // Parent *after* the pass, because the engine has no notion of one. Sequential rather than
@@ -305,6 +635,21 @@ export function createAd4mInterpretationPort(selfId?: () => string | undefined):
       // divergence gate decides per property, and only the executor knows what it did.
       const staged = new Set((await perspective.interpretationOverlays()).map((o) => o.base));
       return { turns: turns.length, ids, proposed: ids.filter((id) => staged.has(id)) };
+    },
+
+    async observe(
+      dataset: DatasetHandle,
+      cb: (activity: InterpretationActivity) => void,
+      options?: { detail?: boolean },
+    ): Promise<() => void> {
+      // A no-op unsubscribe rather than a throw: a host subscribing at boot has no better answer to
+      // "this runtime cannot report progress" than to carry on without it, and every caller would
+      // otherwise wrap this in the same try/catch.
+      if (!runtimeSupportsObservation(dataset)) return () => {};
+      const stream = await attachListener(proxy(dataset));
+      const entry = { cb, detail: options?.detail ?? false };
+      stream.observers.add(entry);
+      return () => stream.observers.delete(entry);
     },
 
     async proposals(dataset: DatasetHandle): Promise<InterpretationProposal[]> {
@@ -365,17 +710,43 @@ export function createAd4mInterpretationPort(selfId?: () => string | undefined):
       console.debug('[interpretation] registering watch', { watchId: request.watchId, interpretationClasses });
       console.debug('[interpretation] scope query\n%s', sourceScopeQuery);
 
-      await perspective.addAutoProcessor({
-        processorId: request.watchId,
-        sourceScopeQuery,
-        basePrefix: request.basePrefix ?? `${DEFAULT_BASE_PREFIX}${encodeURIComponent(request.parent.id)}/`,
-        interpretationClasses,
-        debounceMs: request.debounceMs ?? WATCH_DEFAULTS.debounceMs,
-        batchMin: request.batchMin ?? WATCH_DEFAULTS.batchMin,
-        batchMax: request.batchMax ?? WATCH_DEFAULTS.batchMax,
-        maxWaitMs: WATCH_DEFAULTS.maxWaitMs,
-        claimTtlMs: WATCH_DEFAULTS.claimTtlMs,
-      });
+      try {
+        await perspective.addAutoProcessor({
+          processorId: request.watchId,
+          sourceScopeQuery,
+          basePrefix: request.basePrefix ?? `${DEFAULT_BASE_PREFIX}${encodeURIComponent(request.parent.id)}/`,
+          interpretationClasses,
+          debounceMs: request.debounceMs ?? WATCH_DEFAULTS.debounceMs,
+          batchMin: request.batchMin ?? WATCH_DEFAULTS.batchMin,
+          batchMax: request.batchMax ?? WATCH_DEFAULTS.batchMax,
+          maxWaitMs: WATCH_DEFAULTS.maxWaitMs,
+          claimTtlMs: WATCH_DEFAULTS.claimTtlMs,
+          /*
+          Emit the LLM exchange, never persist it — and the two are one decision only because #903
+          split them.
+
+          `emitDebugEvents` is a *registration-time* switch on the shared processor, not a
+          per-subscriber one, so a UI toggle cannot turn it on for a pass already in flight. Leaving
+          it off would mean re-registering a watch every peer shares in order to answer one person
+          opening a disclosure triangle. On costs a WebSocket message to this client: the events are
+          DID-filtered and never leave the machine.
+
+          `persistDebug` is the opposite trade and stays off. It writes the prompt onto the pass's
+          `InterpretationRun` in the shared graph, where it syncs to every peer and stays there —
+          tens of KB per pass, permanently, for something worth reading for five minutes.
+        */
+          emitDebugEvents: true,
+          persistDebug: false,
+        } as Parameters<PerspectiveProxy['addAutoProcessor']>[0]);
+      } catch (error) {
+        // Same backstop as the one-shot path, and it matters more here: a watch failure is caught
+        // by the caller and, before this, disappeared into a console line — which is why a node
+        // that could not auto-extract looked for three days like one that simply had nothing to
+        // extract.
+        if (!isMissingHandler(error)) throw error;
+        executorSupports = false;
+        throw new Error(UNSUPPORTED_WATCH);
+      }
     },
 
     async reconcile(dataset: DatasetHandle, request: InterpretationRequest): Promise<number> {
@@ -427,24 +798,36 @@ export function createAd4mInterpretationPort(selfId?: () => string | undefined):
       */
       watchParents.delete(watchId);
       /*
-        Register the client's own shape before querying through it.
+        Delete the processor's links directly, without going through the ORM.
 
-        The engine registers this class under the name **`AutoProcessor`**; the ORM class is named
-        `AutoProcessorConfig`, and `findAll` resolves a shape *by name* — so without this it fails
-        with "No SHACL shape stored for class 'AutoProcessorConfig'". Two names over one set of
-        instances, which the model's own docs anticipate by telling callers to register it first.
+        This used to call `AutoProcessorConfig.register(perspective)` first, because `findAll`
+        resolves a shape by name and the client model is named differently from the class the
+        executor registers. But `register` *writes SDNA*: it installs the TypeScript model's SHACL
+        over the same target class the executor hard-wires, replacing a definition the engine owns
+        as a side effect of tidying up after a call.
 
-        The same disagreement about how a class is named that `targetClasses` exists for, one layer
-        along. Both are worth reading as one symptom.
+        The two shapes agree on property names and paths — there is a parity test for exactly that
+        — and that test compares nothing else. Setters, constructors and literal encoding are all
+        free to differ while it passes, and the write path is made of setters. So the class an
+        executor wrote through on one call could be a different class by the next one, with nothing
+        in between reporting a problem.
+
+        Whether or not that is what bit us, a delete has no business redefining a class. The node
+        URI is derived from the processor id (`processor_node` in the executor), so its links can be
+        removed directly — no shape lookup, no registration, nothing for the engine's own definition
+        to collide with.
       */
-      await (AutoProcessorConfig as unknown as { register(p: PerspectiveProxy): Promise<unknown> }).register(
-        perspective,
-      );
-
-      const configs = (await AutoProcessorConfig.findAll(perspective, {
-        where: { processorId: watchId },
-      })) as unknown as { delete(): Promise<unknown> }[];
-      for (const config of configs) await config.delete();
+      const node = `ad4m://autoprocessor/${watchId}`;
+      const links = await perspective.get(new LinkQuery({ source: node }));
+      for (const link of links) {
+        try {
+          await perspective.remove(link);
+        } catch (error) {
+          // One stubborn link should not strand the rest: what stops the watch is the required
+          // scalars going away, and a partial removal still achieves that.
+          console.warn('[interpretation] could not remove a watch config link', error);
+        }
+      }
     },
   };
 }

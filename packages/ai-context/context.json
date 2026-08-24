@@ -2953,6 +2953,11 @@
           "optional": true
         },
         {
+          "name": "maxHeight",
+          "type": "string",
+          "optional": true
+        },
+        {
           "name": "styles",
           "type": "Record<string, string | number>",
           "optional": true
@@ -4674,6 +4679,13 @@
           "predicate": "we://auto_interpret",
           "required": false,
           "default": "false"
+        },
+        {
+          "name": "shareExtractionDetail",
+          "type": "boolean",
+          "predicate": "we://share_extraction_detail",
+          "required": false,
+          "default": "false"
         }
       ],
       "relations": [
@@ -5688,6 +5700,24 @@
       ]
     },
     {
+      "name": "interpretationStore",
+      "state": {
+        "activity": {
+          "type": "array"
+        },
+        "runningCount": {
+          "type": "number"
+        },
+        "hasActivity": {
+          "type": "boolean"
+        },
+        "capable": {
+          "type": "boolean"
+        }
+      },
+      "actions": ["dismissSettled"]
+    },
+    {
       "name": "presenceStore",
       "state": {
         "peers": {
@@ -6330,6 +6360,9 @@
         },
         "autoInterpret": {
           "type": "boolean"
+        },
+        "shareExtractionDetail": {
+          "type": "boolean"
         }
       },
       "actions": [
@@ -6351,6 +6384,7 @@
         "setSpaceDefaultTheme",
         "setModuleEnabled",
         "setAutoInterpret",
+        "setShareExtractionDetail",
         "setModuleInstalled",
         "setModuleVisible",
         "setSpaceTemplateOverride",

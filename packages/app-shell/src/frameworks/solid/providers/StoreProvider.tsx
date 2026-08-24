@@ -3,6 +3,7 @@ import {
   AppStoreProvider,
   DatasetStoreProvider,
   EditorStoreProvider,
+  InterpretationStoreProvider,
   PresenceStoreProvider,
   ProfileStoreProvider,
   RecordStoreProvider,
@@ -58,7 +59,13 @@ export default function StoreProvider(props: ParentProps) {
                             renders here — so a deployment that ships no editing surface pays a
                             context and nothing else. */}
                                 <PresenceStoreProvider>
-                                  <EditorHostAdapter>{props.children}</EditorHostAdapter>
+                                  {/* Beside presence, and for the same reasons: it follows the
+                                      current dataset, reads the same ephemeral port, and has to
+                                      outlive the panel that started a pass — a call bar is still
+                                      showing an extraction after the transcript panel closes. */}
+                                  <InterpretationStoreProvider>
+                                    <EditorHostAdapter>{props.children}</EditorHostAdapter>
+                                  </InterpretationStoreProvider>
                                 </PresenceStoreProvider>
                               </SpaceStoreProvider>
                             </AppStoreProvider>

@@ -1072,6 +1072,7 @@ export const contextData: ContextData = {
         { name: 'readOnly', type: 'boolean', optional: true },
         { name: 'onChange', type: '((code: string) => void)', optional: true },
         { name: 'onSave', type: '((code: string) => void)', optional: true },
+        { name: 'maxHeight', type: 'string', optional: true },
         { name: 'styles', type: 'Record<string, string | number>', optional: true },
       ],
       source: 'components',
@@ -1693,6 +1694,13 @@ export const contextData: ContextData = {
         { name: 'defaultThemeId', type: 'string', predicate: 'we://default_theme_id', required: false },
         { name: 'enabledModules', type: 'string', predicate: 'we://enabled_modules', required: false },
         { name: 'autoInterpret', type: 'boolean', predicate: 'we://auto_interpret', required: false, default: 'false' },
+        {
+          name: 'shareExtractionDetail',
+          type: 'boolean',
+          predicate: 'we://share_extraction_detail',
+          required: false,
+          default: 'false',
+        },
       ],
       relations: [{ name: 'location', kind: 'HasOne', predicate: 'we://location', target: 'LocationBlock' }],
     },
@@ -2195,6 +2203,16 @@ export const contextData: ContextData = {
       ],
     },
     {
+      name: 'interpretationStore',
+      state: {
+        activity: { type: 'array' },
+        runningCount: { type: 'number' },
+        hasActivity: { type: 'boolean' },
+        capable: { type: 'boolean' },
+      },
+      actions: ['dismissSettled'],
+    },
+    {
       name: 'presenceStore',
       state: {
         peers: { type: 'array' },
@@ -2563,6 +2581,7 @@ export const contextData: ContextData = {
         unreadNodeIds: { type: 'array' },
         myMentions: { type: 'array', properties: ['id', 'author', 'createdAt'] },
         autoInterpret: { type: 'boolean' },
+        shareExtractionDetail: { type: 'boolean' },
       },
       actions: [
         'createSpace',
@@ -2583,6 +2602,7 @@ export const contextData: ContextData = {
         'setSpaceDefaultTheme',
         'setModuleEnabled',
         'setAutoInterpret',
+        'setShareExtractionDetail',
         'setModuleInstalled',
         'setModuleVisible',
         'setSpaceTemplateOverride',

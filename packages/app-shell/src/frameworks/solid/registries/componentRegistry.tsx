@@ -60,6 +60,18 @@ const CesiumGlobeOnDemand = lazy(async () => {
 /** The graph engine, its expanders, layouts and d3-force — loaded when a template first draws one. */
 const GraphViewOnDemand = lazy(() => import('../components/GraphHost'));
 
+/**
+ * A read-only code view, and CodeMirror behind it.
+ *
+ * Registered because the generated component reference already documents `CodeEditor` as available
+ * to schemas, and it was not — so a schema reaching for it rendered nothing at all, silently. The
+ * docs promised it; this makes the promise true.
+ *
+ * Lazily, like the editor panels below and for the same reason: CodeMirror is large, and the one
+ * schema using it today is a disclosure panel most sessions never open.
+ */
+const CodeEditorOnDemand = lazy(() => import('@we/components/solid').then((m) => ({ default: m.CodeEditor })));
+
 /** One decorative component, and `three` behind it. */
 const WeCubeOnDemand = lazy(() => import('../components/3d/WeCube'));
 
@@ -127,6 +139,7 @@ export const componentRegistry: ComponentRegistry = {
   VideoDisplay,
 
   // Marketplace
+  CodeEditor: CodeEditorOnDemand,
   TemplateCard,
 
   // Shell

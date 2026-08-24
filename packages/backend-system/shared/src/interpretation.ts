@@ -38,6 +38,7 @@
  */
 
 import type { DatasetHandle } from './dataSource';
+import type { InterpretationActivity } from './interpretationActivity';
 
 /**
  * One thing somebody said.
@@ -137,6 +138,30 @@ export interface InterpretationPort {
   available?(): boolean;
 
   /**
+   * Ask the **backend** whether it can interpret, rather than asking the client library.
+   *
+   * Exists because `available()` cannot answer honestly on its own. A client bundles a library
+   * whose methods exist whether or not the node it dials implements them, so a synchronous probe
+   * can only ever report "my own code has this function" — which is true on every node, including
+   * one that will refuse the call. That is not a hypothetical: it shipped, and a WE deployment
+   * offered Extract against a node whose executor predated the feature, failing with a raw RPC
+   * error where the whole point of `available()` was to prevent exactly that.
+   *
+   * Asynchronous because the only honest answer involves a round trip. Implementations should make
+   * that trip with the cheapest *read* in the same feature set — never by starting a real pass,
+   * which on this port means an LLM call — and should cache it, since the answer is a property of
+   * the node and changes only when it is rebuilt.
+   *
+   * A host calls this when the dataset changes and feeds the result back through `available()`.
+   * Optional, and a backend that omits it is taken at its word: absent, `available()` is all there
+   * is, which is the pre-existing behaviour.
+   *
+   * Returning `false` means "this node cannot interpret at all" — a different sentence from "no
+   * model is configured", which remains `available()`'s to report.
+   */
+  checkAvailability?(dataset: DatasetHandle): Promise<boolean>;
+
+  /**
    * Run one interpretation pass over turns the caller supplies.
    *
    * Rejects rather than returning empty when the backend has no usable model, so a caller can tell
@@ -166,6 +191,45 @@ export interface InterpretationPort {
    * leaves the existing value alone.
    */
   reject(dataset: DatasetHandle, id: string, property?: string): Promise<boolean>;
+
+  /**
+   * Report passes as they run, rather than only when they finish.
+   *
+   * Covers both surfaces: a pass started by {@link interpret} and a pass a standing {@link watch}
+   * ran on its own. That is the point of it being one subscription rather than a callback on each
+   * — a UI showing "what is being extracted right now" should not care which of the two started
+   * the work, and a user watching a call cannot tell anyway.
+   *
+   * Returns an unsubscribe. Optional, and feature-detected separately from everything else here: a
+   * backend can interpret perfectly well and have no event stream at all, in which case a host
+   * falls back to the local spinner it had before.
+   *
+   * ## Scope
+   *
+   * Only what this node can see. On a backend whose event streams are local to the executor — AD4M
+   * is one — that means this peer's own passes, even for a watch shared across a neighbourhood.
+   * Making peers visible to each other is a *host* concern, layered on top: see
+   * `createInterpretationRelay`, which broadcasts what this returns and merges what peers send
+   * back. Pushing it down here would ask every backend to reimplement a fan-out it may have no
+   * primitive for.
+   *
+   * @param detail Ask for the raw prompt and response on {@link InterpretationActivity.llm}.
+   *   Off by default: it is tens of KB per pass and only worth carrying while somebody is looking
+   *   at it. A backend that cannot supply it — or that is reporting somebody else's pass, where the
+   *   payload never left the other machine — omits it, so a consumer must treat an absent exchange
+   *   as "not available" rather than as an empty prompt.
+   *
+   *   Note that on some backends this is a *registration-time* switch on the watch rather than a
+   *   per-subscriber one, so a host that wants it available on demand enables it when the watch is
+   *   created and decides here whether to forward it. That is a cost worth paying once: it is
+   *   local traffic, while the alternative is re-registering a shared watch to answer one person
+   *   opening a disclosure triangle.
+   */
+  observe?(
+    dataset: DatasetHandle,
+    cb: (activity: InterpretationActivity) => void,
+    options?: { detail?: boolean },
+  ): Promise<() => void>;
 
   /**
    * Register a standing watch. Optional and separately feature-detected from `interpret`, because a

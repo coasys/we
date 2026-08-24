@@ -497,6 +497,61 @@ const autoInterpretSection: SchemaNode = {
 };
 
 /**
+ * Whether extraction shows its working to the whole space.
+ *
+ * Beside auto-extraction because it is the same feature seen from the other side: whoever turned
+ * that on is exactly who might want to see what it is doing. It was a switch inside each expanded
+ * pass in the call bar, which repeated one setting per row and implied it applied to that pass.
+ *
+ * Framed as bandwidth rather than privacy, because that is what it is. In a call the prompt is
+ * built from a transcript every participant already holds, so nothing here is hidden from them —
+ * it is simply tens of KB per pass on a transport meant for small messages, which is a poor
+ * standing default and a very reasonable thing to switch on while working on extraction.
+ */
+const shareExtractionDetailSection: SchemaNode = {
+  type: 'Column',
+  props: { gap: '200', p: '400', bg: 'surface-sunken', r: '300', border: '1px solid border' },
+  children: [
+    {
+      type: 'Row',
+      props: { width: '100%', gap: '400', ay: 'center' },
+      children: [
+        {
+          type: 'Column',
+          props: { gap: '100', flex: '1' },
+          children: [
+            { type: 'we-text', props: { variant: 'label' }, children: ['Share extraction detail'] },
+            {
+              type: 'we-text',
+              props: { variant: 'footnote', color: 'text-faint' },
+              children: [
+                {
+                  $if: {
+                    condition: '$space.canAdminister',
+                    then: 'Everyone in the space can read what each extraction asked the model and what it answered. Useful while working on extraction; off by default, since it sends a lot to every member on every pass.',
+                    else: 'Everyone can read what each extraction asked the model and what it answered. Changing this needs someone who administers the space.',
+                  },
+                },
+              ],
+            },
+          ],
+        },
+        {
+          type: 'we-switch',
+          props: {
+            size: 'sm',
+            checked: { $store: 'spaceStore.shareExtractionDetail' },
+            disabled: { $not: '$space.canAdminister' },
+            // Bare `$event.detail`, for the reason the switch above it gives.
+            onChange: { $action: 'spaceStore.setShareExtractionDetail', args: ['$event.detail', '$space.uuid'] },
+          },
+        },
+      ],
+    },
+  ],
+};
+
+/**
  * The page body, rendered per matching row.
  *
  * `$each` over a one-item filter rather than a `$find`, because it is the context variable that is
@@ -528,6 +583,7 @@ export const spaceSettingsPage: SchemaNode = {
                 communitySection,
                 modulesSection,
                 autoInterpretSection,
+                shareExtractionDetailSection,
               ],
             },
             else: notAWeSpaceNotice,
