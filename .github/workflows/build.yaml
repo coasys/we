@@ -1,4 +1,9 @@
-name: Build
+# Named "CI" rather than "Build" because the PR check list renders each entry as
+# "<workflow> / <job>", and one of the jobs is itself called Build — which read as
+# "Build / Build". The file keeps its name: `ad4m-compat.yaml` looks this workflow up by
+# filename to find the last commit that passed, and renaming it would also detach the run
+# history.
+name: CI
 
 on:
   push:

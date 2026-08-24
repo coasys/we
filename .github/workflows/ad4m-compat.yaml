@@ -66,6 +66,8 @@ env:
 
 jobs:
   compat:
+    # Without this the run renders as "AD4M compatibility / compat".
+    name: Build and verify
     runs-on: ubuntu-latest
     steps:
       # ---------------------------------------------------------------- resolve what to test
