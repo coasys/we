@@ -1,22 +1,33 @@
 name: AD4M compatibility
 
-# Does WE still build against AD4M's *unreleased* source?
+# Is unreleased AD4M about to break WE?
 #
-# This is the useful half of what the main build used to do: it catches an AD4M
-# change that breaks WE before a tag is cut, and it is how a cross-repo change is
-# tested — a WE branch that needs an unpublished AD4M API can be run against the
-# AD4M branch carrying it.
+# The required build (`build.yaml`) installs the AD4M version this repo pins, so it answers
+# "does this commit work?" — one question, one answer per commit. This job answers a
+# different one: WE compiled against AD4M's `dev` *source*, so an AD4M change that breaks WE
+# surfaces before a tag is cut. It is also how a cross-repo change is tested — a WE branch
+# needing an unpublished AD4M API can be run against the AD4M branch carrying it.
 #
-# What it deliberately is not is a gate. It compiles against a branch, so its
-# result depends on when it runs and on what someone else pushed to another
-# repository; a WE pull request must not be blocked, or unblocked, by that. The
-# required build (`build.yaml`) installs the versions this repo pins, so it
-# answers a question that has one answer per commit. This job answers a different
-# question — "is upstream about to break us?" — and answers it on its own time.
+# What it deliberately is not is a gate. It compiles against a branch, so its result depends
+# on when it runs and on what someone else pushed to another repository; a WE pull request
+# must not be blocked, or unblocked, by that.
 #
-# Two ways in:
-#   - nightly, against AD4M `dev`, so drift surfaces within a day of landing;
-#   - on demand, naming any AD4M branch, for cross-repo work in flight.
+#
+# ## Why it tests the last *green* WE commit rather than `dev` HEAD
+#
+# A failure here has two candidate causes — AD4M drifted, or WE's own `dev` is broken — and
+# for its first four days this job could not tell them apart. Of its three failures, one was
+# real (`Property 'identity' does not exist on type 'SHACLPropertyShape'`, a genuine
+# divergence: the property exists in the pinned `0.13.0-test-interpretation-2` and had not
+# landed on AD4M `dev`). The other two were the same broken `graph-core` test files that the
+# required build had already reported on `dev` — WE's own breakage, re-reported for two days
+# under a name that claims it is about AD4M.
+#
+# The fix is a control, not better wording. The most recent *successful* Build run on `dev`
+# has already proved its commit compiles against pinned AD4M. Testing that commit leaves
+# AD4M as the only variable, so a failure is attributable by construction rather than by a
+# human reading the log and knowing the codebase. It also means a long-red `dev` no longer
+# blinds this job — it keeps answering about the last thing that worked.
 
 on:
   schedule:
@@ -29,33 +40,38 @@ on:
         required: false
         default: 'dev'
       we_ref:
-        description: 'WE ref to test (defaults to the branch this is dispatched from)'
+        description: 'WE ref to test (default: the last commit that passed CI on dev)'
         required: false
+      file_issue:
+        description: 'Also open/close the tracking issue (scheduled runs always do)'
+        type: boolean
+        required: false
+        default: false
+
+# `issues: write` to file and close the tracking issue; `actions: read` to find the last
+# green Build run and the previous run of this workflow.
+permissions:
+  contents: read
+  actions: read
+  issues: write
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.inputs.ad4m_branch || 'dev' }}
   cancel-in-progress: true
 
+env:
+  GH_TOKEN: ${{ github.token }}
+  ISSUE_LABEL: ad4m-drift
+  ISSUE_TITLE: 'AD4M `dev` has diverged from what WE pins'
+
 jobs:
   compat:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.inputs.we_ref || github.ref }}
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '24'
-
-      # ad4m's monorepo uses object-format `pnpm.overrides`, which pnpm v10
-      # rejects — so its install is invoked below via `npx pnpm@9`, leaving the
-      # global binary on the version WE itself uses.
-      - name: Install pnpm
-        run: npm install -g pnpm@10.18.3
+      # ---------------------------------------------------------------- resolve what to test
 
       - name: Resolve AD4M branch
-        id: branch
+        id: ad4m-branch
         run: |
           BRANCH="${{ github.event.inputs.ad4m_branch }}"
           BRANCH="${BRANCH:-dev}"
@@ -65,20 +81,61 @@ jobs:
             exit 1
           fi
           echo "name=$BRANCH" >> "$GITHUB_OUTPUT"
-          echo "Building WE against AD4M branch: $BRANCH"
+
+      # The control. A green Build run on `dev` means that commit compiles, typechecks and
+      # tests against the AD4M this repo pins — so if it fails below, AD4M is the difference.
+      #
+      # `controlled=false` records the two cases where that guarantee does not hold: an
+      # explicitly requested ref, and the case where no green run could be found at all. The
+      # report says so rather than claiming an attribution it has not earned.
+      - name: Resolve WE ref
+        id: we-ref
+        run: |
+          REQUESTED="${{ github.event.inputs.we_ref }}"
+          if [ -n "$REQUESTED" ]; then
+            echo "ref=$REQUESTED"        >> "$GITHUB_OUTPUT"
+            echo "controlled=false"      >> "$GITHUB_OUTPUT"
+            echo "why=explicitly requested" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          SHA="$(gh api \
+            "repos/${{ github.repository }}/actions/workflows/build.yaml/runs?branch=dev&status=success&per_page=1" \
+            --jq '.workflow_runs[0].head_sha // empty')"
+
+          if [ -n "$SHA" ]; then
+            echo "ref=$SHA"          >> "$GITHUB_OUTPUT"
+            echo "controlled=true"   >> "$GITHUB_OUTPUT"
+            echo "why=last commit green on dev" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::No successful Build run found on dev — falling back to HEAD. A failure below will not be attributable."
+            echo "ref=dev"           >> "$GITHUB_OUTPUT"
+            echo "controlled=false"  >> "$GITHUB_OUTPUT"
+            echo "why=no green Build run found on dev" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.we-ref.outputs.ref }}
+
+      # `--install false`: the override rewrite below is deliberate lockfile drift, so the
+      # install cannot be frozen. Everything else — Node from .nvmrc, pnpm from
+      # `packageManager`, the store cache — is shared with the required build.
+      - uses: ./.github/actions/setup
+        with:
+          install: 'false'
+
+      # ---------------------------------------------------------------- build the AD4M SDK
 
       - name: Clone AD4M
         run: |
           git clone --depth 1 --single-branch \
-            --branch "${{ steps.branch.outputs.name }}" \
+            --branch "${{ steps.ad4m-branch.outputs.name }}" \
             https://github.com/coasys/ad4m.git ad4m
 
       - name: Get AD4M commit hash
         id: ad4m-hash
-        run: |
-          HASH=$(cd ad4m && git rev-parse HEAD)
-          echo "hash=$HASH" >> "$GITHUB_OUTPUT"
-          echo "AD4M commit: $HASH"
+        run: echo "hash=$(cd ad4m && git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       - name: Cache AD4M built outputs
         id: ad4m-cache
@@ -90,29 +147,23 @@ jobs:
             ad4m/connect/dist
           key: ad4m-sdk-${{ steps.ad4m-hash.outputs.hash }}
 
+      # ad4m's monorepo uses object-format `pnpm.overrides`, which pnpm v10 rejects — so its
+      # install runs via `npx pnpm@9`, leaving the global binary on the version WE uses.
       - name: Install & build AD4M packages
+        id: ad4m-build
         if: steps.ad4m-cache.outputs.cache-hit != 'true'
         run: |
+          set -o pipefail
           cd ad4m
-          npx -y pnpm@9.15.0 install --no-frozen-lockfile
-
+          npx -y pnpm@9.15.0 install --no-frozen-lockfile 2>&1 | tee -a ../compat.log
           cd core && npx -y pnpm@9.15.0 exec tsc && npx -y pnpm@9.15.0 run bundle && cd ..
           cd connect && npx -y pnpm@9.15.0 run build && cd ..
 
-      - name: Get pnpm store directory
-        id: pnpm-store
-        run: echo "path=$(pnpm store path --silent)" >> "$GITHUB_OUTPUT"
+      # ---------------------------------------------------------------- build WE against it
 
-      - name: Cache pnpm store
-        uses: actions/cache@v4
-        with:
-          path: ${{ steps.pnpm-store.outputs.path }}
-          key: pnpm-store-${{ hashFiles('pnpm-lock.yaml') }}
-          restore-keys: pnpm-store-
-
-      # Point the workspace at the source build. This is deliberate lockfile
-      # drift and is why the install below cannot be frozen — and why this
-      # rewrite lives here rather than in a job whose verdict gates a merge.
+      # Point the workspace at the source build. This is why the install below cannot be
+      # frozen — and why this rewrite lives here rather than in a job whose verdict gates a
+      # merge.
       - name: Override AD4M packages with local builds
         run: |
           node -e "
@@ -125,32 +176,166 @@ jobs:
           "
 
       - name: Install WE dependencies
-        run: pnpm install --no-frozen-lockfile
+        id: install
+        run: |
+          set -o pipefail
+          pnpm install --no-frozen-lockfile 2>&1 | tee -a compat.log
 
       # The linked SDK changes under caches keyed on the previous one.
       - name: Clear build caches for linked SDK
         run: |
-          rm -rf .turbo node_modules/.cache
-          find . -name '.turbo' -type d -not -path './ad4m/*' -not -path './node_modules/*' -exec rm -rf {} + 2>/dev/null || true
+          rm -rf node_modules/.cache
           find . -name '.vite' -type d -path '*/node_modules/.vite' -not -path './ad4m/*' -exec rm -rf {} + 2>/dev/null || true
 
-      # Build, typecheck and test only. Lint and the generated-file check answer
-      # questions about WE's own source that the required build already answered,
-      # and neither can be affected by which AD4M this ran against.
+      # Build, typecheck and test only. Lint and the generated-file check answer questions
+      # about WE's own source that the required build already answered, and neither can be
+      # affected by which AD4M this ran against.
+      #
+      # Each tees into compat.log so the report can quote the actual error rather than
+      # sending a reader to line 2,168 of a 2,500-line log.
       - name: Build
-        run: NODE_OPTIONS='--max-old-space-size=8192' pnpm build
+        id: build
+        run: |
+          set -o pipefail
+          NODE_OPTIONS='--max-old-space-size=8192' pnpm build 2>&1 | tee -a compat.log
 
       - name: Typecheck
-        run: pnpm typecheck
+        id: typecheck
+        run: |
+          set -o pipefail
+          pnpm typecheck 2>&1 | tee -a compat.log
 
       - name: Test
-        run: pnpm test
-
-      - name: Explain a failure
-        if: failure()
+        id: test
         run: |
-          echo "::warning::WE does not build against AD4M ${{ steps.branch.outputs.name }} @ ${{ steps.ad4m-hash.outputs.hash }}."
-          echo "This does not mean WE is broken: the required build installs the AD4M versions"
-          echo "pinned in package.json, and is the check that decides whether a change may merge."
-          echo "It means unreleased AD4M has diverged from what WE pins — either AD4M needs a fix,"
-          echo "or WE needs to move to a newer published version once one exists."
+          set -o pipefail
+          pnpm test 2>&1 | tee -a compat.log
+
+      # ---------------------------------------------------------------- report
+
+      # Written on success and on failure alike: the run page is where somebody lands from a
+      # notification, and "green, and here is what it proved" is worth as much as the
+      # failure. The same text becomes the issue body below.
+      - name: Write report
+        id: report
+        if: always()
+        run: |
+          set -u
+          AD4M_BRANCH='${{ steps.ad4m-branch.outputs.name }}'
+          AD4M_HASH='${{ steps.ad4m-hash.outputs.hash }}'
+          WE_REF='${{ steps.we-ref.outputs.ref }}'
+          CONTROLLED='${{ steps.we-ref.outputs.controlled }}'
+          WHY='${{ steps.we-ref.outputs.why }}'
+          RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+
+          # Which stage failed. Read from step outcomes rather than a marker written by the
+          # step itself, which is not reliably flushed when the step it is in dies.
+          STAGE=''
+          for s in 'AD4M SDK build:${{ steps.ad4m-build.outcome }}' \
+                   'WE install:${{ steps.install.outcome }}' \
+                   'Build:${{ steps.build.outcome }}' \
+                   'Typecheck:${{ steps.typecheck.outcome }}' \
+                   'Test:${{ steps.test.outcome }}'; do
+            if [ "${s##*:}" = 'failure' ]; then STAGE="${s%%:*}"; break; fi
+          done
+
+          {
+            if [ -z "$STAGE" ]; then
+              echo "## WE builds against AD4M \`$AD4M_BRANCH\` :green_circle:"
+              echo
+              echo "WE \`${WE_REF:0:12}\` builds, typechecks and tests against AD4M \`${AD4M_HASH:0:12}\`."
+            else
+              echo "## WE does not build against AD4M \`$AD4M_BRANCH\` :red_circle:"
+              echo
+              echo "| | |"
+              echo "|---|---|"
+              echo "| WE commit | \`${WE_REF:0:12}\` ($WHY) |"
+              echo "| AD4M commit | [\`${AD4M_HASH:0:12}\`](https://github.com/coasys/ad4m/commit/$AD4M_HASH) on \`$AD4M_BRANCH\` |"
+              echo "| Failed at | **$STAGE** |"
+              echo "| Run | [$RUN_URL]($RUN_URL) |"
+              echo
+
+              if [ "$CONTROLLED" = 'true' ]; then
+                echo "This commit passes against the AD4M version WE pins — that is what made it"
+                echo "eligible to be tested here — so **AD4M is the difference**. Either AD4M needs a"
+                echo "fix before the next tag, or WE is using an API that exists only in the pinned"
+                echo "version and has not landed upstream."
+              else
+                echo "> **Not attributable.** The commit tested was $WHY, so it has not been shown to"
+                echo "> pass against pinned AD4M. This failure may be WE's own — check the required"
+                echo "> Build on \`dev\` before treating it as upstream drift."
+              fi
+              echo
+
+              # The suspect list: what landed on AD4M since this job last agreed WE was fine.
+              # Printed only when it is non-empty — a heading over nothing reads as a failed
+              # lookup, and the list is genuinely empty whenever the drift is older than the
+              # last green run.
+              SINCE="$(gh api \
+                "repos/${{ github.repository }}/actions/workflows/ad4m-compat.yaml/runs?status=success&per_page=1" \
+                --jq '.workflow_runs[0].created_at // empty' 2>/dev/null || true)"
+              if [ -n "$SINCE" ]; then
+                COMMITS="$(gh api "repos/coasys/ad4m/commits?sha=$AD4M_BRANCH&since=$SINCE&per_page=30" \
+                  --jq '.[] | "- [`\(.sha[0:8])`](\(.html_url)) \(.commit.message | split("\n")[0])"' \
+                  2>/dev/null || true)"
+                if [ -n "$COMMITS" ]; then
+                  echo "### AD4M commits since this last passed ($SINCE)"
+                  echo
+                  echo "$COMMITS"
+                  echo
+                fi
+              fi
+
+              echo "### Error"
+              echo
+              echo '```'
+              # The lines a reader wants, out of a log whose first two thousand lines are
+              # install chatter. Falls back to the tail when nothing matches the patterns.
+              if [ -f compat.log ] && grep -qE 'error TS[0-9]+|ERR_PNPM|FAIL |✗ |AssertionError' compat.log; then
+                grep -E 'error TS[0-9]+|ERR_PNPM|FAIL |✗ |AssertionError' compat.log | head -25
+              elif [ -f compat.log ]; then
+                tail -25 compat.log
+              else
+                echo "(no log captured — the failure happened before the build started)"
+              fi
+              echo '```'
+            fi
+          } > report.md
+
+          cat report.md >> "$GITHUB_STEP_SUMMARY"
+          echo "stage=$STAGE" >> "$GITHUB_OUTPUT"
+
+      # Scheduled runs always report; a manual dispatch opts in, because somebody who
+      # dispatched this is already looking at the output and does not need an issue filed at
+      # them. The label is created on demand — `gh issue create` fails on a label that does
+      # not exist yet, which would otherwise make the very first failure silent.
+      - name: File or update the tracking issue
+        if: failure() && (github.event_name == 'schedule' || github.event.inputs.file_issue == 'true')
+        run: |
+          gh label create "$ISSUE_LABEL" \
+            --color 'B60205' \
+            --description 'WE does not build against unreleased AD4M' 2>/dev/null || true
+
+          EXISTING="$(gh issue list --label "$ISSUE_LABEL" --state open --limit 1 --json number --jq '.[0].number // empty')"
+
+          if [ -n "$EXISTING" ]; then
+            # Update in place rather than commenting. A failure that persists for a week is
+            # one problem, not seven notifications; the body always reflects the latest run.
+            gh issue edit "$EXISTING" --body-file report.md
+            echo "Updated #$EXISTING"
+          else
+            gh issue create \
+              --title "$ISSUE_TITLE" \
+              --label "$ISSUE_LABEL" \
+              --body-file report.md
+          fi
+
+      - name: Close the tracking issue
+        if: success() && (github.event_name == 'schedule' || github.event.inputs.file_issue == 'true')
+        run: |
+          EXISTING="$(gh issue list --label "$ISSUE_LABEL" --state open --limit 1 --json number --jq '.[0].number // empty')"
+          if [ -n "$EXISTING" ]; then
+            gh issue comment "$EXISTING" --body-file report.md
+            gh issue close "$EXISTING" --reason completed
+            echo "Closed #$EXISTING"
+          fi

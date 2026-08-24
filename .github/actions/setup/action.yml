@@ -5,6 +5,15 @@ description: Node, pnpm, a warm pnpm store and a frozen install — the four ste
 # environment. Inlined five times, a version bump is four edits and a silent drift the
 # fifth time somebody forgets one.
 
+inputs:
+  install:
+    description: >
+      Whether to run the frozen install. Set false where the job must rewrite the manifest
+      before installing — the AD4M compatibility job repoints `pnpm.overrides` at a source
+      build, which is deliberate lockfile drift and so cannot be frozen.
+    required: false
+    default: 'true'
+
 runs:
   using: composite
   steps:
@@ -48,5 +57,6 @@ runs:
     # Testing WE against unreleased AD4M is still worth doing; it just cannot be the gate
     # that decides whether a WE change may merge. It lives in `ad4m-compat.yaml`.
     - name: Install dependencies
+      if: inputs.install == 'true'
       shell: bash
       run: pnpm install --frozen-lockfile
