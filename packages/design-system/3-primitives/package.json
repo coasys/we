@@ -97,7 +97,7 @@
     "@storybook/addon-essentials": "8.4.6",
     "@storybook/web-components": "8.4.6",
     "@storybook/web-components-vite": "8.4.6",
-    "@types/node": "^24.10.0",
+    "@types/node": "^26.2.0",
     "@we/cli": "workspace:*",
     "@we/design-types": "workspace:*",
     "eslint-plugin-lit": "^2.1.1",

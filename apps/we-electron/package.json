@@ -34,7 +34,7 @@
     "@we/backend-ad4m": "workspace:*"
   },
   "devDependencies": {
-    "@types/node": "^24.10.0",
+    "@types/node": "^26.2.0",
     "@we/cli": "workspace:*",
     "concurrently": "^9.1.2",
     "electron": "^33.4.11",
