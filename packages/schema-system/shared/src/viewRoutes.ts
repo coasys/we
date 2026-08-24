@@ -20,10 +20,19 @@
  *
  * ## What it expands to
  *
- * One route per view, at `/<segment>`, whose body is the view template's own root node. Plus an
- * index redirect to the first view, which is why the shell must not declare its own: the landing
- * section has to follow the list, or a community that turns off the section their shell happens to
- * redirect to lands on a 404 in their own space.
+ * One route per view, at `/<segment>`, whose body is the view template's own root node.
+ *
+ * **No index redirect, and no route removed for a section that is switched off.** The list handed
+ * in is every view that *could* render here, not the ones currently enabled — because the route
+ * table remounts the main Router when it changes, and the Router's root mounts the whole shell
+ * overlay. Deriving the table from a set of switches meant flicking one rebuilt the application:
+ * a member removing a section from that space's settings page lost their scroll position, any open
+ * editor and every piece of in-flight form state.
+ *
+ * Which sections a space *offers* is applied by the host instead, reactively — the nav strip renders
+ * the enabled ones, and an effect moves you off a section that is not among them. Both are ordinary
+ * re-renders. Landing on a section by URL after the community removed it is that effect's job, not
+ * a redirect baked into a table that has to be rebuilt to change.
  *
  * Pure, and takes the resolved list as an argument, so it can be tested without a store, a router or
  * a renderer — which matters because its failure modes (a duplicate segment, a lost redirect, a
@@ -78,16 +87,13 @@ function viewAsRoute(view: ResolvedView): RouteSchema {
  *
  * An empty list expands to nothing rather than to a placeholder. Nothing here knows what a space
  * with no sections should say, and a pure function inventing one would put UI text somewhere no
- * template can restyle it. The resolver upstream is what guarantees the list is never empty.
+ * template can restyle it.
  */
 export function expandViewRoutes(routes: RouteSchema[], views: ResolvedView[]): RouteSchema[] {
   const out: RouteSchema[] = [];
 
   for (const route of routes) {
     if (route.path === VIEWS_MARKER) {
-      if (!views.length) continue;
-      // The index redirect belongs to the list, not to the shell — see the docblock.
-      out.push({ path: '/', redirect: `./${views[0].segment}` } as RouteSchema);
       for (const view of views) out.push(viewAsRoute(view));
       continue;
     }

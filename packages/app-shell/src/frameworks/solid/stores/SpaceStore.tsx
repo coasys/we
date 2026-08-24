@@ -11,7 +11,13 @@ import {
 import { resolveSpaceTheme, type ThemeResolutionInput } from '@shared/themeResolution';
 import { deriveSlug } from '@shared/utils';
 import type { ViewSetting } from '@shared/viewResolution';
-import { parseIdList, resolveEnabledViews, resolveSections, viewSettings } from '@shared/viewResolution';
+import {
+  activeSections,
+  parseIdList,
+  resolveEnabledViews,
+  routableSections,
+  viewSettings,
+} from '@shared/viewResolution';
 import type { AgentProfileSummary, DatasetRef } from '@we/backend-shared';
 import type { SerializedBlockNode } from '@we/block-shared';
 import { createBlocks, deleteBlocks, reconcileBlocks } from '@we/block-shared';
@@ -431,6 +437,14 @@ export interface SpaceStore {
    * renders a nav strip from is `viewNav`, which is this without the payload.
    */
   spaceViews: Accessor<ResolvedView[]>;
+  /**
+   * Every view that *could* render here, at its permanent segment — what the host builds routes from.
+   *
+   * Separate from {@link spaceViews} because the two change on completely different clocks: this one
+   * when a view is installed, that one whenever somebody flicks a switch. Building the route table
+   * from the switch was what made toggling a section rebuild the whole application.
+   */
+  routableViews: Accessor<ResolvedView[]>;
   /** The same list as a nav strip reads it — one source, so routes and nav cannot disagree. */
   viewNav: Accessor<{ id: string; segment: string; label: string; icon: string; path: string }[]>;
 
@@ -1772,11 +1786,20 @@ export function SpaceStoreProvider(props: ParentProps) {
    * here rather than read at the render site so the routes and the nav strip cannot disagree about
    * where a section lives — which is the drift this whole mechanism exists to end.
    */
+  /**
+   * Every view that could render here, each at the segment it will always be at.
+   *
+   * What the route table is built from — see `routableSections` for why that is deliberately *not*
+   * the enabled list. It changes when a view is installed or uninstalled and at no other time, so
+   * flicking a section on or off no longer rebuilds the Router and everything mounted under it.
+   */
+  const routableViews = createMemo<ResolvedView[]>(() => routableSections(availableViews(), defaultViewOrder()));
+
   const spaceViews = createMemo<ResolvedView[]>(() =>
-    resolveSections({
+    activeSections({
+      routable: routableViews(),
       enabledRaw: currentSpace()?.enabledViews,
       hidden: hiddenViewsFor(datasetStore.currentDataset()?.id),
-      available: availableViews(),
       fallbackOrder: defaultViewOrder(),
     }),
   );
@@ -2804,6 +2827,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     moduleInstallSettings,
     moduleLaunchers,
     spaceViews,
+    routableViews,
     viewNav,
     foreignSpacePrefill,
 

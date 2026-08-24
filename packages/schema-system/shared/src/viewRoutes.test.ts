@@ -23,28 +23,28 @@ describe('expandViewRoutes', () => {
   it('replaces the marker with one route per view', () => {
     const out = expandViewRoutes([marker], [view('about', 'about'), view('cards', 'cards')]);
 
-    expect(out.map((r) => r.path)).toEqual(['/', '/about', '/cards']);
+    expect(out.map((r) => r.path)).toEqual(['/about', '/cards']);
   });
 
-  it('redirects the index at the first view rather than at a name the shell guessed', () => {
-    // The shell must not hardcode this: a community that turns off whichever section their shell
-    // redirected to would land on a 404 in their own space.
+  it('emits no index redirect, because that would have to be rebuilt to change', () => {
+    // A redirect baked into the table can only follow the enabled list by rebuilding the table —
+    // which remounts the Router, and everything mounted under it. The host does it in an effect.
     const out = expandViewRoutes([marker], [view('cards', 'cards'), view('about', 'about')]);
 
-    expect(out[0]).toEqual({ path: '/', redirect: './cards' });
+    expect(out.some((r) => r.redirect)).toBe(false);
   });
 
   it('uses the resolved segment, not the one the template suggested', () => {
-    // Two views can offer the same default segment; the space's list decides who gets it.
+    // Two views can offer the same default segment; the resolver decides who gets it.
     const feed = view('feed', 'cards', { segment: 'feed' });
     const out = expandViewRoutes([marker], [feed]);
 
-    expect(out.map((r) => r.path)).toEqual(['/', '/cards']);
+    expect(out.map((r) => r.path)).toEqual(['/cards']);
   });
 
   it('carries the view body through and drops the template-only keys', () => {
     const out = expandViewRoutes([marker], [view('about', 'about')]);
-    const route = out[1] as RouteSchema & Record<string, unknown>;
+    const route = out[0] as RouteSchema & Record<string, unknown>;
 
     expect(route.type).toBe('Column');
     expect(route.children).toHaveLength(1);
@@ -56,8 +56,8 @@ describe('expandViewRoutes', () => {
   it('promotes meta.keepAlive onto the route, and leaves it off otherwise', () => {
     const out = expandViewRoutes([marker], [view('globe', 'globe', { keepAlive: true }), view('about', 'about')]);
 
-    expect((out[1] as RouteSchema).keepAlive).toBe(true);
-    expect((out[2] as RouteSchema).keepAlive).toBeUndefined();
+    expect((out[0] as RouteSchema).keepAlive).toBe(true);
+    expect((out[1] as RouteSchema).keepAlive).toBeUndefined();
   });
 
   it('finds a marker nested under a layout route', () => {
@@ -70,7 +70,7 @@ describe('expandViewRoutes', () => {
 
     const out = expandViewRoutes(routes, [view('about', 'about')]);
 
-    expect(out[1].routes?.map((r) => r.path)).toEqual(['/', '/about']);
+    expect(out[1].routes?.map((r) => r.path)).toEqual(['/about']);
   });
 
   it('leaves routes the shell declared alongside the marker in place, in order', () => {
@@ -82,12 +82,12 @@ describe('expandViewRoutes', () => {
 
     const out = expandViewRoutes(routes, [view('about', 'about')]);
 
-    expect(out.map((r) => r.path)).toEqual(['/invite', '/', '/about', '/*']);
+    expect(out.map((r) => r.path)).toEqual(['/invite', '/about', '/*']);
   });
 
   it('expands to nothing when there are no views, rather than inventing a placeholder', () => {
     // Nothing here knows what an empty space should say, and a pure function answering it would put
-    // UI text where no template can restyle it. The resolver upstream guarantees a non-empty list.
+    // UI text where no template can restyle it.
     expect(expandViewRoutes([marker], [])).toEqual([]);
   });
 

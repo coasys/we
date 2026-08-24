@@ -74,40 +74,74 @@ export function parseIdList(raw: string | undefined): string[] {
 }
 
 /**
- * The space's sections: community layer, minus this agent's hidden ones, each paired with a segment.
+ * Every view that could render here, each with the segment it will always be at.
+ *
+ * **This, not the enabled list, is what the route table is built from** — and the distinction is the
+ * whole reason this function exists separately.
+ *
+ * Keying the routes on which sections are *switched on* meant that turning one off rebuilt the route
+ * table, which remounts the main Router, which takes `TemplateLayout` and therefore the whole shell
+ * overlay down with it. A member removing a section from that space's settings page lost their
+ * scroll position, any open editor and every piece of in-flight form state — because a switch had
+ * been wired, indirectly, to "rebuild the application".
+ *
+ * Which views *exist* changes when one is installed or uninstalled, which is rare and genuinely
+ * structural. Which are switched on changes whenever somebody flicks a switch. Building the table
+ * from the first and filtering it with the second means a toggle costs a re-render of a nav strip
+ * and nothing else.
+ *
+ * Segments are assigned over the whole available set in a stable order, so a view's address never
+ * depends on what else happens to be enabled — the property that makes a shared link keep working
+ * after the community reorganises.
+ */
+export function routableSections(available: Map<string, TemplateSchema>, order: string[]): ResolvedView[] {
+  // Registry order first, then anything installed beyond it, so the dedup below is deterministic.
+  const ids = [
+    ...order.filter((id) => available.has(id)),
+    ...[...available.keys()].filter((id) => !order.includes(id)),
+  ];
+  const taken = new Set<string>();
+
+  return ids.map((id) => {
+    const schema = available.get(id)!;
+    /*
+      Two views can want the same segment — one installed beside a built-in that already has it, or a
+      fork that kept its parent's. First keeps it; the later one falls back to its id, unique by
+      construction. Renaming silently beats the alternative: a duplicate path makes the router match
+      whichever route it reaches first, so one section would be unreachable with nothing on screen to
+      say which, or why.
+    */
+    let segment = schema.meta?.segment || id;
+    if (taken.has(segment)) segment = id;
+    taken.add(segment);
+    return { id, segment, schema };
+  });
+}
+
+/**
+ * The sections this space actually offers this agent, in the order it wants them.
+ *
+ * Community layer, minus this agent's hidden ones. Segments come from {@link routableSections}
+ * rather than being re-derived, so the nav strip cannot link somewhere the route table has no route
+ * for — which is exactly what re-deriving them from a filtered list would eventually produce.
  *
  * Deliberately **not** intersected with an "installed by me" layer the way modules are. A module is
  * a capability an agent chooses to run; a section is part of what the space *is*, and letting a
  * missing personal install remove one would mean two members opening the same URL and one of them
  * getting a 404.
  */
-export function resolveSections(opts: {
+export function activeSections(opts: {
+  routable: ResolvedView[];
   enabledRaw: string | undefined;
   hidden: string[];
-  available: Map<string, TemplateSchema>;
   fallbackOrder: string[];
 }): ResolvedView[] {
+  const byId = new Map(opts.routable.map((view) => [view.id, view]));
   const hidden = new Set(opts.hidden);
-  const taken = new Set<string>();
 
-  return resolveEnabledViews(opts.enabledRaw, (id) => opts.available.has(id), opts.fallbackOrder)
+  return resolveEnabledViews(opts.enabledRaw, (id) => byId.has(id), opts.fallbackOrder)
     .filter((id) => !hidden.has(id))
-    .map((id) => {
-      const schema = opts.available.get(id)!;
-      /*
-        Two views can want the same segment — one installed beside a built-in that already has it, or
-        a fork that kept its parent's. First in the list keeps it; the later one falls back to its id,
-        which is unique by construction.
-
-        Renaming silently beats the alternatives. A duplicate path makes the router match whichever
-        route it reaches first, so one of the two sections would be unreachable with nothing on screen
-        to say which, or why.
-      */
-      let segment = schema.meta?.segment || id;
-      if (taken.has(segment)) segment = id;
-      taken.add(segment);
-      return { id, segment, schema };
-    });
+    .map((id) => byId.get(id)!);
 }
 
 /**

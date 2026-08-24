@@ -416,6 +416,13 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     */
     spaceViews: state('navigation'),
     viewNav: state('navigation'),
+    /*
+      Every view that could render here, as opposed to the ones this space offers.
+
+      Same tier: it is the host's route-building input rather than a secret, and a shell that wanted
+      to draw "sections you could turn on" is asking a reasonable question about its own space.
+    */
+    routableViews: state('navigation'),
     requiredModules: state('navigation'),
     missingModules: state('navigation'),
 

@@ -8,7 +8,13 @@
 import type { TemplateSchema } from '@we/schema-shared';
 import { describe, expect, it, vi } from 'vitest';
 
-import { parseIdList, resolveEnabledViews, resolveSections, viewSettings } from '../src/shared/viewResolution';
+import {
+  activeSections,
+  parseIdList,
+  resolveEnabledViews,
+  routableSections,
+  viewSettings,
+} from '../src/shared/viewResolution';
 
 const view = (id: string, segment?: string, name?: string): TemplateSchema => ({
   id,
@@ -22,7 +28,7 @@ const view = (id: string, segment?: string, name?: string): TemplateSchema => ({
   type: 'Column',
 });
 
-const available = (...ids: string[]) => new Map(ids.map((id) => [id, view(id)]));
+const available = (...ids: string[]) => new Map<string, TemplateSchema>(ids.map((id) => [id, view(id)]));
 const FALLBACK = ['about', 'cards', 'graph'];
 
 describe('resolveEnabledViews', () => {
@@ -72,45 +78,93 @@ describe('parseIdList', () => {
   });
 });
 
-describe('resolveSections', () => {
-  it('pairs each enabled section with its segment, in order', () => {
-    const sections = resolveSections({
-      enabledRaw: '["cards","about"]',
-      hidden: [],
-      available: available('about', 'cards'),
-      fallbackOrder: FALLBACK,
-    });
+describe('routableSections', () => {
+  it('includes every available view, whatever the space has enabled', () => {
+    // The property the whole design rests on: the route table does not move when a switch does.
+    const sections = routableSections(available('about', 'cards', 'graph'), FALLBACK);
 
-    expect(sections.map((s) => [s.id, s.segment])).toEqual([
-      ['cards', 'cards'],
-      ['about', 'about'],
-    ]);
+    expect(sections.map((s) => s.id)).toEqual(['about', 'cards', 'graph']);
   });
 
-  it("takes the segment from the view's own meta when it has one", () => {
+  it('orders by the registry first, then anything installed beyond it', () => {
+    const map = available('about', 'cards');
+    map.set('zeta', view('zeta'));
+    const sections = routableSections(map, FALLBACK);
+
+    expect(sections.map((s) => s.id)).toEqual(['about', 'cards', 'zeta']);
+  });
+
+  it("takes each view's own segment when it has one", () => {
     const map = new Map([['feed', view('feed', 'posts')]]);
-    const sections = resolveSections({ enabledRaw: '["feed"]', hidden: [], available: map, fallbackOrder: [] });
 
-    expect(sections[0].segment).toBe('posts');
+    expect(routableSections(map, []).map((s) => s.segment)).toEqual(['posts']);
   });
 
-  it('gives a duplicate segment to the first section and falls the second back to its id', () => {
+  it('gives a duplicate segment to the first and falls the second back to its id', () => {
     // A duplicate path makes the router match whichever route it reaches first, so one of the two
     // would be silently unreachable. Renaming is visible; unreachable is not.
     const map = new Map([
       ['cards', view('cards', 'cards')],
       ['feed', view('feed', 'cards')],
     ]);
-    const sections = resolveSections({ enabledRaw: '["cards","feed"]', hidden: [], available: map, fallbackOrder: [] });
 
-    expect(sections.map((s) => s.segment)).toEqual(['cards', 'feed']);
+    expect(routableSections(map, ['cards', 'feed']).map((s) => s.segment)).toEqual(['cards', 'feed']);
   });
 
-  it("removes an agent's hidden sections without touching the order of the rest", () => {
-    const sections = resolveSections({
+  it('is identical whatever the space has enabled, hidden, or reordered', () => {
+    /*
+      The invariant the whole design rests on, stated where it can be checked.
+
+      This list is what the route table is built from, and rebuilding that table remounts the Router
+      — which mounts `TemplateLayout`, which mounts the shell overlay. If any of the three inputs
+      below could move it, flicking a switch in a space's settings would rebuild the application
+      underneath the person flicking it.
+
+      The signature is most of the proof: `routableSections` is not given the enabled list at all.
+      This pins the rest — that segment assignment is stable, so a shared link keeps working after
+      the community reorganises.
+    */
+    const map = available('about', 'cards', 'graph');
+    const table = routableSections(map, FALLBACK);
+
+    for (const enabledRaw of [undefined, '[]', '["graph"]', '["graph","about","cards"]']) {
+      for (const hidden of [[], ['about'], ['about', 'cards', 'graph']]) {
+        activeSections({ routable: table, enabledRaw, hidden, fallbackOrder: FALLBACK });
+        expect(routableSections(map, FALLBACK)).toEqual(table);
+      }
+    }
+  });
+});
+
+describe('activeSections', () => {
+  const routable = () => routableSections(available('about', 'cards', 'graph'), FALLBACK);
+
+  it("keeps only the enabled sections, in the space's own order", () => {
+    const sections = activeSections({
+      routable: routable(),
+      enabledRaw: '["cards","about"]',
+      hidden: [],
+      fallbackOrder: FALLBACK,
+    });
+
+    expect(sections.map((s) => s.id)).toEqual(['cards', 'about']);
+  });
+
+  it('takes segments from the routable list rather than re-deriving them', () => {
+    // If these could disagree the nav would link somewhere the route table has no route for.
+    const table = routable();
+    const sections = activeSections({ routable: table, enabledRaw: undefined, hidden: [], fallbackOrder: FALLBACK });
+
+    for (const section of sections) {
+      expect(section.segment).toBe(table.find((r) => r.id === section.id)!.segment);
+    }
+  });
+
+  it("removes an agent's hidden sections without disturbing the order of the rest", () => {
+    const sections = activeSections({
+      routable: routable(),
       enabledRaw: '["about","cards","graph"]',
       hidden: ['cards'],
-      available: available('about', 'cards', 'graph'),
       fallbackOrder: FALLBACK,
     });
 
@@ -120,10 +174,10 @@ describe('resolveSections', () => {
   it('does not intersect an installed-by-me layer the way modules do', () => {
     // A section is part of what the space *is*. If a missing personal install could remove one, two
     // members opening the same URL would disagree about whether it exists.
-    const sections = resolveSections({
+    const sections = activeSections({
+      routable: routable(),
       enabledRaw: '["about"]',
       hidden: [],
-      available: available('about'),
       fallbackOrder: [],
     });
 
@@ -131,12 +185,7 @@ describe('resolveSections', () => {
   });
 
   it('carries the view schema through, since the host builds routes out of it', () => {
-    const sections = resolveSections({
-      enabledRaw: '["about"]',
-      hidden: [],
-      available: available('about'),
-      fallbackOrder: [],
-    });
+    const sections = activeSections({ routable: routable(), enabledRaw: '["about"]', hidden: [], fallbackOrder: [] });
 
     expect(sections[0].schema.type).toBe('Column');
   });

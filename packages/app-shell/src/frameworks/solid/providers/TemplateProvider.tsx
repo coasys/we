@@ -304,7 +304,7 @@ export default function TemplateProvider() {
    */
   const routesWithViews = createMemo(() => {
     const routes = templateSchema.routes ?? [];
-    return hasViewsMarker(routes) ? expandViewRoutes(routes, spaceStore.spaceViews()) : routes;
+    return hasViewsMarker(routes) ? expandViewRoutes(routes, spaceStore.routableViews()) : routes;
   });
 
   /**
@@ -315,28 +315,51 @@ export default function TemplateProvider() {
    * renamed or reordered must, because the route table itself is different. Keying on identity
    * would rebuild on every edit keystroke; keying on the count alone would miss a reorder.
    */
+  /**
+   * What the Router is keyed on — the template, and which views *exist*.
+   *
+   * Not which are enabled, and not their order. A remount here tears down `TemplateLayout` and
+   * everything it mounts, the shell overlay included, so the key must name only the things that
+   * genuinely change the route table: the template, and the set of views installed. Flicking a
+   * section on or off, or dragging one up the list, changes neither.
+   *
+   * Sorted, because the table is a set of paths and the router matches rather than scans.
+   */
   const routeKey = createMemo(() => {
     const id = templateSchema.id || 'empty';
-    const views = spaceStore.spaceViews();
     if (!hasViewsMarker(templateSchema.routes ?? [])) return id;
-    /*
-      Sorted, plus the first segment on its own.
-
-      The route *table* does not depend on the order of the sections — the router matches a path,
-      it does not scan an array — with one exception: the index redirect points at whichever section
-      is first. So a reorder that moves the first one changes the table and a reorder below it does
-      not, and sorting is what tells those two apart.
-
-      That distinction is worth having because a remount is expensive and visible. Dragging rows in
-      the settings overlay tears down and rebuilds the space behind it on every drop, and the
-      overlay with it. The nav strip follows a reorder either way: `viewNav` is an ordinary memo and
-      needs no rebuild at all.
-    */
-    const table = views
+    const table = spaceStore
+      .routableViews()
       .map((view) => `${view.id}:${view.segment}:${view.schema.meta?.keepAlive ? 'k' : ''}`)
       .sort()
       .join(',');
-    return `${id}|${views[0]?.segment ?? ''}|${table}`;
+    return `${id}|${table}`;
+  });
+
+  /**
+   * Keep the URL on a section this space actually offers.
+   *
+   * The job the index redirect used to do, moved out of the route table and into an effect, because
+   * a redirect baked into the table can only change by rebuilding it. Two cases, one rule:
+   *
+   * - No section segment at all (`/space/:id`) — land on the first one the space offers.
+   * - A segment that is not among them — a link to a section the community has since removed, or the
+   *   one you were reading when somebody removed it. Move to the first offered section rather than
+   *   leaving a page nothing in the nav points at.
+   *
+   * `replace`, so Back does not walk into the section that was just left behind. It waits for the
+   * list to be non-empty: during boot it is briefly empty for every space, and acting then would
+   * redirect people away from a perfectly good URL before their space had finished loading.
+   */
+  createEffect(() => {
+    const segments = routeStore.segments();
+    if (segments[0] !== 'space' || !segments[1]) return;
+    const active = spaceStore.spaceViews();
+    if (!active.length) return;
+
+    const current = segments[2];
+    if (current && active.some((view) => view.segment === current)) return;
+    routeStore.navigate(`/space/${segments[1]}/${active[0].segment}`, { replace: true });
   });
 
   // Any theme the template names by `theme: { themeName }` needs its stylesheet present before the
