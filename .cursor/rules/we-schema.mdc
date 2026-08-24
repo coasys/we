@@ -2233,6 +2233,7 @@ SpaceStore:
   - moduleLaunchers: { id, icon, label, active }[] — launchers for the modules enabled here and available in this space; what the host module rail renders. Pair with { $action: "spaceStore.launchModule", args: ["$mod.id"] }
   - spaceViews: unknown
   - routableViews: unknown
+  - enabledViewIds: unknown
   - viewNav: unknown
   - mutedDids: unknown
   - mutedAgents: unknown

@@ -29,16 +29,17 @@
  * a member removing a section from that space's settings page lost their scroll position, any open
  * editor and every piece of in-flight form state.
  *
- * Which sections a space *offers* is applied by the host instead, reactively — the nav strip renders
- * the enabled ones, and an effect moves you off a section that is not among them. Both are ordinary
- * re-renders. Landing on a section by URL after the community removed it is that effect's job, not
- * a redirect baked into a table that has to be rebuilt to change.
+ * Which sections a space *offers* is applied at render time instead, two ways, because one is not
+ * enough. An effect moves you off a section that is not among them — but it can only do that when
+ * there is somewhere to go, and a space with every section switched off leaves it nowhere. So each
+ * body is also gated on membership (see {@link ViewGate}), which is what stops a removed section
+ * from carrying on rendering at a URL nothing points at.
  *
  * Pure, and takes the resolved list as an argument, so it can be tested without a store, a router or
  * a renderer — which matters because its failure modes (a duplicate segment, a lost redirect, a
  * marker nested two levels down) are all shape, and none of them are visible in a render.
  */
-import type { RouteSchema, TemplateSchema } from './types';
+import type { RouteSchema, SchemaNode, TemplateSchema } from './types';
 
 /** The `path` a shell writes to mark where its sections render. */
 export const VIEWS_MARKER = '$views';
@@ -63,18 +64,51 @@ export type ResolvedView = {
 const TEMPLATE_ONLY = ['id', 'meta', 'author', 'templateVersion', 'schemaVersion', '_fromSpace'] as const;
 
 /**
+ * What decides, at render time, whether a section is one this space offers.
+ *
+ * The table holds a route for every view that *could* render here — that is what keeps a toggle from
+ * rebuilding it — so something else has to answer whether a given section is actually in this space.
+ * Doing it in the body rather than by omitting the route is the difference between a question
+ * answered on every render and one answered by rebuilding the application.
+ *
+ * The host supplies both halves. `activeIds` is a `$store` path to the ids currently offered, and
+ * `notInSpace` is what to draw instead — passed in rather than written here, because this file has
+ * no business inventing UI text that no template could restyle.
+ */
+export type ViewGate = {
+  /** `$store` path to the ids of the sections this space currently offers. */
+  activeIds: string;
+  /** Rendered in place of a section the space does not offer. */
+  notInSpace: SchemaNode;
+};
+
+/**
  * One view as a route.
  *
  * The view's root node becomes the route body directly rather than being wrapped in a container:
  * a wrapper would sit between the shell's layout and the view's own root, and every view would then
  * have to be written to survive an element it cannot see. `keepAlive` comes from the view's meta,
  * which is the only route-level decision a view is allowed to make about itself.
+ *
+ * With a gate the body becomes a `$if` instead, which is a wrapper — but one every view already has
+ * to survive, since a route body is not a place a view can reach out of anyway.
  */
-function viewAsRoute(view: ResolvedView): RouteSchema {
+function viewAsRoute(view: ResolvedView, gate?: ViewGate): RouteSchema {
   const node = { ...view.schema } as Record<string, unknown>;
   for (const key of TEMPLATE_ONLY) delete node[key];
 
-  const route = { ...node, path: `/${view.segment}` } as RouteSchema;
+  const body: Record<string, unknown> = gate
+    ? {
+        type: '$if',
+        props: {
+          condition: { $in: [view.id, { $store: gate.activeIds }] },
+          then: node,
+          else: gate.notInSpace,
+        },
+      }
+    : node;
+
+  const route = { ...body, path: `/${view.segment}` } as RouteSchema;
   if (view.schema.meta?.keepAlive) route.keepAlive = true;
   return route;
 }
@@ -89,16 +123,16 @@ function viewAsRoute(view: ResolvedView): RouteSchema {
  * with no sections should say, and a pure function inventing one would put UI text somewhere no
  * template can restyle it.
  */
-export function expandViewRoutes(routes: RouteSchema[], views: ResolvedView[]): RouteSchema[] {
+export function expandViewRoutes(routes: RouteSchema[], views: ResolvedView[], gate?: ViewGate): RouteSchema[] {
   const out: RouteSchema[] = [];
 
   for (const route of routes) {
     if (route.path === VIEWS_MARKER) {
-      for (const view of views) out.push(viewAsRoute(view));
+      for (const view of views) out.push(viewAsRoute(view, gate));
       continue;
     }
 
-    out.push(route.routes?.length ? { ...route, routes: expandViewRoutes(route.routes, views) } : route);
+    out.push(route.routes?.length ? { ...route, routes: expandViewRoutes(route.routes, views, gate) } : route);
   }
 
   return out;

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { RouteSchema, TemplateSchema } from './types';
 import type { ResolvedView } from './viewRoutes';
+import type { ViewGate } from './viewRoutes';
 import { expandViewRoutes, hasViewsMarker, VIEWS_MARKER } from './viewRoutes';
 
 function view(id: string, segment: string, meta: Partial<TemplateSchema['meta']> = {}): ResolvedView {
@@ -113,5 +114,62 @@ describe('hasViewsMarker', () => {
     expect(hasViewsMarker([{ path: '/space/:id', type: 'Row', routes: [marker] } as RouteSchema])).toBe(true);
     expect(hasViewsMarker([{ path: '/', type: 'Column' } as RouteSchema])).toBe(false);
     expect(hasViewsMarker(undefined)).toBe(false);
+  });
+});
+
+describe('expandViewRoutes with a gate', () => {
+  const gate: ViewGate = {
+    activeIds: 'spaceStore.enabledViewIds',
+    notInSpace: { type: 'we-text', children: ['nothing here'] },
+  };
+
+  it('wraps each body in a membership test rather than omitting the route', () => {
+    /*
+      The bug this exists for: with the table built from what is *installed*, a section the community
+      switched off still had a route — so its URL kept rendering it. Removing the route instead would
+      put the table back on the fast-moving list, which is what remounts the application.
+    */
+    const [route] = expandViewRoutes([marker], [view('calendar', 'calendar')], gate);
+
+    expect(route.path).toBe('/calendar');
+    expect(route.type).toBe('$if');
+    expect(route.props?.condition).toEqual({ $in: ['calendar', { $store: 'spaceStore.enabledViewIds' }] });
+  });
+
+  it('tests the id, not the segment, since a space names sections by id', () => {
+    const feed = view('feed', 'posts', { segment: 'posts' });
+    const [route] = expandViewRoutes([marker], [feed], gate);
+
+    expect(route.props?.condition).toEqual({ $in: ['feed', { $store: 'spaceStore.enabledViewIds' }] });
+  });
+
+  it("puts the view's own node on the then branch and the host's node on the else", () => {
+    const [route] = expandViewRoutes([marker], [view('about', 'about')], gate);
+    const props = route.props as Record<string, { type?: string }>;
+
+    expect(props.then.type).toBe('Column');
+    expect(props.else).toBe(gate.notInSpace);
+  });
+
+  it('keeps keepAlive on the route, not on the branch inside it', () => {
+    // The route is what the router mounts persistently; the `$if` inside still unmounts a section
+    // the space does not have, so a switched-off globe stops running rather than idling behind it.
+    const [route] = expandViewRoutes([marker], [view('globe', 'globe', { keepAlive: true })], gate);
+
+    expect(route.keepAlive).toBe(true);
+    expect(route.type).toBe('$if');
+  });
+
+  it('gates a marker nested under a layout route too', () => {
+    const routes: RouteSchema[] = [{ path: '/space/:spaceId', type: 'Row', routes: [marker] } as RouteSchema];
+    const out = expandViewRoutes(routes, [view('about', 'about')], gate);
+
+    expect(out[0].routes?.[0].type).toBe('$if');
+  });
+
+  it('leaves the body bare when no gate is given', () => {
+    const [route] = expandViewRoutes([marker], [view('about', 'about')]);
+
+    expect(route.type).toBe('Column');
   });
 });

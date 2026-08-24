@@ -2581,6 +2581,7 @@ export const contextData: ContextData = {
         moduleLaunchers: { type: 'array', properties: ['id', 'icon', 'label', 'active'] },
         spaceViews: { type: 'array' },
         routableViews: { type: 'array' },
+        enabledViewIds: { type: 'array' },
         viewNav: { type: 'array' },
         mutedDids: { type: 'array' },
         mutedAgents: { type: 'array' },

@@ -302,9 +302,73 @@ export default function TemplateProvider() {
    * A template with no marker passes through untouched, so this costs nothing for the showcase
    * templates and for anything installed that predates views.
    */
+  /**
+   * What a section's route renders when the space does not have that section.
+   *
+   * Two situations reach this, and only one of them lasts. If the space still has *other* sections,
+   * the effect below has already moved you and this is at most a frame — so it draws nothing, rather
+   * than flashing a message about a state that is over before it can be read. If the space has no
+   * sections at all there is nowhere to move to, and that is the case worth explaining: it is not
+   * that one page is missing, it is that nobody has put anything in this space yet.
+   *
+   * The button leads to where that is fixed. Offered to everyone rather than gated on
+   * `canAdministerSpace`, for the reason the About pencil is: the page it opens shows the space's
+   * configuration either way, and a control that vanishes for most members makes "where do I even
+   * look" depend on who is asking.
+   *
+   * Host-supplied rather than written inside `expandViewRoutes`, which has no business inventing UI
+   * text no template could restyle.
+   */
+  const noSectionsNode = {
+    type: '$if',
+    props: {
+      condition: { $count: { items: { $store: 'spaceStore.enabledViewIds' } } },
+      // Other sections exist and the redirect is already on its way — say nothing.
+      else: {
+        type: 'Column',
+        props: { flex: '1', height: '100%', ax: 'center', ay: 'center', gap: '400', p: '600', bg: 'page' },
+        children: [
+          { type: 'we-icon', props: { name: 'squares-four', size: 'xl', color: 'text-faint' } },
+          {
+            type: 'we-text',
+            props: { variant: 'heading-md', color: 'text', textAlign: 'center' },
+            children: ["This space doesn't have any sections"],
+          },
+          {
+            type: 'we-text',
+            props: { variant: 'body', color: 'text-muted', textAlign: 'center', maxWidth: 'var(--we-layout-xs)' },
+            children: [
+              'Sections are the pages a space is made of — posts, a calendar, a map. Turn some on to give this space something to show.',
+            ],
+          },
+          {
+            type: 'we-button',
+            props: {
+              variant: 'primary',
+              // The dataset id, never the route segment: for a shared space the segment is the
+              // neighbourhood CID, and the settings page keys off the dataset id.
+              onClick: {
+                $action: 'shellStore.openShellView',
+                args: ['settings', { $concat: ['/spaces/', { $store: 'datasetStore.currentDataset.id' }] }],
+              },
+            },
+            children: [
+              { type: 'we-icon', props: { name: 'gear' } },
+              { type: 'we-text', children: ['Choose sections'] },
+            ],
+          },
+        ],
+      },
+    },
+  };
+
   const routesWithViews = createMemo(() => {
     const routes = templateSchema.routes ?? [];
-    return hasViewsMarker(routes) ? expandViewRoutes(routes, spaceStore.routableViews()) : routes;
+    if (!hasViewsMarker(routes)) return routes;
+    return expandViewRoutes(routes, spaceStore.routableViews(), {
+      activeIds: 'spaceStore.enabledViewIds',
+      notInSpace: noSectionsNode,
+    });
   });
 
   /**
@@ -337,29 +401,39 @@ export default function TemplateProvider() {
   });
 
   /**
-   * Keep the URL on a section this space actually offers.
+   * Keep the URL on a section this space actually has.
    *
    * The job the index redirect used to do, moved out of the route table and into an effect, because
-   * a redirect baked into the table can only change by rebuilding it. Two cases, one rule:
+   * a redirect baked into the table can only change by rebuilding it — and rebuilding it remounts
+   * the Router and everything under it. Two cases:
    *
-   * - No section segment at all (`/space/:id`) — land on the first one the space offers.
-   * - A segment that is not among them — a link to a section the community has since removed, or the
-   *   one you were reading when somebody removed it. Move to the first offered section rather than
-   *   leaving a page nothing in the nav points at.
+   * - No section segment at all (`/space/:id`) — land on the first one in the nav.
+   * - A segment the community does not have here — a link to a section since removed, or the one you
+   *   were reading when somebody removed it.
    *
-   * `replace`, so Back does not walk into the section that was just left behind. It waits for the
-   * list to be non-empty: during boot it is briefly empty for every space, and acting then would
-   * redirect people away from a perfectly good URL before their space had finished loading.
+   * **Membership is tested against the community's list, but the landing place comes from the nav.**
+   * Those differ by this agent's own hidden sections, and conflating them would bounce somebody off
+   * a section they had merely hidden from their own nav — a refusal nobody asked for. Hidden means
+   * "not in my list", not "closed to me".
+   *
+   * `replace`, so Back does not walk into the section that was just left behind. It can only act
+   * where there is somewhere to go; a space with no sections leaves it nowhere, and that case is the
+   * route body's to explain rather than this one's to solve.
    */
+  /** Which view a URL segment addresses, from the routable table that assigned it. */
+  const viewIdForSegment = (segment: string): string | undefined =>
+    spaceStore.routableViews().find((view) => view.segment === segment)?.id;
+
   createEffect(() => {
     const segments = routeStore.segments();
     if (segments[0] !== 'space' || !segments[1]) return;
-    const active = spaceStore.spaceViews();
-    if (!active.length) return;
+
+    const nav = spaceStore.viewNav();
+    if (!nav.length) return;
 
     const current = segments[2];
-    if (current && active.some((view) => view.segment === current)) return;
-    routeStore.navigate(`/space/${segments[1]}/${active[0].segment}`, { replace: true });
+    if (current && spaceStore.enabledViewIds().some((id) => id === viewIdForSegment(current))) return;
+    routeStore.navigate(`/space/${segments[1]}/${nav[0].segment}`, { replace: true });
   });
 
   // Any theme the template names by `theme: { themeName }` needs its stylesheet present before the

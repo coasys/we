@@ -445,6 +445,13 @@ export interface SpaceStore {
    * from the switch was what made toggling a section rebuild the whole application.
    */
   routableViews: Accessor<ResolvedView[]>;
+  /**
+   * Ids of the sections the community has in this space — what a route body is gated on.
+   *
+   * Not the nav list: that also drops this agent's hidden ones, and hiding a section for yourself
+   * must not make its URL refuse you. See `ViewGate`.
+   */
+  enabledViewIds: Accessor<string[]>;
   /** The same list as a nav strip reads it — one source, so routes and nav cannot disagree. */
   viewNav: Accessor<{ id: string; segment: string; label: string; icon: string; path: string }[]>;
 
@@ -1805,6 +1812,27 @@ export function SpaceStoreProvider(props: ParentProps) {
   );
 
   /**
+   * The ids of the sections **the community** has in this space — what a route body is gated on.
+   *
+   * Deliberately *not* the nav list. The two differ by this agent's hidden set, and those mean
+   * different things: the community removing a section takes it out of the space, while hiding one
+   * for yourself takes it out of your nav. Gating on the nav list would turn a personal tidy-up into
+   * a block — follow a link to something you had merely hidden and be told it is "not in this
+   * space", which is both a refusal you did not ask for and a lie about why.
+   *
+   * A bare id list rather than resolved views, because `$in` is what reads it and a schema cannot
+   * pluck a field out of each entry to compare against.
+   */
+  const enabledViewIds = createMemo<string[]>(() =>
+    activeSections({
+      routable: routableViews(),
+      enabledRaw: currentSpace()?.enabledViews,
+      hidden: [],
+      fallbackOrder: defaultViewOrder(),
+    }).map((view) => view.id),
+  );
+
+  /**
    * The same list, as the nav strip reads it.
    *
    * A projection rather than a second source, which is the point: the header and the sidebar used to
@@ -2828,6 +2856,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     moduleLaunchers,
     spaceViews,
     routableViews,
+    enabledViewIds,
     viewNav,
     foreignSpacePrefill,
 

@@ -423,6 +423,8 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
       to draw "sections you could turn on" is asking a reasonable question about its own space.
     */
     routableViews: state('navigation'),
+    /** The ids the community has here, which every section's own route body is gated on. */
+    enabledViewIds: state('navigation'),
     requiredModules: state('navigation'),
     missingModules: state('navigation'),
 

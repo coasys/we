@@ -6367,6 +6367,9 @@
         "routableViews": {
           "type": "array"
         },
+        "enabledViewIds": {
+          "type": "array"
+        },
         "viewNav": {
           "type": "array"
         },

@@ -117,7 +117,7 @@ export {
 export type { SectionEntry, StoredTemplate, FindNodeResult, PatchError } from './indexer';
 export { createStoredTemplate, listSections, getSection, updateSection } from './sections';
 export { expandViewRoutes, hasViewsMarker, VIEWS_MARKER } from './viewRoutes';
-export type { ResolvedView } from './viewRoutes';
+export type { ResolvedView, ViewGate } from './viewRoutes';
 export { getComponentMeta } from './componentMeta';
 export { contextData } from './generated/contextData';
 export type { ComponentMeta, PropMeta, PropLayer } from './componentMeta';
