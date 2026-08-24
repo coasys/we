@@ -11,86 +11,69 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
+# Five jobs rather than one long one, for two reasons.
+#
+# Visibility: a pull request shows one check line per job. As a single job this was one
+# opaque "Build" entry that sat in progress for six and a half minutes, and the only way
+# to learn which stage was running — or which one had failed — was to open the run and
+# read the log. Now the PR itself says Lint / Build / Typecheck / Test / Schemas, and a
+# failure names its stage before anyone clicks anything.
+#
+# Wall clock: lint needs no build output, so it has no business queueing behind a
+# three-minute build; and typecheck, test and schema validation only need the build's
+# *result*, so they can run alongside each other rather than end to end.
+#
+# The three downstream jobs take the build's output as an artifact instead of rebuilding
+# it — see "Package build outputs" below.
 jobs:
-  build:
+  lint:
+    name: Lint
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
-      # WE's .nvmrc pins Node 24 (uses Node 22+ features like `fs.globSync`).
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '24'
-
-      # Matches the repo's `packageManager` field, so CI resolves dependencies
-      # exactly as a developer's machine does.
-      - name: Install pnpm
-        run: npm install -g pnpm@10.18.3
-
-      # Cache the pnpm content-addressable store, not node_modules: the
-      # workspace nests packages 2–4 levels deep, so a node_modules glob
-      # misses most of it, and pnpm's own guidance is to cache the store.
-      - name: Get pnpm store directory
-        id: pnpm-store
-        run: echo "path=$(pnpm store path --silent)" >> "$GITHUB_OUTPUT"
-
-      - name: Cache pnpm store
-        uses: actions/cache@v4
-        with:
-          path: ${{ steps.pnpm-store.outputs.path }}
-          key: pnpm-store-${{ hashFiles('pnpm-lock.yaml') }}
-          restore-keys: pnpm-store-
-
-      # Frozen, and nothing rewrites it afterwards.
-      #
-      # This job used to clone the AD4M repo, build its SDK from source, and point
-      # `pnpm.overrides` at the result — so it validated WE against whatever AD4M's
-      # `dev` branch happened to hold at the moment the job ran, rather than against
-      # the version this repo pins. Three things followed from that: the same WE
-      # commit could go from green to red with no WE change (and did — `dev` sat red
-      # for two days while every developer's machine built cleanly); a green build
-      # said nothing about the combination anyone actually runs or would ship; and
-      # the failure surfaced as a TypeScript error inside WE's own source, naming
-      # nothing that would lead a reader to the real cause.
-      #
-      # The justification for it — that the published packages carry broken
-      # `workspace:` refs — does not hold: `@coasys/ad4m` publishes none at all, and
-      # `@coasys/ad4m-connect`'s single one is in `devDependencies`, which a consumer
-      # never installs.
-      #
-      # Testing WE against unreleased AD4M is still worth doing; it just cannot be
-      # the gate that decides whether a WE change may merge. It lives in
-      # `ad4m-compat.yaml`, on a schedule and on demand.
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+      - uses: ./.github/actions/setup
 
       - name: Lint
         run: NODE_OPTIONS='--max-old-space-size=8192' pnpm lint
 
-      # Stylelint was configured (config, deps, editor integration) but never
-      # ran anywhere but editors — now it gates the authored CSS.
+      # Stylelint was configured (config, deps, editor integration) but never ran anywhere
+      # but editors — now it gates the authored CSS.
       - name: Lint CSS
         run: pnpm lint:css
+
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
 
       - name: Build
         run: NODE_OPTIONS='--max-old-space-size=8192' pnpm build
 
-      # `pnpm build` regenerates the AI-context outputs (CLAUDE.md et al.) and
-      # the core manifest.  If a PR changed their inputs without committing the
-      # regenerated files, fail here rather than drifting silently.
-      # Whole-tree rather than a hand-listed set of paths. The list named seven files and the build
-      # regenerates seventeen — `prebuild:steps` also writes ten tracked Tauri files — so editing
-      # `we-seed.json` without committing the regenerated output passed green. A path list is also
-      # blind to files the build *creates*, and it rots every time a generator is added.
+      # `pnpm build` regenerates the AI-context outputs (CLAUDE.md et al.) and the core
+      # manifest. If a PR changed their inputs without committing the regenerated files,
+      # fail here rather than drifting silently.
       #
-      # `--porcelain` covers modified, deleted and untracked in one check, and cannot go out of date.
+      # Whole-tree rather than a hand-listed set of paths. The list named seven files and
+      # the build regenerates seventeen — `prebuild:steps` also writes ten tracked Tauri
+      # files — so editing `we-seed.json` without committing the regenerated output passed
+      # green. A path list is also blind to files the build *creates*, and it rots every
+      # time a generator is added.
+      #
+      # `--porcelain` covers modified, deleted and untracked in one check, and cannot go
+      # out of date.
+      #
+      # No exclusions. This check used to exempt `package.json`, `pnpm-lock.yaml` and
+      # `ad4m/`, all three of which were things the workflow itself had put there — it
+      # rewrote the manifest and lockfile to point at a local SDK build, then had to agree
+      # not to notice. Nothing rewrites them now, so the check covers the whole tree, and a
+      # build that touches the manifest or the lockfile is a finding rather than an
+      # exemption.
+      #
+      # It has to run before the packaging step below, which drops a tarball in the root.
       - name: Check generated files are committed
         run: |
-          # No exclusions. This check used to exempt `package.json`, `pnpm-lock.yaml` and `ad4m/`,
-          # all three of which were things the workflow itself had put there — it rewrote the
-          # manifest and lockfile to point at a local SDK build, then had to agree not to notice.
-          # Nothing rewrites them now, so the check covers the whole tree, and a build that touches
-          # the manifest or the lockfile is a finding rather than an exemption.
           DRIFT="$(git status --porcelain)"
           if [ -n "$DRIFT" ]; then
             echo '::error::The build changed tracked files — run `pnpm build` and commit the regenerated output.'
@@ -99,19 +82,74 @@ jobs:
             exit 1
           fi
 
-      # 12.6k LOC of template data that `tsc` cannot judge: an unknown component
-      # type, a misspelled prop, a `$routes` outlet with no `routes` array and an
-      # orphan `$local` all typecheck cleanly and then render nothing.  The
-      # validator has always existed and been thorough — it was reachable only
-      # from the AI editor and the CLI, so nothing ran it on the way in.
-      - name: Validate schemas
-        run: pnpm validate:schemas
+      # Everything the build produced, for the three jobs that consume it.
+      #
+      # Derived from `git status --ignored` rather than a list of paths, on the same
+      # reasoning as the drift check above: the outputs are not only `dist/` directories.
+      # The primitives build also writes `src/generated/` (the icon bundle) and a
+      # `custom-elements.json`, and the Electron prebuild writes four seed files — all
+      # gitignored, all needed downstream, and none of them obvious from the outside. A
+      # hand-listed set would have missed them, and would miss the next generator too.
+      #
+      # node_modules is the one thing excluded: it is gitignored and enormous, and the
+      # consuming jobs install it themselves.
+      - name: Package build outputs
+        run: |
+          git status --porcelain --ignored=traditional \
+            | awk '$1 == "!!" { print $2 }' \
+            | grep -vE '(^|/)node_modules/$' \
+            > build-outputs.txt
+          echo "Packaging $(wc -l < build-outputs.txt) paths:"
+          cat build-outputs.txt
+          tar -czf build-outputs.tar.gz -T build-outputs.txt
 
-      # Runs after Build so every package's dist types exist.  Only packages
-      # that define a `typecheck` script participate; coverage is being grown
-      # package by package.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: build-outputs
+          path: build-outputs.tar.gz
+          # Read by this run's own downstream jobs and by nothing else afterwards.
+          retention-days: 1
+
+  # Runs after Build so every package's dist types exist.
+  typecheck:
+    name: Typecheck
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      - uses: ./.github/actions/restore-build
+
       - name: Typecheck
         run: pnpm typecheck
 
+  test:
+    name: Test
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      - uses: ./.github/actions/restore-build
+
+      # `--no-bail` (in the root script) runs every package before reporting, so one
+      # failing package does not hide the state of the rest. It still exits non-zero.
       - name: Test
         run: pnpm test
+
+  schemas:
+    name: Validate schemas
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      - uses: ./.github/actions/restore-build
+
+      # 12.6k LOC of template data that `tsc` cannot judge: an unknown component type, a
+      # misspelled prop, a `$routes` outlet with no `routes` array and an orphan `$local`
+      # all typecheck cleanly and then render nothing. The validator has always existed and
+      # been thorough — it was reachable only from the AI editor and the CLI, so nothing ran
+      # it on the way in.
+      - name: Validate schemas
+        run: pnpm validate:schemas

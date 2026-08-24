@@ -1,0 +1,52 @@
+name: Set up WE toolchain
+description: Node, pnpm, a warm pnpm store and a frozen install — the four steps every CI job starts with.
+
+# Extracted because the build workflow runs five jobs and each one needs an identical
+# environment. Inlined five times, a version bump is four edits and a silent drift the
+# fifth time somebody forgets one.
+
+runs:
+  using: composite
+  steps:
+    # Read the version from .nvmrc rather than restating it. The two used to be written
+    # out separately — the workflow said `24`, .nvmrc said `v24.14.0` — which agrees
+    # until the day somebody bumps one of them.
+    - uses: actions/setup-node@v4
+      with:
+        node-version-file: .nvmrc
+
+    # Likewise: with no `version`, this reads the repo's `packageManager` field, so CI
+    # resolves dependencies with exactly the pnpm a developer's machine uses.
+    - uses: pnpm/action-setup@v4
+
+    # Cache the pnpm content-addressable store, not node_modules: the workspace nests
+    # packages 2–4 levels deep, so a node_modules glob misses most of it, and pnpm's own
+    # guidance is to cache the store.
+    - name: Get pnpm store directory
+      id: pnpm-store
+      shell: bash
+      run: echo "path=$(pnpm store path --silent)" >> "$GITHUB_OUTPUT"
+
+    - name: Cache pnpm store
+      uses: actions/cache@v4
+      with:
+        path: ${{ steps.pnpm-store.outputs.path }}
+        key: pnpm-store-${{ hashFiles('pnpm-lock.yaml') }}
+        restore-keys: pnpm-store-
+
+    # Frozen, and nothing rewrites it afterwards.
+    #
+    # The build job used to clone the AD4M repo, build its SDK from source, and point
+    # `pnpm.overrides` at the result — so it validated WE against whatever AD4M's `dev`
+    # branch happened to hold at the moment the job ran, rather than against the version
+    # this repo pins. Three things followed from that: the same WE commit could go from
+    # green to red with no WE change (and did — `dev` sat red for two days while every
+    # developer's machine built cleanly); a green build said nothing about the combination
+    # anyone actually runs or would ship; and the failure surfaced as a TypeScript error
+    # inside WE's own source, naming nothing that would lead a reader to the real cause.
+    #
+    # Testing WE against unreleased AD4M is still worth doing; it just cannot be the gate
+    # that decides whether a WE change may merge. It lives in `ad4m-compat.yaml`.
+    - name: Install dependencies
+      shell: bash
+      run: pnpm install --frozen-lockfile

@@ -1,0 +1,18 @@
+name: Restore build outputs
+description: Unpack the artifact the Build job produced, so this job does not have to rebuild.
+
+# Must run *after* the install step, not before: `pnpm install` writes into the same
+# package directories, and the build output is what should win.
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/download-artifact@v4
+      with:
+        name: build-outputs
+
+    - name: Unpack build outputs
+      shell: bash
+      run: |
+        tar -xzf build-outputs.tar.gz
+        rm build-outputs.tar.gz
