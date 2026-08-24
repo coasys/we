@@ -51,11 +51,14 @@ const STATUS_SURFACE = { bg: 'page', border: '1px solid border', shadow: 'md' } 
  * How big the leading glyph is, whichever glyph it happens to be.
  *
  * Stated once and applied to both, because the spinner and the icon are swapped in place when a
- * pass settles. `we-spinner` resolves `xs` to `--we-size-xs`; `we-icon` left unsized falls back to
- * something larger, so the row grew by a few pixels at the exact moment the pass completed — a
+ * pass settles. `we-icon` left unsized falls back to something larger than `we-spinner` resolves
+ * for the same token, so the row grew by a few pixels at the exact moment the pass completed — a
  * twitch on every row, in a bar that is meant to be glanceable.
+ *
+ * `sm` is 24px, which is also what the runner's avatar takes, so the three things in the row's
+ * leading cluster line up instead of stepping.
  */
-const GLYPH_SIZE = 'xs';
+const GLYPH_SIZE = 'sm';
 
 /**
  * A spinner while it runs, the outcome's own glyph once it stops.
@@ -119,7 +122,7 @@ const passRow: SchemaNode = {
   children: [
     phaseIcon,
     runnerFace,
-    { type: 'we-text', props: { variant: 'footnote', truncate: true, flex: '1' }, children: ['$pass.label'] },
+    { type: 'we-text', props: { fontSize: '200', truncate: true, flex: '1' }, children: ['$pass.label'] },
     {
       type: '$if',
       props: {
@@ -127,7 +130,7 @@ const passRow: SchemaNode = {
         then: {
           // Tabular, so the seconds column does not jitter the row every time it ticks.
           type: 'we-text',
-          props: { variant: 'footnote', color: 'text-faint', styles: { fontVariantNumeric: 'tabular-nums' } },
+          props: { fontSize: '200', color: 'text-faint', styles: { fontVariantNumeric: 'tabular-nums' } },
           children: ['$pass.elapsed'],
         },
       },
@@ -161,21 +164,27 @@ const disclosureCaret: SchemaNode = {
 function paneLabel(label: string): SchemaNode {
   return {
     type: 'we-text',
-    props: { variant: 'footnote', color: 'text-faint', uppercase: true, letterSpacing: 'wide' },
+    props: { fontSize: '200', color: 'text-faint', uppercase: true, letterSpacing: 'wide' },
     children: [label],
   };
 }
 
 /**
- * The prompt — also JSON, so given the same treatment as the response.
+ * The prompt — also JSON, but closed until asked for.
  *
  * It looked like prose and is not: `build_interpretation_input` hands the model a JSON object
  * carrying the transcript, the target shapes and their hints. Rendered as text it was one enormous
  * escaped string, which is how it came to overflow the bar in the first place.
  *
- * Same component as the response, so the two panes read as one exchange rather than two formats —
- * and the fold arrows matter more here, since the shapes section dwarfs the turns and is rarely
- * what somebody opened this to check.
+ * Closed by default because of the asymmetry between the two panes. The response is the answer —
+ * short, and the reason somebody opened the row. The prompt is reference material, and it is mostly
+ * the shape definitions, which are identical on every pass and dwarf the turns. Opening both left
+ * the response below the fold with the prompt filling the screen above it.
+ *
+ * A disclosure rather than folding the JSON tree on load: folding would still need unfolding to read
+ * anything, and it would mean teaching a shared design-system component a new option to serve one
+ * panel. A closed pane says the same thing more plainly and costs a click only to the people who
+ * want it.
  */
 const promptPane: SchemaNode = {
   type: '$if',
@@ -185,14 +194,65 @@ const promptPane: SchemaNode = {
       type: 'Column',
       props: { gap: '100', width: '100%' },
       children: [
-        paneLabel('Prompt'),
         {
-          type: 'CodeEditor',
+          // The label is the control. It is already the pane's heading, and a separate button beside
+          // it would be a second thing to aim at for one behaviour.
+          type: 'we-button',
           props: {
-            code: '$pass.prompt',
-            language: 'json',
-            readOnly: true,
-            styles: { maxHeight: '240px', overflow: 'auto', width: '100%' },
+            variant: 'bare',
+            width: '100%',
+            onClick: { $toggleLocalIn: 'openPrompts', value: '$pass.passId' },
+          },
+          children: [
+            {
+              type: 'Row',
+              props: { ay: 'center', gap: '100', width: '100%' },
+              children: [
+                paneLabel('Prompt'),
+                {
+                  type: 'we-icon',
+                  props: {
+                    size: 'xs',
+                    color: 'text-faint',
+                    name: {
+                      $if: {
+                        condition: { $in: ['$pass.passId', { $local: 'openPrompts' }] },
+                        then: 'caret-up',
+                        else: 'caret-down',
+                      },
+                    },
+                  },
+                },
+              ],
+            },
+          ],
+        },
+        {
+          type: '$if',
+          props: {
+            condition: { $in: ['$pass.passId', { $local: 'openPrompts' }] },
+            enterTransition: { type: 'reveal', duration: 200 },
+            exitTransition: { type: 'reveal', duration: 160 },
+            then: {
+              type: 'CodeEditor',
+              props: {
+                code: '$pass.prompt',
+                language: 'json',
+                readOnly: true,
+                /*
+              A fixed height, not a maximum.
+
+              `.cm-editor` is `height: 100%`, and a percentage resolves against `auto` as `auto` —
+              so under `max-height` alone the editor grew to its content, the wrapper grew with it,
+              and nothing scrolled. A long prompt then filled the viewport and pushed the response
+              off the bottom of the screen with no way to reach it.
+
+              Given a real height, CodeMirror's own `.cm-scroller` takes over and scrolls internally,
+              which is how it is meant to be sized.
+            */
+                styles: { height: '240px', width: '100%' },
+              },
+            },
           },
         },
       ],
@@ -228,7 +288,18 @@ const responsePane: SchemaNode = {
             // Nothing here is editable: this is a record of what a model said, and a pane that
             // accepted keystrokes would imply the text could be corrected and re-run.
             readOnly: true,
-            styles: { maxHeight: '240px', overflow: 'auto', width: '100%' },
+            /*
+              A fixed height, not a maximum.
+
+              `.cm-editor` is `height: 100%`, and a percentage resolves against `auto` as `auto` —
+              so under `max-height` alone the editor grew to its content, the wrapper grew with it,
+              and nothing scrolled. A long prompt then filled the viewport and pushed the response
+              off the bottom of the screen with no way to reach it.
+
+              Given a real height, CodeMirror's own `.cm-scroller` takes over and scrolls internally,
+              which is how it is meant to be sized.
+            */
+            styles: { height: '240px', width: '100%' },
           },
         },
       ],
@@ -258,7 +329,7 @@ const shareToggle: SchemaNode = {
       children: [
         {
           type: 'we-text',
-          props: { variant: 'footnote', color: 'text-muted' },
+          props: { fontSize: '200', color: 'text-muted' },
           children: ['Share your prompts with this space'],
         },
         {
@@ -305,7 +376,7 @@ const passDetail: SchemaNode = {
             condition: '$pass.detail',
             then: {
               type: 'we-text',
-              props: { variant: 'footnote', color: 'danger-text' },
+              props: { fontSize: '200', color: 'danger-text' },
               children: ['$pass.detail'],
             },
           },
@@ -413,7 +484,7 @@ const settledSection: SchemaNode = {
                 { type: 'we-icon', props: { size: GLYPH_SIZE, name: 'check-circle', color: 'text-faint' } },
                 {
                   type: 'we-text',
-                  props: { variant: 'footnote', color: 'text-muted', flex: '1', textAlign: 'left' },
+                  props: { fontSize: '200', color: 'text-muted', flex: '1', textAlign: 'left' },
                   children: [
                     { $store: 'modules.transcribe.settledCount' },
                     ' ',
@@ -490,6 +561,15 @@ export const extractionStatus: SchemaNode = {
          * exist yet. `$toggleLocalIn` writes it and `$in` reads it back.
          */
         openPasses: { type: 'array', initial: [] },
+        /**
+         * Which prompts are open, separately from which rows are.
+         *
+         * Its own set because the two disclosures answer different questions: opening a row asks
+         * "what happened", opening a prompt asks "what exactly was sent". The second is reference
+         * material and mostly shape definitions identical on every pass, so it stays closed until
+         * somebody asks — otherwise it fills the screen above the response they opened the row for.
+         */
+        openPrompts: { type: 'array', initial: [] },
         /**
          * Whether the finished-passes history is open.
          *
