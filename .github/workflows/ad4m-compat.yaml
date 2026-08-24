@@ -70,11 +70,15 @@ jobs:
     steps:
       # ---------------------------------------------------------------- resolve what to test
 
+      # Dispatch inputs reach the shell as environment variables rather than being
+      # interpolated into the script text, so a branch name is always data and never
+      # something that can end up parsed as part of the command.
       - name: Resolve AD4M branch
         id: ad4m-branch
+        env:
+          REQUESTED_BRANCH: ${{ github.event.inputs.ad4m_branch }}
         run: |
-          BRANCH="${{ github.event.inputs.ad4m_branch }}"
-          BRANCH="${BRANCH:-dev}"
+          BRANCH="${REQUESTED_BRANCH:-dev}"
           if ! git ls-remote --exit-code --heads \
             https://github.com/coasys/ad4m.git "$BRANCH" >/dev/null 2>&1; then
             echo "::error::No such AD4M branch: $BRANCH"
@@ -90,8 +94,9 @@ jobs:
       # report says so rather than claiming an attribution it has not earned.
       - name: Resolve WE ref
         id: we-ref
+        env:
+          REQUESTED: ${{ github.event.inputs.we_ref }}
         run: |
-          REQUESTED="${{ github.event.inputs.we_ref }}"
           if [ -n "$REQUESTED" ]; then
             echo "ref=$REQUESTED"        >> "$GITHUB_OUTPUT"
             echo "controlled=false"      >> "$GITHUB_OUTPUT"
@@ -118,12 +123,30 @@ jobs:
         with:
           ref: ${{ steps.we-ref.outputs.ref }}
 
-      # `--install false`: the override rewrite below is deliberate lockfile drift, so the
-      # install cannot be frozen. Everything else — Node from .nvmrc, pnpm from
-      # `packageManager`, the store cache — is shared with the required build.
-      - uses: ./.github/actions/setup
+      # Setup is inlined rather than using .github/actions/setup, which the required build
+      # shares. A local composite action is resolved from the *checked-out working tree*, and
+      # this job checks out an older commit on purpose — one that predates that file, or in
+      # the `we_ref` case may never contain it. Inline steps come from the workflow itself and
+      # so are always present.
+      #
+      # The install is separate and comes later: the override rewrite below is deliberate
+      # lockfile drift, so it cannot be frozen.
+      - uses: actions/setup-node@v4
         with:
-          install: 'false'
+          node-version-file: .nvmrc
+
+      - uses: pnpm/action-setup@v4
+
+      - name: Get pnpm store directory
+        id: pnpm-store
+        run: echo "path=$(pnpm store path --silent)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache pnpm store
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.pnpm-store.outputs.path }}
+          key: pnpm-store-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: pnpm-store-
 
       # ---------------------------------------------------------------- build the AD4M SDK
 
@@ -219,14 +242,15 @@ jobs:
       - name: Write report
         id: report
         if: always()
+        env:
+          AD4M_BRANCH: ${{ steps.ad4m-branch.outputs.name }}
+          AD4M_HASH: ${{ steps.ad4m-hash.outputs.hash }}
+          WE_REF: ${{ steps.we-ref.outputs.ref }}
+          CONTROLLED: ${{ steps.we-ref.outputs.controlled }}
+          WHY: ${{ steps.we-ref.outputs.why }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           set -u
-          AD4M_BRANCH='${{ steps.ad4m-branch.outputs.name }}'
-          AD4M_HASH='${{ steps.ad4m-hash.outputs.hash }}'
-          WE_REF='${{ steps.we-ref.outputs.ref }}'
-          CONTROLLED='${{ steps.we-ref.outputs.controlled }}'
-          WHY='${{ steps.we-ref.outputs.why }}'
-          RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
 
           # Which stage failed. Read from step outcomes rather than a marker written by the
           # step itself, which is not reliably flushed when the step it is in dies.
