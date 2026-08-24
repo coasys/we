@@ -27,6 +27,7 @@ import {
   resolveDock,
   RESTORE_DRAG_PX,
   seedPlacement,
+  SIDEBAR_PX,
   snapCandidate,
   type SnapPoint,
   snapTargetRects,
@@ -411,21 +412,50 @@ export function ShellStoreProvider(props: ParentProps) {
   const inset = createMemo(() => contentInset(dockRequests(), viewport()));
 
   /**
-   * Publish the inset as CSS custom properties, so chrome can sit against the *content* rather than
-   * the window.
+   * Publish where the content's edges are, as CSS custom properties, so chrome can sit against the
+   * *content* rather than the window.
    *
    * Anything pinned to a screen edge has to move when a dock takes that edge, and the things that
-   * need to move — the module rail, the editor's rails, its floating toolbar — live in three
-   * different packages, two of which have no business importing this store. A custom property on the
-   * root is the one channel all of them already share; `--we-sidebar-width` is set the same way and
-   * for the same reason.
+   * need to move — the module rail, the editor's floating toolbar, the call bar — live in three
+   * different packages, none of which has any business importing this store. A custom property on
+   * the root is the one channel all of them already share; `--we-sidebar-width` is set the same way
+   * and for the same reason.
+   *
+   * ## Composed here, deliberately
+   *
+   * These used to be `--we-dock-<edge>`: the dock inset alone, leaving each consumer to add whatever
+   * else held its edge. Nobody added the same list. The module rail summed the dock and a panel's
+   * title band; the editing bar summed the dock and the rail's width and *forgot the vertical term
+   * entirely*, so a panel docked along the top covered it; the call module's main bar composed the
+   * sidebar into its centring while the two smaller bars beside it — the join prompt and the problem
+   * alert — centred on the window and cleared nothing at all. Four consumers, four different sums,
+   * three of them wrong, and each one wrong in a way that only shows in one arrangement.
+   *
+   * So the shell publishes the answer rather than the ingredients. `contentInset` and
+   * `computeLeftOffset` in TemplateLayout are the same four numbers the content viewport is laid out
+   * from — chrome now reads exactly what the content reads, which is what "sit beside the content"
+   * should have meant all along. The one term that stays a consumer's own is `--we-chrome-rail-width`,
+   * and it has to: the rail is chrome at that edge, so the rail must *not* clear itself while
+   * everything outside it must.
+   *
+   * The left edge composes with the sidebar rather than replacing it — a left dock opens beside the
+   * sidebar, not over it — and does so in CSS so `--we-sidebar-width` stays the only place that
+   * width is decided.
    */
   createEffect(() => {
     if (typeof document === 'undefined') return;
     const edges = inset();
-    for (const [edge, value] of Object.entries(edges)) {
-      document.documentElement.style.setProperty(`--we-dock-${edge}`, `${value}px`);
-    }
+    const root = document.documentElement.style;
+    root.setProperty('--we-chrome-left', `calc(var(--we-sidebar-width, ${SIDEBAR_PX}px) + ${edges.left}px)`);
+    root.setProperty('--we-chrome-right', `${edges.right}px`);
+    root.setProperty('--we-chrome-top', `${edges.top}px`);
+    root.setProperty('--we-chrome-bottom', `${edges.bottom}px`);
+    /*
+      How far the content's centre has moved from the window's — the horizontal twin of the four
+      above, for anything centred rather than pinned. Written as a calc over them rather than as a
+      number so there is one subtraction in the codebase instead of one per centred bar.
+    */
+    root.setProperty('--we-chrome-center-x', 'calc((var(--we-chrome-left, 0px) - var(--we-chrome-right, 0px)) / 2)');
   });
 
   /**
@@ -435,7 +465,7 @@ export function ShellStoreProvider(props: ParentProps) {
    * maximised panel — or one snapped along the top — had its position menu and its un-maximise button
    * underneath it. The panel cannot dodge the rail without giving up a column of width for chrome
    * that is a few hundred pixels tall, so the rail moves, which is what this is for and what the
-   * right edge already does with `--we-dock-right`.
+   * right edge already does with `--we-chrome-right`.
    *
    * Zero while no panel is open, so the rail sits where it always has when there is nothing to clear.
    * `TOP_CHROME_PX` is where the panel starts and `TITLE_BAR_PX` is how far its controls reach.

@@ -183,22 +183,29 @@ export const chromeRail: SchemaNode = {
 
           One term, where there were two. The editor's panels used to publish a width of their own
           (`--we-editor-right`) because they positioned themselves; they are docks now, so they are
-          inside `--we-dock-right` along with every module's panel — and a panel dragged away from
+          inside `--we-chrome-right` along with every module's panel — and a panel dragged away from
           this edge stops pushing the rail at all, which the summed version could not express.
+
+          Note the rail does not clear `--we-chrome-rail-width`, and must not: that variable is this
+          rail's own width, published for the chrome that sits *outside* it.
         */
-        right: 'var(--we-dock-right, 0px)',
+        right: 'var(--we-chrome-right, 0px)',
         /*
           Below whatever a panel is doing at the top, and below its titlebar.
 
-          Two terms, for two different collisions. `--we-dock-top` is a panel that has *taken* the top
-          edge, which this would otherwise sit inside — the vertical twin of the `--we-dock-right`
-          term above, and the same fix. `--we-panel-chrome-top` is a panel that merely reaches the top
-          without displacing anything, a maximised one especially: the rail is painted above the
-          panels, so its controls — the position menu, and the button that un-maximises it — ended up
-          underneath this. The shell publishes that band as zero while no panel is open, so nothing
-          moves when there is nothing to clear.
+          Two terms, for two different collisions. `--we-chrome-top` is a panel that has *taken* the
+          top edge, which this would otherwise sit inside — the vertical twin of the
+          `--we-chrome-right` term above, and the same fix. `--we-panel-chrome-top` is a panel that
+          merely reaches the top without displacing anything, a maximised one especially: the rail is
+          painted above the panels, so its controls — the position menu, and the button that
+          un-maximises it — ended up underneath this. The shell publishes that band as zero while no
+          panel is open, so nothing moves when there is nothing to clear.
+
+          The band is this rail's alone, which is why it is not folded into `--we-chrome-top`: every
+          other piece of chrome is painted *below* the panels and so has nothing to dodge, and one
+          that cleared 98px whenever any panel anywhere was open would be dodging nothing visible.
         */
-        top: 'calc(16px + var(--we-panel-chrome-top, 0px) + var(--we-dock-top, 0px))',
+        top: 'calc(16px + var(--we-panel-chrome-top, 0px) + var(--we-chrome-top, 0px))',
         width: CHROME_RAIL_WIDTH,
         gap: '100',
         p: '200',

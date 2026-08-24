@@ -39,7 +39,7 @@ export const SIDEBAR_PX = 80;
  * three things claiming one edge and only one of them able to have it.
  *
  * The rail moves instead. Floating chrome positions itself against the *content* region rather than
- * the window, reading `--we-dock-right` and friends, so opening a dock slides the rail and the
+ * the window, reading `--we-chrome-right` and friends, so opening a dock slides the rail and the
  * editor inwards and the panel takes the edge it was always trying to occupy. Kept as a named zero
  * because the concept is still real — a backend or platform that pins something to an edge would set
  * it — and because deleting it would leave the arithmetic below looking arbitrary.

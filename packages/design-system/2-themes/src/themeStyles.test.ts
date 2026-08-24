@@ -53,12 +53,12 @@ describe('applyThemeVars', () => {
     // The bug this exists to prevent: a host publishes layout state on the same root, and clearing
     // wholesale takes it with the old theme.
     const { el, props } = fakeRoot();
-    props.set('--we-dock-right', '320px');
+    props.set('--we-chrome-right', '320px');
 
     applyThemeVars(el, { polarity: 'dark' as const });
     applyThemeVars(el, { polarity: 'light' as const });
 
-    expect(props.get('--we-dock-right')).toBe('320px');
+    expect(props.get('--we-chrome-right')).toBe('320px');
   });
 
   it('tracks each root separately', () => {
