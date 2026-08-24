@@ -186,6 +186,58 @@ export function railShell(opts: RailShellOptions): SchemaNode {
   };
 }
 
+export interface RailButtonOptions {
+  /** Phosphor icon name. The whole of the button — there is no label. */
+  icon: SchemaProp;
+  /** What it is, in words. Not optional: an icon-only control has no other way to say. */
+  tooltip: SchemaProp;
+  /** Highlights it, which is what makes a rail of these read as tabs rather than as buttons. */
+  active?: SchemaProp;
+  /** Action token, or an array of them. */
+  onClick?: SchemaProp;
+  /** Which side the tooltip opens on. Defaults to `left`, for a right-edge rail. */
+  tooltipPlacement?: 'top' | 'bottom' | 'left' | 'right';
+}
+
+/**
+ * One button in a rail that never opens — an icon, a tooltip, and a lit state.
+ *
+ * The sibling of {@link railItem}, for the other kind of rail. `railItem` is a row in something that
+ * widens on hover to show labels, so it is full-width, left-aligned, and its label is the thing that
+ * appears. This is for a rail that stays icon-wide: a square button, named only by its tooltip.
+ *
+ * Extracted because it was written three times — the two module launchers in WE's chrome rail, and
+ * again inside `pickerPopover` for the template and theme pickers that sit in the same rail — and
+ * the three had already drifted: two lit up with `variant: 'secondary'` when active while the
+ * settings button had no active state to drift *to*, so it was the one row of that rail that could
+ * never show you where you were. A rail whose buttons disagree about what "selected" looks like is
+ * not a set of tabs, and that is the only thing the arrangement was for.
+ *
+ * `square` matters more than it looks: a `we-button`'s side padding is sized for a word, so an
+ * icon-only button without it is a wide rectangle with a glyph adrift in the middle of it, and a
+ * column of them makes the rail's width a lie.
+ *
+ * Portable — it names no store, so a feature module can render its own rail button rather than
+ * approximating one.
+ */
+export function railButton(opts: RailButtonOptions): SchemaNode {
+  return {
+    type: 'we-tooltip',
+    props: { title: opts.tooltip, placement: opts.tooltipPlacement ?? 'left' },
+    children: [
+      {
+        type: 'we-button',
+        props: {
+          square: true,
+          variant: { $if: { condition: opts.active ?? false, then: 'secondary', else: 'ghost' } },
+          ...(opts.onClick !== undefined && { onClick: opts.onClick }),
+        },
+        children: [{ type: 'we-icon', props: { name: opts.icon } }],
+      },
+    ],
+  };
+}
+
 export interface RailItemOptions {
   label: Content;
   /** Phosphor icon name. Ignored when `avatar` is given. */

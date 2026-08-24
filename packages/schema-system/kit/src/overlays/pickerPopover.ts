@@ -1,5 +1,6 @@
 import type { SchemaNode, SchemaProp } from '@we/schema-shared';
 
+import { railButton } from '../layout/rail.ts';
 import type { Content } from '../types.ts';
 
 export interface PickerPopoverOptions {
@@ -80,24 +81,24 @@ export function pickerPopover(opts: PickerPopoverOptions): SchemaNode {
       pickerSearch: { type: 'string', initial: '' },
     },
     children: [
-      {
-        type: 'we-tooltip',
-        props: { title: opts.tooltip, placement: opts.side === 'right' ? 'right' : 'left' },
-        children: [
-          {
-            type: 'we-button',
-            props: {
-              variant: { $if: { condition: open, then: 'secondary', else: 'ghost' } },
-              square: true,
-              onClick: [
-                { $toggleLocal: opts.openLocal },
-                ...(opts.closeOthers ?? []).map((field) => ({ $setLocal: field, value: false })),
-              ],
-            },
-            children: [{ type: 'we-icon', props: { name: opts.icon } }],
-          },
+      /*
+        The same button the rest of the rail is made of — see `railButton`. It was written out here,
+        which is how the picker triggers and the module launchers beside them came to be three
+        separate spellings of one control.
+
+        The tooltip goes opposite the surface: a picker opening to the left is a right-edge rail, and
+        a tooltip on that side would be underneath what the click just opened.
+      */
+      railButton({
+        icon: opts.icon,
+        tooltip: opts.tooltip,
+        active: open,
+        tooltipPlacement: opts.side === 'right' ? 'right' : 'left',
+        onClick: [
+          { $toggleLocal: opts.openLocal },
+          ...(opts.closeOthers ?? []).map((field) => ({ $setLocal: field, value: false })),
         ],
-      },
+      }),
 
       // Catches the click that closes it. Fixed and full-bleed, and *before* the surface in document
       // order so the surface paints over it — both are in this wrapper's stacking context, so order
