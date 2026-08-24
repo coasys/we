@@ -1046,6 +1046,8 @@ export function generateStoresText(entries: StoreEntry[]): string {
           'number — how many passes are still in flight. What a collapsed "N extractions running" summary counts',
         hasActivity:
           'boolean — whether there is anything to show at all. Counts settled rows too, so a bar gated on it does not vanish the instant a pass finishes and take its result with it',
+        capable:
+          'boolean — whether this node can interpret AT ALL, as distinct from being able to and having no model configured. Answered by asking the backend rather than by testing the client library, so it is false against a node whose executor predates the extraction stack. False means no fix exists from inside the app — say so rather than offering a control that cannot work',
         shareDetail:
           'boolean — whether this agent broadcasts its prompts and responses to the rest of the space. Off by default on bandwidth grounds, not secrecy: in a call the prompt is built from a transcript every participant already holds',
       },

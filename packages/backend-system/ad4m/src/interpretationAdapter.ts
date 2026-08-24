@@ -188,6 +188,29 @@ const UNSUPPORTED =
   'extraction stack; everything else in the app works normally without it.';
 
 /**
+ * Whether a rejection means "this executor has never heard of that method".
+ *
+ * The WS dispatcher answers an unregistered method with a 404 whose message is
+ * `Unknown type: <method>`, and that is a categorically different failure from the call being
+ * attempted and going wrong: it says the node is running a build that predates the feature, and no
+ * retry, model configuration or permission grant will change it.
+ *
+ * Both the status and the message are checked because only one of them is guaranteed to survive.
+ * The client raises a typed error carrying `status`, but that type is not exported from the package
+ * root, and an error crossing a transport or a rewrapping layer can arrive as a plain `Error` with
+ * the text intact and the status gone.
+ *
+ * Deliberately narrow. Anything broader would let an unrelated outage — a busy node, a dropped
+ * socket — be recorded as a permanent capability gap, which is the one mistake here that a user
+ * cannot recover from without reloading.
+ */
+function isMissingHandler(error: unknown): boolean {
+  const status = (error as { status?: unknown; code?: unknown })?.status ?? (error as { code?: unknown })?.code;
+  const message = error instanceof Error ? error.message : String(error ?? '');
+  return status === 404 || /unknown type/i.test(message);
+}
+
+/**
  * Whether the runtime can hold a standing watch, probed separately from `interpret`.
  *
  * Separately because the port declares them separately, and that is not a formality: one-shot
@@ -307,6 +330,19 @@ export function createAd4mInterpretationPort(selfId?: () => string | undefined):
     fact, and once that path exists this map is only an optimisation on the common case.
   */
   const watchParents = new Map<string, { id: string; predicate: string }>();
+
+  /*
+    What the executor turned out to support, once anything has actually asked it.
+
+    `null` until then, and read as "assume yes" — a port that reported itself unavailable while the
+    answer was still unknown would hide the feature for the first frames of every session, which is
+    a worse lie than the one this replaces.
+
+    A property of the connection rather than of a dataset: one port serves one executor, and a build
+    either has the interpretation handlers or it does not. It cannot change without the node being
+    rebuilt, and a rebuild means a new connection, so this never needs invalidating.
+  */
+  let executorSupports: boolean | null = null;
 
   /*
     One subscription per perspective, shared by everything that wants the event stream.
@@ -459,6 +495,56 @@ export function createAd4mInterpretationPort(selfId?: () => string | undefined):
   }
 
   return {
+    /**
+     * What the executor has actually been observed to support.
+     *
+     * Deliberately *not* the client-library check that used to stand in for this. That check is
+     * what shipped the bug: a bundled library's methods exist on every node, so it answered yes
+     * against an executor that had never heard of them, and the raw RPC error it was written to
+     * prevent reached the user instead.
+     *
+     * Nullary by contract, so it has no dataset to inspect even if it wanted one — which is the
+     * shape of the problem, and why the real question is asked by `checkAvailability` and merely
+     * reported here. `null` reads as yes: a port that called itself unavailable while the answer
+     * was still unknown would hide the feature for the first frames of every session, which is a
+     * worse lie than the one this replaces.
+     */
+    available(): boolean {
+      return executorSupports !== false;
+    },
+
+    /**
+     * Ask the executor, once, and remember.
+     *
+     * The probe is `interpretationOverlays` — a read that returns the passes awaiting review, which
+     * on a fresh space is an empty list. It is the right question to ask for two reasons: it landed
+     * in the same merge as `runInterpretation` and `addAutoProcessor`, so a node missing one is
+     * missing all three; and it costs a graph read rather than an LLM call, which rules out the
+     * obvious alternative of "just try a real pass and see".
+     *
+     * Only a missing handler is conclusive. Any other rejection — a busy node, a dropped socket, a
+     * permission the session lacks — leaves the answer unknown rather than recording a permanent
+     * gap, because a capability wrongly marked absent stays absent until the app is reloaded.
+     */
+    async checkAvailability(dataset: DatasetHandle): Promise<boolean> {
+      if (!runtimeSupportsInterpretation(dataset)) return false;
+      if (executorSupports !== null) return executorSupports;
+
+      try {
+        await proxy(dataset).interpretationOverlays();
+        executorSupports = true;
+      } catch (error) {
+        if (!isMissingHandler(error)) {
+          // Inconclusive. Left unset so the next dataset change asks again.
+          console.debug('[interpretation] capability probe inconclusive', error);
+          return true;
+        }
+        console.info('[interpretation] this node cannot interpret — its executor predates the extraction stack');
+        executorSupports = false;
+      }
+      return executorSupports;
+    },
+
     async interpret(
       dataset: DatasetHandle,
       turns: TranscriptTurn[],
@@ -496,13 +582,29 @@ export function createAd4mInterpretationPort(selfId?: () => string | undefined):
       if (observed) await attachListener(perspective);
       const passId = `one-shot/${crypto.randomUUID()}`;
 
-      const ids = await runObserved(
-        perspective,
-        withTime(turns),
-        basePrefix,
-        request.classes,
-        observed ? passId : undefined,
-      );
+      /*
+        The backstop for a node the probe never got to ask.
+
+        `checkAvailability` runs when the dataset changes, but a session can reach here first — the
+        probe is one round trip and somebody can press Extract during it — and a node can in
+        principle be swapped underneath a live connection. Catching it here means the answer is
+        learned from whichever call gets there first, and the message a person sees is the one
+        written for it rather than `Unknown type: perspective.runInterpretation`.
+      */
+      let ids: string[];
+      try {
+        ids = await runObserved(
+          perspective,
+          withTime(turns),
+          basePrefix,
+          request.classes,
+          observed ? passId : undefined,
+        );
+      } catch (error) {
+        if (!isMissingHandler(error)) throw error;
+        executorSupports = false;
+        throw new Error(UNSUPPORTED);
+      }
       if (ctl?.signal?.aborted) return { turns: turns.length, ids: [], proposed: [] };
 
       // Parent *after* the pass, because the engine has no notion of one. Sequential rather than
@@ -595,17 +697,18 @@ export function createAd4mInterpretationPort(selfId?: () => string | undefined):
       console.debug('[interpretation] registering watch', { watchId: request.watchId, interpretationClasses });
       console.debug('[interpretation] scope query\n%s', sourceScopeQuery);
 
-      await perspective.addAutoProcessor({
-        processorId: request.watchId,
-        sourceScopeQuery,
-        basePrefix: request.basePrefix ?? `${DEFAULT_BASE_PREFIX}${encodeURIComponent(request.parent.id)}/`,
-        interpretationClasses,
-        debounceMs: request.debounceMs ?? WATCH_DEFAULTS.debounceMs,
-        batchMin: request.batchMin ?? WATCH_DEFAULTS.batchMin,
-        batchMax: request.batchMax ?? WATCH_DEFAULTS.batchMax,
-        maxWaitMs: WATCH_DEFAULTS.maxWaitMs,
-        claimTtlMs: WATCH_DEFAULTS.claimTtlMs,
-        /*
+      try {
+        await perspective.addAutoProcessor({
+          processorId: request.watchId,
+          sourceScopeQuery,
+          basePrefix: request.basePrefix ?? `${DEFAULT_BASE_PREFIX}${encodeURIComponent(request.parent.id)}/`,
+          interpretationClasses,
+          debounceMs: request.debounceMs ?? WATCH_DEFAULTS.debounceMs,
+          batchMin: request.batchMin ?? WATCH_DEFAULTS.batchMin,
+          batchMax: request.batchMax ?? WATCH_DEFAULTS.batchMax,
+          maxWaitMs: WATCH_DEFAULTS.maxWaitMs,
+          claimTtlMs: WATCH_DEFAULTS.claimTtlMs,
+          /*
           Emit the LLM exchange, never persist it — and the two are one decision only because #903
           split them.
 
@@ -619,9 +722,18 @@ export function createAd4mInterpretationPort(selfId?: () => string | undefined):
           `InterpretationRun` in the shared graph, where it syncs to every peer and stays there —
           tens of KB per pass, permanently, for something worth reading for five minutes.
         */
-        emitDebugEvents: true,
-        persistDebug: false,
-      } as Parameters<PerspectiveProxy['addAutoProcessor']>[0]);
+          emitDebugEvents: true,
+          persistDebug: false,
+        } as Parameters<PerspectiveProxy['addAutoProcessor']>[0]);
+      } catch (error) {
+        // Same backstop as the one-shot path, and it matters more here: a watch failure is caught
+        // by the caller and, before this, disappeared into a console line — which is why a node
+        // that could not auto-extract looked for three days like one that simply had nothing to
+        // extract.
+        if (!isMissingHandler(error)) throw error;
+        executorSupports = false;
+        throw new Error(UNSUPPORTED_WATCH);
+      }
     },
 
     async reconcile(dataset: DatasetHandle, request: InterpretationRequest): Promise<number> {

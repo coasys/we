@@ -66,6 +66,15 @@ export interface ModuleHostServices {
    * the profile cache — neither of which the port has, and both of which the host does.
    */
   interpretationActivity?: () => InterpretationActivitySummary[];
+  /**
+   * Whether the backend can interpret, as the store learned it from the backend itself.
+   *
+   * Published separately from the port's own `available()` because the answer arrives
+   * asynchronously and has to be *reactive*: a module reads it inside a derived value, and the
+   * probe resolves a round trip after the dataset changes. A plain port call would be read once and
+   * never re-read.
+   */
+  interpretationAvailable?: () => boolean;
   /** Whether this agent broadcasts its model exchanges to the space, and the switch for it. */
   interpretationShareDetail?: () => boolean;
   setInterpretationShareDetail?: (share: boolean) => void;
@@ -151,7 +160,18 @@ export function createModuleStoreDeps(framework: {
       // wrapper so late binding works, which makes `!== undefined` true even on a backend that
       // cannot interpret — the trap the transcription wrapper above still falls into. Delegating to
       // `available()` lets the forwarder answer for the backend actually connected.
-      available: () => services.interpretation?.available?.() ?? services.interpretation !== undefined,
+      /*
+        The store's answer first, the port's second, and "a port exists" last.
+
+        That order is the fix for what shipped: the last of the three is what actually ran, because
+        the adapter implemented no `available()` at all — so the question "can this node interpret"
+        was answered by "is a port object present", which is true on every node including one whose
+        executor has never heard of the feature.
+      */
+      available: () =>
+        services.interpretationAvailable?.() ??
+        services.interpretation?.available?.() ??
+        services.interpretation !== undefined,
       runOnCollection: async (collectionId, request) => {
         const run = services.interpretCollection;
         if (!run) throw new Error('interpretation: this backend cannot interpret');

@@ -297,6 +297,14 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
    */
   const [proposals, setProposals] = signal<ProposalView[]>([]);
   /**
+   * Why the standing watch is not running, when it is not.
+   *
+   * Empty in the ordinary case — including on a host that never had a watch to fail, since the
+   * affordance is not offered there either. See the catch in `syncWatch` for why this is recorded
+   * rather than only logged.
+   */
+  const [watchProblem, setWatchProblem] = signal<string>('');
+  /**
    * The call the current collection belongs to.
    *
    * The record's lifetime is the *call's*, not the recording toggle's. Tying it to the toggle meant
@@ -928,11 +936,26 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
     if (next && typeof interpretation?.watchCollection === 'function') {
       try {
         await interpretation.watchCollection(next, { classes: EXTRACT_CLASSES });
+        setWatchProblem('');
         console.debug('[transcribe] watching collection for auto-extraction', next);
       } catch (error) {
-        console.info('[transcribe] auto-extraction unavailable', error);
+        /*
+          Recorded, not just logged.
+
+          This swallowed the one failure worth reporting. A watch is registered without anyone
+          asking for it, so when it fails there is nothing on screen that was waiting on a result —
+          which meant a node whose executor could not auto-extract was indistinguishable, for three
+          days, from a call in which nobody happened to say anything extractable.
+
+          Still not thrown. The caller is a call starting, and a watch that cannot be registered is
+          not a reason to interrupt one — the Extract button remains the whole feature without it.
+          So it goes somewhere a surface can choose to show.
+        */
+        setWatchProblem(error instanceof Error ? error.message : String(error));
+        console.warn('[transcribe] could not watch this call for auto-extraction', error);
       }
     } else if (next) {
+      setWatchProblem('This host cannot run a standing extraction watch.');
       console.info('[transcribe] host has no watchCollection — auto-extraction unavailable');
     }
   }
@@ -1101,6 +1124,14 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
     extractable: () => interpretation?.available() ?? false,
     /** Suggestions staged for review. Empty is the ordinary case — see `refreshProposals`. */
     proposals,
+    /**
+     * Why auto-extraction is not running here, or empty when it is.
+     *
+     * Distinct from `extractable`, which answers whether the node can interpret at all. A watch can
+     * fail on a node that interprets perfectly well — the host may simply not coordinate standing
+     * watches — and the two want different sentences.
+     */
+    watchProblem,
 
     // ── Live extraction ──────────────────────────────────────────────────────
     /*

@@ -5699,6 +5699,9 @@
         "hasActivity": {
           "type": "boolean"
         },
+        "capable": {
+          "type": "boolean"
+        },
         "shareDetail": {
           "type": "boolean"
         }

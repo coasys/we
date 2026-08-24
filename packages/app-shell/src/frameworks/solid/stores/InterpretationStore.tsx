@@ -79,6 +79,12 @@ export interface InterpretationStore {
   runningCount: Accessor<number>;
   /** Whether there is anything at all to show. The bar mounts on this. */
   hasActivity: Accessor<boolean>;
+  /**
+   * Whether this node can interpret at all — as distinct from being able to and having no model
+   * configured. False means no rebuild-free fix exists, so a UI should say so rather than offering
+   * a control that cannot work.
+   */
+  capable: Accessor<boolean>;
   /** Whether this agent is broadcasting its prompts and responses to the space. */
   shareDetail: Accessor<boolean>;
   /** Turn that broadcasting on or off. Takes the value so a `we-switch` can pass `$event.detail`. */
@@ -128,6 +134,14 @@ export function InterpretationStoreProvider(props: ParentProps) {
   const [shareDetail, setShareDetail] = createSignal(false);
   const [now, setNow] = createSignal(Date.now());
   const [dismissed, setDismissed] = createSignal<string[]>([]);
+  /*
+    Whether this node can interpret at all, as opposed to having no model configured.
+
+    Starts true and is corrected by the probe below. Optimistic because the alternative hides the
+    feature for the round trip it takes to answer, on every space change, including on every node
+    that can interpret perfectly well.
+  */
+  const [capable, setCapable] = createSignal(true);
 
   let relay: InterpretationRelay | null = null;
 
@@ -146,8 +160,30 @@ export function InterpretationStoreProvider(props: ParentProps) {
     relay = null;
     setRows([]);
     setDismissed([]);
+    // Back to optimistic, not to the previous space's answer: a personal space and a hosted one can
+    // sit behind different executors, so the last node's capabilities say nothing about this one's.
+    setCapable(true);
 
     if (!handle || !ports?.interpretation) return;
+
+    /*
+      Ask the executor what it can do, before anything offers it.
+
+      One round trip per space, and the reason it is here rather than inside the port is that the
+      answer has to be reactive: a module reads availability inside a derived value, and this
+      resolves a moment after the dataset changes. The port caches it too, for callers that are not
+      reactive at all.
+
+      Unawaited on purpose. Nothing below depends on the answer, and blocking the subscription setup
+      on a probe would delay the event stream for a node that is perfectly capable.
+    */
+    void ports.interpretation
+      .checkAvailability?.(handle)
+      .then(setCapable)
+      // A probe that fails to reach a conclusion leaves the optimistic default alone — the port
+      // makes the same choice, and for the same reason: hiding a working feature is worse than
+      // briefly offering one that turns out to be missing, which the call path now reports properly.
+      .catch(() => {});
 
     // No neighbourhood — a personal space has no peers to hear from. The local stream below still
     // runs, so a solo user watching their own extraction is unaffected.
@@ -279,6 +315,7 @@ export function InterpretationStoreProvider(props: ParentProps) {
     has no business matching on. It reads `label` and `running` instead.
   */
   provideModuleHostServices({
+    interpretationAvailable: () => capable(),
     interpretationActivity: () => activity(),
     interpretationShareDetail: () => shareDetail(),
     setInterpretationShareDetail: setShareDetail,
@@ -286,6 +323,7 @@ export function InterpretationStoreProvider(props: ParentProps) {
 
   const store: InterpretationStore = {
     activity,
+    capable,
     runningCount: createMemo(() => activity().filter((row) => row.running).length),
     hasActivity: createMemo(() => activity().length > 0),
     shareDetail,

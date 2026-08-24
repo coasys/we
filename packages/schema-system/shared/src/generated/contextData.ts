@@ -2200,6 +2200,7 @@ export const contextData: ContextData = {
         activity: { type: 'array' },
         runningCount: { type: 'number' },
         hasActivity: { type: 'boolean' },
+        capable: { type: 'boolean' },
         shareDetail: { type: 'boolean' },
       },
       actions: ['setShareDetail', 'dismissSettled'],

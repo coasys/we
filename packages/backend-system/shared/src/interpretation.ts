@@ -138,6 +138,30 @@ export interface InterpretationPort {
   available?(): boolean;
 
   /**
+   * Ask the **backend** whether it can interpret, rather than asking the client library.
+   *
+   * Exists because `available()` cannot answer honestly on its own. A client bundles a library
+   * whose methods exist whether or not the node it dials implements them, so a synchronous probe
+   * can only ever report "my own code has this function" — which is true on every node, including
+   * one that will refuse the call. That is not a hypothetical: it shipped, and a WE deployment
+   * offered Extract against a node whose executor predated the feature, failing with a raw RPC
+   * error where the whole point of `available()` was to prevent exactly that.
+   *
+   * Asynchronous because the only honest answer involves a round trip. Implementations should make
+   * that trip with the cheapest *read* in the same feature set — never by starting a real pass,
+   * which on this port means an LLM call — and should cache it, since the answer is a property of
+   * the node and changes only when it is rebuilt.
+   *
+   * A host calls this when the dataset changes and feeds the result back through `available()`.
+   * Optional, and a backend that omits it is taken at its word: absent, `available()` is all there
+   * is, which is the pre-existing behaviour.
+   *
+   * Returning `false` means "this node cannot interpret at all" — a different sentence from "no
+   * model is configured", which remains `available()`'s to report.
+   */
+  checkAvailability?(dataset: DatasetHandle): Promise<boolean>;
+
+  /**
    * Run one interpretation pass over turns the caller supplies.
    *
    * Rejects rather than returning empty when the backend has no usable model, so a caller can tell

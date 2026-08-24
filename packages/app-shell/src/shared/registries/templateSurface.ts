@@ -784,6 +784,10 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     member of the space already holds.
   */
   interpretationStore: {
+    // Not `presence` like the rest: this is a fact about the node, not about who is doing what on
+    // it, and a template reads it for the same reason it reads any other "can this host do X" —
+    // to decide whether to offer a control at all.
+    capable: state('content'),
     activity: state('presence'),
     runningCount: state('presence'),
     hasActivity: state('presence'),
