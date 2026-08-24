@@ -61,6 +61,15 @@ const STATUS_SURFACE = { bg: 'page', border: '1px solid border', shadow: 'md' } 
 const GLYPH_SIZE = 'sm';
 
 /**
+ * Carets are a size below the glyphs they sit beside.
+ *
+ * A disclosure arrow is punctuation, not content: at the status glyph's 24px it read as another
+ * thing to look at rather than as a hint about where the row goes. 16px is the size the prompt's
+ * own caret already used and looked right at, so the three carets in the bar now agree.
+ */
+const CARET_SIZE = 'xs';
+
+/**
  * A spinner while it runs, the outcome's own glyph once it stops.
  *
  * Three outcomes, three colours, and the middle one is the point: `done` is green because something
@@ -118,7 +127,10 @@ const runnerFace: SchemaNode = {
  */
 const passRow: SchemaNode = {
   type: 'Row',
-  props: { ay: 'center', gap: '200', width: '100%' },
+  // `flex: '1'` rather than `width: '100%'`: as a flex child the latter still shrinks to content,
+  // which left the caret sitting immediately after the text instead of at the row's end. Growing to
+  // fill pushes it to the right edge, where it lines up with the history row's caret below.
+  props: { ay: 'center', gap: '200', flex: '1' },
   children: [
     phaseIcon,
     runnerFace,
@@ -148,7 +160,7 @@ const passRow: SchemaNode = {
 const disclosureCaret: SchemaNode = {
   type: 'we-icon',
   props: {
-    size: GLYPH_SIZE,
+    size: CARET_SIZE,
     color: { $if: { condition: '$pass.hasDetail', then: 'text-muted', else: 'text-faint' } },
     name: {
       $if: {
@@ -170,142 +182,126 @@ function paneLabel(label: string): SchemaNode {
 }
 
 /**
- * The prompt — also JSON, but closed until asked for.
+ * One half of the exchange: a heading that opens it, and the JSON underneath.
  *
- * It looked like prose and is not: `build_interpretation_input` hands the model a JSON object
- * carrying the transcript, the target shapes and their hints. Rendered as text it was one enormous
- * escaped string, which is how it came to overflow the bar in the first place.
+ * Both halves are JSON and both are large, so they get the same treatment — the response is what the
+ * model said, the prompt is the object `build_interpretation_input` assembled from the transcript,
+ * the target shapes and their hints. Rendered as text either one is a single enormous escaped
+ * string, which is how the bar came to overflow in the first place.
  *
- * Closed by default because of the asymmetry between the two panes. The response is the answer —
- * short, and the reason somebody opened the row. The prompt is reference material, and it is mostly
- * the shape definitions, which are identical on every pass and dwarf the turns. Opening both left
- * the response below the fold with the prompt filling the screen above it.
+ * `CodeEditor` rather than `we-code` because folding is what makes a long document navigable, and it
+ * is the component the editor's own JSON panels use — one way of reading JSON in the app, not two.
  *
- * A disclosure rather than folding the JSON tree on load: folding would still need unfolding to read
- * anything, and it would mean teaching a shared design-system component a new option to serve one
- * panel. A closed pane says the same thing more plainly and costs a click only to the people who
- * want it.
+ * The label is the control. It is already the heading, and a separate button beside it would be a
+ * second thing to aim at for one behaviour.
  */
-const promptPane: SchemaNode = {
-  type: '$if',
-  props: {
-    condition: '$pass.prompt',
-    then: {
-      type: 'Column',
-      props: { gap: '100', width: '100%' },
-      children: [
-        {
-          // The label is the control. It is already the pane's heading, and a separate button beside
-          // it would be a second thing to aim at for one behaviour.
-          type: 'we-button',
-          props: {
-            variant: 'bare',
-            width: '100%',
-            onClick: { $toggleLocalIn: 'openPrompts', value: '$pass.passId' },
-          },
-          children: [
-            {
-              type: 'Row',
-              props: { ay: 'center', gap: '100', width: '100%' },
-              children: [
-                paneLabel('Prompt'),
-                {
-                  type: 'we-icon',
-                  props: {
-                    size: 'xs',
-                    color: 'text-faint',
-                    name: {
-                      $if: {
-                        condition: { $in: ['$pass.passId', { $local: 'openPrompts' }] },
-                        then: 'caret-up',
-                        else: 'caret-down',
-                      },
+function codePane(options: {
+  label: string;
+  /** The already-indented text, from the store — a schema has no `JSON.stringify`. */
+  value: string;
+  /** Resolves true while this pane is open. */
+  isOpen: SchemaNode | Record<string, unknown>;
+  /** The `$localState` array field this pane's toggle writes into. */
+  field: string;
+}): SchemaNode {
+  return {
+    type: '$if',
+    props: {
+      condition: options.value,
+      then: {
+        type: 'Column',
+        props: { gap: '100', width: '100%' },
+        children: [
+          {
+            type: 'we-button',
+            props: {
+              variant: 'bare',
+              width: '100%',
+              onClick: { $toggleLocalIn: options.field, value: '$pass.passId' },
+            },
+            children: [
+              {
+                type: 'Row',
+                props: { ay: 'center', gap: '100', width: '100%' },
+                children: [
+                  paneLabel(options.label),
+                  {
+                    type: 'we-icon',
+                    props: {
+                      size: CARET_SIZE,
+                      color: 'text-faint',
+                      name: { $if: { condition: options.isOpen, then: 'caret-up', else: 'caret-down' } },
                     },
                   },
+                ],
+              },
+            ],
+          },
+          {
+            type: '$if',
+            props: {
+              condition: options.isOpen,
+              enterTransition: { type: 'reveal', duration: 200 },
+              exitTransition: { type: 'reveal', duration: 160 },
+              then: {
+                type: 'CodeEditor',
+                props: {
+                  code: options.value,
+                  language: 'json',
+                  // Nothing here is editable: this is a record of an exchange that already happened,
+                  // and a pane accepting keystrokes would imply it could be corrected and re-run.
+                  readOnly: true,
+                  /*
+                    A fixed height, not a maximum.
+
+                    `.cm-editor` is `height: 100%`, and a percentage resolves against `auto` as
+                    `auto` — so under `max-height` alone the editor grew to its content, the wrapper
+                    grew with it, and nothing scrolled. Given a real height, CodeMirror's own
+                    `.cm-scroller` takes over, which is how it is meant to be sized.
+                  */
+                  styles: { height: '240px', width: '100%' },
                 },
-              ],
-            },
-          ],
-        },
-        {
-          type: '$if',
-          props: {
-            condition: { $in: ['$pass.passId', { $local: 'openPrompts' }] },
-            enterTransition: { type: 'reveal', duration: 200 },
-            exitTransition: { type: 'reveal', duration: 160 },
-            then: {
-              type: 'CodeEditor',
-              props: {
-                code: '$pass.prompt',
-                language: 'json',
-                readOnly: true,
-                /*
-              A fixed height, not a maximum.
-
-              `.cm-editor` is `height: 100%`, and a percentage resolves against `auto` as `auto` —
-              so under `max-height` alone the editor grew to its content, the wrapper grew with it,
-              and nothing scrolled. A long prompt then filled the viewport and pushed the response
-              off the bottom of the screen with no way to reach it.
-
-              Given a real height, CodeMirror's own `.cm-scroller` takes over and scrolls internally,
-              which is how it is meant to be sized.
-            */
-                styles: { height: '240px', width: '100%' },
               },
             },
           },
-        },
-      ],
+        ],
+      },
     },
-  },
-};
+  };
+}
 
 /**
- * The response — JSON, so rendered as JSON.
+ * The prompt, closed until asked for.
  *
- * An interpretation response is a structured document that arrives as one unbroken line. The store
- * indents it (a schema cannot); this gives it syntax colouring and fold arrows, so a reader can
- * collapse the instances they are not interested in rather than scrolling past them.
+ * It is reference material and mostly the shape definitions, which are identical on every pass and
+ * dwarf the turns. Opening it alongside the response put the answer below the fold.
  *
- * `CodeEditor` rather than `we-code` because folding is the thing that makes a long response
- * navigable, and it is the same component the editor's own JSON panels use — one way of reading
- * JSON in the app, not two.
+ * A disclosure rather than folding the JSON tree on load: folding would still need unfolding to read
+ * anything, and it would mean teaching a shared design-system component a new option to serve one
+ * panel.
  */
-const responsePane: SchemaNode = {
-  type: '$if',
-  props: {
-    condition: '$pass.response',
-    then: {
-      type: 'Column',
-      props: { gap: '100', width: '100%' },
-      children: [
-        paneLabel('Response'),
-        {
-          type: 'CodeEditor',
-          props: {
-            code: '$pass.response',
-            language: 'json',
-            // Nothing here is editable: this is a record of what a model said, and a pane that
-            // accepted keystrokes would imply the text could be corrected and re-run.
-            readOnly: true,
-            /*
-              A fixed height, not a maximum.
+const promptPane: SchemaNode = codePane({
+  label: 'Prompt',
+  value: '$pass.prompt',
+  field: 'openPrompts',
+  isOpen: { $in: ['$pass.passId', { $local: 'openPrompts' }] },
+});
 
-              `.cm-editor` is `height: 100%`, and a percentage resolves against `auto` as `auto` —
-              so under `max-height` alone the editor grew to its content, the wrapper grew with it,
-              and nothing scrolled. A long prompt then filled the viewport and pushed the response
-              off the bottom of the screen with no way to reach it.
-
-              Given a real height, CodeMirror's own `.cm-scroller` takes over and scrolls internally,
-              which is how it is meant to be sized.
-            */
-            styles: { height: '240px', width: '100%' },
-          },
-        },
-      ],
-    },
-  },
-};
+/**
+ * The response, open unless closed.
+ *
+ * The opposite default to the prompt, and tracked the opposite way round — a set of *closed* ones —
+ * because `$localState` cannot seed a per-row value for rows that come from data. The asymmetry in
+ * the state mirrors a real asymmetry in the content: this is the answer, and the reason somebody
+ * opened the row at all. Making them both start closed would cost two clicks to see anything in the
+ * common case.
+ */
+const responsePane: SchemaNode = codePane({
+  label: 'Response',
+  value: '$pass.response',
+  field: 'closedResponses',
+  isOpen: { $not: { $in: ['$pass.passId', { $local: 'closedResponses' }] } },
+});
 
 /**
  * "Let the space see this too."
@@ -481,7 +477,15 @@ const settledSection: SchemaNode = {
               type: 'Row',
               props: { ay: 'center', gap: '200', width: '100%' },
               children: [
-                { type: 'we-icon', props: { size: GLYPH_SIZE, name: 'check-circle', color: 'text-faint' } },
+                /*
+                  A sparkle, not a tick.
+
+                  A tick here said "these succeeded", which is both wrong — some of them found
+                  nothing, some failed — and a repeat of the per-row glyph one level down. The row
+                  is about extraction having happened, so the icon names the activity rather than
+                  grading it, and the ticks stay where they mean something.
+                */
+                { type: 'we-icon', props: { size: GLYPH_SIZE, name: 'sparkle', color: 'text-faint' } },
                 {
                   type: 'we-text',
                   props: { fontSize: '200', color: 'text-muted', flex: '1', textAlign: 'left' },
@@ -500,7 +504,7 @@ const settledSection: SchemaNode = {
                 {
                   type: 'we-icon',
                   props: {
-                    size: GLYPH_SIZE,
+                    size: CARET_SIZE,
                     color: 'text-muted',
                     name: { $if: { condition: { $local: 'historyOpen' }, then: 'caret-up', else: 'caret-down' } },
                   },
@@ -570,6 +574,8 @@ export const extractionStatus: SchemaNode = {
          * somebody asks — otherwise it fills the screen above the response they opened the row for.
          */
         openPrompts: { type: 'array', initial: [] },
+        /** Which responses have been closed — see `responsePane` on why this one is inverted. */
+        closedResponses: { type: 'array', initial: [] },
         /**
          * Whether the finished-passes history is open.
          *
