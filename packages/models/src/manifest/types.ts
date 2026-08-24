@@ -247,6 +247,7 @@ export interface SpaceModel extends WeNodeModel {
   defaultThemeId: string;
   enabledModules: string;
   autoInterpret: boolean;
+  shareExtractionDetail: boolean;
   location?: LocationBlockModel;
   setLocation(value: LocationBlockModel): Promise<unknown>;
 }

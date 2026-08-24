@@ -71,6 +71,24 @@ export class Space extends WeNode {
   @Property({ through: 'we://auto_interpret' })
   autoInterpret: boolean = false;
 
+  /**
+   * Whether extraction passes broadcast their prompt and response to the rest of the space.
+   *
+   * A property of the space for the same reason `autoInterpret` is, though a different one than
+   * might be assumed. It is not about secrecy: in a call the prompt is built from a transcript
+   * every participant already holds, so a member sharing theirs reveals nothing the others lack.
+   *
+   * It is about the state being *collective*. "I share and you do not" is an asymmetry with no
+   * use — the reason to turn this on is that a space is working on extraction and wants to see
+   * what it is doing, which is a decision about the space rather than about one member.
+   *
+   * Defaults off because the payload is tens of KB per pass and rides the ephemeral signalling
+   * transport, which exists for small last-write-wins messages. That is a poor default to impose
+   * on every space forever, and a very reasonable thing to switch on for an afternoon.
+   */
+  @Property({ through: 'we://share_extraction_detail' })
+  shareExtractionDetail: boolean = false;
+
   @HasOne(() => LocationBlock, { through: 'we://location' })
   location?: LocationBlock;
 }

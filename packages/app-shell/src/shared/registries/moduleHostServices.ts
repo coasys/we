@@ -75,9 +75,6 @@ export interface ModuleHostServices {
    * never re-read.
    */
   interpretationAvailable?: () => boolean;
-  /** Whether this agent broadcasts its model exchanges to the space, and the switch for it. */
-  interpretationShareDetail?: () => boolean;
-  setInterpretationShareDetail?: (share: boolean) => void;
   /** The profile cache, so a module can put a face to an agent id. See `ModuleIdentityAccess`. */
   identities?: ModuleIdentityAccess;
   /** Write a record into the current dataset — the host's `model.create`, in imperative form. */
@@ -209,10 +206,6 @@ export function createModuleStoreDeps(framework: {
         neither is a state worth a module branching on.
       */
       activity: () => services.interpretationActivity?.() ?? [],
-      // False where the host publishes nothing, which is the honest answer: a host with no feed
-      // broadcasts nothing, so a module offering the switch would be offering a no-op.
-      shareDetail: () => services.interpretationShareDetail?.() ?? false,
-      setShareDetail: (share) => services.setInterpretationShareDetail?.(share),
       proposals: async () => {
         const dataset = services.dataset?.();
         if (!dataset || !services.interpretation) return [];

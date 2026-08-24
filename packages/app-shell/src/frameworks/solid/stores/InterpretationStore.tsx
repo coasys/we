@@ -26,6 +26,7 @@ import { provideModuleHostServices } from '@shared/registries/moduleHostServices
 import { useDatasetStore } from '@solid/stores/DatasetStore';
 import { useProfileStore } from '@solid/stores/ProfileStore';
 import { useSessionStore } from '@solid/stores/SessionStore';
+import { useSpaceStore } from '@solid/stores/SpaceStore';
 import type { InterpretationActivity, InterpretationPhase, InterpretationRelay } from '@we/backend-shared';
 import {
   byActivityInterest,
@@ -85,15 +86,6 @@ export interface InterpretationStore {
    * a control that cannot work.
    */
   capable: Accessor<boolean>;
-  /** Whether this agent is broadcasting its prompts and responses to the space. */
-  shareDetail: Accessor<boolean>;
-  /**
-   * Turn that broadcasting on or off. Takes the value so a `we-switch` can pass `$event.detail`.
-   *
-   * Enabling also re-broadcasts this agent's current rows — see the implementation for why that is
-   * not optional.
-   */
-  setShareDetail: (share: boolean) => void;
   /** Forget every settled row, leaving anything still running. What a "clear" affordance calls. */
   dismissSettled: () => void;
 }
@@ -156,9 +148,18 @@ export function InterpretationStoreProvider(props: ParentProps) {
   const session = useSessionStore();
   const datasetStore = useDatasetStore();
   const profileStore = useProfileStore();
+  const spaceStore = useSpaceStore();
 
   const [rows, setRows] = createSignal<InterpretationActivity[]>([]);
-  const [shareDetail, setShareDetail] = createSignal(false);
+  /*
+    Whether this space shares extraction detail, read from the space rather than held here.
+
+    It was a local signal, which made it per-device and lost on reload — and, worse, scoped the
+    decision to one agent when the useful state is collective: "I share and you do not" is an
+    asymmetry with no use. It lives on the Space now, beside `autoInterpret`, so it persists, syncs,
+    and is set once where somebody would look for it.
+  */
+  const shareDetail = () => spaceStore.shareExtractionDetail();
   const [now, setNow] = createSignal(Date.now());
   const [dismissed, setDismissed] = createSignal<string[]>([]);
   /*
@@ -281,6 +282,21 @@ export function InterpretationStoreProvider(props: ParentProps) {
     onCleanup(() => clearInterval(timer));
   });
 
+  /*
+    Re-broadcast this agent's rows when the space turns sharing on.
+
+    The relay reads the flag as it sends, and a settled pass sends nothing further — so without this
+    the setting would reach every pass except the ones already on screen, which are precisely the
+    ones somebody turned it on to look at. It runs on the space's value now rather than a local
+    switch, so it fires wherever that gets flipped, including on another member's machine.
+  */
+  let wasSharing = false;
+  createEffect(() => {
+    const sharing = shareDetail();
+    if (sharing && !wasSharing) relay?.resend();
+    wasSharing = sharing;
+  });
+
   /**
    * When each pass was first seen, which is what elapsed counts from.
    *
@@ -344,8 +360,6 @@ export function InterpretationStoreProvider(props: ParentProps) {
   provideModuleHostServices({
     interpretationAvailable: () => capable(),
     interpretationActivity: () => activity(),
-    interpretationShareDetail: () => shareDetail(),
-    setInterpretationShareDetail: setShareDetail,
   });
 
   const store: InterpretationStore = {
@@ -353,19 +367,6 @@ export function InterpretationStoreProvider(props: ParentProps) {
     capable,
     runningCount: createMemo(() => activity().filter((row) => row.running).length),
     hasActivity: createMemo(() => activity().length > 0),
-    shareDetail,
-    /*
-      Turning it on reaches the passes already on screen, not only the next one.
-
-      The relay reads the flag when it sends, and a finished pass sends nothing further — so without
-      the resend, enabling sharing would apply to every pass except the one somebody was looking at
-      when they enabled it. The switch lives under a prompt they have open; that pass is the whole
-      reason they touched it.
-    */
-    setShareDetail: (share: boolean) => {
-      setShareDetail(share);
-      if (share) relay?.resend();
-    },
     // Only the settled ones, and only from this view: a running pass is not this agent's to
     // dismiss, and the rows themselves belong to whoever is running them.
     dismissSettled: () =>

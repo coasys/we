@@ -4674,6 +4674,13 @@
           "predicate": "we://auto_interpret",
           "required": false,
           "default": "false"
+        },
+        {
+          "name": "shareExtractionDetail",
+          "type": "boolean",
+          "predicate": "we://share_extraction_detail",
+          "required": false,
+          "default": "false"
         }
       ],
       "relations": [
@@ -5701,12 +5708,9 @@
         },
         "capable": {
           "type": "boolean"
-        },
-        "shareDetail": {
-          "type": "boolean"
         }
       },
-      "actions": ["setShareDetail", "dismissSettled"]
+      "actions": ["dismissSettled"]
     },
     {
       "name": "presenceStore",
@@ -6351,6 +6355,9 @@
         },
         "autoInterpret": {
           "type": "boolean"
+        },
+        "shareExtractionDetail": {
+          "type": "boolean"
         }
       },
       "actions": [
@@ -6372,6 +6379,7 @@
         "setSpaceDefaultTheme",
         "setModuleEnabled",
         "setAutoInterpret",
+        "setShareExtractionDetail",
         "setModuleInstalled",
         "setModuleVisible",
         "setSpaceTemplateOverride",

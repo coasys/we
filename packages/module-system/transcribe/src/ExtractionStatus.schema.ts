@@ -306,51 +306,6 @@ const responsePane: SchemaNode = codePane({
 });
 
 /**
- * "Let the space see this too."
- *
- * Offered here, beneath somebody's own exchange, rather than in settings — because this is the
- * moment the question arises. You are reading what the model was asked and what it answered; the
- * four other people in the call are looking at a row that says the same thing happened and cannot
- * open it.
- *
- * The label names both halves. It used to say "your prompts", which was simply inaccurate — the
- * relay sends the response as well, and a switch that under-describes what it shares is the one
- * kind of inaccuracy worth being pedantic about.
- *
- * Only on a pass of this agent's, since it governs what *this* machine broadcasts and would be
- * meaningless attached to somebody else's row. It applies to every pass this agent runs, not just
- * the one it is under, which the caption says outright: a switch that looked per-row would be a
- * promise the store cannot keep.
- */
-const shareToggle: SchemaNode = {
-  type: '$if',
-  props: {
-    condition: '$pass.mine',
-    then: {
-      type: 'Row',
-      props: { ay: 'center', ax: 'between', gap: '300', width: '100%', pt: '100' },
-      children: [
-        {
-          type: 'we-text',
-          props: { fontSize: '200', color: 'text-muted' },
-          children: ['Share prompts and responses with this space'],
-        },
-        {
-          type: 'we-switch',
-          props: {
-            size: 'sm',
-            checked: { $store: 'modules.transcribe.shareDetail' },
-            // `$event.detail` passed bare. Wrapping it in an operator would resolve at render time
-            // and send a constant — the trap `setModuleVisible` documents for the same reason.
-            onChange: { $action: 'modules.transcribe.setShareDetail', args: ['$event.detail'] },
-          },
-        },
-      ],
-    },
-  },
-};
-
-/**
  * What opening a row shows.
  *
  * `$if`, so a closed row holds nothing. That is a reversal: this was `$animate` precisely so the
@@ -372,7 +327,6 @@ const passDetail: SchemaNode = {
       children: [
         promptPane,
         responsePane,
-        shareToggle,
         {
           type: '$if',
           props: {
@@ -432,7 +386,10 @@ const passEntry: SchemaNode = {
               $if: {
                 condition: '$pass.mine',
                 then: 'Nothing sent to the model yet',
-                else: 'Only the person running a pass sees its prompt and response',
+                // Names the way out. This is the one moment somebody wants the setting, so it is
+                // the one moment worth mentioning that it exists — it lives in space settings, and
+                // nobody goes looking there for a control they have never seen.
+                else: 'Only the runner sees this — a space can share extraction detail in its settings',
               },
             },
           },

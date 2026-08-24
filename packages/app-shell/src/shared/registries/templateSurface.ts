@@ -427,6 +427,8 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
       indicator that silently never rendered.
     */
     autoInterpret: state('space-settings'),
+    shareExtractionDetail: state('space-settings'),
+    setShareExtractionDetail: action('space-settings'),
     templateOverrideOptions: state('space-admin'),
     themeOverrideOptions: state('space-admin'),
     /*
@@ -779,9 +781,8 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     survives a refresh and none of it is queryable, so classifying it with the durable content a
     template reads would be claiming a permanence it does not have.
 
-    `setShareDetail` is the one member that changes what leaves this machine, and it is still
-    presence-tier: what it broadcasts is this agent's own prompts, built from a transcript every
-    member of the space already holds.
+    What crosses the wire is governed by `spaceStore.shareExtractionDetail`, which is a
+    space-settings concern and classified there — this store only reports.
   */
   interpretationStore: {
     // Not `presence` like the rest: this is a fact about the node, not about who is doing what on
@@ -791,8 +792,6 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     activity: state('presence'),
     runningCount: state('presence'),
     hasActivity: state('presence'),
-    shareDetail: state('presence'),
-    setShareDetail: action('presence'),
     dismissSettled: action('view-state'),
   },
 

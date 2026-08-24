@@ -1699,6 +1699,7 @@ Space extends WeNode:
   - defaultThemeId: string [we://default_theme_id]
   - enabledModules: string [we://enabled_modules]
   - autoInterpret: boolean = false [we://auto_interpret]
+  - shareExtractionDetail: boolean = false [we://share_extraction_detail]
   Relations:
   - location: HasOne → LocationBlock [we://location]
 
@@ -1943,9 +1944,7 @@ InterpretationStore:
   - runningCount: number — how many passes are still in flight. What a collapsed "N extractions running" summary counts
   - hasActivity: boolean — whether there is anything to show at all. Counts settled rows too, so a bar gated on it does not vanish the instant a pass finishes and take its result with it
   - capable: boolean — whether this node can interpret AT ALL, as distinct from being able to and having no model configured. Answered by asking the backend rather than by testing the client library, so it is false against a node whose executor predates the extraction stack. False means no fix exists from inside the app — say so rather than offering a control that cannot work
-  - shareDetail: boolean — whether this agent broadcasts its prompts and responses to the rest of the space. Off by default on bandwidth grounds, not secrecy: in a call the prompt is built from a transcript every participant already holds
 - Actions:
-  - setShareDetail(share: boolean): turns that broadcasting on or off. Takes the value so a we-switch can pass `$event.detail` bare — wrapping it in an operator would resolve at render time and send a constant
   - dismissSettled(): forgets every finished row, leaving anything still running. A running pass is not this agent’s to dismiss
 
 PresenceStore:
@@ -2224,6 +2223,7 @@ SpaceStore:
   - unreadNodeIds: unknown
   - myMentions: unknown
   - autoInterpret: unknown
+  - shareExtractionDetail: unknown
 - Actions:
   - createSpace(name, description, access: 'personal' | 'shared', discovery: 'hidden' | 'listed', avatarFile?, coverImageFile?, location?): creates a new space with full setup
   - joinSpace(id: string, focus = true): joins a shared space by share link, neighbourhood URL or CID, or focuses it if already joined. Pass focus: false to join without navigating there — for a caller that needs the dataset present rather than open, which is how the marketplace reads its own dataset without moving you out of the space you are in. Rejects when the join could not be completed, so onSuccess means what it says; watch joiningSpace/joinSlow/joinError for what to show while it runs. A join whose network call times out keeps going: the backend usually finishes anyway, and this waits for that before believing the failure
@@ -2243,6 +2243,7 @@ SpaceStore:
   - setSpaceDefaultTheme(themeId: string, spaceUuid?): sets the theme members see when they enter that space
   - setModuleEnabled(moduleId: string, enabled: boolean, spaceUuid?): turns a feature module on or off for a space; writes the resolved list, so the first toggle also pins whatever was on by fallback. Omit spaceUuid for the space on screen
   - setAutoInterpret(): unknown
+  - setShareExtractionDetail(): unknown
   - setModuleInstalled(moduleId: string, installed: boolean): turns a module on or off for this agent in every space. Personal — writes AgentSettings.installedModules in the root dataset, so no other member sees it
   - setModuleVisible(moduleId: string, visible: boolean, spaceUuid?): shows or hides a module for this agent in one space, without changing what the community runs. Private: written to the root dataset, never to the space. Phrased positively so a switch can pass `$event.detail` bare — wrapping it in an operator such as `$not` would evaluate at render time and send a constant
   - setSpaceTemplateOverride(templateId: string, spaceUuid?): sets the template THIS AGENT sees in one space, overriding the community's default. Three values: 'space-default' follows the space, 'agent-default' follows your own global default (tracking later changes to it), or a concrete template id pins that one. Private, and applied immediately when that space is the one on screen. Note the sentinels are named values, not '' — the ORM skips empty strings on update, so '' cannot clear a property

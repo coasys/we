@@ -704,21 +704,6 @@ export interface ModuleInterpretationAccess {
    */
   activity: () => InterpretationActivitySummary[];
 
-  /**
-   * Whether this agent's prompts and responses are being broadcast to the rest of the space.
-   *
-   * Off by default, and the reason is bandwidth rather than secrecy: an exchange is tens of KB per
-   * pass and interesting for about five minutes, while in a call the prompt is built from a
-   * transcript every participant already holds. So it is a switch worth offering to a space that is
-   * actively working on extraction, not a disclosure to be guarded.
-   *
-   * Reactive, like {@link activity}.
-   */
-  shareDetail: () => boolean;
-  /** Turn that broadcasting on or off. Takes the value, so a `we-switch` can pass `$event.detail`
-   *  straight through — wrapping it in `$not` would evaluate at render time and send a constant. */
-  setShareDetail: (share: boolean) => void;
-
   /** Suggestions staged in this dataset, awaiting a human. */
   proposals: () => Promise<InterpretationProposal[]>;
   /** Commit a staged suggestion — the whole record, or one property by name. */
