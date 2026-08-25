@@ -29,7 +29,7 @@
     "@we/cli": "workspace:*",
     "concurrently": "^9.1.2",
     "typescript": "^5.7.2",
-    "vite": "^6.0.7",
+    "vite": "^8.2.2",
     "vite-plugin-solid": "^2.11.14",
     "wait-on": "^8.0.1"
   }
