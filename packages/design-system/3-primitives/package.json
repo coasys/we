@@ -103,7 +103,7 @@
     "eslint-plugin-lit": "^2.1.1",
     "jsdom": "^28.0.0",
     "prettier": "3.9.4",
-    "storybook": "8.4.6",
+    "storybook": "10.5.10",
     "tsup": "^8.5.1",
     "tsx": "^4.21.0",
     "vitest": "^4.0.15"
