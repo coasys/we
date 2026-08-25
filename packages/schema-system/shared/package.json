@@ -34,7 +34,7 @@
     "@types/node": "^26.2.0",
     "@vitest/coverage-v8": "^4.0.15",
     "@we/cli": "workspace:*",
-    "jsdom": "^27.2.0",
+    "jsdom": "^30.0.1",
     "tsup": "^8.5.1",
     "tsx": "^4.21.0",
     "vitest": "^4.0.15"
