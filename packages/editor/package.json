@@ -24,16 +24,16 @@
   "peerDependencies": {
     "@we/components": "workspace:*",
     "@we/schema-solid": "workspace:*",
-    "solid-js": "^1.9.5",
+    "solid-js": "^1.9.15",
     "@we/primitives": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^26.2.0",
     "@we/components": "workspace:*",
     "@we/schema-solid": "workspace:*",
-    "solid-js": "^1.9.5",
+    "solid-js": "^1.9.15",
     "@we/primitives": "workspace:*",
-    "vitest": "^4.0.15"
+    "vitest": "^4.1.11"
   },
   "scripts": {
     "test": "vitest run",

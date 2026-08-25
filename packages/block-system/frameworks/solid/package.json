@@ -28,24 +28,24 @@
   "dependencies": {
     "@we/block-shared": "workspace:*",
     "@we/models": "workspace:*",
-    "@lexical/list": "^0.30.0",
-    "@lexical/markdown": "^0.30.0",
-    "@lexical/rich-text": "^0.30.0",
-    "@lexical/utils": "^0.30.0",
-    "lexical": "^0.30.0",
+    "@lexical/list": "^0.49.0",
+    "@lexical/markdown": "^0.49.0",
+    "@lexical/rich-text": "^0.49.0",
+    "@lexical/utils": "^0.49.0",
+    "lexical": "^0.49.0",
     "lexical-solid": "^0.21.0"
   },
   "peerDependencies": {
     "@we/components": "^0.1.0",
-    "solid-js": "^1.9.5"
+    "solid-js": "^1.9.15"
   },
   "devDependencies": {
     "@we/cli": "workspace:*",
     "@we/components": "workspace:*",
     "@we/primitives": "workspace:*",
     "esbuild-plugin-solid": "^0.6.0",
-    "sass": "^1.92.1",
-    "solid-js": "^1.9.5",
+    "sass": "^1.103.1",
+    "solid-js": "^1.9.15",
     "tsup": "^8.5.1"
   },
   "publishConfig": {

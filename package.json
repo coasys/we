@@ -30,15 +30,15 @@
   "packageManager": "pnpm@10.18.3",
   "devDependencies": {
     "@eslint/js": "^9.17.0",
-    "@typescript-eslint/eslint-plugin": "^8.17.0",
-    "@typescript-eslint/parser": "^8.17.0",
+    "@typescript-eslint/eslint-plugin": "^8.67.0",
+    "@typescript-eslint/parser": "^8.67.0",
     "eslint": "^9.16.0",
     "eslint-config-prettier": "^9.1.0",
     "eslint-plugin-prettier": "^5.2.1",
     "eslint-plugin-simple-import-sort": "^12.1.1",
     "husky": "^9.1.7",
     "lint-staged": "^17.3.0",
-    "prettier": "3.9.4",
+    "prettier": "3.9.6",
     "prettier-plugin-sort-package-json": "^1.1.0",
     "stylelint": "^16.24.0",
     "stylelint-config-standard": "^39.0.0",
@@ -48,7 +48,7 @@
     "overrides": {
       "@coasys/ad4m": "0.13.0-test-interpretation-2",
       "@coasys/ad4m-connect": "0.13.0-test-interpretation-2",
-      "prettier": "3.9.4"
+      "prettier": "3.9.6"
     }
   }
 }

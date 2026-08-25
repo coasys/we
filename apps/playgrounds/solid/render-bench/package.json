@@ -19,13 +19,13 @@
     "@we/schema-shared": "workspace:*",
     "@we/schema-solid": "workspace:*",
     "@we/tokens": "workspace:*",
-    "solid-js": "^1.9.5"
+    "solid-js": "^1.9.15"
   },
   "devDependencies": {
-    "happy-dom": "^20.8.4",
+    "happy-dom": "^20.11.6",
     "typescript": "^5.7.2",
     "vite": "^6.0.7",
-    "vite-plugin-solid": "^2.11.11",
-    "vitest": "^4.0.15"
+    "vite-plugin-solid": "^2.11.14",
+    "vitest": "^4.1.11"
   }
 }

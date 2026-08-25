@@ -56,8 +56,8 @@
     "@we/themes": "workspace:*",
     "@we/tokens": "workspace:*",
     "@we/widgets": "workspace:*",
-    "solid-js": "^1.9.5",
-    "three": "^0.176.0",
+    "solid-js": "^1.9.15",
+    "three": "^0.185.1",
     "@we/backend-shared": "workspace:*",
     "@we/module-shared": "workspace:*",
     "@we/module-transcribe": "workspace:*",
@@ -76,13 +76,13 @@
     "@solidjs/testing-library": "^0.8.10",
     "@types/node": "^26.2.0",
     "@types/three": "^0.176.0",
-    "@vitest/coverage-v8": "^4.0.15",
+    "@vitest/coverage-v8": "^4.1.11",
     "@we/backend-inmemory": "workspace:*",
     "@we/cli": "workspace:*",
     "jsdom": "^27.2.0",
     "tsup": "^8.5.1",
     "vite": "^6.0.7",
-    "vite-plugin-solid": "^2.11.11",
-    "vitest": "^4.0.15"
+    "vite-plugin-solid": "^2.11.14",
+    "vitest": "^4.1.11"
   }
 }
