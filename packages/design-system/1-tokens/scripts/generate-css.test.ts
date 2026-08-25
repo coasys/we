@@ -5,6 +5,7 @@
  */
 import { describe, expect, it } from 'vitest';
 
+import { breakpoint } from '../src/breakpoint';
 import { color } from '../src/color';
 import { component } from '../src/component';
 import { font } from '../src/font';
@@ -13,6 +14,7 @@ import { avatarSize, componentHeight, radius, size } from '../src/size';
 import { space } from '../src/space';
 import { zIndex } from '../src/z-index';
 import {
+  generateBreakpointCSS,
   generateColorCSS,
   generateComponentCSS,
   generateFontCSS,
@@ -32,6 +34,10 @@ describe('token CSS generation', () => {
 
   it('size.css — sizes, radii, avatar sizes, component heights', () => {
     expect(generateSizeCSS(size, radius, avatarSize, componentHeight)).toMatchSnapshot();
+  });
+
+  it('breakpoint.css — the tier thresholds', () => {
+    expect(generateBreakpointCSS(breakpoint)).toMatchSnapshot();
   });
 
   it('space.css', () => {

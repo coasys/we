@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 
 import type { animation as animationTokens } from '../src/animation.js';
 import type { border as borderTokens } from '../src/border.js';
+import type { breakpoint as breakpointTokens } from '../src/breakpoint.js';
 import type { color as colorTokens } from '../src/color.js';
 import { CHROMA_CEILING, RAMP, STATE_STEPS } from '../src/color.js';
 import type { component as componentTokens } from '../src/component.js';
@@ -36,6 +37,7 @@ export async function generateCSS() {
     const {
       animation,
       border,
+      breakpoint,
       color,
       component,
       font,
@@ -53,6 +55,7 @@ export async function generateCSS() {
     const files: Record<string, string> = {
       'animation.css': generateAnimationCSS(animation),
       'border.css': generateBorderCSS(border),
+      'breakpoint.css': generateBreakpointCSS(breakpoint),
       'color.css': generateColorCSS(color),
       'component.css': generateComponentCSS(component),
       'font.css': generateFontCSS(font),
@@ -137,6 +140,30 @@ ${aliasVars(['--we-border-color', '--we-border-color-strong'])}
      with it. There is deliberately no separate theme key: two ways to say one thing is how they
      drift, and the role is the one that belongs to the vocabulary. */
 ${aliasVars(['--we-ring-color'])}
+}`;
+
+  return css;
+}
+
+export function generateBreakpointCSS(breakpoint: typeof breakpointTokens) {
+  const vars = Object.entries(breakpoint)
+    .map(([key, value]) => `  --we-breakpoint-${key}: ${value};`)
+    .join('\n');
+
+  /*
+    Emitted as variables even though no query can read one.
+
+    A query condition takes a literal — `@container (min-width: var(--x))` never matches — so the
+    thresholds that actually drive `*UpProps` are generated as literals by the design-system
+    families that own those rules. These variables exist for the other half of the job: a template
+    or a theme that wants to line a `maxWidth`, a scroll snap or a grid template up with the width
+    at which the arrangement changes, and should not do that by retyping the number.
+  */
+  const css = `/* BREAKPOINT TOKENS - Generated from JS tokens */
+
+:root {
+  /* Widths at which a layout may change arrangement — see src/breakpoint.ts */
+${vars}
 }`;
 
   return css;
@@ -622,6 +649,7 @@ function generateCombinedCSS(outputDir: string) {
 /* Design token variables */
 @import './animation.css';
 @import './border.css';
+@import './breakpoint.css';
 @import './color.css';
 @import './component.css';
 @import './font.css';
