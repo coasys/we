@@ -3242,6 +3242,16 @@
           "name": "rows",
           "type": "string",
           "optional": true
+        },
+        {
+          "name": "childAspect",
+          "type": "string | number",
+          "optional": true
+        },
+        {
+          "name": "onArrange",
+          "type": "((tiling: Tiling) => void)",
+          "optional": true
         }
       ],
       "source": "components"
@@ -5181,6 +5191,15 @@
       "values": {
         "base": "color.neutral['100']",
         "strong": "color.neutral['200']"
+      }
+    },
+    {
+      "name": "breakpoint",
+      "type": "Record<BreakpointToken, string>",
+      "values": {
+        "sm": "640px",
+        "md": "900px",
+        "lg": "1200px"
       }
     },
     {

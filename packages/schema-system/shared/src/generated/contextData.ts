@@ -1163,6 +1163,8 @@ export const contextData: ContextData = {
         { name: 'columns', type: 'number', optional: true },
         { name: 'minChildWidth', type: 'string', optional: true },
         { name: 'rows', type: 'string', optional: true },
+        { name: 'childAspect', type: 'string | number', optional: true },
+        { name: 'onArrange', type: '((tiling: Tiling) => void)', optional: true },
       ],
       source: 'components',
     },
@@ -1860,6 +1862,7 @@ export const contextData: ContextData = {
       type: 'Record<BorderColorToken, string>',
       values: { base: "color.neutral['100']", strong: "color.neutral['200']" },
     },
+    { name: 'breakpoint', type: 'Record<BreakpointToken, string>', values: { sm: '640px', md: '900px', lg: '1200px' } },
     { name: 'color.base', type: 'Record<ColorBaseToken, HexColor>', values: { white: '#ffffff', black: '#000000' } },
     {
       name: 'color.config',
