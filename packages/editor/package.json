@@ -1,8 +1,12 @@
 {
   "name": "@we/editor",
   "version": "0.1.0",
-  "description": "WE's template and theme editing surface \u2014 embeddable in any application that satisfies the EditorHost port",
+  "description": "WE's template and theme editing surface — embeddable in any application that satisfies the EditorHost port",
   "type": "module",
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
   "exports": {
     ".": {
       "import": "./src/index.ts",
@@ -24,19 +28,15 @@
   "peerDependencies": {
     "@we/components": "workspace:*",
     "@we/schema-solid": "workspace:*",
-    "solid-js": "^1.9.5",
+    "solid-js": "^1.9.15",
     "@we/primitives": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^26.2.0",
     "@we/components": "workspace:*",
     "@we/schema-solid": "workspace:*",
-    "solid-js": "^1.9.5",
+    "solid-js": "^1.9.15",
     "@we/primitives": "workspace:*",
-    "vitest": "^4.0.15"
-  },
-  "scripts": {
-    "test": "vitest run",
-    "typecheck": "tsc --noEmit"
+    "vitest": "^4.1.11"
   }
 }

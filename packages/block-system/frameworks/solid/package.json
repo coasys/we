@@ -37,15 +37,15 @@
   },
   "peerDependencies": {
     "@we/components": "^0.1.0",
-    "solid-js": "^1.9.5"
+    "solid-js": "^1.9.15"
   },
   "devDependencies": {
     "@we/cli": "workspace:*",
     "@we/components": "workspace:*",
     "@we/primitives": "workspace:*",
     "esbuild-plugin-solid": "^0.6.0",
-    "sass": "^1.92.1",
-    "solid-js": "^1.9.5",
+    "sass": "^1.103.1",
+    "solid-js": "^1.9.15",
     "tsup": "^8.5.1"
   },
   "publishConfig": {

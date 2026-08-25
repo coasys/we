@@ -43,13 +43,13 @@
     "@we/cli": "workspace:*",
     "@we/tokens": "workspace:*",
     "jsdom": "^30.0.1",
-    "postcss": "^8.4.23",
+    "postcss": "^8.5.26",
     "postcss-cli": "^10.1.0",
     "postcss-import": "^15.1.0",
     "rimraf": "^6.1.0",
     "tsup": "^8.5.1",
     "typescript": "^5.7.2",
-    "vitest": "^4.0.15"
+    "vitest": "^4.1.11"
   },
   "publishConfig": {
     "access": "public"

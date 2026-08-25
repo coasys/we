@@ -1,7 +1,7 @@
 {
   "name": "@we/module-transcribe",
   "version": "0.1.0",
-  "description": "Transcription feature module \u2014 speech to text during calls",
+  "description": "Transcription feature module — speech to text during calls",
   "license": "MIT",
   "type": "module",
   "scripts": {
@@ -36,6 +36,6 @@
     "@we/backend-shared": "workspace:*",
     "tsup": "^8.5.1",
     "typescript": "^5.7.2",
-    "vitest": "^4.0.15"
+    "vitest": "^4.1.11"
   }
 }
