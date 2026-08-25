@@ -29,6 +29,21 @@ ad4m-executor = { path = "{{AD4M_EXECUTOR_PATH}}" }
 uuid = { version = "0.8", features = ["v4"] }
 dirs = "5"
 
+# `enable_media` in src/lib.rs reaches into the GTK webview to grant camera/microphone access,
+# which needs webkit2gtk directly — it is not reachable through tauri's re-exports. Linux only,
+# matching the `#[cfg(target_os = "linux")]` on that function.
+#
+# The version is pinned to exactly what wry declares (`=2.0.2`, see wry's own Cargo.toml) so this
+# resolves to the same copy tauri's webview already uses. A second webkit2gtk would compile and
+# then hand back `WebView` values the running webview does not recognise as its own.
+#
+# This lived only in a locally-generated Cargo.toml until now: Cargo.toml is gitignored and built
+# from this template, so the dependency vanished the next time anyone regenerated it, and
+# `use webkit2gtk::…` stopped resolving. The template is the tracked source of truth — a Rust
+# dependency that is not in here does not exist.
+[target.'cfg(target_os = "linux")'.dependencies]
+webkit2gtk = { version = "=2.0.2", features = ["v2_40"] }
+
 # Must mirror ad4m's workspace-root `[patch.crates-io]`.
 #
 # Holochain 0.7.0-dev.16 needs kitsune2 code that was never published, so ad4m redirects the whole
