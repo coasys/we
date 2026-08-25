@@ -5,17 +5,27 @@ updates:
   - package-ecosystem: npm
     directory: '/'
     schedule:
-      interval: weekly
-      day: monday
-    open-pull-requests-limit: 5
+      interval: monthly
+    open-pull-requests-limit: 3
     labels: ['dependencies']
-    # One PR for the routine noise, individual PRs for majors — which are the ones that
-    # actually need reading. Ungrouped, a workspace this size produces a dozen PRs a week
-    # and they stop being read at all.
+    # Two PRs, not a dozen: one for the routine noise, one listing every available major.
+    #
+    # Majors were on individual PRs until we watched what that does. The limit below is a cap on
+    # OPEN pull requests, not on work outstanding, so a backlog of majors sits invisible behind it
+    # and refills the moment you merge anything — clearing 22 packages immediately surfaced five
+    # more that had been queued the whole time, which reads as a treadmill rather than progress.
+    # Grouped, the majors arrive as one readable list of what is available.
+    #
+    # The trade-off is that a grouped major PR is not individually mergeable. That matches how
+    # they actually get handled: a major is a migration done on its own branch, and this PR is the
+    # notification that one is waiting, not the vehicle for doing it.
     groups:
       minor-and-patch:
         patterns: ['*']
         update-types: ['minor', 'patch']
+      major:
+        patterns: ['*']
+        update-types: ['major']
     ignore:
       # The AD4M SDK version is a deliberate pin, currently to a test tag
       # (`0.13.0-test-interpretation-2`) carrying APIs that have not landed on AD4M `dev`.
@@ -40,14 +50,42 @@ updates:
       - dependency-name: 'lexical'
       - dependency-name: '@lexical/*'
 
+      # ---------------------------------------------------------------- deferred migrations
+      # Three majors that are real pieces of work rather than bumps. Each is deferred
+      # deliberately, so the entry blocks ONLY the major — patches and minors on the current
+      # line still flow, which is what keeps security fixes arriving.
+      #
+      # Delete the entry when the migration is scheduled; that is the whole mechanism. An
+      # undecided major reappears every month and trains everyone to skim past dependency PRs,
+      # which is the state that lets a real one through unread.
+
+      # typescript 5.9 -> 7.0 is the native (Go) compiler rewrite, not a routine major. It
+      # changes emit and diagnostics across every package here and every generated .d.ts we
+      # publish. Revisit once the ecosystem we depend on — vite-plugin-solid, tsup, ts-morph,
+      # typescript-eslint — states 7.x support.
+      - dependency-name: 'typescript'
+        update-types: ['version-update:semver-major']
+
+      # electron 33 -> 44 is eleven majors, spanning several Chromium and Node upgrades. It
+      # touches the main process, the preload boundary and the packaging story at once, and CI
+      # never launches the app, so it needs someone driving it by hand. Pair it with
+      # electron-builder when it happens.
+      - dependency-name: 'electron'
+        update-types: ['version-update:semver-major']
+
+      # @solidjs/router 0.15 -> 1.0 is the stable release, and routing is the one thing every
+      # template touches: the shell's route table, `$routes` outlets, and routeStore all sit on
+      # it. Worth doing attentively rather than on a Monday.
+      - dependency-name: '@solidjs/router'
+        update-types: ['version-update:semver-major']
+
   # ------------------------------------------------------------------ workflow actions
   # These are the versions in .github/workflows and .github/actions. Nothing else updates
   # them, so without this they sit on whatever was current the day they were written.
   - package-ecosystem: github-actions
     directory: '/'
     schedule:
-      interval: weekly
-      day: monday
+      interval: monthly
     labels: ['dependencies']
     groups:
       actions:
