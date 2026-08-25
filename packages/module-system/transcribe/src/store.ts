@@ -116,6 +116,9 @@ const ELECTION_WAIT_MS = 5_000;
  */
 const STATUS_RESERVE_PX = 56;
 
+/** Its widest, which the panel itself caps — see `maxWidth` in `ExtractionStatus.schema`. */
+const STATUS_WIDTH_PX = 520;
+
 /**
  * Flux's *effective* voice-activity thresholds, which are not the ones in its defaults file.
  *
@@ -1200,7 +1203,10 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
      *
      * The column's `300` gap (12px), plus `200` of padding a side (16px), plus a line of status.
      */
-    chromeReserve: () => ({ top: (interpretation?.activity() ?? []).length > 0 ? STATUS_RESERVE_PX : 0 }),
+    chromeReserve: () =>
+      (interpretation?.activity() ?? []).length > 0
+        ? { top: STATUS_RESERVE_PX, width: STATUS_WIDTH_PX }
+        : { top: 0, width: 0 },
 
     // ── Actions ──────────────────────────────────────────────────────────────
     /**

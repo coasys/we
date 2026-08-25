@@ -115,6 +115,17 @@ export const STAGE_GAP_PX = 12;
  */
 export const CALL_BAR_RESERVE_PX = 74;
 
+/**
+ * How wide the bar gets, at its widest — what lets the host tell "the module rail has slid left far
+ * enough to hit the call controls" from "the rail is nowhere near them".
+ *
+ * An estimate, and deliberately a generous one: six `md` controls with their gaps and padding, plus
+ * room for the participant roster and for whatever another module has contributed into the bar. The
+ * bar is content-sized, so this cannot be exact — and the two errors are not symmetrical. Too wide
+ * moves the rail slightly earlier than it had to; too narrow puts the rail across the controls.
+ */
+export const CALL_BAR_WIDTH_PX = 520;
+
 /** Which edge a stage occupies while it takes room. The host decides; this names the vocabulary. */
 export type CallDockEdge = 'left' | 'right' | 'top' | 'bottom';
 

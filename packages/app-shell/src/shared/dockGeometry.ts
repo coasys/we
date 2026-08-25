@@ -80,6 +80,24 @@ export const RAIL_TOP_PX = 16;
 export const EDGE_CONTACT_PX = 2;
 
 /**
+ * The centred column of chrome at the top of the window — the call bar and whatever is contributed
+ * beneath it — as a box the rail has to stay out of.
+ *
+ * A height alone was not enough, and the gap is what the module rail fell into. The rail slides left
+ * as a right-hand panel grows, by the panel's full width; the bar is centred on the content, so it
+ * slides left by *half* of it. The two therefore close on each other, and with a wide panel — or two
+ * — the rail arrives on top of the call controls. Reserving the band unconditionally would move the
+ * rail for a bar a thousand pixels away, which is the complaint that made the band conditional in the
+ * first place. Only a width can tell those two apart.
+ */
+export interface TopChrome {
+  height: number;
+  width: number;
+}
+
+export const NO_TOP_CHROME: TopChrome = { height: 0, width: 0 };
+
+/**
  * The gap a *floating* panel sits off the edges by. A displacing one has none.
  *
  * The two want opposite things here. A floating panel is a card over the app, and a card needs air
@@ -987,16 +1005,42 @@ export function contentInset(requests: DockRequest[], viewport: Viewport): Conte
  * arbitrary height with nothing in the gap. Measured from the panel it clears, capped so a panel
  * somewhere unexpected can never push the rail off the bottom of the screen.
  */
-export function railBand(panels: Rect[], viewport: Viewport, inset: ContentInset): number {
+export function railBand(
+  panels: Rect[],
+  viewport: Viewport,
+  inset: ContentInset,
+  topChrome: TopChrome = NO_TOP_CHROME,
+): number {
   const railRight = viewport.width - inset.right;
   const railLeft = railRight - CHROME_RAIL_PX;
   const railTop = RAIL_TOP_PX + inset.top;
 
+  /*
+    A panel only has to be cleared as far as its titlebar, where its controls are; the top chrome has
+    to be cleared entirely, since all of it is controls. So they contribute the same way but to
+    different depths — hence one list built here rather than two loops.
+  */
+  const obstacles: Rect[] = panels.map((rect) => ({ ...rect, h: TITLE_BAR_PX }));
+
+  if (topChrome.height > 0 && topChrome.width > 0) {
+    /*
+      Centred on the *content*, exactly as the bar itself is — `--we-chrome-center-x` is this same
+      subtraction, and the two have to agree or the rail dodges a box the bar is not in.
+    */
+    const centre = viewport.width / 2 + (SIDEBAR_PX + inset.left - inset.right) / 2;
+    obstacles.push({ x: centre - topChrome.width / 2, y: 0, w: topChrome.width, h: topChrome.height });
+  }
+
   let band = 0;
-  for (const rect of panels) {
+  for (const rect of obstacles) {
     const contact = Math.min(rect.x + rect.w, railRight) - Math.max(rect.x, railLeft);
     if (contact <= EDGE_CONTACT_PX) continue;
-    band = Math.max(band, rect.y + TITLE_BAR_PX - railTop);
+    band = Math.max(band, rect.y + rect.h - railTop);
   }
-  return Math.min(Math.max(0, Math.round(band)), TOP_CHROME_PX + TITLE_BAR_PX);
+  /*
+    Bounded by a third of the window rather than by a constant. It was `TOP_CHROME_PX + TITLE_BAR_PX`,
+    which is the depth of one bar — so a rail asked to clear a bar *and* the status panel stacked under
+    it was clipped to less than it needed and stayed overlapping the thing it had just moved for.
+  */
+  return Math.min(Math.max(0, Math.round(band)), Math.round(viewport.height / 3));
 }

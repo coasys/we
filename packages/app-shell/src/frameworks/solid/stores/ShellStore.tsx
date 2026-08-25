@@ -34,10 +34,11 @@ import {
   type SnapPoint,
   snapTargetRects,
   TITLE_BAR_PX,
+  type TopChrome,
 } from '@shared/dockGeometry';
 import { dockRegistry, hostDockStores, onDockRegistryChanged } from '@shared/registries/dockRegistry';
 import { moduleStores } from '@shared/registries/moduleRegistry';
-import type { DockAspect, DockEdge, DockSize } from '@we/module-shared';
+import type { ChromeReserve, DockAspect, DockEdge, DockSize } from '@we/module-shared';
 import {
   Accessor,
   createContext,
@@ -397,19 +398,29 @@ export function ShellStoreProvider(props: ParentProps) {
    * Reservations at an edge sum rather than max, because an anchor is a column: the status panel is
    * mounted below the call bar, not beside it.
    */
-  const floatChrome = createMemo<ContentInset>(() => {
+  const topChrome = createMemo<TopChrome>(() => {
     // The registration dependency, for the same reason `dockRequests` takes it: a module store read
     // before its module registers has no accessor to have tracked, and so nothing to re-run for.
     dockRegistryVersion();
-    let top = 0;
+    let height = 0;
+    let width = 0;
     for (const store of Object.values(moduleStores)) {
       const reserve = (store as Record<string, unknown> | undefined)?.chromeReserve;
       const value = typeof reserve === 'function' ? (reserve as () => unknown)() : reserve;
-      const edges = value as Partial<ContentInset> | undefined;
-      top += edges?.top ?? 0;
+      const box = value as ChromeReserve | undefined;
+      // Heights stack, widths do not: contributions to one anchor are a column.
+      height += box?.top ?? 0;
+      width = Math.max(width, box?.width ?? 0);
     }
-    return { left: 0, right: CHROME_RAIL_PX, top, bottom: 0 };
+    return { height, width };
   });
+
+  const floatChrome = createMemo<ContentInset>(() => ({
+    left: 0,
+    right: CHROME_RAIL_PX,
+    top: topChrome().height,
+    bottom: 0,
+  }));
 
   /**
    * What one panel has to keep clear of — the rule itself is in `dockGeometry`, pure and tested.
@@ -541,7 +552,8 @@ export function ShellStoreProvider(props: ParentProps) {
       .filter((request) => request.edge !== null)
       .map((request) => rectOf(boxes[request.id], view, request.placement ?? seedPlacement(request, view)));
 
-    document.documentElement.style.setProperty('--we-panel-chrome-top', `${railBand(panels, view, inset())}px`);
+    const band = railBand(panels, view, inset(), topChrome());
+    document.documentElement.style.setProperty('--we-panel-chrome-top', `${band}px`);
   });
 
   /**

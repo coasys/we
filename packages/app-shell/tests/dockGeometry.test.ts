@@ -800,8 +800,37 @@ describe('the band under the module rail', () => {
     expect(railBand([atTheTop], desktop, inset())).toBe(TITLE_BAR_PX - RAIL_TOP_PX);
   });
 
-  it('never pushes the rail further than the top chrome, whatever it finds', () => {
+  it('never pushes the rail off the screen, whatever it finds', () => {
     const wayDown = { x: SIDEBAR_PX, y: 4000, w: desktop.width - SIDEBAR_PX, h: 700 };
-    expect(railBand([wayDown], desktop, inset())).toBe(TOP_CHROME_PX + TITLE_BAR_PX);
+    expect(railBand([wayDown], desktop, inset())).toBe(Math.round(desktop.height / 3));
+  });
+
+  /**
+   * The rail and the call bar close on each other, and only a width can tell when they meet.
+   *
+   * A right-hand panel pushes the rail left by its whole width and the centred bar left by half of
+   * it, so a wide enough panel — or two — walks the rail into the controls. The band knew the bar's
+   * height and not its extent, so it never fired for this and the rail printed itself across them.
+   */
+  const bar = { height: 74, width: 520 };
+
+  it('ignores a call bar the rail is nowhere near', () => {
+    // The complaint that made the band conditional in the first place: with no panel open the rail
+    // is at the window's edge and the bar is in the middle of the screen.
+    expect(railBand([], desktop, inset(), bar)).toBe(0);
+  });
+
+  it('clears the call bar once a wide panel has walked the rail into it', () => {
+    // 900 wide on a 1600 window: the rail's left edge is at 1600-900-56 = 644, and the bar is centred
+    // at 1600/2 + (80-900)/2 = 390 spanning 130..650. They overlap by six pixels, and six pixels of
+    // rail over the call controls is what this is for.
+    expect(railBand([], desktop, inset({ right: 900 }), bar)).toBeGreaterThan(0);
+  });
+
+  it('clears the whole column, not one bar of it', () => {
+    // Two contributions stacked — the call bar with the extraction panel under it. The cap used to be
+    // one bar deep, so the rail moved and stayed overlapping what it had moved for.
+    const stacked = { height: 74 + 56, width: 520 };
+    expect(railBand([], desktop, inset({ right: 900 }), stacked)).toBe(stacked.height - RAIL_TOP_PX);
   });
 });

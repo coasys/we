@@ -401,6 +401,43 @@ export interface ModuleDefinition {
 }
 
 /**
+ * Fixed chrome a module has on screen right now, for the host to route panels and other chrome
+ * around — published as `chromeReserve` on the module's store.
+ *
+ * Read by name off the store rather than declared on the definition, because the answer changes with
+ * the module's own state: the call bar exists during a call and not otherwise, and reserving its band
+ * permanently is what the host used to do with a constant.
+ *
+ * ## The frame of reference
+ *
+ * A reserve describes a box **centred on the content region, against the top edge** — which is what
+ * the module chrome the host places there actually is. Heights at an edge *sum*, because contributions
+ * to one anchor are stacked in a column; widths take the largest, because they are stacked rather than
+ * laid side by side.
+ *
+ * Report the height a module's chrome has when **collapsed**, not its live one. Chrome that grows as
+ * somebody opens a disclosure would otherwise shove a floating panel down the screen mid-read, which
+ * is worse than an overlap the person who caused it can see.
+ */
+export interface ChromeReserve {
+  /** How far down the top edge it reaches, in pixels, including its own offset from the top. */
+  top?: number;
+  /**
+   * How wide it is at its widest, in pixels.
+   *
+   * What lets the host tell "the module rail has slid left far enough to hit the call bar" from "the
+   * rail is nowhere near it". Without a width the two could only ever be assumed to collide or
+   * assumed not to, and both were wrong in an arrangement somebody reaches within a minute: a rail
+   * that always dropped moved for chrome a thousand pixels away, and one that never dropped ended up
+   * printed across the call controls.
+   *
+   * Estimate generously. The cost of over-reporting is chrome that moves slightly earlier than it had
+   * to; the cost of under-reporting is two pieces of chrome on top of each other.
+   */
+  width?: number;
+}
+
+/**
  * What a host lends a module's store, so the module needn't import a framework *or* a backend.
  *
  * Every field is a neutral port already declared in this package — never a host object. That is the
