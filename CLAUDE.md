@@ -2192,7 +2192,6 @@ ShellStore:
   - rememberShellPath(): unknown
   - setCreateSpaceOpen(open: boolean): opens or closes the create-space modal. Shell state rather than a page’s $localState because more than one place opens it — the settings page and the sidebar’s spaces group — and a page-scoped flag could only be set from inside that page
   - scrollToId(id: string): smooth-scrolls the element with that DOM id into view
-  - setChromeInset(): unknown
   - beginDockResize(): unknown
   - resizeDock(): unknown
   - endDockResize(): unknown

@@ -1089,7 +1089,9 @@ export const callModule = defineModule({
    * those that nothing kept in step. Saying "the right edge, medium" and letting the host answer is
    * what makes the same declaration inset on a monitor and float on a laptop.
    */
-  docks: [{ edge: 'dockEdge', size: 'dockSize', float: 'dockFloat', aspect: 'dockAspect', node: stage }],
+  docks: [
+    { edge: 'dockEdge', size: 'dockSize', float: 'dockFloat', aspect: 'dockAspect', close: 'closeStage', node: stage },
+  ],
 
   createStore: (deps: ModuleStoreDeps) => createCallStore(deps),
 });

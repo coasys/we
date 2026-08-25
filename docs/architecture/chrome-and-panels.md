@@ -78,6 +78,9 @@ A module never positions its own chrome or its own panel. It says what it has an
 - `docks` — a panel, with the edge and size it would like. The host owns where it actually goes,
   because only the host can see the other panels.
 - `slots` — chrome contributed at a named anchor. `launcher` puts an icon in the module rail.
+- `close` — a key on its store naming the action that dismisses the panel. The host puts the button
+  on the titlebar, last, after the position menu — so every panel closes in the same place at the
+  same size, which they did not when each drew its own inside its own content.
 - `chromeReserve` — a store accessor returning the box its fixed chrome currently occupies
   (`{ top, width }`), so floating panels can clear it and the rail can dodge it. Report the
   **collapsed** height: chrome that grows as somebody opens a disclosure would otherwise shove a

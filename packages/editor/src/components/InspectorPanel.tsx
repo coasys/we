@@ -513,11 +513,6 @@ export function InspectorPanel() {
         <we-text fontSize="500" fontWeight="600">
           Visual Inspector
         </we-text>
-        <we-tooltip title="Close inspector panel">
-          <we-button variant="ghost" size="sm" onClick={() => session.toggleVisualPanel()}>
-            <we-icon name="x" size="sm" />
-          </we-button>
-        </we-tooltip>
       </Row>
 
       {/* Layer tree */}

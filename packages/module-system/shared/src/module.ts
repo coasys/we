@@ -190,6 +190,21 @@ export interface DockContribution {
    * without this there is no way to feel your way back to exactly right.
    */
   aspect?: string;
+  /**
+   * A key on this module's store naming the action that closes the panel — the host puts a close
+   * button on its titlebar, at the end, after the position menu.
+   *
+   * Optional only because a panel might genuinely have no way to be dismissed. Declare it wherever
+   * there is one: every panel drew its own close button inside its own content before this existed,
+   * so each was in a slightly different place, at a slightly different size, and the video stage —
+   * whose content is a grid of tiles with nowhere to put a header — had none at all. The titlebar is
+   * where the rest of a panel's controls already are, and the host owns it, so declaring the action
+   * is the whole of a module's part in this.
+   *
+   * Closing is not the same as being placed. The host will not call this itself: where a panel sits
+   * is the host's, whether it is open is the module's, and the button is the one place those meet.
+   */
+  close?: string;
   /** The panel itself. A `SchemaNode`, so a deployment can restyle or white-label it. */
   node: SchemaNode;
   /** Ties break on module id, exactly as {@link SlotContribution.order} does. */

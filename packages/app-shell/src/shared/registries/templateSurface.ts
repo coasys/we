@@ -769,7 +769,6 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     contentInset: state('host-layout'),
     dockResizing: state('host-layout'),
     // Written by the host layout, which can see the editor's widths — never by a template.
-    setChromeInset: action('host-layout'),
     beginDockResize: action('host-layout'),
     resizeDock: action('host-layout'),
     endDockResize: action('host-layout'),

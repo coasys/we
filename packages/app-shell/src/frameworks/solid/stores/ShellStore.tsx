@@ -102,13 +102,6 @@ export interface ShellStore {
   contentInset: Accessor<ContentInset>;
   /** True while a dock is being dragged, so transitions can be suspended and the edge track the cursor. */
   dockResizing: Accessor<boolean>;
-  /**
-   * Tell the shell how much room non-dock chrome is taking, so panels keep clear of it.
-   *
-   * Called by the layout, which can see the editor's store; this one cannot. Without it a maximised
-   * panel covered the editor's rails and a right-hand snap landed on top of them.
-   */
-  setChromeInset: (inset: Partial<ContentInset>) => void;
   /** Remember a dock's current size, so the drag that follows is measured from it. */
   beginDockResize: (id: string) => void;
   /**
@@ -313,7 +306,6 @@ export function ShellStoreProvider(props: ParentProps) {
    * package this one knows nothing about, and its widths live in `editorStore`. One number in, and
    * every panel's geometry clears it.
    */
-  const [chromeInset, setChromeInset] = createSignal<ContentInset>({ ...NO_INSET });
   const [movingDock, setMovingDock] = createSignal<string | null>(null);
   const [activeSnap, setActiveSnap] = createSignal<SnapPoint | null>(null);
   const [activeInsert, setActiveInsert] = createSignal<string | null>(null);
@@ -428,8 +420,7 @@ export function ShellStoreProvider(props: ParentProps) {
    * Here it is only fed: the placements the panels currently have, and whatever non-dock chrome has
    * told this store it is holding.
    */
-  const occupiedOf = (index: number, requests: DockRequest[]): ContentInset =>
-    occupiedFor(requests, index, viewport(), chromeInset());
+  const occupiedOf = (index: number, requests: DockRequest[]): ContentInset => occupiedFor(requests, index, viewport());
 
   /**
    * The same, by id — what the drag paths have, since a pointer knows which panel it has hold of and
@@ -438,7 +429,7 @@ export function ShellStoreProvider(props: ParentProps) {
   const occupiedForId = (id: string | null): ContentInset => {
     const requests = dockRequests();
     const index = requests.findIndex((request) => request.id === id);
-    return index === -1 ? { ...chromeInset() } : occupiedOf(index, requests);
+    return index === -1 ? { ...NO_INSET } : occupiedOf(index, requests);
   };
 
   /**
@@ -592,7 +583,6 @@ export function ShellStoreProvider(props: ParentProps) {
     dockGeometry,
     contentInset: inset,
     dockResizing,
-    setChromeInset: (next) => setChromeInset((prev) => ({ ...prev, ...next })),
 
     dockPlacement: () =>
       Object.fromEntries(

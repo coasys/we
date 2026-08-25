@@ -2516,7 +2516,6 @@ export const contextData: ContextData = {
         'rememberShellPath',
         'setCreateSpaceOpen',
         'scrollToId',
-        'setChromeInset',
         'beginDockResize',
         'resizeDock',
         'endDockResize',

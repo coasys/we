@@ -511,14 +511,6 @@ describe('what a panel has to keep clear of', () => {
 
     expect(occupiedFor(panels, 0, desktop)).toEqual(NO_INSET);
   });
-
-  it('carries chrome that is not a panel at all', () => {
-    // The editor's rails displace content exactly as a dock does and are not docks.
-    const panels = [dock({ id: 'call:0', placement: card })];
-    const chrome: ContentInset = { ...NO_INSET, right: 320 };
-
-    expect(occupiedFor(panels, 0, desktop, chrome).right).toBe(320);
-  });
 });
 
 describe('fitting a panel to its content', () => {
@@ -762,6 +754,53 @@ describe('chrome a floating panel must clear', () => {
  * enough panel walks one into the other. It is the only collision the shell computes, because it is
  * the only one left: every panel state is already handled before this is asked.
  */
+/**
+ * What the content gives up, when the panels ask for more than there is.
+ *
+ * The inset is published as `--we-chrome-<edge>` and every piece of chrome positions against it, so
+ * an inset wider than the window is not a rounding error — it is the rail and the call bar leaving
+ * the screen. Which is what happened: each panel was clamped against the *whole* content region and
+ * the results summed, so three that each fitted on their own reported more than the window between
+ * them.
+ */
+describe('the inset when the panels do not fit', () => {
+  const strip = (widths: number[]): DockRequest[] =>
+    widths.map((w, index) => ({
+      id: `p${index}`,
+      edge: 'right' as const,
+      size: 'md' as const,
+      float: false,
+      placement: placement({ w }),
+    }));
+
+  const region = desktop.width - SIDEBAR_PX;
+
+  it('adds up while there is room', () => {
+    expect(contentInset(strip([700, 700]), desktop).right).toBe(1400);
+  });
+
+  it('never exceeds the room there is', () => {
+    // 2100 before: `--we-chrome-right: 2100px` on a 1600px window put the module rail 500px off the
+    // left edge of the screen, and `--we-chrome-center-x` — derived from the same number — took the
+    // call bar with it.
+    expect(contentInset(strip([700, 700, 700]), desktop).right).toBe(region);
+  });
+
+  it('is not pushed past it by the minimum size either', () => {
+    // The floor and the ceiling mean opposite things: `MIN_DOCK_PX` is "thinner than this is not
+    // worth having", the remaining room is "there is no more screen". The floor must not win.
+    expect(contentInset(strip([1400, 400]), desktop).right).toBe(region);
+  });
+
+  it('counts each edge separately', () => {
+    const both: DockRequest[] = [
+      { id: 'r', edge: 'right', size: 'md', float: false, placement: placement({ w: 700 }) },
+      { id: 'b', edge: 'bottom', size: 'md', float: false, placement: placement({ snap: 'bottom', h: 300 }) },
+    ];
+    expect(contentInset(both, desktop)).toEqual({ left: 0, right: 700, top: 0, bottom: 300 });
+  });
+});
+
 describe('the band under the module rail', () => {
   const inset = (over: Partial<ContentInset> = {}): ContentInset => ({ ...NO_INSET, ...over });
   const bar = { height: 74, width: 520 };

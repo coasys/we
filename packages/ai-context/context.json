@@ -6238,7 +6238,6 @@
         "rememberShellPath",
         "setCreateSpaceOpen",
         "scrollToId",
-        "setChromeInset",
         "beginDockResize",
         "resizeDock",
         "endDockResize",

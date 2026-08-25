@@ -894,13 +894,14 @@ export function insertionSlots(
  * `chrome` is room taken by something that is not a panel at all — the editor's rails, which displace
  * content exactly as a dock does and are not docks.
  */
-export function occupiedFor(
-  requests: DockRequest[],
-  index: number,
-  viewport: Viewport,
-  chrome: ContentInset = NO_INSET,
-): ContentInset {
-  const occupied: ContentInset = { ...chrome };
+export function occupiedFor(requests: DockRequest[], index: number, viewport: Viewport): ContentInset {
+  /*
+    Panels only. It used to start from a `chrome` inset the shell passed in, for the editor's rails
+    — which displaced content and were not docks. They are docks now, and the chrome that is left
+    does not displace anything: it moves out of a panel's way instead, or clears the panel itself.
+    See `DEFAULT_FLOAT_CHROME`.
+  */
+  const occupied: ContentInset = { ...NO_INSET };
   const placementOf = (request: DockRequest) => request.placement ?? seedPlacement(request, viewport);
 
   const own = requests[index] ? placementOf(requests[index]) : null;
@@ -958,14 +959,39 @@ export function occupiedFor(
 export function contentInset(requests: DockRequest[], viewport: Viewport): ContentInset {
   const inset: ContentInset = { left: 0, right: 0, top: 0, bottom: 0 };
 
+  const region = contentRegion(viewport);
+  /*
+    What is left on each axis after the panels already counted — the same room `resolveDock` clamps
+    each panel against, and the reason this is a running total rather than a sum of independent
+    clamps.
+
+    It was the latter, and the two then disagreed about how wide a panel was the moment their
+    requests outgrew the screen. Each was clamped against the *whole* region, so three 700px panels
+    on a 1600px window reported an inset of 2100 while resolving to boxes of 700, 700 and 200. An
+    inset wider than the window puts `--we-chrome-right` past the left edge: the module rail flew
+    across the screen, the call bar went with it (`--we-chrome-center-x` is derived from the same
+    number), and the content viewport was handed a negative width.
+
+    Clamping against what is left cannot overshoot, because the total saturates at the region.
+  */
+  const room = { horizontal: region.width, vertical: region.height };
+
   for (const request of requests) {
     if (!request.edge || request.size === 'full') continue;
     const placement = request.placement ?? seedPlacement(request, viewport);
     if (placement.maximised || !displaces(placement, viewport)) continue;
     const snapEdge = edgeOfSnap(placement.snap) as Exclude<DockEdge, null>;
-    const vertical = snapEdge === 'left' || snapEdge === 'right';
-    const region = contentRegion(viewport);
-    inset[snapEdge] += clamp(thicknessOf(placement, snapEdge), MIN_DOCK_PX, vertical ? region.width : region.height);
+    const axis = snapEdge === 'left' || snapEdge === 'right' ? 'horizontal' : 'vertical';
+    /*
+      `Math.min` outside the clamp rather than as its upper bound, because the two limits mean
+      opposite things and the floor must not win. `MIN_DOCK_PX` is "a panel this thin is not worth
+      having"; the remaining room is "there is no more screen". Passed as the clamp's maximum, a
+      strip with 40px left would be handed 200 and overshoot by 160 — which is the bug above, one
+      panel later.
+    */
+    const thickness = Math.min(clamp(thicknessOf(placement, snapEdge), MIN_DOCK_PX, room[axis]), room[axis]);
+    inset[snapEdge] += thickness;
+    room[axis] -= thickness;
   }
   return inset;
 }
