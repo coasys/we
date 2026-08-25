@@ -30,7 +30,7 @@
     "electron-context-menu": "^4.1.1",
     "express": "^5.2.1",
     "solid-js": "^1.9.15",
-    "uuid": "^13.0.0",
+    "uuid": "^14.0.2",
     "@we/backend-ad4m": "workspace:*"
   },
   "devDependencies": {
