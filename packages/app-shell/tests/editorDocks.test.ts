@@ -8,9 +8,14 @@
  * neither module names. In the app it never happened, because `slotRegistry` was always reached
  * first; the first test to import `editorDocks` directly hit it immediately.
  *
- * So the import below **is** the test, and it has to be the first one in the file — which is why
- * this is its own file rather than a case in `dockRegistry.test.ts`, where a sorted import list puts
- * something else at the front and enters the cycle from the safe end.
+ * So the *import* is the test, not the assertion under it — and what it needs is to be the first
+ * thing in this file that enters the cycle. `dockRegistry` sorts above it and does not, which is the
+ * only reason the order the linter imposes is survivable.
+ *
+ * That is the fragile part, and it is why this is its own file rather than a case in
+ * `dockRegistry.test.ts`: an import added here that reaches `slotRegistry` first would enter from
+ * the safe end and quietly make this vacuous. Verified the other way round — restoring the
+ * module-scope call makes it fail — so if you change the imports, check it still can.
  */
 import { describe, expect, it } from 'vitest';
 
