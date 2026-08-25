@@ -607,6 +607,29 @@ Route outlet:
 { "type": "$routes" }
 Indicates where nested routes should render within a layout.
 
+Responsive boundary:
+{ "type": "$surface", "props": { "as": "pane" }, "children": [ ... ] }
+A box the content inside it measures itself against. Everything inside it — \`*UpProps\` on any
+descendant, and \`$surface.tier\` read as a context ref — is answered by THIS box rather than by the
+window or the page.
+
+The host already puts one wherever it mounts a schema tree (the template area, the shell overlays,
+every docked module panel), so an ordinary template needs none: \`mdUpProps\` works out of the box.
+Declare one when a *part* of your layout should adapt to itself — a two-pane workspace whose right
+pane is narrow while the page is wide. Nesting works; the innermost surface wins.
+
+\`as\` names the context key (default \`surface\`), so a nested one can be addressed separately.
+Read it with \`"$surface.tier"\` (\`base\` | \`sm\` | \`md\` | \`lg\`) or \`"$surface.width"\` (px):
+
+{ "$if": { "condition": { "$eq": [{ "$store": "…" }, "…"] } } }   ← ordinary
+{ "$if": { "condition": { "$eq": ["$surface.tier", "base"] }, "then": <drawer>, "else": <sidebar> } }
+
+USE THIS SPARINGLY, and only for a genuinely different tree. \`$if\` unmounts and rebuilds its
+subtree when the condition changes, which loses scroll position, half-typed input and any live
+resource inside it. For different *values* — padding, gap, width, font size — use \`*UpProps\`, which
+is pure CSS and remounts nothing. See "Which mechanism to reach for" in the Design System Props
+section.
+
 Module slot outlet:
 { "type": "$slot", "props": { "anchor": "call-controls" } }
 Renders whatever other feature modules have contributed to that anchor, in order. Only meaningful

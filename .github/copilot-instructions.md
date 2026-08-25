@@ -786,6 +786,29 @@ Route outlet:
 { "type": "$routes" }
 Indicates where nested routes should render within a layout.
 
+Responsive boundary:
+{ "type": "$surface", "props": { "as": "pane" }, "children": [ ... ] }
+A box the content inside it measures itself against. Everything inside it — `*UpProps` on any
+descendant, and `$surface.tier` read as a context ref — is answered by THIS box rather than by the
+window or the page.
+
+The host already puts one wherever it mounts a schema tree (the template area, the shell overlays,
+every docked module panel), so an ordinary template needs none: `mdUpProps` works out of the box.
+Declare one when a *part* of your layout should adapt to itself — a two-pane workspace whose right
+pane is narrow while the page is wide. Nesting works; the innermost surface wins.
+
+`as` names the context key (default `surface`), so a nested one can be addressed separately.
+Read it with `"$surface.tier"` (`base` | `sm` | `md` | `lg`) or `"$surface.width"` (px):
+
+{ "$if": { "condition": { "$eq": [{ "$store": "…" }, "…"] } } }   ← ordinary
+{ "$if": { "condition": { "$eq": ["$surface.tier", "base"] }, "then": <drawer>, "else": <sidebar> } }
+
+USE THIS SPARINGLY, and only for a genuinely different tree. `$if` unmounts and rebuilds its
+subtree when the condition changes, which loses scroll position, half-typed input and any live
+resource inside it. For different *values* — padding, gap, width, font size — use `*UpProps`, which
+is pure CSS and remounts nothing. See "Which mechanism to reach for" in the Design System Props
+section.
+
 Module slot outlet:
 { "type": "$slot", "props": { "anchor": "call-controls" } }
 Renders whatever other feature modules have contributed to that anchor, in order. Only meaningful
@@ -1427,6 +1450,56 @@ Variants set size and weight only — color is always inherited or set explicitl
 | activeProps | Partial\<DesignSystemProps\> | Styles on :active |
 | focusProps | Partial\<DesignSystemProps\> | Styles on keyboard focus (:focus-visible) — deliberately not applied on mouse click. `we-button` and `we-input` already carry a default focus ring; only set this to override it |
 | disabledProps | Partial\<DesignSystemProps\> | Styles when disabled |
+
+### Responsive — adapting to the space available
+
+| Prop | Type | Description |
+|------|------|-------------|
+| smUpProps | Partial\<DesignSystemProps\> | Values that take over from 640px up |
+| mdUpProps | Partial\<DesignSystemProps\> | …from 900px up |
+| lgUpProps | Partial\<DesignSystemProps\> | …from 1200px up |
+
+A partial prop bag applying above a width, exactly like `hoverProps` applies in a state:
+
+```json
+{ "type": "Column", "props": { "gap": "300", "px": "300", "mdUpProps": { "gap": "500", "px": "400" } } }
+```
+
+**Measured against the nearest surface, not the window.** A template renders inside a docked panel,
+an editor preview pane and a phone, so the viewport is the wrong subject in two of those. The host
+declares a surface wherever it mounts a schema tree; a template can declare its own with `$surface`
+(see Block-level Dynamic Structures) when a pane should adapt to itself rather than to the page.
+
+**Write the narrow value at base and grow.** Every tier is min-width — there is no `smDownProps` —
+so the unqualified value is what a phone gets and each tier adds room as it appears. Tiers cascade
+through: something set only in `smUpProps` still applies at `lg`.
+
+`mdUpProps`, not `mdProps`: `md` is already a size value on ~15 primitives (`size="md"`), and `Up`
+settles whether a tier means at-this-width or below it. The validator suggests the right spelling.
+
+States and tiers do not cross — there is no `mdUpHoverProps`. A tier sets base values at that width;
+`hoverProps` applies at every width.
+
+### Which mechanism to reach for
+
+Three ways to respond to size, and they are not interchangeable:
+
+| Need | Use | Why |
+|---|---|---|
+| Different **values** — padding, gap, width, font size | `*UpProps` | Pure CSS. Nothing remounts. |
+| A different **tree** — a pane becomes a drawer, two panes become one | `$surface` + `$if` on `$surface.tier` | Only a branch can swap DOM. |
+| Same-shaped things **filling a box** — video tiles, a photo wall | `Grid` with `childAspect` | Needs both axes and an argmax; CSS cannot express it. |
+
+**Prefer `*UpProps` for anything that is a value.** `$if` on the tier works and is tempting, because
+branching is the familiar tool — but it **unmounts and rebuilds the subtree** every time the surface
+crosses a threshold. That loses scroll position, half-typed input, and anything holding a live
+resource: it is why a video call laid out that way goes black when its panel is resized. Reserve it
+for genuine structural change.
+
+**Prefer intrinsic sizing over either, where it works.** A wrapping `Row` whose children have a flex
+basis, or a `Grid` with `minChildWidth`, adapts continuously at every width instead of at three
+thresholds, needs no surface, and cannot be got wrong. Reach for a breakpoint when the layout must
+genuinely change its mind, not merely stretch.
 
 ### Additional
 
@@ -3371,7 +3444,9 @@ WRONG icon names (Heroicons/Material — do NOT use):
 - Use `we-text`'s `loading` prop for text bound to data that has not arrived — never a hand-authored `$if` + `we-skeleton` beside it. A separate placeholder needs a height nobody can derive from the schema, and any value you measure drifts the moment a theme changes `fontScale` or the type scale. `we-text` sizes its own placeholder from the line it would occupy, so it stays right. Set `loadingWidth` (default `'100%'`) for the one thing the element cannot infer: how wide the absent text would have been.
 - An empty `we-text` already reserves one line, so text that simply arrives late does not shift the layout even without `loading`. Only `inline` text still collapses, which is correct for a run inside a sentence.
 - Distinguish "not loaded yet" from "loaded and empty" when the difference is visible. A condition like `{ $store: 'spaceStore.currentSpace.description' }` is falsy in both cases, so an `else` branch saying "No description" asserts it about a space that has not arrived. Test the container first (`currentSpace`), then its field.
-- Size a template root with `minHeight`, never `height`. `height: '100%'` makes the root exactly as tall as the viewport, so a route with more content than that overflows the *box* — and the root's background stops at the fold while the content keeps scrolling. `minHeight: '100%'` fills the viewport when a route is short and grows when it is long, which is what a page background needs. The same applies to `'100vh'`.
+- Prefer intrinsic sizing to a fixed pixel width. A wrapping `Row` whose children carry `flex: '1'` and `minWidth: '0'`, or a `Grid` with `minChildWidth`, adapts at every width rather than at three thresholds and cannot overflow a narrow surface. An unconditional `minWidth: '500px'` inside a non-wrapping row pushes the whole route sideways on a phone or in a docked panel. Where the layout must genuinely change its mind rather than merely stretch, reach for `mdUpProps` — and write the narrow value at base, since every tier is min-width.
+- A set of same-shaped things filling a box — video tiles, a photo wall, a board of cards — wants `Grid` with `childAspect: '16 / 9'`, which solves for the arrangement that makes them largest in the box it is given. `columns` is fixed and letterboxes; `minChildWidth` uses width alone and gives columns of postage stamps in a tall box.
+- Size a template root with `minHeight`, never `height`. `height: '100%'` makes the root exactly as tall as the viewport, so a route with more content than that overflows the *box* — and the root's background stops at the fold while the content keeps scrolling. `minHeight: '100%'` fills the viewport when a route is short and grows when it is long, which is what a page background needs. The same applies to `'100vh'` — and prefer `'100dvh'` to `'100vh'` anywhere a full-viewport height is meant: on a phone the address bar makes `vh` taller than what is actually visible, so the last rows of the page sit under the browser chrome. Identical on a desktop.
 
 Most @we/primitives inherit all Design System Props documented above (layout, visual, flex, typography, state).
 Some layout-only primitives (we-avatar, we-icon, we-image, we-spinner, etc.) only accept Layout props — see the Design System Props section for the full list.
