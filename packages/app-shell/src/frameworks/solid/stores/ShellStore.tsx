@@ -546,13 +546,7 @@ export function ShellStoreProvider(props: ParentProps) {
   createEffect(() => {
     if (typeof document === 'undefined') return;
 
-    const view = viewport();
-    const boxes = dockGeometry();
-    const panels = dockRequests()
-      .filter((request) => request.edge !== null)
-      .map((request) => rectOf(boxes[request.id], view, request.placement ?? seedPlacement(request, view)));
-
-    const band = railBand(panels, view, inset(), topChrome());
+    const band = railBand(viewport(), inset(), topChrome());
     document.documentElement.style.setProperty('--we-panel-chrome-top', `${band}px`);
   });
 

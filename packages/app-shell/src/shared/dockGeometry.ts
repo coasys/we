@@ -69,17 +69,6 @@ export const CHROME_RAIL_PX = 56;
 export const RAIL_TOP_PX = 16;
 
 /**
- * How much two boxes may share before they count as overlapping rather than touching.
- *
- * A panel docked against an edge ends exactly where the chrome beside it begins, so any test for
- * "is this panel under that chrome" is asking about a boundary the two share by construction. Worse,
- * the numbers on either side come from different places — a resolved box rounds to whole pixels and
- * `contentInset` does not — so a strict comparison flips on the fractional part of a drag. The rail
- * flickered between two positions, once per pixel, while a right-hand panel was resized.
- */
-export const EDGE_CONTACT_PX = 2;
-
-/**
  * The centred column of chrome at the top of the window — the call bar and whatever is contributed
  * beneath it — as a box the rail has to stay out of.
  *
@@ -982,65 +971,47 @@ export function contentInset(requests: DockRequest[], viewport: Viewport): Conte
 }
 
 /**
- * How far the module rail must drop to clear a panel's titlebar, in pixels — zero when nothing is
- * under it.
+ * How far the module rail must drop to clear the chrome at the top of the window — zero when there
+ * is nothing in its way.
  *
- * The rail is painted *above* the panels, which is right: it is persistent chrome and they come and
- * go. The cost is that a panel reaching the top-right corner has its own titlebar covered — the
- * grip, the position menu, and the button that un-maximises it, which are the three things it is
- * recovered with. It cannot dodge sideways without giving up a column of the window, so the rail
- * moves, exactly as it does for a displacing panel via `--we-chrome-right`.
+ * The rail is pinned to the right of the *content*, so a panel displacing that edge slides it
+ * inwards. The call bar is pinned to the *centre* of the content, so the same panel slides it inwards
+ * by half as much. The two therefore close on each other, and a wide enough panel — or two — walks
+ * the rail into the call controls and prints it across them. Nothing else in the layout has this
+ * shape, which is why this is the only collision the shell computes.
  *
- * Two details carry the whole function.
+ * ## Why panels are not considered
  *
- * **A shared edge is not an overlap.** A panel docked on the right ends precisely where the rail
- * begins, so any "is this under that" test is asking about a boundary the two share by construction
- * — and the numbers being compared come from different places, the resolved box rounding to whole
- * pixels where `contentInset` does not. A strict comparison therefore flipped on the fractional part
- * of a drag, and resizing a right-hand panel made the rail flicker between two positions once per
- * pixel. `EDGE_CONTACT_PX` is the difference between two boxes meeting and one covering the other.
+ * They were, and it was dead code that could only fire when it was wrong. By the time this is asked,
+ * no panel can be under the rail:
  *
- * **The answer is a distance, not a flag.** It was a constant, so a panel at the very top pushed the
- * rail as far down as one starting below the call bar, which read as the rail parking itself at an
- * arbitrary height with nothing in the gap. Measured from the panel it clears, capped so a panel
- * somewhere unexpected can never push the rail off the bottom of the screen.
+ * - one displacing left or right has already slid it sideways, through `--we-chrome-right`;
+ * - one displacing top or bottom has already pushed it down, through `--we-chrome-top`;
+ * - a floating or snapped one is clamped out of its column by `DEFAULT_FLOAT_CHROME`;
+ * - a maximised one stops short of it for the same reason.
+ *
+ * So a panel could only ever be found here through a *disagreement* between two ways of measuring
+ * one edge — a resolved box rounding where an inset does not, say — and what it reported then was
+ * not a real overlap but the depth of whatever it had mismeasured, which for anything but a top-edge
+ * panel is hundreds of pixels. That is how a rail asked to clear a bar 74px tall ended up parked
+ * halfway down the screen.
  */
-export function railBand(
-  panels: Rect[],
-  viewport: Viewport,
-  inset: ContentInset,
-  topChrome: TopChrome = NO_TOP_CHROME,
-): number {
+export function railBand(viewport: Viewport, inset: ContentInset, topChrome: TopChrome = NO_TOP_CHROME): number {
+  if (topChrome.height <= 0 || topChrome.width <= 0) return 0;
+
   const railRight = viewport.width - inset.right;
   const railLeft = railRight - CHROME_RAIL_PX;
-  const railTop = RAIL_TOP_PX + inset.top;
-
   /*
-    A panel only has to be cleared as far as its titlebar, where its controls are; the top chrome has
-    to be cleared entirely, since all of it is controls. So they contribute the same way but to
-    different depths — hence one list built here rather than two loops.
+    Centred on the *content*, exactly as the bar itself is — `--we-chrome-center-x` is this same
+    subtraction, and the two have to agree or the rail dodges a box the bar is not in.
   */
-  const obstacles: Rect[] = panels.map((rect) => ({ ...rect, h: TITLE_BAR_PX }));
+  const centre = viewport.width / 2 + (SIDEBAR_PX + inset.left - inset.right) / 2;
 
-  if (topChrome.height > 0 && topChrome.width > 0) {
-    /*
-      Centred on the *content*, exactly as the bar itself is — `--we-chrome-center-x` is this same
-      subtraction, and the two have to agree or the rail dodges a box the bar is not in.
-    */
-    const centre = viewport.width / 2 + (SIDEBAR_PX + inset.left - inset.right) / 2;
-    obstacles.push({ x: centre - topChrome.width / 2, y: 0, w: topChrome.width, h: topChrome.height });
-  }
-
-  let band = 0;
-  for (const rect of obstacles) {
-    const contact = Math.min(rect.x + rect.w, railRight) - Math.max(rect.x, railLeft);
-    if (contact <= EDGE_CONTACT_PX) continue;
-    band = Math.max(band, rect.y + rect.h - railTop);
-  }
+  const overlaps = centre + topChrome.width / 2 > railLeft && centre - topChrome.width / 2 < railRight;
   /*
-    Bounded by a third of the window rather than by a constant. It was `TOP_CHROME_PX + TITLE_BAR_PX`,
-    which is the depth of one bar — so a rail asked to clear a bar *and* the status panel stacked under
-    it was clipped to less than it needed and stayed overlapping the thing it had just moved for.
+    `inset.top` is deliberately absent, and it cancels rather than being forgotten: the rail's own
+    offset already includes it (`--we-chrome-top`) and so does the bar's, so a panel displacing the
+    top edge moves both by the same amount and the distance between them is unchanged.
   */
-  return Math.min(Math.max(0, Math.round(band)), Math.round(viewport.height / 3));
+  return overlaps ? Math.max(0, Math.round(topChrome.height - RAIL_TOP_PX)) : 0;
 }
