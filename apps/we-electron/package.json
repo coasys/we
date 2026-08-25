@@ -29,7 +29,7 @@
     "@we/app-shell": "workspace:*",
     "electron-context-menu": "^4.1.1",
     "express": "^5.2.1",
-    "solid-js": "^1.9.5",
+    "solid-js": "^1.9.15",
     "uuid": "^13.0.0",
     "@we/backend-ad4m": "workspace:*"
   },
@@ -41,9 +41,9 @@
     "electron-builder": "^25.1.8",
     "typescript": "^5.7.2",
     "vite": "^6.0.7",
-    "vite-plugin-solid": "^2.11.11",
+    "vite-plugin-solid": "^2.11.14",
     "vite-plugin-static-copy": "^3.1.4",
     "wait-on": "^8.0.1",
-    "vitest": "^4.0.15"
+    "vitest": "^4.1.11"
   }
 }

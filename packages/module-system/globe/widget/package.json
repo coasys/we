@@ -16,12 +16,12 @@
     "@we/globe-protocol": "workspace:*"
   },
   "peerDependencies": {
-    "cesium": "^1.136.0",
-    "solid-js": "^1.9.5"
+    "cesium": "^1.144.0",
+    "solid-js": "^1.9.15"
   },
   "devDependencies": {
     "@types/node": "^26.2.0",
-    "cesium": "^1.136.0",
-    "solid-js": "^1.9.5"
+    "cesium": "^1.144.0",
+    "solid-js": "^1.9.15"
   }
 }

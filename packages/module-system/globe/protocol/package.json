@@ -1,7 +1,7 @@
 {
   "name": "@we/globe-protocol",
   "version": "0.1.0",
-  "description": "The globe's layer contract \u2014 what a layer implements, with no dependency on the renderer",
+  "description": "The globe's layer contract — what a layer implements, with no dependency on the renderer",
   "type": "module",
   "scripts": {
     "build:steps": "tsup",
@@ -16,12 +16,12 @@
     }
   },
   "peerDependencies": {
-    "cesium": "^1.136.0"
+    "cesium": "^1.144.0"
   },
   "devDependencies": {
     "@types/node": "^26.2.0",
     "@we/cli": "workspace:*",
-    "cesium": "^1.136.0",
+    "cesium": "^1.144.0",
     "tsup": "^8.5.1"
   },
   "sideEffects": false

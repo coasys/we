@@ -1,7 +1,7 @@
 {
   "name": "@we/backend-inmemory",
   "version": "0.1.0",
-  "description": "An in-memory implementation of WE's backend contract \u2014 the reference adapter, and the one that makes stores testable without a running executor",
+  "description": "An in-memory implementation of WE's backend contract — the reference adapter, and the one that makes stores testable without a running executor",
   "type": "module",
   "scripts": {
     "build:steps": "tsup",
@@ -24,7 +24,7 @@
     "@types/node": "^26.2.0",
     "@we/cli": "workspace:*",
     "tsup": "^8.5.1",
-    "vitest": "^4.0.15"
+    "vitest": "^4.1.11"
   },
   "sideEffects": false
 }

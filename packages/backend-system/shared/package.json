@@ -1,7 +1,7 @@
 {
   "name": "@we/backend-shared",
   "version": "0.1.0",
-  "description": "The backend contract \u2014 data, query, identity and ephemeral ports every adapter implements",
+  "description": "The backend contract — data, query, identity and ephemeral ports every adapter implements",
   "type": "module",
   "scripts": {
     "build:steps": "tsup",
@@ -22,10 +22,10 @@
   },
   "devDependencies": {
     "@types/node": "^26.2.0",
-    "@vitest/coverage-v8": "^4.0.15",
+    "@vitest/coverage-v8": "^4.1.11",
     "@we/cli": "workspace:*",
     "tsup": "^8.5.1",
-    "vitest": "^4.0.15"
+    "vitest": "^4.1.11"
   },
   "sideEffects": false
 }

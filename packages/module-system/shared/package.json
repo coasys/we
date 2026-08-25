@@ -1,7 +1,7 @@
 {
   "name": "@we/module-shared",
   "version": "0.1.0",
-  "description": "The feature-module contract \u2014 what a module declares, and what the host lends it",
+  "description": "The feature-module contract — what a module declares, and what the host lends it",
   "type": "module",
   "scripts": {
     "build:steps": "tsup",
@@ -24,7 +24,7 @@
     "@types/node": "^26.2.0",
     "@we/cli": "workspace:*",
     "tsup": "^8.5.1",
-    "vitest": "^4.0.15"
+    "vitest": "^4.1.11"
   },
   "sideEffects": false
 }
