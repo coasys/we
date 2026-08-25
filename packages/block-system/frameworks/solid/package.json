@@ -28,11 +28,11 @@
   "dependencies": {
     "@we/block-shared": "workspace:*",
     "@we/models": "workspace:*",
-    "@lexical/list": "^0.30.0",
-    "@lexical/markdown": "^0.30.0",
-    "@lexical/rich-text": "^0.30.0",
-    "@lexical/utils": "^0.30.0",
-    "lexical": "^0.30.0",
+    "@lexical/list": "^0.49.0",
+    "@lexical/markdown": "^0.49.0",
+    "@lexical/rich-text": "^0.49.0",
+    "@lexical/utils": "^0.49.0",
+    "lexical": "^0.49.0",
     "lexical-solid": "^0.21.0"
   },
   "peerDependencies": {
