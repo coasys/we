@@ -9,7 +9,7 @@ with one responsibility, layered bottom-up.
 - **1-tokens/** (`@we/tokens`): Design tokens — spacing, color, typography,
   radius, z-index, and the semantic role variables — as CSS variables and a
   JS object. The generated CSS is snapshot-tested.
-- **2-themes/** (`@we/themes`): What a theme *is*: the parametric vocabulary
+- **2-themes/** (`@we/themes`): What a theme _is_: the parametric vocabulary
   (`ThemeOverrides`), the built-in presets, the parameters→CSS mapping
   (`themeToStyle`/`applyThemeVars`), and the per-theme CSS files.
 - **3-primitives/** (`@we/primitives`): Atomic Lit web components
@@ -33,11 +33,6 @@ All packages are consumed in-workspace (`workspace:*`); `publishConfig` is set
 for eventual publishing. See each subpackage's README and `CONVENTIONS.md` for
 authoring rules — the root [`CONVENTIONS.md`](./CONVENTIONS.md) holds the
 directory structure and prop patterns every component follows.
-
-## Storybook
-
-`@we/primitives` has a Storybook: `pnpm --filter @we/primitives start`.
-(Coverage is partial; stories live in `3-primitives/.storybook/stories/`.)
 
 ## Contributing
 

@@ -67,7 +67,9 @@ registers just that element (typed per framework via
 - `<we-avatar>` – Avatar image
 - ...and more
 
-See the [Storybook](./.storybook/) for live demos and documentation.
+Every primitive, with its full prop list, is catalogued in the repo's `CLAUDE.md`
+(the "Component Registry" section), generated from the
+[Custom Elements Manifest](./custom-elements.json).
 
 ## Theming & Customization
 
@@ -85,7 +87,7 @@ See the [Storybook](./.storybook/) for live demos and documentation.
 
 - Primitives are implemented in [`src/primitives/`](./src/primitives/) — one file per element, registered via `src/index.ts`.
 - Run `pnpm build` to build the package.
-- Run `pnpm start` (in this package) to start the local Storybook.
+- Run `pnpm test` to run the unit tests.
 - See [`scripts/generate-framework-declarations.ts`](./scripts/generate-framework-declarations.ts) for type generation.
 
 ## License

@@ -97,7 +97,7 @@
 
                     ┌─────────────────────┐
                     │7c. Root Storybook   │
-                    │    Migration     ⏸️ │
+                    │    Migration     ❌ │
                     └─────────────────────┘
                               │
                               ▼
@@ -322,14 +322,15 @@ Extracted shared prop interfaces from 13 `.solid.tsx` files into co-located `*.t
 
 Standalone dev tool (`@we/component-showcase`) for previewing multi-framework components. Deferred because it doesn't advance the core app-building workflow.
 
-### 7c. Root Storybook Migration ⏸️
+### 7c. Root Storybook Migration ❌
 
-**Plan:** [storybook-migration](../prs/storybook-migration.md)
-**Status:** Deferred — internal developer tooling, not vision-critical.
-**Depends on:** nothing (benefits from #10 landing first for more components to verify)
-**Unblocks:** cross-package story discovery, SolidJS component stories, unified theme preview
+**Status:** Cancelled — Storybook has been removed from the repo entirely; the plan document went with it.
 
-Moves Storybook from `3-primitives/.storybook/` to the monorepo root (`we/.storybook/`). Switches framework to `@storybook/html-vite` so both Lit primitives and SolidJS components render in one instance. Co-locates stories next to their components. Adds `renderSolid()` helper for SolidJS stories. Serves a different audience from #7b (internal team vs. external developers). Deferred because it doesn't block any remaining work.
+Would have moved Storybook to the monorepo root and switched to `@storybook/html-vite` so Lit primitives and SolidJS components rendered in one instance.
+
+Cancelled because the job it was aimed at — browsing components to compose something — is the job the marketplace and visual editor are being built to do, natively and against real schemas. Storybook could never do that version of it: it knows nothing about the registry, templates-as-data or themes-as-data. The divergence was already costing us — the June theme refactor (built-in themes injecting CSS at runtime) silently left Storybook rendering unstyled components for two months before anyone noticed, because nothing in CI or anyone's workflow opened it.
+
+What Storybook was genuinely good at — one component in isolation, in every state — is worth rebuilding inside the component browser, where a "story" is just a schema and therefore renders in the app, the editor and the marketplace for free. The 13 story files remain in git history as reference for whoever builds that.
 
 ### 8. @we/ai-context Package ✅
 
@@ -430,7 +431,7 @@ Adds `'file'` as a new `LocalStateField` type so schemas can declare file state,
 | ✅   | 11  | Context Fragments              | AI    | 8b         | Medium | Med  |
 | ✅   | 12  | File Upload Local State        | Cust  | 4c         | Small  | Low  |
 | ⏸️   | 7b  | Component Showcase             | AI    | 5          | Medium | Low  |
-| ⏸️   | 7c  | Root Storybook Migration       | AI    | —          | S–Med  | Low  |
+| ❌   | 7c  | Root Storybook Migration       | AI    | —          | S–Med  | Low  |
 | ⏸️   | 9   | MCP Tools                      | AI    | 6, 8, 8b   | Large  | Med  |
 
 > **†** 8b structural = token shape Zod schemas (no deps). **‡** 8b semantic = component/store validation (needs ai-context). **⏸️** = deferred indefinitely (developer tooling or superseded by skills approach).
@@ -460,5 +461,5 @@ Track 1:  [1–3, 4b, 10 ✅] ────────────────�
           [11. Context Fragments ✅] ─────────────────────────────────────────
           [12. File Upload Local State ✅] ───────────────────────────────────
 
-Deferred: [7b. Showcase ⏸️] [7c. Storybook ⏸️] [9. MCP Tools ⏸️]
+Deferred: [7b. Showcase ⏸️] [9. MCP Tools ⏸️]   Cancelled: [7c. Storybook ❌]
 ```

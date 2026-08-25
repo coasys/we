@@ -133,7 +133,6 @@ export default [
       '**/old/**',
       '**/target/**',
       '**/dist-electron/**',
-      '**/.storybook/**',
       // Machine-generated sources (e.g. packages/models/src/generated/coreManifest.ts,
       // written by generateCoreManifest.mjs) — emitted JSON-style, not prettier-style.
       '**/src/generated/**',
