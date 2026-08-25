@@ -9,7 +9,7 @@
  */
 import { describe, expect, it } from 'vitest';
 
-import { createCallStore, STAGE_PADDING_PX } from './store';
+import { createCallStore, STAGE_GAP_PX, STAGE_PADDING_PX } from './store';
 
 /** The reactivity a host lends a module, reduced to the smallest thing that satisfies it. */
 function makeStore() {
@@ -68,25 +68,20 @@ describe('what the call still decides about its own video', () => {
 });
 
 describe('tile packing', () => {
-  it('divides the box it is given, whatever shape that box is', () => {
-    // The invariant the whole layout exists for. A wrapping flex row derives its line height from
-    // content and can only grow, so a declared stage height was a floor; grid tracks of `1fr` divide
-    // what they are given and cannot overflow it.
-    const style = makeStore().stageStyle();
+  it('no longer decides its own columns', () => {
+    // The columns used to come from the head count alone, with the panel's shape — the one thing the
+    // user controls directly — not an input at all. `Grid`'s `childAspect` solves it against the
+    // measured box and reports back; this module reads the answer rather than guessing it.
+    const store = makeStore();
 
-    expect(style.display).toBe('grid');
-    expect(style['grid-auto-rows']).toBe('1fr');
-    expect(style['grid-template-columns']).toBe('repeat(1, 1fr)');
+    expect(store.stageStyle).toBeUndefined();
+    expect(store.arrangement()).toEqual({ columns: 1, rows: 1 });
   });
 
-  it('has one arrangement, not one per edge', () => {
-    // The strip and the side-dock cases existed because a docked panel's shape was decided by which
-    // edge it was on — a 440×900 column, a 1600×300 band. A panel the user dragged to a size has no
-    // such categories, so the special cases went with the edges.
-    const style = makeStore().stageStyle();
-
-    expect(style['grid-auto-flow']).toBeUndefined();
-    expect(style['align-content']).toBeUndefined();
+  it('takes the arrangement the stage settled on', () => {
+    const store = makeStore();
+    store.setArrangement({ columns: 3, rows: 2 });
+    expect(store.arrangement()).toEqual({ columns: 3, rows: 2 });
   });
 
   it('fits each picture to its cell by measuring the cell', () => {
@@ -108,6 +103,18 @@ describe('tile packing', () => {
     expect(aspect.ratio).toBeCloseTo(16 / 9);
     expect(aspect.insetX).toBe(STAGE_PADDING_PX * 2);
     expect(aspect.insetY).toBe(STAGE_PADDING_PX * 2);
+  });
+
+  it('fits to the arrangement it is in, rather than solving a new one', () => {
+    // With the width fixed, any column count can be made to fit perfectly — so a "fit" that
+    // re-solved could rearrange the call under a click that only asked to remove the empty band.
+    const store = makeStore();
+    store.setArrangement({ columns: 3, rows: 2 });
+    const aspect = store.dockAspect() as { ratio: number; insetX: number; insetY: number };
+
+    expect(aspect.ratio).toBeCloseTo((3 * 16) / (2 * 9));
+    expect(aspect.insetX).toBe(STAGE_PADDING_PX * 2 + 2 * STAGE_GAP_PX);
+    expect(aspect.insetY).toBe(STAGE_PADDING_PX * 2 + 1 * STAGE_GAP_PX);
   });
 });
 

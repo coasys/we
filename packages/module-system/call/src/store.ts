@@ -596,22 +596,20 @@ export function createCallStore(deps: CallStoreDeps) {
   onDispose?.(() => teardown());
 
   /**
-   * How many columns the tiles pack into.
+   * How the tiles are arranged, as reported by the stage.
    *
-   * The only number the layout needs, because every other dimension is `1fr` of a box whose size the
-   * host has already decided. That is what makes "one participant never scrolls" a property of the
-   * arrangement rather than something to test for: rows divide the stage, they never exceed it.
+   * This module no longer decides it. It used to, from the participant count alone — two columns up
+   * to four people, three beyond — and the panel's *shape* was not an input at all, so a call
+   * dragged tall and thin got two columns of postage stamps and one dragged wide got two rows with
+   * bands of empty panel above and below. The comment here claimed a tall dock wanted one or two
+   * columns; the code had no width to make that true with, and had not since a panel stopped being
+   * defined by which edge it was on.
    *
-   * Three cases, in order of how strongly they determine the answer. A focus wins outright — one
-   * fewer column than there are people puts the focused tile across the top and everyone else in
-   * exactly one row beneath, at any count. A tall narrow dock wants columns of one or two, because
-   * three 16:9 tiles across a 440px panel are thumbnails. Anything wide gets the ordinary grid.
+   * `Grid`'s `childAspect` solves it properly — largest 16:9 tiles for the box, both axes — and
+   * reports what it settled on. Read here for two things only the module can answer: what shape the
+   * panel wants at fit-to-content, and where a spotlight should put everyone else.
    */
-  function stageColumns(count: number, focused: boolean): number {
-    if (count <= 1) return 1;
-    if (focused) return Math.min(count - 1, 4);
-    return count <= 4 ? 2 : 3;
-  }
+  const [arrangement, setArrangement] = signal<{ columns: number; rows: number }>({ columns: 1, rows: 1 });
 
   /** Everyone in the space-wide call, whether or not this agent has joined — so the bar can offer
    *  "3 in a call · Join" rather than only appearing once you are already in one. */
@@ -686,11 +684,14 @@ export function createCallStore(deps: CallStoreDeps) {
      * panel width, made the box about twenty pixels too short for its pictures, and the tiles
      * answered by shrinking to the height and leaving a gap down each side. They are constants at a
      * given tile count, which is what lets this stay a value rather than a callback taking a width.
+     *
+     * The arrangement is the one the stage is *currently in*, not one solved again here. That is
+     * deliberate: with the width fixed, any column count can be made to fit perfectly, so "fit" that
+     * re-solved could rearrange the call under a click that only asked to remove the empty band.
+     * This takes the slack out and leaves the tiles where they are.
      */
     dockAspect: () => {
-      const count = Math.max(1, tiles().length);
-      const columns = stageColumns(count, focusedId() !== null);
-      const rows = Math.max(1, Math.ceil(count / columns));
+      const { columns, rows } = arrangement();
       return {
         ratio: (columns * 16) / (rows * 9),
         insetX: STAGE_PADDING_PX * 2 + (columns - 1) * STAGE_GAP_PX,
@@ -703,25 +704,15 @@ export function createCallStore(deps: CallStoreDeps) {
 
     // ── How the tiles pack ────────────────────────────────────────────────────
     /**
-     * The tile container's own CSS, computed rather than expressed as nested `$if` in the fragment.
+     * What the stage settled on — wired to `Grid`'s `onArrange`.
      *
-     * Grid, not wrapping flex. A wrapping flex container derives its line height from its content and
-     * `align-content` can only *grow* a line — so a declared stage height was a floor rather than a
-     * ceiling, and one oversized child pushed the whole stage past it into a scrollbar. Grid tracks of
-     * `1fr` divide a definite box instead, which cannot overflow however many people join or whatever
-     * resolution they send.
-     *
-     * One arrangement now, where there were three. The strip and the side-dock cases existed because
-     * a docked panel's shape was decided by which *edge* it was on — a 440×900 column, a 1600×300
-     * band — and each needed its own way to pack tiles into it. A panel the user has dragged to a
-     * size has no such categories: it is a rectangle, the tiles divide it, and the columns come from
-     * how many people are in the call rather than from where the panel is parked.
+     * A setter on the store because the arrangement is decided where it can be measured, and needed
+     * where the panel's geometry is decided. The alternative was for this module to import the
+     * solver and re-derive it, which would mean a module depending on the design system — an edge
+     * the package layering does not have — and two copies of an answer that must agree.
      */
-    stageStyle: (): Record<string, string> => ({
-      display: 'grid',
-      'grid-template-columns': `repeat(${stageColumns(tiles().length, focusedId() !== null)}, 1fr)`,
-      'grid-auto-rows': '1fr',
-    }),
+    setArrangement,
+    arrangement,
 
     /**
      * The picture box's own sizing.
@@ -753,9 +744,24 @@ export function createCallStore(deps: CallStoreDeps) {
 
     tileCells: (): { id: string; style: Record<string, string | number> }[] => {
       const focus = focusedId();
-      // A focused tile spans the full width and two rows: the classic spotlight, in one declaration,
-      // at any participant count.
-      const spotlight: Record<string, string | number> = { 'grid-column': '1 / -1', 'grid-row': 'span 2', order: -1 };
+      /*
+        A spotlight, laid out along whichever axis the panel has room in.
+
+        In a tall panel the focused tile takes the full width and everyone else forms a strip
+        beneath it; in a wide one it takes the full height and the strip runs down the side. Which
+        it is comes from the arrangement the stage settled on — more columns than rows means a wide
+        box — so the spotlight follows the panel's shape for the same reason the grid does, rather
+        than always being the top half of it. A wide panel spotlighting across the top left the
+        other tiles in a band a fraction of the height, which is where this was before.
+
+        `order: -1` keeps the focused tile first whichever axis it spans, so the strip reads in the
+        same direction as the grid did before anybody was focused.
+      */
+      const { columns, rows } = arrangement();
+      const spotlight: Record<string, string | number> =
+        columns > rows
+          ? { 'grid-row': '1 / -1', 'grid-column': 'span 2', order: -1 }
+          : { 'grid-column': '1 / -1', 'grid-row': 'span 2', order: -1 };
       /**
        * Every cell is a size container, which is what lets the picture inside it be the right shape.
        *

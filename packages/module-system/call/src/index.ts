@@ -536,19 +536,35 @@ const stage: SchemaNode = {
   props: {
     condition: { $store: 'modules.call.active' },
     then: {
-      type: 'Column',
+      type: 'Grid',
       props: {
         width: '100%',
         height: '100%',
         // `300` is 12px — `STAGE_PADDING_PX` and `STAGE_GAP_PX`, which `dockAspect` subtracts so that
         // "fit to content" lands on a height that fits the pictures rather than one that squeezes
-        // them. Change either here and the constant has to follow.
+        // them. Change either here and the constant has to follow. The *solver* needs no telling:
+        // the grid reads its own gap.
         p: '300',
         gap: '300',
         overflow: 'hidden',
-        // Grid template and track sizing — see `stageStyle` in the store, which is also where the
-        // choice of grid over wrapping flex is argued.
-        styles: { $store: 'modules.call.stageStyle' },
+        /**
+         * The arrangement, solved against the box rather than guessed from the head count.
+         *
+         * This is the whole fix. The columns used to come from how many people were in the call and
+         * nothing else, so the panel's shape — the one thing the user controls directly — was not an
+         * input: dragged tall and thin you got two columns of postage stamps, dragged wide you got
+         * two rows with bands of empty panel above and below. `childAspect` measures the box and
+         * picks the arrangement that makes 16:9 pictures largest, which for two people in a square
+         * panel is one column at 523px rather than two at 294px.
+         *
+         * Only CSS changes when it re-solves. That matters more here than anywhere: the tiles are a
+         * reference-keyed `$each`, and moving one to a different DOM parent would drop its
+         * `srcObject` — somebody's video would go black every time the panel crossed a threshold.
+         */
+        childAspect: '16 / 9',
+        // What the stage settled on, back to the store — see `setArrangement`. The host needs it to
+        // answer "fit to content", and the spotlight needs it to know which axis it has room in.
+        onArrange: { $action: 'modules.call.setArrangement' },
       },
       children: [{ type: '$each', props: { items: { $store: 'modules.call.tiles' }, as: 'tile' }, children: [tile] }],
     },
