@@ -24,9 +24,12 @@ import {
   resolveFontFamily,
   resolveFontWeight,
   resolveLineHeight,
+  TIER_PROP_KEYS,
+  tierRulesCSS,
   tokenVar,
   zIndexVar,
 } from '@we/design-utils';
+import type { Tier } from '@we/tokens';
 
 /**
  * Design System CSS Helpers
@@ -501,9 +504,11 @@ function updateCustomVars(
   componentName: string,
   props: Partial<DesignSystemProps>,
   rawExplicitProps?: Partial<DesignSystemProps>,
-  state?: ElementState,
+  // A state name or a breakpoint tier — both are just a prefix, and the CSS that reads them is
+  // generated from the same spec tables either way.
+  variant?: ElementState | Exclude<Tier, 'base'>,
 ) {
-  const prefix = state ? `--we-${componentName}-${state}-` : `--we-${componentName}-`;
+  const prefix = variant ? `--we-${componentName}-${variant}-` : `--we-${componentName}-`;
 
   // Layout: host positioning
   const hasMargin = marginKeys.some((k) => props[k] !== undefined && props[k] !== null);
@@ -540,9 +545,9 @@ function updateCustomVars(
   // payload embedded as a CSS custom property value hits a real, empirically-confirmed
   // length ceiling in Chromium (silently dropped, no error) — bgImageLayer keeps
   // the actual CSS value fixed-length regardless of the source image's size.
-  // Not state-varied (no {state}-bg-image-* writes) — swapping the image itself on
-  // hover/active/focus is out of scope, unlike the rest of this fn.
-  if (!state) {
+  // Not variant-varied (no {variant}-bg-image-* writes) — swapping the image itself on
+  // hover/active/focus, or at a breakpoint, is out of scope, unlike the rest of this fn.
+  if (!variant) {
     const isFaded = isBgImageFaded(props);
     setProperty(el, `${prefix}bg-image-composite`, isFaded ? computeBgImageComposite(props) : undefined);
     setProperty(el, `${prefix}bg-image`, props.bgImage && !isFaded ? bgImageLayer(props.bgImage) : undefined);
@@ -623,6 +628,18 @@ export function updateAllCustomVars(
     // State props are always treated as explicit — no DEFAULT_PROPS fill state blocks.
     if (stateProps && typeof stateProps === 'object') updateCustomVars(el, componentName, stateProps, undefined, state);
   });
+  /*
+    Breakpoint tiers, by the same route as the states.
+
+    Explicit like a state bag and for the same reason: a tier says what changes at that width, so
+    filling it from DEFAULT_PROPS would pin every unmentioned prop at that width and stop it
+    cascading through from the tier below.
+  */
+  for (const [tier, key] of Object.entries(TIER_PROP_KEYS)) {
+    const tierProps = (props as Record<string, unknown>)[key];
+    if (tierProps && typeof tierProps === 'object')
+      updateCustomVars(el, componentName, tierProps as Partial<DesignSystemProps>, undefined, tier as never);
+  }
 }
 
 // ────────────────────────────────────────────
@@ -777,17 +794,20 @@ export function getStaticDSStyles(
     );
   }
 
+  // The two element layers a variant can address, in the layers this component actually has. Shared
+  // by the state selectors and the tier queries below, so a `we-icon` gets layout props at a
+  // breakpoint and nothing it never accepted in the first place.
+  const hostSpecs: PropSpec[] = [];
+  if (l.has('layout')) hostSpecs.push(...HOST_LAYOUT);
+
+  const baseSpecs: PropSpec[] = [];
+  if (l.has('visual')) baseSpecs.push(...baseVisual);
+  if (l.has('layout')) baseSpecs.push(...BASE_LAYOUT);
+  if (l.has('flex')) baseSpecs.push(...baseFlex);
+  if (l.has('typography')) baseSpecs.push(...BASE_TYPOGRAPHY);
+
   // ── State selectors ──
   if (l.has('state')) {
-    const hostSpecs: PropSpec[] = [];
-    if (l.has('layout')) hostSpecs.push(...HOST_LAYOUT);
-
-    const baseSpecs: PropSpec[] = [];
-    if (l.has('visual')) baseSpecs.push(...baseVisual);
-    if (l.has('layout')) baseSpecs.push(...BASE_LAYOUT);
-    if (l.has('flex')) baseSpecs.push(...baseFlex);
-    if (l.has('typography')) baseSpecs.push(...BASE_TYPOGRAPHY);
-
     for (const state of ELEMENT_STATES) {
       const sp = `${p}${state}-`;
 
@@ -824,6 +844,24 @@ export function getStaticDSStyles(
       }
     }
   }
+
+  /*
+    ── Breakpoint tiers ──
+
+    Not gated on the `state` layer: a `we-icon` accepts layout props and nothing else, and there is
+    no reason it should not accept them at a breakpoint too. What a tier may *contain* is already
+    bounded by the spec lists above.
+
+    The query resolves against the nearest `$surface` — a light-DOM ancestor, several shadow
+    boundaries up. That works: container selection walks the flat tree, so a rule authored inside
+    this shadow root matches a container declared outside it. Verified in Chrome and Firefox.
+
+    Emitted after the state selectors, so a tier value wins over a state value on the same property
+    at equal specificity — the same ordering the Solid interop stylesheet uses, and for the same
+    reason.
+  */
+  if (hostSpecs.length > 0) styles.push(tierRulesCSS(':host', p, hostSpecs));
+  if (baseSpecs.length > 0) styles.push(tierRulesCSS(`[part='base']`, p, baseSpecs));
 
   return styles.join('\n');
 }
