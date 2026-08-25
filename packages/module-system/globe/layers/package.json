@@ -1,7 +1,7 @@
 {
   "name": "@we/globe-layers",
   "version": "0.1.0",
-  "description": "WE's first-party globe layers \u2014 implementations of @we/globe-protocol",
+  "description": "WE's first-party globe layers — implementations of @we/globe-protocol",
   "license": "MIT",
   "type": "module",
   "scripts": {
@@ -35,7 +35,7 @@
     "h3-js": "^4.1.0"
   },
   "peerDependencies": {
-    "cesium": "^1.136.0",
+    "cesium": "^1.144.0",
     "@we/globe-protocol": "workspace:*"
   },
   "devDependencies": {

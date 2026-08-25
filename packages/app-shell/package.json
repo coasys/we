@@ -57,7 +57,7 @@
     "@we/tokens": "workspace:*",
     "@we/widgets": "workspace:*",
     "solid-js": "^1.9.15",
-    "three": "^0.176.0",
+    "three": "^0.185.1",
     "@we/backend-shared": "workspace:*",
     "@we/module-shared": "workspace:*",
     "@we/module-transcribe": "workspace:*",
