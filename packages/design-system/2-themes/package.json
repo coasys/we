@@ -44,7 +44,7 @@
     "@we/tokens": "workspace:*",
     "jsdom": "^30.0.1",
     "postcss": "^8.5.26",
-    "postcss-cli": "^10.1.0",
+    "postcss-cli": "^11.0.1",
     "postcss-import": "^15.1.0",
     "rimraf": "^6.1.0",
     "tsup": "^8.5.1",
