@@ -23,6 +23,23 @@ updates:
       # not a routine bump, and a Dependabot PR proposing one would be wrong every time.
       - dependency-name: '@coasys/*'
 
+      # Lexical is pinned by `lexical-solid`, not by us. Its newest published release (0.21.0,
+      # which is what we are on) declares all nineteen lexical packages as `~0.30.0`, so any bump
+      # of our own lexical deps installs a SECOND copy: @we/block-solid resolves 0.49.0 while
+      # lexical-solid keeps 0.30.0. Verified, not assumed.
+      #
+      # Two copies is fatal here rather than merely wasteful. Lexical registers its node classes
+      # per copy, so `$isTextNode()` from one copy returns false for a node built by the other's
+      # class — and BlockComposer uses lexical-solid's components alongside our own lexical
+      # imports. The type error it surfaces as (`ElementTransformer` not assignable to
+      # `Transformer`) is the visible corner of that.
+      #
+      # So this is blocked upstream, and a Dependabot PR proposing it is unmergeable every time
+      # until lexical-solid publishes a release built against a newer lexical. Revisit then;
+      # `npm view lexical-solid versions` is the check.
+      - dependency-name: 'lexical'
+      - dependency-name: '@lexical/*'
+
   # ------------------------------------------------------------------ workflow actions
   # These are the versions in .github/workflows and .github/actions. Nothing else updates
   # them, so without this they sit on whatever was current the day they were written.

@@ -75,7 +75,7 @@
   "devDependencies": {
     "@solidjs/testing-library": "^0.8.10",
     "@types/node": "^26.2.0",
-    "@types/three": "^0.176.0",
+    "@types/three": "^0.185.4",
     "@vitest/coverage-v8": "^4.1.11",
     "@we/backend-inmemory": "workspace:*",
     "@we/cli": "workspace:*",
