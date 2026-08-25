@@ -10,8 +10,6 @@
     "build:cem": "cem analyze --litelement --config custom-elements-manifest.config.mjs --globs src/**/*.ts",
     "build:steps": "node scripts/check-super-calls.mjs && node scripts/generate-leaflet-css.mjs && pnpm build:icons && pnpm build:cem && tsup",
     "build": "we-build",
-    "start": "pnpm build:cem && storybook dev -p 6006",
-    "storybook:build": "storybook build",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },
@@ -94,16 +92,12 @@
   "devDependencies": {
     "@custom-elements-manifest/analyzer": "0.10.4",
     "@phosphor-icons/core": "^2.1.1",
-    "@storybook/addon-essentials": "8.4.6",
-    "@storybook/web-components": "8.4.6",
-    "@storybook/web-components-vite": "8.4.6",
     "@types/node": "^26.2.0",
     "@we/cli": "workspace:*",
     "@we/design-types": "workspace:*",
     "eslint-plugin-lit": "^2.1.1",
     "jsdom": "^28.0.0",
     "prettier": "3.9.4",
-    "storybook": "8.4.6",
     "tsup": "^8.5.1",
     "tsx": "^4.21.0",
     "vitest": "^4.0.15"
