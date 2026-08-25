@@ -79,8 +79,14 @@ describe('scoping', () => {
     // the theme is scoped to — so left implicit, every built-in theme renders as nothing in scoped
     // mode. Verified against Chrome, not deduced from the spec.
     const { css } = sanitiseCss("[data-we-theme='retro'] we-button { color: red }", { scope: SCOPE });
-    // Quotes come back the way the parser normalises them, which is the point of round-tripping.
-    expect(css).toContain(':where(:scope, :scope *)[data-we-theme="retro"] we-button { color: red }');
+    // Quote style is the parser's business, not ours: jsdom 27/28 serialised attribute values with
+    // double quotes and jsdom 30 uses single, while Chrome does its own thing again. All three are
+    // the same selector. Normalise before asserting rather than pinning whichever convention the
+    // parser of the day happens to pick — what this test is about is the `:where(:scope, :scope *)`
+    // anchoring, and asserting the quotes as well just breaks it on every parser upgrade.
+    expect(css.replace(/"/g, "'")).toContain(
+      ":where(:scope, :scope *)[data-we-theme='retro'] we-button { color: red }",
+    );
   });
 
   it('rewrites :root to the scoping root', () => {

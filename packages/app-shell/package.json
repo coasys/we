@@ -79,7 +79,7 @@
     "@vitest/coverage-v8": "^4.0.15",
     "@we/backend-inmemory": "workspace:*",
     "@we/cli": "workspace:*",
-    "jsdom": "^27.2.0",
+    "jsdom": "^30.0.1",
     "tsup": "^8.5.1",
     "vite": "^6.0.7",
     "vite-plugin-solid": "^2.11.11",
