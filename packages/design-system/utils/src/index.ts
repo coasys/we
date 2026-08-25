@@ -5,6 +5,7 @@ import { tierQuery } from './surface';
 
 export * from './color';
 export * from './surface';
+export * from './tiling';
 
 // --- Shared sub-arrays (used by CSS helpers directly) ---
 export const paddingKeys = ['p', 'px', 'py', 'pt', 'pr', 'pb', 'pl'] as const;

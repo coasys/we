@@ -1,4 +1,4 @@
-import { designSystemKeys, filterProps, mergeProps } from '@we/design-utils';
+import { designSystemKeys, filterProps, mergeProps, tierKeys } from '@we/design-utils';
 import { buildLayoutStyles, getBgImageAttrs, type LayoutProps, useStateProps } from '@we/design-utils/solid';
 import { createMemo, type JSX, splitProps } from 'solid-js';
 
@@ -22,6 +22,15 @@ export interface LayoutComponentConfig<P extends LayoutProps> {
   direction?: 'row' | 'column' | ((props: P) => 'row' | 'column');
   /** Optional last-step transform over the computed style (Grid template, Card opacity). */
   finalizeStyle?: (style: JSX.CSSProperties, props: P) => JSX.CSSProperties;
+  /**
+   * Optional per-component behaviour that needs the element itself.
+   *
+   * `finalizeStyle` is a pure function of the props, which is enough for everything the layout
+   * components did until one of them had to *measure*: `Grid`'s `childAspect` picks its track count
+   * from the box it ends up occupying, and no amount of prop inspection can answer that. Runs in the
+   * component body, so it may hold signals and register cleanup like any other Solid code.
+   */
+  hook?: (props: P) => { ref?: (el: HTMLElement) => void; style?: () => JSX.CSSProperties };
 }
 
 export function createLayoutComponent<P extends LayoutProps>(
@@ -45,20 +54,33 @@ export function createLayoutComponent<P extends LayoutProps>(
       return config.finalizeStyle ? config.finalizeStyle(style, designSystemProps as P) : style;
     });
 
-    const hasStateProps = () =>
+    // Both axes of variance route through the same var indirection, so either one is reason enough
+    // to use it. Missing the tier half here would leave `mdUpProps` typechecking and doing nothing.
+    const hasVariantProps = () =>
       designSystemProps.hoverProps ||
       designSystemProps.activeProps ||
       designSystemProps.focusProps ||
-      designSystemProps.disabledProps;
+      designSystemProps.disabledProps ||
+      tierKeys.some((key) => (designSystemProps as Record<string, unknown>)[key]);
 
     const { style, attrs } = useStateProps(baseStyle, designSystemProps as P, direction());
+    const extras = config.hook?.(designSystemProps as P);
+
+    const composedRef = (el: HTMLElement) => {
+      extras?.ref?.(el);
+      // A caller's own ref still gets the element: `rest` is spread before this, so without
+      // forwarding it here the component would silently swallow it.
+      const own = (rest as { ref?: unknown }).ref;
+      if (typeof own === 'function') (own as (e: HTMLElement) => void)(el);
+    };
 
     return (
       <div
-        style={hasStateProps() ? style() : baseStyle()}
+        style={{ ...(hasVariantProps() ? style() : baseStyle()), ...(extras?.style?.() ?? {}) }}
         {...getBgImageAttrs(designSystemProps)}
         {...rest}
-        {...(hasStateProps() ? attrs : {})}
+        {...(hasVariantProps() ? attrs : {})}
+        ref={composedRef}
       >
         {designSystemProps.children}
       </div>
