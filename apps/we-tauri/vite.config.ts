@@ -34,10 +34,10 @@ export default defineConfig(async () => ({
   },
   resolve: {
     alias: {
-      '@': resolve(__dirname, 'src'),
+      '@': resolve(import.meta.dirname, 'src'),
       // Resolve @we/app-shell internal aliases
-      '@shared': resolve(__dirname, '../../packages/app-shell/src/shared'),
-      '@solid': resolve(__dirname, '../../packages/app-shell/src/frameworks/solid'),
+      '@shared': resolve(import.meta.dirname, '../../packages/app-shell/src/shared'),
+      '@solid': resolve(import.meta.dirname, '../../packages/app-shell/src/frameworks/solid'),
     },
   },
   assetsInclude: ['**/*.glb'],

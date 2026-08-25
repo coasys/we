@@ -21,7 +21,7 @@
   "devDependencies": {
     "@we/cli": "workspace:*",
     "typescript": "^5.7.2",
-    "vite": "^6.0.7",
+    "vite": "^8.2.2",
     "vite-plugin-solid": "^2.11.14"
   }
 }
