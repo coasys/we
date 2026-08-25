@@ -96,7 +96,7 @@
     "@we/cli": "workspace:*",
     "@we/design-types": "workspace:*",
     "eslint-plugin-lit": "^2.1.1",
-    "jsdom": "^28.0.0",
+    "jsdom": "^30.0.1",
     "prettier": "3.9.4",
     "tsup": "^8.5.1",
     "tsx": "^4.21.0",
