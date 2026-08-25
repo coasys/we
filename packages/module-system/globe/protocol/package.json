@@ -16,12 +16,12 @@
     }
   },
   "peerDependencies": {
-    "cesium": "^1.136.0"
+    "cesium": "^1.144.0"
   },
   "devDependencies": {
     "@types/node": "^26.2.0",
     "@we/cli": "workspace:*",
-    "cesium": "^1.136.0",
+    "cesium": "^1.144.0",
     "tsup": "^8.5.1"
   },
   "sideEffects": false

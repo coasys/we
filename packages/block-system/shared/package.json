@@ -25,7 +25,7 @@
   "devDependencies": {
     "@we/cli": "workspace:*",
     "tsup": "^8.5.1",
-    "vitest": "^4.0.15"
+    "vitest": "^4.1.11"
   },
   "sideEffects": false
 }
