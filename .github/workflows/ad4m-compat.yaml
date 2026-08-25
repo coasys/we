@@ -121,7 +121,7 @@ jobs:
             echo "why=no green Build run found on dev" >> "$GITHUB_OUTPUT"
           fi
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ steps.we-ref.outputs.ref }}
 
@@ -133,18 +133,18 @@ jobs:
       #
       # The install is separate and comes later: the override rewrite below is deliberate
       # lockfile drift, so it cannot be frozen.
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
 
       - name: Get pnpm store directory
         id: pnpm-store
         run: echo "path=$(pnpm store path --silent)" >> "$GITHUB_OUTPUT"
 
       - name: Cache pnpm store
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ${{ steps.pnpm-store.outputs.path }}
           key: pnpm-store-${{ hashFiles('pnpm-lock.yaml') }}
@@ -164,7 +164,7 @@ jobs:
 
       - name: Cache AD4M built outputs
         id: ad4m-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             ad4m/node_modules
