@@ -15,8 +15,8 @@ export default defineConfig({
   build: { target: 'esnext' },
   resolve: {
     alias: {
-      '@shared': path.resolve(__dirname, '../../packages/app-shell/src/shared'),
-      '@solid': path.resolve(__dirname, '../../packages/app-shell/src/frameworks/solid'),
+      '@shared': path.resolve(import.meta.dirname, '../../packages/app-shell/src/shared'),
+      '@solid': path.resolve(import.meta.dirname, '../../packages/app-shell/src/frameworks/solid'),
     },
   },
 });

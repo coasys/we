@@ -19,8 +19,8 @@ export default defineConfig({
   resolve: {
     alias: {
       // Resolve @we/app-shell internal aliases
-      '@shared': path.resolve(__dirname, '../../packages/app-shell/src/shared'),
-      '@solid': path.resolve(__dirname, '../../packages/app-shell/src/frameworks/solid'),
+      '@shared': path.resolve(import.meta.dirname, '../../packages/app-shell/src/shared'),
+      '@solid': path.resolve(import.meta.dirname, '../../packages/app-shell/src/frameworks/solid'),
     },
   },
 });
