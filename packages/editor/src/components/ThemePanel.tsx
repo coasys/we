@@ -482,7 +482,6 @@ function CollapsibleSection(props: {
 // ─── ThemePanel ───────────────────────────────────────────────────────────────
 
 export function ThemePanel() {
-  const session = useEditorHost().session;
   const themeStore = useEditorHost().theme;
 
   const editing = () => themeStore.editingTheme();
@@ -1246,11 +1245,6 @@ export function ThemePanel() {
         <we-text fontSize="500" fontWeight="600">
           Theme Editor
         </we-text>
-        <we-tooltip title="Close theme panel">
-          <we-button variant="ghost" size="sm" onClick={() => session.closeThemePanel()}>
-            <we-icon name="x" size="sm" />
-          </we-button>
-        </we-tooltip>
       </Row>
 
       <Show

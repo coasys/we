@@ -14,7 +14,7 @@ import { generateIframePermissions, validateSeedForLauncher } from './integratio
 import type { PlatformAdapter } from './platform/types';
 import { activateSeedModules } from './registries/bundledModules';
 import { moduleRegistry } from './registries/moduleRegistry';
-import { slotRegistry } from './registries/slotRegistry';
+import { registerCoreSlots, slotRegistry } from './registries/slotRegistry';
 import { provideSeed } from './seedRegistry';
 
 export interface IntegrationDeps {
@@ -42,6 +42,17 @@ export function initializeIntegrations(
 
   try {
     provideSeed(seed);
+
+    /*
+      The host's own chrome, before anything replaces or contributes to it.
+
+      This is a call rather than an import side effect, and the difference is not stylistic: it used
+      to run when `slotRegistry` was first imported, from inside an import cycle with `editorDocks`,
+      so it depended on which of the two a bundle happened to reach first. The requirement was always
+      that core slots exist before the seed's boot-screen override below and before any module
+      registers — which is exactly here.
+    */
+    registerCoreSlots();
 
     const validation = validateSeedForLauncher(seed);
     if (!validation.valid) {

@@ -740,9 +740,14 @@ const bar: SchemaNode = {
           type: 'Row',
           props: {
             position: 'fixed',
-            top: CALL_BAR_TOP,
-            left: '50%',
+            // The same two corrections the in-call bar makes, and for the same reasons — this is the
+            // bar that replaces it, in the same place. It made neither until the host started
+            // publishing the content box: pinned to the middle of the *window*, it sat off-centre
+            // whenever anything was docked and slid under a panel that took the top edge.
+            top: `calc(${CALL_BAR_TOP} + var(--we-chrome-top, 0px))`,
+            left: 'calc(50% + var(--we-chrome-center-x, 0px))',
             transform: 'translateX(-50%)',
+            transition: 'left var(--we-chrome-transition, 300ms) ease, top var(--we-chrome-transition, 300ms) ease',
             ...BAR_SURFACE,
             r: BAR_RADIUS,
             p: '200',
@@ -799,26 +804,28 @@ const bar: SchemaNode = {
 
           It used to swap ends when the stage was docked along the top, since both wanted that corner
           and the small one should give. That was this module reasoning about its own panel, which it
-          can no longer see — but it does not need to: `--we-dock-top` is what *any* panel displacing
-          the top edge publishes, so this clears a docked notes panel exactly as it clears a call
-          stage, and reads the same way the horizontal terms below already do.
+          can no longer see — but it does not need to: `--we-chrome-top` is where the host says the
+          content's top edge is, so this clears a docked notes panel exactly as it clears a call
+          stage, and reads the same way the horizontal term below already does.
 
           A panel that merely floats over the top is deliberately not dodged. It takes no room, the
           user put it there by hand, and it is dragged by a grip this bar would then be covering —
           chrome that ran away from a decision somebody just made is worse than an overlap they can
           see and undo.
         */
-        top: `calc(${CALL_BAR_TOP} + var(--we-dock-top, 0px))`,
+        top: `calc(${CALL_BAR_TOP} + var(--we-chrome-top, 0px))`,
         /**
          * Centred on the content, not the window.
          *
          * Every other piece of floating chrome moves when a dock takes an edge — the module rail,
          * the editor's rails and its toolbar all slide inwards. A bar pinned to the middle of the
          * *window* stays put while they move, so docking on the right walked the editor's controls
-         * straight into it. Shifting by half the difference between the insets keeps it in the
-         * middle of what is left, which is where it was always meant to be.
+         * straight into it. `--we-chrome-center-x` is how far the content's centre has moved from
+         * the window's, which is exactly the correction, and is the host's to compute: this module
+         * used to sum the sidebar and both insets itself, and the two smaller bars below it — which
+         * want the identical correction — did not.
          */
-        left: 'calc(50% + (var(--we-sidebar-width, 0px) + var(--we-dock-left, 0px) - var(--we-dock-right, 0px)) / 2)',
+        left: 'calc(50% + var(--we-chrome-center-x, 0px))',
         transform: 'translateX(-50%)',
         transition: 'left var(--we-chrome-transition, 300ms) ease, top var(--we-chrome-transition, 300ms) ease',
         // One step of the spacing scale, which is the nearest thing to the ~10px this wants and is
@@ -978,11 +985,18 @@ const problem: SchemaNode = {
 
           Both were pinned to `CALL_BAR_TOP` once, so the alert opened underneath the controls —
           mostly hidden, and with its dismiss button unreachable, which is a poor showing for the one
-          piece of UI whose entire job is to be read. The bar no longer moves, so neither does this.
+          piece of UI whose entire job is to be read.
+
+          Clear of the content's bottom edge and centred on the content, as the bar is on its own
+          two. This had neither, on the reasoning that the bar no longer moves so nor does this —
+          true of the bar and irrelevant to the window, which is what both were actually pinned to.
+          A panel docked along the bottom covered it, and the one piece of UI whose entire job is to
+          be read was unreadable again by a different route.
         */
-        bottom: CALL_BAR_TOP,
-        left: '50%',
+        bottom: `calc(${CALL_BAR_TOP} + var(--we-chrome-bottom, 0px))`,
+        left: 'calc(50% + var(--we-chrome-center-x, 0px))',
         transform: 'translateX(-50%)',
+        transition: 'left var(--we-chrome-transition, 300ms) ease, bottom var(--we-chrome-transition, 300ms) ease',
         zIndex: 'sticky',
         maxWidth: '420px',
       },
@@ -1075,7 +1089,9 @@ export const callModule = defineModule({
    * those that nothing kept in step. Saying "the right edge, medium" and letting the host answer is
    * what makes the same declaration inset on a monitor and float on a laptop.
    */
-  docks: [{ edge: 'dockEdge', size: 'dockSize', float: 'dockFloat', aspect: 'dockAspect', node: stage }],
+  docks: [
+    { edge: 'dockEdge', size: 'dockSize', float: 'dockFloat', aspect: 'dockAspect', close: 'closeStage', node: stage },
+  ],
 
   createStore: (deps: ModuleStoreDeps) => createCallStore(deps),
 });

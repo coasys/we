@@ -141,18 +141,10 @@ const panel: SchemaNode = {
         overflow: 'hidden',
       },
       children: [
-        {
-          type: 'Row',
-          props: { ax: 'between', ay: 'center' },
-          children: [
-            { type: 'we-text', props: { variant: 'heading-sm' }, children: ['Notes'] },
-            {
-              type: 'we-button',
-              props: { variant: 'ghost', size: 'sm', onClick: { $action: 'modules.notes.close' } },
-              children: [{ type: 'we-icon', props: { name: 'x' } }],
-            },
-          ],
-        },
+        // A title and nothing else. The close button was here, drawn by this module inside its own
+        // content; it is on the host's titlebar now, declared by `close` on the dock contribution —
+        // so every panel has one, in one place, at one size.
+        { type: 'we-text', props: { variant: 'heading-sm' }, children: ['Notes'] },
         {
           type: 'Column',
           props: { gap: '300' },
@@ -320,7 +312,7 @@ export const notesModule = defineModule({
    * `dockEdge` returns null while closed, which is how the host knows there is nothing to place —
    * one key answering both "where" and "whether", so the two can never disagree.
    */
-  docks: [{ edge: 'dockEdge', size: 'dockSize', float: 'dockFloat', node: panel }],
+  docks: [{ edge: 'dockEdge', size: 'dockSize', float: 'dockFloat', close: 'close', node: panel }],
 
   // Drawn by the host's module rail rather than by this module, so every module is opened the same
   // way. `activeWhen` is what makes the rail tab highlight while the panel is open.

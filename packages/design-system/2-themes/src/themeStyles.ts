@@ -484,7 +484,7 @@ export function themeParametersToStyle(overrides: ThemeOverrides): Record<string
  *
  * The removal bookkeeping is the whole reason this is a function rather than a loop at each call
  * site. Clearing with `style.cssText = ''` is the obvious shortcut and is wrong: the root is shared,
- * and a host publishes layout variables there too. Doing that deleted `--we-dock-right` and
+ * and a host publishes layout variables there too. Doing that deleted `--we-chrome-right` and
  * `--we-chrome-transition` along with the old theme, so every piece of chrome positioned against a
  * docked panel snapped to the window edge and stayed there until something happened to recompute it.
  * Dragging the panel healed it, which was the tell — a repaint fixing a value nobody had recalculated.

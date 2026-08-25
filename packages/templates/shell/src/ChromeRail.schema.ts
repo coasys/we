@@ -44,6 +44,7 @@
  * would have quietly removed that.
  */
 import type { SchemaNode } from '@we/schema-shared';
+import { railButton } from '@we/template-kit';
 
 import { TEMPLATE_PICKER_OPEN, templatePicker, THEME_PICKER_OPEN, themePicker } from './DesignControls.schema';
 
@@ -67,24 +68,24 @@ export const CHROME_RAIL_WIDTH = '56px';
  * launchers would remove the way back to the module settings in exactly the state — everything
  * turned off — where someone needs it.
  */
-const spaceSettingsLauncher: SchemaNode = {
-  type: 'we-tooltip',
-  props: { title: 'Space settings', placement: 'left' },
-  children: [
-    {
-      type: 'we-button',
-      props: {
-        square: true,
-        variant: 'ghost',
-        onClick: {
-          $action: 'shellStore.openShellView',
-          args: ['settings', { $concat: ['/spaces/', { $store: 'datasetStore.currentDataset.id' }] }],
-        },
-      },
-      children: [{ type: 'we-icon', props: { name: 'gear' } }],
-    },
-  ],
-};
+const spaceSettingsLauncher: SchemaNode = railButton({
+  icon: 'gear',
+  tooltip: 'Space settings',
+  /*
+    Lit while the settings overlay is up, as every other button in this rail is while its own
+    surface is. It had no active state at all when it was written out by hand here, which made it
+    the one row of a rail-of-tabs that could not tell you it was the one you were looking at.
+
+    The path is not compared, only the overlay: settings reached from the spaces list is the same
+    page, and dimming this while somebody navigates *within* it would be answering a question
+    nobody asked.
+  */
+  active: { $eq: [{ $store: 'shellStore.activeShellView' }, 'settings'] },
+  onClick: {
+    $action: 'shellStore.openShellView',
+    args: ['settings', { $concat: ['/spaces/', { $store: 'datasetStore.currentDataset.id' }] }],
+  },
+});
 
 /**
  * The launchers, and the way into the settings that turn them on. Only inside a space.
@@ -105,25 +106,16 @@ const spaceSection: SchemaNode = {
           type: '$each',
           props: { items: { $store: 'spaceStore.moduleLaunchers' }, as: 'mod' },
           children: [
-            {
-              type: 'we-tooltip',
-              props: { title: '$mod.label', placement: 'left' },
-              children: [
-                {
-                  type: 'we-button',
-                  props: {
-                    square: true,
-                    // Highlighted while the module reports itself open, which is what makes the
-                    // rail read as a set of tabs rather than a row of buttons.
-                    variant: { $if: { condition: '$mod.active', then: 'secondary', else: 'ghost' } },
-                    // The id is passed rather than a path: `$action` resolves a literal string, so
-                    // a rail iterating over modules cannot build `modules.<id>.<method>` itself.
-                    onClick: { $action: 'spaceStore.launchModule', args: ['$mod.id'] },
-                  },
-                  children: [{ type: 'we-icon', props: { name: '$mod.icon' } }],
-                },
-              ],
-            },
+            railButton({
+              icon: '$mod.icon',
+              tooltip: '$mod.label',
+              // Highlighted while the module reports itself open, which is what makes the rail read
+              // as a set of tabs rather than a row of buttons.
+              active: '$mod.active',
+              // The id is passed rather than a path: `$action` resolves a literal string, so a rail
+              // iterating over modules cannot build `modules.<id>.<method>` itself.
+              onClick: { $action: 'spaceStore.launchModule', args: ['$mod.id'] },
+            }),
           ],
         },
         // Separated from the launchers only when there are some to separate from.
@@ -183,22 +175,29 @@ export const chromeRail: SchemaNode = {
 
           One term, where there were two. The editor's panels used to publish a width of their own
           (`--we-editor-right`) because they positioned themselves; they are docks now, so they are
-          inside `--we-dock-right` along with every module's panel — and a panel dragged away from
+          inside `--we-chrome-right` along with every module's panel — and a panel dragged away from
           this edge stops pushing the rail at all, which the summed version could not express.
+
+          Note the rail does not clear `--we-chrome-rail-width`, and must not: that variable is this
+          rail's own width, published for the chrome that sits *outside* it.
         */
-        right: 'var(--we-dock-right, 0px)',
+        right: 'var(--we-chrome-right, 0px)',
         /*
           Below whatever a panel is doing at the top, and below its titlebar.
 
-          Two terms, for two different collisions. `--we-dock-top` is a panel that has *taken* the top
-          edge, which this would otherwise sit inside — the vertical twin of the `--we-dock-right`
-          term above, and the same fix. `--we-panel-chrome-top` is a panel that merely reaches the top
-          without displacing anything, a maximised one especially: the rail is painted above the
-          panels, so its controls — the position menu, and the button that un-maximises it — ended up
-          underneath this. The shell publishes that band as zero while no panel is open, so nothing
-          moves when there is nothing to clear.
+          Two terms, for two different collisions. `--we-chrome-top` is a panel that has *taken* the
+          top edge, which this would otherwise sit inside — the vertical twin of the
+          `--we-chrome-right` term above, and the same fix. `--we-panel-chrome-top` is a panel that
+          merely reaches the top without displacing anything, a maximised one especially: the rail is
+          painted above the panels, so its controls — the position menu, and the button that
+          un-maximises it — ended up underneath this. The shell publishes that band as zero while no
+          panel is open, so nothing moves when there is nothing to clear.
+
+          The band is this rail's alone, which is why it is not folded into `--we-chrome-top`: every
+          other piece of chrome is painted *below* the panels and so has nothing to dodge, and one
+          that cleared 98px whenever any panel anywhere was open would be dodging nothing visible.
         */
-        top: 'calc(16px + var(--we-panel-chrome-top, 0px) + var(--we-dock-top, 0px))',
+        top: 'calc(16px + var(--we-panel-chrome-top, 0px) + var(--we-chrome-top, 0px))',
         width: CHROME_RAIL_WIDTH,
         gap: '100',
         p: '200',

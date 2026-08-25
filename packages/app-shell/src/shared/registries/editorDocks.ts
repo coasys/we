@@ -50,16 +50,26 @@ interface EditorDock {
   component: string;
   /** Key on `editorStore` returning the edge to open at, or null while the panel is closed. */
   edge: string;
+  /** Key on `editorStore` that closes it — the host's titlebar button. */
+  close: string;
   order: number;
 }
 
 const PANELS: EditorDock[] = [
   // Properties first, then code, then chat — the order they were in at the right edge, which is also
   // roughly how close each one is to the thing being edited.
-  { id: 'editor:inspector', component: 'EditorInspectorPanel', edge: 'visualDockEdge', order: 20 },
-  { id: 'editor:code', component: 'EditorCodePanel', edge: 'codeDockEdge', order: 21 },
-  { id: 'editor:ai', component: 'AiPanel', edge: 'aiDockEdge', order: 22 },
-  { id: 'editor:theme', component: 'EditorThemePanel', edge: 'themeDockEdge', order: 23 },
+  // The inspector closes by toggling, which has no separate close: the button only exists on a
+  // titlebar, and a panel with a titlebar is open by definition.
+  {
+    id: 'editor:inspector',
+    component: 'EditorInspectorPanel',
+    edge: 'visualDockEdge',
+    close: 'toggleVisualPanel',
+    order: 20,
+  },
+  { id: 'editor:code', component: 'EditorCodePanel', edge: 'codeDockEdge', close: 'closeCodePanel', order: 21 },
+  { id: 'editor:ai', component: 'AiPanel', edge: 'aiDockEdge', close: 'close', order: 22 },
+  { id: 'editor:theme', component: 'EditorThemePanel', edge: 'themeDockEdge', close: 'closeThemePanel', order: 23 },
 ];
 
 /**
@@ -78,6 +88,9 @@ export function registerEditorDocks(): void {
       edge: panel.edge,
       size: 'editorDockSize',
       float: 'editorDockFloat',
+      close: panel.close,
+      // Not a module, so its store is not under `modules.<id>` — see `DockEntry.storeRef`.
+      storeRef: 'editorStore',
       node,
       order: panel.order,
     });

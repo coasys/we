@@ -102,6 +102,30 @@ export interface CallTileState {
 export const STAGE_PADDING_PX = 12;
 export const STAGE_GAP_PX = 12;
 
+/**
+ * How much of the top of the window the call bar occupies, for panels to keep clear of.
+ *
+ * `CALL_BAR_TOP` (10px) plus a row of `md` controls (40px) in a surface padded by `200` a side
+ * (8px twice), plus a little air so a panel snapped beneath it does not touch. Derived rather than
+ * chosen, like `CHROME_RAIL_WIDTH`: change the bar's size or padding and this has to follow, or
+ * panels start landing underneath it again.
+ *
+ * Lived in the shell as `TOP_CHROME_PX` until the bar stopped being the only thing up there. See
+ * `chromeReserve` below.
+ */
+export const CALL_BAR_RESERVE_PX = 74;
+
+/**
+ * How wide the bar gets, at its widest — what lets the host tell "the module rail has slid left far
+ * enough to hit the call controls" from "the rail is nowhere near them".
+ *
+ * Measured at about 440 with the standard controls and one contributed button, plus room for the
+ * participant roster to grow. The bar is content-sized, so this cannot be exact — and the two errors
+ * are not symmetrical: too wide moves the rail slightly earlier than it had to, too narrow puts the
+ * rail across the controls. So it rounds up.
+ */
+export const CALL_BAR_WIDTH_PX = 480;
+
 /** Which edge a stage occupies while it takes room. The host decides; this names the vocabulary. */
 export type CallDockEdge = 'left' | 'right' | 'top' | 'bottom';
 
@@ -589,6 +613,28 @@ export function createCallStore(deps: CallStoreDeps) {
     return count <= 4 ? 2 : 3;
   }
 
+  /** Everyone in the space-wide call, whether or not this agent has joined — so the bar can offer
+   *  "3 in a call · Join" rather than only appearing once you are already in one. */
+  const ongoingPeers = () => {
+    const uri = datasetUri?.() ?? null;
+    if (!uri || !presence) return [];
+    const id = spaceCallId(uri);
+    return (
+      activitiesOfType(presence.peers(), 'call')
+        .filter(({ activity }) => activity.id === id)
+        // Faces, not peers. This feeds an `AvatarStack`, which reads `image`/`hash`/`initials` and
+        // draws a generic person glyph for anything else — so handing it raw presence records, which
+        // carry an agent id and no profile at all, drew one grey silhouette per participant.
+        // No `tone`: everyone in this list is in the call right now, so a liveness ring would be
+        // encoding a distinction that cannot vary here. `initials` rather than `name`, because
+        // that is the prop an avatar asks for — it derives the letters from the name it is given.
+        .map(({ peer }) => {
+          const face = faceOf(peer.agentId);
+          return { image: face.image, hash: face.hash, initials: face.name, did: peer.agentId };
+        })
+    );
+  };
+
   return {
     // ── State ────────────────────────────────────────────────────────────────
     callId,
@@ -734,6 +780,24 @@ export function createCallStore(deps: CallStoreDeps) {
     active: () => callId() !== null,
 
     /**
+     * The band this module's fixed chrome occupies, for panels to keep clear of.
+     *
+     * The bar is `position: fixed` at the top and paints above the panels, so a panel snapped to the
+     * top centre lands underneath it — including the panel's own grip and position menu, which are
+     * the two things it is dragged back out with. The host reserves this on every *floating* panel;
+     * a displacing one is unaffected, since it takes an edge this does not sit on.
+     *
+     * Reported rather than assumed, because the host cannot see whether the bar is up: the same
+     * value used to be a constant in the shell's geometry, reserving the band whether or not a call
+     * was running, and it could not grow when another module contributed into this bar's column.
+     *
+     * Non-zero whenever the bar is drawn at all, which includes the join prompt shown to somebody
+     * who is not in the call yet — that is the same object in the same place, so it takes the same
+     * room. `CALL_BAR_TOP` plus a row of `md` controls in a padded surface.
+     */
+    chromeReserve: () => (callId() !== null || ongoingPeers().length > 0 ? { top: CALL_BAR_RESERVE_PX } : { top: 0 }),
+
+    /**
      * The microphone this call is sending, for a module that wants to listen to it.
      *
      * Published via `audioSource` on the definition so the host can route it without the two modules
@@ -752,27 +816,7 @@ export function createCallStore(deps: CallStoreDeps) {
      * the answer never changes, so it is not a failure, it is a property of the space.
      */
     canCall: () => (datasetUri?.() ?? null) !== null,
-    /** Everyone in the space-wide call, whether or not this agent has joined — so the bar can offer
-     *  "3 in a call · Join" rather than only appearing once you are already in one. */
-    ongoing: () => {
-      const uri = datasetUri?.() ?? null;
-      if (!uri || !presence) return [];
-      const id = spaceCallId(uri);
-      return (
-        activitiesOfType(presence.peers(), 'call')
-          .filter(({ activity }) => activity.id === id)
-          // Faces, not peers. This feeds an `AvatarStack`, which reads `image`/`hash`/`initials` and
-          // draws a generic person glyph for anything else — so handing it raw presence records, which
-          // carry an agent id and no profile at all, drew one grey silhouette per participant.
-          // No `tone`: everyone in this list is in the call right now, so a liveness ring would be
-          // encoding a distinction that cannot vary here. `initials` rather than `name`, because
-          // that is the prop an avatar asks for — it derives the letters from the name it is given.
-          .map(({ peer }) => {
-            const face = faceOf(peer.agentId);
-            return { image: face.image, hash: face.hash, initials: face.name, did: peer.agentId };
-          })
-      );
-    },
+    ongoing: ongoingPeers,
 
     // ── Actions ──────────────────────────────────────────────────────────────
     joinSpaceCall: () => {

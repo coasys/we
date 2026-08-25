@@ -8,6 +8,7 @@
  * app-level, because the controls that open an overlay render outside it.
  */
 import {
+  CHROME_RAIL_PX,
   type ContentInset,
   contentInset,
   displaces,
@@ -21,21 +22,23 @@ import {
   MIN_FLOAT_PX,
   NO_INSET,
   occupiedFor,
+  railBand,
   type Rect,
   rectOf,
   type ResizeSide,
   resolveDock,
   RESTORE_DRAG_PX,
   seedPlacement,
+  SIDEBAR_PX,
   snapCandidate,
   type SnapPoint,
   snapTargetRects,
   TITLE_BAR_PX,
-  TOP_CHROME_PX,
+  type TopChrome,
 } from '@shared/dockGeometry';
 import { dockRegistry, hostDockStores, onDockRegistryChanged } from '@shared/registries/dockRegistry';
 import { moduleStores } from '@shared/registries/moduleRegistry';
-import type { DockAspect, DockEdge, DockSize } from '@we/module-shared';
+import type { ChromeReserve, DockAspect, DockEdge, DockSize } from '@we/module-shared';
 import {
   Accessor,
   createContext,
@@ -99,13 +102,6 @@ export interface ShellStore {
   contentInset: Accessor<ContentInset>;
   /** True while a dock is being dragged, so transitions can be suspended and the edge track the cursor. */
   dockResizing: Accessor<boolean>;
-  /**
-   * Tell the shell how much room non-dock chrome is taking, so panels keep clear of it.
-   *
-   * Called by the layout, which can see the editor's store; this one cannot. Without it a maximised
-   * panel covered the editor's rails and a right-hand snap landed on top of them.
-   */
-  setChromeInset: (inset: Partial<ContentInset>) => void;
   /** Remember a dock's current size, so the drag that follows is measured from it. */
   beginDockResize: (id: string) => void;
   /**
@@ -310,7 +306,6 @@ export function ShellStoreProvider(props: ParentProps) {
    * package this one knows nothing about, and its widths live in `editorStore`. One number in, and
    * every panel's geometry clears it.
    */
-  const [chromeInset, setChromeInset] = createSignal<ContentInset>({ ...NO_INSET });
   const [movingDock, setMovingDock] = createSignal<string | null>(null);
   const [activeSnap, setActiveSnap] = createSignal<SnapPoint | null>(null);
   const [activeInsert, setActiveInsert] = createSignal<string | null>(null);
@@ -373,13 +368,59 @@ export function ShellStoreProvider(props: ParentProps) {
   });
 
   /**
+   * Chrome a floating panel must clear, live — see `DEFAULT_FLOAT_CHROME` for why floating and
+   * displacing panels get different answers.
+   *
+   * The right edge is the module rail, always: it follows `--we-chrome-right`, which only a
+   * displacing panel moves, so a floating one has to clear it itself.
+   *
+   * The top edge is whatever the modules say they are holding there. It was the constant
+   * `TOP_CHROME_PX`, sized for the call bar alone, and the call bar stopped being alone: the
+   * transcribe module contributes an extraction status panel into the same fixed column, so the
+   * band a panel had to clear grew and the number describing it did not. A panel snapped to the top
+   * centre landed under it.
+   *
+   * Declared rather than measured, deliberately. The status panel is a set of disclosures that grows
+   * as rows are opened, and it goes to some trouble not to grow in steps — because, in its own
+   * words, each step moves a floating object somebody is reading. A measured band would hand that
+   * problem to the panel instead and shove it down the screen mid-read. So a module declares the
+   * height of its chrome *collapsed*, the common case lands clear, and expanding a row may overlap
+   * something the person expanding it can see.
+   *
+   * Reservations at an edge sum rather than max, because an anchor is a column: the status panel is
+   * mounted below the call bar, not beside it.
+   */
+  const topChrome = createMemo<TopChrome>(() => {
+    // The registration dependency, for the same reason `dockRequests` takes it: a module store read
+    // before its module registers has no accessor to have tracked, and so nothing to re-run for.
+    dockRegistryVersion();
+    let height = 0;
+    let width = 0;
+    for (const store of Object.values(moduleStores)) {
+      const reserve = (store as Record<string, unknown> | undefined)?.chromeReserve;
+      const value = typeof reserve === 'function' ? (reserve as () => unknown)() : reserve;
+      const box = value as ChromeReserve | undefined;
+      // Heights stack, widths do not: contributions to one anchor are a column.
+      height += box?.top ?? 0;
+      width = Math.max(width, box?.width ?? 0);
+    }
+    return { height, width };
+  });
+
+  const floatChrome = createMemo<ContentInset>(() => ({
+    left: 0,
+    right: CHROME_RAIL_PX,
+    top: topChrome().height,
+    bottom: 0,
+  }));
+
+  /**
    * What one panel has to keep clear of — the rule itself is in `dockGeometry`, pure and tested.
    *
    * Here it is only fed: the placements the panels currently have, and whatever non-dock chrome has
    * told this store it is holding.
    */
-  const occupiedOf = (index: number, requests: DockRequest[]): ContentInset =>
-    occupiedFor(requests, index, viewport(), chromeInset());
+  const occupiedOf = (index: number, requests: DockRequest[]): ContentInset => occupiedFor(requests, index, viewport());
 
   /**
    * The same, by id — what the drag paths have, since a pointer knows which panel it has hold of and
@@ -388,7 +429,7 @@ export function ShellStoreProvider(props: ParentProps) {
   const occupiedForId = (id: string | null): ContentInset => {
     const requests = dockRequests();
     const index = requests.findIndex((request) => request.id === id);
-    return index === -1 ? { ...chromeInset() } : occupiedOf(index, requests);
+    return index === -1 ? { ...NO_INSET } : occupiedOf(index, requests);
   };
 
   /**
@@ -403,7 +444,7 @@ export function ShellStoreProvider(props: ParentProps) {
     const requests = dockRequests();
     const resolved: Record<string, DockGeometry> = {};
     requests.forEach((request, index) => {
-      resolved[request.id] = resolveDock(request, viewport(), occupiedOf(index, requests));
+      resolved[request.id] = resolveDock(request, viewport(), occupiedOf(index, requests), floatChrome());
     });
     return resolved;
   });
@@ -411,21 +452,50 @@ export function ShellStoreProvider(props: ParentProps) {
   const inset = createMemo(() => contentInset(dockRequests(), viewport()));
 
   /**
-   * Publish the inset as CSS custom properties, so chrome can sit against the *content* rather than
-   * the window.
+   * Publish where the content's edges are, as CSS custom properties, so chrome can sit against the
+   * *content* rather than the window.
    *
    * Anything pinned to a screen edge has to move when a dock takes that edge, and the things that
-   * need to move — the module rail, the editor's rails, its floating toolbar — live in three
-   * different packages, two of which have no business importing this store. A custom property on the
-   * root is the one channel all of them already share; `--we-sidebar-width` is set the same way and
-   * for the same reason.
+   * need to move — the module rail, the editor's floating toolbar, the call bar — live in three
+   * different packages, none of which has any business importing this store. A custom property on
+   * the root is the one channel all of them already share; `--we-sidebar-width` is set the same way
+   * and for the same reason.
+   *
+   * ## Composed here, deliberately
+   *
+   * These used to be `--we-dock-<edge>`: the dock inset alone, leaving each consumer to add whatever
+   * else held its edge. Nobody added the same list. The module rail summed the dock and a panel's
+   * title band; the editing bar summed the dock and the rail's width and *forgot the vertical term
+   * entirely*, so a panel docked along the top covered it; the call module's main bar composed the
+   * sidebar into its centring while the two smaller bars beside it — the join prompt and the problem
+   * alert — centred on the window and cleared nothing at all. Four consumers, four different sums,
+   * three of them wrong, and each one wrong in a way that only shows in one arrangement.
+   *
+   * So the shell publishes the answer rather than the ingredients. `contentInset` and
+   * `computeLeftOffset` in TemplateLayout are the same four numbers the content viewport is laid out
+   * from — chrome now reads exactly what the content reads, which is what "sit beside the content"
+   * should have meant all along. The one term that stays a consumer's own is `--we-chrome-rail-width`,
+   * and it has to: the rail is chrome at that edge, so the rail must *not* clear itself while
+   * everything outside it must.
+   *
+   * The left edge composes with the sidebar rather than replacing it — a left dock opens beside the
+   * sidebar, not over it — and does so in CSS so `--we-sidebar-width` stays the only place that
+   * width is decided.
    */
   createEffect(() => {
     if (typeof document === 'undefined') return;
     const edges = inset();
-    for (const [edge, value] of Object.entries(edges)) {
-      document.documentElement.style.setProperty(`--we-dock-${edge}`, `${value}px`);
-    }
+    const root = document.documentElement.style;
+    root.setProperty('--we-chrome-left', `calc(var(--we-sidebar-width, ${SIDEBAR_PX}px) + ${edges.left}px)`);
+    root.setProperty('--we-chrome-right', `${edges.right}px`);
+    root.setProperty('--we-chrome-top', `${edges.top}px`);
+    root.setProperty('--we-chrome-bottom', `${edges.bottom}px`);
+    /*
+      How far the content's centre has moved from the window's — the horizontal twin of the four
+      above, for anything centred rather than pinned. Written as a calc over them rather than as a
+      number so there is one subtraction in the codebase instead of one per centred bar.
+    */
+    root.setProperty('--we-chrome-center-x', 'calc((var(--we-chrome-left, 0px) - var(--we-chrome-right, 0px)) / 2)');
   });
 
   /**
@@ -435,15 +505,39 @@ export function ShellStoreProvider(props: ParentProps) {
    * maximised panel — or one snapped along the top — had its position menu and its un-maximise button
    * underneath it. The panel cannot dodge the rail without giving up a column of width for chrome
    * that is a few hundred pixels tall, so the rail moves, which is what this is for and what the
-   * right edge already does with `--we-dock-right`.
+   * right edge already does with `--we-chrome-right`.
    *
-   * Zero while no panel is open, so the rail sits where it always has when there is nothing to clear.
-   * `TOP_CHROME_PX` is where the panel starts and `TITLE_BAR_PX` is how far its controls reach.
+   * ## Only when something is actually under the rail
+   *
+   * This used to fire for *any* open panel, wherever it was. Starting a call opens the video panel,
+   * so the rail dropped 98px the moment a call began — with the video floating in the bottom left,
+   * nowhere near it, and nothing on screen to explain why the rail had moved. The band is real but
+   * it is a collision, and a collision has a location.
+   *
+   * So it asks the resolved boxes instead. Since a floating panel now clears the rail on its own
+   * (`floatChrome`) and a displacing one has already slid it aside, the answer is normally no — what
+   * remains is a maximised panel, which spans the content region including the rail's column, and
+   * which is the case the band was written for.
+   *
+   * ## Two things a naive overlap test gets wrong
+   *
+   * **A shared edge is not an overlap.** A panel docked on the right ends exactly where the rail
+   * begins, so the two touch by definition — and the two numbers being compared come from different
+   * places: the resolved box rounds its width to whole pixels and `contentInset` does not. So the
+   * test flipped on the fractional part of a drag, and resizing a right-hand panel made the rail
+   * flicker between its two positions once per pixel. Hence a tolerance rather than a strict
+   * inequality: a couple of pixels of contact is two boxes meeting, not one covering the other.
+   *
+   * **The band is a distance, not a flag.** It was a constant, so a panel whose titlebar sat at the
+   * very top pushed the rail down as far as one sitting below the call bar — which read as the rail
+   * parking itself an arbitrary distance from the top with nothing in the gap. It is measured from
+   * the panel now: far enough to clear that titlebar and no further, capped so a panel somewhere
+   * unexpected can never push the rail off the screen.
    */
   createEffect(() => {
     if (typeof document === 'undefined') return;
-    const anyOpen = dockRequests().some((request) => request.edge !== null);
-    const band = anyOpen ? TOP_CHROME_PX + TITLE_BAR_PX : 0;
+
+    const band = railBand(viewport(), inset(), topChrome());
     document.documentElement.style.setProperty('--we-panel-chrome-top', `${band}px`);
   });
 
@@ -489,7 +583,6 @@ export function ShellStoreProvider(props: ParentProps) {
     dockGeometry,
     contentInset: inset,
     dockResizing,
-    setChromeInset: (next) => setChromeInset((prev) => ({ ...prev, ...next })),
 
     dockPlacement: () =>
       Object.fromEntries(
@@ -700,7 +793,7 @@ export function ShellStoreProvider(props: ParentProps) {
         .filter((entry) => entry.area > 0)
         .sort((a, b) => b.area - a.area)[0]?.candidate;
       setActiveInsert(slot ? `${slot.edge}:${slot.index}` : null);
-      setActiveSnap(slot ? null : snapCandidate(next, viewport(), occupiedForId(id)));
+      setActiveSnap(slot ? null : snapCandidate(next, viewport(), occupiedForId(id), floatChrome()));
       writePlacement(id, next);
     },
 
@@ -831,7 +924,7 @@ export function ShellStoreProvider(props: ParentProps) {
     activeInsert,
 
     snapTargets: () =>
-      snapTargetRects(viewport(), occupiedForId(movingDock())).map((target) => ({
+      snapTargetRects(viewport(), occupiedForId(movingDock()), floatChrome()).map((target) => ({
         id: target.id,
         top: `${target.y}px`,
         left: `${target.x}px`,

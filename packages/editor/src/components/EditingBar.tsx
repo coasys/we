@@ -69,18 +69,25 @@ export function EditingBar() {
   });
 
   /**
-   * Clear of everything else holding this edge: a docked module panel, the editor's own panels, and
-   * the host's chrome rail.
+   * Clear of everything else holding these edges: a docked module panel, the editor's own panels,
+   * and the host's chrome rail.
    *
-   * The rail arrives as a variable rather than a constant because it belongs to a package this one
-   * cannot import, and it defaults to `0px` — an editor embedded in somebody else's application has
-   * no WE rail to avoid. Without the term, the bar sits underneath the rail, which paints above it.
+   * Both arrive as variables rather than constants because they belong to a package this one cannot
+   * import, and both default to `0px` — an editor embedded in somebody else's application has no WE
+   * rail and no WE docks to avoid. Without the rail term the bar sits underneath the rail, which
+   * paints above it.
    *
-   * The editor's own panels used to be a third term, summed from their widths. They are docks now, so
-   * they are already inside `--we-dock-right` — and any panel dragged somewhere other than the right
-   * edge stops pushing this bar at all, which is right and was impossible to express before.
+   * The editor's own panels used to be a third horizontal term, summed from their widths. They are
+   * docks now, so they are already inside `--we-chrome-right` — and any panel dragged somewhere
+   * other than the right edge stops pushing this bar at all, which is right and was impossible to
+   * express before.
+   *
+   * `top` had no term at all until the shell started publishing the whole content box: a panel
+   * docked along the top simply covered this bar, and there was nothing in the arithmetic here to
+   * suggest anything was missing. It is the same variable, on the axis nobody thought about.
    */
-  const right = () => `calc(10px + var(--we-dock-right, 0px) + var(--we-chrome-rail-width, 0px))`;
+  const right = () => `calc(10px + var(--we-chrome-right, 0px) + var(--we-chrome-rail-width, 0px))`;
+  const top = () => `calc(10px + var(--we-chrome-top, 0px))`;
 
   function exportJson() {
     const blob = new Blob([session.schemaJson()], { type: 'application/json' });
@@ -109,12 +116,12 @@ export function EditingBar() {
         <Row
           ref={containerRef}
           position="absolute"
-          top="10px"
+          top={top()}
           right={right()}
           // `--we-chrome-transition` collapses to 0s while any panel is being dragged, editor panels
-          // included now that they are docks. Without it this animates its `right` over 300ms on every
+          // included now that they are docks. Without it this animates its position over 300ms on every
           // frame of a drag and trails the edge it is supposed to sit beside.
-          transition="right var(--we-chrome-transition, 300ms) ease"
+          transition="right var(--we-chrome-transition, 300ms) ease, top var(--we-chrome-transition, 300ms) ease"
           pointerEvents="auto"
           ay="start"
           gap="200"

@@ -61,6 +61,23 @@ const ELEMENT_STATES: ElementState[] = ['hover', 'focus', 'active', 'disabled'];
 export interface ComponentCascade {
   radiusGroup?: string; // e.g. '--we-theme-control-radius'
   radiusDefault?: string; // explicit override; omit to auto-derive from DEFAULT_PROPS
+  /**
+   * A second theme variable the group value may not exceed — for a control that can grow taller
+   * than one line.
+   *
+   * `pill` is not a size, it is a shape: a capsule, and a capsule is only coherent on a box about as
+   * tall as its text. A theme setting `inputRadius: pill` means every input is a capsule and is
+   * right about `we-input`, which is one line by construction. `we-textarea` is three rows and
+   * `we-file-upload` is a drop zone, and both came out as lozenges with their own content running
+   * off the curved ends.
+   *
+   * Capping against `--we-theme-surface-radius` rather than a number keeps the theme in charge: it
+   * is the value that theme already chose for a box that is not a capsule, so a sharp theme still
+   * gets square corners and a rounded one still gets its own curve. Only the group value is capped —
+   * a per-component `--we-theme-textarea-radius` is an explicit answer to exactly this question and
+   * wins outright.
+   */
+  radiusCapGroup?: string;
   paddingGroup?: string; // e.g. '--we-theme-control-padding-x'
   paddingDefault?: string; // explicit override; omit to auto-derive from DEFAULT_PROPS
   nativePadding?: boolean; // if true, padding is omitted from [part='base'] — the component owns it in CSS_STYLES
@@ -126,7 +143,11 @@ const COMPONENT_CASCADE: Record<string, ComponentCascade> = {
   'progress-bar': { radiusGroup: '--we-theme-control-radius' },
   // Inputs
   input: { radiusGroup: '--we-theme-input-radius', paddingGroup: '--we-theme-input-padding' },
-  textarea: { radiusGroup: '--we-theme-input-radius', nativePadding: true },
+  textarea: {
+    radiusGroup: '--we-theme-input-radius',
+    radiusCapGroup: '--we-theme-surface-radius',
+    nativePadding: true,
+  },
   select: {
     radiusGroup: '--we-theme-input-radius',
     radiusDefault: 'var(--we-radius-300)', // Explicit: wrapper — no r in DEFAULT_PROPS
@@ -155,7 +176,12 @@ const COMPONENT_CASCADE: Record<string, ComponentCascade> = {
     radiusGroup: '--we-theme-input-radius',
     radiusDefault: 'var(--we-radius-300)', // Explicit: wrapper — no r in DEFAULT_PROPS
   },
-  'file-upload': { radiusGroup: '--we-theme-input-radius', paddingGroup: '--we-theme-surface-padding' },
+  'file-upload': {
+    radiusGroup: '--we-theme-input-radius',
+    // A drop zone, so it is as tall as a textarea and capped for the same reason.
+    radiusCapGroup: '--we-theme-surface-radius',
+    paddingGroup: '--we-theme-surface-padding',
+  },
   'form-field': {
     radiusGroup: '--we-theme-input-radius',
     radiusDefault: 'var(--we-radius-300)', // Explicit: wrapper — no r in DEFAULT_PROPS
@@ -616,6 +642,7 @@ function cascadeSpec(
   varSuffix: string,
   groupVar: string | undefined,
   tokenDefault: string | undefined,
+  capGroupVar?: string,
 ): PropSpec {
   if (!groupVar) {
     // No theme group — emit a direct token fallback so DEFAULT_PROPS values still take
@@ -634,7 +661,11 @@ function cascadeSpec(
     return [cssProp, varSuffix];
   }
   const compThemeVar = `--we-theme-${componentName}-${varSuffix}`;
-  return [cssProp, varSuffix, `var(${compThemeVar}, var(${groupVar}, ${tokenDefault}))`];
+  // Capped inside the group arm only, so the per-component variable stays the last word.
+  const group = capGroupVar
+    ? `min(var(${groupVar}, ${tokenDefault}), var(${capGroupVar}, ${tokenDefault}))`
+    : `var(${groupVar}, ${tokenDefault})`;
+  return [cssProp, varSuffix, `var(${compThemeVar}, ${group})`];
 }
 
 /**
@@ -672,7 +703,14 @@ export function getStaticDSStyles(
   // Build per-component visual and flex specs with cascade fallbacks where applicable.
   const baseVisual: PropSpec[] = BASE_VISUAL.map((spec) =>
     spec[1] === 'radius'
-      ? cascadeSpec(componentName, 'border-radius', 'radius', cascade?.radiusGroup, radiusDefault)
+      ? cascadeSpec(
+          componentName,
+          'border-radius',
+          'radius',
+          cascade?.radiusGroup,
+          radiusDefault,
+          cascade?.radiusCapGroup,
+        )
       : spec,
   );
   const baseFlex: PropSpec[] = BASE_FLEX.flatMap((spec) => {

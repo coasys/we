@@ -90,7 +90,7 @@ export const transcribeModule = defineModule({
    * outside a notes panel sharing the edge, which is only a tiebreak: the host stacks whatever is
    * there rather than letting two panels land in the same box.
    */
-  docks: [{ edge: 'dockEdge', size: 'dockSize', float: 'dockFloat', node: panel, order: 90 }],
+  docks: [{ edge: 'dockEdge', size: 'dockSize', float: 'dockFloat', close: 'closePanel', node: panel, order: 90 }],
 
   /**
    * The rail opens the transcript; the call bar records into it.

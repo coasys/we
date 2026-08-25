@@ -2,7 +2,7 @@
  * The root element's inline style is shared, so nobody may clear it wholesale.
  *
  * Four packages publish custom properties on `document.documentElement` and none of them can see the
- * others: the theme's token overrides, the shell's `--we-dock-*` insets and `--we-chrome-transition`,
+ * others: the theme's token overrides, the shell's `--we-chrome-*` insets and `--we-chrome-transition`,
  * the template provider's `--we-sidebar-width`, and the editor's `--we-editor-right`. A custom
  * property on the root is the only channel they share — which is exactly why it works, and exactly
  * why `style.cssText = ''` is not a way to withdraw one of them.

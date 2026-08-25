@@ -19,6 +19,7 @@ export {
   seedCapabilityToModule,
 } from './module';
 export type {
+  ChromeReserve,
   CreateEntityOptions,
   DockContribution,
   DockAspect,

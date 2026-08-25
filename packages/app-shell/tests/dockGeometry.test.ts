@@ -12,6 +12,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  CHROME_RAIL_PX,
   type ContentInset,
   contentInset,
   displaces,
@@ -26,6 +27,8 @@ import {
   NARROW_VIEWPORT_PX,
   NO_INSET,
   occupiedFor,
+  RAIL_TOP_PX,
+  railBand,
   rectOf,
   resolveDock,
   seedPlacement,
@@ -508,14 +511,6 @@ describe('what a panel has to keep clear of', () => {
 
     expect(occupiedFor(panels, 0, desktop)).toEqual(NO_INSET);
   });
-
-  it('carries chrome that is not a panel at all', () => {
-    // The editor's rails displace content exactly as a dock does and are not docks.
-    const panels = [dock({ id: 'call:0', placement: card })];
-    const chrome: ContentInset = { ...NO_INSET, right: 320 };
-
-    expect(occupiedFor(panels, 0, desktop, chrome).right).toBe(320);
-  });
 });
 
 describe('fitting a panel to its content', () => {
@@ -689,5 +684,154 @@ describe('dockThickness', () => {
   it('never lets a drag outgrow the window it was not dragged on', () => {
     const laptopWide = { width: 1280, height: 800 };
     expect(dockThickness('right', 'md', laptopWide, 5_000)).toBeLessThanOrEqual(1280);
+  });
+});
+
+/**
+ * Chrome that does not move for a floating panel.
+ *
+ * The rule the file opens with, applied to the app's own furniture rather than to another panel:
+ * the module rail slides inwards by following `--we-chrome-right`, and only a *displacing* panel
+ * publishes that. A floating one takes no room, so nothing slides, so it has to do the clearing —
+ * and the two therefore need different answers about the same edge. `RAIL_PX = 0` is the displacing
+ * answer and `CHROME_RAIL_PX` is the floating one; the tests below are mostly the difference.
+ */
+describe('chrome a floating panel must clear', () => {
+  const chrome: ContentInset = { left: 0, right: CHROME_RAIL_PX, top: TOP_CHROME_PX, bottom: 0 };
+
+  it('keeps a right-hand snap clear of the rail', () => {
+    const origin = snapOrigin('right', 400, 300, desktop, NO_INSET, chrome);
+    expect(origin.x + 400).toBeLessThanOrEqual(desktop.width - CHROME_RAIL_PX);
+  });
+
+  it('moves the landing spots with it, so the marker is where the panel will go', () => {
+    // The markers are the rule, not decoration — `snapCandidate` hit-tests the drawn box. A target
+    // still at the window edge would light up over a rail the panel is no longer allowed to reach.
+    const target = snapTargetRects(desktop, NO_INSET, chrome).find((rect) => rect.id === 'top-right');
+    expect(target!.x + target!.w).toBeLessThanOrEqual(desktop.width - CHROME_RAIL_PX);
+  });
+
+  it('does not let a free drag put one there either', () => {
+    // The band was closed to snapping and open to dragging on the top edge once, which made the rule
+    // look arbitrary. The right edge was open to both.
+    const box = resolveDock(dock({ float: true }), desktop, NO_INSET, chrome);
+    expect(px(box.left)! + px(box.width)!).toBeLessThanOrEqual(desktop.width - CHROME_RAIL_PX);
+  });
+
+  it('keeps a maximised panel clear of it, since maximised floats', () => {
+    // "Full screen" cannot mean the whole screen while the app keeps permanent chrome over it: the
+    // rail sat on the panel's own position menu and un-maximise button, which are how it is recovered.
+    const box = resolveDock(
+      dock({ placement: placement({ maximised: true, displace: false }) }),
+      desktop,
+      NO_INSET,
+      chrome,
+    );
+    expect(px(box.right)).toBe(CHROME_RAIL_PX);
+    expect(px(box.top)).toBe(TOP_CHROME_PX);
+  });
+
+  it('leaves a displacing panel alone, which is the whole point of the split', () => {
+    // It has taken the edge, so the rail has already moved out of its way. A displacing panel that
+    // also cleared the rail would stop 56px short of an edge nothing is holding any more.
+    const box = resolveDock(dock({ placement: placement({ displace: true }) }), desktop, NO_INSET, chrome);
+    expect(px(box.right)).toBe(0);
+  });
+
+  it('grows the top band when a module says its chrome did', () => {
+    // What the constant could not do. `TOP_CHROME_PX` was sized for the call bar alone, and the
+    // transcribe module contributes an extraction panel into the same fixed column.
+    const taller: ContentInset = { ...chrome, top: TOP_CHROME_PX + 56 };
+    expect(snapOrigin('top', 400, 300, desktop, NO_INSET, taller).y).toBe(TOP_CHROME_PX + 56);
+  });
+});
+
+/**
+ * How far the module rail drops to clear the chrome at the top of the window.
+ *
+ * The rail is pinned to the right of the *content* and the call bar to its centre, so a panel
+ * displacing the right edge moves the rail by its whole width and the bar by half — and a wide
+ * enough panel walks one into the other. It is the only collision the shell computes, because it is
+ * the only one left: every panel state is already handled before this is asked.
+ */
+/**
+ * What the content gives up, when the panels ask for more than there is.
+ *
+ * The inset is published as `--we-chrome-<edge>` and every piece of chrome positions against it, so
+ * an inset wider than the window is not a rounding error — it is the rail and the call bar leaving
+ * the screen. Which is what happened: each panel was clamped against the *whole* content region and
+ * the results summed, so three that each fitted on their own reported more than the window between
+ * them.
+ */
+describe('the inset when the panels do not fit', () => {
+  const strip = (widths: number[]): DockRequest[] =>
+    widths.map((w, index) => ({
+      id: `p${index}`,
+      edge: 'right' as const,
+      size: 'md' as const,
+      float: false,
+      placement: placement({ w }),
+    }));
+
+  const region = desktop.width - SIDEBAR_PX;
+
+  it('adds up while there is room', () => {
+    expect(contentInset(strip([700, 700]), desktop).right).toBe(1400);
+  });
+
+  it('never exceeds the room there is', () => {
+    // 2100 before: `--we-chrome-right: 2100px` on a 1600px window put the module rail 500px off the
+    // left edge of the screen, and `--we-chrome-center-x` — derived from the same number — took the
+    // call bar with it.
+    expect(contentInset(strip([700, 700, 700]), desktop).right).toBe(region);
+  });
+
+  it('is not pushed past it by the minimum size either', () => {
+    // The floor and the ceiling mean opposite things: `MIN_DOCK_PX` is "thinner than this is not
+    // worth having", the remaining room is "there is no more screen". The floor must not win.
+    expect(contentInset(strip([1400, 400]), desktop).right).toBe(region);
+  });
+
+  it('counts each edge separately', () => {
+    const both: DockRequest[] = [
+      { id: 'r', edge: 'right', size: 'md', float: false, placement: placement({ w: 700 }) },
+      { id: 'b', edge: 'bottom', size: 'md', float: false, placement: placement({ snap: 'bottom', h: 300 }) },
+    ];
+    expect(contentInset(both, desktop)).toEqual({ left: 0, right: 700, top: 0, bottom: 300 });
+  });
+});
+
+describe('the band under the module rail', () => {
+  const inset = (over: Partial<ContentInset> = {}): ContentInset => ({ ...NO_INSET, ...over });
+  const bar = { height: 74, width: 520 };
+
+  it('is zero with no chrome at the top — there is nothing to clear', () => {
+    // No call running. The band used to fire for any open panel at all, so starting a call moved the
+    // rail for a video floating in the opposite corner.
+    expect(railBand(desktop, inset({ right: 900 }))).toBe(0);
+  });
+
+  it('ignores a call bar the rail is nowhere near', () => {
+    // The rail is at the window's edge and the bar is in the middle of the screen.
+    expect(railBand(desktop, inset(), bar)).toBe(0);
+  });
+
+  it('clears the bar once a wide panel has walked the rail into it', () => {
+    // 900 wide on a 1600 window: the rail's left edge is at 1600-900-56 = 644, and the bar is centred
+    // at 1600/2 + (80-900)/2 = 390, spanning 130..650. Six pixels of rail over the call controls.
+    expect(railBand(desktop, inset({ right: 900 }), bar)).toBe(bar.height - RAIL_TOP_PX);
+  });
+
+  it('clears the whole column, not one bar of it', () => {
+    // The call bar with the extraction panel stacked under it. The cap used to be one bar deep, so
+    // the rail moved and stayed overlapping the thing it had moved for.
+    const stacked = { height: 74 + 56, width: 520 };
+    expect(railBand(desktop, inset({ right: 900 }), stacked)).toBe(stacked.height - RAIL_TOP_PX);
+  });
+
+  it('takes no term for a panel displacing the top, since both ends move together', () => {
+    // The rail's own offset already includes `--we-chrome-top`, and so does the bar's, so the
+    // distance between them is unchanged. Subtracting it here would double-count.
+    expect(railBand(desktop, inset({ right: 900, top: 300 }), bar)).toBe(bar.height - RAIL_TOP_PX);
   });
 });

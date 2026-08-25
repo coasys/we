@@ -41,11 +41,6 @@ export function CodePanel() {
         <we-text fontSize="500" fontWeight="600">
           Code Editor
         </we-text>
-        <we-tooltip title="Close code panel">
-          <we-button variant="ghost" size="sm" onClick={() => session.closeCodePanel()}>
-            <we-icon name="x" size="sm" />
-          </we-button>
-        </we-tooltip>
       </Row>
 
       {/* Code viewer */}

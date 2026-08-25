@@ -159,6 +159,8 @@ that declares `backends: ['ad4m']` — nothing else. See `docs/architecture/pack
   `packages/app-shell/src/shared/viewResolution.ts` (see docs/architecture/views.md).
 - Graph engine (expanders, layouts, expansion state) → `packages/graph-system/` (see its README);
   its data binding lives at `packages/app-shell/src/frameworks/solid/components/GraphHost.tsx`.
+- App chrome and module panels (the sidebar, the module rail, floating vs displacing, who moves for
+  whom) → `packages/app-shell/src/shared/dockGeometry.ts` (see docs/architecture/chrome-and-panels.md).
 
 For deeper detail (data sync/persistence, block & editor internals, the local dev/test loop),
 see docs/architecture/codebase-map.md.
@@ -2190,7 +2192,6 @@ ShellStore:
   - rememberShellPath(): unknown
   - setCreateSpaceOpen(open: boolean): opens or closes the create-space modal. Shell state rather than a page’s $localState because more than one place opens it — the settings page and the sidebar’s spaces group — and a page-scoped flag could only be set from inside that page
   - scrollToId(id: string): smooth-scrolls the element with that DOM id into view
-  - setChromeInset(): unknown
   - beginDockResize(): unknown
   - resizeDock(): unknown
   - endDockResize(): unknown

@@ -35,6 +35,16 @@ export interface DockEntry extends DockContribution {
   id: string;
   /** The module whose store the `edge` / `size` / `float` keys are read from. */
   moduleId: string;
+  /**
+   * How a *schema* addresses that store, where it is not a module's — `'editorStore'`.
+   *
+   * The shell reads `edge`/`size`/`float` in TypeScript, through `readDockKey`, which resolves
+   * against `moduleStores` or `hostDockStores` and needs no path. `close` is different: it is
+   * rendered into the titlebar as an `$action`, so it needs a name the renderer can resolve, and the
+   * two namespaces do not have the same shape — a module's store is `modules.<id>`, and the host's
+   * own stores are named outright. Defaults to the module form, which is right for every module.
+   */
+  storeRef?: string;
 }
 
 /**
@@ -265,6 +275,9 @@ function titleBar(entry: DockEntry): SchemaNode {
       displaceButton(entry.id),
       maximiseButton(entry.id),
       positionMenu(entry),
+      // Last, and after the menu: the one control whose consequence cannot be undone by clicking it
+      // again wants to be the one furthest from the others.
+      ...(entry.close ? [closeButton(entry)] : []),
     ],
   };
 }
@@ -379,6 +392,39 @@ function maximiseButton(id: string): SchemaNode {
  * buried the two that are pressed most. They are buttons beside it now, and this is a position
  * picker — one question, eight answers, each ticked when it is the current one.
  */
+/**
+ * Close the panel — the last control on the titlebar, after the position menu.
+ *
+ * Rendered by the host rather than by the panel, which is the change: every panel used to draw its
+ * own inside its own content, so no two were the same size or in the same place, and the video stage
+ * — a grid of tiles with nowhere to put a header — simply had none. A panel's controls belong on the
+ * bar that already holds its grip, its position menu and its full-screen button.
+ *
+ * The action is the module's, because closing is the one thing about a panel the host does not
+ * decide: where it sits is the host's and remembered per device, whether it is open is the module's
+ * own state. A module that declares no `close` gets no button rather than a dead one.
+ */
+function closeButton(entry: DockEntry): SchemaNode {
+  const store = entry.storeRef ?? `modules.${entry.moduleId}`;
+
+  return {
+    type: 'we-tooltip',
+    props: { title: 'Close', placement: 'bottom' },
+    children: [
+      {
+        type: 'we-button',
+        props: {
+          size: 'xs',
+          square: true,
+          variant: 'ghost',
+          onClick: { $action: `${store}.${entry.close}` },
+        },
+        children: [{ type: 'we-icon', props: { name: 'x' } }],
+      },
+    ],
+  };
+}
+
 function positionMenu(entry: DockEntry): SchemaNode {
   const id = entry.id;
   const place = (field: string) => ({ $store: `shellStore.dockPlacement.${id}.${field}` });

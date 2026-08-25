@@ -69,11 +69,6 @@ export function AiPanel() {
               <we-icon name="file-plus" size="sm" />
             </we-button>
           </we-tooltip>
-          <we-tooltip title="Close chat panel">
-            <we-button variant="ghost" size="sm" onClick={() => session.close()}>
-              <we-icon name="x" size="sm" />
-            </we-button>
-          </we-tooltip>
         </Row>
       </Row>
 

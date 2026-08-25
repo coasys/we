@@ -457,11 +457,6 @@ export const panel: SchemaNode = {
                     },
                   ],
                 },
-                {
-                  type: 'we-button',
-                  props: { variant: 'ghost', size: 'sm', onClick: { $action: 'modules.transcribe.closePanel' } },
-                  children: [{ type: 'we-icon', props: { name: 'x' } }],
-                },
               ],
             },
           ],

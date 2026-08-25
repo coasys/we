@@ -1,0 +1,96 @@
+# Chrome and panels
+
+The names for the things on screen around a template, and the rules about which of them moves for
+which. Written down because they were being discussed as "the rail", "the sidebar" and "the panel"
+without those meaning the same thing twice, and because the rules are not guessable from looking at
+the app — a panel that floats and a panel that displaces look identical until something else opens.
+
+## The vocabulary
+
+| Term               | What it is                                                                                                                                                                                   |
+| ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Sidebar**        | The strip on the **left** — spaces, profile, settings, logout. 80px collapsed, widens on hover to show labels. `SIDEBAR_PX`, `SHELL_SIDEBAR_WIDTH`, `Sidebar.schema.ts`.                     |
+| **Module rail**    | The strip on the **right** — module launchers, space settings, the template and theme pickers. 56px, icon-only, never widens. `CHROME_RAIL_PX`, `CHROME_RAIL_WIDTH`, `ChromeRail.schema.ts`. |
+| **Call bar**       | The bar centred at the **top**, contributed by `@we/module-call`, present only during a call or when one is running to join.                                                                 |
+| **Chrome**         | All of the above, plus the editor's editing bar: app furniture that persists across spaces and templates, positions itself, and is never part of a template.                                 |
+| **Panel**          | A surface a module opens — the call's video stage, notes, the transcript, the editor's four panels. Also called a **dock** in the code, which is the registry's word for the same thing.     |
+| **Content region** | The window, minus the sidebar, minus every **displacing** panel. What a template is laid out inside.                                                                                         |
+| **Inset**          | How much one edge of the content region has given up, in pixels. Published as `--we-chrome-<edge>`.                                                                                          |
+| **Band**           | How far the module rail has dropped to clear something. Published as `--we-panel-chrome-top`.                                                                                                |
+
+Both strips are built from the same `railShell` fragment, which is why "rail" alone is ambiguous.
+Reserve **rail** for the right-hand one and **sidebar** for the left, as the code does.
+
+## A panel has one position and four states
+
+**Where** it is and **whether it takes room** are separate questions — they used to be one enum of
+six placements, which meant a call among three people cost a full-height column of the window.
+
+| State          | What it means                                                                                                                                          |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Floating**   | A card over the content. Takes no room; the content is whole underneath it.                                                                            |
+| **Snapped**    | Floating, parked at one of eight positions (four corners, four edge centres).                                                                          |
+| **Displacing** | Spans its edge and insets the content by its thickness. Offered on the four edge-centre snaps only — a rectangular layout cannot flow around a corner. |
+| **Maximised**  | Fills the content region. Floats, so it takes no room from anything.                                                                                   |
+
+Below `NARROW_VIEWPORT_PX` (900px of window width) displacing is switched off entirely and every
+panel floats. A 440px panel beside a 400px viewport is not two usable things.
+
+## Who moves for whom
+
+This is the part that is not guessable, and every layout bug in this area has come from getting one
+row of it wrong.
+
+|                                                  | What happens                                                                                                                                                                                                                                                                |
+| ------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A **displacing** panel vs the chrome at its edge | **The chrome moves.** The rail and the editing bar follow `--we-chrome-<edge>` and slide inwards; the panel takes the edge outright. This is why `RAIL_PX = 0` — a panel reserves nothing for the rail.                                                                     |
+| A **floating** panel vs the same chrome          | **The panel moves.** It publishes no inset, so nothing slides for it, and it has to clear the chrome itself. `DEFAULT_FLOAT_CHROME`, threaded through the floating paths only.                                                                                              |
+| A **maximised** panel                            | Same as floating: it clears the chrome rather than covering it, so its own titlebar controls stay reachable.                                                                                                                                                                |
+| Chrome vs a **floating** panel                   | **Nothing moves.** A floating panel takes no room and somebody put it there by hand; chrome that ran away from that decision is worse than an overlap you can see and undo.                                                                                                 |
+| Chrome vs **chrome**                             | **The rail moves.** The rail is pinned to the right of the content and the call bar to its centre, so a wide displacing panel moves the rail by its whole width and the bar by half — and they meet. `railBand` is that one collision, and the only one the shell computes. |
+
+Between them these leave nothing for the band to do about panels, which is why `railBand` does not
+consider them. It did, and the dead branch could only ever fire when two ways of measuring one edge
+disagreed — which is how a rail asked to clear a 74px bar ended up parked halfway down the screen.
+
+## The channel between packages
+
+The shell computes the content region; the rail lives in `@we/template-shell`, the editing bar in
+`@we/editor`, the call bar in `@we/module-call`. None of them can import the shell's store, so the
+answer goes out as custom properties on `:root`:
+
+| Property                                           | What it holds                                                                                                               |
+| -------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `--we-chrome-left` / `-right` / `-top` / `-bottom` | Where the content's edges are — the same four numbers the content viewport is laid out from. The left includes the sidebar. |
+| `--we-chrome-center-x`                             | How far the content's centre has moved from the window's, for anything centred rather than pinned.                          |
+| `--we-chrome-rail-width`                           | The module rail's own width, for chrome that sits _outside_ it. The rail must not clear itself.                             |
+| `--we-panel-chrome-top`                            | The band — how far the rail has dropped.                                                                                    |
+| `--we-chrome-transition`                           | How long chrome should take to follow, collapsing to `0s` mid-drag so it does not trail the cursor.                         |
+
+Chrome composes its position from these and never re-derives them. That rule is enforced by
+`chromeInsets.test.ts`, because the failure mode is invisible: a `var()` with a `0px` fallback that
+nobody publishes simply stops moving, quietly and for good.
+
+## What a module declares
+
+A module never positions its own chrome or its own panel. It says what it has and the host places it:
+
+- `docks` — a panel, with the edge and size it would like. The host owns where it actually goes,
+  because only the host can see the other panels.
+- `slots` — chrome contributed at a named anchor. `launcher` puts an icon in the module rail.
+- `close` — a key on its store naming the action that dismisses the panel. The host puts the button
+  on the titlebar, last, after the position menu — so every panel closes in the same place at the
+  same size, which they did not when each drew its own inside its own content.
+- `chromeReserve` — a store accessor returning the box its fixed chrome currently occupies
+  (`{ top, width }`), so floating panels can clear it and the rail can dodge it. Report the
+  **collapsed** height: chrome that grows as somebody opens a disclosure would otherwise shove a
+  panel down the screen mid-read.
+
+## Where the code is
+
+- `packages/app-shell/src/shared/dockGeometry.ts` — every rule above, as pure functions over a
+  viewport and a list of panels. Tested without a browser; that is the point of it being pure.
+- `packages/app-shell/src/frameworks/solid/stores/ShellStore.tsx` — the state, the drag handling,
+  and the custom properties.
+- `packages/app-shell/src/shared/registries/dockRegistry.ts` — the frame a panel is wrapped in.
+- `packages/templates/shell/src/ChromeRail.schema.ts`, `Sidebar.schema.ts` — the two strips.
