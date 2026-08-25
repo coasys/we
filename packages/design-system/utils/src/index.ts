@@ -2,6 +2,7 @@ import type { DesignSystemProps, FlexDirection } from '@we/design-types';
 import { font, role } from '@we/tokens';
 
 export * from './color';
+export * from './surface';
 
 // --- Shared sub-arrays (used by CSS helpers directly) ---
 export const paddingKeys = ['p', 'px', 'py', 'pt', 'pr', 'pb', 'pl'] as const;

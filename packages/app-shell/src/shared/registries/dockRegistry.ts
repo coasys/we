@@ -210,7 +210,19 @@ export function dockFrame(entry: DockEntry, node: SchemaNode): SchemaNode {
               {
                 type: 'Column',
                 props: { flex: '1', minHeight: '0', width: '100%', overflow: 'hidden' },
-                children: [node],
+                /*
+                  A panel is a surface of its own.
+
+                  What a docked module has to fit into is the box the user dragged, not the window
+                  and not the space behind it — so anything inside adapts to *this* panel. That is
+                  the case the whole surface mechanism was built for: the call stage is a rectangle
+                  somebody reshapes by hand, and until this existed nothing inside it could tell.
+
+                  Declared here rather than by each module, for the reason every surface is
+                  host-declared: a container query with no container is silently false, so a module
+                  relying on one it did not get would look correct and never adapt.
+                */
+                children: [{ type: '$surface', children: [node] }],
               },
             ],
           },
