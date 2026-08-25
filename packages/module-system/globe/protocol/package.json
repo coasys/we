@@ -19,7 +19,7 @@
     "cesium": "^1.136.0"
   },
   "devDependencies": {
-    "@types/node": "^24.10.0",
+    "@types/node": "^26.2.0",
     "@we/cli": "workspace:*",
     "cesium": "^1.136.0",
     "tsup": "^8.5.1"

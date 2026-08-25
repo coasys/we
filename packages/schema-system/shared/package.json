@@ -31,7 +31,7 @@
     "zod": "^4.1.12"
   },
   "devDependencies": {
-    "@types/node": "^24.10.0",
+    "@types/node": "^26.2.0",
     "@vitest/coverage-v8": "^4.0.15",
     "@we/cli": "workspace:*",
     "jsdom": "^27.2.0",

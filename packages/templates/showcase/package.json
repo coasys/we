@@ -14,7 +14,7 @@
     "@we/template-kit": "workspace:*"
   },
   "devDependencies": {
-    "@types/node": "^24.10.0"
+    "@types/node": "^26.2.0"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"
