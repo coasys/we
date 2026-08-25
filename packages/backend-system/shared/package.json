@@ -21,7 +21,7 @@
     "zod": "^4.1.12"
   },
   "devDependencies": {
-    "@types/node": "^26.2.0",
+    "@types/node": "^26.3.0",
     "@vitest/coverage-v8": "^4.1.11",
     "@we/cli": "workspace:*",
     "tsup": "^8.5.1",

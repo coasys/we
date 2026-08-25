@@ -23,7 +23,7 @@
     "@we/models": "workspace:*"
   },
   "devDependencies": {
-    "@types/node": "^26.2.0",
+    "@types/node": "^26.3.0",
     "@we/cli": "workspace:*",
     "prettier": "3.9.6",
     "ts-morph": "^25.0.1",

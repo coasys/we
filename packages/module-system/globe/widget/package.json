@@ -20,7 +20,7 @@
     "solid-js": "^1.9.15"
   },
   "devDependencies": {
-    "@types/node": "^26.2.0",
+    "@types/node": "^26.3.0",
     "cesium": "^1.144.0",
     "solid-js": "^1.9.15"
   }

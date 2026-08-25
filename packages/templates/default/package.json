@@ -1,8 +1,11 @@
 {
   "name": "@we/template-default",
   "version": "0.1.0",
-  "description": "WE's built-in space templates \u2014 shipped as data, versioned independently of the framework that renders them",
+  "description": "WE's built-in space templates — shipped as data, versioned independently of the framework that renders them",
   "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
   "exports": {
     ".": {
       "import": "./src/index.ts",
@@ -14,9 +17,6 @@
     "@we/template-kit": "workspace:*"
   },
   "devDependencies": {
-    "@types/node": "^26.2.0"
-  },
-  "scripts": {
-    "typecheck": "tsc --noEmit"
+    "@types/node": "^26.3.0"
   }
 }
