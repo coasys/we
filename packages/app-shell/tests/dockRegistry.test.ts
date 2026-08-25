@@ -8,13 +8,8 @@ import {
   registerHostDockStore,
   unregisterHostDockStore,
 } from '../src/shared/registries/dockRegistry';
+import { registerEditorDocks } from '../src/shared/registries/editorDocks';
 import { moduleRegistry, moduleStores } from '../src/shared/registries/moduleRegistry';
-/*
-  `registerCoreSlots` rather than `registerEditorDocks`, which it calls. Importing the latter first
-  enters an import cycle — `slotRegistry` runs `registerCoreSlots` at module scope, which reaches
-  back into `editorDocks` before its `PANELS` list has been initialised.
-*/
-import { registerCoreSlots } from '../src/shared/registries/slotRegistry';
 import { TEMPLATE_SURFACE } from '../src/shared/registries/templateSurface';
 
 /**
@@ -137,7 +132,7 @@ describe('a panel declares how it closes', () => {
       all. An unclassified member is absent from the bag rather than refused, so the button would be
       wired to `undefined`.
     */
-    registerCoreSlots();
+    registerEditorDocks();
     const editorPanels = dockRegistry.ordered().filter((entry) => entry.storeRef === 'editorStore');
     expect(editorPanels.length).toBeGreaterThan(0);
 

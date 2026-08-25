@@ -239,6 +239,20 @@ export const slotRegistry = {
 /**
  * Host chrome, registered as ordinary entries so there is exactly one mechanism rather than a special
  * case beside a general one. The order values preserve the previous hardcoded sequence.
+ *
+ * **Called by `initializeIntegrations`, not by importing this file.** It used to run at module scope,
+ * one line below the body, which is a side effect inside an import cycle: this file imports
+ * `registerEditorDocks` and `editorDocks.ts` imports this one, so whichever is entered second is only
+ * half-initialised when the call fires. Reached from here it worked every time, for as long as
+ * nothing imported `editorDocks` first — and the moment something did, it threw `Cannot access
+ * 'PANELS' before initialization` from a file neither of them mentions. See `editorDocks.test.ts`.
+ *
+ * Explicit is also honest about what was already true: `initializeIntegrations` replaces
+ * `core:bootScreen` from the seed, which only works once these are registered, so the ordering was a
+ * real requirement met by accident of import order rather than by anybody arranging it.
+ *
+ * Idempotent — both registries key on id — so a second call re-registers rather than duplicating,
+ * which is what the tests rely on after clearing.
  */
 export function registerCoreSlots(): void {
   slotRegistry.register({ id: 'core:bootScreen', anchor: 'overlay', node: bootScreen, order: 0 });
@@ -261,5 +275,3 @@ export function registerCoreSlots(): void {
   // only the host can stop launchers colliding — see ChromeRail.schema.ts.
   slotRegistry.register({ id: 'core:chromeRail', anchor: 'dock-right', node: chromeRail, order: 10 });
 }
-
-registerCoreSlots();
