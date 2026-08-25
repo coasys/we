@@ -22,7 +22,7 @@ export function AppFailure(props: { error: unknown }) {
         'justify-content': 'center',
         gap: '16px',
         padding: '32px',
-        'min-height': '100vh',
+        'min-height': '100dvh',
         'font-family': 'system-ui, sans-serif',
         'text-align': 'center',
         background: '#111',

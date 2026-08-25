@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { INTERACTIVE_SPECS, tierDeclCSS, tierRulesCSS } from './index';
 import {
@@ -9,6 +9,7 @@ import {
   TIER_VAR,
   tierQuery,
   tierSentinelStyles,
+  warnIfUnsurfaced,
 } from './surface';
 
 describe('surface', () => {
@@ -99,6 +100,29 @@ describe('surface', () => {
       const order = ['sm', 'md', 'lg'].map((t) => css.indexOf(`(min-width: ${{ sm: 640, md: 900, lg: 1200 }[t]}px)`));
       expect(order).toEqual([...order].sort((a, b) => a - b));
       expect(css.match(/@container we-surface/g)?.length).toBe(3);
+    });
+  });
+
+  describe('warnIfUnsurfaced', () => {
+    const fakeEl = (surfaced: boolean) =>
+      ({ closest: (sel: string) => (surfaced && sel.includes('data-we-surface') ? {} : null) }) as unknown as Element;
+
+    it('says so when a responsive element has no surface above it', () => {
+      // The one failure this design cannot make unreachable: the query is silently false, so the
+      // element renders its base values and looks entirely correct.
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      warnIfUnsurfaced(fakeEl(false), 'This element');
+      expect(warn).toHaveBeenCalledOnce();
+      expect(warn.mock.calls[0][0]).toContain('$surface');
+      warn.mockRestore();
+    });
+
+    it('stays quiet when there is one, and when there is no element', () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      warnIfUnsurfaced(fakeEl(true), 'This element');
+      warnIfUnsurfaced(null, 'This element');
+      expect(warn).not.toHaveBeenCalled();
+      warn.mockRestore();
     });
   });
 });

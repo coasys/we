@@ -7,7 +7,7 @@ import type { SchemaNode } from '@we/schema-solid';
  */
 export const feedTemplate: SchemaNode = {
   type: 'Column',
-  props: { bg: 'neutral-50', p: '600', gap: '400', minHeight: '100vh', maxWidth: '640px', mx: 'auto' },
+  props: { bg: 'neutral-50', p: '600', gap: '400', minHeight: '100dvh', maxWidth: '640px', mx: 'auto' },
   children: [
     { type: 'we-text', props: { variant: 'heading-lg', tag: 'h1' }, children: ['Community Feed'] },
     {

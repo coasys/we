@@ -63,10 +63,11 @@ export function createLayoutComponent<P extends LayoutProps>(
       designSystemProps.disabledProps ||
       tierKeys.some((key) => (designSystemProps as Record<string, unknown>)[key]);
 
-    const { style, attrs } = useStateProps(baseStyle, designSystemProps as P, direction());
+    const { style, attrs, checkSurface } = useStateProps(baseStyle, designSystemProps as P, direction());
     const extras = config.hook?.(designSystemProps as P);
 
     const composedRef = (el: HTMLElement) => {
+      checkSurface(el);
       extras?.ref?.(el);
       // A caller's own ref still gets the element: `rest` is spread before this, so without
       // forwarding it here the component would silently swallow it.

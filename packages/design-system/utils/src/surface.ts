@@ -138,3 +138,26 @@ export function readTier(el: Element | null | undefined): Tier {
   const raw = getComputedStyle(el).getPropertyValue(TIER_VAR).trim();
   return (TIERS as readonly string[]).includes(raw) ? (raw as Tier) : 'base';
 }
+
+/**
+ * Warn when something asks to be responsive with no surface above it.
+ *
+ * The one failure mode this design cannot make unreachable. A container query with no container
+ * resolves to *false*, so `mdUpProps` written outside every surface renders its base value, looks
+ * entirely correct, and never adapts — there is nothing to see and nothing to catch. The host
+ * declares a surface wherever it mounts a schema tree, which covers everything a template can
+ * reach; what is left is chrome placed at a screen edge (whose subject is the window, not a box)
+ * and anything a future host forgets.
+ *
+ * So: loud in development, absent in production. Called from wherever an element with tier props
+ * gets a ref — the two design-system families each have one place.
+ */
+export function warnIfUnsurfaced(el: Element | null | undefined, what: string): void {
+  if (!el || typeof process === 'undefined' || process.env?.NODE_ENV === 'production') return;
+  if (typeof el.closest !== 'function' || el.closest(`[${SURFACE_ATTR}]`)) return;
+  console.warn(
+    `[we] ${what} declares breakpoint props but sits outside every $surface, so they will never ` +
+      `apply. Responsive values are measured against the nearest surface; chrome at a screen edge ` +
+      `has none, and should adapt to the viewport instead.`,
+  );
+}

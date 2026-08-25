@@ -23,6 +23,19 @@ export interface PageShellOptions {
  * Two Columns rather than one, because centring and constraining are different jobs: the outer one
  * spans the viewport so a route's background reaches the edges, and the inner one holds the measure.
  * A single node cannot do both.
+ *
+ * ## Padding is the narrow value, and grows
+ *
+ * The defaults are what a *phone* wants; `mdUpProps` restores what a desktop route has always had.
+ * That way round on purpose — base is the unqualified value, so writing the roomy figures there and
+ * shrinking them at a breakpoint would need a `smDownProps` that does not exist, and every tier is
+ * min-width for a reason: it is the direction that degrades safely when nothing matches.
+ *
+ * Nothing changes on a desktop, where the surface clears `md` and the tier applies. On a 400px
+ * surface a route stops spending a tenth of its width on side padding.
+ *
+ * An explicit `px`/`py`/`gap` wins outright at every width — a caller who named a number meant it,
+ * and quietly overriding it at some widths and not others would be the worst of both.
  */
 export function pageShell(opts: PageShellOptions): SchemaNode {
   return {
@@ -34,9 +47,14 @@ export function pageShell(opts: PageShellOptions): SchemaNode {
         props: {
           width: '100%',
           maxWidth: opts.maxWidth ?? 'var(--we-layout-lg)',
-          gap: opts.gap ?? '500',
-          px: opts.px ?? '400',
-          py: opts.py ?? '500',
+          gap: opts.gap ?? '400',
+          px: opts.px ?? '300',
+          py: opts.py ?? '400',
+          mdUpProps: {
+            ...(opts.gap === undefined && { gap: '500' }),
+            ...(opts.px === undefined && { px: '400' }),
+            ...(opts.py === undefined && { py: '500' }),
+          },
           ...(opts.minHeight !== undefined && { minHeight: opts.minHeight }),
         },
         children: opts.children,

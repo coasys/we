@@ -27,7 +27,7 @@ export function ImageLightbox(props: ImageLightboxProps) {
   return (
     <Portal>
       <we-modal close={props.onClose} hideclosebutton p="0" r="500" overflow="hidden" width="calc(100vw - 80px)">
-        <div style={{ position: 'relative', width: '100%', height: 'calc(100vh - 120px)', 'max-height': '900px' }}>
+        <div style={{ position: 'relative', width: '100%', height: 'calc(100dvh - 120px)', 'max-height': '900px' }}>
           <we-image src={props.srcs[index()]} alt="" fit="contain" width="100%" height="100%" />
 
           {/* Close */}

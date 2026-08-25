@@ -26,7 +26,7 @@ const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   ay: 'start',
   gap: '500',
   direction: 'column',
-  maxHeight: 'calc(100vh - 64px)',
+  maxHeight: 'calc(100dvh - 64px)',
   /*
     Scroll rather than spill — but one level in.
 

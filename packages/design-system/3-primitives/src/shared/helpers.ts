@@ -27,6 +27,7 @@ import {
   TIER_PROP_KEYS,
   tierRulesCSS,
   tokenVar,
+  warnIfUnsurfaced,
   zIndexVar,
 } from '@we/design-utils';
 import type { Tier } from '@we/tokens';
@@ -635,11 +636,17 @@ export function updateAllCustomVars(
     filling it from DEFAULT_PROPS would pin every unmentioned prop at that width and stop it
     cascading through from the tier below.
   */
+  let hasTier = false;
   for (const [tier, key] of Object.entries(TIER_PROP_KEYS)) {
     const tierProps = (props as Record<string, unknown>)[key];
-    if (tierProps && typeof tierProps === 'object')
+    if (tierProps && typeof tierProps === 'object') {
+      hasTier = true;
       updateCustomVars(el, componentName, tierProps as Partial<DesignSystemProps>, undefined, tier as never);
+    }
   }
+  // The one failure this design cannot make unreachable: a query with no container is silently
+  // false, so a breakpoint prop outside every surface renders its base value and looks correct.
+  if (hasTier) warnIfUnsurfaced(el, `<${el.tagName.toLowerCase()}>`);
 }
 
 // ────────────────────────────────────────────

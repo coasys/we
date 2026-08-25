@@ -58,7 +58,7 @@ export const cardsView: TemplateSchema = {
     px: '600',
     py: '400',
     // Holds the grid open on a space with little content — the viewport, less the nav bar.
-    minHeight: 'calc(100vh - 70px)',
+    minHeight: 'calc(100dvh - 70px)',
     children: [
       cardsHeader,
 

@@ -12,6 +12,7 @@ import {
   TIER_PROP_KEYS,
   tierKeys,
   toInteractiveVars,
+  warnIfUnsurfaced,
 } from '../index';
 
 // Re-export neutral pieces consumed unchanged elsewhere (e.g. app-framework's dsInterop
@@ -56,6 +57,8 @@ export function getBgImageAttrs(
 export interface StatePropsResult {
   style: () => JSX.CSSProperties;
   attrs: JSX.HTMLAttributes<HTMLDivElement>;
+  /** Attach to the element, so an unsurfaced responsive prop can say so in development. */
+  checkSurface: (el: Element) => void;
 }
 
 /**
@@ -156,5 +159,5 @@ export function useStateProps(
     } as unknown as JSX.CSSProperties;
   };
 
-  return { style, attrs };
+  return { style, attrs, checkSurface: (el: Element) => hasTier() && warnIfUnsurfaced(el, 'This element') };
 }
