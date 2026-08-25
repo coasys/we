@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { render } from '@solidjs/testing-library';
-import { type SchemaNode, SURFACE_ATTR, SURFACE_INNER_ATTR } from '@we/schema-shared';
+import { type SchemaNode, SURFACE_ATTR, SURFACE_TIER_ATTR } from '@we/schema-shared';
 import { describe, expect, it } from 'vitest';
 
 import { RenderSchema } from '../src/SchemaRenderer';
@@ -16,22 +16,22 @@ function renderSchema(node: SchemaNode) {
 }
 
 describe('$surface', () => {
-  it('renders a container box and a layout-free inner box around its children', () => {
+  it('renders one container box, a tier sentinel, and its children', () => {
     const { container } = renderSchema({ type: '$surface', children: [{ type: 'Box' }] });
 
     const outer = container.querySelector(`[${SURFACE_ATTR}]`) as HTMLElement;
-    const inner = container.querySelector(`[${SURFACE_INNER_ATTR}]`) as HTMLElement;
+    const sentinel = container.querySelector(`[${SURFACE_TIER_ATTR}]`) as HTMLElement;
 
-    expect(outer).toBeTruthy();
-    expect(inner).toBeTruthy();
-    // The outer box IS the container — an element cannot query itself, which is the whole reason
-    // there are two boxes rather than one.
     expect(outer.style.containerName).toBe('we-surface');
     expect(outer.style.containerType).toBe('inline-size');
-    // The inner box exists only to be targetable by the tier rules; it must not add a layout box,
-    // or dropping a surface into a tree would rearrange what is inside it.
-    expect(inner.style.display).toBe('contents');
-    expect(inner.querySelector('[data-testid="box"]')).toBeTruthy();
+    // An element cannot query itself, so the tier has to land on something inside. A zero-size
+    // out-of-flow box rather than a `display: contents` wrapper, which Firefox declines to evaluate
+    // container queries for at all.
+    expect(sentinel).toBeTruthy();
+    expect(sentinel.style.position).toBe('absolute');
+    expect(sentinel.getAttribute('aria-hidden')).toBe('true');
+    // Children sit directly in the surface, so dropping one into a tree rearranges nothing.
+    expect(outer.querySelector('[data-testid="box"]')).toBeTruthy();
   });
 
   it('provides $surface to descendants, defaulting to the base tier', () => {

@@ -14,12 +14,14 @@
  * adapts. That failure is unreachable if the host guarantees a surface at every point where it
  * mounts a schema tree, and permanently available if it does not.
  *
- * ## Why a surface is two elements
+ * ## Why there is a sentinel inside it
  *
  * Because **an element cannot query itself**: `@container` matches descendants of the container,
- * never the container. So the outer box declares the container and the inner box is the first
- * element able to see it — which is what makes {@link TIER_VAR} readable at all. Everything renders
- * inside the inner box.
+ * never the container. So the tier cannot be written onto the surface, and something inside it has
+ * to carry the answer. That something is a zero-size, out-of-flow box — see
+ * {@link SURFACE_TIER_ATTR} — rather than a `display: contents` wrapper, which Firefox declines to
+ * evaluate container queries for at all. Content renders directly in the surface, so a surface adds
+ * exactly one layout box and dropping one anywhere rearranges nothing.
  *
  * ## Why the tier is decided in CSS and read back, rather than computed
  *
@@ -51,8 +53,17 @@ import { breakpoint, type Tier, TIERS } from '@we/tokens';
 /** Marks the outer box — the element that *is* the container. */
 export const SURFACE_ATTR = 'data-we-surface';
 
-/** Marks the inner box — the first element that can see the container, and where the tier lands. */
-export const SURFACE_INNER_ATTR = 'data-we-surface-inner';
+/**
+ * Marks the tier sentinel — a zero-size, out-of-flow box whose only job is to be somewhere the tier
+ * can land.
+ *
+ * It exists because of two constraints that meet awkwardly. An element cannot query itself, so the
+ * tier cannot be written onto the surface; and **Firefox does not evaluate container queries for an
+ * element with `display: contents`**, so it cannot be written onto a transparent wrapper either —
+ * that reports `base` at every width in Firefox while working in Chrome, which is the worst
+ * available failure. A real box out of flow satisfies both engines and costs nothing.
+ */
+export const SURFACE_TIER_ATTR = 'data-we-surface-tier';
 
 /**
  * The container's name.
@@ -67,10 +78,30 @@ export const SURFACE_CONTAINER_NAME = 'we-surface';
 /** Where the resolved tier lands. Inherits, so any descendant can read it too. */
 export const TIER_VAR = '--we-tier';
 
-/** The outer box's own CSS. */
+/** The surface's own CSS. */
 export const surfaceStyles = (): Record<string, string> => ({
   'container-name': SURFACE_CONTAINER_NAME,
   'container-type': 'inline-size',
+});
+
+/**
+ * The sentinel's geometry.
+ *
+ * Declared inline by whoever renders it rather than left to the stylesheet, because a host that
+ * never injected the design-system CSS would otherwise get a visible empty box in every surface.
+ * Only {@link TIER_VAR} comes from the stylesheet — the thing that is *supposed* to be absent when
+ * the stylesheet is.
+ *
+ * Out of flow, so it contributes no gap in a flex or grid surface and cannot be the first child
+ * some `:first-child` rule was aiming at. Zero-size and hidden, so it paints nothing and is not in
+ * the accessibility tree.
+ */
+export const tierSentinelStyles = (): Record<string, string> => ({
+  position: 'absolute',
+  width: '0',
+  height: '0',
+  visibility: 'hidden',
+  'pointer-events': 'none',
 });
 
 /** `@container` prelude for one tier — the single place a threshold becomes a query. */
@@ -87,9 +118,9 @@ export const tierQuery = (tier: Exclude<Tier, 'base'>): string =>
  * depends on, and it fails the same way — silently, and only between two breakpoints.
  */
 export function generateTierCSS(): string {
-  const base = `[${SURFACE_INNER_ATTR}] { ${TIER_VAR}: ${TIERS[0]}; }`;
+  const base = `[${SURFACE_TIER_ATTR}] { ${TIER_VAR}: ${TIERS[0]}; }`;
   const tiers = TIERS.slice(1).map(
-    (tier) => `${tierQuery(tier as Exclude<Tier, 'base'>)} { [${SURFACE_INNER_ATTR}] { ${TIER_VAR}: ${tier}; } }`,
+    (tier) => `${tierQuery(tier as Exclude<Tier, 'base'>)} { [${SURFACE_TIER_ATTR}] { ${TIER_VAR}: ${tier}; } }`,
   );
   return [base, ...tiers].join('\n');
 }

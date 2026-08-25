@@ -127,7 +127,14 @@ export type { ResolvedView, ViewGate } from './viewRoutes';
   reaches them through the package it already depends on, rather than growing an edge into the
   design system to agree with it about four string literals.
 */
-export { readTier, SURFACE_ATTR, SURFACE_INNER_ATTR, surfaceStyles, TIER_VAR } from '@we/design-utils';
+export {
+  readTier,
+  SURFACE_ATTR,
+  SURFACE_TIER_ATTR,
+  surfaceStyles,
+  TIER_VAR,
+  tierSentinelStyles,
+} from '@we/design-utils';
 export { getComponentMeta } from './componentMeta';
 export { contextData } from './generated/contextData';
 export type { ComponentMeta, PropMeta, PropLayer } from './componentMeta';

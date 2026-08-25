@@ -223,4 +223,40 @@ export interface DesignSystemProps {
   activeProps?: Partial<DesignSystemProps>;
   focusProps?: Partial<DesignSystemProps>;
   disabledProps?: Partial<DesignSystemProps>;
+
+  /**
+   * Values that take over from this width up — the responsive axis.
+   *
+   * A prop bag per tier, deliberately the same shape as `hoverProps` and friends, because it is the
+   * same idea on a different axis: a partial set of props that applies under a condition. `*Props`
+   * = partial-prop-bag is already a rule anyone reading a schema knows, and it keeps these
+   * discoverable next to the states in the generated declarations.
+   *
+   * ```
+   * { direction: 'column', gap: '300', mdUpProps: { gap: '500' } }
+   * ```
+   *
+   * **Measured against the nearest surface, not the window.** A template renders inside a docked
+   * panel, an editor preview pane and a phone, and the viewport is the wrong subject in two of
+   * those. See `$surface`.
+   *
+   * Cascading-through is automatic: at `lg`, something set only in `smUpProps` still applies,
+   * because each tier's declaration falls back through the one below it.
+   *
+   * ### Why `mdUpProps` and not `mdProps`
+   *
+   * `md` is already a *size* value on some fifteen primitives (`size="md"`), so `mdProps` reads as
+   * "medium-size props". `Up` also settles the question every responsive system gets asked — whether
+   * a tier means at-this-width or below-it — in the name, where it cannot be forgotten.
+   *
+   * ### Why states and tiers do not cross
+   *
+   * There is no `mdUpHoverProps`. Crossing them turns four states by four tiers into sixteen
+   * prefixes of generated CSS on every component, to serve a case that is rare enough that nobody
+   * here has wanted it yet. `*UpProps` sets base values at that width; `hoverProps` applies at all
+   * widths.
+   */
+  smUpProps?: Partial<DesignSystemProps>;
+  mdUpProps?: Partial<DesignSystemProps>;
+  lgUpProps?: Partial<DesignSystemProps>;
 }

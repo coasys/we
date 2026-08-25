@@ -171,15 +171,14 @@ function ShellOverlayInner({
       root={(props) => (
         <ShellRouterRoot>
           <div {...overlaySurface.outerAttrs} style={surfaceStyles()} ref={overlaySurface.outerRef}>
-            <div {...overlaySurface.innerAttrs} ref={overlaySurface.innerRef}>
-              <RenderSchema
-                node={schema}
-                stores={shellStores}
-                registry={registry}
-                context={{ surface: overlaySurface.surface }}
-                children={props.children}
-              />
-            </div>
+            <div {...overlaySurface.tierAttrs} ref={overlaySurface.tierRef} />
+            <RenderSchema
+              node={schema}
+              stores={shellStores}
+              registry={registry}
+              context={{ surface: overlaySurface.surface }}
+              children={props.children}
+            />
           </div>
         </ShellRouterRoot>
       )}
@@ -401,35 +400,33 @@ export function TemplateLayout(
             throw, so somebody else's template blanked the window and took the way out with it.
           */}
           {/*
-            The box the tier lands on. `display: contents`, so it adds nothing to the layout — an
-            element cannot query itself, and this is the first descendant able to see the container
-            declared above. CSS decides which tier this surface is at and writes it here; the store
-            reads the answer back, so `$surface.tier` and the children's `*UpProps` are the same
-            decision rather than two that agree most of the time.
+            Where the tier lands. Zero-size and out of flow, because an element cannot query itself
+            and this is something inside that can. CSS decides which tier this surface is at and
+            writes it here; the store reads the answer back, so `$surface.tier` and the children's
+            `*UpProps` are the same decision rather than two that agree most of the time.
           */}
-          <div {...templateSurface.innerAttrs} ref={templateSurface.innerRef}>
-            <TemplateBoundary
-              what="this space's template"
-              action={
-                <we-button
-                  variant="ghost"
-                  onClick={() => props.hostStores.shellStore.openShellView('settings', '/appearance')}
-                >
-                  Choose another template
-                </we-button>
-              }
-            >
-              <Show when={stores.templateStore.currentTemplate.id || 'empty'} keyed>
-                <RenderSchema
-                  node={stores.templateStore.currentTemplate}
-                  stores={templateStores}
-                  registry={registry}
-                  context={{ surface: templateSurface.surface }}
-                  children={props.children}
-                />
-              </Show>
-            </TemplateBoundary>
-          </div>
+          <div {...templateSurface.tierAttrs} ref={templateSurface.tierRef} />
+          <TemplateBoundary
+            what="this space's template"
+            action={
+              <we-button
+                variant="ghost"
+                onClick={() => props.hostStores.shellStore.openShellView('settings', '/appearance')}
+              >
+                Choose another template
+              </we-button>
+            }
+          >
+            <Show when={stores.templateStore.currentTemplate.id || 'empty'} keyed>
+              <RenderSchema
+                node={stores.templateStore.currentTemplate}
+                stores={templateStores}
+                registry={registry}
+                context={{ surface: templateSurface.surface }}
+                children={props.children}
+              />
+            </Show>
+          </TemplateBoundary>
         </Column>
 
         {/* Code / visual editor overlay — sits above template (z:5), below shell (z:11).

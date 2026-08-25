@@ -21,12 +21,11 @@ const FILL: Record<string, string> = {
 /**
  * `$surface` — a box the content inside it can measure itself against.
  *
- * Two elements, because **an element cannot query itself**: `@container` matches descendants of a
- * container, never the container. So the outer box declares the container and the inner box is the
- * first element able to see it. The inner box is `display: contents`, so a surface adds exactly one
- * box rather than two and the children lay out inside the outer exactly as they would have inside
- * whatever box was there before — which is what makes this droppable anywhere without rearranging
- * what it wraps.
+ * One box, plus a sentinel that takes up no room. An element cannot query itself — `@container`
+ * matches descendants of a container, never the container — so the tier has to land on something
+ * inside, and that something is a zero-size out-of-flow div rather than a `display: contents`
+ * wrapper, which Firefox declines to evaluate container queries for at all. Children render
+ * directly in the surface, so dropping one of these into a tree rearranges nothing.
  *
  * The tier is decided by CSS and read back rather than computed here; see `createSurface` and
  * `@we/design-utils`' surface module for why that distinction matters at the boundaries.
@@ -41,16 +40,15 @@ export function SurfaceRenderer(props: {
   renderNode: (node: SchemaNode, context: Record<string, unknown>) => RendererOutput;
 }): RendererOutput {
   const asKey = String(props.node.props?.as ?? 'surface');
-  const { surface, outerRef, innerRef, outerAttrs, innerAttrs } = createSurface();
+  const { surface, outerRef, tierRef, outerAttrs, tierAttrs } = createSurface();
 
   const childContext = { ...props.context, [asKey]: surface };
   const style = { ...FILL, ...surfaceStyles(), ...((props.node.props?.styles as Record<string, string>) ?? {}) };
 
   return (
     <div {...outerAttrs} style={style} ref={outerRef}>
-      <div {...innerAttrs} ref={innerRef}>
-        {(props.node.children as SchemaNode[] | undefined)?.map((child) => props.renderNode(child, childContext))}
-      </div>
+      <div {...tierAttrs} ref={tierRef} />
+      {(props.node.children as SchemaNode[] | undefined)?.map((child) => props.renderNode(child, childContext))}
     </div>
   );
 }

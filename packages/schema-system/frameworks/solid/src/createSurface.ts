@@ -1,4 +1,4 @@
-import { readTier, SURFACE_ATTR, SURFACE_INNER_ATTR } from '@we/schema-shared';
+import { readTier, SURFACE_ATTR, SURFACE_TIER_ATTR, tierSentinelStyles } from '@we/schema-shared';
 import { onCleanup } from 'solid-js';
 import { createStore } from 'solid-js/store';
 
@@ -13,31 +13,31 @@ export interface SurfaceState {
 export interface Surface {
   /** A Solid store — pass it straight into a render context as the `$surface` value. */
   surface: SurfaceState;
-  /** `ref` for the box that declares the container. */
+  /** `ref` for the element that declares the container. */
   outerRef: (el: HTMLElement) => void;
-  /** `ref` for the box the tier lands on. */
-  innerRef: (el: HTMLElement) => void;
-  /** Spread onto the outer box, alongside `surfaceStyles()`. */
+  /** `ref` for the tier sentinel. */
+  tierRef: (el: HTMLElement) => void;
+  /** Spread onto the surface element, alongside `surfaceStyles()`. */
   outerAttrs: Record<string, string>;
-  /** Spread onto the inner box — includes the `display: contents` that keeps it out of layout. */
-  innerAttrs: Record<string, unknown>;
+  /** Spread onto a bare `div` placed inside the surface — carries its own geometry. */
+  tierAttrs: Record<string, unknown>;
 }
 
 /**
  * The measuring half of a surface, separated from any particular markup.
  *
- * Two places need it and they have different shapes: the `$surface` node renders its own two boxes,
- * while the host's own surfaces are existing elements that already carry a background, a theme
- * attribute and a ref of their own — wrapping those in another box to make them measurable would
- * add a layout box for no reason and put the scroll container in the wrong place. So the pieces are
- * handed out separately and each caller attaches them to what it already has.
+ * Two places need it and they have different shapes: the `$surface` node renders its own box, while
+ * the host's own surfaces are existing elements that already carry a background, a theme attribute
+ * and a ref of their own — wrapping those to make them measurable would add a layout box for no
+ * reason and put the scroll container in the wrong place. So the pieces are handed out separately
+ * and each caller attaches them to what it already has.
  *
- * See `@we/design-utils`' surface module for why there are two boxes and why the tier is read from
+ * See `@we/design-utils`' surface module for why there is a sentinel and why the tier is read from
  * CSS rather than computed here.
  */
 export function createSurface(): Surface {
   const [surface, setSurface] = createStore<SurfaceState>({ width: 0, tier: 'base' });
-  let innerEl: HTMLElement | undefined;
+  let tierEl: HTMLElement | undefined;
 
   return {
     surface,
@@ -46,7 +46,7 @@ export function createSurface(): Surface {
       const observer = new ResizeObserver((entries) => {
         const box = entries[0]?.contentBoxSize?.[0];
         const width = box ? box.inlineSize : el.clientWidth;
-        const tier = readTier(innerEl);
+        const tier = readTier(tierEl);
         // Guarded, because a resize fires far more often than a tier changes: a panel being dragged
         // would otherwise invalidate every memo that read this store on every frame.
         if (surface.width !== width || surface.tier !== tier) setSurface({ width, tier });
@@ -54,10 +54,10 @@ export function createSurface(): Surface {
       observer.observe(el);
       onCleanup(() => observer.disconnect());
     },
-    innerRef: (el: HTMLElement) => {
-      innerEl = el;
+    tierRef: (el: HTMLElement) => {
+      tierEl = el;
     },
     outerAttrs: { [SURFACE_ATTR]: '' },
-    innerAttrs: { [SURFACE_INNER_ATTR]: '', style: { display: 'contents' } },
+    tierAttrs: { [SURFACE_TIER_ATTR]: '', 'aria-hidden': 'true', style: tierSentinelStyles() },
   };
 }

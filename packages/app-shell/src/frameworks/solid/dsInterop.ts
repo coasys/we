@@ -1,4 +1,4 @@
-import { focusSelector, joinDeclsCSS, joinStateDeclsCSS } from '@we/design-utils';
+import { focusSelector, generateTierCSS, joinDeclsCSS, joinStateDeclsCSS, tierRulesCSS } from '@we/design-utils';
 import { INTERACTIVE_SPECS } from '@we/design-utils/solid';
 
 const STYLE_EL_ID = 'we-ds-interop';
@@ -58,7 +58,15 @@ const BG_IMAGE_CSS = `
 // :hover:active), so focus < :hover < :active reproduces the same active-over-hover-over-focus
 // precedence useStateProps used to compute via JS merge order before this stylesheet existed.
 function buildInteractiveStateCSS(): string {
-  const base = `[data-we-interactive] { ${joinDeclsCSS('--we-ds-', INTERACTIVE_SPECS)} }`;
+  /*
+    Both gates share the base declarations.
+
+    An element that varies by breakpoint but has no hover state still has its values moved out of
+    the inline style into `--we-ds-*` — that is how a stylesheet gets to pick the winner at all. If
+    the base rule named only `[data-we-interactive]`, such an element would have those properties
+    declared nowhere and would render with none of them.
+  */
+  const base = `[data-we-interactive], [data-we-responsive] { ${joinDeclsCSS('--we-ds-', INTERACTIVE_SPECS)} }`;
   const focus = `${focusSelector('[data-we-interactive]')} { ${joinStateDeclsCSS('--we-ds-focus-', '--we-ds-', INTERACTIVE_SPECS)} }`;
   const hover = `[data-we-interactive]:hover { ${joinStateDeclsCSS('--we-ds-hover-', '--we-ds-', INTERACTIVE_SPECS)} }`;
   const active = `[data-we-interactive]:active { ${joinStateDeclsCSS('--we-ds-active-', '--we-ds-', INTERACTIVE_SPECS)} }`;
@@ -70,6 +78,25 @@ function buildInteractiveStateCSS(): string {
   return [base, focus, hover, active, disabled].join('\n');
 }
 
+/*
+  The breakpoint tiers, from the same PropSpec table as the states above.
+
+  A second axis rather than a second system: `@container` is another condition a stylesheet can
+  test, exactly as `:hover` is, so `*UpProps` reuses the whole `--we-ds-*` indirection unchanged.
+
+  Emitted *after* the state rules, and that ordering is a decision. Container queries add no
+  specificity, so at equal specificity the later rule wins — which means a tier value beats a hover
+  value on the same property when both apply. That is the right way round for the one case where it
+  can happen: a hover background is a state everywhere, while a tier is a different layout, and a
+  layout that only half-applies is worse than a hover that does.
+
+  The tier rules themselves come first, since they set the variable `*UpProps` never reads but
+  `$surface.tier` does — one set of thresholds for the CSS and the schema alike.
+*/
+function buildResponsiveCSS(): string {
+  return [generateTierCSS(), tierRulesCSS('[data-we-responsive]', '--we-ds-', INTERACTIVE_SPECS)].join('\n');
+}
+
 /**
  * The DS interop stylesheet — the escape hatch for the handful of CSS features Solid's
  * inline-style-driven DesignSystemProps model can't express directly: pseudo-elements
@@ -78,7 +105,7 @@ function buildInteractiveStateCSS(): string {
  * regardless of which theme is active.
  */
 export function injectDSInteropStyles() {
-  const css = [BG_IMAGE_CSS, buildInteractiveStateCSS(), KEYFRAMES_CSS].join('\n');
+  const css = [BG_IMAGE_CSS, buildInteractiveStateCSS(), buildResponsiveCSS(), KEYFRAMES_CSS].join('\n');
   let styleEl = document.getElementById(STYLE_EL_ID) as HTMLStyleElement | null;
   if (!styleEl) {
     styleEl = document.createElement('style');
