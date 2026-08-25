@@ -78,7 +78,7 @@
     "leaflet": "^1.9.4",
     "dompurify": "^3.4.14",
     "lit": "3.3.3",
-    "marked": "^18.0.10",
+    "marked": "^18.0.11",
     "tslib": "2.8.1"
   },
   "peerDependencies": {
@@ -92,7 +92,7 @@
   "devDependencies": {
     "@custom-elements-manifest/analyzer": "0.11.0",
     "@phosphor-icons/core": "^2.1.1",
-    "@types/node": "^26.2.0",
+    "@types/node": "^26.3.0",
     "@we/cli": "workspace:*",
     "@we/design-types": "workspace:*",
     "eslint-plugin-lit": "^2.1.1",

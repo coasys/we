@@ -34,7 +34,7 @@
     "@we/backend-ad4m": "workspace:*"
   },
   "devDependencies": {
-    "@types/node": "^26.2.0",
+    "@types/node": "^26.3.0",
     "@we/cli": "workspace:*",
     "concurrently": "^9.1.2",
     "electron": "^33.4.11",
@@ -43,7 +43,7 @@
     "vite": "^6.0.7",
     "vite-plugin-solid": "^2.11.14",
     "vite-plugin-static-copy": "^3.1.4",
-    "wait-on": "^8.0.1",
+    "wait-on": "^9.1.0",
     "vitest": "^4.1.11"
   }
 }
