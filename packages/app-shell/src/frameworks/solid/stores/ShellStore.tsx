@@ -409,11 +409,15 @@ export function ShellStoreProvider(props: ParentProps) {
    * The right edge is the module rail, always: it follows `--we-chrome-right`, which only a
    * displacing panel moves, so a floating one has to clear it itself.
    *
-   * The top edge is whatever the modules say they are holding there. It was the constant
+   * The horizontal edges are whatever the modules say they are holding there. It was the constant
    * `TOP_CHROME_PX`, sized for the call bar alone, and the call bar stopped being alone: the
    * transcribe module contributes an extraction status panel into the same fixed column, so the
-   * band a panel had to clear grew and the number describing it did not. A panel snapped to the top
-   * centre landed under it.
+   * band a panel had to clear grew and the number describing it did not. A panel snapped to that
+   * corner landed under it.
+   *
+   * Both edges, because a module says which it is holding. The call bar is at the bottom — a panel
+   * has a titlebar and no footer, so chrome along the top can cover the way out of one — but the
+   * rule is the module's to state rather than this store's to assume.
    *
    * Declared rather than measured, deliberately. The status panel is a set of disclosures that grows
    * as rows are opened, and it goes to some trouble not to grow in steps — because, in its own
@@ -425,28 +429,40 @@ export function ShellStoreProvider(props: ParentProps) {
    * Reservations at an edge sum rather than max, because an anchor is a column: the status panel is
    * mounted below the call bar, not beside it.
    */
-  const topChrome = createMemo<TopChrome>(() => {
+  const moduleChrome = createMemo<{ top: number; bottom: number; width: number }>(() => {
     // The registration dependency, for the same reason `dockRequests` takes it: a module store read
     // before its module registers has no accessor to have tracked, and so nothing to re-run for.
     dockRegistryVersion();
-    let height = 0;
+    let top = 0;
+    let bottom = 0;
     let width = 0;
     for (const store of Object.values(moduleStores)) {
       const reserve = (store as Record<string, unknown> | undefined)?.chromeReserve;
       const value = typeof reserve === 'function' ? (reserve as () => unknown)() : reserve;
       const box = value as ChromeReserve | undefined;
       // Heights stack, widths do not: contributions to one anchor are a column.
-      height += box?.top ?? 0;
+      top += box?.top ?? 0;
+      bottom += box?.bottom ?? 0;
       width = Math.max(width, box?.width ?? 0);
     }
-    return { height, width };
+    return { top, bottom, width };
   });
+
+  /**
+   * What the module rail has to dodge, which is only ever chrome at the *top*.
+   *
+   * The rail is a short column pinned at top-right, so chrome along the bottom is nowhere near it.
+   * With the call bar down there this is zero in the ordinary case — kept rather than deleted
+   * because the anchor is open: a module may still declare a top reserve, and the rail should still
+   * move for it.
+   */
+  const topChrome = createMemo<TopChrome>(() => ({ height: moduleChrome().top, width: moduleChrome().width }));
 
   const floatChrome = createMemo<ContentInset>(() => ({
     left: 0,
     right: CHROME_RAIL_PX,
-    top: topChrome().height,
-    bottom: 0,
+    top: moduleChrome().top,
+    bottom: moduleChrome().bottom,
   }));
 
   /**

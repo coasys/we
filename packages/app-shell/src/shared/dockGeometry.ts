@@ -107,19 +107,23 @@ export const DOCK_GAP_PX = 8;
 export const NARROW_VIEWPORT_PX = 900;
 
 /**
- * The band along the top that floating chrome occupies, which a panel must not be snapped under.
+ * The band along the bottom that floating chrome occupies, which a panel must not be snapped under.
  *
- * The call module's control bar sits at `top: 10px` and is a row of `md` buttons in a padded pill —
- * about 56px — so a panel snapped to the top centre landed squarely behind it. That is worse than it
- * sounds: the panel's own grip and position menu are in *its* titlebar, so the controls covered the
- * only two ways to move it back out.
+ * The call module's control bar sits 10px off the bottom and is a row of `md` buttons in a padded
+ * pill — about 56px — so a panel snapped to that corner lands squarely behind it.
+ *
+ * It was the *top* band, and moved with the bar. The reason the bar moved is worth keeping here,
+ * because it is a fact about panels rather than about calls: a panel's grip, position menu and
+ * un-maximise button are all in its titlebar, so chrome along the top can cover the only ways out
+ * while chrome along the bottom covers nothing that is pressed. That asymmetry is also what lets a
+ * maximised panel take the whole window — see `resolveDock`.
  *
  * A constant here rather than a measurement, in the spirit of `SIDEBAR_PX` above: this file is where
- * the shell's fixed furniture is written down. It costs a snapped-to-top panel a band of empty space
- * when no call is running, which is invisible; the alternative was a panel that could not be
- * recovered without knowing the keyboard shortcut.
+ * the shell's fixed furniture is written down. It costs a snapped-to-bottom panel a band of empty
+ * space when no call is running, which is invisible; the alternative was a panel landing under
+ * controls it has no way past.
  */
-export const TOP_CHROME_PX = 74;
+export const BOTTOM_CHROME_PX = 74;
 
 /**
  * Chrome a **floating** panel must clear, per edge — as distinct from `occupied`, which is what
@@ -135,11 +139,11 @@ export const TOP_CHROME_PX = 74;
  * So this is threaded only through the floating paths — `snapOrigin`, the targets drawn from it, the
  * drag clamp, and the maximised box. Displacing thickness never sees it.
  *
- * The default keeps the behaviour this generalises: the top band the call bar occupies, and nothing
- * on the other three edges. The shell passes a live one — see `ShellStore.floatChrome`, which adds
- * the rail on the right and grows the top band for chrome that has appeared since.
+ * The default keeps the behaviour this generalises: the bottom band the call bar occupies, and
+ * nothing on the other three edges. The shell passes a live one — see `ShellStore.floatChrome`,
+ * which adds the rail on the right and takes both bands from what the modules declare.
  */
-export const DEFAULT_FLOAT_CHROME: ContentInset = { left: 0, right: 0, top: TOP_CHROME_PX, bottom: 0 };
+export const DEFAULT_FLOAT_CHROME: ContentInset = { left: 0, right: 0, top: 0, bottom: BOTTOM_CHROME_PX };
 
 /** How much room the content viewport gives up, per edge, in pixels. */
 export interface ContentInset {
@@ -456,7 +460,7 @@ export function displaces(placement: FloatPlacement, viewport: Viewport): boolea
  *
  * Against the content region rather than the window, so a panel snapped left lands beside the
  * sidebar instead of underneath it — the same reservation `contentRegion` makes for every other
- * calculation here. The top row clears `TOP_CHROME_PX` for the same kind of reason.
+ * calculation here. The bottom row clears `BOTTOM_CHROME_PX` for the same kind of reason.
  */
 export function snapOrigin(
   snap: SnapPoint,

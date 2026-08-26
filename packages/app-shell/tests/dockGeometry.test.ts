@@ -12,6 +12,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  BOTTOM_CHROME_PX,
   CHROME_RAIL_PX,
   type ContentInset,
   contentInset,
@@ -39,7 +40,6 @@ import {
   type SnapPoint,
   snapTargetRects,
   snapTargetSize,
-  TOP_CHROME_PX,
 } from '../src/shared/dockGeometry';
 
 const desktop = { width: 1600, height: 900 };
@@ -177,11 +177,11 @@ describe('a panel that floats', () => {
 
   it("cannot be dropped into the band the app's controls occupy", () => {
     // It was closed to snapping and open to dragging, which made the rule look arbitrary: the panel
-    // refused to snap under the call bar and then let you drop it there by hand — where its own grip
-    // and menu were the parts that ended up underneath.
-    const high = placement({ snap: null, displace: false, x: 600, y: 0, w: 360, h: 200 });
+    // refused to snap under the call bar and then let you drop it there by hand.
+    const low = placement({ snap: null, displace: false, x: 600, y: desktop.height, w: 360, h: 200 });
+    const box = resolveDock(dock({ placement: low }), desktop);
 
-    expect(px(resolveDock(dock({ placement: high }), desktop).top)).toBeGreaterThanOrEqual(TOP_CHROME_PX);
+    expect(px(box.top)! + 200).toBeLessThanOrEqual(desktop.height - BOTTOM_CHROME_PX);
   });
 
   it('is clamped into view, however it was stored', () => {
@@ -237,11 +237,10 @@ describe('maximised', () => {
 
   it("starts below the app's floating controls", () => {
     // "Full screen" cannot mean the whole screen while the app keeps permanent chrome over it: a
-    // maximised panel starting at the top put its own titlebar — grip, position menu, and the button
-    // that un-maximises it — underneath the call bar.
+    // maximised panel reaching the bottom put its content behind the call bar.
     const geometry = resolveDock(dock({ placement: placement({ maximised: true }) }), desktop);
 
-    expect(px(geometry.top)).toBe(TOP_CHROME_PX);
+    expect(px(geometry.bottom)).toBe(BOTTOM_CHROME_PX);
   });
 
   it('leaves the placement underneath it untouched', () => {
@@ -659,8 +658,8 @@ describe('reading a resolved box back as a rectangle', () => {
 
     expect(rect.x).toBe(SIDEBAR_PX);
     expect(rect.w).toBe(desktop.width - SIDEBAR_PX);
-    expect(rect.y).toBe(TOP_CHROME_PX);
-    expect(rect.h).toBe(desktop.height - TOP_CHROME_PX);
+    expect(rect.y).toBe(0);
+    expect(rect.h).toBe(desktop.height - BOTTOM_CHROME_PX);
   });
 
   it('reads a floating panel straight off, and falls back only when there is no box', () => {
@@ -684,11 +683,10 @@ describe('snapping', () => {
     expect(snapOrigin('bottom', 300, 200, desktop).y).toBeGreaterThan(desktop.height / 2);
   });
 
-  it('keeps the top row clear of the app’s floating controls', () => {
-    // A panel snapped to the top centre landed behind the call bar — and its own grip and menu are in
-    // its titlebar, so the bar covered both ways of moving it back out.
-    for (const snap of ['top-left', 'top', 'top-right'] as SnapPoint[]) {
-      expect(snapOrigin(snap, 300, 200, desktop).y).toBeGreaterThanOrEqual(TOP_CHROME_PX);
+  it('keeps the bottom row clear of the app’s floating controls', () => {
+    // A panel snapped to that corner lands behind the call bar, which is where the bar now is.
+    for (const snap of ['bottom-left', 'bottom', 'bottom-right'] as SnapPoint[]) {
+      expect(snapOrigin(snap, 300, 200, desktop).y + 200).toBeLessThanOrEqual(desktop.height - BOTTOM_CHROME_PX);
     }
   });
 
@@ -754,7 +752,7 @@ describe('dockThickness', () => {
  * answer and `CHROME_RAIL_PX` is the floating one; the tests below are mostly the difference.
  */
 describe('chrome a floating panel must clear', () => {
-  const chrome: ContentInset = { left: 0, right: CHROME_RAIL_PX, top: TOP_CHROME_PX, bottom: 0 };
+  const chrome: ContentInset = { left: 0, right: CHROME_RAIL_PX, top: 0, bottom: BOTTOM_CHROME_PX };
 
   it('keeps a right-hand snap clear of the rail', () => {
     const origin = snapOrigin('right', 400, 300, desktop, NO_INSET, chrome);
@@ -764,7 +762,7 @@ describe('chrome a floating panel must clear', () => {
   it('moves the landing spots with it, so the marker is where the panel will go', () => {
     // The markers are the rule, not decoration — `snapCandidate` hit-tests the drawn box. A target
     // still at the window edge would light up over a rail the panel is no longer allowed to reach.
-    const target = snapTargetRects(desktop, NO_INSET, chrome).find((rect) => rect.id === 'top-right');
+    const target = snapTargetRects(desktop, NO_INSET, chrome).find((rect) => rect.id === 'bottom-right');
     expect(target!.x + target!.w).toBeLessThanOrEqual(desktop.width - CHROME_RAIL_PX);
   });
 
@@ -785,7 +783,7 @@ describe('chrome a floating panel must clear', () => {
       chrome,
     );
     expect(px(box.right)).toBe(CHROME_RAIL_PX);
-    expect(px(box.top)).toBe(TOP_CHROME_PX);
+    expect(px(box.bottom)).toBe(BOTTOM_CHROME_PX);
   });
 
   it('leaves a displacing panel alone, which is the whole point of the split', () => {
@@ -795,11 +793,14 @@ describe('chrome a floating panel must clear', () => {
     expect(px(box.right)).toBe(0);
   });
 
-  it('grows the top band when a module says its chrome did', () => {
-    // What the constant could not do. `TOP_CHROME_PX` was sized for the call bar alone, and the
-    // transcribe module contributes an extraction panel into the same fixed column.
-    const taller: ContentInset = { ...chrome, top: TOP_CHROME_PX + 56 };
-    expect(snapOrigin('top', 400, 300, desktop, NO_INSET, taller).y).toBe(TOP_CHROME_PX + 56);
+  it('grows the band when a module says its chrome did', () => {
+    // What the constant could not do. It was sized for the call bar alone, and the transcribe module
+    // contributes an extraction panel into the same fixed column — above the bar, so the band grows.
+    // Asserted as the difference rather than an absolute, so the floating panel's own edge gap stays
+    // one number in one place instead of being restated here.
+    const taller: ContentInset = { ...chrome, bottom: BOTTOM_CHROME_PX + 56 };
+    const base = snapOrigin('bottom', 400, 300, desktop, NO_INSET, chrome).y;
+    expect(snapOrigin('bottom', 400, 300, desktop, NO_INSET, taller).y).toBe(base - 56);
   });
 });
 

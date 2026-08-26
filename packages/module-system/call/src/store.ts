@@ -104,15 +104,15 @@ export const STAGE_PADDING_PX = 12;
 export const STAGE_GAP_PX = 12;
 
 /**
- * How much of the top of the window the call bar occupies, for panels to keep clear of.
+ * How much of the bottom of the window the call bar occupies, for panels to keep clear of.
  *
- * `CALL_BAR_TOP` (10px) plus a row of `md` controls (40px) in a surface padded by `200` a side
- * (8px twice), plus a little air so a panel snapped beneath it does not touch. Derived rather than
+ * `CALL_BAR_INSET` (10px) plus a row of `md` controls (40px) in a surface padded by `200` a side
+ * (8px twice), plus a little air so a panel snapped above it does not touch. Derived rather than
  * chosen, like `CHROME_RAIL_WIDTH`: change the bar's size or padding and this has to follow, or
  * panels start landing underneath it again.
  *
- * Lived in the shell as `TOP_CHROME_PX` until the bar stopped being the only thing up there. See
- * `chromeReserve` below.
+ * The bottom, since the bar moved there. Lived in the shell as `TOP_CHROME_PX` until the bar
+ * stopped being the only thing up there; see `chromeReserve` below.
  */
 export const CALL_BAR_RESERVE_PX = 74;
 
@@ -862,7 +862,8 @@ export function createCallStore(deps: CallStoreDeps) {
      * who is not in the call yet — that is the same object in the same place, so it takes the same
      * room. `CALL_BAR_TOP` plus a row of `md` controls in a padded surface.
      */
-    chromeReserve: () => (callId() !== null || ongoingPeers().length > 0 ? { top: CALL_BAR_RESERVE_PX } : { top: 0 }),
+    chromeReserve: () =>
+      callId() !== null || ongoingPeers().length > 0 ? { bottom: CALL_BAR_RESERVE_PX } : { bottom: 0 },
 
     /**
      * The microphone this call is sending, for a module that wants to listen to it.

@@ -45,19 +45,30 @@ export { anchoredCallId, CALL_PROTOCOL_VERSION, parseCallMessage, spaceCallId } 
 export { type CallDockEdge, type CallTile, type CallTileState, createCallStore } from './store';
 
 /**
- * Where the call's chrome sits.
+ * How far the call's chrome sits off the bottom edge.
  *
- * At the top, where your eyes already are. That is not where this started: the bar was docked at the
- * bottom and only *appeared* at the top because `bottom: '400'` is not a CSS length, so the offset was
- * dropped and `position: fixed` fell back to the static position. The accident read better than the
- * design, so it is now the design — a call you are in should be visible where you are looking, not
- * competing with whatever the space puts along the bottom.
+ * The bottom, and the reason is a property of *panels* rather than a preference about calls: a panel
+ * has a titlebar and no footer. Chrome along the top covers the grip, the position menu and the
+ * button that un-maximises — the three controls a panel is recovered with — so a bar up there is a
+ * bar that can strand a panel. Along the bottom it covers nothing that is pressed, which is what
+ * lets a maximised panel take the whole window.
+ *
+ * The second reason is templates. A page with a sticky header locks it to the top of the *content*,
+ * and a bar fixed over that collides with it on every scroll — structurally, not by a few pixels
+ * that could be tuned away. Nothing a template can do fixes that: it would have to know a module's
+ * bar exists, and its header would jump down the moment somebody started a call. It is also where
+ * every other call application puts these controls.
+ *
+ * It was at the top, and got there by accident — `bottom: '400'` is not a CSS length, so the offset
+ * was dropped and `position: fixed` fell back to the static position. The accident read well enough
+ * to be adopted deliberately, which held until panels could be maximised and templates grew sticky
+ * headers.
  *
  * The stage no longer derives an offset from this. It used to: a second constant here restated the
  * bar's height so the two would stack, which is a relationship nothing enforced. The stage is a
  * *dock* now, and where a dock lands is the host's business — see `docks` at the bottom of this file.
  */
-const CALL_BAR_TOP = '10px';
+const CALL_BAR_INSET = '10px';
 
 /**
  * The bar's own corners, following the theme's **control** radius.
@@ -133,9 +144,10 @@ export const CALL_CONTROLS_ANCHOR = 'call-controls';
  * is a strip of text with a duration, and each would otherwise arrive as its own floating bar with
  * its own guess at how far below this one to sit.
  *
- * Under it rather than over: the bar is the thing being used, and a status line that pushed the
- * controls down would move a target somebody was reaching for. Contributions stack in a column, so
- * two modules reporting at once read as two rows rather than as a fight over one position.
+ * Away from the edge rather than toward it: the bar is the thing being used, and a status line that
+ * pushed the controls off the window would move a target somebody was reaching for. With the bar at
+ * the bottom that means *above* — the column runs upward. Contributions stack in a column, so two
+ * modules reporting at once read as two rows rather than as a fight over one position.
  *
  * The gap is the column's, not each contributor's. A contributor that had to space itself from the
  * bar would need to know the bar exists, which is the coupling both anchors are here to avoid.
@@ -827,11 +839,11 @@ const bar: SchemaNode = {
             // The same two corrections the in-call bar makes, and for the same reasons — this is the
             // bar that replaces it, in the same place. It made neither until the host started
             // publishing the content box: pinned to the middle of the *window*, it sat off-centre
-            // whenever anything was docked and slid under a panel that took the top edge.
-            top: `calc(${CALL_BAR_TOP} + var(--we-chrome-top, 0px))`,
+            // whenever anything was docked and slid under a panel that took the bottom edge.
+            bottom: `calc(${CALL_BAR_INSET} + var(--we-chrome-bottom, 0px))`,
             left: 'calc(50% + var(--we-chrome-center-x, 0px))',
             transform: 'translateX(-50%)',
-            transition: 'left var(--we-chrome-transition, 300ms) ease, top var(--we-chrome-transition, 300ms) ease',
+            transition: 'left var(--we-chrome-transition, 300ms) ease, bottom var(--we-chrome-transition, 300ms) ease',
             ...BAR_SURFACE,
             r: BAR_RADIUS,
             p: '200',
@@ -884,20 +896,21 @@ const bar: SchemaNode = {
       props: {
         position: 'fixed',
         /*
-          The top, pushed down by whatever has taken the top edge.
+          The bottom, pushed up by whatever has taken the bottom edge.
 
-          It used to swap ends when the stage was docked along the top, since both wanted that corner
-          and the small one should give. That was this module reasoning about its own panel, which it
-          can no longer see — but it does not need to: `--we-chrome-top` is where the host says the
-          content's top edge is, so this clears a docked notes panel exactly as it clears a call
-          stage, and reads the same way the horizontal term below already does.
+          It used to swap ends when the stage was docked along the same edge, since both wanted that
+          corner and the small one should give. That was this module reasoning about its own panel,
+          which it can no longer see — but it does not need to: `--we-chrome-bottom` is where the
+          host says the content's bottom edge is, so this clears a docked notes panel exactly as it
+          clears a call stage, and reads the same way the horizontal term below already does.
 
-          A panel that merely floats over the top is deliberately not dodged. It takes no room, the
-          user put it there by hand, and it is dragged by a grip this bar would then be covering —
-          chrome that ran away from a decision somebody just made is worse than an overlap they can
-          see and undo.
+          A panel that merely floats over the bottom is deliberately not dodged. It takes no room,
+          the user put it there by hand, and moving out of its way would be chrome running from a
+          decision somebody just made — worse than an overlap they can see and undo. Note the
+          asymmetry that makes this safe at the bottom and would not at the top: a panel's controls
+          are all in its titlebar, so an overlap here covers content rather than the way out.
         */
-        top: `calc(${CALL_BAR_TOP} + var(--we-chrome-top, 0px))`,
+        bottom: `calc(${CALL_BAR_INSET} + var(--we-chrome-bottom, 0px))`,
         /**
          * Centred on the content, not the window.
          *
@@ -911,7 +924,7 @@ const bar: SchemaNode = {
          */
         left: 'calc(50% + var(--we-chrome-center-x, 0px))',
         transform: 'translateX(-50%)',
-        transition: 'left var(--we-chrome-transition, 300ms) ease, top var(--we-chrome-transition, 300ms) ease',
+        transition: 'left var(--we-chrome-transition, 300ms) ease, bottom var(--we-chrome-transition, 300ms) ease',
         // One step of the spacing scale, which is the nearest thing to the ~10px this wants and is
         // the only sort of value that follows a theme's density. Wide enough that the status row
         // reads as a separate object rather than as a second tier of the bar.
@@ -920,6 +933,20 @@ const bar: SchemaNode = {
         zIndex: 'sticky',
       },
       children: [
+        {
+          /*
+            Above the bar, not below it — the column runs upward from the bottom edge now.
+
+            A status row is a sentence somebody is reading and the bar is a set of targets somebody
+            is pressing, so the bar keeps the edge and anything reporting stacks away from it. Below
+            it, a growing status panel would push the controls off the bottom of the window; above,
+            it grows into empty space.
+
+            Renders nothing at all when nobody has contributed, so the bar keeps its own shape.
+          */
+          type: '$slot',
+          props: { anchor: CALL_STATUS_ANCHOR },
+        },
         {
           type: 'Row',
           props: {
@@ -1005,12 +1032,6 @@ const bar: SchemaNode = {
             },
           ],
         },
-        {
-          // Where modules report on something that is taking a while — see `anchors` below. Renders
-          // nothing at all when nobody has contributed, so the bar keeps its own shape.
-          type: '$slot',
-          props: { anchor: CALL_STATUS_ANCHOR },
-        },
       ],
     },
   },
@@ -1072,22 +1093,23 @@ const problem: SchemaNode = {
       props: {
         position: 'fixed',
         /*
-          The end the call bar is not at, which is now simply the bottom.
+          The end the call bar is not at — which is the top now that the bar has taken the bottom.
 
-          Both were pinned to `CALL_BAR_TOP` once, so the alert opened underneath the controls —
+          Both were pinned to the same offset once, so the alert opened underneath the controls —
           mostly hidden, and with its dismiss button unreachable, which is a poor showing for the one
-          piece of UI whose entire job is to be read.
+          piece of UI whose entire job is to be read. It has swapped ends with the bar rather than
+          gaining a rule: "the other end from the controls" is the whole of the requirement.
 
-          Clear of the content's bottom edge and centred on the content, as the bar is on its own
-          two. This had neither, on the reasoning that the bar no longer moves so nor does this —
-          true of the bar and irrelevant to the window, which is what both were actually pinned to.
-          A panel docked along the bottom covered it, and the one piece of UI whose entire job is to
-          be read was unreadable again by a different route.
+          Clear of the content's edge and centred on the content, as the bar is on its own two. This
+          had neither, on the reasoning that the bar no longer moves so nor does this — true of the
+          bar and irrelevant to the window, which is what both were actually pinned to. A panel
+          docked along that edge covered it, and the one piece of UI whose entire job is to be read
+          was unreadable again by a different route.
         */
-        bottom: `calc(${CALL_BAR_TOP} + var(--we-chrome-bottom, 0px))`,
+        top: `calc(${CALL_BAR_INSET} + var(--we-chrome-top, 0px))`,
         left: 'calc(50% + var(--we-chrome-center-x, 0px))',
         transform: 'translateX(-50%)',
-        transition: 'left var(--we-chrome-transition, 300ms) ease, bottom var(--we-chrome-transition, 300ms) ease',
+        transition: 'left var(--we-chrome-transition, 300ms) ease, top var(--we-chrome-transition, 300ms) ease',
         zIndex: 'sticky',
         maxWidth: '420px',
       },
