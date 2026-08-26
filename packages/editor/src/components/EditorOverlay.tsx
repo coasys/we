@@ -1,5 +1,13 @@
 import type { SchemaNode, TemplateSchema } from '@we/schema-shared';
-import { findNodeById, insertChild, mergeNode, removeChild, replaceNodeInTree } from '@we/schema-shared';
+import {
+  findNodeById,
+  insertChild,
+  mergeNode,
+  removeChild,
+  replaceNodeInTree,
+  VIEW_BOUNDARY_ATTR,
+  VIEW_BOUNDARY_NAME_ATTR,
+} from '@we/schema-shared';
 import { useVisualEditor } from '@we/schema-solid';
 import { createEffect, createMemo, createSignal, For, onCleanup, Show } from 'solid-js';
 
@@ -70,10 +78,31 @@ function resolveSizeTokens(): Array<{ token: string; px: number }> {
 // DOM helpers
 // -----------------------------------------------------------------------
 
-function findWrappedNodeId(el: Element | null): string | null {
+/**
+ * What the pointer is over: a node of the template being edited, or the edge of another template.
+ *
+ * One `closest` over both markers, and the nearer one wins — which is the whole mechanism. A click
+ * inside a view meets the view's boundary before any shell node, so it can never again be answered
+ * by a node several levels up that merely happens to be the nearest thing carrying an id.
+ *
+ * That was the old behaviour, and it is the reason a section read as a hole: the editor selected the
+ * shell container around the view, and everything inside the section was unreachable with nothing
+ * to say why.
+ */
+type Boundary = { kind: 'node'; id: string } | { kind: 'view'; id: string; name: string; el: HTMLElement };
+
+function findBoundary(el: Element | null): Boundary | null {
   if (!el) return null;
-  const wrapper = el.closest('[data-we-node-id]');
-  return wrapper?.getAttribute('data-we-node-id') ?? null;
+  const hit = el.closest(`[data-we-node-id],[${VIEW_BOUNDARY_ATTR}]`) as HTMLElement | null;
+  if (!hit) return null;
+
+  const viewId = hit.getAttribute(VIEW_BOUNDARY_ATTR);
+  if (viewId) {
+    return { kind: 'view', id: viewId, name: hit.getAttribute(VIEW_BOUNDARY_NAME_ATTR) ?? viewId, el: hit };
+  }
+
+  const nodeId = hit.getAttribute('data-we-node-id');
+  return nodeId ? { kind: 'node', id: nodeId } : null;
 }
 
 // Walk DOM ancestors to find the nearest schema node that is a direct child of a $each.
@@ -180,6 +209,8 @@ function VisualEditorLayer() {
   const [hoverRect, setHoverRect] = createSignal<DOMRect | null>(null);
   const [selectRect, setSelectRect] = createSignal<DOMRect | null>(null);
   const [hoveredType, setHoveredType] = createSignal<string | undefined>(undefined);
+  /** The section under the pointer, when the pointer is over another template rather than this one. */
+  const [viewRegion, setViewRegion] = createSignal<{ id: string; name: string; rect: DOMRect } | null>(null);
   const [instanceRects, setInstanceRects] = createSignal<DOMRect[]>([]);
   const [enteredEachParentId, setEnteredEachParentId] = createSignal<string | null>(null);
 
@@ -299,6 +330,7 @@ function VisualEditorLayer() {
   }
 
   const hoverRelRect = createMemo(() => toRelative(hoverRect()));
+  const viewRegionRelRect = createMemo(() => toRelative(viewRegion()?.rect ?? null));
   const selectRelRect = createMemo(() => toRelative(selectRect()));
   const instanceRelRects = createMemo(() =>
     instanceRects()
@@ -910,7 +942,26 @@ function VisualEditorLayer() {
     overlayRef.style.pointerEvents = 'auto';
     hoveredElement = under;
 
-    const nodeId = findWrappedNodeId(under);
+    const boundary = findBoundary(under);
+
+    /*
+      A view answers for itself and stops there.
+
+      Deliberately not a hover: nothing here is selectable, so lighting it the way a node lights
+      would promise a click that does nothing. It reports what the region *is* instead, and clears
+      the node hover so the inspector does not sit on a shell node the pointer is nowhere near.
+    */
+    if (boundary?.kind === 'view') {
+      setViewRegion({ id: boundary.id, name: boundary.name, rect: boundary.el.getBoundingClientRect() });
+      visualEditor.onHover(null);
+      lastHoveredId = null;
+      setHoverRect(null);
+      setHoveredType(undefined);
+      return;
+    }
+    setViewRegion(null);
+
+    const nodeId = boundary?.id ?? null;
     visualEditor.onHover(nodeId);
 
     if (nodeId && under) {
@@ -935,7 +986,17 @@ function VisualEditorLayer() {
     if (isResizing()) return;
     e.preventDefault();
 
-    const clickedNodeId = findWrappedNodeId(hoveredElement);
+    const clicked = findBoundary(hoveredElement);
+
+    // Clicking a section clears the selection rather than falling through to the shell node behind
+    // it. Selecting the container a view happens to sit in is what made this look broken.
+    if (clicked?.kind === 'view') {
+      visualEditor.onSelect(null);
+      setEnteredEachParentId(null);
+      return;
+    }
+
+    const clickedNodeId = clicked?.id ?? null;
 
     if (!clickedNodeId) {
       visualEditor.onSelect(null);
@@ -990,6 +1051,7 @@ function VisualEditorLayer() {
     visualEditor.onHover(null);
     setHoverRect(null);
     setHoveredType(undefined);
+    setViewRegion(null);
     hoveredElement = null;
   }
 
@@ -1021,6 +1083,11 @@ function VisualEditorLayer() {
       onPointerLeave={handlePointerLeave}
       onContextMenu={handleContextMenu}
     >
+      {/* Another template's territory — outlined and named, never selectable. */}
+      <Show when={viewRegionRelRect()}>
+        <ViewBoundary rect={viewRegionRelRect()!} name={viewRegion()!.name} />
+      </Show>
+
       {/* Hover highlight — skip when same as selected */}
       <Show when={hoverRelRect() && !isHoverSameAsSelect()}>
         <NodeHighlight
@@ -1356,6 +1423,60 @@ interface HighlightRect {
 }
 
 type HighlightStyle = 'visual' | 'logic' | 'each-parent' | 'each-instance';
+
+/**
+ * A section of the space that is a template of its own.
+ *
+ * Grey and dashed on purpose — every other outline in here is a colour that means "this responds to
+ * you", and this one means the opposite. The name is the point of it: "not editable" alone would
+ * read as a fault, where "About — a separate view" reads as a boundary and tells you what to go and
+ * edit instead.
+ *
+ * The label sits inside the top-left corner rather than above it, because a section commonly starts
+ * at the very top of the content area and a chip hung above the edge would be clipped by the
+ * viewport on the one view most likely to be clicked first.
+ */
+function ViewBoundary(props: { rect: HighlightRect; name: string }) {
+  return (
+    <div
+      style={{
+        position: 'absolute',
+        top: props.rect.top,
+        left: props.rect.left,
+        width: props.rect.width,
+        height: props.rect.height,
+        outline: '1px dashed #94a3b8',
+        'outline-offset': '-1px',
+        'pointer-events': 'none',
+        'box-sizing': 'border-box',
+        'border-radius': '2px',
+      }}
+    >
+      <div
+        style={{
+          position: 'absolute',
+          top: '4px',
+          left: '4px',
+          display: 'flex',
+          gap: '6px',
+          'align-items': 'baseline',
+          padding: '2px 8px',
+          'border-radius': '4px',
+          background: '#334155',
+          color: '#f1f5f9',
+          font: '500 11px/1.4 system-ui, sans-serif',
+          'white-space': 'nowrap',
+          'max-width': 'calc(100% - 8px)',
+          overflow: 'hidden',
+          'text-overflow': 'ellipsis',
+        }}
+      >
+        <span>{props.name}</span>
+        <span style={{ color: '#94a3b8', 'font-weight': '400' }}>a separate view — edit it on its own</span>
+      </div>
+    </div>
+  );
+}
 
 function NodeHighlight(props: { rect: HighlightRect; style: HighlightStyle; selected: boolean }) {
   const color = () => {
