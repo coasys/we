@@ -332,8 +332,18 @@ export function railItem(opts: RailItemOptions): SchemaNode {
                 type: 'Column',
                 props: {
                   position: 'absolute',
-                  bottom: '0',
-                  right: '0',
+                  /*
+                    Out to the avatar's edge, not flush with its box.
+
+                    An absolute offset resolves against the ring's *padding* box, so these two
+                    numbers are coupled to the ring's padding whether or not anyone means them to
+                    be. At `0` they put the disc's centre 62% of the way in from the rim — sitting
+                    over the face rather than on it — because a circle's corner is not on the
+                    circle. `-4px` is what lands the disc's centre on the circumference at 45°,
+                    where a status badge belongs.
+                  */
+                  bottom: '-4px',
+                  right: '-4px',
                   bg: tone,
                   r: 'full',
                   p: '100',
