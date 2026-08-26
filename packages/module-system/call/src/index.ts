@@ -20,7 +20,9 @@
  *
  * - **No TURN server.** Peers behind symmetric NAT will not connect. TURN is infrastructure someone
  *   has to run, so it is a deployment decision rather than a module one.
- * - **No SFU.** Mesh only, so roughly four to six participants — see `mesh.ts`.
+ * - **SFU support.** When the host provides an {@link SfuBackend}, the call connects through a relay
+ *   server instead of the peer mesh — see `sfu.ts`. The store exposes `topology` and
+ *   `qualityPreference` for the template to surface the mode and a quality toggle.
  * - **No camera *and* screen at once.** Sharing replaces the camera track — see `media.ts`.
  */
 import { defineModule, type ModuleStoreDeps } from '@we/module-shared';
@@ -42,7 +44,8 @@ import { createCallStore } from './store';
 export { createCallMesh, type CallMesh, type SignallingChannel } from './mesh';
 export { createMediaController, type MediaController, type MediaState } from './media';
 export { anchoredCallId, CALL_PROTOCOL_VERSION, parseCallMessage, spaceCallId } from './protocol';
-export { type CallDockEdge, type CallTile, type CallTileState, createCallStore } from './store';
+export { createCallSfu, type SfuBackend, type SfuQuality } from './sfu';
+export { type CallDockEdge, type CallTile, type CallTileState, type CallTopology, createCallStore } from './store';
 
 /**
  * How far the call's chrome sits off the bottom edge.
