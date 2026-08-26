@@ -25,7 +25,7 @@ const UNTILED = '[data-we-untiled], [data-we-surface-tier]';
  * divide the content box, and solving against the border box overflows by exactly the padding.
  */
 function useTiling(props: GridProps): { ref?: (el: HTMLElement) => void; style?: () => JSX.CSSProperties } {
-  if (props.childAspect === undefined) return {};
+  if (props.childAspect === undefined && props.onMeasure === undefined) return {};
 
   const [tiling, setTiling] = createSignal<Tiling>({ columns: 1, rows: 1 });
   let last: Tiling | undefined;
@@ -34,6 +34,15 @@ function useTiling(props: GridProps): { ref?: (el: HTMLElement) => void; style?:
     if (typeof ResizeObserver === 'undefined') return;
 
     const solve = (width: number, height: number) => {
+      props.onMeasure?.({ width, height });
+      /*
+        `template` wins, as it already does over `columns` and `minChildWidth` — a caller that has
+        written its own tracks is not asking to be solved for. The measurement above still happens,
+        because the reason such a caller usually has for writing its own tracks is a decision it made
+        *from* the box.
+      */
+      if (props.childAspect === undefined || props.template) return;
+
       const count = [...el.children].filter((child) => !child.matches(UNTILED)).length;
       const style = getComputedStyle(el);
       // The grid's own gap, read rather than passed: a caller setting `gap="400"` should not also
@@ -67,19 +76,22 @@ function useTiling(props: GridProps): { ref?: (el: HTMLElement) => void; style?:
     });
   };
 
-  const style = () => ({
-    'grid-template-columns': `repeat(${tiling().columns}, 1fr)`,
-    // Rows divide the box rather than being derived from content, which is what makes overflow
-    // impossible however many children arrive.
-    'grid-auto-rows': '1fr',
-  });
+  const style = () =>
+    props.template || props.childAspect === undefined
+      ? {}
+      : {
+          'grid-template-columns': `repeat(${tiling().columns}, 1fr)`,
+          // Rows divide the box rather than being derived from content, which is what makes overflow
+          // impossible however many children arrive.
+          'grid-auto-rows': '1fr',
+        };
 
   return { ref, style };
 }
 
 const render = createLayoutComponent<GridProps>({
   defaults: { display: 'grid', gap: '400' },
-  ownKeys: ['template', 'columns', 'minChildWidth', 'rows', 'childAspect', 'onArrange'],
+  ownKeys: ['template', 'columns', 'minChildWidth', 'rows', 'childAspect', 'onArrange', 'onMeasure'],
   direction: 'column',
   hook: useTiling,
   finalizeStyle: (style, props) => {

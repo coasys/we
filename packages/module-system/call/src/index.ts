@@ -575,9 +575,20 @@ const stage: SchemaNode = {
          * `srcObject` — somebody's video would go black every time the panel crossed a threshold.
          */
         childAspect: '16 / 9',
+        /*
+          The spotlight's own tracks, and nothing at all the rest of the time.
+
+          `template` takes precedence over `childAspect`, so this is the whole mode switch: written,
+          the equal-tile solve stands down and the spotlight layout takes over; absent, it comes
+          back. See `stageTemplate` in the store.
+        */
+        template: { $store: 'modules.call.stageTemplate' },
+        rows: { $store: 'modules.call.stageRows' },
         // What the stage settled on, back to the store — see `setArrangement`. The host needs it to
-        // answer "fit to content", and the spotlight needs it to know which axis it has room in.
+        // answer "fit to content".
         onArrange: { $action: 'modules.call.setArrangement' },
+        // The box itself, for the one decision the grid cannot make: which edge the strip runs along.
+        onMeasure: { $action: 'modules.call.setStageBox' },
       },
       children: [{ type: '$each', props: { items: { $store: 'modules.call.tiles' }, as: 'tile' }, children: [tile] }],
     },
@@ -1029,6 +1040,27 @@ const bar: SchemaNode = {
               you are looking at is a property of your session, not of the call.
             */
             ...(devPeersAvailable ? [devPeerControls] : []),
+            /*
+              Solo — the spotlight with the stage to itself.
+
+              Only while something is focused, which is also the affordance: giving somebody the
+              stage reveals the option to give them all of it. A toggle rather than a third click on
+              the tile, because a three-state cycle on one gesture cannot say which state it is in —
+              see `solo` in the store.
+            */
+            {
+              type: '$if',
+              props: {
+                condition: { $store: 'modules.call.focusedId' },
+                then: mediaToggle({
+                  on: 'user',
+                  off: 'users-three',
+                  enabled: 'modules.call.solo',
+                  action: 'modules.call.toggleSolo',
+                  tip: { on: 'Show everyone', off: 'Hide the others' },
+                }),
+              },
+            },
             participantsToggle,
             // Two thirds of a control's height, so it reads as a separator between groups rather than as
             // a rule drawn down the whole bar. It moved with the buttons: at 20px against `sm` it was

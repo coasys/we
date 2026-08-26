@@ -1164,6 +1164,7 @@ export const contextData: ContextData = {
         { name: 'minChildWidth', type: 'string', optional: true },
         { name: 'rows', type: 'string', optional: true },
         { name: 'childAspect', type: 'string | number', optional: true },
+        { name: 'onMeasure', type: '((box: { width: number; height: number; }) => void)', optional: true },
         { name: 'onArrange', type: '((tiling: Tiling) => void)', optional: true },
       ],
       source: 'components',

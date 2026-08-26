@@ -104,6 +104,19 @@ export const STAGE_PADDING_PX = 12;
 export const STAGE_GAP_PX = 12;
 
 /**
+ * The most of the stage a filmstrip may take, as a fraction.
+ *
+ * A cap, not a size. The strip's natural thickness is whatever makes its tiles 16:9 across the axis
+ * they run along, and with one other participant that would be nearly half the stage — which is the
+ * arrangement spotlight exists to get away from. With many, the natural thickness is already small
+ * and this never binds.
+ */
+const STRIP_MAX = 0.25;
+
+/** The tile aspect the whole stage is laid out from. */
+const TILE_ASPECT = 16 / 9;
+
+/**
  * How much of the bottom of the window the call bar occupies, for panels to keep clear of.
  *
  * `CALL_BAR_INSET` (10px) plus a row of `md` controls (40px) in a surface padded by `200` a side
@@ -649,6 +662,75 @@ export function createCallStore(deps: CallStoreDeps) {
    */
   const [arrangement, setArrangement] = signal<{ columns: number; rows: number }>({ columns: 1, rows: 1 });
 
+  /**
+   * The stage's own box, reported by the grid — see `Grid`'s `onMeasure`.
+   *
+   * Used for one decision and no arithmetic: which edge the filmstrip runs along. The thicknesses
+   * themselves are written in container-query units, so they stay right between measurements rather
+   * than lagging a frame behind a drag.
+   */
+  const [stageBox, setStageBox] = signal<{ width: number; height: number }>({ width: 0, height: 0 });
+
+  /**
+   * Whether the spotlight has the stage to itself.
+   *
+   * A second mode rather than a third click, because a three-state cycle on one gesture cannot say
+   * which state it is in — the same trap the show/hide toggle was split apart to escape. It is a
+   * toggle in the bar, visible only while something is focused, so the state is on screen and the
+   * move has a name.
+   *
+   * The strip is what you give up, and it is worth giving up mainly for a shared screen: reading
+   * somebody's desktop you want every pixel and the faces are not the point.
+   */
+  const [solo, setSolo] = signal(false);
+
+  /**
+   * Which edge the filmstrip runs along: `side` for a panel wider than a tile, `below` otherwise.
+   *
+   * The strip belongs where the leftover room is. A 16:9 spotlight in a panel wider than 16:9 is
+   * limited by the height, so what is spare is horizontal and a strip down the side costs nothing
+   * that was being used; in a taller panel the spare room is underneath. Getting this backwards is
+   * not subtle — it takes the axis the spotlight was already short of.
+   */
+  const stripSide = () => {
+    const box = stageBox();
+    return box.height > 0 && box.width / box.height > TILE_ASPECT;
+  };
+
+  /** How many tiles the strip holds — everyone but the one with the stage. */
+  const stripCount = () => Math.max(1, tiles().length - 1);
+
+  /**
+   * The strip's thickness, in pixels, from the box the grid last reported.
+   *
+   * The natural thickness is whatever makes `n` tiles 16:9 along the axis they run: divide the
+   * *other* dimension by `n`, take the gaps off, and convert through the aspect. `STRIP_MAX` caps
+   * it — see there.
+   *
+   * ## Why not container-query units
+   *
+   * This was `min(25cqw, calc(…))`, which reads better and does not work: **container-query units in
+   * a container's own properties resolve against its *ancestor* container, not itself.** The stage
+   * sizing its own track in `cqw` got a quarter of whatever container happened to be above it, or of
+   * the viewport when there was none — a number with no relationship to the stage at all. It is the
+   * same self-reference the tier sentinel exists for, in the units rather than the queries, and it
+   * fails the same way: plausibly, and only when you measure.
+   *
+   * So pixels, from the measurement. The cost is that a thickness lags a frame behind a drag, which
+   * is what the grid's own solve already does.
+   */
+  const stripThickness = (): number => {
+    const box = stageBox();
+    const n = stripCount();
+    const gaps = (n - 1) * STAGE_GAP_PX;
+    return stripSide()
+      ? Math.min(box.width * STRIP_MAX, ((box.height - gaps) / n) * TILE_ASPECT)
+      : Math.min(box.height * STRIP_MAX, (box.width - gaps) / n / TILE_ASPECT);
+  };
+
+  /** The same, as a track. */
+  const stripTrack = () => `${Math.max(0, Math.round(stripThickness()))}px`;
+
   /** Everyone in the space-wide call, whether or not this agent has joined — so the bar can offer
    *  "3 in a call · Join" rather than only appearing once you are already in one. */
   const ongoingPeers = () => {
@@ -729,6 +811,21 @@ export function createCallStore(deps: CallStoreDeps) {
      * This takes the slack out and leaves the tiles where they are.
      */
     dockAspect: () => {
+      /*
+        Spotlight and solo are one 16:9 picture with a band beside or beneath it, so the shape is the
+        tile's and the strip is an inset — which is exactly the pair this contract asks for, and the
+        same band the tracks are written from.
+      */
+      if (focusedId() !== null) {
+        const band = solo() ? 0 : stripThickness() + STAGE_GAP_PX;
+        const beside = !solo() && stripSide();
+        return {
+          ratio: TILE_ASPECT,
+          insetX: STAGE_PADDING_PX * 2 + (beside ? band : 0),
+          insetY: STAGE_PADDING_PX * 2 + (!solo() && !stripSide() ? band : 0),
+        };
+      }
+
       const { columns, rows } = arrangement();
       return {
         ratio: (columns * 16) / (rows * 9),
@@ -774,6 +871,32 @@ export function createCallStore(deps: CallStoreDeps) {
      */
     setArrangement,
     arrangement,
+    setStageBox,
+    solo,
+
+    /**
+     * The stage's grid tracks while somebody has the spotlight — `undefined` the rest of the time.
+     *
+     * Undefined is what hands the layout back to `Grid`'s own solver: `template` takes precedence
+     * over `childAspect`, so writing tracks here turns the equal-tile solve off and leaving it
+     * absent turns it back on. Two modes, one prop, and no mode flag to keep in step with anything.
+     *
+     * Spotlight is not a span in the equal grid, which is what it used to be and why it barely
+     * looked focused: the tracks were solved for N tiles of one size, so the spotlight could only
+     * ever be two of them — two thirds of the stage at three people, one third at six. The tracks
+     * are the spotlight's own now.
+     */
+    stageTemplate: (): string | undefined => {
+      if (focusedId() === null) return undefined;
+      if (solo()) return '1fr';
+      return stripSide() ? `1fr ${stripTrack()}` : `repeat(${stripCount()}, 1fr)`;
+    },
+
+    stageRows: (): string | undefined => {
+      if (focusedId() === null) return undefined;
+      if (solo()) return '1fr';
+      return stripSide() ? `repeat(${stripCount()}, 1fr)` : `1fr ${stripTrack()}`;
+    },
 
     /**
      * The picture box's own sizing.
@@ -806,23 +929,16 @@ export function createCallStore(deps: CallStoreDeps) {
     tileCells: (): { id: string; style: Record<string, string | number> }[] => {
       const focus = focusedId();
       /*
-        A spotlight, laid out along whichever axis the panel has room in.
+        Where the spotlight sits in the tracks `stageTemplate` wrote.
 
-        In a tall panel the focused tile takes the full width and everyone else forms a strip
-        beneath it; in a wide one it takes the full height and the strip runs down the side. Which
-        it is comes from the arrangement the stage settled on — more columns than rows means a wide
-        box — so the spotlight follows the panel's shape for the same reason the grid does, rather
-        than always being the top half of it. A wide panel spotlighting across the top left the
-        other tiles in a band a fraction of the height, which is where this was before.
-
-        `order: -1` keeps the focused tile first whichever axis it spans, so the strip reads in the
-        same direction as the grid did before anybody was focused.
+        It takes the whole of the axis the strip does not run along — the full height beside a strip
+        down the side, the full width above one underneath — and the others auto-place into what is
+        left, one per track, in the order they are in. Explicit placement rather than `order`, which
+        is what it used to need when the spotlight was a span in a grid solved for equal tiles.
       */
-      const { columns, rows } = arrangement();
-      const spotlight: Record<string, string | number> =
-        columns > rows
-          ? { 'grid-row': '1 / -1', 'grid-column': 'span 2', order: -1 }
-          : { 'grid-column': '1 / -1', 'grid-row': 'span 2', order: -1 };
+      const spotlight: Record<string, string | number> = stripSide()
+        ? { 'grid-column': '1', 'grid-row': '1 / -1' }
+        : { 'grid-row': '1', 'grid-column': '1 / -1' };
       /**
        * Every cell is a size container, which is what lets the picture inside it be the right shape.
        *
@@ -838,10 +954,18 @@ export function createCallStore(deps: CallStoreDeps) {
        * can no longer be in, since every stage divides a box the user dragged.
        */
       const cell: Record<string, string | number> = { 'container-type': 'size' };
-      return tiles().map((entry) => ({
-        id: entry.id,
-        style: entry.id === focus ? { ...cell, ...spotlight } : cell,
-      }));
+      /*
+        Solo hides the others rather than dropping them from the list.
+
+        `tiles` is a reference-keyed `$each`, so removing an entry unmounts its row and takes the
+        `<video>` with it — everyone's picture would go black on the way in and have to renegotiate
+        on the way out. Hidden, they keep their streams and come back instantly.
+      */
+      const hidden: Record<string, string | number> = { display: 'none' };
+      return tiles().map((entry) => {
+        if (entry.id === focus) return { id: entry.id, style: { ...cell, ...(focus ? spotlight : {}) } };
+        return { id: entry.id, style: focus !== null && solo() ? hidden : cell };
+      });
     },
     /** True when this agent is in a call — the call bar's visibility condition. */
     active: () => callId() !== null,
@@ -962,8 +1086,23 @@ export function createCallStore(deps: CallStoreDeps) {
       const next = focusedId() === id ? null : id;
       focusIsManual = true;
       setFocusedId(next);
+      // Letting everyone back on the stage ends solo with it: it is a property of *having* a
+      // spotlight, and a mode left armed with nothing to apply to would take effect on whoever was
+      // focused next, which nobody asked for.
+      if (next === null) setSolo(false);
       // The states array carries `focused`, so the change has to reach it for the layout to move.
       rebuildTiles();
+    },
+
+    /**
+     * Give the spotlight the stage to itself, or bring the others back.
+     *
+     * Only meaningful while something is focused, and the bar only shows it then — but guarded here
+     * too, since a store method is reachable by anything a template can write.
+     */
+    toggleSolo: () => {
+      if (focusedId() === null) return;
+      setSolo(!solo());
     },
 
     dismissProblem: () => setProblem(null),

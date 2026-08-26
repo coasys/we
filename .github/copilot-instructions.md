@@ -1091,7 +1091,7 @@ when `relative` is enabled.
 - FlipCard
   Props: front?: JSX.Element, back?: JSX.Element, width?: string, height?: string, flipOnHover?: boolean, flipDuration?: string, wobbleOnHover?: boolean, wobbleDegree?: number, class?: string, styles?: Record<string, string | number>
 - Grid (DesignSystemElement)
-  Props: template?: string, columns?: number, minChildWidth?: string, rows?: string, childAspect?: string | number, onArrange?: ((tiling: Tiling) => void)
+  Props: template?: string, columns?: number, minChildWidth?: string, rows?: string, childAspect?: string | number, onMeasure?: ((box: { width: number; height: number; }) => void), onArrange?: ((tiling: Tiling) => void)
 - ImageCrop
   Props: src: string, fileName?: string, aspect?: number, maxSize?: number, outputType?: string, quality?: number, onReady?: ((ref: ImageCropRef) => void)
 - ImageLightbox

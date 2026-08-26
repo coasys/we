@@ -3249,6 +3249,11 @@
           "optional": true
         },
         {
+          "name": "onMeasure",
+          "type": "((box: { width: number; height: number; }) => void)",
+          "optional": true
+        },
+        {
           "name": "onArrange",
           "type": "((tiling: Tiling) => void)",
           "optional": true

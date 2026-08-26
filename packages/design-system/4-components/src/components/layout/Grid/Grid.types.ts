@@ -48,6 +48,19 @@ export type GridProps = LayoutProps & {
    */
   childAspect?: string | number;
   /**
+   * Called with the grid's content box whenever it changes.
+   *
+   * Exposes the number `childAspect` already measures, for a consumer that has to make a layout
+   * decision the grid itself cannot: the call stage picks which edge its filmstrip sits along by
+   * comparing the panel's shape to a tile's, which is a question about the box rather than about
+   * how many tiles fit in it.
+   *
+   * Deliberately narrow. This is not "any element can report its size" — that belongs to `$surface`,
+   * which answers it once per render surface rather than per component. It is one prop on the one
+   * component that was measuring anyway, and it fires whether or not `childAspect` is set.
+   */
+  onMeasure?: (box: { width: number; height: number }) => void;
+  /**
    * Called when the solved arrangement changes.
    *
    * Only a grid knows what arrangement it settled on, and sometimes something outside needs the
