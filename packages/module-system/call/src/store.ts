@@ -453,14 +453,30 @@ export function createCallStore(deps: CallStoreDeps) {
 
   async function join(id: string, joinAnchor?: Focus) {
     if (callId() === id) return;
+    // One call at a time, and this is where that is decided: joining a second tears the first down
+    // rather than running both. Everything below assumes a single mesh, a single scope and a single
+    // set of local tracks, and the stage has one spotlight.
     if (callId()) teardown();
-
-    anchor = joinAnchor;
 
     setProblem(null);
 
     const handle = dataset?.() ?? null;
+    const uri = datasetUri?.() ?? null;
     const me = selfId?.() ?? null;
+
+    /*
+      A call always says which space it is in, even when it is not *about* anything in particular.
+
+      An unanchored activity used to be enough, because a call could only be published into the space
+      you were standing in. Now that a call outlives navigating away from it, the space is no longer
+      derivable from where you happen to be — the host routes the activity to the call's own presence
+      source, and this is what tells it which that is.
+
+      A space-wide call carries `datasetUri` and no `nodeId`, which is exactly what consumers already
+      test for: `transcribe` reads `anchor?.nodeId ?? null`, so this reads identically to the absent
+      anchor it replaces.
+    */
+    anchor = joinAnchor ?? (uri ? { datasetUri: uri } : undefined);
     if (!handle || !me) {
       setProblem('A call needs a space and a signed-in agent.');
       return;
@@ -578,12 +594,24 @@ export function createCallStore(deps: CallStoreDeps) {
     rebuildTiles();
   });
 
-  // Leaving the space leaves the call. Staying connected to a call in a space you have navigated out
-  // of is a surprise, and the transport scope is torn down under us anyway.
-  effect?.(() => {
-    const handle = dataset?.();
-    if (!handle && callId()) teardown();
-  });
+  /*
+    Leaving the space no longer leaves the call.
+
+    It used to, on the grounds that staying connected to a call in a space you have navigated out of
+    is a surprise — and, decisively, that "the transport scope is torn down under us anyway". The
+    second half was the real reason, and it is no longer true: this store holds its own refcounted
+    handle on the call's scope for as long as the call lasts, and the host now keeps a presence
+    source open for any space holding a live activity, so the roster survives too.
+
+    That leaves only the first half, and it is the wrong way round. Being dropped out of a call
+    because you went to look something up is the surprise; a call you have to stay still for is not
+    one you can use. So the call ends when somebody ends it, and nothing else — hanging up, joining
+    another (see `join`), or losing the module.
+
+    Nothing replaces this effect. There is deliberately no "the dataset went away" case: a null
+    dataset is the boot frame and the moment between spaces as much as it is anything final, and
+    tearing a call down on it is what this was doing wrong in the first place.
+  */
 
   /**
    * Losing the module leaves the call too.
