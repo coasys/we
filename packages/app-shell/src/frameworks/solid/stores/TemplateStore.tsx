@@ -39,7 +39,25 @@ export type TemplateManagementItem = {
   isDefault: boolean;
 };
 
-export type TemplateSwitcherItem = { id: string; name: string; icon: string };
+export type TemplateSwitcherItem = {
+  id: string;
+  name: string;
+  icon: string;
+  /**
+   * Whether editing *this* row would open a session that can be saved.
+   *
+   * Per row, and that is the whole point of it being here. `editorStore.isReadOnly` answers the same
+   * question about whatever is currently on screen, so a picker gating its edit control on that can
+   * only ever offer it for the active row — which is why editing a template you were not already
+   * using took two extra clicks: switch, reopen the menu, then edit.
+   *
+   * Derived exactly as `isReadOnly` is, through `isBuiltInTemplate` rather than the bare id
+   * predicate the "Built-in" *group* is filtered by. The two differ, and this is the one that
+   * matters: a built-in you have saved over has stored overrides, so it is editable while still
+   * belonging to that group.
+   */
+  editable: boolean;
+};
 export type TemplateSwitcherGroup = { label: string; items: TemplateSwitcherItem[] };
 
 /** The slice of a Space model this store needs to resolve default templates. */
@@ -198,7 +216,14 @@ export function TemplateStoreProvider(props: ParentProps) {
   };
 
   const toSwitcherItems = (templates: TemplateSchema[], prefix = ''): TemplateSwitcherItem[] =>
-    templates.map((t) => ({ id: prefix + (t.id || ''), name: t.meta?.name || '', icon: t.meta?.icon || '' }));
+    templates.map((t) => ({
+      id: prefix + (t.id || ''),
+      name: t.meta?.name || '',
+      icon: t.meta?.icon || '',
+      // From the unprefixed id: the prefix distinguishes a space's copy from your own for keying
+      // rows, and is not part of any identity the template registry knows about.
+      editable: !isBuiltInTemplate(t.id || ''),
+    }));
 
   // Grouped template data for the template switcher UI — flat name/icon fields allow $filter in schemas
   const switcherGroups = (): TemplateSwitcherGroup[] => [
