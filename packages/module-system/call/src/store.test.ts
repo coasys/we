@@ -9,7 +9,7 @@
  */
 import { describe, expect, it } from 'vitest';
 
-import { createCallStore, STAGE_PADDING_PX } from './store';
+import { createCallStore, STAGE_GAP_PX, STAGE_PADDING_PX } from './store';
 
 /** The reactivity a host lends a module, reduced to the smallest thing that satisfies it. */
 function makeStore() {
@@ -68,25 +68,20 @@ describe('what the call still decides about its own video', () => {
 });
 
 describe('tile packing', () => {
-  it('divides the box it is given, whatever shape that box is', () => {
-    // The invariant the whole layout exists for. A wrapping flex row derives its line height from
-    // content and can only grow, so a declared stage height was a floor; grid tracks of `1fr` divide
-    // what they are given and cannot overflow it.
-    const style = makeStore().stageStyle();
+  it('no longer decides its own columns', () => {
+    // The columns used to come from the head count alone, with the panel's shape — the one thing the
+    // user controls directly — not an input at all. `Grid`'s `childAspect` solves it against the
+    // measured box and reports back; this module reads the answer rather than guessing it.
+    const store = makeStore();
 
-    expect(style.display).toBe('grid');
-    expect(style['grid-auto-rows']).toBe('1fr');
-    expect(style['grid-template-columns']).toBe('repeat(1, 1fr)');
+    expect(store.stageStyle).toBeUndefined();
+    expect(store.arrangement()).toEqual({ columns: 1, rows: 1 });
   });
 
-  it('has one arrangement, not one per edge', () => {
-    // The strip and the side-dock cases existed because a docked panel's shape was decided by which
-    // edge it was on — a 440×900 column, a 1600×300 band. A panel the user dragged to a size has no
-    // such categories, so the special cases went with the edges.
-    const style = makeStore().stageStyle();
-
-    expect(style['grid-auto-flow']).toBeUndefined();
-    expect(style['align-content']).toBeUndefined();
+  it('takes the arrangement the stage settled on', () => {
+    const store = makeStore();
+    store.setArrangement({ columns: 3, rows: 2 });
+    expect(store.arrangement()).toEqual({ columns: 3, rows: 2 });
   });
 
   it('fits each picture to its cell by measuring the cell', () => {
@@ -108,6 +103,18 @@ describe('tile packing', () => {
     expect(aspect.ratio).toBeCloseTo(16 / 9);
     expect(aspect.insetX).toBe(STAGE_PADDING_PX * 2);
     expect(aspect.insetY).toBe(STAGE_PADDING_PX * 2);
+  });
+
+  it('fits to the arrangement it is in, rather than solving a new one', () => {
+    // With the width fixed, any column count can be made to fit perfectly — so a "fit" that
+    // re-solved could rearrange the call under a click that only asked to remove the empty band.
+    const store = makeStore();
+    store.setArrangement({ columns: 3, rows: 2 });
+    const aspect = store.dockAspect() as { ratio: number; insetX: number; insetY: number };
+
+    expect(aspect.ratio).toBeCloseTo((3 * 16) / (2 * 9));
+    expect(aspect.insetX).toBe(STAGE_PADDING_PX * 2 + 2 * STAGE_GAP_PX);
+    expect(aspect.insetY).toBe(STAGE_PADDING_PX * 2 + 1 * STAGE_GAP_PX);
   });
 });
 
@@ -226,5 +233,112 @@ describe('transport and device lifetime', () => {
     // The camera-stays-on case: unregistering during a call must close what the call holds.
     expect(scopeDisposals()).toBe(1);
     expect(store.callId()).toBeNull();
+  });
+});
+
+/**
+ * The spotlight is a layout, not a bigger cell.
+ *
+ * It used to be a span in the grid solved for equal tiles, so the focused tile could only ever be
+ * two of N — two thirds of the stage at three people and one third at six, which is not a spotlight.
+ * These check the two decisions that replaced it: that writing tracks stands the equal-tile solver
+ * down, and that the strip lands on the axis with room to spare.
+ *
+ * Tiles are unreachable without a call, so the strip always holds one here. What varies with the
+ * count is inside the track strings, which is why they are asserted as strings.
+ */
+describe('the spotlight', () => {
+  const wide = { width: 1920, height: 900 };
+  const tall = { width: 700, height: 1200 };
+
+  const spotlit = (box: { width: number; height: number }) => {
+    const store = makeStore();
+    store.setStageBox(box);
+    store.focusTile('someone');
+    return store;
+  };
+
+  it('hands the grid back its own solve when nobody is focused', () => {
+    // The whole mode switch: `template` takes precedence over `childAspect`, so absent means the
+    // equal-tile solver is in charge and present means it stands down. No mode flag to keep in step.
+    const store = makeStore();
+    expect(store.stageTemplate()).toBeUndefined();
+    expect(store.stageRows()).toBeUndefined();
+  });
+
+  it('runs the strip down the side of a panel wider than a tile', () => {
+    // A 16:9 spotlight in a wider panel is limited by the height, so the spare room is horizontal.
+    // The strip is the second *column*; the rows are one per strip tile.
+    const store = spotlit(wide);
+    expect(store.stageTemplate()).toBe(`1fr ${wide.width * 0.25}px`);
+    expect(store.stageRows()).toBe('repeat(1, 1fr)');
+  });
+
+  it('runs it underneath a panel that is not', () => {
+    const store = spotlit(tall);
+    expect(store.stageRows()).toBe(`1fr ${tall.height * 0.25}px`);
+    expect(store.stageTemplate()).toBe('repeat(1, 1fr)');
+  });
+
+  it('is measured in pixels, not container-query units', () => {
+    /*
+      A `cq` unit in a container's *own* properties resolves against its ancestor container rather
+      than itself — so the stage sizing its own track in `cqw` got a quarter of whatever happened to
+      be above it, or of the viewport when nothing was. Verified in Chrome; it is the same
+      self-reference the tier sentinel exists for, in the units rather than the queries.
+    */
+    const store = spotlit(wide);
+    expect(store.stageTemplate()).not.toContain('cq');
+    expect(store.stageRows()).not.toContain('cq');
+  });
+
+  it('leaves a strip that fits alone', () => {
+    // The ordinary case is untouched: tiles take a share each, nothing scrolls, and the stage keeps
+    // the `overflow: hidden` that makes an overflowing grid a bug to be seen.
+    const store = spotlit(wide);
+    expect(store.stageOverflow()).toEqual({ overflow: 'hidden' });
+    expect(store.stageRows()).toBe('repeat(1, 1fr)');
+  });
+
+  it('caps the strip, so one other participant is not half the stage', () => {
+    // The natural thickness makes the strip tiles 16:9 along their axis, which for a single tile is
+    // most of the panel — the arrangement spotlight exists to get away from.
+    const store = spotlit(wide);
+    const aspect = store.dockAspect() as { ratio: number; insetX: number; insetY: number };
+
+    expect(aspect.ratio).toBeCloseTo(16 / 9);
+    expect(aspect.insetX).toBe(STAGE_PADDING_PX * 2 + wide.width * 0.25 + STAGE_GAP_PX);
+    expect(aspect.insetY).toBe(STAGE_PADDING_PX * 2);
+  });
+
+  it('gives the whole stage to solo, on the axis the strip was on', () => {
+    const store = spotlit(wide);
+    store.toggleSolo();
+
+    expect(store.solo()).toBe(true);
+    expect(store.stageTemplate()).toBe('1fr');
+    expect(store.stageRows()).toBe('1fr');
+    // Nothing beside the picture any more, so the fit is the tile's own shape and the padding.
+    const aspect = store.dockAspect() as { insetX: number; insetY: number };
+    expect(aspect.insetX).toBe(STAGE_PADDING_PX * 2);
+  });
+
+  it('ends solo when the spotlight does', () => {
+    // It is a property of *having* a spotlight. Left armed, it would take effect on whoever was
+    // focused next, which nobody asked for.
+    const store = spotlit(wide);
+    store.toggleSolo();
+    store.focusTile('someone');
+
+    expect(store.solo()).toBe(false);
+    expect(store.stageTemplate()).toBeUndefined();
+  });
+
+  it('refuses solo with nothing to apply it to', () => {
+    // The bar only offers it while something is focused, but a store method is reachable by anything
+    // a template can write.
+    const store = makeStore();
+    store.toggleSolo();
+    expect(store.solo()).toBe(false);
   });
 });

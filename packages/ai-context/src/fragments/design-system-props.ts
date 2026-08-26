@@ -193,6 +193,56 @@ Variants set size and weight only — color is always inherited or set explicitl
 | focusProps | Partial\\<DesignSystemProps\\> | Styles on keyboard focus (:focus-visible) — deliberately not applied on mouse click. \`we-button\` and \`we-input\` already carry a default focus ring; only set this to override it |
 | disabledProps | Partial\\<DesignSystemProps\\> | Styles when disabled |
 
+### Responsive — adapting to the space available
+
+| Prop | Type | Description |
+|------|------|-------------|
+| smUpProps | Partial\\<DesignSystemProps\\> | Values that take over from 640px up |
+| mdUpProps | Partial\\<DesignSystemProps\\> | …from 900px up |
+| lgUpProps | Partial\\<DesignSystemProps\\> | …from 1200px up |
+
+A partial prop bag applying above a width, exactly like \`hoverProps\` applies in a state:
+
+\`\`\`json
+{ "type": "Column", "props": { "gap": "300", "px": "300", "mdUpProps": { "gap": "500", "px": "400" } } }
+\`\`\`
+
+**Measured against the nearest surface, not the window.** A template renders inside a docked panel,
+an editor preview pane and a phone, so the viewport is the wrong subject in two of those. The host
+declares a surface wherever it mounts a schema tree; a template can declare its own with \`$surface\`
+(see Block-level Dynamic Structures) when a pane should adapt to itself rather than to the page.
+
+**Write the narrow value at base and grow.** Every tier is min-width — there is no \`smDownProps\` —
+so the unqualified value is what a phone gets and each tier adds room as it appears. Tiers cascade
+through: something set only in \`smUpProps\` still applies at \`lg\`.
+
+\`mdUpProps\`, not \`mdProps\`: \`md\` is already a size value on ~15 primitives (\`size="md"\`), and \`Up\`
+settles whether a tier means at-this-width or below it. The validator suggests the right spelling.
+
+States and tiers do not cross — there is no \`mdUpHoverProps\`. A tier sets base values at that width;
+\`hoverProps\` applies at every width.
+
+### Which mechanism to reach for
+
+Three ways to respond to size, and they are not interchangeable:
+
+| Need | Use | Why |
+|---|---|---|
+| Different **values** — padding, gap, width, font size | \`*UpProps\` | Pure CSS. Nothing remounts. |
+| A different **tree** — a pane becomes a drawer, two panes become one | \`$surface\` + \`$if\` on \`$surface.tier\` | Only a branch can swap DOM. |
+| Same-shaped things **filling a box** — video tiles, a photo wall | \`Grid\` with \`childAspect\` | Needs both axes and an argmax; CSS cannot express it. |
+
+**Prefer \`*UpProps\` for anything that is a value.** \`$if\` on the tier works and is tempting, because
+branching is the familiar tool — but it **unmounts and rebuilds the subtree** every time the surface
+crosses a threshold. That loses scroll position, half-typed input, and anything holding a live
+resource: it is why a video call laid out that way goes black when its panel is resized. Reserve it
+for genuine structural change.
+
+**Prefer intrinsic sizing over either, where it works.** A wrapping \`Row\` whose children have a flex
+basis, or a \`Grid\` with \`minChildWidth\`, adapts continuously at every width instead of at three
+thresholds, needs no surface, and cannot be got wrong. Reach for a breakpoint when the layout must
+genuinely change its mind, not merely stretch.
+
 ### Additional
 
 | Prop | Type | Description |

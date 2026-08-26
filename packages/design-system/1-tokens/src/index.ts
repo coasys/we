@@ -6,6 +6,7 @@
 // Import all token modules
 import { animation } from './animation.js';
 import { border } from './border.js';
+import { breakpoint, TIERS } from './breakpoint.js';
 import { color, FILL_LIGHTNESS } from './color.js';
 import { component } from './component.js';
 import { font } from './font.js';
@@ -21,6 +22,7 @@ export {
   animation,
   avatarSize,
   border,
+  breakpoint,
   color,
   component,
   componentHeight,
@@ -34,12 +36,14 @@ export {
   shadow,
   size,
   space,
+  TIERS,
   zIndex,
 };
 
 // Export token types
 export type { AnimationTransitionToken } from './animation.js';
 export type { BorderColorToken } from './border.js';
+export type { BreakpointToken, Tier } from './breakpoint.js';
 export type {
   ColorBaseToken,
   ColorConfigToken,
@@ -80,6 +84,7 @@ export type { RoleToken } from './role.js';
 export const tokens = {
   animation,
   border,
+  breakpoint,
   color,
   component,
   font,

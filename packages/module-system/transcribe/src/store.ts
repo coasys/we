@@ -113,6 +113,10 @@ const ELECTION_WAIT_MS = 5_000;
 /**
  * The collapsed height of the extraction status panel, in pixels — see `chromeReserve` below for
  * why it is the collapsed one and not the real one.
+ *
+ * Reserved at the *bottom*, because that is the edge the call bar took and this panel is mounted
+ * into its column. The edge is the anchor's, not this module's choice: it contributes to
+ * `call-status` and lands wherever that column is.
  */
 const STATUS_RESERVE_PX = 56;
 
@@ -1205,8 +1209,8 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
      */
     chromeReserve: () =>
       (interpretation?.activity() ?? []).length > 0
-        ? { top: STATUS_RESERVE_PX, width: STATUS_WIDTH_PX }
-        : { top: 0, width: 0 },
+        ? { bottom: STATUS_RESERVE_PX, width: STATUS_WIDTH_PX }
+        : { bottom: 0, width: 0 },
 
     // ── Actions ──────────────────────────────────────────────────────────────
     /**

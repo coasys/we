@@ -1,3 +1,4 @@
+import type { Tiling } from '@we/design-utils';
 import type { LayoutProps } from '@we/design-utils/solid';
 
 export type GridProps = LayoutProps & {
@@ -26,4 +27,46 @@ export type GridProps = LayoutProps & {
    * are for.
    */
   rows?: string;
+  /**
+   * The aspect ratio of each child, for a grid that fills its **box** rather than its width.
+   *
+   * `minChildWidth` answers "how many fit across", which needs only the width. This answers "what
+   * arrangement makes them largest", which needs both axes — so the grid measures itself and solves
+   * for the column count that maximises tile size, then divides its height evenly into rows.
+   *
+   * Use it whenever a set of same-shaped things should fill a box somebody can reshape: a video
+   * call, a photo wall, a board of cards. Drag the box wide and they go side by side; drag it tall
+   * and they stack. Neither `columns` (fixed) nor `minChildWidth` (width-only) can express that —
+   * the first letterboxes and the second gives four columns of postage stamps in a tall box.
+   *
+   * Takes the CSS spellings: `'16 / 9'`, `'16/9'`, `'1.5'`. Takes precedence over `columns` and
+   * `minChildWidth`, and is ignored when `template` is set.
+   *
+   * Children are counted from the DOM, so a `$each` over live data needs nothing extra. Content
+   * that is not a grid item — an absolutely positioned overlay — should be marked `data-we-untiled`
+   * or it will be counted as one.
+   */
+  childAspect?: string | number;
+  /**
+   * Called with the grid's content box whenever it changes.
+   *
+   * Exposes the number `childAspect` already measures, for a consumer that has to make a layout
+   * decision the grid itself cannot: the call stage picks which edge its filmstrip sits along by
+   * comparing the panel's shape to a tile's, which is a question about the box rather than about
+   * how many tiles fit in it.
+   *
+   * Deliberately narrow. This is not "any element can report its size" — that belongs to `$surface`,
+   * which answers it once per render surface rather than per component. It is one prop on the one
+   * component that was measuring anyway, and it fires whether or not `childAspect` is set.
+   */
+  onMeasure?: (box: { width: number; height: number }) => void;
+  /**
+   * Called when the solved arrangement changes.
+   *
+   * Only a grid knows what arrangement it settled on, and sometimes something outside needs the
+   * same answer: the call module reports the shape its panel wants at fit-to-content, which is
+   * `columns × 16 / (rows × 9)` and unknowable from the outside. Fires on mount and on every change,
+   * never on a resize that changed nothing.
+   */
+  onArrange?: (tiling: Tiling) => void;
 };

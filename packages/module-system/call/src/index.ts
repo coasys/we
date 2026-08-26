@@ -36,6 +36,7 @@ import { defineModule, type ModuleStoreDeps } from '@we/module-shared';
 import { peopleTooltip } from '@we/schema-kit';
 import { type SchemaNode } from '@we/schema-shared';
 
+import { devPeersAvailable } from './devPeers';
 import { createCallStore } from './store';
 
 export { createCallMesh, type CallMesh, type SignallingChannel } from './mesh';
@@ -44,19 +45,30 @@ export { anchoredCallId, CALL_PROTOCOL_VERSION, parseCallMessage, spaceCallId } 
 export { type CallDockEdge, type CallTile, type CallTileState, createCallStore } from './store';
 
 /**
- * Where the call's chrome sits.
+ * How far the call's chrome sits off the bottom edge.
  *
- * At the top, where your eyes already are. That is not where this started: the bar was docked at the
- * bottom and only *appeared* at the top because `bottom: '400'` is not a CSS length, so the offset was
- * dropped and `position: fixed` fell back to the static position. The accident read better than the
- * design, so it is now the design — a call you are in should be visible where you are looking, not
- * competing with whatever the space puts along the bottom.
+ * The bottom, and the reason is a property of *panels* rather than a preference about calls: a panel
+ * has a titlebar and no footer. Chrome along the top covers the grip, the position menu and the
+ * button that un-maximises — the three controls a panel is recovered with — so a bar up there is a
+ * bar that can strand a panel. Along the bottom it covers nothing that is pressed, which is what
+ * lets a maximised panel take the whole window.
+ *
+ * The second reason is templates. A page with a sticky header locks it to the top of the *content*,
+ * and a bar fixed over that collides with it on every scroll — structurally, not by a few pixels
+ * that could be tuned away. Nothing a template can do fixes that: it would have to know a module's
+ * bar exists, and its header would jump down the moment somebody started a call. It is also where
+ * every other call application puts these controls.
+ *
+ * It was at the top, and got there by accident — `bottom: '400'` is not a CSS length, so the offset
+ * was dropped and `position: fixed` fell back to the static position. The accident read well enough
+ * to be adopted deliberately, which held until panels could be maximised and templates grew sticky
+ * headers.
  *
  * The stage no longer derives an offset from this. It used to: a second constant here restated the
  * bar's height so the two would stack, which is a relationship nothing enforced. The stage is a
  * *dock* now, and where a dock lands is the host's business — see `docks` at the bottom of this file.
  */
-const CALL_BAR_TOP = '10px';
+const CALL_BAR_INSET = '10px';
 
 /**
  * The bar's own corners, following the theme's **control** radius.
@@ -132,9 +144,10 @@ export const CALL_CONTROLS_ANCHOR = 'call-controls';
  * is a strip of text with a duration, and each would otherwise arrive as its own floating bar with
  * its own guess at how far below this one to sit.
  *
- * Under it rather than over: the bar is the thing being used, and a status line that pushed the
- * controls down would move a target somebody was reaching for. Contributions stack in a column, so
- * two modules reporting at once read as two rows rather than as a fight over one position.
+ * Away from the edge rather than toward it: the bar is the thing being used, and a status line that
+ * pushed the controls off the window would move a target somebody was reaching for. With the bar at
+ * the bottom that means *above* — the column runs upward. Contributions stack in a column, so two
+ * modules reporting at once read as two rows rather than as a fight over one position.
  *
  * The gap is the column's, not each contributor's. A contributor that had to space itself from the
  * bar would need to know the bar exists, which is the coupling both anchors are here to avoid.
@@ -219,292 +232,315 @@ const tile: SchemaNode = {
   },
   children: [
     {
+      /*
+        The box the picture is measured against — see `tilePins` in the store.
+
+        Ordinarily it fills the cell and nothing about the tile changes. It earns its place on the
+        spotlight while the strip scrolls: that cell spans a column taller than the stage, so a
+        picture sized from the cell would be sized for a box mostly off screen. This one is pinned to
+        the visible band and carries the size container, so the picture is fitted to what can
+        actually be seen.
+      */
       type: 'Column',
       props: {
-        position: 'relative',
-        // Low-numbered, so it stays a recessed surface under both themes — see the note on `stage`.
-        // It shows only where a picture cannot fill 16:9, which is a screen share letterboxed inside
-        // its own frame rather than a grey box around every camera.
-        bg: 'surface-sunken',
-        r: '400',
-        overflow: 'hidden',
         ax: 'center',
         ay: 'center',
-        /**
-         * A 16:9 box, sized from whichever dimension is the scarce one — see `pictureStyle`.
-         *
-         * Computed in the store rather than written here because it depends on the placement, and a
-         * side dock and a bottom dock are constrained by different axes.
-         */
-        styles: { $store: 'modules.call.pictureStyle' },
-        // A ring on whoever has the stage, so clicking a tile has a visible result even in the moment
-        // before the layout settles. On the picture rather than the cell, so it frames the video.
-        border: {
-          $if: { condition: stateOf('focused'), then: '2px solid primary-500', else: '2px solid transparent' },
+        minWidth: '0',
+        minHeight: '0',
+        styles: {
+          $find: { items: { $store: 'modules.call.tilePins' }, where: { id: '$tile.id' }, select: 'style' },
         },
       },
       children: [
         {
-          type: '$if',
+          type: 'Column',
           props: {
-            // No video means the avatar, rather than a black rectangle.
-            condition: hasVideo,
-            then: {
-              type: 'we-video',
-              props: {
-                stream: '$tile.stream',
-                autoplay: true,
-                playsinline: true,
-                /**
-                 * Every tile is silent. The picture is here; the sound is in `audioSink`.
-                 *
-                 * The self tile always had to be — it plays the microphone the mesh is sending, and
-                 * unmuted that is an immediate feedback loop. The peers were unmuted, and that was
-                 * the whole of the call's audio path, which is why it kept disappearing: this
-                 * element exists only while there is a picture to show, so a peer turning their
-                 * camera off, or you putting the stage away, silenced them.
-                 *
-                 * With the sink carrying the audio, an unmuted tile would be a second decoder on the
-                 * same stream — the same voice twice, slightly apart.
-                 */
-                muted: true,
-                /**
-                 * Pinned to the tile's four edges rather than sized `100%` × `100%`.
-                 *
-                 * Not a stylistic preference — a percentage height only resolves against a parent whose
-                 * own height is definite, and every "definite" in a chain of stretched flex and grid
-                 * items is a browser judgement call rather than a guarantee. When one of them decides
-                 * otherwise the percentage becomes `auto`, and an element whose only child is out of
-                 * flow is then zero pixels tall: an invisible video rather than an oversized one. An
-                 * absolutely positioned box with all four offsets set has a used size that comes from
-                 * the containing block directly, so there is no chain left to fail.
-                 *
-                 * The tile is `position: relative`, which is what makes it the containing block.
-                 */
-                position: 'absolute',
-                top: '0',
-                right: '0',
-                bottom: '0',
-                left: '0',
-                /**
-                 * `cover` for a camera, `contain` for a desktop.
-                 *
-                 * Safe again now that the box is 16:9 rather than whatever shape the panel is. It was
-                 * not before: one participant in a right-hand dock got a 440×900 cell, and covering it
-                 * scaled a 16:9 face to 1600px wide and threw away 1160px of it, leaving a vertical
-                 * slice of somebody's nose. Against a box that already matches, `cover` crops nothing
-                 * from a 16:9 source and trims a 4:3 webcam the way every other call app does.
-                 *
-                 * A desktop still gets `contain` — cropping one is the difference between readable and
-                 * not — and the recessed background behind it makes the letterboxing look deliberate.
-                 *
-                 * Setting `fit` at all is also what pins the video inside the box: without it the
-                 * element sizes itself from the stream's own pixel dimensions. See the primitive.
-                 */
-                fit: { $if: { condition: stateOf('isScreen'), then: 'contain', else: 'cover' } },
-                /**
-                 * Your own camera, mirrored — everyone expects to raise the hand they raised.
-                 *
-                 * Only the camera. A mirrored screen share is unreadable text, and `isScreen` is exactly
-                 * the flag that tells the two apart.
-                 */
-                transform: {
-                  $if: {
-                    condition: { $and: ['$tile.isSelf', { $not: stateOf('isScreen') }] },
-                    then: 'scaleX(-1)',
-                    else: 'none',
-                  },
-                },
-              },
-            },
+            position: 'relative',
+            // Low-numbered, so it stays a recessed surface under both themes — see the note on `stage`.
+            // It shows only where a picture cannot fill 16:9, which is a screen share letterboxed inside
+            // its own frame rather than a grey box around every camera.
+            bg: 'surface-sunken',
+            r: '400',
+            overflow: 'hidden',
+            ax: 'center',
+            ay: 'center',
             /**
-             * No video: who this is, and why there is nothing to watch.
+             * A 16:9 box, sized from whichever dimension is the scarce one — see `pictureStyle`.
              *
-             * The second half is the part that was missing. A peer still negotiating and a peer who has
-             * turned their camera off both rendered as a bare avatar, so the first seconds of a working
-             * call were indistinguishable from a broken one — and the only honest thing to do while
-             * waiting is to say that you are waiting.
+             * Computed in the store rather than written here because it depends on the placement, and a
+             * side dock and a bottom dock are constrained by different axes.
              */
-            else: {
-              type: 'Column',
-              props: { gap: '200', ax: 'center', ay: 'center' },
-              children: [
-                {
-                  /**
-                   * The participant's actual picture, with a generated one from their DID behind it.
-                   *
-                   * Looked up rather than read off `$tile`, because a profile arriving is not a reason to
-                   * remount a video — see `tileFaces` in the store. `hash` is always supplied, so an agent
-                   * with no picture still gets a distinct and stable one rather than the same grey glyph
-                   * as everybody else.
-                   */
-                  type: 'we-avatar',
+            styles: { $store: 'modules.call.pictureStyle' },
+            // A ring on whoever has the stage, so clicking a tile has a visible result even in the moment
+            // before the layout settles. On the picture rather than the cell, so it frames the video.
+            border: {
+              $if: { condition: stateOf('focused'), then: '2px solid primary-500', else: '2px solid transparent' },
+            },
+          },
+          children: [
+            {
+              type: '$if',
+              props: {
+                // No video means the avatar, rather than a black rectangle.
+                condition: hasVideo,
+                then: {
+                  type: 'we-video',
                   props: {
-                    image: faceOf('image'),
-                    hash: faceOf('hash'),
-                    initials: faceOf('name'),
-                    size: 'lg',
+                    stream: '$tile.stream',
+                    autoplay: true,
+                    playsinline: true,
+                    /**
+                     * Every tile is silent. The picture is here; the sound is in `audioSink`.
+                     *
+                     * The self tile always had to be — it plays the microphone the mesh is sending, and
+                     * unmuted that is an immediate feedback loop. The peers were unmuted, and that was
+                     * the whole of the call's audio path, which is why it kept disappearing: this
+                     * element exists only while there is a picture to show, so a peer turning their
+                     * camera off, or you putting the stage away, silenced them.
+                     *
+                     * With the sink carrying the audio, an unmuted tile would be a second decoder on the
+                     * same stream — the same voice twice, slightly apart.
+                     */
+                    muted: true,
+                    /**
+                     * Pinned to the tile's four edges rather than sized `100%` × `100%`.
+                     *
+                     * Not a stylistic preference — a percentage height only resolves against a parent whose
+                     * own height is definite, and every "definite" in a chain of stretched flex and grid
+                     * items is a browser judgement call rather than a guarantee. When one of them decides
+                     * otherwise the percentage becomes `auto`, and an element whose only child is out of
+                     * flow is then zero pixels tall: an invisible video rather than an oversized one. An
+                     * absolutely positioned box with all four offsets set has a used size that comes from
+                     * the containing block directly, so there is no chain left to fail.
+                     *
+                     * The tile is `position: relative`, which is what makes it the containing block.
+                     */
+                    position: 'absolute',
+                    top: '0',
+                    right: '0',
+                    bottom: '0',
+                    left: '0',
+                    /**
+                     * `cover` for a camera, `contain` for a desktop.
+                     *
+                     * Safe again now that the box is 16:9 rather than whatever shape the panel is. It was
+                     * not before: one participant in a right-hand dock got a 440×900 cell, and covering it
+                     * scaled a 16:9 face to 1600px wide and threw away 1160px of it, leaving a vertical
+                     * slice of somebody's nose. Against a box that already matches, `cover` crops nothing
+                     * from a 16:9 source and trims a 4:3 webcam the way every other call app does.
+                     *
+                     * A desktop still gets `contain` — cropping one is the difference between readable and
+                     * not — and the recessed background behind it makes the letterboxing look deliberate.
+                     *
+                     * Setting `fit` at all is also what pins the video inside the box: without it the
+                     * element sizes itself from the stream's own pixel dimensions. See the primitive.
+                     */
+                    fit: { $if: { condition: stateOf('isScreen'), then: 'contain', else: 'cover' } },
+                    /**
+                     * Your own camera, mirrored — everyone expects to raise the hand they raised.
+                     *
+                     * Only the camera. A mirrored screen share is unreadable text, and `isScreen` is exactly
+                     * the flag that tells the two apart.
+                     */
+                    transform: {
+                      $if: {
+                        condition: { $and: ['$tile.isSelf', { $not: stateOf('isScreen') }] },
+                        then: 'scaleX(-1)',
+                        else: 'none',
+                      },
+                    },
                   },
                 },
-                {
-                  type: '$if',
-                  props: {
-                    condition: stateOf('connecting'),
-                    then: {
-                      type: 'Row',
-                      props: { gap: '100', ay: 'center' },
-                      children: [
-                        { type: 'we-spinner', props: { size: 'xs' } },
-                        {
-                          type: 'we-text',
-                          props: { variant: 'footnote', color: 'text-muted' },
-                          children: ['Connecting…'],
-                        },
-                      ],
+                /**
+                 * No video: who this is, and why there is nothing to watch.
+                 *
+                 * The second half is the part that was missing. A peer still negotiating and a peer who has
+                 * turned their camera off both rendered as a bare avatar, so the first seconds of a working
+                 * call were indistinguishable from a broken one — and the only honest thing to do while
+                 * waiting is to say that you are waiting.
+                 */
+                else: {
+                  type: 'Column',
+                  props: { gap: '200', ax: 'center', ay: 'center' },
+                  children: [
+                    {
+                      /**
+                       * The participant's actual picture, with a generated one from their DID behind it.
+                       *
+                       * Looked up rather than read off `$tile`, because a profile arriving is not a reason to
+                       * remount a video — see `tileFaces` in the store. `hash` is always supplied, so an agent
+                       * with no picture still gets a distinct and stable one rather than the same grey glyph
+                       * as everybody else.
+                       */
+                      type: 'we-avatar',
+                      props: {
+                        image: faceOf('image'),
+                        hash: faceOf('hash'),
+                        initials: faceOf('name'),
+                        size: 'lg',
+                      },
                     },
-                    // Failure is not progress and must not animate like it. Nothing at all for the
-                    // ordinary case — a connected peer with their camera off needs no explanation, and
-                    // labelling it would be noise on every tile of every call.
-                    else: {
+                    {
                       type: '$if',
                       props: {
-                        condition: stateOf('failed'),
+                        condition: stateOf('connecting'),
                         then: {
                           type: 'Row',
                           props: { gap: '100', ay: 'center' },
                           children: [
-                            { type: 'we-icon', props: { name: 'warning', size: 'xs', color: 'danger-text' } },
+                            { type: 'we-spinner', props: { size: 'xs' } },
                             {
                               type: 'we-text',
-                              props: { variant: 'footnote', color: 'danger-text' },
-                              children: ["Couldn't connect"],
+                              props: { variant: 'footnote', color: 'text-muted' },
+                              children: ['Connecting…'],
                             },
                           ],
                         },
-                      },
-                    },
-                  },
-                },
-              ],
-            },
-          },
-        },
-        /**
-         * Click anyone to give them the stage; click them again to go back to an even grid.
-         *
-         * A `bare` button covering the tile rather than an `onClick` on the tile itself: bare is the
-         * appearance-free variant, so it adds nothing visually while keeping the keyboard activation and
-         * the button role that a clickable `Column` silently loses. It sits under the badges in DOM
-         * order so those stay readable, and above the video so the whole picture is the target.
-         */
-        {
-          type: 'we-button',
-          props: {
-            variant: 'bare',
-            position: 'absolute',
-            top: '0',
-            left: '0',
-            width: '100%',
-            height: '100%',
-            onClick: { $action: 'modules.call.focusTile', args: ['$tile.id'] },
-          },
-        },
-        {
-          type: 'Row',
-          props: { position: 'absolute', bottom: '200', left: '200', gap: '100', ay: 'center' },
-          children: [
-            /**
-             * Whose tile this is — the question a wall of faces stops answering the moment one of them
-             * turns their camera off, or shares a screen that looks like everybody else's.
-             *
-             * In the same row as the badges rather than its own corner, so the two cannot overlap on a
-             * small tile: one absolutely positioned strip, laid out left to right, name first.
-             */
-            {
-              type: '$if',
-              props: {
-                // Nothing at all rather than an empty chip, for a peer whose profile has not arrived.
-                // Your own tile always has something to say, so it is exempt.
-                condition: { $or: ['$tile.isSelf', faceOf('name')] },
-                then: {
-                  type: 'we-badge',
-                  props: { variant: 'neutral', size: 'xs', maxWidth: '150px' },
-                  children: [
-                    {
-                      /**
-                       * The small avatar appears only while video is playing.
-                       *
-                       * With the camera off the large avatar is already in the middle of the tile, and a
-                       * second copy of the same face two centimetres below it is noise. While video is
-                       * playing it is the opposite: a shared desktop carries no clue whose it is.
-                       */
-                      type: '$if',
-                      props: {
-                        condition: hasVideo,
-                        then: {
-                          type: 'we-avatar',
+                        // Failure is not progress and must not animate like it. Nothing at all for the
+                        // ordinary case — a connected peer with their camera off needs no explanation, and
+                        // labelling it would be noise on every tile of every call.
+                        else: {
+                          type: '$if',
                           props: {
-                            image: faceOf('image'),
-                            hash: faceOf('hash'),
-                            initials: faceOf('name'),
-                            size: 'xxs',
+                            condition: stateOf('failed'),
+                            then: {
+                              type: 'Row',
+                              props: { gap: '100', ay: 'center' },
+                              children: [
+                                { type: 'we-icon', props: { name: 'warning', size: 'xs', color: 'danger-text' } },
+                                {
+                                  type: 'we-text',
+                                  props: { variant: 'footnote', color: 'danger-text' },
+                                  children: ["Couldn't connect"],
+                                },
+                              ],
+                            },
                           },
                         },
                       },
-                    },
-                    {
-                      type: 'we-text',
-                      // `minWidth: 0` is what lets `truncate` actually bite: a flex item's automatic
-                      // minimum is its content, so without it a long name pushes the badge wider than
-                      // its own `maxWidth` instead of being clipped.
-                      props: { variant: 'footnote', truncate: true, minWidth: '0' },
-                      // "You" rather than your own name: it is shorter, and it is the thing you are
-                      // actually looking for when scanning a grid for your own picture.
-                      children: [{ $if: { condition: '$tile.isSelf', then: 'You', else: faceOf('name') } }],
                     },
                   ],
                 },
               },
             },
+            /**
+             * Click anyone to give them the stage; click them again to go back to an even grid.
+             *
+             * A `bare` button covering the tile rather than an `onClick` on the tile itself: bare is the
+             * appearance-free variant, so it adds nothing visually while keeping the keyboard activation and
+             * the button role that a clickable `Column` silently loses. It sits under the badges in DOM
+             * order so those stay readable, and above the video so the whole picture is the target.
+             */
             {
-              type: '$if',
+              type: 'we-button',
               props: {
-                condition: { $not: stateOf('audioEnabled') },
-                then: {
-                  type: 'we-badge',
-                  props: { variant: 'neutral', size: 'xs' },
-                  children: [{ type: 'we-icon', props: { name: 'microphone-slash' } }],
-                },
+                variant: 'bare',
+                position: 'absolute',
+                top: '0',
+                left: '0',
+                width: '100%',
+                height: '100%',
+                onClick: { $action: 'modules.call.focusTile', args: ['$tile.id'] },
               },
             },
             {
-              type: '$if',
-              props: {
-                condition: stateOf('isScreen'),
-                then: {
-                  type: 'we-badge',
-                  props: { variant: 'primary', size: 'xs' },
-                  children: [{ type: 'we-icon', props: { name: 'monitor' } }],
+              type: 'Row',
+              props: { position: 'absolute', bottom: '200', left: '200', gap: '100', ay: 'center' },
+              children: [
+                /**
+                 * Whose tile this is — the question a wall of faces stops answering the moment one of them
+                 * turns their camera off, or shares a screen that looks like everybody else's.
+                 *
+                 * In the same row as the badges rather than its own corner, so the two cannot overlap on a
+                 * small tile: one absolutely positioned strip, laid out left to right, name first.
+                 */
+                {
+                  type: '$if',
+                  props: {
+                    // Nothing at all rather than an empty chip, for a peer whose profile has not arrived.
+                    // Your own tile always has something to say, so it is exempt.
+                    condition: { $or: ['$tile.isSelf', faceOf('name')] },
+                    then: {
+                      type: 'we-badge',
+                      props: { variant: 'neutral', size: 'xs', maxWidth: '150px' },
+                      children: [
+                        {
+                          /**
+                           * The small avatar appears only while video is playing.
+                           *
+                           * With the camera off the large avatar is already in the middle of the tile, and a
+                           * second copy of the same face two centimetres below it is noise. While video is
+                           * playing it is the opposite: a shared desktop carries no clue whose it is.
+                           */
+                          type: '$if',
+                          props: {
+                            condition: hasVideo,
+                            then: {
+                              type: 'we-avatar',
+                              props: {
+                                image: faceOf('image'),
+                                hash: faceOf('hash'),
+                                initials: faceOf('name'),
+                                size: 'xxs',
+                              },
+                            },
+                          },
+                        },
+                        {
+                          type: 'we-text',
+                          // `minWidth: 0` is what lets `truncate` actually bite: a flex item's automatic
+                          // minimum is its content, so without it a long name pushes the badge wider than
+                          // its own `maxWidth` instead of being clipped.
+                          props: { variant: 'footnote', truncate: true, minWidth: '0' },
+                          // "You" rather than your own name: it is shorter, and it is the thing you are
+                          // actually looking for when scanning a grid for your own picture.
+                          children: [{ $if: { condition: '$tile.isSelf', then: 'You', else: faceOf('name') } }],
+                        },
+                      ],
+                    },
+                  },
                 },
-              },
-            },
-            {
-              // Reconnecting is worth saying out loud — a frozen picture looks identical to a still one.
-              //
-              // Only where there is a picture to freeze: with no video the centre of the tile already
-              // says what is happening, and a badge repeating it two centimetres below would be the same
-              // sentence twice.
-              type: '$if',
-              props: {
-                condition: {
-                  $and: [hasVideo, { $in: [stateOf('connection'), ['connecting', 'disconnected', 'failed']] }],
+                {
+                  type: '$if',
+                  props: {
+                    condition: { $not: stateOf('audioEnabled') },
+                    then: {
+                      type: 'we-badge',
+                      props: { variant: 'neutral', size: 'xs' },
+                      children: [{ type: 'we-icon', props: { name: 'microphone-slash' } }],
+                    },
+                  },
                 },
-                then: {
-                  type: 'we-badge',
-                  props: { variant: 'warning', size: 'xs' },
-                  children: [stateOf('connection')],
+                {
+                  type: '$if',
+                  props: {
+                    condition: stateOf('isScreen'),
+                    then: {
+                      type: 'we-badge',
+                      props: { variant: 'primary', size: 'xs' },
+                      children: [{ type: 'we-icon', props: { name: 'monitor' } }],
+                    },
+                  },
                 },
-              },
+                {
+                  // Reconnecting is worth saying out loud — a frozen picture looks identical to a still one.
+                  //
+                  // Only where there is a picture to freeze: with no video the centre of the tile already
+                  // says what is happening, and a badge repeating it two centimetres below would be the same
+                  // sentence twice.
+                  type: '$if',
+                  props: {
+                    condition: {
+                      $and: [hasVideo, { $in: [stateOf('connection'), ['connecting', 'disconnected', 'failed']] }],
+                    },
+                    then: {
+                      type: 'we-badge',
+                      props: { variant: 'warning', size: 'xs' },
+                      children: [stateOf('connection')],
+                    },
+                  },
+                },
+              ],
             },
           ],
         },
@@ -536,23 +572,150 @@ const stage: SchemaNode = {
   props: {
     condition: { $store: 'modules.call.active' },
     then: {
+      /*
+        A padded box around the tiles, rather than padding on the tiles' own box.
+
+        The two look identical until the strip scrolls, and then they are not: a scrollbar renders at
+        the *padding* edge, so a scrolling grid that carried its own padding put its scrollbar flush
+        against the panel's border — underneath the 8px resize handle, which is wider than the 6px
+        scrollbar and swallowed it whole. Dragging to scroll resized the panel instead.
+
+        Padding the wrapper insets the scroller by that padding, so the scrollbar sits 12px in, clear
+        of the handle, and the inset stays symmetrical — which a gutter added to one side would not.
+      */
       type: 'Column',
       props: {
         width: '100%',
         height: '100%',
-        // `300` is 12px — `STAGE_PADDING_PX` and `STAGE_GAP_PX`, which `dockAspect` subtracts so that
-        // "fit to content" lands on a height that fits the pictures rather than one that squeezes
-        // them. Change either here and the constant has to follow.
+        // `300` is 12px — `STAGE_PADDING_PX`, which `dockAspect` subtracts so that "fit to content"
+        // lands on a height that fits the pictures rather than one that squeezes them. Change it
+        // here and the constant has to follow.
         p: '300',
-        gap: '300',
         overflow: 'hidden',
-        // Grid template and track sizing — see `stageStyle` in the store, which is also where the
-        // choice of grid over wrapping flex is argued.
-        styles: { $store: 'modules.call.stageStyle' },
       },
-      children: [{ type: '$each', props: { items: { $store: 'modules.call.tiles' }, as: 'tile' }, children: [tile] }],
+      children: [
+        {
+          type: 'Grid',
+          props: {
+            width: '100%',
+            height: '100%',
+            // `300` is 12px — `STAGE_GAP_PX`, which `dockAspect` subtracts alongside the wrapper's
+            // padding so that "fit to content" lands on a height that fits the pictures rather than one
+            // that squeezes them. The *solver* needs no telling: the grid reads its own gap.
+            gap: '300',
+            /*
+          Scrolls along the strip's axis, and only when the strip is scrolling — see `stageOverflow`.
+
+          `overflow: hidden` the rest of the time, and that is a statement rather than a detail: the
+          grid divides a definite box, so content that does not fit is a bug to be seen rather than a
+          scrollbar to be lived with. The one exception is a strip holding more people than fit at a
+          size worth looking at, which is a list rather than a layout and behaves like one.
+        */
+            styles: { $store: 'modules.call.stageOverflow' },
+            /**
+             * The arrangement, solved against the box rather than guessed from the head count.
+             *
+             * This is the whole fix. The columns used to come from how many people were in the call and
+             * nothing else, so the panel's shape — the one thing the user controls directly — was not an
+             * input: dragged tall and thin you got two columns of postage stamps, dragged wide you got
+             * two rows with bands of empty panel above and below. `childAspect` measures the box and
+             * picks the arrangement that makes 16:9 pictures largest, which for two people in a square
+             * panel is one column at 523px rather than two at 294px.
+             *
+             * Only CSS changes when it re-solves. That matters more here than anywhere: the tiles are a
+             * reference-keyed `$each`, and moving one to a different DOM parent would drop its
+             * `srcObject` — somebody's video would go black every time the panel crossed a threshold.
+             */
+            childAspect: '16 / 9',
+            /*
+          The spotlight's own tracks, and nothing at all the rest of the time.
+
+          `template` takes precedence over `childAspect`, so this is the whole mode switch: written,
+          the equal-tile solve stands down and the spotlight layout takes over; absent, it comes
+          back. See `stageTemplate` in the store.
+        */
+            template: { $store: 'modules.call.stageTemplate' },
+            rows: { $store: 'modules.call.stageRows' },
+            // What the stage settled on, back to the store — see `setArrangement`. The host needs it to
+            // answer "fit to content".
+            onArrange: { $action: 'modules.call.setArrangement' },
+            // The box itself, for the one decision the grid cannot make: which edge the strip runs along.
+            onMeasure: { $action: 'modules.call.setStageBox' },
+          },
+          children: [
+            { type: '$each', props: { items: { $store: 'modules.call.tiles' }, as: 'tile' }, children: [tile] },
+          ],
+        },
+      ],
     },
   },
+};
+
+/**
+ * `−  N  +` — how many synthetic participants the stage is showing.
+ *
+ * In the bar rather than behind a console incantation, because what this is for is dragging the
+ * panel and watching the arrangement re-solve: going to devtools to try five people instead of
+ * three breaks exactly the loop it exists to support. Being on screen also means the count cannot be
+ * silently left on, which a `localStorage` key set and forgotten very much can — two phantom
+ * participants in a real call a week later, with nothing to explain them.
+ *
+ * Contributed only in a development build, and by a conditional spread at the definition below
+ * rather than a `$if` here, so the node does not exist in a production bundle rather than merely
+ * rendering nothing in one.
+ */
+const devPeerControls: SchemaNode = {
+  type: 'Row',
+  props: { gap: '100', ay: 'center' },
+  children: [
+    { type: 'we-divider', props: { orientation: 'vertical', height: '26px' } },
+    {
+      type: 'we-tooltip',
+      props: { title: 'One fewer fake participant', placement: 'bottom' },
+      children: [
+        {
+          type: 'we-button',
+          props: {
+            square: true,
+            size: 'sm',
+            variant: 'ghost',
+            disabled: { $not: { $store: 'modules.call.fakePeerCount' } },
+            // Zero-argument, because the schema layer has no arithmetic: there is no way to write
+            // "the current count minus one" as a token, so the step belongs in the store.
+            onClick: { $action: 'modules.call.removeFakePeer' },
+          },
+          children: [{ type: 'we-icon', props: { name: 'minus' } }],
+        },
+      ],
+    },
+    {
+      type: 'we-tooltip',
+      props: { title: 'Fake participants — development only', placement: 'bottom' },
+      children: [
+        {
+          type: 'we-text',
+          props: { variant: 'label', color: 'text-muted', minWidth: '12px', textAlign: 'center' },
+          children: [{ type: 'we-number', props: { value: { $store: 'modules.call.fakePeerCount' } } }],
+        },
+      ],
+    },
+    {
+      type: 'we-tooltip',
+      props: { title: 'One more fake participant', placement: 'bottom' },
+      children: [
+        {
+          type: 'we-button',
+          props: {
+            square: true,
+            size: 'sm',
+            variant: 'ghost',
+            onClick: { $action: 'modules.call.addFakePeer' },
+          },
+          children: [{ type: 'we-icon', props: { name: 'plus' } }],
+        },
+      ],
+    },
+  ],
 };
 
 /**
@@ -663,7 +826,23 @@ const participants: SchemaNode = peopleTooltip({
         },
         {
           type: 'we-text',
-          props: { color: 'text-muted' },
+          props: {
+            color: 'text-muted',
+            /*
+            One line, whatever the window does to the bar.
+
+            The bar is centred and shrink-to-fit, so a narrow window squeezes it — and this readout is
+            the only thing in it that can give, every other child being a fixed-size button. Left to
+            wrap, "11 in the call" broke between the number and the words and made the whole bar a row
+            taller, which moves every control in it.
+
+            Not a design-system prop, and `truncate` is the wrong one: that clips with an ellipsis,
+            where the honest behaviour for a bar too narrow for its contents is to overflow and let
+            the window be the thing that is too small. Making the bar itself work at phone widths is
+            the chrome work, not this.
+          */
+            styles: { whiteSpace: 'nowrap' },
+          },
           children: [
             { type: 'we-number', props: { value: { $count: { items: { $store: 'modules.call.tiles' } } } } },
             ' in the call',
@@ -743,11 +922,11 @@ const bar: SchemaNode = {
             // The same two corrections the in-call bar makes, and for the same reasons — this is the
             // bar that replaces it, in the same place. It made neither until the host started
             // publishing the content box: pinned to the middle of the *window*, it sat off-centre
-            // whenever anything was docked and slid under a panel that took the top edge.
-            top: `calc(${CALL_BAR_TOP} + var(--we-chrome-top, 0px))`,
+            // whenever anything was docked and slid under a panel that took the bottom edge.
+            bottom: `calc(${CALL_BAR_INSET} + var(--we-chrome-bottom, 0px))`,
             left: 'calc(50% + var(--we-chrome-center-x, 0px))',
             transform: 'translateX(-50%)',
-            transition: 'left var(--we-chrome-transition, 300ms) ease, top var(--we-chrome-transition, 300ms) ease',
+            transition: 'left var(--we-chrome-transition, 300ms) ease, bottom var(--we-chrome-transition, 300ms) ease',
             ...BAR_SURFACE,
             r: BAR_RADIUS,
             p: '200',
@@ -765,7 +944,8 @@ const bar: SchemaNode = {
             },
             {
               type: 'we-text',
-              props: { variant: 'label' },
+              // One line, for the same reason the in-call readout keeps one — see `participants`.
+              props: { variant: 'label', styles: { whiteSpace: 'nowrap' } },
               children: [
                 { type: 'we-number', props: { value: { $count: { items: { $store: 'modules.call.ongoing' } } } } },
                 ' in a call',
@@ -800,20 +980,21 @@ const bar: SchemaNode = {
       props: {
         position: 'fixed',
         /*
-          The top, pushed down by whatever has taken the top edge.
+          The bottom, pushed up by whatever has taken the bottom edge.
 
-          It used to swap ends when the stage was docked along the top, since both wanted that corner
-          and the small one should give. That was this module reasoning about its own panel, which it
-          can no longer see — but it does not need to: `--we-chrome-top` is where the host says the
-          content's top edge is, so this clears a docked notes panel exactly as it clears a call
-          stage, and reads the same way the horizontal term below already does.
+          It used to swap ends when the stage was docked along the same edge, since both wanted that
+          corner and the small one should give. That was this module reasoning about its own panel,
+          which it can no longer see — but it does not need to: `--we-chrome-bottom` is where the
+          host says the content's bottom edge is, so this clears a docked notes panel exactly as it
+          clears a call stage, and reads the same way the horizontal term below already does.
 
-          A panel that merely floats over the top is deliberately not dodged. It takes no room, the
-          user put it there by hand, and it is dragged by a grip this bar would then be covering —
-          chrome that ran away from a decision somebody just made is worse than an overlap they can
-          see and undo.
+          A panel that merely floats over the bottom is deliberately not dodged. It takes no room,
+          the user put it there by hand, and moving out of its way would be chrome running from a
+          decision somebody just made — worse than an overlap they can see and undo. Note the
+          asymmetry that makes this safe at the bottom and would not at the top: a panel's controls
+          are all in its titlebar, so an overlap here covers content rather than the way out.
         */
-        top: `calc(${CALL_BAR_TOP} + var(--we-chrome-top, 0px))`,
+        bottom: `calc(${CALL_BAR_INSET} + var(--we-chrome-bottom, 0px))`,
         /**
          * Centred on the content, not the window.
          *
@@ -827,7 +1008,7 @@ const bar: SchemaNode = {
          */
         left: 'calc(50% + var(--we-chrome-center-x, 0px))',
         transform: 'translateX(-50%)',
-        transition: 'left var(--we-chrome-transition, 300ms) ease, top var(--we-chrome-transition, 300ms) ease',
+        transition: 'left var(--we-chrome-transition, 300ms) ease, bottom var(--we-chrome-transition, 300ms) ease',
         // One step of the spacing scale, which is the nearest thing to the ~10px this wants and is
         // the only sort of value that follows a theme's density. Wide enough that the status row
         // reads as a separate object rather than as a second tier of the bar.
@@ -836,6 +1017,20 @@ const bar: SchemaNode = {
         zIndex: 'sticky',
       },
       children: [
+        {
+          /*
+            Above the bar, not below it — the column runs upward from the bottom edge now.
+
+            A status row is a sentence somebody is reading and the bar is a set of targets somebody
+            is pressing, so the bar keeps the edge and anything reporting stacks away from it. Below
+            it, a growing status panel would push the controls off the bottom of the window; above,
+            it grows into empty space.
+
+            Renders nothing at all when nobody has contributed, so the bar keeps its own shape.
+          */
+          type: '$slot',
+          props: { anchor: CALL_STATUS_ANCHOR },
+        },
         {
           type: 'Row',
           props: {
@@ -894,6 +1089,34 @@ const bar: SchemaNode = {
           microphone, your camera, your screen, your transcript, and whether you are looking at the
           video. Everything right of it is the call itself — who is in it, and how much room it has.
         */
+            /*
+              Development only, and absent rather than inert in a production build — see
+              `devPeerControls`. Placed with the things you do to your own machine rather than with
+              the call itself, which is what the divider below separates: how many fake participants
+              you are looking at is a property of your session, not of the call.
+            */
+            ...(devPeersAvailable ? [devPeerControls] : []),
+            /*
+              Solo — the spotlight with the stage to itself.
+
+              Only while something is focused, which is also the affordance: giving somebody the
+              stage reveals the option to give them all of it. A toggle rather than a third click on
+              the tile, because a three-state cycle on one gesture cannot say which state it is in —
+              see `solo` in the store.
+            */
+            {
+              type: '$if',
+              props: {
+                condition: { $store: 'modules.call.focusedId' },
+                then: mediaToggle({
+                  on: 'user',
+                  off: 'users-three',
+                  enabled: 'modules.call.solo',
+                  action: 'modules.call.toggleSolo',
+                  tip: { on: 'Show everyone', off: 'Hide the others' },
+                }),
+              },
+            },
             participantsToggle,
             // Two thirds of a control's height, so it reads as a separator between groups rather than as
             // a rule drawn down the whole bar. It moved with the buttons: at 20px against `sm` it was
@@ -913,12 +1136,6 @@ const bar: SchemaNode = {
               ],
             },
           ],
-        },
-        {
-          // Where modules report on something that is taking a while — see `anchors` below. Renders
-          // nothing at all when nobody has contributed, so the bar keeps its own shape.
-          type: '$slot',
-          props: { anchor: CALL_STATUS_ANCHOR },
         },
       ],
     },
@@ -981,22 +1198,23 @@ const problem: SchemaNode = {
       props: {
         position: 'fixed',
         /*
-          The end the call bar is not at, which is now simply the bottom.
+          The end the call bar is not at — which is the top now that the bar has taken the bottom.
 
-          Both were pinned to `CALL_BAR_TOP` once, so the alert opened underneath the controls —
+          Both were pinned to the same offset once, so the alert opened underneath the controls —
           mostly hidden, and with its dismiss button unreachable, which is a poor showing for the one
-          piece of UI whose entire job is to be read.
+          piece of UI whose entire job is to be read. It has swapped ends with the bar rather than
+          gaining a rule: "the other end from the controls" is the whole of the requirement.
 
-          Clear of the content's bottom edge and centred on the content, as the bar is on its own
-          two. This had neither, on the reasoning that the bar no longer moves so nor does this —
-          true of the bar and irrelevant to the window, which is what both were actually pinned to.
-          A panel docked along the bottom covered it, and the one piece of UI whose entire job is to
-          be read was unreadable again by a different route.
+          Clear of the content's edge and centred on the content, as the bar is on its own two. This
+          had neither, on the reasoning that the bar no longer moves so nor does this — true of the
+          bar and irrelevant to the window, which is what both were actually pinned to. A panel
+          docked along that edge covered it, and the one piece of UI whose entire job is to be read
+          was unreadable again by a different route.
         */
-        bottom: `calc(${CALL_BAR_TOP} + var(--we-chrome-bottom, 0px))`,
+        top: `calc(${CALL_BAR_INSET} + var(--we-chrome-top, 0px))`,
         left: 'calc(50% + var(--we-chrome-center-x, 0px))',
         transform: 'translateX(-50%)',
-        transition: 'left var(--we-chrome-transition, 300ms) ease, bottom var(--we-chrome-transition, 300ms) ease',
+        transition: 'left var(--we-chrome-transition, 300ms) ease, top var(--we-chrome-transition, 300ms) ease',
         zIndex: 'sticky',
         maxWidth: '420px',
       },

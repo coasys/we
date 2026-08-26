@@ -146,7 +146,7 @@ function App() {
   }
 
   return (
-    <Row width="100%" height="100vh">
+    <Row width="100%" height="100dvh">
       {/*
         Design-system all the way down, deliberately.
 

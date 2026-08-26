@@ -156,6 +156,15 @@ export function dockGeometryPath(id: string, field: string): string {
  * dragged across it. Hence the transparent `display: contents` wrapper holding both: two fixed-position
  * siblings, neither of which is inside the other.
  */
+/**
+ * How `fitDock` finds the two boxes whose difference is the panel's chrome.
+ *
+ * Attributes rather than refs because the frame is *schema* — it is built as nodes so a deployment
+ * can restyle it, which means there is no component here to hang a ref on.
+ */
+export const DOCK_FRAME_ATTR = 'data-we-dock-frame';
+export const DOCK_CONTENT_ATTR = 'data-we-dock-content';
+
 export function dockFrame(entry: DockEntry, node: SchemaNode): SchemaNode {
   const geo = (field: string) => ({ $store: dockGeometryPath(entry.id, field) });
 
@@ -194,6 +203,18 @@ export function dockFrame(entry: DockEntry, node: SchemaNode): SchemaNode {
               shadow: { $if: { condition: geo('floating'), then: 'xl' } },
               overflow: 'hidden',
               zIndex: 'sticky',
+              /*
+                Marked so "fit to content" can measure the chrome rather than assume it.
+
+                What sits between this box and the one the panel's content gets — the titlebar, its
+                padding and border, this frame's own border — is decided here and needed by
+                `fitDock`, which solves a height from the content's aspect and has to add it back
+                on. It was a constant, it drifted by eleven pixels when the titlebar gained the
+                padding that clears the corner radius, and in a wide arrangement that came back
+                multiplied by the tile ratio as a band down each side. Measuring the two boxes is
+                the version that cannot drift.
+              */
+              [DOCK_FRAME_ATTR]: entry.id,
             },
             children: [
               ...grips(entry.id),
@@ -209,8 +230,37 @@ export function dockFrame(entry: DockEntry, node: SchemaNode): SchemaNode {
               */
               {
                 type: 'Column',
-                props: { flex: '1', minHeight: '0', width: '100%', overflow: 'hidden' },
-                children: [node],
+                props: {
+                  flex: '1',
+                  minHeight: '0',
+                  width: '100%',
+                  overflow: 'hidden',
+                  [DOCK_CONTENT_ATTR]: entry.id,
+                  /*
+                    Room for chrome painted over a maximised panel — see `padTop` in dockGeometry.
+
+                    Absent for every other placement, which is why this is a geometry field rather
+                    than a constant: a floating or snapped panel is clamped out of those bands
+                    already, and only a maximised one takes the whole window and then has the call
+                    bar over its bottom edge. Padding the content rather than shrinking the box is
+                    what keeps the panel covering the sidebar while its contents stay readable.
+                  */
+                  pt: geo('padTop'),
+                  pb: geo('padBottom'),
+                },
+                /*
+                  A panel is a surface of its own.
+
+                  What a docked module has to fit into is the box the user dragged, not the window
+                  and not the space behind it — so anything inside adapts to *this* panel. That is
+                  the case the whole surface mechanism was built for: the call stage is a rectangle
+                  somebody reshapes by hand, and until this existed nothing inside it could tell.
+
+                  Declared here rather than by each module, for the reason every surface is
+                  host-declared: a container query with no container is silently false, so a module
+                  relying on one it did not get would look correct and never adapt.
+                */
+                children: [{ type: '$surface', children: [node] }],
               },
             ],
           },
@@ -236,6 +286,31 @@ export function dockFrame(entry: DockEntry, node: SchemaNode): SchemaNode {
  * sides; 4px of vertical padding and 8px of horizontal is enough to clear the curve at the height the
  * button actually occupies.
  */
+/**
+ * Show a control only while the panel is *not* maximised.
+ *
+ * Three of the titlebar's controls do nothing at all in full screen, and each does nothing in a way
+ * that is worse than inert. Fitting to content writes a width and height the maximised box ignores.
+ * The displace toggle writes a flag it ignores. The position menu ticks a snap that decides only
+ * where the panel will land *later*, so choosing one changes something invisible now and surprising
+ * on the way back out.
+ *
+ * Hidden rather than disabled, which is the same choice `fitButton` already makes for a module that
+ * publishes no aspect — "a control that did nothing would be worse than one that is not there".
+ * Disabling would keep the titlebar's composition stable, and the usual argument for that is a
+ * toggle staying under the cursor between presses. It does not apply here: maximising relocates the
+ * whole titlebar to the top of the window, so nothing is where it was regardless.
+ *
+ * What stays is what still means something. The grip, because dragging a maximised panel pulls it
+ * back out — one of the two ways to leave. The maximise toggle, which is the other. And close.
+ */
+function whileRestored(id: string, node: SchemaNode): SchemaNode {
+  return {
+    type: '$if',
+    props: { condition: { $not: { $store: `shellStore.dockPlacement.${id}.maximised` } }, then: node },
+  };
+}
+
 function titleBar(entry: DockEntry): SchemaNode {
   return {
     type: 'Row',
@@ -271,10 +346,10 @@ function titleBar(entry: DockEntry): SchemaNode {
           onMoveend: { $action: 'shellStore.endDockMove', args: [entry.id] },
         },
       },
-      ...(entry.aspect ? [fitButton(entry.id)] : []),
-      displaceButton(entry.id),
+      ...(entry.aspect ? [whileRestored(entry.id, fitButton(entry.id))] : []),
+      whileRestored(entry.id, displaceButton(entry.id)),
       maximiseButton(entry.id),
-      positionMenu(entry),
+      whileRestored(entry.id, positionMenu(entry)),
       // Last, and after the menu: the one control whose consequence cannot be undone by clicking it
       // again wants to be the one furthest from the others.
       ...(entry.close ? [closeButton(entry)] : []),

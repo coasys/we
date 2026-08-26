@@ -51,7 +51,7 @@ const portable: Record<string, SchemaNode> = {
     localState: { name: { type: 'string', initial: '' } },
     children: [field({ name: 'name', label: 'Name' })],
   }),
-  pageShell: pageShell({ children: [{ type: 'we-text', children: ['x'] }], minHeight: '100vh' }),
+  pageShell: pageShell({ children: [{ type: 'we-text', children: ['x'] }], minHeight: '100dvh' }),
   sectionCard: sectionCard({ title: 'About', description: 'D.', children: [] }),
   'sectionCard (aside)': sectionCard({ title: 'Signals', aside: { type: 'we-spinner' }, children: [] }),
   attributeRow: attributeRow({ icon: 'globe', label: 'Discovery', value: 'Listed' }),

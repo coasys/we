@@ -438,6 +438,15 @@ export interface ChromeReserve {
   /** How far down the top edge it reaches, in pixels, including its own offset from the top. */
   top?: number;
   /**
+   * How far up the bottom edge it reaches, in pixels, including its own offset from the bottom.
+   *
+   * The call bar's edge, and so the common one. It sits at the bottom because a panel has a titlebar
+   * and no footer: chrome along the top covers the grip, the position menu and the button that
+   * un-maximises — the three controls a panel is recovered with — while chrome along the bottom
+   * covers nothing that is pressed.
+   */
+  bottom?: number;
+  /**
    * How wide it is at its widest, in pixels.
    *
    * What lets the host tell "the module rail has slid left far enough to hit the call bar" from "the

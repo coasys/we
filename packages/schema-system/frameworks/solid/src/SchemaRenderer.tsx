@@ -27,6 +27,7 @@ import { Dynamic } from 'solid-js/web';
 import { AnimateRenderer } from './AnimateRenderer';
 import { ConditionalRenderer } from './ConditionalRenderer';
 import { hoistQueryItems } from './queryHoist';
+import { SurfaceRenderer } from './SurfaceRenderer';
 import type { RendererOutput, RenderProps, SchemaNode } from './types';
 import { useVisualEditor } from './VisualEditorContext';
 
@@ -718,6 +719,17 @@ export function RenderSchema({ node, stores, registry, context = {}, children }:
         createQuerySignal={createQuerySignal}
       />
     );
+  }
+
+  /*
+    A responsive boundary — a box whose size the content inside it can adapt to.
+
+    Placed by the host wherever it mounts a schema tree, and by a template that wants a pane to
+    adapt to itself rather than to the page. Nesting is meaningful: the innermost surface wins, for
+    the CSS rules `*UpProps` compiles to and for the tier reported here alike.
+  */
+  if (node.type === '$surface') {
+    return <SurfaceRenderer node={node} context={effectiveContext} renderNode={renderNode} />;
   }
 
   // Handle viewport-driven animations (child always mounted)

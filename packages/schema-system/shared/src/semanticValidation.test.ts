@@ -306,3 +306,22 @@ describe('tokens sitting directly in a children array', () => {
     expect(messages(node, 'error')).toEqual([]);
   });
 });
+
+describe('breakpoint tiers', () => {
+  it('accepts the tier bags on any component, layout-only ones included', () => {
+    // They are not a DS *layer* — a layer answers "which kinds of property does this element
+    // accept", and a tier is a condition under which any of them apply. So a we-icon may be laid
+    // out differently at a different width even though it takes no visual props at all.
+    expect(messages({ type: 'Column', props: { mdUpProps: { gap: '500' } } }, 'warning')).toEqual([]);
+    expect(messages({ type: 'we-icon', props: { lgUpProps: { width: '32px' } } }, 'warning')).toEqual([]);
+    expect(messages({ type: 'we-text', props: { smUpProps: { fontSize: '400' } } }, 'warning')).toEqual([]);
+  });
+
+  it('points at the right spelling when someone drops the Up', () => {
+    // The likely mistake, and worth catching: `md` is already a size value on some fifteen
+    // primitives, so `mdProps` reads as "medium-size props" and is not what these are called.
+    const warnings = messages({ type: 'Column', props: { mdProps: { gap: '500' } } }, 'warning');
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain('did you mean "mdUpProps"');
+  });
+});

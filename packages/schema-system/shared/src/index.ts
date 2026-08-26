@@ -118,6 +118,23 @@ export type { SectionEntry, StoredTemplate, FindNodeResult, PatchError } from '.
 export { createStoredTemplate, listSections, getSection, updateSection } from './sections';
 export { expandViewRoutes, hasViewsMarker, VIEWS_MARKER } from './viewRoutes';
 export type { ResolvedView, ViewGate } from './viewRoutes';
+/*
+  Surface vocabulary, re-exported from the design system.
+
+  The renderer mounts `$surface`, but what a surface *is* — the container name, the marker
+  attributes, the variable the tier lands in — belongs to the design system, which is also what
+  generates the `@container` rules that decide the tier. Re-exported here so `@we/schema-solid`
+  reaches them through the package it already depends on, rather than growing an edge into the
+  design system to agree with it about four string literals.
+*/
+export {
+  readTier,
+  SURFACE_ATTR,
+  SURFACE_TIER_ATTR,
+  surfaceStyles,
+  TIER_VAR,
+  tierSentinelStyles,
+} from '@we/design-utils';
 export { getComponentMeta } from './componentMeta';
 export { contextData } from './generated/contextData';
 export type { ComponentMeta, PropMeta, PropLayer } from './componentMeta';

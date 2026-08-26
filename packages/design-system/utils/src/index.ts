@@ -1,7 +1,11 @@
 import type { DesignSystemProps, FlexDirection } from '@we/design-types';
-import { font, role } from '@we/tokens';
+import { font, role, type Tier, TIERS } from '@we/tokens';
+
+import { tierQuery } from './surface';
 
 export * from './color';
+export * from './surface';
+export * from './tiling';
 
 // --- Shared sub-arrays (used by CSS helpers directly) ---
 export const paddingKeys = ['p', 'px', 'py', 'pt', 'pr', 'pb', 'pl'] as const;
@@ -17,6 +21,15 @@ export const borderKeys = [
   'borderWidth',
 ] as const;
 export const stateKeys = ['hoverProps', 'activeProps', 'focusProps', 'disabledProps'] as const;
+
+/** Which prop bag feeds which tier. */
+export const TIER_PROP_KEYS = {
+  sm: 'smUpProps',
+  md: 'mdUpProps',
+  lg: 'lgUpProps',
+} as const satisfies Record<Exclude<Tier, 'base'>, string>;
+
+export const tierKeys = Object.values(TIER_PROP_KEYS);
 
 // --- DS Layer key arrays ---
 
@@ -156,6 +169,16 @@ export const designSystemKeys = [
   ...flexKeys,
   ...typographyKeys,
   ...stateKeys,
+  /*
+    Tiers sit outside `layerKeyMap` on purpose, alongside `styles`.
+
+    A layer answers "which *kinds* of property does this element accept" — a `we-icon` takes layout
+    and nothing else. A tier is not a kind of property, it is a condition under which any of them
+    apply, so making it a fifth layer would force every element to opt into responsiveness
+    separately from the props being made responsive. What a tier bag may *contain* is still bounded
+    by the element's own layers, which is enforced where the vars are emitted rather than here.
+  */
+  ...tierKeys,
   'styles',
 ] as const;
 
@@ -546,6 +569,48 @@ export function joinDeclsCSS(prefix: string, specs: PropSpec[]): string {
 
 export function joinStateDeclsCSS(statePrefix: string, defaultPrefix: string, specs: PropSpec[]): string {
   return specs.map((s) => stateDeclCSS(statePrefix, defaultPrefix, s)).join('\n    ');
+}
+
+/**
+ * One property's declaration at one tier, falling back down through the tiers beneath it.
+ *
+ * `md` resolves `var(--p-md-gap, var(--p-sm-gap, var(--p-gap, <token default>)))`, which is what
+ * makes a tier *cascade through* rather than replace: something set only in `smUpProps` still
+ * applies at `lg`, because every tier above it falls back through `sm` on the way to the base. The
+ * state version of this is one level deep; this is the same shape, as deep as there are tiers.
+ *
+ * The base arm keeps the spec's own fallback so a tier declaration can never strip a component's
+ * token default — a `mdUpProps` that mentions only `gap` must not blank out the radius.
+ */
+export function tierDeclCSS(tier: Exclude<Tier, 'base'>, basePrefix: string, spec: PropSpec): string {
+  const [cssProp, varSuffix, fallback] = spec;
+  const resolved = fallback?.replace(PREFIX_PLACEHOLDER, basePrefix);
+  const below = TIERS.slice(1, TIERS.indexOf(tier) + 1) as Exclude<Tier, 'base'>[];
+
+  let chain = resolved ? `var(${basePrefix}${varSuffix}, ${resolved})` : `var(${basePrefix}${varSuffix})`;
+  for (const t of below) chain = `var(${basePrefix}${t}-${varSuffix}, ${chain})`;
+  return `${cssProp}: ${chain};`;
+}
+
+export function joinTierDeclsCSS(tier: Exclude<Tier, 'base'>, basePrefix: string, specs: PropSpec[]): string {
+  return specs.map((s) => tierDeclCSS(tier, basePrefix, s)).join('\n    ');
+}
+
+/**
+ * The responsive rules for one family of elements, ready to drop into a stylesheet.
+ *
+ * `target` is the selector the family is addressed by — `[data-we-responsive]` for the Solid layout
+ * components, `:host` for a Lit primitive's own adopted sheet. Ascending, because container queries
+ * add no specificity and every rule here has the same selector: which tier wins is decided purely
+ * by declaration order, exactly as the interactive-state CSS already relies on.
+ */
+export function tierRulesCSS(target: string, basePrefix: string, specs: PropSpec[]): string {
+  return TIERS.slice(1)
+    .map((tier) => {
+      const t = tier as Exclude<Tier, 'base'>;
+      return `${tierQuery(t)} { ${target} { ${joinTierDeclsCSS(t, basePrefix, specs)} } }`;
+    })
+    .join('\n');
 }
 
 /**

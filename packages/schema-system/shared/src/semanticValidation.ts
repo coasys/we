@@ -1,4 +1,4 @@
-import { BASE_CLASS_LAYERS, getKeysForLayers, layerKeyMap } from '@we/design-utils';
+import { BASE_CLASS_LAYERS, getKeysForLayers, layerKeyMap, tierKeys } from '@we/design-utils';
 import { role } from '@we/tokens';
 
 import type { ContextData, StateMemberMeta } from './contextTypes';
@@ -180,7 +180,12 @@ function classifyPropType(typeText: string): string {
  * e.g. "'primary' | 'secondary' | 'ghost'" → ['primary', 'secondary', 'ghost']
  */
 /** Check if a string looks like a CSS length value (e.g. "20px", "2rem", "50%", "1.5em") */
-const CSS_LENGTH_RE = /^-?\d+(\.\d+)?(px|em|rem|%|vh|vw|vmin|vmax|ch|ex|cap|lh|svh|svw|dvh|dvw|cqi|cqb)$/;
+// Container-query units included in full: `cqi`/`cqb` were already here, but a box measured against
+// a surface is usually reasoning about width and height rather than inline and block axes, and the
+// call module has been writing `100cqh` through the `styles` escape hatch — the one place this
+// check does not reach — since before surfaces existed.
+const CSS_LENGTH_RE =
+  /^-?\d+(\.\d+)?(px|em|rem|%|vh|vw|vmin|vmax|ch|ex|cap|lh|svh|svw|dvh|dvw|cqi|cqb|cqw|cqh|cqmin|cqmax)$/;
 
 function extractAllowedValues(typeText: string): string[] | null {
   const t = typeText.replace(/\s*\|\s*undefined/g, '').trim();
@@ -282,7 +287,23 @@ export function buildValidationContext(data: ContextData): ValidationContext {
 
   // Universal props
   // Includes HTML global attributes that pass through to the DOM on all components
-  const universalProps = new Set(['style', 'styles', 'children', 'ref', 'key', 'title', 'id', 'class', 'tabindex']);
+  //
+  // The breakpoint tiers sit here alongside `styles` rather than in a layer, for the reason they
+  // are not in `layerKeyMap` either: a layer answers "which kinds of property does this element
+  // accept", and a tier is not a kind of property but a condition under which any of them apply.
+  // What a tier bag may contain is bounded by the element's own layers where the CSS is generated.
+  const universalProps = new Set([
+    'style',
+    'styles',
+    'children',
+    'ref',
+    'key',
+    'title',
+    'id',
+    'class',
+    'tabindex',
+    ...tierKeys,
+  ]);
 
   // Stores
   const storeNames = new Set<string>();
@@ -737,9 +758,18 @@ function checkProps(
           severity: 'warning',
         });
       } else {
+        /*
+          The same nearest-name hint unknown components and models already get.
+
+          Worth having generally, and worth having *now*: `mdProps` is the obvious way to spell the
+          new breakpoint bags and the wrong one — `md` is already a size value on some fifteen
+          primitives, so `mdUpProps` is what they are called. A warning that only says the prop is
+          unknown leaves the author to find that out from the docs.
+        */
+        const suggestion = suggest(propName, [...knownProps, ...ctx.universalProps]);
         errors.push({
           path: propPath,
-          message: `Unknown prop "${propName}" on "${componentType}"`,
+          message: `Unknown prop "${propName}" on "${componentType}"${suggestion ? ` — did you mean "${suggestion}"?` : ''}`,
           severity: 'warning',
         });
       }

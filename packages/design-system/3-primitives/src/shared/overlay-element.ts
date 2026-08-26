@@ -53,8 +53,11 @@ export abstract class OverlayElement extends DesignSystemElement {
         :host([data-we-overlay]) {
           position: fixed;
           inset: 0;
-          width: 100vw;
-          height: 100vh;
+          /* Dynamic units: on a phone the address bar makes 100vh taller than what is visible, so
+             a full-screen overlay measured that way puts its last rows under the browser chrome and
+             its close button off the bottom of the screen. Identical to vh on a desktop. */
+          width: 100dvw;
+          height: 100dvh;
           min-width: unset;
           min-height: unset;
           max-width: unset;
