@@ -9,6 +9,13 @@ New to WE? Start here.
 - [Developer Setup](getting-started/developer-setup.md) — Prerequisites, clone, build, run
 - [Seed System](getting-started/seed-system.md) — How `we-seed.json` configures everything
 
+## Contributing
+
+- [Contribution Surfaces](contributing/surfaces.md) — **Every slot WE accepts a contribution into.**
+  What each is for, which one your intent belongs in, where its rules live, how to register it and
+  how to check it. Start here when you know what you want to build but not where it goes.
+- [CONTRIBUTING.md](../CONTRIBUTING.md) — The four contributor tracks, the workflow, working with an agent
+
 ## Architecture
 
 How WE is designed and why.

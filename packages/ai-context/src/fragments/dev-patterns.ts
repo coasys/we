@@ -208,9 +208,22 @@ pnpm --filter @we/schema-shared validate
 \`\`\`
 
 This validates every \`.schema.ts\` under \`packages/app-shell/src/shared/schemas/\`,
-\`packages/templates/shell/src/\` and \`packages/templates/default/src/\`. Route and section files
-that are not named \`.schema.ts\` are still covered, because the template that composes them is —
-the walk descends into whatever a validated schema imports.
+\`packages/templates/\` (shell, default, views and showcase) and \`packages/module-system/\`. Route and
+section files that are not named \`.schema.ts\` are still covered, because the template that composes
+them is — the walk descends into whatever a validated schema imports.
+
+Two further audits run over the same trees and are easy to miss. Both **import and walk the composed
+tree** rather than grepping source, which is the only way to attribute a node that a fragment from
+another package contributed:
+
+\`\`\`sh
+pnpm --filter @we/schema-shared role-audit     # colours naming a scale position where a role belongs
+pnpm --filter @we/schema-shared surface-audit  # what each surface-sunken is actually sitting on
+\`\`\`
+
+Run them after any template, view or fragment change. A \`neutral-600\` label is invisible to the
+whole contrast layer — never measured against what is behind it — so \`role-audit\` is the only thing
+that will report it.
 
 Two things it now catches that it used to miss, both worth knowing when adding a schema:
 
