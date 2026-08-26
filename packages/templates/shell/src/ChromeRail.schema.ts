@@ -15,8 +15,9 @@
  * ## Why it is no longer only about modules
  *
  * It never quite was — it has carried the way into a space's settings for as long as it has existed,
- * because that is where a module gets turned back on. It now also carries the template and theme
- * pickers, which used to be a strip of chips pinned to the top-right corner.
+ * because that is where a module gets turned back on, and those settings are a panel on this edge
+ * like any module's. It now also carries the template and theme pickers, which used to be a strip of
+ * chips pinned to the top-right corner.
  *
  * Those chips were the one piece of persistent chrome no layout calculation knew about: `SIDEBAR_PX`
  * reserves the left edge and `contentInset` moves content out of a docked panel's way, but nothing
@@ -59,10 +60,14 @@ export const CHROME_RAIL_WIDTH = '56px';
 /**
  * Settings for the space you are standing in, one click away.
  *
- * The page it opens is the same one the spaces list reaches, addressed by the current dataset — so
- * there is one per-space settings surface rather than two that can drift. The overlay keeps the
- * space loaded underneath, which is what makes opening it from in here feel like a layer rather than
- * an exit.
+ * Opens a **panel**, like every launcher above it. It used to open the global settings overlay and
+ * navigate, inside that overlay's router, to the page for the current space — which meant a button
+ * labelled "Space settings" produced a full-window surface headed "Settings" with an Account /
+ * Appearance / Spaces & data nav down its side, and took the space off the screen while you
+ * configured it. See `SpaceSettingsPanel.schema.ts` for the rest of that argument.
+ *
+ * That also makes this button consistent with the rest of the rail rather than the exception in it:
+ * every other row here toggles a panel and lights up while it is open, and this one now does too.
  *
  * Outside the launcher list on purpose: it renders even when no module does. Gating it on having
  * launchers would remove the way back to the module settings in exactly the state — everything
@@ -71,20 +76,9 @@ export const CHROME_RAIL_WIDTH = '56px';
 const spaceSettingsLauncher: SchemaNode = railButton({
   icon: 'gear',
   tooltip: 'Space settings',
-  /*
-    Lit while the settings overlay is up, as every other button in this rail is while its own
-    surface is. It had no active state at all when it was written out by hand here, which made it
-    the one row of a rail-of-tabs that could not tell you it was the one you were looking at.
-
-    The path is not compared, only the overlay: settings reached from the spaces list is the same
-    page, and dimming this while somebody navigates *within* it would be answering a question
-    nobody asked.
-  */
-  active: { $eq: [{ $store: 'shellStore.activeShellView' }, 'settings'] },
-  onClick: {
-    $action: 'shellStore.openShellView',
-    args: ['settings', { $concat: ['/spaces/', { $store: 'datasetStore.currentDataset.id' }] }],
-  },
+  // Lit while its panel is up, exactly as a module launcher is — see `activeWhen` on those.
+  active: { $store: 'shellStore.spaceSettingsOpen' },
+  onClick: { $action: 'shellStore.toggleSpaceSettings' },
 });
 
 /**
