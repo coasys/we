@@ -1063,6 +1063,19 @@ export const callModule = defineModule({
   // as well would be saying it twice.
   launcher: { icon: 'phone-call', label: 'Start call', action: 'joinSpaceCall', availableWhen: 'canCall' },
 
+  /*
+    A call in progress keeps its chrome wherever you go.
+
+    Module chrome is otherwise gated on the space you are looking at, which is right for chrome that
+    is *about* that space and wrong for this: a call outlives navigating away from where it started,
+    so in a space that has not enabled calls the bar vanished while the call carried on — hang-up
+    button included. Nothing was broken underneath, which is what made it read as a crash.
+
+    `active` is false the moment the call ends, which is the condition this has to satisfy: a key
+    that stayed true would make the bar permanent.
+  */
+  holdsWhen: 'modules.call.active',
+
   slots: [
     { anchor: 'dock-bottom', node: bar, order: 100 },
     { anchor: 'dock-bottom', node: problem, order: 80 },

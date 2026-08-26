@@ -416,3 +416,52 @@ describe('module teardown', () => {
     expect(keys).not.toContain('destroy');
   });
 });
+
+/**
+ * Chrome that belongs to something running, rather than to the space you are looking at.
+ *
+ * Every module's chrome is wrapped in a gate on `activeModules`, which is the space's decision. A
+ * call outlives navigating away from where it started, so that gate took its bar away — hang-up
+ * button and all — the moment the user walked into a space with calls switched off, while the call
+ * itself carried on. `holdsWhen` is how a module says its chrome is not the space's to withdraw.
+ */
+describe('a module that is holding something live', () => {
+  /** The condition a contribution's gate was built with. Docks register under a `dock:` prefix. */
+  function gateOf(id: string): Record<string, unknown> {
+    const entry = slotRegistry.all().find((e) => e.id === `${id}:0` || e.id === `dock:${id}:0`);
+    const props = (entry?.node as { props?: Record<string, unknown> } | undefined)?.props;
+    return (props?.condition ?? {}) as Record<string, unknown>;
+  }
+
+  const chrome = { anchor: 'dock-bottom', node: { type: 'Row' } };
+
+  it('is gated on the space alone when it holds nothing', () => {
+    moduleRegistry.register(mod({ id: 'plain', slots: [chrome] }), host);
+
+    // Unchanged for every module that does not opt in — no `$or`, just the space's decision.
+    expect(gateOf('plain')).toHaveProperty('$in');
+    expect(gateOf('plain')).not.toHaveProperty('$or');
+  });
+
+  it('also renders wherever its own key says it is holding something', () => {
+    moduleRegistry.register(mod({ id: 'held', slots: [chrome], holdsWhen: 'modules.held.active' }), host);
+
+    const or = gateOf('held').$or as unknown[];
+    expect(or).toHaveLength(2);
+    // Still hidden by neither condition alone — the space's decision keeps working where the module
+    // is holding nothing, which is the ordinary case even for a module that can hold something.
+    expect(or[0]).toHaveProperty('$in');
+    expect(or[1]).toEqual({ $store: 'modules.held.active' });
+  });
+
+  it('gates a dock the same way as a slot', () => {
+    // Both go through the same wrapper, but they are registered on separate paths — the call's stage
+    // is a dock and its bar is a slot, and losing either mid-call is the same bug.
+    moduleRegistry.register(
+      mod({ id: 'docked', docks: [{ ...chrome, edge: 'bottom' }], holdsWhen: 'modules.docked.active' } as never),
+      host,
+    );
+
+    expect(gateOf('docked')).toHaveProperty('$or');
+  });
+});

@@ -306,6 +306,23 @@ export interface ModuleDefinition {
   slots?: SlotContribution[];
 
   /**
+   * A store key the host reads to decide whether this module's chrome must stay on screen even in a
+   * space that has not enabled it. Omit for a module that holds nothing.
+   *
+   * Chrome is gated on the module being active in the space you are looking at, which is right for
+   * chrome that is *about* that space. It is wrong for chrome that is about something still running:
+   * a call outlives navigating away from it, so gating on the destination space took away the bar
+   * while the call carried on — including the hang-up button, leaving no way to end it and no sign
+   * it was happening. Nothing was broken behind the scenes, which is what made it hard to read.
+   *
+   * "Holding", not "enabled elsewhere": the question is whether this module has live state a person
+   * needs to reach, so the module answers it rather than the host inferring it. A module that
+   * declares this must make the key false the moment it stops holding anything, or its chrome
+   * becomes permanent.
+   */
+  holdsWhen?: string;
+
+  /**
    * Panels that take room from the app rather than covering it. See {@link DockContribution}.
    *
    * Separate from `slots` because the host does something different with them: a slot is spliced
