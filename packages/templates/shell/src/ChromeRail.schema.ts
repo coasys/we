@@ -183,15 +183,18 @@ export const chromeRail: SchemaNode = {
         */
         right: 'var(--we-chrome-right, 0px)',
         /*
-          Below whatever a panel is doing at the top, and below its titlebar.
+          Below whatever a panel is doing at the top, and below the app's own floating chrome.
 
           Two terms, for two different collisions. `--we-chrome-top` is a panel that has *taken* the
           top edge, which this would otherwise sit inside — the vertical twin of the
-          `--we-chrome-right` term above, and the same fix. `--we-panel-chrome-top` is a **maximised**
-          panel, which covers the whole window: the rail is painted above the panels, so its
-          controls — the position menu, and the button that un-maximises it — end up underneath this.
-          The shell publishes that band as zero unless a panel is actually maximised, so nothing
-          moves when there is nothing to clear.
+          `--we-chrome-right` term above, and the same fix. `--we-panel-chrome-top` is chrome a
+          module has declared at the top, which this rail can be walked into by a wide enough panel;
+          the shell publishes it as zero when there is nothing up there, so nothing moves for
+          nothing.
+
+          A maximised panel is not among the collisions, and briefly was: this used to drop below its
+          titlebar so it stayed reachable over the top of one. The rail hides instead — see `styles`
+          below — because full screen means the app's own furniture is gone.
 
           The band is this rail's alone, which is why it is not folded into `--we-chrome-top`: every
           other piece of chrome is painted *below* the panels and so has nothing to dodge, and one
@@ -228,6 +231,21 @@ export const chromeRail: SchemaNode = {
         rbl: '400',
         shadow: 'md',
         zIndex: 'sticky',
+        /*
+          Out of the way entirely while a panel is maximised.
+
+          It shares the panels' layer and wins on document order — it is registered after them at the
+          same anchor — so a full-screen panel would otherwise have this printed down its right edge,
+          over the position menu and the un-maximise button that recover it. Hidden rather than
+          dropped below the titlebar, which was the first answer: full screen means the app's own
+          furniture is gone, and the way back is the panel's titlebar and the Escape key.
+        */
+        styles: {
+          $if: {
+            condition: { $store: 'shellStore.panelMaximised' },
+            then: { display: 'none' },
+          },
+        },
         transition: 'right var(--we-chrome-transition, 300ms) ease, top var(--we-chrome-transition, 300ms) ease',
       },
       children: [spaceSection, designSection],

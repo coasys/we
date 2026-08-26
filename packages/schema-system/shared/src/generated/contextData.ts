@@ -2506,6 +2506,7 @@ export const contextData: ContextData = {
         dockGeometry: { type: 'object' },
         contentInset: { type: 'object' },
         dockResizing: { type: 'boolean' },
+        panelMaximised: { type: 'boolean' },
         dockPlacement: { type: 'object' },
         movingDock: { type: 'string' },
         activeSnap: { type: 'object' },

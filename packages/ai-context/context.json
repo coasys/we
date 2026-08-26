@@ -6232,6 +6232,9 @@
         "dockResizing": {
           "type": "boolean"
         },
+        "panelMaximised": {
+          "type": "boolean"
+        },
         "dockPlacement": {
           "type": "object"
         },

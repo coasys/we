@@ -2255,6 +2255,7 @@ ShellStore:
   - dockGeometry: unknown
   - contentInset: unknown
   - dockResizing: unknown
+  - panelMaximised: unknown
   - dockPlacement: unknown
   - movingDock: unknown
   - activeSnap: unknown

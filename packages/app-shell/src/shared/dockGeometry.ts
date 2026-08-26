@@ -1061,38 +1061,29 @@ export function contentInset(requests: DockRequest[], viewport: Viewport): Conte
  * the rail into the call controls and prints it across them. Nothing else in the layout has this
  * shape, which is why this is the only collision the shell computes.
  *
- * ## Why only a maximised panel is considered
+ * ## Why panels are not considered
  *
- * Every panel used to be, and it was dead code that could only fire when it was wrong. By the time
- * this is asked, an ordinary panel cannot be under the rail:
+ * They were, and it was dead code that could only fire when it was wrong. By the time this is asked,
+ * no panel can be under the rail:
  *
  * - one displacing left or right has already slid it sideways, through `--we-chrome-right`;
  * - one displacing top or bottom has already pushed it down, through `--we-chrome-top`;
- * - a floating or snapped one is clamped out of its column by `DEFAULT_FLOAT_CHROME`.
+ * - a floating or snapped one is clamped out of its column by `DEFAULT_FLOAT_CHROME`;
+ * - a maximised one covers the whole window, and the rail hides rather than dodging it.
  *
- * So such a panel could only ever be found here through a *disagreement* between two ways of
- * measuring one edge — a resolved box rounding where an inset does not, say — and what it reported
- * then was not a real overlap but the depth of whatever it had mismeasured, which for anything but a
- * top-edge panel is hundreds of pixels. That is how a rail asked to clear a bar 74px tall ended up
- * parked halfway down the screen.
+ * That last bullet was briefly a term in this function — the rail dropped below a maximised panel's
+ * titlebar so it stayed reachable over the top of it. Hiding is the better answer and made the term
+ * dead: full screen means the app's own furniture is gone, and the way back out is the panel's
+ * titlebar and the Escape key. See `shellStore.panelMaximised`.
  *
- * A **maximised** one is the exception, and used to be a fourth bullet here: it stopped short of the
- * rail for the same reason as the third. It does not any more — full screen means the whole window —
- * so the rail has to drop below its titlebar, or it lands on the position menu and the un-maximise
- * button, which are the two controls that panel is recovered with. The caller passes how far down
- * that titlebar reaches, since only the shell knows which panels are maximised.
- *
- * The two contributors are taken as a maximum rather than summed: they are both answers to "how far
- * down does the window's furniture reach", not two things stacked on each other.
+ * So a panel could only ever be found here through a *disagreement* between two ways of measuring
+ * one edge — a resolved box rounding where an inset does not, say — and what it reported then was
+ * not a real overlap but the depth of whatever it had mismeasured, which for anything but a top-edge
+ * panel is hundreds of pixels. That is how a rail asked to clear a bar 74px tall ended up parked
+ * halfway down the screen.
  */
-export function railBand(
-  viewport: Viewport,
-  inset: ContentInset,
-  topChrome: TopChrome = NO_TOP_CHROME,
-  maximisedTitleBottom = 0,
-): number {
-  const fromPanel = Math.max(0, maximisedTitleBottom - RAIL_TOP_PX);
-  if (topChrome.height <= 0 || topChrome.width <= 0) return fromPanel;
+export function railBand(viewport: Viewport, inset: ContentInset, topChrome: TopChrome = NO_TOP_CHROME): number {
+  if (topChrome.height <= 0 || topChrome.width <= 0) return 0;
 
   const railRight = viewport.width - inset.right;
   const railLeft = railRight - CHROME_RAIL_PX;
@@ -1108,6 +1099,5 @@ export function railBand(
     offset already includes it (`--we-chrome-top`) and so does the bar's, so a panel displacing the
     top edge moves both by the same amount and the distance between them is unchanged.
   */
-  const fromChrome = overlaps ? Math.max(0, Math.round(topChrome.height - RAIL_TOP_PX)) : 0;
-  return Math.max(fromChrome, fromPanel);
+  return overlaps ? Math.max(0, Math.round(topChrome.height - RAIL_TOP_PX)) : 0;
 }

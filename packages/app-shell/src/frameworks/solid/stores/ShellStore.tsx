@@ -108,6 +108,14 @@ export interface ShellStore {
   contentInset: Accessor<ContentInset>;
   /** True while a dock is being dragged, so transitions can be suspended and the edge track the cursor. */
   dockResizing: Accessor<boolean>;
+  /**
+   * Whether any panel is maximised — read by the app's own chrome, which hides while one is.
+   *
+   * Full screen means the whole window, so the sidebar and the module rail take themselves out of
+   * the layout rather than sitting on top of the panel. The way back out is the panel's own titlebar
+   * and the Escape key.
+   */
+  panelMaximised: Accessor<boolean>;
   /** Remember a dock's current size, so the drag that follows is measured from it. */
   beginDockResize: (id: string) => void;
   /**
@@ -495,12 +503,21 @@ export function ShellStoreProvider(props: ParentProps) {
     onCleanup(() => window.removeEventListener('keydown', onKeyDown));
   }
 
-  const maximisedTitleBottom = createMemo(() => {
-    const maximised = dockRequests().some(
-      (request) => request.edge && (request.size === 'full' || placementOf(request).maximised),
-    );
-    return maximised ? inset().top + TITLE_BAR_PX : 0;
-  });
+  /**
+   * Whether any panel is currently maximised — what the app's own chrome hides for.
+   *
+   * The sidebar and the module rail read this and take themselves out of the layout. Hiding rather
+   * than restacking, because the two overlap for different reasons and only one of them is a
+   * z-index: the sidebar is on the `chrome` layer and outranks every panel outright, while the rail
+   * shares the panels' layer and wins on document order. One rule covers both, and neither has to
+   * learn about the other's ordering.
+   *
+   * `display: none` rather than an unmount, so a rail that was expanded and had groups collapsed is
+   * in the same state when full screen ends.
+   */
+  const panelMaximised = createMemo(() =>
+    dockRequests().some((request) => request.edge && (request.size === 'full' || placementOf(request).maximised)),
+  );
 
   const floatChrome = createMemo<ContentInset>(() => ({
     left: 0,
@@ -632,7 +649,7 @@ export function ShellStoreProvider(props: ParentProps) {
   createEffect(() => {
     if (typeof document === 'undefined') return;
 
-    const band = railBand(viewport(), inset(), topChrome(), maximisedTitleBottom());
+    const band = railBand(viewport(), inset(), topChrome());
     document.documentElement.style.setProperty('--we-panel-chrome-top', `${band}px`);
   });
 
@@ -678,6 +695,7 @@ export function ShellStoreProvider(props: ParentProps) {
     dockGeometry,
     contentInset: inset,
     dockResizing,
+    panelMaximised,
 
     dockPlacement: () =>
       Object.fromEntries(

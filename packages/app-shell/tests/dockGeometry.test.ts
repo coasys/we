@@ -922,28 +922,11 @@ describe('the band under the module rail', () => {
     expect(railBand(desktop, inset({ right: 900, top: 300 }), bar)).toBe(bar.height - RAIL_TOP_PX);
   });
 
-  it('drops below a maximised panel’s titlebar, the one panel it must be told about', () => {
-    /*
-      Every other panel is out of the rail's way before this is asked — see the note on `railBand`.
-      A maximised one is not, since it covers the whole window; and the rail is painted above it, so
-      without this term it lands on the position menu and the un-maximise button, which are the two
-      controls that panel is recovered with.
-    */
-    const titleBottom = 40;
-    expect(railBand(desktop, inset(), NO_TOP_CHROME, titleBottom)).toBe(titleBottom - RAIL_TOP_PX);
-  });
-
-  it('takes the deeper of the two rather than stacking them', () => {
-    // Both answer "how far down does the window's furniture reach", so they are alternatives rather
-    // than a column. Summed, the rail would clear a bar it is nowhere near a second time.
-    expect(railBand(desktop, inset({ right: 900 }), bar, 40)).toBe(bar.height - RAIL_TOP_PX);
-    expect(railBand(desktop, inset({ right: 900 }), bar, 300)).toBe(300 - RAIL_TOP_PX);
-  });
-
-  it('is not moved by a panel that is merely open', () => {
-    // The distinction the maximised term has to keep: an ordinary panel is clamped out of the rail's
-    // column already, and a band that fired for any open panel moved the rail for a video floating
-    // in the opposite corner.
-    expect(railBand(desktop, inset({ right: 900 }), NO_TOP_CHROME, 0)).toBe(0);
+  it('is not moved by a panel, whatever state it is in', () => {
+    // Every panel is out of the rail's way before this is asked — see the note on `railBand`. A
+    // maximised one briefly had a term here so the rail could sit below its titlebar; the rail hides
+    // instead, which made it dead. A band that fired for any open panel moved the rail for a video
+    // floating in the opposite corner.
+    expect(railBand(desktop, inset({ right: 900 }), NO_TOP_CHROME)).toBe(0);
   });
 });
