@@ -286,6 +286,31 @@ export function dockFrame(entry: DockEntry, node: SchemaNode): SchemaNode {
  * sides; 4px of vertical padding and 8px of horizontal is enough to clear the curve at the height the
  * button actually occupies.
  */
+/**
+ * Show a control only while the panel is *not* maximised.
+ *
+ * Three of the titlebar's controls do nothing at all in full screen, and each does nothing in a way
+ * that is worse than inert. Fitting to content writes a width and height the maximised box ignores.
+ * The displace toggle writes a flag it ignores. The position menu ticks a snap that decides only
+ * where the panel will land *later*, so choosing one changes something invisible now and surprising
+ * on the way back out.
+ *
+ * Hidden rather than disabled, which is the same choice `fitButton` already makes for a module that
+ * publishes no aspect — "a control that did nothing would be worse than one that is not there".
+ * Disabling would keep the titlebar's composition stable, and the usual argument for that is a
+ * toggle staying under the cursor between presses. It does not apply here: maximising relocates the
+ * whole titlebar to the top of the window, so nothing is where it was regardless.
+ *
+ * What stays is what still means something. The grip, because dragging a maximised panel pulls it
+ * back out — one of the two ways to leave. The maximise toggle, which is the other. And close.
+ */
+function whileRestored(id: string, node: SchemaNode): SchemaNode {
+  return {
+    type: '$if',
+    props: { condition: { $not: { $store: `shellStore.dockPlacement.${id}.maximised` } }, then: node },
+  };
+}
+
 function titleBar(entry: DockEntry): SchemaNode {
   return {
     type: 'Row',
@@ -321,10 +346,10 @@ function titleBar(entry: DockEntry): SchemaNode {
           onMoveend: { $action: 'shellStore.endDockMove', args: [entry.id] },
         },
       },
-      ...(entry.aspect ? [fitButton(entry.id)] : []),
-      displaceButton(entry.id),
+      ...(entry.aspect ? [whileRestored(entry.id, fitButton(entry.id))] : []),
+      whileRestored(entry.id, displaceButton(entry.id)),
       maximiseButton(entry.id),
-      positionMenu(entry),
+      whileRestored(entry.id, positionMenu(entry)),
       // Last, and after the menu: the one control whose consequence cannot be undone by clicking it
       // again wants to be the one furthest from the others.
       ...(entry.close ? [closeButton(entry)] : []),
