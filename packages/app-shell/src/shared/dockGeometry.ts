@@ -354,6 +354,16 @@ export interface DockGeometry {
   padBottom?: string;
   /** Whether this panel is overlaying rather than displacing. Read by the frame and by tests. */
   floating: boolean;
+  /**
+   * Whether it is overlaying *everything*, as distinct from floating over some of it.
+   *
+   * Both are `floating` — a maximised panel is not displacing, and every rule that turns on "does
+   * this panel take room from the content" wants them together. But they are opposites for anything
+   * that treats the panel as a card: a card has a background you can see past, and a panel filling
+   * the window has nothing beside it to see. The frame's translucency reads this so a maximised
+   * panel stays opaque rather than showing the template through its whole face.
+   */
+  maximised?: boolean;
   /** The snap it is parked at, so the frame can mark it in the position menu. */
   snap?: SnapPoint | null;
 }
@@ -761,6 +771,7 @@ export function resolveDock(
     return {
       edge,
       floating: true,
+      maximised: true,
       snap: placement.snap,
       top: px(occupied.top),
       bottom: px(occupied.bottom),

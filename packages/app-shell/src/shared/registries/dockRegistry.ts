@@ -165,8 +165,36 @@ export function dockGeometryPath(id: string, field: string): string {
 export const DOCK_FRAME_ATTR = 'data-we-dock-frame';
 export const DOCK_CONTENT_ATTR = 'data-we-dock-content';
 
+/**
+ * When a panel is glass: floating over the app, and not filling it.
+ *
+ * Both of those are `floating` — a maximised panel is not displacing either — but they want
+ * opposite answers here. A card over the content has something behind it worth seeing; a panel
+ * covering the window has nothing beside it, so translucency there only makes its own contents
+ * harder to read, over a full-window blur nobody asked for.
+ *
+ * A displacing panel is opaque for the reason it has no radius and no shadow: it has *taken* its
+ * room rather than borrowed it, so it meets the content edge to edge and is not on top of anything.
+ */
+const isGlass = (id: string) => ({
+  $and: [{ $store: dockGeometryPath(id, 'floating') }, { $not: { $store: dockGeometryPath(id, 'maximised') } }],
+});
+
+/**
+ * How far past the panel you can see, and how much of it resolves.
+ *
+ * `color-mix` toward `transparent` rather than an `opacity` on the box: opacity fades the panel's
+ * *contents* along with its background, so the text would go with it. This fades only what is
+ * painted behind them.
+ */
+const translucent = (role: string) => `color-mix(in oklch, var(--we-role-${role}) 50%, transparent)`;
+
+/** Enough to separate the panel from what is behind it without turning it into frosted glass. */
+const PANEL_BLUR = 'blur(12px)';
+
 export function dockFrame(entry: DockEntry, node: SchemaNode): SchemaNode {
   const geo = (field: string) => ({ $store: dockGeometryPath(entry.id, field) });
+  const glass = isGlass(entry.id);
 
   return {
     type: 'Column',
@@ -193,7 +221,16 @@ export function dockFrame(entry: DockEntry, node: SchemaNode): SchemaNode {
               // The panel's own surface. A module's node fills it and need not paint a background, a
               // border or a radius of its own — which is what stops two docked modules from looking
               // like two different applications.
-              bg: 'surface-sunken',
+              //
+              // Half-transparent while it is a card, so the app stays visible behind it and the
+              // panel reads as being *over* something rather than as a hole cut in the window. See
+              // `isGlass` for why a maximised panel is excluded, and `translucent` for why this is
+              // not an `opacity`.
+              bg: { $if: { condition: glass, then: translucent('surface-sunken'), else: 'surface-sunken' } },
+              // Backdrop blur belongs with the transparency and goes when it does: it is expensive,
+              // it makes the element a containing block for fixed descendants, and over an opaque
+              // background it would cost both of those for nothing visible.
+              styles: { $if: { condition: glass, then: { 'backdrop-filter': PANEL_BLUR }, else: {} } },
               border: '1px solid border',
               // Rounded and lifted only while floating. A card over the app should read as being on
               // top; a panel that has taken room *from* the app meets it edge to edge, where a radius
@@ -321,7 +358,15 @@ function titleBar(entry: DockEntry): SchemaNode {
       gap: '100',
       px: '200',
       py: '100',
-      bg: 'page',
+      /*
+        Translucent alongside the frame, so the card is one piece of glass rather than a solid bar
+        stuck to a transparent body.
+
+        No blur of its own: it is inside the frame, which has already blurred everything behind the
+        whole panel. Its 50% composites over the frame's 50%, so the bar settles at about 75% — more
+        solid than the content it labels, which is the right way round for the part you grab.
+      */
+      bg: { $if: { condition: isGlass(entry.id), then: translucent('page'), else: 'page' } },
       borderBottom: '1px solid border',
       /*
         Double-click to maximise, the other half of the convention the grip completes.
