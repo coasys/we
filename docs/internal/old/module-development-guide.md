@@ -1,13 +1,25 @@
-# Module Development Guide
+# Module Development Guide (SUPERSEDED)
 
-> **⚠️ NOT YET IMPLEMENTED — aspirational design, not a usable guide.**
+> **⚠️ SUPERSEDED — this describes an API that was never built. Do not follow it.**
 >
-> This describes a module system (`defineModule`, a module registry, a publishing flow) that does
-> **not exist in the codebase** — grepping for `defineModule` / `moduleRegistry` / `ModuleRegistry`
-> returns nothing. It was previously indexed under "Guides" as though it were usable.
+> **Status (Aug 2026): superseded by the real module contract.** Everything below — `defineModule`,
+> a module registry, `ModuleContext`, the publishing flow — describes a design that does **not exist
+> in the codebase**. Grepping for `defineModule` / `moduleRegistry` / `ModuleRegistry` returns
+> nothing.
 >
-> Kept as a design reference for the module marketplace work (see
-> [module-marketplace.md](./module-marketplace.md)). **Do not follow it as instructions.**
+> **What replaced it:**
+>
+> - **The contract** — `packages/module-system/shared/src/module.ts`. It is deliberately exhaustive
+>   and is the documentation; there is no second file to read.
+> - **The minimal example** — `packages/module-system/notes/`, which takes nothing from the host and
+>   imports no framework at all.
+> - **Where a module sits among the other surfaces**, and what registers one —
+>   [`docs/contributing/surfaces.md`](../../contributing/surfaces.md).
+> - **The distribution design**, still unbuilt — [`../plans/module-marketplace.md`](../plans/module-marketplace.md).
+>
+> Moved here from `plans/` because a banner is not protection: an agent greps this repository, finds
+> 700 lines describing `defineModule` in the present tense, and follows them. `internal/old/` is
+> where documents go once the thing they describe is not what the codebase does.
 
 This guide explains how to build modules for WE - composable packages that provide governance, economics, social features, and other coordination primitives.
 

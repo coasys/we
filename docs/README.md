@@ -42,7 +42,7 @@ Per-system docs live with the code — every `packages/<system>/` directory has 
 Working notes for maintainers — plans, design decisions, and superseded documents.
 
 - [decisions/](internal/decisions/) — Design decisions and rationale (block system, schema system, template storage, semantic predicates, AI integration)
-- [plans/](internal/plans/) — Strategy docs for upcoming work
+- [plans/](internal/plans/) — Strategy docs for upcoming work. **Every plan carries a dated `Status` line** saying whether it shipped, is in progress, was never started, or was superseded — see [plans/README.md](internal/plans/README.md), which also lists the ones that don't have one yet
 - [old/](internal/old/) — Superseded documents, kept for historical context — each carries a banner naming what replaced it
 
 > **Note:** documents under `internal/old/` and some under `internal/plans/` describe designs that
