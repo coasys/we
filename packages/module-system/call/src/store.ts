@@ -891,9 +891,19 @@ export function createCallStore(deps: CallStoreDeps) {
         left, one per track, in the order they are in. Explicit placement rather than `order`, which
         is what it used to need when the spotlight was a span in a grid solved for equal tiles.
       */
+      /*
+        The spotlight's cell fills with its box rather than centring it.
+
+        Every other cell centres what it holds, which is right for a picture smaller than its cell.
+        This one holds the *pinned* box — see `tilePins` — and a sticky element's range is measured
+        from where it would have sat: centred in a column several times the height of the stage, it
+        starts halfway down and scrolls out of view before it ever reaches the top edge it is
+        supposed to stick to. Stretched from the start of the cell, it pins as intended.
+      */
+      const fills: Record<string, string | number> = { 'justify-content': 'flex-start', 'align-items': 'stretch' };
       const spotlight: Record<string, string | number> = stripLayout().side
-        ? { 'grid-column': '1', 'grid-row': '1 / -1' }
-        : { 'grid-row': '1', 'grid-column': '1 / -1' };
+        ? { ...fills, 'grid-column': '1', 'grid-row': '1 / -1' }
+        : { ...fills, 'grid-row': '1', 'grid-column': '1 / -1' };
       /**
        * Every cell is a size container, which is what lets the picture inside it be the right shape.
        *
