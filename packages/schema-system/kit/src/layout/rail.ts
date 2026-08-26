@@ -258,17 +258,88 @@ export interface RailItemOptions {
   id?: SchemaProp;
   /** Shown on hover while the rail is closed and the label is not readable. */
   tooltip?: SchemaProp;
+  /**
+   * Ring the row's avatar and mark it with a glyph — "something is live here".
+   *
+   * A ring rather than a dot, and on the avatar rather than beside the label, for two reasons that
+   * both come from the collapsed rail: a label-side badge is not rendered at all while the rail is
+   * closed, which is exactly when an ambient cue is worth having, and the dot position on
+   * `we-avatar` already means `online`.
+   *
+   * `tone` takes a colour role, and `success` or the accent is almost always right. Avoid `danger`:
+   * red is the app's word for something being wrong, and spending it on a healthy call in progress
+   * makes the genuinely wrong things harder to see.
+   *
+   * The glyph is what makes it legible — a coloured ring says "something", an icon says what. It
+   * must read correctly without motion: a theme's reduced-motion setting zeroes the animation
+   * tokens, so anything relying on a pulse to be noticed is invisible to those users.
+   */
+  live?: { when: SchemaProp; icon: string; tone?: string };
 }
 
 export function railItem(opts: RailItemOptions): SchemaNode {
   const active = opts.active ?? false;
 
-  const mark: SchemaNode = opts.avatar
+  const live = opts.live;
+  const tone = live?.tone ?? 'success';
+
+  const face: SchemaNode = opts.avatar
     ? {
         type: 'we-avatar',
         props: { image: opts.avatar.src, initials: opts.avatar.name, hash: opts.avatar.name, size: 'sm' },
       }
     : { type: 'we-icon', props: { name: opts.icon ?? '' } };
+
+  /*
+    The ring and its glyph, wrapped around whatever the row's mark is.
+
+    The ring is drawn on a box around the avatar rather than on the avatar itself: `we-avatar` spends
+    its own ring on `[selected]` and its dot on `[online]`, and borrowing either would mean this
+    reads as one of those instead. A box also keeps the badge's corner well defined, which an
+    `avatar` radius following the theme would not.
+  */
+  const mark: SchemaNode = live
+    ? {
+        type: '$if',
+        props: {
+          condition: live.when,
+          then: {
+            type: 'Column',
+            props: {
+              position: 'relative',
+              // Round, because it rings something round. `full` is an ellipse on a non-square box,
+              // and this box is square by construction — it holds one `sm` avatar.
+              r: 'full',
+              border: `2px solid ${tone}`,
+              // The ring sits *outside* the avatar rather than over its edge, so a face is never
+              // clipped by the thing announcing it.
+              p: '100',
+            },
+            children: [
+              face,
+              {
+                // The glyph's disc is a wrapper, not the icon: `we-icon` takes layout props only, so
+                // `bg`, `r` and `p` on it resolve to nothing and the badge is a bare glyph on the
+                // avatar's edge. The validator catches this, which is how it was found.
+                type: 'Column',
+                props: {
+                  position: 'absolute',
+                  bottom: '0',
+                  right: '0',
+                  bg: tone,
+                  r: 'full',
+                  p: '100',
+                  ax: 'center',
+                  ay: 'center',
+                },
+                children: [{ type: 'we-icon', props: { name: live.icon, size: '10px', color: 'on-accent' } }],
+              },
+            ],
+          },
+          else: face,
+        },
+      }
+    : face;
 
   const button: SchemaNode = {
     type: 'we-button',

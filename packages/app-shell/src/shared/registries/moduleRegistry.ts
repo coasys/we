@@ -105,12 +105,22 @@ const modules = new Map<string, RegisteredModule>();
  * agent has not installed, or has muted here, must not render either. Each layer falls back to the
  * registered set when undecided, which is what keeps existing spaces and existing agents rendering
  * the chrome they already had. See `Space.enabledModules` and `AgentSettings.installedModules`.
+ *
+ * ## Chrome that is about something still running
+ *
+ * All of the above is about chrome that belongs to a *space*, which is nearly all of it. A module
+ * declaring `holdsWhen` is saying it sometimes has live state instead, and that state does not stop
+ * mattering because the user walked into a different space: a call outlives navigating away from
+ * where it started, and gating its bar on the destination space took away the controls — hang-up
+ * included — while the call carried on regardless. So the gate widens to "enabled here, or holding
+ * something". See `ModuleDefinition.holdsWhen`.
  */
-function gateOnSpace(moduleId: string, node: SchemaNode): SchemaNode {
+function gateOnSpace(moduleId: string, node: SchemaNode, holdsWhen?: string): SchemaNode {
+  const enabledHere = { $in: [moduleId, { $store: 'spaceStore.activeModules' }] };
   return {
     type: '$if',
     props: {
-      condition: { $in: [moduleId, { $store: 'spaceStore.activeModules' }] },
+      condition: holdsWhen ? { $or: [enabledHere, { $store: holdsWhen }] } : enabledHere,
       then: node,
     },
   };
@@ -222,7 +232,7 @@ export const moduleRegistry = {
     for (const [index, slot] of (definition.slots ?? []).entries()) {
       slotRegistry.register({
         ...slot,
-        node: gateOnSpace(definition.id, slot.node),
+        node: gateOnSpace(definition.id, slot.node, definition.holdsWhen),
         // Namespaced, and indexed so one module can contribute more than one piece of chrome.
         id: `${definition.id}:${index}`,
       });
@@ -240,7 +250,11 @@ export const moduleRegistry = {
         anchor: 'dock-right',
         order: dock.order,
         id: `dock:${id}`,
-        node: gateOnSpace(definition.id, dockFrame({ ...dock, id, moduleId: definition.id }, dock.node)),
+        node: gateOnSpace(
+          definition.id,
+          dockFrame({ ...dock, id, moduleId: definition.id }, dock.node),
+          definition.holdsWhen,
+        ),
       });
     }
 

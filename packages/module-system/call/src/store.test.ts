@@ -237,6 +237,132 @@ describe('transport and device lifetime', () => {
 });
 
 /**
+ * What happens to a call when the user goes somewhere else.
+ *
+ * The call used to end. Presence is the roster the mesh reconciles against, and the host scoped it
+ * to the space on screen — so navigating away emptied the roster and closed every connection, and
+ * the store had an effect that finished the job whenever the dataset went null. Both halves are
+ * gone: the host keeps a source open for any space holding a live activity, and this file no longer
+ * ends a call for any reason except somebody ending it.
+ */
+describe('a call and the space it happens in', () => {
+  function navigable() {
+    const signal = <T>(initial: T): [() => T, (next: T) => void] => {
+      let value = initial;
+      return [() => value, (next: T) => (value = next)];
+    };
+
+    // Effects are collected rather than run reactively — the deps are plain closures, so re-running
+    // them by hand is how a change of space is simulated.
+    const effects: Array<() => void> = [];
+    const activities: Array<Record<string, unknown>> = [];
+    let dataset: { id: string } | null = { id: 'ds' };
+    let uri: string | null = 'inmemory://ds';
+
+    const scope = {
+      capabilities: { unicast: 'emulated', broadcast: true, coalesce: true, confidential: false },
+      channel: () => ({ publish: () => {}, onMessage: () => () => {} }),
+      dispose: () => {},
+    };
+
+    const store = createCallStore({
+      signal,
+      effect: (fn: () => void) => effects.push(fn),
+      dataset: () => dataset,
+      datasetUri: () => uri,
+      selfId: () => 'did:test:me',
+      ephemeral: () => scope,
+      presence: {
+        peers: () => [],
+        setActivity: (activity: Record<string, unknown>) => activities.push(activity),
+        clearActivity: () => {},
+      },
+      onDispose: () => {},
+      createPeerConnection: () => ({}) as RTCPeerConnection,
+    } as never) as ReturnType<typeof createCallStore> & Record<string, (...args: unknown[]) => unknown>;
+
+    return {
+      store,
+      activities,
+      /** Move to another space, or to none, and let everything that watches for it run. */
+      goTo(next: { id: string } | null, nextUri: string | null) {
+        dataset = next;
+        uri = nextUri;
+        for (const fn of effects) fn();
+      },
+    };
+  }
+
+  it('says which space it is in, even when it is not about anything', async () => {
+    // The host routes a call's activity to that space's own presence source. An unanchored activity
+    // was enough only while a call could exist solely in the space you were standing in.
+    const { store, activities } = navigable();
+
+    store.joinSpaceCall();
+    await Promise.resolve();
+
+    const call = activities.find((a) => a.type === 'call');
+    expect((call?.anchor as { datasetUri?: string })?.datasetUri).toBe('inmemory://ds');
+    // No node — a space-wide call is still space-wide, and `transcribe` reads `anchor?.nodeId`.
+    expect((call?.anchor as { nodeId?: string })?.nodeId).toBeUndefined();
+  });
+
+  it('stays in the call after moving to another space', async () => {
+    const { store, goTo } = navigable();
+
+    store.joinSpaceCall();
+    await Promise.resolve();
+    expect(store.active()).toBe(true);
+
+    goTo({ id: 'elsewhere' }, 'inmemory://elsewhere');
+
+    expect(store.active()).toBe(true);
+    expect(store.callId()).not.toBeNull();
+  });
+
+  it('stays in the call across a frame with no dataset at all', async () => {
+    // The specific shape of the old bug. A null dataset is the boot frame and the gap between two
+    // spaces as much as it is anything final, so ending a call on it ended calls for no reason.
+    const { store, goTo } = navigable();
+
+    store.joinSpaceCall();
+    await Promise.resolve();
+
+    goTo(null, null);
+
+    expect(store.active()).toBe(true);
+  });
+
+  it('still ends when somebody ends it', async () => {
+    // The other half: nothing above should have made a call harder to leave.
+    const { store, goTo } = navigable();
+
+    store.joinSpaceCall();
+    await Promise.resolve();
+    goTo({ id: 'elsewhere' }, 'inmemory://elsewhere');
+
+    store.leave();
+    expect(store.active()).toBe(false);
+  });
+
+  it('replaces the call rather than running two', async () => {
+    // Asserted here because the presence work rests on it: the pinned-space set is bounded by there
+    // being one call, and a second live call would be a second space pinned indefinitely.
+    const { store } = navigable();
+
+    store.joinSpaceCall();
+    await Promise.resolve();
+    const first = store.callId();
+
+    store.joinAnchoredCall('node-1');
+    await Promise.resolve();
+
+    expect(store.callId()).not.toBe(first);
+    expect(store.active()).toBe(true);
+  });
+});
+
+/**
  * The spotlight is a layout, not a bigger cell.
  *
  * It used to be a span in the grid solved for equal tiles, so the focused tile could only ever be

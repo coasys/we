@@ -1,5 +1,5 @@
 /**
- * PresenceStore — live presence for the current space.
+ * PresenceStore — live presence for the spaces that need it.
  *
  * The Solid binding over the neutral presence core in `@we/schema-shared`. It owns three things the
  * core deliberately does not: **when** to start and stop (following the current perspective), **what**
@@ -13,19 +13,32 @@
  * no path back except remounting. Here the store outlives navigation and simply re-scopes when the
  * perspective changes.
  *
- * ## Scope: current space only
+ * ## Scope: the space on screen, plus anywhere something live is happening
  *
- * Presence for *every* joined space would let the sidebar show live occupancy everywhere, but the
- * traffic is (spaces × members ÷ heartbeat) inbound signals per second — uncomfortable at modest
- * numbers, since each crosses the executor's GraphQL boundary and lands in reactive state on the main
- * thread. Current-space-only is the conservative default; widening it is a deliberate later decision
- * (and realistically wants a backend that reports presence server-side).
+ * One source per space in that set, reconciled rather than rebuilt, so arriving somewhere new does
+ * not disturb a space you are still doing something in. In practice the set is one or two entries:
+ * a call is the only thing that pins a space today, and there can only be one call at a time.
+ *
+ * That second half exists because presence *is* a call's roster. A source that stops broadcasts a
+ * `bye` and drops its peer map, so before this the roster emptied the moment you navigated away and
+ * every `RTCPeerConnection` in the call closed behind it.
+ *
+ * Presence for *every* joined space is a different proposition and remains refused. The traffic is
+ * (spaces × members ÷ heartbeat) inbound signals per second, paid continuously whether or not
+ * anything happens — each one crossing the executor's GraphQL boundary and landing in reactive state
+ * on the main thread. Anything that wants to know about a space you are *not* in, such as unread
+ * counts, should ask the data rather than the beacon: that cost is paid only when something changes.
+ * Keeping the set bounded by what is live is what keeps the two apart, and `MAX_LEASES` says so out
+ * loud. Widening it wants a backend that reports presence server-side.
  *
  * ## Publishing vs subscribing
  *
- * Asymmetric, and easy to conflate. This agent has exactly one location, so it **publishes** once per
- * heartbeat to the space it is in. It **subscribes** only to that same space. Our own dot needs no
- * transport at all — it is `routeStore.currentPath`, read locally.
+ * Asymmetric, and easy to conflate. This agent has exactly one location, so it publishes **the same
+ * state** to each scoped space — including a focus that says it is somewhere else, which is what
+ * peers in a call should see when you wander off. It **subscribes** to each of those spaces, and the
+ * results are unioned; the accessors that mean "here" (`online`, `onlineHere`, `calls`) filter by
+ * dataset themselves, so the union stays invisible to them. Our own dot needs no transport at all —
+ * it is `routeStore.currentPath`, read locally.
  *
  * ## What it never does
  *
@@ -33,6 +46,7 @@
  * `$identities` and the `$agent` block already use. Flux's presence map *is* its profile cache, so it
  * re-hydrates every peer profile on every heartbeat — an N-peer `Promise.all` every five seconds.
  */
+import { MAX_LEASES, reconcileLeases, unionPeers, wantedUris } from '@shared/presenceScope';
 import { provideModuleHostServices } from '@shared/registries/moduleHostServices';
 import { createTabCoordinator } from '@shared/tabCoordinator';
 import { useDatasetStore } from '@solid/stores/DatasetStore';
@@ -50,6 +64,7 @@ import {
   sortByPresence,
   trace,
 } from '@we/backend-shared';
+import type { DatasetProxy } from '@we/models';
 import {
   type Accessor,
   createContext,
@@ -101,23 +116,33 @@ export function PresenceStoreProvider(props: ParentProps) {
   const profileStore = useProfileStore();
   const routeStore = useRouteStore();
 
-  const [rawPeers, setRawPeers] = createSignal<Peer[]>([]);
+  /** What each live source last reported, keyed by the space's uri. Unioned by {@link rawPeers}. */
+  const [peersByUri, setPeersByUri] = createSignal<Record<string, Peer[]>>({});
   /**
-   * What this tab is participating in, by `type:id`.
+   * What this tab is participating in, by `type:id` — and, for each, the space it happens in.
    *
-   * Tracked here rather than read back off the source because it decides something the source knows
-   * nothing about: whether this tab may be muted. Publishing is restricted to one tab per agent, and
+   * Tracked here rather than read back off the source for two reasons. It decides something no
+   * source knows: whether this tab may be muted. Publishing is restricted to one tab per agent, and
    * leadership follows window focus — so a tab holding a call would stop publishing the moment you
    * looked at another window, and its call would vanish from every peer's roster while it was still
-   * running. `setPinned` exists for exactly that and had never been called.
+   * running. `setPinned` exists for exactly that.
+   *
+   * And it decides which spaces need a source at all: an activity is what pins one open after you
+   * have navigated away. Holding the activity itself, not just its key, is what lets a source that
+   * opens later — or reopens — start already carrying it, rather than dropping the publish on the
+   * floor because the space was not scoped yet.
    */
-  const [myActivities, setMyActivities] = createSignal<string[]>([]);
+  const [myActivities, setMyActivities] = createSignal<Record<string, { uri: string; activity: Activity }>>({});
   const activityKey = (type: string, id?: string) => `${type}:${id ?? ''}`;
   const [focusDepth, setFocusDepth] = createSignal<FocusDepth>('route');
   const [availability, setAvailabilitySignal] = createSignal<'available' | 'busy' | 'away' | 'invisible'>('available');
-  const [available, setAvailable] = createSignal(false);
 
-  let source: PresenceSource | null = null;
+  /** A running presence source for one space, with everything needed to shut it down again. */
+  interface Lease {
+    source: PresenceSource;
+    stop: () => void;
+  }
+  const leases = new Map<string, Lease>();
 
   /**
    * One coordinator per **agent**: only the focused tab publishes, but every tab subscribes so each
@@ -166,24 +191,40 @@ export function PresenceStoreProvider(props: ParentProps) {
   );
 
   // ── Lifecycle ──────────────────────────────────────────────────────────────
-  // Re-scope whenever the current space changes: tear the old source down completely rather than
-  // retaining its peers. Retention without subscription only preserves state that is already past its
-  // TTL, and the join handshake repopulates in one round trip on return anyway.
-  createEffect(() => {
-    // The complete list of things that justify tearing presence down and building it again. Anything
-    // else read below is untracked, deliberately — see `presence.start`.
-    const datasetHandle = datasetStore.currentDataset()?.handle;
-    const did = myDid();
+  /**
+   * Which spaces need a presence source right now.
+   *
+   * The space on screen, plus any space this agent is doing something live in. That second half is
+   * what lets a call outlive navigating away from it: presence *is* the call's roster, so a source
+   * that stops is a call that loses everyone — see the note on `teardown` in the call module.
+   *
+   * Deliberately not "every joined space". Presence is a heartbeat, so the cost is
+   * `spaces × members ÷ interval` paid continuously whether or not anything happens; subscribing
+   * everywhere to learn about things that change rarely is the wrong curve, and unread counts
+   * already answer that question by querying the data instead. The set stays bounded by what is
+   * *live*, which in practice is one call — see `MAX_LEASES`.
+   */
+  const wanted = createMemo<string[]>(() =>
+    wantedUris(
+      datasetUri(),
+      Object.values(myActivities()).map((entry) => entry.uri),
+    ),
+  );
 
-    source?.stop();
-    source = null;
-    setRawPeers([]);
-    setMyActivities([]);
-    setAvailable(false);
+  function closeLease(uri: string): void {
+    const lease = leases.get(uri);
+    if (!lease) return;
+    lease.stop();
+    leases.delete(uri);
+    setPeersByUri((prev) => {
+      const next = { ...prev };
+      delete next[uri];
+      return next;
+    });
+  }
 
-    if (!datasetHandle || !did) return;
-
-    const scope = ephemeralPort(datasetHandle);
+  function openLease(uri: string, handle: DatasetProxy, did: string): void {
+    const scope = ephemeralPort(handle);
     if (!scope) return; // personal space — no neighbourhood, no presence
 
     // Only the focused tab publishes; every tab still subscribes, so each one's UI stays live.
@@ -209,10 +250,18 @@ export function PresenceStoreProvider(props: ParentProps) {
       },
       onMessage: raw.onMessage,
     };
-    const presence = createHeartbeatPresence(channel, { onPeersChanged: setRawPeers });
+    const presence = createHeartbeatPresence(channel, {
+      onPeersChanged: (peers) => setPeersByUri((prev) => ({ ...prev, [uri]: peers })),
+    });
 
-    source = presence;
-    setAvailable(true);
+    leases.set(uri, {
+      source: presence,
+      stop: () => {
+        unsubLeader?.();
+        presence.stop();
+        scope.dispose();
+      },
+    });
 
     /**
      * Registered *before* `start`, and the order is the point.
@@ -240,6 +289,12 @@ export function PresenceStoreProvider(props: ParentProps) {
      *
      * Both values already have their own effects below, which is the right shape — publish a change,
      * do not rebuild the publisher.
+     *
+     * The activities go in the opening state rather than being set afterwards, and that is what
+     * makes a call survive being navigated away from and back to. A source for a space this agent is
+     * already calling in has to announce the call in its very first beat: published a tick later,
+     * peers who answered the handshake in between have already been told this agent is here and idle,
+     * and the call is not in the roster they built from it.
      */
     untrack(() =>
       presence.start({
@@ -247,28 +302,99 @@ export function PresenceStoreProvider(props: ParentProps) {
         updatedAt: Date.now(),
         availability: availability(),
         focus: myFocus(),
+        activities: Object.values(myActivities())
+          .filter((entry) => entry.uri === uri)
+          .map((entry) => entry.activity),
       }),
     );
+  }
 
-    onCleanup(() => {
-      unsubLeader?.();
-      presence.stop();
-      scope.dispose();
-    });
+  /**
+   * Reconcile the running sources against the wanted set.
+   *
+   * Reconciliation rather than teardown-and-rebuild, which is the whole point: the space you are
+   * *leaving* keeps its source when something live is holding it, and the space you are arriving at
+   * gets a new one, without either disturbing the other.
+   *
+   * Re-runs whenever the dataset list changes too, because that is how a lease whose handle was not
+   * available yet — a call anchored in a space whose ref arrives a moment later — eventually opens.
+   * Idempotent, so the extra runs cost a Map lookup each.
+   */
+  createEffect(() => {
+    const did = myDid();
+    const want = did ? wanted() : [];
+    const refs = datasetStore.datasets();
+
+    const { open, close, refused } = reconcileLeases([...leases.keys()], want);
+
+    for (const uri of close) closeLease(uri);
+
+    for (const uri of open) {
+      const handle = refs.find((ref) => ref.sharedUri === uri)?.handle;
+      // No local ref for it yet. The effect re-runs when the dataset list changes, which is when one
+      // arrives; until then there is nothing to open a scope on.
+      if (handle) untrack(() => openLease(uri, handle, did!));
+    }
+
+    if (refused.length) {
+      console.warn(
+        `presence: refusing to scope ${refused.join(', ')} — already at the ${MAX_LEASES}-space ceiling. ` +
+          'An activity is probably being pinned and never cleared.',
+      );
+    }
   });
 
-  // Republish on navigation. Immediate rather than waiting for the next tick — the heartbeat driver
-  // pushes its timer out by a full interval so this does not cause a double-send.
+  onCleanup(() => {
+    for (const uri of [...leases.keys()]) closeLease(uri);
+  });
+
+  /** A transport exists for the space on screen. False in a personal space, which has no neighbourhood. */
+  const available = createMemo(() => {
+    const uri = datasetUri();
+    return !!uri && uri in peersByUri();
+  });
+
+  /** Every live source, for a change that belongs to this agent rather than to one space. */
+  const eachSource = (apply: (source: PresenceSource) => void) => {
+    for (const lease of leases.values()) apply(lease.source);
+  };
+
+  /*
+    Republish on navigation. Immediate rather than waiting for the next tick — the heartbeat driver
+    pushes its timer out by a full interval so this does not cause a double-send.
+
+    Sent to every source, not just the current space's. An agent has one location, and the peers
+    watching a call this agent has navigated away from should see that it has: "in the call, looking
+    at something else" is true and worth showing, where a focus frozen at the moment of leaving is
+    simply wrong.
+  */
   createEffect(() => {
     const focus = myFocus();
-    source?.update({ focus });
+    eachSource((source) => source.update({ focus }));
   });
 
   createEffect(() => {
-    source?.update({ availability: availability() });
+    const value = availability();
+    eachSource((source) => source.update({ availability: value }));
   });
 
   // ── Derived ────────────────────────────────────────────────────────────────
+  /**
+   * Every peer any live source can see, as one list.
+   *
+   * The union is what makes multiple sources invisible to everything downstream. The accessors that
+   * mean "here" already say so — `online` filters by `peersInDataset`, and `calls` derives from it —
+   * so widening this does not leak another space's peers into the sidebar. And the call module's
+   * roster filters on the call's own id, which is why it needs no notion of which space it is
+   * reading: this is the single change that makes its roster survive navigating away.
+   *
+   * Deduplicated by agent, because one person can be visible from two sources at once — they are in
+   * the call you are in *and* in the space you have wandered into. Freshest beat wins: the two
+   * reports are the same agent's state seen through different channels, so the later one is simply
+   * the more current, and picking arbitrarily would make liveness flicker as the maps iterate.
+   */
+  const rawPeers = createMemo<Peer[]>(() => unionPeers(peersByUri()));
+
   // Join against the shared agent cache. `find` over `agents()` matches how SpaceStore.members
   // resolves its dids; both read the same cache that `fetchAgent` populates.
   const peers = createMemo<PresentAgent[]>(() => {
@@ -307,25 +433,46 @@ export function PresenceStoreProvider(props: ParentProps) {
   // Lend feature modules the activity slice of presence. Narrowed deliberately: a module has a
   // legitimate need to say "I am in this call" and to read who else is, but no business setting
   // another agent's availability or driving the heartbeat. See moduleHostServices.ts.
+  /**
+   * Publish an activity into the space it actually happens in.
+   *
+   * The activity says which that is: an anchored one carries `anchor.datasetUri`, which the call
+   * module sets to the space it dialled from. Falling back to the space on screen keeps every
+   * unanchored activity behaving exactly as before.
+   *
+   * Recorded before publishing, and published from the record rather than from the argument, because
+   * the space may not be scoped yet — starting a call pins a space that had no source of its own
+   * until this moment. The reconcile effect opens it, and `openLease` starts it carrying whatever
+   * this wrote. A direct `source.setActivity` would be a publish into nothing.
+   */
   function setActivity(activity: Activity): void {
     const key = activityKey(activity.type, 'id' in activity ? (activity.id as string) : undefined);
-    setMyActivities((prev) => (prev.includes(key) ? prev : [...prev, key]));
-    source?.setActivity(activity);
+    const anchor = 'anchor' in activity ? (activity.anchor as Focus | undefined) : undefined;
+    const uri = anchor?.datasetUri ?? datasetUri();
+    if (!uri) return;
+    setMyActivities((prev) => ({ ...prev, [key]: { uri, activity } }));
+    leases.get(uri)?.source.setActivity(activity);
   }
 
   function clearActivity(type: string, id?: string): void {
     // Matching `PresenceSource.clearActivity`: no id clears every activity of that type.
-    setMyActivities((prev) =>
-      prev.filter((key) => (id === undefined ? !key.startsWith(`${type}:`) : key !== activityKey(type, id))),
+    const matches = (key: string) => (id === undefined ? key.startsWith(`${type}:`) : key === activityKey(type, id));
+    // Cleared from the sources holding them, which is not necessarily the space on screen — hanging
+    // up from another space has to reach the call's own source or the call never ends for its peers.
+    const uris = new Set(
+      Object.entries(myActivities())
+        .filter(([key]) => matches(key))
+        .map(([, entry]) => entry.uri),
     );
-    source?.clearActivity(type, id);
+    setMyActivities((prev) => Object.fromEntries(Object.entries(prev).filter(([key]) => !matches(key))));
+    for (const uri of uris) leases.get(uri)?.source.clearActivity(type, id);
   }
 
   /**
    * Refuse to hand publishing away while this tab is holding something that must keep being
    * published. The coordinator already resolves two pinned tabs deterministically.
    */
-  createEffect(() => tabs()?.setPinned(myActivities().length > 0));
+  createEffect(() => tabs()?.setPinned(Object.keys(myActivities()).length > 0));
 
   provideModuleHostServices({
     presence: {

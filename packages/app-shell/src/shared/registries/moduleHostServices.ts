@@ -30,6 +30,7 @@ import type {
 import type {
   CreateEntityOptions,
   InterpretationActivitySummary,
+  ModuleDatasetAccess,
   ModuleIdentityAccess,
   ModuleStoreDeps,
 } from '@we/module-shared';
@@ -77,6 +78,8 @@ export interface ModuleHostServices {
   interpretationAvailable?: () => boolean;
   /** The profile cache, so a module can put a face to an agent id. See `ModuleIdentityAccess`. */
   identities?: ModuleIdentityAccess;
+  /** Naming and reaching spaces, for a module whose state can outlive the space on screen. */
+  datasets?: ModuleDatasetAccess;
   /** Write a record into the current dataset — the host's `model.create`, in imperative form. */
   createEntity?: (
     entity: string,
@@ -225,6 +228,11 @@ export function createModuleStoreDeps(framework: {
 
     // Forwarding, like the ports above: a module store is built before `ProfileStore` mounts, so
     // capturing the directory itself would capture nothing.
+    datasets: {
+      get: (uri) => services.datasets?.get(uri),
+      open: (uri) => services.datasets?.open(uri),
+    },
+
     identities: {
       get: (agentId) => services.identities?.get(agentId),
       fetch: (agentId) => services.identities?.fetch(agentId),
