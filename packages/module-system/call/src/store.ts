@@ -22,6 +22,7 @@ import type { Focus, ModuleStoreDeps, Peer } from '@we/module-shared';
 import { activitiesOfType } from '@we/module-shared';
 import { planEphemeral } from '@we/module-shared';
 
+import { devPeers, devPeersAvailable, readDevPeerCount, stopDevPeers, writeDevPeerCount } from './devPeers';
 import { createMediaController, type MediaController } from './media';
 import { type CallMesh, createCallMesh } from './mesh';
 import { anchoredCallId, spaceCallId } from './protocol';
@@ -320,6 +321,20 @@ export function createCallStore(deps: CallStoreDeps) {
     return tile;
   }
 
+  /*
+    How many synthetic participants the call bar's dev controls have asked for — see `devPeers`.
+
+    A signal rather than a read of `localStorage` per rebuild, so pressing `+` re-solves the stage on
+    the click instead of waiting for whatever roster event happens next. Seeded from storage, which
+    is what makes the count survive the reloads a developer does while iterating.
+  */
+  const [fakePeerCount, setFakePeerCountSignal] = signal(readDevPeerCount());
+
+  function stepFakePeers(by: number) {
+    setFakePeerCountSignal(writeDevPeerCount(fakePeerCount() + by));
+    rebuildTiles();
+  }
+
   function rebuildTiles() {
     const id = callId();
     const me = selfId?.() ?? null;
@@ -327,6 +342,7 @@ export function createCallStore(deps: CallStoreDeps) {
       tileCache.clear();
       setTiles([]);
       setTileStates([]);
+      stopDevPeers();
       return;
     }
 
@@ -373,6 +389,28 @@ export function createCallStore(deps: CallStoreDeps) {
         // nothing until the first negotiation — exactly the window that showed nothing at all.
         connecting: wantsPicture && !picture && connection !== 'failed',
         failed: connection === 'failed',
+      });
+    }
+
+    /*
+      Synthetic participants, when a developer has asked for them — see `devPeers`.
+
+      Appended here rather than injected into the roster, so they cost the mesh and presence nothing
+      and cannot be mistaken for a real peer by anything upstream. They go through `stabilise` and
+      `tileStates` like everyone else, which is the point: the tiling solve, the spotlight's axis and
+      fit-to-content all see exactly what they would in a real call.
+    */
+    for (const peer of devPeers(fakePeerCount())) {
+      next.push(stabilise({ id: peer.id, did: peer.id, stream: peer.stream, isSelf: false }));
+      states.push({
+        id: peer.id,
+        isScreen: false,
+        audioEnabled: peer.audioEnabled,
+        videoEnabled: true,
+        connection: 'connected',
+        hasPicture: peer.stream !== null,
+        connecting: false,
+        failed: false,
       });
     }
 
@@ -698,6 +736,29 @@ export function createCallStore(deps: CallStoreDeps) {
         insetY: STAGE_PADDING_PX * 2 + (rows - 1) * STAGE_GAP_PX,
       };
     },
+
+    /*
+      Synthetic participants, and the two controls that change how many — see `devPeers`.
+
+      Spread conditionally rather than declared and left inert, so a production build's store does
+      not carry a `setFakePeers` a template could find and call. Nothing else here is conditional;
+      this is the one member that must not exist rather than merely do nothing.
+    */
+    ...(devPeersAvailable
+      ? {
+          fakePeerCount,
+          /*
+            A step rather than a setter, because the schema layer has no arithmetic — there is no
+            token for "the current count minus one", so a `+`/`−` pair has to be two actions.
+
+            Both re-solve the stage on the click. Reading storage per rebuild instead would leave it
+            showing the old count until whatever roster event happened next, which for a button you
+            press while watching the thing it changes is the whole of the feedback.
+          */
+          addFakePeer: () => stepFakePeers(1),
+          removeFakePeer: () => stepFakePeers(-1),
+        }
+      : {}),
 
     /** Whether the video is showing at all — what the show/hide button reflects. */
     stageOpen: visible,

@@ -36,6 +36,7 @@ import { defineModule, type ModuleStoreDeps } from '@we/module-shared';
 import { peopleTooltip } from '@we/schema-kit';
 import { type SchemaNode } from '@we/schema-shared';
 
+import { devPeersAvailable } from './devPeers';
 import { createCallStore } from './store';
 
 export { createCallMesh, type CallMesh, type SignallingChannel } from './mesh';
@@ -572,6 +573,73 @@ const stage: SchemaNode = {
 };
 
 /**
+ * `−  N  +` — how many synthetic participants the stage is showing.
+ *
+ * In the bar rather than behind a console incantation, because what this is for is dragging the
+ * panel and watching the arrangement re-solve: going to devtools to try five people instead of
+ * three breaks exactly the loop it exists to support. Being on screen also means the count cannot be
+ * silently left on, which a `localStorage` key set and forgotten very much can — two phantom
+ * participants in a real call a week later, with nothing to explain them.
+ *
+ * Contributed only in a development build, and by a conditional spread at the definition below
+ * rather than a `$if` here, so the node does not exist in a production bundle rather than merely
+ * rendering nothing in one.
+ */
+const devPeerControls: SchemaNode = {
+  type: 'Row',
+  props: { gap: '100', ay: 'center' },
+  children: [
+    { type: 'we-divider', props: { orientation: 'vertical', height: '26px' } },
+    {
+      type: 'we-tooltip',
+      props: { title: 'One fewer fake participant', placement: 'bottom' },
+      children: [
+        {
+          type: 'we-button',
+          props: {
+            square: true,
+            size: 'sm',
+            variant: 'ghost',
+            disabled: { $not: { $store: 'modules.call.fakePeerCount' } },
+            // Zero-argument, because the schema layer has no arithmetic: there is no way to write
+            // "the current count minus one" as a token, so the step belongs in the store.
+            onClick: { $action: 'modules.call.removeFakePeer' },
+          },
+          children: [{ type: 'we-icon', props: { name: 'minus' } }],
+        },
+      ],
+    },
+    {
+      type: 'we-tooltip',
+      props: { title: 'Fake participants — development only', placement: 'bottom' },
+      children: [
+        {
+          type: 'we-text',
+          props: { variant: 'label', color: 'text-muted', minWidth: '12px', textAlign: 'center' },
+          children: [{ type: 'we-number', props: { value: { $store: 'modules.call.fakePeerCount' } } }],
+        },
+      ],
+    },
+    {
+      type: 'we-tooltip',
+      props: { title: 'One more fake participant', placement: 'bottom' },
+      children: [
+        {
+          type: 'we-button',
+          props: {
+            square: true,
+            size: 'sm',
+            variant: 'ghost',
+            onClick: { $action: 'modules.call.addFakePeer' },
+          },
+          children: [{ type: 'we-icon', props: { name: 'plus' } }],
+        },
+      ],
+    },
+  ],
+};
+
+/**
  * A toggle button whose icon and tone follow the state it toggles.
  *
  * No `size`, which means `md` — the default, and one step up from the `sm` the whole bar used to be.
@@ -910,6 +978,13 @@ const bar: SchemaNode = {
           microphone, your camera, your screen, your transcript, and whether you are looking at the
           video. Everything right of it is the call itself — who is in it, and how much room it has.
         */
+            /*
+              Development only, and absent rather than inert in a production build — see
+              `devPeerControls`. Placed with the things you do to your own machine rather than with
+              the call itself, which is what the divider below separates: how many fake participants
+              you are looking at is a property of your session, not of the call.
+            */
+            ...(devPeersAvailable ? [devPeerControls] : []),
             participantsToggle,
             // Two thirds of a control's height, so it reads as a separator between groups rather than as
             // a rule drawn down the whole bar. It moved with the buttons: at 20px against `sm` it was
