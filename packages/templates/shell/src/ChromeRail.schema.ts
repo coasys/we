@@ -187,11 +187,11 @@ export const chromeRail: SchemaNode = {
 
           Two terms, for two different collisions. `--we-chrome-top` is a panel that has *taken* the
           top edge, which this would otherwise sit inside — the vertical twin of the
-          `--we-chrome-right` term above, and the same fix. `--we-panel-chrome-top` is a panel that
-          merely reaches the top without displacing anything, a maximised one especially: the rail is
-          painted above the panels, so its controls — the position menu, and the button that
-          un-maximises it — ended up underneath this. The shell publishes that band as zero while no
-          panel is open, so nothing moves when there is nothing to clear.
+          `--we-chrome-right` term above, and the same fix. `--we-panel-chrome-top` is a **maximised**
+          panel, which covers the whole window: the rail is painted above the panels, so its
+          controls — the position menu, and the button that un-maximises it — end up underneath this.
+          The shell publishes that band as zero unless a panel is actually maximised, so nothing
+          moves when there is nothing to clear.
 
           The band is this rail's alone, which is why it is not folded into `--we-chrome-top`: every
           other piece of chrome is painted *below* the panels and so has nothing to dodge, and one

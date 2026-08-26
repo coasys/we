@@ -27,6 +27,7 @@ import {
   MIN_FLOAT_PX,
   NARROW_VIEWPORT_PX,
   NO_INSET,
+  NO_TOP_CHROME,
   occupiedFor,
   PANEL_CHROME,
   RAIL_TOP_PX,
@@ -231,16 +232,43 @@ describe('maximised', () => {
     const geometry = resolveDock(dock({ placement: placement({ maximised: true }) }), desktop);
 
     expect(geometry.floating).toBe(true);
-    expect(geometry.left).toBe(`${SIDEBAR_PX}px`);
+    expect(geometry.left).toBe('0px');
     expect(contentInset([dock({ placement: placement({ maximised: true }) })], desktop).right).toBe(0);
   });
 
-  it("starts below the app's floating controls", () => {
-    // "Full screen" cannot mean the whole screen while the app keeps permanent chrome over it: a
-    // maximised panel reaching the bottom put its content behind the call bar.
-    const geometry = resolveDock(dock({ placement: placement({ maximised: true }) }), desktop);
+  it('is the whole window, sidebar and floating chrome included', () => {
+    /*
+      It used to stop short of the sidebar, the rail and the call bar's band, on the reasoning that
+      full screen cannot mean the whole screen while permanent chrome is over it. That was right
+      about what must not be covered — the panel's own titlebar, which is the way out — and wrong
+      about what to do with it: reserving a *band* per edge protected far more than a titlebar, and
+      protected the wrong shape. The rail is a short column at top-right and the call bar a centred
+      pill, so most of each reserved strip was empty and showed the template through it.
+    */
+    const geometry = resolveDock(dock({ placement: placement({ maximised: true }) }), desktop, NO_INSET, {
+      left: 0,
+      right: CHROME_RAIL_PX,
+      top: 0,
+      bottom: BOTTOM_CHROME_PX,
+    });
 
-    expect(px(geometry.bottom)).toBe(BOTTOM_CHROME_PX);
+    expect(px(geometry.top)).toBe(0);
+    expect(px(geometry.bottom)).toBe(0);
+    expect(px(geometry.left)).toBe(0);
+    expect(px(geometry.right)).toBe(0);
+  });
+
+  it('still keeps clear of a panel that has taken room from the content', () => {
+    // The line between the two: permanent furniture is the app's own and covering it is what full
+    // screen means, but another *displacing* panel is something the user opened and is currently
+    // trading content area for. Covering that is losing something rather than filling the screen.
+    const geometry = resolveDock(dock({ placement: placement({ maximised: true }) }), desktop, {
+      ...NO_INSET,
+      right: 320,
+    });
+
+    expect(px(geometry.right)).toBe(320);
+    expect(px(geometry.left)).toBe(0);
   });
 
   it('leaves the placement underneath it untouched', () => {
@@ -260,7 +288,7 @@ describe('maximised', () => {
     const geometry = resolveDock(dock({ size: 'full' }), desktop);
 
     expect(geometry.floating).toBe(true);
-    expect(geometry.left).toBe(`${SIDEBAR_PX}px`);
+    expect(geometry.left).toBe('0px');
     expect(geometry.right).toBe('0px');
     expect(contentInset([dock({ size: 'full' })], desktop).right).toBe(0);
   });
@@ -656,10 +684,10 @@ describe('reading a resolved box back as a rectangle', () => {
     const box = resolveDock(dock({ placement: placement({ maximised: true }) }), desktop);
     const rect = rectOf(box, desktop, placement({ w: 360, h: 200 }));
 
-    expect(rect.x).toBe(SIDEBAR_PX);
-    expect(rect.w).toBe(desktop.width - SIDEBAR_PX);
+    expect(rect.x).toBe(0);
+    expect(rect.w).toBe(desktop.width);
     expect(rect.y).toBe(0);
-    expect(rect.h).toBe(desktop.height - BOTTOM_CHROME_PX);
+    expect(rect.h).toBe(desktop.height);
   });
 
   it('reads a floating panel straight off, and falls back only when there is no box', () => {
@@ -773,17 +801,18 @@ describe('chrome a floating panel must clear', () => {
     expect(px(box.left)! + px(box.width)!).toBeLessThanOrEqual(desktop.width - CHROME_RAIL_PX);
   });
 
-  it('keeps a maximised panel clear of it, since maximised floats', () => {
-    // "Full screen" cannot mean the whole screen while the app keeps permanent chrome over it: the
-    // rail sat on the panel's own position menu and un-maximise button, which are how it is recovered.
+  it('does not apply to a maximised panel, which covers everything', () => {
+    // The one placement that ignores this. The rail stays reachable by dropping below the panel's
+    // titlebar instead — see `railBand` — and the call bar is at the bottom, where a panel has no
+    // controls to cover.
     const box = resolveDock(
       dock({ placement: placement({ maximised: true, displace: false }) }),
       desktop,
       NO_INSET,
       chrome,
     );
-    expect(px(box.right)).toBe(CHROME_RAIL_PX);
-    expect(px(box.bottom)).toBe(BOTTOM_CHROME_PX);
+    expect(px(box.right)).toBe(0);
+    expect(px(box.bottom)).toBe(0);
   });
 
   it('leaves a displacing panel alone, which is the whole point of the split', () => {
@@ -891,5 +920,30 @@ describe('the band under the module rail', () => {
     // The rail's own offset already includes `--we-chrome-top`, and so does the bar's, so the
     // distance between them is unchanged. Subtracting it here would double-count.
     expect(railBand(desktop, inset({ right: 900, top: 300 }), bar)).toBe(bar.height - RAIL_TOP_PX);
+  });
+
+  it('drops below a maximised panel’s titlebar, the one panel it must be told about', () => {
+    /*
+      Every other panel is out of the rail's way before this is asked — see the note on `railBand`.
+      A maximised one is not, since it covers the whole window; and the rail is painted above it, so
+      without this term it lands on the position menu and the un-maximise button, which are the two
+      controls that panel is recovered with.
+    */
+    const titleBottom = 40;
+    expect(railBand(desktop, inset(), NO_TOP_CHROME, titleBottom)).toBe(titleBottom - RAIL_TOP_PX);
+  });
+
+  it('takes the deeper of the two rather than stacking them', () => {
+    // Both answer "how far down does the window's furniture reach", so they are alternatives rather
+    // than a column. Summed, the rail would clear a bar it is nowhere near a second time.
+    expect(railBand(desktop, inset({ right: 900 }), bar, 40)).toBe(bar.height - RAIL_TOP_PX);
+    expect(railBand(desktop, inset({ right: 900 }), bar, 300)).toBe(300 - RAIL_TOP_PX);
+  });
+
+  it('is not moved by a panel that is merely open', () => {
+    // The distinction the maximised term has to keep: an ordinary panel is clamped out of the rail's
+    // column already, and a band that fired for any open panel moved the rail for a video floating
+    // in the opposite corner.
+    expect(railBand(desktop, inset({ right: 900 }), NO_TOP_CHROME, 0)).toBe(0);
   });
 });

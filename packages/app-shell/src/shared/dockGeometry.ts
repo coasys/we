@@ -719,30 +719,38 @@ export function resolveDock(
   const placement = request.placement ?? seedPlacement(request, viewport, occupied);
 
   if (request.size === 'full' || placement.maximised) {
+    /*
+      Full screen means the whole window, less any panel that has *taken room* from it.
+
+      It used to stop short of the sidebar, the module rail and the call bar's band, on the reasoning
+      that "full screen cannot mean the whole screen while the app keeps permanent chrome over it".
+      The reasoning was right about what must not be covered and wrong about what to do with it. What
+      must not be covered is the panel's own titlebar — grip, position menu, un-maximise — because
+      that is the way out. Reserving a *band* along each edge for it protected far more than the
+      titlebar and, worse, protected the wrong shape: the rail is a short column at top-right and the
+      call bar a centred pill, so most of each reserved strip was empty and showed whatever the
+      template had behind it. A panel that covers everything except a frame of unrelated content is
+      not what anybody presses that button for.
+
+      Two things make covering everything safe now. The call bar sits at the *bottom*, where a
+      panel has no controls; and the module rail already drops below a maximised panel's titlebar on
+      its own, through `--we-panel-chrome-top` — the band this file computes in `railBand`. So both
+      pieces of chrome stay reachable, painted over the panel rather than beside it, and neither
+      lands on anything the panel is recovered with.
+
+      `occupied` is still subtracted, and that line is deliberate. Permanent furniture — the sidebar,
+      the rail — is the app's own and covering it is what "full screen" means. Another *displacing*
+      panel is something the user opened, which is currently shrinking the content for a reason;
+      covering that is losing something rather than filling the screen.
+    */
     return {
       edge,
       floating: true,
       snap: placement.snap,
-      /*
-        Below the app's floating controls, like every other placement here.
-
-        "Full screen" cannot mean *the whole screen* while the app keeps permanent chrome over it: a
-        maximised panel starting at the top put its own titlebar — grip, position menu, and the button
-        that un-maximises it — underneath the call bar. It means as large as a panel can be given the
-        chrome, which is what the constant has meant in the two places it was already applied.
-      */
-      top: px(region.top + chrome.top),
-      bottom: px(region.bottom + chrome.bottom),
-      left: px(region.left + chrome.left),
-      /*
-        The one edge a maximised panel used to keep, and should not have.
-
-        It spans the content region, and the content region reserves nothing on the right because the
-        rail slides for a *displacing* panel. A maximised panel floats, so nothing slid, and the rail
-        sat on top of the panel's own position menu and un-maximise button — the two controls the
-        panel is recovered with. The same failure the top band exists to prevent, on the other axis.
-      */
-      right: px(region.right + chrome.right),
+      top: px(occupied.top),
+      bottom: px(occupied.bottom),
+      left: px(occupied.left),
+      right: px(occupied.right),
     };
   }
 
@@ -1053,24 +1061,38 @@ export function contentInset(requests: DockRequest[], viewport: Viewport): Conte
  * the rail into the call controls and prints it across them. Nothing else in the layout has this
  * shape, which is why this is the only collision the shell computes.
  *
- * ## Why panels are not considered
+ * ## Why only a maximised panel is considered
  *
- * They were, and it was dead code that could only fire when it was wrong. By the time this is asked,
- * no panel can be under the rail:
+ * Every panel used to be, and it was dead code that could only fire when it was wrong. By the time
+ * this is asked, an ordinary panel cannot be under the rail:
  *
  * - one displacing left or right has already slid it sideways, through `--we-chrome-right`;
  * - one displacing top or bottom has already pushed it down, through `--we-chrome-top`;
- * - a floating or snapped one is clamped out of its column by `DEFAULT_FLOAT_CHROME`;
- * - a maximised one stops short of it for the same reason.
+ * - a floating or snapped one is clamped out of its column by `DEFAULT_FLOAT_CHROME`.
  *
- * So a panel could only ever be found here through a *disagreement* between two ways of measuring
- * one edge — a resolved box rounding where an inset does not, say — and what it reported then was
- * not a real overlap but the depth of whatever it had mismeasured, which for anything but a top-edge
- * panel is hundreds of pixels. That is how a rail asked to clear a bar 74px tall ended up parked
- * halfway down the screen.
+ * So such a panel could only ever be found here through a *disagreement* between two ways of
+ * measuring one edge — a resolved box rounding where an inset does not, say — and what it reported
+ * then was not a real overlap but the depth of whatever it had mismeasured, which for anything but a
+ * top-edge panel is hundreds of pixels. That is how a rail asked to clear a bar 74px tall ended up
+ * parked halfway down the screen.
+ *
+ * A **maximised** one is the exception, and used to be a fourth bullet here: it stopped short of the
+ * rail for the same reason as the third. It does not any more — full screen means the whole window —
+ * so the rail has to drop below its titlebar, or it lands on the position menu and the un-maximise
+ * button, which are the two controls that panel is recovered with. The caller passes how far down
+ * that titlebar reaches, since only the shell knows which panels are maximised.
+ *
+ * The two contributors are taken as a maximum rather than summed: they are both answers to "how far
+ * down does the window's furniture reach", not two things stacked on each other.
  */
-export function railBand(viewport: Viewport, inset: ContentInset, topChrome: TopChrome = NO_TOP_CHROME): number {
-  if (topChrome.height <= 0 || topChrome.width <= 0) return 0;
+export function railBand(
+  viewport: Viewport,
+  inset: ContentInset,
+  topChrome: TopChrome = NO_TOP_CHROME,
+  maximisedTitleBottom = 0,
+): number {
+  const fromPanel = Math.max(0, maximisedTitleBottom - RAIL_TOP_PX);
+  if (topChrome.height <= 0 || topChrome.width <= 0) return fromPanel;
 
   const railRight = viewport.width - inset.right;
   const railLeft = railRight - CHROME_RAIL_PX;
@@ -1086,5 +1108,6 @@ export function railBand(viewport: Viewport, inset: ContentInset, topChrome: Top
     offset already includes it (`--we-chrome-top`) and so does the bar's, so a panel displacing the
     top edge moves both by the same amount and the distance between them is unchanged.
   */
-  return overlaps ? Math.max(0, Math.round(topChrome.height - RAIL_TOP_PX)) : 0;
+  const fromChrome = overlaps ? Math.max(0, Math.round(topChrome.height - RAIL_TOP_PX)) : 0;
+  return Math.max(fromChrome, fromPanel);
 }

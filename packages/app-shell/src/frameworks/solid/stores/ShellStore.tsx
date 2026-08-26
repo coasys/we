@@ -458,6 +458,50 @@ export function ShellStoreProvider(props: ParentProps) {
    */
   const topChrome = createMemo<TopChrome>(() => ({ height: moduleChrome().top, width: moduleChrome().width }));
 
+  /**
+   * How far down a maximised panel's titlebar reaches, or 0 when none is maximised.
+   *
+   * The one panel the rail has to be told about. Everything else is already out of its way by the
+   * time `railBand` is asked — see its own note — but a maximised panel covers the whole window now,
+   * and the rail is painted above it, so without this it lands on the position menu and the
+   * un-maximise button: the two controls that panel is recovered with.
+   *
+   * `inset().top` rather than each panel's own `occupied`, and they are the same number here: a
+   * maximised panel floats, so it contributes nothing to the inset it would be excluded from.
+   */
+  /*
+    Escape leaves full screen.
+
+    A maximised panel covers the whole window now, including the sidebar, so its own titlebar is the
+    only way out. That is enough — the titlebar is always at the panel's top edge, and it carries the
+    button — but "enough" is a poor standard for the one gesture that recovers the app, and every
+    other full-screen surface on the machine answers to this key. It costs a listener.
+
+    Only maximised panels, and only the maximised flag: Escape is understood as "leave the mode I am
+    in", not "close what I am looking at". Closing a call panel with a stray keypress would be a
+    different and much worse surprise.
+  */
+  if (typeof window !== 'undefined') {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape' || event.defaultPrevented) return;
+      const maximised = dockRequests().filter(
+        (request) => request.edge && (request.size === 'full' || placementOf(request).maximised),
+      );
+      if (maximised.length === 0) return;
+      event.preventDefault();
+      for (const request of maximised) writePlacement(request.id, { ...placementOf(request), maximised: false });
+    };
+    window.addEventListener('keydown', onKeyDown);
+    onCleanup(() => window.removeEventListener('keydown', onKeyDown));
+  }
+
+  const maximisedTitleBottom = createMemo(() => {
+    const maximised = dockRequests().some(
+      (request) => request.edge && (request.size === 'full' || placementOf(request).maximised),
+    );
+    return maximised ? inset().top + TITLE_BAR_PX : 0;
+  });
+
   const floatChrome = createMemo<ContentInset>(() => ({
     left: 0,
     right: CHROME_RAIL_PX,
@@ -588,7 +632,7 @@ export function ShellStoreProvider(props: ParentProps) {
   createEffect(() => {
     if (typeof document === 'undefined') return;
 
-    const band = railBand(viewport(), inset(), topChrome());
+    const band = railBand(viewport(), inset(), topChrome(), maximisedTitleBottom());
     document.documentElement.style.setProperty('--we-panel-chrome-top', `${band}px`);
   });
 
