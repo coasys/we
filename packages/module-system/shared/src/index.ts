@@ -31,6 +31,8 @@ export type {
   ModuleEmbed,
   ModuleIdentity,
   InterpretationActivitySummary,
+  ModuleDataset,
+  ModuleDatasetAccess,
   ModuleIdentityAccess,
   ModuleLauncher,
   ModulePresenceAccess,

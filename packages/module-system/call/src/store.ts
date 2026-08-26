@@ -148,7 +148,7 @@ function hasLiveVideo(stream: MediaStream | null): boolean {
 }
 
 export function createCallStore(deps: CallStoreDeps) {
-  const { signal, effect, dataset, datasetUri, selfId, ephemeral, presence, identities, onDispose } = deps;
+  const { signal, effect, dataset, datasetUri, selfId, ephemeral, presence, identities, datasets, onDispose } = deps;
 
   /**
    * The transport scope this call holds, so leaving can give it back.
@@ -806,6 +806,36 @@ export function createCallStore(deps: CallStoreDeps) {
     },
     /** True when this agent is in a call — the call bar's visibility condition. */
     active: () => callId() !== null,
+
+    /**
+     * In a call that is happening somewhere other than the space on screen.
+     *
+     * The condition for the bar's way back, and it has to be a comparison rather than a flag: you
+     * can leave the call's space and come back to it, and the affordance has to disappear again when
+     * you do. `anchor.datasetUri` is set for every call — see `join`.
+     */
+    elsewhere: () => callId() !== null && !!anchor?.datasetUri && anchor.datasetUri !== (datasetUri?.() ?? null),
+
+    /**
+     * The space this call is in, named — or `null` when there is no call.
+     *
+     * Read through the host's dataset directory rather than remembered at join time, so a name or
+     * picture that loads afterwards appears on its own. The uri is always there; the rest is
+     * whatever the host knows, and a space whose record has not arrived yet simply has no name to
+     * show, which the bar handles.
+     */
+    callSpace: () => {
+      const uri = anchor?.datasetUri;
+      if (!callId() || !uri) return null;
+      const known = datasets?.get(uri);
+      return { uri, name: known?.name ?? '', avatar: known?.avatar ?? '' };
+    },
+
+    /** Go back to the space the call is in. No-op outside a call. */
+    returnToCall: () => {
+      const uri = anchor?.datasetUri;
+      if (callId() && uri) datasets?.open(uri);
+    },
 
     /**
      * The band this module's fixed chrome occupies, for panels to keep clear of.

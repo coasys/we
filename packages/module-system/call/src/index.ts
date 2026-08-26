@@ -722,6 +722,65 @@ const participantsToggle: SchemaNode = {
   ],
 };
 
+/**
+ * The way back to a call happening somewhere else.
+ *
+ * Only mounted once you have navigated out of the call's space, which is the whole of when it means
+ * anything — inside that space the bar is already where the call is, and a button pointing at where
+ * you are standing is noise.
+ *
+ * Deliberately small. The bar is a fixed row of controls and this appears without warning, so it
+ * takes an icon and a name and no more: a full sentence would push the mute button off centre every
+ * time somebody wandered off. The sentence is in the tooltip, where there is room for it.
+ *
+ * The name comes from the host's dataset directory and can be empty — a space whose record has not
+ * loaded, or one this agent knows only as a uri. The label falls back to something true rather than
+ * rendering a button with nothing written on it.
+ */
+const returnToCall: SchemaNode = {
+  type: '$if',
+  props: {
+    condition: { $store: 'modules.call.elsewhere' },
+    then: {
+      type: 'we-tooltip',
+      props: {
+        title: {
+          $if: {
+            condition: { $store: 'modules.call.callSpace.name' },
+            then: { $concat: ['Back to the call in ', { $store: 'modules.call.callSpace.name' }] },
+            else: 'Back to the call',
+          },
+        },
+        placement: 'bottom',
+      },
+      children: [
+        {
+          type: 'we-button',
+          props: { variant: 'secondary', gap: '200', onClick: { $action: 'modules.call.returnToCall' } },
+          children: [
+            { type: 'we-icon', props: { name: 'arrow-bend-up-left' } },
+            {
+              type: 'we-text',
+              // Truncated rather than wrapped: a long space name would otherwise make the bar two
+              // rows tall, which is the one thing a fixed strip of controls cannot absorb.
+              props: { truncate: true, maxWidth: '96px' },
+              children: [
+                {
+                  $if: {
+                    condition: { $store: 'modules.call.callSpace.name' },
+                    then: { $store: 'modules.call.callSpace.name' },
+                    else: 'In a call',
+                  },
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    },
+  },
+};
+
 /** The bar, in its two states: a call is running and you are not in it, or you are. */
 const bar: SchemaNode = {
   type: '$if',
@@ -846,6 +905,7 @@ const bar: SchemaNode = {
             ay: 'center',
           },
           children: [
+            returnToCall,
             mediaToggle({
               on: 'microphone',
               off: 'microphone-slash',

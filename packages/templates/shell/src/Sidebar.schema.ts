@@ -134,6 +134,33 @@ const rail: SchemaNode = railShell({
               label: '$space.name',
               active: { $eq: ['$space.spaceId', { $store: 'routeStore.segments.1' }] },
               onClick: { $action: 'spaceStore.navigateToSpace', args: ['$space.spaceId'] },
+              /*
+                Which space the call is in — now that a call outlives leaving its space, that is a
+                question the rail has to be able to answer.
+
+                Matched on the id inside the uri rather than on the uri itself: the call holds
+                `neighbourhood://<cid>` and a row holds the bare cid, which is the same comparison
+                `sharedIdOf` exists for on the store side. `$concat` builds the prefixed form here
+                because the schema layer has no way to strip one.
+
+                The row already navigates to its space, so this needs no click handling of its own —
+                it marks the way back rather than being a second one. `modules.call.*` resolves to
+                nothing when the module is not installed, so the ring simply never appears.
+              */
+              live: {
+                when: {
+                  $and: [
+                    { $store: 'modules.call.active' },
+                    {
+                      $eq: [
+                        { $concat: ['neighbourhood://', '$space.spaceId'] },
+                        { $store: 'modules.call.callSpace.uri' },
+                      ],
+                    },
+                  ],
+                },
+                icon: 'phone-call',
+              },
             }),
           ],
         },

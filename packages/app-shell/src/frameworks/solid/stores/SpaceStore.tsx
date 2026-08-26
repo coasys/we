@@ -1,4 +1,5 @@
 import { containmentPredicate, gatherTranscriptTurns, type TurnModel } from '@shared/interpretation/transcriptTurns';
+import { provideModuleHostServices } from '@shared/registries/moduleHostServices';
 import { moduleRegistry, moduleStores, type ModuleSurface, moduleSurface } from '@shared/registries/moduleRegistry';
 import { defaultViewOrder, viewRegistry } from '@shared/registries/viewRegistry';
 import {
@@ -938,6 +939,33 @@ export function SpaceStoreProvider(props: ParentProps) {
   // Derived: all non-system datasets with Space avatar/name when available, plain dataset data
   // otherwise. Prepends a virtual pre-join entry for the global space when it is configured but
   // the user hasn't joined yet.
+  /*
+    Lend modules the ability to name a space and to go to one.
+
+    Published from here because this is the store that holds both halves — the names and pictures the
+    sidebar renders, and `navigateToSpace`. A module needs them now that its state can outlive the
+    space on screen: a call the user has walked away from has to be able to say which space it is in
+    and offer the way back, and before that "the space" was always the one being looked at.
+
+    Keyed by uri and normalised through `sharedIdOf`, so a module holding `neighbourhood://<cid>` and
+    a sidebar row holding the bare cid are the same space — the comparison this store already has to
+    make everywhere else.
+  */
+  provideModuleHostServices({
+    datasets: {
+      get: (uri: string) => {
+        const id = sharedIdOf(uri);
+        if (!id) return undefined;
+        const item = orderedSidebarItems().find((row) => row.spaceId === id || row.uuid === id);
+        return item ? { name: item.name, avatar: item.avatar } : undefined;
+      },
+      open: (uri: string) => {
+        const id = sharedIdOf(uri);
+        if (id) void navigateToSpace(id);
+      },
+    },
+  });
+
   const orderedSidebarItems = createMemo(() => {
     // For joined spaces, s.uuid is the creator's local UUID which never matches the
     // joiner's p.uuid. Space.url stores only the CID (no neighbourhood:// prefix) to

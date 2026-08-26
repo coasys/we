@@ -222,10 +222,18 @@ describe('per-space module gate', () => {
     };
 
     expect(node.type).toBe('$if');
-    // `activeModules`, not `enabledModules`: what the space turned on is only one of the three
-    // layers. A module the community enabled but this agent has not installed, or has muted here,
-    // must not render — and only the intersection knows that.
-    expect(node.props?.condition).toEqual({ $in: ['call', { $store: 'spaceStore.activeModules' }] });
+    /*
+      `activeModules`, not `enabledModules`: what the space turned on is only one of the three
+      layers. A module the community enabled but this agent has not installed, or has muted here,
+      must not render — and only the intersection knows that.
+
+      Or the call is running, in which case its chrome follows the user out of the space it started
+      in — see `holdsWhen`. That disjunct is this module's alone: the space's decision is still the
+      whole condition for every module that is not holding something live.
+    */
+    expect(node.props?.condition).toEqual({
+      $or: [{ $in: ['call', { $store: 'spaceStore.activeModules' }] }, { $store: 'modules.call.active' }],
+    });
     // The module's own node survives underneath, so gating composes with whatever visibility rules
     // the module already had rather than replacing them.
     expect(node.props?.then).toBeDefined();

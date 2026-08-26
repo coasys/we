@@ -567,6 +567,8 @@ export interface ModuleStoreDeps {
    * the answer on a host with no directory at all.
    */
   identities?: ModuleIdentityAccess;
+  /** Naming and reaching spaces — for a module whose state can outlive the space on screen. */
+  datasets?: ModuleDatasetAccess;
 
   /**
    * Speech to text, for a module that listens. Absent when the backend cannot transcribe.
@@ -844,6 +846,42 @@ export interface ModuleIdentityAccess {
   get: (agentId: string) => ModuleIdentity | undefined;
   /** Ask the host to fetch a profile it has not cached. Safe to call repeatedly. */
   fetch: (agentId: string) => void;
+}
+
+/**
+ * The slice of the host's dataset directory a module may read, plus the one thing it may do with it.
+ *
+ * Exists because module state stopped being confined to the space on screen. A call outlives
+ * navigating away from where it started, so the module holds a space the user is no longer in — and
+ * has to be able to say which one and offer the way back. Before that, "the space" was always the
+ * one you were looking at and the host's own chrome could name it.
+ *
+ * The same reasoning as {@link ModuleIdentityAccess}, one level up: a module wanting a name and a
+ * picture for a space should not be typed against a particular backend's idea of what a space is.
+ *
+ * `open` is deliberately not a router. A module may ask to go to a *space it can already name*,
+ * which is the whole of what "return to the call" needs; it cannot construct a route, and there is
+ * nothing here for building navigation of its own.
+ */
+export interface ModuleDatasetAccess {
+  /**
+   * What the host knows about the dataset with this uri, or `undefined`.
+   *
+   * Must read reactively, so a module reading it inside a derived value re-runs when the name or
+   * picture arrives. `undefined` is ordinary — for a space whose record has not loaded yet, and for
+   * one this agent has not joined.
+   */
+  get: (datasetUri: string) => ModuleDataset | undefined;
+  /** Go to that dataset, as clicking it in the host's own navigation would. */
+  open: (datasetUri: string) => void;
+}
+
+/** What a module gets to know about a dataset. */
+export interface ModuleDataset {
+  /** Display name, already assembled from whatever the host holds. */
+  name?: string;
+  /** Resolved image, ready to render — never a reference a module would have to fetch itself. */
+  avatar?: string;
 }
 
 /** What a module gets to know about an agent. */
