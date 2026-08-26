@@ -1462,7 +1462,20 @@ export function SpaceStoreProvider(props: ParentProps) {
     // spaceId may be a local id or a shared id — no shape-guessing needed with refs.
     const ds = datasetStore.datasets().find((d) => d.id === spaceId || d.sharedId === spaceId);
 
-    if (ds) {
+    /*
+      Switching only when the space is actually changing — the same guard the route effect below
+      carries, and missing here.
+
+      Clicking the space you are already in is ordinary: it is how you get back from the settings
+      overlay, which leaves the route where it was. Re-switching to it costs a `hasCoreSchema`, an
+      `installModules` and a `refreshSpace` round trip, and republishes the dataset — which used to
+      rebuild presence and drop any call running in it.
+
+      The signal now refuses an equivalent value (see `DatasetStore`), so the drop is fixed either
+      way; this stops the pointless round trips as well, and keeps the two navigation paths saying
+      the same thing.
+    */
+    if (ds && datasetStore.currentDataset()?.id !== ds.id) {
       // Pre-load space templates before switching so the template and data arrive together
       await templateStore.preloadSpaceTemplates(ds);
       await datasetStore.switchDataset(ds.id);

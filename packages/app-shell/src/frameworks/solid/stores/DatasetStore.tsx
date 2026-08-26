@@ -15,6 +15,7 @@
  * which layers on top of this store and reacts to dataset changes via `onDatasetRemoved` and the
  * `currentDataset` signal.
  */
+import { sameDataset } from '@shared/datasetIdentity';
 import { containmentPredicate, gatherTranscriptTurns, type TurnModel } from '@shared/interpretation/transcriptTurns';
 import { provideModuleHostServices } from '@shared/registries/moduleHostServices';
 import { moduleRegistry } from '@shared/registries/moduleRegistry';
@@ -107,7 +108,22 @@ export function DatasetStoreProvider(props: ParentProps) {
 
   const [datasets, setDatasets] = createSignal<AppDataset[]>([]);
   const [datasetsLoaded, setDatasetsLoaded] = createSignal(false);
-  const [currentDataset, setCurrentDataset] = createSignal<AppDataset | null>(null);
+  /**
+   * The dataset on screen — and it notifies only when that is a *different* dataset.
+   *
+   * `toRef` in the backend adapter builds a fresh object on every `lifecycle.get`, so publishing the
+   * same space twice publishes two objects that are equal in every way that matters and unequal by
+   * reference. Solid's default comparison is reference identity, so every consumer re-ran.
+   *
+   * That is not a tidiness point. `PresenceStore` rebuilds its source when this changes, and
+   * rebuilding means broadcasting a `bye` and dropping the peer map — so a re-publish of the space
+   * you are already in told your peers you had left, emptied the call's roster, and closed every
+   * `RTCPeerConnection` in it. Clicking your own space in the sidebar during a call dropped the
+   * call, which is exactly what going to its settings and coming back makes you do.
+   *
+   * See {@link sameDataset} for what counts as the same.
+   */
+  const [currentDataset, setCurrentDataset] = createSignal<AppDataset | null>(null, { equals: sameDataset });
   const [currentDatasetModels, setCurrentDatasetModels] = createSignal<ModelManifestEntry[]>([]);
   const [isWeSpace, setIsWeSpace] = createSignal<boolean>(false);
   const [rootDataset, setRootDataset] = createSignal<AppDataset | null>(null);
