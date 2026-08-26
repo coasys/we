@@ -208,6 +208,29 @@ export const sidebar: SchemaNode = {
   type: '$if',
   props: {
     condition: { $eq: [{ $store: 'sessionStore.bootState' }, 'ready'] },
-    then: rail,
+    /*
+      Wrapped, so full screen can take the sidebar out of the layout without unmounting it.
+
+      A maximised panel covers the whole window, and this is the one piece of chrome that cannot get
+      out of its way: it sits on the `chrome` layer, which outranks every panel outright, so it would
+      otherwise be painted across a panel that had covered the ground it stands on.
+
+      `display: none` on a wrapper rather than an `$if` around the rail, because a rail that was
+      expanded with two groups collapsed should be in that state when full screen ends — an unmount
+      would reset everything the rail holds that is not persisted. A fixed-position child of a hidden
+      box is not rendered either, so the wrapper generating no box of its own costs nothing.
+    */
+    then: {
+      type: 'Column',
+      props: {
+        styles: {
+          $if: {
+            condition: { $store: 'shellStore.panelMaximised' },
+            then: { display: 'none' },
+          },
+        },
+      },
+      children: [rail],
+    },
   },
 };

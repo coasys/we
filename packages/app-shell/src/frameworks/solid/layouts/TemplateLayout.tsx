@@ -41,11 +41,11 @@ import { MemoryRouter, Route, useLocation, useNavigate } from '@solidjs/router';
 import { Column } from '@we/components/solid';
 import { panelResizing } from '@we/editor/runtime';
 import type { TemplateSchema } from '@we/schema-shared';
-import { applyThemeVars, clearThemeVars, parseOverrides } from '@we/schema-shared';
+import { applyThemeVars, clearThemeVars, parseOverrides, surfaceStyles } from '@we/schema-shared';
 import { lazy } from 'solid-js';
 
 const EditorOverlay = lazy(() => import('@we/editor').then((m) => ({ default: m.EditorOverlay })));
-import { RenderSchema } from '@we/schema-solid';
+import { createSurface, RenderSchema } from '@we/schema-solid';
 import type { ParentProps } from 'solid-js';
 import { createEffect, createMemo, Show } from 'solid-js';
 import { createStore } from 'solid-js/store';
@@ -143,6 +143,9 @@ function ShellOverlayInner({
   view: ShellViewEntry;
 }) {
   const shellRouteStore = useShellRouteStore();
+  // The overlay is its own surface: it is a sibling of the template's box, not inside it, so a
+  // settings page adapts to the overlay's width rather than to whatever the space behind it is.
+  const overlaySurface = createSurface();
   // Shell views name themes too — the schema-tests page demonstrates a scoped `cyberpunk` section —
   // and they are mounted on demand, so the template's own pass never sees them.
   stores.themeStore.requestNamedThemes(view.schema);
@@ -167,7 +170,16 @@ function ShellOverlayInner({
     <MemoryRouter
       root={(props) => (
         <ShellRouterRoot>
-          <RenderSchema node={schema} stores={shellStores} registry={registry} children={props.children} />
+          <div {...overlaySurface.outerAttrs} style={surfaceStyles()} ref={overlaySurface.outerRef}>
+            <div {...overlaySurface.tierAttrs} ref={overlaySurface.tierRef} />
+            <RenderSchema
+              node={schema}
+              stores={shellStores}
+              registry={registry}
+              context={{ surface: overlaySurface.surface }}
+              children={props.children}
+            />
+          </div>
         </ShellRouterRoot>
       )}
     >
@@ -230,6 +242,21 @@ export function TemplateLayout(
   */
   let scopeEl: HTMLElement | undefined;
   let lastScopedThemeId: string | null = null;
+
+  /*
+    The template's own surface.
+
+    This element already is the boundary — it carries THEME_SCOPE_ATTRIBUTE precisely because it
+    marks where the edge of the template content is — so it becomes the container too rather than
+    gaining a wrapper. That matters beyond tidiness: it is also the scroll container, and a box
+    between it and the fixed viewport would have to reproduce the scrolling to keep the background
+    covering the whole overflow area.
+
+    Declared by the host and not left to templates on purpose. A container query with no container
+    resolves to false *silently*, so a template's `mdUpProps` would render its base value, look
+    entirely correct, and never adapt.
+  */
+  const templateSurface = createSurface();
 
   createEffect(() => {
     const td = stores.themeStore.activeTemplateTheme();
@@ -356,9 +383,14 @@ export function TemplateLayout(
           // present, not conditional on there being a scoped theme: it marks where the edge of the
           // template content is, which is true whether or not anything is currently scoped to it.
           {...{ [THEME_SCOPE_ATTRIBUTE]: '' }}
+          // …and the boundary a template's *size* is measured against, which is the same edge.
+          {...templateSurface.outerAttrs}
           // The element a scoped theme is applied to — see the effect above.
-          ref={(el: HTMLElement) => (scopeEl = el)}
-          styles={spaceThemeStyle()}
+          ref={(el: HTMLElement) => {
+            scopeEl = el;
+            templateSurface.outerRef(el);
+          }}
+          styles={{ ...spaceThemeStyle(), ...surfaceStyles() }}
         >
           {/*
             The boundary that matters most, and note what is *outside* it: the sidebar, the shell
@@ -367,6 +399,13 @@ export function TemplateLayout(
             space, or open settings. Without this, Solid unmounts the whole tree on any uncaught
             throw, so somebody else's template blanked the window and took the way out with it.
           */}
+          {/*
+            Where the tier lands. Zero-size and out of flow, because an element cannot query itself
+            and this is something inside that can. CSS decides which tier this surface is at and
+            writes it here; the store reads the answer back, so `$surface.tier` and the children's
+            `*UpProps` are the same decision rather than two that agree most of the time.
+          */}
+          <div {...templateSurface.tierAttrs} ref={templateSurface.tierRef} />
           <TemplateBoundary
             what="this space's template"
             action={
@@ -383,6 +422,7 @@ export function TemplateLayout(
                 node={stores.templateStore.currentTemplate}
                 stores={templateStores}
                 registry={registry}
+                context={{ surface: templateSurface.surface }}
                 children={props.children}
               />
             </Show>

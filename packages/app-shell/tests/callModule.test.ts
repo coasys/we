@@ -107,7 +107,7 @@ describe('call module — contributions', () => {
     const store = moduleStores.call as Record<string, unknown>;
 
     expect(typeof store.chromeReserve).toBe('function');
-    expect((store.chromeReserve as () => { top: number })()).toEqual({ top: 0 });
+    expect((store.chromeReserve as () => { bottom: number })()).toEqual({ bottom: 0 });
   });
 
   it('keeps volatile state off the tile, so a mute cannot remount the video', () => {

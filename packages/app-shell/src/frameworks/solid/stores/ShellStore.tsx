@@ -36,7 +36,13 @@ import {
   TITLE_BAR_PX,
   type TopChrome,
 } from '@shared/dockGeometry';
-import { dockRegistry, hostDockStores, onDockRegistryChanged } from '@shared/registries/dockRegistry';
+import {
+  DOCK_CONTENT_ATTR,
+  DOCK_FRAME_ATTR,
+  dockRegistry,
+  hostDockStores,
+  onDockRegistryChanged,
+} from '@shared/registries/dockRegistry';
 import { moduleStores } from '@shared/registries/moduleRegistry';
 import type { ChromeReserve, DockAspect, DockEdge, DockSize } from '@we/module-shared';
 import {
@@ -102,6 +108,14 @@ export interface ShellStore {
   contentInset: Accessor<ContentInset>;
   /** True while a dock is being dragged, so transitions can be suspended and the edge track the cursor. */
   dockResizing: Accessor<boolean>;
+  /**
+   * Whether any panel is maximised — read by the app's own chrome, which hides while one is.
+   *
+   * Full screen means the whole window, so the sidebar and the module rail take themselves out of
+   * the layout rather than sitting on top of the panel. The way back out is the panel's own titlebar
+   * and the Escape key.
+   */
+  panelMaximised: Accessor<boolean>;
   /** Remember a dock's current size, so the drag that follows is measured from it. */
   beginDockResize: (id: string) => void;
   /**
@@ -240,6 +254,35 @@ function readModuleKey(moduleId: string, key: string | undefined): unknown {
  */
 const PLACEMENTS_KEY = 'we-local:shell.dockPlacements';
 
+/**
+ * What the frame takes off a panel before its content sees the box, measured off the two elements.
+ *
+ * The titlebar, its padding and border, and the frame's own border. This was a constant, and the
+ * constant drifted by eleven pixels the day the titlebar gained padding to clear the panel's corner
+ * radius. That sounds negligible and was not: "fit to content" shortens the panel by whatever it
+ * thinks the chrome is, so understating it leaves the content short — and tiles that go
+ * height-limited hand the difference back on the *other* axis, multiplied by their aspect ratio.
+ * Three 16:9 videos across turned eleven missing pixels into a fifty-four pixel band down each side.
+ *
+ * `undefined` when the panel is not on screen — a fit invoked from a keyboard shortcut before the
+ * frame mounts — and `fitPlacement` falls back to the constants, which are correct as of writing.
+ */
+function measureDockChrome(id: string): { x: number; y: number } | undefined {
+  if (typeof document === 'undefined') return undefined;
+  const escaped = typeof CSS !== 'undefined' && CSS.escape ? CSS.escape(id) : id;
+  const frame = document.querySelector(`[${DOCK_FRAME_ATTR}="${escaped}"]`);
+  const content = document.querySelector(`[${DOCK_CONTENT_ATTR}="${escaped}"]`);
+  if (!frame || !content) return undefined;
+
+  const outer = frame.getBoundingClientRect();
+  const inner = content.getBoundingClientRect();
+  // A panel mid-transition measures as something neither box ever is, and a negative or absurd
+  // answer is worse than the constant it would replace.
+  const x = outer.width - inner.width;
+  const y = outer.height - inner.height;
+  return x >= 0 && y >= 0 && x < outer.width && y < outer.height ? { x, y } : undefined;
+}
+
 function loadPlacements(): Record<string, FloatPlacement> {
   if (typeof localStorage === 'undefined') return {};
   try {
@@ -374,11 +417,15 @@ export function ShellStoreProvider(props: ParentProps) {
    * The right edge is the module rail, always: it follows `--we-chrome-right`, which only a
    * displacing panel moves, so a floating one has to clear it itself.
    *
-   * The top edge is whatever the modules say they are holding there. It was the constant
+   * The horizontal edges are whatever the modules say they are holding there. It was the constant
    * `TOP_CHROME_PX`, sized for the call bar alone, and the call bar stopped being alone: the
    * transcribe module contributes an extraction status panel into the same fixed column, so the
-   * band a panel had to clear grew and the number describing it did not. A panel snapped to the top
-   * centre landed under it.
+   * band a panel had to clear grew and the number describing it did not. A panel snapped to that
+   * corner landed under it.
+   *
+   * Both edges, because a module says which it is holding. The call bar is at the bottom — a panel
+   * has a titlebar and no footer, so chrome along the top can cover the way out of one — but the
+   * rule is the module's to state rather than this store's to assume.
    *
    * Declared rather than measured, deliberately. The status panel is a set of disclosures that grows
    * as rows are opened, and it goes to some trouble not to grow in steps — because, in its own
@@ -390,28 +437,93 @@ export function ShellStoreProvider(props: ParentProps) {
    * Reservations at an edge sum rather than max, because an anchor is a column: the status panel is
    * mounted below the call bar, not beside it.
    */
-  const topChrome = createMemo<TopChrome>(() => {
+  const moduleChrome = createMemo<{ top: number; bottom: number; width: number }>(() => {
     // The registration dependency, for the same reason `dockRequests` takes it: a module store read
     // before its module registers has no accessor to have tracked, and so nothing to re-run for.
     dockRegistryVersion();
-    let height = 0;
+    let top = 0;
+    let bottom = 0;
     let width = 0;
     for (const store of Object.values(moduleStores)) {
       const reserve = (store as Record<string, unknown> | undefined)?.chromeReserve;
       const value = typeof reserve === 'function' ? (reserve as () => unknown)() : reserve;
       const box = value as ChromeReserve | undefined;
       // Heights stack, widths do not: contributions to one anchor are a column.
-      height += box?.top ?? 0;
+      top += box?.top ?? 0;
+      bottom += box?.bottom ?? 0;
       width = Math.max(width, box?.width ?? 0);
     }
-    return { height, width };
+    return { top, bottom, width };
   });
+
+  /**
+   * What the module rail has to dodge, which is only ever chrome at the *top*.
+   *
+   * The rail is a short column pinned at top-right, so chrome along the bottom is nowhere near it.
+   * With the call bar down there this is zero in the ordinary case — kept rather than deleted
+   * because the anchor is open: a module may still declare a top reserve, and the rail should still
+   * move for it.
+   */
+  const topChrome = createMemo<TopChrome>(() => ({ height: moduleChrome().top, width: moduleChrome().width }));
+
+  /**
+   * How far down a maximised panel's titlebar reaches, or 0 when none is maximised.
+   *
+   * The one panel the rail has to be told about. Everything else is already out of its way by the
+   * time `railBand` is asked — see its own note — but a maximised panel covers the whole window now,
+   * and the rail is painted above it, so without this it lands on the position menu and the
+   * un-maximise button: the two controls that panel is recovered with.
+   *
+   * `inset().top` rather than each panel's own `occupied`, and they are the same number here: a
+   * maximised panel floats, so it contributes nothing to the inset it would be excluded from.
+   */
+  /*
+    Escape leaves full screen.
+
+    A maximised panel covers the whole window now, including the sidebar, so its own titlebar is the
+    only way out. That is enough — the titlebar is always at the panel's top edge, and it carries the
+    button — but "enough" is a poor standard for the one gesture that recovers the app, and every
+    other full-screen surface on the machine answers to this key. It costs a listener.
+
+    Only maximised panels, and only the maximised flag: Escape is understood as "leave the mode I am
+    in", not "close what I am looking at". Closing a call panel with a stray keypress would be a
+    different and much worse surprise.
+  */
+  if (typeof window !== 'undefined') {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape' || event.defaultPrevented) return;
+      const maximised = dockRequests().filter(
+        (request) => request.edge && (request.size === 'full' || placementOf(request).maximised),
+      );
+      if (maximised.length === 0) return;
+      event.preventDefault();
+      for (const request of maximised) writePlacement(request.id, { ...placementOf(request), maximised: false });
+    };
+    window.addEventListener('keydown', onKeyDown);
+    onCleanup(() => window.removeEventListener('keydown', onKeyDown));
+  }
+
+  /**
+   * Whether any panel is currently maximised — what the app's own chrome hides for.
+   *
+   * The sidebar and the module rail read this and take themselves out of the layout. Hiding rather
+   * than restacking, because the two overlap for different reasons and only one of them is a
+   * z-index: the sidebar is on the `chrome` layer and outranks every panel outright, while the rail
+   * shares the panels' layer and wins on document order. One rule covers both, and neither has to
+   * learn about the other's ordering.
+   *
+   * `display: none` rather than an unmount, so a rail that was expanded and had groups collapsed is
+   * in the same state when full screen ends.
+   */
+  const panelMaximised = createMemo(() =>
+    dockRequests().some((request) => request.edge && (request.size === 'full' || placementOf(request).maximised)),
+  );
 
   const floatChrome = createMemo<ContentInset>(() => ({
     left: 0,
     right: CHROME_RAIL_PX,
-    top: topChrome().height,
-    bottom: 0,
+    top: moduleChrome().top,
+    bottom: moduleChrome().bottom,
   }));
 
   /**
@@ -583,6 +695,7 @@ export function ShellStoreProvider(props: ParentProps) {
     dockGeometry,
     contentInset: inset,
     dockResizing,
+    panelMaximised,
 
     dockPlacement: () =>
       Object.fromEntries(
@@ -697,7 +810,11 @@ export function ShellStoreProvider(props: ParentProps) {
       // stores a thickness and a card, and only the box on screen says which is currently the shape.
       const measured = resolvedPlacement(id, placementOf(request));
       const spanning = !dockGeometry()[id]?.floating;
-      const fitted = fitPlacement(measured, aspect, { spanning, edge: edgeOfSnap(measured.snap) });
+      const fitted = fitPlacement(measured, aspect, {
+        spanning,
+        edge: edgeOfSnap(measured.snap),
+        chrome: measureDockChrome(id),
+      });
       // Measured from the box on screen, written onto the stored placement — so fitting a docked panel
       // sets its thickness without stamping the edge's full height over the card it returns to.
       const stored = placementOf(request);

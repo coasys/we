@@ -12,6 +12,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  BOTTOM_CHROME_PX,
   CHROME_RAIL_PX,
   type ContentInset,
   contentInset,
@@ -26,7 +27,9 @@ import {
   MIN_FLOAT_PX,
   NARROW_VIEWPORT_PX,
   NO_INSET,
+  NO_TOP_CHROME,
   occupiedFor,
+  PANEL_CHROME,
   RAIL_TOP_PX,
   railBand,
   rectOf,
@@ -38,7 +41,6 @@ import {
   type SnapPoint,
   snapTargetRects,
   snapTargetSize,
-  TOP_CHROME_PX,
 } from '../src/shared/dockGeometry';
 
 const desktop = { width: 1600, height: 900 };
@@ -176,11 +178,11 @@ describe('a panel that floats', () => {
 
   it("cannot be dropped into the band the app's controls occupy", () => {
     // It was closed to snapping and open to dragging, which made the rule look arbitrary: the panel
-    // refused to snap under the call bar and then let you drop it there by hand — where its own grip
-    // and menu were the parts that ended up underneath.
-    const high = placement({ snap: null, displace: false, x: 600, y: 0, w: 360, h: 200 });
+    // refused to snap under the call bar and then let you drop it there by hand.
+    const low = placement({ snap: null, displace: false, x: 600, y: desktop.height, w: 360, h: 200 });
+    const box = resolveDock(dock({ placement: low }), desktop);
 
-    expect(px(resolveDock(dock({ placement: high }), desktop).top)).toBeGreaterThanOrEqual(TOP_CHROME_PX);
+    expect(px(box.top)! + 200).toBeLessThanOrEqual(desktop.height - BOTTOM_CHROME_PX);
   });
 
   it('is clamped into view, however it was stored', () => {
@@ -230,17 +232,69 @@ describe('maximised', () => {
     const geometry = resolveDock(dock({ placement: placement({ maximised: true }) }), desktop);
 
     expect(geometry.floating).toBe(true);
-    expect(geometry.left).toBe(`${SIDEBAR_PX}px`);
+    expect(geometry.left).toBe('0px');
     expect(contentInset([dock({ placement: placement({ maximised: true }) })], desktop).right).toBe(0);
   });
 
-  it("starts below the app's floating controls", () => {
-    // "Full screen" cannot mean the whole screen while the app keeps permanent chrome over it: a
-    // maximised panel starting at the top put its own titlebar — grip, position menu, and the button
-    // that un-maximises it — underneath the call bar.
-    const geometry = resolveDock(dock({ placement: placement({ maximised: true }) }), desktop);
+  it('is the whole window, sidebar and floating chrome included', () => {
+    /*
+      It used to stop short of the sidebar, the rail and the call bar's band, on the reasoning that
+      full screen cannot mean the whole screen while permanent chrome is over it. That was right
+      about what must not be covered — the panel's own titlebar, which is the way out — and wrong
+      about what to do with it: reserving a *band* per edge protected far more than a titlebar, and
+      protected the wrong shape. The rail is a short column at top-right and the call bar a centred
+      pill, so most of each reserved strip was empty and showed the template through it.
+    */
+    const geometry = resolveDock(dock({ placement: placement({ maximised: true }) }), desktop, NO_INSET, {
+      left: 0,
+      right: CHROME_RAIL_PX,
+      top: 0,
+      bottom: BOTTOM_CHROME_PX,
+    });
 
-    expect(px(geometry.top)).toBe(TOP_CHROME_PX);
+    expect(px(geometry.top)).toBe(0);
+    expect(px(geometry.bottom)).toBe(0);
+    expect(px(geometry.left)).toBe(0);
+    expect(px(geometry.right)).toBe(0);
+  });
+
+  it('pads its content by the chrome painted over it, having taken the whole window', () => {
+    /*
+      The other half of covering everything. The box reaches every edge so no template shows through
+      around it; the content keeps clear of the call bar, which is still painted over the panel and
+      which a maximised panel — unlike every other placement — cannot be moved out from under.
+
+      Horizontal edges only: the sidebar and the module rail hide while a panel is maximised, so
+      what is left over it is whatever the modules declared at the top and bottom.
+    */
+    const chrome: ContentInset = { left: 0, right: CHROME_RAIL_PX, top: 0, bottom: BOTTOM_CHROME_PX };
+    const geometry = resolveDock(dock({ placement: placement({ maximised: true }) }), desktop, NO_INSET, chrome);
+
+    expect(px(geometry.padBottom)).toBe(BOTTOM_CHROME_PX);
+    expect(px(geometry.padTop)).toBe(0);
+    // Not the rail's edge, which has nothing on it once the rail has hidden itself.
+    expect(px(geometry.right)).toBe(0);
+  });
+
+  it('gives an ordinary panel no such padding, having nothing over it', () => {
+    // Every other placement is clamped out of the chrome bands, so there is nothing to keep clear of.
+    const geometry = resolveDock(dock({ placement: placement({ snap: 'top-left', displace: false }) }), desktop);
+
+    expect(geometry.padTop).toBeUndefined();
+    expect(geometry.padBottom).toBeUndefined();
+  });
+
+  it('still keeps clear of a panel that has taken room from the content', () => {
+    // The line between the two: permanent furniture is the app's own and covering it is what full
+    // screen means, but another *displacing* panel is something the user opened and is currently
+    // trading content area for. Covering that is losing something rather than filling the screen.
+    const geometry = resolveDock(dock({ placement: placement({ maximised: true }) }), desktop, {
+      ...NO_INSET,
+      right: 320,
+    });
+
+    expect(px(geometry.right)).toBe(320);
+    expect(px(geometry.left)).toBe(0);
   });
 
   it('leaves the placement underneath it untouched', () => {
@@ -260,7 +314,7 @@ describe('maximised', () => {
     const geometry = resolveDock(dock({ size: 'full' }), desktop);
 
     expect(geometry.floating).toBe(true);
-    expect(geometry.left).toBe(`${SIDEBAR_PX}px`);
+    expect(geometry.left).toBe('0px');
     expect(geometry.right).toBe('0px');
     expect(contentInset([dock({ size: 'full' })], desktop).right).toBe(0);
   });
@@ -515,8 +569,11 @@ describe('what a panel has to keep clear of', () => {
 
 describe('fitting a panel to its content', () => {
   const aspect = { ratio: 16 / 9, insetX: 24, insetY: 24 };
-  // What the panel's chrome costs on the vertical axis: its titlebar, plus the module's own padding.
-  const chrome = 24 + aspect.insetY;
+  // What the panel's chrome costs on each axis: the frame's own, plus the module's own padding.
+  // Read from the constants rather than restated, which is how the 24 written here stayed wrong for
+  // as long as the one in the source did.
+  const chrome = PANEL_CHROME.y + aspect.insetY;
+  const chromeX = PANEL_CHROME.x + aspect.insetX;
 
   const fitted = (over: Partial<FloatPlacement>) =>
     fitPlacement(placement({ snap: null, displace: false, ...over }), aspect, { spanning: false });
@@ -568,7 +625,60 @@ describe('fitting a panel to its content', () => {
     const after = fitPlacement(before, aspect, { spanning: false });
 
     expect(after.h - chrome).toBe(before.h - chrome);
-    expect((after.w - aspect.insetX) / (after.h - chrome)).toBeCloseTo(aspect.ratio, 1);
+    expect((after.w - chromeX) / (after.h - chrome)).toBeCloseTo(aspect.ratio, 1);
+  });
+
+  it('leaves no band on either axis, at any arrangement', () => {
+    /*
+      The regression this pair of constants existed to prevent and did not.
+
+      `fitPlacement` shortens the panel by whatever it believes the chrome to be, so understating it
+      leaves the content that much short of what it asked for — and content that goes height-limited
+      hands the difference back on the *other* axis, multiplied by its aspect ratio. A wide
+      arrangement multiplies hardest: three 16:9 tiles across is a ratio of 5.33, and the eleven
+      pixels this was out by came back as fifty-four pixels of empty panel down each side, while the
+      same error stacked vertically came back as four and looked perfect. Hence both orientations.
+    */
+    const PAD = 12;
+    const GAP = 12;
+
+    for (const [cols, rows, w, h] of [
+      [1, 3, 420, 1000],
+      [1, 2, 460, 900],
+      [2, 2, 900, 700],
+      [2, 1, 1200, 400],
+      [3, 1, 1400, 320],
+    ]) {
+      const shape = {
+        ratio: (cols * 16) / (rows * 9),
+        insetX: PAD * 2 + (cols - 1) * GAP,
+        insetY: PAD * 2 + (rows - 1) * GAP,
+      };
+      const after = fitPlacement(placement({ snap: null, displace: false, w, h }), shape, { spanning: false });
+
+      // What the tiles actually get to divide, once the frame and the stage's padding are gone.
+      const tilesW = after.w - PANEL_CHROME.x - PAD * 2 - (cols - 1) * GAP;
+      const tilesH = after.h - PANEL_CHROME.y - PAD * 2 - (rows - 1) * GAP;
+      const tileW = Math.min(tilesW / cols, (tilesH / rows) * (16 / 9));
+
+      expect(tilesW - cols * tileW).toBeLessThan(2);
+      expect(tilesH - (rows * tileW * 9) / 16).toBeLessThan(2);
+    }
+  });
+
+  it('prefers a measured chrome to the constants', () => {
+    // The constants are a copy of something the frame decides, and a copy is worth exactly as much
+    // as the last time somebody remembered to update it. A caller holding the element measures.
+    const before = placement({ snap: null, displace: false, w: 900, h: 400 });
+    const assumed = fitPlacement(before, aspect, { spanning: false });
+
+    // Passing what the constants say must be indistinguishable from passing nothing…
+    expect(fitPlacement(before, aspect, { spanning: false, chrome: PANEL_CHROME })).toEqual(assumed);
+
+    // …and a frame that really is taller leaves less room for the picture, so the fit is smaller.
+    const taller = fitPlacement(before, aspect, { spanning: false, chrome: { x: PANEL_CHROME.x, y: 60 } });
+    expect(taller.w).toBeLessThan(assumed.w);
+    expect(assumed.w - taller.w).toBeCloseTo((60 - PANEL_CHROME.y) * aspect.ratio, 0);
   });
 
   it('sets the thickness instead when the panel spans an edge', () => {
@@ -600,10 +710,10 @@ describe('reading a resolved box back as a rectangle', () => {
     const box = resolveDock(dock({ placement: placement({ maximised: true }) }), desktop);
     const rect = rectOf(box, desktop, placement({ w: 360, h: 200 }));
 
-    expect(rect.x).toBe(SIDEBAR_PX);
-    expect(rect.w).toBe(desktop.width - SIDEBAR_PX);
-    expect(rect.y).toBe(TOP_CHROME_PX);
-    expect(rect.h).toBe(desktop.height - TOP_CHROME_PX);
+    expect(rect.x).toBe(0);
+    expect(rect.w).toBe(desktop.width);
+    expect(rect.y).toBe(0);
+    expect(rect.h).toBe(desktop.height);
   });
 
   it('reads a floating panel straight off, and falls back only when there is no box', () => {
@@ -627,11 +737,10 @@ describe('snapping', () => {
     expect(snapOrigin('bottom', 300, 200, desktop).y).toBeGreaterThan(desktop.height / 2);
   });
 
-  it('keeps the top row clear of the app’s floating controls', () => {
-    // A panel snapped to the top centre landed behind the call bar — and its own grip and menu are in
-    // its titlebar, so the bar covered both ways of moving it back out.
-    for (const snap of ['top-left', 'top', 'top-right'] as SnapPoint[]) {
-      expect(snapOrigin(snap, 300, 200, desktop).y).toBeGreaterThanOrEqual(TOP_CHROME_PX);
+  it('keeps the bottom row clear of the app’s floating controls', () => {
+    // A panel snapped to that corner lands behind the call bar, which is where the bar now is.
+    for (const snap of ['bottom-left', 'bottom', 'bottom-right'] as SnapPoint[]) {
+      expect(snapOrigin(snap, 300, 200, desktop).y + 200).toBeLessThanOrEqual(desktop.height - BOTTOM_CHROME_PX);
     }
   });
 
@@ -697,7 +806,7 @@ describe('dockThickness', () => {
  * answer and `CHROME_RAIL_PX` is the floating one; the tests below are mostly the difference.
  */
 describe('chrome a floating panel must clear', () => {
-  const chrome: ContentInset = { left: 0, right: CHROME_RAIL_PX, top: TOP_CHROME_PX, bottom: 0 };
+  const chrome: ContentInset = { left: 0, right: CHROME_RAIL_PX, top: 0, bottom: BOTTOM_CHROME_PX };
 
   it('keeps a right-hand snap clear of the rail', () => {
     const origin = snapOrigin('right', 400, 300, desktop, NO_INSET, chrome);
@@ -707,7 +816,7 @@ describe('chrome a floating panel must clear', () => {
   it('moves the landing spots with it, so the marker is where the panel will go', () => {
     // The markers are the rule, not decoration — `snapCandidate` hit-tests the drawn box. A target
     // still at the window edge would light up over a rail the panel is no longer allowed to reach.
-    const target = snapTargetRects(desktop, NO_INSET, chrome).find((rect) => rect.id === 'top-right');
+    const target = snapTargetRects(desktop, NO_INSET, chrome).find((rect) => rect.id === 'bottom-right');
     expect(target!.x + target!.w).toBeLessThanOrEqual(desktop.width - CHROME_RAIL_PX);
   });
 
@@ -718,17 +827,18 @@ describe('chrome a floating panel must clear', () => {
     expect(px(box.left)! + px(box.width)!).toBeLessThanOrEqual(desktop.width - CHROME_RAIL_PX);
   });
 
-  it('keeps a maximised panel clear of it, since maximised floats', () => {
-    // "Full screen" cannot mean the whole screen while the app keeps permanent chrome over it: the
-    // rail sat on the panel's own position menu and un-maximise button, which are how it is recovered.
+  it('does not apply to a maximised panel, which covers everything', () => {
+    // The one placement that ignores this. The rail stays reachable by dropping below the panel's
+    // titlebar instead — see `railBand` — and the call bar is at the bottom, where a panel has no
+    // controls to cover.
     const box = resolveDock(
       dock({ placement: placement({ maximised: true, displace: false }) }),
       desktop,
       NO_INSET,
       chrome,
     );
-    expect(px(box.right)).toBe(CHROME_RAIL_PX);
-    expect(px(box.top)).toBe(TOP_CHROME_PX);
+    expect(px(box.right)).toBe(0);
+    expect(px(box.bottom)).toBe(0);
   });
 
   it('leaves a displacing panel alone, which is the whole point of the split', () => {
@@ -738,11 +848,14 @@ describe('chrome a floating panel must clear', () => {
     expect(px(box.right)).toBe(0);
   });
 
-  it('grows the top band when a module says its chrome did', () => {
-    // What the constant could not do. `TOP_CHROME_PX` was sized for the call bar alone, and the
-    // transcribe module contributes an extraction panel into the same fixed column.
-    const taller: ContentInset = { ...chrome, top: TOP_CHROME_PX + 56 };
-    expect(snapOrigin('top', 400, 300, desktop, NO_INSET, taller).y).toBe(TOP_CHROME_PX + 56);
+  it('grows the band when a module says its chrome did', () => {
+    // What the constant could not do. It was sized for the call bar alone, and the transcribe module
+    // contributes an extraction panel into the same fixed column — above the bar, so the band grows.
+    // Asserted as the difference rather than an absolute, so the floating panel's own edge gap stays
+    // one number in one place instead of being restated here.
+    const taller: ContentInset = { ...chrome, bottom: BOTTOM_CHROME_PX + 56 };
+    const base = snapOrigin('bottom', 400, 300, desktop, NO_INSET, chrome).y;
+    expect(snapOrigin('bottom', 400, 300, desktop, NO_INSET, taller).y).toBe(base - 56);
   });
 });
 
@@ -833,5 +946,13 @@ describe('the band under the module rail', () => {
     // The rail's own offset already includes `--we-chrome-top`, and so does the bar's, so the
     // distance between them is unchanged. Subtracting it here would double-count.
     expect(railBand(desktop, inset({ right: 900, top: 300 }), bar)).toBe(bar.height - RAIL_TOP_PX);
+  });
+
+  it('is not moved by a panel, whatever state it is in', () => {
+    // Every panel is out of the rail's way before this is asked — see the note on `railBand`. A
+    // maximised one briefly had a term here so the rail could sit below its titlebar; the rail hides
+    // instead, which made it dead. A band that fired for any open panel moved the rail for a video
+    // floating in the opposite corner.
+    expect(railBand(desktop, inset({ right: 900 }), NO_TOP_CHROME)).toBe(0);
   });
 });

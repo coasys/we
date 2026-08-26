@@ -12,7 +12,7 @@ import { gatePrompt } from '@we/template-kit';
 export const homeRoute: RouteSchema = {
   path: '/',
   type: 'Column',
-  props: { height: '100vh', ax: 'center', ay: 'center', gap: '500', p: '600', bg: 'page' },
+  props: { height: '100dvh', ax: 'center', ay: 'center', gap: '500', p: '600', bg: 'page' },
   children: [
     {
       type: 'Column',

@@ -1,5 +1,16 @@
 // Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
 
+exports[`token CSS generation > breakpoint.css — the tier thresholds 1`] = `
+"/* BREAKPOINT TOKENS - Generated from JS tokens */
+
+:root {
+  /* Widths at which a layout may change arrangement — see src/breakpoint.ts */
+  --we-breakpoint-sm: 640px;
+  --we-breakpoint-md: 900px;
+  --we-breakpoint-lg: 1200px;
+}"
+`;
+
 exports[`token CSS generation > color.css — hues, lightness ramp, palettes, roles, gradient 1`] = `
 "/* COLOR TOKENS - Generated from JS tokens */
 

@@ -143,6 +143,26 @@ that work directly with AD4M model classes. They do NOT apply to JSON template s
 
 ---
 
+### Looking at something that needs other people
+
+Some UI cannot be reached alone. The call stage solves its layout against the panel's box, so
+judging it means dragging a real panel around with a real multi-party call running — which one
+person cannot start, and which no unit test can answer.
+
+In a development build the call bar carries a \`−  N  +\` pair: press \`+\` and a synthetic
+participant with real moving video joins the stage, which re-solves on the click. They join at the
+*tile* layer, so the mesh and presence are untouched and this says nothing about signalling — it is
+a layout harness. What it does exercise is everything downstream of "there are N participants": the
+tiling solve, the spotlight's choice of axis, fit-to-content at each arrangement, the mute badge and
+the avatar fallback. The count persists in \`localStorage\` so it survives a reload, and is on screen
+so it cannot be silently left on. See \`module-system/call/src/devPeers.ts\`.
+
+Worth copying the shape when another module has the same problem. Two things make it safe and
+usable: the whole path is behind \`import.meta.env.DEV\`, spread conditionally into the module's
+\`slots\` and store at *definition* time so a production build contains no node and no callable
+action rather than an inert one — and the control is where the thing it changes is, rather than a
+console incantation, so the loop it exists to support is not broken by leaving the app to use it.
+
 ### Rebuilding — scope it to what changed
 
 A full \`pnpm build\` walks the whole monorepo and takes minutes. Reserve it for the end of a piece of

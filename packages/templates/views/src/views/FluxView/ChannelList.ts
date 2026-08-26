@@ -48,12 +48,21 @@ export const channelList: SchemaNode = {
   children: [
     {
       type: 'Row',
-      props: { gap: '400' },
+      // Wraps, so the two columns stack rather than overflow when there is not room for both.
+      props: { gap: '400', wrap: true },
       children: [
         // All messages across channels
         {
           type: 'Column',
-          props: { gap: '400', minWidth: '500px' },
+          /*
+            The 500px minimum only makes sense once there is 500px to give it.
+
+            It was unconditional, so on any surface narrower than that — a phone, or this view in a
+            docked panel — the column pushed its row wider than the page and the whole route scrolled
+            sideways. `flex: 1` with a zero minimum lets it take what there is; the tier asks for the
+            comfortable width only where it exists.
+          */
+          props: { gap: '400', flex: '1', minWidth: '0', mdUpProps: { minWidth: '500px' } },
           children: [
             // Section header
             {

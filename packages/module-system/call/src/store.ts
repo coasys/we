@@ -22,9 +22,11 @@ import type { Focus, ModuleStoreDeps, Peer } from '@we/module-shared';
 import { activitiesOfType } from '@we/module-shared';
 import { planEphemeral } from '@we/module-shared';
 
+import { devPeers, devPeersAvailable, readDevPeerCount, stopDevPeers, writeDevPeerCount } from './devPeers';
 import { createMediaController, type MediaController } from './media';
 import { type CallMesh, createCallMesh } from './mesh';
 import { anchoredCallId, spaceCallId } from './protocol';
+import { solveStrip } from './strip';
 
 /**
  * One participant, flattened for a template.
@@ -102,16 +104,19 @@ export interface CallTileState {
 export const STAGE_PADDING_PX = 12;
 export const STAGE_GAP_PX = 12;
 
+/** The tile aspect the whole stage is laid out from. */
+const TILE_ASPECT = 16 / 9;
+
 /**
- * How much of the top of the window the call bar occupies, for panels to keep clear of.
+ * How much of the bottom of the window the call bar occupies, for panels to keep clear of.
  *
- * `CALL_BAR_TOP` (10px) plus a row of `md` controls (40px) in a surface padded by `200` a side
- * (8px twice), plus a little air so a panel snapped beneath it does not touch. Derived rather than
+ * `CALL_BAR_INSET` (10px) plus a row of `md` controls (40px) in a surface padded by `200` a side
+ * (8px twice), plus a little air so a panel snapped above it does not touch. Derived rather than
  * chosen, like `CHROME_RAIL_WIDTH`: change the bar's size or padding and this has to follow, or
  * panels start landing underneath it again.
  *
- * Lived in the shell as `TOP_CHROME_PX` until the bar stopped being the only thing up there. See
- * `chromeReserve` below.
+ * The bottom, since the bar moved there. Lived in the shell as `TOP_CHROME_PX` until the bar
+ * stopped being the only thing up there; see `chromeReserve` below.
  */
 export const CALL_BAR_RESERVE_PX = 74;
 
@@ -320,6 +325,20 @@ export function createCallStore(deps: CallStoreDeps) {
     return tile;
   }
 
+  /*
+    How many synthetic participants the call bar's dev controls have asked for — see `devPeers`.
+
+    A signal rather than a read of `localStorage` per rebuild, so pressing `+` re-solves the stage on
+    the click instead of waiting for whatever roster event happens next. Seeded from storage, which
+    is what makes the count survive the reloads a developer does while iterating.
+  */
+  const [fakePeerCount, setFakePeerCountSignal] = signal(readDevPeerCount());
+
+  function stepFakePeers(by: number) {
+    setFakePeerCountSignal(writeDevPeerCount(fakePeerCount() + by));
+    rebuildTiles();
+  }
+
   function rebuildTiles() {
     const id = callId();
     const me = selfId?.() ?? null;
@@ -327,6 +346,7 @@ export function createCallStore(deps: CallStoreDeps) {
       tileCache.clear();
       setTiles([]);
       setTileStates([]);
+      stopDevPeers();
       return;
     }
 
@@ -373,6 +393,28 @@ export function createCallStore(deps: CallStoreDeps) {
         // nothing until the first negotiation — exactly the window that showed nothing at all.
         connecting: wantsPicture && !picture && connection !== 'failed',
         failed: connection === 'failed',
+      });
+    }
+
+    /*
+      Synthetic participants, when a developer has asked for them — see `devPeers`.
+
+      Appended here rather than injected into the roster, so they cost the mesh and presence nothing
+      and cannot be mistaken for a real peer by anything upstream. They go through `stabilise` and
+      `tileStates` like everyone else, which is the point: the tiling solve, the spotlight's axis and
+      fit-to-content all see exactly what they would in a real call.
+    */
+    for (const peer of devPeers(fakePeerCount())) {
+      next.push(stabilise({ id: peer.id, did: peer.id, stream: peer.stream, isSelf: false }));
+      states.push({
+        id: peer.id,
+        isScreen: false,
+        audioEnabled: peer.audioEnabled,
+        videoEnabled: true,
+        connection: 'connected',
+        hasPicture: peer.stream !== null,
+        connecting: false,
+        failed: false,
       });
     }
 
@@ -624,22 +666,48 @@ export function createCallStore(deps: CallStoreDeps) {
   onDispose?.(() => teardown());
 
   /**
-   * How many columns the tiles pack into.
+   * How the tiles are arranged, as reported by the stage.
    *
-   * The only number the layout needs, because every other dimension is `1fr` of a box whose size the
-   * host has already decided. That is what makes "one participant never scrolls" a property of the
-   * arrangement rather than something to test for: rows divide the stage, they never exceed it.
+   * This module no longer decides it. It used to, from the participant count alone — two columns up
+   * to four people, three beyond — and the panel's *shape* was not an input at all, so a call
+   * dragged tall and thin got two columns of postage stamps and one dragged wide got two rows with
+   * bands of empty panel above and below. The comment here claimed a tall dock wanted one or two
+   * columns; the code had no width to make that true with, and had not since a panel stopped being
+   * defined by which edge it was on.
    *
-   * Three cases, in order of how strongly they determine the answer. A focus wins outright — one
-   * fewer column than there are people puts the focused tile across the top and everyone else in
-   * exactly one row beneath, at any count. A tall narrow dock wants columns of one or two, because
-   * three 16:9 tiles across a 440px panel are thumbnails. Anything wide gets the ordinary grid.
+   * `Grid`'s `childAspect` solves it properly — largest 16:9 tiles for the box, both axes — and
+   * reports what it settled on. Read here for two things only the module can answer: what shape the
+   * panel wants at fit-to-content, and where a spotlight should put everyone else.
    */
-  function stageColumns(count: number, focused: boolean): number {
-    if (count <= 1) return 1;
-    if (focused) return Math.min(count - 1, 4);
-    return count <= 4 ? 2 : 3;
-  }
+  const [arrangement, setArrangement] = signal<{ columns: number; rows: number }>({ columns: 1, rows: 1 });
+
+  /**
+   * The stage's own box, reported by the grid — see `Grid`'s `onMeasure`.
+   *
+   * Used for one decision and no arithmetic: which edge the filmstrip runs along. The thicknesses
+   * themselves are written in container-query units, so they stay right between measurements rather
+   * than lagging a frame behind a drag.
+   */
+  const [stageBox, setStageBox] = signal<{ width: number; height: number }>({ width: 0, height: 0 });
+
+  /**
+   * Whether the spotlight has the stage to itself.
+   *
+   * A second mode rather than a third click, because a three-state cycle on one gesture cannot say
+   * which state it is in — the same trap the show/hide toggle was split apart to escape. It is a
+   * toggle in the bar, visible only while something is focused, so the state is on screen and the
+   * move has a name.
+   *
+   * The strip is what you give up, and it is worth giving up mainly for a shared screen: reading
+   * somebody's desktop you want every pixel and the faces are not the point.
+   */
+  const [solo, setSolo] = signal(false);
+
+  /** How many tiles the strip holds — everyone but the one with the stage. */
+  const stripCount = () => Math.max(1, tiles().length - 1);
+
+  /** The strip's own solve, against the box the grid last reported — see `solveStrip`. */
+  const stripLayout = () => solveStrip(stripCount(), stageBox(), { aspect: TILE_ASPECT, gap: STAGE_GAP_PX });
 
   /** Everyone in the space-wide call, whether or not this agent has joined — so the bar can offer
    *  "3 in a call · Join" rather than only appearing once you are already in one. */
@@ -714,11 +782,30 @@ export function createCallStore(deps: CallStoreDeps) {
      * panel width, made the box about twenty pixels too short for its pictures, and the tiles
      * answered by shrinking to the height and leaving a gap down each side. They are constants at a
      * given tile count, which is what lets this stay a value rather than a callback taking a width.
+     *
+     * The arrangement is the one the stage is *currently in*, not one solved again here. That is
+     * deliberate: with the width fixed, any column count can be made to fit perfectly, so "fit" that
+     * re-solved could rearrange the call under a click that only asked to remove the empty band.
+     * This takes the slack out and leaves the tiles where they are.
      */
     dockAspect: () => {
-      const count = Math.max(1, tiles().length);
-      const columns = stageColumns(count, focusedId() !== null);
-      const rows = Math.max(1, Math.ceil(count / columns));
+      /*
+        Spotlight and solo are one 16:9 picture with a band beside or beneath it, so the shape is the
+        tile's and the strip is an inset — which is exactly the pair this contract asks for, and the
+        same band the tracks are written from.
+      */
+      if (focusedId() !== null) {
+        const strip = stripLayout();
+        const band = solo() ? 0 : strip.thickness + STAGE_GAP_PX;
+        const beside = !solo() && strip.side;
+        return {
+          ratio: TILE_ASPECT,
+          insetX: STAGE_PADDING_PX * 2 + (beside ? band : 0),
+          insetY: STAGE_PADDING_PX * 2 + (!solo() && !strip.side ? band : 0),
+        };
+      }
+
+      const { columns, rows } = arrangement();
       return {
         ratio: (columns * 16) / (rows * 9),
         insetX: STAGE_PADDING_PX * 2 + (columns - 1) * STAGE_GAP_PX,
@@ -726,30 +813,73 @@ export function createCallStore(deps: CallStoreDeps) {
       };
     },
 
+    /*
+      Synthetic participants, and the two controls that change how many — see `devPeers`.
+
+      Spread conditionally rather than declared and left inert, so a production build's store does
+      not carry a `setFakePeers` a template could find and call. Nothing else here is conditional;
+      this is the one member that must not exist rather than merely do nothing.
+    */
+    ...(devPeersAvailable
+      ? {
+          fakePeerCount,
+          /*
+            A step rather than a setter, because the schema layer has no arithmetic — there is no
+            token for "the current count minus one", so a `+`/`−` pair has to be two actions.
+
+            Both re-solve the stage on the click. Reading storage per rebuild instead would leave it
+            showing the old count until whatever roster event happened next, which for a button you
+            press while watching the thing it changes is the whole of the feedback.
+          */
+          addFakePeer: () => stepFakePeers(1),
+          removeFakePeer: () => stepFakePeers(-1),
+        }
+      : {}),
+
     /** Whether the video is showing at all — what the show/hide button reflects. */
     stageOpen: visible,
 
     // ── How the tiles pack ────────────────────────────────────────────────────
     /**
-     * The tile container's own CSS, computed rather than expressed as nested `$if` in the fragment.
+     * What the stage settled on — wired to `Grid`'s `onArrange`.
      *
-     * Grid, not wrapping flex. A wrapping flex container derives its line height from its content and
-     * `align-content` can only *grow* a line — so a declared stage height was a floor rather than a
-     * ceiling, and one oversized child pushed the whole stage past it into a scrollbar. Grid tracks of
-     * `1fr` divide a definite box instead, which cannot overflow however many people join or whatever
-     * resolution they send.
-     *
-     * One arrangement now, where there were three. The strip and the side-dock cases existed because
-     * a docked panel's shape was decided by which *edge* it was on — a 440×900 column, a 1600×300
-     * band — and each needed its own way to pack tiles into it. A panel the user has dragged to a
-     * size has no such categories: it is a rectangle, the tiles divide it, and the columns come from
-     * how many people are in the call rather than from where the panel is parked.
+     * A setter on the store because the arrangement is decided where it can be measured, and needed
+     * where the panel's geometry is decided. The alternative was for this module to import the
+     * solver and re-derive it, which would mean a module depending on the design system — an edge
+     * the package layering does not have — and two copies of an answer that must agree.
      */
-    stageStyle: (): Record<string, string> => ({
-      display: 'grid',
-      'grid-template-columns': `repeat(${stageColumns(tiles().length, focusedId() !== null)}, 1fr)`,
-      'grid-auto-rows': '1fr',
-    }),
+    setArrangement,
+    arrangement,
+    setStageBox,
+    solo,
+
+    /**
+     * The stage's grid tracks while somebody has the spotlight — `undefined` the rest of the time.
+     *
+     * Undefined is what hands the layout back to `Grid`'s own solver: `template` takes precedence
+     * over `childAspect`, so writing tracks here turns the equal-tile solve off and leaving it
+     * absent turns it back on. Two modes, one prop, and no mode flag to keep in step with anything.
+     *
+     * Spotlight is not a span in the equal grid, which is what it used to be and why it barely
+     * looked focused: the tracks were solved for N tiles of one size, so the spotlight could only
+     * ever be two of them — two thirds of the stage at three people, one third at six. The tracks
+     * are the spotlight's own now.
+     */
+    stageTemplate: (): string | undefined => {
+      if (focusedId() === null) return undefined;
+      if (solo()) return '1fr';
+      const strip = stripLayout();
+      const track = strip.scroll ? `${strip.tile}px` : '1fr';
+      return strip.side ? `1fr ${strip.thickness}px` : `repeat(${strip.count}, ${track})`;
+    },
+
+    stageRows: (): string | undefined => {
+      if (focusedId() === null) return undefined;
+      if (solo()) return '1fr';
+      const strip = stripLayout();
+      const track = strip.scroll ? `${strip.tile}px` : '1fr';
+      return strip.side ? `repeat(${strip.count}, ${track})` : `1fr ${strip.thickness}px`;
+    },
 
     /**
      * The picture box's own sizing.
@@ -781,9 +911,27 @@ export function createCallStore(deps: CallStoreDeps) {
 
     tileCells: (): { id: string; style: Record<string, string | number> }[] => {
       const focus = focusedId();
-      // A focused tile spans the full width and two rows: the classic spotlight, in one declaration,
-      // at any participant count.
-      const spotlight: Record<string, string | number> = { 'grid-column': '1 / -1', 'grid-row': 'span 2', order: -1 };
+      /*
+        Where the spotlight sits in the tracks `stageTemplate` wrote.
+
+        It takes the whole of the axis the strip does not run along — the full height beside a strip
+        down the side, the full width above one underneath — and the others auto-place into what is
+        left, one per track, in the order they are in. Explicit placement rather than `order`, which
+        is what it used to need when the spotlight was a span in a grid solved for equal tiles.
+      */
+      /*
+        The spotlight's cell fills with its box rather than centring it.
+
+        Every other cell centres what it holds, which is right for a picture smaller than its cell.
+        This one holds the *pinned* box — see `tilePins` — and a sticky element's range is measured
+        from where it would have sat: centred in a column several times the height of the stage, it
+        starts halfway down and scrolls out of view before it ever reaches the top edge it is
+        supposed to stick to. Stretched from the start of the cell, it pins as intended.
+      */
+      const fills: Record<string, string | number> = { 'justify-content': 'flex-start', 'align-items': 'stretch' };
+      const spotlight: Record<string, string | number> = stripLayout().side
+        ? { ...fills, 'grid-column': '1', 'grid-row': '1 / -1' }
+        : { ...fills, 'grid-row': '1', 'grid-column': '1 / -1' };
       /**
        * Every cell is a size container, which is what lets the picture inside it be the right shape.
        *
@@ -798,12 +946,68 @@ export function createCallStore(deps: CallStoreDeps) {
        * column width and would have collapsed to nothing under size containment — a shape a panel
        * can no longer be in, since every stage divides a box the user dragged.
        */
-      const cell: Record<string, string | number> = { 'container-type': 'size' };
+      /*
+        The cell no longer measures itself: the box inside it does — see `tilePins`. A pinned
+        spotlight is shorter than the cell it spans, and the picture has to be sized from the part
+        that is on screen rather than from the whole scrollable column.
+      */
+      const cell: Record<string, string | number> = {};
+      /*
+        Solo hides the others rather than dropping them from the list.
+
+        `tiles` is a reference-keyed `$each`, so removing an entry unmounts its row and takes the
+        `<video>` with it — everyone's picture would go black on the way in and have to renegotiate
+        on the way out. Hidden, they keep their streams and come back instantly.
+      */
+      const hidden: Record<string, string | number> = { display: 'none' };
+      return tiles().map((entry) => {
+        if (entry.id === focus) return { id: entry.id, style: { ...cell, ...(focus ? spotlight : {}) } };
+        return { id: entry.id, style: focus !== null && solo() ? hidden : cell };
+      });
+    },
+    /**
+     * The box inside each tile that the picture is measured against.
+     *
+     * Ordinarily it simply fills the cell, and the picture sizes itself from it exactly as it did
+     * when the cell was the container. The one that matters is the spotlight's while the strip
+     * scrolls: it spans every row of a column taller than the stage, so a picture measured from the
+     * cell would be sized for a box mostly off screen. Pinning this box to the visible band and
+     * measuring *it* is what keeps the spotlight the size of what you can see.
+     *
+     * `position: sticky` rather than anything measured per frame: the browser holds it against the
+     * scroll for free, and the height it is held at is the one number the stage already reports.
+     */
+    tilePins: (): { id: string; style: Record<string, string | number> }[] => {
+      const focus = focusedId();
+      const box = stageBox();
+      const strip = stripLayout();
+      const base: Record<string, string | number> = { 'container-type': 'size', width: '100%', height: '100%' };
+      const pinned: Record<string, string | number> = strip.side
+        ? { ...base, position: 'sticky', top: '0', height: `${Math.round(box.height)}px` }
+        : { ...base, position: 'sticky', left: '0', width: `${Math.round(box.width)}px` };
+
       return tiles().map((entry) => ({
         id: entry.id,
-        style: entry.id === focus ? { ...cell, ...spotlight } : cell,
+        style: entry.id === focus && !solo() && strip.scroll ? pinned : base,
       }));
     },
+
+    /**
+     * Which way the stage scrolls, which is only ever the axis the strip runs along.
+     *
+     * Hidden on the other, because nothing should ever overflow it — the spotlight is fitted to the
+     * box and the strip is one line. A stage that scrolled both ways would be hiding a bug rather
+     * than offering a feature.
+     */
+    stageOverflow: (): Record<string, string> => {
+      if (focusedId() === null || solo()) return { overflow: 'hidden' };
+      const strip = stripLayout();
+      if (!strip.scroll) return { overflow: 'hidden' };
+      return strip.side
+        ? { 'overflow-y': 'auto', 'overflow-x': 'hidden' }
+        : { 'overflow-x': 'auto', 'overflow-y': 'hidden' };
+    },
+
     /** True when this agent is in a call — the call bar's visibility condition. */
     active: () => callId() !== null,
 
@@ -853,7 +1057,8 @@ export function createCallStore(deps: CallStoreDeps) {
      * who is not in the call yet — that is the same object in the same place, so it takes the same
      * room. `CALL_BAR_TOP` plus a row of `md` controls in a padded surface.
      */
-    chromeReserve: () => (callId() !== null || ongoingPeers().length > 0 ? { top: CALL_BAR_RESERVE_PX } : { top: 0 }),
+    chromeReserve: () =>
+      callId() !== null || ongoingPeers().length > 0 ? { bottom: CALL_BAR_RESERVE_PX } : { bottom: 0 },
 
     /**
      * The microphone this call is sending, for a module that wants to listen to it.
@@ -952,8 +1157,23 @@ export function createCallStore(deps: CallStoreDeps) {
       const next = focusedId() === id ? null : id;
       focusIsManual = true;
       setFocusedId(next);
+      // Letting everyone back on the stage ends solo with it: it is a property of *having* a
+      // spotlight, and a mode left armed with nothing to apply to would take effect on whoever was
+      // focused next, which nobody asked for.
+      if (next === null) setSolo(false);
       // The states array carries `focused`, so the change has to reach it for the layout to move.
       rebuildTiles();
+    },
+
+    /**
+     * Give the spotlight the stage to itself, or bring the others back.
+     *
+     * Only meaningful while something is focused, and the bar only shows it then — but guarded here
+     * too, since a store method is reachable by anything a template can write.
+     */
+    toggleSolo: () => {
+      if (focusedId() === null) return;
+      setSolo(!solo());
     },
 
     dismissProblem: () => setProblem(null),

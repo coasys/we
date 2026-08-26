@@ -68,8 +68,16 @@ export function EditableImage(allProps: EditableImageProps) {
     return { ...buildLayoutStyles(merged, 'column'), 'flex-shrink': '0' };
   });
 
-  const hasStateProps = () => dsProps.hoverProps || dsProps.activeProps || dsProps.focusProps;
-  const { style, attrs } = useStateProps(baseStyle, dsProps as EditableImageProps, 'column');
+  // Tiers count as much as states: both route through the same var indirection, and gating on the
+  // states alone would leave `mdUpProps` here typechecking and doing nothing.
+  const hasVariantProps = () =>
+    dsProps.hoverProps ||
+    dsProps.activeProps ||
+    dsProps.focusProps ||
+    dsProps.smUpProps ||
+    dsProps.mdUpProps ||
+    dsProps.lgUpProps;
+  const { style, attrs, checkSurface } = useStateProps(baseStyle, dsProps as EditableImageProps, 'column');
 
   /**
    * Straight to the OS file picker. Clicking used to open a modal whose only content was a
@@ -140,7 +148,8 @@ export function EditableImage(allProps: EditableImageProps) {
       */}
       <div
         class={`editable-image ${dragging() ? 'editable-image--dragging' : ''} ${props.class || ''}`}
-        style={hasStateProps() ? style() : baseStyle()}
+        style={hasVariantProps() ? style() : baseStyle()}
+        ref={checkSurface}
         role="button"
         tabIndex={0}
         aria-label={label()}
@@ -162,7 +171,7 @@ export function EditableImage(allProps: EditableImageProps) {
           acceptFile(e.dataTransfer?.files?.[0]);
         }}
         {...getBgImageAttrs(dsProps)}
-        {...(hasStateProps() ? attrs : {})}
+        {...(hasVariantProps() ? attrs : {})}
       >
         <input
           ref={fileInput}

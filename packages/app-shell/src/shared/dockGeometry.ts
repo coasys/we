@@ -107,19 +107,23 @@ export const DOCK_GAP_PX = 8;
 export const NARROW_VIEWPORT_PX = 900;
 
 /**
- * The band along the top that floating chrome occupies, which a panel must not be snapped under.
+ * The band along the bottom that floating chrome occupies, which a panel must not be snapped under.
  *
- * The call module's control bar sits at `top: 10px` and is a row of `md` buttons in a padded pill —
- * about 56px — so a panel snapped to the top centre landed squarely behind it. That is worse than it
- * sounds: the panel's own grip and position menu are in *its* titlebar, so the controls covered the
- * only two ways to move it back out.
+ * The call module's control bar sits 10px off the bottom and is a row of `md` buttons in a padded
+ * pill — about 56px — so a panel snapped to that corner lands squarely behind it.
+ *
+ * It was the *top* band, and moved with the bar. The reason the bar moved is worth keeping here,
+ * because it is a fact about panels rather than about calls: a panel's grip, position menu and
+ * un-maximise button are all in its titlebar, so chrome along the top can cover the only ways out
+ * while chrome along the bottom covers nothing that is pressed. That asymmetry is also what lets a
+ * maximised panel take the whole window — see `resolveDock`.
  *
  * A constant here rather than a measurement, in the spirit of `SIDEBAR_PX` above: this file is where
- * the shell's fixed furniture is written down. It costs a snapped-to-top panel a band of empty space
- * when no call is running, which is invisible; the alternative was a panel that could not be
- * recovered without knowing the keyboard shortcut.
+ * the shell's fixed furniture is written down. It costs a snapped-to-bottom panel a band of empty
+ * space when no call is running, which is invisible; the alternative was a panel landing under
+ * controls it has no way past.
  */
-export const TOP_CHROME_PX = 74;
+export const BOTTOM_CHROME_PX = 74;
 
 /**
  * Chrome a **floating** panel must clear, per edge — as distinct from `occupied`, which is what
@@ -135,11 +139,11 @@ export const TOP_CHROME_PX = 74;
  * So this is threaded only through the floating paths — `snapOrigin`, the targets drawn from it, the
  * drag clamp, and the maximised box. Displacing thickness never sees it.
  *
- * The default keeps the behaviour this generalises: the top band the call bar occupies, and nothing
- * on the other three edges. The shell passes a live one — see `ShellStore.floatChrome`, which adds
- * the rail on the right and grows the top band for chrome that has appeared since.
+ * The default keeps the behaviour this generalises: the bottom band the call bar occupies, and
+ * nothing on the other three edges. The shell passes a live one — see `ShellStore.floatChrome`,
+ * which adds the rail on the right and takes both bands from what the modules declare.
  */
-export const DEFAULT_FLOAT_CHROME: ContentInset = { left: 0, right: 0, top: TOP_CHROME_PX, bottom: 0 };
+export const DEFAULT_FLOAT_CHROME: ContentInset = { left: 0, right: 0, top: 0, bottom: BOTTOM_CHROME_PX };
 
 /** How much room the content viewport gives up, per edge, in pixels. */
 export interface ContentInset {
@@ -284,8 +288,27 @@ export const MIN_FLOAT_PX = 120;
  *
  * Named here because two places have to agree about it: the frame that draws it, and `fitDock`,
  * which solves for a height from the *content's* aspect and has to add the chrome above it back on.
+ *
+ * 33, not 24, which is what it said while the bar was actually 33 tall: `py: '100'` either side of a
+ * `size="xs"` control (4 + 24 + 4) plus its own bottom border. It gained that padding so the
+ * position menu would clear the panel's corner radius, and this constant did not follow — which is
+ * the trouble with two places having to agree by hand, and why `fitPlacement` now prefers a
+ * measurement and keeps these only as the fallback.
  */
-export const TITLE_BAR_PX = 24;
+export const TITLE_BAR_PX = 33;
+
+/**
+ * The frame's own border, both edges of an axis.
+ *
+ * `dockFrame` draws `1px solid border` and the global reset is `box-sizing: border-box`, so a
+ * panel's declared size includes it and its content region is this much smaller on each axis. Two
+ * pixels is nothing to look at and not nothing to solve with: in a wide arrangement the vertical
+ * term comes back multiplied by the tile aspect.
+ */
+export const FRAME_BORDER_PX = 2;
+
+/** Everything between a panel's declared box and the box its content gets. */
+export const PANEL_CHROME = { x: FRAME_BORDER_PX, y: TITLE_BAR_PX + FRAME_BORDER_PX };
 
 /**
  * A resolved dock box.
@@ -314,6 +337,21 @@ export interface DockGeometry {
   left?: string;
   width?: string;
   height?: string;
+  /**
+   * How far the panel's *content* keeps clear of chrome painted over it, per horizontal edge.
+   *
+   * Only a maximised panel has any. Every other placement is clamped out of the chrome bands
+   * already, so nothing is over it to clear; a maximised one deliberately takes the whole window
+   * instead, and pays for it here. Box versus content: the panel still covers the sidebar and the
+   * rail, so no template shows through around its edges, while what is *inside* it stays out from
+   * under the call bar.
+   *
+   * Only the horizontal edges, because the app's own rails hide while a panel is maximised — see
+   * `shellStore.panelMaximised`. What is left over the panel is whatever the modules have declared
+   * at the top and bottom, which is exactly the band `chrome` carries.
+   */
+  padTop?: string;
+  padBottom?: string;
   /** Whether this panel is overlaying rather than displacing. Read by the frame and by tests. */
   floating: boolean;
   /** The snap it is parked at, so the frame can mark it in the position menu. */
@@ -437,7 +475,7 @@ export function displaces(placement: FloatPlacement, viewport: Viewport): boolea
  *
  * Against the content region rather than the window, so a panel snapped left lands beside the
  * sidebar instead of underneath it — the same reservation `contentRegion` makes for every other
- * calculation here. The top row clears `TOP_CHROME_PX` for the same kind of reason.
+ * calculation here. The bottom row clears `BOTTOM_CHROME_PX` for the same kind of reason.
  */
 export function snapOrigin(
   snap: SnapPoint,
@@ -566,6 +604,16 @@ export interface ContentAspect {
 }
 
 /**
+ * What sits between a panel's declared box and the box its content actually gets.
+ *
+ * Measured where it can be, assumed where it cannot. See {@link fitPlacement}.
+ */
+export interface PanelChrome {
+  x: number;
+  y: number;
+}
+
+/**
  * Trim the empty band around a panel's content, and never resize the content itself.
  *
  * The first version kept the width and solved for the height, which is one arbitrary choice of which
@@ -584,30 +632,44 @@ export interface ContentAspect {
 export function fitPlacement(
   placement: FloatPlacement,
   aspect: ContentAspect,
-  options: { spanning: boolean; edge?: DockEdge },
+  options: { spanning: boolean; edge?: DockEdge; chrome?: PanelChrome },
 ): FloatPlacement {
-  const insetX = aspect.insetX ?? 0;
-  const insetY = aspect.insetY ?? 0;
-  const chrome = TITLE_BAR_PX + insetY;
+  /*
+    Chrome measured by the caller where it could be, assumed here where it could not.
+
+    This used to be `TITLE_BAR_PX` alone, and it was wrong by eleven pixels — the titlebar's own
+    padding and border, and the frame's border — which sounds like a rounding error and is not. The
+    fit shortens the panel, so understating the chrome leaves the content that much short of what it
+    asked for; the tiles inside then become height-limited and give the difference back **on the
+    other axis, multiplied by the ratio**. Three 16:9 tiles across is a ratio of 5.33, so eleven
+    pixels of missing height came back as fifty-four pixels of empty panel down each side, while the
+    same error stacked vertically came back as four and looked perfect.
+
+    So it is measured now. The constants remain as the fallback for a caller with no element to
+    measure, and are correct as of writing — but they are a copy of something the frame decides, and
+    the eleven pixels are what a hand-maintained copy is worth over time.
+  */
+  const chromeX = (options.chrome?.x ?? PANEL_CHROME.x) + (aspect.insetX ?? 0);
+  const chromeY = (options.chrome?.y ?? PANEL_CHROME.y) + (aspect.insetY ?? 0);
   if (!Number.isFinite(aspect.ratio) || aspect.ratio <= 0) return placement;
 
   if (options.spanning && options.edge) {
     const vertical = options.edge === 'left' || options.edge === 'right';
     const thickness = vertical
-      ? Math.round(Math.max(1, placement.h - chrome) * aspect.ratio) + insetX
-      : Math.round(Math.max(1, placement.w - insetX) / aspect.ratio) + chrome;
+      ? Math.round(Math.max(1, placement.h - chromeY) * aspect.ratio) + chromeX
+      : Math.round(Math.max(1, placement.w - chromeX) / aspect.ratio) + chromeY;
     return { ...placement, thickness: Math.max(MIN_DOCK_PX, thickness) };
   }
 
-  const contentW = placement.w - insetX;
-  const contentH = placement.h - chrome;
+  const contentW = placement.w - chromeX;
+  const contentH = placement.h - chromeY;
   if (contentW <= 0 || contentH <= 0) return placement;
 
   // Wider than the picture needs, or taller: exactly one of these has slack, and it is the one that
   // gives. Equal is already a fit, and falls into the second arm to no effect.
   return contentW / contentH > aspect.ratio
-    ? { ...placement, w: Math.max(MIN_FLOAT_PX, Math.round(contentH * aspect.ratio) + insetX) }
-    : { ...placement, h: Math.max(MIN_FLOAT_PX, Math.round(contentW / aspect.ratio) + chrome) };
+    ? { ...placement, w: Math.max(MIN_FLOAT_PX, Math.round(contentH * aspect.ratio) + chromeX) }
+    : { ...placement, h: Math.max(MIN_FLOAT_PX, Math.round(contentW / aspect.ratio) + chromeY) };
 }
 
 /**
@@ -672,30 +734,42 @@ export function resolveDock(
   const placement = request.placement ?? seedPlacement(request, viewport, occupied);
 
   if (request.size === 'full' || placement.maximised) {
+    /*
+      Full screen means the whole window, less any panel that has *taken room* from it.
+
+      It used to stop short of the sidebar, the module rail and the call bar's band, on the reasoning
+      that "full screen cannot mean the whole screen while the app keeps permanent chrome over it".
+      The reasoning was right about what must not be covered and wrong about what to do with it. What
+      must not be covered is the panel's own titlebar — grip, position menu, un-maximise — because
+      that is the way out. Reserving a *band* along each edge for it protected far more than the
+      titlebar and, worse, protected the wrong shape: the rail is a short column at top-right and the
+      call bar a centred pill, so most of each reserved strip was empty and showed whatever the
+      template had behind it. A panel that covers everything except a frame of unrelated content is
+      not what anybody presses that button for.
+
+      Two things make covering everything safe now. The call bar sits at the *bottom*, where a
+      panel has no controls; and the module rail already drops below a maximised panel's titlebar on
+      its own, through `--we-panel-chrome-top` — the band this file computes in `railBand`. So both
+      pieces of chrome stay reachable, painted over the panel rather than beside it, and neither
+      lands on anything the panel is recovered with.
+
+      `occupied` is still subtracted, and that line is deliberate. Permanent furniture — the sidebar,
+      the rail — is the app's own and covering it is what "full screen" means. Another *displacing*
+      panel is something the user opened, which is currently shrinking the content for a reason;
+      covering that is losing something rather than filling the screen.
+    */
     return {
       edge,
       floating: true,
       snap: placement.snap,
-      /*
-        Below the app's floating controls, like every other placement here.
-
-        "Full screen" cannot mean *the whole screen* while the app keeps permanent chrome over it: a
-        maximised panel starting at the top put its own titlebar — grip, position menu, and the button
-        that un-maximises it — underneath the call bar. It means as large as a panel can be given the
-        chrome, which is what the constant has meant in the two places it was already applied.
-      */
-      top: px(region.top + chrome.top),
-      bottom: px(region.bottom + chrome.bottom),
-      left: px(region.left + chrome.left),
-      /*
-        The one edge a maximised panel used to keep, and should not have.
-
-        It spans the content region, and the content region reserves nothing on the right because the
-        rail slides for a *displacing* panel. A maximised panel floats, so nothing slid, and the rail
-        sat on top of the panel's own position menu and un-maximise button — the two controls the
-        panel is recovered with. The same failure the top band exists to prevent, on the other axis.
-      */
-      right: px(region.right + chrome.right),
+      top: px(occupied.top),
+      bottom: px(occupied.bottom),
+      left: px(occupied.left),
+      right: px(occupied.right),
+      // See `padTop`. The box covers everything; the content still keeps clear of what is painted
+      // over it, which after the rails hide is the module bars alone.
+      padTop: px(chrome.top),
+      padBottom: px(chrome.bottom),
     };
   }
 
@@ -1014,7 +1088,12 @@ export function contentInset(requests: DockRequest[], viewport: Viewport): Conte
  * - one displacing left or right has already slid it sideways, through `--we-chrome-right`;
  * - one displacing top or bottom has already pushed it down, through `--we-chrome-top`;
  * - a floating or snapped one is clamped out of its column by `DEFAULT_FLOAT_CHROME`;
- * - a maximised one stops short of it for the same reason.
+ * - a maximised one covers the whole window, and the rail hides rather than dodging it.
+ *
+ * That last bullet was briefly a term in this function — the rail dropped below a maximised panel's
+ * titlebar so it stayed reachable over the top of it. Hiding is the better answer and made the term
+ * dead: full screen means the app's own furniture is gone, and the way back out is the panel's
+ * titlebar and the Escape key. See `shellStore.panelMaximised`.
  *
  * So a panel could only ever be found here through a *disagreement* between two ways of measuring
  * one edge — a resolved box rounding where an inset does not, say — and what it reported then was

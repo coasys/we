@@ -45,7 +45,7 @@ export const headerLayout: TemplateSchema = {
                     spaceNavBar,
                     {
                       type: 'Column',
-                      props: { width: '100%', height: 'calc(100vh - 70px)' },
+                      props: { width: '100%', height: 'calc(100dvh - 70px)' },
                       children: [{ type: '$routes' }],
                     },
                   ],
