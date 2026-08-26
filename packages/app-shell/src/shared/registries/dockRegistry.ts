@@ -180,17 +180,32 @@ const isGlass = (id: string) => ({
   $and: [{ $store: dockGeometryPath(id, 'floating') }, { $not: { $store: dockGeometryPath(id, 'maximised') } }],
 });
 
-/**
- * How far past the panel you can see, and how much of it resolves.
- *
- * `color-mix` toward `transparent` rather than an `opacity` on the box: opacity fades the panel's
- * *contents* along with its background, so the text would go with it. This fades only what is
- * painted behind them.
- */
-const translucent = (role: string) => `color-mix(in oklch, var(--we-role-${role}) 50%, transparent)`;
+/*
+  Frosted glass is a theme's decision, and it already has the vocabulary for it.
 
-/** Enough to separate the panel from what is behind it without turning it into frosted glass. */
-const PANEL_BLUR = 'blur(12px)';
+  `surfaceOpacity` and `surfaceBlur` are theme overrides that resolve to `--we-theme-surface-opacity`
+  and `--we-theme-surface-blur`, and the expression below is the one `Card` and every overlay
+  primitive — modal, drawer, popover — already use, down to `in srgb`. A panel writing its own
+  numbers would be the one surface in the app that ignored a theme asking for more glass or less.
+
+  `color-mix` toward `transparent` rather than an `opacity` on the box: opacity fades the panel's
+  *contents* along with its background, so the text would go with it. This fades only what is
+  painted behind them.
+
+  The fallbacks are where a panel differs from a card, and deliberately. A theme that says nothing
+  leaves cards and modals opaque — `var(--we-theme-surface-blur, 0px)` — because most surfaces sit
+  *in* a page rather than over one, and glass on all of them by default would be a look nobody
+  chose. A floating panel is the opposite case: it is chrome laid over the app, and being able to
+  see what it covers is the point of it floating rather than displacing. So it defaults to glass and
+  a theme still overrules it, in either direction.
+*/
+const PANEL_OPACITY = '0.5';
+const PANEL_BLUR_PX = '12px';
+
+const glassBg = (role: string) =>
+  `color-mix(in srgb, var(--we-role-${role}) calc(var(--we-theme-surface-opacity, ${PANEL_OPACITY}) * 100%), transparent)`;
+
+const GLASS_BLUR = `blur(var(--we-theme-surface-blur, ${PANEL_BLUR_PX}))`;
 
 export function dockFrame(entry: DockEntry, node: SchemaNode): SchemaNode {
   const geo = (field: string) => ({ $store: dockGeometryPath(entry.id, field) });
@@ -222,15 +237,14 @@ export function dockFrame(entry: DockEntry, node: SchemaNode): SchemaNode {
               // border or a radius of its own — which is what stops two docked modules from looking
               // like two different applications.
               //
-              // Half-transparent while it is a card, so the app stays visible behind it and the
-              // panel reads as being *over* something rather than as a hole cut in the window. See
-              // `isGlass` for why a maximised panel is excluded, and `translucent` for why this is
-              // not an `opacity`.
-              bg: { $if: { condition: glass, then: translucent('surface-sunken'), else: 'surface-sunken' } },
+              // Translucent while it is a card, so the app stays visible behind it and the panel
+              // reads as being *over* something rather than as a hole cut in the window. The theme
+              // owns how far — see `glassBg` — and `isGlass` owns when.
+              bg: { $if: { condition: glass, then: glassBg('surface-sunken'), else: 'surface-sunken' } },
               // Backdrop blur belongs with the transparency and goes when it does: it is expensive,
               // it makes the element a containing block for fixed descendants, and over an opaque
               // background it would cost both of those for nothing visible.
-              styles: { $if: { condition: glass, then: { 'backdrop-filter': PANEL_BLUR }, else: {} } },
+              styles: { $if: { condition: glass, then: { 'backdrop-filter': GLASS_BLUR }, else: {} } },
               border: '1px solid border',
               // Rounded and lifted only while floating. A card over the app should read as being on
               // top; a panel that has taken room *from* the app meets it edge to edge, where a radius
@@ -363,10 +377,11 @@ function titleBar(entry: DockEntry): SchemaNode {
         stuck to a transparent body.
 
         No blur of its own: it is inside the frame, which has already blurred everything behind the
-        whole panel. Its 50% composites over the frame's 50%, so the bar settles at about 75% — more
-        solid than the content it labels, which is the right way round for the part you grab.
+        whole panel. It composites over the frame's own translucency, so at the default it settles
+        around 75% — more solid than the content it labels, which is the right way round for the
+        part you grab, and it stays that way round at whatever the theme sets.
       */
-      bg: { $if: { condition: isGlass(entry.id), then: translucent('page'), else: 'page' } },
+      bg: { $if: { condition: isGlass(entry.id), then: glassBg('page'), else: 'page' } },
       borderBottom: '1px solid border',
       /*
         Double-click to maximise, the other half of the convention the grip completes.

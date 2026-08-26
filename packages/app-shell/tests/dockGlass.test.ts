@@ -58,6 +58,19 @@ describe('a floating panel is glass', () => {
     expect(styles?.then).toEqual({ 'backdrop-filter': expect.stringContaining('blur(') });
     expect(styles?.else).toEqual({});
 
+    /*
+      Both halves come from the theme, not from numbers written here.
+
+      This is the assertion with a story: the first version of this hardcoded 50% and 12px, so a
+      theme setting `surfaceOpacity` or `surfaceBlur` would have restyled every Card and every
+      modal — which read the same two variables — and left the panels alone, silently. The panel is
+      the one surface in the app that would have disagreed with the theme.
+    */
+    expect(bg?.then).toContain('var(--we-theme-surface-opacity');
+    expect(styles?.then).toEqual({ 'backdrop-filter': expect.stringContaining('var(--we-theme-surface-blur') });
+    // `in srgb`, as Card and overlay-element spell it — the mix space is part of the shared idiom.
+    expect(bg?.then).toContain('in srgb');
+
     // The blur must go exactly when the transparency does — over an opaque background it costs a
     // stacking context and a containing block for nothing anyone can see.
     expect(styles?.condition).toEqual(bg?.condition);
