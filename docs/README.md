@@ -9,6 +9,13 @@ New to WE? Start here.
 - [Developer Setup](getting-started/developer-setup.md) — Prerequisites, clone, build, run
 - [Seed System](getting-started/seed-system.md) — How `we-seed.json` configures everything
 
+## Contributing
+
+- [Contribution Surfaces](contributing/surfaces.md) — **Every slot WE accepts a contribution into.**
+  What each is for, which one your intent belongs in, where its rules live, how to register it and
+  how to check it. Start here when you know what you want to build but not where it goes.
+- [CONTRIBUTING.md](../CONTRIBUTING.md) — The four contributor tracks, the workflow, working with an agent
+
 ## Architecture
 
 How WE is designed and why.
@@ -35,7 +42,7 @@ Per-system docs live with the code — every `packages/<system>/` directory has 
 Working notes for maintainers — plans, design decisions, and superseded documents.
 
 - [decisions/](internal/decisions/) — Design decisions and rationale (block system, schema system, template storage, semantic predicates, AI integration)
-- [plans/](internal/plans/) — Strategy docs for upcoming work
+- [plans/](internal/plans/) — Strategy docs for upcoming work. **Every plan carries a dated `Status` line** saying whether it shipped, is in progress, was never started, or was superseded — see [plans/README.md](internal/plans/README.md), which also lists the ones that don't have one yet
 - [old/](internal/old/) — Superseded documents, kept for historical context — each carries a banner naming what replaced it
 
 > **Note:** documents under `internal/old/` and some under `internal/plans/` describe designs that

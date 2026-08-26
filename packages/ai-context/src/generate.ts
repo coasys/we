@@ -28,6 +28,7 @@ import { extractPluginCatalog } from './extractors/plugins.js';
 import { extractTokens } from './extractors/tokens.js';
 import { extractComponentProps } from './extractors/typescript.js';
 import { architecture } from './fragments/architecture.js';
+import { contributionSurfaces } from './fragments/contribution-surfaces.js';
 import { designSystemProps } from './fragments/design-system-props.js';
 import { devPatterns } from './fragments/dev-patterns.js';
 import { patterns } from './fragments/patterns.js';
@@ -244,11 +245,18 @@ async function main() {
   // Schema-only reference — used for in-app AI (schemaContext.ts)
   const reference = assembleReference(context);
 
-  // IDE reference — orientation-first for codebase agents: architecture (the map) →
-  // schema authoring reference (the bulk/lookup) → developer patterns (gotchas appendix).
-  // Architecture and dev-patterns are both excluded from the in-app AI (schemaContext.ts);
-  // the `reference` block in the middle stays contiguous because it IS the in-app context.
-  const ideReference = architecture.trim() + '\n\n---\n\n' + reference + '\n\n---\n\n' + devPatterns.trim();
+  // IDE reference — orientation-first for codebase agents: architecture (the map) → contribution
+  // surfaces (where a change belongs) → schema authoring reference (the bulk/lookup) → developer
+  // patterns (gotchas appendix). Architecture, surfaces and dev-patterns are all excluded from the
+  // in-app AI (schemaContext.ts); the `reference` block in the middle stays contiguous because it IS
+  // the in-app context.
+  //
+  // Surfaces sits second because it answers the question that comes after "what is this codebase"
+  // and before any of the lookup below: which of nineteen slots does the thing I am about to write
+  // belong in. Read later it is useless — by then the file has already been created in the wrong one.
+  const ideReference = [architecture.trim(), contributionSurfaces.trim(), reference, devPatterns.trim()].join(
+    '\n\n---\n\n',
+  );
 
   // 1. Write instruction file for GitHub Copilot
   const instructionContent = wrapWithFraming(ideReference);
@@ -268,7 +276,24 @@ async function main() {
   writeFileSync(resolve(cursorDir, 'we-schema.mdc'), instructionContent, 'utf-8');
   console.log(`  Written: ${resolve(cursorDir, 'we-schema.mdc')}`);
 
-  // 4. Generate schemaContext.ts (runtime constant for in-app AI)
+  /*
+    4. Write AGENTS.md — the same content again, under the name the rest of the field reads.
+
+    The three files above are one per vendor, and the list only grows: an outside contributor
+    arriving with a coding agent WE has never heard of gets nothing, and the surfaces guide this
+    reference now carries is aimed squarely at that person. AGENTS.md is the cross-tool convention,
+    so it costs one more write and stops the answer to "will my agent understand this repo" from
+    depending on which agent it is.
+
+    Identical bytes rather than a subset, deliberately. A trimmed variant would be a fourth thing to
+    keep in agreement with the fragments, and the ways it would drift are exactly the ways the
+    vendor files did before they were generated.
+  */
+  const agentsPath = resolve(repoRoot, 'AGENTS.md');
+  writeFileSync(agentsPath, instructionContent, 'utf-8');
+  console.log(`  Written: ${agentsPath}`);
+
+  // 5. Generate schemaContext.ts (runtime constant for in-app AI)
   // Uses the schema-only `reference` — devPatterns are intentionally excluded here
   // because an AI editing JSON templates inside the app doesn't need codebase patterns.
   const schemaContextPath = resolve(packageRoot, 'src/schemaContext.ts');
@@ -282,7 +307,7 @@ async function main() {
   writeFileSync(schemaContextPath, schemaContextContent, 'utf-8');
   console.log(`  Written: ${schemaContextPath}`);
 
-  // 5. Write assembled context JSON (structured data for schema validation CLI)
+  // 6. Write assembled context JSON (structured data for schema validation CLI)
   // Only the ContextData fields — excludes fragments (AI prompt text, ~50KB)
   const contextJsonPath = resolve(packageRoot, 'context.json');
   const contextJson: ContextData = {
@@ -296,7 +321,7 @@ async function main() {
   await writeFormatted(contextJsonPath, JSON.stringify(contextJson, null, 2));
   console.log(`  Written: ${contextJsonPath}`);
 
-  // 6. Generate contextData.ts — the runtime component-metadata constant.
+  // 7. Generate contextData.ts — the runtime component-metadata constant.
   //
   // Written into @we/schema-shared rather than this package, because it is runtime data consumed
   // beside `getComponentMeta` (schema validation, the editor's inspector) — this package's job is
@@ -325,7 +350,9 @@ Regenerate with: \`pnpm --filter @we/ai-context generate-context\`
 
 This reference serves two modes:
 - **Working in the codebase?** Start with **Architecture Orientation** below — what WE is, its
-  AD4M runtime, the core concepts, the package layering, and the render pipeline.
+  AD4M runtime, the core concepts, the package layering, and the render pipeline. Then
+  **Contribution Surfaces**, which routes what you are about to build to the slot it belongs in,
+  and names the file that registers it — the step whose omission fails silently.
 - **Authoring a WE UI schema (JSON)?** Skip to the **Schema Structure**, **Component Registry**,
   and **Design Tokens** sections. All schemas must be valid JSON using only the components, props,
   tokens, and patterns documented there.

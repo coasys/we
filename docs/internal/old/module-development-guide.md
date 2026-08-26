@@ -1,13 +1,35 @@
-# Module Development Guide
+# Module Development Guide (SUPERSEDED)
 
-> **⚠️ NOT YET IMPLEMENTED — aspirational design, not a usable guide.**
+> **⚠️ SUPERSEDED — the module system was built, and it does not look like this. Do not follow it.**
 >
-> This describes a module system (`defineModule`, a module registry, a publishing flow) that does
-> **not exist in the codebase** — grepping for `defineModule` / `moduleRegistry` / `ModuleRegistry`
-> returns nothing. It was previously indexed under "Guides" as though it were usable.
+> **Status (Aug 2026): superseded by the real module contract**, `packages/module-system/shared/src/module.ts`.
 >
-> Kept as a design reference for the module marketplace work (see
-> [module-marketplace.md](./module-marketplace.md)). **Do not follow it as instructions.**
+> The names survived and the shape did not, which makes this document more misleading than one that
+> was simply never implemented. `defineModule` exists — as an identity function, for inference and a
+> greppable declaration site — and so does a `moduleRegistry`, in `app-shell/src/shared/registries/`.
+> What they take is not what is described below:
+>
+> | Below                                                               | Actually                                                                                                                               |
+> | ------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+> | `stores: { proposalStore: ProposalStore }` — a map of store classes | `createStore(deps)`, a factory the host lends reactivity to, published under `modules.<id>.*`                                          |
+> | `languages: [...]` — AD4M language definitions                      | Nothing. A module reaches data through the backend ports, and declares `backends: ['ad4m']` if it genuinely needs that one             |
+> | `initialize(config, context)` / `cleanup(context)`                  | No lifecycle pair. `ModuleContext` with `context.ad4m.createNeighborhood` does not exist                                               |
+> | Components as the main contribution                                 | Schema fragments first — `slots`, `docks`, `anchors`, `launcher`, `embed`, the whole placement system, none of which is described here |
+>
+> **Where to go instead:**
+>
+> - **The contract** — `packages/module-system/shared/src/module.ts`. Deliberately exhaustive, and it
+>   is the documentation; there is no second file to read.
+> - **The minimal example** — `packages/module-system/notes/`, which takes nothing from the host and
+>   imports no framework at all.
+> - **Where a module sits among the other surfaces**, and what registers one —
+>   [`docs/contributing/surfaces.md`](../../contributing/surfaces.md).
+> - **The distribution design**, still unbuilt — [`../plans/module-marketplace.md`](../plans/module-marketplace.md).
+>
+> Moved here from `plans/` because a banner is not protection: an agent greps this repository, lands
+> mid-file on 700 lines describing `initialize(config, context)` in the present tense, and follows
+> them. `internal/old/` is where documents go once the thing they describe is not what the codebase
+> does.
 
 This guide explains how to build modules for WE - composable packages that provide governance, economics, social features, and other coordination primitives.
 
