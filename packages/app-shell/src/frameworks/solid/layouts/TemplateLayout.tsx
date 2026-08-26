@@ -170,7 +170,30 @@ function ShellOverlayInner({
     <MemoryRouter
       root={(props) => (
         <ShellRouterRoot>
-          <div {...overlaySurface.outerAttrs} style={surfaceStyles()} ref={overlaySurface.outerRef}>
+          {/*
+            `height: 100%`, because this surface is the one host site that adds a box.
+
+            The other three attach to an element that was already there and already sized. This one
+            sits between the overlay's scroll container and the view's root node, and every shell
+            view's root sizes itself with `minHeight: '100%'` — so the box has to pass a *definite*
+            height through or that percentage has nothing to resolve against.
+
+            Left at `auto` it resolved differently per engine: Chrome resolves a percentage through
+            an auto-height ancestor and looked correct, Firefox follows CSS2.1 and treats it as
+            indefinite, so profile and settings collapsed to their content height and the space
+            template showed through underneath. `min-height: 100%` here does *not* fix it — the box
+            is still auto-height, so the child's percentage is still indefinite. Measured in Chrome
+            150 and Firefox 152.
+
+            `height` rather than `min-height` costs nothing when the view is taller than the
+            viewport: overflow is visible, so a long settings page still overflows this box and
+            scrolls the overlay above it.
+          */}
+          <div
+            {...overlaySurface.outerAttrs}
+            style={{ ...surfaceStyles(), height: '100%' }}
+            ref={overlaySurface.outerRef}
+          >
             <div {...overlaySurface.tierAttrs} ref={overlaySurface.tierRef} />
             <RenderSchema
               node={schema}
