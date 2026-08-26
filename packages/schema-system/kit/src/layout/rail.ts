@@ -310,10 +310,18 @@ export function railItem(opts: RailItemOptions): SchemaNode {
               // Round, because it rings something round. `full` is an ellipse on a non-square box,
               // and this box is square by construction — it holds one `sm` avatar.
               r: 'full',
+              /*
+                No padding, and that is the whole of it: a border is painted outside the padding
+                box, so at zero the ring already sits wholly outside the avatar and cannot clip a
+                face. This carried `p: '100'` to buy that clearance, which the border model gives
+                for nothing — 4px on a 32px avatar, so the ring stood a visible step off the thing
+                it was ringing and read as a detached circle rather than as a ring.
+
+                It costs the row its height too. The mark is what sets the row's height, so every
+                pixel here is a pixel a space's row grows by when a call starts and loses when it
+                ends, against every other row in the rail.
+              */
               border: `2px solid ${tone}`,
-              // The ring sits *outside* the avatar rather than over its edge, so a face is never
-              // clipped by the thing announcing it.
-              p: '100',
             },
             children: [
               face,
