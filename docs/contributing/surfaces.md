@@ -77,6 +77,7 @@ row of the table, not just fragments.
 | [Widgets](#widgets)                         | The highest design-system layer                 | Repo                      |
 | [Block types](#block-types)                 | A kind of content a user composes into a page   | Repo                      |
 | [Schema operators](#schema-operators)       | New vocabulary in the schema language           | Repo                      |
+| [Stores](#stores)                           | Shell state and actions — schema-facing API     | Repo                      |
 | [Models](#models)                           | A kind of thing that gets stored                | Repo                      |
 | [Feature modules](#feature-modules)         | A stateful capability a community turns on      | Repo (bundled)            |
 | [Graph plugins](#graph-plugins)             | Expanders, layouts, renderers, behaviours       | Repo                      |
@@ -237,6 +238,27 @@ removing one is breaking. Component-agnostic boilerplate only.
 - **Register** wire into `dispatcher.ts`, add to the `OperatorToken` union in `types.ts`, export from `index.ts`
 - **Verify** `pnpm --filter @we/schema-shared test`, then document it in `packages/ai-context/src/fragments/schema-operators.ts` and `generate-context`
 
+### Stores
+
+State and actions the app shell holds — and, because every member is reachable from a template via
+`$store`/`$action`, **schema-facing public API**. Name members for template authors rather than for
+the code that calls them, and treat a removal as breaking.
+
+This surface has the strictest registration on the page, and both halves fail the build rather than
+failing quietly, which is deliberate: a store member is vocabulary, and undeclared vocabulary is
+either invisible or dangerous.
+
+- **Lives in** `packages/app-shell/src/frameworks/solid/stores/`
+- **Conventions** [app-shell/CONVENTIONS.md](../../packages/app-shell/CONVENTIONS.md) — the provider nesting order is load-bearing: a store may read stores above it, never below
+- **Register** classify it in [`templateSurface.ts`](../../packages/app-shell/src/shared/registries/templateSurface.ts) — an unclassified member fails `templateSurface.test.ts` — **and** describe it in `packages/ai-context/src/fragments/stores.ts`, where a stale entry fails `generate-context`
+- **Verify** `pnpm --filter @we/app-shell test`, then `generate-context`
+
+> Classification is a security decision, not bookkeeping. Before the allowlist existed, every member
+> of every store was in the bag a template rendered against — 388 of them, including
+> `runtimeStore.trustAgent`, `accountStore.removeAccount` and the agent settings holding the API key.
+> A template that merely _painted_ could log you out or trust an attacker's DID. Put a new member in
+> the narrowest group that works.
+
 ### Models
 
 A kind of thing that gets stored. The **manifest is the source of truth** and the decorated AD4M
@@ -383,13 +405,13 @@ reactive runtime is the second-runtime problem above, and that is worth solving 
 rather than speculatively. Blocks and components have a distribution design in
 [internal/plans/module-marketplace.md](../internal/plans/module-marketplace.md) and no implementation.
 
-So: **two of eighteen surfaces have an out-of-repo path.** A module author must clone the monorepo.
+So: **two of nineteen surfaces have an out-of-repo path.** A module author must clone the monorepo.
 That is the real ceiling on outside contribution right now, and it is a code problem rather than a
 docs one — recorded here so nobody mistakes the marketplace design doc for a description of what
 exists.
 
 That doc also predates most of this page. It names four types (components, blocks, templates,
-themes); this page lists eighteen surfaces, including views, fragments, feature modules, graph
+themes); this page lists nineteen surfaces, including views, fragments, feature modules, graph
 plugins and globe layers. **When the marketplace grows a type enum, it should be derived from this
 page's list**, so the slots people can contribute and the slots the marketplace distributes stay one
 list rather than two that drift.

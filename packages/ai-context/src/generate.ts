@@ -252,7 +252,7 @@ async function main() {
   // the in-app context.
   //
   // Surfaces sits second because it answers the question that comes after "what is this codebase"
-  // and before any of the lookup below: which of eighteen slots does the thing I am about to write
+  // and before any of the lookup below: which of nineteen slots does the thing I am about to write
   // belong in. Read later it is useless — by then the file has already been created in the wrong one.
   const ideReference = [architecture.trim(), contributionSurfaces.trim(), reference, devPatterns.trim()].join(
     '\n\n---\n\n',

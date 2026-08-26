@@ -211,6 +211,7 @@ The spine of every one of these decisions is a single rule, from `packages/templ
 | A stateful capability a community turns on | **Feature module** |
 | A new source of nodes, or arrangement, in a graph | **Graph plugin** |
 | A new kind of thing that gets stored | **Model** |
+| State or an action a template needs to reach | **Store** |
 | A differently-shaped deployment | **Seed** (write nothing — select what exists) |
 
 Three distinctions that have each been got wrong at least once:
@@ -246,6 +247,7 @@ the seed's list is correct code that never appears.
 | Component | `design-system/4-components/src/components/` | `design-system/CONVENTIONS.md` | `componentRegistry.tsx` | `--filter @we/components test`, then `generate-context` |
 | Block type | `block-system/shared/` + `frameworks/solid/` | `block-system/CONVENTIONS.md` | `registerBlock()` in `core-blocks.ts` | `--filter @we/block-shared test` |
 | Schema operator | `schema-system/shared/src/propResolvers/` | `schema-system/CONVENTIONS.md` (6-step checklist) | `dispatcher.ts` + `OperatorToken` union + `index.ts` | `--filter @we/schema-shared test`, then document in `fragments/schema-operators.ts` |
+| Store | `app-shell/src/frameworks/solid/stores/` | `app-shell/CONVENTIONS.md` | classify in `templateSurface.ts` **and** describe in `fragments/stores.ts` — both fail the build if you don't | `--filter @we/app-shell test`, then `generate-context` |
 | Model | `models/src/manifest/entities/` | `models/CONVENTIONS.md` + `docs/architecture/relations.md` | `--filter @we/models generate:types` **and** `--filter @we/backend-ad4m generate:classes` | `--filter @we/backend-ad4m test` |
 | Feature module | `module-system/<id>/` | `module-system/shared/src/module.ts` (the contract is the documentation) | `bundledModules.ts` + seed `modules` | `--filter @we/module-shared test`, `validate:schemas` |
 | Graph plugin | `graph-system/expanders/src/`, `layouts/src/` | `graph-system/CONVENTIONS.md` | package index **and** `GRAPH_PLUGIN_CATALOG` in `module-system/graph/src/catalog.ts` | `--filter @we/graph-core test`, then `generate-context` |
@@ -254,9 +256,16 @@ the seed's list is correct code that never appears.
 | Backend adapter | `backend-system/<name>/` | `backend-system/shared/README.md` | entity proxy registry | model the `inmemory` package |
 | Platform host | `apps/<name>/` | — | — | `--filter <app> build` |
 
-Widgets (`design-system/5-widgets`) are the eighteenth and are **currently empty by design**: the one
+Widgets (`design-system/5-widgets`) are the nineteenth and are **currently empty by design**: the one
 widget there was retired once template-kit's rail fragments replaced it, and feature widgets live
 with their module family. Treat that as a strong prior that what you have is a fragment or a module.
+
+**A store member is public API, and classifying it is a security decision.** Every member is
+reachable from any template via `$store`/`$action`, so name it for template authors and treat removal
+as breaking. Before `templateSurface.ts` existed, all 388 members were in the bag a template rendered
+against — including `runtimeStore.trustAgent` and the settings holding the API key — so a template
+that merely *painted* could trust an attacker's DID. Put a new member in the narrowest group that
+works.
 
 **The graph catalog entry is not bookkeeping.** Props tell an author that `layout.type` is a string;
 nothing in a prop list says which strings exist, so a plugin nobody can name might as well not be
@@ -276,7 +285,7 @@ dynamically loaded — deliberately: a dynamically-loaded bundle carrying its ow
 a *second* one, and reactivity silently stops crossing the boundary. Blocks and components have a
 design in `docs/internal/plans/module-marketplace.md` and no implementation.
 
-Two of eighteen surfaces have an out-of-repo path. Do not describe the marketplace as though it
+Two of nineteen surfaces have an out-of-repo path. Do not describe the marketplace as though it
 covers the rest.
 
 The long-form guide — reference example per surface, the reasoning, the full distribution status —
