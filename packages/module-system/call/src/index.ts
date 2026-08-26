@@ -572,17 +572,38 @@ const stage: SchemaNode = {
   props: {
     condition: { $store: 'modules.call.active' },
     then: {
-      type: 'Grid',
+      /*
+        A padded box around the tiles, rather than padding on the tiles' own box.
+
+        The two look identical until the strip scrolls, and then they are not: a scrollbar renders at
+        the *padding* edge, so a scrolling grid that carried its own padding put its scrollbar flush
+        against the panel's border — underneath the 8px resize handle, which is wider than the 6px
+        scrollbar and swallowed it whole. Dragging to scroll resized the panel instead.
+
+        Padding the wrapper insets the scroller by that padding, so the scrollbar sits 12px in, clear
+        of the handle, and the inset stays symmetrical — which a gutter added to one side would not.
+      */
+      type: 'Column',
       props: {
         width: '100%',
         height: '100%',
-        // `300` is 12px — `STAGE_PADDING_PX` and `STAGE_GAP_PX`, which `dockAspect` subtracts so that
-        // "fit to content" lands on a height that fits the pictures rather than one that squeezes
-        // them. Change either here and the constant has to follow. The *solver* needs no telling:
-        // the grid reads its own gap.
+        // `300` is 12px — `STAGE_PADDING_PX`, which `dockAspect` subtracts so that "fit to content"
+        // lands on a height that fits the pictures rather than one that squeezes them. Change it
+        // here and the constant has to follow.
         p: '300',
-        gap: '300',
-        /*
+        overflow: 'hidden',
+      },
+      children: [
+        {
+          type: 'Grid',
+          props: {
+            width: '100%',
+            height: '100%',
+            // `300` is 12px — `STAGE_GAP_PX`, which `dockAspect` subtracts alongside the wrapper's
+            // padding so that "fit to content" lands on a height that fits the pictures rather than one
+            // that squeezes them. The *solver* needs no telling: the grid reads its own gap.
+            gap: '300',
+            /*
           Scrolls along the strip's axis, and only when the strip is scrolling — see `stageOverflow`.
 
           `overflow: hidden` the rest of the time, and that is a statement rather than a detail: the
@@ -590,38 +611,42 @@ const stage: SchemaNode = {
           scrollbar to be lived with. The one exception is a strip holding more people than fit at a
           size worth looking at, which is a list rather than a layout and behaves like one.
         */
-        styles: { $store: 'modules.call.stageOverflow' },
-        /**
-         * The arrangement, solved against the box rather than guessed from the head count.
-         *
-         * This is the whole fix. The columns used to come from how many people were in the call and
-         * nothing else, so the panel's shape — the one thing the user controls directly — was not an
-         * input: dragged tall and thin you got two columns of postage stamps, dragged wide you got
-         * two rows with bands of empty panel above and below. `childAspect` measures the box and
-         * picks the arrangement that makes 16:9 pictures largest, which for two people in a square
-         * panel is one column at 523px rather than two at 294px.
-         *
-         * Only CSS changes when it re-solves. That matters more here than anywhere: the tiles are a
-         * reference-keyed `$each`, and moving one to a different DOM parent would drop its
-         * `srcObject` — somebody's video would go black every time the panel crossed a threshold.
-         */
-        childAspect: '16 / 9',
-        /*
+            styles: { $store: 'modules.call.stageOverflow' },
+            /**
+             * The arrangement, solved against the box rather than guessed from the head count.
+             *
+             * This is the whole fix. The columns used to come from how many people were in the call and
+             * nothing else, so the panel's shape — the one thing the user controls directly — was not an
+             * input: dragged tall and thin you got two columns of postage stamps, dragged wide you got
+             * two rows with bands of empty panel above and below. `childAspect` measures the box and
+             * picks the arrangement that makes 16:9 pictures largest, which for two people in a square
+             * panel is one column at 523px rather than two at 294px.
+             *
+             * Only CSS changes when it re-solves. That matters more here than anywhere: the tiles are a
+             * reference-keyed `$each`, and moving one to a different DOM parent would drop its
+             * `srcObject` — somebody's video would go black every time the panel crossed a threshold.
+             */
+            childAspect: '16 / 9',
+            /*
           The spotlight's own tracks, and nothing at all the rest of the time.
 
           `template` takes precedence over `childAspect`, so this is the whole mode switch: written,
           the equal-tile solve stands down and the spotlight layout takes over; absent, it comes
           back. See `stageTemplate` in the store.
         */
-        template: { $store: 'modules.call.stageTemplate' },
-        rows: { $store: 'modules.call.stageRows' },
-        // What the stage settled on, back to the store — see `setArrangement`. The host needs it to
-        // answer "fit to content".
-        onArrange: { $action: 'modules.call.setArrangement' },
-        // The box itself, for the one decision the grid cannot make: which edge the strip runs along.
-        onMeasure: { $action: 'modules.call.setStageBox' },
-      },
-      children: [{ type: '$each', props: { items: { $store: 'modules.call.tiles' }, as: 'tile' }, children: [tile] }],
+            template: { $store: 'modules.call.stageTemplate' },
+            rows: { $store: 'modules.call.stageRows' },
+            // What the stage settled on, back to the store — see `setArrangement`. The host needs it to
+            // answer "fit to content".
+            onArrange: { $action: 'modules.call.setArrangement' },
+            // The box itself, for the one decision the grid cannot make: which edge the strip runs along.
+            onMeasure: { $action: 'modules.call.setStageBox' },
+          },
+          children: [
+            { type: '$each', props: { items: { $store: 'modules.call.tiles' }, as: 'tile' }, children: [tile] },
+          ],
+        },
+      ],
     },
   },
 };
