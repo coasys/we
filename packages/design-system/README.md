@@ -36,13 +36,15 @@ directory structure and prop patterns every component follows.
 
 ## Contributing
 
-1. Create a branch from `dev`.
-2. Add your code in the appropriate package directory, following that
-   package's `CONVENTIONS.md`.
-3. Write or update tests (`pnpm --filter <pkg> test`) and stories where they
-   exist.
-4. `pnpm build && pnpm lint && pnpm test` from the repo root.
-5. Submit a pull request against `dev`.
+Which of these packages your change belongs in — and whether it belongs here at
+all rather than being a template fragment — is answered by
+[`docs/contributing/surfaces.md`](../../docs/contributing/surfaces.md). The
+workflow is in [`CONTRIBUTING.md`](../../CONTRIBUTING.md).
+
+Then follow the `CONVENTIONS.md` of the package you land in; the root
+[`CONVENTIONS.md`](./CONVENTIONS.md) covers what every layer shares. Tests are
+`pnpm --filter <pkg> test`. (There are no stories — Storybook was removed, and
+the primitives' behaviour is asserted in their vitest suites instead.)
 
 ## License
 

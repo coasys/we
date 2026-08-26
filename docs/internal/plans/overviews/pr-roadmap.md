@@ -1,5 +1,12 @@
 # PR Implementation Roadmap
 
+> **Status (Aug 2026): historical record — largely shipped.** 77 items here are marked ✅. The
+> per-PR plan documents this links to were deleted as each landed, so ~30 of its links resolve to
+> nothing; they are left as they are rather than stripped, because the titles are the useful part of
+> the record and rewriting them would lose it. Nothing here should be read as outstanding work
+> without checking the code first. For where a contribution goes today, see
+> [`docs/contributing/surfaces.md`](../../../contributing/surfaces.md).
+
 > Strategic ordering of planned PRs. Each PR delivers standalone value while building toward the [WE Apps Ecosystem](we-apps-ecosystem.md) vision.
 
 ---

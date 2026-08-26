@@ -30,11 +30,20 @@ A planning document describes an API in the present tense, because that is how y
 Read six months later by somebody — or something — that arrived by grep, it is indistinguishable
 from documentation of an API that exists.
 
-That is not hypothetical. `module-development-guide.md` sat here for months describing
-`defineModule`, a module registry and a publishing flow, none of which were ever built. It carried a
-"NOT YET IMPLEMENTED" banner and was still the first thing anybody looking for how to write a module
-would find. It has been moved to [`../old/`](../old/module-development-guide.md), because a banner is
-not protection: a grep hit lands mid-file, well past it.
+That is not hypothetical. `module-development-guide.md` sat here for months describing a module
+system with a store-class map, AD4M language definitions and an `initialize(config, context)`
+lifecycle. The module system was eventually built and looks nothing like that — but it kept some of
+the _names_, `defineModule` among them, which makes the document worse than one that was simply
+never implemented: the identifiers a reader greps for do resolve, so the shape around them looks
+credible. It carried a "NOT YET IMPLEMENTED" banner and was still the first thing anybody looking
+for how to write a module would find. It has been moved to
+[`../old/`](../old/module-development-guide.md), because a banner is not protection: a grep hit lands
+mid-file, well past it.
+
+The banner it was moved with got this wrong on the first pass — it repeated the original's claim that
+`defineModule` "returns nothing", which had been true when written and had since stopped being.
+Worth noticing as the same failure one level up: **a status line is a claim about the code, so it
+needs re-checking, not inheriting.** Date them, and say what you actually ran.
 
 The real answer for a module is the contract itself
 (`packages/module-system/shared/src/module.ts`), and for any other surface it is

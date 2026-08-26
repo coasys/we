@@ -222,11 +222,13 @@ Start small, compose upward.
 
 ### Getting Started
 
-1. Explore the [design system](./packages/design-system) — the token → element → component → widget → page → template hierarchy
-2. Check the [schema-system](./packages/schema-system) for how schemas drive UI generation
-3. Look at [Flux](https://github.com/juntofoundation/flux) as the reference application built on WE
-4. Read the [Seed System](./docs/getting-started/seed-system.md) to see how modules compose into deployable apps
-5. See [Codebase Map](./docs/architecture/codebase-map.md) for how the codebase is structured
+1. Find your rung: [Contribution Surfaces](./docs/contributing/surfaces.md) lists every slot WE
+   accepts a contribution into, and routes what you want to build to the one it belongs in
+2. Explore the [design system](./packages/design-system) — the token → element → component → widget → page → template hierarchy
+3. Check the [schema-system](./packages/schema-system) for how schemas drive UI generation
+4. Look at [Flux](https://github.com/juntofoundation/flux) as the reference application built on WE
+5. Read the [Seed System](./docs/getting-started/seed-system.md) to see how modules compose into deployable apps
+6. See [Codebase Map](./docs/architecture/codebase-map.md) for how the codebase is structured
 
 ---
 
