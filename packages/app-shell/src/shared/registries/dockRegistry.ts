@@ -230,7 +230,24 @@ export function dockFrame(entry: DockEntry, node: SchemaNode): SchemaNode {
               */
               {
                 type: 'Column',
-                props: { flex: '1', minHeight: '0', width: '100%', overflow: 'hidden', [DOCK_CONTENT_ATTR]: entry.id },
+                props: {
+                  flex: '1',
+                  minHeight: '0',
+                  width: '100%',
+                  overflow: 'hidden',
+                  [DOCK_CONTENT_ATTR]: entry.id,
+                  /*
+                    Room for chrome painted over a maximised panel — see `padTop` in dockGeometry.
+
+                    Absent for every other placement, which is why this is a geometry field rather
+                    than a constant: a floating or snapped panel is clamped out of those bands
+                    already, and only a maximised one takes the whole window and then has the call
+                    bar over its bottom edge. Padding the content rather than shrinking the box is
+                    what keeps the panel covering the sidebar while its contents stay readable.
+                  */
+                  pt: geo('padTop'),
+                  pb: geo('padBottom'),
+                },
                 /*
                   A panel is a surface of its own.
 

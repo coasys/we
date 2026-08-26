@@ -258,6 +258,32 @@ describe('maximised', () => {
     expect(px(geometry.right)).toBe(0);
   });
 
+  it('pads its content by the chrome painted over it, having taken the whole window', () => {
+    /*
+      The other half of covering everything. The box reaches every edge so no template shows through
+      around it; the content keeps clear of the call bar, which is still painted over the panel and
+      which a maximised panel — unlike every other placement — cannot be moved out from under.
+
+      Horizontal edges only: the sidebar and the module rail hide while a panel is maximised, so
+      what is left over it is whatever the modules declared at the top and bottom.
+    */
+    const chrome: ContentInset = { left: 0, right: CHROME_RAIL_PX, top: 0, bottom: BOTTOM_CHROME_PX };
+    const geometry = resolveDock(dock({ placement: placement({ maximised: true }) }), desktop, NO_INSET, chrome);
+
+    expect(px(geometry.padBottom)).toBe(BOTTOM_CHROME_PX);
+    expect(px(geometry.padTop)).toBe(0);
+    // Not the rail's edge, which has nothing on it once the rail has hidden itself.
+    expect(px(geometry.right)).toBe(0);
+  });
+
+  it('gives an ordinary panel no such padding, having nothing over it', () => {
+    // Every other placement is clamped out of the chrome bands, so there is nothing to keep clear of.
+    const geometry = resolveDock(dock({ placement: placement({ snap: 'top-left', displace: false }) }), desktop);
+
+    expect(geometry.padTop).toBeUndefined();
+    expect(geometry.padBottom).toBeUndefined();
+  });
+
   it('still keeps clear of a panel that has taken room from the content', () => {
     // The line between the two: permanent furniture is the app's own and covering it is what full
     // screen means, but another *displacing* panel is something the user opened and is currently

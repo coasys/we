@@ -759,7 +759,23 @@ const participants: SchemaNode = peopleTooltip({
         },
         {
           type: 'we-text',
-          props: { color: 'text-muted' },
+          props: {
+            color: 'text-muted',
+            /*
+            One line, whatever the window does to the bar.
+
+            The bar is centred and shrink-to-fit, so a narrow window squeezes it — and this readout is
+            the only thing in it that can give, every other child being a fixed-size button. Left to
+            wrap, "11 in the call" broke between the number and the words and made the whole bar a row
+            taller, which moves every control in it.
+
+            Not a design-system prop, and `truncate` is the wrong one: that clips with an ellipsis,
+            where the honest behaviour for a bar too narrow for its contents is to overflow and let
+            the window be the thing that is too small. Making the bar itself work at phone widths is
+            the chrome work, not this.
+          */
+            styles: { whiteSpace: 'nowrap' },
+          },
           children: [
             { type: 'we-number', props: { value: { $count: { items: { $store: 'modules.call.tiles' } } } } },
             ' in the call',
@@ -861,7 +877,8 @@ const bar: SchemaNode = {
             },
             {
               type: 'we-text',
-              props: { variant: 'label' },
+              // One line, for the same reason the in-call readout keeps one — see `participants`.
+              props: { variant: 'label', styles: { whiteSpace: 'nowrap' } },
               children: [
                 { type: 'we-number', props: { value: { $count: { items: { $store: 'modules.call.ongoing' } } } } },
                 ' in a call',

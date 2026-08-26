@@ -337,6 +337,21 @@ export interface DockGeometry {
   left?: string;
   width?: string;
   height?: string;
+  /**
+   * How far the panel's *content* keeps clear of chrome painted over it, per horizontal edge.
+   *
+   * Only a maximised panel has any. Every other placement is clamped out of the chrome bands
+   * already, so nothing is over it to clear; a maximised one deliberately takes the whole window
+   * instead, and pays for it here. Box versus content: the panel still covers the sidebar and the
+   * rail, so no template shows through around its edges, while what is *inside* it stays out from
+   * under the call bar.
+   *
+   * Only the horizontal edges, because the app's own rails hide while a panel is maximised — see
+   * `shellStore.panelMaximised`. What is left over the panel is whatever the modules have declared
+   * at the top and bottom, which is exactly the band `chrome` carries.
+   */
+  padTop?: string;
+  padBottom?: string;
   /** Whether this panel is overlaying rather than displacing. Read by the frame and by tests. */
   floating: boolean;
   /** The snap it is parked at, so the frame can mark it in the position menu. */
@@ -751,6 +766,10 @@ export function resolveDock(
       bottom: px(occupied.bottom),
       left: px(occupied.left),
       right: px(occupied.right),
+      // See `padTop`. The box covers everything; the content still keeps clear of what is painted
+      // over it, which after the rails hide is the module bars alone.
+      padTop: px(chrome.top),
+      padBottom: px(chrome.bottom),
     };
   }
 
