@@ -26,6 +26,7 @@ import { devPeers, devPeersAvailable, readDevPeerCount, stopDevPeers, writeDevPe
 import { createMediaController, type MediaController } from './media';
 import { type CallMesh, createCallMesh } from './mesh';
 import { anchoredCallId, spaceCallId } from './protocol';
+import { solveStrip } from './strip';
 
 /**
  * One participant, flattened for a template.
@@ -102,16 +103,6 @@ export interface CallTileState {
  */
 export const STAGE_PADDING_PX = 12;
 export const STAGE_GAP_PX = 12;
-
-/**
- * The most of the stage a filmstrip may take, as a fraction.
- *
- * A cap, not a size. The strip's natural thickness is whatever makes its tiles 16:9 across the axis
- * they run along, and with one other participant that would be nearly half the stage — which is the
- * arrangement spotlight exists to get away from. With many, the natural thickness is already small
- * and this never binds.
- */
-const STRIP_MAX = 0.25;
 
 /** The tile aspect the whole stage is laid out from. */
 const TILE_ASPECT = 16 / 9;
@@ -684,52 +675,11 @@ export function createCallStore(deps: CallStoreDeps) {
    */
   const [solo, setSolo] = signal(false);
 
-  /**
-   * Which edge the filmstrip runs along: `side` for a panel wider than a tile, `below` otherwise.
-   *
-   * The strip belongs where the leftover room is. A 16:9 spotlight in a panel wider than 16:9 is
-   * limited by the height, so what is spare is horizontal and a strip down the side costs nothing
-   * that was being used; in a taller panel the spare room is underneath. Getting this backwards is
-   * not subtle — it takes the axis the spotlight was already short of.
-   */
-  const stripSide = () => {
-    const box = stageBox();
-    return box.height > 0 && box.width / box.height > TILE_ASPECT;
-  };
-
   /** How many tiles the strip holds — everyone but the one with the stage. */
   const stripCount = () => Math.max(1, tiles().length - 1);
 
-  /**
-   * The strip's thickness, in pixels, from the box the grid last reported.
-   *
-   * The natural thickness is whatever makes `n` tiles 16:9 along the axis they run: divide the
-   * *other* dimension by `n`, take the gaps off, and convert through the aspect. `STRIP_MAX` caps
-   * it — see there.
-   *
-   * ## Why not container-query units
-   *
-   * This was `min(25cqw, calc(…))`, which reads better and does not work: **container-query units in
-   * a container's own properties resolve against its *ancestor* container, not itself.** The stage
-   * sizing its own track in `cqw` got a quarter of whatever container happened to be above it, or of
-   * the viewport when there was none — a number with no relationship to the stage at all. It is the
-   * same self-reference the tier sentinel exists for, in the units rather than the queries, and it
-   * fails the same way: plausibly, and only when you measure.
-   *
-   * So pixels, from the measurement. The cost is that a thickness lags a frame behind a drag, which
-   * is what the grid's own solve already does.
-   */
-  const stripThickness = (): number => {
-    const box = stageBox();
-    const n = stripCount();
-    const gaps = (n - 1) * STAGE_GAP_PX;
-    return stripSide()
-      ? Math.min(box.width * STRIP_MAX, ((box.height - gaps) / n) * TILE_ASPECT)
-      : Math.min(box.height * STRIP_MAX, (box.width - gaps) / n / TILE_ASPECT);
-  };
-
-  /** The same, as a track. */
-  const stripTrack = () => `${Math.max(0, Math.round(stripThickness()))}px`;
+  /** The strip's own solve, against the box the grid last reported — see `solveStrip`. */
+  const stripLayout = () => solveStrip(stripCount(), stageBox(), { aspect: TILE_ASPECT, gap: STAGE_GAP_PX });
 
   /** Everyone in the space-wide call, whether or not this agent has joined — so the bar can offer
    *  "3 in a call · Join" rather than only appearing once you are already in one. */
@@ -817,12 +767,13 @@ export function createCallStore(deps: CallStoreDeps) {
         same band the tracks are written from.
       */
       if (focusedId() !== null) {
-        const band = solo() ? 0 : stripThickness() + STAGE_GAP_PX;
-        const beside = !solo() && stripSide();
+        const strip = stripLayout();
+        const band = solo() ? 0 : strip.thickness + STAGE_GAP_PX;
+        const beside = !solo() && strip.side;
         return {
           ratio: TILE_ASPECT,
           insetX: STAGE_PADDING_PX * 2 + (beside ? band : 0),
-          insetY: STAGE_PADDING_PX * 2 + (!solo() && !stripSide() ? band : 0),
+          insetY: STAGE_PADDING_PX * 2 + (!solo() && !strip.side ? band : 0),
         };
       }
 
@@ -889,13 +840,17 @@ export function createCallStore(deps: CallStoreDeps) {
     stageTemplate: (): string | undefined => {
       if (focusedId() === null) return undefined;
       if (solo()) return '1fr';
-      return stripSide() ? `1fr ${stripTrack()}` : `repeat(${stripCount()}, 1fr)`;
+      const strip = stripLayout();
+      const track = strip.scroll ? `${strip.tile}px` : '1fr';
+      return strip.side ? `1fr ${strip.thickness}px` : `repeat(${strip.count}, ${track})`;
     },
 
     stageRows: (): string | undefined => {
       if (focusedId() === null) return undefined;
       if (solo()) return '1fr';
-      return stripSide() ? `repeat(${stripCount()}, 1fr)` : `1fr ${stripTrack()}`;
+      const strip = stripLayout();
+      const track = strip.scroll ? `${strip.tile}px` : '1fr';
+      return strip.side ? `repeat(${strip.count}, ${track})` : `1fr ${strip.thickness}px`;
     },
 
     /**
@@ -936,7 +891,7 @@ export function createCallStore(deps: CallStoreDeps) {
         left, one per track, in the order they are in. Explicit placement rather than `order`, which
         is what it used to need when the spotlight was a span in a grid solved for equal tiles.
       */
-      const spotlight: Record<string, string | number> = stripSide()
+      const spotlight: Record<string, string | number> = stripLayout().side
         ? { 'grid-column': '1', 'grid-row': '1 / -1' }
         : { 'grid-row': '1', 'grid-column': '1 / -1' };
       /**
@@ -953,7 +908,12 @@ export function createCallStore(deps: CallStoreDeps) {
        * column width and would have collapsed to nothing under size containment — a shape a panel
        * can no longer be in, since every stage divides a box the user dragged.
        */
-      const cell: Record<string, string | number> = { 'container-type': 'size' };
+      /*
+        The cell no longer measures itself: the box inside it does — see `tilePins`. A pinned
+        spotlight is shorter than the cell it spans, and the picture has to be sized from the part
+        that is on screen rather than from the whole scrollable column.
+      */
+      const cell: Record<string, string | number> = {};
       /*
         Solo hides the others rather than dropping them from the list.
 
@@ -967,6 +927,49 @@ export function createCallStore(deps: CallStoreDeps) {
         return { id: entry.id, style: focus !== null && solo() ? hidden : cell };
       });
     },
+    /**
+     * The box inside each tile that the picture is measured against.
+     *
+     * Ordinarily it simply fills the cell, and the picture sizes itself from it exactly as it did
+     * when the cell was the container. The one that matters is the spotlight's while the strip
+     * scrolls: it spans every row of a column taller than the stage, so a picture measured from the
+     * cell would be sized for a box mostly off screen. Pinning this box to the visible band and
+     * measuring *it* is what keeps the spotlight the size of what you can see.
+     *
+     * `position: sticky` rather than anything measured per frame: the browser holds it against the
+     * scroll for free, and the height it is held at is the one number the stage already reports.
+     */
+    tilePins: (): { id: string; style: Record<string, string | number> }[] => {
+      const focus = focusedId();
+      const box = stageBox();
+      const strip = stripLayout();
+      const base: Record<string, string | number> = { 'container-type': 'size', width: '100%', height: '100%' };
+      const pinned: Record<string, string | number> = strip.side
+        ? { ...base, position: 'sticky', top: '0', height: `${Math.round(box.height)}px` }
+        : { ...base, position: 'sticky', left: '0', width: `${Math.round(box.width)}px` };
+
+      return tiles().map((entry) => ({
+        id: entry.id,
+        style: entry.id === focus && !solo() && strip.scroll ? pinned : base,
+      }));
+    },
+
+    /**
+     * Which way the stage scrolls, which is only ever the axis the strip runs along.
+     *
+     * Hidden on the other, because nothing should ever overflow it — the spotlight is fitted to the
+     * box and the strip is one line. A stage that scrolled both ways would be hiding a bug rather
+     * than offering a feature.
+     */
+    stageOverflow: (): Record<string, string> => {
+      if (focusedId() === null || solo()) return { overflow: 'hidden' };
+      const strip = stripLayout();
+      if (!strip.scroll) return { overflow: 'hidden' };
+      return strip.side
+        ? { 'overflow-y': 'auto', 'overflow-x': 'hidden' }
+        : { 'overflow-x': 'auto', 'overflow-y': 'hidden' };
+    },
+
     /** True when this agent is in a call — the call bar's visibility condition. */
     active: () => callId() !== null,
 

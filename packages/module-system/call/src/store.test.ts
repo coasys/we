@@ -292,6 +292,14 @@ describe('the spotlight', () => {
     expect(store.stageRows()).not.toContain('cq');
   });
 
+  it('leaves a strip that fits alone', () => {
+    // The ordinary case is untouched: tiles take a share each, nothing scrolls, and the stage keeps
+    // the `overflow: hidden` that makes an overflowing grid a bug to be seen.
+    const store = spotlit(wide);
+    expect(store.stageOverflow()).toEqual({ overflow: 'hidden' });
+    expect(store.stageRows()).toBe('repeat(1, 1fr)');
+  });
+
   it('caps the strip, so one other participant is not half the stage', () => {
     // The natural thickness makes the strip tiles 16:9 along their axis, which for a single tile is
     // most of the panel — the arrangement spotlight exists to get away from.
