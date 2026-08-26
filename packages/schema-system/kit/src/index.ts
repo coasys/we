@@ -74,6 +74,8 @@ export type { PickerRowOptions } from './lists/pickerRow.ts';
 // Layout — the boxes a page is made of.
 export { attributeRow } from './layout/attributeRow.ts';
 export type { AttributeRowOptions } from './layout/attributeRow.ts';
+export { badgedAvatar } from './layout/badgedAvatar.ts';
+export type { BadgedAvatarOptions } from './layout/badgedAvatar.ts';
 export { pageShell } from './layout/pageShell.ts';
 export type { PageShellOptions } from './layout/pageShell.ts';
 export { railButton, railGroup, railItem, railShell } from './layout/rail.ts';

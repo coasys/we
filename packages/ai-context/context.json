@@ -85,18 +85,6 @@
           "default": "''"
         },
         {
-          "name": "selected",
-          "type": "boolean",
-          "optional": false,
-          "default": "false"
-        },
-        {
-          "name": "online",
-          "type": "boolean",
-          "optional": false,
-          "default": "false"
-        },
-        {
           "name": "initials",
           "type": "string",
           "optional": false,

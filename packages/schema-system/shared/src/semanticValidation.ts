@@ -187,6 +187,21 @@ function classifyPropType(typeText: string): string {
 const CSS_LENGTH_RE =
   /^-?\d+(\.\d+)?(px|em|rem|%|vh|vw|vmin|vmax|ch|ex|cap|lh|svh|svw|dvh|dvw|cqi|cqb|cqw|cqh|cqmin|cqmax)$/;
 
+/**
+ * A length that is *computed* rather than written out.
+ *
+ * `calc()` and friends are lengths wherever a length is allowed, and a custom property may hold
+ * one, so a prop documented as `{css-length}` has to accept them or it rejects valid CSS. The
+ * runtime already does: `isRawCSSValue` in `@we/design-utils` passes these through for every
+ * token-resolved prop, and a primitive with a custom size writes whatever string it is given
+ * straight onto its own variable.
+ *
+ * It bit a derived value first — `badgedAvatar` sizes its glyph as a fraction of the avatar's size
+ * token, which is exactly the kind of expression a schema cannot write out as a number and should
+ * not have to.
+ */
+const CSS_COMPUTED_LENGTH_RE = /^(calc|min|max|clamp|env|var)\(/i;
+
 function extractAllowedValues(typeText: string): string[] | null {
   const t = typeText.replace(/\s*\|\s*undefined/g, '').trim();
   if (!t.includes('|')) {
@@ -806,7 +821,8 @@ function checkProps(
       const allowed = allowedMap?.get(propName);
       if (allowed && !allowed.includes(propValue)) {
         // {css-length} is a placeholder meaning "any valid CSS length"
-        const acceptsCssLength = allowed.includes('{css-length}') && CSS_LENGTH_RE.test(propValue);
+        const acceptsCssLength =
+          allowed.includes('{css-length}') && (CSS_LENGTH_RE.test(propValue) || CSS_COMPUTED_LENGTH_RE.test(propValue));
         if (!acceptsCssLength) {
           errors.push({
             path: propPath,

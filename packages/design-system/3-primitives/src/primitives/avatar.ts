@@ -31,20 +31,20 @@ const styles = css`
   :host([has-image]) {
     --we-avatar-bg: transparent;
   }
-  :host([selected]) {
-    --we-avatar-box-shadow: 0px 0px 0px 2px var(--we-role-accent);
-  }
-  :host([online]) [part='base']:before {
-    position: absolute;
-    right: 0;
-    bottom: 0;
-    content: '';
-    display: block;
-    width: 25%;
-    height: 25%;
-    border-radius: 50%;
-    background: var(--we-role-accent);
-  }
+  /*
+    There is no "selected" ring and no "online" dot here any more.
+
+    Both were single-purpose decorations with a fixed colour and a fixed position, neither of them
+    ever set by anything — and being unused was the smaller problem. "selected" wrote the same
+    --we-avatar-box-shadow the ring prop writes inline, so any caller passing a ring silently
+    overrode it; "online" claimed the bottom-right corner, which is where a status badge goes, so
+    the rail's live-call mark had to be built as a wrapper around the avatar to avoid reading as
+    "online". A baked-in decoration nobody used was shaping the design of the one people did.
+
+    What replaces them is not on this element: a tone through the ring prop (see avatarToneRing),
+    and badgedAvatar in the schema kit for a corner mark. Both are open vocabularies, so the next
+    kind of badge needs no change here.
+  */
   :host([size='xxs']) {
     --we-avatar-size: var(--we-avatar-size-xxs);
   }
@@ -120,8 +120,6 @@ export default class Avatar extends LayoutVisualElement {
    */
   @property({ type: String }) image = '';
   @property({ type: String, reflect: true }) hash = '';
-  @property({ type: Boolean, reflect: true }) selected = false;
-  @property({ type: Boolean, reflect: true }) online = false;
   @property({ type: String, reflect: true }) initials = '';
   @property({ type: String }) icon = '';
   @property({ type: String, reflect: true }) size?: SizeValue;

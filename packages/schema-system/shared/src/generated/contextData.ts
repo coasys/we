@@ -39,8 +39,6 @@ export const contextData: ContextData = {
       ownProps: [
         { name: 'image', type: 'string', optional: false, default: "''" },
         { name: 'hash', type: 'string', optional: false, default: "''" },
-        { name: 'selected', type: 'boolean', optional: false, default: 'false' },
-        { name: 'online', type: 'boolean', optional: false, default: 'false' },
         { name: 'initials', type: 'string', optional: false, default: "''" },
         { name: 'icon', type: 'string', optional: false, default: "''" },
         {

@@ -829,7 +829,7 @@ Most @we/primitives also accept Design System Props (see next section for detail
 - we-audio (LayoutVisualElement)
   Props: src: string = '', controls: boolean = false, preload: 'none' | 'metadata' | 'auto' = 'metadata', autoplay: boolean = false, loop: boolean = false, muted: boolean = false, stream?: MediaStream | null | undefined
 - we-avatar (LayoutVisualElement)
-  Props: image: string = '', hash: string = '', selected: boolean = false, online: boolean = false, initials: string = '', icon: string = '', size?: 'xxs' | 'xs' | 'sm' | 'md' | 'lg' | 'xl' | 'xxl' | '{css-length}' | undefined, clickable: boolean = false
+  Props: image: string = '', hash: string = '', initials: string = '', icon: string = '', size?: 'xxs' | 'xs' | 'sm' | 'md' | 'lg' | 'xl' | 'xxl' | '{css-length}' | undefined, clickable: boolean = false
 - we-badge (DesignSystemElement)
   Props: variant: 'neutral' | 'primary' | 'success' | 'warning' | 'danger' = 'neutral', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md'
 - we-blockquote (DesignSystemElement)

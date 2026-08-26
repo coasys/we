@@ -31,8 +31,10 @@
  * generate its groups from a `$query` — see `$toggleLocalIn` in OPERATORS.md.
  */
 import type { SchemaNode, SchemaProp } from '@we/schema-shared';
+import type { AvatarTone } from '@we/tokens';
 
 import type { Content } from '../types.ts';
+import { badgedAvatar } from './badgedAvatar.ts';
 
 /**
  * How long the rail takes to open, in ms, and the duration its own reveals agree on.
@@ -261,20 +263,23 @@ export interface RailItemOptions {
   /**
    * Ring the row's avatar and mark it with a glyph — "something is live here".
    *
-   * A ring rather than a dot, and on the avatar rather than beside the label, for two reasons that
-   * both come from the collapsed rail: a label-side badge is not rendered at all while the rail is
-   * closed, which is exactly when an ambient cue is worth having, and the dot position on
-   * `we-avatar` already means `online`.
+   * A ring rather than a dot, and on the avatar rather than beside the label, for one reason that
+   * comes from the collapsed rail: a label-side badge is not rendered at all while the rail is
+   * closed, which is exactly when an ambient cue is worth having.
    *
-   * `tone` takes a colour role, and `success` or the accent is almost always right. Avoid `danger`:
-   * red is the app's word for something being wrong, and spending it on a healthy call in progress
-   * makes the genuinely wrong things harder to see.
+   * `tone` is an {@link AvatarTone}, shared with `AvatarStack` so a tone means one colour wherever
+   * it is written. `success` is the default and is almost always right. Avoid `danger`: red is the
+   * app's word for something being wrong, and spending it on a healthy call in progress makes the
+   * genuinely wrong things harder to see.
    *
    * The glyph is what makes it legible — a coloured ring says "something", an icon says what. It
    * must read correctly without motion: a theme's reduced-motion setting zeroes the animation
    * tokens, so anything relying on a pulse to be noticed is invisible to those users.
+   *
+   * Needs an `avatar`; an icon row is a destination rather than a place, and has nothing for a
+   * presence mark to be about. Drawn by {@link badgedAvatar}, which owns the geometry.
    */
-  live?: { when: SchemaProp; icon: string; tone?: string };
+  live?: { when: SchemaProp; icon: string; tone?: AvatarTone };
 }
 
 export function railItem(opts: RailItemOptions): SchemaNode {
@@ -283,81 +288,38 @@ export function railItem(opts: RailItemOptions): SchemaNode {
   const live = opts.live;
   const tone = live?.tone ?? 'success';
 
-  const face: SchemaNode = opts.avatar
-    ? {
-        type: 'we-avatar',
-        props: { image: opts.avatar.src, initials: opts.avatar.name, hash: opts.avatar.name, size: 'sm' },
-      }
+  const avatar = opts.avatar;
+  const face: SchemaNode = avatar
+    ? badgedAvatar({ avatar: { src: avatar.src, name: avatar.name }, size: 'sm' })
     : { type: 'we-icon', props: { name: opts.icon ?? '' } };
 
   /*
-    The ring and its glyph, wrapped around whatever the row's mark is.
+    The live mark: the same face, ringed and badged.
 
-    The ring is drawn on a box around the avatar rather than on the avatar itself: `we-avatar` spends
-    its own ring on `[selected]` and its dot on `[online]`, and borrowing either would mean this
-    reads as one of those instead. A box also keeps the badge's corner well defined, which an
-    `avatar` radius following the theme would not.
+    All of the geometry moved to `badgedAvatar`, which is where it stopped being wrong at every
+    avatar size but one. What is left here is the *condition* — when a rail row is live — which is
+    the only part of this that was ever the rail's business.
+
+    Only rows with an avatar can be marked, which is what `live` has always documented itself as
+    doing ("ring the row's avatar"). An icon row is a destination rather than a place, so there is
+    nothing there for a presence mark to be about.
   */
-  const mark: SchemaNode = live
-    ? {
-        type: '$if',
-        props: {
-          condition: live.when,
-          then: {
-            type: 'Column',
-            props: {
-              position: 'relative',
-              // Round, because it rings something round. `full` is an ellipse on a non-square box,
-              // and this box is square by construction — it holds one `sm` avatar.
-              r: 'full',
-              /*
-                No padding, and that is the whole of it: a border is painted outside the padding
-                box, so at zero the ring already sits wholly outside the avatar and cannot clip a
-                face. This carried `p: '100'` to buy that clearance, which the border model gives
-                for nothing — 4px on a 32px avatar, so the ring stood a visible step off the thing
-                it was ringing and read as a detached circle rather than as a ring.
-
-                It costs the row its height too. The mark is what sets the row's height, so every
-                pixel here is a pixel a space's row grows by when a call starts and loses when it
-                ends, against every other row in the rail.
-              */
-              border: `2px solid ${tone}`,
-            },
-            children: [
-              face,
-              {
-                // The glyph's disc is a wrapper, not the icon: `we-icon` takes layout props only, so
-                // `bg`, `r` and `p` on it resolve to nothing and the badge is a bare glyph on the
-                // avatar's edge. The validator catches this, which is how it was found.
-                type: 'Column',
-                props: {
-                  position: 'absolute',
-                  /*
-                    Out to the avatar's edge, not flush with its box.
-
-                    An absolute offset resolves against the ring's *padding* box, so these two
-                    numbers are coupled to the ring's padding whether or not anyone means them to
-                    be. At `0` they put the disc's centre 62% of the way in from the rim — sitting
-                    over the face rather than on it — because a circle's corner is not on the
-                    circle. `-4px` is what lands the disc's centre on the circumference at 45°,
-                    where a status badge belongs.
-                  */
-                  bottom: '-4px',
-                  right: '-4px',
-                  bg: tone,
-                  r: 'full',
-                  p: '100',
-                  ax: 'center',
-                  ay: 'center',
-                },
-                children: [{ type: 'we-icon', props: { name: live.icon, size: '10px', color: 'on-accent' } }],
-              },
-            ],
+  const mark: SchemaNode =
+    live && avatar
+      ? {
+          type: '$if',
+          props: {
+            condition: live.when,
+            then: badgedAvatar({
+              avatar: { src: avatar.src, name: avatar.name },
+              size: 'sm',
+              ring: tone,
+              badge: { icon: live.icon, tone },
+            }),
+            else: face,
           },
-          else: face,
-        },
-      }
-    : face;
+        }
+      : face;
 
   const button: SchemaNode = {
     type: 'we-button',
