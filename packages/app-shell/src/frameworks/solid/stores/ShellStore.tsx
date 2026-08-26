@@ -36,7 +36,13 @@ import {
   TITLE_BAR_PX,
   type TopChrome,
 } from '@shared/dockGeometry';
-import { dockRegistry, hostDockStores, onDockRegistryChanged } from '@shared/registries/dockRegistry';
+import {
+  DOCK_CONTENT_ATTR,
+  DOCK_FRAME_ATTR,
+  dockRegistry,
+  hostDockStores,
+  onDockRegistryChanged,
+} from '@shared/registries/dockRegistry';
 import { moduleStores } from '@shared/registries/moduleRegistry';
 import type { ChromeReserve, DockAspect, DockEdge, DockSize } from '@we/module-shared';
 import {
@@ -239,6 +245,35 @@ function readModuleKey(moduleId: string, key: string | undefined): unknown {
  * moved anything yet, and every panel falls back to its module's bid.
  */
 const PLACEMENTS_KEY = 'we-local:shell.dockPlacements';
+
+/**
+ * What the frame takes off a panel before its content sees the box, measured off the two elements.
+ *
+ * The titlebar, its padding and border, and the frame's own border. This was a constant, and the
+ * constant drifted by eleven pixels the day the titlebar gained padding to clear the panel's corner
+ * radius. That sounds negligible and was not: "fit to content" shortens the panel by whatever it
+ * thinks the chrome is, so understating it leaves the content short — and tiles that go
+ * height-limited hand the difference back on the *other* axis, multiplied by their aspect ratio.
+ * Three 16:9 videos across turned eleven missing pixels into a fifty-four pixel band down each side.
+ *
+ * `undefined` when the panel is not on screen — a fit invoked from a keyboard shortcut before the
+ * frame mounts — and `fitPlacement` falls back to the constants, which are correct as of writing.
+ */
+function measureDockChrome(id: string): { x: number; y: number } | undefined {
+  if (typeof document === 'undefined') return undefined;
+  const escaped = typeof CSS !== 'undefined' && CSS.escape ? CSS.escape(id) : id;
+  const frame = document.querySelector(`[${DOCK_FRAME_ATTR}="${escaped}"]`);
+  const content = document.querySelector(`[${DOCK_CONTENT_ATTR}="${escaped}"]`);
+  if (!frame || !content) return undefined;
+
+  const outer = frame.getBoundingClientRect();
+  const inner = content.getBoundingClientRect();
+  // A panel mid-transition measures as something neither box ever is, and a negative or absurd
+  // answer is worse than the constant it would replace.
+  const x = outer.width - inner.width;
+  const y = outer.height - inner.height;
+  return x >= 0 && y >= 0 && x < outer.width && y < outer.height ? { x, y } : undefined;
+}
 
 function loadPlacements(): Record<string, FloatPlacement> {
   if (typeof localStorage === 'undefined') return {};
@@ -697,7 +732,11 @@ export function ShellStoreProvider(props: ParentProps) {
       // stores a thickness and a card, and only the box on screen says which is currently the shape.
       const measured = resolvedPlacement(id, placementOf(request));
       const spanning = !dockGeometry()[id]?.floating;
-      const fitted = fitPlacement(measured, aspect, { spanning, edge: edgeOfSnap(measured.snap) });
+      const fitted = fitPlacement(measured, aspect, {
+        spanning,
+        edge: edgeOfSnap(measured.snap),
+        chrome: measureDockChrome(id),
+      });
       // Measured from the box on screen, written onto the stored placement — so fitting a docked panel
       // sets its thickness without stamping the edge's full height over the card it returns to.
       const stored = placementOf(request);

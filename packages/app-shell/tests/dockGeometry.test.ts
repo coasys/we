@@ -27,6 +27,7 @@ import {
   NARROW_VIEWPORT_PX,
   NO_INSET,
   occupiedFor,
+  PANEL_CHROME,
   RAIL_TOP_PX,
   railBand,
   rectOf,
@@ -515,8 +516,11 @@ describe('what a panel has to keep clear of', () => {
 
 describe('fitting a panel to its content', () => {
   const aspect = { ratio: 16 / 9, insetX: 24, insetY: 24 };
-  // What the panel's chrome costs on the vertical axis: its titlebar, plus the module's own padding.
-  const chrome = 24 + aspect.insetY;
+  // What the panel's chrome costs on each axis: the frame's own, plus the module's own padding.
+  // Read from the constants rather than restated, which is how the 24 written here stayed wrong for
+  // as long as the one in the source did.
+  const chrome = PANEL_CHROME.y + aspect.insetY;
+  const chromeX = PANEL_CHROME.x + aspect.insetX;
 
   const fitted = (over: Partial<FloatPlacement>) =>
     fitPlacement(placement({ snap: null, displace: false, ...over }), aspect, { spanning: false });
@@ -568,7 +572,60 @@ describe('fitting a panel to its content', () => {
     const after = fitPlacement(before, aspect, { spanning: false });
 
     expect(after.h - chrome).toBe(before.h - chrome);
-    expect((after.w - aspect.insetX) / (after.h - chrome)).toBeCloseTo(aspect.ratio, 1);
+    expect((after.w - chromeX) / (after.h - chrome)).toBeCloseTo(aspect.ratio, 1);
+  });
+
+  it('leaves no band on either axis, at any arrangement', () => {
+    /*
+      The regression this pair of constants existed to prevent and did not.
+
+      `fitPlacement` shortens the panel by whatever it believes the chrome to be, so understating it
+      leaves the content that much short of what it asked for — and content that goes height-limited
+      hands the difference back on the *other* axis, multiplied by its aspect ratio. A wide
+      arrangement multiplies hardest: three 16:9 tiles across is a ratio of 5.33, and the eleven
+      pixels this was out by came back as fifty-four pixels of empty panel down each side, while the
+      same error stacked vertically came back as four and looked perfect. Hence both orientations.
+    */
+    const PAD = 12;
+    const GAP = 12;
+
+    for (const [cols, rows, w, h] of [
+      [1, 3, 420, 1000],
+      [1, 2, 460, 900],
+      [2, 2, 900, 700],
+      [2, 1, 1200, 400],
+      [3, 1, 1400, 320],
+    ]) {
+      const shape = {
+        ratio: (cols * 16) / (rows * 9),
+        insetX: PAD * 2 + (cols - 1) * GAP,
+        insetY: PAD * 2 + (rows - 1) * GAP,
+      };
+      const after = fitPlacement(placement({ snap: null, displace: false, w, h }), shape, { spanning: false });
+
+      // What the tiles actually get to divide, once the frame and the stage's padding are gone.
+      const tilesW = after.w - PANEL_CHROME.x - PAD * 2 - (cols - 1) * GAP;
+      const tilesH = after.h - PANEL_CHROME.y - PAD * 2 - (rows - 1) * GAP;
+      const tileW = Math.min(tilesW / cols, (tilesH / rows) * (16 / 9));
+
+      expect(tilesW - cols * tileW).toBeLessThan(2);
+      expect(tilesH - (rows * tileW * 9) / 16).toBeLessThan(2);
+    }
+  });
+
+  it('prefers a measured chrome to the constants', () => {
+    // The constants are a copy of something the frame decides, and a copy is worth exactly as much
+    // as the last time somebody remembered to update it. A caller holding the element measures.
+    const before = placement({ snap: null, displace: false, w: 900, h: 400 });
+    const assumed = fitPlacement(before, aspect, { spanning: false });
+
+    // Passing what the constants say must be indistinguishable from passing nothing…
+    expect(fitPlacement(before, aspect, { spanning: false, chrome: PANEL_CHROME })).toEqual(assumed);
+
+    // …and a frame that really is taller leaves less room for the picture, so the fit is smaller.
+    const taller = fitPlacement(before, aspect, { spanning: false, chrome: { x: PANEL_CHROME.x, y: 60 } });
+    expect(taller.w).toBeLessThan(assumed.w);
+    expect(assumed.w - taller.w).toBeCloseTo((60 - PANEL_CHROME.y) * aspect.ratio, 0);
   });
 
   it('sets the thickness instead when the panel spans an edge', () => {

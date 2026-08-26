@@ -284,8 +284,27 @@ export const MIN_FLOAT_PX = 120;
  *
  * Named here because two places have to agree about it: the frame that draws it, and `fitDock`,
  * which solves for a height from the *content's* aspect and has to add the chrome above it back on.
+ *
+ * 33, not 24, which is what it said while the bar was actually 33 tall: `py: '100'` either side of a
+ * `size="xs"` control (4 + 24 + 4) plus its own bottom border. It gained that padding so the
+ * position menu would clear the panel's corner radius, and this constant did not follow — which is
+ * the trouble with two places having to agree by hand, and why `fitPlacement` now prefers a
+ * measurement and keeps these only as the fallback.
  */
-export const TITLE_BAR_PX = 24;
+export const TITLE_BAR_PX = 33;
+
+/**
+ * The frame's own border, both edges of an axis.
+ *
+ * `dockFrame` draws `1px solid border` and the global reset is `box-sizing: border-box`, so a
+ * panel's declared size includes it and its content region is this much smaller on each axis. Two
+ * pixels is nothing to look at and not nothing to solve with: in a wide arrangement the vertical
+ * term comes back multiplied by the tile aspect.
+ */
+export const FRAME_BORDER_PX = 2;
+
+/** Everything between a panel's declared box and the box its content gets. */
+export const PANEL_CHROME = { x: FRAME_BORDER_PX, y: TITLE_BAR_PX + FRAME_BORDER_PX };
 
 /**
  * A resolved dock box.
@@ -566,6 +585,16 @@ export interface ContentAspect {
 }
 
 /**
+ * What sits between a panel's declared box and the box its content actually gets.
+ *
+ * Measured where it can be, assumed where it cannot. See {@link fitPlacement}.
+ */
+export interface PanelChrome {
+  x: number;
+  y: number;
+}
+
+/**
  * Trim the empty band around a panel's content, and never resize the content itself.
  *
  * The first version kept the width and solved for the height, which is one arbitrary choice of which
@@ -584,30 +613,44 @@ export interface ContentAspect {
 export function fitPlacement(
   placement: FloatPlacement,
   aspect: ContentAspect,
-  options: { spanning: boolean; edge?: DockEdge },
+  options: { spanning: boolean; edge?: DockEdge; chrome?: PanelChrome },
 ): FloatPlacement {
-  const insetX = aspect.insetX ?? 0;
-  const insetY = aspect.insetY ?? 0;
-  const chrome = TITLE_BAR_PX + insetY;
+  /*
+    Chrome measured by the caller where it could be, assumed here where it could not.
+
+    This used to be `TITLE_BAR_PX` alone, and it was wrong by eleven pixels — the titlebar's own
+    padding and border, and the frame's border — which sounds like a rounding error and is not. The
+    fit shortens the panel, so understating the chrome leaves the content that much short of what it
+    asked for; the tiles inside then become height-limited and give the difference back **on the
+    other axis, multiplied by the ratio**. Three 16:9 tiles across is a ratio of 5.33, so eleven
+    pixels of missing height came back as fifty-four pixels of empty panel down each side, while the
+    same error stacked vertically came back as four and looked perfect.
+
+    So it is measured now. The constants remain as the fallback for a caller with no element to
+    measure, and are correct as of writing — but they are a copy of something the frame decides, and
+    the eleven pixels are what a hand-maintained copy is worth over time.
+  */
+  const chromeX = (options.chrome?.x ?? PANEL_CHROME.x) + (aspect.insetX ?? 0);
+  const chromeY = (options.chrome?.y ?? PANEL_CHROME.y) + (aspect.insetY ?? 0);
   if (!Number.isFinite(aspect.ratio) || aspect.ratio <= 0) return placement;
 
   if (options.spanning && options.edge) {
     const vertical = options.edge === 'left' || options.edge === 'right';
     const thickness = vertical
-      ? Math.round(Math.max(1, placement.h - chrome) * aspect.ratio) + insetX
-      : Math.round(Math.max(1, placement.w - insetX) / aspect.ratio) + chrome;
+      ? Math.round(Math.max(1, placement.h - chromeY) * aspect.ratio) + chromeX
+      : Math.round(Math.max(1, placement.w - chromeX) / aspect.ratio) + chromeY;
     return { ...placement, thickness: Math.max(MIN_DOCK_PX, thickness) };
   }
 
-  const contentW = placement.w - insetX;
-  const contentH = placement.h - chrome;
+  const contentW = placement.w - chromeX;
+  const contentH = placement.h - chromeY;
   if (contentW <= 0 || contentH <= 0) return placement;
 
   // Wider than the picture needs, or taller: exactly one of these has slack, and it is the one that
   // gives. Equal is already a fit, and falls into the second arm to no effect.
   return contentW / contentH > aspect.ratio
-    ? { ...placement, w: Math.max(MIN_FLOAT_PX, Math.round(contentH * aspect.ratio) + insetX) }
-    : { ...placement, h: Math.max(MIN_FLOAT_PX, Math.round(contentW / aspect.ratio) + chrome) };
+    ? { ...placement, w: Math.max(MIN_FLOAT_PX, Math.round(contentH * aspect.ratio) + chromeX) }
+    : { ...placement, h: Math.max(MIN_FLOAT_PX, Math.round(contentW / aspect.ratio) + chromeY) };
 }
 
 /**

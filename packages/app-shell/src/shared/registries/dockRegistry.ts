@@ -156,6 +156,15 @@ export function dockGeometryPath(id: string, field: string): string {
  * dragged across it. Hence the transparent `display: contents` wrapper holding both: two fixed-position
  * siblings, neither of which is inside the other.
  */
+/**
+ * How `fitDock` finds the two boxes whose difference is the panel's chrome.
+ *
+ * Attributes rather than refs because the frame is *schema* — it is built as nodes so a deployment
+ * can restyle it, which means there is no component here to hang a ref on.
+ */
+export const DOCK_FRAME_ATTR = 'data-we-dock-frame';
+export const DOCK_CONTENT_ATTR = 'data-we-dock-content';
+
 export function dockFrame(entry: DockEntry, node: SchemaNode): SchemaNode {
   const geo = (field: string) => ({ $store: dockGeometryPath(entry.id, field) });
 
@@ -194,6 +203,18 @@ export function dockFrame(entry: DockEntry, node: SchemaNode): SchemaNode {
               shadow: { $if: { condition: geo('floating'), then: 'xl' } },
               overflow: 'hidden',
               zIndex: 'sticky',
+              /*
+                Marked so "fit to content" can measure the chrome rather than assume it.
+
+                What sits between this box and the one the panel's content gets — the titlebar, its
+                padding and border, this frame's own border — is decided here and needed by
+                `fitDock`, which solves a height from the content's aspect and has to add it back
+                on. It was a constant, it drifted by eleven pixels when the titlebar gained the
+                padding that clears the corner radius, and in a wide arrangement that came back
+                multiplied by the tile ratio as a band down each side. Measuring the two boxes is
+                the version that cannot drift.
+              */
+              [DOCK_FRAME_ATTR]: entry.id,
             },
             children: [
               ...grips(entry.id),
@@ -209,7 +230,7 @@ export function dockFrame(entry: DockEntry, node: SchemaNode): SchemaNode {
               */
               {
                 type: 'Column',
-                props: { flex: '1', minHeight: '0', width: '100%', overflow: 'hidden' },
+                props: { flex: '1', minHeight: '0', width: '100%', overflow: 'hidden', [DOCK_CONTENT_ATTR]: entry.id },
                 /*
                   A panel is a surface of its own.
 
