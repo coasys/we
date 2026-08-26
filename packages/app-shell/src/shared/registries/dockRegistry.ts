@@ -199,7 +199,7 @@ const isGlass = (id: string) => ({
   see what it covers is the point of it floating rather than displacing. So it defaults to glass and
   a theme still overrules it, in either direction.
 */
-const PANEL_OPACITY = '0.5';
+const PANEL_OPACITY = '0.3';
 const PANEL_BLUR_PX = '12px';
 
 const glassBg = (role: string) =>
@@ -377,9 +377,9 @@ function titleBar(entry: DockEntry): SchemaNode {
         stuck to a transparent body.
 
         No blur of its own: it is inside the frame, which has already blurred everything behind the
-        whole panel. It composites over the frame's own translucency, so at the default it settles
-        around 75% — more solid than the content it labels, which is the right way round for the
-        part you grab, and it stays that way round at whatever the theme sets.
+        whole panel. It composites over the frame's own translucency, so it always lands more solid
+        than the body it labels — about half at the default 0.3, and still the same way round at
+        whatever the theme sets, which is the right way round for the part you grab.
       */
       bg: { $if: { condition: isGlass(entry.id), then: glassBg('page'), else: 'page' } },
       borderBottom: '1px solid border',
