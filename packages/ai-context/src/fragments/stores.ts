@@ -804,10 +804,6 @@ export function generateStoresText(entries: StoreEntry[]): string {
           "(polarity: 'light' | 'dark', themeId: string): sets one side of the Follow-system pair. An empty id returns that side to the built-in",
         setUseTemplateTheme:
           '(enabled: boolean): persists whether templates may bring their own theme. Boolean, so a switch can pass $event.detail bare',
-        restorePersonalTheme:
-          "(): puts back the agent's persisted personal theme — what leaving a space with a default theme does. Rarely a template's to call; applyTheme and clearSpaceThemePin cover the picker cases",
-        clearSpaceTheme:
-          '(): drops the scoped space theme without restoring the personal one — what entering a space with no default theme does. Host-facing; prefer spaceStore.clearSpaceThemePin from a picker',
         startEditing:
           '(themeId?: string): opens a theme editing session on that theme, or on the current one. Prefer editorStore.enterThemeEditing, which also opens the panel',
         changeBasePreset:
@@ -890,10 +886,6 @@ export function generateStoresText(entries: StoreEntry[]): string {
           '(options: { name, description, icon?, themeId?, slug?, screenshots: File[] }): publishes the current template to the marketplace under those details. Resolves true on success',
         refreshSpaceTemplates:
           "(): re-reads the current space's templates. The list follows the space on its own; call this after a publish the subscription might have missed",
-        isBuiltInTemplate:
-          '(templateId: string): whether that id is a built-in. Answers synchronously, but $action cannot read a return value — prefer the isBuiltIn flag on templateManagementList rows',
-        isInstalled:
-          '(templateId: string): whether that custom template is visible in the pickers. Same caveat as isBuiltInTemplate — read isInstalled off templateManagementList instead',
         switchTemplate: '(newTemplateId: string): switches to another template',
         removeTemplate: '(): removes the current template',
         saveTemplate: '(name: string): saves the current template',
@@ -1058,6 +1050,8 @@ export function generateStoresText(entries: StoreEntry[]): string {
       state: {
         creatableEntities:
           "{ label, value, icon, group }[] — models a person can create an instance of here, ready for a we-select: this space's own models first, then WE's built-in content types. A model appears here by declaring `authoring` in the manifest, or by being a shape this community defined",
+        displays:
+          "Record<entity, RecordDisplay> — how to show an instance of each creatable model, keyed by entity name and derived from its declaration: { entity, label, icon, title, summary, media, fields[] }, where title/summary/media name the properties playing those roles ('' when none does) and each field is { name, label, kind, role }. kind is one of text, longText, number, boolean, date, datetime, color, url, image, file, json; role is title, summary, media or detail. Index it by a row's type — { $: 'recordStore.displays[row.type]' } — and render the fields with $each; see \"A record of any type\" in the patterns",
         recordDraft:
           "the open form's draft ({ entity, label, icon, fields[] }) or null while closed — its non-nullness is what mounts the modal. Each field is { name, label, control, required, options, placeholder, value }, derived from the model's own declaration, so a form exists for a model nobody wrote a form for",
         recordDraftDirty:

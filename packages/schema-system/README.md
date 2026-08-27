@@ -104,7 +104,8 @@ See [OPERATORS.md](./OPERATORS.md) for the full operator reference.
 ### `@we/schema-shared`
 
 - **Types:** `SchemaNode`, `TemplateSchema`, `RouteSchema`, `SchemaProp`, `ComponentRegistry`, `RenderProps`, `RendererOutput`, `TransitionConfig`
-- **Operator token types:** `StoreToken`, `ExprToken`, `ActionToken`, `IfToken`, `MapToken`, `PickToken`, `EqToken`, `NeToken`, `NotToken`, `AndToken`, `OrToken`, `OperatorToken`
+- **Operator token types:** `ExpressionToken`, `StoreToken`, `ActionToken`, `IfToken`, `MapToken`, `PickToken`, `EqToken`, `NeToken`, `NotToken`, `AndToken`, `OrToken`, `OperatorToken`
+- **Expressions:** `parseExpression()`, `printExpression()`, `evaluateExpression()`, `checkExpression()`, `defineFunction()`, `listFunctions()`, `operatorToExpr()`, `exprToOperator()`
 - **Functions:** `resolveProp()`, `resolveProps()`, `splitProps()`, `validateSchema()`, `findMutations()`, `hasToken()`
 - **Constants:** `REACTIVE_ACCESSOR`
 

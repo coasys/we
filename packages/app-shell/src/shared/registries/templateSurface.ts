@@ -584,6 +584,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     // container. Creating one is writing a record, which is the same act as posting — so it belongs
     // in the tier every template can reach, beside `spaceStore.createPost`.
     creatableEntities: state('content'),
+    displays: state('content'),
     recordDraft: state('content'),
     recordDraftDirty: state('content'),
     recordErrors: state('content'),
@@ -655,8 +656,14 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     previewThemeScope: action('editor'),
     setThemeScopeGlobal: action('agent'),
     setUseTemplateTheme: action('agent'),
-    restorePersonalTheme: action('library'),
-    clearSpaceTheme: action('space-admin'),
+    /*
+      Host wiring, both: the theme resolver calls them as the agent moves between spaces, and
+      nothing a template could say with them is not already said by applyTheme and clearSpaceThemePin.
+      They were classified as API, which listed them in the reference with a description that had to
+      say "prefer something else" — the tell that a member was constrained rather than designed in.
+    */
+    restorePersonalTheme: WIRING,
+    clearSpaceTheme: WIRING,
     startEditing: action('editor'),
     // The editor tier, with `startEditing` — this is the second half of the same gesture: open the
     // theme editor, and say which role you came for. Nothing a template has any business setting.
@@ -719,8 +726,10 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     publishToSpace: action('library'),
     deleteMarketplaceTemplate: destructive('library'),
     publishToMarketplace: action('library'),
-    isBuiltInTemplate: action('library'),
-    isInstalled: action('library'),
+    // Queries that answer with a value, which $action cannot read: templateManagementList carries
+    // isBuiltIn and isInstalled per row, which is the form a template can use.
+    isBuiltInTemplate: WIRING,
+    isInstalled: WIRING,
 
     /*
       Wiring, and `updateTemplate`/`replaceTemplate` especially.

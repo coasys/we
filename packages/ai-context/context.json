@@ -5817,6 +5817,9 @@
         "recordDraftDirty": {
           "type": "boolean"
         },
+        "displays": {
+          "type": "object"
+        },
         "recordErrors": {
           "type": "array"
         },
@@ -6505,9 +6508,7 @@
         "publishToSpace",
         "deleteMarketplaceTemplate",
         "publishToMarketplace",
-        "refreshSpaceTemplates",
-        "isBuiltInTemplate",
-        "isInstalled"
+        "refreshSpaceTemplates"
       ]
     },
     {
@@ -6593,8 +6594,6 @@
         "previewThemeScope",
         "setThemeScopeGlobal",
         "setUseTemplateTheme",
-        "restorePersonalTheme",
-        "clearSpaceTheme",
         "startEditing",
         "changeBasePreset",
         "updateEditingOverrides",

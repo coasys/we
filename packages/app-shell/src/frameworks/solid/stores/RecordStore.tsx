@@ -31,6 +31,7 @@ import { CORE_MANIFEST } from '@we/models/manifest';
 import { Accessor, batch, createContext, createMemo, createSignal, ParentProps, useContext } from 'solid-js';
 
 import { dropAllPending, dropPending, holdPending, type PendingWrites } from '../../../shared/shapes/pendingWrites';
+import { displayFor, type RecordDisplay } from '../../../shared/shapes/recordDisplay';
 import {
   asEntityName,
   emptyRecordDraft,
@@ -113,6 +114,16 @@ export interface RecordStore {
    * the answer out of anyone, which costs them the one time it was about something real.
    */
   recordDraftDirty: Accessor<boolean>;
+  /**
+   * How to show an instance of each model a person can create here, keyed by entity name — the
+   * read-side counterpart of `recordDraft`, derived from the same declarations.
+   *
+   * What lets a template render a record of a type it was not written for: `displays[type]` says
+   * which property is the title, which the summary, which the picture, and which fields to list
+   * and how. A community shape defined this morning renders in a feed that has never heard of it,
+   * which is the whole point — a content type that is manifest + fragments needs no component.
+   */
+  displays: Accessor<Record<string, RecordDisplay>>;
   /** Validation errors from the last save attempt. */
   recordErrors: Accessor<string[]>;
   savingRecord: Accessor<boolean>;
@@ -331,6 +342,29 @@ export function RecordStoreProvider(props: ParentProps) {
     if (core) return { schema: core, authorable: false, icon: BLOCK_ICONS[entity] ?? 'cube' };
     return undefined;
   }
+
+  /*
+    One display per creatable model, from the same declarations the forms come from.
+
+    A map rather than a lookup action because a template reads it in a value position — a feed
+    indexes it by each row's type — and `$action` cannot return a value. Recomputed when the
+    space's shapes change, so a model defined a moment ago has a display a moment later.
+  */
+  const displays = createMemo<Record<string, RecordDisplay>>(() => {
+    const out: Record<string, RecordDisplay> = {};
+    for (const entity of creatableEntities()) {
+      const found = schemaFor(entity.value);
+      if (!found) continue;
+      out[entity.value] = displayFor({
+        entity: entity.value,
+        label: entity.label,
+        icon: found.icon,
+        schema: found.schema,
+        authorable: found.authorable,
+      });
+    }
+    return out;
+  });
 
   /*
     `entity` is typed loosely because of how `$action` calls a store method.
@@ -760,6 +794,7 @@ export function RecordStoreProvider(props: ParentProps) {
     creatableEntities,
     recordDraft,
     recordDraftDirty,
+    displays,
     recordErrors,
     savingRecord,
     lastCreatedId,

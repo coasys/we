@@ -19,13 +19,13 @@ the rungs that trust code.
 
 ## The ladder
 
-| Rung                                    | What arrives                                                                                                                                                | What has to be trusted                                                                                             | Status                                                                                                                                                                |
-| --------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **1. Pure data**                        | JSON a renderer walks; CSS and token overrides                                                                                                              | Nothing. The trust boundary does the work: an ungranted reference is absent, a malformed schema is refused.        | **Built.** Templates, themes, views.                                                                                                                                  |
-| **2. Declared data + fragments**        | A manifest stating what a thing _is_, plus schema fragments stating how it is arranged                                                                      | Nothing, once the host can _render from a declaration_.                                                            | **Half built.** Entities are declared (`ModelManifest`, shapes-in-space). Rendering from a declaration exists for forms (`recordStore.recordDraft`) and nothing else. |
-| **3. Sandboxed embed**                  | An application in an iframe, with declared permissions                                                                                                      | The browser's origin isolation. The app reaches the host's agent through the ports it is granted and nothing else. | **Built.** `ModuleDefinition.embed`. Safe, shallow.                                                                                                                   |
-| **4. Host-provided capability kernels** | A module that _declares_ the imperative capability it needs — media capture, a transcription port, a peer channel — and ships no imperative code of its own | The host's implementation of each capability, which is ours.                                                       | **Research.** The contract already injects reactivity (`createStore(deps)`) and declares entities; the store factory is the code that remains.                        |
-| **5. Code**                             | JavaScript that runs in the host's context                                                                                                                  | The author. Entirely.                                                                                              | **Merge only.** By decision, not by omission.                                                                                                                         |
+| Rung                                    | What arrives                                                                                                                                                | What has to be trusted                                                                                             | Status                                                                                                                                                                                                                                                                                   |
+| --------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **1. Pure data**                        | JSON a renderer walks; CSS and token overrides                                                                                                              | Nothing. The trust boundary does the work: an ungranted reference is absent, a malformed schema is refused.        | **Built.** Templates, themes, views.                                                                                                                                                                                                                                                     |
+| **2. Declared data + fragments**        | A manifest stating what a thing _is_, plus schema fragments stating how it is arranged                                                                      | Nothing, once the host can _render from a declaration_.                                                            | **Half built.** Entities are declared (`ModelManifest`, shapes-in-space). A form derives from a declaration (`recordStore.recordDraft`) and, since this plan, so does a display (`recordStore.displays`, `EntitySchema.display`). No bundled view renders a foreign type through it yet. |
+| **3. Sandboxed embed**                  | An application in an iframe, with declared permissions                                                                                                      | The browser's origin isolation. The app reaches the host's agent through the ports it is granted and nothing else. | **Built.** `ModuleDefinition.embed`. Safe, shallow.                                                                                                                                                                                                                                      |
+| **4. Host-provided capability kernels** | A module that _declares_ the imperative capability it needs — media capture, a transcription port, a peer channel — and ships no imperative code of its own | The host's implementation of each capability, which is ours.                                                       | **Research.** The contract already injects reactivity (`createStore(deps)`) and declares entities; the store factory is the code that remains.                                                                                                                                           |
+| **5. Code**                             | JavaScript that runs in the host's context                                                                                                                  | The author. Entirely.                                                                                              | **Merge only.** By decision, not by omission.                                                                                                                                                                                                                                            |
 
 Rung 5 is not a marketplace rung and will not become one. Anything that needs it ships by merging
 into this repository, where review is the trust mechanism. The whole point of the ladder is that
@@ -85,20 +85,22 @@ read side has no counterpart: nothing turns a declaration into a display.
 
 What rung 2 adds, in order:
 
-1. **A declared display.** A host-provided function that, given an entity name, answers with the
-   fields to show and how — label, kind (text, number, date, file, colour, relation), whether it is a
-   title, whether it is long-form. Derived from the manifest with the same rules `recordDraft` uses,
-   plus a small set of display hints the manifest does not yet carry (`role: 'title' | 'summary' |
-'media'`). A fragment renders any record from that: `recordCard(entity)`.
-2. **Display hints on the manifest.** The manifest grows what the display needs and the form does
-   not — which property is the title, which is the summary, which is the picture. Optional; the
-   derivation guesses sensibly without them (the first required string is the title, a `format:
-'file'` string is the media).
+1. **A declared display.** _Done._ `recordDisplay.ts` derives, for any declared model, which
+   property is the title, the summary and the media, and the fields to list with a display `kind`
+   (text, longText, number, boolean, date, datetime, color, url, image, file, json) — the same rules
+   `recordDraft` uses on the way in. `recordStore.displays` publishes one per creatable model, keyed
+   by entity, and the generated reference carries the pattern that renders one with ordinary `$each`
+   and `$if` ("A record of any type"). Deliberately a pattern rather than a kit export: the kit's
+   rule is that a fragment merges with its call sites, and no bundled view lists foreign records yet.
+2. **Display hints on the manifest.** _Done._ `EntitySchema.display` — `title`, `summary`, `media`,
+   `fields` — optional, overriding the guess where it is wrong, exactly as `control` does on a
+   property.
 3. **Blocks re-expressed.** The bundled block types keep their components — the composer needs
    editing behaviour a declaration cannot express — but a _foreign_ content type installed from the
    marketplace renders through the declared display, in the feed, on a board, in a card. That is the
    proving ground: the day a community-defined content type renders in the default template's feed
-   without anybody writing a component for it, rung 2 is real.
+   without anybody writing a component for it, rung 2 is real. The first call site turns the pattern
+   into `recordCard` in `@we/template-kit`.
 
 Not in scope for rung 2: composer editing of a declared type inside a post. That is where a
 declaration runs out and a component begins, and it is the honest limit of the rung.

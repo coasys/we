@@ -172,6 +172,30 @@ export interface EntitySchema {
    * declaration and never carry one.
    */
   authoring?: { fields: string[] };
+
+  /**
+   * How an instance of this entity is shown when nothing was written to show it — the read-side
+   * counterpart of `authoring`.
+   *
+   * A content type today is a model and two components, and the components are the only reason it
+   * cannot arrive from a stranger. This is the half that lets a display be *derived* from the
+   * declaration, the way `authoring` lets a form be: which property is the title, which is the
+   * one-line summary, which holds the picture, and which fields are worth listing, in order.
+   *
+   * Every part is optional and the derivation guesses without it — the first required string is
+   * the title, a `format: 'file'` string the media, `authoring.fields` the list. Declare it where
+   * the guess is wrong, which is exactly what `control` is for on a property.
+   */
+  display?: {
+    /** Property that names the instance. */
+    title?: string;
+    /** Property shown beneath the title, one line. */
+    summary?: string;
+    /** Property holding the picture or file to show. */
+    media?: string;
+    /** Properties to list, in order. Defaults to `authoring.fields`, else every property. */
+    fields?: string[];
+  };
 }
 
 export interface ModelManifest {
@@ -211,6 +235,14 @@ const entitySchema = z.object({
   abstract: z.boolean().optional(),
   interpretationHint: z.string().optional(),
   authoring: z.object({ fields: z.array(z.string()) }).optional(),
+  display: z
+    .object({
+      title: z.string().optional(),
+      summary: z.string().optional(),
+      media: z.string().optional(),
+      fields: z.array(z.string()).optional(),
+    })
+    .optional(),
 });
 
 export const modelManifestSchema = z.object({

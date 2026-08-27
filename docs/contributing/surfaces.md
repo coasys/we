@@ -60,6 +60,30 @@ And one rule that overrides all of the above: **never extract speculatively.** T
 the same shape, or a divergence that is already a bug. Two is a coincidence. This applies to every
 row of the table, not just fragments.
 
+**The reuse units, on their axes.** Four of the rows above — fragment, primitive, component, widget — are all "a reusable piece of UI",
+and their names say nothing about what separates them. Untangling them has cost real time more than
+once, and `@we/widgets` ended up as `export {}` because its definition never distinguished it from
+its neighbours. The names are kept (they are in every import path), but they are placed here on the
+two axes that actually decide which one a thing is:
+
+|                                   | **Arrangement only** (data)         | **Needs a browser API** (code)                                                                |
+| --------------------------------- | ----------------------------------- | --------------------------------------------------------------------------------------------- |
+| **Framework-neutral**             | Fragment — expands to plain nodes   | Primitive — a Lit element                                                                     |
+| **Bound to the host's framework** | _(does not exist: data is neutral)_ | Component — a Solid function; Widget — a component whose props are a whole feature's protocol |
+
+Read it as two questions, in order. _Does it need to do something, or only be arranged?_ If
+arranged: a fragment, whatever the framework, because data is neutral by construction. If it must
+do something: _can it be neutral?_ A focus trap, a top layer, measurement and keyboard handling can
+— that is a primitive. Only what needs the host's reactive framework in its implementation (a
+component that takes callbacks and renders children through it) is a component; a widget is a
+component large enough to own a protocol of its own (`GraphView` and its plugin catalogue), and
+lives with the feature it belongs to.
+
+The cell that does not exist is the point of the table: nothing that is arrangement should ever be
+framework-bound, and if a "component" turns out to be arrangement it is a fragment written in the
+wrong language. For distribution the axes matter more than the names — the left column crosses the
+trust boundary as data; the right column merges.
+
 ---
 
 ## The surfaces

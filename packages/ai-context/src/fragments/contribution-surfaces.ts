@@ -69,6 +69,16 @@ Three distinctions that have each been got wrong at least once:
 And overriding all of them: **never extract speculatively.** Three real uses of the same shape, or a
 divergence that is already a bug. Two is a coincidence.
 
+**The four reuse units on their axes.** Fragment, primitive, component and widget are all "a reusable
+piece of UI"; what separates them is two questions asked in order. *Does it need to do something, or
+only be arranged?* Arranged → a **fragment**, whatever the framework, because data is neutral by
+construction. Must do something — *can it be neutral?* Focus, top layer, measurement, keyboard →
+a **primitive** (Lit). Only what needs the host's reactive framework in its implementation is a
+**component** (Solid); a **widget** is a component big enough to own a protocol (\`GraphView\` and its
+plugin catalogue) and lives with its feature. Nothing that is arrangement is ever framework-bound;
+a "component" that turns out to be arrangement is a fragment in the wrong language. The left side of
+that line crosses the trust boundary as data; the right side merges.
+
 ### The surfaces
 
 Each row: where it lives → its rules → **what registers it** → what checks it. The registration

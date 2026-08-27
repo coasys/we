@@ -362,6 +362,74 @@ glyph.** Letters outrank the pattern, so a row that has both shows its initials 
 from the hash. Seeding \`hash\` with a *name* is the mistake to avoid: it makes the colour change when
 somebody renames the thing, which is identity art contradicting the identity.
 
+### A record of any type — rendering from the declaration
+
+A community can define a model this morning and record one this afternoon; the feed that lists it
+was written before either. So a card cannot name the fields. It reads how the model asks to be
+shown — \`recordStore.displays\`, derived from the same declaration the form comes from — and draws
+whatever is there:
+
+\`\`\`json
+{
+  "type": "$each",
+  "props": { "items": { "$query": { "entity": "Sighting" } }, "as": "row" },
+  "children": [
+    {
+      "type": "Card",
+      "$localState": { "display": { "type": "object", "initial": { "$": "recordStore.displays['Sighting']" } } },
+      "children": [
+        {
+          "type": "$if",
+          "props": {
+            "condition": { "$": "local.display.media" },
+            "then": { "type": "we-image", "props": { "src": { "$": "row[local.display.media]" }, "fit": "cover", "r": "media" } }
+          }
+        },
+        { "type": "we-text", "props": { "variant": "heading-sm" }, "children": [{ "$": "row[local.display.title]" }] },
+        { "type": "we-text", "props": { "color": "text-muted" }, "children": [{ "$": "row[local.display.summary]" }] },
+        {
+          "type": "$each",
+          "props": { "items": { "$": "local.display.fields.filter(f, f.role == 'detail')" }, "as": "field" },
+          "children": [
+            {
+              "type": "Row",
+              "props": { "gap": "300", "ay": "center" },
+              "children": [
+                { "type": "we-text", "props": { "variant": "label", "color": "text-muted" }, "children": ["$field.label"] },
+                {
+                  "type": "$if",
+                  "props": {
+                    "condition": { "$": "field.kind == 'datetime' || field.kind == 'date'" },
+                    "then": { "type": "we-timestamp", "props": { "value": { "$": "row[field.name]" }, "relative": true } },
+                    "else": {
+                      "type": "$if",
+                      "props": {
+                        "condition": { "$": "field.kind == 'boolean'" },
+                        "then": { "type": "we-badge", "children": [{ "$": "row[field.name] ? 'Yes' : 'No'" }] },
+                        "else": { "type": "we-text", "children": [{ "$": "row[field.name]" }] }
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
+\`\`\`
+
+Nothing here names a property of \`Sighting\`. \`row[local.display.title]\` reads whichever property the
+declaration (or the derivation) says is the title; the detail rows switch on \`field.kind\`, which is
+resolved once in the store so a template switches on one word. Add branches for \`image\`, \`url\`,
+\`color\` and \`longText\` as a layout needs them — the kinds are listed under \`recordStore.displays\`.
+
+The \`$localState\` holding the display is a convenience: \`recordStore.displays['Sighting']\` could be
+read in place each time. For a feed of *mixed* types, index by the row instead —
+\`recordStore.displays[row.type]\` — and the same card draws every kind of record the space holds.
+
 ### A group of faces with a count
 
 \`\`\`json

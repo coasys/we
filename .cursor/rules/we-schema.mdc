@@ -229,6 +229,16 @@ Three distinctions that have each been got wrong at least once:
 And overriding all of them: **never extract speculatively.** Three real uses of the same shape, or a
 divergence that is already a bug. Two is a coincidence.
 
+**The four reuse units on their axes.** Fragment, primitive, component and widget are all "a reusable
+piece of UI"; what separates them is two questions asked in order. *Does it need to do something, or
+only be arranged?* Arranged → a **fragment**, whatever the framework, because data is neutral by
+construction. Must do something — *can it be neutral?* Focus, top layer, measurement, keyboard →
+a **primitive** (Lit). Only what needs the host's reactive framework in its implementation is a
+**component** (Solid); a **widget** is a component big enough to own a protocol (`GraphView` and its
+plugin catalogue) and lives with its feature. Nothing that is arrangement is ever framework-bound;
+a "component" that turns out to be arrangement is a fragment in the wrong language. The left side of
+that line crosses the trust boundary as data; the right side merges.
+
 ### The surfaces
 
 Each row: where it lives → its rules → **what registers it** → what checks it. The registration
@@ -2217,6 +2227,7 @@ RecordStore:
   - creatableEntities: { label, value, icon, group }[] — models a person can create an instance of here, ready for a we-select: this space's own models first, then WE's built-in content types. A model appears here by declaring `authoring` in the manifest, or by being a shape this community defined
   - recordDraft: the open form's draft ({ entity, label, icon, fields[] }) or null while closed — its non-nullness is what mounts the modal. Each field is { name, label, control, required, options, placeholder, value }, derived from the model's own declaration, so a form exists for a model nobody wrote a form for
   - recordDraftDirty: boolean — the open form holds something worth keeping. What a discard guard reads: the fields come from the model, so a shape this community defined has properties no schema was written against and there is no set of $local names an expression could test. Pass it to discardGuard's `dirty`
+  - displays: Record<entity, RecordDisplay> — how to show an instance of each creatable model, keyed by entity name and derived from its declaration: { entity, label, icon, title, summary, media, fields[] }, where title/summary/media name the properties playing those roles ('' when none does) and each field is { name, label, kind, role }. kind is one of text, longText, number, boolean, date, datetime, color, url, image, file, json; role is title, summary, media or detail. Index it by a row's type — { $: 'recordStore.displays[row.type]' } — and render the fields with $each; see "A record of any type" in the patterns
   - recordErrors: string[] — validation errors from the last save attempt, plus any backend failure
   - savingRecord: boolean — a create is in flight
   - lastCreatedId: string — the id of the last record created, empty before the first. Read it to act on what was just made; kept in the store because an $action's onSuccess can read a store and cannot hold a value
@@ -2531,8 +2542,6 @@ TemplateStore:
   - deleteMarketplaceTemplate(templateId: string): removes a template this agent published from the marketplace. Only its author may
   - publishToMarketplace(options: { name, description, icon?, themeId?, slug?, screenshots: File[] }): publishes the current template to the marketplace under those details. Resolves true on success
   - refreshSpaceTemplates(): re-reads the current space's templates. The list follows the space on its own; call this after a publish the subscription might have missed
-  - isBuiltInTemplate(templateId: string): whether that id is a built-in. Answers synchronously, but $action cannot read a return value — prefer the isBuiltIn flag on templateManagementList rows
-  - isInstalled(templateId: string): whether that custom template is visible in the pickers. Same caveat as isBuiltInTemplate — read isInstalled off templateManagementList instead
 
 ThemeStore:
 - State:
@@ -2566,8 +2575,6 @@ ThemeStore:
   - previewThemeScope(scope: 'global' | 'scoped' | null): previews a scope for the current theme-editing session without writing the preference; null drops the preview. Cleared when editing ends
   - setThemeScopeGlobal(global: boolean): persists whether a space's theme covers the whole window (true) or only the space's own content (false, the default). Takes a boolean because a switch emits one and a schema cannot map it to a string — `$if` in an action's args resolves at render time, before the event exists
   - setUseTemplateTheme(enabled: boolean): persists whether templates may bring their own theme. Boolean, so a switch can pass $event.detail bare
-  - restorePersonalTheme(): puts back the agent's persisted personal theme — what leaving a space with a default theme does. Rarely a template's to call; applyTheme and clearSpaceThemePin cover the picker cases
-  - clearSpaceTheme(): drops the scoped space theme without restoring the personal one — what entering a space with no default theme does. Host-facing; prefer spaceStore.clearSpaceThemePin from a picker
   - startEditing(themeId?: string): opens a theme editing session on that theme, or on the current one. Prefer editorStore.enterThemeEditing, which also opens the panel
   - changeBasePreset(preset: string | undefined): while editing, swaps the base preset the theme builds on — takes its polarity and lightness range and repopulates the controls from the preset's computed CSS
   - updateEditingOverrides(overrides: Partial<ThemeOverrides>): while editing, merges parameter changes (hues, saturation, lightness range, role pins) into the draft. Applied live
@@ -3286,6 +3293,74 @@ What `we-avatar` draws, in order: **a picture, else letters, else a generated pa
 glyph.** Letters outrank the pattern, so a row that has both shows its initials on a colour seeded
 from the hash. Seeding `hash` with a *name* is the mistake to avoid: it makes the colour change when
 somebody renames the thing, which is identity art contradicting the identity.
+
+### A record of any type — rendering from the declaration
+
+A community can define a model this morning and record one this afternoon; the feed that lists it
+was written before either. So a card cannot name the fields. It reads how the model asks to be
+shown — `recordStore.displays`, derived from the same declaration the form comes from — and draws
+whatever is there:
+
+```json
+{
+  "type": "$each",
+  "props": { "items": { "$query": { "entity": "Sighting" } }, "as": "row" },
+  "children": [
+    {
+      "type": "Card",
+      "$localState": { "display": { "type": "object", "initial": { "$": "recordStore.displays['Sighting']" } } },
+      "children": [
+        {
+          "type": "$if",
+          "props": {
+            "condition": { "$": "local.display.media" },
+            "then": { "type": "we-image", "props": { "src": { "$": "row[local.display.media]" }, "fit": "cover", "r": "media" } }
+          }
+        },
+        { "type": "we-text", "props": { "variant": "heading-sm" }, "children": [{ "$": "row[local.display.title]" }] },
+        { "type": "we-text", "props": { "color": "text-muted" }, "children": [{ "$": "row[local.display.summary]" }] },
+        {
+          "type": "$each",
+          "props": { "items": { "$": "local.display.fields.filter(f, f.role == 'detail')" }, "as": "field" },
+          "children": [
+            {
+              "type": "Row",
+              "props": { "gap": "300", "ay": "center" },
+              "children": [
+                { "type": "we-text", "props": { "variant": "label", "color": "text-muted" }, "children": ["$field.label"] },
+                {
+                  "type": "$if",
+                  "props": {
+                    "condition": { "$": "field.kind == 'datetime' || field.kind == 'date'" },
+                    "then": { "type": "we-timestamp", "props": { "value": { "$": "row[field.name]" }, "relative": true } },
+                    "else": {
+                      "type": "$if",
+                      "props": {
+                        "condition": { "$": "field.kind == 'boolean'" },
+                        "then": { "type": "we-badge", "children": [{ "$": "row[field.name] ? 'Yes' : 'No'" }] },
+                        "else": { "type": "we-text", "children": [{ "$": "row[field.name]" }] }
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
+```
+
+Nothing here names a property of `Sighting`. `row[local.display.title]` reads whichever property the
+declaration (or the derivation) says is the title; the detail rows switch on `field.kind`, which is
+resolved once in the store so a template switches on one word. Add branches for `image`, `url`,
+`color` and `longText` as a layout needs them — the kinds are listed under `recordStore.displays`.
+
+The `$localState` holding the display is a convenience: `recordStore.displays['Sighting']` could be
+read in place each time. For a feed of *mixed* types, index by the row instead —
+`recordStore.displays[row.type]` — and the same card draws every kind of record the space holds.
 
 ### A group of faces with a count
 
