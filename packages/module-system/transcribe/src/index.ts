@@ -35,6 +35,20 @@
  * The record is created on the first thing said, not on the button press, so a call nobody speaks in
  * leaves no trace. See `store.ts` for the convergence rule when several agents record at once.
  *
+ * ## Who decides that it runs
+ *
+ * Being *first* to transcribe a call is a press of the button in the call bar, and nothing in this
+ * module decides it — that is a decision about the conversation, and it belongs to a space's
+ * settings rather than here. Once somebody has made it, every other agent joins on their own.
+ *
+ * Those are separate questions, and only the first is really about consent. Transcription is per
+ * microphone: an agent who declines is not preventing a record of the call, only removing their own
+ * words from one that is being made anyway — which is a decision that looks like privacy, buys
+ * almost none, and used to be taken by accident by everyone who ignored a prompt. What it produced
+ * was a five-person meeting recorded from one microphone, which reads exactly like a transcript of
+ * the meeting. See the auto-join effect in `store.ts` for the guards, and `Panel.schema.ts` for the
+ * coverage readout that says how much of the call is actually in the record.
+ *
  * ## What it is not yet
  *
  * No speaker threading, and no summary generation — deliberately, because the next step is an LLM

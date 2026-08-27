@@ -2,16 +2,14 @@
 export { defaultTemplate } from '@we/template-default';
 
 // Shell
+// The schema-test harness is absent on purpose — see the note in ./shell/index.ts.
 export {
   bootScreen,
-  createTestStore,
   landingPageTemplate,
   marketplaceTemplate,
   CHROME_RAIL_WIDTH,
   chromeRail,
   profileTemplate,
-  schemaMutationActions,
-  schemaTestsTemplate,
   settingsTemplate,
   sidebar,
   templateEditor,

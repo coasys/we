@@ -13,7 +13,7 @@
  * is `kind: 'channel', mode: 'feed'`. That is the whole extension mechanism.
  */
 import type { SchemaNode, SchemaProp } from '@we/schema-shared';
-import { composerModal as kitComposerModal } from '@we/template-kit';
+import { composerModal as kitComposerModal, field, formModal } from '@we/template-kit';
 
 /**
  * The kinds these templates use.
@@ -101,96 +101,39 @@ export function newContainerModal(opts: {
   /** Where to go once it exists. Receives the new id as `$result.id`. */
   navigateTo?: string;
 }): SchemaNode {
-  return {
-    type: '$if',
-    props: {
-      condition: { $local: opts.openLocal },
-      then: {
-        type: 'we-modal',
-        props: { close: { $setLocal: opts.openLocal, value: false } },
-        $localState: {
-          name: { type: 'string', initial: '' },
-          creating: { type: 'boolean', initial: false },
-        },
-        children: [
-          {
-            type: 'Column',
-            props: { gap: '400', p: '400', width: '100%' },
-            children: [
-              { type: 'we-text', props: { variant: 'heading-md' }, children: [opts.title] },
-              {
-                type: 'we-form-field',
-                props: { label: 'Name' },
-                children: [
-                  {
-                    type: 'we-input',
-                    props: {
-                      placeholder: opts.placeholder,
-                      autofocus: true,
-                      value: { $local: 'name' },
-                      onInput: { $setLocal: 'name', from: '$event.detail' },
-                    },
-                  },
-                ],
-              },
-              {
-                type: 'Row',
-                props: { ax: 'end', gap: '200', width: '100%' },
-                children: [
-                  {
-                    type: 'we-button',
-                    props: { variant: 'ghost', onClick: { $setLocal: opts.openLocal, value: false } },
-                    children: ['Cancel'],
-                  },
-                  {
-                    type: 'we-button',
-                    props: {
-                      variant: 'primary',
-                      loading: { $local: 'creating' },
-                      // A precondition rather than a validation rule: a container needs a name, and
-                      // nothing else about it is judgeable here. See the house form guidance.
-                      disabled: { $or: [{ $not: { $local: 'name' } }, { $local: 'creating' }] },
-                      onClick: [
-                        { $setLocal: 'creating', value: true },
-                        {
-                          $action: 'model.create',
-                          args: [
-                            'CollectionBlock',
-                            {
-                              kind: opts.kind,
-                              mode: MODE.feed,
-                              type: 'collection',
-                              title: { $local: 'name' },
-                            },
-                            ...(opts.parentId !== undefined
-                              ? [{ parent: { id: opts.parentId, predicate: 'we://children' } }]
-                              : []),
-                          ],
-                          onSuccess: [
-                            { $setLocal: opts.openLocal, value: false },
-                            ...(opts.navigateTo
-                              ? [
-                                  {
-                                    $action: 'routeStore.navigate',
-                                    args: [{ $concat: [opts.navigateTo, '$result.id'] }],
-                                  },
-                                ]
-                              : []),
-                          ],
-                          onFinally: [{ $setLocal: 'creating', value: false }],
-                        },
-                      ],
-                    },
-                    children: ['Create'],
-                  },
-                ],
-              },
-            ],
-          },
-        ],
-      },
+  return formModal({
+    open: { $local: opts.openLocal },
+    close: { $setLocal: opts.openLocal, value: false },
+    title: opts.title,
+    size: 'sm',
+    localState: {
+      name: { type: 'string', initial: '' },
+      creating: { type: 'boolean', initial: false },
     },
-  };
+    children: [field({ name: 'name', label: 'Name', placeholder: opts.placeholder, props: { autofocus: true } })],
+    // A precondition rather than a validation rule: a container needs a name, and nothing else
+    // about it is judgeable here. See the house form guidance. The in-flight half of what this
+    // used to `$or` in by hand is the fragment's now.
+    disabled: { $not: { $local: 'name' } },
+    busyLocal: 'creating',
+    submitLabel: 'Create',
+    submit: {
+      $action: 'model.create',
+      args: [
+        'CollectionBlock',
+        {
+          kind: opts.kind,
+          mode: MODE.feed,
+          type: 'collection',
+          title: { $local: 'name' },
+        },
+        ...(opts.parentId !== undefined ? [{ parent: { id: opts.parentId, predicate: 'we://children' } }] : []),
+      ],
+      ...(opts.navigateTo && {
+        onSuccess: [{ $action: 'routeStore.navigate', args: [{ $concat: [opts.navigateTo, '$result.id'] }] }],
+      }),
+    },
+  });
 }
 
 /**

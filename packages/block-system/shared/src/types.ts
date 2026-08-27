@@ -30,6 +30,16 @@ export type BlockComposerProps = Omit<DesignSystemProps, 'direction'> & {
   perspective?: BlockDataset | null;
   onSave?: (json: SerializedBlockNode) => void;
   onReady?: (api: { save: () => void }) => void;
+  /**
+   * Fires when the composer starts or stops holding work the author would mind losing.
+   *
+   * The one thing a modal around a composer cannot work out for itself: the content lives inside
+   * Lexical, so no `$local` sees it and no schema expression can ask whether anything was typed.
+   * Without this, a "discard your draft?" guard could only ask *every* time, including when
+   * somebody opened the composer and immediately changed their mind — which is the surest way to
+   * teach people to click through the dialog that matters.
+   */
+  onDirtyChange?: (dirty: boolean) => void;
 };
 
 export type BlockRendererProps = Omit<DesignSystemProps, 'direction'> & {

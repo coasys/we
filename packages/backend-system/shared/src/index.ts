@@ -111,7 +111,7 @@ export type {
 } from './lifecycle';
 export { manifestEntries } from './manifestEntry';
 export type { ModelManifestEntry, ModelManifestProperty } from './manifestEntry';
-export { displayName, isProfileEmpty } from './profileTypes';
+export { ANONYMOUS_AGENT_NAME, displayName, isProfileEmpty } from './profileTypes';
 export type { AgentProfileSummary, PublishProfileFields } from './profileTypes';
 export type {
   BackendInterop,

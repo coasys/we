@@ -102,6 +102,17 @@ export interface RecordStore {
    * same shape `shapeStore.shapeDraft` uses.
    */
   recordDraft: Accessor<RecordDraft | null>;
+  /**
+   * Whether the open form holds anything worth keeping — what a "discard this?" guard reads.
+   *
+   * Here rather than in the template because the fields come from the *model*: a shape a community
+   * defined this morning has properties no schema was written against, so there is no set of
+   * `$local` names for an expression to test. The store is the only place that can see them.
+   *
+   * A pristine form — opened and not typed in — closes without ceremony. Asking there would train
+   * the answer out of anyone, which costs them the one time it was about something real.
+   */
+  recordDraftDirty: Accessor<boolean>;
   /** Validation errors from the last save attempt. */
   recordErrors: Accessor<string[]>;
   savingRecord: Accessor<boolean>;
@@ -405,6 +416,22 @@ export function RecordStoreProvider(props: ParentProps) {
       setRecordEntity(RELATIONSHIP);
     });
   }
+
+  /**
+   * Anything typed into the open form.
+   *
+   * Compared against the field's *empty* value rather than against what it was seeded with, because
+   * this form only ever creates — there is no edit path through it, so "seeded" is the default the
+   * model declares and changing it away from that is the author's doing. A boolean is deliberately
+   * not counted: a checkbox starts false and toggling it back is not work worth a dialog.
+   */
+  const recordDraftDirty = createMemo(() => {
+    const draft = recordDraft();
+    if (!draft) return false;
+    return draft.fields.some((f) =>
+      typeof f.value === 'string' ? f.value.trim() !== '' : typeof f.value === 'number',
+    );
+  });
 
   function cancelRecordForm(): void {
     batch(() => {
@@ -732,6 +759,7 @@ export function RecordStoreProvider(props: ParentProps) {
   const store: RecordStore = {
     creatableEntities,
     recordDraft,
+    recordDraftDirty,
     recordErrors,
     savingRecord,
     lastCreatedId,

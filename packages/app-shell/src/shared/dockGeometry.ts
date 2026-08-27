@@ -227,7 +227,7 @@ export interface FloatPlacement {
    */
   order?: number;
   /**
-   * How thick the panel is while it *displaces* — its width on a side edge, its height on a top or
+   * How wide the panel is while it displaces a *side* edge, and how tall while it displaces a top or
    * bottom one.
    *
    * Separate from `w`/`h`, which are the floating card, because the two are different sizes of the
@@ -236,9 +236,17 @@ export interface FloatPlacement {
    * the card it had been — and a panel sized carefully as a float lost that size the moment it was
    * docked and dragged.
    *
-   * Absent until the panel has displaced something, where it falls back to the card's own dimension.
+   * One field per axis, for the same reason and one level down. There was a single `thickness`, and a
+   * width solved for a left edge became a *height* the moment the panel was snapped to the bottom:
+   * the number survived the move and changed meaning under it. Nothing converts between them, because
+   * there is no conversion — how wide a panel wants to be says nothing about how tall.
+   *
+   * Absent until the panel has displaced something on that axis, where it falls back to the card's
+   * own dimension. That fallback is the behaviour to preserve: a panel dragged to an edge should keep
+   * the width it had as a card and gain the edge's full height, rather than inventing a size.
    */
-  thickness?: number;
+  thicknessX?: number;
+  thicknessY?: number;
   /**
    * Cover the content region entirely, ignoring position and size until it is turned off.
    *
@@ -354,6 +362,16 @@ export interface DockGeometry {
   padBottom?: string;
   /** Whether this panel is overlaying rather than displacing. Read by the frame and by tests. */
   floating: boolean;
+  /**
+   * Whether it is overlaying *everything*, as distinct from floating over some of it.
+   *
+   * Both are `floating` — a maximised panel is not displacing, and every rule that turns on "does
+   * this panel take room from the content" wants them together. But they are opposites for anything
+   * that treats the panel as a card: a card has a background you can see past, and a panel filling
+   * the window has nothing beside it to see. The frame's translucency reads this so a maximised
+   * panel stays opaque rather than showing the template through its whole face.
+   */
+  maximised?: boolean;
   /** The snap it is parked at, so the frame can mark it in the position menu. */
   snap?: SnapPoint | null;
 }
@@ -448,10 +466,14 @@ export function seedPlacement(
   if (!request.float && request.edge) {
     // The card is seeded even for a panel that opens docked, so dragging it off its edge has a size
     // to become rather than a full-height column of whatever the dock happened to be.
+    const asked = dockThickness(request.edge, request.size, viewport, undefined, occupied);
+    const vertical = request.edge === 'left' || request.edge === 'right';
     return {
       ...card,
       snap: request.edge,
-      thickness: dockThickness(request.edge, request.size, viewport, undefined, occupied),
+      // Only the axis it opens on. The other stays absent and falls back to the card, which is what
+      // the panel should become if it is ever moved to the perpendicular edge.
+      ...(vertical ? { thicknessX: asked } : { thicknessY: asked }),
       displace: true,
     };
   }
@@ -462,7 +484,7 @@ export function seedPlacement(
 /** How thick a displacing panel is, falling back to the card's matching dimension. */
 export function thicknessOf(placement: FloatPlacement, edge: Exclude<DockEdge, null>): number {
   const vertical = edge === 'left' || edge === 'right';
-  return placement.thickness ?? (vertical ? placement.w : placement.h);
+  return (vertical ? placement.thicknessX : placement.thicknessY) ?? (vertical ? placement.w : placement.h);
 }
 
 /** Whether a placement actually takes room, which needs an edge snap and a window wide enough. */
@@ -628,11 +650,30 @@ export interface PanelChrome {
  * A displacing panel is the one case that can grow, and unavoidably: it spans its edge, so the axis
  * with the slack is the one it does not own. Its thickness is set so the content fills the span
  * instead — the same idea ("no empty band"), expressed on the only dimension the panel has.
+ *
+ * And that growth is bounded, which it was not. A spanning fit solves `span × ratio`, so a wide
+ * content shape against a tall edge asks for a thickness far past anything the screen has: the call
+ * stage on a 4K side edge wanted 3761px of a 3760px region for a *single* 16:9 tile, and worse for
+ * every arrangement above one. The number was written anyway and `resolveDock` clamped it at paint
+ * time, so the panel covered the region, the clamp hid why, and the value persisted — invisible
+ * while the panel floated, since a float reads `w`/`h` and never a thickness, and waiting to take
+ * over the moment it displaced again.
+ *
+ * Given `maxThickness`, a fit that cannot be honoured within it **declines** instead. Clamping would
+ * be worse than doing nothing: it destroys the size the user chose and still leaves the band, since a
+ * panel at the full width of its edge is exactly as letterboxed as it was. Nothing is written, so the
+ * button is a no-op — which is what it already is on a panel that is right the first time.
+ *
+ * The bound is the caller's, and the answer that means something is `dockThickness` at `lg` — the
+ * largest size a dock is ever *asked* for. Bounding at the whole region instead is barely a bound at
+ * all: on a 4K side edge it still let one 16:9 tile take 92% of the screen, which is the complaint
+ * rather than the fix. A panel wanting more room than the largest named dock is not asking to be
+ * fitted, it is asking to be maximised, and there is a control for that.
  */
 export function fitPlacement(
   placement: FloatPlacement,
   aspect: ContentAspect,
-  options: { spanning: boolean; edge?: DockEdge; chrome?: PanelChrome },
+  options: { spanning: boolean; edge?: DockEdge; chrome?: PanelChrome; maxThickness?: number },
 ): FloatPlacement {
   /*
     Chrome measured by the caller where it could be, assumed here where it could not.
@@ -655,10 +696,12 @@ export function fitPlacement(
 
   if (options.spanning && options.edge) {
     const vertical = options.edge === 'left' || options.edge === 'right';
-    const thickness = vertical
+    const solved = vertical
       ? Math.round(Math.max(1, placement.h - chromeY) * aspect.ratio) + chromeX
       : Math.round(Math.max(1, placement.w - chromeX) / aspect.ratio) + chromeY;
-    return { ...placement, thickness: Math.max(MIN_DOCK_PX, thickness) };
+    const thickness = Math.max(MIN_DOCK_PX, solved);
+    if (options.maxThickness !== undefined && thickness > options.maxThickness) return placement;
+    return { ...placement, ...(vertical ? { thicknessX: thickness } : { thicknessY: thickness }) };
   }
 
   const contentW = placement.w - chromeX;
@@ -761,6 +804,7 @@ export function resolveDock(
     return {
       edge,
       floating: true,
+      maximised: true,
       snap: placement.snap,
       top: px(occupied.top),
       bottom: px(occupied.bottom),

@@ -122,11 +122,14 @@ export function cardShell(opts: CardShellOptions): SchemaNode {
           condition: { $local: 'modalOpen' },
           then: {
             type: 'we-modal',
-            props: { close: { $setLocal: 'modalOpen', value: false } },
+            // `lg`: this is a card opened out to be read, so it wants the measure a page of content
+            // wants. With no size at all it was as wide as its longest line — which for a grid card
+            // holding a paragraph meant the expanded view could come out narrower than the tile.
+            props: { size: 'lg', close: { $setLocal: 'modalOpen', value: false } },
             children: [
               {
                 type: 'Column',
-                props: { gap: '400', p: '400' },
+                props: { gap: '400' },
                 children: modalContent ?? body,
               },
             ],

@@ -1,5 +1,5 @@
 import type { SchemaNode, TemplateSchema } from '@we/schema-shared';
-import { agentByline, emptyState, field } from '@we/template-kit';
+import { agentByline, emptyState, field, formModal } from '@we/template-kit';
 
 /**
  * The space's events, as a month and as a list.
@@ -526,65 +526,51 @@ const eventRow: SchemaNode = {
   ],
 };
 
-/** Creating an event by hand — the other way records get here, beside extraction. */
-const composer: SchemaNode = {
-  type: '$if',
-  props: {
-    condition: { $local: 'composerOpen' },
-    then: {
-      type: 'we-modal',
-      props: { close: { $setLocal: 'composerOpen', value: false } },
-      children: [
-        { type: 'we-text', props: { fontWeight: 'semibold' }, children: ['New event'] },
-        field({ name: 'draftTitle', label: 'What is it?', placeholder: 'Design review' }),
-        field({
-          name: 'draftStart',
-          label: 'When',
-          // The same control `EventBlock`'s own editor uses, so a hand-made event and an extracted
-          // one carry the same format — which is what lets the grid read both.
-          props: { type: 'datetime-local' },
-        }),
-        field({ name: 'draftLocation', label: 'Where', placeholder: 'Optional' }),
-        {
-          type: 'Row',
-          props: { ax: 'end', gap: '200' },
-          children: [
-            {
-              type: 'we-button',
-              props: { variant: 'ghost', onClick: { $setLocal: 'composerOpen', value: false } },
-              children: ['Cancel'],
-            },
-            {
-              type: 'we-button',
-              props: {
-                // Title and a time are what the model requires; anything else is optional here too.
-                disabled: { $or: [{ $not: { $local: 'draftTitle' } }, { $not: { $local: 'draftStart' } }] },
-                onClick: {
-                  $action: 'model.create',
-                  args: [
-                    'EventBlock',
-                    {
-                      title: { $local: 'draftTitle' },
-                      startDate: { $local: 'draftStart' },
-                      location: { $local: 'draftLocation' },
-                    },
-                  ],
-                  onSuccess: [
-                    { $setLocal: 'composerOpen', value: false },
-                    { $setLocal: 'draftTitle', value: '' },
-                    { $setLocal: 'draftStart', value: '' },
-                    { $setLocal: 'draftLocation', value: '' },
-                  ],
-                },
-              },
-              children: ['Add event'],
-            },
-          ],
-        },
-      ],
-    },
+/**
+ * Creating an event by hand — the other way records get here, beside extraction.
+ *
+ * The drafts are declared on the modal, so closing discards them. See the same note on the tasks
+ * composer for why that beats clearing them in `onSuccess`.
+ */
+const composer: SchemaNode = formModal({
+  open: { $local: 'composerOpen' },
+  close: { $setLocal: 'composerOpen', value: false },
+  title: 'New event',
+  size: 'sm',
+  localState: {
+    draftTitle: { type: 'string', initial: '' },
+    draftStart: { type: 'string', initial: '' },
+    draftLocation: { type: 'string', initial: '' },
   },
-};
+  children: [
+    field({ name: 'draftTitle', label: 'What is it?', placeholder: 'Design review' }),
+    field({
+      name: 'draftStart',
+      label: 'When',
+      // The same control `EventBlock`'s own editor uses, so a hand-made event and an extracted
+      // one carry the same format — which is what lets the grid read both.
+      props: { type: 'datetime-local' },
+    }),
+    field({ name: 'draftLocation', label: 'Where', placeholder: 'Optional' }),
+  ],
+  // Title and a time are what the model requires; anything else is optional here too.
+  disabled: { $or: [{ $not: { $local: 'draftTitle' } }, { $not: { $local: 'draftStart' } }] },
+  discardWhen: {
+    $or: [{ $local: 'draftTitle' }, { $local: 'draftStart' }, { $local: 'draftLocation' }],
+  },
+  submitLabel: 'Add event',
+  submit: {
+    $action: 'model.create',
+    args: [
+      'EventBlock',
+      {
+        title: { $local: 'draftTitle' },
+        startDate: { $local: 'draftStart' },
+        location: { $local: 'draftLocation' },
+      },
+    ],
+  },
+});
 
 export const calendarView: TemplateSchema = {
   meta: {
@@ -603,10 +589,8 @@ export const calendarView: TemplateSchema = {
     monthOffset: { type: 'number', initial: 0 },
     /** The jump-to-month panel under the heading. */
     pickerOpen: { type: 'boolean', initial: false },
+    /** The gate only — the drafts behind it live on the composer itself. */
     composerOpen: { type: 'boolean', initial: false },
-    draftTitle: { type: 'string', initial: '' },
-    draftStart: { type: 'string', initial: '' },
-    draftLocation: { type: 'string', initial: '' },
   },
   children: [
     {

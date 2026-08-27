@@ -62,8 +62,24 @@ const WATCH_DEFAULTS = {
   batchMin: 3,
   batchMax: 100,
   maxWaitMs: 120_000,
-  /** How long a won claim is authoritative before another peer may take it — a pass, plus slack. */
-  claimTtlMs: 60_000,
+  /**
+   * How long a won claim is authoritative before another peer may take it.
+   *
+   * This has to outlast a whole pass, and the previous minute did not. The executor writes the
+   * claim once, when it wins, with `expires_at = now + claimTtlMs`, and never refreshes it; and it
+   * uses the same number as the stall clock after which a peer that stood down for the elected
+   * runner escalates straight to a claim of its own. So on a local model — where one LLM call is
+   * routinely minutes — every stood-down peer found the runner's claim expired at sixty seconds,
+   * won its own, and re-ran the batch: one extra LLM call per peer per batch, each ending in a
+   * "Nothing to add" row (the dedup found the runner's records) or, when sync was slower than the
+   * model, in duplicates.
+   *
+   * Ten minutes matches `INTERPRETATION_ACTIVITY_TTL_MS` — the point past which a running pass is
+   * disbelieved anyway — and is the bound on how long a runner that genuinely died holds the batch
+   * hostage. The proper fix is a claim that refreshes during the pass; that is the executor's, and
+   * this is what can be done from here. See `notes/ad4m/auto-processor-claim-followups.md`.
+   */
+  claimTtlMs: 10 * 60 * 1000,
 } as const;
 
 /**
@@ -242,10 +258,16 @@ export function runtimeSupportsObservation(dataset: DatasetHandle): boolean {
  * `notCandidate` and `awaitingAuthor` are this executor announcing that somebody else has the work,
  * or that nobody does. They are worth a log line and are not worth a row: a row per non-runner
  * would put four "skipped" entries on every bar in a five-person call, for one pass.
+ *
+ * `batchReady` is `null` for a related reason. It fires on *every* peer's executor, before the
+ * election, and carries no `agentDid` — so it is filtered out for an ordinary session and, for an
+ * admin one, arrives as an unattributed event that the `mine` rule below would claim as this
+ * agent's. A row opened on it says "You are about to extract" on four machines that are about to
+ * stand down, and nothing ever closes it. `claimed` is the first step that means a pass is running
+ * here, and it is where a row should open.
  */
 function phaseOf(step: string): InterpretationPhase | null {
   switch (step) {
-    case 'batchReady':
     case 'claimed':
       return 'queued';
     case 'gatheringTranscript':

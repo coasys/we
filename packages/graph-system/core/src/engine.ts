@@ -63,11 +63,30 @@ export type ChangeReason =
 
 export interface EngineStatus {
   loading: boolean;
+  /**
+   * The *whole* graph is being replaced — a {@link GraphEngine.start}, not an expansion or a refresh.
+   *
+   * A separate flag rather than a shade of `loading` because the two want opposite treatment. An
+   * expansion loads beside a graph that stays on screen and stays usable, so it belongs in a corner;
+   * a reload means everything currently drawn is about to be thrown away, and a renderer that cannot
+   * tell them apart has to pick one and be wrong about the other. It matters most where it is least
+   * visible: `start` clears the store and only notifies at the end, so the *previous* graph stays
+   * painted for the whole load — announcing that in a footnote is how a stale board reads as a live one.
+   */
+  reloading: boolean;
   /** Set when expansion stopped because the node budget was reached. */
   budgetReached: boolean;
   /** Non-fatal problems worth surfacing — an expander that could not answer, a dropped ref. */
   warnings: string[];
 }
+
+/**
+ * How much of the graph a load covers.
+ *
+ * `reload` is the whole graph; `partial` is anything that lands beside what is already there — a
+ * seed refresh, an expansion. Only the caller can tell them apart: `loadSeeds` runs under both.
+ */
+type LoadScope = 'reload' | 'partial';
 
 /** Metrics deliberately do not participate in hit-testing — see `hitRadius`. */
 const NO_METRICS = new Map<string, ReadonlyMap<string, number>>();
@@ -133,8 +152,10 @@ export class GraphEngine {
   private layoutKey?: string;
   private layoutTimer?: ReturnType<typeof setTimeout>;
   private listeners = new Set<(reason: ChangeReason) => void>();
-  private status: EngineStatus = { loading: false, budgetReached: false, warnings: [] };
+  private status: EngineStatus = { loading: false, reloading: false, budgetReached: false, warnings: [] };
   private inFlight = 0;
+  /** Of those, how many cover the whole graph. See {@link EngineStatus.reloading}. */
+  private reloadsInFlight = 0;
   private disposed = false;
   /** What the layout last complained about, so a new arrangement can retire it. */
   private layoutWarnings: string[] = [];
@@ -298,21 +319,36 @@ export class GraphEngine {
     // A different graph cannot inherit holds on nodes it does not contain.
     this.pinnedIds.clear();
     this.selected.clear();
-    this.status = { loading: false, budgetReached: false, warnings: [] };
+    this.status = { loading: false, reloading: false, budgetReached: false, warnings: [] };
     this.layoutWarnings = [];
 
-    const fragment = await this.loadSeeds();
-    this.store.merge(fragment);
-    this.expansion.attribute(
-      SEED_OPENER,
-      fragment.nodes.map((n) => n.id),
-      fragment.edges.map((e) => e.id),
-    );
+    /*
+      Held across the whole method, not just the seed load.
 
-    await this.runAutoExpansion();
-    this.recomputeMetrics();
-    this.relayout({ fit: true });
-    this.notify('graph');
+      What follows the seeds — auto-expansion, metrics, the first layout — is still the graph
+      arriving, and `loadSeeds` releasing its own count between the two phases would report a settled
+      frame in the middle of a load. Held here, `reloading` covers the gap and the renderer never sees
+      an empty graph claim to be finished.
+    */
+    this.beginLoading('reload');
+    try {
+      const fragment = await this.loadSeeds();
+      this.store.merge(fragment);
+      this.expansion.attribute(
+        SEED_OPENER,
+        fragment.nodes.map((n) => n.id),
+        fragment.edges.map((e) => e.id),
+      );
+
+      await this.runAutoExpansion();
+      this.recomputeMetrics();
+      this.relayout({ fit: true });
+      // Before the count is released, so the nodes are on screen by the time the load reports itself
+      // finished. The other order hands the renderer one frame of "settled, and empty".
+      this.notify('graph');
+    } finally {
+      this.endLoading('reload');
+    }
   }
 
   /**
@@ -418,7 +454,7 @@ export class GraphEngine {
       },
     };
 
-    this.beginLoading();
+    this.beginLoading('partial');
     try {
       for (const seed of specs) {
         const fragment =
@@ -441,7 +477,7 @@ export class GraphEngine {
         edges.push(...fragment.edges);
       }
     } finally {
-      this.endLoading();
+      this.endLoading('partial');
     }
 
     this.lastSeedReads = read;
@@ -571,7 +607,7 @@ export class GraphEngine {
       edgeTypes: spec.edgeTypes,
     } as const;
 
-    this.beginLoading();
+    this.beginLoading('partial');
     let added = 0;
     let total: number | undefined;
     let cursor: string | undefined;
@@ -598,7 +634,7 @@ export class GraphEngine {
         cursor = cursor ?? result.cursor;
       }
     } finally {
-      this.endLoading();
+      this.endLoading('partial');
     }
 
     this.expansion.markExpanded(id, { cursor, total, added });
@@ -1249,20 +1285,32 @@ export class GraphEngine {
 
   // ─── Status ──────────────────────────────────────────────────────────────────
 
-  private beginLoading(): void {
+  private beginLoading(scope: LoadScope): void {
     this.inFlight += 1;
-    if (this.inFlight === 1) {
-      this.status = { ...this.status, loading: true };
-      this.notify('status');
-    }
+    if (scope === 'reload') this.reloadsInFlight += 1;
+    this.syncLoading();
   }
 
-  private endLoading(): void {
+  private endLoading(scope: LoadScope): void {
     this.inFlight = Math.max(0, this.inFlight - 1);
-    if (this.inFlight === 0) {
-      this.status = { ...this.status, loading: false };
-      this.notify('status');
-    }
+    if (scope === 'reload') this.reloadsInFlight = Math.max(0, this.reloadsInFlight - 1);
+    this.syncLoading();
+  }
+
+  /**
+   * Publish both flags from the counters, rather than each call site deciding.
+   *
+   * A reload holds two counts at once — its own, and the seed load nested inside it — so "is anything
+   * in flight" is a question about the counters and never about which call arrived last. Derived
+   * together and compared before notifying, so the phases of a reload (seeds, then auto-expansion)
+   * cannot flicker `loading` off and on between them and hand the renderer a spurious settled frame.
+   */
+  private syncLoading(): void {
+    const loading = this.inFlight > 0;
+    const reloading = this.reloadsInFlight > 0;
+    if (loading === this.status.loading && reloading === this.status.reloading) return;
+    this.status = { ...this.status, loading, reloading };
+    this.notify('status');
   }
 
   /**

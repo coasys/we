@@ -21,6 +21,21 @@ export interface ProfileStore {
   profiles: Accessor<AgentProfileSummary[]>;
   /** The current user's own profile, derived from the cache. */
   ownProfile: Accessor<AgentProfileSummary | undefined>;
+  /**
+   * The own profile has been asked for and answered — the fetch resolved, failed, or was already
+   * satisfied by the cache.
+   *
+   * The same reason `datasetStore.datasetsLoaded` and `accountStore.accountsLoaded` exist: an empty
+   * profile is indistinguishable from an unfetched one, so anything that asks "has this person set
+   * a name?" reads every boot frame as "no". Without it {@link needsName} would put a modal in
+   * front of every user on every launch and take it away again a moment later.
+   */
+  ownProfileLoaded: Accessor<boolean>;
+  /**
+   * This agent has no name of any kind and has not waved the question away yet — settled, not
+   * merely unanswered. What the name prompt mounts on.
+   */
+  needsName: Accessor<boolean>;
 
   /** A picture chosen before an agent exists, held for upload once one does. */
   pendingAvatar: Accessor<string>;
@@ -32,6 +47,23 @@ export interface ProfileStore {
    * and written through once {@link completeAccountSetup} has created the agent.
    */
   setPendingAvatar: (file: File) => Promise<void>;
+  /**
+   * Set the name from the prompt and stop asking.
+   *
+   * Its own action rather than `updateOwnProfile` from the schema, because dismissal has to happen
+   * whether or not the publish succeeds: a write that fails leaves the profile empty, so a prompt
+   * gated purely on emptiness would reappear immediately and there would be no way past it.
+   */
+  saveNameFromPrompt: (name: string) => Promise<void>;
+  /**
+   * Stop asking for a name until the next launch.
+   *
+   * Deliberately not persisted. A nudge that can be dismissed forever is one somebody dismisses on
+   * the first launch and never sees again — and a nameless agent degrades every *other* member's
+   * experience, not just their own. It stops for good the moment they set a name, which is the only
+   * exit worth making permanent.
+   */
+  dismissNamePrompt: () => void;
   /**
    * The whole of first-run setup, in the order the constraints allow: create the agent, then
    * publish the name and picture collected before it existed, then let the app appear.
@@ -67,6 +99,18 @@ export function ProfileStoreProvider(props: ParentProps) {
 
   const [rawProfiles, setProfiles] = createSignal<AgentProfileSummary[]>([]);
   const [pendingAvatar, setPendingAvatarSignal] = createSignal('');
+  /**
+   * DIDs whose fetch has settled, however it settled.
+   *
+   * A list in a signal rather than a plain `Set`, because this is read from a memo and a mutated
+   * Set does not notify. Only ever appended to, so identity comparison on the array is enough.
+   */
+  const [fetchedDids, setFetchedDids] = createSignal<string[]>([]);
+  const [namePromptDismissed, setNamePromptDismissed] = createSignal(false);
+
+  function markFetched(did: string): void {
+    setFetchedDids((prev) => (prev.includes(did) ? prev : [...prev, did]));
+  }
 
   /**
    * The cache, with a display name on every row.
@@ -120,6 +164,33 @@ export function ProfileStoreProvider(props: ParentProps) {
     return myDid ? profiles().find((a) => a.did === myDid) : undefined;
   });
 
+  const ownProfileLoaded = createMemo(() => {
+    const myDid = session.me()?.did;
+    return !!myDid && fetchedDids().includes(myDid);
+  });
+
+  /**
+   * Whether to ask this agent what they are called.
+   *
+   * Every clause is a state this must NOT fire in, and each of them is reachable:
+   *
+   * - Before the app is up. The boot screen collects a name on the one path where WE creates the
+   *   agent itself; a second prompt over the top of it would be asking twice.
+   * - Before the own-profile fetch has answered — see {@link ownProfileLoaded}.
+   * - After it has been waved away this session.
+   *
+   * Tests the stored fields rather than `name`, which now falls back to a placeholder and so is
+   * never empty. That is the trap in reading a display value to decide anything: it always has an
+   * answer, and the answer is not about the data.
+   */
+  const needsName = createMemo(() => {
+    if (namePromptDismissed()) return false;
+    if (session.bootState() !== 'ready') return false;
+    if (!ownProfileLoaded()) return false;
+    const mine = ownProfile();
+    return !mine || (!mine.firstName && !mine.lastName && !mine.handle);
+  });
+
   /**
    * Fetch a profile from that agent's public dataset and add it to the cache.
    * No-ops if the DID is already cached with actual profile data — a blank cached entry
@@ -129,12 +200,19 @@ export function ProfileStoreProvider(props: ParentProps) {
   async function fetchProfile(did: string): Promise<void> {
     const cleanedDid = did.replace('did://', '');
     const cached = profiles().find((a) => a.did === cleanedDid);
-    if (cached && !isProfileEmpty(cached)) return;
+    if (cached && !isProfileEmpty(cached)) {
+      // Already answered — by an earlier fetch or by a local write. Marking it here as well as in
+      // the settle path is what keeps `ownProfileLoaded` true across the re-calls this no-ops on.
+      markFetched(cleanedDid);
+      return;
+    }
 
     const existing = inflightFetches.get(cleanedDid);
     if (existing) return existing;
 
     const profilePort = session.backendPorts()?.profiles;
+    // No port, no answer: leaving this unmarked is deliberate, so nothing downstream reads a
+    // backend that never arrived as "asked, and they have no name".
     if (!profilePort) return;
 
     const startedAt = writeSequence;
@@ -157,6 +235,9 @@ export function ProfileStoreProvider(props: ParentProps) {
       })
       .finally(() => {
         inflightFetches.delete(cleanedDid);
+        // Settled, not succeeded. A failed fetch is still an answer for the purposes of "stop
+        // waiting" — the alternative is a prompt that never appears on a flaky connection.
+        markFetched(cleanedDid);
       });
 
     inflightFetches.set(cleanedDid, promise);
@@ -292,6 +373,31 @@ export function ProfileStoreProvider(props: ParentProps) {
     if (fields.firstName) void accounts.syncDisplay({ name: fields.firstName });
   }
 
+  function dismissNamePrompt(): void {
+    setNamePromptDismissed(true);
+  }
+
+  /**
+   * Answer the name prompt.
+   *
+   * Dismisses first and unconditionally. The publish can fail — an offline node, a locked agent —
+   * and `needsName` reads the profile, so a failure without the dismissal would re-raise the modal
+   * on top of the toast explaining why it failed, with the same button leading to the same place.
+   * Writing `firstName` matches what the setup screen does with the single name it collects, so the
+   * two entry points leave a profile in the same shape.
+   */
+  async function saveNameFromPrompt(name: string): Promise<void> {
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    dismissNamePrompt();
+    try {
+      await updateOwnProfile({ firstName: trimmed });
+    } catch (err) {
+      console.error('ProfileStore: could not publish the name from the prompt', err);
+      toastService.error('Your name did not save. You can set it in your profile.');
+    }
+  }
+
   async function setPendingAvatar(file: File): Promise<void> {
     const fileData = await compressImageToFileData(file, 'profile-image', PROFILE_AVATAR_PX);
     setPendingAvatarSignal(`data:${fileData.file_type};base64,${fileData.data_base64}`);
@@ -399,8 +505,10 @@ export function ProfileStoreProvider(props: ParentProps) {
         const profile = profiles().find((entry) => entry.did === agentId);
         if (!profile) return undefined;
         // The rule this used to inline now lives in `displayName`, applied once when the cache is
-        // decorated — so a module and a template can no longer disagree about someone's name.
-        return { name: profile.name || undefined, avatar: profile.avatar };
+        // decorated — so a module and a template can no longer disagree about someone's name. That
+        // includes the placeholder for an agent with no name at all: a call tile and a byline should
+        // not differ on what an unnamed peer is called, and `displayName` is where that is decided.
+        return { name: profile.name, avatar: profile.avatar };
       },
       fetch: (agentId) => void fetchProfile(agentId),
     },
@@ -409,8 +517,12 @@ export function ProfileStoreProvider(props: ParentProps) {
   const store: ProfileStore = {
     profiles,
     ownProfile,
+    ownProfileLoaded,
+    needsName,
     pendingAvatar,
     setPendingAvatar,
+    saveNameFromPrompt,
+    dismissNamePrompt,
     completeAccountSetup,
     fetchProfile,
     updateOwnProfile,

@@ -233,6 +233,20 @@ describe('createInterpretationRelay', () => {
     expect(anna.rows().filter((r) => !r.mine)).toHaveLength(0);
   });
 
+  it('broadcasts only its own passes, never one it merely observed', () => {
+    /*
+      A host publishes everything its backend reports, and on a hosted executor that includes
+      another user's pass, arriving with `mine: false`. Sent on, it would reach every other peer
+      with this agent stamped as its runner — the transport's word is the only attribution there
+      is, so the only defence is not to send it.
+    */
+    const { anna, bo } = pair();
+    anna.publish(activity({ passId: 'observed', mine: false, runner: 'did:someone-on-annas-node' }));
+    expect(bo.rows()).toHaveLength(0);
+    // Still held locally: Anna did see it, and her own bar should show it.
+    expect(anna.rows()).toMatchObject([{ passId: 'observed', mine: false }]);
+  });
+
   it('drops a peer row whose runner stopped reporting', () => {
     const { anna, bo } = pair({ ttlMs: 5_000 });
     anna.publish(activity({ phase: 'thinking' }));

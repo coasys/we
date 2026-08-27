@@ -1,5 +1,14 @@
 import type { SchemaNode } from '@we/schema-shared';
-import { agentByline, cardList, cardShell, confirmModal, emptyState, field, peopleRow } from '@we/template-kit';
+import {
+  agentByline,
+  cardList,
+  cardShell,
+  confirmModal,
+  emptyState,
+  field,
+  formModal,
+  peopleRow,
+} from '@we/template-kit';
 
 /**
  * Recorded calls in this space.
@@ -164,13 +173,52 @@ export const callsList: SchemaNode = {
                   props: { gap: '100' },
                   children: [
                     {
-                      type: 'we-text',
-                      props: { fontWeight: 'semibold' },
-                      // The name someone gave it, falling back to the noun. Tested on the field
-                      // rather than shown blank, because an untitled call is the ordinary case:
-                      // the record is created by the first utterance, and nothing on that path
-                      // knows what the call was about.
-                      children: [{ $if: { condition: '$call.title', then: '$call.title', else: 'Call' } }],
+                      type: 'Row',
+                      props: { ay: 'center', gap: '200' },
+                      children: [
+                        {
+                          type: 'we-text',
+                          props: { fontWeight: 'semibold' },
+                          // The name someone gave it, falling back to the noun. Tested on the field
+                          // rather than shown blank, because an untitled call is the ordinary case:
+                          // the record is created by the first utterance, and nothing on that path
+                          // knows what the call was about.
+                          children: [{ $if: { condition: '$call.title', then: '$call.title', else: 'Call' } }],
+                        },
+                        /*
+                          Which of these is happening right now.
+
+                          Without it the list is a row of cards that all look finished, and the one
+                          the reader is *currently in* is indistinguishable from a meeting last
+                          month — so the button beside it, which now offers something different for
+                          exactly that card, appears to be behaving at random.
+
+                          Compared against the transcript's live record rather than against a flag,
+                          because "in a call" and "in *this* call" are different questions and only
+                          the second one belongs on a card. A space-wide call publishes one call id
+                          derived from the space, so it names the place calls happen and could never
+                          tell this morning's from this afternoon's; the record can.
+
+                          Its own words, not only a colour: `danger` is the app's word for something
+                          being wrong, and a live conversation is not. A tag reads correctly for
+                          somebody who cannot separate the hues, and needs no motion — a theme's
+                          reduced-motion setting zeroes the animation tokens, so anything relying on
+                          a pulse to be noticed is invisible to those users.
+                        */
+                        {
+                          type: '$if',
+                          props: {
+                            condition: {
+                              $eq: ['$call.id', { $store: 'modules.transcribe.liveCollectionId' }],
+                            },
+                            then: {
+                              type: 'we-badge',
+                              props: { variant: 'success', size: 'xs' },
+                              children: ['Live'],
+                            },
+                          },
+                        },
+                      ],
                     },
                     {
                       type: 'we-text',
@@ -186,10 +234,13 @@ export const callsList: SchemaNode = {
                 /*
                     Who was in the call, alongside how much was said.
 
-                    Both, because the gap between them is the point: transcription is opt-in and
-                    captures only the speaker's own microphone, so a partial record is the *normal*
-                    outcome. A transcript that shows it is partial is worth far more than one that
-                    quietly is.
+                    Both, because the gap between them is the point: transcription captures only the
+                    speaker's own microphone, so a partial record is always reachable. Less common
+                    now that joining a transcript somebody else started happens on its own — the gap
+                    left is somebody who left it, or whose node has no speech model — but the reading
+                    matters more rather than less for being rarer, since a record nobody expects to
+                    be partial is one nobody checks. A transcript that shows it is partial is worth
+                    far more than one that quietly is.
                   */
                 {
                   type: 'Row',
@@ -207,9 +258,8 @@ export const callsList: SchemaNode = {
                         three extracted records read as "8 utterances". That is not a cosmetic
                         slip. This number exists to sit beside the faces and show *coverage* — the
                         gap between who was present and how much of them was captured, which is the
-                        normal outcome of opt-in transcription and the thing a partial transcript
-                        most needs to admit. Inflating it with machine-written records destroys
-                        exactly that reading.
+                        thing a partial transcript most needs to admit. Inflating it with
+                        machine-written records destroys exactly that reading.
 
                         A scoped drill-down rather than a filter over `children`, because children
                         arrive as bare ids: the ids alone cannot tell you which are utterances.
@@ -286,7 +336,7 @@ export const callsList: SchemaNode = {
                       },
                     },
                     /*
-                        Pick this call back up.
+                        Pick this call back up — or, if one is already running, go to that instead.
 
                         A transcript's record is reachable only while somebody who was in the call
                         is still publishing a claim to it, so once everyone has left it can never be
@@ -297,18 +347,79 @@ export const callsList: SchemaNode = {
 
                         Offered to everyone, unlike edit and delete: continuing a call is joining a
                         conversation, not editing somebody's record of one.
+
+                        ## Why it stops meaning "continue" the moment you are in a call
+
+                        It used to be the two actions below unconditionally, and mid-call each one
+                        did something nobody asked for. `joinSpaceCall` is a no-op on the call you
+                        are already in and a silent teardown of any other — the same hazard the
+                        module rail's launcher had. `resume` is worse, because it does not fail
+                        quietly: it re-points the live transcript at *this* record and announces the
+                        claim, and peers adopt an announced record in preference to their own. One
+                        stray click on last month's card moved everybody's live transcript into last
+                        month's meeting.
+
+                        ## Why a card that is not the live one offers nothing at all
+
+                        The first fix was to make every card say "Go to the call" mid-call, and it
+                        was wrong for a reason that only shows up on a list: this button sits beside
+                        one particular conversation, so "the call" reads as *this* card's call. A
+                        row of finished meetings all offering to take you to a call, none of them
+                        the call in question, is a worse answer than no button.
+
+                        So the control is offered in exactly the two states where it has an
+                        unambiguous subject: no call running, where it continues this one; and this
+                        card *being* the running call, where "go to the call" can only mean the one
+                        it is attached to. Anything else is absent.
+
+                        Absent rather than disabled. A disabled `we-button` sets the native
+                        attribute, and a disabled control does not reliably deliver hover to the
+                        tooltip that would explain it — so the explanation is the part that goes
+                        missing, leaving an inert button that cannot say why. There is nothing to
+                        explain here anyway: the call bar is on screen and the rail tab is lit, so
+                        "you are in a call" is already said twice.
                       */
                     {
                       type: '$if',
                       props: {
-                        condition: { $store: 'modules.call.canCall' },
+                        condition: {
+                          $and: [
+                            { $store: 'modules.call.canCall' },
+                            /*
+                              Not in a call, or this is the one. Note the second test is against the
+                              live *record* rather than against `active`: a space-wide call publishes
+                              one id derived from the space, so `active` cannot tell this morning's
+                              meeting from this afternoon's and every card would claim to be live.
+
+                              It is also empty for a call nobody has transcribed yet, which is right
+                              — there is no record, so no card on this list is that call, and none of
+                              them should offer to take you to it.
+                            */
+                            {
+                              $or: [
+                                { $not: { $store: 'modules.call.active' } },
+                                { $eq: ['$call.id', { $store: 'modules.transcribe.liveCollectionId' }] },
+                              ],
+                            },
+                          ],
+                        },
                         // A real tooltip rather than the button's `title`, which the browser draws
                         // itself: unthemed, after its own delay, and never on a keyboard focus.
                         // Rejoining a call from a card is the one control here whose effect is not
-                        // guessable from its icon, so it is the one worth saying out loud.
+                        // guessable from its icon, so it is the one worth saying out loud — and now
+                        // it has two effects to tell apart.
                         then: {
                           type: 'we-tooltip',
-                          props: { title: 'Continue this call', placement: 'top' },
+                          props: {
+                            title: {
+                              $if: {
+                                condition: { $store: 'modules.call.active' },
+                                then: 'Go to the call',
+                                else: 'Continue this call',
+                              },
+                            },
+                            placement: 'top',
+                          },
                           children: [
                             {
                               type: 'we-button',
@@ -316,14 +427,38 @@ export const callsList: SchemaNode = {
                                 variant: 'ghost',
                                 size: 'sm',
                                 square: true,
-                                // Two actions rather than one with an `onSuccess`, because
-                                // `joinSpaceCall` returns nothing for a lifecycle key to hang off.
-                                // `resume` is built for that: it holds the record until there is a
-                                // call to attach it to, so the order these resolve in does not
-                                // matter.
+                                /*
+                                  Branched in the handler rather than in the node, so one button is
+                                  rendered either way — a `$if` around the whole control would
+                                  rebuild it on every join and leave, and the tooltip with it.
+
+                                  Handler arrays resolve lazily at call time, so these conditions
+                                  read the store as it is when the button is pressed rather than as
+                                  it was when the card painted. That is the difference between this
+                                  working and it baking in whichever state the list happened to
+                                  render in.
+                                */
                                 onClick: [
-                                  { $action: 'modules.call.joinSpaceCall' },
-                                  { $action: 'modules.transcribe.resume', args: ['$call.id'] },
+                                  {
+                                    $if: {
+                                      condition: { $store: 'modules.call.active' },
+                                      then: { $action: 'modules.call.goToCall' },
+                                    },
+                                  },
+                                  {
+                                    $if: {
+                                      condition: { $not: { $store: 'modules.call.active' } },
+                                      // Two actions rather than one with an `onSuccess`, because
+                                      // `joinSpaceCall` returns nothing for a lifecycle key to hang
+                                      // off. `resume` is built for that: it holds the record until
+                                      // there is a call to attach it to, so the order these resolve
+                                      // in does not matter.
+                                      then: [
+                                        { $action: 'modules.call.joinSpaceCall' },
+                                        { $action: 'modules.transcribe.resume', args: ['$call.id'] },
+                                      ],
+                                    },
+                                  },
                                 ],
                               },
                               // Sized past what the button would give it (16px at `sm`), because
@@ -587,66 +722,60 @@ export const callsList: SchemaNode = {
                       },
                     },
                     /*
-                        Editing writes the two fields straight onto the CollectionBlock with
-                        `model.update` — no store action, because there is nothing for one to do.
-                        `title` and `description` are plain scalars on the model, so this is the
-                        whole of saving them.
+                      Editing writes the two fields straight onto the CollectionBlock with
+                      `model.update` — no store action, because there is nothing for one to do.
+                      `title` and `description` are plain scalars on the model, so this is the
+                      whole of saving them.
 
-                        No validation: an empty title is a meaningful value here, since it returns
-                        the card to the plain "Call" it started as. A required rule would make
-                        clearing a name impossible.
+                      No validation and no precondition: an empty title is a meaningful value here,
+                      since it returns the card to the plain "Call" it started as. A required rule
+                      would make clearing a name impossible.
+                    */
+                    formModal({
+                      open: { $local: 'editOpen' },
+                      close: { $setLocal: 'editOpen', value: false },
+                      title: 'Edit call',
+                      size: 'sm',
+                      /*
+                        The drafts stay on the card shell rather than moving onto the modal, unlike
+                        the composers elsewhere: the pencil above seeds them from `$call` *before*
+                        opening, so they have to be declared by an ancestor of the button, not of
+                        the modal. Seeding is also what stands in for the reset a remount gives the
+                        blank forms — the fields are overwritten every time the modal opens.
                       */
-                    {
-                      type: '$if',
-                      props: {
-                        condition: { $local: 'editOpen' },
-                        then: {
-                          type: 'we-modal',
-                          props: { close: { $setLocal: 'editOpen', value: false } },
-                          children: [
-                            { type: 'we-text', props: { fontWeight: 'semibold' }, children: ['Edit call'] },
-                            field({ name: 'titleDraft', label: 'Title', placeholder: 'What was this call about?' }),
-                            field({
-                              name: 'descriptionDraft',
-                              label: 'Description',
-                              control: 'textarea',
-                              placeholder: 'Anything worth remembering about it',
-                            }),
-                            {
-                              type: 'Row',
-                              props: { ax: 'end', gap: '200' },
-                              children: [
-                                {
-                                  type: 'we-button',
-                                  props: { variant: 'ghost', onClick: { $setLocal: 'editOpen', value: false } },
-                                  children: ['Cancel'],
-                                },
-                                {
-                                  type: 'we-button',
-                                  props: {
-                                    onClick: {
-                                      $action: 'model.update',
-                                      args: [
-                                        'CollectionBlock',
-                                        '$call.id',
-                                        {
-                                          title: { $local: 'titleDraft' },
-                                          description: { $local: 'descriptionDraft' },
-                                        },
-                                      ],
-                                      onSuccess: [{ $setLocal: 'editOpen', value: false }],
-                                    },
-                                  },
-                                  children: ['Save'],
-                                },
-                              ],
-                            },
-                          ],
-                        },
+                      children: [
+                        field({ name: 'titleDraft', label: 'Title', placeholder: 'What was this call about?' }),
+                        field({
+                          name: 'descriptionDraft',
+                          label: 'Description',
+                          control: 'textarea',
+                          placeholder: 'Anything worth remembering about it',
+                        }),
+                      ],
+                      /*
+                        Dirty means *changed*, not *non-empty* — the fields arrive seeded from the
+                        record, so a form nobody has touched is already full. This is the shape any
+                        edit form wants, as against the blank ones elsewhere that can ask whether
+                        anything is filled in at all.
+                      */
+                      discardWhen: {
+                        $or: [
+                          { $ne: [{ $local: 'titleDraft' }, '$call.title'] },
+                          { $ne: [{ $local: 'descriptionDraft' }, '$call.description'] },
+                        ],
                       },
-                    },
+                      submit: {
+                        $action: 'model.update',
+                        args: [
+                          'CollectionBlock',
+                          '$call.id',
+                          { title: { $local: 'titleDraft' }, description: { $local: 'descriptionDraft' } },
+                        ],
+                      },
+                    }),
                     confirmModal({
-                      openLocal: 'confirmDeleteOpen',
+                      open: { $local: 'confirmDeleteOpen' },
+                      close: { $setLocal: 'confirmDeleteOpen', value: false },
                       title: 'Delete call?',
                       body: 'This will permanently delete the recording and every utterance in it. This cannot be undone.',
                       confirmLabel: 'Delete',

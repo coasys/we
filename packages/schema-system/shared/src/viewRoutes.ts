@@ -64,6 +64,49 @@ export type ResolvedView = {
 const TEMPLATE_ONLY = ['id', 'meta', 'author', 'templateVersion', 'schemaVersion', '_fromSpace'] as const;
 
 /**
+ * Where one template stops and another begins, marked in the DOM.
+ *
+ * A view is a *different template* from the shell around it, and nothing downstream could tell.
+ * That is invisible until something walks the rendered tree expecting one schema to explain all of
+ * it — which the visual editor does: it finds the nearest `data-we-node-id` and looks it up in the
+ * template being edited. A view's nodes carry no such id, so a click inside one walked straight past
+ * the whole section and selected a *shell* node several levels up. Nothing said why, so a section
+ * read as a hole in the editor rather than as a boundary.
+ *
+ * The name rides along beside the id so a reader of the DOM needs no second lookup — and, more to
+ * the point, so `@we/editor` can say which section it is without taking a dependency on the view
+ * registry to find out.
+ */
+export const VIEW_BOUNDARY_ATTR = 'data-we-view';
+export const VIEW_BOUNDARY_NAME_ATTR = 'data-we-view-name';
+
+/**
+ * Put the boundary where the DOM will actually show it.
+ *
+ * On the view's own root wherever that root is a Solid component, which costs nothing: the renderer
+ * spreads unrecognised props onto the element, so the attribute simply appears.
+ *
+ * A custom-element root is the exception and needs the wrapper. The renderer delivers a web
+ * component's props as **DOM properties** rather than attributes (`hostRef[key] = …`), so an
+ * attribute selector would never match one and the boundary would go missing on exactly the views
+ * nobody tested — silently, and looking like the bug this exists to remove. `display: contents`
+ * generates no box, so the wrapper costs a DOM node and no layout.
+ */
+function markBoundary(node: Record<string, unknown>, view: ResolvedView): Record<string, unknown> {
+  const marks = {
+    [VIEW_BOUNDARY_ATTR]: view.id,
+    [VIEW_BOUNDARY_NAME_ATTR]: view.schema.meta?.name ?? view.id,
+  };
+
+  // The renderer's own test for a custom element — see `isWebComponent` in SchemaRenderer.
+  if (!(typeof node.type === 'string' && node.type.includes('-'))) {
+    return { ...node, props: { ...((node.props as Record<string, unknown>) ?? {}), ...marks } };
+  }
+
+  return { type: 'Column', props: { styles: { display: 'contents' }, ...marks }, children: [node] };
+}
+
+/**
  * What decides, at render time, whether a section is one this space offers.
  *
  * The table holds a route for every view that *could* render here — that is what keeps a toggle from
@@ -94,8 +137,13 @@ export type ViewGate = {
  * to survive, since a route body is not a place a view can reach out of anyway.
  */
 function viewAsRoute(view: ResolvedView, gate?: ViewGate): RouteSchema {
-  const node = { ...view.schema } as Record<string, unknown>;
-  for (const key of TEMPLATE_ONLY) delete node[key];
+  const stripped = { ...view.schema } as Record<string, unknown>;
+  for (const key of TEMPLATE_ONLY) delete stripped[key];
+
+  // Marked before the gate rather than after: the boundary belongs to the *view*, and the gate's
+  // other arm is the host saying this space does not have this section — which is chrome, not a
+  // section, and should behave like the rest of the shell.
+  const node = markBoundary(stripped, view);
 
   const body: Record<string, unknown> = gate
     ? {

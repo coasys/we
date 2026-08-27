@@ -165,8 +165,51 @@ export function dockGeometryPath(id: string, field: string): string {
 export const DOCK_FRAME_ATTR = 'data-we-dock-frame';
 export const DOCK_CONTENT_ATTR = 'data-we-dock-content';
 
+/**
+ * When a panel is glass: floating over the app, and not filling it.
+ *
+ * Both of those are `floating` — a maximised panel is not displacing either — but they want
+ * opposite answers here. A card over the content has something behind it worth seeing; a panel
+ * covering the window has nothing beside it, so translucency there only makes its own contents
+ * harder to read, over a full-window blur nobody asked for.
+ *
+ * A displacing panel is opaque for the reason it has no radius and no shadow: it has *taken* its
+ * room rather than borrowed it, so it meets the content edge to edge and is not on top of anything.
+ */
+const isGlass = (id: string) => ({
+  $and: [{ $store: dockGeometryPath(id, 'floating') }, { $not: { $store: dockGeometryPath(id, 'maximised') } }],
+});
+
+/*
+  Frosted glass is a theme's decision, and it already has the vocabulary for it.
+
+  `surfaceOpacity` and `surfaceBlur` are theme overrides that resolve to `--we-theme-surface-opacity`
+  and `--we-theme-surface-blur`, and the expression below is the one `Card` and every overlay
+  primitive — modal, drawer, popover — already use, down to `in srgb`. A panel writing its own
+  numbers would be the one surface in the app that ignored a theme asking for more glass or less.
+
+  `color-mix` toward `transparent` rather than an `opacity` on the box: opacity fades the panel's
+  *contents* along with its background, so the text would go with it. This fades only what is
+  painted behind them.
+
+  The fallbacks are where a panel differs from a card, and deliberately. A theme that says nothing
+  leaves cards and modals opaque — `var(--we-theme-surface-blur, 0px)` — because most surfaces sit
+  *in* a page rather than over one, and glass on all of them by default would be a look nobody
+  chose. A floating panel is the opposite case: it is chrome laid over the app, and being able to
+  see what it covers is the point of it floating rather than displacing. So it defaults to glass and
+  a theme still overrules it, in either direction.
+*/
+const PANEL_OPACITY = '0.3';
+const PANEL_BLUR_PX = '12px';
+
+const glassBg = (role: string) =>
+  `color-mix(in srgb, var(--we-role-${role}) calc(var(--we-theme-surface-opacity, ${PANEL_OPACITY}) * 100%), transparent)`;
+
+const GLASS_BLUR = `blur(var(--we-theme-surface-blur, ${PANEL_BLUR_PX}))`;
+
 export function dockFrame(entry: DockEntry, node: SchemaNode): SchemaNode {
   const geo = (field: string) => ({ $store: dockGeometryPath(entry.id, field) });
+  const glass = isGlass(entry.id);
 
   return {
     type: 'Column',
@@ -193,7 +236,15 @@ export function dockFrame(entry: DockEntry, node: SchemaNode): SchemaNode {
               // The panel's own surface. A module's node fills it and need not paint a background, a
               // border or a radius of its own — which is what stops two docked modules from looking
               // like two different applications.
-              bg: 'surface-sunken',
+              //
+              // Translucent while it is a card, so the app stays visible behind it and the panel
+              // reads as being *over* something rather than as a hole cut in the window. The theme
+              // owns how far — see `glassBg` — and `isGlass` owns when.
+              bg: { $if: { condition: glass, then: glassBg('surface-sunken'), else: 'surface-sunken' } },
+              // Backdrop blur belongs with the transparency and goes when it does: it is expensive,
+              // it makes the element a containing block for fixed descendants, and over an opaque
+              // background it would cost both of those for nothing visible.
+              styles: { $if: { condition: glass, then: { 'backdrop-filter': GLASS_BLUR }, else: {} } },
               border: '1px solid border',
               // Rounded and lifted only while floating. A card over the app should read as being on
               // top; a panel that has taken room *from* the app meets it edge to edge, where a radius
@@ -321,7 +372,16 @@ function titleBar(entry: DockEntry): SchemaNode {
       gap: '100',
       px: '200',
       py: '100',
-      bg: 'page',
+      /*
+        Translucent alongside the frame, so the card is one piece of glass rather than a solid bar
+        stuck to a transparent body.
+
+        No blur of its own: it is inside the frame, which has already blurred everything behind the
+        whole panel. It composites over the frame's own translucency, so it always lands more solid
+        than the body it labels — about half at the default 0.3, and still the same way round at
+        whatever the theme sets, which is the right way round for the part you grab.
+      */
+      bg: { $if: { condition: isGlass(entry.id), then: glassBg('page'), else: 'page' } },
       borderBottom: '1px solid border',
       /*
         Double-click to maximise, the other half of the convention the grip completes.
@@ -526,9 +586,19 @@ function positionMenu(entry: DockEntry): SchemaNode {
     type: 'DropdownMenu',
     props: {
       triggerIcon: 'dots-three',
-      // Explicitly empty: the trigger is a 24px chip in a titlebar, and `DropdownMenu` otherwise
-      // falls back to the word "Options", which would be wider than the panel on a small float.
-      triggerLabel: '',
+      /*
+        One of the row, not the row's only filled thing.
+
+        The four controls beside it are `xs` ghost squares, and this drew `DropdownMenu`'s own
+        trigger: a filled pill, because without `square` the size's horizontal padding still
+        applies, and one that hovered to the accent, because the component overrode the fill of the
+        `primary` variant and not its hover. Asking for `ghost` is enough now — icon-only is
+        inferred from an icon with no label, and brings the square with it.
+      */
+      triggerVariant: 'ghost',
+      // The tooltip its four neighbours all have. A `dots-three` chip says nothing about its
+      // subject, and this one's subject is the whole of what the menu does.
+      triggerTitle: 'Position',
       size: 'xs',
       /*
         A size larger than the trigger, and the reason the two are separate props.
@@ -699,20 +769,36 @@ function snapTargets(id: string): SchemaNode {
  */
 function grips(id: string): SchemaNode[] {
   const geo = (field: string) => ({ $store: dockGeometryPath(id, field) });
-  const floating = geo('floating');
+  /*
+    A maximised panel has no grips, and saying so takes an `$and` rather than reading `floating`.
+
+    The geometry already says it — `handleX` and `handleY` are both absent, which is the docstring's
+    "there is nothing left to give it" — but the maximised box also reports `floating: true`, which it
+    has to: `floating` is what draws the radius, the shadow and the glass. So every edge matched the
+    `$or` below and every corner matched outright, and a maximised panel drew all eight.
+
+    They were not inert. `resizeDock` reads the same flag to decide what a drag means, took the
+    floating arm, and wrote the rect it measured — the whole window — over the card's `w`/`h`. The
+    panel looked unchanged, because the maximised branch resolves ahead of the placement; the size it
+    would restore to was gone, and for a panel whose dock thickness falls back to the card, so was the
+    size it would dock at.
+  */
+  const grippable = { $and: [{ $not: geo('maximised') }, geo('floating')] };
 
   const edges: SchemaNode[] = (['left', 'right', 'top', 'bottom'] as const).map((side) => ({
     type: '$if',
     props: {
       // Shown when the panel floats, or when this is the single side a displacing panel can trade.
-      condition: { $or: [floating, { $eq: [geo(side === 'left' || side === 'right' ? 'handleX' : 'handleY'), side] }] },
+      condition: {
+        $or: [grippable, { $eq: [geo(side === 'left' || side === 'right' ? 'handleX' : 'handleY'), side] }],
+      },
       then: resizeEdge(id, side),
     },
   }));
 
   const corners: SchemaNode[] = (['top-left', 'top-right', 'bottom-left', 'bottom-right'] as const).map((corner) => ({
     type: '$if',
-    props: { condition: floating, then: resizeCorner(id, corner) },
+    props: { condition: grippable, then: resizeCorner(id, corner) },
   }));
 
   return [...edges, ...corners];

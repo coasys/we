@@ -1,5 +1,12 @@
-/** Ring colour, as a semantic token rather than a CSS value, so themes stay in control. */
-export type AvatarTone = 'success' | 'warning' | 'danger' | 'primary' | 'neutral';
+import type { AvatarTone } from '@we/tokens';
+
+/**
+ * Ring colour, named rather than spelled out, so themes stay in control.
+ *
+ * Re-exported rather than declared: the vocabulary is the token layer's, shared with the schema
+ * kit's `badgedAvatar` so a tone means one colour wherever it is written. See `avatarToneRing`.
+ */
+export type { AvatarTone };
 
 export interface AvatarInfo {
   image?: string;

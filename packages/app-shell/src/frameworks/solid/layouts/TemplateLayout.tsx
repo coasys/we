@@ -21,26 +21,14 @@
  */
 import { buildTemplateBag, CHROME_TIER } from '@shared/registries/templateSurface';
 import { isValidThemeKey } from '@shared/registries/themeRegistry';
-import {
-  landingPageTemplate,
-  marketplaceTemplate,
-  profileTemplate,
-  schemaTestsTemplate,
-  settingsTemplate,
-} from '@shared/schemas';
-import { schemaMutationActions } from '@shared/schemas/shell/tests/SchemaMutations.actions';
-import { createTestStore } from '@shared/schemas/shell/tests/testStore';
-import { deepClone } from '@shared/utils';
 import { TemplateBoundary } from '@solid/components/TemplateBoundary';
 import { componentRegistry as registry } from '@solid/registries/componentRegistry';
-import type { RouteStore } from '@solid/stores/RouteStore';
 import { ShellRouterRoot, ShellRouteStoreProvider, useShellRouteStore } from '@solid/stores/ShellRouteStore';
 import { THEME_SCOPE_ATTRIBUTE } from '@solid/stores/ThemeStore';
 import type { Stores } from '@solid/types';
 import { MemoryRouter, Route, useLocation, useNavigate } from '@solidjs/router';
 import { Column } from '@we/components/solid';
 import { panelResizing } from '@we/editor/runtime';
-import type { TemplateSchema } from '@we/schema-shared';
 import { applyThemeVars, clearThemeVars, parseOverrides, surfaceStyles } from '@we/schema-shared';
 import { lazy } from 'solid-js';
 
@@ -48,9 +36,9 @@ const EditorOverlay = lazy(() => import('@we/editor').then((m) => ({ default: m.
 import { createSurface, RenderSchema } from '@we/schema-solid';
 import type { ParentProps } from 'solid-js';
 import { createEffect, createMemo, Show } from 'solid-js';
-import { createStore } from 'solid-js/store';
 
 import { buildRoutes } from '../utils/buildRoutes';
+import { resolveShellView, type ShellViewEntry } from './shellViews';
 
 // Width of the collapsed shell sidebar — also set as --we-sidebar-width on :root.
 export const SHELL_SIDEBAR_WIDTH = '80px';
@@ -95,38 +83,6 @@ export function computeBottomOffset(stores: Stores): string {
   return `${stores.shellStore.contentInset().bottom}px`;
 }
 
-// Shell view registry — maps activeShellView id → schema + optional extra stores.
-// The stores factory is called with (baseStores, shellRouteStore) at mount time,
-// so each view gets exactly the stores it needs and nothing more.
-// Returning { $schema } from the factory overrides the rendered schema with a
-// mutable reactive store — used by schema-tests to make mutations visible.
-type ShellViewEntry = {
-  schema: TemplateSchema;
-  stores?: (base: Stores, shellRouteStore: RouteStore) => Partial<Stores> & { $schema?: TemplateSchema };
-};
-
-const shellViews: Record<string, ShellViewEntry> = {
-  'landing-page': { schema: landingPageTemplate },
-  marketplace: { schema: marketplaceTemplate },
-  profile: { schema: profileTemplate },
-  settings: { schema: settingsTemplate },
-  'schema-tests': {
-    schema: schemaTestsTemplate,
-    stores: (base) => {
-      const [schemaState, setSchemaState] = createStore<TemplateSchema>(deepClone(schemaTestsTemplate));
-      const mutations = schemaMutationActions(schemaState, setSchemaState);
-      return {
-        templateStore: { ...base.templateStore, ...mutations },
-        testStore: createTestStore(
-          base.datasetStore.testDataset,
-          () => base.sessionStore.backendPorts()?.schemas ?? null,
-        ),
-        $schema: schemaState,
-      };
-    },
-  },
-};
-
 // ---------------------------------------------------------------------------
 // Shell overlay inner — rendered inside ShellRouteStoreProvider + MemoryRouter
 // ---------------------------------------------------------------------------
@@ -170,7 +126,30 @@ function ShellOverlayInner({
     <MemoryRouter
       root={(props) => (
         <ShellRouterRoot>
-          <div {...overlaySurface.outerAttrs} style={surfaceStyles()} ref={overlaySurface.outerRef}>
+          {/*
+            `height: 100%`, because this surface is the one host site that adds a box.
+
+            The other three attach to an element that was already there and already sized. This one
+            sits between the overlay's scroll container and the view's root node, and every shell
+            view's root sizes itself with `minHeight: '100%'` — so the box has to pass a *definite*
+            height through or that percentage has nothing to resolve against.
+
+            Left at `auto` it resolved differently per engine: Chrome resolves a percentage through
+            an auto-height ancestor and looked correct, Firefox follows CSS2.1 and treats it as
+            indefinite, so profile and settings collapsed to their content height and the space
+            template showed through underneath. `min-height: 100%` here does *not* fix it — the box
+            is still auto-height, so the child's percentage is still indefinite. Measured in Chrome
+            150 and Firefox 152.
+
+            `height` rather than `min-height` costs nothing when the view is taller than the
+            viewport: overflow is visible, so a long settings page still overflows this box and
+            scrolls the overlay above it.
+          */}
+          <div
+            {...overlaySurface.outerAttrs}
+            style={{ ...surfaceStyles(), height: '100%' }}
+            ref={overlaySurface.outerRef}
+          >
             <div {...overlaySurface.tierAttrs} ref={overlaySurface.tierRef} />
             <RenderSchema
               node={schema}
@@ -437,7 +416,10 @@ export function TemplateLayout(
         {/* Shell overlay rendered above the template */}
         <Show when={stores.shellStore.activeShellView()} keyed>
           {(shellViewId) => {
-            const view = shellViews[shellViewId];
+            // `null` means this build has no such view — an unknown id, or the schema-test harness
+            // in a production build. Otherwise an accessor: already filled for the ordinary views,
+            // and filled a frame later for one whose chunk is being fetched. See `resolveShellView`.
+            const view = resolveShellView(shellViewId);
             if (!view) return null;
             return (
               <Column
@@ -465,9 +447,15 @@ export function TemplateLayout(
                     </we-button>
                   }
                 >
-                  <ShellRouteStoreProvider>
-                    <ShellOverlayInner stores={stores} chromeStores={props.chromeStores} view={view} />
-                  </ShellRouteStoreProvider>
+                  {/* The overlay's box is painted while the chunk arrives, so a lazy view opens
+                      onto the surface it is about to fill rather than onto the template behind it. */}
+                  <Show when={view()}>
+                    {(entry) => (
+                      <ShellRouteStoreProvider>
+                        <ShellOverlayInner stores={stores} chromeStores={props.chromeStores} view={entry()} />
+                      </ShellRouteStoreProvider>
+                    )}
+                  </Show>
                 </TemplateBoundary>
               </Column>
             );

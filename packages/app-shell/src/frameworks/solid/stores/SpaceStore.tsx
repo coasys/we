@@ -20,6 +20,7 @@ import {
   viewSettings,
 } from '@shared/viewResolution';
 import type { AgentProfileSummary, DatasetRef } from '@we/backend-shared';
+import { displayName } from '@we/backend-shared';
 import type { SerializedBlockNode } from '@we/block-shared';
 import { createBlocks, deleteBlocks, reconcileBlocks } from '@we/block-shared';
 import { toastService } from '@we/components/solid';
@@ -1774,9 +1775,15 @@ export function SpaceStoreProvider(props: ParentProps) {
       // A speaker's label the way the byline renders it: their display name, else their DID. The
       // cache is keyed on the bare DID — `fetchProfile` strips the scheme on the way in — so a
       // prefixed author has to be stripped here too or it would never match what was just fetched.
+      //
+      // Re-derived with the DID as the fallback rather than reading the cache's own `name`, which
+      // falls back to "Anonymous". That is right on screen, where a face sits beside the label and
+      // tells one unnamed peer from another — and wrong in a text file, where it is all there is:
+      // three unnamed speakers would come out as three identical "Anonymous" lines, and a
+      // transcript that cannot tell its speakers apart is not a transcript.
       const nameFor = (did: string): string => {
         const profile = profileStore.profiles().find((entry) => entry.did === did.replace('did://', ''));
-        return profile?.name || did;
+        return profile ? displayName(profile, did) : did;
       };
 
       const lines = turns.map((turn) => `${nameFor(turn.speaker)}, ${turn.timestamp}: ${turn.text}`);
@@ -1966,8 +1973,8 @@ export function SpaceStoreProvider(props: ParentProps) {
    * What the module rail renders: one entry per enabled module that declares a launcher.
    *
    * Reads `moduleStores` so `active` tracks the module's own state — the notes tab highlights while
-   * its panel is open. A module with no `activeWhen` (a call, which starts rather than toggles) is
-   * simply never highlighted.
+   * its panel is open, the call tab while you are in a call. A module with no `activeWhen` is simply
+   * never highlighted.
    */
   /** Read a boolean off a module's own store, unwrapping the accessor a module store exposes. */
   const read = (moduleId: string, key: string | undefined, fallback: boolean): boolean => {
@@ -2473,11 +2480,14 @@ export function SpaceStoreProvider(props: ParentProps) {
       .filter(({ definition }) => read(definition.id, definition.launcher!.availableWhen, true))
       .map(({ definition }) => {
         const launcher = definition.launcher!;
+        const active = read(definition.id, launcher.activeWhen, false);
         return {
           id: definition.id,
           icon: launcher.icon,
-          label: launcher.label,
-          active: read(definition.id, launcher.activeWhen, false),
+          // The active label where there is one, so a tooltip cannot describe an act the button has
+          // stopped performing. Most launchers declare none and this is `label` in both states.
+          label: (active && launcher.activeLabel) || launcher.label,
+          active,
         };
       });
   });

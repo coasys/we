@@ -80,7 +80,8 @@ export const spacesList: SchemaNode = cardList({
                       children: [{ type: 'we-icon', props: { name: 'trash' } }],
                     },
                     confirmModal({
-                      openLocal: 'confirmDeleteOpen',
+                      open: { $local: 'confirmDeleteOpen' },
+                      close: { $setLocal: 'confirmDeleteOpen', value: false },
                       title: 'Remove from discovery?',
                       body: 'This will remove this space from the global discovery listing. The space and all its content will remain intact.',
                       confirmLabel: 'Remove',

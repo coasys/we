@@ -77,7 +77,8 @@ export default class Drawer extends OverlayElement {
   }
 
   private _onKeyDown(e: KeyboardEvent) {
-    if (e.key === 'Escape') {
+    // Topmost only — see the note on `we-modal`'s handler.
+    if (e.key === 'Escape' && this.isTopmostOverlay()) {
       this.close();
     }
   }

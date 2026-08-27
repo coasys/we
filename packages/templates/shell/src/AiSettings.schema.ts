@@ -1,5 +1,5 @@
 import type { SchemaNode } from '@we/schema-shared';
-import { adminSection, emptyNote } from '@we/template-kit';
+import { adminSection, discardGuard, emptyNote } from '@we/template-kit';
 
 /**
  * AI — the models the backend runs or calls, and the prompts apps have registered against them.
@@ -85,9 +85,23 @@ const tokenizerFields: SchemaNode = {
   ],
 };
 
+/*
+  The form holds a base URL and an API key somebody pasted in, neither of which is anywhere else —
+  so a click on the backdrop used to throw away a credential. `aiFormDirty` compares against a
+  snapshot taken when the form opened, so opening a model to look at its settings and closing again
+  still asks nothing.
+*/
+const guard = discardGuard({
+  dirty: { $store: 'runtimeStore.aiFormDirty' },
+  close: { $action: 'runtimeStore.closeAiForm' },
+  title: 'Discard these settings?',
+  body: 'The changes you have made to this model will be lost.',
+});
+
 const modelForm: SchemaNode = {
   type: 'we-modal',
-  props: { close: { $action: 'runtimeStore.closeAiForm' }, maxWidth: '560px', width: '100%' },
+  props: { size: 'md', close: guard.close },
+  $localState: guard.localState,
   children: [
     {
       type: 'Column',
@@ -191,7 +205,8 @@ const modelForm: SchemaNode = {
           children: [
             {
               type: 'we-button',
-              props: { text: 'Cancel', variant: 'ghost', onClick: { $action: 'runtimeStore.closeAiForm' } },
+              // Guarded like the backdrop — one way out of the modal.
+              props: { text: 'Cancel', variant: 'ghost', onClick: guard.close },
             },
             {
               type: 'we-button',
@@ -206,6 +221,7 @@ const modelForm: SchemaNode = {
         },
       ],
     },
+    guard.node,
   ],
 };
 

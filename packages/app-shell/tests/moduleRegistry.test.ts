@@ -64,6 +64,7 @@ describe('slotRegistry — faithful generalisation of shellRegistry', () => {
       'core:consentSecret',
       'core:removeAccount',
       'core:createSpace',
+      'core:namePrompt',
       'core:sidebar',
       'core:templateEditor',
       'core:chromeRail',
@@ -73,6 +74,7 @@ describe('slotRegistry — faithful generalisation of shellRegistry', () => {
       'dock:editor:code',
       'dock:editor:ai',
       'dock:editor:theme',
+      'dock:shell:space-settings',
       'call',
     ]);
   });

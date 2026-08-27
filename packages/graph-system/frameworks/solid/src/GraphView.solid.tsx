@@ -594,6 +594,24 @@ export function GraphView(props: GraphViewProps) {
     return engine.getStatus();
   });
 
+  /**
+   * A load with nothing usable underneath it — so it is announced in the middle of the canvas.
+   *
+   * The engine's `reloading` covers the case that looks least like one: `start` clears the store and
+   * only notifies at the end, so the graph on screen during a board switch is the *old* graph, and
+   * saying so in a corner is how a stale board gets read as a live one. `loading` with no nodes is
+   * the first load, where the middle of the canvas is empty anyway and a footnote in the corner is
+   * the only thing standing between the reader and a blank screen.
+   *
+   * Everything else — an expansion, a refresh arriving from a subscription — loads *beside* a graph
+   * that stays on screen and stays usable, and belongs in the corner strip rather than over the top
+   * of the node whose double-click started it.
+   */
+  const loadingWholeGraph = createMemo(() => status().reloading || (status().loading && !nodes().length));
+
+  /** A load that arrives beside a graph that is still on screen and still usable. The corner case. */
+  const backgroundLoading = createMemo(() => status().loading && !loadingWholeGraph());
+
   // ─── Pointer plumbing ────────────────────────────────────────────────────────
 
   /**
@@ -773,8 +791,16 @@ export function GraphView(props: GraphViewProps) {
         }}
       />
 
+      {/*
+        `--stale` while a reload runs, because what is drawn is the graph being replaced.
+
+        `start` clears the store and only notifies once it has finished, so every node here belongs to
+        the board that was open a moment ago. Fading them says which of the two the spinner is about
+        — without it, a centred "Loading graph…" over a perfectly crisp board reads as though *that*
+        board is what is arriving.
+      */}
       <div
-        class="we-graph__layer"
+        classList={{ 'we-graph__layer': true, 'we-graph__layer--stale': status().reloading }}
         style={{
           transform: transform(),
           /*
@@ -1066,7 +1092,7 @@ export function GraphView(props: GraphViewProps) {
       </Show>
 
       <Show
-        when={props.showStatus !== false && (status().loading || status().budgetReached || status().warnings.length)}
+        when={props.showStatus !== false && (backgroundLoading() || status().budgetReached || status().warnings.length)}
       >
         <Column
           class="we-graph__status"
@@ -1077,10 +1103,23 @@ export function GraphView(props: GraphViewProps) {
           gap="100"
           maxWidth="60%"
         >
-          <Show when={status().loading}>
-            <Row ay="center" gap="200" bg="neutral-100" r="200" px="200" py="100">
+          {/*
+            Only ever background work. The whole-graph case is announced in the middle of the canvas
+            instead — see `loadingWholeGraph` — and showing both would be one load reported twice.
+          */}
+          <Show when={backgroundLoading()}>
+            <Row
+              ay="center"
+              gap="200"
+              bg="surface-raised"
+              border="1px solid border"
+              shadow="sm"
+              r="200"
+              px="300"
+              py="200"
+            >
               <we-spinner size="xs" />
-              <we-text variant="footnote" color="neutral-600">
+              <we-text variant="footnote" color="text-muted">
                 Loading…
               </we-text>
             </Row>
@@ -1092,11 +1131,19 @@ export function GraphView(props: GraphViewProps) {
         </Column>
       </Show>
 
-      <Show when={!nodes().length && !status().loading}>
-        {/*
-          Covers the whole canvas, so it must not intercept anything — an empty graph is still one you
-          can pan and drop things onto.
-        */}
+      {/*
+        One box for two states that must never both appear, and never both be absent.
+
+        "Loading" and "nothing to show" answer the same question — why is there nothing here — and as
+        two independent conditions they drifted: the empty state was suppressed while loading, so a
+        first load left the middle of the canvas genuinely blank and the only word for it was a
+        footnote in the far corner. Branching inside one centred box makes them exclusive by
+        construction rather than by two conditions agreeing.
+
+        Covers the whole canvas, so it must not intercept anything — an empty graph is still one you
+        can pan and drop things onto.
+      */}
+      <Show when={loadingWholeGraph() || !nodes().length}>
         <Column
           pointerEvents="none"
           position="absolute"
@@ -1106,12 +1153,30 @@ export function GraphView(props: GraphViewProps) {
           height="100%"
           ax="center"
           ay="center"
-          gap="200"
         >
-          <we-icon name="graph" size="lg" color="neutral-300" />
-          <we-text variant="footnote" color="neutral-400">
-            Nothing to show yet.
-          </we-text>
+          <Show
+            when={loadingWholeGraph()}
+            fallback={
+              <Column ax="center" ay="center" gap="200">
+                <we-icon name="graph" size="lg" color="text-faint" />
+                <we-text variant="footnote" color="text-faint">
+                  Nothing to show yet.
+                </we-text>
+              </Column>
+            }
+          >
+            {/*
+              Held back for a moment before it appears — see the stylesheet. A seed answered from a
+              local cache resolves inside a frame, and a spinner that flashes on every fast load is
+              worse than none at all.
+            */}
+            <Column class="we-graph__loading" ax="center" ay="center" gap="200">
+              <we-spinner size="lg" />
+              <we-text variant="footnote" color="text-muted">
+                Loading graph…
+              </we-text>
+            </Column>
+          </Show>
         </Column>
       </Show>
     </div>

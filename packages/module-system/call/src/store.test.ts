@@ -363,6 +363,147 @@ describe('a call and the space it happens in', () => {
 });
 
 /**
+ * The rail's call button — one promise across every state it can be pressed in.
+ *
+ * It used to be wired straight to `joinSpaceCall`, which made it three different things: a no-op in
+ * the space call (`join` returns early on a matching id), and a silent teardown of any *other* call,
+ * including one running in a space the user had merely navigated away from. A button in permanent
+ * chrome is pressed by accident; neither outcome is one it should be able to produce.
+ *
+ * These pin the three readings down, because all three are invisible from the declaration — the
+ * launcher names a method as a string and the host calls whatever it finds.
+ */
+describe('going to the call', () => {
+  function railable() {
+    const signal = <T>(initial: T): [() => T, (next: T) => void] => {
+      let value = initial;
+      return [() => value, (next: T) => (value = next)];
+    };
+
+    const effects: Array<() => void> = [];
+    let dataset: { id: string } | null = { id: 'ds' };
+    let uri: string | null = 'inmemory://ds';
+    const opened: string[] = [];
+
+    const scope = {
+      capabilities: { unicast: 'emulated', broadcast: true, coalesce: true, confidential: false },
+      channel: () => ({ publish: () => {}, onMessage: () => () => {} }),
+      dispose: () => {},
+    };
+
+    const store = createCallStore({
+      signal,
+      effect: (fn: () => void) => effects.push(fn),
+      dataset: () => dataset,
+      datasetUri: () => uri,
+      selfId: () => 'did:test:me',
+      ephemeral: () => scope,
+      presence: { peers: () => [], setActivity: () => {}, clearActivity: () => {} },
+      datasets: { get: () => undefined, open: (target: string) => opened.push(target) },
+      onDispose: () => {},
+      createPeerConnection: () => ({}) as RTCPeerConnection,
+    } as never) as ReturnType<typeof createCallStore> & Record<string, (...args: unknown[]) => unknown>;
+
+    return {
+      store,
+      opened,
+      goTo(next: { id: string } | null, nextUri: string | null) {
+        dataset = next;
+        uri = nextUri;
+        for (const fn of effects) fn();
+      },
+    };
+  }
+
+  it('starts the space call when there is not one', async () => {
+    const { store } = railable();
+
+    store.goToCall();
+    await Promise.resolve();
+
+    expect(store.active()).toBe(true);
+    // Getting to a call you have just started means seeing it, and `join` already opens the stage.
+    expect(store.stageOpen()).toBe(true);
+  });
+
+  it('shows the video once you are in the call, and never hides it', async () => {
+    /*
+      This toggled once, on the reasoning that a rail button is a tab. It made a liar of every
+      control that calls it — the button says *go to the call*, and putting the video away is the
+      opposite of going to it. Reported from a calls list, where a phone icon beside a finished
+      meeting hid the call the user was in.
+
+      Idempotent instead, the way navigation is: pressing Home while on Home does nothing. Hiding
+      the video has two controls of its own, neither named after going somewhere.
+    */
+    const { store } = railable();
+
+    store.goToCall();
+    await Promise.resolve();
+    expect(store.stageOpen()).toBe(true);
+
+    store.goToCall();
+    expect(store.stageOpen()).toBe(true);
+    // The controls that *are* for putting it away still do.
+    store.closeStage();
+    expect(store.stageOpen()).toBe(false);
+    // And going back to it brings it up rather than flipping it away again.
+    store.goToCall();
+    expect(store.stageOpen()).toBe(true);
+    // None of it at the cost of the call itself.
+    expect(store.active()).toBe(true);
+  });
+
+  it('takes you back to a call happening in another space, rather than starting a second one', async () => {
+    /*
+      The worst of the three old readings. Navigating out of a call's space and pressing the rail
+      button tore that call down and started a fresh one where you were standing — every connection
+      closed, everyone dropped, no confirmation, from a button whose icon says "call".
+    */
+    const { store, opened, goTo } = railable();
+
+    store.goToCall();
+    await Promise.resolve();
+    const original = store.callId();
+    store.closeStage();
+
+    goTo({ id: 'elsewhere' }, 'inmemory://elsewhere');
+    store.goToCall();
+    await Promise.resolve();
+
+    expect(store.callId()).toBe(original);
+    expect(opened).toEqual(['inmemory://ds']);
+    // Landing in the call's space with only the bar up is arriving at the door. The stage comes back.
+    expect(store.stageOpen()).toBe(true);
+  });
+
+  it('leaves an anchored call alone', async () => {
+    // The same hazard without the navigation: a call *about* a post has a different id from the
+    // space call, so the old wiring read the rail's button as "replace it".
+    const { store } = railable();
+
+    store.joinAnchoredCall('node-1');
+    await Promise.resolve();
+    const anchored = store.callId();
+
+    store.goToCall();
+    await Promise.resolve();
+
+    expect(store.callId()).toBe(anchored);
+    expect(store.active()).toBe(true);
+  });
+
+  it('says why rather than throwing when there is no space to call in', async () => {
+    const { store, goTo } = railable();
+    goTo(null, null);
+
+    expect(() => store.goToCall()).not.toThrow();
+    expect(store.problem()).toBeTruthy();
+    expect(store.active()).toBe(false);
+  });
+});
+
+/**
  * The spotlight is a layout, not a bigger cell.
  *
  * It used to be a span in the grid solved for equal tiles, so the focused tile could only ever be

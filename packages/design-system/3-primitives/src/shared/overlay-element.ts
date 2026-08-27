@@ -26,13 +26,39 @@ type ComponentCtor = abstract new (...args: unknown[]) => LitElement;
 // Cache of overlay stylesheets — one per component class
 const overlayStyleSheets = new WeakMap<ComponentCtor, CSSStyleSheet>();
 
+/**
+ * Every overlay currently on screen, oldest first.
+ *
+ * Overlays stack for real — a modal raises a "discard this?" confirmation *over* itself, and the
+ * one underneath has to stay open while the question is answered. Each one listens for Escape on
+ * `document`, so without a stack every open overlay reacts to the same keypress: Escape on that
+ * confirmation dismissed the confirmation *and* re-ran the close it was asking about. Backdrop
+ * clicks never had this problem, since only the topmost backdrop is under the pointer.
+ */
+const openOverlays: OverlayElement[] = [];
+
 export abstract class OverlayElement extends DesignSystemElement {
   // Marker property for runtime detection (minification-safe)
   static readonly isOverlay = true;
 
+  /**
+   * Whether this overlay is the one a keypress belongs to.
+   *
+   * Protected rather than private so each overlay's own keydown handler can gate on it — the base
+   * class cannot own the handler itself, because what Escape *means* differs (a modal closes; a
+   * drawer closes; something with an inner editor may want to swallow it first).
+   */
+  protected isTopmostOverlay(): boolean {
+    return openOverlays[openOverlays.length - 1] === this;
+  }
+
   override connectedCallback() {
     super.connectedCallback();
     const ctor = this.constructor as ComponentCtor;
+
+    // Pushed on connect, so the order is mount order — which for overlays is the order they were
+    // stacked in, since each is mounted by the thing that opened it.
+    if (!openOverlays.includes(this)) openOverlays.push(this);
 
     // Mark as overlay for specificity (matches :host([data-we-overlay]))
     this.setAttribute('data-we-overlay', '');
@@ -124,6 +150,8 @@ export abstract class OverlayElement extends DesignSystemElement {
 
   override disconnectedCallback() {
     super.disconnectedCallback();
+    const i = openOverlays.indexOf(this);
+    if (i !== -1) openOverlays.splice(i, 1);
     // The browser auto-hides popovers on disconnect, but we call explicitly for clarity.
     try {
       this.hidePopover();

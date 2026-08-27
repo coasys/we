@@ -57,6 +57,41 @@
   }
 }
 
+/**
+ * The centred loading state, held back briefly before it appears.
+ *
+ * A seed answered from a local cache resolves inside a frame or two, and a graph that flashes a
+ * spinner every time it opens reads as slower than one that shows nothing — so this waits long
+ * enough that only a load worth reporting is reported. The wait is the *delay*, not the duration:
+ * once a load is slow enough to have crossed it, the fade is quick, because by then the reader is
+ * already asking what is happening.
+ *
+ * A delay rather than a timer in the component: nothing here needs to be state, and a signal that
+ * flips on a `setTimeout` is one more thing to cancel correctly on unmount.
+ */
+.we-graph__loading {
+  animation: we-graph-loading-in 160ms ease-out 220ms both;
+}
+
+@keyframes we-graph-loading-in {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+// `both` holds the from-state through the delay, so a fast load never paints the spinner at all.
+// Under reduced motion the fade goes, but the delay must not — it is what suppresses the flash,
+// which is the whole point of it.
+@media (prefers-reduced-motion: reduce) {
+  .we-graph__loading {
+    animation-duration: 1ms;
+  }
+}
+
 .we-graph__layer {
   position: absolute;
   inset: 0;
@@ -81,6 +116,20 @@
   //
   // If this needs re-visiting, promote only *during a pan gesture* and drop the hint before any
   // scale change. Re-adding it unconditionally will silently make everything blurry again.
+}
+
+// What is drawn during a reload is the graph being replaced — see the note at the layer's markup.
+//
+// Fading in is deliberately slower than fading back: arriving, it should not compete with the load
+// it is explaining; leaving, the new graph is already correct and there is nothing to wait for.
+// Opacity only, so nothing here re-rasterises and no camera transform is disturbed.
+.we-graph__layer {
+  transition: opacity 200ms ease-out;
+
+  &--stale {
+    opacity: 0.4;
+    transition-duration: 400ms;
+  }
 }
 
 // The edge surface, exactly the size of the layer — **not** an enormous box.

@@ -112,7 +112,8 @@ export const postsList: SchemaNode = {
                           children: [{ type: 'we-icon', props: { name: 'trash' } }],
                         },
                         confirmModal({
-                          openLocal: 'confirmDeleteOpen',
+                          open: { $local: 'confirmDeleteOpen' },
+                          close: { $setLocal: 'confirmDeleteOpen', value: false },
                           title: 'Delete post?',
                           body: 'This will permanently delete the post and everything inside it. This cannot be undone.',
                           confirmLabel: 'Delete',

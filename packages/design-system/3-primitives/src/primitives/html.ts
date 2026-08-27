@@ -14,9 +14,10 @@ const DEFAULT_PROPS: Partial<DesignSystemProps> = {
 };
 
 const styles = css`
+  /* See the note in markdown.ts — the typography layer's overflow-wrap default replaces the
+     word-break: break-word that used to sit here, and reaches the sanitized HTML by inheritance. */
   :host {
     line-height: 1.5;
-    word-break: break-word;
   }
 
   /* Paragraphs — reset browser default margins; last-child has no bottom gap */

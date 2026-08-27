@@ -65,6 +65,26 @@ export interface DropdownMenuProps {
   triggerLabel?: string;
   triggerIcon?: string;
   /**
+   * How the trigger is drawn, from `we-button`'s own variants. Defaults to `secondary` — a filled
+   * neutral chip, which is what a menu standing on its own should look like.
+   *
+   * `ghost` is the one that matters, and the reason this exists: a menu that belongs to a *row* of
+   * controls has to look like one of them rather than like the row's only filled thing. Without it
+   * the call bar could not use this component at all — it hand-rolled a `we-popover` around a ghost
+   * square instead — and the shell's panel titlebar put a filled pill among four ghost squares.
+   */
+  triggerVariant?: 'primary' | 'secondary' | 'ghost' | 'danger' | 'outline' | 'bare';
+  /**
+   * Tooltip on the trigger, and its accessible name.
+   *
+   * Worth setting on any icon-only trigger, which otherwise says only what its glyph says. A menu's
+   * subject is exactly the thing a glyph is worst at carrying — "position", "move to", "more
+   * controls" are all `dots-three`-shaped — and the neighbours an icon-only trigger sits among are
+   * usually tooltipped already, so leaving it out reads as the one control that will not say what
+   * it does.
+   */
+  triggerTitle?: string;
+  /**
    * Trigger size, matching `we-button`'s scale.
    *
    * Defaults to `md`, which is `we-button`'s own default and is the wrong one in any bar of `sm`

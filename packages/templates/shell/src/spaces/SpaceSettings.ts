@@ -1,4 +1,4 @@
-import type { SchemaNode } from '@we/schema-shared';
+import type { SchemaNode, SchemaProp } from '@we/schema-shared';
 import { attributeRow } from '@we/template-kit';
 
 import { spaceDefaultsSection } from './SpaceDefaults.ts';
@@ -6,35 +6,48 @@ import { spaceSectionsSection } from './SpaceSections.ts';
 import { spaceVocabularySection } from './SpaceVocabulary.ts';
 
 /**
- * Settings for one space, reached from its card in the spaces list.
+ * Settings for one space — one set of controls, rendered in two places.
  *
- * Not a "current space" page. Navigating between spaces closes this overlay (`navigateToSpace`
- * calls `closeShellView`), so a page bound to wherever you are standing could only ever configure
- * that one place, and only for as long as you stayed. Keying off the row you clicked decouples
- * configuring a space from being in it — you can set up several in one sitting.
+ * ## Two hosts, and why neither can be dropped
  *
- * ## One page, two doors
+ * The **panel** (`SpaceSettingsPanel.schema.ts`) configures the space you are standing in, docked
+ * beside it like any module's panel. That is what the chrome rail's gear opens, and it is the common
+ * case: you are in a space, you want to change something about it, and the app should not disappear
+ * while you do. It also follows you — the body is keyed on the current dataset, so walking to another
+ * space re-points the panel rather than closing it.
  *
- * The default template used to carry a `/settings` section of its own rendering the same actions.
- * Two presentations of one set of actions is what the schema system is for, so that was defensible
- * while it lasted — but the two had already diverged (the route offered vocabulary and the space's
- * default template; this page offered modules and the personal overrides), and a member's answer to
- * "where do I change this" depended on which they happened to open.
+ * The **page**, reached from a row in the spaces list, configures a space you are *not* in. That is
+ * not the same act and cannot be folded into the panel: `navigateToSpace` closes the settings
+ * overlay, so a surface bound to where you are standing could only ever configure that one place,
+ * and only for as long as you stayed. Setting up several spaces in one sitting needs the list.
  *
- * So the route is gone and this is the only one, reached from the spaces list — via the chrome
- * rail's own gear, which is present in every space and on every screen, so a second gear inside the
- * space was a duplicate of something that could never be missing.
+ * Both render {@link spaceSettingsBody}, so there is one definition rather than two that drift —
+ * which is the whole of what the old "one page, two doors" rule was protecting. What differs is
+ * only which space they name and what chrome sits above it.
  *
- * The About view's pencil is the one exception, and it is not a general entry point: it sits on the
- * fields it leads to, saying "these are edited over there" about a specific form rather than
- * offering settings in general.
+ * The one place they genuinely diverge is vocabulary, and the divergence is real rather than
+ * accidental: signals, relationships and models are read from the *open* dataset, so from the page
+ * they are unreachable for any row but the current one and the section says so. In the panel that
+ * branch never fires, because the panel is always about the space that is open.
  *
- * That it lives outside every template is now load-bearing rather than incidental. With sections
- * installable, most shells will not provide a settings surface at all — and a community that
- * installs one which does not must still be able to change their template back.
+ * ## Why tabs
+ *
+ * Flat, this is nine cards and some two thousand lines of vocabulary below them, which is a long
+ * scroll on a page and an unusable one in a 440px panel. The tabs are by *subject*, because that is
+ * what somebody arriving has in mind ("where do I turn a module off").
+ *
+ * The audience question — "who else sees this change?" — was what the three flat groups answered,
+ * and it is not abandoned: it moves inside the tabs, as the same `groupHeading` rules on the two
+ * that mix (Appearance and Features) and an {@link audienceNote} on the two that do not. Losing it
+ * entirely would be the regression; a reader must still be able to tell "the community removed
+ * this" from "I hid this", which is also why the two switches stay side by side on a row.
+ *
+ * That all of this lives outside every template is load-bearing rather than incidental. With
+ * sections installable, most shells will not provide a settings surface at all — and a community
+ * that installs one which does not must still be able to change their template back.
  */
 
-/** Read the space this page is for out of the route. `/spaces/<uuid>` → segments[1]. */
+/** Read the space the *page* is for out of the route. `/spaces/<uuid>` → segments[1]. */
 const routeSpaceUuid = { $store: 'routeStore.segments.1' };
 
 const backLink: SchemaNode = {
@@ -46,43 +59,52 @@ const backLink: SchemaNode = {
   ],
 };
 
-const header: SchemaNode = {
+/**
+ * Which space this is, in one row — the picture, the name, and what kind of thing it is.
+ *
+ * Shared by both hosts. The page pairs it with a way back to the list and a way *into* the space;
+ * the panel shows it alone, since you are already in the space and the panel's titlebar is the way
+ * out. Neither of those belongs to the identity itself, so both are composed around it.
+ */
+export const spaceIdentity: SchemaNode = {
   type: 'Row',
-  props: { gap: '300', ay: 'center', ax: 'between', wrap: true },
+  props: { gap: '300', ay: 'center' },
   children: [
+    { type: 'we-avatar', props: { image: '$space.avatar', initials: '$space.name', size: 'md' } },
     {
-      type: 'Row',
-      props: { gap: '300', ay: 'center' },
+      type: 'Column',
+      props: { gap: '100' },
       children: [
-        { type: 'we-avatar', props: { image: '$space.avatar', initials: '$space.name', size: 'md' } },
+        { type: 'we-text', props: { variant: 'heading-sm' }, children: ['$space.name'] },
         {
-          type: 'Column',
-          props: { gap: '100' },
+          type: 'we-text',
+          props: { variant: 'footnote', color: 'text-faint' },
           children: [
-            { type: 'we-text', props: { variant: 'heading-sm' }, children: ['$space.name'] },
             {
-              type: 'we-text',
-              props: { variant: 'footnote', color: 'text-faint' },
-              children: [
-                {
+              $if: {
+                condition: '$space.isWeSpace',
+                then: {
                   $if: {
-                    condition: '$space.isWeSpace',
-                    then: {
-                      $if: {
-                        condition: { $eq: ['$space.kind', 'shared'] },
-                        then: 'Shared space',
-                        else: 'Personal space',
-                      },
-                    },
-                    else: 'Joined dataset — not yet a WE space',
+                    condition: { $eq: ['$space.kind', 'shared'] },
+                    then: 'Shared space',
+                    else: 'Personal space',
                   },
                 },
-              ],
+                else: 'Joined dataset — not yet a WE space',
+              },
             },
           ],
         },
       ],
     },
+  ],
+};
+
+const pageHeader: SchemaNode = {
+  type: 'Row',
+  props: { gap: '300', ay: 'center', ax: 'between', wrap: true },
+  children: [
+    spaceIdentity,
     {
       type: 'we-button',
       props: {
@@ -485,7 +507,6 @@ const shareSection: SchemaNode = {
                 p: '200',
                 bg: 'surface-sunken',
                 r: '200',
-                styles: { 'word-break': 'break-all' },
               },
               children: ['$space.shareLink'],
             },
@@ -872,69 +893,223 @@ const groupHeading = (label: string, description: string, editableWhen?: string)
 });
 
 /**
- * The page body, rendered per matching row.
+ * Who is affected by a whole tab, said once at the top of it.
+ *
+ * The lighter sibling of {@link groupHeading}, for a tab whose contents all have the same audience —
+ * there is nothing to separate from, so a rule and a bold label would be drawing a boundary around
+ * the only thing present.
+ */
+const audienceNote = (text: string, editableWhen?: string): SchemaNode => ({
+  type: 'we-text',
+  props: { variant: 'footnote', color: 'text-faint' },
+  children: [
+    editableWhen
+      ? {
+          $if: {
+            condition: editableWhen,
+            then: text,
+            else: `${text} Changing them needs someone who administers the space.`,
+          },
+        }
+      : text,
+  ],
+});
+
+/**
+ * The tabs, in the order somebody works through a new space: what it is, how it looks, what it has,
+ * what its words mean.
+ *
+ * Vocabulary is last because it is the deepest and the least often visited — and because it is
+ * enormous, which is most of why these are tabs at all.
+ */
+const TABS = [
+  { key: 'about', label: 'About' },
+  { key: 'appearance', label: 'Appearance' },
+  { key: 'features', label: 'Features' },
+  { key: 'vocabulary', label: 'Vocabulary' },
+];
+
+/**
+ * One tab's contents, mounted only while it is the open one.
+ *
+ * `$if` rather than `$animate`, so the tab you are not looking at costs nothing — Vocabulary alone
+ * holds three live subscriptions and the model wizard. What that unmounts is safe here: the name and
+ * description fields save on blur, and clicking a tab *is* the blur, so a switch cannot lose an edit
+ * the way it would in a form that saved on submit.
+ *
+ * `fill` is the panel's shape: the tab strip is pinned and *this* is what scrolls, so the tabs stay
+ * reachable in a box a few hundred pixels tall. The page wants the opposite — it scrolls as a whole,
+ * inside the overlay — and a scroll region there would be a second scrollbar inside the first.
+ */
+const tabPanel = (key: string, children: SchemaNode[], fill?: boolean): SchemaNode => {
+  const body: SchemaNode = { type: 'Column', props: { gap: '400', width: '100%' }, children };
+  return {
+    type: '$if',
+    props: {
+      condition: { $eq: [{ $local: 'tab' }, key] },
+      then: fill ? { type: 'we-scroll-area', props: { flex: '1', width: '100%' }, children: [body] } : body,
+    },
+  };
+};
+
+/**
+ * The settings themselves, for whichever space `uuid` names.
  *
  * `$each` over a one-item filter rather than a `$find`, because it is the context variable that is
- * wanted: every control below reads `$space.uuid` to name what it is writing to.
+ * wanted: every control below reads `$space.uuid` to name what it is writing to. `chrome` is
+ * whatever the host puts above the tabs, and it is inside the loop because it names the space too.
+ *
+ * The tab lives in `$localState` rather than a route: the panel has no router, and giving the page
+ * one would make the two hosts differ in a way a reader would have to learn. It is plain state, not
+ * `persist`ed — which tab you last had open is a fact about the last space you configured, and
+ * restoring Vocabulary onto a space that has none is a worse first frame than starting at About.
+ *
+ * `fill` says the host has given this a box to fit rather than a page to grow down: the column takes
+ * the height it is offered and the open tab scrolls inside it. See {@link tabPanel}.
  */
-export const spaceSettingsPage: SchemaNode = {
-  type: '$each',
-  props: {
-    items: { $filter: { items: { $store: 'spaceStore.spaceList' }, where: { uuid: routeSpaceUuid } } },
-    as: 'space',
-  },
-  children: [
-    {
-      type: 'Column',
-      props: { gap: '400', width: '100%' },
-      children: [
-        backLink,
-        header,
-        {
-          type: '$if',
-          props: {
-            condition: '$space.isWeSpace',
-            then: {
-              type: 'Column',
-              props: { gap: '500' },
-              children: [
-                /*
-                  Three groups, in this order, because the question people get wrong on a page like
-                  this is "who sees this change?" — and the answer is what the grouping is for.
-
-                  Flat, the page was five cards in the order they happened to be written, with a
-                  personal one sandwiched between two community ones. Sorting them by audience means
-                  the answer is legible before any individual control is read.
-
-                  The middle group carries both answers at once and keeps them side by side rather
-                  than splitting each row across two groups: "the community removed this" and "you
-                  hid this" are the two situations a member has to tell apart, and they are only
-                  distinguishable when shown together. See `moduleRow`.
-                */
-                groupHeading(
-                  'Everyone in this space',
-                  'Changes here are visible to every member.',
-                  '$space.canAdminister',
-                ),
-                communitySection,
-                shareSection,
-                spaceDefaultsSection,
-                autoInterpretSection,
-                shareExtractionDetailSection,
-                spaceVocabularySection,
-
-                groupHeading('What this space has', 'Two answers per row: yours, and the community’s.'),
-                spaceSectionsSection,
-                modulesSection,
-
-                groupHeading('Just for you, here', 'Nobody else is affected by anything in this group.'),
-                personalAppearanceSection,
-              ],
-            },
-            else: notAWeSpaceNotice,
-          },
-        },
-      ],
+export function spaceSettingsBody(uuid: SchemaProp, chrome: SchemaNode[], fill?: boolean): SchemaNode {
+  // A flex child that fills its parent needs a zero minimum as well as a grow — its automatic
+  // minimum is its content, so without this the column grows past the panel instead of scrolling.
+  const fills = fill ? { flex: '1', minHeight: '0' } : {};
+  return {
+    type: '$each',
+    props: {
+      items: { $filter: { items: { $store: 'spaceStore.spaceList' }, where: { uuid } } },
+      as: 'space',
     },
-  ],
-};
+    children: [
+      {
+        type: 'Column',
+        props: { gap: '400', width: '100%', ...fills },
+        $localState: { tab: { type: 'string', initial: 'about' } },
+        children: [
+          ...chrome,
+          {
+            type: '$if',
+            props: {
+              condition: '$space.isWeSpace',
+              then: {
+                type: 'Column',
+                props: { gap: '400', width: '100%', ...fills },
+                children: [
+                  {
+                    type: 'we-tabs',
+                    props: {
+                      selectedKey: { $local: 'tab' },
+                      gap: '100',
+                      width: '100%',
+                      // Never squeezed by the scroll region beside it: the strip is how you reach
+                      // the other tabs, so it is the last thing that should give up height.
+                      flex: '0 0 auto',
+                      // Dragged narrow, four tabs do not fit — and a panel clips rather than
+                      // scrolling, so without these the last tab is simply unreachable.
+                      // `minWidth` releases the flex item's automatic minimum size, which is
+                      // otherwise the tabs' own content width — so the strip would refuse to
+                      // narrow and overflow the panel instead of scrolling inside it.
+                      minWidth: '0',
+                      overflowX: 'auto',
+                    },
+                    children: TABS.map((tab) => ({
+                      type: 'we-tab',
+                      props: { key: tab.key, label: tab.label, onClick: { $setLocal: 'tab', value: tab.key } },
+                    })),
+                  },
+
+                  /*
+                    About — the space's own identity, and the link that gets someone else into it.
+
+                    Community-owned throughout, which is why the note says so once rather than each
+                    card repeating it. `communitySection` is itself gated on being able to
+                    administer, so a member who cannot sees the invite link alone: correct, if
+                    sparse, and the note explains the sparseness.
+                  */
+                  tabPanel(
+                    'about',
+                    [
+                      audienceNote('Everyone in this space sees these.', '$space.canAdminister'),
+                      communitySection,
+                      shareSection,
+                    ],
+                    fill,
+                  ),
+
+                  /*
+                    Appearance — the two audiences meet here, so the group headings stay.
+
+                    The space's defaults are what a member gets on arrival; the overrides below are
+                    what *you* see instead, and change nothing for anybody else. Those are opposite
+                    answers to "who sees this", one card apart, and the headings are the only thing
+                    saying so.
+                  */
+                  tabPanel(
+                    'appearance',
+                    [
+                      groupHeading(
+                        'Everyone in this space',
+                        'What members get when they open this space.',
+                        '$space.canAdminister',
+                      ),
+                      spaceDefaultsSection,
+                      groupHeading('Just for you, here', 'Nobody else is affected by anything in this group.'),
+                      personalAppearanceSection,
+                    ],
+                    fill,
+                  ),
+
+                  /*
+                    Features — what the space runs, and what you personally see of it.
+
+                    The first heading carries both answers at once rather than splitting each row
+                    across two groups: "the community removed this" and "you hid this" are the two
+                    situations a member has to tell apart, and they are only distinguishable when
+                    shown together. See `moduleRow`.
+
+                    Extraction sits under a second heading because it is not a two-answer row — it is
+                    a community decision with a cost attached, and it would read as a third switch on
+                    the module list otherwise.
+                  */
+                  tabPanel(
+                    'features',
+                    [
+                      groupHeading('What this space has', 'Two answers per row: yours, and the community’s.'),
+                      spaceSectionsSection,
+                      modulesSection,
+                      groupHeading(
+                        'Everyone in this space',
+                        'What this space does on its own, for every member.',
+                        '$space.canAdminister',
+                      ),
+                      autoInterpretSection,
+                      shareExtractionDetailSection,
+                    ],
+                    fill,
+                  ),
+
+                  /*
+                    Vocabulary — what this community has decided things mean.
+
+                    The one tab that can refuse: it reads from the open dataset, so from the spaces
+                    list it can only answer for the space you are already in. In the panel that
+                    refusal is unreachable, since the panel is always about the open space.
+                  */
+                  tabPanel(
+                    'vocabulary',
+                    [
+                      audienceNote('Everyone in this space sees these.', '$space.canAdminister'),
+                      spaceVocabularySection,
+                    ],
+                    fill,
+                  ),
+                ],
+              },
+              else: notAWeSpaceNotice,
+            },
+          },
+        ],
+      },
+    ],
+  };
+}
+
+/** The page in Settings → Spaces & data, for whichever row was clicked. */
+export const spaceSettingsPage: SchemaNode = spaceSettingsBody(routeSpaceUuid, [backLink, pageHeader]);

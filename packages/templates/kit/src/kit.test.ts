@@ -10,10 +10,12 @@ import {
   attributeRow,
   cardList,
   cardShell,
+  composerModal,
   confirmModal,
   emptyNote,
   emptyState,
   field,
+  formModal,
   gatePrompt,
   marketplaceList,
   pageShell,
@@ -77,12 +79,46 @@ const portable: Record<string, SchemaNode> = {
     children: [{ type: 'we-text', children: ['$row.name'] }],
   }),
   confirmModal: confirmModal({
-    openLocal: 'confirmOpen',
+    open: { $local: 'confirmOpen' },
+    close: { $setLocal: 'confirmOpen', value: false },
     title: 'Delete?',
     body: 'Gone forever.',
     confirmLabel: 'Delete',
     confirm: { $action: 'spaceStore.deleteCollection', args: ['$post.id'] },
     busyLocal: 'deleting',
+  }),
+  composerModal: composerModal({
+    openLocal: 'composeOpen',
+    title: 'New post',
+    saveAction: { $action: 'spaceStore.createPost', args: ['$arg'] },
+  }),
+  'composerModal (unguarded)': composerModal({
+    openLocal: 'composeOpen',
+    title: 'New post',
+    guardDraft: false,
+    saveAction: { $action: 'spaceStore.createPost', args: ['$arg'] },
+  }),
+  'formModal (guarded)': formModal({
+    open: { $local: 'formOpen' },
+    close: { $setLocal: 'formOpen', value: false },
+    title: 'New thing',
+    localState: { thingName: { type: 'string', initial: '' } },
+    children: [field({ name: 'thingName', label: 'Name' })],
+    discardWhen: { $local: 'thingName' },
+    submit: { $action: 'model.create', args: ['CollectionBlock', { title: { $local: 'thingName' } }] },
+  }),
+  formModal: formModal({
+    open: { $local: 'formOpen' },
+    close: { $setLocal: 'formOpen', value: false },
+    title: 'New thing',
+    localState: {
+      thingName: { type: 'string', initial: '' },
+      creating: { type: 'boolean', initial: false },
+    },
+    children: [field({ name: 'thingName', label: 'Name' })],
+    disabled: { $not: { $local: 'thingName' } },
+    busyLocal: 'creating',
+    submit: { $action: 'model.create', args: ['CollectionBlock', { title: { $local: 'thingName' } }] },
   }),
   field: field({ name: 'name', label: 'Name', validated: true, touchOnBlur: true }),
   'field (select)': field({ name: 'mode', control: 'select', props: { options: [] } }),
@@ -155,20 +191,32 @@ function walk(value: unknown, visit: (node: Record<string, unknown>) => void): v
 }
 
 /**
- * The ambient scope `lists/cards.ts` documents as its contract: `displayMode` belongs to the page.
- * Declaring their own `$localState` is what switches the validator's scope checking on for these
- * two fragments, so validating them bare would flag the very reads the contract permits — this
- * shim is that contract made explicit, the same declaration the palette's insert-with-fix will
- * one day add for real.
+ * The ambient scope these fragments document as their contract: `displayMode` belongs to the page
+ * (`lists/cards.ts`), and an overlay's open flag belongs to whatever holds the button that sets it,
+ * which is by definition not the overlay. Declaring their own `$localState` is what switches the
+ * validator's scope checking on for these fragments, so validating them bare would flag the very
+ * reads the contract permits — this shim is that contract made explicit, the same declaration the
+ * palette's insert-with-fix will one day add for real.
  */
 const withAmbientScope = (node: SchemaNode): SchemaNode => ({
   type: 'Column',
-  $localState: { displayMode: { type: 'string', initial: 'expanded' } },
+  $localState: {
+    displayMode: { type: 'string', initial: 'expanded' },
+    formOpen: { type: 'boolean', initial: false },
+    composeOpen: { type: 'boolean', initial: false },
+  },
   children: [node],
 });
 
 describe('every expansion is a valid schema fragment', () => {
-  const needsAmbient = new Set(['cardShell', 'cardList (query)']);
+  const needsAmbient = new Set([
+    'cardShell',
+    'cardList (query)',
+    'formModal',
+    'formModal (guarded)',
+    'composerModal',
+    'composerModal (unguarded)',
+  ]);
   for (const [name, node] of Object.entries({ ...portable, ...weDomain })) {
     it(name, () => {
       const result = validateSemantic(needsAmbient.has(name) ? withAmbientScope(node) : node, context);
@@ -260,6 +308,76 @@ describe('contracts call sites depend on', () => {
       if (n.$setLocal === 'confirmOpen' && n.value === false) closes += 1;
     });
     expect(closes).toBeGreaterThanOrEqual(3);
+  });
+
+  it('a guarded form asks on every exit, and only when there is something to lose', () => {
+    const node = portable['formModal (guarded)'];
+    const modal = (node.props as { then: SchemaNode }).then;
+
+    // The modal's own close and the Cancel button are the same guarded expression — two exits that
+    // disagreed about whether the draft mattered is the bug this shape exists to make impossible.
+    const guarded = { $if: { condition: { $local: 'thingName' }, then: expect.anything(), else: expect.anything() } };
+    expect((modal.props as Record<string, unknown>).close).toMatchObject(guarded);
+    let cancel: unknown;
+    walk(modal, (n) => {
+      if (Array.isArray(n.children) && n.children[0] === 'Cancel') cancel = (n.props as { onClick: unknown }).onClick;
+    });
+    expect(cancel).toMatchObject(guarded);
+
+    // The flag lives on the modal, so it is destroyed with the draft it guards rather than
+    // surviving to greet the next open.
+    expect(modal.$localState).toHaveProperty('confirmDiscardOpen');
+
+    // And Discard runs the *unguarded* close — the one the guard intercepted — rather than looping
+    // back through the condition that raised the question.
+    let discard: unknown;
+    walk(modal, (n) => {
+      if (Array.isArray(n.children) && n.children[0] === 'Discard') discard = (n.props as { onClick: unknown }).onClick;
+    });
+    expect(discard).toEqual([
+      { $setLocal: 'formOpen', value: false },
+      { $setLocal: 'confirmDiscardOpen', value: false },
+    ]);
+  });
+
+  /*
+    The bug this exists for: `composerModal` took the guard's `close` and its `$localState` and never
+    mounted the confirmation. So the backdrop raised a flag nothing read, and "New post" could not be
+    closed at all once anything had been typed — the worst shape a modal can have, reached by
+    forgetting one line. Asserted over every fixture rather than at the one call site, because the
+    three pieces `discardGuard` hands back go in three different places and any of them can be missed.
+  */
+  it('every fragment that raises the discard flag also mounts something that reads it', () => {
+    for (const [name, node] of Object.entries({ ...portable, ...weDomain })) {
+      let writes = 0;
+      let reads = 0;
+      walk(node, (n) => {
+        if (n.$setLocal === 'confirmDiscardOpen') writes += 1;
+        if (n.$local === 'confirmDiscardOpen') reads += 1;
+      });
+      if (writes === 0 && reads === 0) continue;
+      expect(writes, `${name} reads the discard flag but never raises it`).toBeGreaterThan(0);
+      expect(reads, `${name} raises the discard flag but nothing reads it`).toBeGreaterThan(0);
+    }
+  });
+
+  it('the composer guards its draft by default, and lets a caller turn it off', () => {
+    const flagOf = (node: SchemaNode) => {
+      const modal = (node.props as { then: SchemaNode }).then;
+      return (modal.$localState as Record<string, unknown> | undefined)?.confirmDiscardOpen;
+    };
+    expect(flagOf(portable.composerModal)).toBeDefined();
+    expect(flagOf(portable['composerModal (unguarded)'])).toBeUndefined();
+
+    // Unguarded, the backdrop closes outright rather than through a condition.
+    const bare = (portable['composerModal (unguarded)'].props as { then: SchemaNode }).then;
+    expect((bare.props as Record<string, unknown>).close).toEqual({ $setLocal: 'composeOpen', value: false });
+  });
+
+  it('an unguarded form closes outright — the guard is opt-in, not the default', () => {
+    const modal = (portable.formModal.props as { then: SchemaNode }).then;
+    expect((modal.props as Record<string, unknown>).close).toEqual({ $setLocal: 'formOpen', value: false });
+    expect(modal.$localState).not.toHaveProperty('confirmDiscardOpen');
   });
 
   it('cardList in query mode hoists under <as>Rows, and both branches read the same items', () => {

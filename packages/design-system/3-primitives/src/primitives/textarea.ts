@@ -19,12 +19,16 @@ const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   border: '1px solid border',
   r: '300',
   color: 'text',
-  // Ring on focus only; fill and outline on hover and press; all three eased — see the note on
-  // `we-input`, which carries the same states and has to look identical beside this.
+  // Fill and outline on hover and press; on focus the outline becomes the ring's inner pixel. Every
+  // one of those decisions, and the reason this carries no `transition` of its own, is argued on
+  // `we-input` — which has the same states and has to look identical beside this.
   hoverProps: { bg: 'surface-hover', border: '1px solid border-strong' },
   activeProps: { bg: 'surface-hover', border: '1px solid border-strong' },
-  focusProps: { bg: 'surface-hover', ring: '0 0 0 2px var(--we-ring-color)' },
-  transition: 'box-shadow 200 ease, background-color 200 ease, border-color 200 ease',
+  focusProps: {
+    bg: 'surface-hover',
+    border: '1px solid var(--we-ring-color)',
+    ring: '0 0 0 1px var(--we-ring-color)',
+  },
 };
 
 const SIZE_DEFAULTS: Record<ComponentSize, Partial<DesignSystemProps>> = {

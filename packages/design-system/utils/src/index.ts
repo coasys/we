@@ -94,6 +94,7 @@ export const typographyKeys = [
   'textDecoration',
   'textTransform',
   'whiteSpace',
+  'overflowWrap',
 ] as const;
 
 // --- Layer composition ---
@@ -539,6 +540,25 @@ export const BASE_TYPOGRAPHY_SPECS: PropSpec[] = [
   ['text-decoration', 'text-decoration'],
   ['text-transform', 'text-transform'],
   ['white-space', 'white-space'],
+  /*
+    Text breaks rather than pushing its container off the screen — the design system's answer, not
+    each template's.
+
+    The fallback is what makes this a default: every typography component emits
+    `overflow-wrap: var(--we-<name>-overflow-wrap, anywhere)`, so a node that says nothing gets a
+    breakable line and one that sets `overflowWrap` overrides it.
+
+    `anywhere` and not `break-word`, which is the value that looks right and does not work. The two
+    break in the same places; only `anywhere` also reduces min-content width. A flex item and a
+    `1fr` grid track are both sized by min-content, so under `break-word` one unbreakable
+    string — a transcriber's run-together output, a DID, a pasted URL — still stretches its card,
+    its grid track and the whole route sideways. That was the bug this default exists for.
+
+    A default rather than a rule in each primitive's own stylesheet: the DS sheet is adopted last,
+    so `var()` with no fallback would resolve invalid-at-computed-value-time and clobber an earlier
+    declaration. The fallback has to live here to survive.
+  */
+  ['overflow-wrap', 'overflow-wrap', 'anywhere'],
 ];
 
 /**
@@ -863,6 +883,7 @@ export function buildLayoutStyles(props: LayoutStyleProps, direction: 'row' | 'c
   if (props.textDecoration) style['text-decoration'] = props.textDecoration;
   if (props.textTransform) style['text-transform'] = props.textTransform;
   if (props.whiteSpace) style['white-space'] = props.whiteSpace;
+  if (props.overflowWrap) style['overflow-wrap'] = props.overflowWrap;
 
   // Interaction
   if (props.cursor) style.cursor = props.cursor;

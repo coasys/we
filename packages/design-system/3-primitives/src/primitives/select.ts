@@ -89,13 +89,22 @@ const styles = css`
     /* Recessed, not raised. This was neutral-0 — the *darkest* step in a dark theme, i.e. a well —
        and reading it as "the lightest, therefore a card" inverted it. */
     background: var(--we-role-surface-sunken);
-    transition: border-color var(--we-transition-200, 150ms) ease;
   }
 
+  /* One perimeter, the same one we-input draws: the resting outline recoloured to the ring, plus a
+     single pixel of ring outside it. This was a 2px accent-muted outline inset by -1px — a third
+     spelling of the same idea, which read as a halo *inside* the edge rather than as the edge
+     thickening, and made this the one control in a row of them answering focus differently.
+     --we-ring-color rather than the accent directly, so a theme's ringColor reaches this too. */
   [part='input-wrapper']:focus-within {
-    border-color: var(--we-role-accent);
-    outline: 2px solid var(--we-role-accent-muted);
-    outline-offset: -1px;
+    border-color: var(--we-ring-color);
+    box-shadow: 0 0 0 1px var(--we-ring-color);
+    /* On the arrival rule, not the resting one, so focus eases in and blur snaps — the split the DS
+       state rules make, for the reason argued at STATE_TRANSITION in shared/helpers.ts. Both
+       properties travel together or the ring pops in over an edge that is still moving. */
+    transition:
+      border-color var(--we-theme-state-duration, var(--we-transition-100, 50ms)) ease-out,
+      box-shadow var(--we-theme-state-duration, var(--we-transition-100, 50ms)) ease-out;
   }
 
   input[part='native'] {

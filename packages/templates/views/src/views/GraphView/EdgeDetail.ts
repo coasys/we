@@ -273,7 +273,7 @@ export const edgeDetailModal: SchemaNode = {
     condition: EDGE_ID,
     then: {
       type: 'we-modal',
-      props: { close, maxWidth: 'var(--we-layout-sm)', width: '100%' },
+      props: { size: 'md', close },
       // Hoisted so the projection and the controls agree about what a slug means — the house rule
       // for signal types, which have no store accessor by design.
       $queries: { signalTypes: { entity: 'SignalType', subscribe: true } },

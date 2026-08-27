@@ -12,7 +12,9 @@
     "build": "we-build",
     "serve": "vite preview",
     "tauri": "tauri",
+    "pretauri:dev": "node scripts/generate-seed-config.cjs",
     "tauri:dev": "concurrently \"pnpm dev\" \"wait-on http://localhost:1420 && tauri dev -- --release\"",
+    "pretauri:build": "node scripts/generate-seed-config.cjs",
     "tauri:build": "tauri build",
     "typecheck": "tsc --noEmit"
   },

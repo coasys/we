@@ -116,7 +116,13 @@ export {
 } from './indexer';
 export type { SectionEntry, StoredTemplate, FindNodeResult, PatchError } from './indexer';
 export { createStoredTemplate, listSections, getSection, updateSection } from './sections';
-export { expandViewRoutes, hasViewsMarker, VIEWS_MARKER } from './viewRoutes';
+export {
+  expandViewRoutes,
+  hasViewsMarker,
+  VIEW_BOUNDARY_ATTR,
+  VIEW_BOUNDARY_NAME_ATTR,
+  VIEWS_MARKER,
+} from './viewRoutes';
 export type { ResolvedView, ViewGate } from './viewRoutes';
 /*
   Surface vocabulary, re-exported from the design system.

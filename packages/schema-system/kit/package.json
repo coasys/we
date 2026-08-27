@@ -13,7 +13,8 @@
     }
   },
   "dependencies": {
-    "@we/schema-shared": "workspace:*"
+    "@we/schema-shared": "workspace:*",
+    "@we/tokens": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^26.3.0",

@@ -17,6 +17,7 @@ import type {
   DatasetLifecyclePort,
   EphemeralPort,
 } from '@we/backend-shared';
+import { devToolsEnabled, setDevToolsMuted } from '@we/module-shared';
 import { Accessor, createContext, createEffect, createSignal, ParentProps, useContext } from 'solid-js';
 
 import type { BackendAccountInfo, BackendHostInfo } from '../../../shared/backend/types';
@@ -69,7 +70,26 @@ export interface SessionStore {
   host: Accessor<BackendHostInfo | undefined>;
   /** This agent's account with that node — credits, email — when it keeps one. */
   hostAccount: Accessor<BackendAccountInfo | undefined>;
+  /** Whether this is a development build. A fact about the build, and only that. */
   isDevelopment: Accessor<boolean>;
+  /**
+   * Whether developer affordances should be *visible* — which is a different question.
+   *
+   * A dev build with the switch thrown looks like a shipped one, so a developer can check what a
+   * user actually sees without building for production. Settings → Developer holds the switch.
+   *
+   * Gate developer-only UI on this rather than on `isDevelopment`, which stays honest about the
+   * build and so cannot be overridden without lying.
+   */
+  devTools: Accessor<boolean>;
+  /**
+   * Throw the switch. Takes the value the control shows, so a `we-switch` can pass `$event.detail`
+   * straight through rather than needing an operator around it.
+   *
+   * Cannot turn developer UI *on* in a production build: the build flag is the ceiling, and this
+   * re-asks `devToolsEnabled` rather than storing what it was told.
+   */
+  setDevTools: (on: boolean) => void;
   /**
    * The ephemeral transport, as a single shared instance. One port for the whole app because it
    * refcounts scopes per dataset — two ports would mean two executor signal handlers on the same
@@ -155,6 +175,22 @@ export function SessionStoreProvider(props: ParentProps) {
   const [backendPorts, setBackendPorts] = createSignal<BackendPorts | null>(null);
   // Supplied by connectors whose session is the connection rather than an unlocked keystore.
   let disconnectBackend: (() => Promise<void>) | null = null;
+
+  /*
+    Whether developer affordances are visible — seeded from the build and the stored preference,
+    then live.
+
+    A signal rather than a value read once, because the whole point of the switch is comparing:
+    throw it, look at what a user would see, throw it back. That loop is worth nothing if each
+    press costs a reload, and every affordance gated on it is chrome rendered from a schema, which
+    is reactive already. `platform.isDevelopment` is still the ceiling — `setDevTools` cannot raise
+    it, since `devToolsEnabled` ands with the build flag on the way back in.
+  */
+  const [devTools, setDevToolsSignal] = createSignal(devToolsEnabled(platform.isDevelopment));
+  const setDevTools = (on: boolean) => {
+    setDevToolsMuted(!on);
+    setDevToolsSignal(devToolsEnabled(platform.isDevelopment));
+  };
 
   // EphemeralPort is a function (dataset → scope | null), so this stable delegate can exist
   // before the connector's ports do — pre-connect it reports the capability as absent, which is
@@ -440,6 +476,8 @@ export function SessionStoreProvider(props: ParentProps) {
     host,
     hostAccount,
     isDevelopment: () => platform.isDevelopment,
+    devTools,
+    setDevTools,
     ephemeralPort,
 
     login,

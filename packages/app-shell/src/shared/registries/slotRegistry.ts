@@ -33,12 +33,14 @@ import {
   consentPrompt,
   consentSecret,
   createSpaceModalMount,
+  namePrompt,
   removeAccountModal,
   sidebar,
   templateEditor,
 } from '@we/template-shell';
 
 import { registerEditorDocks } from './editorDocks';
+import { registerShellDocks } from './shellDocks';
 
 export interface SlotEntry extends SlotContribution {
   /** Unique. `core:*` for host chrome, otherwise the contributing module's id. */
@@ -267,10 +269,17 @@ export function registerCoreSlots(): void {
   // Chrome for the same reason, plus one of its own: it is opened from two places — the settings
   // page and the sidebar's spaces group — so it cannot belong to either. See `shellStore.createSpaceOpen`.
   slotRegistry.register({ id: 'core:createSpace', anchor: 'overlay', node: createSpaceModalMount, order: 4 });
+  // Last of the overlays, and deliberately: it is the only one raised by the app rather than by
+  // something the user just did, so anything they *did* ask for belongs in front of it. Its own gate
+  // (`profileStore.needsName`) is false until the app is ready and the profile fetch has answered,
+  // so it cannot appear over the boot screen either. See NamePrompt.schema.ts.
+  slotRegistry.register({ id: 'core:namePrompt', anchor: 'overlay', node: namePrompt, order: 5 });
   slotRegistry.register({ id: 'core:sidebar', anchor: 'dock-left', node: sidebar, order: 0 });
   slotRegistry.register({ id: 'core:templateEditor', anchor: 'dock-right', node: templateEditor, order: 0 });
   // The editor's panels, as docks — see `editorDocks.ts` for why they are not part of the node above.
   registerEditorDocks();
+  // The shell's own — a space's settings, which the chrome rail's gear opens. See `shellDocks.ts`.
+  registerShellDocks();
   // The one place feature modules are opened from. Core rather than a module contribution, because
   // only the host can stop launchers colliding — see ChromeRail.schema.ts.
   slotRegistry.register({ id: 'core:chromeRail', anchor: 'dock-right', node: chromeRail, order: 10 });
