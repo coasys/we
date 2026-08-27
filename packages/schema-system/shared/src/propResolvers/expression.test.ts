@@ -6,7 +6,7 @@ import { markReactive, REACTIVE_ACCESSOR } from './reactive';
 import { noMemo } from './types';
 
 const unwrap = (value: unknown): unknown =>
-  typeof value === 'function' && REACTIVE_ACCESSOR in value ? (value as () => unknown)() : value;
+  typeof value === 'function' && REACTIVE_ACCESSOR in value ? (value as unknown as () => unknown)() : value;
 
 const stores = {
   spaceStore: {
