@@ -57,8 +57,17 @@ export const cardsView: TemplateSchema = {
     gap: '400',
     px: '600',
     py: '400',
-    // Holds the grid open on a space with little content — the viewport, less the nav bar.
-    minHeight: 'calc(100dvh - 70px)',
+    /*
+      Holds the grid open on a space with little content.
+
+      `100%` of the box the shell handed us, not `calc(100dvh - 70px)`. A view renders inside
+      whatever shell a space is running, and only that shell knows how tall its chrome is — this
+      one was carrying the default template's nav-bar height as a literal, which was three pixels
+      short of the real one and simply wrong under any other shell. Where a shell gives its outlet
+      no definite height the percentage resolves to `auto` and this does nothing, which is the
+      right way for a guess like that to fail.
+    */
+    minHeight: '100%',
     children: [
       cardsHeader,
 

@@ -111,7 +111,17 @@ export function peopleRow(opts: PeopleRowOptions): SchemaNode {
                   children: [
                     { type: 'we-number', props: { value: count, shorten: true } },
                     {
+                      /*
+                        The count and its noun are one phrase, so they never break across lines.
+
+                        Worth stating rather than leaving to chance: this row is a fixed-size
+                        ornament sitting beside content that is not, so whenever the two compete
+                        for width this is the shrinkable one and flexbox takes the squeeze out of
+                        it first. In the space header that surfaced as "1 online / now" on two
+                        lines, caused entirely by a nav strip elsewhere in the row.
+                      */
                       type: 'we-text',
+                      props: { whiteSpace: 'nowrap' },
                       children: [{ $plural: { count, one: opts.noun, other: opts.nounPlural ?? `${opts.noun}s` } }],
                     },
                   ],

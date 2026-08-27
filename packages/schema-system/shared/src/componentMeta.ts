@@ -175,6 +175,9 @@ const EDITOR_LAYER_FOR_KEY: Record<string, PropLayer> = {
   maxHeight: 'size',
   display: 'size',
   flex: 'size',
+  // Present in `layoutKeys` and computed by @we/design-utils, so it has always worked in a schema —
+  // it was just missing from this index, which is what decides whether the inspector offers it.
+  flexShrink: 'size',
   alignSelf: 'size',
   overflow: 'size',
   overflowX: 'size',
