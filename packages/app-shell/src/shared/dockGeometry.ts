@@ -495,6 +495,62 @@ export function seedPlacement(
   return { ...card, snap: 'bottom-right', displace: false };
 }
 
+/**
+ * What a *template's* declaration becomes, the first time the host has to place that panel.
+ *
+ * The middle rung of three. A panel is placed by whatever the user last dragged it to; failing that
+ * by what the interface asked for, which is this; and failing that by the module's own opening bid
+ * (`seedPlacement`). Resolved live and never written, so switching template or view is
+ * non-destructive and switching back restores what was there — the same shape `meta.themeId`
+ * already follows for themes.
+ *
+ * Everything the declaration carries is a *name* — a snap, a `DockSize`, a grow ratio. The pixels
+ * are worked out here, against the viewport the template cannot see, exactly as a module's `md`
+ * becomes 440.
+ */
+export function placementFromDeclaration(
+  declared: {
+    snap?: SnapPoint;
+    order?: number;
+    grow?: number;
+    displace?: boolean;
+    size?: DockSize;
+  },
+  viewport: Viewport,
+  occupied: ContentInset = NO_INSET,
+): FloatPlacement {
+  const snap = declared.snap ?? 'bottom-right';
+  const edge = edgeOfSnap(snap);
+  const region = contentRegion(viewport, occupied);
+
+  /*
+    The card's width comes from the same table a docked panel's thickness does, so `md` means the
+    same 440 wherever it is written. Its height follows the 16:9 the float seed already uses — a
+    number that only matters until the panel joins a column, where `grow` takes over and the height
+    is a share of the edge rather than a card dimension.
+  */
+  const w = clamp(
+    dockThickness(edge ?? 'right', declared.size ?? 'md', viewport, undefined, occupied),
+    MIN_FLOAT_PX,
+    Math.max(MIN_FLOAT_PX, region.width - DOCK_GAP_PX * 2),
+  );
+  const h = clamp(Math.round((w * 9) / 16), MIN_FLOAT_PX, Math.max(MIN_FLOAT_PX, region.height - DOCK_GAP_PX * 2));
+
+  return {
+    snap,
+    x: 0,
+    y: 0,
+    w,
+    h,
+    // Refused on a corner, where pushing content aside has no coherent meaning — the same rule the
+    // displace toggle enforces, applied to a declaration so a template cannot ask for the one
+    // arrangement the layout cannot honour.
+    displace: Boolean(declared.displace) && edge !== null,
+    ...(declared.order !== undefined ? { order: declared.order } : {}),
+    ...(declared.grow !== undefined ? { grow: declared.grow } : {}),
+  };
+}
+
 /** How thick a displacing panel is, falling back to the card's matching dimension. */
 export function thicknessOf(placement: FloatPlacement, edge: Exclude<DockEdge, null>): number {
   const vertical = edge === 'left' || edge === 'right';

@@ -26,6 +26,7 @@ import {
   MIN_FLOAT_PX,
   NO_INSET,
   occupiedFor,
+  placementFromDeclaration,
   railBand,
   type Rect,
   rectOf,
@@ -43,6 +44,7 @@ import {
 import {
   DOCK_CONTENT_ATTR,
   DOCK_FRAME_ATTR,
+  dockFrame,
   dockRegistry,
   hostChromeReserves,
   hostDockStores,
@@ -52,7 +54,15 @@ import {
 } from '@shared/registries/dockRegistry';
 import { moduleStores } from '@shared/registries/moduleRegistry';
 import { SHELL_DOCK_STORE_ID } from '@shared/registries/shellDocks';
+import { slotRegistry } from '@shared/registries/slotRegistry';
+import {
+  onTemplatePanelsChanged,
+  TEMPLATE_DOCK_STORE_ID,
+  templatePanelDockId,
+  templatePanels,
+} from '@shared/registries/templatePanels';
 import type { ChromeReserve, DockAspect, DockEdge, DockSize } from '@we/module-shared';
+import type { SchemaNode, TemplatePanel } from '@we/schema-shared';
 import {
   Accessor,
   createContext,
@@ -447,9 +457,47 @@ export function ShellStoreProvider(props: ParentProps) {
     ...rectOf(dockGeometry()[id], viewport(), placement),
   });
 
-  /** A panel's placement: what the user chose, or what the module's bid seeds it as. */
-  const placementOf = (request: DockRequest): FloatPlacement =>
-    placements()[request.id] ?? seedPlacement(request, viewport());
+  /**
+   * A panel's placement, in three rungs: what the user last dragged it to, then what the interface
+   * asked for, then the module's own opening bid.
+   *
+   * The middle rung is resolved live and never written — so switching template or view is
+   * non-destructive, switching back restores what was there, and an author improving a layout is not
+   * overruled forever by one stray drag. The same shape `meta.themeId` follows for themes.
+   */
+  const placementOf = (request: DockRequest): FloatPlacement => {
+    const stored = placements()[request.id];
+    if (stored) return stored;
+    const declared = declarationFor()[request.id];
+    if (declared) return placementFromDeclaration(declared, viewport());
+    return seedPlacement(request, viewport());
+  };
+
+  /**
+   * The panels the interface on screen declares, and which of them the reader has closed.
+   *
+   * A declaration is a *suggestion* — the middle rung of three, under whatever the user last
+   * dragged and over the module's own opening bid. Closing one is remembered by panel id rather
+   * than written back into the template, so a template can go on improving its layout without
+   * arguing with a dismissal.
+   */
+  const [panelsVersion, setPanelsVersion] = createSignal(0);
+  onCleanup(onTemplatePanelsChanged(() => setPanelsVersion((v) => v + 1)));
+  const declaredPanels = createMemo<readonly TemplatePanel[]>(() => {
+    panelsVersion();
+    return templatePanels();
+  });
+  const [closedPanels, setClosedPanels] = createSignal<Record<string, boolean>>({});
+
+  /** A declaration by the dock id it resolves to, for the placement chain to consult. */
+  const declarationFor = createMemo(() => {
+    const byDock: Record<string, TemplatePanel> = {};
+    for (const panel of declaredPanels()) {
+      // A template either places somebody else's panel or supplies its own; the dock id differs.
+      byDock[panel.module ? `${panel.module}:0` : templatePanelDockId(panel.id)] = panel;
+    }
+    return byDock;
+  });
 
   /*
     A dependency on *registration itself*, so a store that arrives late is picked up.
@@ -802,6 +850,75 @@ export function ShellStoreProvider(props: ParentProps) {
   createEffect(() => {
     if (typeof document === 'undefined') return;
     document.documentElement.style.setProperty('--we-chrome-transition', dockResizing() ? '0s' : '300ms');
+  });
+
+  /*
+    Turn the declarations that carry their own content into real docks.
+
+    A template panel is a dock whose node came from a template and whose open flag the *shell* owns,
+    because there is no module to own it — the arrangement `shellDocks.ts` already uses for space
+    settings, one level more dynamic. The keys are per panel (`edge:<id>`) because `DockEntry` names
+    its keys as strings and the set of panels is not known until a template says so.
+
+    Diffed rather than cleared and rebuilt: `dockRegistry.register` announces, the geometry memo
+    re-runs on every announcement, and a template being edited re-declares on every keystroke. A
+    rebuild would drop and recreate every frame under the editor's cursor.
+  */
+  let registeredPanels: string[] = [];
+  createEffect(() => {
+    const authored = declaredPanels().filter((panel) => panel.node && !panel.module);
+
+    const keys: Record<string, unknown> = {};
+    for (const panel of authored) {
+      const dockId = templatePanelDockId(panel.id);
+      // One key answering both "where" and "whether", exactly as a module's does: closed is null.
+      keys[`edge:${panel.id}`] = () => (closedPanels()[panel.id] ? null : (edgeOfSnap(panel.snap ?? null) ?? 'right'));
+      keys[`size:${panel.id}`] = () => panel.size ?? 'md';
+      keys[`float:${panel.id}`] = () => !panel.displace;
+      keys[`close:${panel.id}`] = () => setClosedPanels((prev) => ({ ...prev, [panel.id]: true }));
+
+      if (!registeredPanels.includes(dockId)) {
+        const entry = {
+          id: dockId,
+          moduleId: TEMPLATE_DOCK_STORE_ID,
+          edge: `edge:${panel.id}`,
+          size: `size:${panel.id}`,
+          float: `float:${panel.id}`,
+          close: `close:${panel.id}`,
+          // Named outright rather than through `modules.<id>`, the way the editor's and the shell's
+          // own docks are — this store is the host's, not an installable module's.
+          storeRef: 'shellStore',
+          node: panel.node as SchemaNode,
+          order: panel.order,
+        };
+        dockRegistry.register(entry);
+        slotRegistry.register({
+          anchor: 'dock-right',
+          order: panel.order,
+          id: `dock:${dockId}`,
+          node: dockFrame(entry, panel.node as SchemaNode),
+        });
+      }
+    }
+
+    // Withdraw anything the interface has stopped declaring, or the panel outlives the template.
+    const live = authored.map((panel) => templatePanelDockId(panel.id));
+    for (const dockId of registeredPanels) {
+      if (live.includes(dockId)) continue;
+      dockRegistry.remove(dockId);
+      slotRegistry.remove(`dock:${dockId}`);
+    }
+    registeredPanels = live;
+
+    registerHostDockStore(TEMPLATE_DOCK_STORE_ID, keys);
+  });
+
+  onCleanup(() => {
+    for (const dockId of registeredPanels) {
+      dockRegistry.remove(dockId);
+      slotRegistry.remove(`dock:${dockId}`);
+    }
+    unregisterHostDockStore(TEMPLATE_DOCK_STORE_ID);
   });
 
   const store: ShellStore = {

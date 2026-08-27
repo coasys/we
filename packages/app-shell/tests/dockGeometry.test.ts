@@ -34,6 +34,7 @@ import {
   NO_TOP_CHROME,
   occupiedFor,
   PANEL_CHROME,
+  placementFromDeclaration,
   RAIL_TOP_PX,
   railBand,
   type Rect,
@@ -1167,5 +1168,55 @@ describe('the seams in a floating column', () => {
   it('draws nothing for an edge with no column on it', () => {
     // A column is started by snapping to the edge, which the eight targets already offer.
     expect(columnSlots('left', [])).toEqual([]);
+  });
+});
+
+/**
+ * What an interface's own declaration becomes — the middle rung of three.
+ *
+ * A panel is placed by what the user last dragged it to, failing that by what the template asked
+ * for, failing that by the module's own bid. This is the middle one.
+ */
+describe('a template’s declared placement', () => {
+  it('turns a named size into pixels, against the viewport the template cannot see', () => {
+    const md = placementFromDeclaration({ snap: 'left', size: 'md' }, desktop);
+    const sm = placementFromDeclaration({ snap: 'left', size: 'sm' }, desktop);
+
+    expect(md.w).toBeGreaterThan(sm.w);
+    // The same table a docked panel's thickness comes from, so `md` means one thing everywhere.
+    expect(md.w).toBe(dockThickness('left', 'md', desktop));
+  });
+
+  it('carries the snap, the order and the grow through untouched', () => {
+    const placed = placementFromDeclaration({ snap: 'left', order: 2, grow: 0 }, desktop);
+
+    expect(placed.snap).toBe('left');
+    expect(placed.order).toBe(2);
+    expect(placed.grow).toBe(0);
+  });
+
+  it('leaves order and grow absent when the declaration says nothing', () => {
+    const placed = placementFromDeclaration({ snap: 'left' }, desktop);
+
+    // Absent means "no opinion", which is what lets a column default to an even split and a strip
+    // fall back to registration order. Writing 0 would be an opinion.
+    expect(placed.order).toBeUndefined();
+    expect(placed.grow).toBeUndefined();
+  });
+
+  it('refuses to displace from a corner', () => {
+    const corner = placementFromDeclaration({ snap: 'top-left', displace: true }, desktop);
+    const edge = placementFromDeclaration({ snap: 'left', displace: true }, desktop);
+
+    // The same rule the displace toggle enforces: a rectangular layout cannot flow around a corner,
+    // so a template must not be able to ask for the one arrangement that cannot be honoured.
+    expect(corner.displace).toBe(false);
+    expect(edge.displace).toBe(true);
+  });
+
+  it('lands bottom-right when the declaration names no position', () => {
+    // The corner every picture-in-picture has trained people to look for, and what seedPlacement
+    // already does for a module that asks to float.
+    expect(placementFromDeclaration({}, desktop).snap).toBe('bottom-right');
   });
 });

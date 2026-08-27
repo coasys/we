@@ -3,6 +3,53 @@ import type { RendererStores } from '@we/backend-shared';
 // Pure framework-agnostic schema types
 export type SchemaProp = string | number | boolean | Record<string, unknown> | SchemaProp[] | undefined;
 export type StoreDeclaration = Record<string, true | { actions?: string[]; state?: string[] }>;
+/**
+ * A panel this interface has, and where it starts.
+ *
+ * Two things in one list, because from a template's side they are one question — "what panels does
+ * this interface have" — and splitting them would mean two declarations that could disagree about
+ * the same edge:
+ *
+ * - **`module`** places a panel some module already contributes. The template decides where it
+ *   opens; the module still owns what is in it and whether it is open.
+ * - **`node`** supplies the content itself. The shell owns the frame and the open flag, because
+ *   there is no module to own them.
+ *
+ * Named positions only, never pixels — the same reason `DockSize` is a name. A template cannot see
+ * the viewport, and a pixel it guessed would be wrong on a display it never ran on.
+ */
+export type TemplatePanel = {
+  /**
+   * Stable, and the author's to choose.
+   *
+   * Placements are remembered per panel id, so an id that changed when the list was reordered would
+   * throw away wherever somebody had dragged it. Generated indices were the alternative and have
+   * exactly that failure.
+   */
+  id: string;
+  /** The module whose panel this places. Mutually exclusive with `node`. */
+  module?: string;
+  /** The panel's content, for a panel the template supplies. Mutually exclusive with `module`. */
+  node?: SchemaNode;
+  /** Shown in the titlebar. Only meaningful with `node`; a module's panel names itself. */
+  title?: string;
+  /** Which of the eight positions it opens at. */
+  snap?: 'top-left' | 'top' | 'top-right' | 'right' | 'bottom-right' | 'bottom' | 'bottom-left' | 'left';
+  /** Where it sits among the panels sharing its edge — lower is nearer the edge. */
+  order?: number;
+  /** How much room it asks for. Resolved against the viewport by the host. */
+  size?: 'sm' | 'md' | 'lg' | 'full';
+  /**
+   * Its share of the spare room in a floating column, relative to its neighbours. Absent means 1.
+   *
+   * "The transcript takes most of the height, the panel under it does not" is a large panel with
+   * grow and a small one with `grow: 0`.
+   */
+  grow?: number;
+  /** Push the content aside rather than covering it. Honoured on an edge snap only. */
+  displace?: boolean;
+};
+
 export type TemplateMeta = {
   name: string;
   description: string;
@@ -77,6 +124,15 @@ export type TemplateMeta = {
    * an edge pointing the wrong way.
    */
   chromeReserve?: { top?: number; bottom?: number; width?: number };
+  /**
+   * The panels this interface has, and where each one starts. See {@link TemplatePanel}.
+   *
+   * A **suggestion**, resolved live and never written — the same rung `themeId` occupies. A drag
+   * beats it and is remembered per panel; the panel's own menu offers the way back. So switching
+   * template or view is non-destructive, and an author improving a layout is not overruled by a
+   * stray drag somebody made once.
+   */
+  panels?: TemplatePanel[];
   stores?: string[] | StoreDeclaration;
   components?: string[];
 };

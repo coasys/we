@@ -20,6 +20,7 @@
  * $routes outlets work with a real router context, without touching the browser URL.
  */
 import { registerHostChromeReserve } from '@shared/registries/dockRegistry';
+import { setTemplatePanels } from '@shared/registries/templatePanels';
 import { buildTemplateBag, CHROME_TIER } from '@shared/registries/templateSurface';
 import { isValidThemeKey } from '@shared/registries/themeRegistry';
 import { TemplateBoundary } from '@solid/components/TemplateBoundary';
@@ -206,6 +207,16 @@ export function TemplateLayout(
     registerHostChromeReserve('template', stores.templateStore.currentTemplate?.meta?.chromeReserve);
   });
   onCleanup(() => registerHostChromeReserve('template', undefined));
+
+  /*
+    What panels this interface says it has, handed to the shell to place.
+
+    A declaration only — the shell decides what it means against a viewport the template cannot see,
+    and whatever the reader has dragged outranks it. Published from here because a template is data
+    and has nothing to publish from.
+  */
+  createEffect(() => setTemplatePanels(stores.templateStore.currentTemplate?.meta?.panels));
+  onCleanup(() => setTemplatePanels([]));
 
   createEffect(() => stores.routeStore.setNavigateFunction(() => navigate));
   createEffect(() => stores.routeStore.setCurrentPath(location.pathname));

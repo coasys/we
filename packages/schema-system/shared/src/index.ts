@@ -5,6 +5,7 @@ export type {
   SchemaNode,
   SchemaProp,
   TemplateMeta,
+  TemplatePanel,
   TemplateSchema,
   RouteParamsBinding,
   ThemeOverrides,
