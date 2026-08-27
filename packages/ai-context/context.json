@@ -6299,6 +6299,9 @@
         },
         "activeInsert": {
           "type": "string"
+        },
+        "layoutPinned": {
+          "type": "object"
         }
       },
       "actions": [
@@ -6317,6 +6320,7 @@
         "beginDockMove",
         "moveDock",
         "endDockMove",
+        "resetDockToLayout",
         "snapDock",
         "insertDock",
         "toggleMaximiseDock",

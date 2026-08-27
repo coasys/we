@@ -2420,6 +2420,7 @@ ShellStore:
   - snapTargets: unknown
   - insertSlots: unknown
   - activeInsert: unknown
+  - layoutPinned: Record<string, boolean> keyed by panel id — whether that panel has been dragged away from where meta.panels declared it. False for a panel no layout mentions, since there is nothing to go back to. Gate a "reset to layout" affordance on it rather than on a placement merely existing
 - Actions:
   - openShellView(id: string, path?: string): opens a shell overlay by id, optionally at a route inside it — the overlay keeps its own memory router, so this never touches the browser URL
   - closeShellView(): closes the currently open shell overlay
@@ -2436,6 +2437,7 @@ ShellStore:
   - beginDockMove(): unknown
   - moveDock(): unknown
   - endDockMove(): unknown
+  - resetDockToLayout(panelId: string): puts a panel back where meta.panels asked for it, forgetting where it was dragged. Forgets rather than rewrites, so the panel keeps following the layout afterwards — including when the template changes it. Pair with layoutPinned
   - snapDock(): unknown
   - insertDock(): unknown
   - toggleMaximiseDock(): unknown

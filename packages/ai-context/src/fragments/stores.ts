@@ -1050,6 +1050,8 @@ export function generateStoresText(entries: StoreEntry[]): string {
           "string | null — id of the currently open shell overlay ('profile' | 'settings' | 'schema-tests' | 'landing-page'), or null",
         spaceSettingsOpen:
           'boolean — the space-settings panel is open. It configures whichever space is open, so it needs no id; bind a launcher\u2019s active state to this',
+        layoutPinned:
+          'Record<string, boolean> keyed by panel id — whether that panel has been dragged away from where meta.panels declared it. False for a panel no layout mentions, since there is nothing to go back to. Gate a "reset to layout" affordance on it rather than on a placement merely existing',
       },
       actions: {
         openShellView:
@@ -1059,6 +1061,8 @@ export function generateStoresText(entries: StoreEntry[]): string {
         closeShellView: '(): closes the currently open shell overlay',
         toggleSpaceSettings:
           '(): opens or closes the settings panel for the space on screen. What a gear in chrome should call \u2014 a control that is always present toggles, so a second press puts back what the first press changed',
+        resetDockToLayout:
+          '(panelId: string): puts a panel back where meta.panels asked for it, forgetting where it was dragged. Forgets rather than rewrites, so the panel keeps following the layout afterwards \u2014 including when the template changes it. Pair with layoutPinned',
         openSpaceSettings:
           '(): opens that panel without closing it again. For a control that sits on the very fields it leads to (the About view\u2019s pencil), where a toggle would break the promise to show them',
         closeSpaceSettings: '(): closes the space-settings panel',

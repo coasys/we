@@ -2532,6 +2532,7 @@ export const contextData: ContextData = {
         snapTargets: { type: 'array' },
         insertSlots: { type: 'array' },
         activeInsert: { type: 'string' },
+        layoutPinned: { type: 'object' },
       },
       actions: [
         'openShellView',
@@ -2549,6 +2550,7 @@ export const contextData: ContextData = {
         'beginDockMove',
         'moveDock',
         'endDockMove',
+        'resetDockToLayout',
         'snapDock',
         'insertDock',
         'toggleMaximiseDock',
