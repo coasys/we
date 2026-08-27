@@ -555,6 +555,9 @@ const composer: SchemaNode = formModal({
   ],
   // Title and a time are what the model requires; anything else is optional here too.
   disabled: { $or: [{ $not: { $local: 'draftTitle' } }, { $not: { $local: 'draftStart' } }] },
+  discardWhen: {
+    $or: [{ $local: 'draftTitle' }, { $local: 'draftStart' }, { $local: 'draftLocation' }],
+  },
   submitLabel: 'Add event',
   submit: {
     $action: 'model.create',

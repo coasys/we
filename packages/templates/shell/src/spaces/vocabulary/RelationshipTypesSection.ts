@@ -112,6 +112,8 @@ const createModal: SchemaNode = formModal({
   // Nothing about a name is locally judgeable beyond its presence, so this gates on the value
   // rather than dragging in the validation machinery.
   disabled: { $not: { $local: 'kindName' } },
+  // The typed fields only — `kindIcon`, `kindColour` and `kindDirected` all start set.
+  discardWhen: { $or: [{ $local: 'kindName' }, { $local: 'kindInverse' }, { $local: 'kindDescription' }] },
   submitLabel: 'Create',
   submit: {
     $action: 'spaceStore.createRelationshipType',

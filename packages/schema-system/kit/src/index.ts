@@ -94,6 +94,8 @@ export { composerModal } from './overlays/composerModal.ts';
 export type { ComposerModalOptions } from './overlays/composerModal.ts';
 export { confirmModal } from './overlays/confirmModal.ts';
 export type { ConfirmModalOptions } from './overlays/confirmModal.ts';
+export { discardGuard } from './overlays/discardGuard.ts';
+export type { DiscardGuardOptions } from './overlays/discardGuard.ts';
 export { formModal } from './overlays/formModal.ts';
 export type { FormModalOptions } from './overlays/formModal.ts';
 /*

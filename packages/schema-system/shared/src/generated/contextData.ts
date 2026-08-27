@@ -712,6 +712,7 @@ export const contextData: ContextData = {
         { name: 'perspective', type: 'unknown', optional: true },
         { name: 'onSave', type: '((json: SerializedBlockNode) => void)', optional: true },
         { name: 'onReady', type: '((api: { save: () => void; }) => void)', optional: true },
+        { name: 'onDirtyChange', type: '((dirty: boolean) => void)', optional: true },
       ],
       source: 'components',
     },
@@ -2258,6 +2259,7 @@ export const contextData: ContextData = {
       state: {
         creatableEntities: { type: 'array' },
         recordDraft: { type: 'object' },
+        recordDraftDirty: { type: 'boolean' },
         recordErrors: { type: 'array' },
         savingRecord: { type: 'boolean' },
         lastCreatedId: { type: 'string' },
@@ -2339,6 +2341,7 @@ export const contextData: ContextData = {
         },
         aiPresetOptions: { type: 'array', properties: ['label', 'value'] },
         aiFormComplete: { type: 'boolean' },
+        aiFormDirty: { type: 'boolean' },
         languages: { type: 'array', properties: ['address', 'name', 'system'] },
         trustedAgents: { type: 'array' },
         authorizedApps: {

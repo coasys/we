@@ -110,17 +110,30 @@ export function confirmModal(opts: ConfirmModalOptions): SchemaNode {
   const tone = TONES[opts.tone ?? 'danger'];
   const busy = opts.busy ?? (opts.busyLocal ? { $local: opts.busyLocal } : undefined);
 
-  const confirmAction = {
-    ...opts.confirm,
-    onSuccess: [opts.close, ...((opts.confirm.onSuccess as unknown[]) ?? [])],
-  };
+  /*
+    Where the close goes depends on what the confirm actually is.
+
+    `$action` is the only token with lifecycle hooks, and the close belongs in its `onSuccess` so it
+    waits for the promise — closing before it resolves loses the spinner and the error path. Every
+    other token is synchronous, and giving *those* an `onSuccess` writes a key the resolver never
+    reads: it was spliced onto them unconditionally, so a `$setLocal` confirm silently never closed
+    the dialog. Nothing had noticed because the only such caller is `discardGuard`, whose confirm
+    unmounts the whole modal anyway.
+  */
+  const isAction = '$action' in opts.confirm;
+  const confirmAction = isAction
+    ? { ...opts.confirm, onSuccess: [opts.close, ...((opts.confirm.onSuccess as unknown[]) ?? [])] }
+    : opts.confirm;
 
   const onClick = opts.busyLocal
-    ? [
+    ? // `busyLocal` only means anything around an async action — see its doc comment.
+      [
         { $setLocal: opts.busyLocal, value: true },
         { ...confirmAction, onFinally: [{ $setLocal: opts.busyLocal, value: false }] },
       ]
-    : confirmAction;
+    : isAction
+      ? confirmAction
+      : [confirmAction, opts.close];
 
   return {
     type: '$if',

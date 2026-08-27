@@ -626,6 +626,18 @@ export const callsList: SchemaNode = {
                           placeholder: 'Anything worth remembering about it',
                         }),
                       ],
+                      /*
+                        Dirty means *changed*, not *non-empty* — the fields arrive seeded from the
+                        record, so a form nobody has touched is already full. This is the shape any
+                        edit form wants, as against the blank ones elsewhere that can ask whether
+                        anything is filled in at all.
+                      */
+                      discardWhen: {
+                        $or: [
+                          { $ne: [{ $local: 'titleDraft' }, '$call.title'] },
+                          { $ne: [{ $local: 'descriptionDraft' }, '$call.description'] },
+                        ],
+                      },
                       submit: {
                         $action: 'model.update',
                         args: [

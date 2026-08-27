@@ -1,6 +1,7 @@
 import type { LocalStateField, QueryStateField, SchemaNode, SchemaProp } from '@we/schema-shared';
 
 import type { Content } from '../types.ts';
+import { discardGuard } from './discardGuard.ts';
 
 export interface FormModalOptions {
   /** What decides whether it is showing — `{ $local: 'composerOpen' }` or a store flag. */
@@ -50,6 +51,14 @@ export interface FormModalOptions {
   busyLocal?: string;
   /** An in-flight flag somebody else owns — `{ $store: 'spaceStore.creatingSpace' }`. */
   busy?: SchemaProp;
+  /**
+   * Ask before a backdrop click or Escape throws the draft away — an expression that is true when
+   * there is something worth keeping (`{ $or: [{ $local: 'name' }, { $local: 'description' }] }`).
+   *
+   * Worth it on any form holding more than a word or two. Leave it off for a single-field one,
+   * where the guard costs more attention than the field is worth. See `discardGuard`.
+   */
+  discardWhen?: SchemaProp;
 }
 
 /**
@@ -99,6 +108,11 @@ export function formModal(opts: FormModalOptions): SchemaNode {
   const disabled =
     opts.disabled !== undefined && busy !== undefined ? { $or: [opts.disabled, busy] } : (opts.disabled ?? busy);
 
+  // The guard replaces `close`, adds a flag to the modal's own state, and mounts a confirmation
+  // among its children — see `discardGuard` for why all three positions are needed.
+  const guard = opts.discardWhen !== undefined ? discardGuard({ dirty: opts.discardWhen, close: opts.close }) : null;
+  const localState = { ...opts.localState, ...guard?.localState };
+
   return {
     // Mounted only while open, rather than hidden — which is what resets the draft between uses.
     type: '$if',
@@ -106,8 +120,8 @@ export function formModal(opts: FormModalOptions): SchemaNode {
       condition: opts.open,
       then: {
         type: 'we-modal',
-        props: { size: opts.size ?? 'md', close: opts.close },
-        ...(opts.localState && { $localState: opts.localState }),
+        props: { size: opts.size ?? 'md', close: guard?.close ?? opts.close },
+        ...(Object.keys(localState).length > 0 && { $localState: localState }),
         ...(opts.queries && { $queries: opts.queries }),
         children: [
           {
@@ -117,6 +131,7 @@ export function formModal(opts: FormModalOptions): SchemaNode {
             children: [opts.title],
           },
           ...opts.children,
+          ...(guard ? [guard.node] : []),
           {
             type: 'Row',
             slot: 'footer',
@@ -124,7 +139,9 @@ export function formModal(opts: FormModalOptions): SchemaNode {
             children: [
               {
                 type: 'we-button',
-                props: { variant: 'ghost', onClick: opts.close },
+                // Guarded like the backdrop when there is a guard — one way out of the modal, not
+                // two that disagree about whether the draft matters.
+                props: { variant: 'ghost', onClick: guard?.close ?? opts.close },
                 children: [opts.cancelLabel ?? 'Cancel'],
               },
               {

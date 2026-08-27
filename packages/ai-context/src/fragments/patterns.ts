@@ -199,6 +199,48 @@ formModal({
 Reach past it only for a form with real \`validate\` rules and a \`{ "$touch": "$all" }\` submit guard
 — that shape deliberately keeps the button clickable, and is written out by hand.
 
+### Don't lose what somebody typed — the discard guard
+
+A modal closes on a backdrop click and on Escape. Both are easy to hit by accident, and neither is
+recoverable: the modal is \`$if\`-mounted, so closing unmounts the draft with it. **Any modal a
+person can type into must ask before throwing that away.**
+
+| Writing | How |
+|---|---|
+| \`formModal\` | \`discardWhen: <expression>\` |
+| \`composerModal\` | Nothing — on by default (\`guardDraft: false\` turns it off) |
+| A hand-written \`we-modal\` | \`discardGuard({ dirty, close })\` |
+
+\`discardGuard\` returns three pieces, because a modal cannot be guarded from outside it:
+
+\`\`\`ts
+const guard = discardGuard({
+  dirty: { $or: [{ $local: 'name' }, { $local: 'description' }] },
+  close: { $action: 'shellStore.setCreateSpaceOpen', args: [false] },
+  title: 'Discard this space?',
+  body: 'The name, description and images you have entered will be lost.',
+});
+
+{ type: 'we-modal',
+  props: { size: 'md', close: guard.close },
+  $localState: { ...myFields, ...guard.localState },
+  children: [ …the form…, guard.node ] }
+\`\`\`
+
+Wire the Cancel button to \`guard.close\` as well — one way out of a modal, not two that disagree.
+
+**Writing \`dirty\` is the part that goes wrong**, and always in one direction: a guard that fires
+when there is nothing to lose. A dialog people learn to click through is worse than no dialog.
+
+- **Test only what the person typed.** A field with a default and a picker — a status, a mode, a
+  colour — is set from the first frame, so including it makes the guard fire on an untouched form.
+- **A form seeded from a record asks whether it _changed_**, not whether it is filled in:
+  \`{ $ne: [{ "$local": "titleDraft" }, "$call.title"] }\`, not \`{ "$local": "titleDraft" }\`.
+- **Where the fields are not known in advance, a store answers** — \`recordStore.recordDraftDirty\`,
+  \`runtimeStore.aiFormDirty\`.
+- **Leave it off a single-field form** ("name this board"). The guard costs more attention than one
+  word is worth.
+
 **Tall modals — pin the title and buttons.** A modal whose content can outgrow the viewport (a
 long form, a settings editor) scrolls its *content*, never its own title or its action buttons.
 Give the title node \`"slot": "header"\` and the button row \`"slot": "footer"\`: both are pinned

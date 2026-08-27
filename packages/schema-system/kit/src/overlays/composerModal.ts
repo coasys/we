@@ -28,6 +28,8 @@
  */
 import type { SchemaNode, SchemaProp } from '@we/schema-shared';
 
+import { discardGuard } from './discardGuard.ts';
+
 export interface ComposerModalOptions {
   /**
    * `$localState` boolean controlling visibility, declared on an ancestor of the **button that
@@ -59,9 +61,27 @@ export interface ComposerModalOptions {
   onSaved?: SchemaProp[];
   /** Content to prefill — `'$post.editorState'` for an edit. Omit for a blank composition. */
   editorState?: SchemaProp;
+  /**
+   * Ask before a backdrop click or Escape throws the draft away. **On by default** — pass `false`
+   * only for a composer where losing the content costs nothing.
+   *
+   * On by default here and opt-in on `formModal`, because a composer is the one place in WE where
+   * somebody may have written several paragraphs, and it is the one place a template author cannot
+   * write the guard themselves: the content lives inside Lexical, so no `$local` can see whether
+   * anything was typed. The composer reports that through `onDirtyChange`, which this wires up.
+   */
+  guardDraft?: boolean;
 }
 
 export function composerModal(opts: ComposerModalOptions): SchemaNode {
+  const close = { $setLocal: opts.openLocal, value: false };
+  /*
+    `draftDirty` is written by the composer, not by the schema. It is the one piece of modal state
+    in the kit whose source is a component rather than a control, because Lexical's document is not
+    reachable from `$local` — see `BlockComposer.onDirtyChange`.
+  */
+  const guard = opts.guardDraft === false ? null : discardGuard({ dirty: { $local: 'draftDirty' }, close });
+
   return {
     /*
       Mounted only while open, rather than hidden. Remounting is what resets the composer between
@@ -77,11 +97,16 @@ export function composerModal(opts: ComposerModalOptions): SchemaNode {
         // to be `center` here, which shrink-wrapped the scroll region to the longest line of text
         // and turned the composer's own overflow into a horizontal scrollbar — see the note on
         // `[part='content']` in `modal.ts`. Nothing needs it: the children below are `width: 100%`.
-        props: { size: 'lg', close: { $setLocal: opts.openLocal, value: false } },
+        props: { size: 'lg', close: guard?.close ?? close },
         $localState: {
           /** The composer's own `save()`, handed over by `onReady`. Read by `$callLocal`. */
           savePost: { type: 'function', initial: null },
           submitting: { type: 'boolean', initial: false },
+          ...(guard && {
+            /** Whether the author has written anything since the composer loaded. */
+            draftDirty: { type: 'boolean', initial: false },
+            ...guard.localState,
+          }),
         },
         children: [
           { type: 'we-text', props: { variant: 'heading-md' }, children: [opts.title] },
@@ -94,6 +119,7 @@ export function composerModal(opts: ComposerModalOptions): SchemaNode {
                 type: 'BlockComposer',
                 props: {
                   ...(opts.editorState !== undefined && { editorState: opts.editorState }),
+                  ...(guard && { onDirtyChange: { $setLocal: 'draftDirty', from: '$event' } }),
                   onReady: { $setLocal: 'savePost', from: '$event.save' },
                   onSave: [
                     { $setLocal: 'submitting', value: true },
@@ -116,7 +142,10 @@ export function composerModal(opts: ComposerModalOptions): SchemaNode {
             children: [
               {
                 type: 'we-button',
-                props: { variant: 'ghost', onClick: { $setLocal: opts.openLocal, value: false } },
+                // Guarded like the backdrop, so the modal has one way out rather than two that
+                // disagree — the house precedent is the model wizard, whose Cancel routes through
+                // the same `requestCloseWizard` its backdrop does.
+                props: { variant: 'ghost', onClick: guard?.close ?? close },
                 children: ['Cancel'],
               },
               {

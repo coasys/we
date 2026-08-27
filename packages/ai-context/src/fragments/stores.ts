@@ -116,6 +116,7 @@ export const storeEntries: StoreEntry[] = [
       },
       aiPresetOptions: { type: 'array', properties: ['label', 'value'] },
       aiFormComplete: { type: 'boolean' },
+      aiFormDirty: { type: 'boolean' },
       languages: { type: 'array', properties: ['address', 'name', 'system'] },
       trustedAgents: { type: 'array' },
       authorizedApps: {
@@ -616,6 +617,8 @@ export function generateStoresText(entries: StoreEntry[]): string {
           'AiModelForm | null — the model form while it is open, null when closed. One flat field per input; read with runtimeStore.aiForm.<field>',
         aiPresetOptions: '{ label, value }[] — model names the backend can fetch itself, for the open form kind',
         aiFormComplete: 'boolean — the open form has every field its chosen source needs',
+        aiFormDirty:
+          "boolean — the open form has been edited since it opened. What a discard guard reads; compared against a snapshot taken on open, so looking at a model's settings and closing again asks nothing",
         languages:
           'InstalledLanguage[] — language plugins installed in this backend (address, name, system). Empty until loadLanguages() runs',
         trustedAgents: 'string[] — trusted peer ids. Empty until loadTrustedAgents() runs',
@@ -915,6 +918,8 @@ export function generateStoresText(entries: StoreEntry[]): string {
           "{ label, value, icon, group }[] — models a person can create an instance of here, ready for a we-select: this space's own models first, then WE's built-in content types. A model appears here by declaring `authoring` in the manifest, or by being a shape this community defined",
         recordDraft:
           "the open form's draft ({ entity, label, icon, fields[] }) or null while closed — its non-nullness is what mounts the modal. Each field is { name, label, control, required, options, placeholder, value }, derived from the model's own declaration, so a form exists for a model nobody wrote a form for",
+        recordDraftDirty:
+          "boolean — the open form holds something worth keeping. What a discard guard reads: the fields come from the model, so a shape this community defined has properties no schema was written against and there is no set of $local names an expression could test. Pass it to discardGuard's `dirty`",
         recordErrors: 'string[] — validation errors from the last save attempt, plus any backend failure',
         savingRecord: 'boolean — a create is in flight',
         lastCreatedId:

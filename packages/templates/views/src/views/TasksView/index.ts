@@ -253,6 +253,9 @@ const composer: SchemaNode = formModal({
     }),
   ],
   disabled: { $not: { $local: 'draftTitle' } },
+  // `draftStatus` is excluded: it has a default and a picker, so it is set from the first frame
+  // and a guard including it would fire on a form nobody has touched.
+  discardWhen: { $or: [{ $local: 'draftTitle' }, { $local: 'draftDescription' }] },
   submitLabel: 'Add task',
   submit: {
     $action: 'model.create',

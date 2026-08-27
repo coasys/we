@@ -1935,6 +1935,11 @@
           "name": "onReady",
           "type": "((api: { save: () => void; }) => void)",
           "optional": true
+        },
+        {
+          "name": "onDirtyChange",
+          "type": "((dirty: boolean) => void)",
+          "optional": true
         }
       ],
       "source": "components"
@@ -5811,6 +5816,9 @@
         "recordDraft": {
           "type": "object"
         },
+        "recordDraftDirty": {
+          "type": "boolean"
+        },
         "recordErrors": {
           "type": "array"
         },
@@ -5936,6 +5944,9 @@
           "properties": ["label", "value"]
         },
         "aiFormComplete": {
+          "type": "boolean"
+        },
+        "aiFormDirty": {
           "type": "boolean"
         },
         "languages": {

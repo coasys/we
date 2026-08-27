@@ -173,6 +173,9 @@ export const createSignalTypeModal = formModal({
   ],
   // The slug derives from the name when left blank, so a name is the whole precondition.
   disabled: { $not: { $local: 'name' } },
+  // The typed fields only. `mode`, `aggregate` and the range have defaults and pickers, so they
+  // are set from the first frame and would make the guard fire on an untouched form.
+  discardWhen: { $or: [{ $local: 'name' }, { $local: 'slug' }, { $local: 'description' }] },
   submitLabel: 'Create',
   submit: {
     $action: 'spaceStore.createSignalType',

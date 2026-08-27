@@ -86,6 +86,15 @@ const portable: Record<string, SchemaNode> = {
     confirm: { $action: 'spaceStore.deleteCollection', args: ['$post.id'] },
     busyLocal: 'deleting',
   }),
+  'formModal (guarded)': formModal({
+    open: { $local: 'formOpen' },
+    close: { $setLocal: 'formOpen', value: false },
+    title: 'New thing',
+    localState: { thingName: { type: 'string', initial: '' } },
+    children: [field({ name: 'thingName', label: 'Name' })],
+    discardWhen: { $local: 'thingName' },
+    submit: { $action: 'model.create', args: ['CollectionBlock', { title: { $local: 'thingName' } }] },
+  }),
   formModal: formModal({
     open: { $local: 'formOpen' },
     close: { $setLocal: 'formOpen', value: false },
@@ -187,7 +196,7 @@ const withAmbientScope = (node: SchemaNode): SchemaNode => ({
 });
 
 describe('every expansion is a valid schema fragment', () => {
-  const needsAmbient = new Set(['cardShell', 'cardList (query)', 'formModal']);
+  const needsAmbient = new Set(['cardShell', 'cardList (query)', 'formModal', 'formModal (guarded)']);
   for (const [name, node] of Object.entries({ ...portable, ...weDomain })) {
     it(name, () => {
       const result = validateSemantic(needsAmbient.has(name) ? withAmbientScope(node) : node, context);
@@ -279,6 +288,42 @@ describe('contracts call sites depend on', () => {
       if (n.$setLocal === 'confirmOpen' && n.value === false) closes += 1;
     });
     expect(closes).toBeGreaterThanOrEqual(3);
+  });
+
+  it('a guarded form asks on every exit, and only when there is something to lose', () => {
+    const node = portable['formModal (guarded)'];
+    const modal = (node.props as { then: SchemaNode }).then;
+
+    // The modal's own close and the Cancel button are the same guarded expression — two exits that
+    // disagreed about whether the draft mattered is the bug this shape exists to make impossible.
+    const guarded = { $if: { condition: { $local: 'thingName' }, then: expect.anything(), else: expect.anything() } };
+    expect((modal.props as Record<string, unknown>).close).toMatchObject(guarded);
+    let cancel: unknown;
+    walk(modal, (n) => {
+      if (Array.isArray(n.children) && n.children[0] === 'Cancel') cancel = (n.props as { onClick: unknown }).onClick;
+    });
+    expect(cancel).toMatchObject(guarded);
+
+    // The flag lives on the modal, so it is destroyed with the draft it guards rather than
+    // surviving to greet the next open.
+    expect(modal.$localState).toHaveProperty('confirmDiscardOpen');
+
+    // And Discard runs the *unguarded* close — the one the guard intercepted — rather than looping
+    // back through the condition that raised the question.
+    let discard: unknown;
+    walk(modal, (n) => {
+      if (Array.isArray(n.children) && n.children[0] === 'Discard') discard = (n.props as { onClick: unknown }).onClick;
+    });
+    expect(discard).toEqual([
+      { $setLocal: 'formOpen', value: false },
+      { $setLocal: 'confirmDiscardOpen', value: false },
+    ]);
+  });
+
+  it('an unguarded form closes outright — the guard is opt-in, not the default', () => {
+    const modal = (portable.formModal.props as { then: SchemaNode }).then;
+    expect((modal.props as Record<string, unknown>).close).toEqual({ $setLocal: 'formOpen', value: false });
+    expect(modal.$localState).not.toHaveProperty('confirmDiscardOpen');
   });
 
   it('cardList in query mode hoists under <as>Rows, and both branches read the same items', () => {

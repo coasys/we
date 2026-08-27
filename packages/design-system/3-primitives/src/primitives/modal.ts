@@ -196,6 +196,10 @@ export default class Modal extends OverlayElement {
   }
 
   private _onKeyDown(e: KeyboardEvent) {
+    // Only the overlay on top answers the keyboard. A modal that raises a confirmation over itself
+    // is still mounted and still listening, so without this one Escape reached both: it dismissed
+    // the question and re-ran the close that had asked it.
+    if (!this.isTopmostOverlay()) return;
     if (e.key === 'Escape') {
       this.close();
     } else if (e.key === 'Tab') {

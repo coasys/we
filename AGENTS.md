@@ -1120,7 +1120,7 @@ when `relative` is enabled.
 - AudioInput
   Props: title: string | undefined, artist: string | undefined, audioUrl: string | FileData | undefined, duration: number | undefined, albumArt: string | undefined, onChange: (property: string, value: unknown) => void, isSelected: () => boolean
 - BlockComposer (DesignSystemElement)
-  Props: editorState?: SerializedBlockNode, perspective?: unknown, onSave?: ((json: SerializedBlockNode) => void), onReady?: ((api: { save: () => void; }) => void)
+  Props: editorState?: SerializedBlockNode, perspective?: unknown, onSave?: ((json: SerializedBlockNode) => void), onReady?: ((api: { save: () => void; }) => void), onDirtyChange?: ((dirty: boolean) => void)
 - BlockPlaceholder
   Props: icon: string, label: string, hint?: string, accept?: string, onFileDrop?: ((file: File) => void), onClick?: (() => void)
 - BlockRenderer (DesignSystemElement)
@@ -2178,6 +2178,7 @@ RecordStore:
 - State:
   - creatableEntities: { label, value, icon, group }[] — models a person can create an instance of here, ready for a we-select: this space's own models first, then WE's built-in content types. A model appears here by declaring `authoring` in the manifest, or by being a shape this community defined
   - recordDraft: the open form's draft ({ entity, label, icon, fields[] }) or null while closed — its non-nullness is what mounts the modal. Each field is { name, label, control, required, options, placeholder, value }, derived from the model's own declaration, so a form exists for a model nobody wrote a form for
+  - recordDraftDirty: boolean — the open form holds something worth keeping. What a discard guard reads: the fields come from the model, so a shape this community defined has properties no schema was written against and there is no set of $local names an expression could test. Pass it to discardGuard's `dirty`
   - recordErrors: string[] — validation errors from the last save attempt, plus any backend failure
   - savingRecord: boolean — a create is in flight
   - lastCreatedId: string — the id of the last record created, empty before the first. Read it to act on what was just made; kept in the store because an $action's onSuccess can read a store and cannot hold a value
@@ -2228,6 +2229,7 @@ RuntimeStore:
   - aiForm: AiModelForm | null — the model form while it is open, null when closed. One flat field per input; read with runtimeStore.aiForm.<field>
   - aiPresetOptions: { label, value }[] — model names the backend can fetch itself, for the open form kind
   - aiFormComplete: boolean — the open form has every field its chosen source needs
+  - aiFormDirty: boolean — the open form has been edited since it opened. What a discard guard reads; compared against a snapshot taken on open, so looking at a model's settings and closing again asks nothing
   - languages: InstalledLanguage[] — language plugins installed in this backend (address, name, system). Empty until loadLanguages() runs
   - trustedAgents: string[] — trusted peer ids. Empty until loadTrustedAgents() runs
   - authorizedApps: AuthorizedApp[] — external apps holding credentials (id, name, description, url, iconUrl, capabilities, revoked). Empty until loadAuthorizedApps() runs
@@ -3117,6 +3119,48 @@ formModal({
 
 Reach past it only for a form with real `validate` rules and a `{ "$touch": "$all" }` submit guard
 — that shape deliberately keeps the button clickable, and is written out by hand.
+
+### Don't lose what somebody typed — the discard guard
+
+A modal closes on a backdrop click and on Escape. Both are easy to hit by accident, and neither is
+recoverable: the modal is `$if`-mounted, so closing unmounts the draft with it. **Any modal a
+person can type into must ask before throwing that away.**
+
+| Writing | How |
+|---|---|
+| `formModal` | `discardWhen: <expression>` |
+| `composerModal` | Nothing — on by default (`guardDraft: false` turns it off) |
+| A hand-written `we-modal` | `discardGuard({ dirty, close })` |
+
+`discardGuard` returns three pieces, because a modal cannot be guarded from outside it:
+
+```ts
+const guard = discardGuard({
+  dirty: { $or: [{ $local: 'name' }, { $local: 'description' }] },
+  close: { $action: 'shellStore.setCreateSpaceOpen', args: [false] },
+  title: 'Discard this space?',
+  body: 'The name, description and images you have entered will be lost.',
+});
+
+{ type: 'we-modal',
+  props: { size: 'md', close: guard.close },
+  $localState: { ...myFields, ...guard.localState },
+  children: [ …the form…, guard.node ] }
+```
+
+Wire the Cancel button to `guard.close` as well — one way out of a modal, not two that disagree.
+
+**Writing `dirty` is the part that goes wrong**, and always in one direction: a guard that fires
+when there is nothing to lose. A dialog people learn to click through is worse than no dialog.
+
+- **Test only what the person typed.** A field with a default and a picker — a status, a mode, a
+  colour — is set from the first frame, so including it makes the guard fire on an untouched form.
+- **A form seeded from a record asks whether it _changed_**, not whether it is filled in:
+  `{ $ne: [{ "$local": "titleDraft" }, "$call.title"] }`, not `{ "$local": "titleDraft" }`.
+- **Where the fields are not known in advance, a store answers** — `recordStore.recordDraftDirty`,
+  `runtimeStore.aiFormDirty`.
+- **Leave it off a single-field form** ("name this board"). The guard costs more attention than one
+  word is worth.
 
 **Tall modals — pin the title and buttons.** A modal whose content can outgrow the viewport (a
 long form, a settings editor) scrolls its *content*, never its own title or its action buttons.

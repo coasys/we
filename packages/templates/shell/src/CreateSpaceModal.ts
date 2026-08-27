@@ -1,9 +1,41 @@
 import type { SchemaNode } from '@we/schema-shared';
-import { field } from '@we/template-kit';
+import { discardGuard, field } from '@we/template-kit';
+
+const close = { $action: 'shellStore.setCreateSpaceOpen', args: [false] };
+
+/**
+ * Written out rather than through `formModal`, because this is the validating form — a `required`
+ * rule on the name and a `$touch: '$all'` submit guard, which is deliberately a different shape
+ * from the precondition forms the fragment covers.
+ *
+ * It does take the fragment's guard, though. Everything below is work somebody did: a name, a
+ * description, a cover image and an avatar they picked and cropped, possibly a location. All of it
+ * went on a click anywhere outside the sheet.
+ */
+const guard = discardGuard({
+  /*
+    Anything filled in at all. `access` and `discovery` are excluded on purpose: they have defaults
+    and a picker, so they are set from the first frame, and including them would make the guard fire
+    on a form nobody has touched — which is the failure mode that teaches people to click through it.
+  */
+  dirty: {
+    $or: [
+      { $local: 'name' },
+      { $local: 'description' },
+      { $local: 'avatar' },
+      { $local: 'coverImage' },
+      { $local: 'location' },
+    ],
+  },
+  close,
+  title: 'Discard this space?',
+  body: 'The name, description and images you have entered will be lost. The space has not been created yet.',
+  discardLabel: 'Discard',
+});
 
 export const createSpaceModal = {
   type: 'we-modal',
-  props: { size: 'md', close: { $action: 'shellStore.setCreateSpaceOpen', args: [false] } },
+  props: { size: 'md', close: guard.close },
   $localState: {
     name: {
       type: 'string',
@@ -17,6 +49,7 @@ export const createSpaceModal = {
     coverImage: { type: 'file', initial: null },
     location: { type: 'object', initial: null },
     submitting: { type: 'boolean', initial: false },
+    ...guard.localState,
   },
   children: [
     { type: 'we-text', props: { variant: 'heading-md' }, children: ['Create a New Space'] },
@@ -316,11 +349,8 @@ export const createSpaceModal = {
       children: [
         {
           type: 'we-button',
-          props: {
-            variant: 'ghost',
-            text: 'Cancel',
-            onClick: { $action: 'shellStore.setCreateSpaceOpen', args: [false] },
-          },
+          // Guarded like the backdrop — one way out of the modal, not two that disagree.
+          props: { variant: 'ghost', text: 'Cancel', onClick: guard.close },
         },
         {
           type: 'we-button',
@@ -357,6 +387,7 @@ export const createSpaceModal = {
         },
       ],
     },
+    guard.node,
   ],
 };
 

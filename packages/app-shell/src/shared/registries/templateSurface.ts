@@ -244,6 +244,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     aiForm: state('runtime-admin'),
     aiPresetOptions: state('runtime-admin'),
     aiFormComplete: state('runtime-admin'),
+    aiFormDirty: state('runtime-admin'),
     languages: state('runtime-admin'),
     trustedAgents: state('runtime-admin'),
     authorizedApps: state('runtime-admin'),
@@ -560,6 +561,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     // in the tier every template can reach, beside `spaceStore.createPost`.
     creatableEntities: state('content'),
     recordDraft: state('content'),
+    recordDraftDirty: state('content'),
     recordErrors: state('content'),
     savingRecord: state('content'),
     lastCreatedId: state('content'),
