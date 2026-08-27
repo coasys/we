@@ -134,7 +134,7 @@ function nameDialog(opts: {
       condition: opts.open,
       then: {
         type: 'we-modal',
-        props: { close: opts.close },
+        props: { size: 'sm', close: opts.close },
         $localState: {
           name: { type: 'string', initial: opts.initialName },
           icon: { type: 'string', initial: opts.initialIcon },

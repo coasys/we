@@ -873,6 +873,12 @@
       "superclass": "OverlayElement",
       "ownProps": [
         {
+          "name": "size",
+          "type": "'sm' | 'md' | 'lg' | 'fullscreen'",
+          "optional": false,
+          "default": "'md'"
+        },
+        {
           "name": "hideclosebutton",
           "type": "boolean",
           "optional": false,

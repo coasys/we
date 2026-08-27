@@ -119,53 +119,91 @@ what a theme *decides* a faint foreground is, and the contrast corrections at ap
 entirely, so nothing ever measures it against what is behind it. Guidance that names a step
 reproduces that in every template written from it.
 
+### How wide is a modal — always \`size\`, never a pixel width
+
+\`we-modal\` sizes itself from a \`size\` prop, and **every modal should set one**:
+
+| \`size\` | Measure | For |
+|---|---|---|
+| \`sm\` | 420px | A confirmation, or one or two fields. |
+| \`md\` | 640px | **The default.** A form. |
+| \`lg\` | 900px | A workspace — a composer, a wizard, a card opened out to be read. |
+| \`fullscreen\` | The viewport, less a gutter | A lightbox, where the content is the size. |
+
+Each keeps a gutter between itself and the edge of the screen, so a modal on a phone is never
+edge-to-edge. Do **not** write \`"width": "100%"\` beside a \`"maxWidth"\` — that is what \`size\`
+replaced, and \`100%\` of a viewport-wide host is the viewport.
+
+Without a size, \`[part='base']\` shrink-wraps to its widest line of text: a short confirmation comes
+out too narrow to read and a wordy one too wide, from the same rule. \`width\`/\`maxWidth\` still
+override \`size\` for the rare modal that genuinely needs its own number.
+
 ### Confirm dialog
 
-\`\`\`json
-{
-  "type": "$if",
-  "props": {
-    "condition": { "$local": "confirmDeleteOpen" },
-    "then": {
-      "type": "we-modal",
-      "props": { "close": { "$setLocal": "confirmDeleteOpen", "value": false } },
-      "children": [
-        { "type": "we-text", "props": { "fontWeight": "semibold" }, "children": ["Delete post?"] },
-        { "type": "we-text", "children": ["This cannot be undone."] },
-        {
-          "type": "Row",
-          "props": { "ax": "end", "gap": "200" },
-          "children": [
-            { "type": "we-button", "props": { "variant": "ghost", "onClick": { "$setLocal": "confirmDeleteOpen", "value": false } }, "children": ["Cancel"] },
-            {
-              "type": "we-button",
-              "props": {
-                "variant": "danger",
-                "onClick": { "$action": "spaceStore.deleteCollection", "args": ["$post.id"],
-                             "onSuccess": [{ "$setLocal": "confirmDeleteOpen", "value": false }] }
-              },
-              "children": ["Delete"]
-            }
-          ]
-        }
-      ]
-    }
-  }
-}
+**Use \`confirmModal\` from \`@we/template-kit\`.** Every "are you sure?" in WE goes through it, so
+they share an icon, a heading, a width and a button row:
+
+\`\`\`ts
+confirmModal({
+  open: { $local: 'confirmDeleteOpen' },
+  close: { $setLocal: 'confirmDeleteOpen', value: false },
+  title: 'Delete post?',
+  body: 'This will permanently delete the post and everything inside it. This cannot be undone.',
+  confirmLabel: 'Delete',
+  confirm: { $action: 'spaceStore.deleteCollection', args: ['$post.id'] },
+})
 \`\`\`
+
+It returns the \`$if\` as well as the modal, and clears \`open\` from all three exits — the backdrop,
+Cancel, and the action's \`onSuccess\`.
+
+- \`open\` and \`close\` are **expressions**, so a dialog gated on a store flag
+  (\`{ $store: 'shapeStore.confirmDiscard' }\`) or on a string id works the same way.
+- \`cancel\` for a cancel button that does more than close — "Keep editing" dismisses the question
+  and leaves the wizard behind it open.
+- \`tone: 'primary'\` for a question with no casualty; the default \`danger\` picks a warning icon and
+  a danger confirm button.
+- \`detail\` for a quieter second line, \`children\` for a \`we-alert\` naming a surprising consequence.
+- \`busyLocal\` if the action is not instant — a recursive delete walks its whole collection, and
+  without a spinner the button absorbs the click and invites a second one. \`busy\` instead when a
+  store already owns the flag.
 
 The flag must be declared by an ancestor of **the button that opens it**, not merely of the modal.
 Undeclared, \`$setLocal\` warns and no-ops: the button renders, takes the click, and does nothing.
 
-If the action is slow (a recursive delete walks its whole collection), add a \`busy\` boolean set
-before it and cleared in \`onFinally\`, and bind the confirm button's \`loading\` and \`disabled\` to it.
+### A form in a modal
+
+**Use \`formModal\` from \`@we/template-kit\`** — title, fields, Cancel and Save:
+
+\`\`\`ts
+formModal({
+  open: { $local: 'composerOpen' },
+  close: { $setLocal: 'composerOpen', value: false },
+  title: 'New task',
+  size: 'sm',
+  localState: { draftTitle: { type: 'string', initial: '' } },
+  children: [field({ name: 'draftTitle', label: 'What needs doing?', placeholder: 'Ship the docs' })],
+  disabled: { $not: { $local: 'draftTitle' } },
+  submitLabel: 'Add task',
+  submit: { $action: 'model.create', args: ['TaskBlock', { title: { $local: 'draftTitle' } }] },
+})
+\`\`\`
+
+- **Declare the draft in \`localState\`, not on the page.** The modal is mounted only while open, so
+  the draft resets when it closes — for free. A draft declared higher up has to be cleared by hand
+  in \`onSuccess\`, and the field somebody forgets is the one that re-opens holding last time's value.
+- \`disabled\` is the **precondition** only ("a task needs a title"); the in-flight flag is \`$or\`-ed
+  in for you, so the Save button cannot start a second save.
+- It uses the header and footer slots, so a long form scrolls its fields and never its Save button.
+
+Reach past it only for a form with real \`validate\` rules and a \`{ "$touch": "$all" }\` submit guard
+— that shape deliberately keeps the button clickable, and is written out by hand.
 
 **Tall modals — pin the title and buttons.** A modal whose content can outgrow the viewport (a
 long form, a settings editor) scrolls its *content*, never its own title or its action buttons.
 Give the title node \`"slot": "header"\` and the button row \`"slot": "footer"\`: both are pinned
 outside the scroll region, sharing the modal's padding and gap, while the default slot scrolls.
-Put a \`width\` on the \`we-modal\` itself when using these slots — no single child spans it any
-more. A short confirm dialog like the one above needs none of this; the default slot alone is right.
+\`confirmModal\` and \`formModal\` already do this; write it out only for a modal that is neither.
 
 ### Composing a post — the BlockComposer save handshake
 
@@ -178,7 +216,7 @@ through \`onReady\`. So the sequence is: \`onReady\` stores that function in a *
 \`\`\`json
 {
   "type": "we-modal",
-  "props": { "close": { "$setLocal": "composeOpen", "value": false } },
+  "props": { "size": "lg", "close": { "$setLocal": "composeOpen", "value": false } },
   "$localState": {
     "savePost": { "type": "function", "initial": null },
     "submitting": { "type": "boolean", "initial": false }

@@ -1,5 +1,14 @@
 import type { SchemaNode } from '@we/schema-shared';
-import { agentByline, cardList, cardShell, confirmModal, emptyState, field, peopleRow } from '@we/template-kit';
+import {
+  agentByline,
+  cardList,
+  cardShell,
+  confirmModal,
+  emptyState,
+  field,
+  formModal,
+  peopleRow,
+} from '@we/template-kit';
 
 /**
  * Recorded calls in this space.
@@ -587,66 +596,48 @@ export const callsList: SchemaNode = {
                       },
                     },
                     /*
-                        Editing writes the two fields straight onto the CollectionBlock with
-                        `model.update` — no store action, because there is nothing for one to do.
-                        `title` and `description` are plain scalars on the model, so this is the
-                        whole of saving them.
+                      Editing writes the two fields straight onto the CollectionBlock with
+                      `model.update` — no store action, because there is nothing for one to do.
+                      `title` and `description` are plain scalars on the model, so this is the
+                      whole of saving them.
 
-                        No validation: an empty title is a meaningful value here, since it returns
-                        the card to the plain "Call" it started as. A required rule would make
-                        clearing a name impossible.
+                      No validation and no precondition: an empty title is a meaningful value here,
+                      since it returns the card to the plain "Call" it started as. A required rule
+                      would make clearing a name impossible.
+                    */
+                    formModal({
+                      open: { $local: 'editOpen' },
+                      close: { $setLocal: 'editOpen', value: false },
+                      title: 'Edit call',
+                      size: 'sm',
+                      /*
+                        The drafts stay on the card shell rather than moving onto the modal, unlike
+                        the composers elsewhere: the pencil above seeds them from `$call` *before*
+                        opening, so they have to be declared by an ancestor of the button, not of
+                        the modal. Seeding is also what stands in for the reset a remount gives the
+                        blank forms — the fields are overwritten every time the modal opens.
                       */
-                    {
-                      type: '$if',
-                      props: {
-                        condition: { $local: 'editOpen' },
-                        then: {
-                          type: 'we-modal',
-                          props: { close: { $setLocal: 'editOpen', value: false } },
-                          children: [
-                            { type: 'we-text', props: { fontWeight: 'semibold' }, children: ['Edit call'] },
-                            field({ name: 'titleDraft', label: 'Title', placeholder: 'What was this call about?' }),
-                            field({
-                              name: 'descriptionDraft',
-                              label: 'Description',
-                              control: 'textarea',
-                              placeholder: 'Anything worth remembering about it',
-                            }),
-                            {
-                              type: 'Row',
-                              props: { ax: 'end', gap: '200' },
-                              children: [
-                                {
-                                  type: 'we-button',
-                                  props: { variant: 'ghost', onClick: { $setLocal: 'editOpen', value: false } },
-                                  children: ['Cancel'],
-                                },
-                                {
-                                  type: 'we-button',
-                                  props: {
-                                    onClick: {
-                                      $action: 'model.update',
-                                      args: [
-                                        'CollectionBlock',
-                                        '$call.id',
-                                        {
-                                          title: { $local: 'titleDraft' },
-                                          description: { $local: 'descriptionDraft' },
-                                        },
-                                      ],
-                                      onSuccess: [{ $setLocal: 'editOpen', value: false }],
-                                    },
-                                  },
-                                  children: ['Save'],
-                                },
-                              ],
-                            },
-                          ],
-                        },
+                      children: [
+                        field({ name: 'titleDraft', label: 'Title', placeholder: 'What was this call about?' }),
+                        field({
+                          name: 'descriptionDraft',
+                          label: 'Description',
+                          control: 'textarea',
+                          placeholder: 'Anything worth remembering about it',
+                        }),
+                      ],
+                      submit: {
+                        $action: 'model.update',
+                        args: [
+                          'CollectionBlock',
+                          '$call.id',
+                          { title: { $local: 'titleDraft' }, description: { $local: 'descriptionDraft' } },
+                        ],
                       },
-                    },
+                    }),
                     confirmModal({
-                      openLocal: 'confirmDeleteOpen',
+                      open: { $local: 'confirmDeleteOpen' },
+                      close: { $setLocal: 'confirmDeleteOpen', value: false },
                       title: 'Delete call?',
                       body: 'This will permanently delete the recording and every utterance in it. This cannot be undone.',
                       confirmLabel: 'Delete',

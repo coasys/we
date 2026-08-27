@@ -1,4 +1,5 @@
 import type { SchemaNode } from '@we/schema-shared';
+import { confirmModal } from '@we/template-kit';
 
 /**
  * The other accounts on this machine, and removing them.
@@ -107,91 +108,40 @@ export const accountSettings: SchemaNode = {
  * three consequences are not guessable: the data goes permanently, another AD4M app may be using
  * the same account right now, and — for the account holding the ADAM launcher's registry — the
  * launcher also loses its record of every *other* agent it knows about.
+ *
+ * It was written as a hand-rolled scrim — a fixed Column over `rgba(0,0,0,0.5)` at z-index 9998 —
+ * which meant it was the one dialog in the app outside the browser's top layer, with a literal
+ * black instead of the theme's `overlay` role, and neither the focus trap nor the Escape handler
+ * every other modal gets from the primitive. It looked the most considered of the confirmations
+ * and was the least sound of them. What it had that the others lacked — an icon, a real heading, a
+ * quieter second line — is now what `confirmModal` gives all of them.
  */
-export const removeAccountModal: SchemaNode = {
-  type: '$if',
-  props: {
-    condition: { $store: 'accountStore.pendingRemoval' },
-    enterTransition: { type: 'fade', duration: 150 },
-    then: {
-      type: 'Column',
+export const removeAccountModal: SchemaNode = confirmModal({
+  open: { $store: 'accountStore.pendingRemoval' },
+  close: { $action: 'accountStore.cancelRemoval' },
+  title: { $concat: ['Delete ', { $store: 'accountStore.pendingRemoval.name' }, '?'] },
+  body: 'This permanently deletes the account and everything in it — its identity, its spaces, and its data. It cannot be undone.',
+  detail: 'Close Flux and the ADAM launcher first if they use this account.',
+  children: [
+    // Only for the account the launcher keeps its registry inside. Nobody would predict this one,
+    // which is exactly why it is worth a line.
+    {
+      type: '$if',
       props: {
-        position: 'fixed',
-        top: '0',
-        left: '0',
-        width: '100%',
-        height: '100%',
-        ax: 'center',
-        ay: 'center',
-        bg: 'rgba(0,0,0,0.5)',
-        zIndex: 9998,
-      },
-      children: [
-        {
-          type: 'Column',
-          props: { bg: 'surface-sunken', r: '400', p: '600', gap: '400', maxWidth: '440px', shadow: 'xl' },
+        condition: { $store: 'accountStore.pendingRemoval.sharedWithLauncher' },
+        then: {
+          type: 'we-alert',
+          props: { variant: 'warning' },
           children: [
-            {
-              type: 'Row',
-              props: { gap: '300', ay: 'center' },
-              children: [
-                { type: 'we-icon', props: { name: 'warning', color: 'danger-text' } },
-                {
-                  type: 'we-text',
-                  props: { variant: 'heading-sm' },
-                  children: [{ $concat: ['Delete ', { $store: 'accountStore.pendingRemoval.name' }, '?'] }],
-                },
-              ],
-            },
-            {
-              type: 'we-text',
-              props: { variant: 'body' },
-              children: [
-                'This permanently deletes the account and everything in it — its identity, its spaces, and its data. It cannot be undone.',
-              ],
-            },
-            {
-              type: 'we-text',
-              props: { variant: 'body', color: 'text-muted' },
-              children: ['Close Flux and the ADAM launcher first if they use this account.'],
-            },
-            // Only for the account the launcher keeps its registry inside. Nobody would predict
-            // this one, which is exactly why it is worth a line.
-            {
-              type: '$if',
-              props: {
-                condition: { $store: 'accountStore.pendingRemoval.sharedWithLauncher' },
-                then: {
-                  type: 'we-alert',
-                  props: { variant: 'warning' },
-                  children: [
-                    "The ADAM launcher stores its list of agents inside this account, so removing it will also clear the launcher's record of your other agents.",
-                  ],
-                },
-              },
-            },
-            {
-              type: 'Row',
-              props: { gap: '300', ax: 'end', mt: '200' },
-              children: [
-                {
-                  type: 'we-button',
-                  props: { text: 'Cancel', variant: 'ghost', onClick: { $action: 'accountStore.cancelRemoval' } },
-                },
-                {
-                  type: 'we-button',
-                  props: {
-                    text: 'Delete account',
-                    variant: 'danger',
-                    loading: { $store: 'accountStore.busy' },
-                    onClick: { $action: 'accountStore.confirmRemoval' },
-                  },
-                },
-              ],
-            },
+            "The ADAM launcher stores its list of agents inside this account, so removing it will also clear the launcher's record of your other agents.",
           ],
         },
-      ],
+      },
     },
-  },
-};
+  ],
+  confirmLabel: 'Delete account',
+  // The store runs the removal and already knows it is running — a `busyLocal` beside it could only
+  // disagree with it.
+  busy: { $store: 'accountStore.busy' },
+  confirm: { $action: 'accountStore.confirmRemoval' },
+});

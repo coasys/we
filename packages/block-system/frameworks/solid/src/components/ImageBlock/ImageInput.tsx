@@ -150,10 +150,8 @@ export function ImageInput(props: ImageInputProps) {
       {/* Add-image modal — portalled to escape the Lexical contenteditable context. */}
       <Show when={showAddModal()}>
         <Portal>
-          <we-modal close={() => setShowAddModal(false)}>
-            <we-text fontWeight="bold" fontSize="600" textAlign="center">
-              Add Image
-            </we-text>
+          <we-modal close={() => setShowAddModal(false)} size="sm">
+            <we-text variant="heading-md">Add Image</we-text>
 
             <we-file-upload accept="image/*" on:change={handleModalFileChange} width="100%">
               <we-icon name="image" color="text-muted" size="lg" />
@@ -189,10 +187,8 @@ export function ImageInput(props: ImageInputProps) {
       {/* Crop modal — portalled to escape the Lexical contenteditable context. */}
       <Show when={rawUrl()}>
         <Portal>
-          <we-modal close={handleCropBack}>
-            <we-text fontSize="700" fontWeight="bold" textAlign="center">
-              Crop Image
-            </we-text>
+          <we-modal close={handleCropBack} size="md">
+            <we-text variant="heading-md">Crop Image</we-text>
             <ImageCrop
               src={rawUrl()!}
               fileName={pendingFile()?.name}

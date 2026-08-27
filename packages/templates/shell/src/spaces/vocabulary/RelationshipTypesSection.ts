@@ -1,5 +1,5 @@
 import type { SchemaNode } from '@we/schema-shared';
-import { sectionCard } from '@we/template-kit';
+import { field, formModal, sectionCard } from '@we/template-kit';
 
 /**
  * The kinds of connection this community makes.
@@ -27,148 +27,106 @@ import { sectionCard } from '@we/template-kit';
  * See `docs/architecture/relations.md`.
  */
 
-const field = (label: string, control: SchemaNode): SchemaNode => ({
+/** A label over a control the kit's `field` has no case for — the two pickers and the switch. */
+const labelled = (label: string, control: SchemaNode): SchemaNode => ({
   type: 'we-form-field',
   props: { label, width: '100%' },
   children: [control],
 });
 
-const createModal: SchemaNode = {
-  type: '$if',
-  props: {
-    condition: { $local: 'createRelationshipTypeOpen' },
-    then: {
-      type: 'we-modal',
-      props: {
-        close: { $setLocal: 'createRelationshipTypeOpen', value: false },
-        maxWidth: 'var(--we-layout-xs)',
-        width: '100%',
-      },
-      $localState: {
-        kindName: { type: 'string', initial: '' },
-        kindInverse: { type: 'string', initial: '' },
-        kindDescription: { type: 'string', initial: '' },
-        kindIcon: { type: 'string', initial: 'arrow-right' },
-        kindColor: { type: 'string', initial: '' },
-        kindDirected: { type: 'boolean', initial: true },
-      },
+const createModal: SchemaNode = formModal({
+  open: { $local: 'createRelationshipTypeOpen' },
+  close: { $setLocal: 'createRelationshipTypeOpen', value: false },
+  title: 'New kind of connection',
+  size: 'sm',
+  localState: {
+    kindName: { type: 'string', initial: '' },
+    kindInverse: { type: 'string', initial: '' },
+    kindDescription: { type: 'string', initial: '' },
+    kindIcon: { type: 'string', initial: 'arrow-right' },
+    kindColor: { type: 'string', initial: '' },
+    kindDirected: { type: 'boolean', initial: true },
+  },
+  children: [
+    field({
+      name: 'kindName',
+      label: 'Name',
+      // A verb phrase, because the name is read *along* the edge — "A contradicts B" — and a
+      // noun there makes every connection read as a category rather than a claim.
+      placeholder: 'contradicts, came out of, supersedes…',
+    }),
+    field({ name: 'kindInverse', label: 'Reads backwards as', placeholder: 'contradicted by, led to…' }),
+    field({
+      name: 'kindDescription',
+      label: 'Description',
+      control: 'textarea',
+      placeholder: 'When should somebody use this?',
+      props: { rows: 2 },
+    }),
+    {
+      type: 'Row',
+      props: { gap: '300', width: '100%', wrap: true },
       children: [
-        { type: 'we-text', props: { variant: 'heading-md' }, slot: 'header', children: ['New kind of connection'] },
-        field('Name', {
-          type: 'we-input',
+        labelled('Icon', {
+          type: 'we-icon-picker',
           props: {
-            width: '100%',
-            // A verb phrase, because the name is read *along* the edge — "A contradicts B" — and a
-            // noun there makes every connection read as a category rather than a claim.
-            placeholder: 'contradicts, came out of, supersedes…',
-            value: { $local: 'kindName' },
-            onInput: { $setLocal: 'kindName', from: '$event.detail' },
+            value: { $local: 'kindIcon' },
+            onChange: { $setLocal: 'kindIcon', from: '$event.detail' },
           },
         }),
-        field('Reads backwards as', {
-          type: 'we-input',
+        labelled('Colour', {
+          type: 'we-color-picker',
           props: {
-            width: '100%',
-            placeholder: 'contradicted by, led to…',
-            value: { $local: 'kindInverse' },
-            onInput: { $setLocal: 'kindInverse', from: '$event.detail' },
+            value: { $local: 'kindColor' },
+            onChange: { $setLocal: 'kindColor', from: '$event.detail' },
           },
         }),
-        field('Description', {
-          type: 'we-textarea',
-          props: {
-            width: '100%',
-            rows: 2,
-            placeholder: 'When should somebody use this?',
-            value: { $local: 'kindDescription' },
-            onInput: { $setLocal: 'kindDescription', from: '$event.detail' },
-          },
-        }),
+      ],
+    },
+    {
+      type: 'Row',
+      props: { gap: '300', ay: 'center', ax: 'between', width: '100%' },
+      children: [
         {
-          type: 'Row',
-          props: { gap: '300', width: '100%', wrap: true },
+          type: 'Column',
+          props: { gap: '100' },
           children: [
-            field('Icon', {
-              type: 'we-icon-picker',
-              props: {
-                value: { $local: 'kindIcon' },
-                onChange: { $setLocal: 'kindIcon', from: '$event.detail' },
-              },
-            }),
-            field('Colour', {
-              type: 'we-color-picker',
-              props: {
-                value: { $local: 'kindColor' },
-                onChange: { $setLocal: 'kindColor', from: '$event.detail' },
-              },
-            }),
-          ],
-        },
-        {
-          type: 'Row',
-          props: { gap: '300', ay: 'center', ax: 'between', width: '100%' },
-          children: [
+            { type: 'we-text', props: { variant: 'label' }, children: ['Direction matters'] },
             {
-              type: 'Column',
-              props: { gap: '100' },
-              children: [
-                { type: 'we-text', props: { variant: 'label' }, children: ['Direction matters'] },
-                {
-                  type: 'we-text',
-                  props: { variant: 'footnote', color: 'text-muted' },
-                  children: ['Off for "related to" and "same as", where an arrow would assert an order nobody meant.'],
-                },
-              ],
-            },
-            {
-              type: 'we-switch',
-              props: {
-                checked: { $local: 'kindDirected' },
-                onChange: { $setLocal: 'kindDirected', from: '$event.detail' },
-              },
+              type: 'we-text',
+              props: { variant: 'footnote', color: 'text-muted' },
+              children: ['Off for "related to" and "same as", where an arrow would assert an order nobody meant.'],
             },
           ],
         },
         {
-          type: 'Row',
-          props: { gap: '300', ax: 'end', width: '100%' },
-          slot: 'footer',
-          children: [
-            {
-              type: 'we-button',
-              props: { variant: 'ghost', onClick: { $setLocal: 'createRelationshipTypeOpen', value: false } },
-              children: ['Cancel'],
-            },
-            {
-              type: 'we-button',
-              props: {
-                variant: 'primary',
-                // Nothing about a name is locally judgeable beyond its presence, so this gates on the
-                // value rather than dragging in the validation machinery.
-                disabled: { $not: { $local: 'kindName' } },
-                onClick: {
-                  $action: 'spaceStore.createRelationshipType',
-                  args: [
-                    {
-                      name: { $local: 'kindName' },
-                      inverseName: { $local: 'kindInverse' },
-                      description: { $local: 'kindDescription' },
-                      icon: { $local: 'kindIcon' },
-                      color: { $local: 'kindColor' },
-                      directed: { $local: 'kindDirected' },
-                    },
-                  ],
-                  onSuccess: [{ $setLocal: 'createRelationshipTypeOpen', value: false }],
-                },
-              },
-              children: ['Create'],
-            },
-          ],
+          type: 'we-switch',
+          props: {
+            checked: { $local: 'kindDirected' },
+            onChange: { $setLocal: 'kindDirected', from: '$event.detail' },
+          },
         },
       ],
     },
+  ],
+  // Nothing about a name is locally judgeable beyond its presence, so this gates on the value
+  // rather than dragging in the validation machinery.
+  disabled: { $not: { $local: 'kindName' } },
+  submitLabel: 'Create',
+  submit: {
+    $action: 'spaceStore.createRelationshipType',
+    args: [
+      {
+        name: { $local: 'kindName' },
+        inverseName: { $local: 'kindInverse' },
+        description: { $local: 'kindDescription' },
+        icon: { $local: 'kindIcon' },
+        color: { $local: 'kindColor' },
+        directed: { $local: 'kindDirected' },
+      },
+    ],
   },
-};
+});
 
 /** One kind, as it will be read on a map: its icon and colour, its name, and how it reads backwards. */
 const kindRow: SchemaNode = {

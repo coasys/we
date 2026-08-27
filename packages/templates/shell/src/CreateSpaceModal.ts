@@ -3,11 +3,7 @@ import { field } from '@we/template-kit';
 
 export const createSpaceModal = {
   type: 'we-modal',
-  props: {
-    close: { $action: 'shellStore.setCreateSpaceOpen', args: [false] },
-    maxWidth: '560px',
-    width: '100%',
-  },
+  props: { size: 'md', close: { $action: 'shellStore.setCreateSpaceOpen', args: [false] } },
   $localState: {
     name: {
       type: 'string',

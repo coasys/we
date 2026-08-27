@@ -73,12 +73,11 @@ export function composerModal(opts: ComposerModalOptions): SchemaNode {
       condition: { $local: opts.openLocal },
       then: {
         type: 'we-modal',
-        props: {
-          close: { $setLocal: opts.openLocal, value: false },
-          maxWidth: 'var(--we-layout-md)',
-          width: '100%',
-          ax: 'center',
-        },
+        // A workspace, not a form: the composer is a document editor and wants the room. `ax` used
+        // to be `center` here, which shrink-wrapped the scroll region to the longest line of text
+        // and turned the composer's own overflow into a horizontal scrollbar — see the note on
+        // `[part='content']` in `modal.ts`. Nothing needs it: the children below are `width: 100%`.
+        props: { size: 'lg', close: { $setLocal: opts.openLocal, value: false } },
         $localState: {
           /** The composer's own `save()`, handed over by `onReady`. Read by `$callLocal`. */
           savePost: { type: 'function', initial: null },

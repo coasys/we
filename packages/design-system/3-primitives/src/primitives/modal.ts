@@ -1,9 +1,11 @@
 import type { DesignSystemProps } from '@we/design-types';
+import { type DSLayer, filterProps, getKeysForLayers, mergeProps } from '@we/design-utils';
 import { css, html } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 
 import { OverlayElement } from '../shared/overlay-element';
 import sharedStyles from '../shared/styles';
+import type { ModalSize } from '../types';
 
 /*
   `surface`, not `surfaceRaised`. A raised surface is one floating above the page with nothing
@@ -15,7 +17,15 @@ import sharedStyles from '../shared/styles';
 const DEFAULT_PROPS: Partial<DesignSystemProps> = {
   bg: 'var(--we-role-surface)',
   r: '600',
-  p: '900',
+  /*
+    32px, not the 64px this used to be.
+
+    `space-900` is the padding of a full page section, and around a two-line confirmation it was
+    most of the dialog: "Delete this?" plus a sentence came out ~300px wide with 128px of that
+    being padding, which is a large part of why modals read as small and empty. 32px is still
+    generous against the 24px a card gets, which is the relationship a sheet should have to a card.
+  */
+  p: '600',
   ax: 'stretch',
   /*
     Start, not centre. The base grows with its content, so centring on the main axis does nothing
@@ -40,6 +50,37 @@ const DEFAULT_PROPS: Partial<DesignSystemProps> = {
     [part='base'] itself and wins there whatever a component writes.
   */
   overflow: 'hidden',
+};
+
+/*
+  The room a modal keeps between itself and the edge of the screen.
+
+  Folded into `max-width` rather than left to the host's own alignment, because every call site
+  that sized itself wrote `width: '100%'` beside its `maxWidth` — and `100%` of a viewport-wide
+  host is the viewport, so on a phone all of them ran edge to edge with the sheet's corners under
+  the bezel. The two call sites that noticed spelled the fix `min(850px, 92vw)`, which is this
+  with the gutter expressed as a percentage of the screen — so it is 30px on a phone and 100px on
+  a desktop, exactly backwards from where the room is needed.
+*/
+const GUTTER = 'var(--we-space-500)';
+const measure = (token: string) => `min(var(--we-layout-${token}), calc(100dvw - ${GUTTER} * 2))`;
+
+/*
+  Width is the one thing a modal cannot work out for itself, and the one thing nothing was telling
+  it. `[part='base']` is a shrink-to-fit flex column, so with no width set its size is whatever its
+  widest line of text happens to imply — which makes a short confirmation too narrow and a wordy
+  one too wide, from the same rule. Both were being patched at call sites, differently each time.
+
+  The scale is the layout tokens, which already exist for this and are already commented as
+  "narrow modals" and "standard modals" — the modal's own names for them differ because a modal's
+  size is not a measure: `sm` is the smallest *sheet*, and it happens to hold the narrowest measure.
+*/
+const SIZE_DEFAULTS: Record<ModalSize, Partial<DesignSystemProps>> = {
+  sm: { width: '100%', maxWidth: measure('xs') },
+  md: { width: '100%', maxWidth: measure('sm') },
+  lg: { width: '100%', maxWidth: measure('md') },
+  // No measure at all: the content is the size, and the sheet only stays clear of the edges.
+  fullscreen: { width: `calc(100dvw - ${GUTTER} * 2)`, maxWidth: 'none' },
 };
 
 const CSS_STYLES = css`
@@ -119,12 +160,28 @@ const CSS_STYLES = css`
 export default class Modal extends OverlayElement {
   static styles = [sharedStyles, CSS_STYLES];
 
+  @property({ type: String, reflect: true }) size: ModalSize = 'md';
   @property({ type: Boolean }) hideclosebutton = false;
   @property({ type: Object }) styles?: Record<string, string | number | undefined>;
   @property({ attribute: false }) close: () => void = () => {};
 
   static getDefaultProps() {
     return DEFAULT_PROPS;
+  }
+
+  /*
+    Explicit props > size > component defaults, the house merge chain.
+
+    An explicit `width`/`maxWidth` still wins, so the escape hatch survives for the modal that
+    genuinely needs a number nobody else needs — but it is now the exception it should be, rather
+    than the only way to have a width at all.
+  */
+  override getInstanceProps() {
+    const ctor = this.constructor as typeof Modal & { __dsLayers: readonly DSLayer[] };
+    const activeKeys = getKeysForLayers([...ctor.__dsLayers]);
+    const usedProps = filterProps(this as unknown as Record<string, unknown>, activeKeys);
+    const sizeDefaults = SIZE_DEFAULTS[this.size] ?? SIZE_DEFAULTS.md;
+    return mergeProps(usedProps, mergeProps(sizeDefaults, DEFAULT_PROPS)) as Partial<DesignSystemProps>;
   }
 
   connectedCallback() {

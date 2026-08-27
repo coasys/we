@@ -94,6 +94,8 @@ export { composerModal } from './overlays/composerModal.ts';
 export type { ComposerModalOptions } from './overlays/composerModal.ts';
 export { confirmModal } from './overlays/confirmModal.ts';
 export type { ConfirmModalOptions } from './overlays/confirmModal.ts';
+export { formModal } from './overlays/formModal.ts';
+export type { FormModalOptions } from './overlays/formModal.ts';
 /*
   Filed here rather than in the WE tier it was written in, because it names no store: the people, the
   pictures and the names all arrive as options. It was the fragment a module wanted first, and the

@@ -103,11 +103,7 @@ export function recordFormModal(opts: RecordFormModalOptions = {}): SchemaNode {
       condition: { $store: 'recordStore.recordDraft' },
       then: {
         type: 'we-modal',
-        props: {
-          close: { $action: 'recordStore.cancelRecordForm' },
-          maxWidth: 'var(--we-layout-sm)',
-          width: '100%',
-        },
+        props: { size: 'md', close: { $action: 'recordStore.cancelRecordForm' } },
         /*
           The kinds of connection this community has named.
 

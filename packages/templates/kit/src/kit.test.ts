@@ -14,6 +14,7 @@ import {
   emptyNote,
   emptyState,
   field,
+  formModal,
   gatePrompt,
   marketplaceList,
   pageShell,
@@ -77,12 +78,26 @@ const portable: Record<string, SchemaNode> = {
     children: [{ type: 'we-text', children: ['$row.name'] }],
   }),
   confirmModal: confirmModal({
-    openLocal: 'confirmOpen',
+    open: { $local: 'confirmOpen' },
+    close: { $setLocal: 'confirmOpen', value: false },
     title: 'Delete?',
     body: 'Gone forever.',
     confirmLabel: 'Delete',
     confirm: { $action: 'spaceStore.deleteCollection', args: ['$post.id'] },
     busyLocal: 'deleting',
+  }),
+  formModal: formModal({
+    open: { $local: 'formOpen' },
+    close: { $setLocal: 'formOpen', value: false },
+    title: 'New thing',
+    localState: {
+      thingName: { type: 'string', initial: '' },
+      creating: { type: 'boolean', initial: false },
+    },
+    children: [field({ name: 'thingName', label: 'Name' })],
+    disabled: { $not: { $local: 'thingName' } },
+    busyLocal: 'creating',
+    submit: { $action: 'model.create', args: ['CollectionBlock', { title: { $local: 'thingName' } }] },
   }),
   field: field({ name: 'name', label: 'Name', validated: true, touchOnBlur: true }),
   'field (select)': field({ name: 'mode', control: 'select', props: { options: [] } }),
@@ -155,20 +170,24 @@ function walk(value: unknown, visit: (node: Record<string, unknown>) => void): v
 }
 
 /**
- * The ambient scope `lists/cards.ts` documents as its contract: `displayMode` belongs to the page.
- * Declaring their own `$localState` is what switches the validator's scope checking on for these
- * two fragments, so validating them bare would flag the very reads the contract permits — this
- * shim is that contract made explicit, the same declaration the palette's insert-with-fix will
- * one day add for real.
+ * The ambient scope these fragments document as their contract: `displayMode` belongs to the page
+ * (`lists/cards.ts`), and an overlay's open flag belongs to whatever holds the button that sets it,
+ * which is by definition not the overlay. Declaring their own `$localState` is what switches the
+ * validator's scope checking on for these fragments, so validating them bare would flag the very
+ * reads the contract permits — this shim is that contract made explicit, the same declaration the
+ * palette's insert-with-fix will one day add for real.
  */
 const withAmbientScope = (node: SchemaNode): SchemaNode => ({
   type: 'Column',
-  $localState: { displayMode: { type: 'string', initial: 'expanded' } },
+  $localState: {
+    displayMode: { type: 'string', initial: 'expanded' },
+    formOpen: { type: 'boolean', initial: false },
+  },
   children: [node],
 });
 
 describe('every expansion is a valid schema fragment', () => {
-  const needsAmbient = new Set(['cardShell', 'cardList (query)']);
+  const needsAmbient = new Set(['cardShell', 'cardList (query)', 'formModal']);
   for (const [name, node] of Object.entries({ ...portable, ...weDomain })) {
     it(name, () => {
       const result = validateSemantic(needsAmbient.has(name) ? withAmbientScope(node) : node, context);

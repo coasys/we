@@ -336,6 +336,7 @@ export const contextData: ContextData = {
       className: 'Modal',
       superclass: 'OverlayElement',
       ownProps: [
+        { name: 'size', type: "'sm' | 'md' | 'lg' | 'fullscreen'", optional: false, default: "'md'" },
         { name: 'hideclosebutton', type: 'boolean', optional: false, default: 'false' },
         { name: 'close', type: '() => void', optional: false },
       ],

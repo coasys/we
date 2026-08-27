@@ -12,11 +12,7 @@
  */
 export const spaceModal = {
   type: 'we-modal',
-  props: {
-    close: { $setLocal: 'selectedPin', value: null },
-    maxWidth: '520px',
-    width: '100%',
-  },
+  props: { size: 'md', close: { $setLocal: 'selectedPin', value: null } },
   children: [
     {
       type: '$single',

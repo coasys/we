@@ -87,7 +87,7 @@ const tokenizerFields: SchemaNode = {
 
 const modelForm: SchemaNode = {
   type: 'we-modal',
-  props: { close: { $action: 'runtimeStore.closeAiForm' }, maxWidth: '560px', width: '100%' },
+  props: { size: 'md', close: { $action: 'runtimeStore.closeAiForm' } },
   children: [
     {
       type: 'Column',

@@ -1,5 +1,5 @@
 import type { SchemaNode } from '@we/schema-shared';
-import { composerModal, emptyState } from '@we/template-kit';
+import { composerModal, emptyState, field, formModal } from '@we/template-kit';
 
 import { boardLegend } from './Legend';
 import { clearOnEmptySelection, selectNode } from './NodeDetail';
@@ -320,67 +320,28 @@ export const boardBar: SchemaNode = {
 };
 
 /** Naming a board. `model.create` rather than the composer — a board is a container, not a document. */
-const newBoardModal: SchemaNode = {
-  type: '$if',
-  props: {
-    condition: { $local: 'newBoardOpen' },
-    then: {
-      type: 'we-modal',
-      props: { close: { $setLocal: 'newBoardOpen', value: false }, maxWidth: 'var(--we-layout-xs)', width: '100%' },
-      $localState: { boardName: { type: 'string', initial: '' } },
-      children: [
-        { type: 'we-text', props: { variant: 'heading-md' }, children: ['New board'] },
-        {
-          type: 'we-form-field',
-          props: { label: 'Name', width: '100%' },
-          children: [
-            {
-              type: 'we-input',
-              props: {
-                width: '100%',
-                placeholder: 'Ideas, retro, roadmap…',
-                value: { $local: 'boardName' },
-                onInput: { $setLocal: 'boardName', from: '$event.detail' },
-              },
-            },
-          ],
-        },
-        {
-          type: 'Row',
-          props: { gap: '300', ax: 'end', width: '100%' },
-          children: [
-            {
-              type: 'we-button',
-              props: { variant: 'ghost', onClick: { $setLocal: 'newBoardOpen', value: false } },
-              children: ['Cancel'],
-            },
-            {
-              type: 'we-button',
-              props: {
-                variant: 'primary',
-                // Nothing about a name is locally judgeable beyond its presence, so this gates on
-                // the value itself rather than dragging in the validation machinery.
-                disabled: { $not: { $local: 'boardName' } },
-                onClick: {
-                  $action: 'model.create',
-                  args: ['CollectionBlock', { kind: 'board', title: { $local: 'boardName' } }],
-                  // Straight into the new board: making one and then having to find it in a picker
-                  // is a step nobody wanted.
-                  onSuccess: [
-                    { $setLocal: 'boardId', from: '$result.id' },
-                    { $setLocal: 'newBoardOpen', value: false },
-                    { $setLocal: 'revision', by: 1 },
-                  ],
-                },
-              },
-              children: ['Create'],
-            },
-          ],
-        },
-      ],
-    },
+const newBoardModal: SchemaNode = formModal({
+  open: { $local: 'newBoardOpen' },
+  close: { $setLocal: 'newBoardOpen', value: false },
+  title: 'New board',
+  size: 'sm',
+  localState: { boardName: { type: 'string', initial: '' } },
+  children: [field({ name: 'boardName', label: 'Name', placeholder: 'Ideas, retro, roadmap…' })],
+  // Nothing about a name is locally judgeable beyond its presence, so this gates on the value
+  // itself rather than dragging in the validation machinery.
+  disabled: { $not: { $local: 'boardName' } },
+  submitLabel: 'Create',
+  submit: {
+    $action: 'model.create',
+    args: ['CollectionBlock', { kind: 'board', title: { $local: 'boardName' } }],
+    // Straight into the new board: making one and then having to find it in a picker is a step
+    // nobody wanted.
+    onSuccess: [
+      { $setLocal: 'boardId', from: '$result.id' },
+      { $setLocal: 'revision', by: 1 },
+    ],
   },
-};
+});
 
 /**
  * A card, composed.

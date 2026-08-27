@@ -1,5 +1,5 @@
 import type { SchemaNode, TemplateSchema } from '@we/schema-shared';
-import { emptyState, field } from '@we/template-kit';
+import { emptyState, field, formModal } from '@we/template-kit';
 
 /**
  * The space's tasks, as a board.
@@ -224,62 +224,48 @@ const column = (spec: (typeof COLUMNS)[number]): SchemaNode => ({
   ],
 });
 
-/** Creating a task by hand — the other way work gets onto this board, beside extraction. */
-const composer: SchemaNode = {
-  type: '$if',
-  props: {
-    condition: { $local: 'composerOpen' },
-    then: {
-      type: 'we-modal',
-      props: { close: { $setLocal: 'composerOpen', value: false } },
-      children: [
-        { type: 'we-text', props: { fontWeight: 'semibold' }, children: ['New task'] },
-        field({ name: 'draftTitle', label: 'What needs doing?', placeholder: 'Ship the docs' }),
-        field({ name: 'draftDescription', label: 'Notes', control: 'textarea', placeholder: 'Optional' }),
-        field({
-          name: 'draftStatus',
-          label: 'Status',
-          control: 'select',
-          props: { options: COLUMNS.map((spec) => ({ label: spec.label, value: spec.status })) },
-        }),
-        {
-          type: 'Row',
-          props: { ax: 'end', gap: '200' },
-          children: [
-            {
-              type: 'we-button',
-              props: { variant: 'ghost', onClick: { $setLocal: 'composerOpen', value: false } },
-              children: ['Cancel'],
-            },
-            {
-              type: 'we-button',
-              props: {
-                disabled: { $not: { $local: 'draftTitle' } },
-                onClick: {
-                  $action: 'model.create',
-                  args: [
-                    'TaskBlock',
-                    {
-                      title: { $local: 'draftTitle' },
-                      description: { $local: 'draftDescription' },
-                      status: { $local: 'draftStatus' },
-                    },
-                  ],
-                  onSuccess: [
-                    { $setLocal: 'composerOpen', value: false },
-                    { $setLocal: 'draftTitle', value: '' },
-                    { $setLocal: 'draftDescription', value: '' },
-                  ],
-                },
-              },
-              children: ['Add task'],
-            },
-          ],
-        },
-      ],
-    },
+/**
+ * Creating a task by hand — the other way work gets onto this board, beside extraction.
+ *
+ * The drafts are declared on the modal rather than on the view, so closing it discards them: the
+ * modal is mounted only while open, and remounting is what resets a draft. Written the other way
+ * they had to be cleared by hand in `onSuccess`, and `draftStatus` was the one that got forgotten —
+ * so a task filed under "Done" left the picker on "Done" for the next one.
+ */
+const composer: SchemaNode = formModal({
+  open: { $local: 'composerOpen' },
+  close: { $setLocal: 'composerOpen', value: false },
+  title: 'New task',
+  size: 'sm',
+  localState: {
+    draftTitle: { type: 'string', initial: '' },
+    draftDescription: { type: 'string', initial: '' },
+    draftStatus: { type: 'string', initial: 'todo' },
   },
-};
+  children: [
+    field({ name: 'draftTitle', label: 'What needs doing?', placeholder: 'Ship the docs' }),
+    field({ name: 'draftDescription', label: 'Notes', control: 'textarea', placeholder: 'Optional' }),
+    field({
+      name: 'draftStatus',
+      label: 'Status',
+      control: 'select',
+      props: { options: COLUMNS.map((spec) => ({ label: spec.label, value: spec.status })) },
+    }),
+  ],
+  disabled: { $not: { $local: 'draftTitle' } },
+  submitLabel: 'Add task',
+  submit: {
+    $action: 'model.create',
+    args: [
+      'TaskBlock',
+      {
+        title: { $local: 'draftTitle' },
+        description: { $local: 'draftDescription' },
+        status: { $local: 'draftStatus' },
+      },
+    ],
+  },
+});
 
 export const tasksView: TemplateSchema = {
   meta: {
@@ -291,11 +277,10 @@ export const tasksView: TemplateSchema = {
   },
   type: 'Column',
   props: { width: '100%', ax: 'center', p: '500' },
+  // The drafts live on the composer itself — see `composer`. Only the gate that opens it is here,
+  // since the button that sets it is in this view's header.
   $localState: {
     composerOpen: { type: 'boolean', initial: false },
-    draftTitle: { type: 'string', initial: '' },
-    draftDescription: { type: 'string', initial: '' },
-    draftStatus: { type: 'string', initial: 'todo' },
   },
   children: [
     {
