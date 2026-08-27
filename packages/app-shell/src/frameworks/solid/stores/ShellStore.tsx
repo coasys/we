@@ -631,6 +631,24 @@ export function ShellStoreProvider(props: ParentProps) {
       number so there is one subtraction in the codebase instead of one per centred bar.
     */
     root.setProperty('--we-chrome-center-x', 'calc((var(--we-chrome-left, 0px) - var(--we-chrome-right, 0px)) / 2)');
+    /*
+      Which way centred chrome spills when the content is narrower than it is.
+
+      A bar centred on the content and wider than it overhangs both sides equally, and the half that
+      crosses the sidebar leaves the window — which is what happened to the call controls whenever a
+      panel took enough of the right. The bars clamp to the content's edge now (a flex strip with
+      `justify-content: safe center`, which centres while the child fits and pins it to the strip's
+      start when it does not), so the only question left is which end is the start: a bar that
+      cannot fit has to cover *something*, and the least bad thing is the dock that squeezed it —
+      a panel's controls are all in its titlebar, so an overlap along its bottom covers content
+      rather than the way out. The sidebar is never the answer, being navigation and 80px wide.
+
+      Published as the `flex-direction` the strip should use, because that is the one property CSS
+      can switch a start edge with — a keyword like `left` would leave every consumer needing a
+      comparison CSS cannot make. The strip has a single child, so reversing it reorders nothing.
+      Ties go right, which is where panels open by default.
+    */
+    root.setProperty('--we-chrome-give', edges.left > edges.right ? 'row-reverse' : 'row');
   });
 
   /**
