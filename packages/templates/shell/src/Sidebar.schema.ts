@@ -187,31 +187,70 @@ const rail: SchemaNode = railShell({
     }),
 
     /*
-      The Apps group — embedded external apps, with WE itself as the first entry — is deliberately
-      not rendered.
+      Apps — embedded external apps, with WE itself as the first entry.
 
-      WE has absorbed most of what the one bundled app (Flux) was here for, and anything another
-      AD4M app offers is now better expressed as a template against the same data. So the entry
-      point goes, while the machinery stays: `appStore`, `PersistentAppFrames`, `resolveAppUrl` and
-      the seed's `apps` block are all untouched, and restoring this group is the only step needed to
-      bring the feature back.
+      ## Why the guard counts `apps` while the list iterates `appsWithWe`
 
-      This is the whole of the switch. `appStore.activateApp` had exactly one caller — the group
-      below, in its removed form — so with it gone there is no route into an app at all: no stale
-      control, no restored route, nothing to guard against. `activeAppId` stays null for the app's
-      lifetime, which is the state every reader of it already handles (the template stays visible,
-      the editor and chrome rail stay enabled).
+      Not a slip. `appsWithWe` prepends a `WE` sentinel whose row means *get back out of an app* —
+      which is meaningless when there is no app to be in. So whether the group exists at all is a
+      question about the **external** apps, and only the rows inside it include WE.
 
-      Two things worth knowing before reaching for a different lever:
+      Written the obvious way — counting the same list it iterates — the condition would be true in
+      every deployment, since the sentinel is always there. That was the actual behaviour until now:
+      a deployment configuring no apps still got an "Apps" group containing a lone "WE" row, which
+      is a heading over a control that does nothing.
 
-      - Emptying the seed's `apps` array does NOT hide this section. `appStore.appsWithWe` prepends
-        a `WE` sentinel, so a deployment with no apps configured still renders an "Apps" group with
-        a lone "WE" row in it.
-      - It does do something this does not, though: `PersistentAppFrames` mounts an iframe per
-        registered app eagerly, and a `display: none` ancestor does not stop an iframe fetching its
-        `src`. So a configured-but-unreachable app is still fetched at every boot. Removing this
-        group hides the feature; clearing the seed is what stops that request.
+      ## Why this is a condition rather than a deletion
+
+      WE's own seed no longer lists any apps, so this renders nothing here today. That is a
+      *deployment* decision and it belongs in the seed, which is the thing that describes a
+      deployment — this template is shared by all of them, and deleting the group outright would
+      take the capability away from a deployment that wants it rather than from ours that does not.
+
+      Removing the entry from the seed also stops the app being *fetched*: `PersistentAppFrames`
+      mounts an iframe per registered app eagerly, and a `display: none` ancestor does not stop an
+      iframe loading its `src` — so hiding this group alone would have left a remote request at
+      every boot for something nobody could reach.
     */
+    {
+      type: '$if',
+      props: {
+        condition: { $count: { items: { $store: 'appStore.apps' } } },
+        then: railGroup({
+          id: 'apps',
+          label: 'Apps',
+          children: [
+            {
+              type: '$each',
+              props: { items: { $store: 'appStore.appsWithWe' }, as: 'app' },
+              children: [
+                railItem({
+                  avatar: { src: '$app.image', name: '$app.name', hash: '$app.id' },
+                  label: '$app.name',
+                  active: {
+                    $if: {
+                      condition: { $eq: ['$app.id', 'we'] },
+                      then: { $not: { $store: 'appStore.activeAppId' } },
+                      else: { $eq: ['$app.id', { $store: 'appStore.activeAppId' }] },
+                    },
+                  },
+                  onClick: {
+                    $if: {
+                      condition: { $eq: ['$app.id', 'we'] },
+                      then: [{ $action: 'appStore.deactivateApp' }, { $action: 'shellStore.closeShellView' }],
+                      else: [
+                        { $action: 'shellStore.closeShellView' },
+                        { $action: 'appStore.activateApp', args: ['$app.id'] },
+                      ],
+                    },
+                  },
+                }),
+              ],
+            },
+          ],
+        }),
+      },
+    },
   ],
 });
 
