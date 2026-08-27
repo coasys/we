@@ -6117,6 +6117,9 @@
           "type": "object",
           "properties": ["email", "remainingCredits", "walletAddress", "freeAccess"]
         },
+        "isGuest": {
+          "type": "boolean"
+        },
         "isDevelopment": {
           "type": "boolean"
         },
@@ -6359,6 +6362,7 @@
             "canAdminister",
             "modules",
             "shareLink",
+            "guestLink",
             "defaultTemplateId",
             "defaultThemeId",
             "templateOverride",
@@ -6494,6 +6498,7 @@
         "navigateToSpace",
         "canAdministerSpace",
         "copyShareLink",
+        "copyGuestLink",
         "getSubgroupMessages",
         "exportCallTranscript",
         "removeSpaceFromGlobal",

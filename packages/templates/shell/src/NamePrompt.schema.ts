@@ -42,11 +42,25 @@ export const namePrompt: SchemaNode = formModal({
   size: 'sm',
   localState: { promptName: { type: 'string', initial: '' } },
   children: [
+    /*
+      Two ways to arrive here, and the explanation is not interchangeable.
+
+      An agent who came through the launcher or Flux has an identity that predates WE, and saying
+      so is the whole answer to "why is this app asking me this?". A guest's identity was minted by
+      the link they clicked *by* WE, moments ago — so that sentence is not merely unhelpful there,
+      it is untrue, and it invites them to go looking for an account they do not have.
+    */
     {
       type: 'we-text',
       props: { color: 'text-muted' },
       children: [
-        'Your account was set up outside WE, so we do not have a name for you yet. This is what other people will see on your posts and messages.',
+        {
+          $if: {
+            condition: { $store: 'sessionStore.isGuest' },
+            then: 'You joined as a guest, so this is a brand-new identity with no name on it yet. This is what other people in the space will see on your posts and messages.',
+            else: 'Your account was set up outside WE, so we do not have a name for you yet. This is what other people will see on your posts and messages.',
+          },
+        },
       ],
     },
     field({ name: 'promptName', label: 'Name', placeholder: 'Name...' }),

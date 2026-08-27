@@ -1,3 +1,4 @@
+import { buildGuestLink } from '@shared/guestLink';
 import { containmentPredicate, gatherTranscriptTurns, type TurnModel } from '@shared/interpretation/transcriptTurns';
 import { provideModuleHostServices } from '@shared/registries/moduleHostServices';
 import { moduleRegistry, moduleStores, type ModuleSurface, moduleSurface } from '@shared/registries/moduleRegistry';
@@ -10,7 +11,7 @@ import {
   syncSpaceToParent,
 } from '@shared/spaceSync';
 import { resolveSpaceTheme, type ThemeResolutionInput } from '@shared/themeResolution';
-import { deriveSlug } from '@shared/utils';
+import { copyText, deriveSlug } from '@shared/utils';
 import type { ViewSetting } from '@shared/viewResolution';
 import {
   activeSections,
@@ -135,6 +136,14 @@ export interface SpaceListEntry {
    * into. Both are accepted by `joinSpace`, so whichever a recipient has, it works.
    */
   shareLink: string;
+  /**
+   * A guest invite link that bypasses auth UI entirely.
+   *
+   * Empty when the session has no server URL (local executor — unreachable from outside) or when
+   * the space has no shared id. The link encodes both the space and the host, so a guest clicking
+   * it connects to the right node and joins the right space with no choices to make.
+   */
+  guestLink: string;
 }
 
 /**
@@ -628,6 +637,8 @@ export interface SpaceStore {
   canAdministerSpace: (uuid: string) => boolean;
   /** Copy a space's share link to the clipboard. No-op for a space that has none. */
   copyShareLink: (uuid: string) => Promise<void>;
+  /** Copy a guest invite link — auto-creates account, auto-joins the space. No-op without a host. */
+  copyGuestLink: (uuid: string) => Promise<void>;
   getSubgroupMessages: (subgroupId: string) => Promise<FluxSubgroupMessage[]>;
   /**
    * Write a call's transcript to a `.txt` file and download it.
@@ -781,6 +792,21 @@ export function SpaceStoreProvider(props: ParentProps) {
     return onWeb ? `${window.location.origin}/space/${ds.sharedId}` : (ds.sharedUri ?? ds.sharedId);
   };
 
+  /**
+   * A guest invite link: `/join/<sharedId>?host=<serverUrl>`.
+   *
+   * The rule itself is `buildGuestLink`, which the web entry point's parser is the inverse of — a
+   * link this app offers has to be one this app would accept. Both halves have to be reachable by
+   * whoever *receives* it, which is more than "has a server URL": `session.serverUrl()` is set from
+   * the connection for every connector, a local executor included, so the earlier check let a
+   * desktop-shaped deployment publish `http://localhost:12000` as an invitation.
+   */
+  const guestLinkFor = (ds: AppDataset): string => {
+    const onWeb = typeof window !== 'undefined' && window.location.protocol.startsWith('http');
+    if (!onWeb) return '';
+    return buildGuestLink({ origin: window.location.origin, serverUrl: session.serverUrl(), sharedId: ds.sharedId });
+  };
+
   /** The Space model behind a dataset id, for resolving what an override falls back to. */
   const spaceForUuid = (uuid: string): Space | undefined => {
     const ds = datasetStore.datasets().find((d) => d.id === uuid);
@@ -919,6 +945,7 @@ export function SpaceStoreProvider(props: ParentProps) {
         templateOverride: templateOverrideFor(ds.id),
         themeOverride: themeOverrideFor(ds.id),
         shareLink: shareLinkFor(ds),
+        guestLink: guestLinkFor(ds),
       };
     }),
   );
@@ -1068,7 +1095,13 @@ export function SpaceStoreProvider(props: ParentProps) {
       // (the dataset handle's own sharedUrl is not updated in-place).
       if (access === 'shared') {
         if (!lifecycle.publish) throw new Error('This backend cannot publish shared datasets.');
-        publishedSharedId = (await lifecycle.publish(spaceRef.id)).sharedId;
+        const published = await lifecycle.publish(spaceRef.id);
+        publishedSharedId = published.sharedId;
+        // Patch the ref so trackDataset sees the sharedId — the proxy's sharedUrl is not
+        // updated in-place by publish, so the ref captured at create time would otherwise
+        // stay empty and shareLinkFor / guestLinkFor would return ''.
+        spaceRef.sharedId = published.sharedId;
+        spaceRef.sharedUri = published.uri;
       }
 
       // Process avatar image if provided
@@ -2161,13 +2194,25 @@ export function SpaceStoreProvider(props: ParentProps) {
   async function copyShareLink(uuid: string): Promise<void> {
     const link = spaceList().find((s) => s.uuid === uuid)?.shareLink;
     if (!link) return;
-    try {
-      await navigator.clipboard.writeText(link);
-      toastService.success('Link copied');
-    } catch (error) {
-      console.error('SpaceStore: could not copy share link', error);
-      toastService.error('Could not copy the link');
+    if (await copyText(link)) toastService.success('Link copied');
+    else toastService.error('Could not copy the link');
+  }
+
+  /**
+   * Copy the guest invite link — the zero-friction entry for someone without an account.
+   *
+   * The guest link encodes both the space and the host URL, so clicking it connects the guest
+   * to the right node and auto-joins the space with no auth UI. Empty when there is no reachable
+   * server URL (local executor).
+   */
+  async function copyGuestLink(uuid: string): Promise<void> {
+    const link = spaceList().find((s) => s.uuid === uuid)?.guestLink;
+    if (!link) {
+      toastService.error('Guest links require a hosted node');
+      return;
     }
+    if (await copyText(link)) toastService.success('Guest invite link copied');
+    else toastService.error('Could not copy the link');
   }
 
   /**
@@ -2964,6 +3009,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     navigateToSpace,
     canAdministerSpace,
     copyShareLink,
+    copyGuestLink,
     getSubgroupMessages,
     exportCallTranscript,
     removeSpaceFromGlobal,

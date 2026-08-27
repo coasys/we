@@ -19,5 +19,8 @@ export * from './initializeIntegrations';
 // Utils
 export * from './utils';
 
+// Guest invite links — what one is, in both directions
+export * from './guestLink';
+
 // Prompts
 // schemaContext is now provided by @we/ai-context

@@ -86,6 +86,16 @@ export interface BackendInitResult {
   /** This agent's account with that node, when it keeps one. See {@link BackendAccountInfo}. */
   account?: BackendAccountInfo;
   /**
+   * This session's identity was minted by the connector itself, for somebody who arrived without
+   * one — a guest, in the sense the invite link means.
+   *
+   * Distinct from `host` being present, which only says the node belongs to somebody else: an
+   * ordinary member of a hosted deployment has a host and is not a guest. What this answers is
+   * "did this person choose this identity, or did a link create one for them" — which changes what
+   * the app should say to them, starting with why it is asking for a name.
+   */
+  guest?: boolean;
+  /**
    * End this app's connection to the backend, for backends where the session *is* the connection.
    *
    * Supplied by the connector rather than sitting on a port, because it is the connector that knows

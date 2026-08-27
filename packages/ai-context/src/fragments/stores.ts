@@ -24,6 +24,7 @@ export const storeEntries: StoreEntry[] = [
         properties: ['id', 'name', 'description', 'imageUrl', 'location', 'url', 'computeSpecs', 'aiModels', 'rates'],
       },
       hostAccount: { type: 'object', properties: ['email', 'remainingCredits', 'walletAddress', 'freeAccess'] },
+      isGuest: { type: 'boolean' },
     },
     actions: ['login', 'createAgent', 'clearPasswordError', 'finishSetup', 'retryBoot', 'logout'],
   },
@@ -308,6 +309,7 @@ export const storeEntries: StoreEntry[] = [
           'canAdminister',
           'modules',
           'shareLink',
+          'guestLink',
           'defaultTemplateId',
           'defaultThemeId',
           'templateOverride',
@@ -368,6 +370,7 @@ export const storeEntries: StoreEntry[] = [
       'navigateToSpace',
       'canAdministerSpace',
       'copyShareLink',
+      'copyGuestLink',
       'getSubgroupMessages',
       'exportCallTranscript',
       'setModuleEnabled',
@@ -542,6 +545,8 @@ export function generateStoresText(entries: StoreEntry[]): string {
         host: 'BackendHostInfo | undefined — the node this session runs against when it is somebody\'s hosting rather than this machine (id, name, description, imageUrl, location, url, computeSpecs, aiModels, rates). Undefined on desktop and on a local executor, so its presence is also the answer to "am I a guest here?" — gate any "connected to" UI on it. `aiModels` comes from the host directory and needs no capability, so it answers "can this node transcribe?" even where the executor refuses to list its models',
         hostAccount:
           'BackendAccountInfo | undefined — this agent\'s account with that node (email, remainingCredits, walletAddress, freeAccess). Check freeAccess before showing a balance: on a free node the credit figure means nothing and "0" reads as an account that has run dry',
+        isGuest:
+          'boolean — this identity was minted for somebody who arrived on a guest invite link rather than chosen by them. NOT the same question as `host`: an ordinary member of a hosted deployment has a host and is not a guest. Read it where the app explains itself to the person using it — why it is asking for a name, what "log out" would mean for an identity with no other way back',
         isDevelopment:
           'boolean — whether this is a development build. A fact about the build. Do NOT gate developer-only UI on it; gate on devTools, which is the same answer plus a switch',
         devTools:
@@ -900,6 +905,8 @@ export function generateStoresText(entries: StoreEntry[]): string {
         setSpaceDefaultTheme: '(themeId: string, spaceUuid?): sets the theme members see when they enter that space',
         copyShareLink:
           "(uuid: string): copies that space's share link to the clipboard, with a toast either way. No-op for a personal space, which has no global id and so no shareable link — read `spaceList[].shareLink` to decide whether to offer the control at all",
+        copyGuestLink:
+          "(uuid: string): copies that space's guest invite link — a URL that creates an account on the space's host and joins, with no sign-up and no download. Empty, and the control hidden, unless BOTH this app's origin and the node's URL are addresses a recipient could reach: a loopback address on either half resolves to the reader's own machine. Read `spaceList[].guestLink` to decide whether to offer it; `shareLink` is the one for somebody who already has WE",
         canAdministerSpace:
           '(uuid: string): whether this agent may change what every member of that space sees — true for a personal space, and for a shared one they authored. A UI affordance for deciding whether to offer the controls, NOT enforcement: a shared space is a neighbourhood every member can write to. Ask by name rather than comparing author to $me.did, so the answer can grow (multiple admins, roles) without every template changing',
         getSubgroupMessages:
