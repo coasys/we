@@ -154,7 +154,24 @@ const styles = css`
     object-fit: cover;
   }
 
+  /*
+    Sized from the avatar, not from whatever it is sitting in.
+
+    This set no font-size at all, so the letters inherited one — and in the sidebar the avatar sits
+    inside a we-button at size lg, whose font-size is 20px, in a 32px disc. Measured at that size: a
+    single letter takes 46% of the disc and reads fine, a pair takes 81% and looks squashed, and the
+    widest pair takes 119% — wider than the circle containing it. Which is why only the two-letter
+    spaces showed it, and why nobody had noticed the one-letter ones were oversized too.
+
+    0.4 is chosen against the worst case rather than the common one: the widest pair lands at 76% of
+    the disc, with a single letter at 30%. The icon branch above already scales this way at 0.6 —
+    a glyph is one mark and can afford to fill more than two letters can.
+
+    line-height so the box is the letters and nothing more; the disc centres it.
+  */
   [part='initials'] {
+    font-size: calc(var(--we-avatar-size) * 0.4);
+    line-height: 1;
     font-weight: 600;
     text-transform: uppercase;
   }
