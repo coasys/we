@@ -186,40 +186,32 @@ const rail: SchemaNode = railShell({
       ],
     }),
 
-    // Apps — WE is the first entry (sentinel from appStore.appsWithWe), followed by external apps.
-    railGroup({
-      id: 'apps',
-      label: 'Apps',
-      children: [
-        {
-          type: '$each',
-          props: { items: { $store: 'appStore.appsWithWe' }, as: 'app' },
-          children: [
-            railItem({
-              avatar: { src: '$app.image', name: '$app.name', hash: '$app.id' },
-              label: '$app.name',
-              active: {
-                $if: {
-                  condition: { $eq: ['$app.id', 'we'] },
-                  then: { $not: { $store: 'appStore.activeAppId' } },
-                  else: { $eq: ['$app.id', { $store: 'appStore.activeAppId' }] },
-                },
-              },
-              onClick: {
-                $if: {
-                  condition: { $eq: ['$app.id', 'we'] },
-                  then: [{ $action: 'appStore.deactivateApp' }, { $action: 'shellStore.closeShellView' }],
-                  else: [
-                    { $action: 'shellStore.closeShellView' },
-                    { $action: 'appStore.activateApp', args: ['$app.id'] },
-                  ],
-                },
-              },
-            }),
-          ],
-        },
-      ],
-    }),
+    /*
+      The Apps group — embedded external apps, with WE itself as the first entry — is deliberately
+      not rendered.
+
+      WE has absorbed most of what the one bundled app (Flux) was here for, and anything another
+      AD4M app offers is now better expressed as a template against the same data. So the entry
+      point goes, while the machinery stays: `appStore`, `PersistentAppFrames`, `resolveAppUrl` and
+      the seed's `apps` block are all untouched, and restoring this group is the only step needed to
+      bring the feature back.
+
+      This is the whole of the switch. `appStore.activateApp` had exactly one caller — the group
+      below, in its removed form — so with it gone there is no route into an app at all: no stale
+      control, no restored route, nothing to guard against. `activeAppId` stays null for the app's
+      lifetime, which is the state every reader of it already handles (the template stays visible,
+      the editor and chrome rail stay enabled).
+
+      Two things worth knowing before reaching for a different lever:
+
+      - Emptying the seed's `apps` array does NOT hide this section. `appStore.appsWithWe` prepends
+        a `WE` sentinel, so a deployment with no apps configured still renders an "Apps" group with
+        a lone "WE" row in it.
+      - It does do something this does not, though: `PersistentAppFrames` mounts an iframe per
+        registered app eagerly, and a `display: none` ancestor does not stop an iframe fetching its
+        `src`. So a configured-but-unreachable app is still fetched at every boot. Removing this
+        group hides the feature; clearing the seed is what stops that request.
+    */
   ],
 });
 
