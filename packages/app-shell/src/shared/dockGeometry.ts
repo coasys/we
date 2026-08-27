@@ -890,6 +890,50 @@ export function columnLayout(
 }
 
 /**
+ * The seams in a floating column, drawn as lines while a panel is over them.
+ *
+ * `insertionSlots`' sibling, and the axis is the whole difference between them: a strip's lines run
+ * *across* the region because its members stack inward from the edge, and a column's run *along* it
+ * because its members share the edge. Same convention, same reason — a drop that could only report
+ * an edge can only ever append, so the gaps become targets and the drop reports an index.
+ *
+ * An empty edge gets nothing. A column is started by snapping to the edge, which the eight targets
+ * already offer; there is no seam to draw until there is something to sit beside.
+ */
+export function columnSlots(edge: Exclude<DockEdge, null>, boxes: Rect[]): { index: number; hit: Rect; line: Rect }[] {
+  if (boxes.length === 0) return [];
+
+  const vertical = edge === 'left' || edge === 'right';
+  const sorted = [...boxes].sort((a, b) => (vertical ? a.y - b.y : a.x - b.x));
+
+  // Spanning the column itself rather than the region: a line the width of the screen would be
+  // describing a boundary that is not there, and the column is where the panel is going.
+  const near = Math.min(...sorted.map((box) => (vertical ? box.x : box.y)));
+  const far = Math.max(...sorted.map((box) => (vertical ? box.x + box.w : box.y + box.h)));
+
+  const GAP_TARGET = 16;
+  const LINE = 3;
+
+  const box = (position: number, thickness: number): Rect =>
+    vertical
+      ? { x: near, y: position - thickness / 2, w: far - near, h: thickness }
+      : { x: position - thickness / 2, y: near, w: thickness, h: far - near };
+
+  const at = (position: number, index: number) => ({
+    index,
+    hit: box(position, GAP_TARGET),
+    line: box(position, LINE),
+  });
+
+  const start = vertical ? sorted[0].y : sorted[0].x;
+  // One before the first member, then one after each — n + 1 seats for n members.
+  return [
+    at(start - DOCK_GAP_PX / 2, 0),
+    ...sorted.map((rect, index) => at((vertical ? rect.y + rect.h : rect.x + rect.w) + DOCK_GAP_PX / 2, index + 1)),
+  ];
+}
+
+/**
  * Resolve one panel into a box.
  *
  * Three shapes, and which one you get is decided by the placement rather than by a mode the module

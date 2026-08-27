@@ -11,6 +11,7 @@ import {
   CHROME_RAIL_PX,
   columnLayout,
   columnMembers,
+  columnSlots,
   type ContentInset,
   contentInset,
   displaces,
@@ -200,7 +201,16 @@ export interface ShellStore {
    * Empty unless a panel is being dragged and a strip exists to join.
    */
   insertSlots: Accessor<
-    { index: number; edge: string; top: string; left: string; width: string; height: string; hit: Rect }[]
+    {
+      index: number;
+      edge: string;
+      mode: 'strip' | 'column';
+      top: string;
+      left: string;
+      width: string;
+      height: string;
+      hit: Rect;
+    }[]
   >;
   /** The slot a drop would take right now, as `<edge>:<index>`, or null. */
   activeInsert: Accessor<string | null>;
@@ -212,7 +222,7 @@ export interface ShellStore {
    * The stacking order used to be the registry's, so a panel dragged out of a strip returned to the
    * slot it left however far along the edge it was dropped. This is the answer a drop can give.
    */
-  insertDock: (id: string, edge: Exclude<DockEdge, null>, position: number) => void;
+  insertDock: (id: string, edge: Exclude<DockEdge, null>, position: number, mode?: 'strip' | 'column') => void;
   /**
    * Cover the content region, or go back to being a card.
    *
@@ -1053,7 +1063,7 @@ export function ShellStoreProvider(props: ParentProps) {
         .map((candidate) => ({ candidate, area: overlapArea(next, candidate.hit) }))
         .filter((entry) => entry.area > 0)
         .sort((a, b) => b.area - a.area)[0]?.candidate;
-      setActiveInsert(slot ? `${slot.edge}:${slot.index}` : null);
+      setActiveInsert(slot ? `${slot.mode}:${slot.edge}:${slot.index}` : null);
       setActiveSnap(slot ? null : snapCandidate(next, viewport(), occupiedForId(id), floatChrome()));
       writePlacement(id, next);
     },
@@ -1075,8 +1085,8 @@ export function ShellStoreProvider(props: ParentProps) {
       const current = placements()[id] ?? dragOrigin;
 
       if (dragOrigin && current && insert) {
-        const [edge, position] = insert.split(':');
-        store.insertDock(id, edge as Exclude<DockEdge, null>, Number(position));
+        const [mode, edge, position] = insert.split(':');
+        store.insertDock(id, edge as Exclude<DockEdge, null>, Number(position), mode as 'strip' | 'column');
       } else if (dragOrigin && current && snap) {
         writePlacement(id, { ...current, snap, displace: false });
       }
@@ -1099,17 +1109,23 @@ export function ShellStoreProvider(props: ParentProps) {
      * The panel keeps whatever thickness it had. Its card size is untouched too, so pulling it back
      * out returns it to the shape it was before it ever joined.
      */
-    insertDock: (id, edge, position) => {
+    insertDock: (id, edge, position, mode = 'strip') => {
       const requests = dockRequests();
       const request = requests.find((entry) => entry.id === id);
       if (!request?.edge) return;
 
-      const strip = requests
-        .filter((entry) => entry.id !== id && entry.edge && !dockGeometry()[entry.id]?.floating)
+      /*
+        A strip is the panels *displacing* this edge; a column is the ones *floating* on it. Same
+        renumbering either way — the difference is only which set the dropped panel joins, and
+        whether landing there means taking room.
+      */
+      const neighbours = requests
+        .filter((entry) => entry.id !== id && entry.edge && !placementOf(entry).maximised)
+        .filter((entry) => (dockGeometry()[entry.id]?.floating ?? true) === (mode === 'column'))
         .filter((entry) => edgeOfSnap(placementOf(entry).snap) === edge)
         .sort((a, b) => (placementOf(a).order ?? 0) - (placementOf(b).order ?? 0));
 
-      const ids = strip.map((entry) => entry.id);
+      const ids = neighbours.map((entry) => entry.id);
       ids.splice(Math.max(0, Math.min(position, ids.length)), 0, id);
 
       ids.forEach((entryId, order) => {
@@ -1119,7 +1135,7 @@ export function ShellStoreProvider(props: ParentProps) {
         writePlacement(entryId, {
           ...placement,
           order,
-          ...(entryId === id ? { snap: edge, displace: true, maximised: false } : {}),
+          ...(entryId === id ? { snap: edge, displace: mode === 'strip', maximised: false } : {}),
         });
       });
     },
@@ -1165,11 +1181,20 @@ export function ShellStoreProvider(props: ParentProps) {
           .filter((request) => edgeOfSnap(placementOf(request).snap) === edge)
           .map((request) => rectOf(boxes[request.id], viewport(), placementOf(request)));
 
-        // An empty edge still offers its one slot — that is how a strip gets started. It used to
-        // return nothing here, so an edge with no panels on it could only ever be *floated* against.
-        return insertionSlots(edge, inStrip, viewport(), occupied).map((slot) => ({
+        /*
+          The floats already sharing this edge — a *column*, whose seams run along the edge rather
+          than across it. Read from the resolved boxes, so the lines land on the seats the column
+          actually has rather than on the sizes the placements asked for.
+        */
+        const inColumn = dockRequests()
+          .filter((request) => request.id !== moving && request.edge && dockGeometry()[request.id]?.floating)
+          .filter((request) => edgeOfSnap(placementOf(request).snap) === edge && !placementOf(request).maximised)
+          .map((request) => rectOf(boxes[request.id], viewport(), placementOf(request)));
+
+        const draw = (mode: 'strip' | 'column', slot: { index: number; hit: Rect; line: Rect }) => ({
           index: slot.index,
           edge,
+          mode,
           // The line, not the target: the frame draws what these describe, and the hit box it is
           // measured against stays here. Drawing the target put a 10px bar a dozen pixels off the
           // boundary it was describing.
@@ -1178,7 +1203,15 @@ export function ShellStoreProvider(props: ParentProps) {
           width: `${slot.line.w}px`,
           height: `${slot.line.h}px`,
           hit: slot.hit,
-        }));
+        });
+
+        // An empty edge still offers its one strip slot — that is how a strip gets started. It used
+        // to return nothing here, so an edge with no panels on it could only ever be *floated*
+        // against. A column needs no such slot: snapping to the edge starts one.
+        return [
+          ...insertionSlots(edge, inStrip, viewport(), occupied).map((slot) => draw('strip', slot)),
+          ...columnSlots(edge, inColumn).map((slot) => draw('column', slot)),
+        ];
       });
     },
 

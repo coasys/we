@@ -16,6 +16,7 @@ import {
   CHROME_RAIL_PX,
   columnLayout,
   columnMembers,
+  columnSlots,
   type ContentInset,
   contentInset,
   displaces,
@@ -35,6 +36,7 @@ import {
   PANEL_CHROME,
   RAIL_TOP_PX,
   railBand,
+  type Rect,
   rectOf,
   resolveDock,
   seedPlacement,
@@ -1121,5 +1123,49 @@ describe('who is in a column', () => {
     const second = member({ order: 0 });
 
     expect(columnMembers([first, second], 'left')).toEqual([second, first]);
+  });
+});
+
+describe('the seams in a floating column', () => {
+  const box = (y: number, h = 200): Rect => ({ x: 100, y, w: 320, h });
+
+  it('offers one seat more than it has members', () => {
+    expect(columnSlots('left', [box(20), box(240)])).toHaveLength(3);
+  });
+
+  it('runs its lines along the edge, not across the region', () => {
+    const [first] = columnSlots('left', [box(20)]);
+
+    // A strip's lines span the region because its members stack inward; a column's span the column,
+    // because that is the boundary they are describing.
+    expect(first.line.w).toBe(320);
+    expect(first.line.h).toBeLessThan(10);
+  });
+
+  it('flips the axis for a top or bottom edge', () => {
+    const [first] = columnSlots('top', [{ x: 100, y: 20, w: 320, h: 200 }]);
+
+    expect(first.line.h).toBe(200);
+    expect(first.line.w).toBeLessThan(10);
+  });
+
+  it('puts a seat above the first member and below each one', () => {
+    const slots = columnSlots('left', [box(100), box(320)]);
+
+    expect(slots[0].line.y).toBeLessThan(100);
+    expect(slots[1].line.y).toBeGreaterThan(300);
+    expect(slots[2].line.y).toBeGreaterThan(520);
+  });
+
+  it('gives a hit box far thicker than the line it draws', () => {
+    const [slot] = columnSlots('left', [box(20)]);
+
+    // A target you can land on while dragging has to be thicker than a seam anybody wants to look at.
+    expect(slot.hit.h).toBeGreaterThan(slot.line.h * 4);
+  });
+
+  it('draws nothing for an edge with no column on it', () => {
+    // A column is started by snapping to the edge, which the eight targets already offer.
+    expect(columnSlots('left', [])).toEqual([]);
   });
 });

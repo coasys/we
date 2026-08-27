@@ -666,7 +666,10 @@ function insertLines(id: string): SchemaNode {
               bg: {
                 $if: {
                   condition: {
-                    $eq: [{ $store: 'shellStore.activeInsert' }, { $concat: ['$slot.edge', ':', '$slot.index'] }],
+                    $eq: [
+                      { $store: 'shellStore.activeInsert' },
+                      { $concat: ['$slot.mode', ':', '$slot.edge', ':', '$slot.index'] },
+                    ],
                   },
                   then: 'accent',
                   else: 'surface-active',
@@ -675,7 +678,10 @@ function insertLines(id: string): SchemaNode {
               opacity: {
                 $if: {
                   condition: {
-                    $eq: [{ $store: 'shellStore.activeInsert' }, { $concat: ['$slot.edge', ':', '$slot.index'] }],
+                    $eq: [
+                      { $store: 'shellStore.activeInsert' },
+                      { $concat: ['$slot.mode', ':', '$slot.edge', ':', '$slot.index'] },
+                    ],
                   },
                   then: 1,
                   else: 0.4,
