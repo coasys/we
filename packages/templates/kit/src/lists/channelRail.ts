@@ -139,7 +139,7 @@ export function channelRail(opts: ChannelRailOptions): SchemaNode {
       {
         type: '$if',
         props: {
-          condition: { $count: { items: { $local: 'channelRows' } } },
+          condition: { $: 'count(local.channelRows)' },
           then: {
             type: '$each',
             props: { items: { $local: 'channelRows' }, as: 'channel' },
@@ -192,7 +192,7 @@ export function channelRail(opts: ChannelRailOptions): SchemaNode {
        */
       {
         type: '$if',
-        props: { condition: { $not: { $count: { items: { $local: 'categoryRows' } } } }, then: flat },
+        props: { condition: { $: '!count(local.categoryRows)' }, then: flat },
       },
       {
         type: '$each',

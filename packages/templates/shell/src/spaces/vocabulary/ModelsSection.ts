@@ -106,13 +106,7 @@ const removeMemberButton: SchemaNode = {
 const memberNameInput: SchemaNode = {
   type: 'we-input',
   props: {
-    placeholder: {
-      $if: {
-        condition: { $eq: ['$member.kind', 'relationship'] },
-        then: 'Relationship name…',
-        else: 'Property name…',
-      },
-    },
+    placeholder: { $: "member.kind == 'relationship' ? 'Relationship name…' : 'Property name…'" },
     width: '160px',
     size: 'sm',
     value: '$member.name',
@@ -137,13 +131,7 @@ const expandToggle: SchemaNode = {
     {
       type: 'we-icon',
       props: {
-        name: {
-          $if: {
-            condition: { $in: ['$member.rowId', { $store: 'shapeStore.expandedMembers' }] },
-            then: 'caret-up',
-            else: 'caret-down',
-          },
-        },
+        name: { $: "member.rowId in shapeStore.expandedMembers ? 'caret-up' : 'caret-down'" },
       },
     },
   ],
@@ -161,7 +149,7 @@ const expandToggle: SchemaNode = {
 const defaultValueControl: SchemaNode = {
   type: '$if',
   props: {
-    condition: { $eq: ['$member.type', 'number'] },
+    condition: { $: "member.type == 'number'" },
     then: {
       type: 'we-number-input',
       props: {
@@ -179,7 +167,7 @@ const defaultValueControl: SchemaNode = {
     else: {
       type: '$if',
       props: {
-        condition: { $eq: ['$member.type', 'date'] },
+        condition: { $: "member.type == 'date'" },
         then: {
           type: 'we-date-picker',
           props: {
@@ -200,7 +188,7 @@ const defaultValueControl: SchemaNode = {
             // Both the closed vocabularies: a select's declared options, and a boolean's true/false.
             // Each list carries its own "None" entry, since unset is a third answer the
             // manifest distinguishes from false.
-            condition: { $or: [{ $eq: ['$member.type', 'select'] }, { $eq: ['$member.type', 'boolean'] }] },
+            condition: { $: "member.type == 'select' || member.type == 'boolean'" },
             then: {
               type: 'we-select',
               props: {
@@ -213,13 +201,7 @@ const defaultValueControl: SchemaNode = {
                 placeholder: 'None',
                 // Through the store rather than off `$member`: the row is mutated in place while
                 // its values are typed, so anything read from the row itself cannot update.
-                options: {
-                  $find: {
-                    items: { $store: 'shapeStore.memberOptions' },
-                    where: { rowId: '$member.rowId' },
-                    select: 'options',
-                  },
-                },
+                options: { $: 'find(shapeStore.memberOptions, { rowId: member.rowId }).options' },
                 value: '$member.defaultValue',
                 onChange: {
                   $action: 'shapeStore.setMemberField',
@@ -258,7 +240,7 @@ const defaultValueControl: SchemaNode = {
 const propertyDetail: SchemaNode = {
   type: '$if',
   props: {
-    condition: { $in: ['$member.rowId', { $store: 'shapeStore.expandedMembers' }] },
+    condition: { $: 'member.rowId in shapeStore.expandedMembers' },
     enterTransition: [
       { type: 'reveal', duration: 200 },
       { type: 'fade', duration: 150 },
@@ -270,7 +252,7 @@ const propertyDetail: SchemaNode = {
         {
           type: '$if',
           props: {
-            condition: { $eq: ['$member.type', 'select'] },
+            condition: { $: "member.type == 'select'" },
             then: {
               type: 'we-form-field',
               props: { label: 'Allowed values', description: 'Comma-separated. The only values this field accepts.' },
@@ -418,9 +400,7 @@ const propertyRow: SchemaNode = {
         {
           type: '$if',
           props: {
-            condition: {
-              $and: [{ $not: { $in: ['$member.rowId', { $store: 'shapeStore.expandedMembers' }] } }, '$member.hint'],
-            },
+            condition: { $: '!(member.rowId in shapeStore.expandedMembers) && member.hint' },
             enterTransition: [
               { type: 'reveal', duration: 200 },
               { type: 'fade', duration: 150 },
@@ -536,7 +516,7 @@ const memberRow: SchemaNode = {
     {
       type: '$if',
       props: {
-        condition: { $eq: ['$member.kind', 'relationship'] },
+        condition: { $: "member.kind == 'relationship'" },
         then: relationshipRow,
         else: propertyRow,
       },
@@ -558,9 +538,7 @@ const memberRow: SchemaNode = {
 const generateButton: SchemaNode = {
   type: '$if',
   props: {
-    condition: {
-      $and: [{ $not: { $store: 'shapeStore.editingShapeId' } }, { $store: 'shapeStore.aiAvailable' }],
-    },
+    condition: { $: '!shapeStore.editingShapeId && shapeStore.aiAvailable' },
     then: {
       type: 'we-button',
       props: {
@@ -570,24 +548,14 @@ const generateButton: SchemaNode = {
         // 'none' is the only state with nothing to work from. A generation that would discard
         // written rows stays clickable and asks instead — refusing the click outright is what made
         // the first attempt the only attempt.
-        disabled: {
-          $or: [{ $store: 'shapeStore.generating' }, { $eq: [{ $store: 'shapeStore.generateIntent' }, 'none'] }],
-        },
+        disabled: { $: "shapeStore.generating || shapeStore.generateIntent == 'none'" },
         onClick: { $action: 'shapeStore.requestGenerateFields' },
       },
       children: [
         { type: 'we-icon', props: { name: 'sparkle' } },
         {
           type: 'we-text',
-          children: [
-            {
-              $if: {
-                condition: { $in: [{ $store: 'shapeStore.generateIntent' }, ['regenerate', 'replace']] },
-                then: 'Regenerate',
-                else: 'Generate',
-              },
-            },
-          ],
+          children: [{ $: "shapeStore.generateIntent in ['regenerate', 'replace'] ? 'Regenerate' : 'Generate'" }],
         },
       ],
     },
@@ -609,15 +577,7 @@ const shapeWizardModal: SchemaNode = {
       type: 'we-text',
       slot: 'header',
       props: { variant: 'heading-md', textAlign: 'center' },
-      children: [
-        {
-          $if: {
-            condition: { $store: 'shapeStore.editingShapeId' },
-            then: 'Edit model',
-            else: 'New model',
-          },
-        },
-      ],
+      children: [{ $: "shapeStore.editingShapeId ? 'Edit model' : 'New model'" }],
     },
     {
       type: 'Column',
@@ -723,7 +683,7 @@ const shapeWizardModal: SchemaNode = {
             {
               type: '$if',
               props: {
-                condition: { $not: { $count: { items: { $store: 'shapeStore.shapeDraft.members' } } } },
+                condition: { $: '!count(shapeStore.shapeDraft.members)' },
                 then: {
                   type: 'Column',
                   props: {
@@ -831,13 +791,7 @@ const shapeWizardModal: SchemaNode = {
                 size: 'sm',
                 width: '240px',
                 options: { $store: 'shapeStore.identityOptions' },
-                value: {
-                  $if: {
-                    condition: { $store: 'shapeStore.shapeDraft.identityMember' },
-                    then: { $store: 'shapeStore.shapeDraft.identityMember' },
-                    else: 'none',
-                  },
-                },
+                value: { $: "shapeStore.shapeDraft.identityMember ? shapeStore.shapeDraft.identityMember : 'none'" },
                 onChange: { $action: 'shapeStore.setIdentityMember', args: ['$arg.detail'] },
               },
             },
@@ -846,7 +800,7 @@ const shapeWizardModal: SchemaNode = {
         {
           type: '$if',
           props: {
-            condition: { $count: { items: { $store: 'shapeStore.draftErrors' } } },
+            condition: { $: 'count(shapeStore.draftErrors)' },
             then: {
               type: 'Column',
               props: { gap: '100' },
@@ -880,15 +834,7 @@ const shapeWizardModal: SchemaNode = {
             disabled: { $store: 'shapeStore.savingShape' },
             onClick: { $action: 'shapeStore.saveShapeDraft' },
           },
-          children: [
-            {
-              $if: {
-                condition: { $store: 'shapeStore.editingShapeId' },
-                then: 'Save changes',
-                else: 'Create model',
-              },
-            },
-          ],
+          children: [{ $: "shapeStore.editingShapeId ? 'Save changes' : 'Create model'" }],
         },
       ],
     },
@@ -911,7 +857,7 @@ const hintEditorModal: SchemaNode = {
         {
           type: 'we-text',
           props: { variant: 'heading-sm' },
-          children: [{ $concat: ['AI hints — ', { $store: 'shapeStore.hintEditor.entity' }] }],
+          children: [{ $: '`AI hints — ${shapeStore.hintEditor.entity}`' }],
         },
         {
           type: '$if',
@@ -1037,7 +983,7 @@ const shapeRow: SchemaNode = {
             {
               type: 'we-icon',
               props: {
-                name: { $if: { condition: '$shape.icon', then: '$shape.icon', else: 'cube' } },
+                name: { $: "shape.icon ? shape.icon : 'cube'" },
                 color: 'accent-text',
               },
             },
@@ -1055,13 +1001,7 @@ const shapeRow: SchemaNode = {
                       props: { variant: 'neutral', size: 'xs' },
                       children: [
                         {
-                          $concat: [
-                            '$shape.propertyCount',
-                            ' ',
-                            { $plural: { count: '$shape.propertyCount', one: 'field', other: 'fields' } },
-                            ' · v',
-                            '$shape.version',
-                          ],
+                          $: "`${shape.propertyCount} ${plural(shape.propertyCount, 'field', 'fields')} · v${shape.version}`",
                         },
                       ],
                     },
@@ -1121,7 +1061,7 @@ const shapeRow: SchemaNode = {
     {
       type: '$if',
       props: {
-        condition: { $count: { items: '$shape.problems' } },
+        condition: { $: 'count(shape.problems)' },
         then: {
           type: '$each',
           props: { items: '$shape.problems', as: 'problem' },
@@ -1228,7 +1168,7 @@ export const modelsSection: SchemaNode = {
           then: {
             type: '$if',
             props: {
-              condition: { $count: { items: { $store: 'shapeStore.spaceShapes' } } },
+              condition: { $: 'count(shapeStore.spaceShapes)' },
               then: {
                 type: 'Column',
                 props: { gap: '100' },
@@ -1271,9 +1211,7 @@ export const modelsSection: SchemaNode = {
           {
             type: '$each',
             props: {
-              items: {
-                $filter: { items: { $store: 'shapeStore.hintEntities' }, where: { source: 'core' } },
-              },
+              items: { $: "filter(shapeStore.hintEntities, { source: 'core' })" },
               as: 'entity',
             },
             children: [hintEntityRow],

@@ -15,10 +15,10 @@ import type { SchemaNode } from '@we/schema-shared';
  */
 
 /** True when this dataset is one the app made for itself rather than one the agent joined. */
-const isSystem = { $in: ['$dataset.id', { $store: 'datasetStore.systemDatasetUuids' }] };
+const isSystem = { $: 'dataset.id in datasetStore.systemDatasetUuids' };
 
 /** `we-root` specifically — deleting it takes settings, preferences and installed templates/themes. */
-const isRoot = { $eq: ['$dataset.id', { $store: 'datasetStore.rootDataset.id' }] };
+const isRoot = { $: 'dataset.id == datasetStore.rootDataset.id' };
 
 const datasetCard: SchemaNode = {
   type: 'Column',
@@ -36,7 +36,7 @@ const datasetCard: SchemaNode = {
               $if: {
                 condition: isSystem,
                 then: 'hard-drives',
-                else: { $if: { condition: '$dataset.sharedUri', then: 'globe', else: 'folder' } },
+                else: { $: "dataset.sharedUri ? 'globe' : 'folder'" },
               },
             },
             size: '16px',
@@ -55,7 +55,7 @@ const datasetCard: SchemaNode = {
     {
       type: 'we-text',
       props: { variant: 'footnote', color: 'text-faint' },
-      children: [{ $concat: ['ID: ', '$dataset.id'] }],
+      children: [{ $: '`ID: ${dataset.id}`' }],
     },
     {
       type: '$if',
@@ -64,7 +64,7 @@ const datasetCard: SchemaNode = {
         then: {
           type: 'we-text',
           props: { variant: 'footnote', color: 'text-faint' },
-          children: [{ $concat: ['URL: ', '$dataset.sharedUri'] }],
+          children: [{ $: '`URL: ${dataset.sharedUri}`' }],
         },
       },
     },
@@ -143,7 +143,7 @@ export const advancedDatasetsSection: SchemaNode = {
       children: [
         {
           type: 'we-icon',
-          props: { name: { $if: { condition: { $local: 'advancedOpen' }, then: 'caret-down', else: 'caret-right' } } },
+          props: { name: { $: "local.advancedOpen ? 'caret-down' : 'caret-right'" } },
         },
         { type: 'we-text', props: { variant: 'label' }, children: ['Advanced — all datasets'] },
       ],

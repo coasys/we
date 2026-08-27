@@ -361,122 +361,130 @@ model.delete — deletes a model instance:
 Use perspective: 'datasetStore.rootDataset' for we-root models (AgentSettings, ChatSession, etc.).
 Use the default (no perspective) for space-scoped models (Space, Signal, etc.).
 
-Conditional logic:
-{ "$if": { "condition": ..., "then": ..., "else": ... } }
-Evaluates condition; if truthy, returns then, else returns else.
+Expressions:
+{ "$": "<expression>" }
+Every computed value — a condition, a label, a number, a filtered list — is one expression string in a
+{ "$": … } token. This is the value layer's whole vocabulary. The node layer ($each, node-level $if,
+$routes, $animate…), queries ($query, $queries) and handlers ($action, $setLocal, $toggleLocal…) stay
+as tokens; an expression goes anywhere a VALUE goes — a prop, a condition, $each's items, a children
+array (rendered as text), a where value, an $action argument.
 
-Map/iterate:
-{ "$map": { "items": { "$store": "templateStore.templates" }, "select": { ... } } }
-Iterates over an array, mapping each item to a new object using the select mapping.
+References — what a name starts from:
+  spaceStore.members             a store member (any store in the Stores section; modules.<id>.<key> for a module)
+  local.searchText               a $localState or $queries field; dot paths read into object fields
+  post.title                     a name bound by $each / $single / $agent through "as" — the default is item
+  index, prev                    $each's row position, and the previous row
+  me.did, currentDataset         the current agent, and the active dataset
+  surface.tier, surface.width    the responsive boundary
+  event, arg, result             the callback argument inside a handler, and a settled $action's value
+A plain string in an expression is ALWAYS a literal: 'item.name' is five words, item.name is a read.
+A store's actions are unreachable — spaceStore.createPost reads as nothing; only $action calls.
 
-Pick:
-{ "$pick": { "from": { "$store": "userStore.profile" }, "props": ["name", "email"] } }
-Picks specific properties from an object.
+Operators, in JavaScript's spelling and precedence:
+  == !=                          strict equality
+  < > <= >=                      numeric comparison
+  in                             list membership:  item.role in ['admin', 'moderator']
+  ! && ||                        boolean logic. && and || ANSWER WITH A BOOLEAN, never with an operand
+  ??                             the fallback-value idiom:  local.name ?? 'Untitled'
+  test ? a : b                   conditional value
+  + - * / %                      arithmetic; + joins strings when either side is one; / by 0 is 0
+  `…${expr}…`                    interpolation — the old $concat
+  a.name   a[i]                  property and index reads; a missing path is undefined, never an error
+  [a, b]   { key: value }        list and object literals — the where-object below is one
 
-Concat (string building):
-{ "$concat": ["part1", "$context.value", "part2"] }
-Joins multiple parts into a single string.
+Comprehensions — the one place a name is bound, over a list:
+  items.filter(x, x.done)          items.map(x, x.name)          items.find(x, x.id == local.selected)
+  items.exists(x, x.role == 'admin')                            items.all(x, x.read)
+Over something that is not a list: filter and map give [], find gives undefined, exists false, all true.
 
-Context references:
-Strings starting with "$" followed by a context key resolve to context values.
-Example: "$space.name" resolves to the name property of the space context variable.
-Dot paths supported: "$item.profile.avatar".
+Functions — the library. f(a, b) and a.f(b) are the same call; a value's own methods are never callable.
+Nothing is ever added to the grammar above: a new capability is a function here, or one the host
+registers (listed last). Wrong-typed input answers with the empty value of its kind, never an error.
+  Lists:
+    count(items) — How many entries a list has. Anything that is not a list counts as 0.  e.g. count(spaceStore.members)
+    filter(items, where, limit?) — The entries matching a where-object — the same grammar $query takes. `limit` keeps the first N. Prefer the comprehension `items.filter(x, …)` when the test is not a where-object.  e.g. filter(spaceStore.members, { role: 'admin' }, 5)
+    find(items, where?) — The first entry matching a where-object, or undefined. Without `where`, the first entry. Read a field off the result directly: `find(…).id` is undefined when nothing matched.  e.g. find(local.signalTypes, { slug: 'like' }).id
+    first(items) — The first entry of a list, or undefined when it is empty.  e.g. first(local.posts).title
+    join(items, separator?) — The entries of a list as one string, separated by `separator` (default ', ').  e.g. join(item.tags, ' · ')
+    last(items) — The last entry of a list, or undefined when it is empty.  e.g. last(item.messages).text
+  Text:
+    contains(text, needle) — Whether the text contains `needle`, ignoring case — the same test the where-object `contains` makes.  e.g. contains(item.name, local.search)
+    endsWith(text, suffix) — Whether the text ends with `suffix`, case-sensitively.  e.g. endsWith(item.url, '.png')
+    lower(text) — The text in lower case.  e.g. lower(item.handle)
+    plural(count, one, other) — `one` when count is exactly 1, otherwise `other`.  e.g. plural(count(spaceStore.members), 'Member', 'Members')
+    startsWith(text, prefix) — Whether the text starts with `prefix`, case-sensitively — for structured strings such as an ISO date or a URI.  e.g. startsWith(item.startDate, '2026-08')
+    trim(text) — The text without leading and trailing whitespace.  e.g. trim(local.search) != ''
+    upper(text) — The text in upper case.  e.g. upper(item.code)
+  Numbers:
+    max(...values) — The largest of the numbers given. Non-numbers count as 0.  e.g. max(local.page - 1, 0)
+    min(...values) — The smallest of the numbers given. Non-numbers count as 0.  e.g. min(count(local.rows), 20)
+    round(value, digits?) — The number rounded to `digits` decimal places (default 0). Non-numbers round to 0.  e.g. round(item.progress * 100)
+  Objects:
+    pick(object, keys) — A new object holding only the named keys of `object`. Anything that is not an object gives `{}`.  e.g. pick(profileStore.ownProfile, ['handle', 'avatar'])
+  Form state:
+    error(field) — A field's first validation message, once it has been touched; empty otherwise. The field is named as a string.  e.g. error('email')
+    formValid() — Whether every validated field in the enclosing $localState scope passes.  e.g. formValid()
+    touched(field) — Whether the field has been blurred or marked with $touch.  e.g. touched('email')
+    valid(field) — Whether every validation rule on the field passes, touched or not. True for a field with no rules.  e.g. valid('email')
+  Host functions (this deployment registers them; also reachable as { "$source": { "name", "options" } }):
+    calendarMonth(options?) — The days of a month as rows — { date, day, inMonth, isToday, weekday } — padded to whole weeks. Options: month (YYYY-MM-DD, default today), offset (months from it), weekStartsOn (0 Sunday … 6), fixedWeeks (six rows, default on).  e.g. calendarMonth({ offset: local.monthOffset, weekStartsOn: 1 })
+    calendarMonths(options?) — The twelve months of the year an offset lands in — { label, month, year, offset, isThisMonth, isShown } — each carrying its own offset from today, for a jump-to-month picker.  e.g. calendarMonths({ offset: local.monthOffset })
+    monthLabel(options?) — The month a calendar is showing, as "August 2026" in the viewer’s language. Same options as calendarMonth.  e.g. monthLabel({ offset: local.monthOffset })
+    yearLabel(options?) — The year a calendar is showing, on its own. Same options as calendarMonth.  e.g. yearLabel({ offset: local.monthOffset })
 
-Equality / inequality checks:
-{ "$eq": [a, b] } — strict equality
-{ "$ne": [a, b] } — strict inequality
+The where-object — one grammar shared by filter(), find(), and $query's where. Keys are field names;
+values may be expressions (in an expression) or tokens (in a $query):
 
-Numeric comparisons:
-{ "$lt": [a, b] } — a < b (less than)
-{ "$gt": [a, b] } — a > b (greater than)
-Example: { "$gt": [{ "$count": { "items": { "$store": "listStore.items" } } }, 0] }
+  { field: 'value' }                       — strict equality
+  { field: ['a', 'b'] }                    — set membership (IN); matches any of them
+  { field: { not: 'value' } }              — inequality; a list excludes several values
+  { field: { contains: 'text' } }          — case-insensitive substring match (strings only)
+  { field: { startsWith: 'text' } }        — anchored prefix match, case-SENSITIVE
+  { field: { endsWith: 'text' } }          — anchored suffix match, case-SENSITIVE
+  { field: { exists: true } }              — non-null / non-undefined presence check
+  { field: { exists: false } }             — null or undefined check
+  { OR: [ {…}, {…} ] }  { AND: [ … ] }  { NOT: {…} }   — combinators; sibling keys are implicitly ANDed
 
-Set membership:
-{ "$in": [value, array] } — true if array contains value (false if second operand is not an array)
-Example: { "$in": [{ "$store": "spaceStore.uuid" }, { "$store": "datasetStore.systemDatasetUuids" }] }
-Example: { "$in": ["$item.role", ["admin", "moderator"]] }
+A bare list is the positive counterpart of "not" with a list, and the way to fetch a known set:
+{ id: ['id1', 'id2', 'id3'] }. Native on the AD4M backend, where it pushes down to a SPARQL VALUES
+clause. An empty list matches nothing, which is what "none of these" should mean.
 
-Boolean logic:
-{ "$and": [a, b, ...] } — all truthy
-{ "$or": [a, b, ...] } — any truthy
-{ "$not": a } — negation
+startsWith/endsWith are case-sensitive where contains is not: they match structured strings against
+a known prefix (an ISO date, an id out of a URI). They are NOT native to the AD4M backend, so a $query
+using one is refused — use contains there; inside filter() they are evaluated client-side.
 
-Array operators:
-{ "$filter": { "items": <array>, "where": { "field": "value", ... }, "limit": <number> } }
-Filters an array to items where all where conditions match. Mirrors the $query where operator set:
-
-  { "field": "value" }                                   — strict equality
-  { "field": ["a", "b"] }                                — set membership (IN); matches any of them
-  { "field": { "not": "value" } }                        — inequality; array form excludes multiple values
-  { "field": { "contains": "text" } }                    — case-insensitive substring match (strings only)
-  { "field": { "startsWith": "text" } }                  — anchored prefix match, case-SENSITIVE
-  { "field": { "endsWith": "text" } }                    — anchored suffix match, case-SENSITIVE
-  { "field": { "exists": true } }                        — non-null / non-undefined presence check
-  { "field": { "exists": false } }                       — null or undefined check
-
-A bare array is the positive counterpart of "not" with an array, and it is the way to fetch a known
-set: { "id": ["id1", "id2", "id3"] }. Native on the AD4M backend, where it pushes down to a SPARQL
-VALUES clause, so it is index-friendly rather than a scan. An empty array matches nothing, which is
-what "none of these" should mean.
-
-startsWith/endsWith are case-sensitive where contains is not: they exist to match structured strings
-against a known prefix (an ISO date out of a datetime, an id out of a URI), where folding case would
-match things it should not. contains searches prose, which is a different question.
-Note they are NOT native to the AD4M backend, so a $query using one is refused outright — use
-contains there. Inside $filter they are evaluated client-side and always available.
-
-"limit" keeps only the first N matches — the only way to express "the first few", since the operator
-set has no arithmetic and no slice. Use it for a cell showing two of a day's events with a "more"
-marker; without it the only option is rendering all of them and clipping, which cuts a row through
-the middle of the last one. It is resolved through the prop system, so it can come from $local.
-
-Where values (including those inside operator objects) are resolved through the prop system,
-so $store, $local, and context refs like { "$local": "searchText" } all work.
-
-Logical combinators (OR / AND / NOT) — supported in both $query's where and $filter's where:
-  { "OR": [ { "field": "value" }, { "field2": "value2" } ] }   — matches if ANY branch matches
-  { "AND": [ { ... }, { ... } ] }                              — matches if ALL branches match (sibling keys at the
-                                                                  same level are already implicitly ANDed — use AND
-                                                                  to group a set of conditions alongside an OR/NOT)
-  { "NOT": { "field": "value" } }                              — matches if the branch does NOT match
-Branches are full where-clause objects (can contain multiple fields, and can nest OR/AND/NOT inside each other).
-Sibling keys alongside OR/AND/NOT at the same level are implicitly ANDed with it.
-Example — case-insensitive search across two fields ($filter takes the same shape, e.g. a member
-list matching name OR handle):
-{
-  "$query": {
-    "entity": "Space",
-    "where": {
-      "OR": [
-        { "name": { "contains": { "$local": "searchText" } } },
-        { "description": { "contains": { "$local": "searchText" } } }
-      ]
-    }
-  }
-}
-Note: using OR/AND/NOT disables the SPARQL-level sort/pagination pushdown (see count-projection and
-relation-property ordering below) — those orderings silently stop working if combined with OR/AND/NOT in the
-same query's where clause, because the fallback sort runs before the projection/relation data is attached.
+Note: OR/AND/NOT in a $query's where disables the SPARQL-level sort/pagination pushdown (see
+count-projection and relation-property ordering below) — those orderings silently stop working in the
+same query's where clause, because the fallback sort runs before the projection data is attached.
 
 Examples:
-{ "$filter": { "items": { "$store": "spaceStore.members" }, "where": { "role": "admin" } } }
-{ "$filter": { "items": { "$store": "spaceStore.members" }, "where": { "location": { "exists": true }, "handle": { "contains": { "$local": "searchText" } } } } }
-{ "$filter": { "items": { "$local": "dayEvents" }, "where": { "startDate": { "startsWith": "$cell.date" } }, "limit": 2 } }
+{ "$": "filter(spaceStore.members, { role: 'admin' })" }
+{ "$": "filter(spaceStore.members, { location: { exists: true }, handle: { contains: local.searchText } })" }
+{ "$": "filter(local.dayEvents, { startDate: { startsWith: cell.date } }, 2)" }        — the first two only
+{ "$": "find(local.signalTypes, { slug: 'like' }).id" }                                — undefined when nothing matches
+{ "$": "count(local.rows) > 0 && local.searchText != ''" }
+{ "$": "item.author == me.did ? 'mine' : 'theirs'" }
+{ "$": "`${count(spaceStore.members)} ${plural(count(spaceStore.members), 'Member', 'Members')}`" }
+{ "$": "spaceStore.members.filter(m, m.did != me.did).map(m, m.handle).join(', ')" }
+{ "$": "post.author in spaceStore.mutedDids" }
 
-{ "$count": { "items": <array> } }
-Returns the length of an array.
-Example: { "badge": { "$count": { "items": { "$store": "notificationStore.unread" } } } }
+Rules:
+- An expression naming event/arg/result at the TOP LEVEL of an $action's args, or as a $setLocal
+  "value", is evaluated when the handler fires. Nested inside another token it is evaluated at render
+  time against no event and becomes a constant — the validator rejects that.
+- The validator reports every mistake with a column: an unknown name (with "did you mean"), an unknown
+  store member, an undeclared local, an unknown function, a wrong argument count, prototype access.
+- No new value operators will be added and no new syntax. Computation the library lacks is a function
+  the host registers, catalogued under "Host functions" above.
 
-{ "$find": { "items": <array>, "where"?: { ... }, "select"?: "fieldName" } }
-Finds the first matching item. where is optional (returns first item if omitted). select plucks a single field.
-Example: { "$find": { "items": { "$store": "spaceStore.members" }, "where": { "id": "$item.creatorId" }, "select": "name" } }
-
-{ "$plural": { "count": <number>, "one": "singular", "other": "plural" } }
-Returns "one" when count === 1, otherwise "other". Use in children arrays for count-noun labels.
-count is resolved through the prop system — any numeric expression ($count, $store, context ref) works.
-Example: { "$plural": { "count": { "$count": { "items": { "$store": "spaceStore.members" } } }, "one": "Member", "other": "Members" } }
-Compose with we-number for a full "N Members" display:
-  we-number (value: { "$count": ... }, shorten: true) + we-text (children: [{ "$plural": { "count": { "$count": ... }, "one": "Member", "other": "Members" } }])
+Legacy tokens. { "$eq": [a, b] }, { "$ne": … }, { "$lt": … }, { "$gt": … }, { "$in": … }, { "$not": … },
+{ "$and": [ … ] }, { "$or": [ … ] }, { "$concat": [ … ] }, { "$count": { "items" } },
+{ "$filter": { "items", "where", "limit" } }, { "$find": { "items", "where", "select" } },
+{ "$plural": { "count", "one", "other" } }, { "$map": { "items", "select" } }, { "$pick": { "from", "props" } }
+and the prop-level { "$if": { "condition", "then", "else" } } are the same language written as JSON
+and still render — an existing template needs no change — but write new schemas as expressions.
+Context-reference STRINGS ("$item.name", "$me.did") likewise still resolve inside those tokens and as
+bare children; inside an expression they are literals.
 
 Query (data retrieval):
 { "$query": { "entity": "ModelName", "where": { "field": "value" }, "limit": 10, "order": { "field": "asc" } } }
@@ -596,8 +604,9 @@ Read:  { "$local": "name" } — returns the signal value (reactive).
 Write: { "$setLocal": "name", "from": "$event.target.value" } — event handler that updates the signal.
        { "$setLocal": "name", "value": "literal" } — sets to a literal value (string, number, boolean, null, object).
        { "$setLocal": "name", "merge": { "field": "$event.detail" } } — shallow-merges fields into an object-typed signal. Values are resolved as event paths (e.g. "$event.detail") or passed as literals. Use for partial updates to object state.
-       { "$setLocal": "name", "by": 20 } — adds to a NUMBER field, reading the current value first. The only arithmetic the schema layer has: use it to advance a page size ("show 20 more") or bump a counter something else watches. A non-numeric current value counts as 0.
-Note "value" is a LITERAL and is not resolved — a token object inside it is stored as the object, not as what it would resolve to. To store something computed, bind the prop that reads it instead, or use "from"/"merge", whose values ARE resolved as event paths.
+       { "$setLocal": "name", "by": 20 } — adds to a NUMBER field, reading the current value first. A non-numeric current value counts as 0.
+       { "$setLocal": "name", "value": { "$": "local.name + event.step" } } — sets what an expression computes when the handler fires, with event in scope. The general form of "by".
+Note "value" is a LITERAL unless it is an expression: any other token object inside it is stored as the object, not as what it would resolve to. To store something computed write { "$": "…" }, or use "from"/"merge", whose values are resolved as event paths.
 Toggle: { "$toggleLocal": "fieldName" } — toggles a boolean field (equivalent to setting it to !current). Use for show/hide, open/close, expand/collapse patterns.
 Toggle one of many: { "$toggleLocalIn": "fieldName", "value": "$group.id" } — adds the value to an
   array-typed field, or removes it if already there. Read it back with $in:
@@ -2612,7 +2621,7 @@ Iterating over store data:
       "type": "we-button",
       "props": {
         "variant": "ghost",
-        "onClick": { "$action": "routeStore.navigate", "args": [{ "$concat": ["/space/", "$space.uuid"] }] }
+        "onClick": { "$action": "routeStore.navigate", "args": [{ "$": "`/space/${space.uuid}`" }] }
       },
       "children": [
         { "type": "we-avatar", "props": { "image": "$space.avatar", "initials": "$space.name", "size": "sm" } },
@@ -2626,19 +2635,14 @@ Conditional rendering from store:
 {
   "type": "$if",
   "props": {
-    "condition": { "$eq": [{ "$store": "routeStore.currentPath" }, "/"] },
+    "condition": { "$": "routeStore.currentPath == '/'" },
     "then": { "type": "we-text", "children": ["Home"] },
     "else": { "type": "we-text", "children": ["Not home"] }
   }
 }
 
 Deriving options from store:
-{
-  "$map": {
-    "items": { "$store": "templateStore.templates" },
-    "select": { "name": "$item.meta.name", "icon": "$item.meta.icon" }
-  }
-}
+{ "$": "templateStore.templates.map(t, { name: t.meta.name, icon: t.meta.icon })" }
 
 Querying model data:
 {
@@ -2713,7 +2717,7 @@ Example — Channel list → Conversation list:
           "type": "we-button",
           "props": {
             "variant": "ghost",
-            "onClick": { "$action": "routeStore.navigate", "args": [{ "$concat": ["/channels/", "$channel.id"] }] }
+            "onClick": { "$action": "routeStore.navigate", "args": [{ "$": "`/channels/${channel.id}`" }] }
           },
           "children": ["$channel.name"]
         }]
@@ -2786,7 +2790,7 @@ Local state (form with validation):
     }
   ]
 }
-The button is disabled only while the submit is in flight. Disabling it on { "$not": { "$formValid": "$scope" } }
+The button is disabled only while the submit is in flight. Disabling it on { "$": "!formValid()" }
 instead contradicts the { "$touch": "$all" } beneath it — the button is unclickable in exactly the state that
 guard exists to report. See the "Typical form pattern" section for the full rationale and the two valid shapes.
 
@@ -2829,7 +2833,7 @@ Use $query or $store for dynamic data (more common in production):
 { "type": "$each", "props": { "items": { "$store": "spaceStore.posts" }, "as": "post" }, "children": [...] }
 
 Per-item customization inside $each:
-To style or highlight specific items, add a data flag to those items and use $if on the flag inside the template. Do NOT use $eq: ["$index", N] comparisons — they are fragile, repetitive, and break when items are reordered.
+To style or highlight specific items, add a data flag to those items and use $if on the flag inside the template. Do NOT use index == N comparisons — they are fragile, repetitive, and break when items are reordered.
 Example: add "highlighted": true to one item's data, then use $if on "$post.highlighted" in the template:
 { "type": "$if", "props": { "condition": "$post.highlighted", "then": { "type": "we-badge", "props": { "variant": "primary" }, "children": ["Featured"] } } }
 For conditional props (e.g. different bg on highlighted items):
@@ -2851,7 +2855,7 @@ Resolve them by slug from a hoisted $queries subscription on the node.
 
 There is no store accessor for this. spaceStore.signalTypesBySlug existed once and was removed;
 schemas still referencing it filtered on undefined — a like count that silently counted the wrong
-thing. Query the SignalType entity instead, and look the slug up with $find.
+thing. Query the SignalType entity instead, and look the slug up with find().
 
 ALWAYS ask the user: "What slug should I use? (e.g. 'like', 'upvote', 'star')"
 Then use that slug in the pattern below.
@@ -2872,7 +2876,7 @@ Pattern — live wired SignalControl (one hoisted query, reused by the projectio
               "$totalLikeCount": {
                 "from": "signals",
                 "where": {
-                  "signalTypeId": { "$find": { "items": { "$local": "signalTypes" }, "where": { "slug": "like" }, "select": "id" } }
+                  "signalTypeId": { "$": "find(local.signalTypes, { slug: 'like' }).id" }
                 },
                 "count": true
               }
@@ -2885,7 +2889,7 @@ Pattern — live wired SignalControl (one hoisted query, reused by the projectio
         {
           "type": "$if",
           "props": {
-            "condition": { "$count": { "items": { "$local": "signalTypes" } } },
+            "condition": { "$": "count(local.signalTypes)" },
             "then": {
               "type": "$each",
               "props": { "items": { "$local": "signalTypes" }, "as": "sig" },
@@ -2894,7 +2898,7 @@ Pattern — live wired SignalControl (one hoisted query, reused by the projectio
                   "type": "SignalControl",
                   "props": {
                     "signalType": "$sig",
-                    "signals": { "$filter": { "items": "$item.signals", "where": { "signalTypeId": "$sig.id" } } },
+                    "signals": { "$": "filter(item.signals, { signalTypeId: sig.id })" },
                     "myDid": "$me.did",
                     "onSignal": { "$action": "spaceStore.upsertSignal", "args": ["$item.id", "$sig.id", "$arg"] }
                   }
@@ -2912,8 +2916,8 @@ Notes:
 - $queries and $localState share one $local namespace, so { "$local": "signalTypes" } reads the
   subscription from any descendant — the projection above and the controls below stay in agreement
   about which type a slug means.
-- The $count guard renders nothing until the community has created a signal type.
-- Iterating signalTypes renders every type the community defined; use $find with a slug only where
+- The count() guard renders nothing until the community has created a signal type.
+- Iterating signalTypes renders every type the community defined; use find() with a slug only where
   one specific type is meant (e.g. a like count).
 - Replace "like" with the user's slug.
 - $query include adds $totalLikeCount as a computed property on each item.
@@ -2988,7 +2992,7 @@ array, a missing model).
     {
       "type": "$if",
       "props": {
-        "condition": { "$count": { "items": { "$local": "postRows" } } },
+        "condition": { "$": "count(local.postRows)" },
         "then": {
           "type": "Grid",
           "props": { "columns": 1, "gap": "400", "width": "100%" },
@@ -3104,7 +3108,7 @@ formModal({
   size: 'sm',
   localState: { draftTitle: { type: 'string', initial: '' } },
   children: [field({ name: 'draftTitle', label: 'What needs doing?', placeholder: 'Ship the docs' })],
-  disabled: { $not: { $local: 'draftTitle' } },
+  disabled: { $: '!local.draftTitle' },
   submitLabel: 'Add task',
   submit: { $action: 'model.create', args: ['TaskBlock', { title: { $local: 'draftTitle' } }] },
 })
@@ -3113,7 +3117,7 @@ formModal({
 - **Declare the draft in `localState`, not on the page.** The modal is mounted only while open, so
   the draft resets when it closes — for free. A draft declared higher up has to be cleared by hand
   in `onSuccess`, and the field somebody forgets is the one that re-opens holding last time's value.
-- `disabled` is the **precondition** only ("a task needs a title"); the in-flight flag is `$or`-ed
+- `disabled` is the **precondition** only ("a task needs a title"); the in-flight flag is OR-ed
   in for you, so the Save button cannot start a second save.
 - It uses the header and footer slots, so a long form scrolls its fields and never its Save button.
 
@@ -3136,7 +3140,7 @@ person can type into must ask before throwing that away.**
 
 ```ts
 const guard = discardGuard({
-  dirty: { $or: [{ $local: 'name' }, { $local: 'description' }] },
+  dirty: { $: 'local.name || local.description' },
   close: { $action: 'shellStore.setCreateSpaceOpen', args: [false] },
   title: 'Discard this space?',
   body: 'The name, description and images you have entered will be lost.',
@@ -3156,7 +3160,7 @@ when there is nothing to lose. A dialog people learn to click through is worse t
 - **Test only what the person typed.** A field with a default and a picker — a status, a mode, a
   colour — is set from the first frame, so including it makes the guard fire on an untouched form.
 - **A form seeded from a record asks whether it _changed_**, not whether it is filled in:
-  `{ $ne: [{ "$local": "titleDraft" }, "$call.title"] }`, not `{ "$local": "titleDraft" }`.
+  `{ "$": "local.titleDraft != call.title" }`, not `{ "$": "local.titleDraft" }`.
 - **Where the fields are not known in advance, a store answers** — `recordStore.recordDraftDirty`,
   `runtimeStore.aiFormDirty`.
 - **Leave it off a single-field form** ("name this board"). The guard costs more attention than one
@@ -3293,8 +3297,7 @@ somebody renames the thing, which is identity art contradicting the identity.
     {
       "type": "AvatarStack",
       "props": {
-        "avatars": { "$map": { "items": { "$store": "spaceStore.members" },
-                               "select": { "image": "$item.avatar", "hash": "$item.did" } } },
+        "avatars": { "$": "spaceStore.members.map(m, { image: m.avatar, hash: m.did })" },
         "max": 5, "size": "sm", "ring": "0 0 0 2px var(--we-ring-color)"
       }
     },
@@ -3302,23 +3305,19 @@ somebody renames the thing, which is identity art contradicting the identity.
       "type": "Row",
       "props": { "gap": "100", "ay": "center" },
       "children": [
-        { "type": "we-number", "props": { "value": { "$count": { "items": { "$store": "spaceStore.members" } } }, "shorten": true } },
-        { "type": "we-text", "children": [{ "$plural": { "count": { "$count": { "items": { "$store": "spaceStore.members" } } }, "one": "Member", "other": "Members" } }] }
+        { "type": "we-number", "props": { "value": { "$": "count(spaceStore.members)" }, "shorten": true } },
+        { "type": "we-text", "children": [{ "$": "plural(count(spaceStore.members), 'Member', 'Members')" }] }
       ]
     }
   ]
 }
 ```
 
-**When the items are bare DIDs rather than profiles**, join each to its profile — and note the trap:
-inside a `$map` `select`, a string is substituted only when it starts with `$item.`. A bare
-`"$item"` is a **literal**, so every generated face comes out identical. Wrap it in a token object:
+**When the items are bare DIDs rather than profiles**, join each to its profile inside the
+comprehension — the variable is the DID itself:
 
 ```json
-"select": {
-  "image": { "$find": { "items": { "$store": "profileStore.profiles" }, "where": { "did": "$item" }, "select": "avatar" } },
-  "hash": { "$concat": ["$item"] }
-}
+"avatars": { "$": "spaceStore.memberDids.map(did, { image: find(profileStore.profiles, { did: did }).avatar, hash: did })" }
 ```
 
 `minHeight` on the row is worth keeping: `AvatarStack` has no height with no avatars, and people
@@ -3464,7 +3463,7 @@ A group heading toggles its own id in the set, and its body reveals on the block
       "props": {
         "name": {
           "$if": {
-            "condition": { "$in": ["spaces", { "$local": "collapsedGroups" }] },
+            "condition": { "$": "'spaces' in local.collapsedGroups" },
             "then": "caret-right",
             "else": "caret-down"
           }
@@ -3565,8 +3564,8 @@ WRONG — two common mistakes that produce empty tabs (validator will catch both
 }
 
 Alternative: single onChange on we-tabs (fires with $event.detail.value = selected key):
-{ "onChange": { "$action": "routeStore.navigate", "args": [{ "$concat": ["/", "$arg.detail.value"] }] } }
-This replaces all per-tab onClick handlers but requires $concat to build the path.
+{ "onChange": { "$action": "routeStore.navigate", "args": [{ "$": "`/${arg.detail.value}`" }] } }
+This replaces all per-tab onClick handlers but requires an interpolation to build the path.
 
 Nested routing example:
 {
@@ -4018,48 +4017,44 @@ For per-file validation or other options, see the **Schema Validation** section 
 
 ---
 
-### Schema System — Before Suggesting New Operators
+### Schema System — The Grammar Is Closed
 
-Before proposing a new schema operator, read `packages/schema-system/OPERATORS.md` —
-the full operator set is documented there. Adding a new one is only warranted if the
-operator genuinely doesn't exist AND the workaround requires 3+ levels of nesting.
+**No new value operators, and no new syntax.** The value layer is one expression language —
+`{ "$": "count(local.rows) > 0 && local.search != ''" }` — with a closed grammar (references,
+comparison, boolean and arithmetic operators, interpolation, a ternary, five comprehension macros)
+and an open **function library** (`packages/schema-system/shared/src/expressions/functions.ts`).
+The old operator tokens (`$eq`, `$and`, `$concat`, `$count`, `$filter`, `$find`, `$plural`,
+`$map`, `$pick`, prop-level `$if` …) are that language's syntax tree written as JSON: they still
+render, `operatorToExpr` reads them, and the codemod (`src/cli/we-expressions-codemod.ts`) prints
+them into the new spelling. Write new schemas as expressions.
 
-Operators that are easy to miss:
+A need for computation the language lacks is answered on the **code** side of the data/code line:
 
-| Operator | Syntax | What it does |
-|---|---|---|
-| `$in` | `{ $in: [value, array] }` | True if array contains value — array membership check |
-| `$find` | `{ $find: { items, where } }` | Returns the first matching item (or null) |
-| `$pick` | `{ $pick: { from, keys } }` | Extracts a subset of keys from an object |
-| `$map` | `{ $map: { items, as, value } }` | Maps an array to a new array of values |
-| `$ne` | `{ $ne: [a, b] }` | Not-equal comparison |
-| `$concat` | `{ $concat: [part, ...] }` | Joins strings: `['neighbourhood://', '$space.url']` |
+- **A function in the library** — `defineFunction({ name, category, params, doc, example, impl })`.
+  Pure and total: wrong-typed input answers with the empty value of its kind, never a throw. Same
+  bar as a component: three real uses, not one. The generated context lists it from the registry, so
+  there is no doc to update.
+- **A host source** — a function this deployment registers in
+  `packages/app-shell/src/shared/sources/index.ts`, reachable as `calendarMonth({ … })` and as
+  `{ "$source": … }`. Catalogued from the registry into the context and known to the validator.
 
-**Common mistake:** reaching for `$filter + $count + $gt` to check array membership
-when `$in` already exists. Example:
+Neither changes the parser, the validator's grammar, the renderer or the LLM's view of the syntax.
+That is the whole reason for the split: the accretion pressure that produced forty operators now
+lands where a docblock and a registry entry absorb it.
 
-```ts
-// ❌ Verbose — don't do this for a simple membership check
-{ $gt: [{ $count: { items: { $filter: { items: arr, where: { id: val } } } } }, 0] }
+**Common mistake:** rebuilding a library function out of operators. `count(filter(arr, { id: val })) > 0`
+is `val in arr` — hmm, no: it is `arr.exists(x, x.id == val)`; `val in arr` tests the values
+themselves. Read the library table in the schema reference before composing.
 
-// ✅ Use $in instead
-{ $in: [val, arr] }
-```
+**Common mistake:** `count(local.items) > 0` as a `$if` condition. Conditions use truthiness; `0`
+is falsy, so `count(local.items)` alone is the condition. Keep the comparison where a prop wants a
+real boolean — `&&`/`||` already answer with one.
 
-**Common mistake:** wrapping `$count` in `$gt [..., 0]` when used as a `$if` condition.
-`$if` conditions use standard JavaScript truthiness — `0` is falsy, any positive number is truthy.
-The `$gt` layer is redundant nesting that produces no change in behaviour.
-
-```ts
-// ❌ Unnecessary — $gt adds nothing here
-{ "condition": { "$gt": [{ "$count": { "items": { "$local": "items" } } }, 0] } }
-
-// ✅ $count alone is truthy/falsy in a condition
-{ "condition": { "$count": { "items": { "$local": "items" } } } }
-```
-
-Note: `$gt` is still needed when you want an explicit boolean value outside a condition context
-(e.g. as a prop that expects `boolean`, not just any truthy value).
+**Handlers stay tokens.** `$action`, `$setLocal`, `$toggleLocal`, `$toggleLocalIn`, `$callLocal`,
+`$touch`, `$resetLocal` are the statement layer — about seven verbs, enumerable on purpose because
+capability grants and `destructive` flags attach to verbs. Their *arguments* take expressions, and an
+expression naming `event`/`arg`/`result` at the top level of `args` or as a `$setLocal` `value`
+is evaluated when the handler fires.
 
 ---
 

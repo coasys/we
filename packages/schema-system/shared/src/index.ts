@@ -13,6 +13,7 @@ export type {
   RouteSchema,
   TransitionConfig,
   TransitionEffect,
+  ExpressionToken,
   StoreToken,
   ConcatToken,
   ActionToken,
@@ -64,6 +65,7 @@ export type {
   TokenCategory,
   PluginCatalog,
   PluginEntry,
+  SourceEntry,
 } from './contextTypes';
 
 export { validateSchema, validateSemantic, buildValidationContext } from './semanticValidation';
@@ -85,6 +87,8 @@ export {
   setLocalWarningSink,
 } from './propResolvers';
 export type { LocalFieldMeta, LocalMetaMap, MapProp } from './propResolvers';
+export { DEFERRED_ARG, isDeferredArg, setExpressionWarningSink } from './propResolvers/expression';
+export * from './expressions';
 export { hasToken } from './predicates';
 export { isPropsSchemaNode, isSchemaChild, replaceNodeInTree } from './treeUtils';
 export {
@@ -149,6 +153,7 @@ export { findNodeChain, findScopeRef, getScopeAtNode, inferRefKind, scopeRefToTo
 export type { ScopeGroup, ScopeOptions, ScopeRef, ScopeRefKind, ScopeValueType } from './scope';
 export {
   classifyContent,
+  conditionForm,
   contentAsText,
   emptyComparison,
   isBlankComparison,
@@ -165,6 +170,7 @@ export {
 export type {
   ComparisonOperator,
   ConditionComparison,
+  ConditionForm,
   ConditionExpr,
   ConditionGroup,
   ConditionOperand,

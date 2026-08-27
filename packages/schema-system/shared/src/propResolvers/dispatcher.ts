@@ -13,6 +13,7 @@ import {
 } from './comparisons';
 import { resolveConcatProp } from './concat';
 import { resolveIfProp } from './conditional';
+import { resolveExpressionProp } from './expression';
 import {
   resolveCallLocalProp,
   resolveErrorProp,
@@ -60,10 +61,13 @@ export function resolveProp(value: unknown, stores: Props, context: Props, memo:
 
   // Handle token objects (objects with $ keys)
   if (hasAnyToken(value)) {
+    // The expression layer. First, because it is the form the value operators below are the AST
+    // of — see `expressions/index.ts`.
+    if (hasToken(value, '$', 'string')) return resolveExpressionProp(value as { $: string }, stores, context, memo);
     if (hasToken(value, '$store', 'string')) return resolveStoreProp(value, stores, memo);
     if (hasToken(value, '$local', 'string')) return resolveLocalProp(value as { $local: string }, context, memo);
     if (hasToken(value, '$setLocal', 'string'))
-      return resolveSetLocalProp(value as { $setLocal: string; from?: string; value?: unknown }, context);
+      return resolveSetLocalProp(value as { $setLocal: string; from?: string; value?: unknown }, context, stores);
     if (hasToken(value, '$error', 'string')) return resolveErrorProp(value as { $error: string }, context);
     if (hasToken(value, '$valid', 'string')) return resolveValidProp(value as { $valid: string }, context);
     if (hasToken(value, '$touched', 'string')) return resolveTouchedProp(value as { $touched: string }, context);

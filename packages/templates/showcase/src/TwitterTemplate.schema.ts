@@ -45,13 +45,7 @@ const leftRail: SchemaNode = {
         {
           type: 'we-button',
           props: {
-            variant: {
-              $if: {
-                condition: { $eq: [{ $store: 'routeStore.currentPath' }, '$nav.path'] },
-                then: 'secondary',
-                else: 'ghost',
-              },
-            },
+            variant: { $: "routeStore.currentPath == nav.path ? 'secondary' : 'ghost'" },
             width: '100%',
             ax: 'start',
             gap: '300',
@@ -96,7 +90,7 @@ const postCard = (opts: { clickable?: boolean }): SchemaNode => {
         props: {
           variant: 'bare',
           width: '100%',
-          onClick: { $action: 'routeStore.navigate', args: [{ $concat: ['/post/', '$post.id'] }] },
+          onClick: { $action: 'routeStore.navigate', args: [{ $: '`/post/${post.id}`' }] },
         },
         children: [
           {
@@ -165,13 +159,7 @@ const timeline: SchemaNode = {
               type: 'we-button',
               props: {
                 size: 'sm',
-                variant: {
-                  $if: {
-                    condition: { $eq: [{ $local: 'sortField' }, '$tab.value'] },
-                    then: 'secondary',
-                    else: 'ghost',
-                  },
-                },
+                variant: { $: "local.sortField == tab.value ? 'secondary' : 'ghost'" },
                 onClick: { $setLocal: 'sortField', from: '$tab.value' },
               },
               children: ['$tab.label'],
@@ -195,7 +183,7 @@ const timeline: SchemaNode = {
         $likeCount: {
           from: 'signals',
           where: {
-            signalTypeId: { $find: { items: { $local: 'signalTypes' }, where: { slug: 'like' }, select: 'id' } },
+            signalTypeId: { $: "find(local.signalTypes, { slug: 'like' }).id" },
           },
           count: true,
         },

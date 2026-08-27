@@ -1,10 +1,61 @@
 /**
- * Schema operators fragment — documents schema structure, prop-level dynamic logic,
- * and block-level dynamic structures ($each, $if, $query).
+ * Schema operators fragment — documents schema structure, the expression layer, the tokens that
+ * remain (references, handlers, queries, local state), and block-level dynamic structures ($each,
+ * $if, $query).
  *
- * Hand-maintained: update when new schema tokens are implemented.
+ * Hand-maintained, except the function library, which is generated from the registry so the
+ * documented set and the callable set are one list.
  */
-export const schemaOperators = `
+import type { SourceEntry } from '../types.js';
+
+/** What the reference needs of a library function — `FunctionSpec` less its implementation. */
+export interface FunctionDoc {
+  name: string;
+  category: string;
+  params: readonly string[];
+  doc: string;
+  example: string;
+}
+
+const CATEGORY_LABELS: Record<string, string> = {
+  list: 'Lists',
+  text: 'Text',
+  number: 'Numbers',
+  object: 'Objects',
+  form: 'Form state',
+};
+
+/**
+ * The function library as the reference lists it, then the host's own functions.
+ *
+ * Grouped by category, one line each with the signature, the sentence and an example. The host's
+ * functions come last under their own heading so a reader knows which names are the language's and
+ * which are this deployment's — a template written against a host function is portable only to a
+ * host that provides it.
+ */
+export function formatFunctionLibrary(library: FunctionDoc[], sources: SourceEntry[]): string {
+  const lines: string[] = [];
+  for (const category of Object.keys(CATEGORY_LABELS)) {
+    const entries = library.filter((fn) => fn.category === category);
+    if (!entries.length) continue;
+    lines.push(`  ${CATEGORY_LABELS[category]}:`);
+    for (const fn of entries) {
+      lines.push(`    ${fn.name}(${fn.params.join(', ')}) — ${fn.doc}  e.g. ${fn.example}`);
+    }
+  }
+  lines.push(
+    '  Host functions (this deployment registers them; also reachable as { "$source": { "name", "options" } }):',
+  );
+  if (!sources.length) lines.push('    (none)');
+  for (const source of sources) {
+    lines.push(`    ${source.name}(${source.params.join(', ')}) — ${source.doc}  e.g. ${source.example}`);
+  }
+  return lines.join('\n');
+}
+
+export function schemaOperators(library: FunctionDoc[], sources: SourceEntry[]): string {
+  const FUNCTIONS = formatFunctionLibrary(library, sources);
+  return `
 ## Schema Structure
 
 A schema is a tree of nodes. Each node can have:
@@ -70,122 +121,100 @@ model.delete — deletes a model instance:
 Use perspective: 'datasetStore.rootDataset' for we-root models (AgentSettings, ChatSession, etc.).
 Use the default (no perspective) for space-scoped models (Space, Signal, etc.).
 
-Conditional logic:
-{ "$if": { "condition": ..., "then": ..., "else": ... } }
-Evaluates condition; if truthy, returns then, else returns else.
+Expressions:
+{ "$": "<expression>" }
+Every computed value — a condition, a label, a number, a filtered list — is one expression string in a
+{ "$": … } token. This is the value layer's whole vocabulary. The node layer ($each, node-level $if,
+$routes, $animate…), queries ($query, $queries) and handlers ($action, $setLocal, $toggleLocal…) stay
+as tokens; an expression goes anywhere a VALUE goes — a prop, a condition, $each's items, a children
+array (rendered as text), a where value, an $action argument.
 
-Map/iterate:
-{ "$map": { "items": { "$store": "templateStore.templates" }, "select": { ... } } }
-Iterates over an array, mapping each item to a new object using the select mapping.
+References — what a name starts from:
+  spaceStore.members             a store member (any store in the Stores section; modules.<id>.<key> for a module)
+  local.searchText               a $localState or $queries field; dot paths read into object fields
+  post.title                     a name bound by $each / $single / $agent through "as" — the default is item
+  index, prev                    $each's row position, and the previous row
+  me.did, currentDataset         the current agent, and the active dataset
+  surface.tier, surface.width    the responsive boundary
+  event, arg, result             the callback argument inside a handler, and a settled $action's value
+A plain string in an expression is ALWAYS a literal: 'item.name' is five words, item.name is a read.
+A store's actions are unreachable — spaceStore.createPost reads as nothing; only $action calls.
 
-Pick:
-{ "$pick": { "from": { "$store": "userStore.profile" }, "props": ["name", "email"] } }
-Picks specific properties from an object.
+Operators, in JavaScript's spelling and precedence:
+  == !=                          strict equality
+  < > <= >=                      numeric comparison
+  in                             list membership:  item.role in ['admin', 'moderator']
+  ! && ||                        boolean logic. && and || ANSWER WITH A BOOLEAN, never with an operand
+  ??                             the fallback-value idiom:  local.name ?? 'Untitled'
+  test ? a : b                   conditional value
+  + - * / %                      arithmetic; + joins strings when either side is one; / by 0 is 0
+  \`…\${expr}…\`                    interpolation — the old $concat
+  a.name   a[i]                  property and index reads; a missing path is undefined, never an error
+  [a, b]   { key: value }        list and object literals — the where-object below is one
 
-Concat (string building):
-{ "$concat": ["part1", "$context.value", "part2"] }
-Joins multiple parts into a single string.
+Comprehensions — the one place a name is bound, over a list:
+  items.filter(x, x.done)          items.map(x, x.name)          items.find(x, x.id == local.selected)
+  items.exists(x, x.role == 'admin')                            items.all(x, x.read)
+Over something that is not a list: filter and map give [], find gives undefined, exists false, all true.
 
-Context references:
-Strings starting with "$" followed by a context key resolve to context values.
-Example: "$space.name" resolves to the name property of the space context variable.
-Dot paths supported: "$item.profile.avatar".
+Functions — the library. f(a, b) and a.f(b) are the same call; a value's own methods are never callable.
+Nothing is ever added to the grammar above: a new capability is a function here, or one the host
+registers (listed last). Wrong-typed input answers with the empty value of its kind, never an error.
+${FUNCTIONS}
 
-Equality / inequality checks:
-{ "$eq": [a, b] } — strict equality
-{ "$ne": [a, b] } — strict inequality
+The where-object — one grammar shared by filter(), find(), and $query's where. Keys are field names;
+values may be expressions (in an expression) or tokens (in a $query):
 
-Numeric comparisons:
-{ "$lt": [a, b] } — a < b (less than)
-{ "$gt": [a, b] } — a > b (greater than)
-Example: { "$gt": [{ "$count": { "items": { "$store": "listStore.items" } } }, 0] }
+  { field: 'value' }                       — strict equality
+  { field: ['a', 'b'] }                    — set membership (IN); matches any of them
+  { field: { not: 'value' } }              — inequality; a list excludes several values
+  { field: { contains: 'text' } }          — case-insensitive substring match (strings only)
+  { field: { startsWith: 'text' } }        — anchored prefix match, case-SENSITIVE
+  { field: { endsWith: 'text' } }          — anchored suffix match, case-SENSITIVE
+  { field: { exists: true } }              — non-null / non-undefined presence check
+  { field: { exists: false } }             — null or undefined check
+  { OR: [ {…}, {…} ] }  { AND: [ … ] }  { NOT: {…} }   — combinators; sibling keys are implicitly ANDed
 
-Set membership:
-{ "$in": [value, array] } — true if array contains value (false if second operand is not an array)
-Example: { "$in": [{ "$store": "spaceStore.uuid" }, { "$store": "datasetStore.systemDatasetUuids" }] }
-Example: { "$in": ["$item.role", ["admin", "moderator"]] }
+A bare list is the positive counterpart of "not" with a list, and the way to fetch a known set:
+{ id: ['id1', 'id2', 'id3'] }. Native on the AD4M backend, where it pushes down to a SPARQL VALUES
+clause. An empty list matches nothing, which is what "none of these" should mean.
 
-Boolean logic:
-{ "$and": [a, b, ...] } — all truthy
-{ "$or": [a, b, ...] } — any truthy
-{ "$not": a } — negation
+startsWith/endsWith are case-sensitive where contains is not: they match structured strings against
+a known prefix (an ISO date, an id out of a URI). They are NOT native to the AD4M backend, so a $query
+using one is refused — use contains there; inside filter() they are evaluated client-side.
 
-Array operators:
-{ "$filter": { "items": <array>, "where": { "field": "value", ... }, "limit": <number> } }
-Filters an array to items where all where conditions match. Mirrors the $query where operator set:
-
-  { "field": "value" }                                   — strict equality
-  { "field": ["a", "b"] }                                — set membership (IN); matches any of them
-  { "field": { "not": "value" } }                        — inequality; array form excludes multiple values
-  { "field": { "contains": "text" } }                    — case-insensitive substring match (strings only)
-  { "field": { "startsWith": "text" } }                  — anchored prefix match, case-SENSITIVE
-  { "field": { "endsWith": "text" } }                    — anchored suffix match, case-SENSITIVE
-  { "field": { "exists": true } }                        — non-null / non-undefined presence check
-  { "field": { "exists": false } }                       — null or undefined check
-
-A bare array is the positive counterpart of "not" with an array, and it is the way to fetch a known
-set: { "id": ["id1", "id2", "id3"] }. Native on the AD4M backend, where it pushes down to a SPARQL
-VALUES clause, so it is index-friendly rather than a scan. An empty array matches nothing, which is
-what "none of these" should mean.
-
-startsWith/endsWith are case-sensitive where contains is not: they exist to match structured strings
-against a known prefix (an ISO date out of a datetime, an id out of a URI), where folding case would
-match things it should not. contains searches prose, which is a different question.
-Note they are NOT native to the AD4M backend, so a $query using one is refused outright — use
-contains there. Inside $filter they are evaluated client-side and always available.
-
-"limit" keeps only the first N matches — the only way to express "the first few", since the operator
-set has no arithmetic and no slice. Use it for a cell showing two of a day's events with a "more"
-marker; without it the only option is rendering all of them and clipping, which cuts a row through
-the middle of the last one. It is resolved through the prop system, so it can come from $local.
-
-Where values (including those inside operator objects) are resolved through the prop system,
-so $store, $local, and context refs like { "$local": "searchText" } all work.
-
-Logical combinators (OR / AND / NOT) — supported in both $query's where and $filter's where:
-  { "OR": [ { "field": "value" }, { "field2": "value2" } ] }   — matches if ANY branch matches
-  { "AND": [ { ... }, { ... } ] }                              — matches if ALL branches match (sibling keys at the
-                                                                  same level are already implicitly ANDed — use AND
-                                                                  to group a set of conditions alongside an OR/NOT)
-  { "NOT": { "field": "value" } }                              — matches if the branch does NOT match
-Branches are full where-clause objects (can contain multiple fields, and can nest OR/AND/NOT inside each other).
-Sibling keys alongside OR/AND/NOT at the same level are implicitly ANDed with it.
-Example — case-insensitive search across two fields ($filter takes the same shape, e.g. a member
-list matching name OR handle):
-{
-  "$query": {
-    "entity": "Space",
-    "where": {
-      "OR": [
-        { "name": { "contains": { "$local": "searchText" } } },
-        { "description": { "contains": { "$local": "searchText" } } }
-      ]
-    }
-  }
-}
-Note: using OR/AND/NOT disables the SPARQL-level sort/pagination pushdown (see count-projection and
-relation-property ordering below) — those orderings silently stop working if combined with OR/AND/NOT in the
-same query's where clause, because the fallback sort runs before the projection/relation data is attached.
+Note: OR/AND/NOT in a $query's where disables the SPARQL-level sort/pagination pushdown (see
+count-projection and relation-property ordering below) — those orderings silently stop working in the
+same query's where clause, because the fallback sort runs before the projection data is attached.
 
 Examples:
-{ "$filter": { "items": { "$store": "spaceStore.members" }, "where": { "role": "admin" } } }
-{ "$filter": { "items": { "$store": "spaceStore.members" }, "where": { "location": { "exists": true }, "handle": { "contains": { "$local": "searchText" } } } } }
-{ "$filter": { "items": { "$local": "dayEvents" }, "where": { "startDate": { "startsWith": "$cell.date" } }, "limit": 2 } }
+{ "$": "filter(spaceStore.members, { role: 'admin' })" }
+{ "$": "filter(spaceStore.members, { location: { exists: true }, handle: { contains: local.searchText } })" }
+{ "$": "filter(local.dayEvents, { startDate: { startsWith: cell.date } }, 2)" }        — the first two only
+{ "$": "find(local.signalTypes, { slug: 'like' }).id" }                                — undefined when nothing matches
+{ "$": "count(local.rows) > 0 && local.searchText != ''" }
+{ "$": "item.author == me.did ? 'mine' : 'theirs'" }
+{ "$": "\`\${count(spaceStore.members)} \${plural(count(spaceStore.members), 'Member', 'Members')}\`" }
+{ "$": "spaceStore.members.filter(m, m.did != me.did).map(m, m.handle).join(', ')" }
+{ "$": "post.author in spaceStore.mutedDids" }
 
-{ "$count": { "items": <array> } }
-Returns the length of an array.
-Example: { "badge": { "$count": { "items": { "$store": "notificationStore.unread" } } } }
+Rules:
+- An expression naming event/arg/result at the TOP LEVEL of an $action's args, or as a $setLocal
+  "value", is evaluated when the handler fires. Nested inside another token it is evaluated at render
+  time against no event and becomes a constant — the validator rejects that.
+- The validator reports every mistake with a column: an unknown name (with "did you mean"), an unknown
+  store member, an undeclared local, an unknown function, a wrong argument count, prototype access.
+- No new value operators will be added and no new syntax. Computation the library lacks is a function
+  the host registers, catalogued under "Host functions" above.
 
-{ "$find": { "items": <array>, "where"?: { ... }, "select"?: "fieldName" } }
-Finds the first matching item. where is optional (returns first item if omitted). select plucks a single field.
-Example: { "$find": { "items": { "$store": "spaceStore.members" }, "where": { "id": "$item.creatorId" }, "select": "name" } }
-
-{ "$plural": { "count": <number>, "one": "singular", "other": "plural" } }
-Returns "one" when count === 1, otherwise "other". Use in children arrays for count-noun labels.
-count is resolved through the prop system — any numeric expression ($count, $store, context ref) works.
-Example: { "$plural": { "count": { "$count": { "items": { "$store": "spaceStore.members" } } }, "one": "Member", "other": "Members" } }
-Compose with we-number for a full "N Members" display:
-  we-number (value: { "$count": ... }, shorten: true) + we-text (children: [{ "$plural": { "count": { "$count": ... }, "one": "Member", "other": "Members" } }])
+Legacy tokens. { "$eq": [a, b] }, { "$ne": … }, { "$lt": … }, { "$gt": … }, { "$in": … }, { "$not": … },
+{ "$and": [ … ] }, { "$or": [ … ] }, { "$concat": [ … ] }, { "$count": { "items" } },
+{ "$filter": { "items", "where", "limit" } }, { "$find": { "items", "where", "select" } },
+{ "$plural": { "count", "one", "other" } }, { "$map": { "items", "select" } }, { "$pick": { "from", "props" } }
+and the prop-level { "$if": { "condition", "then", "else" } } are the same language written as JSON
+and still render — an existing template needs no change — but write new schemas as expressions.
+Context-reference STRINGS ("$item.name", "$me.did") likewise still resolve inside those tokens and as
+bare children; inside an expression they are literals.
 
 Query (data retrieval):
 { "$query": { "entity": "ModelName", "where": { "field": "value" }, "limit": 10, "order": { "field": "asc" } } }
@@ -305,8 +334,9 @@ Read:  { "$local": "name" } — returns the signal value (reactive).
 Write: { "$setLocal": "name", "from": "$event.target.value" } — event handler that updates the signal.
        { "$setLocal": "name", "value": "literal" } — sets to a literal value (string, number, boolean, null, object).
        { "$setLocal": "name", "merge": { "field": "$event.detail" } } — shallow-merges fields into an object-typed signal. Values are resolved as event paths (e.g. "$event.detail") or passed as literals. Use for partial updates to object state.
-       { "$setLocal": "name", "by": 20 } — adds to a NUMBER field, reading the current value first. The only arithmetic the schema layer has: use it to advance a page size ("show 20 more") or bump a counter something else watches. A non-numeric current value counts as 0.
-Note "value" is a LITERAL and is not resolved — a token object inside it is stored as the object, not as what it would resolve to. To store something computed, bind the prop that reads it instead, or use "from"/"merge", whose values ARE resolved as event paths.
+       { "$setLocal": "name", "by": 20 } — adds to a NUMBER field, reading the current value first. A non-numeric current value counts as 0.
+       { "$setLocal": "name", "value": { "$": "local.name + event.step" } } — sets what an expression computes when the handler fires, with event in scope. The general form of "by".
+Note "value" is a LITERAL unless it is an expression: any other token object inside it is stored as the object, not as what it would resolve to. To store something computed write { "$": "…" }, or use "from"/"merge", whose values are resolved as event paths.
 Toggle: { "$toggleLocal": "fieldName" } — toggles a boolean field (equivalent to setting it to !current). Use for show/hide, open/close, expand/collapse patterns.
 Toggle one of many: { "$toggleLocalIn": "fieldName", "value": "$group.id" } — adds the value to an
   array-typed field, or removes it if already there. Read it back with $in:
@@ -638,3 +668,4 @@ where contributions land with this. Resolves to nothing when no module has contr
 container, no gap. Templates have no use for it; chrome is the host's and the modules', not a
 template's.
 `;
+}

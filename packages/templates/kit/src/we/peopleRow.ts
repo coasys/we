@@ -93,7 +93,7 @@ export function peopleRow(opts: PeopleRowOptions): SchemaNode {
                           arrived is still visually distinct from everybody else whose profile has
                           not arrived. A real picture wins where there is one.
                         */
-                        hash: { $concat: ['$item'] },
+                        hash: { $: '`${item}`' },
                       }
                     : { image: '$item.avatar', hash: '$item.did' },
                 },

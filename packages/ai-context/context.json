@@ -6629,5 +6629,31 @@
     "EditorThemePanel",
     "TemplateCard",
     "WeCube"
+  ],
+  "sources": [
+    {
+      "name": "calendarMonth",
+      "params": ["options?"],
+      "doc": "The days of a month as rows — { date, day, inMonth, isToday, weekday } — padded to whole weeks. Options: month (YYYY-MM-DD, default today), offset (months from it), weekStartsOn (0 Sunday … 6), fixedWeeks (six rows, default on).",
+      "example": "calendarMonth({ offset: local.monthOffset, weekStartsOn: 1 })"
+    },
+    {
+      "name": "calendarMonths",
+      "params": ["options?"],
+      "doc": "The twelve months of the year an offset lands in — { label, month, year, offset, isThisMonth, isShown } — each carrying its own offset from today, for a jump-to-month picker.",
+      "example": "calendarMonths({ offset: local.monthOffset })"
+    },
+    {
+      "name": "monthLabel",
+      "params": ["options?"],
+      "doc": "The month a calendar is showing, as \"August 2026\" in the viewer’s language. Same options as calendarMonth.",
+      "example": "monthLabel({ offset: local.monthOffset })"
+    },
+    {
+      "name": "yearLabel",
+      "params": ["options?"],
+      "doc": "The year a calendar is showing, on its own. Same options as calendarMonth.",
+      "example": "yearLabel({ offset: local.monthOffset })"
+    }
   ]
 }

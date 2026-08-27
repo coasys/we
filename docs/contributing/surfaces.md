@@ -68,7 +68,7 @@ row of the table, not just fragments.
 | ------------------------------------------- | ----------------------------------------------- | ------------------------- |
 | [Themes](#themes)                           | Token overrides + CSS, as a visual identity     | Install at runtime · repo |
 | [Shell templates](#shell-templates)         | A whole space interface, as a schema            | Install at runtime · repo |
-| [Views](#views)                             | One section of a space, as a schema             | Repo (seed)               |
+| [Views](#views)                             | One section of a space, as a schema             | Install at runtime · repo |
 | [Portable fragments](#portable-fragments)   | A named arrangement that expands to plain nodes | Repo                      |
 | [WE-domain fragments](#we-domain-fragments) | The same, allowed to name WE's stores           | Repo                      |
 | [Design tokens](#design-tokens)             | Spacing, colour, radius… and the semantic roles | Repo                      |

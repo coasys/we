@@ -87,7 +87,7 @@ export const spaceModal = {
                       type: 'SignalControl',
                       props: {
                         signalType: '$sig',
-                        signals: { $filter: { items: '$space.signals', where: { signalTypeId: '$sig.id' } } },
+                        signals: { $: 'filter(space.signals, { signalTypeId: sig.id })' },
                         myDid: '$me.did',
                         onSignal: { $action: 'spaceStore.upsertSignal', args: ['$space.id', '$sig.id', '$arg'] },
                       },
@@ -106,7 +106,7 @@ export const spaceModal = {
                 then: {
                   type: '$if',
                   props: {
-                    condition: { $in: ['$space.url', { $store: 'datasetStore.joinedSpaceCids' }] },
+                    condition: { $: 'space.url in datasetStore.joinedSpaceCids' },
                     then: {
                       type: 'we-button',
                       props: {

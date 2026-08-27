@@ -39,13 +39,7 @@ const LAYOUTS = [
 /** Layout spec built from the picker, so every mode honours the same choice. */
 const layoutSpec = {
   type: { $local: 'layout' },
-  options: {
-    $if: {
-      condition: { $eq: [{ $local: 'layout' }, 'tree'] },
-      then: { direction: 'right', levelGap: 200 },
-      else: { distance: 130 },
-    },
-  },
+  options: { $: "local.layout == 'tree' ? { direction: 'right', levelGap: 200 } : { distance: 130 }" },
 };
 
 /**
@@ -133,18 +127,7 @@ const knowledgeGraph: SchemaNode = {
         contribute rules alongside hand-written ones.
       */
       {
-        $map: {
-          items: { $local: 'relationshipKinds' },
-          select: {
-            when: { 'data.relationshipTypeId': '$item.id' },
-            style: {
-              showLabel: true,
-              width: 2,
-              color: '$item.color',
-              arrow: { $if: { condition: '$item.directed', then: 'target', else: 'none' } },
-            },
-          },
-        },
+        $: "local.relationshipKinds.map(item, { when: { 'data.relationshipTypeId': item.id }, style: { showLabel: true, width: 2, color: item.color, arrow: item.directed ? 'target' : 'none' } })",
       },
     ],
     behaviours: [
@@ -371,12 +354,12 @@ export const graphView: TemplateSchema = {
                 {
                   type: '$if',
                   props: {
-                    condition: { $eq: [{ $local: 'mode' }, 'knowledge'] },
+                    condition: { $: "local.mode == 'knowledge'" },
                     then: {
                       type: 'we-button',
                       props: {
                         size: 'sm',
-                        variant: { $if: { condition: { $local: 'connecting' }, then: 'primary', else: 'ghost' } },
+                        variant: { $: "local.connecting ? 'primary' : 'ghost'" },
                         onClick: { $toggleLocal: 'connecting' },
                       },
                       children: [{ type: 'we-icon', props: { name: 'flow-arrow' } }, 'Connect'],
@@ -386,7 +369,7 @@ export const graphView: TemplateSchema = {
                 {
                   type: '$if',
                   props: {
-                    condition: { $eq: [{ $local: 'mode' }, 'board'] },
+                    condition: { $: "local.mode == 'board'" },
                     // A board's positions are its data, so there is no layout to choose. Its own
                     // controls — which board, and adding to it — take the same place instead.
                     then: boardBar,
@@ -414,12 +397,7 @@ export const graphView: TemplateSchema = {
                 {
                   type: '$if',
                   props: {
-                    condition: {
-                      $and: [
-                        { $ne: [{ $local: 'mode' }, 'board'] },
-                        { $count: { items: { $store: 'recordStore.creatableEntities' } } },
-                      ],
-                    },
+                    condition: { $: "local.mode != 'board' && count(recordStore.creatableEntities)" },
                     then: {
                       type: 'we-button',
                       props: {
@@ -465,19 +443,19 @@ export const graphView: TemplateSchema = {
       children: [
         {
           type: '$if',
-          props: { condition: { $eq: [{ $local: 'mode' }, 'schema'] }, then: schemaGraph },
+          props: { condition: { $: "local.mode == 'schema'" }, then: schemaGraph },
         },
         {
           type: '$if',
-          props: { condition: { $eq: [{ $local: 'mode' }, 'knowledge'] }, then: knowledgeGraph },
+          props: { condition: { $: "local.mode == 'knowledge'" }, then: knowledgeGraph },
         },
         {
           type: '$if',
-          props: { condition: { $eq: [{ $local: 'mode' }, 'content'] }, then: contentGraph },
+          props: { condition: { $: "local.mode == 'content'" }, then: contentGraph },
         },
         {
           type: '$if',
-          props: { condition: { $eq: [{ $local: 'mode' }, 'board'] }, then: boardCanvas },
+          props: { condition: { $: "local.mode == 'board'" }, then: boardCanvas },
         },
         // Inside the graph container, not after it: the panel overlays the canvas rather than
         // taking a slice of the route, which is what keeps the camera still when it opens.

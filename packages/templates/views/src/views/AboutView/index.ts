@@ -66,7 +66,7 @@ export const aboutView: TemplateSchema = {
                 props: {
                   variant: 'heading-md',
                   color: 'text',
-                  loading: { $not: { $store: 'spaceStore.currentSpace' } },
+                  loading: { $: '!spaceStore.currentSpace' },
                   loadingWidth: '220px',
                 },
                 children: [{ $store: 'spaceStore.currentSpace.name' }],
@@ -108,32 +108,18 @@ export const aboutView: TemplateSchema = {
           attributeRow({
             icon: 'lock-simple',
             label: 'Access',
-            value: { $if: { condition: { $store: 'spaceStore.currentSpace.url' }, then: 'Shared', else: 'Personal' } },
+            value: { $: "spaceStore.currentSpace.url ? 'Shared' : 'Personal'" },
             description: {
-              $if: {
-                condition: { $store: 'spaceStore.currentSpace.url' },
-                then: 'Joinable by anyone with the link',
-                else: 'Only visible to you',
-              },
+              $: "spaceStore.currentSpace.url ? 'Joinable by anyone with the link' : 'Only visible to you'",
             },
           }),
 
           attributeRow({
             icon: 'globe',
             label: 'Discovery',
-            value: {
-              $if: {
-                condition: { $eq: [{ $store: 'spaceStore.currentSpace.discovery' }, 'listed'] },
-                then: 'Listed',
-                else: 'Hidden',
-              },
-            },
+            value: { $: "spaceStore.currentSpace.discovery == 'listed' ? 'Listed' : 'Hidden'" },
             description: {
-              $if: {
-                condition: { $eq: [{ $store: 'spaceStore.currentSpace.discovery' }, 'listed'] },
-                then: 'Appears on the WE discovery globe',
-                else: 'Not shown in global discovery',
-              },
+              $: "spaceStore.currentSpace.discovery == 'listed' ? 'Appears on the WE discovery globe' : 'Not shown in global discovery'",
             },
           }),
 
@@ -145,13 +131,7 @@ export const aboutView: TemplateSchema = {
               then: attributeRow({
                 icon: 'map-pin',
                 label: 'Location',
-                value: {
-                  $concat: [
-                    { $store: 'spaceStore.currentSpace.location.city' },
-                    ', ',
-                    { $store: 'spaceStore.currentSpace.location.country' },
-                  ],
-                },
+                value: { $: '`${spaceStore.currentSpace.location.city}, ${spaceStore.currentSpace.location.country}`' },
               }),
             },
           },

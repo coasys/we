@@ -110,11 +110,7 @@ const modelForm: SchemaNode = {
         {
           type: 'we-text',
           props: { variant: 'heading-md' },
-          children: [
-            {
-              $if: { condition: { $store: 'runtimeStore.aiForm.id' }, then: 'Edit model', else: 'Add a model' },
-            },
-          ],
+          children: [{ $: "runtimeStore.aiForm.id ? 'Edit model' : 'Add a model'" }],
         },
 
         field('Name', 'name', 'What you will call it'),
@@ -213,7 +209,7 @@ const modelForm: SchemaNode = {
               props: {
                 text: 'Save',
                 loading: { $store: 'runtimeStore.loading' },
-                disabled: { $not: { $store: 'runtimeStore.aiFormComplete' } },
+                disabled: { $: '!runtimeStore.aiFormComplete' },
                 onClick: { $action: 'runtimeStore.saveAiModel' },
               },
             },
@@ -265,7 +261,7 @@ const modelCard: SchemaNode = {
                     {
                       type: '$if',
                       props: {
-                        condition: { $not: '$model.isDefault' },
+                        condition: { $: '!model.isDefault' },
                         then: {
                           type: 'we-button',
                           props: {
@@ -387,7 +383,7 @@ export const aiSection: SchemaNode = {
             {
               type: '$if',
               props: {
-                condition: { $count: { items: { $store: 'runtimeStore.aiModels' } } },
+                condition: { $: 'count(runtimeStore.aiModels)' },
                 then: {
                   type: 'Column',
                   props: { gap: '200' },
@@ -434,7 +430,7 @@ export const aiSection: SchemaNode = {
             {
               type: '$if',
               props: {
-                condition: { $count: { items: { $store: 'runtimeStore.aiTasks' } } },
+                condition: { $: 'count(runtimeStore.aiTasks)' },
                 then: {
                   type: 'Column',
                   props: { gap: '200' },

@@ -47,7 +47,7 @@ const accountRow: SchemaNode = {
         {
           type: '$if',
           props: {
-            condition: { $not: '$account.active' },
+            condition: { $: '!account.active' },
             then: {
               type: 'we-button',
               props: {
@@ -119,7 +119,7 @@ export const accountSettings: SchemaNode = {
 export const removeAccountModal: SchemaNode = confirmModal({
   open: { $store: 'accountStore.pendingRemoval' },
   close: { $action: 'accountStore.cancelRemoval' },
-  title: { $concat: ['Delete ', { $store: 'accountStore.pendingRemoval.name' }, '?'] },
+  title: { $: '`Delete ${accountStore.pendingRemoval.name}?`' },
   body: 'This permanently deletes the account and everything in it — its identity, its spaces, and its data. It cannot be undone.',
   detail: 'Close Flux and the ADAM launcher first if they use this account.',
   children: [

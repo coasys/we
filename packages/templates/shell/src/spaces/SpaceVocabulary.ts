@@ -92,7 +92,7 @@ export const spaceVocabularySection: SchemaNode = {
   props: {
     // The row being configured is the dataset currently open. Anything else cannot be queried from
     // here — see the docblock.
-    condition: { $eq: ['$space.uuid', { $store: 'datasetStore.currentDataset.id' }] },
+    condition: { $: 'space.uuid == datasetStore.currentDataset.id' },
     then: {
       type: 'Column',
       props: { gap: '400' },

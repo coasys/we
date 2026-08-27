@@ -67,7 +67,7 @@ array, a missing model).
     {
       "type": "$if",
       "props": {
-        "condition": { "$count": { "items": { "$local": "postRows" } } },
+        "condition": { "$": "count(local.postRows)" },
         "then": {
           "type": "Grid",
           "props": { "columns": 1, "gap": "400", "width": "100%" },
@@ -183,7 +183,7 @@ formModal({
   size: 'sm',
   localState: { draftTitle: { type: 'string', initial: '' } },
   children: [field({ name: 'draftTitle', label: 'What needs doing?', placeholder: 'Ship the docs' })],
-  disabled: { $not: { $local: 'draftTitle' } },
+  disabled: { $: '!local.draftTitle' },
   submitLabel: 'Add task',
   submit: { $action: 'model.create', args: ['TaskBlock', { title: { $local: 'draftTitle' } }] },
 })
@@ -192,7 +192,7 @@ formModal({
 - **Declare the draft in \`localState\`, not on the page.** The modal is mounted only while open, so
   the draft resets when it closes — for free. A draft declared higher up has to be cleared by hand
   in \`onSuccess\`, and the field somebody forgets is the one that re-opens holding last time's value.
-- \`disabled\` is the **precondition** only ("a task needs a title"); the in-flight flag is \`$or\`-ed
+- \`disabled\` is the **precondition** only ("a task needs a title"); the in-flight flag is OR-ed
   in for you, so the Save button cannot start a second save.
 - It uses the header and footer slots, so a long form scrolls its fields and never its Save button.
 
@@ -215,7 +215,7 @@ person can type into must ask before throwing that away.**
 
 \`\`\`ts
 const guard = discardGuard({
-  dirty: { $or: [{ $local: 'name' }, { $local: 'description' }] },
+  dirty: { $: 'local.name || local.description' },
   close: { $action: 'shellStore.setCreateSpaceOpen', args: [false] },
   title: 'Discard this space?',
   body: 'The name, description and images you have entered will be lost.',
@@ -235,7 +235,7 @@ when there is nothing to lose. A dialog people learn to click through is worse t
 - **Test only what the person typed.** A field with a default and a picker — a status, a mode, a
   colour — is set from the first frame, so including it makes the guard fire on an untouched form.
 - **A form seeded from a record asks whether it _changed_**, not whether it is filled in:
-  \`{ $ne: [{ "$local": "titleDraft" }, "$call.title"] }\`, not \`{ "$local": "titleDraft" }\`.
+  \`{ "$": "local.titleDraft != call.title" }\`, not \`{ "$": "local.titleDraft" }\`.
 - **Where the fields are not known in advance, a store answers** — \`recordStore.recordDraftDirty\`,
   \`runtimeStore.aiFormDirty\`.
 - **Leave it off a single-field form** ("name this board"). The guard costs more attention than one
@@ -372,8 +372,7 @@ somebody renames the thing, which is identity art contradicting the identity.
     {
       "type": "AvatarStack",
       "props": {
-        "avatars": { "$map": { "items": { "$store": "spaceStore.members" },
-                               "select": { "image": "$item.avatar", "hash": "$item.did" } } },
+        "avatars": { "$": "spaceStore.members.map(m, { image: m.avatar, hash: m.did })" },
         "max": 5, "size": "sm", "ring": "0 0 0 2px var(--we-ring-color)"
       }
     },
@@ -381,23 +380,19 @@ somebody renames the thing, which is identity art contradicting the identity.
       "type": "Row",
       "props": { "gap": "100", "ay": "center" },
       "children": [
-        { "type": "we-number", "props": { "value": { "$count": { "items": { "$store": "spaceStore.members" } } }, "shorten": true } },
-        { "type": "we-text", "children": [{ "$plural": { "count": { "$count": { "items": { "$store": "spaceStore.members" } } }, "one": "Member", "other": "Members" } }] }
+        { "type": "we-number", "props": { "value": { "$": "count(spaceStore.members)" }, "shorten": true } },
+        { "type": "we-text", "children": [{ "$": "plural(count(spaceStore.members), 'Member', 'Members')" }] }
       ]
     }
   ]
 }
 \`\`\`
 
-**When the items are bare DIDs rather than profiles**, join each to its profile — and note the trap:
-inside a \`$map\` \`select\`, a string is substituted only when it starts with \`$item.\`. A bare
-\`"$item"\` is a **literal**, so every generated face comes out identical. Wrap it in a token object:
+**When the items are bare DIDs rather than profiles**, join each to its profile inside the
+comprehension — the variable is the DID itself:
 
 \`\`\`json
-"select": {
-  "image": { "$find": { "items": { "$store": "profileStore.profiles" }, "where": { "did": "$item" }, "select": "avatar" } },
-  "hash": { "$concat": ["$item"] }
-}
+"avatars": { "$": "spaceStore.memberDids.map(did, { image: find(profileStore.profiles, { did: did }).avatar, hash: did })" }
 \`\`\`
 
 \`minHeight\` on the row is worth keeping: \`AvatarStack\` has no height with no avatars, and people
@@ -543,7 +538,7 @@ A group heading toggles its own id in the set, and its body reveals on the block
       "props": {
         "name": {
           "$if": {
-            "condition": { "$in": ["spaces", { "$local": "collapsedGroups" }] },
+            "condition": { "$": "'spaces' in local.collapsedGroups" },
             "then": "caret-right",
             "else": "caret-down"
           }

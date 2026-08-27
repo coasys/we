@@ -138,18 +138,7 @@ const boardCards: SchemaNode = {
       // One rule per kind the community has named, exactly as the knowledge map does — a board's
       // connections mean the same things and should look the same way.
       {
-        $map: {
-          items: { $local: 'relationshipKinds' },
-          select: {
-            when: { 'data.relationshipTypeId': '$item.id' },
-            style: {
-              showLabel: true,
-              width: 2,
-              color: '$item.color',
-              arrow: { $if: { condition: '$item.directed', then: 'target', else: 'none' } },
-            },
-          },
-        },
+        $: "local.relationshipKinds.map(item, { when: { 'data.relationshipTypeId': item.id }, style: { showLabel: true, width: 2, color: item.color, arrow: item.directed ? 'target' : 'none' } })",
       },
     ],
     // `lock` rather than `pin`: every card is placed already, so there is nothing to hold, and the
@@ -228,9 +217,7 @@ export const boardBar: SchemaNode = {
       props: {
         size: 'sm',
         placeholder: 'Pick a board…',
-        options: {
-          $map: { items: { $local: 'boards' }, select: { label: '$item.title', value: '$item.id' } },
-        },
+        options: { $: 'local.boards.map(item, { label: item.title, value: item.id })' },
         value: BOARD,
         onChange: { $setLocal: 'boardId', from: '$event.detail' },
       },
@@ -263,7 +250,7 @@ export const boardBar: SchemaNode = {
               type: 'we-button',
               props: {
                 size: 'sm',
-                variant: { $if: { condition: { $local: 'connecting' }, then: 'primary', else: 'ghost' } },
+                variant: { $: "local.connecting ? 'primary' : 'ghost'" },
                 onClick: { $toggleLocal: 'connecting' },
               },
               children: [{ type: 'we-icon', props: { name: 'flow-arrow' } }, 'Connect'],
@@ -279,7 +266,7 @@ export const boardBar: SchemaNode = {
               type: 'we-button',
               props: {
                 size: 'sm',
-                variant: { $if: { condition: { $local: 'legendOpen' }, then: 'secondary', else: 'ghost' } },
+                variant: { $: "local.legendOpen ? 'secondary' : 'ghost'" },
                 onClick: { $toggleLocal: 'legendOpen' },
               },
               children: [{ type: 'we-icon', props: { name: 'palette' } }, 'Key'],
@@ -300,7 +287,7 @@ export const boardBar: SchemaNode = {
             {
               type: '$if',
               props: {
-                condition: { $count: { items: { $store: 'recordStore.creatableEntities' } } },
+                condition: { $: 'count(recordStore.creatableEntities)' },
                 then: {
                   type: 'we-button',
                   props: {
@@ -329,7 +316,7 @@ const newBoardModal: SchemaNode = formModal({
   children: [field({ name: 'boardName', label: 'Name', placeholder: 'Ideas, retro, roadmap…' })],
   // Nothing about a name is locally judgeable beyond its presence, so this gates on the value
   // itself rather than dragging in the validation machinery.
-  disabled: { $not: { $local: 'boardName' } },
+  disabled: { $: '!local.boardName' },
   submitLabel: 'Create',
   submit: {
     $action: 'model.create',
@@ -396,7 +383,7 @@ export const boardCanvas: SchemaNode = {
         else: {
           type: '$if',
           props: {
-            condition: { $count: { items: { $local: 'boards' } } },
+            condition: { $: 'count(local.boards)' },
             then: emptyState({ icon: 'squares-four', label: 'boards', message: 'Pick a board to open it.' }),
             else: emptyState({
               icon: 'squares-four',

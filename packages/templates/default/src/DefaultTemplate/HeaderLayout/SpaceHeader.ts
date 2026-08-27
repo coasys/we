@@ -67,7 +67,7 @@ export const spaceHeader: SchemaNode = {
                       props: {
                         variant: 'heading-md',
                         color: 'text',
-                        loading: { $not: { $store: 'spaceStore.currentSpace' } },
+                        loading: { $: '!spaceStore.currentSpace' },
                         loadingWidth: '220px',
                       },
                       children: [{ $store: 'spaceStore.currentSpace.name' }],
@@ -267,13 +267,7 @@ export const spaceNavBar: SchemaNode = {
                     {
                       type: 'we-button',
                       props: {
-                        variant: {
-                          $if: {
-                            condition: { $eq: [{ $store: 'routeStore.segments.2' }, '$view.segment'] },
-                            then: 'primary',
-                            else: 'ghost',
-                          },
-                        },
+                        variant: { $: "routeStore.segments[2] == view.segment ? 'primary' : 'ghost'" },
                         onClick: { $action: 'routeStore.navigate', args: ['$view.path'] },
                       },
                       children: [
@@ -303,7 +297,7 @@ export const spaceNavBar: SchemaNode = {
                 {
                   type: '$if',
                   props: {
-                    condition: { $gt: [{ $count: { items: { $store: 'presenceStore.online' } } }, 0] },
+                    condition: { $: 'count(presenceStore.online) > 0' },
                     // The count, the label and the faces are one statement, so the roster covers all
                     // three — "3 online now" is as much the hover target as the avatars are.
                     //
@@ -332,7 +326,7 @@ export const spaceNavBar: SchemaNode = {
                                 {
                                   type: 'we-number',
                                   props: {
-                                    value: { $count: { items: { $store: 'presenceStore.online' } } },
+                                    value: { $: 'count(presenceStore.online)' },
                                     shorten: true,
                                   },
                                 },
@@ -350,17 +344,7 @@ export const spaceNavBar: SchemaNode = {
                               type: 'AvatarStack',
                               props: {
                                 avatars: {
-                                  $map: {
-                                    items: { $store: 'presenceStore.online' },
-                                    select: {
-                                      image: '$item.avatar',
-                                      hash: '$item.did',
-                                      // Ring colour tracks liveness: green active, amber idle, red stale.
-                                      // Colour rather than opacity because these avatars overlap — a
-                                      // translucent one shows the avatar behind it through itself.
-                                      tone: '$item.tone',
-                                    },
-                                  },
+                                  $: 'presenceStore.online.map(item, { image: item.avatar, hash: item.did, tone: item.tone })',
                                 },
                                 max: 5,
                                 size: 'sm',

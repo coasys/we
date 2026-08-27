@@ -56,7 +56,7 @@ describe('audio', () => {
     const sink = walk(slotNodes()).find((node) => node.type === 'we-audio');
     const loop = walk(slotNodes()).find((node) => node.type === '$each' && walk(node).includes(sink as SchemaNode));
 
-    expect(JSON.stringify((loop?.props as Record<string, unknown>)?.items)).toContain('"isSelf":false');
+    expect(JSON.stringify((loop?.props as Record<string, unknown>)?.items)).toContain('isSelf: false');
   });
 
   it('keeps every tile silent, so nobody is decoded twice', () => {
@@ -127,13 +127,14 @@ describe('the bar keeps to the screen', () => {
 });
 
 describe('the compact bar', () => {
-  const COMPACT = { $eq: ['$surface.tier', 'base'] };
+  const COMPACT = { $: "surface.tier == 'base'" };
+  const ROOMY = { $: "surface.tier != 'base'" };
   const inCall = (): SchemaNode => walk(slotNodes()).find((node) => node.type === 'DropdownMenu') as SchemaNode;
 
   /** The `$if` gates above `target` that read the strip's tier, innermost last. */
   const tierGates = (target: SchemaNode): SchemaNode[] =>
     (lineage(slotNodes(), target) ?? []).filter(
-      (node) => node.type === '$if' && JSON.stringify(props(node).condition).includes('$surface.tier'),
+      (node) => node.type === '$if' && JSON.stringify(props(node).condition).includes('surface.tier'),
     );
 
   const buttonFor = (action: string): SchemaNode =>
@@ -168,7 +169,7 @@ describe('the compact bar', () => {
       expect(
         tierGates(button).map((gate) => props(gate).condition),
         `${action} is not withdrawn from the row when the menu holds it`,
-      ).toEqual([{ $not: COMPACT }]);
+      ).toEqual([ROOMY]);
     }
   });
 

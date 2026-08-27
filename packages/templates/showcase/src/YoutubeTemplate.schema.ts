@@ -47,7 +47,7 @@ const videoCard: SchemaNode = {
       props: {
         variant: 'bare',
         width: '100%',
-        onClick: { $action: 'routeStore.navigate', args: [{ $concat: ['/watch/', '$video.id'] }] },
+        onClick: { $action: 'routeStore.navigate', args: [{ $: '`/watch/${video.id}`' }] },
       },
       children: [
         {
@@ -89,15 +89,7 @@ const videoCard: SchemaNode = {
             {
               type: 'we-text',
               props: { fontWeight: 'semibold', truncate: true, textAlign: 'left', width: '100%' },
-              children: [
-                {
-                  $if: {
-                    condition: '$video.$firstVideo.title',
-                    then: '$video.$firstVideo.title',
-                    else: '$video.textContent',
-                  },
-                },
-              ],
+              children: [{ $: 'video.$firstVideo.title ? video.$firstVideo.title : video.textContent' }],
             },
             agentByline({ did: '$video.author', timestamp: '$video.createdAt' }),
           ],
@@ -266,7 +258,7 @@ const playlistsRoute: RouteSchema = {
                     {
                       type: 'we-text',
                       props: { variant: 'footnote', color: 'text-faint' },
-                      children: [{ $plural: { count: '$playlist.$count', one: 'video', other: 'videos' } }],
+                      children: [{ $: "plural(playlist.$count, 'video', 'videos')" }],
                     },
                   ],
                 },
@@ -327,13 +319,7 @@ export const youtubeTemplate: TemplateSchema = {
                   type: 'we-button',
                   props: {
                     size: 'sm',
-                    variant: {
-                      $if: {
-                        condition: { $eq: [{ $store: 'routeStore.currentPath' }, '$nav.path'] },
-                        then: 'secondary',
-                        else: 'ghost',
-                      },
-                    },
+                    variant: { $: "routeStore.currentPath == nav.path ? 'secondary' : 'ghost'" },
                     onClick: { $action: 'routeStore.navigate', args: ['$nav.path'] },
                   },
                   children: ['$nav.label'],

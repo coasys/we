@@ -48,7 +48,7 @@ export const homeRoute: RouteSchema = {
                     width: '160px',
                     styles: { cursor: 'pointer' },
                     onClick: { $action: 'spaceStore.navigateToSpace', args: ['$space.spaceId'] },
-                    title: { $concat: ['Open ', '$space.name'] },
+                    title: { $: '`Open ${space.name}`' },
                   },
                   children: [
                     {
@@ -88,7 +88,7 @@ export const homeRoute: RouteSchema = {
         {
           type: '$if',
           props: {
-            condition: { $not: { $count: { items: { $store: 'spaceStore.orderedSidebarItems' } } } },
+            condition: { $: '!count(spaceStore.orderedSidebarItems)' },
             then: {
               type: 'Card',
               props: { ax: 'center', bg: 'surface-sunken', width: '100%' },

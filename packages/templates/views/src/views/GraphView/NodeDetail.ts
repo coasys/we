@@ -63,7 +63,7 @@ export const selectNode = [
 export const clearOnEmptySelection = [
   {
     $if: {
-      condition: { $count: { items: '$event' } },
+      condition: { $: 'count(event)' },
       else: [CLEAR, { $setLocal: 'selected', value: null }, { $setLocal: 'cardOpen', value: false }],
     },
   },
@@ -77,19 +77,7 @@ export const clearOnEmptySelection = [
  * asked for, and the request is composed here from that plus whatever is selected.
  */
 export const expandRequest = {
-  $if: {
-    condition: { $local: 'expandKind' },
-    /*
-      `direction: 'both'` because asking is not the same as arriving.
-
-      The maps auto-expand outward, so a node's outgoing relations are already drawn — and a request
-      that repeated that fetched the same neighbours, merged them, and changed nothing on screen. A
-      button that silently does nothing is worse than no button. What has *not* been fetched is what
-      points *at* the node, which is the half of the question a person clicking "Relations" is asking.
-    */
-    then: { id: { $local: 'selected.id' }, direction: 'both', expanders: [{ $local: 'expandKind' }] },
-    else: null,
-  },
+  $: "local.expandKind ? { id: local.selected.id, direction: 'both', expanders: [local.expandKind] } : null",
 };
 
 const openButton = (label: string, icon: string, kind: string): SchemaNode => ({
@@ -124,7 +112,7 @@ const setStyle = (field: string, value: unknown) => ({
 const cardStyle: SchemaNode = {
   type: '$if',
   props: {
-    condition: { $and: [{ $eq: [{ $local: 'mode' }, 'board'] }, { $local: 'selected.recordId' }] },
+    condition: { $: "local.mode == 'board' && local.selected.recordId" },
     then: {
       type: 'Column',
       props: { gap: '300', width: '100%' },
@@ -242,7 +230,7 @@ const actions: SchemaNode = {
         {
           type: '$if',
           props: {
-            condition: { $ne: [{ $local: 'mode' }, 'board'] },
+            condition: { $: "local.mode != 'board'" },
             then: {
               type: 'Row',
               props: { gap: '200', ay: 'center', wrap: true, width: '100%' },
@@ -264,7 +252,7 @@ const actions: SchemaNode = {
             {
               type: '$if',
               props: {
-                condition: { $eq: [{ $local: 'selected.type' }, 'CollectionBlock'] },
+                condition: { $: "local.selected.type == 'CollectionBlock'" },
                 then: {
                   type: 'we-button',
                   props: {
@@ -293,7 +281,7 @@ const actions: SchemaNode = {
             {
               type: '$if',
               props: {
-                condition: { $eq: [{ $local: 'selected.type' }, 'CollectionBlock'] },
+                condition: { $: "local.selected.type == 'CollectionBlock'" },
                 then: {
                   type: 'we-button',
                   props: {
@@ -325,7 +313,7 @@ const actions: SchemaNode = {
             {
               type: '$if',
               props: {
-                condition: { $eq: [{ $local: 'mode' }, 'board'] },
+                condition: { $: "local.mode == 'board'" },
                 then: {
                   type: 'we-button',
                   props: {
@@ -389,7 +377,7 @@ export const nodeDetailPanel: SchemaNode = {
     {
       type: '$if',
       props: {
-        condition: { $and: [{ $local: 'selected' }, { $not: { $local: 'panelClosed' } }] },
+        condition: { $: 'local.selected && !local.panelClosed' },
         // Sliding in from the edge it is docked to, so it reads as arriving rather than appearing.
         enterTransition: [
           { type: 'slide', direction: 'right', distance: '24px', duration: 180 },
@@ -463,7 +451,7 @@ export const nodeDetailPanel: SchemaNode = {
                     {
                       type: '$if',
                       props: {
-                        condition: { $count: { items: { $local: 'selected.fields' } } },
+                        condition: { $: 'count(local.selected.fields)' },
                         then: {
                           type: 'Column',
                           props: { gap: '300', width: '100%' },

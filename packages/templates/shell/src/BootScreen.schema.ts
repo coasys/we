@@ -164,17 +164,7 @@ const logoCorner: SchemaNode = {
     // many. `activeAccount` is also absent on a genuine first run, before anything is cached, which
     // is exactly when the splash wants the centre to itself.
     condition: {
-      $and: [
-        { $store: 'accountStore.activeAccount' },
-        {
-          $not: {
-            $and: [
-              { $store: 'accountStore.isFirstRun' },
-              { $eq: [{ $store: 'sessionStore.bootState' }, 'initialising'] },
-            ],
-          },
-        },
-      ],
+      $: "accountStore.activeAccount && !(accountStore.isFirstRun && sessionStore.bootState == 'initialising')",
     },
     then: {
       type: 'Column',
@@ -263,9 +253,7 @@ function accountSwitcher(): SchemaNode {
           // Everyone but the account signed in to — that one is the badge in the centre — and
           // only accounts somebody has set up. One with no identity is not a destination:
           // switching to it lands straight back on the setup form.
-          items: {
-            $filter: { items: { $store: 'accountStore.accounts' }, where: { active: false, hasAgent: true } },
-          },
+          items: { $: 'filter(accountStore.accounts, { active: false, hasAgent: true })' },
           as: 'account',
         },
         children: [
@@ -460,13 +448,7 @@ const unlockForm: SchemaNode = {
     {
       type: 'we-form-field',
       props: {
-        error: {
-          $if: {
-            condition: { $store: 'sessionStore.passwordError' },
-            then: 'Incorrect password',
-            else: '',
-          },
-        },
+        error: { $: "sessionStore.passwordError ? 'Incorrect password' : ''" },
       },
       children: [
         // Field and submit on one row — the shape an OS sign-in uses when there is exactly one
@@ -498,7 +480,7 @@ const unlockForm: SchemaNode = {
                 // the wrong diagnosis for a password that was never typed.
                 onKeyDown: {
                   $if: {
-                    condition: { $and: [{ $eq: ['$arg.detail.key', 'Enter'] }, { $local: 'password' }] },
+                    condition: { $: "arg.detail.key == 'Enter' && local.password" },
                     then: { $action: 'sessionStore.login', args: [{ $local: 'password' }] },
                   },
                 },
@@ -511,7 +493,7 @@ const unlockForm: SchemaNode = {
                 // Gated on the value, not on a validation rule. There is nothing to submit until
                 // something is typed, which is a precondition rather than a judgement — and the
                 // OS sign-in screens this follows all hold the button until there is.
-                disabled: { $not: { $local: 'password' } },
+                disabled: { $: '!local.password' },
                 loading: { $store: 'sessionStore.loginLoading' },
                 onClick: { $action: 'sessionStore.login', args: [{ $local: 'password' }] },
               },
@@ -538,12 +520,7 @@ const unlockForm: SchemaNode = {
 const settingUpState: SchemaNode = {
   type: '$if',
   props: {
-    condition: {
-      $or: [
-        { $store: 'sessionStore.createAgentLoading' },
-        { $eq: [{ $store: 'sessionStore.bootState' }, 'finishing'] },
-      ],
-    },
+    condition: { $: "sessionStore.createAgentLoading || sessionStore.bootState == 'finishing'" },
     then: {
       type: 'Row',
       props: { gap: '300', ay: 'center' },
@@ -586,7 +563,7 @@ const switchingState: SchemaNode = {
 const bootFailure: SchemaNode = {
   type: '$if',
   props: {
-    condition: { $eq: [{ $store: 'sessionStore.bootState' }, 'error'] },
+    condition: { $: "sessionStore.bootState == 'error'" },
     then: {
       type: 'Column',
       props: { gap: '400', ax: 'center', maxWidth: '420px' },
@@ -631,7 +608,7 @@ const bootFailure: SchemaNode = {
 export const bootScreen: SchemaNode = {
   type: '$if',
   props: {
-    condition: { $ne: [{ $store: 'sessionStore.bootState' }, 'ready'] },
+    condition: { $: "sessionStore.bootState != 'ready'" },
     exitTransition: { type: 'fade', duration: 500, easing: 'ease-out' },
     then: {
       type: 'Column',
@@ -668,12 +645,7 @@ export const bootScreen: SchemaNode = {
               type: '$if',
               props: {
                 condition: {
-                  $and: [
-                    { $store: 'accountStore.isFirstRun' },
-                    { $eq: [{ $store: 'sessionStore.bootState' }, 'createAgent'] },
-                    { $not: { $store: 'sessionStore.createAgentLoading' } },
-                    { $not: { $store: 'accountStore.switchingTo' } },
-                  ],
+                  $: "accountStore.isFirstRun && sessionStore.bootState == 'createAgent' && !sessionStore.createAgentLoading && !accountStore.switchingTo",
                 },
                 // Matched to the form's own fade below, so the heading and the fields it belongs to
                 // arrive as one thing rather than in sequence.
@@ -689,7 +661,7 @@ export const bootScreen: SchemaNode = {
             {
               type: '$if',
               props: {
-                condition: { $eq: [{ $store: 'sessionStore.bootState' }, 'initialising'] },
+                condition: { $: "sessionStore.bootState == 'initialising'" },
                 then: startingState('accountStore.activeAccount'),
               },
             },
@@ -698,12 +670,7 @@ export const bootScreen: SchemaNode = {
             {
               type: '$if',
               props: {
-                condition: {
-                  $and: [
-                    { $eq: [{ $store: 'sessionStore.bootState' }, 'login'] },
-                    { $not: { $store: 'accountStore.switchingTo' } },
-                  ],
-                },
+                condition: { $: "sessionStore.bootState == 'login' && !accountStore.switchingTo" },
                 then: {
                   type: 'Column',
                   props: { gap: '400', ax: 'center' },
@@ -732,11 +699,7 @@ export const bootScreen: SchemaNode = {
               type: '$if',
               props: {
                 condition: {
-                  $and: [
-                    { $eq: [{ $store: 'sessionStore.bootState' }, 'createAgent'] },
-                    { $not: { $store: 'sessionStore.createAgentLoading' } },
-                    { $not: { $store: 'accountStore.switchingTo' } },
-                  ],
+                  $: "sessionStore.bootState == 'createAgent' && !sessionStore.createAgentLoading && !accountStore.switchingTo",
                 },
                 enterTransition: { type: 'fade', duration: 300 },
                 /*
@@ -796,7 +759,7 @@ export const bootScreen: SchemaNode = {
                         {
                           type: '$if',
                           props: {
-                            condition: { $not: { $store: 'accountStore.isFirstRun' } },
+                            condition: { $: '!accountStore.isFirstRun' },
                             then: {
                               type: 'Row',
                               props: { gap: '300', ay: 'center' },
@@ -935,22 +898,7 @@ export const bootScreen: SchemaNode = {
                     // is being created and the profile published is offering to abandon a half-made
                     // identity.
                     condition: {
-                      $and: [
-                        {
-                          $in: [
-                            { $store: 'sessionStore.bootState' },
-                            // `error` included deliberately: if this account's data layer is what
-                            // failed, another account is the way out, and the list is read from
-                            // disk rather than from the backend that just refused to start.
-                            ['initialising', 'login', 'createAgent', 'error'],
-                          ],
-                        },
-                        { $not: { $store: 'sessionStore.createAgentLoading' } },
-                        // Never on a first run — there is nowhere else to go.
-                        { $store: 'accountStore.canManageAccounts' },
-                        { $store: 'accountStore.activeAccount' },
-                        { $not: { $store: 'accountStore.isFirstRun' } },
-                      ],
+                      $: "sessionStore.bootState in ['initialising', 'login', 'createAgent', 'error'] && !sessionStore.createAgentLoading && accountStore.canManageAccounts && accountStore.activeAccount && !accountStore.isFirstRun",
                     },
                     // Faded out rather than cut, because this leaves at the same moment the form it
                     // sits beside does, and the form is replaced by a spinner rather than removed —

@@ -121,7 +121,7 @@ function extracted(query: object, label: string, icon: string, as: string): Sche
 export const callsList: SchemaNode = {
   type: '$if',
   props: {
-    condition: { $eq: [{ $local: 'contentType' }, 'calls'] },
+    condition: { $: "local.contentType == 'calls'" },
     then: cardList({
       query: {
         entity: 'CollectionBlock',
@@ -186,7 +186,7 @@ export const callsList: SchemaNode = {
                           // rather than shown blank, because an untitled call is the ordinary case:
                           // the record is created by the first utterance, and nothing on that path
                           // knows what the call was about.
-                          children: [{ $if: { condition: '$call.title', then: '$call.title', else: 'Call' } }],
+                          children: [{ $: "call.title ? call.title : 'Call'" }],
                         },
                         /*
                           Which of these is happening right now.
@@ -211,9 +211,7 @@ export const callsList: SchemaNode = {
                         {
                           type: '$if',
                           props: {
-                            condition: {
-                              $eq: ['$call.id', { $store: 'modules.transcribe.liveCollectionId' }],
-                            },
+                            condition: { $: 'call.id == modules.transcribe.liveCollectionId' },
                             then: {
                               type: 'we-badge',
                               props: { variant: 'success', size: 'xs' },
@@ -386,25 +384,7 @@ export const callsList: SchemaNode = {
                       type: '$if',
                       props: {
                         condition: {
-                          $and: [
-                            { $store: 'modules.call.canCall' },
-                            /*
-                              Not in a call, or this is the one. Note the second test is against the
-                              live *record* rather than against `active`: a space-wide call publishes
-                              one id derived from the space, so `active` cannot tell this morning's
-                              meeting from this afternoon's and every card would claim to be live.
-
-                              It is also empty for a call nobody has transcribed yet, which is right
-                              — there is no record, so no card on this list is that call, and none of
-                              them should offer to take you to it.
-                            */
-                            {
-                              $or: [
-                                { $not: { $store: 'modules.call.active' } },
-                                { $eq: ['$call.id', { $store: 'modules.transcribe.liveCollectionId' }] },
-                              ],
-                            },
-                          ],
+                          $: 'modules.call.canCall && (!modules.call.active || call.id == modules.transcribe.liveCollectionId)',
                         },
                         // A real tooltip rather than the button's `title`, which the browser draws
                         // itself: unthemed, after its own delay, and never on a keyboard focus.
@@ -414,13 +394,7 @@ export const callsList: SchemaNode = {
                         then: {
                           type: 'we-tooltip',
                           props: {
-                            title: {
-                              $if: {
-                                condition: { $store: 'modules.call.active' },
-                                then: 'Go to the call',
-                                else: 'Continue this call',
-                              },
-                            },
+                            title: { $: "modules.call.active ? 'Go to the call' : 'Continue this call'" },
                             placement: 'top',
                           },
                           children: [
@@ -450,7 +424,7 @@ export const callsList: SchemaNode = {
                                   },
                                   {
                                     $if: {
-                                      condition: { $not: { $store: 'modules.call.active' } },
+                                      condition: { $: '!modules.call.active' },
                                       // Two actions rather than one with an `onSuccess`, because
                                       // `joinSpaceCall` returns nothing for a lifecycle key to hang
                                       // off. `resume` is built for that: it holds the record until
@@ -509,12 +483,8 @@ export const callsList: SchemaNode = {
                                 // Keyed on *this* card's id, not on a global flag. A shared status
                                 // would spin every call in the list while one of them worked, and
                                 // would hang the finished count on whichever card the eye landed on.
-                                loading: {
-                                  $eq: [{ $store: 'modules.transcribe.extractingId' }, '$call.id'],
-                                },
-                                disabled: {
-                                  $eq: [{ $store: 'modules.transcribe.extractStatus' }, 'running'],
-                                },
+                                loading: { $: 'modules.transcribe.extractingId == call.id' },
+                                disabled: { $: "modules.transcribe.extractStatus == 'running'" },
                                 onClick: {
                                   $action: 'modules.transcribe.extractCollection',
                                   args: ['$call.id'],
@@ -527,9 +497,7 @@ export const callsList: SchemaNode = {
                                 {
                                   type: '$if',
                                   props: {
-                                    condition: {
-                                      $not: { $eq: [{ $store: 'modules.transcribe.extractingId' }, '$call.id'] },
-                                    },
+                                    condition: { $: '!(modules.transcribe.extractingId == call.id)' },
                                     then: { type: 'we-icon', props: { name: 'sparkle' } },
                                   },
                                 },
@@ -580,7 +548,7 @@ export const callsList: SchemaNode = {
                     {
                       type: '$if',
                       props: {
-                        condition: { $eq: [{ $store: 'modules.transcribe.extractingId' }, '$call.id'] },
+                        condition: { $: 'modules.transcribe.extractingId == call.id' },
                         then: {
                           type: 'we-text',
                           props: { fontSize: '200', color: 'text' },
@@ -592,44 +560,14 @@ export const callsList: SchemaNode = {
                       type: '$if',
                       props: {
                         condition: {
-                          $and: [
-                            { $eq: [{ $store: 'modules.transcribe.extractedId' }, '$call.id'] },
-                            { $eq: [{ $store: 'modules.transcribe.extractStatus' }, 'done'] },
-                          ],
+                          $: "modules.transcribe.extractedId == call.id && modules.transcribe.extractStatus == 'done'",
                         },
                         then: {
                           type: 'we-text',
                           props: { fontSize: '200', color: 'text' },
                           children: [
                             {
-                              // Whole sentences per branch rather than a count glued to a suffix.
-                              // Sharing the tail gave "no found" for the empty case, which is the
-                              // sort of thing that reads as a placeholder somebody forgot.
-                              //
-                              // Three outcomes, not two. "Nothing found" is a fact about the
-                              // conversation; "no transcript" means nothing reached the model at
-                              // all, and every way that happens — a wrong containment predicate, an
-                              // unreadable timestamp, the wrong collection — looks identical to a
-                              // quiet meeting unless the turn count is said out loud.
-                              $if: {
-                                condition: { $store: 'modules.transcribe.extractTurns' },
-                                then: {
-                                  $if: {
-                                    condition: { $store: 'modules.transcribe.extractCount' },
-                                    then: {
-                                      $concat: [{ $store: 'modules.transcribe.extractCount' }, ' found'],
-                                    },
-                                    else: {
-                                      $concat: [
-                                        'Nothing found in ',
-                                        { $store: 'modules.transcribe.extractTurns' },
-                                        ' turns',
-                                      ],
-                                    },
-                                  },
-                                },
-                                else: 'No transcript to read',
-                              },
+                              $: "modules.transcribe.extractTurns ? modules.transcribe.extractCount ? `${modules.transcribe.extractCount} found` : `Nothing found in ${modules.transcribe.extractTurns} turns` : 'No transcript to read'",
                             },
                           ],
                         },
@@ -648,10 +586,7 @@ export const callsList: SchemaNode = {
                       type: '$if',
                       props: {
                         condition: {
-                          $and: [
-                            { $eq: [{ $store: 'modules.transcribe.extractedId' }, '$call.id'] },
-                            { $eq: [{ $store: 'modules.transcribe.extractStatus' }, 'error'] },
-                          ],
+                          $: "modules.transcribe.extractedId == call.id && modules.transcribe.extractStatus == 'error'",
                         },
                         then: {
                           type: 'we-tooltip',
@@ -679,7 +614,7 @@ export const callsList: SchemaNode = {
                     {
                       type: '$if',
                       props: {
-                        condition: { $eq: ['$call.author', '$me.did'] },
+                        condition: { $: 'call.author == me.did' },
                         then: {
                           type: 'Row',
                           props: { gap: '100' },
@@ -762,10 +697,7 @@ export const callsList: SchemaNode = {
                         anything is filled in at all.
                       */
                       discardWhen: {
-                        $or: [
-                          { $ne: [{ $local: 'titleDraft' }, '$call.title'] },
-                          { $ne: [{ $local: 'descriptionDraft' }, '$call.description'] },
-                        ],
+                        $: 'local.titleDraft != call.title || local.descriptionDraft != call.description',
                       },
                       submit: {
                         $action: 'model.update',
@@ -855,7 +787,7 @@ export const callsList: SchemaNode = {
                             onClick: { $toggleLocal: 'findingsOpen' },
                             text: {
                               $concat: [
-                                { $if: { condition: { $local: 'findingsOpen' }, then: 'Hide', else: 'Show' } },
+                                { $: "local.findingsOpen ? 'Hide' : 'Show'" },
                                 ' what was found',
                                 countOf(taskFindings, ' task', ' tasks'),
                                 countOf(eventFindings, ' event', ' events'),

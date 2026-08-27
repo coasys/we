@@ -62,7 +62,7 @@ export function kanbanBoard(opts: KanbanBoardOptions): SchemaNode {
       {
         type: '$if',
         props: {
-          condition: { $count: { items: { $local: 'columnRows' } } },
+          condition: { $: 'count(local.columnRows)' },
           then: {
             type: '$each',
             props: { items: { $local: 'columnRows' }, as: 'column' },
@@ -106,7 +106,7 @@ export function kanbanBoard(opts: KanbanBoardOptions): SchemaNode {
                   {
                     type: '$if',
                     props: {
-                      condition: { $count: { items: { $local: 'cardRows' } } },
+                      condition: { $: 'count(local.cardRows)' },
                       then: {
                         type: 'Column',
                         props: { gap: '200', width: '100%' },

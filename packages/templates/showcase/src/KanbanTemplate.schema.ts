@@ -68,7 +68,7 @@ const boardsRoute: RouteSchema = {
               props: {
                 variant: 'bare',
                 width: '100%',
-                onClick: { $action: 'routeStore.navigate', args: [{ $concat: ['/board/', '$board.id'] }] },
+                onClick: { $action: 'routeStore.navigate', args: [{ $: '`/board/${board.id}`' }] },
               },
               children: [
                 {
@@ -92,7 +92,7 @@ const boardsRoute: RouteSchema = {
                         {
                           type: 'we-text',
                           props: { variant: 'footnote', color: 'text-faint' },
-                          children: [{ $plural: { count: '$board.$columnCount', one: 'column', other: 'columns' } }],
+                          children: [{ $: "plural(board.$columnCount, 'column', 'columns')" }],
                         },
                       ],
                     },

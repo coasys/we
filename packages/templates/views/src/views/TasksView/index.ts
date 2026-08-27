@@ -100,12 +100,12 @@ const cardBody: SchemaNode = {
           // Only when it is not the default, so a board is not a wall of "medium".
           type: '$if',
           props: {
-            condition: { $ne: ['$task.priority', 'medium'] },
+            condition: { $: "task.priority != 'medium'" },
             then: {
               type: 'we-badge',
               props: {
                 size: 'xs',
-                variant: { $if: { condition: { $eq: ['$task.priority', 'high'] }, then: 'danger', else: 'neutral' } },
+                variant: { $: "task.priority == 'high' ? 'danger' : 'neutral'" },
               },
               children: ['$task.priority'],
             },
@@ -129,7 +129,7 @@ const cardBody: SchemaNode = {
             then: {
               type: 'we-text',
               props: { fontSize: '200', color: 'text' },
-              children: [{ $concat: ['@', '$task.assignee'] }],
+              children: [{ $: '`@${task.assignee}`' }],
             },
           },
         },
@@ -255,10 +255,10 @@ const composer: SchemaNode = formModal({
       props: { options: COLUMNS.map((spec) => ({ label: spec.label, value: spec.status })) },
     }),
   ],
-  disabled: { $not: { $local: 'draftTitle' } },
+  disabled: { $: '!local.draftTitle' },
   // `draftStatus` is excluded: it has a default and a picker, so it is set from the first frame
   // and a guard including it would fire on a form nobody has touched.
-  discardWhen: { $or: [{ $local: 'draftTitle' }, { $local: 'draftDescription' }] },
+  discardWhen: { $: 'local.draftTitle || local.draftDescription' },
   submitLabel: 'Add task',
   submit: {
     $action: 'model.create',

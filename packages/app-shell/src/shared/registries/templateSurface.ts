@@ -37,7 +37,7 @@
  * store member fails that test until it is classified, so this cannot quietly fall behind the code
  * it describes — the failure mode an allowlist beside the thing it allows usually has.
  */
-import { markReactive } from '@we/schema-shared';
+import { isExpressionToken, markReactive, parseExpression, referencedPaths } from '@we/schema-shared';
 
 /**
  * What a group of capabilities lets a template do, in the words a person would use.
@@ -1174,6 +1174,20 @@ export interface SurfaceInspection {
 /** Store names the bag always provides, so a reference to one is never blocked. */
 const UNGATED_ROOTS = new Set([...ALWAYS_PRESENT, 'modules']);
 
+/** Roots an expression may start from that are not stores, and so are never classified. */
+const EXPRESSION_ROOTS = new Set([
+  'local',
+  'me',
+  'currentDataset',
+  'event',
+  'arg',
+  'result',
+  'index',
+  'prev',
+  'surface',
+  'item',
+]);
+
 function classify(path: string): { store: string; member: string; spec: Classification | undefined } | null {
   const [store, member] = path.split('.');
   if (!store || !member) return null;
@@ -1198,6 +1212,23 @@ function collectReferences(value: unknown, into: { path: string; via: 'store' | 
   const node = value as Record<string, unknown>;
   if (typeof node.$store === 'string') into.push({ path: node.$store, via: 'store' });
   if (typeof node.$action === 'string') into.push({ path: node.$action, via: 'action' });
+  /*
+    An expression names stores as bare paths — `spaceStore.members`, `modules.notes.open`. Every
+    dotted root the expression reads is reported as a store reference; roots that are not stores
+    (`local`, `item`, `me`) are dropped by `classify` below exactly as an ungated `$store` root is,
+    so there is no second list of names to keep in step. A source that does not parse names
+    nothing, which is right: it resolves to nothing at paint too, and the validator is where the
+    syntax error is reported.
+  */
+  if (isExpressionToken(node)) {
+    try {
+      for (const { root, path } of referencedPaths(parseExpression(node.$))) {
+        if (path.length > 0) into.push({ path: [root, ...path].join('.'), via: 'store' });
+      }
+    } catch {
+      // A syntax error is the validator's to report.
+    }
+  }
   /*
     A query's `dataset` is a store path too — `dataset: 'datasetStore.marketplaceDataset'` — and the
     renderer resolves it against the same bag `$store` reads from. Left out of the walk, a dataset
@@ -1239,7 +1270,19 @@ export function inspectTemplateSurface(schema: unknown, grants: readonly Capabil
     if (UNGATED_ROOTS.has(root)) continue;
 
     const parsed = classify(path);
-    if (!parsed || parsed.spec === undefined || parsed.spec === WIRING) {
+    /*
+      A root that is not a store at all — a `$each` variable, `local`, a name the expression bound.
+      Only an expression can produce one here (a `$store` path always starts with a store), and it
+      is not a reference to anything the surface governs. A *typo'd* store name lands here too, and
+      that is the validator's to report against the known store list, not this walker's — this
+      answers "may you", not "does it exist".
+    */
+    if (
+      !parsed ||
+      (TEMPLATE_SURFACE[parsed.store] === undefined && (EXPRESSION_ROOTS.has(root) || !/Store$/.test(root)))
+    )
+      continue;
+    if (parsed.spec === undefined || parsed.spec === WIRING) {
       // Unclassified or host wiring. Blocked either way — an undecided member is not an open one —
       // but with a null group, so a caller can word "there is no such thing" differently from
       // "you may not have that".

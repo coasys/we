@@ -84,9 +84,7 @@ const identity: SchemaNode = {
 const credits: SchemaNode = {
   type: '$if',
   props: {
-    condition: {
-      $and: [{ $store: 'sessionStore.hostAccount' }, { $not: { $store: 'sessionStore.hostAccount.freeAccess' } }],
-    },
+    condition: { $: 'sessionStore.hostAccount && !sessionStore.hostAccount.freeAccess' },
     then: {
       type: 'Row',
       props: { gap: '300', ay: 'center', ax: 'between', bg: 'surface-sunken', r: '300', px: '300', py: '200' },
@@ -117,7 +115,7 @@ const credits: SchemaNode = {
 const advertisedModels: SchemaNode = {
   type: '$if',
   props: {
-    condition: { $count: { items: { $store: 'sessionStore.host.aiModels' } } },
+    condition: { $: 'count(sessionStore.host.aiModels)' },
     then: {
       type: 'Column',
       props: { gap: '200' },
@@ -142,7 +140,7 @@ const advertisedModels: SchemaNode = {
 const pricing: SchemaNode = {
   type: '$if',
   props: {
-    condition: { $count: { items: { $store: 'sessionStore.host.rates' } } },
+    condition: { $: 'count(sessionStore.host.rates)' },
     then: {
       type: 'Column',
       props: { gap: '200' },
@@ -160,7 +158,7 @@ const pricing: SchemaNode = {
                 {
                   type: 'we-text',
                   props: { variant: 'footnote', color: 'text-muted' },
-                  children: [{ $concat: ['$rate.priceInHOT', ' HOT'] }],
+                  children: [{ $: '`${rate.priceInHOT} HOT`' }],
                 },
               ],
             },

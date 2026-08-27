@@ -66,8 +66,6 @@ describe('sidebar Apps group', () => {
       .sort((a, b) => walk(a).length - walk(b).length)[0];
 
     expect(gate, 'the Apps group must be behind an $if').toBeDefined();
-    expect((gate?.props as Node).condition).toEqual({
-      $count: { items: { $store: 'appStore.apps' } },
-    });
+    expect((gate?.props as Node).condition).toEqual({ $: 'count(appStore.apps)' });
   });
 });

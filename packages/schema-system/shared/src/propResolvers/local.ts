@@ -1,3 +1,5 @@
+import { isExpressionToken } from '../expressions';
+import { resolveExpressionProp } from './expression';
 import { walkPath } from './path';
 import { markReactive, REACTIVE_ACCESSOR } from './reactive';
 import type { Memo, Props } from './types';
@@ -114,6 +116,7 @@ export function resolveLocalProp(value: { $local: string }, context: Props, memo
 export function resolveSetLocalProp(
   value: { $setLocal: string; from?: string; value?: unknown; merge?: Record<string, unknown>; by?: number },
   context: Props,
+  stores: Props = {},
 ): (event: unknown) => void {
   const localSetters = context.$localSetters as Record<string, (v: unknown) => void> | undefined;
   const localState = context.$local as Record<string, () => unknown> | undefined;
@@ -129,6 +132,20 @@ export function resolveSetLocalProp(
     return () => {};
   }
   if ('value' in value) {
+    /*
+      A literal, stored as written — except an expression, which is evaluated when the handler
+      fires, with the event in scope. `value` was documented as never resolved because a token
+      object stored as the object was the only alternative; an expression is the form that was
+      missing, and evaluating it at call time is what lets `{ $setLocal: 'page', value: { $:
+      'local.page + 1' } }` replace the `by` form for anything more than a constant step.
+    */
+    if (isExpressionToken(value.value)) {
+      const token = value.value;
+      return (event: unknown) => {
+        const resolved = resolveExpressionProp(token, stores, { ...context, event }, noMemo);
+        setter(typeof resolved === 'function' ? (resolved as (arg: unknown) => unknown)(event) : resolved);
+      };
+    }
     return () => {
       setter(value.value);
     };

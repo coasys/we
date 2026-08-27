@@ -11,78 +11,73 @@ Rules and patterns for building and maintaining the schema-driven rendering syst
 
 All operator resolution logic lives in `shared/` — the renderer layer (`solid/`) only handles DOM construction and framework-specific reactivity.
 
-## Operator Naming
+## Four Layers, One Grammar
 
-All operators use the `$` prefix followed by a **single lowercase word**:
+The `$`-constructs a schema writes are four different kinds of thing, and only three of them are
+tokens:
 
-```
-$store  $action  $concat  $map  $pick  $if  $not  $eq  $ne  $lt  $gt  $in  $and  $or  $each  $routes
-$filter  $count  $find  $local  $setLocal  $toggleLocal  $callLocal  $error  $valid  $touched  $formValid  $touch  $resetLocal
-```
+| Layer     | Spelling                                                                                                              | Why it is what it is                                                  |
+| --------- | --------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------- |
+| Structure | Node types `$each`, `$if`, `$routes`, `$animate`, `$single`, `$surface`, `$slot`, `$agent`; `$localState`, `$queries` | Arrangement — what section-level remixing operates on                 |
+| Query     | `{ $query }`, `$queries`                                                                                              | An IR the backend pushes down                                         |
+| Handlers  | `$action`, `$setLocal`, `$toggleLocal`, `$toggleLocalIn`, `$callLocal`, `$touch`, `$resetLocal`                       | A closed set of verbs; grants and `destructive` flags attach to verbs |
+| Values    | `{ $: "count(local.rows) > 0 && local.search != ''" }`                                                                | One expression language — closed grammar, open function library       |
+
+The value layer lives in `shared/src/expressions/`: `ast.ts` (the grammar and why it is closed),
+`lexer.ts`/`parser.ts`, `printer.ts` (canonical round trip for the editor), `evaluate.ts` (total,
+inert, reactive), `check.ts` (column-precise static checking), `functions.ts` (the library),
+`convert.ts` (to and from the legacy operator tokens). `propResolvers/expression.ts` is the one
+dispatcher branch it adds.
 
 **Rules:**
 
-- Always a single word — no camelCase, no hyphens, no multi-word names.
-- Prop-level operators (resolved by `dispatcher.ts`) use object syntax: `{ $store: '...' }`.
-- Renderer-level operators (`$each`, `$if`, `$routes`, `$animate`, `$single`) appear as `node.type` values and are handled in `SchemaRenderer.tsx`.
-- Context reference strings (`$item.name`, `$space.uuid`) are **not** operators — they're resolved inline by the dispatcher as plain strings.
+- **No new value operators, and no new syntax.** The grammar in `ast.ts` is final. A need for
+  computation is a function (below) or a host source.
+- Handler and reference tokens use the `$` prefix followed by a **single lowercase word**, as before.
+- Renderer-level operators appear as `node.type` values and are handled in `SchemaRenderer.tsx`.
+- The legacy value tokens (`$eq`, `$and`, `$concat`, `$count`, `$filter`, `$find`, `$plural`,
+  `$map`, `$pick`, `$not`, `$or`, `$in`, `$lt`, `$gt`, `$ne`, `$source`, prop-level `$if`) are the
+  language's syntax tree as JSON. They keep resolving — `dispatcher.ts` still branches on them and
+  `operatorParity.test.ts` still holds them to the zod union — but nothing is added to that set,
+  and new schemas are written as expressions. `src/cli/we-expressions-codemod.ts` prints a file's
+  operator trees into the new spelling.
 
-## Two Operator Categories
+## Adding a Library Function
 
-### Prop-Level Operators
+A function is code, and gets the bar code gets: **three real uses**, or a divergence that is already
+a bug. Then:
 
-Resolved by the dispatcher during prop resolution. Each has a dedicated resolver file in `shared/src/propResolvers/`.
+1. **Define it** in `shared/src/expressions/functions.ts` with `defineFunction({ name, category,
+params, doc, example, impl })`. `params` in the library notation (`limit?`, `...values`); `doc`
+   one sentence saying what it answers and what it does with bad input.
+2. **Keep it pure and total.** No I/O, no throwing. Wrong-typed input answers with the empty value
+   of its kind (`[]`, `''`, `0`, `false`, `undefined`) — a template that renders too little is
+   recoverable, one that throws mid-paint takes the tree with it.
+3. **Test it** in `shared/src/expressions/expressions.test.ts`.
+4. **Regenerate the context** — `pnpm --filter @we/ai-context generate-context`. The reference
+   lists the library from the registry; there is no doc to edit. `OPERATORS.md` and `README.md`
+   describe the layers, not the functions.
 
-| Operator       | File             | Purpose                                   |
-| -------------- | ---------------- | ----------------------------------------- |
-| `$store`       | `store.ts`       | Read from reactive stores                 |
-| `$action`      | `action.ts`      | Create event handler functions            |
-| `$concat`      | `concat.ts`      | Join parts into a string                  |
-| `$map`         | `map.ts`         | Transform array data into prop values     |
-| `$pick`        | `pick.ts`        | Select subset of props from a source      |
-| `$if`          | `conditional.ts` | Conditional value (ternary)               |
-| `$eq`          | `comparisons.ts` | Equality check                            |
-| `$ne`          | `comparisons.ts` | Inequality check                          |
-| `$in`          | `comparisons.ts` | Set membership check                      |
-| `$lt`          | `comparisons.ts` | Less-than numeric check                   |
-| `$gt`          | `comparisons.ts` | Greater-than numeric check                |
-| `$not`         | `comparisons.ts` | Boolean negation                          |
-| `$and`         | `comparisons.ts` | Short-circuit AND                         |
-| `$or`          | `comparisons.ts` | Short-circuit OR                          |
-| `$filter`      | `arrayOps.ts`    | Filter array by where conditions          |
-| `$count`       | `arrayOps.ts`    | Count items in array                      |
-| `$find`        | `arrayOps.ts`    | Find first matching item                  |
-| `$local`       | `local.ts`       | Read a local state field                  |
-| `$setLocal`    | `local.ts`       | Event handler that sets a local field     |
-| `$toggleLocal` | `local.ts`       | Event handler that toggles a boolean      |
-| `$callLocal`   | `local.ts`       | Event handler that calls a function field |
-| `$error`       | `local.ts`       | First validation error message            |
-| `$valid`       | `local.ts`       | True when field has no errors             |
-| `$touched`     | `local.ts`       | True when field has been interacted       |
-| `$formValid`   | `local.ts`       | True when all fields valid and touched    |
-| `$touch`       | `local.ts`       | Event handler that marks field touched    |
-| `$resetLocal`  | `local.ts`       | Event handler that resets all fields      |
+Nothing else changes: not the parser, not the validator, not the renderer, not the zod union.
 
-### Renderer-Level Operators
+A function only one deployment needs is a **host source** — an entry in
+`packages/app-shell/src/shared/sources/index.ts`, catalogued into the context and known to the
+validator the same way.
 
-Handled directly in `SchemaRenderer.tsx` as special `node.type` values. These control DOM structure, not prop values.
+## Adding a Handler Token
 
-| Operator   | Purpose                                                       |
-| ---------- | ------------------------------------------------------------- |
-| `$each`    | Iterate over items, render children per item                  |
-| `$if`      | Conditionally render a node subtree                           |
-| `$routes`  | Render routed children                                        |
-| `$animate` | Viewport/mount-triggered CSS animation (child always mounted) |
-| `$single`  | Load single model item; render children with item in context  |
+Rare, and deliberately so — the verbs are enumerable because grants attach to them. When one is
+genuinely needed (a new _kind_ of side effect, not a new computation):
 
-## Adding a New Prop-Level Operator
-
-1. **Create the resolver** in `shared/src/propResolvers/<name>.ts`. Follow the existing function signature pattern — accept `stores`, `context`, `memo`, and `resolvePropFn` for nested resolution.
-2. **Add the type** to `shared/src/types.ts` as a named token type (e.g. `FooToken = { $foo: ... }`), and add it to the `OperatorToken` union.
-3. **Wire into the dispatcher** in `dispatcher.ts` — add a `hasToken(value, '$foo', ...)` branch in the token resolution block. Order matters: more specific/common operators first.
-4. **Export** the token type from `shared/src/index.ts`.
-5. **Add tests** in `shared/tests/propResolvers.test.ts`.
-6. **Update docs** — add an entry in `OPERATORS.md` and update the table in `README.md`.
+1. **Create the resolver** in `shared/src/propResolvers/<name>.ts`. Follow the existing signature —
+   `stores`, `context`, `memo`, `resolvePropFn` for nested resolution — and take any computed
+   argument as an expression rather than inventing a sub-grammar for it.
+2. **Add the type** to `shared/src/types.ts` and the `OperatorToken` union; **export** it from
+   `shared/src/index.ts`.
+3. **Wire the dispatcher** (`dispatcher.ts`) and the **zod union** (`zodSchemas.ts`);
+   `operatorParity.test.ts` fails until both agree.
+4. **Teach the validator** (`semanticValidation.ts`) what the token may name.
+5. **Tests** in `shared/tests/propResolvers.test.ts`; **docs** in the `schema-operators` fragment.
 
 ## Resolver Patterns
 

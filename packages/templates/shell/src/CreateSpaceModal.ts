@@ -18,15 +18,7 @@ const guard = discardGuard({
     and a picker, so they are set from the first frame, and including them would make the guard fire
     on a form nobody has touched — which is the failure mode that teaches people to click through it.
   */
-  dirty: {
-    $or: [
-      { $local: 'name' },
-      { $local: 'description' },
-      { $local: 'avatar' },
-      { $local: 'coverImage' },
-      { $local: 'location' },
-    ],
-  },
+  dirty: { $: 'local.name || local.description || local.avatar || local.coverImage || local.location' },
   close,
   title: 'Discard this space?',
   body: 'The name, description and images you have entered will be lost. The space has not been created yet.',
@@ -181,27 +173,13 @@ export const createSpaceModal = {
             {
               type: 'we-text',
               props: { variant: 'body', fontWeight: 'medium' },
-              children: [
-                {
-                  $if: {
-                    condition: { $eq: [{ $local: 'access' }, 'shared'] },
-                    then: 'Shared with network',
-                    else: 'Personal space',
-                  },
-                },
-              ],
+              children: [{ $: "local.access == 'shared' ? 'Shared with network' : 'Personal space'" }],
             },
             {
               type: 'we-text',
               props: { variant: 'footnote', color: 'text-faint' },
               children: [
-                {
-                  $if: {
-                    condition: { $eq: [{ $local: 'access' }, 'shared'] },
-                    then: 'Joinable by anyone with the link',
-                    else: 'Only visible to you',
-                  },
-                },
+                { $: "local.access == 'shared' ? 'Joinable by anyone with the link' : 'Only visible to you'" },
               ],
             },
           ],
@@ -209,7 +187,7 @@ export const createSpaceModal = {
         {
           type: 'we-switch',
           props: {
-            checked: { $eq: [{ $local: 'access' }, 'shared'] },
+            checked: { $: "local.access == 'shared'" },
             labelOff: 'Personal',
             labelOn: 'Shared',
             onChange: [
@@ -220,7 +198,7 @@ export const createSpaceModal = {
                   else: { $setLocal: 'access', value: 'personal' },
                 },
               },
-              { $if: { condition: { $not: '$event.detail' }, then: { $setLocal: 'discovery', value: 'hidden' } } },
+              { $if: { condition: { $: '!event.detail' }, then: { $setLocal: 'discovery', value: 'hidden' } } },
             ],
           },
         },
@@ -243,34 +221,16 @@ export const createSpaceModal = {
                 {
                   type: '$if',
                   props: {
-                    condition: {
-                      $and: [{ $eq: [{ $local: 'access' }, 'shared'] }, { $store: 'datasetStore.globalDataset' }],
-                    },
+                    condition: { $: "local.access == 'shared' && datasetStore.globalDataset" },
                     then: {
                       type: 'we-text',
                       props: { variant: 'body', fontWeight: 'medium' },
-                      children: [
-                        {
-                          $if: {
-                            condition: { $eq: [{ $local: 'discovery' }, 'listed'] },
-                            then: 'Listed in Global Discovery',
-                            else: 'Unlisted',
-                          },
-                        },
-                      ],
+                      children: [{ $: "local.discovery == 'listed' ? 'Listed in Global Discovery' : 'Unlisted'" }],
                     },
                     else: {
                       type: 'we-text',
                       props: { variant: 'body', fontWeight: 'medium' },
-                      children: [
-                        {
-                          $if: {
-                            condition: { $eq: [{ $local: 'discovery' }, 'listed'] },
-                            then: 'Listed in Global Discovery',
-                            else: 'Unlisted',
-                          },
-                        },
-                      ],
+                      children: [{ $: "local.discovery == 'listed' ? 'Listed in Global Discovery' : 'Unlisted'" }],
                     },
                   },
                 },
@@ -279,11 +239,7 @@ export const createSpaceModal = {
                   props: { variant: 'footnote', color: 'text-faint' },
                   children: [
                     {
-                      $if: {
-                        condition: { $eq: [{ $local: 'discovery' }, 'listed'] },
-                        then: 'Appears on the WE discovery globe',
-                        else: 'Not shown in global discovery',
-                      },
+                      $: "local.discovery == 'listed' ? 'Appears on the WE discovery globe' : 'Not shown in global discovery'",
                     },
                   ],
                 },
@@ -292,13 +248,8 @@ export const createSpaceModal = {
             {
               type: 'we-switch',
               props: {
-                checked: { $eq: [{ $local: 'discovery' }, 'listed'] },
-                disabled: {
-                  $or: [
-                    { $not: { $eq: [{ $local: 'access' }, 'shared'] } },
-                    { $not: { $store: 'datasetStore.globalDataset' } },
-                  ],
-                },
+                checked: { $: "local.discovery == 'listed'" },
+                disabled: { $: "!(local.access == 'shared') || !datasetStore.globalDataset" },
                 labelOff: 'Hidden',
                 labelOn: 'Public',
                 onChange: [
@@ -319,12 +270,7 @@ export const createSpaceModal = {
         {
           type: '$if',
           props: {
-            condition: {
-              $and: [
-                { $store: 'datasetStore.globalSpaceConfigured' },
-                { $not: { $store: 'datasetStore.globalDataset' } },
-              ],
-            },
+            condition: { $: 'datasetStore.globalSpaceConfigured && !datasetStore.globalDataset' },
             then: {
               type: 'Row',
               props: { gap: '200', ay: 'center' },

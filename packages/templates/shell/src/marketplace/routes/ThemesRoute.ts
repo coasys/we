@@ -11,14 +11,10 @@ export const themesRoute: SchemaNode = marketplaceList({
   include: { screenshots: true },
   card: {
     mode: 'marketplace',
-    installed: {
-      $find: { items: { $store: 'themeStore.installedThemes' }, where: { name: '$theme.name' }, select: 'version' },
-    },
+    installed: { $: 'find(themeStore.installedThemes, { name: theme.name }).version' },
     onInstall: { $action: 'themeStore.installFromMarketplace', args: ['$theme.id'] },
     onDelete: { $action: 'themeStore.deleteMarketplaceTheme', args: ['$theme.id'] },
     // Namespaced, so one row's spinner does not appear on every row.
-    isLoading: {
-      $eq: [{ $store: 'themeStore.operationLoading' }, { $concat: ['marketplace-install:', '$theme.id'] }],
-    },
+    isLoading: { $: 'themeStore.operationLoading == `marketplace-install:${theme.id}`' },
   },
 });

@@ -81,17 +81,7 @@ export const spaceIdentity: SchemaNode = {
           props: { variant: 'footnote', color: 'text-faint' },
           children: [
             {
-              $if: {
-                condition: '$space.isWeSpace',
-                then: {
-                  $if: {
-                    condition: { $eq: ['$space.kind', 'shared'] },
-                    then: 'Shared space',
-                    else: 'Personal space',
-                  },
-                },
-                else: 'Joined dataset — not yet a WE space',
-              },
+              $: "space.isWeSpace ? space.kind == 'shared' ? 'Shared space' : 'Personal space' : 'Joined dataset — not yet a WE space'",
             },
           ],
         },
@@ -164,7 +154,7 @@ const saveMetaOnBlur = [
   },
 ];
 
-const isListed = { $eq: ['$space.discovery', 'listed'] };
+const isListed = { $: "space.discovery == 'listed'" };
 
 /**
  * Whether the space appears on the global discovery globe.
@@ -220,13 +210,7 @@ const saveLocationOnBlur = [
 const locationRow: SchemaNode = attributeRow({
   icon: 'map-pin',
   label: 'Location',
-  value: {
-    $if: {
-      condition: '$space.location',
-      then: { $concat: ['$space.location.city', ', ', '$space.location.country'] },
-      else: 'Not set',
-    },
-  },
+  value: { $: "space.location ? `${space.location.city}, ${space.location.country}` : 'Not set'" },
   control: {
     type: 'Row',
     props: { ay: 'center', gap: '300' },
@@ -234,7 +218,7 @@ const locationRow: SchemaNode = attributeRow({
       {
         type: 'we-button',
         props: { variant: 'secondary', size: 'sm', onClick: { $toggleLocal: 'editLocation' } },
-        children: [{ $if: { condition: { $local: 'editLocation' }, then: 'Hide', else: 'Edit' } }],
+        children: [{ $: "local.editLocation ? 'Hide' : 'Edit'" }],
       },
       {
         type: '$if',
@@ -447,7 +431,7 @@ const communitySection: SchemaNode = {
 const moduleStatus: SchemaNode = {
   type: '$if',
   props: {
-    condition: { $and: ['$mod.enabled', { $not: '$mod.installed' }] },
+    condition: { $: 'mod.enabled && !mod.installed' },
     then: {
       type: 'we-text',
       props: { variant: 'footnote', color: 'warning-text' },
@@ -456,7 +440,7 @@ const moduleStatus: SchemaNode = {
     else: {
       type: '$if',
       props: {
-        condition: { $and: ['$mod.installed', { $not: '$mod.enabled' }] },
+        condition: { $: 'mod.installed && !mod.enabled' },
         then: {
           type: 'we-text',
           props: { variant: 'footnote', color: 'text-faint' },
@@ -694,7 +678,7 @@ const moduleRow: SchemaNode = {
                 checked: '$mod.visible',
                 // Nothing to show while the module is not installed, so the control cannot do what
                 // it appears to. The note beside it says where to change that.
-                disabled: { $not: '$mod.installed' },
+                disabled: { $: '!mod.installed' },
                 // A bare `$event.detail`, never wrapped: an operator object around it would be
                 // evaluated at render time, before the event exists. See `setModuleVisible`.
                 onChange: {
@@ -716,7 +700,7 @@ const moduleRow: SchemaNode = {
               props: {
                 size: 'sm',
                 checked: '$mod.enabled',
-                disabled: { $not: '$space.canAdminister' },
+                disabled: { $: '!space.canAdminister' },
                 onChange: {
                   $action: 'spaceStore.setModuleEnabled',
                   args: ['$mod.id', '$event.detail', '$space.uuid'],
@@ -744,11 +728,7 @@ const modulesSection: SchemaNode = {
           props: { variant: 'footnote', color: 'text-faint' },
           children: [
             {
-              $if: {
-                condition: '$space.canAdminister',
-                then: 'What this space runs, and what you want to see of it. Only the right-hand switch affects other members.',
-                else: 'What this space runs, and what you want to see of it. Changing what everyone sees needs someone who administers the space.',
-              },
+              $: "space.canAdminister ? 'What this space runs, and what you want to see of it. Only the right-hand switch affects other members.' : 'What this space runs, and what you want to see of it. Changing what everyone sees needs someone who administers the space.'",
             },
           ],
         },
@@ -787,11 +767,7 @@ const autoInterpretSection: SchemaNode = {
               props: { variant: 'footnote', color: 'text-faint' },
               children: [
                 {
-                  $if: {
-                    condition: '$space.canAdminister',
-                    then: 'Tasks and events are written down as a call happens, without anyone pressing Extract. Runs on a member’s node and costs them an AI call each time.',
-                    else: 'Tasks and events are written down as a call happens. Changing this needs someone who administers the space.',
-                  },
+                  $: "space.canAdminister ? 'Tasks and events are written down as a call happens, without anyone pressing Extract. Runs on a member’s node and costs them an AI call each time.' : 'Tasks and events are written down as a call happens. Changing this needs someone who administers the space.'",
                 },
               ],
             },
@@ -802,7 +778,7 @@ const autoInterpretSection: SchemaNode = {
           props: {
             size: 'sm',
             checked: { $store: 'spaceStore.autoInterpret' },
-            disabled: { $not: '$space.canAdminister' },
+            disabled: { $: '!space.canAdminister' },
             // Bare `$event.detail` — an operator around it would resolve at render time, before
             // the event exists. Same reason as the module switches above.
             onChange: { $action: 'spaceStore.setAutoInterpret', args: ['$event.detail', '$space.uuid'] },
@@ -843,11 +819,7 @@ const shareExtractionDetailSection: SchemaNode = {
               props: { variant: 'footnote', color: 'text-faint' },
               children: [
                 {
-                  $if: {
-                    condition: '$space.canAdminister',
-                    then: 'Everyone in the space can read what each extraction asked the model and what it answered. Useful while working on extraction; off by default, since it sends a lot to every member on every pass.',
-                    else: 'Everyone can read what each extraction asked the model and what it answered. Changing this needs someone who administers the space.',
-                  },
+                  $: "space.canAdminister ? 'Everyone in the space can read what each extraction asked the model and what it answered. Useful while working on extraction; off by default, since it sends a lot to every member on every pass.' : 'Everyone can read what each extraction asked the model and what it answered. Changing this needs someone who administers the space.'",
                 },
               ],
             },
@@ -858,7 +830,7 @@ const shareExtractionDetailSection: SchemaNode = {
           props: {
             size: 'sm',
             checked: { $store: 'spaceStore.shareExtractionDetail' },
-            disabled: { $not: '$space.canAdminister' },
+            disabled: { $: '!space.canAdminister' },
             // Bare `$event.detail`, for the reason the switch above it gives.
             onChange: { $action: 'spaceStore.setShareExtractionDetail', args: ['$event.detail', '$space.uuid'] },
           },

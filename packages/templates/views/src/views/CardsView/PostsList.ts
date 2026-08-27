@@ -21,7 +21,7 @@ export const postsList: SchemaNode = {
         limit: 20,
         order: {
           $if: {
-            condition: { $eq: [{ $local: 'sortField' }, 'likes'] },
+            condition: { $: "local.sortField == 'likes'" },
             then: { $likeCount: { $local: 'sortDirection' } },
             else: { createdAt: { $local: 'sortDirection' } },
           },
@@ -44,9 +44,7 @@ export const postsList: SchemaNode = {
               which type `like` is.
             */
             where: {
-              signalTypeId: {
-                $find: { items: { $local: 'signalTypes' }, where: { slug: 'like' }, select: 'id' },
-              },
+              signalTypeId: { $: "find(local.signalTypes, { slug: 'like' }).id" },
             },
             count: true,
           },
@@ -76,7 +74,7 @@ export const postsList: SchemaNode = {
                 {
                   type: '$if',
                   props: {
-                    condition: { $eq: ['$post.author', '$me.did'] },
+                    condition: { $: 'post.author == me.did' },
                     then: {
                       type: 'Row',
                       props: { gap: '100' },
@@ -136,7 +134,7 @@ export const postsList: SchemaNode = {
             {
               type: '$if',
               props: {
-                condition: { $count: { items: { $local: 'signalTypes' } } },
+                condition: { $: 'count(local.signalTypes)' },
                 then: {
                   type: 'Row',
                   props: { height: '40px', mt: '200', ay: 'center', gap: '700' },
@@ -149,9 +147,7 @@ export const postsList: SchemaNode = {
                           type: 'SignalControl',
                           props: {
                             signalType: '$sig',
-                            signals: {
-                              $filter: { items: '$post.signals', where: { signalTypeId: '$sig.id' } },
-                            },
+                            signals: { $: 'filter(post.signals, { signalTypeId: sig.id })' },
                             myDid: '$me.did',
                             onSignal: {
                               $action: 'spaceStore.upsertSignal',

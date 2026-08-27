@@ -21,9 +21,9 @@ const kindBadge: SchemaNode = {
       type: 'we-badge',
       props: {
         size: 'sm',
-        variant: { $if: { condition: { $eq: ['$space.kind', 'shared'] }, then: 'primary', else: 'neutral' } },
+        variant: { $: "space.kind == 'shared' ? 'primary' : 'neutral'" },
       },
-      children: [{ $if: { condition: { $eq: ['$space.kind', 'shared'] }, then: 'Shared', else: 'Personal' } }],
+      children: [{ $: "space.kind == 'shared' ? 'Shared' : 'Personal'" }],
     },
     // Not an error state — a dataset synced in from another app is simply waiting to be initialized,
     // and opening it is what surfaces that gate.
@@ -66,7 +66,7 @@ const spaceCard: SchemaNode = {
               props: {
                 image: '$space.avatar',
                 initials: '$space.name',
-                icon: { $if: { condition: '$space.isWeSpace', then: '', else: 'intersect-three' } },
+                icon: { $: "space.isWeSpace ? '' : 'intersect-three'" },
                 size: 'sm',
               },
             },
@@ -105,7 +105,7 @@ const spaceCard: SchemaNode = {
         variant: 'ghost',
         size: 'sm',
         square: true,
-        onClick: { $action: 'routeStore.navigate', args: [{ $concat: ['/spaces/', '$space.uuid'] }] },
+        onClick: { $action: 'routeStore.navigate', args: [{ $: '`/spaces/${space.uuid}`' }] },
       },
       children: [{ type: 'we-icon', props: { name: 'gear' } }],
     },
@@ -127,7 +127,7 @@ export const spacesListSection: SchemaNode = {
     {
       type: '$if',
       props: {
-        condition: { $count: { items: { $store: 'spaceStore.spaceList' } } },
+        condition: { $: 'count(spaceStore.spaceList)' },
         then: {
           type: 'Column',
           props: { gap: '200' },

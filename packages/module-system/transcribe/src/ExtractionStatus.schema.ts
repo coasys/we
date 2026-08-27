@@ -98,22 +98,8 @@ const phaseIcon: SchemaNode = {
       type: 'we-icon',
       props: {
         size: GLYPH_SIZE,
-        name: {
-          $if: {
-            condition: { $eq: ['$pass.phase', 'failed'] },
-            then: 'warning',
-            else: {
-              $if: { condition: { $eq: ['$pass.phase', 'skipped'] }, then: 'minus-circle', else: 'check-circle' },
-            },
-          },
-        },
-        color: {
-          $if: {
-            condition: { $eq: ['$pass.phase', 'failed'] },
-            then: 'danger-text',
-            else: { $if: { condition: { $eq: ['$pass.phase', 'done'] }, then: 'success-text', else: 'text-muted' } },
-          },
-        },
+        name: { $: "pass.phase == 'failed' ? 'warning' : pass.phase == 'skipped' ? 'minus-circle' : 'check-circle'" },
+        color: { $: "pass.phase == 'failed' ? 'danger-text' : pass.phase == 'done' ? 'success-text' : 'text-muted'" },
       },
     },
   },
@@ -211,13 +197,7 @@ const disclosureCaret: SchemaNode = {
       props: {
         size: CARET_SIZE,
         color: 'text-muted',
-        name: {
-          $if: {
-            condition: { $in: ['$pass.passId', { $local: 'openPasses' }] },
-            then: 'caret-up',
-            else: 'caret-down',
-          },
-        },
+        name: { $: "pass.passId in local.openPasses ? 'caret-up' : 'caret-down'" },
       },
     },
   },
@@ -338,7 +318,7 @@ const promptPane: SchemaNode = codePane({
   label: 'Prompt',
   value: '$pass.prompt',
   field: 'openPrompts',
-  isOpen: { $in: ['$pass.passId', { $local: 'openPrompts' }] },
+  isOpen: { $: 'pass.passId in local.openPrompts' },
 });
 
 /**
@@ -354,7 +334,7 @@ const responsePane: SchemaNode = codePane({
   label: 'Response',
   value: '$pass.response',
   field: 'closedResponses',
-  isOpen: { $not: { $in: ['$pass.passId', { $local: 'closedResponses' }] } },
+  isOpen: { $: '!(pass.passId in local.closedResponses)' },
 });
 
 /**
@@ -370,7 +350,7 @@ const responsePane: SchemaNode = codePane({
 const passDetail: SchemaNode = {
   type: '$if',
   props: {
-    condition: { $in: ['$pass.passId', { $local: 'openPasses' }] },
+    condition: { $: 'pass.passId in local.openPasses' },
     enterTransition: { type: 'reveal', duration: 200 },
     exitTransition: { type: 'reveal', duration: 160 },
     then: {
@@ -430,7 +410,7 @@ const passEntry: SchemaNode = {
         ax: 'start',
         ay: 'center',
         gap: '200',
-        disabled: { $not: '$pass.openable' },
+        disabled: { $: '!pass.openable' },
         /*
           Keep the row legible when it cannot be opened.
 
@@ -502,13 +482,7 @@ const settledSection: SchemaNode = {
                   children: [
                     { $store: 'modules.transcribe.settledCount' },
                     ' ',
-                    {
-                      $plural: {
-                        count: { $store: 'modules.transcribe.settledCount' },
-                        one: 'extraction processed',
-                        other: 'extractions processed',
-                      },
-                    },
+                    { $: "plural(modules.transcribe.settledCount, 'extraction processed', 'extractions processed')" },
                   ],
                 },
                 {
@@ -516,7 +490,7 @@ const settledSection: SchemaNode = {
                   props: {
                     size: CARET_SIZE,
                     color: 'text-muted',
-                    name: { $if: { condition: { $local: 'historyOpen' }, then: 'caret-up', else: 'caret-down' } },
+                    name: { $: "local.historyOpen ? 'caret-up' : 'caret-down'" },
                   },
                 },
               ],
@@ -616,13 +590,7 @@ export const extractionStatus: SchemaNode = {
           every pane after that renders into space the bar already has. Closed, it still shrinks to
           whatever the rows need, which is the point of the cap being a maximum in the first place.
         */
-        width: {
-          $if: {
-            condition: { $count: { items: { $local: 'openPasses' } } },
-            then: '520px',
-            else: 'auto',
-          },
-        },
+        width: { $: "count(local.openPasses) ? '520px' : 'auto'" },
         /*
           Glide rather than snap, matching the reveals inside it.
 

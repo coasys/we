@@ -57,13 +57,7 @@ export const blocksList: SchemaNode = {
       icon: 'file-text',
       label: 'text blocks',
       body: [{ type: 'we-text', children: ['$block.text'] }],
-      maxHeight: {
-        $if: {
-          condition: { $eq: [{ $local: 'displayMode' }, 'grid'] },
-          then: '200px',
-          else: '50px',
-        },
-      },
+      maxHeight: { $: "local.displayMode == 'grid' ? '200px' : '50px'" },
     }),
 
     blockSection({

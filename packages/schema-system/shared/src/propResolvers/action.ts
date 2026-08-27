@@ -1,4 +1,5 @@
 import type { resolveProp } from './dispatcher';
+import { isDeferredArg } from './expression';
 import { deepUnwrap } from './reactive';
 import { type Memo, noMemo, type Props } from './types';
 
@@ -44,6 +45,9 @@ function processArgTokens(resolvedArgs: unknown[], callArgs: unknown[]): unknown
  * outside: a module toggle that can only ever switch a module on.
  */
 function processArgValue(arg: unknown, callArgs: unknown[]): unknown {
+  // An expression naming `event`/`arg` resolved at render time to a deferred function; the
+  // callback argument is what it was waiting for.
+  if (isDeferredArg(arg)) return arg(callArgs[0]);
   if (typeof arg === 'string' && (arg.startsWith('$arg') || arg.startsWith('$event'))) {
     // Handle $arg / $event without property - return the entire first argument
     if (arg === '$arg' || arg === '$event') {

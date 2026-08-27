@@ -175,7 +175,7 @@ function nameDialog(opts: {
                   // Gated on the value itself rather than a `required` rule: nothing about a name is
                   // locally judgeable beyond "is there one", and a rule here would exist only to
                   // drive this prop while offering to tell somebody their empty field is empty.
-                  disabled: { $not: { $local: 'name' } },
+                  disabled: { $: '!local.name' },
                   loading: { $local: 'saving' },
                   onClick: [
                     { $setLocal: 'saving', value: true },
@@ -233,8 +233,8 @@ export function templatePicker(): SchemaNode {
                 pickerRow({
                   icon: '$template.icon',
                   label: '$template.name',
-                  selected: { $eq: ['$template.id', { $store: 'templateStore.currentSwitcherId' }] },
-                  isDefault: { $eq: ['$template.id', { $store: 'spaceStore.spaceDefaultTemplateId' }] },
+                  selected: { $: 'template.id == templateStore.currentSwitcherId' },
+                  isDefault: { $: 'template.id == spaceStore.spaceDefaultTemplateId' },
                   select: [{ $action: 'templateStore.switchTemplate', args: ['$template.id'] }, closeTemplatePicker],
                   actions: [
                     {
@@ -301,19 +301,11 @@ export function templatePicker(): SchemaNode {
       nameDialog({
         open: { $store: 'editorStore.pickerOpen' },
         close: { $action: 'editorStore.cancelPicker' },
-        title: {
-          $if: {
-            condition: { $eq: [{ $store: 'editorStore.pickerAction' }, 'fresh'] },
-            then: 'New template',
-            else: 'Fork template',
-          },
-        },
+        title: { $: "editorStore.pickerAction == 'fresh' ? 'New template' : 'Fork template'" },
         initialName: { $store: 'editorStore.pickerDefaultName' },
         initialIcon: { $store: 'editorStore.pickerDefaultIcon' },
         showDestination: { $store: 'editorStore.pickerShowDestination' },
-        confirmLabel: {
-          $if: { condition: { $eq: [{ $store: 'editorStore.pickerAction' }, 'fresh'] }, then: 'Create', else: 'Fork' },
-        },
+        confirmLabel: { $: "editorStore.pickerAction == 'fresh' ? 'Create' : 'Fork'" },
         confirm: ({ name, icon, destination }) => ({
           $action: 'editorStore.confirmPicker',
           args: [name, icon, destination],
@@ -337,8 +329,8 @@ function themeSection(label: string, storePath: string): SchemaNode {
       pickerRow({
         icon: iconOr('$theme.icon', 'paint-bucket'),
         label: '$theme.name',
-        selected: { $eq: ['$theme.id', { $store: 'themeStore.currentThemeId' }] },
-        isDefault: { $eq: ['$theme.id', { $store: 'spaceStore.spaceDefaultThemeId' }] },
+        selected: { $: 'theme.id == themeStore.currentThemeId' },
+        isDefault: { $: 'theme.id == spaceStore.spaceDefaultThemeId' },
         // `applyTheme` rather than `themeStore.setCurrentTheme`: the choice is persisted where it was
         // made — pinned to this space, or set as the agent's default when there is no space — so it
         // survives everything that recomputes the space theme. Which of the two it is has to be
@@ -365,19 +357,14 @@ function themeSection(label: string, storePath: string): SchemaNode {
             icon: 'push-pin',
             weight: 'fill',
             tooltip: "Pinned to this space — unpin to follow the space's theme",
-            when: {
-              $and: [
-                { $store: 'spaceStore.spaceThemePinned' },
-                { $eq: ['$theme.id', { $store: 'themeStore.currentThemeId' }] },
-              ],
-            },
+            when: { $: 'spaceStore.spaceThemePinned && theme.id == themeStore.currentThemeId' },
             onClick: { $action: 'spaceStore.clearSpaceThemePin' },
           },
           {
             icon: 'pencil-simple',
             tooltip: 'Edit this theme',
             // A built-in has no stored overrides to edit — forking is the way in, as it always was.
-            when: { $ne: ['$theme.origin', 'built-in'] },
+            when: { $: "theme.origin != 'built-in'" },
             onClick: [
               { $action: 'themeStore.setCurrentTheme', args: ['$theme.id'] },
               { $action: 'themeStore.startEditing', args: ['$theme.id'] },
@@ -552,11 +539,11 @@ export function themePicker(): SchemaNode {
       nameDialog({
         open: { $local: 'forkOpen' },
         close: { $setLocal: 'forkOpen', value: false },
-        title: { $if: { condition: { $local: 'forkSource' }, then: 'Fork theme', else: 'New theme' } },
+        title: { $: "local.forkSource ? 'Fork theme' : 'New theme'" },
         initialName: { $local: 'forkName' },
         initialIcon: { $local: 'forkIcon' },
         showDestination: true,
-        confirmLabel: { $if: { condition: { $local: 'forkSource' }, then: 'Fork', else: 'Create' } },
+        confirmLabel: { $: "local.forkSource ? 'Fork' : 'Create'" },
         confirm: ({ name, icon, destination }) => ({
           $action: 'themeStore.createAndStartEditing',
           args: [name, icon, { $local: 'forkSource' }, destination],

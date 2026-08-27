@@ -24,9 +24,9 @@
  * them and reports both directions of drift — a member with no description, and a description for a
  * member that no longer exists.
  */
-import { Project, SyntaxKind } from 'ts-morph';
+import { type ObjectLiteralExpression, Project, SyntaxKind } from 'ts-morph';
 
-import type { StateMemberMeta } from '../types.js';
+import type { SourceEntry, StateMemberMeta } from '../types.js';
 
 export interface ExtractedStore {
   /** As a template names it — `SpaceStore` → `spaceStore`. */
@@ -86,6 +86,52 @@ function isAction(typeText: string): boolean {
   // command that happens to return what it saved, and filing it as state described it as a value.
   if (r.startsWith('Promise<')) return true;
   return r === 'void' || r === 'unknown';
+}
+
+/**
+ * The functions the host lends to expressions — `hostSources` in `shared/sources/index.ts`.
+ *
+ * Read from the registry rather than declared again here, for the reason the plugin catalogues
+ * are: a name the generated context does not carry is one an author has to already know, and a
+ * second list would drift from the first.
+ */
+export function extractHostSources(registryFile: string): SourceEntry[] {
+  const project = new Project({ skipAddingFilesFromTsConfig: true });
+  const file = project.addSourceFileAtPath(registryFile);
+
+  const decl = file.getVariableDeclaration('hostSources');
+  const list = decl?.getInitializerIfKind(SyntaxKind.ArrayLiteralExpression);
+  if (!list) throw new Error(`could not read hostSources from ${registryFile}`);
+
+  const text = (literal: ObjectLiteralExpression, name: string): string => {
+    const initializer = literal.getProperty(name);
+    if (!initializer || !initializer.isKind(SyntaxKind.PropertyAssignment)) return '';
+    const value = initializer.getInitializer();
+    if (value?.isKind(SyntaxKind.StringLiteral) || value?.isKind(SyntaxKind.NoSubstitutionTemplateLiteral)) {
+      return value.getLiteralText();
+    }
+    return '';
+  };
+
+  const entries: SourceEntry[] = [];
+  for (const element of list.getElements()) {
+    if (!element.isKind(SyntaxKind.ObjectLiteralExpression)) continue;
+    const params = element.getProperty('params');
+    const paramList = params?.isKind(SyntaxKind.PropertyAssignment)
+      ? (params
+          .getInitializerIfKind(SyntaxKind.ArrayLiteralExpression)
+          ?.getElements()
+          .map((p) => (p.isKind(SyntaxKind.StringLiteral) ? p.getLiteralText() : ''))
+          .filter(Boolean) ?? [])
+      : [];
+    entries.push({
+      name: text(element, 'name'),
+      params: paramList,
+      doc: text(element, 'doc'),
+      example: text(element, 'example'),
+    });
+  }
+  return entries.filter((entry) => entry.name);
 }
 
 /**

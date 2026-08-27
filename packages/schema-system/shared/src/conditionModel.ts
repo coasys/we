@@ -9,6 +9,8 @@
  * honest — the builder never silently rewrites an expression it didn't fully understand.
  */
 
+import { expressionSourceToOperator, isExpressionToken, operatorToExpr, printExpression } from './expressions';
+
 // ── Public types ────────────────────────────────────────────────────────────
 
 export type ComparisonOperator = 'eq' | 'ne' | 'gt' | 'lt' | 'in' | 'nin' | 'truthy' | 'falsy';
@@ -197,7 +199,27 @@ function parseExpr(token: unknown, depth: number): ConditionExpr | null {
  */
 export function parseCondition(token: unknown): ConditionExpr | null {
   if (token === undefined) return null;
-  return parseExpr(token, 0);
+  return parseExpr(asOperatorTree(token), 0);
+}
+
+/**
+ * An expression token, as the operator tree the builder's grammar is written over.
+ *
+ * The builder edits comparisons and groups; an expression is the same thing in another spelling,
+ * so a condition written as `{ $: "local.open && item.n > 0" }` opens in the row editor exactly as
+ * its operator form would. Anything the editor subset cannot represent — arithmetic, a macro —
+ * stays an expression and falls back to the raw editor, as an unrepresentable operator tree does.
+ */
+function asOperatorTree(token: unknown): unknown {
+  if (!isExpressionToken(token)) return token;
+  return expressionSourceToOperator(token.$) ?? token;
+}
+
+export type ConditionForm = 'operator' | 'expression';
+
+/** Which spelling a condition token uses, so an edit can be written back in the same one. */
+export function conditionForm(token: unknown): ConditionForm {
+  return isExpressionToken(token) ? 'expression' : 'operator';
 }
 
 // ── Serializing ─────────────────────────────────────────────────────────────
@@ -221,9 +243,16 @@ function serializeOperand(operand: ConditionOperand): unknown {
   }
 }
 
-export function serializeCondition(expr: ConditionExpr): unknown {
+export function serializeCondition(expr: ConditionExpr, form: ConditionForm = 'operator'): unknown {
+  const tree = serializeConditionTree(expr);
+  if (form !== 'expression') return tree;
+  const converted = operatorToExpr(tree);
+  return converted ? { $: printExpression(converted) } : tree;
+}
+
+function serializeConditionTree(expr: ConditionExpr): unknown {
   if (expr.type === 'group') {
-    return { [expr.operator === 'and' ? '$and' : '$or']: expr.children.map(serializeCondition) };
+    return { [expr.operator === 'and' ? '$and' : '$or']: expr.children.map(serializeConditionTree) };
   }
   if (expr.operator === 'truthy') return serializeOperand(expr.left);
   if (expr.operator === 'falsy') return { $not: serializeOperand(expr.left) };
@@ -241,7 +270,7 @@ export function serializeCondition(expr: ConditionExpr): unknown {
  * $map, $plural, …), which fall back to raw JSON.
  */
 export function parseValue(token: unknown): ConditionOperand | null {
-  return parseOperand(token);
+  return parseOperand(asOperatorTree(token));
 }
 
 export function serializeValue(operand: ConditionOperand): unknown {
@@ -261,7 +290,7 @@ export interface ValueIf {
  */
 export function parseValueIf(token: unknown): ValueIf | null {
   if (typeof token !== 'object' || token === null || Array.isArray(token)) return null;
-  const obj = token as Record<string, unknown>;
+  const obj = asOperatorTree(token) as Record<string, unknown>;
   if (Object.keys(obj).length !== 1 || !obj.$if) return null;
 
   const inner = obj.$if;

@@ -48,7 +48,7 @@ const languageRow: SchemaNode = {
     {
       type: '$if',
       props: {
-        condition: { $not: '$language.system' },
+        condition: { $: '!language.system' },
         then: {
           type: 'we-button',
           props: {
@@ -75,7 +75,7 @@ export const languagesSection: SchemaNode = {
         {
           type: '$if',
           props: {
-            condition: { $count: { items: { $store: 'runtimeStore.languages' } } },
+            condition: { $: 'count(runtimeStore.languages)' },
             then: {
               type: 'Column',
               props: { gap: '200' },
@@ -113,7 +113,7 @@ export const languagesSection: SchemaNode = {
                 // The backend fetches the bundle over the network, so this is the one runtime action
                 // that can take long enough to need a spinner rather than just finishing.
                 loading: { $store: 'runtimeStore.loading' },
-                disabled: { $not: { $local: 'newLanguageAddress' } },
+                disabled: { $: '!local.newLanguageAddress' },
                 onClick: {
                   $action: 'runtimeStore.installLanguage',
                   args: [{ $local: 'newLanguageAddress' }],

@@ -34,7 +34,7 @@ const startCallButton: SchemaNode = {
     then: {
       type: 'we-button',
       props: {
-        text: { $if: { condition: { $store: 'modules.call.active' }, then: 'Go to call', else: 'Call' } },
+        text: { $: "modules.call.active ? 'Go to call' : 'Call'" },
         variant: 'primary',
         /*
           A handler array so the branch is taken at click time. Written as a single `$action` with a
@@ -51,7 +51,7 @@ const startCallButton: SchemaNode = {
           },
           {
             $if: {
-              condition: { $not: { $store: 'modules.call.active' } },
+              condition: { $: '!modules.call.active' },
               then: {
                 $action: 'model.create',
                 args: ['CollectionBlock', { kind: 'call', type: 'collection' }],
@@ -151,7 +151,7 @@ export const cardsHeader: SchemaNode = {
         {
           type: '$if',
           props: {
-            condition: { $eq: [{ $local: 'contentType' }, 'posts'] },
+            condition: { $: "local.contentType == 'posts'" },
             then: {
               type: 'Select',
               props: {
@@ -171,7 +171,7 @@ export const cardsHeader: SchemaNode = {
         {
           type: '$if',
           props: {
-            condition: { $eq: [{ $local: 'contentType' }, 'spaces'] },
+            condition: { $: "local.contentType == 'spaces'" },
             then: {
               type: 'Select',
               props: {
@@ -223,7 +223,7 @@ export const cardsHeader: SchemaNode = {
     {
       type: '$if',
       props: {
-        condition: { $eq: [{ $local: 'contentType' }, 'calls'] },
+        condition: { $: "local.contentType == 'calls'" },
         then: startCallButton,
         else: {
           type: 'Row',

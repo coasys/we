@@ -55,11 +55,7 @@ export const namePrompt: SchemaNode = formModal({
       props: { color: 'text-muted' },
       children: [
         {
-          $if: {
-            condition: { $store: 'sessionStore.isGuest' },
-            then: 'You joined as a guest, so this is a brand-new identity with no name on it yet. This is what other people in the space will see on your posts and messages.',
-            else: 'Your account was set up outside WE, so we do not have a name for you yet. This is what other people will see on your posts and messages.',
-          },
+          $: "sessionStore.isGuest ? 'You joined as a guest, so this is a brand-new identity with no name on it yet. This is what other people in the space will see on your posts and messages.' : 'Your account was set up outside WE, so we do not have a name for you yet. This is what other people will see on your posts and messages.'",
         },
       ],
     },
@@ -72,7 +68,7 @@ export const namePrompt: SchemaNode = formModal({
   ],
   // The precondition, not a validation rule: a name is whatever somebody says it is, so there is
   // nothing to judge locally beyond whether they typed anything at all.
-  disabled: { $not: { $local: 'promptName' } },
+  disabled: { $: '!local.promptName' },
   submitLabel: 'Save',
   cancelLabel: 'Not now',
   // Not `updateOwnProfile`: the store action dismisses before it publishes, so a failed write

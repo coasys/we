@@ -117,7 +117,7 @@ const monthPicker: SchemaNode = {
                 flex: '1',
                 textAlign: 'center',
                 fontWeight: 'semibold',
-                text: { $source: { name: 'yearLabel', options: { offset: { $local: 'monthOffset' } } } },
+                text: { $: 'yearLabel({ offset: local.monthOffset })' },
               },
             },
             step(12, 'caret-right'),
@@ -130,7 +130,7 @@ const monthPicker: SchemaNode = {
             {
               type: '$each',
               props: {
-                items: { $source: { name: 'calendarMonths', options: { offset: { $local: 'monthOffset' } } } },
+                items: { $: 'calendarMonths({ offset: local.monthOffset })' },
                 as: 'month',
               },
               children: [
@@ -139,7 +139,7 @@ const monthPicker: SchemaNode = {
                   props: {
                     size: 'sm',
                     width: 'calc(33.33% - 6px)',
-                    variant: { $if: { condition: '$month.isShown', then: 'secondary', else: 'ghost' } },
+                    variant: { $: "month.isShown ? 'secondary' : 'ghost'" },
                     // The offset is computed by the source and read off the row, because
                     // `$setLocal` cannot work out how far away a month is. `from` takes a context
                     // path, so the arithmetic arrives as data.
@@ -149,7 +149,7 @@ const monthPicker: SchemaNode = {
                     ],
                     // The real current month stays marked even while another year is on screen,
                     // so "where am I relative to now" survives paging away.
-                    color: { $if: { condition: '$month.isThisMonth', then: 'accent-text', else: '' } },
+                    color: { $: "month.isThisMonth ? 'accent-text' : ''" },
                   },
                   children: ['$month.label'],
                 },
@@ -195,7 +195,7 @@ const monthNav: SchemaNode = {
               type: 'we-text',
               props: {
                 fontWeight: 'semibold',
-                text: { $source: { name: 'monthLabel', options: { offset: { $local: 'monthOffset' } } } },
+                text: { $: 'monthLabel({ offset: local.monthOffset })' },
               },
             },
           ],
@@ -300,7 +300,7 @@ const monthGrid: SchemaNode = {
         {
           type: '$each',
           props: {
-            items: { $source: { name: 'calendarMonth', options: { offset: { $local: 'monthOffset' } } } },
+            items: { $: 'calendarMonth({ offset: local.monthOffset })' },
             as: 'cell',
           },
           children: [
@@ -323,28 +323,10 @@ const monthGrid: SchemaNode = {
                   restyled to survive it. The outline says "this one" just as clearly and leaves
                   what is inside legible.
                 */
-                bg: {
-                  $if: {
-                    condition: { $eq: ['$cell.date', { $local: 'day' }] },
-                    then: 'accent-muted',
-                    else: { $if: { condition: '$cell.inMonth', then: '', else: 'page' } },
-                  },
-                },
-                border: {
-                  $if: {
-                    condition: { $eq: ['$cell.date', { $local: 'day' }] },
-                    then: '1px solid primary-500',
-                    else: '1px solid transparent',
-                  },
-                },
+                bg: { $: "cell.date == local.day ? 'accent-muted' : cell.inMonth ? '' : 'page'" },
+                border: { $: "cell.date == local.day ? '1px solid primary-500' : '1px solid transparent'" },
                 hoverProps: {
-                  bg: {
-                    $if: {
-                      condition: { $eq: ['$cell.date', { $local: 'day' }] },
-                      then: 'accent-muted',
-                      else: 'surface-sunken',
-                    },
-                  },
+                  bg: { $: "cell.date == local.day ? 'accent-muted' : 'surface-sunken'" },
                 },
                 /*
                   Clicking the selected day again clears the selection.
@@ -360,7 +342,7 @@ const monthGrid: SchemaNode = {
                 onClick: [
                   {
                     $if: {
-                      condition: { $eq: ['$cell.date', { $local: 'day' }] },
+                      condition: { $: 'cell.date == local.day' },
                       then: { $setLocal: 'day', value: '' },
                       else: { $setLocal: 'day', from: '$cell.date' },
                     },
@@ -378,7 +360,7 @@ const monthGrid: SchemaNode = {
                     ax: 'center',
                     ay: 'center',
                     r: 'pill',
-                    bg: { $if: { condition: '$cell.isToday', then: 'accent', else: '' } },
+                    bg: { $: "cell.isToday ? 'accent' : ''" },
                   },
                   children: [
                     {
@@ -388,14 +370,8 @@ const monthGrid: SchemaNode = {
                         text: '$cell.day',
                         // Today first — its disc decides the colour. Then the neighbouring months,
                         // which stay visible but recede.
-                        color: {
-                          $if: {
-                            condition: '$cell.isToday',
-                            then: 'on-accent',
-                            else: { $if: { condition: '$cell.inMonth', then: 'text', else: 'text-faint' } },
-                          },
-                        },
-                        fontWeight: { $if: { condition: '$cell.isToday', then: 'semibold', else: '' } },
+                        color: { $: "cell.isToday ? 'on-accent' : cell.inMonth ? 'text' : 'text-faint'" },
+                        fontWeight: { $: "cell.isToday ? 'semibold' : ''" },
                       },
                     },
                   ],
@@ -436,8 +412,8 @@ const monthGrid: SchemaNode = {
                         text: '$mark.title',
                         // Faded for the neighbouring months, so a busy 1st of next month does not
                         // read as part of the month being looked at.
-                        bg: { $if: { condition: '$cell.inMonth', then: 'accent-muted', else: 'surface-sunken' } },
-                        color: { $if: { condition: '$cell.inMonth', then: 'accent-text', else: 'text-muted' } },
+                        bg: { $: "cell.inMonth ? 'accent-muted' : 'surface-sunken'" },
+                        color: { $: "cell.inMonth ? 'accent-text' : 'text-muted'" },
                       },
                     },
                   ],
@@ -554,10 +530,8 @@ const composer: SchemaNode = formModal({
     field({ name: 'draftLocation', label: 'Where', placeholder: 'Optional' }),
   ],
   // Title and a time are what the model requires; anything else is optional here too.
-  disabled: { $or: [{ $not: { $local: 'draftTitle' } }, { $not: { $local: 'draftStart' } }] },
-  discardWhen: {
-    $or: [{ $local: 'draftTitle' }, { $local: 'draftStart' }, { $local: 'draftLocation' }],
-  },
+  disabled: { $: '!local.draftTitle || !local.draftStart' },
+  discardWhen: { $: 'local.draftTitle || local.draftStart || local.draftLocation' },
   submitLabel: 'Add event',
   submit: {
     $action: 'model.create',

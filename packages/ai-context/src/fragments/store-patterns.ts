@@ -30,7 +30,7 @@ Iterating over store data:
       "type": "we-button",
       "props": {
         "variant": "ghost",
-        "onClick": { "$action": "routeStore.navigate", "args": [{ "$concat": ["/space/", "$space.uuid"] }] }
+        "onClick": { "$action": "routeStore.navigate", "args": [{ "$": "\`/space/\${space.uuid}\`" }] }
       },
       "children": [
         { "type": "we-avatar", "props": { "image": "$space.avatar", "initials": "$space.name", "size": "sm" } },
@@ -44,19 +44,14 @@ Conditional rendering from store:
 {
   "type": "$if",
   "props": {
-    "condition": { "$eq": [{ "$store": "routeStore.currentPath" }, "/"] },
+    "condition": { "$": "routeStore.currentPath == '/'" },
     "then": { "type": "we-text", "children": ["Home"] },
     "else": { "type": "we-text", "children": ["Not home"] }
   }
 }
 
 Deriving options from store:
-{
-  "$map": {
-    "items": { "$store": "templateStore.templates" },
-    "select": { "name": "$item.meta.name", "icon": "$item.meta.icon" }
-  }
-}
+{ "$": "templateStore.templates.map(t, { name: t.meta.name, icon: t.meta.icon })" }
 
 Querying model data:
 {
@@ -131,7 +126,7 @@ Example — Channel list → Conversation list:
           "type": "we-button",
           "props": {
             "variant": "ghost",
-            "onClick": { "$action": "routeStore.navigate", "args": [{ "$concat": ["/channels/", "$channel.id"] }] }
+            "onClick": { "$action": "routeStore.navigate", "args": [{ "$": "\`/channels/\${channel.id}\`" }] }
           },
           "children": ["$channel.name"]
         }]
@@ -204,7 +199,7 @@ Local state (form with validation):
     }
   ]
 }
-The button is disabled only while the submit is in flight. Disabling it on { "$not": { "$formValid": "$scope" } }
+The button is disabled only while the submit is in flight. Disabling it on { "$": "!formValid()" }
 instead contradicts the { "$touch": "$all" } beneath it — the button is unclickable in exactly the state that
 guard exists to report. See the "Typical form pattern" section for the full rationale and the two valid shapes.
 
@@ -247,7 +242,7 @@ Use $query or $store for dynamic data (more common in production):
 { "type": "$each", "props": { "items": { "$store": "spaceStore.posts" }, "as": "post" }, "children": [...] }
 
 Per-item customization inside $each:
-To style or highlight specific items, add a data flag to those items and use $if on the flag inside the template. Do NOT use $eq: ["$index", N] comparisons — they are fragile, repetitive, and break when items are reordered.
+To style or highlight specific items, add a data flag to those items and use $if on the flag inside the template. Do NOT use index == N comparisons — they are fragile, repetitive, and break when items are reordered.
 Example: add "highlighted": true to one item's data, then use $if on "$post.highlighted" in the template:
 { "type": "$if", "props": { "condition": "$post.highlighted", "then": { "type": "we-badge", "props": { "variant": "primary" }, "children": ["Featured"] } } }
 For conditional props (e.g. different bg on highlighted items):
@@ -269,7 +264,7 @@ Resolve them by slug from a hoisted $queries subscription on the node.
 
 There is no store accessor for this. spaceStore.signalTypesBySlug existed once and was removed;
 schemas still referencing it filtered on undefined — a like count that silently counted the wrong
-thing. Query the SignalType entity instead, and look the slug up with $find.
+thing. Query the SignalType entity instead, and look the slug up with find().
 
 ALWAYS ask the user: "What slug should I use? (e.g. 'like', 'upvote', 'star')"
 Then use that slug in the pattern below.
@@ -290,7 +285,7 @@ Pattern — live wired SignalControl (one hoisted query, reused by the projectio
               "$totalLikeCount": {
                 "from": "signals",
                 "where": {
-                  "signalTypeId": { "$find": { "items": { "$local": "signalTypes" }, "where": { "slug": "like" }, "select": "id" } }
+                  "signalTypeId": { "$": "find(local.signalTypes, { slug: 'like' }).id" }
                 },
                 "count": true
               }
@@ -303,7 +298,7 @@ Pattern — live wired SignalControl (one hoisted query, reused by the projectio
         {
           "type": "$if",
           "props": {
-            "condition": { "$count": { "items": { "$local": "signalTypes" } } },
+            "condition": { "$": "count(local.signalTypes)" },
             "then": {
               "type": "$each",
               "props": { "items": { "$local": "signalTypes" }, "as": "sig" },
@@ -312,7 +307,7 @@ Pattern — live wired SignalControl (one hoisted query, reused by the projectio
                   "type": "SignalControl",
                   "props": {
                     "signalType": "$sig",
-                    "signals": { "$filter": { "items": "$item.signals", "where": { "signalTypeId": "$sig.id" } } },
+                    "signals": { "$": "filter(item.signals, { signalTypeId: sig.id })" },
                     "myDid": "$me.did",
                     "onSignal": { "$action": "spaceStore.upsertSignal", "args": ["$item.id", "$sig.id", "$arg"] }
                   }
@@ -330,8 +325,8 @@ Notes:
 - $queries and $localState share one $local namespace, so { "$local": "signalTypes" } reads the
   subscription from any descendant — the projection above and the controls below stay in agreement
   about which type a slug means.
-- The $count guard renders nothing until the community has created a signal type.
-- Iterating signalTypes renders every type the community defined; use $find with a slug only where
+- The count() guard renders nothing until the community has created a signal type.
+- Iterating signalTypes renders every type the community defined; use find() with a slug only where
   one specific type is meant (e.g. a like count).
 - Replace "like" with the user's slug.
 - $query include adds $totalLikeCount as a computed property on each item.

@@ -53,7 +53,7 @@ export const spaceSidebar: SchemaNode = {
           type: 'we-text',
           props: {
             textAlign: 'center',
-            loading: { $not: { $store: 'spaceStore.currentSpace' } },
+            loading: { $: '!spaceStore.currentSpace' },
           },
           children: [{ $store: 'spaceStore.currentSpace.name' }],
         },
@@ -63,7 +63,7 @@ export const spaceSidebar: SchemaNode = {
             variant: 'body',
             textAlign: 'center',
             mb: '400',
-            loading: { $not: { $store: 'spaceStore.currentSpace' } },
+            loading: { $: '!spaceStore.currentSpace' },
           },
           children: [{ $store: 'spaceStore.currentSpace.description' }],
         },
@@ -83,13 +83,7 @@ export const spaceSidebar: SchemaNode = {
             {
               type: 'we-button',
               props: {
-                variant: {
-                  $if: {
-                    condition: { $eq: [{ $store: 'routeStore.segments.2' }, '$view.segment'] },
-                    then: 'primary',
-                    else: 'ghost',
-                  },
-                },
+                variant: { $: "routeStore.segments[2] == view.segment ? 'primary' : 'ghost'" },
                 onClick: { $action: 'routeStore.navigate', args: ['$view.path'] },
               },
               children: [

@@ -240,48 +240,44 @@ For per-file validation or other options, see the **Schema Validation** section 
 
 ---
 
-### Schema System — Before Suggesting New Operators
+### Schema System — The Grammar Is Closed
 
-Before proposing a new schema operator, read \`packages/schema-system/OPERATORS.md\` —
-the full operator set is documented there. Adding a new one is only warranted if the
-operator genuinely doesn't exist AND the workaround requires 3+ levels of nesting.
+**No new value operators, and no new syntax.** The value layer is one expression language —
+\`{ "$": "count(local.rows) > 0 && local.search != ''" }\` — with a closed grammar (references,
+comparison, boolean and arithmetic operators, interpolation, a ternary, five comprehension macros)
+and an open **function library** (\`packages/schema-system/shared/src/expressions/functions.ts\`).
+The old operator tokens (\`$eq\`, \`$and\`, \`$concat\`, \`$count\`, \`$filter\`, \`$find\`, \`$plural\`,
+\`$map\`, \`$pick\`, prop-level \`$if\` …) are that language's syntax tree written as JSON: they still
+render, \`operatorToExpr\` reads them, and the codemod (\`src/cli/we-expressions-codemod.ts\`) prints
+them into the new spelling. Write new schemas as expressions.
 
-Operators that are easy to miss:
+A need for computation the language lacks is answered on the **code** side of the data/code line:
 
-| Operator | Syntax | What it does |
-|---|---|---|
-| \`$in\` | \`{ $in: [value, array] }\` | True if array contains value — array membership check |
-| \`$find\` | \`{ $find: { items, where } }\` | Returns the first matching item (or null) |
-| \`$pick\` | \`{ $pick: { from, keys } }\` | Extracts a subset of keys from an object |
-| \`$map\` | \`{ $map: { items, as, value } }\` | Maps an array to a new array of values |
-| \`$ne\` | \`{ $ne: [a, b] }\` | Not-equal comparison |
-| \`$concat\` | \`{ $concat: [part, ...] }\` | Joins strings: \`['neighbourhood://', '$space.url']\` |
+- **A function in the library** — \`defineFunction({ name, category, params, doc, example, impl })\`.
+  Pure and total: wrong-typed input answers with the empty value of its kind, never a throw. Same
+  bar as a component: three real uses, not one. The generated context lists it from the registry, so
+  there is no doc to update.
+- **A host source** — a function this deployment registers in
+  \`packages/app-shell/src/shared/sources/index.ts\`, reachable as \`calendarMonth({ … })\` and as
+  \`{ "$source": … }\`. Catalogued from the registry into the context and known to the validator.
 
-**Common mistake:** reaching for \`$filter + $count + $gt\` to check array membership
-when \`$in\` already exists. Example:
+Neither changes the parser, the validator's grammar, the renderer or the LLM's view of the syntax.
+That is the whole reason for the split: the accretion pressure that produced forty operators now
+lands where a docblock and a registry entry absorb it.
 
-\`\`\`ts
-// ❌ Verbose — don't do this for a simple membership check
-{ $gt: [{ $count: { items: { $filter: { items: arr, where: { id: val } } } } }, 0] }
+**Common mistake:** rebuilding a library function out of operators. \`count(filter(arr, { id: val })) > 0\`
+is \`val in arr\` — hmm, no: it is \`arr.exists(x, x.id == val)\`; \`val in arr\` tests the values
+themselves. Read the library table in the schema reference before composing.
 
-// ✅ Use $in instead
-{ $in: [val, arr] }
-\`\`\`
+**Common mistake:** \`count(local.items) > 0\` as a \`$if\` condition. Conditions use truthiness; \`0\`
+is falsy, so \`count(local.items)\` alone is the condition. Keep the comparison where a prop wants a
+real boolean — \`&&\`/\`||\` already answer with one.
 
-**Common mistake:** wrapping \`$count\` in \`$gt [..., 0]\` when used as a \`$if\` condition.
-\`$if\` conditions use standard JavaScript truthiness — \`0\` is falsy, any positive number is truthy.
-The \`$gt\` layer is redundant nesting that produces no change in behaviour.
-
-\`\`\`ts
-// ❌ Unnecessary — $gt adds nothing here
-{ "condition": { "$gt": [{ "$count": { "items": { "$local": "items" } } }, 0] } }
-
-// ✅ $count alone is truthy/falsy in a condition
-{ "condition": { "$count": { "items": { "$local": "items" } } } }
-\`\`\`
-
-Note: \`$gt\` is still needed when you want an explicit boolean value outside a condition context
-(e.g. as a prop that expects \`boolean\`, not just any truthy value).
+**Handlers stay tokens.** \`$action\`, \`$setLocal\`, \`$toggleLocal\`, \`$toggleLocalIn\`, \`$callLocal\`,
+\`$touch\`, \`$resetLocal\` are the statement layer — about seven verbs, enumerable on purpose because
+capability grants and \`destructive\` flags attach to verbs. Their *arguments* take expressions, and an
+expression naming \`event\`/\`arg\`/\`result\` at the top level of \`args\` or as a \`$setLocal\` \`value\`
+is evaluated when the handler fires.
 
 ---
 

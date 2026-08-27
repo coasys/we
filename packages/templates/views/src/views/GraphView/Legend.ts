@@ -40,13 +40,7 @@ import { swatchRow } from './Palette';
 const BOARD = { $local: 'boardId' };
 
 /** The colour this type currently carries on this board, or empty. */
-const colorOf = {
-  $find: {
-    items: { $local: 'boardTypeStyles' },
-    where: { nodeType: '$placement.nodeType' },
-    select: 'color',
-  },
-};
+const colorOf = { $: 'find(local.boardTypeStyles, { nodeType: placement.nodeType }).color' };
 
 const typeRow: SchemaNode = {
   type: 'Column',
@@ -87,31 +81,14 @@ const typeRow: SchemaNode = {
             {
               type: 'we-text',
               props: { variant: 'footnote', color: 'text-muted', ml: 'auto' },
-              children: [
-                {
-                  $count: {
-                    items: {
-                      $filter: {
-                        items: { $local: 'boardPlacements' },
-                        where: { nodeType: '$placement.nodeType' },
-                      },
-                    },
-                  },
-                },
-              ],
+              children: [{ $: 'count(filter(local.boardPlacements, { nodeType: placement.nodeType }))' }],
             },
             {
               type: 'we-icon',
               props: {
                 size: 'xs',
                 color: 'text-faint',
-                name: {
-                  $if: {
-                    condition: { $in: ['$placement.nodeType', { $local: 'openTypes' }] },
-                    then: 'caret-down',
-                    else: 'caret-right',
-                  },
-                },
+                name: { $: "placement.nodeType in local.openTypes ? 'caret-down' : 'caret-right'" },
               },
             },
           ],
@@ -121,7 +98,7 @@ const typeRow: SchemaNode = {
     {
       type: '$if',
       props: {
-        condition: { $in: ['$placement.nodeType', { $local: 'openTypes' }] },
+        condition: { $: 'placement.nodeType in local.openTypes' },
         enterTransition: [
           { type: 'reveal', duration: 200 },
           { type: 'fade', duration: 150 },
@@ -250,7 +227,7 @@ export const boardLegend: SchemaNode = {
                     {
                       type: '$if',
                       props: {
-                        condition: { $count: { items: { $local: 'boardPlacements' } } },
+                        condition: { $: 'count(local.boardPlacements)' },
                         then: {
                           type: '$each',
                           props: { items: { $local: 'boardPlacements' }, as: 'placement' },
@@ -266,7 +243,7 @@ export const boardLegend: SchemaNode = {
                               */
                               type: '$if',
                               props: {
-                                condition: { $ne: ['$placement.nodeType', '$prev.nodeType'] },
+                                condition: { $: 'placement.nodeType != prev.nodeType' },
                                 then: typeRow,
                               },
                             },

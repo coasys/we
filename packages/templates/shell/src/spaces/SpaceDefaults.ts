@@ -164,7 +164,7 @@ export const spaceDefaultsSection: SchemaNode = {
       {
         type: '$if',
         props: {
-          condition: { $count: { items: { $store: 'templateStore.spaceTemplates' } } },
+          condition: { $: 'count(templateStore.spaceTemplates)' },
           then: group('In this space', { $store: 'templateStore.spaceTemplates' }, 'template', templateRow),
         },
       },
@@ -186,7 +186,7 @@ export const spaceDefaultsSection: SchemaNode = {
       {
         type: '$if',
         props: {
-          condition: { $count: { items: { $store: 'themeStore.spaceThemes' } } },
+          condition: { $: 'count(themeStore.spaceThemes)' },
           then: group('In this space', { $store: 'themeStore.spaceThemes' }, 'theme', themeRow),
         },
       },

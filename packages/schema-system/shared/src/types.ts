@@ -262,6 +262,11 @@ export type RendererOutput<NodeType = unknown> = NodeType | null;
 // --- Operator Token Types ---
 // Opt-in types for schema authors. SchemaProp remains `Record<string, unknown>` for Zod compatibility.
 
+/**
+ * `{ $: '…' }` — an expression over the value layer. See `expressions/index.ts`. The operators
+ * below are its syntax tree written as JSON, and both spellings are accepted.
+ */
+export type ExpressionToken = { $: string };
 export type StoreToken = { $store: string };
 export type ConcatToken = { $concat: unknown[] };
 export type ActionToken = {
@@ -405,6 +410,7 @@ export type QueryDescriptor = {
 
 /** Union of all prop-level operator tokens */
 export type OperatorToken =
+  | ExpressionToken
   | StoreToken
   | ConcatToken
   | ActionToken

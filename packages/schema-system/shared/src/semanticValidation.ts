@@ -2,6 +2,7 @@ import { BASE_CLASS_LAYERS, getKeysForLayers, layerKeyMap, tierKeys } from '@we/
 import { role } from '@we/tokens';
 
 import type { ContextData, StateMemberMeta } from './contextTypes';
+import { checkExpression, ExpressionSyntaxError, isCallTime, isExpressionToken, parseExpression } from './expressions';
 import type { ValidationError, ValidationResult } from './validators';
 import { validateStructure } from './validators';
 
@@ -18,6 +19,8 @@ export type ValidationContext = {
   storeMemberMeta: Map<string, Map<string, StateMemberMeta>>;
   modelNames: Set<string>;
   dsPropToLayer: Map<string, string>;
+  /** Functions the host lends to expressions, from the generated context's `sources`. */
+  hostFunctions: Set<string>;
 };
 
 // ── Constants ──────────────────────────────────────────────────────
@@ -357,6 +360,8 @@ export function buildValidationContext(data: ContextData): ValidationContext {
     componentNames.add(name);
   }
 
+  const hostFunctions = new Set((data.sources ?? []).map((source) => source.name));
+
   return {
     componentNames,
     componentProps,
@@ -368,6 +373,7 @@ export function buildValidationContext(data: ContextData): ValidationContext {
     storeMemberMeta,
     modelNames,
     dsPropToLayer,
+    hostFunctions,
   };
 }
 
@@ -391,6 +397,12 @@ interface WalkState {
    * read afterwards.
    */
   localTypes: Map<string, string>;
+  /**
+   * Names the enclosing nodes bound for an expression to read — `$each`'s `as`, `$single`'s,
+   * `$agent`'s, `$surface`'s. What tells `post.title` from a typo, which the context-reference
+   * strings never had: `'$psot.title'` resolved to nothing and nobody was told.
+   */
+  contextScope: Set<string>;
   hasRoutesAncestor: boolean;
   /** True only for the root template node and for route entry nodes — the positions the router
    *  actually reads routes arrays from. Child nodes that are not route entries must never own
@@ -563,8 +575,69 @@ function walkOperatorNode(
     checkBranchSlot(props.else, `${path}.props.else`, ctx, state, errors);
   }
 
-  // Walk children of operator nodes
-  walkChildren(n, path, ctx, state, errors);
+  // Walk children of operator nodes, with whatever name this one binds for them.
+  walkChildren(n, path, ctx, withBoundName(type, props, state), errors);
+}
+
+/** The context name a binding operator gives its subtree, if this is one. */
+const BINDING_DEFAULTS: Record<string, string> = {
+  $each: 'item',
+  $single: 'item',
+  $agent: 'agent',
+  $surface: 'surface',
+};
+
+function withBoundName(type: string, props: Record<string, unknown>, state: WalkState): WalkState {
+  const fallback = BINDING_DEFAULTS[type];
+  if (fallback === undefined) return state;
+  const name = typeof props.as === 'string' && props.as ? props.as : fallback;
+  const contextScope = new Set(state.contextScope);
+  contextScope.add(name);
+  return { ...state, contextScope };
+}
+
+/**
+ * An expression, parsed and checked against what this node can see.
+ *
+ * Both halves report a column — the offset into the source the author wrote — because "somewhere
+ * in this string" is not a location an authoring loop can act on, and the string can be long.
+ */
+function checkExpressionToken(
+  source: string,
+  path: string,
+  ctx: ValidationContext,
+  state: WalkState,
+  errors: ValidationError[],
+): void {
+  let ast;
+  try {
+    ast = parseExpression(source);
+  } catch (error) {
+    if (error instanceof ExpressionSyntaxError) {
+      errors.push({
+        path: `${path}.$`,
+        message: `Expression: ${error.message} (column ${error.span[0]})`,
+        severity: 'error',
+      });
+      return;
+    }
+    throw error;
+  }
+  const issues = checkExpression(ast, {
+    storeNames: ctx.storeNames,
+    storeMembers: ctx.storeMembers,
+    locals: state.localScope,
+    contextNames: state.contextScope,
+    strict: !state.isFragment,
+    hostFunctions: ctx.hostFunctions,
+  });
+  for (const issue of issues) {
+    errors.push({
+      path: `${path}.$`,
+      message: `Expression: ${issue.message} (column ${issue.span[0]})`,
+      severity: issue.severity,
+    });
+  }
 }
 
 /**
@@ -862,6 +935,12 @@ function checkTokenValue(
   }
 
   const obj = value as Record<string, unknown>;
+
+  // An expression carries everything it references in its source; nothing else to walk.
+  if (isExpressionToken(obj)) {
+    checkExpressionToken(obj.$, path, ctx, state, errors);
+    return;
+  }
 
   // $store token
   if ('$store' in obj && typeof obj.$store === 'string') {
@@ -1201,6 +1280,25 @@ function checkActionArgs(args: unknown[], path: string, errors: ValidationError[
     typeof v === 'string' && (v === '$event' || v === '$arg' || v.startsWith('$event.') || v.startsWith('$arg.'));
 
   const walk = (value: unknown, at: string, insideOperator: boolean): void => {
+    // The same trap in expression form: `{ $not: { $: 'event.detail' } }` evaluates the `$not` at
+    // render time over a deferred value. At the top level of `args` the expression is deferred and
+    // evaluated with the event, which is what the string form has always done there.
+    if (isExpressionToken(value)) {
+      if (!insideOperator) return;
+      try {
+        if (!isCallTime(parseExpression(value.$))) return;
+      } catch {
+        return;
+      }
+      errors.push({
+        path: at,
+        message:
+          `An expression reading the event is nested inside an operator, where it is evaluated before the event ` +
+          `exists. Put the whole computation in one expression at the top level of args, or map the value in the store.`,
+        severity: 'error',
+      });
+      return;
+    }
     if (isEventRef(value)) {
       if (insideOperator) {
         errors.push({
@@ -1522,6 +1620,7 @@ function checkRoutes(
     localScope: new Set<string>(),
     localTypes: new Map<string, string>(),
     queryScope: new Set<string>(),
+    contextScope: new Set<string>(),
   };
   for (let i = 0; i < routes.length; i++) {
     walkNode(routes[i], `${path}.routes[${i}]`, ctx, routeState, errors);
@@ -1672,6 +1771,7 @@ export function validateSemantic(schema: unknown, context: ValidationContext): V
     localScope: null,
     localTypes: new Map<string, string>(),
     queryScope: new Set(),
+    contextScope: new Set(),
     hasRoutesAncestor: false,
     isRouteEligible: true,
     isFragment: !meta,

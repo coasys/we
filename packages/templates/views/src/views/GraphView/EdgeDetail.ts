@@ -39,7 +39,7 @@ const close = { $setLocal: 'selectedEdge', value: null };
 const signals: SchemaNode = {
   type: '$if',
   props: {
-    condition: { $count: { items: { $local: 'signalTypes' } } },
+    condition: { $: 'count(local.signalTypes)' },
     then: {
       type: 'Row',
       props: { gap: '600', ay: 'center', minHeight: '40px' },
@@ -52,7 +52,7 @@ const signals: SchemaNode = {
               type: 'SignalControl',
               props: {
                 signalType: '$sig',
-                signals: { $filter: { items: '$link.signals', where: { signalTypeId: '$sig.id' } } },
+                signals: { $: 'filter(link.signals, { signalTypeId: sig.id })' },
                 myDid: '$me.did',
                 onSignal: { $action: 'spaceStore.upsertSignal', args: ['$link.id', '$sig.id', '$arg'] },
               },
@@ -184,7 +184,7 @@ const editing: SchemaNode = {
             {
               type: '$if',
               props: {
-                condition: { $count: { items: { $local: 'relationshipKinds' } } },
+                condition: { $: 'count(local.relationshipKinds)' },
                 then: {
                   type: 'we-form-field',
                   props: { label: 'Kind', size: 'sm', width: '100%' },
@@ -196,12 +196,7 @@ const editing: SchemaNode = {
                         width: '100%',
                         placeholder: 'No particular kind',
                         value: { $local: 'draftKind' },
-                        options: {
-                          $map: {
-                            items: { $local: 'relationshipKinds' },
-                            select: { label: '$item.name', value: '$item.id' },
-                          },
-                        },
+                        options: { $: 'local.relationshipKinds.map(item, { label: item.name, value: item.id })' },
                         onChange: { $setLocal: 'draftKind', from: '$event.detail' },
                       },
                     },
@@ -230,7 +225,7 @@ const editing: SchemaNode = {
                     size: 'sm',
                     variant: 'primary',
                     // Nothing about a label is locally judgeable beyond its presence.
-                    disabled: { $not: { $local: 'draftLabel' } },
+                    disabled: { $: '!local.draftLabel' },
                     onClick: {
                       $action: 'model.update',
                       args: [
@@ -260,7 +255,7 @@ const editing: SchemaNode = {
     {
       type: '$if',
       props: {
-        condition: { $and: ['$link.description', { $not: { $local: 'editOpen' } }] },
+        condition: { $: 'link.description && !local.editOpen' },
         then: { type: 'we-text', props: { color: 'text-muted' }, children: ['$link.description'] },
       },
     },

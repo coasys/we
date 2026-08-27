@@ -33,7 +33,7 @@ export const consentPrompt: SchemaNode = confirmModal({
     {
       type: '$if',
       props: {
-        condition: { $eq: [{ $store: 'runtimeStore.pendingConsent.kind' }, 'capability'] },
+        condition: { $: "runtimeStore.pendingConsent.kind == 'capability'" },
         then: {
           type: 'Column',
           props: { gap: '400' },
@@ -99,7 +99,7 @@ export const consentPrompt: SchemaNode = confirmModal({
     {
       type: '$if',
       props: {
-        condition: { $eq: [{ $store: 'runtimeStore.pendingConsent.kind' }, 'trust'] },
+        condition: { $: "runtimeStore.pendingConsent.kind == 'trust'" },
         then: {
           type: 'Column',
           props: { gap: '300' },

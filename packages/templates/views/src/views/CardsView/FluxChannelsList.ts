@@ -5,9 +5,7 @@ import { cardList, cardShell, emptyState, statChip } from '@we/template-kit';
 // Flux community synced into WE). Guard on presence in currentPerspectiveModels so a plain
 // WE space just shows the empty-state message instead of firing a query for a model that
 // isn't registered here (which would otherwise surface as an error toast).
-const hasChannelModel = {
-  $find: { items: { $store: 'datasetStore.currentDatasetModels' }, where: { name: 'Channel' } },
-};
+const hasChannelModel = { $: "find(datasetStore.currentDatasetModels, { name: 'Channel' })" };
 
 /*
   Two ways this list can be empty, one sentence for both.

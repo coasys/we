@@ -35,7 +35,7 @@ import type { SchemaNode } from '@we/schema-shared';
 const sectionStatus: SchemaNode = {
   type: '$if',
   props: {
-    condition: { $and: ['$view.enabled', { $not: '$view.visible' }] },
+    condition: { $: 'view.enabled && !view.visible' },
     then: {
       type: 'we-text',
       props: { variant: 'footnote', color: 'text-faint' },
@@ -133,7 +133,7 @@ const sectionRow: SchemaNode = {
                 checked: '$view.visible',
                 // Nothing to show yourself while the space does not have the section, so the control
                 // cannot do what it appears to.
-                disabled: { $not: '$view.enabled' },
+                disabled: { $: '!view.enabled' },
                 // Bare `$event.detail`: an operator object around it resolves at render time, before
                 // the event exists. Same trap as the module switches.
                 onChange: {
@@ -154,7 +154,7 @@ const sectionRow: SchemaNode = {
               props: {
                 size: 'sm',
                 checked: '$view.enabled',
-                disabled: { $not: '$space.canAdminister' },
+                disabled: { $: '!space.canAdminister' },
                 onChange: {
                   $action: 'spaceStore.setViewEnabled',
                   args: ['$view.id', '$event.detail', '$space.uuid'],
@@ -219,11 +219,7 @@ const sectionsCard: SchemaNode = {
           props: { variant: 'footnote', color: 'text-faint' },
           children: [
             {
-              $if: {
-                condition: '$space.canAdminister',
-                then: 'The pages this space has, in the order they appear. Drag to reorder. Only the right-hand switch affects other members.',
-                else: 'The pages this space has. You can hide any of them for yourself; changing what everyone sees needs someone who administers the space.',
-              },
+              $: "space.canAdminister ? 'The pages this space has, in the order they appear. Drag to reorder. Only the right-hand switch affects other members.' : 'The pages this space has. You can hide any of them for yourself; changing what everyone sees needs someone who administers the space.'",
             },
           ],
         },
@@ -242,7 +238,7 @@ const sectionsCard: SchemaNode = {
       props: {
         // Locked for a member who may not administer the space: the rows stay readable and their
         // "For me" switch still works, but the order is not theirs to change.
-        locked: { $not: '$space.canAdminister' },
+        locked: { $: '!space.canAdminister' },
         // `$arg.detail` is where we-sortable puts the reordered ids. The event is `reorder`, which
         // Solid reaches from `onReorder` by lowercasing.
         onReorder: { $action: 'spaceStore.reorderViews', args: ['$arg.detail', '$space.uuid'] },
@@ -250,7 +246,7 @@ const sectionsCard: SchemaNode = {
       children: [
         {
           type: '$each',
-          props: { items: { $filter: { items: '$space.views', where: { enabled: true } } }, as: 'view' },
+          props: { items: { $: 'filter(space.views, { enabled: true })' }, as: 'view' },
           children: [draggableRow],
         },
       ],
@@ -258,7 +254,7 @@ const sectionsCard: SchemaNode = {
     {
       type: '$if',
       props: {
-        condition: { $count: { items: { $filter: { items: '$space.views', where: { enabled: false } } } } },
+        condition: { $: 'count(filter(space.views, { enabled: false }))' },
         then: {
           type: 'Column',
           props: { gap: '200', pt: '300', mt: '200', borderTop: '1px solid border' },
@@ -270,7 +266,7 @@ const sectionsCard: SchemaNode = {
             },
             {
               type: '$each',
-              props: { items: { $filter: { items: '$space.views', where: { enabled: false } } }, as: 'view' },
+              props: { items: { $: 'filter(space.views, { enabled: false })' }, as: 'view' },
               children: [sectionRow],
             },
           ],

@@ -82,8 +82,8 @@ WRONG — two common mistakes that produce empty tabs (validator will catch both
 }
 
 Alternative: single onChange on we-tabs (fires with $event.detail.value = selected key):
-{ "onChange": { "$action": "routeStore.navigate", "args": [{ "$concat": ["/", "$arg.detail.value"] }] } }
-This replaces all per-tab onClick handlers but requires $concat to build the path.
+{ "onChange": { "$action": "routeStore.navigate", "args": [{ "$": "\`/\${arg.detail.value}\`" }] } }
+This replaces all per-tab onClick handlers but requires an interpolation to build the path.
 
 Nested routing example:
 {

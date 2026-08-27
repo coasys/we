@@ -3,7 +3,7 @@ import { provideModuleHostServices } from '@shared/registries/moduleHostServices
 import { moduleStores } from '@shared/registries/moduleRegistry';
 import { onSlotRegistryChanged, slotRegistry } from '@shared/registries/slotRegistry';
 import { buildTemplateBag, CHROME_TIER, SPACE_TIER } from '@shared/registries/templateSurface';
-import { calendarMonth, calendarMonths, monthLabel, yearLabel } from '@shared/sources/calendarMonth';
+import { hostSourceBag } from '@shared/sources';
 import { componentRegistry as registry } from '@solid/registries/componentRegistry';
 import {
   useAccountStore,
@@ -220,7 +220,7 @@ export default function TemplateProvider() {
     decides what its templates can reach, and a module could contribute its own. Plain data rather
     than a memo, because a source is a pure function and there is nothing here to react to.
   */
-  stores.$sources = { calendarMonth, calendarMonths, monthLabel, yearLabel };
+  stores.$sources = hostSourceBag();
 
   const BINDING_KEYS = [
     '$getModel',

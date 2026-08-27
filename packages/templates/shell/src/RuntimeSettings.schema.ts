@@ -58,7 +58,7 @@ export const connectedApps: SchemaNode = {
         {
           type: '$if',
           props: {
-            condition: { $count: { items: { $store: 'runtimeStore.authorizedApps' } } },
+            condition: { $: 'count(runtimeStore.authorizedApps)' },
             then: {
               type: 'Column',
               props: { gap: '200' },
@@ -120,7 +120,7 @@ export const connectedApps: SchemaNode = {
                                 {
                                   type: '$if',
                                   props: {
-                                    condition: { $not: '$app.revoked' },
+                                    condition: { $: '!app.revoked' },
                                     then: {
                                       type: 'we-button',
                                       props: {
@@ -172,7 +172,7 @@ export const trustedAgents: SchemaNode = {
         {
           type: '$if',
           props: {
-            condition: { $count: { items: { $store: 'runtimeStore.trustedAgents' } } },
+            condition: { $: 'count(runtimeStore.trustedAgents)' },
             then: {
               type: 'Column',
               props: { gap: '200' },
@@ -236,7 +236,7 @@ export const trustedAgents: SchemaNode = {
                 text: 'Trust',
                 size: 'sm',
                 variant: 'secondary',
-                disabled: { $not: { $local: 'newTrustedAgent' } },
+                disabled: { $: '!local.newTrustedAgent' },
                 onClick: {
                   $action: 'runtimeStore.trustAgent',
                   args: [{ $local: 'newTrustedAgent' }],
@@ -456,7 +456,7 @@ export const logging: SchemaNode = {
         {
           type: '$if',
           props: {
-            condition: { $count: { items: { $store: 'runtimeStore.logLevels' } } },
+            condition: { $: 'count(runtimeStore.logLevels)' },
             then: {
               type: 'Column',
               props: { gap: '200' },
@@ -533,7 +533,7 @@ export const logging: SchemaNode = {
                 text: 'Set',
                 size: 'sm',
                 variant: 'secondary',
-                disabled: { $not: { $local: 'newLogCrate' } },
+                disabled: { $: '!local.newLogCrate' },
                 onClick: {
                   $action: 'runtimeStore.setLogLevel',
                   args: [{ $local: 'newLogCrate' }, { $local: 'newLogLevel' }],
@@ -664,7 +664,7 @@ export const peerNetwork: SchemaNode = {
                     text: 'Add peer info',
                     size: 'sm',
                     variant: 'secondary',
-                    disabled: { $not: { $local: 'peerInfoText' } },
+                    disabled: { $: '!local.peerInfoText' },
                     onClick: {
                       $action: 'runtimeStore.addPeerInfos',
                       args: [{ $local: 'peerInfoText' }],

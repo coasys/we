@@ -114,7 +114,7 @@ export function newContainerModal(opts: {
     // A precondition rather than a validation rule: a container needs a name, and nothing else
     // about it is judgeable here. See the house form guidance. The in-flight half of what this
     // used to `$or` in by hand is the fragment's now.
-    disabled: { $not: { $local: 'name' } },
+    disabled: { $: '!local.name' },
     busyLocal: 'creating',
     submitLabel: 'Create',
     submit: {
@@ -152,7 +152,7 @@ export function signalRow(nodeRef: string): SchemaNode {
   return {
     type: '$if',
     props: {
-      condition: { $count: { items: { $local: 'signalTypes' } } },
+      condition: { $: 'count(local.signalTypes)' },
       then: {
         type: 'Row',
         props: { gap: '400', ay: 'center' },

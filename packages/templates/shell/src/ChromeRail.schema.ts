@@ -116,7 +116,7 @@ const spaceSection: SchemaNode = {
         {
           type: '$if',
           props: {
-            condition: { $count: { items: { $store: 'spaceStore.moduleLaunchers' } } },
+            condition: { $: 'count(spaceStore.moduleLaunchers)' },
             then: { type: 'we-divider', props: { width: '100%', my: '100' } },
           },
         },
@@ -137,9 +137,7 @@ const spaceSection: SchemaNode = {
 const designSection: SchemaNode = {
   type: '$if',
   props: {
-    condition: {
-      $and: [{ $not: { $store: 'appStore.activeAppId' } }, { $not: { $store: 'shellStore.activeShellView' } }],
-    },
+    condition: { $: '!appStore.activeAppId && !shellStore.activeShellView' },
     then: {
       type: 'Column',
       props: { gap: '100', ay: 'center', width: '100%' },
@@ -158,7 +156,7 @@ export const chromeRail: SchemaNode = {
   type: '$if',
   props: {
     // Nothing here means anything before the app is up, and the boot screen owns the whole window.
-    condition: { $eq: [{ $store: 'sessionStore.bootState' }, 'ready'] },
+    condition: { $: "sessionStore.bootState == 'ready'" },
     then: {
       type: 'Column',
       props: {
@@ -234,12 +232,7 @@ export const chromeRail: SchemaNode = {
           dropped below the titlebar, which was the first answer: full screen means the app's own
           furniture is gone, and the way back is the panel's titlebar and the Escape key.
         */
-        styles: {
-          $if: {
-            condition: { $store: 'shellStore.panelMaximised' },
-            then: { display: 'none' },
-          },
-        },
+        styles: { $: "shellStore.panelMaximised ? { display: 'none' } : null" },
         transition: 'right var(--we-chrome-transition, 300ms) ease, top var(--we-chrome-transition, 300ms) ease',
       },
       children: [spaceSection, designSection],

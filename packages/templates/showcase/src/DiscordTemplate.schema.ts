@@ -48,7 +48,7 @@ const rail: SchemaNode = {
         { type: 'we-avatar', props: { image: { $store: 'spaceStore.currentSpace.avatar' }, size: 'sm' } },
         {
           type: 'we-text',
-          props: { fontWeight: 'bold', truncate: true, loading: { $not: { $store: 'spaceStore.currentSpace' } } },
+          props: { fontWeight: 'bold', truncate: true, loading: { $: '!spaceStore.currentSpace' } },
           children: [{ $store: 'spaceStore.currentSpace.name' }],
         },
       ],
@@ -123,7 +123,7 @@ const messageBody: SchemaNode[] = [
 const messageRow: SchemaNode = {
   type: '$if',
   props: {
-    condition: { $eq: ['$message.author', '$prev.author'] },
+    condition: { $: 'message.author == prev.author' },
     then: {
       type: 'Row',
       props: { width: '100%', gap: '300', py: '25', ay: 'start' },

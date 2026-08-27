@@ -32,6 +32,13 @@ const zThemeOverrides = z
 // zDefined requires the value to be present (not undefined) while accepting any type.
 const zDefined = z.custom<unknown>((v) => v !== undefined, 'Required');
 
+/**
+ * `{ $: '…' }` — an expression. See `expressions/index.ts`.
+ *
+ * Only the shape is checked here; the *content* is parsed and checked against what the template
+ * can see by `semanticValidation`, which is where a column-precise error can be reported.
+ */
+const zExpressionToken = z.object({ $: z.string().min(1) }).strict();
 const zStoreToken = z.object({ $store: z.string().min(1) }).strict();
 const zConcatToken = z.object({ $concat: z.array(z.unknown()) }).strict();
 const zActionToken = z
@@ -218,6 +225,7 @@ const zValidationRule = z.union([
 
 /** All prop-level token types — used in both prop values and children arrays */
 const zPropToken = z.union([
+  zExpressionToken,
   zStoreToken,
   zConcatToken,
   zActionToken,

@@ -1,9 +1,7 @@
 import type { LocalStateField, SchemaNode } from '@we/schema-shared';
 import { agentByline, cardList, cardShell, emptyState, peopleRow } from '@we/template-kit';
 
-const hasConversationModel = {
-  $find: { items: { $store: 'datasetStore.currentDatasetModels' }, where: { name: 'Conversation' } },
-};
+const hasConversationModel = { $: "find(datasetStore.currentDatasetModels, { name: 'Conversation' })" };
 
 /*
   Two ways this list can be empty, one sentence for both.
@@ -46,7 +44,7 @@ const subgroupMessagesToggle: SchemaNode = {
       { $toggleLocal: 'subgroupMessagesOpen' },
       {
         $if: {
-          condition: { $not: { $local: 'subgroupMessages' } },
+          condition: { $: '!local.subgroupMessages' },
           then: {
             $action: 'spaceStore.getSubgroupMessages',
             args: ['$subgroup.id'],
@@ -66,18 +64,10 @@ const subgroupMessagesToggle: SchemaNode = {
           type: 'Row',
           props: { gap: '100', ay: 'center' },
           children: [
-            { type: 'we-number', props: { value: { $count: { items: { $local: 'subgroupMessages' } } } } },
+            { type: 'we-number', props: { value: { $: 'count(local.subgroupMessages)' } } },
             {
               type: 'we-text',
-              children: [
-                {
-                  $plural: {
-                    count: { $count: { items: { $local: 'subgroupMessages' } } },
-                    one: 'Message',
-                    other: 'Messages',
-                  },
-                },
-              ],
+              children: [{ $: "plural(count(local.subgroupMessages), 'Message', 'Messages')" }],
             },
           ],
         },
@@ -113,7 +103,7 @@ const subgroupMessagesList: SchemaNode = {
         {
           type: '$if',
           props: {
-            condition: { $eq: [{ $count: { items: { $local: 'subgroupMessages' } } }, 0] },
+            condition: { $: 'count(local.subgroupMessages) == 0' },
             then: { type: 'we-text', props: { color: 'text-faint' }, children: ['No messages in this subgroup.'] },
           },
         },
@@ -164,7 +154,7 @@ const conversationSubgroupsToggle: SchemaNode = {
     { type: 'we-number', props: { value: '$conversation.$subgroupCount' } },
     {
       type: 'we-text',
-      children: [{ $plural: { count: '$conversation.$subgroupCount', one: 'Subgroup', other: 'Subgroups' } }],
+      children: [{ $: "plural(conversation.$subgroupCount, 'Subgroup', 'Subgroups')" }],
     },
     caretIcon('subgroupsOpen'),
   ],

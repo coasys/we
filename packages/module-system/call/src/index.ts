@@ -159,10 +159,11 @@ function contentCentred(edge: 'top' | 'bottom', child: SchemaNode): SchemaNode {
  * The same question the mobile plan asks, answered once — a narrow window and a narrow content
  * box are the same problem to a bar, and the surface reports them as one number.
  */
-const COMPACT = { $eq: ['$surface.tier', 'base'] };
+const COMPACT = { $: "surface.tier == 'base'" };
+const ROOMY = { $: "surface.tier != 'base'" };
 const whenRoomy = (node: SchemaNode): SchemaNode => ({
   type: '$if',
-  props: { condition: { $not: COMPACT }, then: node },
+  props: { condition: ROOMY, then: node },
 });
 const whenCompact = (node: SchemaNode): SchemaNode => ({ type: '$if', props: { condition: COMPACT, then: node } });
 
@@ -322,9 +323,7 @@ const tile: SchemaNode = {
      * than moves across parents, and the `<video>` would lose its stream on every click. One
      * container, one `$each`, only CSS changes.
      */
-    styles: {
-      $find: { items: { $store: 'modules.call.tileCells' }, where: { id: '$tile.id' }, select: 'style' },
-    },
+    styles: { $: 'find(modules.call.tileCells, { id: tile.id }).style' },
   },
   children: [
     {
@@ -343,9 +342,7 @@ const tile: SchemaNode = {
         ay: 'center',
         minWidth: '0',
         minHeight: '0',
-        styles: {
-          $find: { items: { $store: 'modules.call.tilePins' }, where: { id: '$tile.id' }, select: 'style' },
-        },
+        styles: { $: 'find(modules.call.tilePins, { id: tile.id }).style' },
       },
       children: [
         {
@@ -775,7 +772,7 @@ const devPeerControls: SchemaNode = {
             square: true,
             size: 'sm',
             variant: 'ghost',
-            disabled: { $not: { $store: 'modules.call.fakePeerCount' } },
+            disabled: { $: '!modules.call.fakePeerCount' },
             // Zero-argument, because the schema layer has no arithmetic: there is no way to write
             // "the current count minus one" as a token, so the step belongs in the store.
             onClick: { $action: 'modules.call.removeFakePeer' },
@@ -906,13 +903,7 @@ const participants: SchemaNode = peopleTooltip({
           type: 'AvatarStack',
           props: {
             avatars: {
-              $map: {
-                items: { $store: 'modules.call.tileFaces' },
-                // `hash` always, never as a fallback for a missing picture: it seeds a generated
-                // avatar that is stable per agent, so two people whose profiles have not arrived are
-                // still two distinguishable faces rather than the same grey glyph twice.
-                select: { image: '$item.image', hash: '$item.hash', initials: '$item.name' },
-              },
+              $: 'modules.call.tileFaces.map(item, { image: item.image, hash: item.hash, initials: item.name })',
             },
             max: 3,
             size: 'sm',
@@ -944,10 +935,7 @@ const participants: SchemaNode = peopleTooltip({
           */
             styles: { whiteSpace: 'nowrap' },
           },
-          children: [
-            { type: 'we-number', props: { value: { $count: { items: { $store: 'modules.call.tiles' } } } } },
-            ' in the call',
-          ],
+          children: [{ type: 'we-number', props: { value: { $: 'count(modules.call.tiles)' } } }, ' in the call'],
         }),
       ],
     },
@@ -1112,11 +1100,7 @@ const returnToCall: SchemaNode = {
       type: 'we-tooltip',
       props: {
         title: {
-          $if: {
-            condition: { $store: 'modules.call.callSpace.name' },
-            then: { $concat: ['Back to the call in ', { $store: 'modules.call.callSpace.name' }] },
-            else: 'Back to the call',
-          },
+          $: "modules.call.callSpace.name ? `Back to the call in ${modules.call.callSpace.name}` : 'Back to the call'",
         },
         placement: 'bottom',
       },
@@ -1131,15 +1115,7 @@ const returnToCall: SchemaNode = {
               // Truncated rather than wrapped: a long space name would otherwise make the bar two
               // rows tall, which is the one thing a fixed strip of controls cannot absorb.
               props: { truncate: true, maxWidth: '96px' },
-              children: [
-                {
-                  $if: {
-                    condition: { $store: 'modules.call.callSpace.name' },
-                    then: { $store: 'modules.call.callSpace.name' },
-                    else: 'In a call',
-                  },
-                },
-              ],
+              children: [{ $: "modules.call.callSpace.name ? modules.call.callSpace.name : 'In a call'" }],
             },
           ],
         },
@@ -1161,7 +1137,7 @@ const bar: SchemaNode = {
     else: {
       type: '$if',
       props: {
-        condition: { $count: { items: { $store: 'modules.call.ongoing' } } },
+        condition: { $: 'count(modules.call.ongoing)' },
         then: contentCentred('bottom', {
           type: 'Row',
           props: {
@@ -1188,10 +1164,7 @@ const bar: SchemaNode = {
               type: 'we-text',
               // One line, for the same reason the in-call readout keeps one — see `participants`.
               props: { variant: 'label', styles: { whiteSpace: 'nowrap' } },
-              children: [
-                { type: 'we-number', props: { value: { $count: { items: { $store: 'modules.call.ongoing' } } } } },
-                ' in a call',
-              ],
+              children: [{ type: 'we-number', props: { value: { $: 'count(modules.call.ongoing)' } } }, ' in a call'],
             },
             {
               type: 'we-button',
@@ -1394,7 +1367,7 @@ const audioSink: SchemaNode = {
     then: {
       type: '$each',
       props: {
-        items: { $filter: { items: { $store: 'modules.call.tiles' }, where: { isSelf: false } } },
+        items: { $: 'filter(modules.call.tiles, { isSelf: false })' },
         as: 'tile',
       },
       children: [{ type: 'we-audio', props: { stream: '$tile.stream', autoplay: true } }],

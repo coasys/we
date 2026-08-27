@@ -43,7 +43,8 @@ const zodSource = stripComments(readFileSync(resolve(SRC, 'zodSchemas.ts'), 'utf
 
 /** Operator names the dispatcher branches on: `hasToken(value, '$store', …)`. */
 function dispatcherOperators(): Set<string> {
-  return new Set([...dispatcherSource.matchAll(/hasToken\(value, '(\$[a-zA-Z]+)'/g)].map((m) => m[1]));
+  // `[a-zA-Z]*`, not `+`: the expression token's key is the bare `$`.
+  return new Set([...dispatcherSource.matchAll(/hasToken\(value, '(\$[a-zA-Z]*)'/g)].map((m) => m[1]));
 }
 
 /** Operator names the `zPropToken` union accepts, read off each member's declaration. */
@@ -62,7 +63,7 @@ function zodOperators(): { names: Set<string>; unresolved: string[] } {
       unresolved.push(member);
       continue;
     }
-    for (const key of decl[0].matchAll(/(\$[a-zA-Z]+):/g)) names.add(key[1]);
+    for (const key of decl[0].matchAll(/(\$[a-zA-Z]*):/g)) names.add(key[1]);
   }
   return { names, unresolved };
 }

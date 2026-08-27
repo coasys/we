@@ -245,25 +245,7 @@ export const globeView: TemplateSchema = {
             enabled: { $local: 'showUserLocations' },
             options: {
               locations: {
-                $map: {
-                  items: {
-                    $filter: {
-                      items: { $store: 'spaceStore.members' },
-                      where: {
-                        location: { exists: true },
-                        handle: { contains: { $local: 'searchText' } },
-                      },
-                    },
-                  },
-                  select: {
-                    id: '$item.did',
-                    kind: 'agent',
-                    name: '$item.name',
-                    latitude: '$item.location.latitude',
-                    longitude: '$item.location.longitude',
-                    avatar: '$item.avatar',
-                  },
-                },
+                $: "filter(spaceStore.members, { location: { exists: true }, handle: { contains: local.searchText } }).map(item, { id: item.did, kind: 'agent', name: item.name, latitude: item.location.latitude, longitude: item.location.longitude, avatar: item.avatar })",
               },
               markerSize: 30,
               defaultColor: '#f97316',
@@ -295,13 +277,13 @@ export const globeView: TemplateSchema = {
     // Space Modal (shown when a Space pin is clicked)
     {
       type: '$if',
-      props: { condition: { $eq: [{ $local: 'selectedPin.kind' }, 'space'] }, then: spaceModal },
+      props: { condition: { $: "local.selectedPin.kind == 'space'" }, then: spaceModal },
     },
 
     // Agent Modal (shown when an Agent pin is clicked)
     {
       type: '$if',
-      props: { condition: { $eq: [{ $local: 'selectedPin.kind' }, 'agent'] }, then: agentModal },
+      props: { condition: { $: "local.selectedPin.kind == 'agent'" }, then: agentModal },
     },
   ],
 };

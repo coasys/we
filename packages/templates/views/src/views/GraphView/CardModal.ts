@@ -38,13 +38,7 @@ export const openCardModal: SchemaNode = {
       the node that is selected and cannot drift from it. Guarded on the type as well, since only a
       composed document has an `editorState` to render.
     */
-    condition: {
-      $and: [
-        { $local: 'cardOpen' },
-        { $local: 'selected.recordId' },
-        { $eq: [{ $local: 'selected.type' }, 'CollectionBlock'] },
-      ],
-    },
+    condition: { $: "local.cardOpen && local.selected.recordId && local.selected.type == 'CollectionBlock'" },
     then: {
       type: '$single',
       props: {

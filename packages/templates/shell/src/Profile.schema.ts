@@ -60,15 +60,7 @@ export const profileTemplate: TemplateSchema = {
                 {
                   type: 'we-text',
                   props: { variant: 'heading-md' },
-                  children: [
-                    {
-                      $concat: [
-                        { $store: 'profileStore.ownProfile.firstName' },
-                        ' ',
-                        { $store: 'profileStore.ownProfile.lastName' },
-                      ],
-                    },
-                  ],
+                  children: [{ $: '`${profileStore.ownProfile.firstName} ${profileStore.ownProfile.lastName}`' }],
                 },
               ],
             },
@@ -79,7 +71,7 @@ export const profileTemplate: TemplateSchema = {
                 then: {
                   type: 'we-text',
                   props: { variant: 'body' },
-                  children: [{ $concat: ['@', { $store: 'profileStore.ownProfile.handle' }] }],
+                  children: [{ $: '`@${profileStore.ownProfile.handle}`' }],
                 },
               },
             },
@@ -113,13 +105,7 @@ export const profileTemplate: TemplateSchema = {
                   type: 'we-text',
                   props: { variant: 'body' },
                   children: [
-                    {
-                      $concat: [
-                        { $store: 'profileStore.ownProfile.location.city' },
-                        ', ',
-                        { $store: 'profileStore.ownProfile.location.country' },
-                      ],
-                    },
+                    { $: '`${profileStore.ownProfile.location.city}, ${profileStore.ownProfile.location.country}`' },
                   ],
                 },
               ],

@@ -138,7 +138,7 @@ export function recordFormModal(opts: RecordFormModalOptions = {}): SchemaNode {
               {
                 type: 'we-text',
                 props: { variant: 'heading-md' },
-                children: [opts.title ?? { $concat: ['New ', { $store: 'recordStore.recordDraft.label' }] }],
+                children: [opts.title ?? { $: '`New ${recordStore.recordDraft.label}`' }],
               },
             ],
           },
@@ -200,9 +200,7 @@ export function recordFormModal(opts: RecordFormModalOptions = {}): SchemaNode {
           {
             type: '$if',
             props: {
-              condition: {
-                $and: [{ $store: 'recordStore.pendingLink' }, { $count: { items: { $local: 'relationshipKinds' } } }],
-              },
+              condition: { $: 'recordStore.pendingLink && count(local.relationshipKinds)' },
               then: {
                 type: 'we-form-field',
                 props: { label: 'Kind', width: '100%' },
@@ -213,15 +211,7 @@ export function recordFormModal(opts: RecordFormModalOptions = {}): SchemaNode {
                       width: '100%',
                       placeholder: 'Unnamed kind',
                       options: {
-                        $concat: [
-                          [{ label: 'Unnamed kind', value: '' }],
-                          {
-                            $map: {
-                              items: { $local: 'relationshipKinds' },
-                              select: { label: '$item.name', value: '$item.id', icon: '$item.icon' },
-                            },
-                          },
-                        ],
+                        $: "`${[{ label: 'Unnamed kind', value: '' }]}${local.relationshipKinds.map(item, { label: item.name, value: item.id, icon: item.icon })}`",
                       },
                       // Not `setRecordField`: `relationshipTypeId` is deliberately absent from the
                       // draft's fields, so writing it through the field setter found nothing and
@@ -247,12 +237,7 @@ export function recordFormModal(opts: RecordFormModalOptions = {}): SchemaNode {
           {
             type: '$if',
             props: {
-              condition: {
-                $and: [
-                  { $not: { $store: 'recordStore.pendingLink' } },
-                  { $gt: [{ $count: { items: { $store: 'recordStore.creatableEntities' } } }, 1] },
-                ],
-              },
+              condition: { $: '!recordStore.pendingLink && count(recordStore.creatableEntities) > 1' },
               then: {
                 type: 'we-form-field',
                 props: { label: 'Model', width: '100%' },
@@ -293,7 +278,7 @@ export function recordFormModal(opts: RecordFormModalOptions = {}): SchemaNode {
           {
             type: '$if',
             props: {
-              condition: { $count: { items: { $store: 'recordStore.recordErrors' } } },
+              condition: { $: 'count(recordStore.recordErrors)' },
               then: {
                 type: 'Column',
                 props: { gap: '100', width: '100%' },

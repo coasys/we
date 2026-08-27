@@ -1,6 +1,28 @@
+import { CALL_TIME_ROOTS, isExpressionToken, parseCached, referencedRoots } from '../expressions';
 import type { resolveProp } from './dispatcher';
+import { resolveExpressionProp } from './expression';
 import { markReactive, REACTIVE_ACCESSOR } from './reactive';
 import type { IfProp, Memo, Props } from './types';
+import { noMemo } from './types';
+
+/**
+ * Whether a condition holds an expression that names `event`/`arg` — the expression-layer
+ * counterpart of the `'$arg'` string test beside it, which decides that the conditional must be
+ * evaluated per call rather than once at render.
+ */
+function mentionsCallArg(value: unknown): boolean {
+  if (isExpressionToken(value)) {
+    try {
+      for (const root of referencedRoots(parseCached(value.$))) if (CALL_TIME_ROOTS.has(root)) return true;
+    } catch {
+      return false;
+    }
+    return false;
+  }
+  if (Array.isArray(value)) return value.some(mentionsCallArg);
+  if (value && typeof value === 'object') return Object.values(value).some(mentionsCallArg);
+  return false;
+}
 
 /** Check if a value is a reactive accessor (signal/memo) rather than a plain handler function */
 function isReactiveAccessor(value: unknown): value is () => unknown {
@@ -60,11 +82,16 @@ export function resolveIfProp(
   // This shape decision is made once: whether a condition uses $arg is a property of how
   // the template was authored, not something an edit is expected to flip mid-session.
   const conditionStr = JSON.stringify(spec().condition) ?? '';
-  if (conditionStr.includes('$arg')) {
+  if (conditionStr.includes('$arg') || mentionsCallArg(spec().condition)) {
     // Return a function that evaluates the conditional when called
     return (...callArgs: unknown[]) => {
       // Helper to resolve $arg tokens in the condition
       const resolveWithArg = (val: unknown): unknown => {
+        // An expression naming the callback argument evaluates now, with it in scope.
+        if (isExpressionToken(val) && mentionsCallArg(val)) {
+          const resolved = resolveExpressionProp(val, stores, { ...context, event: callArgs[0] }, noMemo);
+          return isReactiveAccessor(resolved) ? resolved() : resolved;
+        }
         if (typeof val === 'string' && val.startsWith('$arg')) {
           if (val === '$arg') {
             return callArgs[0];

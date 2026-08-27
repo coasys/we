@@ -115,7 +115,7 @@ export function installedList(opts: InstalledListOptions): SchemaNode {
                     props: {
                       condition: {
                         $and: [
-                          { $eq: [{ $store: 'spaceStore.currentSpace.author' }, '$me.did'] },
+                          { $: 'spaceStore.currentSpace.author == me.did' },
                           { $ne: [opts.key, { $store: `spaceStore.currentSpace.${opts.defaultField}` }] },
                         ],
                       },

@@ -10,11 +10,7 @@ export const spacesList: SchemaNode = cardList({
     },
     limit: 20,
     order: {
-      $if: {
-        condition: { $eq: [{ $local: 'sortField' }, 'location'] },
-        then: { 'location.country': { $local: 'sortDirection' } },
-        else: { createdAt: { $local: 'sortDirection' } },
-      },
+      $: "local.sortField == 'location' ? { 'location.country': local.sortDirection } : { createdAt: local.sortDirection }",
     },
     include: { location: true },
   },
@@ -25,13 +21,7 @@ export const spacesList: SchemaNode = cardList({
   empty: emptyState({
     icon: 'users-three',
     label: 'spaces',
-    message: {
-      $if: {
-        condition: { $local: 'searchText' },
-        then: 'No spaces match your search.',
-        else: "This space doesn't list any other spaces.",
-      },
-    },
+    message: { $: "local.searchText ? 'No spaces match your search.' : 'This space doesn\\'t list any other spaces.'" },
   }),
   children: [
     cardShell({
@@ -65,7 +55,7 @@ export const spacesList: SchemaNode = cardList({
             {
               type: '$if',
               props: {
-                condition: { $eq: [{ $store: 'spaceStore.currentSpace.author' }, '$me.did'] },
+                condition: { $: 'spaceStore.currentSpace.author == me.did' },
                 then: {
                   type: 'Row',
                   props: { gap: '100' },
@@ -109,12 +99,12 @@ export const spacesList: SchemaNode = cardList({
             statChip({
               icon: 'lock-simple',
               label: 'Access',
-              value: { $if: { condition: '$space.url', then: 'Shared', else: 'Personal' } },
+              value: { $: "space.url ? 'Shared' : 'Personal'" },
             }),
             statChip({
               icon: 'globe',
               label: 'Discovery',
-              value: { $if: { condition: { $eq: ['$space.discovery', 'listed'] }, then: 'Listed', else: 'Hidden' } },
+              value: { $: "space.discovery == 'listed' ? 'Listed' : 'Hidden'" },
             }),
             {
               type: '$if',
@@ -126,7 +116,7 @@ export const spacesList: SchemaNode = cardList({
                 then: statChip({
                   icon: 'map-pin',
                   label: 'Location',
-                  value: { $concat: ['$space.location.city', ', ', '$space.location.country'] },
+                  value: { $: '`${space.location.city}, ${space.location.country}`' },
                 }),
               },
             },
@@ -176,7 +166,7 @@ export const spacesList: SchemaNode = cardList({
             then: {
               type: '$if',
               props: {
-                condition: { $in: ['$space.url', { $store: 'datasetStore.joinedSpaceCids' }] },
+                condition: { $: 'space.url in datasetStore.joinedSpaceCids' },
                 then: {
                   type: 'we-button',
                   props: {

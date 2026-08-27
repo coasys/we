@@ -52,7 +52,7 @@ export function swatchRow(options: { current: SchemaProp; pick: (token: string) 
             type: 'we-button',
             props: {
               variant: 'bare',
-              title: { $if: { condition: '$swatch.token', then: '$swatch.token', else: 'Default' } },
+              title: { $: "swatch.token ? swatch.token : 'Default'" },
               onClick: options.pick('$swatch.token'),
             },
             children: [
@@ -64,7 +64,7 @@ export function swatchRow(options: { current: SchemaProp; pick: (token: string) 
                   r: '200',
                   ax: 'center',
                   ay: 'center',
-                  bg: { $if: { condition: '$swatch.token', then: '$swatch.token', else: 'surface-sunken' } },
+                  bg: { $: "swatch.token ? swatch.token : 'surface-sunken'" },
                   border: {
                     $if: {
                       condition: { $eq: [options.current, '$swatch.token'] },
@@ -79,7 +79,7 @@ export function swatchRow(options: { current: SchemaProp; pick: (token: string) 
                   {
                     type: '$if',
                     props: {
-                      condition: { $not: '$swatch.token' },
+                      condition: { $: '!swatch.token' },
                       then: { type: 'we-icon', props: { name: 'x', size: 'xs', color: 'text-faint' } },
                     },
                   },

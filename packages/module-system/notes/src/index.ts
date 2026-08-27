@@ -124,7 +124,7 @@ const panel: SchemaNode = {
     // should show it. `Space.enabledModules` is the real answer — a community turning the module on
     // for its space — and it arrives with the marketplace, alongside consent. Until then a module's
     // chrome appears in every space, which is fine while modules are first-party and bundled.
-    condition: { $and: [{ $store: 'datasetStore.currentDataset' }, { $store: 'modules.notes.open' }] },
+    condition: { $: 'datasetStore.currentDataset && modules.notes.open' },
     then: {
       type: 'Column',
       props: {

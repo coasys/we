@@ -97,13 +97,7 @@ const switcher: SchemaNode = {
             size: 'sm',
             r: 'pill',
             gap: '200',
-            variant: {
-              $if: {
-                condition: { $in: ['$nav.segment', { $store: 'routeStore.segments' }] },
-                then: 'secondary',
-                else: 'ghost',
-              },
-            },
+            variant: { $: "nav.segment in routeStore.segments ? 'secondary' : 'ghost'" },
             onClick: { $action: 'routeStore.navigate', args: ['$nav.path'] },
           },
           children: [
@@ -402,14 +396,14 @@ const tasksRoute: RouteSchema = {
                     {
                       type: 'we-badge',
                       props: { size: 'xs' },
-                      children: [{ $count: { items: { $local: 'tasks' } } }],
+                      children: [{ $: 'count(local.tasks)' }],
                     },
                   ],
                 },
                 {
                   type: '$if',
                   props: {
-                    condition: { $count: { items: { $local: 'tasks' } } },
+                    condition: { $: 'count(local.tasks)' },
                     then: {
                       type: 'Column',
                       props: { gap: '300' },
@@ -497,7 +491,7 @@ const recordRoute: RouteSchema = {
         {
           type: '$if',
           props: {
-            condition: { $count: { items: { $local: 'calls' } } },
+            condition: { $: 'count(local.calls)' },
             then: {
               type: 'Column',
               props: { gap: '400' },
@@ -527,9 +521,7 @@ const recordRoute: RouteSchema = {
                                 {
                                   type: 'we-icon',
                                   props: {
-                                    name: {
-                                      $if: { condition: { $local: 'open' }, then: 'caret-up', else: 'caret-down' },
-                                    },
+                                    name: { $: "local.open ? 'caret-up' : 'caret-down'" },
                                     color: 'text-faint',
                                   },
                                 },

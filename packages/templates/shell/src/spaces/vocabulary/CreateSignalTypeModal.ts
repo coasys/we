@@ -73,7 +73,7 @@ export const createSignalTypeModal = formModal({
         {
           type: '$if',
           props: {
-            condition: { $eq: [{ $local: 'mode' }, 'vote'] },
+            condition: { $: "local.mode == 'vote'" },
             then: {
               type: 'we-form-field',
               props: { label: 'Secondary Icon', description: 'Used as the negative icon in vote mode' },
@@ -97,7 +97,7 @@ export const createSignalTypeModal = formModal({
     {
       type: '$if',
       props: {
-        condition: { $or: [{ $eq: [{ $local: 'mode' }, 'rating'] }, { $eq: [{ $local: 'mode' }, 'slider'] }] },
+        condition: { $: "local.mode == 'rating' || local.mode == 'slider'" },
         then: {
           type: 'Row',
           props: { gap: '300' },
@@ -172,10 +172,10 @@ export const createSignalTypeModal = formModal({
     },
   ],
   // The slug derives from the name when left blank, so a name is the whole precondition.
-  disabled: { $not: { $local: 'name' } },
+  disabled: { $: '!local.name' },
   // The typed fields only. `mode`, `aggregate` and the range have defaults and pickers, so they
   // are set from the first frame and would make the guard fire on an untouched form.
-  discardWhen: { $or: [{ $local: 'name' }, { $local: 'slug' }, { $local: 'description' }] },
+  discardWhen: { $: 'local.name || local.slug || local.description' },
   submitLabel: 'Create',
   submit: {
     $action: 'spaceStore.createSignalType',

@@ -1,9 +1,7 @@
 import type { SchemaNode } from '@we/schema-shared';
 import { cardList, cardShell, emptyState, peopleRow } from '@we/template-kit';
 
-const hasConversationSubgroupModel = {
-  $find: { items: { $store: 'datasetStore.currentDatasetModels' }, where: { name: 'ConversationSubgroup' } },
-};
+const hasConversationSubgroupModel = { $: "find(datasetStore.currentDatasetModels, { name: 'ConversationSubgroup' })" };
 
 /*
   Two ways this list can be empty, one sentence for both.

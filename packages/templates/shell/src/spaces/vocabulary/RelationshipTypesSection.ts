@@ -111,9 +111,9 @@ const createModal: SchemaNode = formModal({
   ],
   // Nothing about a name is locally judgeable beyond its presence, so this gates on the value
   // rather than dragging in the validation machinery.
-  disabled: { $not: { $local: 'kindName' } },
+  disabled: { $: '!local.kindName' },
   // The typed fields only — `kindIcon`, `kindColour` and `kindDirected` all start set.
-  discardWhen: { $or: [{ $local: 'kindName' }, { $local: 'kindInverse' }, { $local: 'kindDescription' }] },
+  discardWhen: { $: 'local.kindName || local.kindInverse || local.kindDescription' },
   submitLabel: 'Create',
   submit: {
     $action: 'spaceStore.createRelationshipType',
@@ -145,7 +145,7 @@ const kindRow: SchemaNode = {
       type: 'we-icon',
       props: {
         name: '$kind.icon',
-        color: { $if: { condition: '$kind.color', then: '$kind.color', else: 'text-muted' } },
+        color: { $: "kind.color ? kind.color : 'text-muted'" },
       },
     },
     {
@@ -164,14 +164,14 @@ const kindRow: SchemaNode = {
                 then: {
                   type: 'we-text',
                   props: { variant: 'footnote', color: 'text-muted' },
-                  children: [{ $concat: ['↔ ', '$kind.inverseName'] }],
+                  children: [{ $: '`↔ ${kind.inverseName}`' }],
                 },
               },
             },
             {
               type: '$if',
               props: {
-                condition: { $not: '$kind.directed' },
+                condition: { $: '!kind.directed' },
                 then: { type: 'we-badge', props: { size: 'xs' }, children: ['undirected'] },
               },
             },

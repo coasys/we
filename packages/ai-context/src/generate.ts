@@ -17,12 +17,14 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import type { ContextData, ContextFragment, StoreEntry } from '@we/schema-shared';
+import { listFunctions } from '@we/schema-shared';
 import { format, resolveConfig } from 'prettier';
 
 import { aggregateFragments } from './aggregate.js';
 import { assembleReference } from './assembler.js';
 import {
   type ExtractedStore,
+  extractHostSources,
   extractRegisteredComponents,
   extractStores,
   extractWiringMembers,
@@ -255,10 +257,22 @@ async function main() {
   ]);
   contextData.shellComponents = registered.filter((name) => !documented.has(name));
 
+  /*
+    The functions the host lends to expressions, read from its registry. Listed beside the built-in
+    library in the reference and handed to the validator, which is what makes a call to one accepted
+    and a typo in one reported — the same catalogue argument as the graph plugins.
+  */
+  contextData.sources = extractHostSources(resolve(repoRoot, 'packages/app-shell/src/shared/sources/index.ts'));
+
   const context = {
     ...contextData,
     fragments: {
-      schemaOperators,
+      // The library is generated from the registry, so the documented set and the callable set are
+      // one list.
+      schemaOperators: schemaOperators(
+        listFunctions().map(({ name, category, params, doc, example }) => ({ name, category, params, doc, example })),
+        contextData.sources,
+      ),
       designSystemProps,
       routing,
       panels,
@@ -346,6 +360,7 @@ async function main() {
     tokens: context.tokens,
     storeEntries: context.storeEntries,
     shellComponents: context.shellComponents,
+    sources: context.sources,
   };
   await writeFormatted(contextJsonPath, JSON.stringify(contextJson, null, 2));
   console.log(`  Written: ${contextJsonPath}`);

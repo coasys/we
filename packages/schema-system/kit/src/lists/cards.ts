@@ -42,13 +42,7 @@ export interface CardShellOptions {
   localState?: Record<string, LocalStateField>;
 }
 
-const defaultMaxHeight = {
-  $if: {
-    condition: { $eq: [{ $local: 'displayMode' }, 'grid'] },
-    then: '250px',
-    else: '100px',
-  },
-};
+const defaultMaxHeight = { $: "local.displayMode == 'grid' ? '250px' : '100px'" };
 
 /**
  * Generates a card node with per-item expand/modal state for use inside $each.
@@ -84,7 +78,7 @@ export function cardShell(opts: CardShellOptions): SchemaNode {
       {
         type: '$if',
         props: {
-          condition: { $eq: [{ $local: 'displayMode' }, 'expanded'] },
+          condition: { $: "local.displayMode == 'expanded'" },
           then: {
             type: 'Column',
             props: { gap: '300' },
@@ -94,17 +88,11 @@ export function cardShell(opts: CardShellOptions): SchemaNode {
             type: 'CollapsedContent',
             props: {
               maxHeight,
-              collapsed: { $not: { $local: 'expanded' } },
-              icon: {
-                $if: {
-                  condition: { $eq: [{ $local: 'displayMode' }, 'grid'] },
-                  then: 'arrows-out',
-                  else: null,
-                },
-              },
+              collapsed: { $: '!local.expanded' },
+              icon: { $: "local.displayMode == 'grid' ? 'arrows-out' : null" },
               onExpandClick: {
                 $if: {
-                  condition: { $eq: [{ $local: 'displayMode' }, 'grid'] },
+                  condition: { $: "local.displayMode == 'grid'" },
                   then: { $setLocal: 'modalOpen', value: true },
                   else: { $toggleLocal: 'expanded' },
                 },
@@ -150,13 +138,7 @@ const gridWrapper = (children: SchemaNode[]): SchemaNode => ({
   props: {
     gap: '400',
     width: '100%',
-    columns: {
-      $if: {
-        condition: { $eq: [{ $local: 'displayMode' }, 'grid'] },
-        then: 3,
-        else: 1,
-      },
-    },
+    columns: { $: "local.displayMode == 'grid' ? 3 : 1" },
   },
   children,
 });

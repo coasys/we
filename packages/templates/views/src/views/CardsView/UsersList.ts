@@ -5,18 +5,7 @@ export const usersList: SchemaNode = cardList({
   // The roster is already in the store, so this list is filtered in place rather than queried —
   // and its placeholder needs no fade-in delay, since "no members" is known on the first frame.
   items: {
-    $filter: {
-      items: { $store: 'spaceStore.members' },
-      // `name` is the assembled display name (first + last, falling back to the
-      // handle), so one branch covers both name parts; the handle branch covers
-      // @handle searches for members who also have a real name. Bio is left out
-      // deliberately: this is a people search, and matching a stray word deep in
-      // a bio surfaces people who don't look like matches. One more OR branch if
-      // that call changes.
-      where: {
-        OR: [{ name: { contains: { $local: 'searchText' } } }, { handle: { contains: { $local: 'searchText' } } }],
-      },
-    },
+    $: 'filter(spaceStore.members, { OR: [{ name: { contains: local.searchText } }, { handle: { contains: local.searchText } }] })',
   },
   as: 'user',
   empty: emptyState({ icon: 'user', label: 'members', searchable: true, delay: 0 }),
@@ -59,7 +48,7 @@ export const usersList: SchemaNode = cardList({
                     then: {
                       type: 'we-text',
                       props: { variant: 'label' },
-                      children: [{ $concat: ['@', '$user.handle'] }],
+                      children: [{ $: '`@${user.handle}`' }],
                     },
                   },
                 },
@@ -89,7 +78,7 @@ export const usersList: SchemaNode = cardList({
                 statChip({
                   icon: 'map-pin',
                   label: 'Location',
-                  value: { $concat: ['$user.location.city', ', ', '$user.location.country'] },
+                  value: { $: '`${user.location.city}, ${user.location.country}`' },
                 }),
               ],
             },

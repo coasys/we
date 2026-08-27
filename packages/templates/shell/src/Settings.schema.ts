@@ -86,13 +86,7 @@ const templatesSection: SchemaNode = {
                 ay: 'center',
                 p: '300',
                 r: '200',
-                bg: {
-                  $if: {
-                    condition: '$template.isDefault',
-                    then: 'surface-sunken',
-                    else: 'transparent',
-                  },
-                },
+                bg: { $: "template.isDefault ? 'surface-sunken' : 'transparent'" },
               },
               children: [
                 // Template icon + name
@@ -143,7 +137,7 @@ const templatesSection: SchemaNode = {
                 {
                   type: '$if',
                   props: {
-                    condition: { $not: '$template.isBuiltIn' },
+                    condition: { $: '!template.isBuiltIn' },
                     then: {
                       type: 'Row',
                       props: { gap: '200', ay: 'center' },
@@ -204,7 +198,7 @@ const templatesSection: SchemaNode = {
                 {
                   type: '$if',
                   props: {
-                    condition: { $not: '$template.isBuiltIn' },
+                    condition: { $: '!template.isBuiltIn' },
                     then: {
                       type: 'we-button',
                       props: {
@@ -353,13 +347,7 @@ const themesSection: SchemaNode = {
                 ay: 'center',
                 p: '300',
                 r: '200',
-                bg: {
-                  $if: {
-                    condition: '$theme.isDefault',
-                    then: 'surface-sunken',
-                    else: 'transparent',
-                  },
-                },
+                bg: { $: "theme.isDefault ? 'surface-sunken' : 'transparent'" },
               },
               children: [
                 // Theme icon + name
@@ -393,7 +381,7 @@ const themesSection: SchemaNode = {
                 {
                   type: '$if',
                   props: {
-                    condition: { $not: '$theme.isBuiltIn' },
+                    condition: { $: '!theme.isBuiltIn' },
                     then: {
                       type: 'Row',
                       props: { gap: '200', ay: 'center' },
@@ -454,7 +442,7 @@ const themesSection: SchemaNode = {
                 {
                   type: '$if',
                   props: {
-                    condition: { $not: '$theme.isBuiltIn' },
+                    condition: { $: '!theme.isBuiltIn' },
                     then: {
                       type: 'we-button',
                       props: {
@@ -662,7 +650,7 @@ const joinSpaceByLink: SchemaNode = {
             variant: 'secondary',
             // Gated on having typed something rather than on validation: whether an address
             // resolves is only knowable by trying it, so the button asks rather than predicts.
-            disabled: { $or: [{ $not: { $local: 'joinLink' } }, { $local: 'joining' }] },
+            disabled: { $: '!local.joinLink || local.joining' },
             loading: { $local: 'joining' },
             onClick: [
               { $setLocal: 'joining', value: true },
@@ -693,7 +681,7 @@ function navItem(label: string, icon: string, path: string): SchemaNode {
   // selected there, which reads as having navigated out of settings altogether.
   const selected =
     path === '/'
-      ? { $eq: [{ $store: 'routeStore.currentPath' }, '/'] }
+      ? { $: "routeStore.currentPath == '/'" }
       : { $eq: [{ $store: 'routeStore.segments.0' }, path.slice(1)] };
   return {
     type: 'we-button',
@@ -874,14 +862,7 @@ export const settingsTemplate: TemplateSchema = {
                 {
                   type: '$if',
                   props: {
-                    condition: {
-                      $or: [
-                        { $store: 'runtimeStore.canManageNetwork' },
-                        // Logging is a host setting, so this page has something to show even where
-                        // the backend administers no networking.
-                        { $store: 'runtimeStore.canConfigureExecutor' },
-                      ],
-                    },
+                    condition: { $: 'runtimeStore.canManageNetwork || runtimeStore.canConfigureExecutor' },
                     then: navItem('Network', 'globe', '/network'),
                   },
                 },
@@ -893,11 +874,7 @@ export const settingsTemplate: TemplateSchema = {
                     // that says which node holds your data would be unreachable on exactly the
                     // hosts where that question matters.
                     condition: {
-                      $or: [
-                        { $store: 'sessionStore.host' },
-                        { $store: 'runtimeStore.canManageApps' },
-                        { $store: 'runtimeStore.canConfigureExecutor' },
-                      ],
+                      $: 'sessionStore.host || runtimeStore.canManageApps || runtimeStore.canConfigureExecutor',
                     },
                     then: navItem('Connections', 'plugs', '/connections'),
                   },

@@ -23,16 +23,14 @@ import type { SchemaNode } from '@we/schema-shared';
 export const templateEditor: SchemaNode = {
   type: '$if',
   props: {
-    condition: { $eq: [{ $store: 'sessionStore.bootState' }, 'ready'] },
+    condition: { $: "sessionStore.bootState == 'ready'" },
     then: {
       type: 'Column',
       children: [
         {
           type: '$if',
           props: {
-            condition: {
-              $and: [{ $not: { $store: 'appStore.activeAppId' } }, { $not: { $store: 'shellStore.activeShellView' } }],
-            },
+            condition: { $: '!appStore.activeAppId && !shellStore.activeShellView' },
             then: { type: 'EditingBar' },
           },
         },
