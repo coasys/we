@@ -769,20 +769,36 @@ function snapTargets(id: string): SchemaNode {
  */
 function grips(id: string): SchemaNode[] {
   const geo = (field: string) => ({ $store: dockGeometryPath(id, field) });
-  const floating = geo('floating');
+  /*
+    A maximised panel has no grips, and saying so takes an `$and` rather than reading `floating`.
+
+    The geometry already says it — `handleX` and `handleY` are both absent, which is the docstring's
+    "there is nothing left to give it" — but the maximised box also reports `floating: true`, which it
+    has to: `floating` is what draws the radius, the shadow and the glass. So every edge matched the
+    `$or` below and every corner matched outright, and a maximised panel drew all eight.
+
+    They were not inert. `resizeDock` reads the same flag to decide what a drag means, took the
+    floating arm, and wrote the rect it measured — the whole window — over the card's `w`/`h`. The
+    panel looked unchanged, because the maximised branch resolves ahead of the placement; the size it
+    would restore to was gone, and for a panel whose dock thickness falls back to the card, so was the
+    size it would dock at.
+  */
+  const grippable = { $and: [{ $not: geo('maximised') }, geo('floating')] };
 
   const edges: SchemaNode[] = (['left', 'right', 'top', 'bottom'] as const).map((side) => ({
     type: '$if',
     props: {
       // Shown when the panel floats, or when this is the single side a displacing panel can trade.
-      condition: { $or: [floating, { $eq: [geo(side === 'left' || side === 'right' ? 'handleX' : 'handleY'), side] }] },
+      condition: {
+        $or: [grippable, { $eq: [geo(side === 'left' || side === 'right' ? 'handleX' : 'handleY'), side] }],
+      },
       then: resizeEdge(id, side),
     },
   }));
 
   const corners: SchemaNode[] = (['top-left', 'top-right', 'bottom-left', 'bottom-right'] as const).map((corner) => ({
     type: '$if',
-    props: { condition: floating, then: resizeCorner(id, corner) },
+    props: { condition: grippable, then: resizeCorner(id, corner) },
   }));
 
   return [...edges, ...corners];

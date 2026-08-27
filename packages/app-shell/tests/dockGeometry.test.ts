@@ -131,7 +131,7 @@ describe('two strips meeting at a corner', () => {
   it('keeps the horizontal one clear of the sides', () => {
     const rightDocked: ContentInset = { ...NO_INSET, right: 440 };
     const bottom = resolveDock(
-      dock({ placement: placement({ snap: 'bottom', thickness: 300 }) }),
+      dock({ placement: placement({ snap: 'bottom', thicknessY: 300 }) }),
       desktop,
       rightDocked,
     );
@@ -333,7 +333,10 @@ describe('what a module’s bid becomes', () => {
 
     expect(seeded.snap).toBe('right');
     expect(seeded.displace).toBe(true);
-    expect(seeded.thickness).toBe(dockThickness('right', 'md', desktop));
+    expect(seeded.thicknessX).toBe(dockThickness('right', 'md', desktop));
+    // Only the axis it opens on. The perpendicular one falls back to the card, so a panel moved to
+    // the bottom becomes as tall as the card it would restore to rather than as tall as it was wide.
+    expect(seeded.thicknessY).toBeUndefined();
   });
 
   it('seeds a card for a panel that opens docked, so it has something to become', () => {
@@ -401,7 +404,7 @@ describe('room another panel has already taken', () => {
   it('never counts the panel against itself', () => {
     // A displacing panel resolved against its own thickness would walk off its edge, one width per
     // frame. Nothing here passes a panel its own contribution — the store excludes it by index.
-    const docked = resolveDock(dock({ placement: placement({ snap: 'right', thickness: 440 }) }), desktop);
+    const docked = resolveDock(dock({ placement: placement({ snap: 'right', thicknessX: 440 }) }), desktop);
 
     expect(docked.right).toBe('0px');
   });
@@ -494,8 +497,8 @@ describe('reordering a strip', () => {
     // A tie is the bug: each believes the other is behind it, both shift by the other's thickness, and
     // they overlap in the middle with a gap at the edge. It came back the moment `order` existed,
     // because a panel given `order: 0` by a drop tied with whichever panel was first in the registry.
-    const dropped = placement({ snap: 'right', displace: true, thickness: 400, order: 0 });
-    const never = placement({ snap: 'right', displace: true, thickness: 400 });
+    const dropped = placement({ snap: 'right', displace: true, thicknessX: 400, order: 0 });
+    const never = placement({ snap: 'right', displace: true, thicknessX: 400 });
     const panels = [dock({ id: 'a', placement: never }), dock({ id: 'b', placement: dropped })];
 
     // Exactly one of them steps past the other — the sum of what they clear is one panel, not two.
@@ -505,8 +508,8 @@ describe('reordering a strip', () => {
 
   it('puts a panel that never chose a position after the ones that did', () => {
     // Which is also "a panel joining a strip without being dropped into it lands at the end".
-    const placed = placement({ snap: 'right', displace: true, thickness: 400, order: 0 });
-    const unplaced = placement({ snap: 'right', displace: true, thickness: 400 });
+    const placed = placement({ snap: 'right', displace: true, thicknessX: 400, order: 0 });
+    const unplaced = placement({ snap: 'right', displace: true, thicknessX: 400 });
     const panels = [dock({ id: 'unplaced', placement: unplaced }), dock({ id: 'placed', placement: placed })];
 
     expect(occupiedFor(panels, 1, desktop).right).toBe(0);
@@ -516,8 +519,8 @@ describe('reordering a strip', () => {
   it('ranks a strip by the order the user set, not the order things registered in', () => {
     // The bug this exists for: stacking came from the registry, so a panel dragged out of a strip
     // returned to the slot it left however far along the edge it was dropped.
-    const first = placement({ snap: 'right', displace: true, thickness: 400, order: 1 });
-    const second = placement({ snap: 'right', displace: true, thickness: 400, order: 0 });
+    const first = placement({ snap: 'right', displace: true, thicknessX: 400, order: 1 });
+    const second = placement({ snap: 'right', displace: true, thicknessX: 400, order: 0 });
     const panels = [dock({ id: 'a', placement: first }), dock({ id: 'b', placement: second })];
 
     // `a` registered first but was ordered second, so it is the one that steps past.
@@ -528,7 +531,7 @@ describe('reordering a strip', () => {
 
 describe('what a panel has to keep clear of', () => {
   const card = placement({ snap: 'right', displace: false, w: 360, h: 200 });
-  const notes = placement({ snap: 'right', displace: true, thickness: 440 });
+  const notes = placement({ snap: 'right', displace: true, thicknessX: 440 });
 
   it('makes a floating panel clear a displacing one on the same edge, whatever the order', () => {
     // The bug: the exemption that lets two *displacing* panels take turns was being applied to a
@@ -684,11 +687,48 @@ describe('fitting a panel to its content', () => {
   it('sets the thickness instead when the panel spans an edge', () => {
     // The one case that can grow, and unavoidably: the axis with the slack is the one a spanning
     // panel does not own, so its thickness is what moves.
-    const docked = placement({ snap: 'right', displace: true, thickness: 200, h: 900 });
+    const docked = placement({ snap: 'right', displace: true, thicknessX: 200, h: 900 });
     const after = fitPlacement(docked, aspect, { spanning: true, edge: 'right' });
 
-    expect(after.thickness).toBeGreaterThan(200);
+    expect(after.thicknessX).toBeGreaterThan(200);
     expect(after.w).toBe(docked.w);
+  });
+
+  it('writes only the axis it solved, leaving the other to fall back to the card', () => {
+    // One field per axis is the whole of why: a single `thickness` meant a width solved here became
+    // a *height* the moment the panel was snapped to the bottom, and nothing said it had changed
+    // meaning. There is no conversion — how wide a panel wants to be says nothing about how tall.
+    const docked = placement({ snap: 'right', displace: true, h: 900 });
+    const after = fitPlacement(docked, aspect, { spanning: true, edge: 'right' });
+
+    expect(after.thicknessX).toBeDefined();
+    expect(after.thicknessY).toBeUndefined();
+  });
+
+  it('declines a fit no edge is wide enough to honour, rather than writing one and being clamped', () => {
+    /*
+      The bug this whole pair of fields came out of. A spanning fit solves `span × ratio`, so wide
+      content against a tall edge asks for more than the screen has — the call stage on a 4K side edge
+      wanted 3761px of a 3760px region for a *single* 16:9 tile. It was written anyway and clamped at
+      paint time, so the panel covered the region, the clamp hid why, and the value persisted:
+      invisible while the panel floated, since a float reads `w`/`h`, and waiting to take over the
+      moment it displaced again.
+
+      Clamping instead would be no better. It destroys the size the user chose and still leaves the
+      band, because a panel at the full width of its edge is exactly as letterboxed as it was.
+    */
+    // The reported case: a 4K side edge and one 16:9 tile. The bound is `dockThickness` at `lg`,
+    // the largest a dock is ever asked for, which is what the store passes.
+    const viewport = { width: 3840, height: 2160 };
+    const tall = placement({ snap: 'right', displace: true, thicknessX: 350, h: viewport.height });
+    const wide = { ratio: 16 / 9 };
+    const maxThickness = dockThickness('right', 'lg', viewport);
+
+    expect(fitPlacement(tall, wide, { spanning: true, edge: 'right', maxThickness })).toEqual(tall);
+    // Still applies where there is genuinely room for it, so the guard is a bound and not a refusal.
+    expect(fitPlacement(tall, wide, { spanning: true, edge: 'right', maxThickness: 99999 }).thicknessX).toBeGreaterThan(
+      350,
+    );
   });
 });
 
