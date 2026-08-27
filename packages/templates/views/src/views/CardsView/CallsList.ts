@@ -173,13 +173,52 @@ export const callsList: SchemaNode = {
                   props: { gap: '100' },
                   children: [
                     {
-                      type: 'we-text',
-                      props: { fontWeight: 'semibold' },
-                      // The name someone gave it, falling back to the noun. Tested on the field
-                      // rather than shown blank, because an untitled call is the ordinary case:
-                      // the record is created by the first utterance, and nothing on that path
-                      // knows what the call was about.
-                      children: [{ $if: { condition: '$call.title', then: '$call.title', else: 'Call' } }],
+                      type: 'Row',
+                      props: { ay: 'center', gap: '200' },
+                      children: [
+                        {
+                          type: 'we-text',
+                          props: { fontWeight: 'semibold' },
+                          // The name someone gave it, falling back to the noun. Tested on the field
+                          // rather than shown blank, because an untitled call is the ordinary case:
+                          // the record is created by the first utterance, and nothing on that path
+                          // knows what the call was about.
+                          children: [{ $if: { condition: '$call.title', then: '$call.title', else: 'Call' } }],
+                        },
+                        /*
+                          Which of these is happening right now.
+
+                          Without it the list is a row of cards that all look finished, and the one
+                          the reader is *currently in* is indistinguishable from a meeting last
+                          month — so the button beside it, which now offers something different for
+                          exactly that card, appears to be behaving at random.
+
+                          Compared against the transcript's live record rather than against a flag,
+                          because "in a call" and "in *this* call" are different questions and only
+                          the second one belongs on a card. A space-wide call publishes one call id
+                          derived from the space, so it names the place calls happen and could never
+                          tell this morning's from this afternoon's; the record can.
+
+                          Its own words, not only a colour: `danger` is the app's word for something
+                          being wrong, and a live conversation is not. A tag reads correctly for
+                          somebody who cannot separate the hues, and needs no motion — a theme's
+                          reduced-motion setting zeroes the animation tokens, so anything relying on
+                          a pulse to be noticed is invisible to those users.
+                        */
+                        {
+                          type: '$if',
+                          props: {
+                            condition: {
+                              $eq: ['$call.id', { $store: 'modules.transcribe.liveCollectionId' }],
+                            },
+                            then: {
+                              type: 'we-badge',
+                              props: { variant: 'success', size: 'xs' },
+                              children: ['Live'],
+                            },
+                          },
+                        },
+                      ],
                     },
                     {
                       type: 'we-text',
@@ -297,7 +336,7 @@ export const callsList: SchemaNode = {
                       },
                     },
                     /*
-                        Pick this call back up.
+                        Pick this call back up — or, if one is already running, go to that instead.
 
                         A transcript's record is reachable only while somebody who was in the call
                         is still publishing a claim to it, so once everyone has left it can never be
@@ -308,6 +347,28 @@ export const callsList: SchemaNode = {
 
                         Offered to everyone, unlike edit and delete: continuing a call is joining a
                         conversation, not editing somebody's record of one.
+
+                        ## Why it stops meaning "continue" the moment you are in a call
+
+                        It used to be the two actions below unconditionally, and mid-call each one
+                        did something nobody asked for. `joinSpaceCall` is a no-op on the call you
+                        are already in and a silent teardown of any other — the same hazard the
+                        module rail's launcher had. `resume` is worse, because it does not fail
+                        quietly: it re-points the live transcript at *this* record and announces the
+                        claim, and peers adopt an announced record in preference to their own. One
+                        stray click on last month's card moved everybody's live transcript into last
+                        month's meeting.
+
+                        So while a call is running this is the same promise the rail makes — go to
+                        the call — and nothing on a card can reassign a transcript out from under
+                        the people writing it. Continuing a *finished* call is unchanged, which is
+                        the case the button exists for.
+
+                        Not disabled, deliberately. A disabled `we-button` sets the native attribute,
+                        and a disabled control does not reliably deliver hover to the tooltip that
+                        would explain it — so the explanation would be the part that went missing.
+                        A button that always works and says what it will do beats one that is inert
+                        and cannot say why.
                       */
                     {
                       type: '$if',
@@ -316,10 +377,20 @@ export const callsList: SchemaNode = {
                         // A real tooltip rather than the button's `title`, which the browser draws
                         // itself: unthemed, after its own delay, and never on a keyboard focus.
                         // Rejoining a call from a card is the one control here whose effect is not
-                        // guessable from its icon, so it is the one worth saying out loud.
+                        // guessable from its icon, so it is the one worth saying out loud — and now
+                        // it has two effects to tell apart.
                         then: {
                           type: 'we-tooltip',
-                          props: { title: 'Continue this call', placement: 'top' },
+                          props: {
+                            title: {
+                              $if: {
+                                condition: { $store: 'modules.call.active' },
+                                then: 'Go to the call',
+                                else: 'Continue this call',
+                              },
+                            },
+                            placement: 'top',
+                          },
                           children: [
                             {
                               type: 'we-button',
@@ -327,14 +398,38 @@ export const callsList: SchemaNode = {
                                 variant: 'ghost',
                                 size: 'sm',
                                 square: true,
-                                // Two actions rather than one with an `onSuccess`, because
-                                // `joinSpaceCall` returns nothing for a lifecycle key to hang off.
-                                // `resume` is built for that: it holds the record until there is a
-                                // call to attach it to, so the order these resolve in does not
-                                // matter.
+                                /*
+                                  Branched in the handler rather than in the node, so one button is
+                                  rendered either way — a `$if` around the whole control would
+                                  rebuild it on every join and leave, and the tooltip with it.
+
+                                  Handler arrays resolve lazily at call time, so these conditions
+                                  read the store as it is when the button is pressed rather than as
+                                  it was when the card painted. That is the difference between this
+                                  working and it baking in whichever state the list happened to
+                                  render in.
+                                */
                                 onClick: [
-                                  { $action: 'modules.call.joinSpaceCall' },
-                                  { $action: 'modules.transcribe.resume', args: ['$call.id'] },
+                                  {
+                                    $if: {
+                                      condition: { $store: 'modules.call.active' },
+                                      then: { $action: 'modules.call.goToCall' },
+                                    },
+                                  },
+                                  {
+                                    $if: {
+                                      condition: { $not: { $store: 'modules.call.active' } },
+                                      // Two actions rather than one with an `onSuccess`, because
+                                      // `joinSpaceCall` returns nothing for a lifecycle key to hang
+                                      // off. `resume` is built for that: it holds the record until
+                                      // there is a call to attach it to, so the order these resolve
+                                      // in does not matter.
+                                      then: [
+                                        { $action: 'modules.call.joinSpaceCall' },
+                                        { $action: 'modules.transcribe.resume', args: ['$call.id'] },
+                                      ],
+                                    },
+                                  },
                                 ],
                               },
                               // Sized past what the button would give it (16px at `sm`), because

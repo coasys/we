@@ -1306,6 +1306,20 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
     canExtract: () => Boolean(collectionId()) && (interpretation?.available() ?? false),
     /** True when the backend could interpret but there is no transcript yet — a waiting state. */
     extractable: () => interpretation?.available() ?? false,
+    /**
+     * The record the call this agent is in is writing into — the id, so a list can pick it out.
+     *
+     * Exists so a card can ask "is this one live?" and answer it without knowing anything about
+     * transcription. A calls list otherwise cannot tell the conversation happening right now from
+     * one that finished last month, which is the difference that decides what its own Continue
+     * button should offer — and without it, that button had to treat both the same and got the live
+     * case badly wrong.
+     *
+     * `''` rather than `null` when there is nothing, because the only thing a template does with
+     * this is `$eq` it against a record id: an empty string can never match one, where `null` and a
+     * missing field are the same falsy value and would make an unrelated absent id look live.
+     */
+    liveCollectionId: () => collectionId() ?? '',
     /** Suggestions staged for review. Empty is the ordinary case — see `refreshProposals`. */
     proposals,
     /**
