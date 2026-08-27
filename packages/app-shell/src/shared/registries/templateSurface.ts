@@ -402,6 +402,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     navigateToSpace: action('navigation'),
     canAdministerSpace: action('navigation'),
     copyShareLink: action('navigation'),
+    copyGuestLink: action('navigation'),
     activeModules: state('navigation'),
     moduleLaunchers: state('navigation'),
     launchModule: action('navigation'),

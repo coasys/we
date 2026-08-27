@@ -6458,6 +6458,7 @@
         "navigateToSpace",
         "canAdministerSpace",
         "copyShareLink",
+        "copyGuestLink",
         "getSubgroupMessages",
         "exportCallTranscript",
         "removeSpaceFromGlobal",

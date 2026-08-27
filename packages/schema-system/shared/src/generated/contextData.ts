@@ -2631,6 +2631,7 @@ export const contextData: ContextData = {
         'navigateToSpace',
         'canAdministerSpace',
         'copyShareLink',
+        'copyGuestLink',
         'getSubgroupMessages',
         'exportCallTranscript',
         'removeSpaceFromGlobal',
