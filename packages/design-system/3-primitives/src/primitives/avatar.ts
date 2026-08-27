@@ -164,8 +164,14 @@ const styles = css`
     spaces showed it, and why nobody had noticed the one-letter ones were oversized too.
 
     0.4 is chosen against the worst case rather than the common one: the widest pair lands at 76% of
-    the disc, with a single letter at 30%. The icon branch above already scales this way at 0.6 —
-    a glyph is one mark and can afford to fill more than two letters can.
+    the disc. The icon branch above already scales this way at 0.6 — a glyph is one mark and can
+    afford to fill more than two letters can.
+
+    A lone letter takes the larger size, and that is an *optical* correction rather than a geometric
+    one. One ratio gives "D" and "DT" the same cap height, so the single letter has half the mass in
+    the same circle and reads as undersized — which is exactly how it looked. Sizing it up to 0.5
+    lifts its cap height to 36% of the disc against the pair's 29%, so the two weigh the same
+    without the single one starting to dominate, which is where 0.55 lands.
 
     line-height so the box is the letters and nothing more; the disc centres it.
   */
@@ -174,6 +180,10 @@ const styles = css`
     line-height: 1;
     font-weight: 600;
     text-transform: uppercase;
+  }
+
+  [part='initials'][data-single] {
+    font-size: calc(var(--we-avatar-size) * 0.5);
   }
 `;
 
@@ -244,7 +254,10 @@ export default class Avatar extends LayoutVisualElement {
   */
   private renderContent() {
     if (this.image) return html`<img part="img" .src=${this.image} />`;
-    if (this.derivedInitials) return html`<span part="initials">${this.derivedInitials}</span>`;
+    if (this.derivedInitials)
+      return html`<span part="initials" ?data-single=${this.derivedInitials.length === 1}
+        >${this.derivedInitials}</span
+      >`;
     if (this.hash) return unsafeSVG(toSvg(this.hash, 100));
     return html`<we-icon part="icon" name=${this.icon || 'user'}></we-icon>`;
   }
