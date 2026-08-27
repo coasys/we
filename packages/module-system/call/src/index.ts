@@ -1154,8 +1154,20 @@ const bar: SchemaNode = {
               `devPeerControls`. Placed with the things you do to your own machine rather than with
               the call itself, which is what the divider below separates: how many fake participants
               you are looking at is a property of your session, not of the call.
+
+              Two gates, doing different jobs. `devPeersAvailable` is the build, so a shipped app
+              carries no node at all. The `$if` is the `we.devTools` switch, which is live — a
+              developer looking at what a user sees loses these on the press rather than on the next
+              reload, and gets them back the same way.
             */
-            ...(devPeersAvailable ? [devPeerControls] : []),
+            ...(devPeersAvailable
+              ? [
+                  {
+                    type: '$if',
+                    props: { condition: { $store: 'sessionStore.devTools' }, then: devPeerControls },
+                  },
+                ]
+              : []),
             /*
               Solo — the spotlight with the stage to itself.
 

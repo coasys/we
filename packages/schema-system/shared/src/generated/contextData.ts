@@ -2420,6 +2420,7 @@ export const contextData: ContextData = {
         ephemeralPort: { type: 'object' },
       },
       actions: [
+        'setDevTools',
         'login',
         'createAgent',
         'clearPasswordError',

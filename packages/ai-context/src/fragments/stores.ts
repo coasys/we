@@ -540,7 +540,9 @@ export function generateStoresText(entries: StoreEntry[]): string {
         isDevelopment:
           'boolean — whether this is a development build. A fact about the build. Do NOT gate developer-only UI on it; gate on devTools, which is the same answer plus a switch',
         devTools:
-          "boolean — whether developer affordances should be VISIBLE. True in a development build unless a developer has thrown the switch (localStorage 'we.devTools' = 'off', then reload) to see what a shipped app looks like. Gate any developer-only control on this — a schema-test page, a fixture toggle — and wrap it in $if rather than hiding it, since a hidden row is still in the accessibility tree and still found by find-in-page. Never true in a production build, whatever the switch says",
+          'boolean — whether developer affordances should be VISIBLE. True in a development build unless a developer has thrown the Settings → Developer switch to see what a shipped app looks like. Reactive, so a control gated on it appears and disappears on the press. Gate any developer-only control on this — a schema-test page, a fixture toggle — and wrap it in $if rather than hiding it, since a hidden row is still in the accessibility tree and still found by find-in-page. Never true in a production build, whatever the switch says',
+        setDevTools:
+          'shows or hides developer affordances for this device. Takes the value a switch emits, so pass "$event.detail" bare — an operator such as $not around it would resolve at render time and send a constant. Cannot turn them ON in a production build; the build is the ceiling. Gate the control that calls this on isDevelopment, NOT on devTools — gating the way to the switch on the switch makes turning it off a one-way door',
       },
       actions: {
         login: '(password: string): unlocks the agent and loads user data',

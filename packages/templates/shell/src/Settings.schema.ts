@@ -710,6 +710,71 @@ function navItem(label: string, icon: string, path: string): SchemaNode {
   };
 }
 
+/**
+ * The one switch every developer affordance is gated on.
+ *
+ * ## Why this page gates on `isDevelopment` and the switch reads `devTools`
+ *
+ * They are deliberately different stores' worth of question, and using one for both breaks the
+ * page: gate the nav entry on `devTools` and turning the switch off removes the page holding the
+ * switch, so there is no way back short of clearing site data. The *build* decides whether this
+ * page exists; the *switch* decides what the rest of the app shows. That asymmetry is the whole
+ * design — see `devToolsEnabled`, where the build flag is the ceiling.
+ *
+ * A switch rather than a console incantation because the loop this supports is look-compare-restore,
+ * and a step that needs a remembered `localStorage` key is one people do once and then leave in
+ * whichever position they left it.
+ */
+const developerSection: SchemaNode = {
+  type: 'Column',
+  props: { gap: '300' },
+  children: [
+    { type: 'we-text', props: { fontWeight: 'semibold' }, children: ['Developer'] },
+    {
+      type: 'Row',
+      props: {
+        ay: 'center',
+        ax: 'between',
+        gap: '300',
+        p: '300',
+        bg: 'surface-sunken',
+        r: '300',
+        border: '1px solid border',
+      },
+      children: [
+        {
+          type: 'Column',
+          props: { gap: '100', flex: '1' },
+          children: [
+            { type: 'we-text', props: { variant: 'label' }, children: ['Show developer tools'] },
+            {
+              type: 'we-text',
+              props: { variant: 'footnote', color: 'text-faint' },
+              children: [
+                'On, this build shows its developer affordances — the schema test pages, the fake-participant controls in a call, render logging. Off, it looks like a shipped app, which is the point: it is how you check what a user actually sees without building for production.',
+              ],
+            },
+            {
+              type: 'we-text',
+              props: { variant: 'footnote', color: 'text-faint' },
+              children: ['This page is only ever here in a development build. A shipped app has none of it.'],
+            },
+          ],
+        },
+        {
+          type: 'we-switch',
+          props: {
+            checked: { $store: 'sessionStore.devTools' },
+            // Positive-phrased, so the switch's own value passes straight through — `$not` around it
+            // would resolve at render time and send a constant.
+            onChange: { $action: 'sessionStore.setDevTools', args: ['$event.detail'] },
+          },
+        },
+      ],
+    },
+  ],
+};
+
 /** A page's own column. Every route renders one, so they share spacing without repeating it. */
 function page(children: SchemaNode[]): SchemaNode {
   return { type: 'Column', props: { gap: '600', width: '100%' }, children };
@@ -765,6 +830,10 @@ export const settingsTemplate: TemplateSchema = {
       ...page([runtimeError, trustedAgents, peerNetwork, logging]),
     },
     { path: '/connections', ...page([runtimeError, hostSection, connectedApps, mcpServer]) },
+    // No `$if` on the route itself: its nav entry is already gated, and a production build resolves
+    // the switch to false whatever it is set to, so the page is inert rather than dangerous if
+    // somebody navigates to it directly.
+    { path: '/developer', ...page([developerSection]) },
     // Anything else lands on Account rather than an empty frame.
     { path: '*', ...page([accountSection]) },
   ],
@@ -831,6 +900,15 @@ export const settingsTemplate: TemplateSchema = {
                       ],
                     },
                     then: navItem('Connections', 'plugs', '/connections'),
+                  },
+                },
+                {
+                  type: '$if',
+                  props: {
+                    // `isDevelopment`, NOT `devTools` — see `developerSection`. Gating the way to
+                    // the switch on the switch would make turning it off a one-way door.
+                    condition: { $store: 'sessionStore.isDevelopment' },
+                    then: navItem('Developer', 'flask', '/developer'),
                   },
                 },
               ],

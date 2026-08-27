@@ -6093,6 +6093,7 @@
         }
       },
       "actions": [
+        "setDevTools",
         "login",
         "createAgent",
         "clearPasswordError",

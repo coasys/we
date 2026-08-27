@@ -11,7 +11,7 @@
  * other two.
  */
 
-export { DEV_TOOLS_KEY, devToolsEnabled } from './devTools';
+export { DEV_TOOLS_KEY, devToolsEnabled, setDevToolsMuted } from './devTools';
 export {
   checkModuleCompatibility,
   defineModule,

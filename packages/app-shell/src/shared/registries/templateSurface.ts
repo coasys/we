@@ -181,6 +181,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     hostAccount: state('session'),
     isDevelopment: state('session'),
     devTools: state('session'),
+    setDevTools: action('session'),
     login: action('session'),
     createAgent: action('session'),
     clearPasswordError: action('session'),

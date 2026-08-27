@@ -165,9 +165,13 @@ export function TemplateStoreProvider(props: ParentProps) {
   const shellTemplates: TemplateSchema[] = [
     { ...deepClone(profileTemplate), id: 'profile' },
     { ...deepClone(settingsTemplate), id: 'settings' },
-    // The schema test harness is a developer tool — 3k LOC of test schemas that
-    // have no business in a production bundle. The DEV-gated branch lets the
-    // app build drop both the registration and (via tree-shaking) the schemas.
+    /*
+      The schema test harness is a developer tool — ~97KB of test schemas that have no business in a
+      production bundle. This branch drops the *registration*; it does not drop the schemas, and the
+      comment here used to claim it did. It cannot: the module imports `schemaTestsTemplate` at the
+      top level, so the import keeps it reachable however the branch folds, and the strings are in
+      `apps/we-web/dist` today. Exclusion needs an `import()` boundary, which is a separate change.
+    */
     ...(import.meta.env.DEV ? [{ ...deepClone(schemaTestsTemplate), id: 'schema-tests' }] : []),
   ];
 

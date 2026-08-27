@@ -12,22 +12,22 @@
  *
  * ## The switch
  *
- * ```js
- * localStorage.setItem('we.devTools', 'off');   // reload: the app looks shipped
- * localStorage.removeItem('we.devTools');       // reload: the tools are back
- * ```
+ * **Settings → Developer**, which appears only in a build that has developer affordances at all.
+ * The store holds it as a signal, so throwing it takes effect on the press — that matters because
+ * the switch exists to be thrown *back*: the loop is look, compare, restore, and a reload each way
+ * makes it not worth doing.
  *
- * `localStorage` for the same reason the fake-peer count uses it: it survives the reloads you do
- * while looking at something, it is per-device rather than per-build, and nobody sets it by
- * accident. A key that must be *removed* to restore the default is deliberate too — an affordance
- * you hid on purpose should not quietly return because a signal changed.
+ * `localStorage` is where it persists, for the same reason the fake-peer count uses it: it survives
+ * the reloads you do while looking at something, it is per-device rather than per-build, and nobody
+ * sets it by accident. Storing only the muted state — the key is *removed* to restore the default —
+ * keeps it to two values with no third to interpret.
  *
- * ## Why it is read once
+ * ## What it does not decide
  *
- * Every consumer reads this at start-up: the call module decides at *definition* time whether its
- * controls exist at all, so nothing it does can be reactive to a later change. A store value that
- * updated live while the module's half did not would be one switch with two answers. Set it, reload,
- * and the whole app agrees.
+ * Whether the code is in the bundle. That is a separate problem with a separate answer (a dynamic
+ * `import()` boundary), and conflating the two is how a "production build excludes it" claim gets
+ * made about a flag that only ever hid things at runtime. This switch governs *visibility*; a
+ * production build is still the ceiling, but the ceiling is enforced here rather than by a bundler.
  */
 
 /** The key a developer sets. Named once here; both the shell and the call module read it. */
@@ -60,4 +60,25 @@ function muted(): boolean {
  */
 export function devToolsEnabled(isDevBuild: boolean): boolean {
   return isDevBuild && !muted();
+}
+
+/**
+ * Remember the choice, so it survives a reload.
+ *
+ * Written by a control rather than typed into a console, which is the same rule the fake-peer count
+ * already states: "the buttons write it; nobody has to type it". An incantation you have to
+ * remember is a switch you will leave in the wrong position.
+ *
+ * Removes the key rather than storing `on`, so the stored states are "muted" and "nothing" — there
+ * is no third value to interpret, and a default that changes later applies to everyone who never
+ * expressed a preference.
+ */
+export function setDevToolsMuted(mute: boolean): void {
+  try {
+    if (mute) globalThis.localStorage?.setItem(DEV_TOOLS_KEY, OFF);
+    else globalThis.localStorage?.removeItem(DEV_TOOLS_KEY);
+  } catch {
+    // Storage that refuses writes is the same class of thing as storage that refuses reads: the
+    // preference simply does not persist. The signal in the store still flips for this session.
+  }
 }

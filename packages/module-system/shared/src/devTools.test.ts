@@ -8,7 +8,7 @@
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { DEV_TOOLS_KEY, devToolsEnabled } from './devTools';
+import { DEV_TOOLS_KEY, devToolsEnabled, setDevToolsMuted } from './devTools';
 
 /** Stand in for `localStorage`, including the case where reading it throws. */
 function stubStorage(value: string | null | (() => never)) {
@@ -19,6 +19,17 @@ function stubStorage(value: string | null | (() => never)) {
       return value;
     },
   });
+}
+
+/** A storage that actually remembers, so a write can be read back through the public reader. */
+function stubLiveStorage(): Map<string, string> {
+  const store = new Map<string, string>();
+  vi.stubGlobal('localStorage', {
+    getItem: (key: string) => store.get(key) ?? null,
+    setItem: (key: string, value: string) => store.set(key, value),
+    removeItem: (key: string) => store.delete(key),
+  });
+  return store;
 }
 
 afterEach(() => vi.unstubAllGlobals());
@@ -66,5 +77,53 @@ describe('devToolsEnabled', () => {
   it('works where there is no storage at all', () => {
     vi.stubGlobal('localStorage', undefined);
     expect(devToolsEnabled(true)).toBe(true);
+  });
+});
+
+describe('setDevToolsMuted', () => {
+  it('round-trips through the reader, in both directions', () => {
+    // The property that matters is not what lands in storage, it is that the switch is *restorable*.
+    // A mute that could not be undone would make Settings → Developer a one-way door.
+    stubLiveStorage();
+    setDevToolsMuted(true);
+    expect(devToolsEnabled(true)).toBe(false);
+    setDevToolsMuted(false);
+    expect(devToolsEnabled(true)).toBe(true);
+  });
+
+  it('stores nothing at all when unmuted, rather than a second spelling of the default', () => {
+    /*
+      Two states, not three. Storing "on" would leave a value that means "the default as it was the
+      day this was written" — so a later change to what unset means would silently skip everyone who
+      had ever touched the switch.
+    */
+    const store = stubLiveStorage();
+    setDevToolsMuted(true);
+    expect(store.get(DEV_TOOLS_KEY)).toBe('off');
+    setDevToolsMuted(false);
+    expect(store.has(DEV_TOOLS_KEY)).toBe(false);
+  });
+
+  it('cannot unmute its way into developer UI in a production build', () => {
+    // The ceiling again, from the writing side: the stored preference is not a second vote.
+    stubLiveStorage();
+    setDevToolsMuted(false);
+    expect(devToolsEnabled(false)).toBe(false);
+  });
+
+  it('survives storage that throws on write', () => {
+    // Same class of failure as a read that throws — the preference does not persist, and that is
+    // all. The caller's own signal still flips for the session.
+    vi.stubGlobal('localStorage', {
+      getItem: () => null,
+      setItem: () => {
+        throw new Error('QuotaExceededError');
+      },
+      removeItem: () => {
+        throw new Error('SecurityError');
+      },
+    });
+    expect(() => setDevToolsMuted(true)).not.toThrow();
+    expect(() => setDevToolsMuted(false)).not.toThrow();
   });
 });

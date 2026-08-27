@@ -110,21 +110,36 @@ const shellViews: Record<string, ShellViewEntry> = {
   marketplace: { schema: marketplaceTemplate },
   profile: { schema: profileTemplate },
   settings: { schema: settingsTemplate },
-  'schema-tests': {
-    schema: schemaTestsTemplate,
-    stores: (base) => {
-      const [schemaState, setSchemaState] = createStore<TemplateSchema>(deepClone(schemaTestsTemplate));
-      const mutations = schemaMutationActions(schemaState, setSchemaState);
-      return {
-        templateStore: { ...base.templateStore, ...mutations },
-        testStore: createTestStore(
-          base.datasetStore.testDataset,
-          () => base.sessionStore.backendPorts()?.schemas ?? null,
-        ),
-        $schema: schemaState,
-      };
-    },
-  },
+  /*
+    Registered only in a development build, matching `TemplateStore`'s list.
+
+    The two used to disagree — the template entry was DEV-gated and this was not — so a production
+    build had no way to *name* the harness and a complete way to *open* it. A half-gated developer
+    surface is worse than an ungated one: it reads as excluded to anyone auditing the list it is
+    missing from.
+
+    The runtime switch (`sessionStore.devTools`) gates the sidebar entry that leads here. This gates
+    whether the view exists at all, which is the build's business rather than the switch's.
+  */
+  ...(import.meta.env.DEV
+    ? {
+        'schema-tests': {
+          schema: schemaTestsTemplate,
+          stores: (base: Stores) => {
+            const [schemaState, setSchemaState] = createStore<TemplateSchema>(deepClone(schemaTestsTemplate));
+            const mutations = schemaMutationActions(schemaState, setSchemaState);
+            return {
+              templateStore: { ...base.templateStore, ...mutations },
+              testStore: createTestStore(
+                base.datasetStore.testDataset,
+                () => base.sessionStore.backendPorts()?.schemas ?? null,
+              ),
+              $schema: schemaState,
+            };
+          },
+        },
+      }
+    : {}),
 };
 
 // ---------------------------------------------------------------------------
